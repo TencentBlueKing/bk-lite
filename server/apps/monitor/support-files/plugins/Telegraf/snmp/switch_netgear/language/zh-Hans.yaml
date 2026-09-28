@@ -68,21 +68,23 @@ monitor_object_metric:
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
     device_cpu_usage:
       name: CPU 使用率
-      desc: 该指标表示设备控制平面的 CPU 使用率（通常为 5 分钟平均值），单位为百分比。CPU 持续偏高可能意味着控制平面过载、路由震荡或异常流量，会导致管理响应变慢或转发延迟。数据来源于各品牌私有
-        SNMP OID，并归一化为 0-100 的百分比。
+      desc: 该指标表示 Netgear (FASTPATH) 设备控制平面的 CPU 使用率，单位为百分比。原始对象为 DisplayString（5/60/300
+        Secs 文本），采集侧解析 60 秒（或 5 秒）窗口内的百分比；解析失败则跳过该点，不当 0%。CPU 持续偏高可能意味着控制平面过载、路由震荡或异常流量。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标表示设备整体内存使用率，按 已用/(已用+空闲)*100 在所有内存池上汇总计算，单位为百分比。内存偏高可能由内存泄漏、路由/MAC/ARP
+      desc: 该指标表示 Netgear (FASTPATH) 设备整体内存使用率，按 (总量-空闲)/总量*100 由 KByte 标量计算，单位为百分比。内存偏高可能由内存泄漏、路由/MAC/ARP
         表项过大或容量不足导致，可能引发不稳定或分配失败。
     device_memory_used:
       name: 内存已用量
       desc: 该指标表示设备各内存池当前已使用的字节数。它帮助管理员了解每个内存池（如 Processor、I/O 池）的绝对内存消耗，并定位承压的内存池。
     device_memory_free:
       name: 内存空闲量
-      desc: 该指标表示设备各内存池当前空闲可用的字节数。它与已用量一起决定整体内存使用率；空闲量持续偏低说明该内存池存在内存压力。
+      desc: 该指标表示 Netgear (FASTPATH) 系统内存空闲字节数（agentSwitchCpuProcessMemFree，设备以 KBytes
+        上报后换算为字节）。它与总量一起决定整体内存使用率；空闲量持续偏低说明存在内存压力。
     device_memory_total:
       name: 内存总量
-      desc: 该指标表示设备的内存总容量。它是计算内存使用率的分母（部分厂商按 (总量-空闲)/总量 计算），与空闲量一起反映整体内存压力。
+      desc: 该指标表示 Netgear (FASTPATH) 系统内存总容量（agentSwitchCpuProcessMemAvailable，设备以
+        KBytes 上报后换算为字节）。它是按 (总量-空闲)/总量 计算内存使用率的分母。
     device_temperature_celsius:
       name: 温度
       desc: 该指标表示设备各硬件温度传感器的读数，单位为摄氏度。温度异常升高可能意味着风扇故障、散热受阻或环境过热，若不处理可能触发热保护或损坏硬件。

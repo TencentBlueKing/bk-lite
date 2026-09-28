@@ -53,28 +53,23 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
-    # ---- Netgear CPU utilization (FASTPATH private, scalar %) ----
-    # 待现网核验：1.3.6.1.4.1.4526.10.1.1.4.9.0（已是 0-100%）。用 table(measurement=device_cpu)+field usage → 指标 device_cpu_usage。
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.4526.10.1.1.4.9"
-        name = "usage"
-    # ---- Netgear system memory (FASTPATH, available/free + total, bytes) ----
-    # 待现网核验：free(available) 1.3.6.1.4.1.4526.10.1.1.5.1.0；total ...1.5.2.0 → device_memory_free/device_memory_total。
-    # 利用率在共享盘按 (total-free)/total 计算。
-    [[inputs.snmp.table]]
-        name = "device_memory"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.4526.10.1.1.5.1"
-        name = "free"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.4526.10.1.1.5.2"
-        name = "total"
-    # ---- Netgear temperature (FASTPATH boxServicesTempSensorTemperature, °C) ----
-    # 待现网核验：温度 1.3.6.1.4.1.4526.10.43.1.8.1.5（模版单位 °C，无需换算；无独立 descr 名列，省略 descr）。
+    # ---- Netgear CPU (agentSwitchCpuProcessTotalUtilization, DisplayString, scalar) ----
+    # 顶层 field GET 必须带实例 .0。SYNTAX 为 DisplayString（5/60/300 Secs 文本），不是数值 Gauge。
+    # starlark 解析 60 Secs（或 5 Secs）括号内百分比为 0-100；解析失败跳过该点，不当 0%。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.4526.10.1.1.4.9.0"
+        name = "device_cpu_usage"
+    # ---- Netgear system memory (agentSwitchCpuProcessMemFree/MemAvailable, KBytes, scalars) ----
+    # 顶层 field GET 必须带实例 .0。free=MemFree …4526.10.1.1.4.1.0 / total=MemAvailable …4.2.0（KBytes）。
+    # 利用率按 (total-free)/total（单位相消）。绝对字节在 metrics.json 查询里 *1024。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.4526.10.1.1.4.1.0"
+        name = "device_memory_free"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.4526.10.1.1.4.2.0"
+        name = "device_memory_total"
+    # ---- Netgear temperature (boxServicesTempSensorTemperature, °C, per-sensor table) ----
+    # 列 OID 1.3.6.1.4.1.4526.10.43.1.8.1.5（表列，禁止 .0；单位 °C，无独立 descr 名列）。
     [[inputs.snmp.table]]
         name = "device_temperature"
         inherit_tags = ["source"]
@@ -82,9 +77,9 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.4526.10.43.1.8.1.5"
         name = "celsius"
-    # ---- Netgear fans (FASTPATH boxServicesFanItemState) ----
-    # 待现网核验：风扇状态 1.3.6.1.4.1.4526.10.43.1.6.1.3（无独立 descr 名列，省略 descr）。
-    # 枚举 1 operational(正常) / 2 failed / 3 powering / 4 notpowering / 5 notpresent。**原生 1=normal，无需 remap**（偏离 1 即异常）。
+    # ---- Netgear fans (boxServicesFanItemState, per-fan table) ----
+    # state 列 1.3.6.1.4.1.4526.10.43.1.6.1.3（表列，禁止 .0）。
+    # 原始码 1=notpresent / 2=operational / 其余异常；下方 processors.enum 将 2→1(正常)，其余→2。
     [[inputs.snmp.table]]
         name = "device_fan"
         inherit_tags = ["source"]
@@ -92,9 +87,9 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.4526.10.43.1.6.1.3"
         name = "state"
-    # ---- Netgear power supplies (FASTPATH boxServicesPowSupplyItemState) ----
-    # 待现网核验：电源状态 1.3.6.1.4.1.4526.10.43.1.7.1.3（无独立 descr 名列，省略 descr）。
-    # 枚举 1 operational(正常) / 2 failed / 3 powering / 4 notpowering / 5 notpresent。**原生 1=normal，无需 remap**。
+    # ---- Netgear power supplies (boxServicesPowSupplyItemState, per-supply table) ----
+    # state 列 1.3.6.1.4.1.4526.10.43.1.7.1.3（表列，禁止 .0）。
+    # 原始码同风扇；下方 processors.enum 将 2→1(正常)，其余→2。
     [[inputs.snmp.table]]
         name = "device_psu"
         inherit_tags = ["source"]
@@ -103,22 +98,90 @@
         oid = "1.3.6.1.4.1.4526.10.43.1.7.1.3"
         name = "state"
 
-# ---- 枚举归一：Netgear FASTPATH boxServices*ItemState → 统一 1=normal/2=abnormal（偏离1即异常）----
-# 待现网核验：仅作用于本品牌(tagpass brand=netgear)。原生 1=operational=normal 已对齐，
-# 但为与其它品牌一致地保证 1=normal/2=abnormal（其余 2 failed/3 powering/4 notpowering/5 notpresent→2），
-# 统一用 processors.enum 归一（1→1，default 2），不依赖原生编码。
-[[processors.enum]]
-    [processors.enum.tagpass]
+# FASTPATH CPU DisplayString → 0-100。优先 60 Secs，其次 5 Secs；解析失败丢掉该 field，不当 0%。
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def parse_number(text):
+    if text == "":
+        return None
+    i = 0
+    if text[0] == "+" or text[0] == "-":
+        i = 1
+    if i >= len(text):
+        return None
+    dots = 0
+    digits = 0
+    while i < len(text):
+        c = text[i]
+        if c >= "0" and c <= "9":
+            digits += 1
+        elif c == ".":
+            dots += 1
+            if dots > 1:
+                return None
+        else:
+            return None
+        i += 1
+    if digits == 0:
+        return None
+    return float(text)
+
+def extract_paren_percent(text, needle):
+    start = text.find(needle)
+    if start < 0:
+        return None
+    rest = text[start:]
+    openp = rest.find("(")
+    closep = rest.find(")")
+    if openp < 0 or closep <= openp:
+        return None
+    inner = rest[openp + 1:closep].strip()
+    if inner.endswith("%"):
+        inner = inner[:-1].strip()
+    return parse_number(inner)
+
+def parse_fastpath_cpu(raw):
+    if raw == None:
+        return None
+    t = type(raw)
+    if t == "int":
+        return float(raw)
+    if t == "float":
+        return raw
+    text = str(raw)
+    parsed = extract_paren_percent(text, "60 Sec")
+    if parsed != None:
+        return parsed
+    return extract_paren_percent(text, "5 Sec")
+
+def apply(metric):
+    raw = metric.fields.get("device_cpu_usage")
+    if raw == None:
+        return metric
+    parsed = parse_fastpath_cpu(raw)
+    if parsed == None:
+        metric.fields.pop("device_cpu_usage")
+    else:
+        metric.fields["device_cpu_usage"] = parsed
+    return metric
+'''
+    [processors.starlark.tagpass]
         brand = ["netgear"]
+
+# 风扇状态归一：2=operational→1(正常)，1=notpresent 及其余→2(异常)。
+[[processors.enum]]
+    namepass = ["device_fan"]
     [[processors.enum.mapping]]
-        field = "device_fan_state"
-        dest = "device_fan_state"
+        field = "state"
         default = 2
         [processors.enum.mapping.value_mappings]
-            "1" = 1
+            "2" = 1
+# 电源状态归一：与风扇同一套枚举，2→1(正常)，其余→2(异常)。
+[[processors.enum]]
+    namepass = ["device_psu"]
     [[processors.enum.mapping]]
-        field = "device_psu_state"
-        dest = "device_psu_state"
+        field = "state"
         default = 2
         [processors.enum.mapping.value_mappings]
-            "1" = 1
+            "2" = 1

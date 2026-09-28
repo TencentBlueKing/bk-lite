@@ -80,7 +80,7 @@
     {
       "name": "Netgear交换机风扇异常",
       "alert_name": "交换机${resource_name} 风扇状态异常",
-      "description": "监控 Netgear (FASTPATH) 设备各散热风扇的运行状态（boxServicesFanItemState，1=正常）。任何非正常状态都表示散热故障，可能迅速导致过热，应立即排查处理。",
+      "description": "监控 Netgear (FASTPATH) 设备各散热风扇的运行状态（boxServicesFanItemState，原生 2=operational 已归一为 1=正常）。任何非正常状态都表示散热故障，可能迅速导致过热，应立即排查处理。",
       "metric_name": "device_fan_state",
       "algorithm": "last_over_time",
       "threshold": [
@@ -95,7 +95,7 @@
     {
       "name": "Netgear交换机电源异常",
       "alert_name": "交换机${resource_name} 电源状态异常",
-      "description": "监控 Netgear (FASTPATH) 设备各电源模块的运行状态（boxServicesPowSupplyItemState，1=正常）。任何非正常状态表示电源冗余缺失或硬件故障，应尽快修复以恢复冗余能力。",
+      "description": "监控 Netgear (FASTPATH) 设备各电源模块的运行状态（boxServicesPowSupplyItemState，原生 2=operational 已归一为 1=正常）。任何非正常状态表示电源冗余缺失或硬件故障，应尽快修复以恢复冗余能力。",
       "metric_name": "device_psu_state",
       "algorithm": "last_over_time",
       "threshold": [
