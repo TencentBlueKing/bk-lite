@@ -92,7 +92,7 @@ Status: implemented
 
 ## Verification
 
-2026-09-28，`--nomigrations` 后端回归 123 passed；前端 vitest 17 passed。
+2026-09-28，`--nomigrations` 后端回归 125 passed；前端 vitest 17 passed。
 
 ```
 cd server && DB_ENGINE=sqlite DB_NAME=:memory: SECRET_KEY=cursor-cloud-dev ENABLE_CELERY=true uv run pytest \
@@ -101,7 +101,7 @@ cd server && DB_ENGINE=sqlite DB_NAME=:memory: SECRET_KEY=cursor-cloud-dev ENABL
   apps/node_mgmt/tests/test_node_viewset_search_update_enum.py \
   apps/node_mgmt/tests/test_b75_node_service.py \
   --no-cov --nomigrations
-# 123 passed in 1.79s
+# 125 passed in 1.61s
 
 cd web && pnpm exec vitest run \
   src/app/node-manager/utils/__tests__/nodeListSelection.test.ts \

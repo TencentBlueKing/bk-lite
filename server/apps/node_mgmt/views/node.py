@@ -176,8 +176,8 @@ class NodeFilterHandler:
             return queryset
         cutoff = dj_timezone.now() - timedelta(seconds=ACTIVE_WINDOW_SECONDS)
         if True in wanted:
-            return queryset.filter(updated_at__gte=cutoff)
-        return queryset.filter(updated_at__lt=cutoff)
+            return queryset.filter(updated_at__gt=cutoff)
+        return queryset.filter(updated_at__lte=cutoff)
 
     @staticmethod
     def handle_collector_status_filter(queryset, conditions, collector_name_conditions=None):

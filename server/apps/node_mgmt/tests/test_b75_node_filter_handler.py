@@ -2,7 +2,9 @@
 
 纯 DB 查询逻辑，无外部边界。断言真实 QuerySet 结果与 ORM 注入防护。
 """
-from datetime import timedelta
+from datetime import datetime, timedelta
+from datetime import timezone as dt_timezone
+from unittest.mock import patch
 
 import pytest
 from django.db.models import Q
@@ -185,6 +187,28 @@ def test_handle_active_true_keeps_recent_heartbeat(nodes):
     _set_updated_at(n2, seconds_ago=120)
     result = H.handle_active_filter(Node.objects.all(), [{"lookup_expr": "in", "value": ["true"]}])
     assert list(result) == [n1]
+
+
+@pytest.mark.django_db
+def test_handle_active_false_keeps_stale_heartbeat(nodes):
+    region, n1, n2 = nodes
+    _set_updated_at(n1, seconds_ago=10)
+    _set_updated_at(n2, seconds_ago=120)
+    result = H.handle_active_filter(Node.objects.all(), [{"lookup_expr": "in", "value": ["false"]}])
+    assert list(result) == [n2]
+
+
+@pytest.mark.django_db
+def test_handle_active_exactly_window_is_offline(nodes):
+    region, n1, n2 = nodes
+    frozen = datetime(2026, 9, 28, 12, 0, 0, tzinfo=dt_timezone.utc)
+    with patch("apps.node_mgmt.views.node.dj_timezone.now", return_value=frozen):
+        Node.objects.filter(id=n1.id).update(updated_at=frozen - timedelta(seconds=60))
+        Node.objects.filter(id=n2.id).update(updated_at=frozen - timedelta(seconds=59))
+        online = list(H.handle_active_filter(Node.objects.all(), [{"lookup_expr": "in", "value": ["true"]}]))
+        offline = list(H.handle_active_filter(Node.objects.all(), [{"lookup_expr": "in", "value": ["false"]}]))
+    assert online == [n2]
+    assert offline == [n1]
 
 
 @pytest.mark.django_db
