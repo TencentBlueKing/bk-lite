@@ -6,7 +6,7 @@ import React, {
   useMemo,
   useState
 } from 'react';
-import { Button, Form, Input, Radio, Select, Alert } from 'antd';
+import { Button, Form, Input, Radio, Select, Alert, message } from 'antd';
 import OperateModal from '@/components/operate-modal';
 import { ModalRef, ObjectItem } from '@/app/monitor/types';
 import { useTranslation } from '@/utils/i18n';
@@ -99,6 +99,9 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
     };
 
     const handleSubmit = async () => {
+      if (loading) {
+        return;
+      }
       const values = await form.validateFields();
       setLoading(true);
       try {
@@ -115,6 +118,10 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
           templateId
         );
         setVisible(false);
+      } catch (error: any) {
+        message.error(
+          error?.message || t('common.operationFailed')
+        );
       } finally {
         setLoading(false);
       }
@@ -132,6 +139,7 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
               className="mr-[10px]"
               type="primary"
               loading={loading}
+              disabled={loading}
               onClick={handleSubmit}
             >
               {t('common.confirm')}

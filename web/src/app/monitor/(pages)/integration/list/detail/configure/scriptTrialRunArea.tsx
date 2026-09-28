@@ -41,8 +41,22 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
 }) => {
   const { t } = useTranslation();
   const [selectedMetrics, setSelectedMetrics] = useState<Record<string, boolean>>({});
+  const [trialSubmitting, setTrialSubmitting] = useState(false);
 
   const isSpinning = spinning || task?.status === 'pending' || task?.status === 'running';
+  const trialBusy = isSpinning || trialSubmitting;
+
+  useEffect(() => {
+    if (isSpinning || (task?.status && task.status !== 'pending')) {
+      setTrialSubmitting(false);
+    }
+  }, [isSpinning, task?.status]);
+
+  const handleTrialClick = () => {
+    if (trialBusy || !nodeSelected) return;
+    setTrialSubmitting(true);
+    onTrialRun();
+  };
 
   const parsedOutput = useMemo(() => {
     if (!task?.result && !task?.error_message) {
@@ -117,8 +131,9 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
             type="primary"
             size="small"
             icon={<PlayCircleOutlined />}
-            disabled={!nodeSelected}
-            onClick={onTrialRun}
+            loading={trialBusy}
+            disabled={!nodeSelected || trialBusy}
+            onClick={handleTrialClick}
           >
             {t('monitor.integrations.trialRun', '试运行')}
           </Button>
@@ -133,8 +148,9 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           <Button
             type="primary"
             className="mt-3"
-            disabled={!nodeSelected}
-            onClick={onTrialRun}
+            loading={trialBusy}
+            disabled={!nodeSelected || trialBusy}
+            onClick={handleTrialClick}
           >
             {t('monitor.integrations.trialRun', '试运行')}
           </Button>
@@ -157,7 +173,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
             )}
           </div>
-          <Button size="small" disabled icon={<ReloadOutlined />}>
+          <Button size="small" disabled loading icon={<ReloadOutlined />}>
             {t('monitor.integrations.reTrialRun', '重新试运行')}
           </Button>
         </div>
@@ -204,8 +220,9 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           <Button
             size="small"
             icon={<ReloadOutlined />}
-            disabled={!nodeSelected}
-            onClick={onTrialRun}
+            loading={trialSubmitting}
+            disabled={!nodeSelected || trialBusy}
+            onClick={handleTrialClick}
           >
             {t('monitor.integrations.reTrialRun', '重新试运行')}
           </Button>
@@ -221,7 +238,12 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
             ) : undefined
           }
           action={
-            <Button size="small" onClick={onTrialRun}>
+            <Button
+              size="small"
+              loading={trialSubmitting}
+              disabled={trialBusy}
+              onClick={handleTrialClick}
+            >
               {t('monitor.integrations.reTrialRun', '重新试运行')}
             </Button>
           }
@@ -273,8 +295,9 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           <Button
             size="small"
             icon={<ReloadOutlined />}
-            disabled={!nodeSelected}
-            onClick={onTrialRun}
+            loading={trialSubmitting}
+            disabled={!nodeSelected || trialBusy}
+            onClick={handleTrialClick}
           >
             {t('monitor.integrations.reTrialRun', '重新试运行')}
           </Button>
@@ -311,7 +334,13 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
             </div>
           }
           action={
-            <Button size="small" danger onClick={onTrialRun}>
+            <Button
+              size="small"
+              danger
+              loading={trialSubmitting}
+              disabled={trialBusy}
+              onClick={handleTrialClick}
+            >
               {t('monitor.integrations.reTrialRun', '重新试运行')}
             </Button>
           }
@@ -337,8 +366,9 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           <Button
             size="small"
             icon={<ReloadOutlined />}
-            disabled={!nodeSelected}
-            onClick={onTrialRun}
+            loading={trialSubmitting}
+            disabled={!nodeSelected || trialBusy}
+            onClick={handleTrialClick}
           >
             {t('monitor.integrations.reTrialRun', '重新试运行')}
           </Button>
@@ -374,8 +404,9 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           <Button
             className="mt-3"
             icon={<ReloadOutlined />}
-            disabled={!nodeSelected}
-            onClick={onTrialRun}
+            loading={trialSubmitting}
+            disabled={!nodeSelected || trialBusy}
+            onClick={handleTrialClick}
           >
             {t('monitor.integrations.reTrialRun', '重新试运行')}
           </Button>
@@ -418,8 +449,9 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
         <Button
           size="small"
           icon={<ReloadOutlined />}
-          disabled={!nodeSelected}
-          onClick={onTrialRun}
+          loading={trialSubmitting}
+          disabled={!nodeSelected || trialBusy}
+          onClick={handleTrialClick}
         >
           {t('monitor.integrations.reTrialRun', '重新试运行')}
         </Button>

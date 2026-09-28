@@ -900,6 +900,7 @@
       "trialRunMetricValue": "Sample Value",
       "trialRunMetricDimensions": "Dimensions",
       "trialRunSelectInstance": "Target Instance for Trial",
+      "scriptMetricsPersistFailed": "Failed to save metrics: {error}",
       "templateDescription": "Template Description",
       "noConfigData": "No configuration data available, please check plugin settings",
       "missingEntryContext": "The plugin has no associated monitor object, so configuration cannot be opened",

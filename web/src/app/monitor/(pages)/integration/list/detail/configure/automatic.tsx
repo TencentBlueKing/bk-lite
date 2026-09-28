@@ -152,6 +152,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   );
   const [nodeList, setNodeList] = useState<TableDataItem[]>([]);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
+  const saveInFlightRef = useRef(false);
   const [nodesLoading, setNodesLoading] = useState<boolean>(false);
   const [initTableItems, setInitTableItems] =
     useState<IntegrationMonitoredObject>({});
@@ -446,35 +447,42 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     metricsToPersist: BusinessMetricItem[]
   ) => {
     if (!metricsToPersist.length) return;
+    const silentReq = { suppressErrorNotification: true } as const;
     try {
       const groupRes: any = await get('/monitor/api/metrics_group/', {
         params: {
           monitor_object_id: targetObjectId,
           monitor_plugin_id: targetPluginId
-        }
+        },
+        ...silentReq
       });
       const groups = Array.isArray(groupRes)
         ? groupRes
         : groupRes?.items || [];
       let targetGroupId = groups[0]?.id;
       if (!targetGroupId) {
-        const createdGroup: any = await post('/monitor/api/metrics_group/', {
-          monitor_object: Number(targetObjectId),
-          monitor_plugin: Number(targetPluginId),
-          name: 'Base',
-          description: '基础指标'
-        });
+        const createdGroup: any = await post(
+          '/monitor/api/metrics_group/',
+          {
+            monitor_object: Number(targetObjectId),
+            monitor_plugin: Number(targetPluginId),
+            name: 'Base',
+            description: '基础指标'
+          },
+          silentReq
+        );
         targetGroupId = createdGroup?.id;
       }
       if (!targetGroupId) {
-        return;
+        throw new Error(t('common.operationFailed'));
       }
 
       const existingRes: any = await get('/monitor/api/metrics/', {
         params: {
           monitor_object_id: targetObjectId,
           monitor_plugin_id: targetPluginId
-        }
+        },
+        ...silentReq
       });
       const existingItems = Array.isArray(existingRes)
         ? existingRes
@@ -494,7 +502,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
 
       if (!uniqueMetrics.length) return;
 
-      await Promise.allSettled(
+      const results = await Promise.allSettled(
         uniqueMetrics.map((item) => {
           const dimensions = Object.keys(item.tags || {}).map((k) => ({
             name: k,
@@ -514,12 +522,29 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
               description: item.name,
               dimensions
             },
-            { suppressErrorNotification: true }
+            silentReq
           );
         })
       );
-    } catch (e) {
-      console.error('Failed to persist script metrics:', e);
+      const rejected = results.find(
+        (result): result is PromiseRejectedResult => result.status === 'rejected'
+      );
+      if (rejected) {
+        throw rejected.reason;
+      }
+    } catch (error: any) {
+      throw new Error(
+        t(
+          'monitor.integrations.scriptMetricsPersistFailed',
+          '指标保存失败：{error}',
+          {
+            error:
+              error?.response?.data?.message ||
+              error?.message ||
+              t('common.operationFailed')
+          }
+        )
+      );
     }
   };
   const [formSnapshot, setFormSnapshot] = useState<Record<string, any>>({});
@@ -1344,7 +1369,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   };
 
   const handleSave = () => {
-    if (policyTemplatesLoading) {
+    if (policyTemplatesLoading || confirmLoading || saveInFlightRef.current) {
       return;
     }
     const normalizedForm = normalizePasswordFields(
@@ -1420,6 +1445,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     pushAlertCenter = false,
     alertCenterChannelIds: Array<string | number> = []
   ) => {
+    if (saveInFlightRef.current) {
+      return;
+    }
+    saveInFlightRef.current = true;
     try {
       setConfirmLoading(true);
       const collectResult = await updateNodeChildConfig(params);
@@ -1477,6 +1506,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           t('common.operationFailed')
       );
     } finally {
+      saveInFlightRef.current = false;
       setConfirmLoading(false);
     }
   };
@@ -1781,7 +1811,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           <Button
             type="primary"
             loading={confirmLoading}
-            disabled={isAnyTrialRunning}
+            disabled={confirmLoading || isAnyTrialRunning}
             onClick={handleSave}
           >
             {t('common.confirm')}

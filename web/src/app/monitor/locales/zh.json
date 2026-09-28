@@ -900,6 +900,7 @@
       "trialRunMetricValue": "采样值",
       "trialRunMetricDimensions": "维度标签",
       "trialRunSelectInstance": "试运行目标实例",
+      "scriptMetricsPersistFailed": "指标保存失败：{error}",
       "templateDescription": "模版介绍",
       "noConfigData": "暂无配置数据，请检查插件配置",
       "missingEntryContext": "缺少插件关联的监控对象，无法进入配置",
