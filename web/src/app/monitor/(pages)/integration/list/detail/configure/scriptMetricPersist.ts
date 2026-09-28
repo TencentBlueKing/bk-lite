@@ -60,6 +60,31 @@ export const extractCatalogItems = <T>(response: unknown): T[] => {
   return Array.isArray(items) ? (items as T[]) : [];
 };
 
+/** Cascader 分组用类目名，叶子必须是 unit_id，禁止改成展示文案。 */
+export const buildUnitCascaderOptions = (
+  grouped: Array<{
+    label?: string;
+    children?: Array<{ label?: string; value?: string; unit_id?: string }>;
+  }> = []
+): Array<{
+  label?: string;
+  value?: string;
+  children: Array<{ label?: string; value: string }>;
+}> =>
+  grouped.map((group) => ({
+    label: group.label,
+    value: group.label,
+    children: (group.children || [])
+      .map((item) => {
+        const unitId = String(item.unit_id || item.value || '').trim();
+        return {
+          label: item.label,
+          value: unitId
+        };
+      })
+      .filter((item) => item.value)
+  }));
+
 /** Cascader 叶子为 unit_id；已解析的字符串原样回传。 */
 export const resolveCatalogUnitId = (unit: unknown): string => {
   if (Array.isArray(unit)) {

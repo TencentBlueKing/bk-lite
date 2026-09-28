@@ -494,7 +494,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   };
 
   const handleGoEditMetrics = () => {
-    if (confirmLoading || isAnyTrialRunning || hasReservedScriptTagError) {
+    if (
+      confirmLoading ||
+      isAnyTrialRunning ||
+      hasReservedScriptTagError ||
+      !scriptDebugHasBusinessMetrics
+    ) {
       return;
     }
     if (!selectedScriptMetrics.length) {
@@ -1468,7 +1473,11 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     try {
       setConfirmLoading(true);
       const collectResult = await updateNodeChildConfig(params);
-      if (isScriptTemplate && selectedScriptMetrics.length > 0) {
+      if (
+        isScriptTemplate &&
+        scriptDebugHasBusinessMetrics &&
+        selectedScriptMetrics.length > 0
+      ) {
         await persistSelectedScriptMetrics(pluginId, objectId, selectedScriptMetrics);
       }
       if (templatesToApply.length) {

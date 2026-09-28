@@ -14,6 +14,7 @@ import useApiClient from '@/utils/request';
 import { useCommon } from '@/app/monitor/context/common';
 import { parseScriptMetrics, BusinessMetricItem } from './scriptMetricsParser';
 import {
+  buildUnitCascaderOptions,
   extractCatalogItems,
   formatDimensionTagSummary,
   pickSelectedBusinessMetrics,
@@ -94,13 +95,10 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
   const [groupOptions, setGroupOptions] = useState<MetricGroupOption[]>([]);
   const [trialSubmitting, setTrialSubmitting] = useState(false);
   const unitOptions = useMemo(
-    () =>
-      (commonContext?.groupedUnitList || []).map((item) => ({
-        ...item,
-        value: item.label
-      })),
+    () => buildUnitCascaderOptions(commonContext?.groupedUnitList || []),
     [commonContext?.groupedUnitList]
   );
+  const canFeedScriptMetricActions = task?.status === 'success';
 
   const isSpinning = spinning || task?.status === 'pending' || task?.status === 'running';
   const trialBusy = isSpinning || trialSubmitting;
@@ -175,10 +173,10 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     };
   }, [get, pluginId, objectId]);
 
-  // 通知上层选中的业务指标（含分组 / 单位 / 描述）
+  // 仅成功调试把勾选业务指标交给确认 / 去编辑；失败即使解析到行也不喂。
   useEffect(() => {
     if (!onSelectedMetricsChange) return;
-    if (!parsedOutput?.businessMetrics?.length) {
+    if (!canFeedScriptMetricActions || !parsedOutput?.businessMetrics?.length) {
       onSelectedMetricsChange([]);
       return;
     }
@@ -189,14 +187,24 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
         catalogByKey
       )
     );
-  }, [selectedMetrics, parsedOutput, catalogByKey, onSelectedMetricsChange]);
+  }, [
+    canFeedScriptMetricActions,
+    selectedMetrics,
+    parsedOutput,
+    catalogByKey,
+    onSelectedMetricsChange
+  ]);
 
   useEffect(() => {
     onBusinessMetricsAvailableChange?.(
-      task?.status === 'success' &&
+      canFeedScriptMetricActions &&
         (parsedOutput?.businessMetrics?.length || 0) > 0
     );
-  }, [task?.status, parsedOutput, onBusinessMetricsAvailableChange]);
+  }, [
+    canFeedScriptMetricActions,
+    parsedOutput,
+    onBusinessMetricsAvailableChange
+  ]);
 
   useEffect(() => {
     return () => onBusinessMetricsAvailableChange?.(false);
