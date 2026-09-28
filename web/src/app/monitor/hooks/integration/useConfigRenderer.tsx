@@ -153,8 +153,10 @@ export const useConfigRenderer = () => {
     // 禁止按 name === "username" 去套 monitor.integrations.usernameDes 或 WMI 文案。
     const guideTip = guide_short || tooltip || description;
     const hasGuideTip = Boolean(guideTip);
-    // 悬浮提示已承载说明时，不再在控件旁重复展示同一段 description
-    const showInlineDescription = Boolean(description && description !== guideTip);
+    // 悬浮提示已承载说明时，不再在控件旁重复展示同一段 description；run_as 保留内联灰字说明
+    const showInlineDescription = Boolean(
+      (description && description !== guideTip) || name === 'run_as'
+    );
 
     if (type === 'hidden') {
       return (
@@ -287,6 +289,54 @@ export const useConfigRenderer = () => {
                     values: rejected.join(', ')
                   })
                 );
+              }
+            }
+          }
+        ]
+        : []),
+      ...(name === 'run_as'
+        ? [
+          {
+            validator: async (_: unknown, value: unknown) => {
+              const str = String(value ?? '').trim().toLowerCase();
+              if (!str) {
+                throw new Error(
+                  t(
+                    'monitor.integrations.runAsRequiredLinux',
+                    'Linux 节点下执行用户不能为空'
+                  )
+                );
+              }
+              if (
+                str === 'root' ||
+                str === '0' ||
+                /^uid\s*[:=]\s*0$/i.test(str)
+              ) {
+                throw new Error(
+                  t(
+                    'monitor.integrations.runAsNonRoot',
+                    '执行用户禁止为 root 或 UID 0'
+                  )
+                );
+              }
+            }
+          }
+        ]
+        : []),
+      ...(name === 'interval'
+        ? [
+          {
+            validator: async (_: unknown, value: unknown) => {
+              if (value !== undefined && value !== null && value !== '') {
+                const num = Number(value);
+                if (Number.isFinite(num) && num < 60) {
+                  throw new Error(
+                    t(
+                      'monitor.integrations.intervalMin60',
+                      '采集间隔不能小于 60 秒'
+                    )
+                  );
+                }
               }
             }
           }

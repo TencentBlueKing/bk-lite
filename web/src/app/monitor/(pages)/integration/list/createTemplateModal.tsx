@@ -86,7 +86,9 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
               ? 'pull'
               : initialForm?.template_type === 'snmp'
                 ? 'snmp'
-                : 'api'
+                : initialForm?.template_type === 'script'
+                  ? 'script'
+                  : 'api'
         });
       }
     }));
@@ -186,6 +188,7 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
               <Radio value="api">API</Radio>
               <Radio value="pull">PULL</Radio>
               <Radio value="snmp">SNMP</Radio>
+              <Radio value="script">{t('monitor.integrations.script')}</Radio>
             </Radio.Group>
           </Form.Item>
           {templateType === 'pull' && (
@@ -199,6 +202,14 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
           {templateType === 'snmp' && (
             <Alert
               message={t('monitor.integrations.snmpTemplateHint')}
+              type="info"
+              showIcon
+              className="mb-[16px]"
+            />
+          )}
+          {templateType === 'script' && (
+            <Alert
+              message={t('monitor.integrations.scriptTemplateHint')}
               type="info"
               showIcon
               className="mb-[16px]"

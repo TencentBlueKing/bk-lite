@@ -97,12 +97,7 @@ class MonitorEffectivePluginService:
     @staticmethod
     def _inject_label_matcher(query: str, key: str, value: str) -> str:
         """Inject ``key="value"`` into every PromQL selector to scope status queries."""
-        escaped = (
-            str(value)
-            .replace("\\", "\\\\")
-            .replace('"', '\\"')
-            .replace("\n", "\\n")
-        )
+        escaped = str(value).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
         matcher = f'{key}="{escaped}"'
         key_pattern = re.compile(rf"(?:^|,)\s*{re.escape(key)}\s*(=~?|!=)")
 
@@ -130,9 +125,7 @@ class MonitorEffectivePluginService:
             # Process (and other multi-key) status_query can return every series in the
             # cluster; scope by primary label so host→process metrics does not hang.
             if target_primary is not None:
-                query = MonitorEffectivePluginService._inject_label_matcher(
-                    query, primary_key, target_primary
-                )
+                query = MonitorEffectivePluginService._inject_label_matcher(query, primary_key, target_primary)
             plugin_queries.append((plugin, query))
 
         vm_api = VictoriaMetricsAPI()
@@ -155,10 +148,7 @@ class MonitorEffectivePluginService:
             for metric in response.get("data", {}).get("result", []):
                 labels = metric.get("metric", {})
                 metric_instance_id = str(tuple(labels.get(key) for key in instance_id_keys))
-                if metric_instance_id == instance_id or (
-                    target_primary is not None
-                    and str(labels.get(primary_key)) == target_primary
-                ):
+                if metric_instance_id == instance_id or (target_primary is not None and str(labels.get(primary_key)) == target_primary):
                     reported_plugin_ids.add(plugin.id)
                     break
         return reported_plugin_ids
@@ -171,7 +161,7 @@ class MonitorEffectivePluginService:
 
     @staticmethod
     def _serialize_plugin(plugin: MonitorPlugin, lan: LanguageLoader) -> dict:
-        is_custom = plugin.template_type in {"api", "pull", "snmp"}
+        is_custom = plugin.template_type in {"api", "pull", "snmp", "script"}
         if is_custom:
             display_name = plugin.display_name or plugin.name
             display_description = plugin.description
