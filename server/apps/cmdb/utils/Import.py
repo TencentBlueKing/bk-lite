@@ -47,6 +47,8 @@ class Import:
         self.validation_errors = []
         # 缓存的字段映射，由 _build_field_maps 初始化
         self._field_maps = None
+        # 异步导入按 Excel 列号记住字段位置，供错误报告定位。
+        self.transfer_columns = {}
 
     @staticmethod
     def _normalize_user_token(token):
@@ -68,6 +70,13 @@ class Import:
         if s.endswith("）") and "（" in s:
             return s.rsplit("（", 1)[-1].rstrip("）").strip()
         return s
+
+    @staticmethod
+    def _is_blank_imported_token(value):
+        """导出把 JSON null 写成了文本 None，用户和组织列遇到它应视为空。"""
+        if value is None:
+            return True
+        return str(value).strip() in {"", "None"}
 
     def _build_field_maps(self):
         """构建字段类型映射表，用于Excel数据解析。
@@ -100,7 +109,16 @@ class Import:
             elif attr_type == "tag":
                 field_maps["tag_fields"].add(attr_id)
             elif attr_type in {ORGANIZATION, USER, ENUM}:
-                field_maps["need_val_to_id"][attr_id] = {i["name"]: i["id"] for i in attr_info["option"]}
+                mapping = {}
+                for item in attr_info["option"]:
+                    if attr_type == USER:
+                        # 导出写的是用户名，或 operator 的 display_name(username)。不把数字 id 当作可导入的名字。
+                        for token in (item.get("username"), item.get("name")):
+                            if token not in (None, ""):
+                                mapping[str(token)] = item["id"]
+                    elif item.get("name") not in (None, ""):
+                        mapping[item["name"]] = item["id"]
+                field_maps["need_val_to_id"][attr_id] = mapping
                 if attr_type in {ORGANIZATION, USER}:
                     field_maps["org_user"][attr_id] = attr_type
                 if attr_type == ENUM:
@@ -153,16 +171,18 @@ class Import:
         Returns:
             tuple: (enum_ids, error_msg, organization_cell_provided)
         """
-        # 解析值列表
+        # 解析值列表。文本 None 是导出空值的产物，不参与用户名或组织名匹配。
         if not isinstance(value, list):
-            if "," in str(value):
-                value_list = str(value).split(",")
-            elif "，" in str(value):
-                value_list = str(value).split("，")
+            if isinstance(value, str) and ("," in value or "，" in value):
+                splitter = "，" if "，" in value else ","
+                value_list = value.split(splitter)
             else:
-                value_list = [str(value)]
+                value_list = [value]
         else:
             value_list = value
+        value_list = [item for item in value_list if not self._is_blank_imported_token(item)]
+        if not value_list:
+            return [], None, False
 
         field_type = field_maps["org_user"][key]
 
@@ -477,20 +497,37 @@ class Import:
 
         return item, row_has_data, row_has_validation_errors
 
+    def remember_transfer_columns(self, headers, keys):
+        """按模板第 1 行标题和第 3 行字段标识记录列位置，例如 ``C 数量``。"""
+        from openpyxl.utils import get_column_letter
+
+        columns = {}
+        for index, key in enumerate(keys):
+            if not key or key == "字段标识(请勿编辑)":
+                continue
+            header = headers[index] if index < len(headers) and headers[index] else key
+            columns[key] = f"{get_column_letter(index + 1)} {header}"
+        self.transfer_columns = columns
+
+    def column_label(self, field_id):
+        return self.transfer_columns.get(field_id) or str(field_id or "")
+
     def iter_transfer_rows(self, stream, allowed_org_ids):
-        """有界异步导入解析；保留 Excel 行号，不记录或返回原始错误单元格。"""
+        """有界异步导入解析。单元格问题沿用同步导入的字段说明，并带上列位置。"""
         maps = self._build_field_maps()
         book = openpyxl.load_workbook(stream, read_only=True, data_only=False, keep_links=False)
         try:
             sheet = book.worksheets[0]
             sheet.reset_dimensions()
+            headers = [cell.value for cell in sheet[1]]
             keys = [cell.value for cell in sheet[3]]
+            self.remember_transfer_columns(headers, keys)
             for number, row in enumerate(sheet.iter_rows(min_row=4), 4):
                 if all(cell.value is None for cell in row):
                     continue
                 item = {"model_id": self.model_id}
                 relations = {}
-                error = ""
+                problems = []
                 for key, cell in zip(keys, row):
                     if key == "字段标识(请勿编辑)" or cell.value is None:
                         continue
@@ -501,16 +538,16 @@ class Import:
                         pass
                     if key in self.model_asso_map:
                         if not isinstance(value, str):
-                            error = "关联值必须是逗号分隔的实例名"
+                            problems.append((self.column_label(key), key, "关联值必须是逗号分隔的实例名"))
                         else:
                             relations[key] = [name.strip() for name in value.split(",") if name.strip()]
                         continue
                     handled, invalid, _ = self._process_cell_value(key, value, number, maps, set(allowed_org_ids), item)
                     if invalid:
-                        error = "字段类型或取值不合法，请检查模板要求"
+                        problems.append((self.column_label(key), key, invalid))
                     elif not handled:
                         item[key] = value
-                yield number, item, relations, error
+                yield number, item, relations, problems
         finally:
             book.close()
 
