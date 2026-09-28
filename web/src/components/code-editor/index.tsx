@@ -26,6 +26,8 @@ interface CodeEditorProps {
   onChange?: (value: string) => void;
   className?: string;
   headerOptions?: EditorToolbarOptions;
+  /** token：工具栏与编辑区走 bk-lite 语义色，避免灰白冲淡。 */
+  appearance?: 'default' | 'token';
   [key: string]: unknown;
 }
 
@@ -34,6 +36,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
   onChange,
   headerOptions,
   className = '',
+  appearance = 'default',
   ...restProps
 }) => {
   const { t } = useTranslation();
@@ -48,6 +51,8 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
   const enableCopy = headerOptions?.copy ?? false;
   const enableFullscreen = headerOptions?.fullscreen ?? false;
   const shouldShowHeader = enableCopy || enableFullscreen;
+  const tokenSurface = appearance === 'token';
+  const iconColor = tokenSurface ? 'var(--color-text-2)' : 'var(--color-text-3)';
 
   // 动态配置 message 的挂载容器
   useEffect(() => {
@@ -128,17 +133,25 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
   return (
     <div
       ref={containerRef}
-      className={`${className} ${isFullscreen ? 'flex flex-col' : ''}`}
+      className={`${tokenSurface ? 'code-editor-token' : ''} ${className} ${isFullscreen ? 'flex flex-col' : ''}`}
       style={{ position: 'relative' }}
     >
       {shouldShowHeader && (
         <div
-          className="flex items-center justify-end px-2 gap-1"
-          style={{
-            height: 32,
-            background: 'linear-gradient(180deg, #2d2d30 0%, #252526 100%)',
-            borderBottom: '1px solid #1e1e1e'
-          }}
+          className={
+            tokenSurface
+              ? 'flex h-8 items-center justify-end gap-1 border-b border-[var(--color-border-3)] bg-[var(--color-fill-3)] px-2'
+              : 'flex items-center justify-end gap-1 px-2'
+          }
+          style={
+            tokenSurface
+              ? undefined
+              : {
+                height: 32,
+                background: 'linear-gradient(180deg, #2d2d30 0%, #252526 100%)',
+                borderBottom: '1px solid #1e1e1e'
+              }
+          }
         >
           {enableCopy && (
             <Tooltip
@@ -151,7 +164,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
               <Button
                 type="text"
                 size="small"
-                icon={<CopyOutlined style={{ color: 'var(--color-text-3)' }} />}
+                icon={<CopyOutlined style={{ color: iconColor }} />}
                 onClick={handleCopy}
                 className="hover:!bg-[var(--color-bg-hover)]"
               />
@@ -174,13 +187,9 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
                 size="small"
                 icon={
                   isFullscreen ? (
-                    <FullscreenExitOutlined
-                      style={{ color: 'var(--color-text-3)' }}
-                    />
+                    <FullscreenExitOutlined style={{ color: iconColor }} />
                   ) : (
-                    <FullscreenOutlined
-                      style={{ color: 'var(--color-text-3)' }}
-                    />
+                    <FullscreenOutlined style={{ color: iconColor }} />
                   )
                 }
                 onClick={toggleFullscreen}

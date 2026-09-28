@@ -121,7 +121,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           <div className="flex items-center gap-2">
             <DashboardOutlined className="text-[var(--color-primary)] text-[15px]" />
             <b className="text-[14px] text-[var(--color-text-1)]">
-              {t('monitor.integrations.trialRunAreaTitle', '试运行结果')}
+              {t('monitor.integrations.trialRunAreaTitle', '调试结果')}
             </b>
             {instanceName && (
               <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
@@ -135,14 +135,14 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
             disabled={!nodeSelected || trialBusy}
             onClick={handleTrialClick}
           >
-            {t('monitor.integrations.trialRun', '试运行')}
+            {t('monitor.integrations.trialRun', '调试')}
           </Button>
         </div>
         <div className="flex flex-col items-center justify-center py-6 px-4 rounded-md border border-dashed border-[var(--color-border-2)] bg-[var(--color-bg-2)]">
           <CompactEmptyState
             description={t(
               'monitor.integrations.trialRunEmptyPrompt',
-              '保存前可先试运行，验证输出指标'
+              '保存前可先调试，验证输出指标'
             )}
           />
           <Button
@@ -152,7 +152,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
             disabled={!nodeSelected || trialBusy}
             onClick={handleTrialClick}
           >
-            {t('monitor.integrations.trialRun', '试运行')}
+            {t('monitor.integrations.trialRun', '调试')}
           </Button>
         </div>
       </div>
@@ -167,14 +167,14 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           <div className="flex items-center gap-2">
             <DashboardOutlined className="text-[var(--color-primary)] text-[15px]" />
             <b className="text-[14px] text-[var(--color-text-1)]">
-              {t('monitor.integrations.trialRunAreaTitle', '试运行结果')}
+              {t('monitor.integrations.trialRunAreaTitle', '调试结果')}
             </b>
             {instanceName && (
               <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
             )}
           </div>
           <Button size="small" disabled loading icon={<ReloadOutlined />}>
-            {t('monitor.integrations.reTrialRun', '重新试运行')}
+            {t('monitor.integrations.reTrialRun', '重新调试')}
           </Button>
         </div>
         <div className="flex flex-col items-center justify-center py-10 px-4 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
@@ -183,7 +183,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               <span className="mt-2 text-[13px] text-[var(--color-text-2)] font-medium">
                 {t(
                   'monitor.integrations.trialRunSpinning',
-                  '试运行中，不会写入时序库'
+                  '调试中，不会写入时序库'
                 )}
               </span>
             }
@@ -200,10 +200,10 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     const isRateLimit = task.warning_type === 'rate_limit';
     const isNoPermission = task.warning_type === 'no_permission';
     const warningMsg = isRateLimit
-      ? t('monitor.integrations.trialRunRateLimit', '试运行过于频繁，请稍后重试')
+      ? t('monitor.integrations.trialRunRateLimit', '调试过于频繁，请稍后重试')
       : isNoPermission
-        ? t('monitor.integrations.trialRunNoPermission', '当前账号无权试运行该对象/节点')
-        : task.error_message || t('monitor.integrations.trialRunWarning', '试运行提示');
+        ? t('monitor.integrations.trialRunNoPermission', '当前账号无权调试该对象/节点')
+        : task.error_message || t('monitor.integrations.trialRunWarning', '调试提示');
 
     return (
       <div className="mt-4 mb-4 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4">
@@ -211,7 +211,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           <div className="flex items-center gap-2">
             <DashboardOutlined className="text-[var(--color-primary)] text-[15px]" />
             <b className="text-[14px] text-[var(--color-text-1)]">
-              {t('monitor.integrations.trialRunAreaTitle', '试运行结果')}
+              {t('monitor.integrations.trialRunAreaTitle', '调试结果')}
             </b>
             {instanceName && (
               <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
@@ -224,7 +224,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
             disabled={!nodeSelected || trialBusy}
             onClick={handleTrialClick}
           >
-            {t('monitor.integrations.reTrialRun', '重新试运行')}
+            {t('monitor.integrations.reTrialRun', '重新调试')}
           </Button>
         </div>
         <Alert
@@ -244,7 +244,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               disabled={trialBusy}
               onClick={handleTrialClick}
             >
-              {t('monitor.integrations.reTrialRun', '重新试运行')}
+              {t('monitor.integrations.reTrialRun', '重新调试')}
             </Button>
           }
         />
@@ -265,7 +265,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
       t('monitor.integrations.trialRunNonZeroExitDesc', '脚本非零退出，请检查脚本内容或参数');
 
     if (parsedOutput?.isTimeout) {
-      errorTitle = t('monitor.integrations.trialRunTimeout', '试运行超时');
+      errorTitle = t('monitor.integrations.trialRunTimeout', '调试超时');
       errorDesc = t(
         'monitor.integrations.trialRunTimeoutDesc',
         '脚本执行超过限制时间，请检查脚本中是否存在长时间阻塞操作'
@@ -286,7 +286,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           <div className="flex items-center gap-2">
             <DashboardOutlined className="text-[var(--color-primary)] text-[15px]" />
             <b className="text-[14px] text-[var(--color-text-1)]">
-              {t('monitor.integrations.trialRunAreaTitle', '试运行结果')}
+              {t('monitor.integrations.trialRunAreaTitle', '调试结果')}
             </b>
             {instanceName && (
               <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
@@ -299,7 +299,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
             disabled={!nodeSelected || trialBusy}
             onClick={handleTrialClick}
           >
-            {t('monitor.integrations.reTrialRun', '重新试运行')}
+            {t('monitor.integrations.reTrialRun', '重新调试')}
           </Button>
         </div>
         <Alert
@@ -318,7 +318,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               {stderr && (
                 <div className="mt-1">
                   <div className="text-[11px] font-mono text-[var(--color-text-3)] mb-1">stderr:</div>
-                  <pre className="m-0 max-h-[160px] overflow-auto rounded bg-[#111827] p-2 font-mono text-xs text-[#fca5a5] whitespace-pre-wrap">
+                  <pre className="script-debug-terminal m-0 max-h-[200px] overflow-auto rounded p-3 font-mono text-xs leading-5 whitespace-pre-wrap">
                     {stderr}
                   </pre>
                 </div>
@@ -326,7 +326,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               {stdout && (
                 <div className="mt-1">
                   <div className="text-[11px] font-mono text-[var(--color-text-3)] mb-1">stdout:</div>
-                  <pre className="m-0 max-h-[160px] overflow-auto rounded bg-[#111827] p-2 font-mono text-xs text-[#e5e7eb] whitespace-pre-wrap">
+                  <pre className="script-debug-terminal m-0 max-h-[200px] overflow-auto rounded p-3 font-mono text-xs leading-5 whitespace-pre-wrap">
                     {stdout}
                   </pre>
                 </div>
@@ -341,7 +341,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               disabled={trialBusy}
               onClick={handleTrialClick}
             >
-              {t('monitor.integrations.reTrialRun', '重新试运行')}
+              {t('monitor.integrations.reTrialRun', '重新调试')}
             </Button>
           }
         />
@@ -349,7 +349,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     );
   }
 
-  // 5. 成功后无指标状态 (Empty after run with no metrics +「重新试运行」)
+  // 5. 成功后无指标状态 (Empty after run with no metrics +「重新调试」)
   if (!parsedOutput?.hasMetrics) {
     return (
       <div className="mt-4 mb-4 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4">
@@ -357,7 +357,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           <div className="flex items-center gap-2">
             <DashboardOutlined className="text-[var(--color-primary)] text-[15px]" />
             <b className="text-[14px] text-[var(--color-text-1)]">
-              {t('monitor.integrations.trialRunAreaTitle', '试运行结果')}
+              {t('monitor.integrations.trialRunAreaTitle', '调试结果')}
             </b>
             {instanceName && (
               <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
@@ -370,7 +370,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
             disabled={!nodeSelected || trialBusy}
             onClick={handleTrialClick}
           >
-            {t('monitor.integrations.reTrialRun', '重新试运行')}
+            {t('monitor.integrations.reTrialRun', '重新调试')}
           </Button>
         </div>
         {/* 仍展示自身指标概览 */}
@@ -398,7 +398,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           <CompactEmptyState
             description={t(
               'monitor.integrations.trialRunEmptyMetrics',
-              '试运行完成，未检测到输出指标'
+              '调试完成，未检测到输出指标'
             )}
           />
           <Button
@@ -408,7 +408,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
             disabled={!nodeSelected || trialBusy}
             onClick={handleTrialClick}
           >
-            {t('monitor.integrations.reTrialRun', '重新试运行')}
+            {t('monitor.integrations.reTrialRun', '重新调试')}
           </Button>
         </div>
       </div>
@@ -428,7 +428,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
         <div className="flex items-center gap-2">
           <DashboardOutlined className="text-[var(--color-primary)] text-[15px]" />
           <b className="text-[14px] text-[var(--color-text-1)]">
-            {t('monitor.integrations.trialRunAreaTitle', '试运行结果')}
+            {t('monitor.integrations.trialRunAreaTitle', '调试结果')}
           </b>
           {instanceName && (
             <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
@@ -453,7 +453,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           disabled={!nodeSelected || trialBusy}
           onClick={handleTrialClick}
         >
-          {t('monitor.integrations.reTrialRun', '重新试运行')}
+          {t('monitor.integrations.reTrialRun', '重新调试')}
         </Button>
       </div>
 
