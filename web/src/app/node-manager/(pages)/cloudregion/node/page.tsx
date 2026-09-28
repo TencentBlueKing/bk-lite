@@ -366,7 +366,6 @@ const Node = () => {
     if (shouldClearNodeSelection({ reason: 'filters' })) {
       clearNodeSelection();
     }
-    setPagination((prev) => ({ ...prev, current: 1 }));
     setSearchFilters(filters);
     getNodes(filters);
   };
