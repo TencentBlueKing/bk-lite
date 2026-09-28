@@ -52,6 +52,7 @@ def test_slo_policy_event_delivery_and_recipient_http_path(apm_api_client, mocke
             availability="available",
         )
     ]
+    directory.validate_recipient_ids.return_value = {42}
     recipients = mocker.patch("apps.apm.views.control_plane.ApmNotificationRecipientViewSet.directory")
     recipients.search_recipients.return_value = [NotificationRecipient(id=42, username="alice", display_name="Alice On-call")]
 
@@ -86,6 +87,8 @@ def test_slo_policy_event_delivery_and_recipient_http_path(apm_api_client, mocke
         },
         format="json",
     )
+    assert slo.status_code == 201, slo.data
+    assert policy.status_code == 201, policy.data
     evaluated_at = timezone.now().replace(second=0, microsecond=0)
     evaluator = DjangoApmPolicyService(
         SimpleNamespace(service_red=lambda query: ServiceRed(20, 0.10, 100, 150)),

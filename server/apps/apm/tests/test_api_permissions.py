@@ -17,6 +17,16 @@ from apps.apm.tests.helpers import create_application
 pytestmark = pytest.mark.django_db
 
 
+@pytest.fixture(autouse=True)
+def _stub_probe_artifact_sha256(monkeypatch):
+    # 接入脚本要给探针制品算 SHA-256，真跑会去连 NATS 对象存储；
+    # 这里统一桩掉，制品缺失 / 不可用的用例在测试体内再覆盖。
+    monkeypatch.setattr(
+        "apps.apm.services.integration_configuration.get_probe_artifact_sha256",
+        lambda artifact_name: "0" * 64,
+    )
+
+
 def _configuration_script(code: str) -> str:
     section = code.split("# 2. 配置上报", maxsplit=1)[1].split("# 3. 启动应用", maxsplit=1)[0]
     return section.split("\n", maxsplit=1)[1]
