@@ -1,4 +1,4 @@
-"""脚本采集 child 模板：inputs.exec 之后强制覆盖平台保留标签。"""
+"""脚本采集 child 模板：inputs.bklite_script 之后强制覆盖平台保留标签。"""
 
 from apps.monitor.utils.plugin_controller import Controller
 
@@ -6,7 +6,7 @@ from apps.monitor.utils.plugin_controller import Controller
 SCRIPT_COLLECT_TYPE = "script"
 SCRIPT_CONFIG_TYPE = "script"
 
-# 平台保留标签。stdout / [inputs.exec.tags] 不得作为最终来源。
+# 平台保留标签。stdout / [inputs.bklite_script.tags] 不得作为最终来源。
 RESERVED_SCRIPT_TAG_KEYS = (
     "instance_id",
     "instance_type",
@@ -17,14 +17,20 @@ RESERVED_SCRIPT_TAG_KEYS = (
 )
 
 # name_prefix + namepass 按 config_id 隔离，避免合并进同一 Telegraf 后改写其他采集。
-DEFAULT_SCRIPT_CHILD_TEMPLATE = """[[inputs.exec]]
-    startup_error_behavior = "retry"
-    commands = ["{{ command }}"]
-    timeout = "{{ timeout | default(10, true) }}s"
+# 插件契约：script 为脚本正文（可从旧字段 command 迁入）；timeout / data_format /
+# command / commands / script_file 不下发。interval 由平台传秒，模板拼 "Ns"；
+# 子进程 timeout 由插件按 interval-1s 推导。
+DEFAULT_SCRIPT_CHILD_TEMPLATE = """[[inputs.bklite_script]]
     interval = "{{ interval }}s"
-    data_format = "influx"
+    interpreter = "{{ interpreter | default('/bin/sh', true) }}"
+    script = "{{ script }}"
+    {% if script_env %}script_env = "{{ script_env }}"{% endif %}
+    {% if params %}params = {{ params | to_toml_str_array }}{% endif %}
+    {% if environment %}environment = {{ environment | to_toml_str_array }}{% endif %}
+    {% if run_as %}run_as = "{{ run_as }}"{% endif %}
+    {% if script_name %}script_name = "{{ script_name }}"{% endif %}
     name_prefix = "bklite_script_{{ config_id }}_"
-    [inputs.exec.tags]
+    [inputs.bklite_script.tags]
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type }}"
         collect_type = "script"
@@ -54,6 +60,17 @@ def apply(metric):
 """
 
 
+def _child_render_context(context: dict) -> dict:
+    """渲染键以 script 为准；仅当 script 为空时把旧字段 command 迁入 script。"""
+    render_context = dict(context)
+    if str(render_context.get("script") or "").strip():
+        return render_context
+    command = render_context.get("command")
+    if command not in (None, ""):
+        render_context["script"] = command
+    return render_context
+
+
 class CustomScriptPluginService:
     @staticmethod
     def child_template() -> str:
@@ -63,6 +80,6 @@ class CustomScriptPluginService:
     def render_child_template(context: dict) -> str:
         return Controller({}).render_template(
             DEFAULT_SCRIPT_CHILD_TEMPLATE,
-            context,
+            _child_render_context(context),
             escape_toml_strings=True,
         )
