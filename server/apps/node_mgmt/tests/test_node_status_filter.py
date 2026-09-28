@@ -1,9 +1,11 @@
 from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.services.node_status_filter import (
     INSTALL_STATUS_ERROR,
+    INSTALL_STATUS_RUNNING,
     INSTALL_STATUS_SUCCESS,
     collector_status_codes_from_filter_values,
     hosted_collectors_for_filter,
+    install_row_display_status,
     node_matches_collector_filter,
 )
 
@@ -46,6 +48,32 @@ def test_name_match_is_case_insensitive_and_ignores_os_suffix_id():
         collector_name_by_id={"telegraf_windows": "Telegraf"},
     )
     assert node_matches_collector_filter(hosted, wanted_codes={2}, collector_name="telegraf") is True
+
+
+def test_install_row_display_status_success_maps_to_11():
+    assert install_row_display_status(INSTALL_STATUS_SUCCESS) == 11
+
+
+def test_install_row_display_status_error_maps_to_12():
+    assert install_row_display_status(INSTALL_STATUS_ERROR) == 12
+
+
+def test_install_row_display_status_running_or_other_maps_to_10():
+    assert install_row_display_status(INSTALL_STATUS_RUNNING) == 10
+    assert install_row_display_status("pending") == 10
+    assert install_row_display_status(None) == 10
+
+
+def test_install_only_success_row_displays_status_11():
+    hosted = hosted_collectors_for_filter(
+        reported=[],
+        install_rows=[{"collector_id": "vector_linux", "status": INSTALL_STATUS_SUCCESS}],
+        collector_name_by_id={"vector_linux": "Vector"},
+    )
+    assert len(hosted) == 1
+    assert hosted[0]["collector_id"] == "vector_linux"
+    assert hosted[0]["status"] == 11
+    assert node_matches_collector_filter(hosted, wanted_codes={11}, collector_name=None) is True
 
 
 def test_install_only_collector_is_merged_when_absent_from_reported():
