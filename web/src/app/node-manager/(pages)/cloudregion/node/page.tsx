@@ -57,6 +57,11 @@ import {
   isControllerOperationDisabled
 } from '@/app/node-manager/utils/nodeOperation';
 import {
+  nextSelectedNodeMap,
+  selectedNodesFromMap,
+  shouldClearNodeSelection
+} from '@/app/node-manager/utils/nodeListSelection';
+import {
   listNodeHostedCollectors,
   listNodeUpgradeableCollectors,
   listCollectorUpdateHints,
@@ -105,6 +110,9 @@ const Node = () => {
   const batchEditOrganizationsRef = useRef<ModalRef>(null);
   const [nodeList, setNodeList] = useState<TableDataItem[]>();
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [selectedNodeMap, setSelectedNodeMap] = useState<
+    Map<React.Key, TableDataItem>
+  >(new Map());
   const [loading, setLoading] = useState<boolean>(false);
   const [showNodeTable, setShowNodeTable] = useState<boolean>(true);
   const [taskId, setTaskId] = useState<string>('');
@@ -127,6 +135,11 @@ const Node = () => {
     total: 0,
     pageSize: 20
   });
+
+  const clearNodeSelection = () => {
+    setSelectedRowKeys([]);
+    setSelectedNodeMap(new Map());
+  };
 
   const columns = useColumns({
     checkConfig: (row: TableDataItem) => {
@@ -202,8 +215,9 @@ const Node = () => {
 
   const enableOperateCollecter = useMemo(() => {
     if (!selectedRowKeys.length) return true;
-    const selectedNodes = (nodeList || []).filter((item) =>
-      selectedRowKeys.includes(item.key)
+    const selectedNodes = selectedNodesFromMap(
+      selectedRowKeys,
+      selectedNodeMap
     );
     const operatingSystems = selectedNodes.map((node) => node.operating_system);
     const architectures = selectedNodes.map(
@@ -213,22 +227,24 @@ const Node = () => {
     const uniqueArchitectures = [...new Set(architectures)];
     // 采集器：检查操作系统和 CPU 架构是否一致
     return uniqueOS.length !== 1 || uniqueArchitectures.length !== 1;
-  }, [selectedRowKeys, nodeList]);
+  }, [selectedRowKeys, selectedNodeMap]);
 
   const enableOperateController = useMemo(() => {
-    const selectedNodes = (nodeList || []).filter((item) =>
-      selectedRowKeys.includes(item.key)
+    const selectedNodes = selectedNodesFromMap(
+      selectedRowKeys,
+      selectedNodeMap
     );
     // 控制器：只要求所选节点为同一非 Windows 操作系统，安装方式不影响操作入口
     return isControllerOperationDisabled(selectedNodes);
-  }, [selectedRowKeys, nodeList]);
+  }, [selectedRowKeys, selectedNodeMap]);
 
   const getFirstSelectedNodeOS = useCallback(() => {
-    const selectedNodes = (nodeList || []).filter((item) =>
-      selectedRowKeys.includes(item.key)
+    const selectedNodes = selectedNodesFromMap(
+      selectedRowKeys,
+      selectedNodeMap
     );
     return selectedNodes[0]?.operating_system || 'linux';
-  }, [nodeList, selectedRowKeys]);
+  }, [selectedNodeMap, selectedRowKeys]);
 
   const getNodeCollectors = (record: TableDataItem) => {
     return listNodeHostedCollectors(record);
@@ -245,11 +261,15 @@ const Node = () => {
     if (!isLoading) getNodes(searchFilters);
   }, [pagination.current, pagination.pageSize, unassignedOnly]);
 
+  useEffect(() => {
+    if (shouldClearNodeSelection({ reason: 'cloudRegion' })) {
+      clearNodeSelection();
+    }
+  }, [cloudId]);
+
   const handleSidecarMenuClick: MenuProps['onClick'] = (e) => {
     if (e.key === 'uninstallController') {
-      const list = (nodeList || []).filter((item) =>
-        selectedRowKeys.includes(item.key)
-      );
+      const list = selectedNodesFromMap(selectedRowKeys, selectedNodeMap);
       controllerRef.current?.showModal({
         type: e.key,
         form: { list }
@@ -276,8 +296,9 @@ const Node = () => {
   };
 
   const handleCollectorMenuClick: MenuProps['onClick'] = (e) => {
-    const selectedNodes = (nodeList || []).filter((item) =>
-      selectedRowKeys.includes(item.key)
+    const selectedNodes = selectedNodesFromMap(
+      selectedRowKeys,
+      selectedNodeMap
     );
     const selection = getCollectorOperationSelection(selectedNodes);
 
@@ -319,6 +340,13 @@ const Node = () => {
 
   const onSelectChange = (newSelectedRowKeys: React.Key[]) => {
     setSelectedRowKeys(newSelectedRowKeys);
+    setSelectedNodeMap((previous) =>
+      nextSelectedNodeMap({
+        previous,
+        selectedKeys: newSelectedRowKeys,
+        currentPageRows: nodeList || []
+      })
+    );
   };
 
   const getCheckboxProps = () => {
@@ -329,11 +357,16 @@ const Node = () => {
 
   const rowSelection: TableRowSelection<TableDataItem> = {
     selectedRowKeys,
+    preserveSelectedRowKeys: true,
     onChange: onSelectChange,
     getCheckboxProps: getCheckboxProps
   };
 
   const handleSearchChange = (filters: SearchFilters) => {
+    if (shouldClearNodeSelection({ reason: 'filters' })) {
+      clearNodeSelection();
+    }
+    setPagination((prev) => ({ ...prev, current: 1 }));
     setSearchFilters(filters);
     getNodes(filters);
   };
@@ -740,7 +773,9 @@ const Node = () => {
                       unassignedOnly={unassignedOnly}
                       onChange={(checked) => {
                         setUnassignedOnly(checked);
-                        setSelectedRowKeys([]);
+                        if (shouldClearNodeSelection({ reason: 'unassigned' })) {
+                          clearNodeSelection();
+                        }
                         setPagination((prev) => ({ ...prev, current: 1 }));
                       }}
                       className="mr-[8px]"
@@ -799,6 +834,17 @@ const Node = () => {
                         )}
                       </Button>
                     </PermissionWrapper>
+                    {selectedRowKeys.length > 0 ? (
+                      <span className="mr-[8px] text-[var(--color-text-3)]">
+                        {t(
+                          'node-manager.cloudregion.node.selectedNodeCount',
+                          '',
+                          {
+                            count: selectedRowKeys.length
+                          }
+                        )}
+                      </span>
+                    ) : null}
                     <ReloadOutlined onClick={() => getNodes(searchFilters)} />
                   </div>
                 </div>
