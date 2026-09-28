@@ -13,6 +13,14 @@ describe('buildNodeSearchFieldConfigs', () => {
       }
     });
     const names = fields.map((item) => item.name);
+    expect(names.slice(0, 6)).toEqual([
+      'name',
+      'ip',
+      'operating_system',
+      'install_method',
+      'upgradeable',
+      'cpu_architecture'
+    ]);
     expect(names).toEqual(
       expect.arrayContaining(['active', 'collector_status', 'collector_name'])
     );
