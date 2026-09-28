@@ -539,7 +539,7 @@ const IntegrationExcelImportModal = forwardRef<
       cancelText={t('common.cancel')}
       footerExtra={
         <Button onClick={generateTemplate} icon={<DownloadOutlined />}>
-          {t('common.downloadTemplate')}
+          {t('monitor.integrations.downloadTemplate')}
         </Button>
       }
       uploadProps={{
