@@ -228,7 +228,9 @@
     "minute": "minute",
     "second": "second",
     "hour": "hour",
-    "day": "Day(s)"
+    "day": "Day(s)",
+    "saved": "Status updated",
+    "copied": "Copied"
   },
   "userInfo": {
     "basicInfo": "Basic Information",

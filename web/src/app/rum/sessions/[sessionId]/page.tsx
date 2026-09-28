@@ -915,8 +915,16 @@ export default function SessionDetailPage() {
                       <span>{t('rum.sessions.timeSpan', '时段')}</span>
                     </span>
                     <div className="font-mono text-[11px] tabular-nums text-[var(--color-text-2)]">
-                      <div>始: {formatFullDateTime(session.startTime)}</div>
-                      <div>终: {formatFullDateTime(session.endTime)}</div>
+                      <div>
+                        {t('rum.sessions.timeStart', '始: {time}', {
+                          time: formatFullDateTime(session.startTime),
+                        })}
+                      </div>
+                      <div>
+                        {t('rum.sessions.timeEnd', '终: {time}', {
+                          time: formatFullDateTime(session.endTime),
+                        })}
+                      </div>
                     </div>
                   </div>
                 </div>
