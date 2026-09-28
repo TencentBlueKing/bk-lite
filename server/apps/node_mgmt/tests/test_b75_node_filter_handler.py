@@ -263,8 +263,10 @@ def test_handle_collector_status_named_and_install_overlay(nodes):
 @pytest.mark.django_db
 def test_apply_filters_ands_active_and_os(nodes):
     region, n1, n2 = nodes
+    n2.operating_system = "linux"
+    n2.save(update_fields=["operating_system"])
     _set_updated_at(n1, seconds_ago=10)
-    _set_updated_at(n2, seconds_ago=10)
+    _set_updated_at(n2, seconds_ago=120)
     result = H.apply_filters(
         Node.objects.all(),
         {
