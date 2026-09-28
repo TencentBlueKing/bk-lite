@@ -65,14 +65,21 @@ export default function TransferDrawer({ open, onClose, tasks, error, loading, o
                 {task.type === 'export' && task.status === 'succeeded' && task.finished_at && (
                   <div>{t('Transfer.succeededAt')}: {new Date(task.finished_at).toLocaleString()}</div>
                 )}
+                {task.failure && <div>{t('Transfer.failureStage')}: {t(`Transfer.phase.${task.failure.stage}`)}</div>}
+                {task.status === 'failed' && <div>{t('Transfer.taskId')}: {task.task_id}</div>}
                 <div>{t('Transfer.expires')}: {new Date(task.expires_at).toLocaleString()}</div>
                 {task.status === 'running' && <div>{t(`Transfer.phase.${task.phase}`)} · {task.processed_rows}{task.total_rows !== null ? ` / ${task.total_rows}` : ''} {t('Transfer.rows')}</div>}
               </div>
               {Object.keys(task.summary).length > 0 && <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
-                {Object.entries(task.summary).filter(([, value]) => typeof value === 'number').map(([key, value]) =>
-                  <span key={key}>{t(`Transfer.count.${key}`)}: {value}</span>)}
+                {Object.entries(task.summary).filter(([, value]) => typeof value === 'number' || value === null).map(([key, value]) =>
+                  <span key={key}>{t(`Transfer.count.${key}`)}: {value ?? t('Transfer.unknown')}</span>)}
               </div>}
               {task.message && <p className="mt-2 break-words text-[var(--color-text-2)]">{task.message}</p>}
+              {task.failure?.result_uncertain && <p className="mt-2 text-[var(--color-text-2)]">{t('Transfer.partialWriteHint')}</p>}
+              {task.status === 'failed' && task.type === 'import' && !task.failure?.result_uncertain &&
+                ['created', 'updated', 'created_relations'].some(key => Number(task.summary[key]) > 0) &&
+                <p className="mt-2 text-[var(--color-text-2)]">{t('Transfer.writesRetained')}</p>}
+              {task.failure?.execution_pending && <p className="mt-2 text-[var(--color-text-3)]">{t('Transfer.executionPending')}</p>}
               <div className="mt-3 flex flex-wrap gap-2">
                 {task.available_actions.map(action => action === 'delete' ? (
                   <Popconfirm key={action} title={t('Transfer.deleteConfirm')} onConfirm={() => operate(task, action)}>

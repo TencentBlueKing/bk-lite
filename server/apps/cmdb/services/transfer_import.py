@@ -27,6 +27,7 @@ class TransferImport:
         errors, relations, seen = [], [], set()
         successful = {}
         for offset in range(0, len(rows), 200):
+            progress(offset, len(rows), summary, "matching")
             context = TransferAuthorization.revalidate(task)
             batch = rows[offset : offset + 200]
             # 按本批唯一标识过滤候选，不读取整个模型；组合值在内存做精确匹配。
@@ -95,7 +96,7 @@ class TransferImport:
                     event_context=event_context,
                 ).operation
 
-                # 从此边界起任何异常都可能已有写入，由任务边界置为待核对，绝不猜测失败后继续/重放。
+                # 从此边界起任何异常都可能已有写入，由任务边界置为失败并保留未确认提示，绝不猜测失败后继续/重放。
                 def write(operation_id):
                     common = dict(allowed_org_ids=context.teams, record_change=False, operation_id=operation_id, schedule_post_actions=False)
                     if before:

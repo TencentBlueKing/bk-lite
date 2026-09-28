@@ -69,6 +69,9 @@ HTML 支持明暗主题、缩放、搜索、关系追踪、聚焦视图、演示
 `transfer/` 前缀；导入按批查询标识，通过现有 InstanceManage 与 Operation/Outbox
 写入实例、记录成功审计。实例数据不进入任务状态表，源文件不进入数据库 JSON。
 每分钟维护派发/租约、每天 03:00 清理过期终态及文件；不确定导入不自动重放或释放占用。
+2026-09-28：接纳额度调整为每人 5 个排队/执行任务，已结束历史单独保留 5 条/7 天。
+异常直接失败，HTTP 返回安全原因、失败阶段与不确定性；本执行停止后释放占用，失联
+执行继续占用全局/模型名额直到确认退出。旧 interrupted 对外映射 failed，不自动重放。
 见 [实施设计](../../specs/changes/cmdb-async-transfer/spec.md) 和
 [实施测试记录](../../specs/changes/cmdb-async-transfer/test-report.md)。旧同步接口继续保留。
 

@@ -1973,10 +1973,10 @@
         "timeoutSeconds": "秒（0 为默认超时）"
     },
   "Transfer": {
-    "activeHint": "已有进行中或待核对任务。若记录已过期，请联系管理员核对执行结果。",
+    "activeHint": "已有 5 个排队或执行中的任务，请等待完成或取消排队任务。",
     "retry": "重新提交导出",
     "title": "导入导出记录",
-    "retention": "仅保留最近 7 天的 5 条记录，超限自动清理最早的已结束任务，请及时下载。",
+    "retention": "已结束任务保留最近 7 天的 5 条记录，请及时下载。排队和执行中的任务另计，每人最多 5 个。",
     "empty": "暂无导入导出记录",
     "accepted": "任务已创建，可在导入导出记录中查看处理结果",
     "submitExport": "提交导出",
@@ -2001,7 +2001,7 @@
       "succeeded": "成功",
       "partial_success": "部分成功",
       "failed": "失败",
-      "interrupted": "结果待核对",
+      "interrupted": "失败",
       "cancelled": "已取消"
     },
     "scope": {
@@ -2015,7 +2015,12 @@
       "writing_instances": "写入实例",
       "writing_relations": "写入关联",
       "generating_file": "生成文件",
-      "uploading_result": "上传结果"
+      "uploading_result": "上传结果",
+      "reading_source": "读取源文件",
+      "validating_file": "校验文件",
+      "interrupted": "执行中断",
+      "finished": "任务结束",
+      "queued": "排队"
     },
     "count": {
       "existing_relations": "已存在关联",
@@ -2025,6 +2030,12 @@
       "created_relations": "新增关联",
       "failed_relations": "失败关联",
       "exported": "导出实例"
-    }
+    },
+    "unknown": "未确认",
+    "failureStage": "失败阶段",
+    "taskId": "任务编号",
+    "partialWriteHint": "部分数据可能已写入，以上为已确认数量；未自动回滚或重新执行。",
+    "writesRetained": "已写入的数据保留，未自动回滚或重新执行。",
+    "executionPending": "后台正在等待旧执行停止。可以继续提交任务，同模型导入将排队等待。"
   }
 }

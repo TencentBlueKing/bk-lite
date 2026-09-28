@@ -1292,6 +1292,7 @@ const AssetDataContent = () => {
   const transfers = useTransferTasks(transferOpen, (task) => {
     if (task.model_id === modelId) void updateFieldList();
   }, transferPageActive);
+  const pendingTransfers = transfers.tasks.filter(task => ['queued', 'running'].includes(task.status)).length;
   const onTransferSubmitted = (task: TransferTask) => {
     transfers.submitted(task);
     setTransferOpen(true);
@@ -1456,7 +1457,7 @@ const AssetDataContent = () => {
                 </Button>
               </Dropdown>
               <Button onClick={() => setTransferOpen(true)}>{t('Transfer.title')}
-                {transfers.tasks.some(task => ['queued', 'running'].includes(task.status)) ? ' (1)' : ''}
+                {pendingTransfers ? ` (${pendingTransfers})` : ''}
               </Button>
               <Button icon={<UnorderedListOutlined aria-hidden="true" />} onClick={() => openSubscription('drawer')}>
                 {t('subscription.dataSubscription')}
@@ -1484,7 +1485,7 @@ const AssetDataContent = () => {
                 </Space>
               </Button>
               <Button>{t('Transfer.title')}
-                {transfers.tasks.some(task => ['queued', 'running'].includes(task.status)) ? ' (1)' : ''}
+                {pendingTransfers ? ` (${pendingTransfers})` : ''}
               </Button>
               <Button icon={<UnorderedListOutlined aria-hidden="true" />}>
                 {t('subscription.dataSubscription')}
