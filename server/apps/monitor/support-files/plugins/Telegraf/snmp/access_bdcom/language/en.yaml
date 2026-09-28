@@ -1,8 +1,6 @@
 Access BDCOM SNMP:
   name: Access BDCOM SNMP
-  desc: SNMP monitoring template for BDCOM access device. It reports system uptime,
-    CPU utilization, primary memory-pool used and free bytes, optional system temperature,
-    and device inbound and outbound total traffic (IANA PEN 3320)
+  desc: "SNMP monitoring template for BDCOM access device. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic, for BDCOM access devices and OLT (enterprise PEN 3320)."
 monitor_object:
   Access: Access
 monitor_object_type:

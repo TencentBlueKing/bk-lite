@@ -10,6 +10,7 @@ from apps.core.utils.serializers import TeamSerializer
 from apps.job_mgmt.constants import WinRMTransport
 from apps.job_mgmt.models import Target
 from apps.job_mgmt.serializers.validators import validate_manual_credentials
+from apps.job_mgmt.utils.i18n import serializer_message
 from apps.node_mgmt.models import CloudRegion
 
 
@@ -84,9 +85,9 @@ class TargetSerializer(TeamSerializer):
             ):
                 if not effective_attrs.get(field):
                     effective_attrs[field] = getattr(self.instance, field, None)
-            validate_manual_credentials(effective_attrs, require_cloud_region=True)
+            validate_manual_credentials(effective_attrs, require_cloud_region=True, serializer=self)
             return attrs
-        return validate_manual_credentials(attrs, require_cloud_region=True)
+        return validate_manual_credentials(attrs, require_cloud_region=True, serializer=self)
 
     def validate_team(self, value):
         """确保 team 是列表"""
@@ -96,7 +97,7 @@ class TargetSerializer(TeamSerializer):
             return [value]
         if isinstance(value, list):
             return value
-        raise serializers.ValidationError("team 必须是列表或整数")
+        raise serializers.ValidationError(serializer_message(self, "error.team_must_be_list_or_int", "team must be a list or an integer"))
 
     def create(self, validated_data):
         """创建时加密密码字段"""
@@ -203,7 +204,7 @@ class TargetTestConnectionSerializer(serializers.Serializer):
         saved_target = self.context.get("saved_target")
         if not saved_target:
             # cloud_region_id 已通过字段 required=True 校验，这里不再重复
-            return validate_manual_credentials(attrs, require_cloud_region=False)
+            return validate_manual_credentials(attrs, require_cloud_region=False, serializer=self)
 
         effective_attrs = dict(attrs)
         for field in (
@@ -218,5 +219,5 @@ class TargetTestConnectionSerializer(serializers.Serializer):
         ):
             if not effective_attrs.get(field):
                 effective_attrs[field] = getattr(saved_target, field, None)
-        validate_manual_credentials(effective_attrs, require_cloud_region=False)
+        validate_manual_credentials(effective_attrs, require_cloud_region=False, serializer=self)
         return attrs

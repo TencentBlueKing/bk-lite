@@ -71,6 +71,8 @@ class DeepAgentAssemblyMixin:
     _STEP_STUB_RE = re.compile(r"^执行结果\s*\d+\s*$")
     _EVIDENCE_NOTE_RE = re.compile(r"日志获取完成|关键证据确认|证据链已闭环|本步证据")
     _INVESTIGATION_DUMP_RE = re.compile(r"事件描述|事件总结|涉及对象清单|异常对象名单|链路分析|数据分析|调查结论|诊断结论")
+    # 最后一步写成「接下来将…」过渡句：正文末尾仍在预告下一步，不算终稿。
+    _TRANSITIONAL_STEP_RE = re.compile(r"(接下来将|接下来我们|下一步将|下一步我们|随后将|下面将|" r"继续排查|继续分析|继续验证|即将排查|即将分析|将进行(排查|分析|验证|查询))")
     _RCA_REQUIRED_HEADINGS = ("事件概述", "异常对象清单", "根因分析", "修复建议")
     _RESTART_REASON_REQUIRED_HEADINGS = ("对象与结论", "证据", "原因")
     HIDE_PLANNED_STEP_TEXT_KEY = HIDE_PLANNED_STEP_TEXT_KEY
@@ -147,6 +149,17 @@ class DeepAgentAssemblyMixin:
         return bool(cls._EVIDENCE_NOTE_RE.search(body))
 
     @classmethod
+    def _looks_like_transitional_step_answer(cls, text: str) -> bool:
+        """最后一步末尾仍在预告「接下来将…」，不是给用户的终稿。"""
+        body = (text or "").strip()
+        if not body:
+            return False
+        if cls._looks_like_complete_rca_report(body) or cls._looks_like_complete_restart_reason_report(body):
+            return False
+        tail = body[-160:] if len(body) > 160 else body
+        return bool(cls._TRANSITIONAL_STEP_RE.search(tail))
+
+    @classmethod
     def _summarize_planned_step_messages(cls, messages) -> str:
         """步间摘要：调查草稿改留工具结果，避免后续步把整份报告再贴一遍。"""
         ai_text = ""
@@ -174,6 +187,8 @@ class DeepAgentAssemblyMixin:
         """步骤已写出给用户看的正文时，跳过总结轮，避免再复述一遍。"""
         for text in reversed(list(cls._iter_planned_assistant_text(messages))):
             if cls._looks_like_evidence_note(text):
+                return False
+            if cls._looks_like_transitional_step_answer(text):
                 return False
             if cls._looks_like_complete_rca_report(text):
                 return True

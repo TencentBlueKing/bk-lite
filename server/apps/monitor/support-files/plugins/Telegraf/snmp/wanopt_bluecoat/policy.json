@@ -1,0 +1,56 @@
+{
+  "object": "Wanopt",
+  "plugin": "Wanopt BlueCoat SNMP",
+  "templates": [
+    {
+      "name": "BlueCoat WAN优化CPU使用率过高",
+      "alert_name": "WAN优化${resource_name} CPU 使用率过高",
+      "description": "监控 Blue Coat / Symantec Edge SWG / Broadcom ProxySG 的整机 CPU 使用率（sgProxyCpuCoreBusyPerCent 按核平均），当持续高于阈值时触发告警，提示可能存在代理、SSL 检查或策略评估负载过重。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "BlueCoat WAN优化内存使用率过高",
+      "alert_name": "WAN优化${resource_name} 内存使用率过高",
+      "description": "监控 Blue Coat / Symantec Edge SWG / Broadcom ProxySG 的代理内存压力（sgProxyMemoryPressure），当超过阈值时触发告警，便于及时发现内存压力导致缓存或 SSL 检查性能下降的风险。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

@@ -14,6 +14,7 @@ export interface TransferTask {
   message: string;
   available_actions: string[];
   created_at: string;
+  finished_at: string | null;
   expires_at: string;
 }
 

@@ -1,7 +1,6 @@
 Switch Brocade SNMP:
   name: Brocade (Telegraf)
-  desc: SNMP monitoring template for Brocade switch. It reports CPU utilization, memory
-    utilization, per-port inbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Brocade switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic, for ICX/FCX/NetIron, Ruckus ICX, and Foundry/IronWare (enterprise PEN 1991)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

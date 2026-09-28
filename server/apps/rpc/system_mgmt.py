@@ -40,6 +40,10 @@ class SystemMgmt(object):
         """删除某个 bot 名下所有 OpsPilot 托管的 NATS 通道。"""
         return self.client.run("delete_opspilot_nats_channels", bot_id=bot_id)
 
+    def delete_workflow_orchestration_nats_channels(self, workflow_id):
+        """删除某个编排流程名下所有托管 NATS 通道。"""
+        return self.client.run("delete_workflow_orchestration_nats_channels", workflow_id=workflow_id)
+
     def delete_rules(self, group_ids, instance_id, app, module, child_module=""):
         return self.client.run("delete_rules", group_ids, instance_id, app, module, child_module)
 
@@ -373,6 +377,16 @@ class SystemMgmt(object):
             include_children=include_children,
         )
 
+    def search_workflow_orchestration_nats_channels(self, teams=None, workflow_id=None, include_children=False, active_only=True):
+        """查询编排中心托管的 NATS 触发通道。"""
+        return self.client.run(
+            "search_workflow_orchestration_nats_channels",
+            teams=teams,
+            workflow_id=workflow_id,
+            include_children=include_children,
+            active_only=active_only,
+        )
+
     def send_email_to_receiver(self, title, content, receiver):
         """
         :param title: 邮件主题  企微传空字符串即可
@@ -435,6 +449,18 @@ class SystemMgmt(object):
             bot_name=bot_name,
             team=team,
             nodes=nodes,
+            timeout=timeout,
+        )
+
+    def sync_workflow_orchestration_nats_channels(self, workflow_id, workflow_name, team, nodes, active, timeout=60):
+        """对账编排流程的托管 NATS 通道。"""
+        return self.client.run(
+            "sync_workflow_orchestration_nats_channels",
+            workflow_id=workflow_id,
+            workflow_name=workflow_name,
+            team=team,
+            nodes=nodes,
+            active=active,
             timeout=timeout,
         )
 

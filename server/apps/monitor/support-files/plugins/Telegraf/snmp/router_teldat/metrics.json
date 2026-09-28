@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_teldat",
   "plugin": "Router Teldat SNMP",
-  "plugin_desc": "Teldat 企业级路由器/SD-WAN CPE 专用 SNMP 采集模板（TELDAT-MIB，企业号 2007）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Teldat 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）与主内存（总量 + 空闲，字节，用量按 (总量-空闲)/总量 推导）。Teldat 紧凑型企业路由器多为无风扇固定配置设计，其私有 MIB 未以无需行级过滤的标量形式暴露独立温度/风扇/电源传感器，故温度、风扇与电源为 N/A。适用品牌型号——Teldat 路由器/SD-WAN CPE（Atlas/Regesta/iMxx 系列，企业号 2007；与 bintec-elmeg 同源 MIB）。",
+  "plugin_desc": "SNMP monitoring template for Teldat router. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 2007).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_teldat'}) by (instance_id)",
   "name": "Router",
@@ -15,13 +15,14 @@
   ],
   "supplementary_indicators": [
     "snmp_uptime",
-    "device_cpu_usage"
+    "device_cpu_usage",
+    "device_memory_usage"
   ],
   "metrics": [
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "snmp_device_cpu_usage{instance_type='router', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -29,43 +30,33 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "CPU utilisation of the Teldat router (TELDAT-MIB, reported directly as a percentage)."
+      "description": "CPU utilisation of the Teldat router over the last 5 minutes (teldatCPUBusy5min), reported directly as a 0-100 percentage."
     },
     {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='router', __$labels__}[5m])",
-      "display_name": "Interface Incoming Traffic Rate",
+      "metric_group": "CPU",
+      "name": "device_cpu_usage_1min",
+      "query": "snmp_device_cpu_usage_1min{instance_type='router', __$labels__}",
+      "display_name": "CPU Utilization (1 min)",
       "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
+      "unit": "percent",
+      "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable)."
+      "description": "CPU utilisation of the Teldat router over the last 1 minute (teldatCPUBusy1min), reported directly as a 0-100 percentage."
     },
     {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='router', __$labels__}[5m])",
-      "display_name": "Interface Outgoing Traffic Rate",
+      "metric_group": "CPU",
+      "name": "device_cpu_usage_5sec",
+      "query": "snmp_device_cpu_usage_5sec{instance_type='router', __$labels__}",
+      "display_name": "CPU Utilization (5 sec)",
       "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
+      "unit": "percent",
+      "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
+      "description": "CPU utilisation of the Teldat router over the last 5 seconds (teldatCPUBusy5sec), reported directly as a 0-100 percentage."
     },
     {
       "metric_group": "Memory",
@@ -75,10 +66,10 @@
       ],
       "name": "device_memory_total",
       "display_name": "内存总量",
-      "query": "sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "snmp_device_memory_total{instance_type='router', __$labels__}",
       "unit": "bytes",
       "data_type": "Number",
-      "description": "Total memory of the Teldat router in bytes (TELDAT-MIB total memory)."
+      "description": "Total cache memory of the Teldat router in bytes (telProdNpMonSistemMemTotalcache)."
     },
     {
       "metric_group": "Memory",
@@ -88,10 +79,10 @@
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲",
-      "query": "sum(device_memory_free{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "snmp_device_memory_free{instance_type='router', __$labels__}",
       "unit": "bytes",
       "data_type": "Number",
-      "description": "Free memory of the Teldat router in bytes (TELDAT-MIB free memory)."
+      "description": "Free cache memory of the Teldat router in bytes (telProdNpMonSistemMemFreecache)."
     },
     {
       "metric_group": "Memory",
@@ -101,10 +92,10 @@
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "(sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id) - sum(device_memory_free{instance_type='router', __$labels__}) by (instance_id)) / sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id) * 100",
+      "query": "100 * (snmp_device_memory_total{instance_type='router', __$labels__} - snmp_device_memory_free{instance_type='router', __$labels__}) / snmp_device_memory_total{instance_type='router', __$labels__}",
       "unit": "percent",
       "data_type": "Number",
-      "description": "Memory utilisation of the Teldat router, derived as (total-free)/total."
+      "description": "Memory utilisation of the Teldat router, derived as (total-free)/total from cache memory scalars."
     },
     {
       "metric_group": "Base",

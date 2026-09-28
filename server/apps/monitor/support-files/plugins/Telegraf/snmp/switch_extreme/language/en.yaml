@@ -1,7 +1,6 @@
 Switch Extreme SNMP:
   name: Extreme (Telegraf)
-  desc: SNMP monitoring template for Extreme switch. It reports CPU utilization, memory
-    utilization, per-port inbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Extreme switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic, for ExtremeXOS (enterprise PEN 1916)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -114,11 +113,11 @@ monitor_object_metric:
         more effective traffic management and optimization.
     device_cpu_usage:
       name: CPU Utilization
-      desc: This metric reports the CPU utilization of the device control plane (typically
-        the 5-minute average), as a percentage. Sustained high CPU usage can indicate
+      desc: This metric reports overall CPU utilization of the Extreme device control
+        plane (EXTREME-SOFTWARE-MONITOR-MIB extremeCpuMonitorTotalUtilization), as
+        a 0-100 percentage from a scalar GET. Sustained high CPU usage can indicate
         control-plane overload, routing instability, or attack traffic, and may lead
-        to slow management response or packet processing delays. Sourced from vendor-specific
-        SNMP OIDs and normalized to a 0-100 percentage.
+        to slow management response or packet processing delays.
     device_memory_usage:
       name: Memory Utilization
       desc: This metric reports overall memory utilization of the device, computed
@@ -144,10 +143,11 @@ monitor_object_metric:
         total) and, together with free memory, reflects overall memory pressure.
     device_temperature_celsius:
       name: Temperature
-      desc: This metric reports the temperature reading of each hardware sensor on
-        the device, in degrees Celsius. Abnormally high temperatures may indicate
-        fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal
-        protection or hardware damage if left unaddressed.
+      desc: This metric reports the current enclosure temperature of the Extreme device
+        (EXTREME-SYSTEM-MIB extremeCurrentTemperature), in degrees Celsius from a
+        scalar GET. Abnormally high temperatures may indicate fan failure, blocked
+        airflow, or excessive ambient heat, and can trigger thermal protection or
+        hardware damage if left unaddressed.
     device_fan_state:
       name: Fan Status
       desc: This metric reports the operational state of each cooling fan on the device.

@@ -1,7 +1,6 @@
 NetworkService Spectracom SNMP:
   name: Spectracom (Telegraf)
-  desc: SNMP monitoring template for Spectracom network service device. It reports
-    per-port inbound traffic rate, per-port outbound traffic rate, and system uptime
+  desc: SNMP monitoring template for Spectracom network service device. It reports uptime and interface traffic (enterprise PEN 18837).
 monitor_object:
   NetworkService: NetworkService
 monitor_object_type:

@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_stormshield",
   "plugin": "Firewall Stormshield SNMP",
-  "plugin_desc": "Stormshield SNS-specific SNMP collection template for Stormshield Network Security firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects HOST-RESOURCES CPU load, UCD-SNMP memory and STORMSHIELD-SNS-MIB private OIDs for firewall-specific state (ASQ active TCP/UDP connections and mature VPN tunnels). Supported brands/models — Stormshield SNS-series firewalls.",
+  "plugin_desc": "SNMP monitoring template for Stormshield firewall. It reports uptime, CPU utilization, memory utilization, temperature, VPN tunnels, and interface traffic, for SNS-series (enterprise PEN 11256).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_stormshield'}) by (instance_id)",
   "name": "Firewall",
@@ -51,12 +51,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the average CPU utilization of the Stormshield firewall across all processor cores (HOST-RESOURCES hrProcessorLoad). Sustained high CPU usage may indicate heavy traffic inspection load or an attack."
+      "description": "This metric reports per-core CPU utilization of the Stormshield firewall (HOST-RESOURCES hrProcessorLoad, 0-100% per processor). Sustained high CPU usage may indicate heavy traffic inspection load or an attack."
     },
     {
       "metric_group": "Firewall",
       "name": "device_memory_total",
-      "query": "device_memory_total{instance_type='firewall', __$labels__}*1024",
+      "query": "snmp_device_memory_total{instance_type='firewall', __$labels__}*1024",
       "display_name": "Total Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -69,7 +69,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_memory_free",
-      "query": "device_memory_free{instance_type='firewall', __$labels__}*1024",
+      "query": "snmp_device_memory_free{instance_type='firewall', __$labels__}*1024",
       "display_name": "Free Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -82,7 +82,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_memory_used",
-      "query": "(device_memory_total{instance_type='firewall', __$labels__} - device_memory_free{instance_type='firewall', __$labels__})*1024",
+      "query": "(snmp_device_memory_total{instance_type='firewall', __$labels__} - snmp_device_memory_free{instance_type='firewall', __$labels__})*1024",
       "display_name": "Used Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -95,7 +95,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_memory_usage",
-      "query": "100 * (device_memory_total{instance_type='firewall', __$labels__} - device_memory_free{instance_type='firewall', __$labels__}) / device_memory_total{instance_type='firewall', __$labels__}",
+      "query": "100 * (snmp_device_memory_total{instance_type='firewall', __$labels__} - snmp_device_memory_free{instance_type='firewall', __$labels__}) / snmp_device_memory_total{instance_type='firewall', __$labels__}",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -108,7 +108,7 @@
     {
       "metric_group": "Firewall",
       "name": "firewall_tcp_connections",
-      "query": "firewall_tcp_connections{instance_type='firewall', __$labels__}",
+      "query": "snmp_firewall_tcp_connections{instance_type='firewall', __$labels__}",
       "display_name": "ASQ TCP Connections",
       "data_type": "Number",
       "unit": "short",
@@ -116,12 +116,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the number of active TCP connections tracked by the Stormshield ASQ engine (STORMSHIELD-SNS-MIB snsASQTCPConnCount). A rapidly rising count can indicate a connection flood or state-table exhaustion risk."
+      "description": "This metric reports the number of stateful TCP connections tracked by the Stormshield ASQ engine (STORMSHIELD-ASQ-STATS-MIB snsASQStatsStatefulTcpConn). A rapidly rising count can indicate a connection flood or state-table exhaustion risk."
     },
     {
       "metric_group": "Firewall",
       "name": "firewall_udp_connections",
-      "query": "firewall_udp_connections{instance_type='firewall', __$labels__}",
+      "query": "snmp_firewall_udp_connections{instance_type='firewall', __$labels__}",
       "display_name": "ASQ UDP Connections",
       "data_type": "Number",
       "unit": "short",
@@ -129,12 +129,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the number of active UDP connections tracked by the Stormshield ASQ engine (STORMSHIELD-SNS-MIB snsASQUDPConnCount)."
+      "description": "This metric reports the number of stateful UDP connections tracked by the Stormshield ASQ engine (STORMSHIELD-ASQ-STATS-MIB snsASQStatsStatefulUdpConn)."
     },
     {
       "metric_group": "Firewall",
       "name": "firewall_vpn_tunnels",
-      "query": "firewall_vpn_tunnels{instance_type='firewall', __$labels__}",
+      "query": "snmp_firewall_vpn_tunnels{instance_type='firewall', __$labels__}",
       "display_name": "Active VPN Tunnels",
       "data_type": "Number",
       "unit": "short",
@@ -142,7 +142,73 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the number of mature (active) IPsec VPN tunnels on the Stormshield firewall (STORMSHIELD-SNS-MIB snsVPNNbMatureSA). A sudden drop may indicate a VPN outage affecting site-to-site connectivity."
+      "description": "This metric reports the number of mature (established) IPsec security associations on the Stormshield firewall (STORMSHIELD-IPSEC-STATS-MIB snsIPSECStatsSADMature). A sudden drop may indicate a VPN outage affecting site-to-site connectivity."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='firewall', __$labels__}",
+      "display_name": "CPU Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports each CPU temperature sensor of the Stormshield firewall in degrees Celsius (STORMSHIELD-SYSTEM-MONITOR-MIB snsCpuTemp). Abnormally high values may indicate fan failure, poor airflow, or high ambient temperature."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_powered",
+      "query": "device_psu_powered{instance_type='firewall', __$labels__}",
+      "display_name": "PSU Powered Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"powered\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"unpowered\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        },
+        {
+          "name": "status",
+          "description": "Power supply status text"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports whether each Stormshield power supply is powered (STORMSHIELD-SYSTEM-MONITOR-MIB snsPowerSupplyPowered, SNMPv2 TruthValue). 1 means powered, 2 means unpowered. The status tag carries snsPowerSupplyStatus."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_rpm",
+      "query": "device_fan_rpm{instance_type='firewall', __$labels__}",
+      "display_name": "Fan RPM",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        },
+        {
+          "name": "descr",
+          "description": "Fan name"
+        },
+        {
+          "name": "status",
+          "description": "Fan status text"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the rotational speed of each Stormshield cooling fan in RPM (STORMSHIELD-SYSTEM-MONITOR-MIB snsFanRpm). The descr tag is snsFanName; the status tag is snsFanStatus."
     },
     {
       "metric_group": "Status",

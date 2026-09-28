@@ -8,7 +8,7 @@ from typing import Any
 from apps.monitor.utils.dimension import parse_instance_id
 
 SUPPORTED_METRIC_TYPES = ("cpu", "memory", "traffic")
-NETWORK_DEVICE_OBJECT_NAMES = ("Switch", "Router", "Firewall", "Loadbalance")
+NETWORK_DEVICE_OBJECT_NAMES = ("Switch", "Router", "Firewall", "Loadbalance", "Wanopt")
 DEFAULT_INTERVAL_SECONDS = 300
 
 

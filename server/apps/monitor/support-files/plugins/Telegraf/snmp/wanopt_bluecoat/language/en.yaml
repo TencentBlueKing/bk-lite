@@ -1,0 +1,54 @@
+Wanopt BlueCoat SNMP:
+  name: Blue Coat / Symantec Edge SWG / Broadcom ProxySG (Telegraf)
+  desc: "SNMP monitoring template for Blue Coat / Symantec Edge SWG / Broadcom ProxySG WAN optimization device. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 3417)."
+monitor_object:
+  Wanopt: WAN Optimization
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Wanopt:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the Blue Coat / Symantec Edge
+        SWG / Broadcom ProxySG appliance since the last restart, derived from
+        sysUpTime. Monitoring uptime helps administrators understand device
+        stability and identify unexpected reboots.
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: CPU utilization of the ProxySG appliance (BLUECOAT-SG-PROXY-MIB
+        sgProxyCpuCoreBusyPerCent) as a 0-100 percentage averaged across CPU
+        cores over the past minute. Sustained high CPU usage can indicate
+        proxy, SSL inspection, or policy evaluation overload.
+    device_cpu_idle:
+      name: CPU Idle
+      desc: CPU idle percent of the ProxySG appliance
+        (BLUECOAT-SG-PROXY-MIB sgProxyCpuCoreIdlePerCent), averaged across
+        CPU cores over the past minute.
+    device_memory_total:
+      name: Memory Total
+      desc: Total memory available to the ProxySG appliance in bytes
+        (BLUECOAT-SG-PROXY-MIB sgProxyMemAvailable).
+    device_memory_used:
+      name: Memory Used
+      desc: Used proxy memory of the ProxySG appliance in bytes, computed as
+        system-process usage plus object-cache usage (BLUECOAT-SG-PROXY-MIB
+        sgProxyMemSysUsage + sgProxyMemCacheUsage).
+    device_memory_sys_usage:
+      name: Memory System Used
+      desc: Memory used by ProxySG system and support processes in bytes
+        (BLUECOAT-SG-PROXY-MIB sgProxyMemSysUsage).
+    device_memory_cache_usage:
+      name: Memory Cache Used
+      desc: Memory used by the ProxySG object cache in bytes
+        (BLUECOAT-SG-PROXY-MIB sgProxyMemCacheUsage).
+    device_memory_usage:
+      name: Memory Utilization
+      desc: Proxy memory pressure of the ProxySG appliance as a 0-100
+        percentage of available memory (BLUECOAT-SG-PROXY-MIB
+        sgProxyMemoryPressure). Sustained high usage can degrade caching and
+        SSL inspection performance.
+monitor_object_metric_group:
+  Wanopt:
+    Base: Base
+    CPU: CPU
+    Memory: Memory

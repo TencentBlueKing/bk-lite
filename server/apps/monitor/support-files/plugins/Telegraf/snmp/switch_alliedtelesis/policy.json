@@ -28,6 +28,31 @@
       "group_algorithm": "avg"
     },
     {
+      "name": "Allied Telesis交换机内存使用率过高",
+      "alert_name": "交换机${resource_name} 内存使用率过高",
+      "description": "监控 Allied Telesis 交换机整体内存使用率（按 100 减去 AT-SYSINFO-MIB freeMemory 空闲百分比计算），当超过阈值时触发告警，便于及时发现内存泄漏、表项过大或容量不足等问题，防止设备不稳定或分配失败。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
       "name": "接口接收错误包过高",
       "alert_name": "交换机${resource_name} 接口 ${metric_ifDescr} 每秒接收错误包数过高",
       "description": "监控设备接口接收的错误包数情况，当每秒错误包数超出设定阈值时触发告警，便于发现网络接口隐患。",

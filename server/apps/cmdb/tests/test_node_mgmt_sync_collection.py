@@ -1,3 +1,4 @@
+import logging
 import threading
 from datetime import timedelta
 from unittest.mock import patch
@@ -264,6 +265,72 @@ def test_parent_finishes_from_child_terminal_states(config, child_statuses, expe
         assert NodeMgmtSyncService.serialize_run(refreshed)["reason_code"] == "COLLECT_CHILD_FAILED"
     elif expected == NodeMgmtSyncRun.STATUS_SUCCESS:
         assert refreshed.reason_code == ""
+
+
+def test_empty_raw_child_is_explained_on_the_parent_run(config, caplog):
+    _successful_sync(config)
+    collect_task = _collect_task(7)
+
+    with patch.object(
+        CollectModelService,
+        "exec_task",
+        side_effect=lambda task, operator: _accept_with_execution(task, "execution-empty-raw"),
+    ):
+        run = NodeMgmtSyncService.execute_collect(operator="system")
+
+    CollectModels.objects.filter(pk=collect_task.pk).update(
+        exec_status=CollectRunStatusType.ERROR,
+        collect_digest={
+            "message": "未发现任何有效数据，请检查采集目标连通性、凭据与采集范围配置",
+            "decision": "empty_raw",
+            "raw_host": 0,
+            "raw_process": 0,
+            "collect_success": 0,
+            "collect_failed": 0,
+            "password": "sentinel-secret-9f3a",
+        },
+    )
+    caplog.set_level(logging.INFO, logger="cmdb")
+
+    refreshed = NodeMgmtSyncService.refresh_collect_run(run.pk)
+
+    assert refreshed.status == NodeMgmtSyncRun.STATUS_FAILED
+    assert refreshed.reason_code == "COLLECT_CHILD_FAILED"
+    diagnosis = refreshed.detail_json["collect_diagnoses"]
+    assert diagnosis == [
+        {
+            "cloud_region_id": 7,
+            "task_id": collect_task.id,
+            "decision": "empty_raw",
+            "child_status": NodeMgmtSyncRun.STATUS_FAILED,
+            "reason_code": "COLLECT_CHILD_FAILED",
+            "raw_host": 0,
+            "raw_process": 0,
+            "collect_success": 0,
+            "collect_failed": 0,
+        }
+    ]
+    assert "sentinel-secret-9f3a" not in str(diagnosis)
+    child_logs = [record for record in caplog.records if "event=node_mgmt_sync_collect_child_finished" in record.getMessage()]
+    assert len(child_logs) == 1
+    assert child_logs[0].levelno == logging.WARNING
+    assert child_logs[0].msg == (
+        "event=node_mgmt_sync_collect_child_finished run_id=%s cloud_region_id=%s "
+        "task_id=%s execution_id=%s child_status=%s reason_code=%s decision=%s "
+        "raw_host=%s raw_process=%s collect_success=%s collect_failed=%s"
+    )
+    rendered = child_logs[0].getMessage()
+    assert f"run_id={run.id}" in rendered
+    assert "cloud_region_id=7" in rendered
+    assert f"task_id={collect_task.id}" in rendered
+    assert "execution_id=execution-empty-raw" in rendered
+    assert "decision=empty_raw" in rendered
+    assert "sentinel-secret-9f3a" not in rendered
+    assert "sentinel-secret-9f3a" not in str(child_logs[0].args)
+    parent_logs = [record for record in caplog.records if "event=node_mgmt_sync_collect_run_finished" in record.getMessage()]
+    assert len(parent_logs) == 1
+    assert "failed_region_count=1" in parent_logs[0].getMessage()
+    assert "sentinel-secret-9f3a" not in caplog.text
 
 
 def test_terminal_child_is_captured_into_immutable_parent_batch(config):

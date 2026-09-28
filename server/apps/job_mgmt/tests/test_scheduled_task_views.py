@@ -257,7 +257,7 @@ class TestScheduledTaskActions:
         assert resp.status_code == 200
         task.refresh_from_db()
         assert task.is_enabled is False
-        assert "重试" in resp.data["message"]
+        assert "重试" in resp.data["message"] or "retry" in resp.data["message"]
 
     def test_toggle_enable_rolls_back_when_beat_db_fails(self, su_client):
         task = _make_task(is_enabled=False)
@@ -324,7 +324,7 @@ class TestScheduledTaskActions:
         with patch("apps.job_mgmt.views.scheduled_task.DangerousChecker.check_command", return_value=bad_result):
             resp = su_client.post(f"{URL}{task.id}/run_now/", {}, format="json")
         assert resp.status_code == 400
-        assert "高危" in resp.data.get("error", "")
+        assert "高危" in resp.data.get("error", "") or "high-risk" in resp.data.get("error", "")
         assert JobExecution.objects.count() == before_count, "高危命中时不应创建执行记录"
 
     def test_run_now_temporary_file_distribution_returns_400_without_creating_execution(self, su_client):

@@ -1,8 +1,6 @@
 NetworkService ZDNS SNMP:
   name: ZDNS (Telegraf)
-  desc: SNMP monitoring template for ZDNS network service device. It reports CPU utilization,
-    memory utilization, per-port inbound traffic rate, and other key metrics (IANA
-    PEN 39810).
+  desc: "SNMP monitoring template for ZDNS network service device. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic (enterprise PEN 39810)."
 monitor_object:
   NetworkService: NetworkService
 monitor_object_type:

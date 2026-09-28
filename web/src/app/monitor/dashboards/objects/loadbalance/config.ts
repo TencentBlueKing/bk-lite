@@ -29,7 +29,8 @@ export const LOADBALANCE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description:
         '负载均衡主机 CPU 使用率。品牌自适应：直报利用率（F5 sysGlobalHostCpuUsageRatio5s）或各核负载均值。持续偏高说明流量处理负载吃紧。',
       unit: 'percent',
-      query: 'avg(device_cpu_usage{__$labels__}) by (instance_id)',
+      query:
+        'avg(device_cpu_usage{__$labels__}) by (instance_id) or avg(snmp_device_cpu_usage{__$labels__}) by (instance_id)',
       color: '#2f6bff'
     },
     {
@@ -39,7 +40,7 @@ export const LOADBALANCE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         '负载均衡主机内存使用率（百分比）。品牌自适应：①设备直报利用率；②已用/总量（F5）。',
       unit: 'percent',
       query:
-        'avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)',
+        'avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(snmp_device_memory_used{__$labels__}) by (instance_id) / sum(snmp_device_memory_total{__$labels__}) by (instance_id) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)',
       color: '#ff8a1f'
     },
     {
@@ -47,7 +48,8 @@ export const LOADBALANCE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '内存已用',
       description: '负载均衡设备各内存池当前已使用的字节数之和（F5 走 sysStatMemoryUsed）。物理/虚拟版均有值。',
       unit: 'bytes',
-      query: 'sum(device_memory_used{__$labels__}) by (instance_id)',
+      query:
+        'sum(device_memory_used{__$labels__}) by (instance_id) or sum(snmp_device_memory_used{__$labels__}) by (instance_id)',
       color: '#ff8a1f'
     },
     {
@@ -56,7 +58,8 @@ export const LOADBALANCE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description:
         '负载均衡当前客户端连接数。品牌自适应回退：当前客户端连接（F5 sysStatClientCurConns）。反映负载与连接表压力。',
       unit: 'counts',
-      query: 'lb_current_connections{__$labels__}',
+      query:
+        'lb_current_connections{__$labels__} or snmp_lb_current_connections{__$labels__}',
       color: '#13c2c2'
     },
     {
@@ -72,7 +75,7 @@ export const LOADBALANCE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       name: 'device_fan_state',
       display_name: '风扇状态',
       description:
-        '负载均衡风扇状态（1=正常 / 2=异常）。品牌自适应：物理设备有值（F5 sysChassisFanStatus，空槽 notpresent 归一为正常）。折线偏离 1 即散热异常。虚拟版显示「--」。',
+        '负载均衡风扇状态（1=正常 / 2=异常）。品牌自适应：物理设备有值（F5 sysChassisFanStatus；good→1，其余→2）。折线偏离 1 即散热异常。虚拟版显示「--」。',
       unit: 'none',
       query: 'max(device_fan_state{__$labels__}) by (instance_id)',
       color: '#13c2c2'

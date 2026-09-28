@@ -1,6 +1,6 @@
 {
   "object": "Loadbalance",
-  "plugin": "Loadbalance A10 Thunder SNMP",
+  "plugin": "Loadbalance A10 SNMP",
   "templates": [
     {
       "name": "A10负载均衡CPU使用率过高",

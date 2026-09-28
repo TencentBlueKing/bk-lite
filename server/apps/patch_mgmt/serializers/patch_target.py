@@ -43,9 +43,25 @@ class PatchTargetConnectivitySerializer(serializers.Serializer):
             return attrs
         if attrs.get("source_type") == PatchTargetSource.NODE_MGMT:
             if not attrs.get("node_id"):
-                raise serializers.ValidationError({"node_id": "节点管理目标缺少 node_id"})
+                raise serializers.ValidationError(
+                    {
+                        "node_id": serializer_message(
+                            self,
+                            "error.node_id_required",
+                            "Node-management targets require node_id",
+                        )
+                    }
+                )
         elif not attrs.get("cloud_region_id"):
-            raise serializers.ValidationError({"cloud_region_id": "手动目标必须选择云区域"})
+            raise serializers.ValidationError(
+                {
+                    "cloud_region_id": serializer_message(
+                        self,
+                        "error.cloud_region_required",
+                        "Manual targets must select a cloud region",
+                    )
+                }
+            )
         return attrs
 
 

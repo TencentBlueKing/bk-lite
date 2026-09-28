@@ -3,6 +3,7 @@
 from rest_framework import serializers
 
 from apps.job_mgmt.models import DistributionFile
+from apps.job_mgmt.utils.i18n import serializer_message
 
 
 class DistributionFileSerializer(serializers.ModelSerializer):
@@ -23,5 +24,7 @@ class DistributionFileUploadSerializer(serializers.Serializer):
         """验证文件大小"""
         max_size = 500 * 1024 * 1024  # 500MB
         if value.size > max_size:
-            raise serializers.ValidationError(f"文件 {value.name} 超过 500MB 限制")
+            raise serializers.ValidationError(
+                serializer_message(self, "error.file_size_exceeds_500mb", "File {name} exceeds the 500MB limit", name=value.name)
+            )
         return value

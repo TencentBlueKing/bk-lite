@@ -2,7 +2,9 @@
   "common": {
     "comingSoon": "Coming Soon",
     "enabled": "Enabled",
-    "disabled": "Disabled"
+    "disabled": "Disabled",
+    "networkError": "Network error, please retry",
+    "noContentToCopy": "No content to copy"
   },
   "job": {
     "scriptExecution": "Script Execution",
@@ -38,7 +40,7 @@
     "kpiRunning": "Running",
     "kpiPending": "Pending",
     "kpiQueued": "Queued",
-    "targetHost": "Target Hosts",
+    "targetHost": "Target Host",
     "hostUnit": "hosts",
     "enabledRate": "Enabled",
     "avgDuration": "Avg Duration",
@@ -69,7 +71,6 @@
     "quickExec": "Quick Execution",
     "quickExecDesc": "Quickly execute scripts or Playbooks on target hosts. Supports selecting existing scripts from job templates, or entering script content for direct execution.",
     "jobNamePlaceholder": "Enter job name, e.g.: Clean disk space",
-    "targetHost": "Target Host",
     "addTargetHost": "Add Target Host",
     "selectedHosts": "{count} host(s) selected",
     "contentSource": "Content Source",
@@ -176,7 +177,6 @@
     "ruleDisabled": "Disabled",
     "saveAndEnable": "Save & Enable",
     "saveOnly": "Save Only",
-
     "targetManagement": "Target Management",
     "targetManagementDesc": "Manage job execution targets. Each target is configured with an execution driver, and the system automatically selects the execution channel based on the target's driver during job execution.",
     "targetName": "Target Name",
@@ -239,7 +239,6 @@
     "save": "Save",
     "selectCredential": "Select Credential",
     "selectCredentialPlaceholder": "Please select a credential",
-
     "scriptLibraryTitle": "Script Library",
     "scriptLibraryDesc": "Manage reusable script resources, supporting Shell, Python, Bat, PowerShell and more",
     "playbookLibrary": "Playbook Library",
@@ -271,19 +270,17 @@
     "addParam": "Add Parameter",
     "paramName": "Parameter Name",
     "paramNamePlaceholder": "Enter parameter name",
-    "paramNameHint": "Used in Jinja2 templates, e.g. {{ param_name }}",
+    "paramNameHint": "Used in Jinja2 templates, e.g. '{{ param_name }}'",
     "paramLabel": "Label",
     "paramLabelPlaceholder": "Enter display name",
     "paramType": "Type",
     "paramTypePlaceholder": "Select parameter type",
     "paramOptions": "Options",
     "paramOptionsPlaceholder": "Enter option and press Enter to add",
-    "paramRequired": "Required",
     "defaultValue": "Default Value",
     "defaultValuePlaceholder": "Enter default value",
     "editParam": "Edit Parameter",
     "addParamTitle": "Add Parameter",
-
     "playbookName": "Name",
     "playbookNamePlaceholder": "Enter playbook name",
     "playbookDescription": "Description",
@@ -314,7 +311,6 @@
     "isEncrypted": "Encrypted",
     "paramDescription": "Description",
     "paramDescriptionPlaceholder": "Enter description",
-
     "fileDistTitle": "File Distribution",
     "fileDistDesc": "Quickly distribute files to target hosts. Supports uploading files or archives, with configurable target paths and overwrite strategies.",
     "fileUpload": "File Upload",
@@ -334,7 +330,6 @@
     "uploadingFile": "Uploading file...",
     "fileUploadFailed": "File upload failed",
     "dangerousPathCheckFailed": "Unable to check dangerous path rules. Continuing execution.",
-
     "taskName": "Task Name",
     "taskNamePlaceholder": "Enter task name",
     "taskNameRequired": "Please enter task name",
@@ -343,8 +338,6 @@
     "scheduleType": "Schedule Type",
     "executeOnce": "Execute Once",
     "cronExpression": "Cron Expression",
-    "enabled": "Enabled",
-    "disabled": "Disabled",
     "targetCount": "Target Count",
     "hosts": "hosts",
     "lastRunTime": "Last Run",
@@ -400,13 +393,11 @@
     "today": "Today",
     "last7Days": "Last 7 Days",
     "last30Days": "Last 30 Days",
-    "enableStatus": "Enable",
     "status": "Status",
     "createTaskSuccess": "Scheduled task created successfully",
     "editTask": "Edit Scheduled Task",
     "editTaskDesc": "Edit the execution strategy and content of the scheduled task.",
     "editTaskSuccess": "Scheduled task updated successfully",
-
     "reExecute": "Re-execute",
     "viewScriptBtn": "View Script",
     "targetHosts": "Target Hosts",
@@ -428,7 +419,7 @@
     "downloadLog": "Download Log",
     "autoScroll": "Auto Scroll",
     "defaultScriptLanguage": "Shell (Bash)",
-    "scriptTemplateShell": "#!/bin/bash\n\n# Job completed successfully\njob_success() {\n    echo \"[INFO] Job completed successfully\"\n    exit 0\n}\n\n# Job failed\njob_fail() {\n    echo \"[ERROR] Job failed\"\n    exit 1\n}\n\n# ---------- Write script logic here ----------\n\n\n\n# ---------- End ----------\njob_success",
+    "scriptTemplateShell": "#!/bin/bash\n\n# Job completed successfully\njob_success() '{'\n    echo \"[INFO] Job completed successfully\"\n    exit 0\n'}'\n\n# Job failed\njob_fail() '{'\n    echo \"[ERROR] Job failed\"\n    exit 1\n'}'\n\n# ---------- Write script logic here ----------\n\n\n\n# ---------- End ----------\njob_success",
     "scriptTemplateBat": "@echo off\nREM Write your batch script here\n",
     "scriptTemplatePython": "#!/usr/bin/env python3\n# Write your Python script here\n",
     "scriptTemplatePowershell": "# Write your PowerShell script here\n",
@@ -439,7 +430,6 @@
     "lines": "lines",
     "executeParams": "Execution Parameters",
     "noExecuteParams": "No execution parameters",
-
     "version": "Version",
     "basicInfoTab": "Basic Info",
     "paramsDescriptionTab": "Parameters",
@@ -483,7 +473,6 @@
     "nodeManagerPlaybookNotSupported": "Hosts from Node Manager do not support Playbook execution",
     "scriptContentRequired": "Please enter script content",
     "executeSuccess": "Execution task created",
-    "paramRequired": "Please enter {name}",
     "dangerousCommandDetected": "Dangerous Command Detected",
     "forbiddenCommandMessage": "The script contains the following forbidden commands and cannot be executed:",
     "dangerousCommandWarning": "Dangerous Command Warning",
@@ -499,6 +488,7 @@
     "dangerousPathDetected": "Dangerous Path Detected",
     "forbiddenPathMessage": "The target path contains the following forbidden paths and cannot be executed:",
     "dangerousPathWarning": "Dangerous Path Warning",
-    "confirmPathMessage": "The target path contains the following paths that require confirmation:"
+    "confirmPathMessage": "The target path contains the following paths that require confirmation:",
+    "paramValueRequired": "Please enter {name}"
   }
 }

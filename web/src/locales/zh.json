@@ -468,7 +468,8 @@
     "mlops": "MLOps",
     "patch": "补丁管理",
     "apm": "APM",
-    "playground": "Playground"
+    "playground": "Playground",
+    "workflow-orchestration": "编排中心"
   },
   "app": {
     "ops-analysis": "整合运维数据，通过仪表盘、画布方式多维度分析挖掘潜在风险与优化空间，为决策提供数据支撑，助力提升运维质量与业务连续性。",
@@ -484,7 +485,8 @@
     "ops-console": "统一运维控制台，用于管理和监控所有运维活动",
     "job": "快速创建并执行作业，统一管理脚本执行、文件分发和定时任务",
     "patch": "集中管理系统补丁，支持补丁扫描、安装与补丁库维护，帮助持续降低安全风险。",
-    "apm": "用于观测应用请求性能与依赖调用的平台，提供服务指标、调用链探索和告警策略等功能，帮助快速定位延迟与错误，保障业务稳定"
+    "apm": "用于观测应用请求性能与依赖调用的平台，提供服务指标、调用链探索和告警策略等功能，帮助快速定位延迟与错误，保障业务稳定",
+    "workflow-orchestration": "通过可视化流程设计、自动化执行、人工审批与运行追踪，统一编排跨系统运维任务。"
   },
   "tag": {
     "user_management": "用户管理",
@@ -526,6 +528,10 @@
     "file_distribution": "文件分发",
     "scheduled_task": "定时任务",
     "patch_scan": "补丁扫描",
+    "workflow_design": "流程设计",
+    "workflow_execution": "流程执行",
+    "automation": "自动化",
+    "approval": "人工审批",
     "patch_install": "补丁安装",
     "patch_library": "补丁库",
     "apm_integration": "应用接入",

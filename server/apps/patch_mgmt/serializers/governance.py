@@ -80,9 +80,7 @@ class GovernanceTaskHostSerializer(serializers.ModelSerializer):
         """返回该主机对应的基线要求及最新合规快照。"""
         index = self.context.get("host_requirement_index")
         if index is None:
-            from apps.patch_mgmt.services.execution_record_service import (
-                build_host_requirement_projection,
-            )
+            from apps.patch_mgmt.services.execution_record_service import build_host_requirement_projection
 
             task = obj.task
             patch_ids = None
@@ -170,6 +168,12 @@ class GovernanceTaskListSerializer(PatchPermissionSerializer):
             for cache_name in (
                 "_execution_record_hosts",
                 "_execution_record_risk_summaries",
+                "_execution_record_summary_index",
+            ):
+                instance.__dict__.pop(cache_name, None)
+            for cache_name in (
+                "_execution_record_risk_summaries_locale",
+                "_execution_record_summary_index_locale",
             ):
                 instance.__dict__.pop(cache_name, None)
         return super().to_representation(instance)
@@ -207,9 +211,7 @@ class GovernanceTaskListSerializer(PatchPermissionSerializer):
         visible = self._visible_target_ids(obj)
         return list(
             dict.fromkeys(
-                int(item.get("patch_id"))
-                for item in (obj.risk_snapshot or [])
-                if int(item.get("host_id") or 0) in visible and item.get("patch_id")
+                int(item.get("patch_id")) for item in (obj.risk_snapshot or []) if int(item.get("host_id") or 0) in visible and item.get("patch_id")
             )
         )
 
@@ -241,17 +243,12 @@ class GovernanceTaskListSerializer(PatchPermissionSerializer):
         return f"{done} / {total}"
 
     def get_can_cancel(self, obj):
-        return (
-            obj.status in GovernanceTaskStatus.ACTIVE_STATES
-            and any(host.stage == "waiting" for host in self._visible_hosts(obj))
-        )
+        return obj.status in GovernanceTaskStatus.ACTIVE_STATES and any(host.stage == "waiting" for host in self._visible_hosts(obj))
 
     def get_can_retry(self, obj):
-        from apps.patch_mgmt.services.execution_record_service import (
-            build_risk_item_summaries,
-        )
+        from apps.patch_mgmt.services.execution_record_service import build_risk_item_summaries
 
-        return any(item["can_retry"] for item in build_risk_item_summaries(obj))
+        return any(item["can_retry"] for item in build_risk_item_summaries(obj, self.context.get("request")))
 
     def get_source_record_name(self, obj):
         return obj.source_record.name if obj.source_record_id else ""
@@ -270,23 +267,17 @@ class GovernanceTaskListSerializer(PatchPermissionSerializer):
         from apps.patch_mgmt.services.target_access import target_access_scope
 
         try:
-            operable = set(
-                target_access_scope(request)
-                .queryset("Operate")
-                .filter(pk__in=visible)
-                .values_list("pk", flat=True)
-            )
+            operable = set(target_access_scope(request).queryset("Operate").filter(pk__in=visible).values_list("pk", flat=True))
         except Exception:  # noqa: BLE001 - 权限依赖故障时 fail closed
             operable = set()
         if operable:
             permissions.append("Operate")
         return permissions
 
-    @staticmethod
-    def _record_status(obj):
+    def _record_status(self, obj):
         from apps.patch_mgmt.services.execution_record_service import build_record_status
 
-        return build_record_status(obj)
+        return build_record_status(obj, self.context.get("request"))
 
     def get_record_status(self, obj):
         return self._record_status(obj)[0]
@@ -307,14 +298,12 @@ class GovernanceTaskDetailSerializer(GovernanceTaskListSerializer):
     def get_risk_items(self, obj):
         from apps.patch_mgmt.services.execution_record_service import build_risk_item_summaries
 
-        return build_risk_item_summaries(obj)
+        return build_risk_item_summaries(obj, self.context.get("request"))
 
     def get_host_results(self, obj):
         hosts = self._visible_hosts(obj)
         if "host_requirement_index" not in self.context:
-            from apps.patch_mgmt.services.execution_record_service import (
-                build_host_requirement_projection,
-            )
+            from apps.patch_mgmt.services.execution_record_service import build_host_requirement_projection
 
             patch_ids = None
             if obj.task_type == GovernanceTaskType.INSTALL and obj.patch_list:
@@ -323,9 +312,7 @@ class GovernanceTaskDetailSerializer(GovernanceTaskListSerializer):
                 [host.target_id for host in hosts],
                 patch_ids=patch_ids,
             )
-        return GovernanceTaskHostSerializer(
-            hosts, many=True, context=self.context
-        ).data
+        return GovernanceTaskHostSerializer(hosts, many=True, context=self.context).data
 
     class Meta(GovernanceTaskListSerializer.Meta):
         fields = GovernanceTaskListSerializer.Meta.fields + [

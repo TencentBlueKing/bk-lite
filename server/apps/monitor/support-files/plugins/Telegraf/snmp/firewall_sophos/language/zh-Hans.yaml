@@ -1,6 +1,6 @@
 Firewall Sophos XG SNMP:
   name: Sophos XG（Telegraf）
-  desc: 面向 Sophos 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
+  desc: 面向 Sophos XG 防火墙的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、风扇、电源状态、磁盘使用率、接口流量，适用于 XG/XGS（企业号 PEN 2604）。
 monitor_object:
   Firewall: 防火墙
 monitor_object_type:
@@ -22,6 +22,9 @@ monitor_object_metric:
     device_psu_state:
       name: 电源状态
       desc: 该指标报告设备电源模块的运行状态（枚举）。非正常状态表示电源冗余或硬件故障；在冗余电源设备上单个故障会移除冗余，需尽快处理。
+    device_fan_speed:
+      name: 风扇转速
+      desc: 该指标报告防火墙风扇转速（RPM），取各风扇最大值。转速异常偏低或为 0 表示风扇卡转或故障，设备面临过热风险。
     firewall_pf_states:
       name: pf 状态表条目数
       desc: 该指标报告 pfSense 防火墙 pf 状态表中的当前条目数（BEGEMOT-PF-MIB pfStateTableCount），约等于活动连接数。条目数快速攀升可能意味着连接洪泛或状态表逼近上限。

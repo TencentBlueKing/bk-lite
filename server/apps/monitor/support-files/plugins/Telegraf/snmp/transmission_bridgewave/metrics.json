@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_bridgewave",
   "plugin": "Transmission BridgeWave SNMP",
-  "plugin_desc": "BridgeWave millimeter-wave transmission SNMP child template for devices under BridgeWave PEN 6080. Interface traffic is supplied by the shared Transmission SNMP IF-MIB floor. Proven BRWAVE-RADIO scalars are unit temperature (brwaveRadioUnitTemperature, hundredths of a degree Celsius, query scaled by 1/100) mapped as device_temperature_celsius, transmitter temperature (brwaveRadioTxTemperature, same hundredths scaling) mapped as tx_temperature_celsius, receive signal level (brwaveRadioRSL, integer dBm, not scaled) mapped as rsl, and optional input voltage (brwaveRadioInVoltage, raw integer, not scaled) mapped as device_in_voltage. CPU, memory, fan and power-supply health are not published as stable shared objects, so they are not collected. Supported brands/models — BridgeWave FlexPort and related millimeter-wave radios.",
+  "plugin_desc": "SNMP monitoring template for BridgeWave transmission device. It reports uptime, temperature, interface traffic, and voltage, for FlexPort millimeter-wave radios (enterprise PEN 6080).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_bridgewave'}) by (instance_id)",
   "name": "Transmission",

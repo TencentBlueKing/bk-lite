@@ -16,9 +16,12 @@ from apps.opspilot.metis.llm.chain.nested_stream import (
     OWNED_EVENT_QUEUE_KEY,
     PLANNED_STEP_HOLDER_KEY,
     OwnedEventBridge,
-    bind_owned_event_queue,
+    attach_owned_stream_context,
     bind_planned_step_index,
+    current_planned_step_index,
     isolated_child_callback_context,
+    lookup_planned_tool_step,
+    make_owned_stream_context,
     nested_agent_callbacks,
     publish_node_finished,
     publish_owned_custom_event,
@@ -225,25 +228,20 @@ def test_publish_owned_custom_event_uses_configurable_queue():
     event = queue.get_nowait()
     assert event["name"] == "user_choice_result"
     assert event["data"]["selected"] == ["监控侧"]
-    previous = bind_owned_event_queue(None)
-    try:
-        assert publish_owned_custom_event({}, "user_choice_request", payload) is False
-    finally:
-        bind_owned_event_queue(previous)
+    assert publish_owned_custom_event({}, "user_choice_request", payload) is False
+    assert queue.empty()
 
 
-def test_publish_owned_custom_event_falls_back_to_active_queue():
-    """计划步骤里的工具 config 往往不带队列，选择事件仍要进本轮队列。"""
+def test_publish_owned_custom_event_does_not_use_process_global_fallback():
+    """空 config 不得回退到其他会话的队列。"""
     queue = asyncio.Queue()
-    payload = {"choice_id": "abc", "title": "选一个监控对象"}
-    previous = bind_owned_event_queue(queue)
-    try:
-        assert publish_owned_custom_event({}, "user_choice_request", payload) is True
-    finally:
-        bind_owned_event_queue(previous)
+    ctx = make_owned_stream_context(queue)
+    config = attach_owned_stream_context({"configurable": {}}, ctx)
+    assert publish_owned_custom_event(config, "user_choice_request", {"choice_id": "own"}) is True
+    assert publish_owned_custom_event({}, "user_choice_request", {"choice_id": "leak"}) is False
     event = queue.get_nowait()
-    assert event["name"] == "user_choice_request"
-    assert event["data"]["choice_id"] == "abc"
+    assert event["data"]["choice_id"] == "own"
+    assert queue.empty()
 
 
 @pytest.mark.asyncio
@@ -272,3 +270,70 @@ def test_remember_planned_tool_steps_records_model_ids():
         [ToolMessage(content="ok", tool_call_id="call-1", name="cmdb_search_instances")],
     )
     assert bindings == {"call-1": 1}
+
+
+def _stream_config(queue=None):
+    ctx = make_owned_stream_context(queue if queue is not None else asyncio.Queue())
+    return attach_owned_stream_context({"configurable": {}}, ctx), ctx
+
+
+@pytest.mark.asyncio
+async def test_overlapping_streams_do_not_cross_session_choice_or_step():
+    """同进程两条重叠流交叉写，选择卡和步骤号不得串会话。"""
+    config_a, ctx_a = _stream_config()
+    config_b, ctx_b = _stream_config()
+
+    async def run_stream(config, ctx, choice_id, step_index, tool_call_id):
+        with bind_planned_step_index(step_index, config):
+            assert publish_owned_custom_event(config, "user_choice_request", {"choice_id": choice_id}) is True
+            await asyncio.sleep(0.01)
+            remember_planned_tool_steps(
+                config,
+                step_index,
+                [ToolMessage(content="ok", tool_call_id=tool_call_id, name="alerts_list_alerts")],
+            )
+            assert publish_owned_custom_event(
+                config,
+                "user_choice_result",
+                {"choice_id": choice_id, "selected": [choice_id]},
+            ) is True
+            return (
+                lookup_planned_tool_step(tool_call_id, ctx),
+                current_planned_step_index(ctx),
+                lookup_planned_tool_step("call-a" if tool_call_id == "call-b" else "call-b", ctx),
+            )
+
+    (step_a, holder_a, leaked_a), (step_b, holder_b, leaked_b) = await asyncio.gather(
+        run_stream(config_a, ctx_a, "aaa", 1, "call-a"),
+        run_stream(config_b, ctx_b, "bbb", 9, "call-b"),
+    )
+    assert (step_a, holder_a, leaked_a) == (1, 1, None)
+    assert (step_b, holder_b, leaked_b) == (9, 9, None)
+
+    choices_a = []
+    while not ctx_a.queue.empty():
+        choices_a.append(ctx_a.queue.get_nowait()["data"]["choice_id"])
+    choices_b = []
+    while not ctx_b.queue.empty():
+        choices_b.append(ctx_b.queue.get_nowait()["data"]["choice_id"])
+    assert choices_a == ["aaa", "aaa"]
+    assert choices_b == ["bbb", "bbb"]
+    assert publish_owned_custom_event({}, "user_choice_request", {"choice_id": "zzz"}) is False
+    assert ctx_a.queue.empty()
+    assert ctx_b.queue.empty()
+
+
+@pytest.mark.asyncio
+async def test_overlapping_bridges_stamp_own_step_not_peer_holder():
+    config_a, ctx_a = _stream_config()
+    config_b, ctx_b = _stream_config()
+    bridge_a = nested_agent_callbacks(config_a)[0]
+    bridge_b = nested_agent_callbacks(config_b)[0]
+    ctx_a.step_holder["step_index"] = 2
+    ctx_b.step_holder["step_index"] = 7
+    await asyncio.gather(
+        bridge_a.on_tool_start({"name": "alerts_list_alerts"}, "", run_id=uuid.uuid4(), name="alerts_list_alerts", inputs={}),
+        bridge_b.on_tool_start({"name": "cmdb_search_instances"}, "", run_id=uuid.uuid4(), name="cmdb_search_instances", inputs={}),
+    )
+    assert ctx_a.queue.get_nowait()["metadata"]["opspilot_step_index"] == 2
+    assert ctx_b.queue.get_nowait()["metadata"]["opspilot_step_index"] == 7

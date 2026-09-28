@@ -1,7 +1,6 @@
 Firewall Sophos XG SNMP:
   name: Sophos XG (Telegraf)
-  desc: SNMP monitoring template for Sophos firewall. It reports system uptime, CPU
-    utilization, memory utilization, and other key metrics
+  desc: "SNMP monitoring template for Sophos XG firewall. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, disk usage, and interface traffic, for XG/XGS (enterprise PEN 2604)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:
@@ -29,6 +28,11 @@ monitor_object_metric:
       name: Power Supply Status
       desc: Operational state of each power supply unit (enum). A non-normal state
         indicates a power redundancy or hardware fault and should be remediated promptly.
+    device_fan_speed:
+      name: Fan Speed
+      desc: Firewall fan rotation speed in RPM, taken as the maximum across fans.
+        Abnormally low or zero RPM indicates a stalled or failed fan and overheating
+        risk.
     firewall_pf_states:
       name: PF State Table Entries
       desc: This metric reports the current number of entries in the pfSense firewall

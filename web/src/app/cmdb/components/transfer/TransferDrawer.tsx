@@ -62,6 +62,9 @@ export default function TransferDrawer({ open, onClose, tasks, error, loading, o
               <div className="space-y-1 text-sm text-[var(--color-text-3)]">
                 <div>{t('Transfer.organization')}: {task.team_id} · {task.scope ? t(`Transfer.scope.${task.scope}`) : task.filename}</div>
                 <div>{t('Transfer.created')}: {new Date(task.created_at).toLocaleString()}</div>
+                {task.type === 'export' && task.status === 'succeeded' && task.finished_at && (
+                  <div>{t('Transfer.succeededAt')}: {new Date(task.finished_at).toLocaleString()}</div>
+                )}
                 <div>{t('Transfer.expires')}: {new Date(task.expires_at).toLocaleString()}</div>
                 {task.status === 'running' && <div>{t(`Transfer.phase.${task.phase}`)} · {task.processed_rows}{task.total_rows !== null ? ` / ${task.total_rows}` : ''} {t('Transfer.rows')}</div>}
               </div>

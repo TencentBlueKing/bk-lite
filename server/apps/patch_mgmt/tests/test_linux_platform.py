@@ -9,9 +9,7 @@ from apps.patch_mgmt.services.linux_platform import (
 
 
 def test_parse_complete_apt_host_facts():
-    facts = parse_linux_host_facts(
-        "noise\nBKPATCH_HOST|LINUX|ubuntu|debian|24.04|x86_64|apt\n"
-    )
+    facts = parse_linux_host_facts("noise\nBKPATCH_HOST|LINUX|ubuntu|debian|24.04|x86_64|apt\n")
 
     assert facts.distro_id == "ubuntu"
     assert facts.distro_like == ("debian",)
@@ -20,11 +18,9 @@ def test_parse_complete_apt_host_facts():
 
 
 def test_conflicting_native_databases_are_rejected():
-    facts = parse_linux_host_facts(
-        "BKPATCH_HOST|LINUX|custom|linux|1|x86_64|conflict"
-    )
+    facts = parse_linux_host_facts("BKPATCH_HOST|LINUX|custom|linux|1|x86_64|conflict")
 
-    assert "dpkg 与 RPM" in validate_linux_host_facts(facts)
+    assert "dpkg and RPM" in validate_linux_host_facts(facts)
 
 
 def test_detection_uses_native_databases_instead_of_command_priority():

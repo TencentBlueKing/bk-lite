@@ -1,6 +1,6 @@
 Switch Robustel SNMP:
   name: Robustel（Telegraf）
-  desc: 面向 Robustel MG460 工业交换机的 SNMP 监控模板，可采集 CPU 使用率（1 秒主指标，可选 10 秒）、内存总量/已用（字节）及推导出的利用率，以及板卡/结温温度。
+  desc: 面向 Robustel 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、接口流量（企业号 PEN 39699）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:

@@ -41,7 +41,8 @@ const APP_ORDER = [
   'itsm',
   'ops-analysis',
   'mlops',
-  'lab'
+  'lab',
+  'workflow-orchestration',
 ];
 
 const sortClientData = (data: ClientData[]): ClientData[] => {

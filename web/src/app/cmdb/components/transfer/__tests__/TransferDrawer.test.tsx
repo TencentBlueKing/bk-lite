@@ -14,7 +14,7 @@ it('renders accepted jobs as queued and cancels through the API before refreshin
   const task: TransferTask = {
     task_id: 'one', type: 'import', model_id: 'host', model_name: '主机', team_id: 1, filename: 'host.xlsx',
     status: 'queued', phase: 'queued', processed_rows: 0, total_rows: null, summary: {}, message: '',
-    available_actions: ['cancel'], created_at: '2026-09-21T00:00:00Z', expires_at: '2026-09-28T00:00:00Z',
+    available_actions: ['cancel'], created_at: '2026-09-21T00:00:00Z', finished_at: null, expires_at: '2026-09-28T00:00:00Z',
   };
   render(<TransferDrawer open onClose={() => undefined} tasks={[task]} error="" loading={false} onRefresh={refresh} />);
   expect(screen.getByText('Transfer.status.queued')).toBeTruthy();

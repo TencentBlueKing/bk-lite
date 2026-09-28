@@ -1,0 +1,71 @@
+{
+  "object": "Wanopt",
+  "plugin": "Wanopt Riverbed SNMP",
+  "templates": [
+    {
+      "name": "Riverbed SteelHead CPU使用率过高",
+      "alert_name": "WAN优化${resource_name} CPU 使用率过高",
+      "description": "监控 Riverbed SteelHead 一分钟滚动 CPU 使用率（cpuUtil1），当持续高于阈值时触发告警，提示可能存在优化服务过载或即将进入准入控制。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Riverbed SteelHead温度过高",
+      "alert_name": "WAN优化${resource_name} 温度过高",
+      "description": "监控 Riverbed SteelHead 系统温度（systemTemperature），当持续高于阈值时触发告警，提示可能存在散热不良或环境温度过高。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 55,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Riverbed SteelHead系统健康异常",
+      "alert_name": "WAN优化${resource_name} 系统健康异常",
+      "description": "监控 Riverbed SteelHead 系统健康（systemHealth，归一为 1=healthy / 2=非 healthy）。值大于 1 表示 degraded、admissionControl 或 critical，应立即排查优化服务与准入控制。",
+      "metric_name": "device_health_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

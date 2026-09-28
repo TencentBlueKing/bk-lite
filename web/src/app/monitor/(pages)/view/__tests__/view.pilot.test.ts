@@ -18,7 +18,18 @@ describe('view.pilot tabs', () => {
 
   it('list snapshot has current page rows and no hive cells', () => {
     document.body.innerHTML = `
-      <span class="ant-tree-node-selected">主机</span>
+      <div class="ant-tree">
+        <div class="ant-tree-treenode ant-tree-treenode-selected">
+          <span class="ant-tree-node-content-wrapper ant-tree-node-selected">
+            <span class="ant-tree-title">主机</span>
+          </span>
+        </div>
+        <div class="ant-tree-treenode">
+          <span class="ant-tree-node-content-wrapper">
+            <span class="ant-tree-title">Pod</span>
+          </span>
+        </div>
+      </div>
       <div class="ant-segmented-item ant-segmented-item-selected"><input value="list" /></div>
       <div class="ant-table">
         <table>
@@ -39,6 +50,8 @@ describe('view.pilot tabs', () => {
     expect(text).toContain('正在查看监控视图列表');
     expect(text).toContain('host-a');
     expect(text).toContain('当前第 2 页');
+    expect(text).toContain('Pod');
+    expect(text).toContain('主机 [当前]');
     expect(text).not.toContain('详情');
     expect(text).not.toContain('已加载格子');
   });

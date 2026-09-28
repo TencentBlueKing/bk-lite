@@ -39,12 +39,13 @@ from apps.opspilot.metis.llm.chain.entity import (
 from apps.opspilot.metis.llm.chain.nested_stream import (
     NODE_FINISHED_EVENT,
     OWNED_EVENT_QUEUE_KEY,
+    OWNED_STREAM_CONTEXT_KEY,
+    PLANNED_STEP_HOLDER_KEY,
     PLANNED_TOOL_STEPS_KEY,
-    activate_planned_tool_steps,
-    bind_owned_event_queue,
+    OwnedStreamContext,
     current_planned_step_index,
     lookup_planned_tool_step,
-    reset_planned_tool_steps,
+    make_owned_stream_context,
 )
 from apps.opspilot.metis.llm.chain.report_renderers import find_unclosed_phantom_tool_call_start, strip_phantom_tool_calls
 from apps.opspilot.metis.llm.common.llm_error_diagnostics import (
@@ -1077,22 +1078,24 @@ class BasicGraph(ABC):
                 )
         return events
 
-    @staticmethod
     def _planned_step_index_from_event(
+        self,
         event: Dict[str, Any] | None,
         tool_call_id: str = "",
         *,
         allow_holder: bool = True,
+        stream_ctx: OwnedStreamContext | None = None,
     ) -> int | None:
         metadata = (event or {}).get("metadata") or {}
         stamped = metadata.get("opspilot_step_index")
         if isinstance(stamped, int) and not isinstance(stamped, bool) and stamped >= 1:
             return stamped
-        looked_up = lookup_planned_tool_step(tool_call_id)
+        ctx = stream_ctx if isinstance(stream_ctx, OwnedStreamContext) else getattr(self, "_owned_stream_context", None)
+        looked_up = lookup_planned_tool_step(tool_call_id, ctx)
         if looked_up is not None:
             return looked_up
         if allow_holder:
-            return current_planned_step_index()
+            return current_planned_step_index(ctx)
         return None
 
     def _tool_call_start_event(
@@ -1656,14 +1659,13 @@ class BasicGraph(ABC):
         # 创建浏览器步骤事件队列和回调
         browser_event_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=100)
         owned_queue: asyncio.Queue = asyncio.Queue()
-        previous_owned_queue = bind_owned_event_queue(owned_queue)
+        stream_ctx = make_owned_stream_context(owned_queue)
+        previous_stream_ctx = getattr(self, "_owned_stream_context", None)
+        self._owned_stream_context = stream_ctx
         browser_step_callback = create_browser_step_callback(browser_event_queue, encoder)
         browser_custom_event_callback = create_browser_custom_event_callback(browser_event_queue, encoder)
         stop_event = asyncio.Event()
         run_started = monotonic_ms()
-
-        planned_tool_steps: Dict[str, int] = {}
-        planned_tool_steps_token = activate_planned_tool_steps(planned_tool_steps)
         interrupt_watch = InterruptWatch(
             execution_id,
             interval_seconds=INTERRUPT_WATCH_INTERVAL_SECONDS,
@@ -1704,8 +1706,10 @@ class BasicGraph(ABC):
                     "browser_step_callback": browser_step_callback,
                     "browser_custom_event_callback": browser_custom_event_callback,
                     "token_usage_accumulator": token_usage_accumulator,
-                    OWNED_EVENT_QUEUE_KEY: owned_queue,
-                    PLANNED_TOOL_STEPS_KEY: planned_tool_steps,
+                    OWNED_STREAM_CONTEXT_KEY: stream_ctx,
+                    OWNED_EVENT_QUEUE_KEY: stream_ctx.queue,
+                    PLANNED_TOOL_STEPS_KEY: stream_ctx.planned_tool_steps,
+                    PLANNED_STEP_HOLDER_KEY: stream_ctx.step_holder,
                 },
             }
 
@@ -2144,8 +2148,7 @@ class BasicGraph(ABC):
             )
         finally:
             await interrupt_watch.aclose()
-            bind_owned_event_queue(previous_owned_queue)
-            reset_planned_tool_steps(planned_tool_steps_token)
+            self._owned_stream_context = previous_stream_ctx
             stop_event.set()
             log_stage_timing("agui_run", elapsed_ms(run_started), thread_id=thread_id)
 

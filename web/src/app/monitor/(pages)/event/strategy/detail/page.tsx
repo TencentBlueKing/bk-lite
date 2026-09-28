@@ -724,7 +724,6 @@ const StrategyOperation = () => {
     const collect = formData?.collect_type;
     const known =
       collect != null &&
-      collect !== '' &&
       pluginList.some((item) => String(item.value) === String(collect));
     if (known) return;
     if (pluginList.length === 1) return;

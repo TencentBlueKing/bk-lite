@@ -1,6 +1,6 @@
 Wireless H3C SNMP:
   name: H3C（Telegraf）
-  desc: 面向 H3C 无线控制器的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、AP 数量和终端数量等主要指标（企业号 PEN 25506）。
+  desc: 面向 H3C 无线设备的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、无线客户端/射频（企业号 PEN 25506）。
 monitor_object:
   Wireless: 无线设备
 monitor_object_type:

@@ -1,0 +1,21 @@
+{
+  "key": "bklite_job_execute",
+  "name": "作业执行",
+  "category": "作业平台",
+  "description": "在授权目标上执行用户编写的 Linux 或 Windows 脚本，输出统一 JSON 结果信封",
+  "source_type": "PLATFORM",
+  "driver": "WORKER",
+  "handler": "apps.workflow_orchestration.atom_packages.bklite_job_execute.runtime.handler:execute",
+  "trusted_context": true,
+  "input_schema": "schemas/input.schema.json",
+  "output_schema": "schemas/output.schema.json",
+  "ui_schema": "schemas/ui.schema.json",
+  "timeout_seconds": 3900,
+  "retry_count": 0,
+  "retry_delay_seconds": 2,
+  "idempotent": false,
+  "safety_level": "MUTATION",
+  "resource_scope": "NODE_INPUT",
+  "required_permissions": [],
+  "error_types": []
+}

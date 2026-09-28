@@ -1,7 +1,6 @@
 Router Cradlepoint SNMP:
   name: Cradlepoint (Telegraf)
-  desc: SNMP monitoring template for Cradlepoint router. It reports system uptime,
-    CPU utilization, memory utilization, and other key metrics
+  desc: "SNMP monitoring template for Cradlepoint router. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic, for NetCloud, COR/E-series, and IBR-series (enterprise PEN 20992)."
 monitor_object:
   Router: Router
 monitor_object_type:

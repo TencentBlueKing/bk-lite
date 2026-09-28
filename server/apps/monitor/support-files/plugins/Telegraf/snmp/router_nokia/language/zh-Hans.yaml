@@ -1,0 +1,33 @@
+Router Nokia SNMP:
+  name: Nokia（Telegraf）
+  desc: 面向 Nokia 路由器的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、接口流量（企业号 PEN 6527）。
+monitor_object:
+  Router: 路由器
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Router:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标表示 Nokia TiMOS/SROS 路由器的 CPU 使用率（TIMETRA-SYSTEM-MIB sgiCpuUsage），按 Unsigned32(0..100) 直接记为百分比。持续偏高可能意味着控制平面过载、路由震荡或异常流量。
+    device_memory_used:
+      name: 内存已用量
+      desc: 该指标表示 Nokia TiMOS/SROS 路由器当前已使用的预分配池内存，单位字节。大内存机优先使用 KB 叶并乘 1024，避免 Unsigned32 字节叶饱和。
+    device_memory_free:
+      name: 内存可用量
+      desc: 该指标表示 Nokia TiMOS/SROS 路由器当前未分配、可供内存池增长的可用内存，单位字节。可用内存持续偏低可能意味着内存压力上升。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 该指标表示 Nokia TiMOS/SROS 路由器整体内存使用率，按 已用/(已用+可用)*100 计算。持续偏高可能由内存泄漏、表项过大或容量不足导致。
+    device_temperature_celsius:
+      name: 设备温度
+      desc: 该指标报告 Nokia TiMOS/SROS 路由器机箱硬件温度，单位摄氏度。值为 -1 的无传感器行会被丢弃。温度异常升高可能由风扇故障、散热不良或环境温度过高导致。
+monitor_object_metric_group:
+  Router:
+    CPU: CPU
+    Memory: 内存
+    Temperature: 温度
+    Base: 基础

@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_dragonwave",
   "plugin": "Transmission DragonWave SNMP",
-  "plugin_desc": "DragonWave microwave transmission SNMP child template for devices under DragonWave PEN 7262. Interface traffic is supplied by the shared Transmission SNMP IF-MIB floor. Proven private health objects are Horizon Compact Plus radio temperature (DRAGONWAVE-HCP hzCpRadioTemperature, tenths of a degree Celsius, query scaled by 1/10) mapped as radio_temperature_celsius, and optional Harmony MWR system temperature (MWR-ETHERNET-MIB mwrSystemTemperature) mapped as device_temperature_celsius. CPU, memory, fan and power-supply health are not published as stable shared objects, so they are not collected. Supported brands/models — DragonWave Horizon Compact Plus and Harmony MWR microwave radios.",
+  "plugin_desc": "SNMP monitoring template for DragonWave transmission device. It reports uptime, temperature, and interface traffic, for Horizon Compact Plus and Harmony MWR (enterprise PEN 7262).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_dragonwave'}) by (instance_id)",
   "name": "Transmission",

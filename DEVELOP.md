@@ -60,6 +60,39 @@ uv run pytest -m unit         # 按 marker
 uv run pytest -m "not slow"
 ```
 
+编排中心 MVP 后端验证使用独立覆盖率门禁，只统计该 app 生产代码，不把迁移和测试文件算入分母：
+
+```bash
+cd server
+scripts/test_workflow_orchestration.sh
+```
+
+该命令覆盖编排中心的 TDD 与 BDD 测试，并强制生产代码行覆盖率不低于 80%。
+
+本地页面验收需要保留数据时，先确认页面查看用户已属于目标团队，再显式写入带 `[TDD/BDD]` 标记的幂等演示记录：
+
+```bash
+cd server
+uv run python manage.py seed_workflow_orchestration_demo \
+  --team-id 1 --username admin --domain domain.com --confirm
+```
+
+该命令不是 pytest fixture，不会被测试数据库回滚；它会先将当前原子和流程定义注册到 Conductor，成功后才替换同一组演示数据。重复执行只更新同一组流程（含 Word/Excel 巡检）、11 条执行记录和对应操作日志。
+
+本地真实闭环（不伪造成功）需先启动 Conductor 与 Worker，再执行：
+
+```bash
+CONDUCTOR_BASE_URL=http://127.0.0.1:8091/api \
+uv run python manage.py run_workflow_worker
+
+CONDUCTOR_BASE_URL=http://127.0.0.1:8091/api \
+uv run python manage.py run_workflow_orchestration_live_acceptance \
+  --team-id 1 --username admin --domain domain.com \
+  --report-path ../outputs/workflow-live-acceptance.json
+```
+
+依赖缺失（例如作业平台无 responders、通知渠道未配置）时场景会标记 `FAILED` 并保留原始错误，命令以非零退出码结束。
+
 Wiki Markdown/OKF 导入 ZIP 上限 200MB、解压合计 400MB。反向代理（Nginx `client_max_body_size`、Next `/api/proxy` 等）须放行 ≥200MB 请求体，否则浏览器到 Django 的上传会在应用校验前被截断。
 
 ### Web（`web/`）

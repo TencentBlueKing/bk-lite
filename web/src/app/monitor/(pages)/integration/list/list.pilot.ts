@@ -1,5 +1,5 @@
 import type { AiPageContext, PageContextMessage } from '@/components/ai-page-context/types';
-import { cleanLabel, selectedTreeLabel } from '@/components/ai-page-context/domSnapshot';
+import { cleanLabel, selectedTreeLabel, treeSection } from '@/components/ai-page-context/domSnapshot';
 import { pageIdentityFromSearch } from '@/app/monitor/page-context/tableListContext';
 
 const cardLines = (): string[] =>
@@ -33,6 +33,7 @@ export function getTextContext(): Partial<AiPageContext> {
         ].filter(Boolean).join('\n'),
         priority: 10,
       },
+      ...treeSection(),
       ...(cards.length
         ? [{
           id: 'integration-list-cards',

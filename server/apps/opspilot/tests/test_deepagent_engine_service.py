@@ -14,7 +14,7 @@ import subprocess
 import sys
 import traceback
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from langchain_core.messages import HumanMessage
@@ -624,12 +624,17 @@ class TestBuildDeepagentNodes:
             }
 
         fake_agent.ainvoke = _ainvoke
+        emitted = []
+
+        async def _capture_event(name, payload, config=None):
+            emitted.append((name, payload))
 
         with (
             patch("apps.opspilot.metis.llm.chain.node.create_deep_agent", return_value=fake_agent),
             patch.object(ToolsNodes, "get_llm_client", return_value=_OverflowLLM()),
             patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None),
             patch.object(ToolsNodes, "_build_skill_backend_and_sources", return_value=(None, [], None)),
+            patch("apps.opspilot.metis.llm.chain.node.adispatch_custom_event", new=AsyncMock(side_effect=_capture_event)),
         ):
             result = asyncio.run(
                 wrapper(
@@ -643,6 +648,13 @@ class TestBuildDeepagentNodes:
         assert captured["agent_calls"] == 3
         assert "上下文压缩" in captured["ainvoke_joined"][1]
         assert result["messages"][-1].content == "执行结果 3"
+        overflow_ends = [
+            payload
+            for name, payload in emitted
+            if name == "planned_execution_step" and payload.get("phase") == "end" and payload.get("status") == "skipped_context_overflow"
+        ]
+        assert overflow_ends, "溢出步必须发出 skipped_context_overflow"
+        assert "outcome" not in overflow_ends[0]
 
     def test_llm_upstream_500_skips_sandbox_whitelist_fallback(self, caplog):
         node = ToolsNodes()
@@ -2063,6 +2075,27 @@ def test_should_skip_planned_summary_for_multi_step_table():
     ]
     assert ToolsNodes._should_skip_planned_summary(complete_rca, completed_step_count=1, report_mode=rca_prompt_mode) is True
     assert ToolsNodes._should_skip_planned_summary(prose, completed_step_count=1, require_formatted_report=True) is False
+
+
+def test_should_not_skip_planned_summary_for_transitional_last_step():
+    """最后一步写成「接下来将…」过渡句时，即使前面有表也不跳过总结轮。"""
+    from langchain_core.messages import AIMessage
+
+    transitional = "工单 ALERT-2023-0824-001：nginx 返回 403。\n\n" "| 工单 | 现象 |\n| --- | --- |\n| ALERT-001 | 403 |\n\n" "已获取该工单中的集群信息。接下来将进行排查这些业务组件告警详情。"
+    assert ToolsNodes._looks_like_transitional_step_answer(transitional) is True
+    assert ToolsNodes._planned_step_already_answered([AIMessage(content=transitional)]) is False
+    assert ToolsNodes._should_skip_planned_summary([AIMessage(content=transitional)], completed_step_count=4) is False
+
+    earlier_table = "| Pod | 状态 |\n| --- | --- |\n| nginx | Ready |"
+    later_transition = "已拿到节点列表。接下来我们将验证这些业务组件的告警详情。"
+    messages = [AIMessage(content=earlier_table), AIMessage(content=later_transition)]
+    assert ToolsNodes._planned_output_has_markdown_table(messages) is True
+    assert ToolsNodes._looks_like_transitional_step_answer(later_transition) is True
+    assert ToolsNodes._should_skip_planned_summary(messages, completed_step_count=4) is False
+
+    finished = "根因是上游 upstream 超时导致 502，建议扩容并检查健康检查配置。"
+    assert ToolsNodes._looks_like_transitional_step_answer(finished) is False
+    assert ToolsNodes._should_skip_planned_summary([AIMessage(content=finished)], completed_step_count=1) is True
 
 
 def test_select_visible_planned_messages_keeps_last_table_not_cumulative():

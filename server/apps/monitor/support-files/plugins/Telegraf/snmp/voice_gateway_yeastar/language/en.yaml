@@ -1,8 +1,6 @@
 VoiceGateway Yeastar SNMP:
   name: Yeastar (Telegraf)
-  desc: SNMP monitoring template for Yeastar voice gateway. It reports CPU utilization,
-    memory utilization, concurrent calls, local storage usage, telephony engine status,
-    per-port inbound traffic rate, per-port outbound traffic rate, and system uptime
+  desc: "SNMP monitoring template for Yeastar voice gateway. It reports uptime, CPU utilization, memory utilization, disk usage, and interface traffic, for P-Series IP PBX and VoIP gateways (enterprise PEN 22736)."
 monitor_object:
   VoiceGateway: VoiceGateway
 monitor_object_type:

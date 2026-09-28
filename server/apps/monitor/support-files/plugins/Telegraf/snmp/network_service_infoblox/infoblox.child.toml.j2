@@ -31,21 +31,17 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-
-    # IB platform CPU/mem % (PEN 7779). Interface traffic stays on the existing IF-MIB HC floor.
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.7779.3.1.1.2.1.8.1.1"
-        name = "usage"
-    [[inputs.snmp.table]]
-        name = "device_memory"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.7779.3.1.1.2.1.8.2.1"
-        name = "usage"
-
+    # Infoblox 平台 CPU/内存/Swap 标量：顶层 field GET 必须带实例 .0；table.field 禁止 .0。
+    # ibSystemMonitorCpuUsage / MemUsage / SwapUsage 直接 0-100%。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.7779.3.1.1.2.1.8.1.1.0"
+        name = "device_cpu_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.7779.3.1.1.2.1.8.2.1.0"
+        name = "device_memory_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.7779.3.1.1.2.1.8.3.1.0"
+        name = "device_swap_usage"
     [[inputs.snmp.table]]
         oid = "1.3.6.1.2.1.31.1.1"
         name = "interface"

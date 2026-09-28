@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_infoblox",
   "plugin": "NetworkService Infoblox SNMP",
-  "plugin_desc": "Infoblox NIOS SNMP collection for appliances under Infoblox PEN 7779. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template adds IB platform CPU usage percent and memory usage percent. DNS/DHCP service tables are not promoted into shared device-health metrics.",
+  "plugin_desc": "SNMP monitoring template for Infoblox network service device. It reports uptime, CPU utilization, memory utilization, interface traffic, and swap usage (enterprise PEN 7779).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_infoblox'}) by (instance_id)",
   "name": "NetworkService",
@@ -16,13 +16,14 @@
   "supplementary_indicators": [
     "device_cpu_usage",
     "device_memory_usage",
+    "device_swap_usage",
     "snmp_uptime"
   ],
   "metrics": [
     {
       "metric_group": "NetworkService",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "snmp_device_cpu_usage{instance_type='network_service', __$labels__}",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -30,12 +31,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "IB platform average CPU usage, reported directly as a percentage."
+      "description": "IB platform average CPU usage (ibSystemMonitorCpuUsage), reported directly as a 0-100 percentage."
     },
     {
       "metric_group": "NetworkService",
       "name": "device_memory_usage",
-      "query": "avg(device_memory_usage{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "snmp_device_memory_usage{instance_type='network_service', __$labels__}",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -43,7 +44,20 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "IB platform memory usage, reported directly as a percentage."
+      "description": "IB platform memory usage (ibSystemMonitorMemUsage), reported directly as a 0-100 percentage."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "device_swap_usage",
+      "query": "snmp_device_swap_usage{instance_type='network_service', __$labels__}",
+      "display_name": "Swap Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "IB platform swap usage (ibSystemMonitorSwapUsage), reported directly as a 0-100 percentage."
     },
     {
       "metric_group": "Traffic",

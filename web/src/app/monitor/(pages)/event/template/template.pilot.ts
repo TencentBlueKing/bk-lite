@@ -1,5 +1,5 @@
 import type { AiPageContext, PageContextMessage } from '@/components/ai-page-context/types';
-import { cleanLabel, selectedTreeLabel } from '@/components/ai-page-context/domSnapshot';
+import { cleanLabel, selectedTreeLabel, treeSection } from '@/components/ai-page-context/domSnapshot';
 
 const templateLines = (): string[] =>
   Array.from(document.querySelectorAll('button[aria-pressed]')).map((node) => {
@@ -36,6 +36,7 @@ export function getTextContext(): Partial<AiPageContext> {
         ].filter(Boolean).join('\n'),
         priority: 10,
       },
+      ...treeSection(),
       ...(lines.length
         ? [{
           id: 'template-cards',

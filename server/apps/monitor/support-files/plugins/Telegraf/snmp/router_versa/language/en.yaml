@@ -1,7 +1,6 @@
 Router Versa SNMP:
   name: Versa (Telegraf)
-  desc: SNMP monitoring template for Versa router. It reports CPU utilization, memory
-    utilization, per-port inbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Versa router. It reports uptime, CPU utilization, memory utilization, sessions/connections, and interface traffic (enterprise PEN 42359)."
 monitor_object:
   Router: Router
 monitor_object_type:
@@ -36,15 +35,28 @@ monitor_object_metric:
         memory consumption and pressure.
     device_cpu_usage:
       name: CPU Usage
-      desc: This metric reports the average CPU utilization across the operating entities
-        of the Juniper MX router (JUNIPER-MIB jnxOperatingCPU, aggregated per instance_id).
-        Sustained high usage indicates heavy forwarding or control-plane load.
+      desc: This metric reports CPU utilization of the Versa SD-WAN router (DEVICE-MIB
+        deviceCPULoad) as a 0-100 percentage, averaged across deviceTable rows.
+        Sustained high usage indicates heavy forwarding, tunnel negotiation, or
+        control-plane load.
     device_memory_usage:
       name: Memory Usage
-      desc: This metric reports the average memory utilization across the operating
-        entities of the Juniper MX router (JUNIPER-MIB jnxOperatingBuffer, reported
-        directly as a percentage). Sustained high usage may be caused by oversized
-        routing tables or memory leaks.
+      desc: This metric reports memory utilization of the Versa SD-WAN router
+        (DEVICE-MIB deviceMemoryLoad) as a 0-100 percentage, averaged across
+        deviceTable rows. Sustained high usage may indicate session-table growth
+        or a memory leak.
+    device_active_sessions:
+      name: Active Sessions
+      desc: Number of active sessions on the Versa SD-WAN router (DEVICE-MIB
+        deviceActiveSessions), summed across deviceTable rows.
+    device_failed_sessions:
+      name: Failed Sessions
+      desc: Number of failed sessions on the Versa SD-WAN router (DEVICE-MIB
+        deviceFailedSessions), summed across deviceTable rows.
+    device_max_sessions:
+      name: Max Sessions
+      desc: Session capacity of the Versa SD-WAN router (DEVICE-MIB deviceMaxSessions),
+        summed across deviceTable rows.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate (HC)
       desc: This metric indicates the average rate of bytes received over the past
@@ -240,3 +252,4 @@ monitor_object_metric_group:
     Application Port: Application Port
     Endpoint: Endpoint
     Conversation: Conversation
+    Session: Session

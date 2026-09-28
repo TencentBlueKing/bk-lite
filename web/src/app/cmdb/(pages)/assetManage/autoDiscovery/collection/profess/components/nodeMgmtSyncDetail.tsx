@@ -21,6 +21,7 @@ import {
   getNodeMgmtSyncDisplayEmptyStateKey,
   getNodeMgmtSyncEmptyStateKey,
   getNodeMgmtSyncRawCounts,
+  getCollectDecisionTextKey,
   getNodeMgmtSyncReasonTextKey,
   getNodeMgmtSyncRowKey,
   getNodeMgmtSyncStatusTextKey,
@@ -174,6 +175,7 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
     association_success: 0,
   };
   const todoItems = detail?.todo || [];
+  const collectDiagnoses = detail?.collect_diagnoses || [];
   const rawCounts = getNodeMgmtSyncRawCounts(displayMessage);
   useEffect(() => {
     const runId = displayPayload?.run?.id;
@@ -417,6 +419,21 @@ const NodeMgmtSyncDetail: React.FC<NodeMgmtSyncDetailProps> = ({ open }) => {
             <Alert
               type={healthAlert.type}
               message={t(healthAlert.textKey)}
+              description={collectDiagnoses.length ? (
+                <div className="flex flex-col gap-1">
+                  {collectDiagnoses.map((item) => (
+                    <div key={`${item.cloud_region_id}-${item.task_id}-${item.decision}`}>
+                      {t(getCollectDecisionTextKey(item.decision), undefined, {
+                        region: item.cloud_region_id ?? '--',
+                        task: item.task_id ?? '--',
+                        rawHost: item.raw_host ?? 0,
+                        rawProcess: item.raw_process ?? 0,
+                        collectFailed: item.collect_failed ?? 0,
+                      })}
+                    </div>
+                  ))}
+                </div>
+              ) : undefined}
               showIcon
             />
           ) : null}

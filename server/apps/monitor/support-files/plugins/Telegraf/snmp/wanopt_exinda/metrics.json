@@ -1,0 +1,156 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_exinda",
+  "plugin": "Wanopt Exinda SNMP",
+  "plugin_desc": "SNMP monitoring template for Exinda / GFI ExOS WAN optimization device. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic (enterprise PEN 21091).",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='wanopt', collect_type='snmp_exinda'}) by (instance_id)",
+  "name": "Wanopt",
+  "icon": "mm-wanopt_WAN优化",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='wanopt'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='wanopt', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the Exinda / GFI ExOS WAN optimizer since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "snmp_device_cpu_usage{instance_type='wanopt', __$labels__}",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization of the Exinda / GFI ExOS WAN optimizer (EXINDA-MIB cpuUsagePercent) as a 0-100 percentage averaged across all CPUs over the past minute. Sustained high CPU usage can indicate optimization, shaping, or inspection overload."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_load_1",
+      "query": "snmp_device_cpu_load_1{instance_type='wanopt', __$labels__}",
+      "display_name": "CPU Load (1m)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "One-minute CPU load of the Exinda / GFI ExOS WAN optimizer (EXINDA-MIB cpuLoad1). The value is hundredths of load, not a percentage."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_load_5",
+      "query": "snmp_device_cpu_load_5{instance_type='wanopt', __$labels__}",
+      "display_name": "CPU Load (5m)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Five-minute CPU load of the Exinda / GFI ExOS WAN optimizer (EXINDA-MIB cpuLoad5). The value is hundredths of load, not a percentage."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_load_15",
+      "query": "snmp_device_cpu_load_15{instance_type='wanopt', __$labels__}",
+      "display_name": "CPU Load (15m)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Fifteen-minute CPU load of the Exinda / GFI ExOS WAN optimizer (EXINDA-MIB cpuLoad15). The value is hundredths of load, not a percentage."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "snmp_device_memory_total{instance_type='wanopt', __$labels__} * 1024",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total physical RAM of the Exinda / GFI ExOS WAN optimizer in bytes (EXINDA-MIB totalRam, reported in kbytes and scaled to bytes)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "snmp_device_memory_used{instance_type='wanopt', __$labels__} * 1024",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Used physical RAM of the Exinda / GFI ExOS WAN optimizer in bytes (EXINDA-MIB usedRam, reported in kbytes and scaled to bytes)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_free",
+      "query": "snmp_device_memory_free{instance_type='wanopt', __$labels__} * 1024",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Free physical RAM of the Exinda / GFI ExOS WAN optimizer in bytes (EXINDA-MIB freeRam, reported in kbytes and scaled to bytes)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "100 * snmp_device_memory_used{instance_type='wanopt', __$labels__} / snmp_device_memory_total{instance_type='wanopt', __$labels__}",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Physical RAM utilization of the Exinda / GFI ExOS WAN optimizer, computed as used/total*100 (EXINDA-MIB usedRam/totalRam). Sustained high usage can degrade acceleration and shaping performance."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "snmp_device_temperature_celsius{instance_type='wanopt', __$labels__}",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current CPU temperature of the Exinda / GFI ExOS WAN optimizer (EXINDA-MIB cpuTemperature). Abnormally high values may indicate cooling failure or excessive ambient heat."
+    }
+  ]
+}

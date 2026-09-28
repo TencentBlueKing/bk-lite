@@ -3,7 +3,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import Application3D from '../index';
 import type { Application3DWallData, Application3DWallItem } from '@/app/ops-analysis/types/sceneWidget';
-import type { ScreenRenderContext } from '@/app/ops-analysis/types/dashBoard';
+import type { ScreenRenderContext, ValueConfig } from '@/app/ops-analysis/types/dashBoard';
+import { resolveApplication3DWallConfig } from '@/app/ops-analysis/utils/application3DWallConfig';
 
 interface SceneCallbacks {
   onSelect: (item: Application3DWallItem) => void;
@@ -556,6 +557,293 @@ describe('application3D wall paging chrome', () => {
     await waitFor(() => expect(mocks.getWall).toHaveBeenCalledTimes(3));
     expect(screen.getByRole('button', { name: /application3DWallPrevPage/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: /application3DWallNextPage/ })).toBeTruthy();
+  });
+
+  it('passes the configured page effect on a manual turn', async () => {
+    mocks.getWall.mockResolvedValue(manyWall);
+    render(
+      <Application3D
+        refreshKey="0"
+        runtimeActive
+        screenRenderContext={context}
+        config={wallConfig({ pageEffect: 'fade' })}
+      />,
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: /application3DWallNextPage/ })).toBeTruthy());
+    mocks.reconcile.mockClear();
+    fireEvent.click(screen.getByRole('button', { name: /application3DWallNextPage/ }));
+    await waitFor(() => expect(mocks.reconcile).toHaveBeenCalled());
+    expect(mocks.reconcile.mock.calls.some((call) => (
+      call[1]?.pageDirection === 'next' && call[1]?.pageEffect === 'fade'
+    ))).toBe(true);
+  });
+});
+
+const wallConfig = (
+  overrides: Parameters<typeof resolveApplication3DWallConfig>[0] = {},
+): ValueConfig => ({
+  chartType: 'application3D',
+  sceneWidgetType: 'application3D',
+  application3DWall: resolveApplication3DWallConfig(overrides),
+});
+
+const latestPage = () => mocks.reconcile.mock.calls.at(-1)?.[0] as Application3DWallItem[];
+
+describe('application3D auto page and section restore', () => {
+  const manyItems = Array.from({ length: 50 }, (_, index) => ({
+    ...wallItem,
+    id: `sys-${String(index + 1).padStart(2, '0')}`,
+    name: `系统${String(index + 1).padStart(2, '0')}`,
+  }));
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const settle = async () => {
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  };
+
+  const advance = async (ms: number) => {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(ms);
+    });
+  };
+
+  const renderPlaying = async (
+    items: Application3DWallItem[],
+    overrides: Parameters<typeof resolveApplication3DWallConfig>[0] = {},
+    editMode = false,
+  ) => {
+    mocks.getWall.mockResolvedValue({
+      ...wall,
+      items,
+      capacity: { actualCount: items.length, supportedCount: null },
+    });
+    render(
+      <Application3D
+        refreshKey="0"
+        runtimeActive
+        editMode={editMode}
+        screenRenderContext={context}
+        config={wallConfig({
+          autoPageEnabled: true,
+          dwellSeconds: 5,
+          pageEffect: 'cut',
+          ...overrides,
+        })}
+      />,
+    );
+    for (let step = 0; step < 8; step += 1) {
+      await settle();
+      if (mocks.reconcile.mock.calls.length > 0) return;
+    }
+    throw new Error('wall did not reconcile');
+  };
+
+  it('turns to the next page after the dwell and loops to page 1', async () => {
+    await renderPlaying(manyItems);
+    expect(latestPage()[0].id).toBe('sys-01');
+
+    await advance(5000);
+    expect(latestPage()[0].id).toBe('sys-25');
+    await advance(5000);
+    expect(latestPage()[0].id).toBe('sys-49');
+    await advance(5000);
+    expect(latestPage()[0].id).toBe('sys-01');
+  });
+
+  it('does not pause on hover, and pauses while a card, detail, or architecture is open', async () => {
+    await renderPlaying(manyItems);
+    await advance(4000);
+    fireEvent.mouseMove(document.body);
+    await advance(1000);
+    expect(latestPage()[0].id).toBe('sys-25');
+
+    act(() => {
+      mocks.sceneCallbacks?.onSelect(manyItems[24]);
+    });
+    await advance(5000);
+    expect(latestPage()[0].id).toBe('sys-25');
+
+    act(() => {
+      mocks.sceneCallbacks?.onBackgroundClick?.();
+    });
+    await advance(4999);
+    expect(latestPage()[0].id).toBe('sys-25');
+    await advance(1);
+    expect(latestPage()[0].id).toBe('sys-49');
+
+    act(() => {
+      mocks.sceneCallbacks?.onSelect(manyItems[48]);
+    });
+    mocks.getApplicationDetail.mockImplementation(() => new Promise(() => undefined));
+    fireEvent.click(screen.getByRole('button', { name: /application3DOpenDetail/ }));
+    await settle();
+    await advance(5000);
+    expect(latestPage()[0].id).toBe('sys-49');
+    fireEvent.click(screen.getByRole('button', { name: /application3DCloseDetail/ }));
+    await settle();
+    await advance(5000);
+    expect(latestPage()[0].id).toBe('sys-01');
+
+    act(() => {
+      mocks.sceneCallbacks?.onSelect(manyItems[0]);
+    });
+    mocks.getArchitecture.mockResolvedValue({
+      systemId: 'sys-01',
+      refreshedAt: '2026-08-26T00:00:00Z',
+      nodes: [],
+      edges: [],
+    });
+    fireEvent.click(screen.getByRole('button', { name: /application3DOpenArchitecture/ }));
+    await settle();
+    await advance(5000);
+    expect(latestPage()[0].id).toBe('sys-01');
+    fireEvent.click(screen.getByRole('button', { name: /application3DBackWall/ }));
+    await settle();
+    await advance(5000);
+    expect(latestPage()[0].id).toBe('sys-25');
+  });
+
+  it('restarts the dwell after a manual turn and after a filter change', async () => {
+    const filtered = {
+      ...wall,
+      items: manyItems,
+      capacity: { actualCount: 50, supportedCount: null },
+      filters: [
+        {
+          id: 'system_status',
+          label: '运行状态',
+          type: 'multiple' as const,
+          options: [
+            { value: 'normal', label: '正常' },
+            { value: 'alarming', label: '告警' },
+          ],
+        },
+      ],
+    };
+    mocks.getWall.mockResolvedValue(filtered);
+    render(
+      <Application3D
+        refreshKey="0"
+        runtimeActive
+        screenRenderContext={context}
+        config={wallConfig({ autoPageEnabled: true, dwellSeconds: 5, pageEffect: 'cut' })}
+      />,
+    );
+    for (let step = 0; step < 8; step += 1) {
+      await settle();
+      if (screen.queryByRole('button', { name: /application3DWallNextPage/ })) break;
+    }
+    expect(screen.getByRole('button', { name: /application3DWallNextPage/ })).toBeTruthy();
+
+    await advance(4000);
+    fireEvent.click(screen.getByRole('button', { name: /application3DWallNextPage/ }));
+    await settle();
+    expect(latestPage()[0].id).toBe('sys-25');
+    await advance(4000);
+    expect(latestPage()[0].id).toBe('sys-25');
+    await advance(1000);
+    expect(latestPage()[0].id).toBe('sys-49');
+
+    mocks.getWall.mockResolvedValue({
+      ...filtered,
+      appliedFilters: { system_status: ['normal'] },
+    });
+    fireEvent.mouseDown(screen.getByRole('combobox'));
+    await settle();
+    fireEvent.click(screen.getByTitle('正常'));
+    for (let step = 0; step < 8; step += 1) {
+      await settle();
+      if (latestPage()[0]?.id === 'sys-01') break;
+    }
+    expect(latestPage()[0].id).toBe('sys-01');
+    await advance(4999);
+    expect(latestPage()[0].id).toBe('sys-01');
+    await advance(1);
+    expect(latestPage()[0].id).toBe('sys-25');
+  });
+
+  it('does not auto-turn in edit mode', async () => {
+    await renderPlaying(manyItems, {}, true);
+    expect(screen.queryByRole('button', { name: /application3DWallNextPage/ })).toBeNull();
+    await advance(5000);
+    expect(latestPage()[0].id).toBe('sys-01');
+    expect(latestPage()).toHaveLength(24);
+  });
+
+  it('stays on the same rest page when a refresh inserts alarm pages ahead of it', async () => {
+    const alarming = {
+      ...wallItem.health,
+      state: 'alarming' as const,
+      activeAlarmCount: 2,
+    };
+    const alarms = (count: number, prefix: string) => Array.from({ length: count }, (_, index) => ({
+      ...wallItem,
+      id: `${prefix}-${index + 1}`,
+      name: `告警${prefix}${index + 1}`,
+      health: alarming,
+    }));
+    const normals = Array.from({ length: 30 }, (_, index) => ({
+      ...wallItem,
+      id: `normal-${index + 1}`,
+      name: `正常${String(index + 1).padStart(2, '0')}`,
+    }));
+    const first = {
+      ...wall,
+      items: [...alarms(10, 'alarm'), ...normals],
+      capacity: { actualCount: 40, supportedCount: null },
+    };
+    mocks.getWall.mockResolvedValue(first);
+    render(
+      <Application3D
+        refreshKey="0"
+        runtimeActive
+        screenRenderContext={context}
+        config={wallConfig({
+          alarmPagesEnabled: true,
+          autoPageEnabled: true,
+          dwellSeconds: 5,
+          pageEffect: 'cut',
+        })}
+      />,
+    );
+    for (let step = 0; step < 8; step += 1) {
+      await settle();
+      if (screen.queryByRole('button', { name: /application3DWallNextPage/ })) break;
+    }
+    fireEvent.click(screen.getByRole('button', { name: /application3DWallNextPage/ }));
+    for (let step = 0; step < 8; step += 1) {
+      await settle();
+      if (latestPage().every((item) => item.health.state === 'normal')) break;
+    }
+    expect(latestPage().every((item) => item.health.state === 'normal')).toBe(true);
+
+    mocks.getWall.mockResolvedValue({
+      ...first,
+      items: [...alarms(30, 'alarm'), ...normals],
+      refreshedAt: '2026-08-26T00:05:00Z',
+      capacity: { actualCount: 60, supportedCount: null },
+    });
+    await advance(4000);
+    fireEvent.click(screen.getByTitle('common.refresh'));
+    for (let step = 0; step < 8; step += 1) {
+      await settle();
+      if (mocks.getWall.mock.calls.length >= 2 && latestPage()[0]?.id === 'normal-1') break;
+    }
+    expect(latestPage()[0]?.id).toBe('normal-1');
+    expect(latestPage()).toHaveLength(24);
+    expect(screen.getByRole('button', { name: /application3DWallPrevPage/ })).toBeTruthy();
+    await advance(1000);
+    expect(latestPage()[0].id).toBe('normal-25');
   });
 });
 

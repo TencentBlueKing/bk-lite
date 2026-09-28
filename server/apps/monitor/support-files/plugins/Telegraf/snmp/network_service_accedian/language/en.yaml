@@ -1,7 +1,6 @@
 NetworkService Accedian SNMP:
   name: Accedian (Telegraf)
-  desc: SNMP monitoring template for Accedian network service device. It reports system
-    uptime, CPU utilization, per-port inbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Accedian network service device. It reports uptime, CPU utilization, temperature, and interface traffic, for SkyLIGHT, MetroNID / Nano / Plus (enterprise PEN 22420)."
 monitor_object:
   NetworkService: NetworkService
 monitor_object_type:
@@ -40,9 +39,10 @@ monitor_object_metric:
         assess sending performance for traffic management and optimization.
     device_cpu_usage:
       name: CPU Usage
-      desc: Overall CPU utilization of the network-service appliance, reported directly
-        as a percentage. Sustained high CPU means the node is near its processing
-        capacity for traffic forwarding and filtering.
+      desc: Overall CPU utilization of the network-service appliance, collected as
+        a scalar GET with instance .0 and reported directly as a percentage. Sustained
+        high CPU means the node is near its processing capacity for traffic forwarding
+        and filtering.
     device_memory_usage:
       name: Memory Usage
       desc: System memory utilization of the network-service appliance, reported directly
@@ -50,8 +50,9 @@ monitor_object_metric:
         on the device.
     device_temperature_celsius:
       name: Temperature
-      desc: Temperature reading of the network-service appliance in degrees Celsius.
-        High values may indicate cooling or ambient-temperature risk.
+      desc: Chassis temperature of the network-service appliance in degrees Celsius,
+        taken as the maximum across sensors. High values may indicate cooling or
+        ambient-temperature risk.
     network_service_dns_service_state:
       name: DNS Service Status
       desc: Operational state of the DNS service, normalized to 1=healthy and 2=fault.

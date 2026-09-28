@@ -39,6 +39,7 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "collector",
     "collect_queues",
     "collect_type",
+    "command",
     "community",
     "config_id",
     "credential_encoding",

@@ -1,8 +1,6 @@
 NetworkService Infoblox SNMP:
   name: NetworkService Infoblox SNMP
-  desc: SNMP monitoring template for Infoblox network service device. It reports CPU usage,
-    memory usage, per-port inbound traffic rate, per-port outbound traffic rate, and system
-    uptime
+  desc: "SNMP monitoring template for Infoblox network service device. It reports uptime, CPU utilization, memory utilization, interface traffic, and swap usage (enterprise PEN 7779)."
 monitor_object:
   NetworkService: NetworkService
 monitor_object_type:
@@ -41,14 +39,19 @@ monitor_object_metric:
         assess sending performance for traffic management and optimization.
     device_cpu_usage:
       name: CPU Usage
-      desc: Overall CPU utilization of the network-service appliance, reported directly
-        as a percentage. Sustained high CPU means the node is near its processing
-        capacity for traffic forwarding and filtering.
+      desc: Overall CPU utilization of the Infoblox appliance (ibSystemMonitorCpuUsage),
+        reported directly as a 0-100 percentage. Sustained high CPU means the node
+        is near its processing capacity for traffic forwarding and filtering.
     device_memory_usage:
       name: Memory Usage
-      desc: System memory utilization of the network-service appliance, reported directly
-        as a percentage. Sustained high memory may indicate map/flow-table pressure
-        on the device.
+      desc: System memory utilization of the Infoblox appliance (ibSystemMonitorMemUsage),
+        reported directly as a 0-100 percentage. Sustained high memory may indicate
+        map/flow-table pressure on the device.
+    device_swap_usage:
+      name: Swap Usage
+      desc: Swap-space utilization of the Infoblox appliance (ibSystemMonitorSwapUsage),
+        reported directly as a 0-100 percentage. Sustained swap usage indicates memory
+        exhaustion and degrades service performance.
     device_temperature_celsius:
       name: Temperature
       desc: Temperature reading of the network-service appliance in degrees Celsius.

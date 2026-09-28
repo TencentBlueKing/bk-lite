@@ -1,10 +1,6 @@
 Firewall Juniper SNMP:
   name: Juniper SRX (Telegraf)
-  desc: SNMP monitoring template for Juniper SRX firewalls. It reports per-SPU CPU,
-    memory, current flow sessions, and session capacity, optionally tagged by SPU
-    node description. Interface traffic uses the built-in IF-MIB catalog; this plugin
-    does not declare ifHC*. Distinct from Switch Juniper SNMP (snmp_juniper) and
-    Router Juniper MX SNMP (snmp_juniper_mx).
+  desc: "SNMP monitoring template for Juniper SRX firewalls. It reports uptime, CPU utilization, memory utilization, sessions/connections, and interface traffic (enterprise PEN 2636)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:

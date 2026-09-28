@@ -1,7 +1,6 @@
 Firewall SonicWall SNMP:
   name: SonicWall (Telegraf)
-  desc: SNMP monitoring template for SonicWall firewall. It reports system uptime,
-    CPU utilization, memory utilization, and other key metrics
+  desc: "SNMP monitoring template for SonicWall firewall. It reports uptime, CPU utilization, memory utilization, temperature, fan, sessions/connections, max sessions, interface traffic, and NAT translations (enterprise PEN 8741)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:
@@ -29,6 +28,27 @@ monitor_object_metric:
       name: Power Supply Status
       desc: Operational state of each power supply unit (enum). A non-normal state
         indicates a power redundancy or hardware fault and should be remediated promptly.
+    device_fan_speed:
+      name: Fan Speed
+      desc: Fan reading selected from the SonicWall hardware sensor table
+        (sonicwallSensorsTable) by Device name or Unit (RPM). The value is the
+        vendor-reported reading, not a normalized health enum.
+    device_sensor_value:
+      name: Hardware Sensor Value
+      desc: Raw reading from the SonicWall hardware sensor table
+        (sonicwallSensorsTable), dimensioned by Device name and Unit.
+        Temperature, fan, and power rows are identified by Name/Unit rather
+        than invented status enumerations.
+    device_cpu_usage_management:
+      name: Management CPU Usage
+      desc: Management-plane CPU utilization of the SonicWall firewall
+        (SONICWALL-FIREWALL-IP-STATISTICS-MIB sonicCurrentManagementCPUUtil)
+        as a 0-100 percentage.
+    device_cpu_usage_fwd_inspect:
+      name: Forward and Inspect CPU Usage
+      desc: Forwarding and inspection CPU utilization of the SonicWall firewall
+        (SONICWALL-FIREWALL-IP-STATISTICS-MIB sonicCurrentFwdAndInspectCPUUtil)
+        as a 0-100 percentage.
     firewall_pf_states:
       name: PF State Table Entries
       desc: This metric reports the current number of entries in the pfSense firewall

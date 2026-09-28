@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "properties": {
+    "results": {
+      "type": "array", "title": "目标执行结果", "items": {
+        "type": "object",
+        "properties": {
+          "target": {"type": "object", "title": "目标"},
+          "status": {"type": "string", "enum": ["SUCCESS", "FAILED"], "title": "状态"},
+          "exit_code": {"type": "integer", "title": "退出码"},
+          "stdout": {"type": "string", "title": "标准输出"},
+          "stderr": {"type": "string", "title": "错误输出"},
+          "data": {"title": "业务 JSON"},
+          "error": {"type": ["string", "null"], "title": "错误"}
+        },
+        "required": ["target", "status", "exit_code", "stdout", "stderr", "data", "error"]
+      }
+    },
+    "summary": {
+      "type": "object", "title": "执行汇总",
+      "properties": {
+        "total": {"type": "integer"}, "succeeded": {"type": "integer"}, "failed": {"type": "integer"}
+      },
+      "required": ["total", "succeeded", "failed"]
+    },
+    "job_task_ids": {"type": "array", "title": "作业实例", "items": {"type": "integer"}}
+  },
+  "required": ["results", "summary", "job_task_ids"]
+}

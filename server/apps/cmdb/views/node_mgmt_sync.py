@@ -137,6 +137,7 @@ class NodeMgmtSyncViewSet(AuthViewSet):
             count = cls._safe_count(bucket.get("count")) if isinstance(bucket, dict) else 0
             result[name] = {"data": [], "count": count}
         result["todo"] = []
+        result["collect_diagnoses"] = NodeMgmtSyncService._normalize_collect_diagnoses(source.get("collect_diagnoses"))
         return result
 
     @classmethod

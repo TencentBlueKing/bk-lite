@@ -1,7 +1,6 @@
 Switch Alcatel OmniSwitch SNMP:
   name: Alcatel OmniSwitch (Telegraf)
-  desc: SNMP monitoring template for Alcatel OmniSwitch switch. It reports CPU utilization,
-    memory utilization, per-port inbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Alcatel OmniSwitch switch. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 6486)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -114,17 +113,16 @@ monitor_object_metric:
         more effective traffic management and optimization.
     device_cpu_usage:
       name: CPU Utilization
-      desc: This metric reports the CPU utilization of the device control plane (typically
-        the 5-minute average), as a percentage. Sustained high CPU usage can indicate
-        control-plane overload, routing instability, or attack traffic, and may lead
-        to slow management response or packet processing delays. Sourced from vendor-specific
-        SNMP OIDs and normalized to a 0-100 percentage.
+      desc: OmniSwitch AOS6 device-level CPU utilization from ALCATEL-IND1-HEALTH-MIB
+        healthDeviceCpuLatest (INTEGER 0..100, latest sample period). Sustained high
+        CPU usage can indicate control-plane overload, routing instability, or attack
+        traffic, and may lead to slow management response or packet processing delays.
     device_memory_usage:
       name: Memory Utilization
-      desc: This metric reports overall memory utilization of the device, computed
-        as used / (used + free) * 100 across all memory pools. High memory usage may
-        indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity,
-        and can cause instability or failed allocations.
+      desc: OmniSwitch AOS6 device-level memory utilization from ALCATEL-IND1-HEALTH-MIB
+        healthDeviceMemoryLatest, already a percent (INTEGER 0..100). High memory usage
+        may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient
+        capacity, and can cause instability or failed allocations.
     device_memory_used:
       name: Memory Used
       desc: This metric reports the number of bytes currently in use for each memory

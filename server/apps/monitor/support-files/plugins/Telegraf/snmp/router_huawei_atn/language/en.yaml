@@ -1,8 +1,6 @@
 Router Huawei ATN SNMP:
   name: Huawei ATN (Telegraf)
-  desc: SNMP monitoring template for Huawei ATN aggregation routers, including ATN 910/950/980
-    and ATN 905-L. It reports entity CPU, memory and temperature first, plus fan, optics, power,
-    and interface traffic.
+  desc: "SNMP monitoring template for Huawei ATN series routers. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, optical modules, interface traffic, voltage, and power (enterprise PEN 2011)."
 monitor_object:
   Router: Router
 monitor_object_type:

@@ -1,7 +1,6 @@
 Router Bintec SNMP:
   name: Bintec (Telegraf)
-  desc: SNMP monitoring template for Bintec router. It reports CPU utilization, per-port
-    inbound traffic rate, per-port outbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Bintec router. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 272)."
 monitor_object:
   Router: Router
 monitor_object_type:
@@ -22,29 +21,29 @@ monitor_object_metric:
         indicates a power redundancy or hardware fault and should be remediated promptly.
     device_memory_total:
       name: Total Memory
-      desc: This metric reports the total physical memory capacity of the router (UCD-SNMP-MIB
-        memTotalReal, reported in KB and converted to bytes).
+      desc: This metric reports the total DRAM capacity of the Bintec router in bytes
+        (resource memoryTable memoryTotal, memoryType=dram).
     device_memory_free:
       name: Free Memory
-      desc: This metric reports the amount of free physical memory in bytes on the
-        router (UCD-SNMP-MIB memAvailReal, reported in KB and converted to bytes).
-        Persistently low free memory can indicate rising memory pressure.
+      desc: This metric reports free DRAM on the Bintec router in bytes, derived as
+        memoryTotal minus memoryInuse for memoryType=dram. Persistently low free memory
+        can indicate rising memory pressure.
     device_memory_used:
       name: Used Memory
-      desc: This metric reports the amount of used physical memory in bytes on the
-        router, derived as total memory minus free memory. It helps gauge absolute
-        memory consumption and pressure.
+      desc: This metric reports DRAM in use on the Bintec router in bytes (resource
+        memoryTable memoryInuse, memoryType=dram). It helps gauge absolute memory
+        consumption and pressure.
     device_cpu_usage:
       name: CPU Usage
-      desc: This metric reports the average CPU utilization across the operating entities
-        of the Juniper MX router (JUNIPER-MIB jnxOperatingCPU, aggregated per instance_id).
-        Sustained high usage indicates heavy forwarding or control-plane load.
+      desc: This metric reports CPU utilization of the Bintec router as a percentage,
+        derived as 100 minus cpuTable cpuLoadIdle60s (idle percent over the last 60
+        seconds, aggregated per instance_id). Sustained high usage indicates heavy
+        forwarding, VPN crypto, or control-plane load.
     device_memory_usage:
       name: Memory Usage
-      desc: This metric reports the average memory utilization across the operating
-        entities of the Juniper MX router (JUNIPER-MIB jnxOperatingBuffer, reported
-        directly as a percentage). Sustained high usage may be caused by oversized
-        routing tables or memory leaks.
+      desc: This metric reports DRAM utilization of the Bintec router as a percentage,
+        derived as used/total (memoryInuse divided by memoryTotal for memoryType=dram).
+        Sustained high usage may be caused by session tables, VPN state, or memory leaks.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate (HC)
       desc: This metric indicates the average rate of bytes received over the past

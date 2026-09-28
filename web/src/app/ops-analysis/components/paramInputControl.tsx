@@ -4,7 +4,10 @@ import React, { useEffect, useRef } from 'react';
 import { Radio, Select, Spin } from 'antd';
 import type { InputControlConfig, InputOption } from '@/app/ops-analysis/types/dataSource';
 import { useParamInputOptions } from '@/app/ops-analysis/hooks/useParamInputOptions';
-import { createParamInputOptionsNotifier } from '@/app/ops-analysis/utils/paramInputOptionsLoader';
+import {
+  createParamInputOptionsNotifier,
+  getParamInputConfigKey,
+} from '@/app/ops-analysis/utils/paramInputOptionsLoader';
 import { normalizeParamInputChangeValue } from '@/app/ops-analysis/components/normalizeParamInputChangeValue';
 import ParamInputTableSelect from '@/app/ops-analysis/components/paramInputTableSelect';
 import { toSingleOrganizationValue } from '@/app/ops-analysis/utils/paramInputConfigUtils';
@@ -49,14 +52,24 @@ export const ParamInputControl: React.FC<ParamInputControlProps> = ({
   };
 
   useEffect(() => {
-    if (state.status !== 'success' || !onOptionsResolvedRef.current) return;
-    if (!state.resultKey) return;
-    notifierRef.current.notify(
-      state.resultKey,
-      state.options,
-      onOptionsResolvedRef.current,
-    );
-  }, [state]);
+    if (!onOptionsResolvedRef.current) return;
+    if (state.status === 'success' && state.resultKey) {
+      notifierRef.current.notify(
+        state.resultKey,
+        state.options,
+        onOptionsResolvedRef.current,
+      );
+      return;
+    }
+    // 数据源明确返回空列表时也要通知，否则导入来的 ID 会一直挂在控件上。
+    if (state.status === 'error' && !state.errorMessage) {
+      notifierRef.current.notify(
+        `empty:${getParamInputConfigKey(inputConfig)}`,
+        [],
+        onOptionsResolvedRef.current,
+      );
+    }
+  }, [inputConfig, state]);
 
   if (!inputConfig || inputConfig.control === 'input') return <>{renderFallback()}</>;
 

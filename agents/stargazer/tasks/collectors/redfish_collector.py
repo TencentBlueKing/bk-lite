@@ -2,13 +2,15 @@
 
 Follows Systems / Managers / Chassis Thermal+Power, then bounded Storage,
 Storage.Drives, and Chassis NetworkAdapters. Does not crawl Sensors, logs,
-DIMMs, or EthernetInterfaces.
+or DIMMs. EthernetInterfaces and Chassis/Drives are fallback-only when the
+standard Storage.Drives or NetworkAdapters walk returns nothing.
 """
 
 from __future__ import annotations
 
 import ipaddress
 import json
+import ssl
 import time
 from typing import Any
 from urllib.parse import urlparse, urlsplit
@@ -39,6 +41,8 @@ MAX_DRIVES = 32
 MAX_NETWORK_ADAPTERS = 8
 MAX_NETWORK_PORTS = 16
 PSU_DELIVERING_MIN_WATTS = 20.0
+# 部分 BMC（如 H3C HDM）仅提供 TLS_RSA_WITH_AES_256_GCM_SHA384；OpenSSL 3 默认 SECLEVEL 不含该套件。
+_TLS_CIPHERS = ("DEFAULT:@SECLEVEL=0", "DEFAULT:@SECLEVEL=1", "DEFAULT")
 
 
 def now_ms() -> int:
@@ -76,15 +80,20 @@ def member_name(*candidates: Any) -> str:
     return ""
 
 
+def _normalize_health_token(raw: Any) -> str:
+    text = str(raw).strip().lower()
+    return text.rstrip("!.,;:")
+
+
 def health_code(status: Any, *, prefer_rollup: bool = False) -> int | None:
     if not isinstance(status, dict):
         return None
-    raw = status.get("HealthRollup") if prefer_rollup else None
-    if raw in (None, ""):
-        raw = status.get("Health")
+    primary = status.get("HealthRollup") if prefer_rollup else status.get("Health")
+    fallback = status.get("Health") if prefer_rollup else status.get("HealthRollup")
+    raw = primary if primary not in (None, "") else fallback
     if raw in (None, ""):
         return None
-    return HEALTH_CODES.get(str(raw).strip().lower(), 0)
+    return HEALTH_CODES.get(_normalize_health_token(raw), 0)
 
 
 def power_state_code(value: Any) -> int | None:
@@ -112,6 +121,23 @@ def as_bool(value: Any, default: bool = True) -> bool:
     if isinstance(value, bool):
         return value
     return str(value).strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _tls_verify(verify_tls: bool):
+    """构造 httpx verify：保留校验证书开关，只放宽套件以完成握手。"""
+    if verify_tls:
+        ctx = ssl.create_default_context()
+    else:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    for cipher in _TLS_CIPHERS:
+        try:
+            ctx.set_ciphers(cipher)
+            break
+        except ssl.SSLError:
+            continue
+    return ctx
 
 
 def odata_id(node: Any) -> str:
@@ -165,9 +191,9 @@ def port_speed_mbps(port: dict[str, Any]) -> float | None:
     if mbps is not None:
         return mbps
     gbps = as_float(port.get("CurrentSpeedGbps"))
-    if gbps is None:
-        return None
-    return gbps * 1000.0
+    if gbps is not None:
+        return gbps * 1000.0
+    return as_float(port.get("SpeedMbps"))
 
 
 class RedfishMonitorError(ValueError):
@@ -217,10 +243,10 @@ class RedfishCollector(BaseCollector):
             timeout=httpx.Timeout(self.timeout, connect=min(5.0, self.timeout)),
             transport=self._transport,
             trust_env=False,
-            verify=self.verify_tls,
+            verify=_tls_verify(self.verify_tls),
         )
 
-    def _resource_url(self, resource_link: Any) -> str:
+    def _resource_url(self, resource_link: Any, *, allowed_parts: tuple[str, ...] = ()) -> str:
         raw_link = odata_id(resource_link)
         parsed = urlsplit(raw_link)
         path = parsed.path or ""
@@ -228,12 +254,14 @@ class RedfishCollector(BaseCollector):
         decoded = path.split("/")
         is_service_path = path == "/redfish/v1" or path.startswith("/redfish/v1/")
         is_absolute = bool(parsed.scheme or parsed.netloc)
+        extra_allowed = {str(part).lower() for part in allowed_parts}
+        forbidden = tuple(part for part in FORBIDDEN_URI_PARTS if part not in extra_allowed)
         if (
             not is_service_path
             or ".." in decoded
             or parsed.fragment
             or (is_absolute and not self._is_same_origin(parsed))
-            or any(part in lower for part in FORBIDDEN_URI_PARTS)
+            or any(part in lower for part in forbidden)
         ):
             raise RedfishMonitorError("Redfish resource link is not allowed")
         query = f"?{parsed.query}" if parsed.query else ""
@@ -250,8 +278,15 @@ class RedfishCollector(BaseCollector):
         except (ValueError, TypeError):
             return str(parsed.hostname or "").lower() == str(self.host).lower()
 
-    async def _get_json(self, client: httpx.AsyncClient, resource_link: Any, *, optional: bool = False) -> dict[str, Any] | None:
-        url = self._resource_url(resource_link)
+    async def _get_json(
+        self,
+        client: httpx.AsyncClient,
+        resource_link: Any,
+        *,
+        optional: bool = False,
+        allowed_parts: tuple[str, ...] = (),
+    ) -> dict[str, Any] | None:
+        url = self._resource_url(resource_link, allowed_parts=allowed_parts)
         async with client.stream("GET", url) as response:
             if response.status_code in {401, 403}:
                 raise RedfishMonitorError("Redfish authentication failed")
@@ -314,26 +349,49 @@ class RedfishCollector(BaseCollector):
             return None
         return await self._get_json(client, members[0], optional=True)
 
-    async def _list_resources(self, client: httpx.AsyncClient, link: Any, *, limit: int) -> list[dict[str, Any]]:
+    async def _list_resources(
+        self,
+        client: httpx.AsyncClient,
+        link: Any,
+        *,
+        limit: int,
+        allowed_parts: tuple[str, ...] = (),
+    ) -> list[dict[str, Any]]:
         if not link or limit <= 0:
             return []
-        collection = await self._get_json(client, link, optional=True)
+        collection = await self._get_json(
+            client,
+            link,
+            optional=True,
+            allowed_parts=allowed_parts,
+        )
         payloads: list[dict[str, Any]] = []
         for member in member_ids(collection)[:limit]:
-            payload = await self._get_json(client, member, optional=True)
+            payload = await self._get_json(
+                client,
+                member,
+                optional=True,
+                allowed_parts=allowed_parts,
+            )
             if isinstance(payload, dict):
                 payloads.append(payload)
         return payloads
 
-    async def _chassis_thermal_power(self, client: httpx.AsyncClient, chassis_link: Any) -> tuple[dict | None, dict | None, str]:
+    async def _chassis_thermal_power(
+        self, client: httpx.AsyncClient, chassis_link: Any
+    ) -> tuple[dict | None, dict | None, str, list[dict[str, Any]]]:
         collection = await self._get_json(client, chassis_link, optional=True)
         thermal = None
         power = None
         network_link = ""
+        chassis_payloads: list[dict[str, Any]] = []
         for member in member_ids(collection):
             chassis = await self._get_json(client, member, optional=True)
             if not isinstance(chassis, dict):
                 continue
+            if not odata_id(chassis):
+                chassis = {**chassis, "@odata.id": member}
+            chassis_payloads.append(chassis)
             if thermal is None:
                 thermal_link = odata_id(chassis.get("Thermal")) or f"{urlsplit(self._resource_url(member)).path.rstrip('/')}/Thermal"
                 thermal = await self._get_json(client, thermal_link, optional=True)
@@ -344,7 +402,7 @@ class RedfishCollector(BaseCollector):
                 power = await self._get_json(client, power_link, optional=True)
             if thermal is not None and power is not None:
                 break
-        return thermal, power, network_link
+        return thermal, power, network_link, chassis_payloads
 
     async def _adapter_ports(self, client: httpx.AsyncClient, adapter: dict[str, Any], remaining: int) -> list[dict[str, Any]]:
         if remaining <= 0:
@@ -382,6 +440,116 @@ class RedfishCollector(BaseCollector):
                 if isinstance(payload, dict):
                     drives.append(payload)
         return drives
+
+    async def _list_chassis_drives(
+        self,
+        client: httpx.AsyncClient,
+        chassis_list: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Fallback: Chassis.Drives / Links.Drives / {chassis}/Drives collection."""
+        drives: list[dict[str, Any]] = []
+        for chassis in chassis_list:
+            if len(drives) >= MAX_DRIVES:
+                break
+            remaining = MAX_DRIVES - len(drives)
+            drives_node = chassis.get("Drives")
+            if isinstance(drives_node, dict) and odata_id(drives_node):
+                drives.extend(
+                    await self._list_resources(
+                        client,
+                        odata_id(drives_node),
+                        limit=remaining,
+                    )
+                )
+                continue
+            drive_refs: list[Any] = []
+            if isinstance(drives_node, list):
+                drive_refs.extend(drives_node)
+            links = chassis.get("Links") if isinstance(chassis.get("Links"), dict) else {}
+            drive_refs.extend(links.get("Drives") or [])
+            if drive_refs:
+                for item in drive_refs[:remaining]:
+                    link = odata_id(item)
+                    if not link:
+                        continue
+                    payload = await self._get_json(client, link, optional=True)
+                    if isinstance(payload, dict):
+                        drives.append(payload)
+                continue
+            chassis_id = odata_id(chassis)
+            if not chassis_id:
+                continue
+            drives.extend(
+                await self._list_resources(
+                    client,
+                    f"{chassis_id.rstrip('/')}/Drives",
+                    limit=remaining,
+                )
+            )
+        return drives
+
+    async def _resolve_drives(
+        self,
+        client: httpx.AsyncClient,
+        storages: list[dict[str, Any]],
+        chassis_list: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        drives = await self._list_drives(client, storages)
+        if drives:
+            return drives
+        return await self._list_chassis_drives(client, chassis_list)
+
+    async def _resolve_nics(
+        self,
+        client: httpx.AsyncClient,
+        network_link: str,
+        system: dict[str, Any],
+    ) -> list[tuple[dict[str, Any], list[dict[str, Any]]]]:
+        adapters = await self._list_resources(
+            client,
+            network_link,
+            limit=MAX_NETWORK_ADAPTERS,
+        )
+        if adapters:
+            nic_rows: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
+            remaining_ports = MAX_NETWORK_PORTS
+            for adapter in adapters:
+                ports = await self._adapter_ports(client, adapter, remaining_ports)
+                remaining_ports -= len(ports)
+                nic_rows.append((adapter, ports))
+            if self._nic_rows_usable(nic_rows):
+                return nic_rows
+        return await self._ethernet_interface_fallback(client, system)
+
+    @staticmethod
+    def _nic_rows_usable(nic_rows: list[tuple[dict[str, Any], list[dict[str, Any]]]]) -> bool:
+        for adapter, ports in nic_rows:
+            if health_code(adapter.get("Status")) is not None:
+                return True
+            if ports:
+                return True
+        return False
+
+    async def _ethernet_interface_fallback(
+        self,
+        client: httpx.AsyncClient,
+        system: dict[str, Any],
+    ) -> list[tuple[dict[str, Any], list[dict[str, Any]]]]:
+        link = odata_id(system.get("EthernetInterfaces"))
+        if not link:
+            return []
+        ifaces = await self._list_resources(
+            client,
+            link,
+            limit=MAX_NETWORK_PORTS,
+            allowed_parts=("/ethernetinterfaces",),
+        )
+        rows: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
+        for iface in ifaces:
+            if not member_name(iface.get("Id"), iface.get("Name")):
+                continue
+            rows.append((iface, [iface]))
+        return rows
 
     def _emit_system_metrics(self, current: dict[str, Any], system: dict[str, Any], manager: dict[str, Any] | None) -> None:
         put_metric(current, "redfish_system_health", health_code(system.get("Status")))
@@ -474,12 +642,14 @@ class RedfishCollector(BaseCollector):
                 continue
             dims = [("name", name)]
             input_watts = as_float(supply.get("PowerInputWatts"))
-            is_delivering = 1 if input_watts is not None and input_watts > PSU_DELIVERING_MIN_WATTS else 0
+            output_watts = as_float(supply.get("PowerOutputWatts"))
+            delivering_watts = input_watts if input_watts is not None else output_watts
+            is_delivering = 1 if delivering_watts is not None and delivering_watts > PSU_DELIVERING_MIN_WATTS else 0
             psu_count += 1
             delivering += is_delivering
             put_metric(current, "redfish_psu_health", health_code(supply.get("Status")), dims)
             put_metric(current, "redfish_psu_input_watts", input_watts, dims)
-            put_metric(current, "redfish_psu_output_watts", as_float(supply.get("PowerOutputWatts")), dims)
+            put_metric(current, "redfish_psu_output_watts", output_watts, dims)
             put_metric(current, "redfish_psu_capacity_watts", as_float(supply.get("PowerCapacityWatts")), dims)
             put_metric(current, "redfish_psu_input_voltage", as_float(supply.get("LineInputVoltage")), dims)
             put_metric(current, "redfish_psu_delivering", is_delivering, dims)
@@ -592,16 +762,17 @@ class RedfishCollector(BaseCollector):
             if not isinstance(system, dict):
                 raise RedfishMonitorError("Redfish Systems collection is empty")
             manager = await self._follow_collection(client, odata_id(root.get("Managers")) or "/redfish/v1/Managers")
-            thermal, power, network_link = await self._chassis_thermal_power(client, odata_id(root.get("Chassis")) or "/redfish/v1/Chassis")
-            storages = await self._list_resources(client, odata_id(system.get("Storage")), limit=MAX_STORAGE_RESOURCES)
-            drives = await self._list_drives(client, storages)
-            adapters = await self._list_resources(client, network_link, limit=MAX_NETWORK_ADAPTERS)
-            nic_rows: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
-            remaining_ports = MAX_NETWORK_PORTS
-            for adapter in adapters:
-                ports = await self._adapter_ports(client, adapter, remaining_ports)
-                remaining_ports -= len(ports)
-                nic_rows.append((adapter, ports))
+            thermal, power, network_link, chassis_list = await self._chassis_thermal_power(
+                client, odata_id(root.get("Chassis")) or "/redfish/v1/Chassis"
+            )
+            storage_link = odata_id(system.get("Storage")) or odata_id(system.get("Storages"))
+            storages = await self._list_resources(client, storage_link, limit=MAX_STORAGE_RESOURCES)
+            if not storages:
+                alt = odata_id(system.get("Storages"))
+                if alt and alt != storage_link:
+                    storages = await self._list_resources(client, alt, limit=MAX_STORAGE_RESOURCES)
+            drives = await self._resolve_drives(client, storages, chassis_list)
+            nic_rows = await self._resolve_nics(client, network_link, system)
             metric_dict = self._emit_metrics(system, manager, thermal, power, storages, nic_rows, drives)
             output = "\n".join(convert_to_prometheus(metric_dict)) + "\n"
             logger.info(

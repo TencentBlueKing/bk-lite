@@ -1,6 +1,6 @@
 Switch Allied Telesis SNMP:
   name: Allied Telesis（Telegraf）
-  desc: 面向 Allied Telesis 交换机的 SNMP 监控模板,可采集 运行时长、CPU 使用率、接口速率等主要指标。
+  desc: 面向 Allied Telesis 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、风扇、电源状态、接口流量，适用于 AlliedWare Plus（企业号 PEN 207）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:
@@ -72,7 +72,7 @@ monitor_object_metric:
         SNMP OID，并归一化为 0-100 的百分比。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标表示设备整体内存使用率，按 已用/(已用+空闲)*100 在所有内存池上汇总计算，单位为百分比。内存偏高可能由内存泄漏、路由/MAC/ARP
+      desc: 该指标表示设备整体内存使用率，由 AT-SYSINFO-MIB freeMemory（空闲内存百分比）按 100 减去空闲百分比得到，单位为百分比。内存偏高可能由内存泄漏、路由/MAC/ARP
         表项过大或容量不足导致，可能引发不稳定或分配失败。
     device_memory_used:
       name: 内存已用量

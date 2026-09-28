@@ -1,8 +1,6 @@
 Switch Juniper SNMP:
   name: Juniper (Telegraf)
-  desc: SNMP monitoring template for Juniper switches. Device health comes
-    from JUNIPER-MIB jnxOperating; optical DDM comes from JUNIPER-DOM-MIB;
-    interface traffic uses the built-in IF-MIB floor.
+  desc: "SNMP monitoring template for Juniper switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, optical modules, interface traffic, and voltage (enterprise PEN 2636)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

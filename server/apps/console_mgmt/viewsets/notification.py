@@ -9,6 +9,7 @@ from rest_framework.response import Response
 
 from apps.console_mgmt.models import Notification, NotificationRead
 from apps.console_mgmt.serializers import MarkBatchAsReadSerializer, NotificationSerializer
+from apps.core.utils.viewset_utils import build_json_membership_query
 
 MARK_ALL_READ_BATCH_SIZE = int(os.getenv("MARK_ALL_READ_BATCH_SIZE", 2000))
 
@@ -19,6 +20,15 @@ class NotificationViewSet(viewsets.ModelViewSet):
     serializer_class = NotificationSerializer
     queryset = Notification.objects.all()
     http_method_names = ["get", "post", "delete"]
+
+    def _visible_notifications(self, queryset=None):
+        """空接收人列表表示全员通知；定向通知只对当前用户可见。"""
+        queryset = queryset if queryset is not None else Notification.objects.all()
+        username = getattr(self.request.user, "username", "")
+        audience_query = Q(recipient_usernames=[])
+        if username:
+            audience_query |= build_json_membership_query(queryset, "recipient_usernames", [username])
+        return queryset.filter(audience_query)
 
     def _annotate_user_read(self, queryset):
         """为 queryset 标注当前用户的已读状态"""
@@ -40,7 +50,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
             user=user,
             is_deleted=True,
         )
-        queryset = Notification.objects.exclude(Exists(deleted))
+        queryset = self._visible_notifications().exclude(Exists(deleted))
 
         # 按模块过滤
         app_module = self.request.query_params.get("app_module")
@@ -108,14 +118,18 @@ class NotificationViewSet(viewsets.ModelViewSet):
 
         # 步骤 1：更新已有的 is_read=False 记录（纯 DB UPDATE，不拉数据到内存）
         # 排除 is_deleted=True 的行：软删除通知不应被 mark_all 触碰
+        visible_notifications = self._visible_notifications()
         updated_count = NotificationRead.objects.filter(
-            user=user, is_read=False, is_deleted=False,
+            user=user,
+            notification_id__in=visible_notifications.values("id"),
+            is_read=False,
+            is_deleted=False,
         ).update(is_read=True, read_at=now)
 
         # 步骤 2：找出完全没有 NotificationRead 行的通知，批量插入
         # 用子查询：exclude 掉已有任意 NotificationRead 的通知
         existing_notification_ids = NotificationRead.objects.filter(user=user).values("notification_id")
-        new_notifications = Notification.objects.exclude(id__in=existing_notification_ids)
+        new_notifications = visible_notifications.exclude(id__in=existing_notification_ids)
 
         # 分批插入，避免单次 INSERT 过大
         created_count = 0
@@ -146,31 +160,25 @@ class NotificationViewSet(viewsets.ModelViewSet):
         ids = list(dict.fromkeys(serializer.validated_data["ids"]))
         user = request.user
         now = timezone.now()
-        valid_ids = set(Notification.objects.filter(id__in=ids).values_list("id", flat=True))
+        valid_ids = set(self._visible_notifications(Notification.objects.filter(id__in=ids)).values_list("id", flat=True))
         skipped_ids = [nid for nid in ids if nid not in valid_ids]
         if not valid_ids:
-            return JsonResponse(
-                {"result": True, "message": "已标记 0 条通知为已读", "data": {"skipped_ids": skipped_ids}}
-            )
+            return JsonResponse({"result": True, "message": "已标记 0 条通知为已读", "data": {"skipped_ids": skipped_ids}})
 
-        existing = set(
-            NotificationRead.objects.filter(user=user, notification_id__in=valid_ids)
-            .values_list("notification_id", flat=True)
-        )
+        existing = set(NotificationRead.objects.filter(user=user, notification_id__in=valid_ids).values_list("notification_id", flat=True))
         if existing:
             NotificationRead.objects.filter(
-                user=user, notification_id__in=existing, is_read=False,
+                user=user,
+                notification_id__in=existing,
+                is_read=False,
             ).update(is_read=True, read_at=now)
         new_ids = valid_ids - existing
         if new_ids:
-            NotificationRead.objects.bulk_create([
-                NotificationRead(notification_id=nid, user=user, is_read=True, read_at=now)
-                for nid in new_ids
-            ], ignore_conflicts=True)
+            NotificationRead.objects.bulk_create(
+                [NotificationRead(notification_id=nid, user=user, is_read=True, read_at=now) for nid in new_ids], ignore_conflicts=True
+            )
 
-        return JsonResponse(
-            {"result": True, "message": f"已标记 {len(valid_ids)} 条通知为已读", "data": {"skipped_ids": skipped_ids}}
-        )
+        return JsonResponse({"result": True, "message": f"已标记 {len(valid_ids)} 条通知为已读", "data": {"skipped_ids": skipped_ids}})
 
     @action(methods=["get"], detail=False)
     def unread_count(self, request):
@@ -179,8 +187,6 @@ class NotificationViewSet(viewsets.ModelViewSet):
         deleted_or_read = NotificationRead.objects.filter(
             notification=OuterRef("pk"),
             user=user,
-        ).filter(
-            Q(is_deleted=True) | Q(is_read=True)
-        )
-        count = Notification.objects.exclude(Exists(deleted_or_read)).count()
+        ).filter(Q(is_deleted=True) | Q(is_read=True))
+        count = self._visible_notifications().exclude(Exists(deleted_or_read)).count()
         return JsonResponse({"result": True, "data": {"count": count}})

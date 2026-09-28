@@ -13,6 +13,7 @@ from django.utils import timezone
 
 from apps.patch_mgmt.config import DISPATCH_TIMEOUT, get_stage_timeout
 from apps.patch_mgmt.constants import GovernanceTaskStatus, GovernanceTaskType
+from apps.patch_mgmt.utils.i18n import patch_message
 
 
 @dataclass(frozen=True)
@@ -57,10 +58,20 @@ def project_host_state(host, *, now=None) -> ProjectedHostState:
             host.can_retry,
         )
     if host.stage == "waiting":
-        reason = "主机任务超过 5 分钟未被执行器领取"
+        reason = patch_message(
+            None,
+            "error.dispatch_timeout",
+            "The host task was not claimed by an executor within 5 minutes",
+        )
         return ProjectedHostState("failed", "error", "dispatch_timeout", "dispatch", reason, reason, True)
     if host.task.task_type in (GovernanceTaskType.ASSESS, GovernanceTaskType.VERIFY):
-        reason = f"{host.task.get_task_type_display()}阶段超过时限"
+        task_type_label = patch_message(None, f"status.task_type.{host.task.task_type}", host.task.get_task_type_display())
+        reason = patch_message(
+            None,
+            "error.stage_timeout",
+            "{task_type} stage exceeded the time limit",
+            task_type=task_type_label,
+        )
         return ProjectedHostState(
             "failed",
             "error",

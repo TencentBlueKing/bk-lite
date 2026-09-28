@@ -1,7 +1,6 @@
 Firewall Check Point SNMP:
   name: Check Point (Telegraf)
-  desc: SNMP monitoring template for Check Point firewall. It reports system uptime,
-    CPU utilization, memory utilization, and other key metrics
+  desc: "SNMP monitoring template for Check Point firewall. It reports uptime, CPU utilization, memory utilization, and interface traffic, for Check Point Security Gateways (enterprise PEN 2620)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:

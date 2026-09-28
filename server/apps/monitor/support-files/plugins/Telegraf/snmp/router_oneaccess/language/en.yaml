@@ -1,7 +1,6 @@
 Router OneAccess SNMP:
   name: OneAccess (Telegraf)
-  desc: SNMP monitoring template for OneAccess router. It reports CPU utilization,
-    per-port inbound traffic rate, per-port outbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for OneAccess router. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 13191)."
 monitor_object:
   Router: Router
 monitor_object_type:
@@ -22,13 +21,18 @@ monitor_object_metric:
         indicates a power redundancy or hardware fault and should be remediated promptly.
     device_memory_total:
       name: Total Memory
-      desc: This metric reports the total physical memory capacity of the router (UCD-SNMP-MIB
-        memTotalReal, reported in KB and converted to bytes).
+      desc: This metric reports the total system memory of the OneAccess router in
+        bytes (ONEACCESS-SYS-MIB oacSysMemoryTotal).
     device_memory_free:
       name: Free Memory
-      desc: This metric reports the amount of free physical memory in bytes on the
-        router (UCD-SNMP-MIB memAvailReal, reported in KB and converted to bytes).
-        Persistently low free memory can indicate rising memory pressure.
+      desc: This metric reports the amount of free system memory in bytes on the OneAccess
+        router (ONEACCESS-SYS-MIB oacSysMemoryFree). Persistently low free memory can
+        indicate rising memory pressure.
+    device_memory_allocated:
+      name: Allocated Memory
+      desc: This metric reports the amount of allocated system memory in bytes on
+        the OneAccess router (ONEACCESS-SYS-MIB oacSysMemoryAllocated). It helps gauge
+        absolute memory consumption and pressure.
     device_memory_used:
       name: Used Memory
       desc: This metric reports the amount of used physical memory in bytes on the
@@ -36,15 +40,22 @@ monitor_object_metric:
         memory consumption and pressure.
     device_cpu_usage:
       name: CPU Usage
-      desc: This metric reports the average CPU utilization across the operating entities
-        of the Juniper MX router (JUNIPER-MIB jnxOperatingCPU, aggregated per instance_id).
-        Sustained high usage indicates heavy forwarding or control-plane load.
+      desc: This metric reports overall CPU utilization of the OneAccess router
+        (ONEACCESS-SYS-MIB oacSysCpuUsed) as a 0-100 percentage. Sustained high usage
+        indicates heavy forwarding or control-plane load.
+    device_cpu_core_usage:
+      name: Per-Core CPU Usage
+      desc: Current per-core CPU utilization of the OneAccess router (ONEACCESS-SYS-MIB
+        oacSysCpuUsedValue, 0-100 percent). Core 0 is equivalent to oacSysCpuUsed.
+    device_cpu_core_usage_1min:
+      name: Per-Core CPU Usage (1 min)
+      desc: One-minute per-core CPU utilization of the OneAccess router (ONEACCESS-SYS-MIB
+        oacSysCpuUsedOneMinuteValue, 0-100 percent).
     device_memory_usage:
       name: Memory Usage
-      desc: This metric reports the average memory utilization across the operating
-        entities of the Juniper MX router (JUNIPER-MIB jnxOperatingBuffer, reported
-        directly as a percentage). Sustained high usage may be caused by oversized
-        routing tables or memory leaks.
+      desc: This metric reports overall memory utilization of the OneAccess router
+        (ONEACCESS-SYS-MIB oacSysMemoryUsed) as a 0-100 percentage. Sustained high
+        usage may be caused by oversized routing tables or memory leaks.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate (HC)
       desc: This metric indicates the average rate of bytes received over the past

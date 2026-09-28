@@ -1,7 +1,6 @@
 Router DrayTek SNMP:
   name: DrayTek (Telegraf)
-  desc: SNMP monitoring template for DrayTek router. It reports system uptime, CPU
-    utilization, memory utilization, and other key metrics
+  desc: "SNMP monitoring template for DrayTek router. It reports uptime, CPU utilization, memory utilization, and interface traffic, for Vigor series (enterprise PEN 7367)."
 monitor_object:
   Router: Router
 monitor_object_type:

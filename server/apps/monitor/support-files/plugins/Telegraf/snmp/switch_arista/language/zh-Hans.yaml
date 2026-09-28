@@ -1,6 +1,6 @@
 Switch Arista SNMP:
   name: Arista（Telegraf）
-  desc: 面向 Arista EOS 交换机的 SNMP 监控模板。设备健康来自 HOST-RESOURCES、ENTITY-SENSOR-MIB 与 ENTITY-STATE-MIB；光模块 DDM 按 ENTITY-SENSOR descr 匹配；接口流量使用内置 IF-MIB 底座。
+  desc: 面向 Arista 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、风扇、电源状态、光模块、接口流量，适用于 EOS 数据中心交换机（基于标准 MIB）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:

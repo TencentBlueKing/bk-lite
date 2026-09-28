@@ -6,22 +6,11 @@ from types import SimpleNamespace
 import pytest
 from rest_framework import serializers
 
-from apps.patch_mgmt.constants import OSType, PatchSourceType
-from apps.patch_mgmt.serializers.baseline import (
-    BaselineRequirementSerializer,
-    PatchBaselineListSerializer,
-)
-from apps.patch_mgmt.serializers.patch_source import (
-    PatchSourceSerializer,
-    infer_distro_name,
-)
+from apps.patch_mgmt.constants import PatchSourceType
+from apps.patch_mgmt.serializers.baseline import BaselineRequirementSerializer, PatchBaselineListSerializer
+from apps.patch_mgmt.serializers.patch_source import PatchSourceSerializer, infer_distro_name
 from apps.patch_mgmt.services import assess_parsers, target_connectivity
-from apps.patch_mgmt.services.target_execution_route import (
-    TargetExecutionRoute,
-    TargetExecutorUnavailable,
-    TargetTransport,
-)
-
+from apps.patch_mgmt.services.target_execution_route import TargetExecutionRoute, TargetExecutorUnavailable, TargetTransport
 
 pytestmark = pytest.mark.unit
 
@@ -63,9 +52,7 @@ def test_wua_parser_filters_noise_and_normalizes_embedded_kb_numbers():
         (" Important ", "unspecified", "important", 1),
     ],
 )
-def test_wua_severity_backfill_only_enriches_unspecified_patch(
-    severity, existing, expected, save_count
-):
+def test_wua_severity_backfill_only_enriches_unspecified_patch(severity, existing, expected, save_count):
     saved = []
     patch = SimpleNamespace(
         id=7,
@@ -84,15 +71,13 @@ def test_linux_assessment_reports_missing_detail_and_empty_package_name():
         SimpleNamespace(id=1, patch=SimpleNamespace()),
         SimpleNamespace(
             id=2,
-            patch=SimpleNamespace(
-                linux_detail=SimpleNamespace(pkg_name="")
-            ),
+            patch=SimpleNamespace(linux_detail=SimpleNamespace(pkg_name="")),
         ),
     ]
     result = assess_parsers.assess_linux_requirements("", requirements)
     assert result[1].evidence == {"error": "missing linux_detail"}
     assert result[1].satisfied is False
-    assert result[2].reason == "补丁未配置包名"
+    assert result[2].reason == "Linux patch details are missing"
 
 
 def test_windows_combined_assessment_covers_missing_empty_and_installable_kbs():
@@ -107,21 +92,16 @@ def test_windows_combined_assessment_covers_missing_empty_and_installable_kbs():
         SimpleNamespace(id=1, patch=SimpleNamespace()),
         SimpleNamespace(
             id=2,
-            patch=SimpleNamespace(
-                windows_detail=SimpleNamespace(kb_number="")
-            ),
+            patch=SimpleNamespace(windows_detail=SimpleNamespace(kb_number="")),
         ),
         SimpleNamespace(id=3, patch=installable_patch),
     ]
-    stdout = (
-        "KB5040430|Important|Cumulative Update\n"
-        "===HOTFIX===\nKB5000000\n"
-    )
+    stdout = "KB5040430|Important|Cumulative Update\n" "===HOTFIX===\nKB5000000\n"
 
     result = assess_parsers.assess_windows_requirements(stdout, requirements)
 
     assert result[1].evidence == {"error": "missing windows_detail"}
-    assert result[2].reason == "补丁未配置 KB 号"
+    assert result[2].reason == "The patch has no KB number configured"
     assert result[3].satisfied is False
     assert result[3].evidence["severity"] == "Important"
     assert installable_patch.severity == "important"
@@ -139,7 +119,7 @@ def test_windows_pure_wua_format_marks_update_as_missing():
         "KB5040430|Important|Cumulative Update",
         [SimpleNamespace(id=3, patch=patch)],
     )
-    assert result[3].reason == "KB5040430 适用但未安装"
+    assert result[3].reason == "KB5040430 is applicable but not installed"
     assert result[3].evidence["installed_kbs"] == []
 
 
@@ -163,9 +143,7 @@ def test_private_key_reader_rewinds_binary_stream_and_accepts_text():
     source = io.BytesIO(b"-----BEGIN PRIVATE KEY-----")
     source.read()
 
-    assert target_connectivity._read_private_key(source) == (
-        "-----BEGIN PRIVATE KEY-----"
-    )
+    assert target_connectivity._read_private_key(source) == ("-----BEGIN PRIVATE KEY-----")
     assert target_connectivity._read_private_key("inline-key") == "inline-key"
     assert target_connectivity._read_private_key(None) is None
 
@@ -194,9 +172,7 @@ def test_private_key_reader_rewinds_binary_stream_and_accepts_text():
         (None, {"exit_code": 0, "stdout": ""}),
     ],
 )
-def test_probe_result_normalization_handles_executor_response_shapes(
-    raw, expected
-):
+def test_probe_result_normalization_handles_executor_response_shapes(raw, expected):
     assert target_connectivity._normalize_result(raw) == expected
 
 
@@ -216,9 +192,7 @@ def test_probe_result_normalization_handles_executor_response_shapes(
         ),
     ],
 )
-def test_probe_failure_classification_is_actionable_and_redacts_secrets(
-    error, expected_stage, expected_reason
-):
+def test_probe_failure_classification_is_actionable_and_redacts_secrets(error, expected_stage, expected_reason):
     route = TargetExecutionRoute(
         TargetTransport.NATS_SSH,
         "regional-executor",
@@ -294,10 +268,7 @@ def test_requirement_serializer_prefers_explicit_condition():
         condition="reboot required",
         patch=SimpleNamespace(os_type="linux"),
     )
-    assert (
-        BaselineRequirementSerializer().get_patch_condition(requirement)
-        == "reboot required"
-    )
+    assert BaselineRequirementSerializer().get_patch_condition(requirement) == "reboot required"
 
 
 class _RelatedItems:
@@ -323,17 +294,13 @@ def test_baseline_list_serializer_reports_counts_architectures_and_assessability
                 SimpleNamespace(
                     patch=SimpleNamespace(
                         os_type="windows",
-                        windows_detail=SimpleNamespace(
-                            architectures=["x64", "arm64"]
-                        ),
+                        windows_detail=SimpleNamespace(architectures=["x64", "arm64"]),
                     )
                 ),
                 SimpleNamespace(
                     patch=SimpleNamespace(
                         os_type="linux",
-                        linux_detail=SimpleNamespace(
-                            architectures=["x86_64", "arm64"]
-                        ),
+                        linux_detail=SimpleNamespace(architectures=["x86_64", "arm64"]),
                     )
                 ),
             ]
@@ -358,9 +325,7 @@ def test_baseline_list_serializer_reports_counts_architectures_and_assessability
         ([object()], [object()], True, "being assessed"),
     ],
 )
-def test_baseline_list_serializer_explains_why_assessment_is_disabled(
-    monkeypatch, requirements, bindings, assessing, reason_fragment
-):
+def test_baseline_list_serializer_explains_why_assessment_is_disabled(monkeypatch, requirements, bindings, assessing, reason_fragment):
     obj = SimpleNamespace(
         requirements=_RelatedItems(requirements),
         host_bindings=_RelatedItems(bindings),
@@ -387,9 +352,5 @@ def test_patch_source_serializer_validates_supported_types_and_infers_distro():
         }
     )
     assert attrs["distro_name"] == "Rocky Linux"
-    assert PatchSourceSerializer.get_has_auth_password(
-        SimpleNamespace(auth_password="encrypted")
-    )
-    assert not PatchSourceSerializer.get_has_auth_password(
-        SimpleNamespace(auth_password="")
-    )
+    assert PatchSourceSerializer.get_has_auth_password(SimpleNamespace(auth_password="encrypted"))
+    assert not PatchSourceSerializer.get_has_auth_password(SimpleNamespace(auth_password=""))

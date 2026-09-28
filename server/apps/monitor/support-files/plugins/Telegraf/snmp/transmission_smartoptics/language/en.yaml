@@ -1,9 +1,6 @@
 Transmission Smartoptics SNMP:
   name: Smartoptics (Telegraf)
-  desc: SNMP monitoring template for Smartoptics transmission device. It reports
-    sensor temperature, fan status, optional fan speed, optional power consumption,
-    per-port inbound traffic rate, per-port outbound traffic rate, and system
-    uptime (IANA PEN 30826).
+  desc: "SNMP monitoring template for Smartoptics transmission device. It reports uptime, temperature, fan, interface traffic, and power (enterprise PEN 30826)."
 monitor_object:
   Transmission: Transmission
 monitor_object_type:

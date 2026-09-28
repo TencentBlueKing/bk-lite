@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_omniswitch",
   "plugin": "Switch Alcatel OmniSwitch SNMP",
-  "plugin_desc": "Alcatel-Lucent Enterprise OmniSwitch (AOS) switch-specific SNMP collection (ALCATEL-IND1-HEALTH-MIB, IANA PEN 6486). In addition to standard IF-MIB interface metrics, it collects OmniSwitch private OIDs for device health: 1-minute average CPU utilization (healthDeviceCpu1MinAvg) and memory utilization (healthDeviceMemoryLatest), both reported directly as percentages. Temperature lives in the chassis hardware table and fan/power-supply state in the chasEntPhysical entity table with per-entity-type row filtering that telegraf inputs.snmp cannot do, so those are N/A. Supported brands/models — Alcatel-Lucent Enterprise OmniSwitch (OS6xxx/OS9xxx, AOS6/AOS8; enterprise 6486); distinct from Switch Alcatel-Lucent SNMP which covers Nokia/ALU 7750 SR service routers.",
+  "plugin_desc": "SNMP monitoring template for Alcatel OmniSwitch switch. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 6486).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_omniswitch'}) by (instance_id)",
   "name": "Switch",
@@ -22,7 +22,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "snmp_device_cpu_usage{instance_type='switch', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -30,12 +30,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the CPU utilization of the ZTE ZXR10 device control plane (ZXR10-MIB zxr10SystemCpuUtility5m, five-minute average), averaged across units and normalized to 0-100. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
+      "description": "This metric reports OmniSwitch AOS6 device-level CPU utilization from ALCATEL-IND1-HEALTH-MIB healthDeviceCpuLatest (INTEGER 0..100, latest sample period), collected as a top-level SNMP scalar GET with instance .0. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
     },
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "avg(device_memory_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "snmp_device_memory_usage{instance_type='switch', __$labels__}",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -43,7 +43,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports overall memory utilization of the ZTE ZXR10 device, read directly as a percent-used value (ZXR10-MIB zxr10SystemMemUsed). High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
+      "description": "This metric reports OmniSwitch AOS6 device-level memory utilization from ALCATEL-IND1-HEALTH-MIB healthDeviceMemoryLatest, already a percent (INTEGER 0..100), collected as a top-level SNMP scalar GET with instance .0. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
     },
     {
       "metric_group": "Traffic",

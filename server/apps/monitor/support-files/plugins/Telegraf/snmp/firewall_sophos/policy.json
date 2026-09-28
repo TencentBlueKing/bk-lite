@@ -5,7 +5,7 @@
     {
       "name": "Sophos防火墙CPU使用率过高",
       "alert_name": "防火墙${resource_name} CPU 使用率过高",
-      "description": "监控 Sophos XG 防火墙的整体 CPU 使用率，当持续高于阈值时触发告警，提示可能存在流量检测负载过高、攻击活动或控制平面瓶颈，避免转发与管理响应受影响。",
+      "description": "监控 Sophos SFOS 防火墙的整体 CPU 使用率（HOST-RESOURCES hrProcessorLoad 多核均值），当持续高于阈值时触发告警，提示可能存在流量检测负载过高、攻击活动或控制平面瓶颈，避免转发与管理响应受影响。",
       "metric_name": "device_cpu_usage",
       "algorithm": "last_over_time",
       "threshold": [
@@ -30,7 +30,7 @@
     {
       "name": "Sophos防火墙内存使用率过高",
       "alert_name": "防火墙${resource_name} 内存使用率过高",
-      "description": "监控 Sophos XG 防火墙的整体内存使用率，当超过阈值时触发告警。内存压力过高会使设备进入 conserve 模式并丢弃新建会话，需及时排查会话表过大或异常流量。",
+      "description": "监控 Sophos SFOS 防火墙的整体内存使用率，当超过阈值时触发告警。内存压力过高可能影响会话处理，需及时排查会话表过大或异常流量。",
       "metric_name": "device_memory_usage",
       "algorithm": "last_over_time",
       "threshold": [
@@ -51,6 +51,71 @@
         }
       ],
       "group_algorithm": "avg"
+    },
+    {
+      "name": "Sophos防火墙磁盘使用率过高",
+      "alert_name": "防火墙${resource_name} 磁盘使用率过高",
+      "description": "监控 Sophos SFOS 防火墙的磁盘使用率，磁盘将满会阻碍日志与配置变更并可能导致设备不稳定。",
+      "metric_name": "device_disk_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Sophos防火墙温度过高",
+      "alert_name": "防火墙${resource_name} 温度过高",
+      "description": "监控 Sophos SFOS 防火墙 CPU/NPU 温度（十分之一摄氏度已换算），超过阈值时触发告警，防止高温损坏设备。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 60,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Sophos防火墙电源异常",
+      "alert_name": "防火墙${resource_name} 电源状态异常",
+      "description": "监控 Sophos SFOS 防火墙电源模块状态，1 为正常、2 为故障。任一电源异常即触发告警，提示冗余缺失或硬件故障。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "接口接收错误包过高",

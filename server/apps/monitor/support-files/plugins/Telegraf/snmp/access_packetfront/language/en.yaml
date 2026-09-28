@@ -1,8 +1,6 @@
 Access PacketFront SNMP:
   name: Access PacketFront SNMP
-  desc: SNMP monitoring template for PacketFront access device. It reports chassis
-    sensor temperature, fan RPM, board voltage, per-port inbound traffic rate,
-    per-port outbound traffic rate, and system uptime (IANA PEN 9303).
+  desc: "SNMP monitoring template for PacketFront access device. It reports uptime, temperature, interface traffic, and voltage (enterprise PEN 9303)."
 monitor_object:
   Access: Access
 monitor_object_type:

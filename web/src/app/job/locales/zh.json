@@ -2,7 +2,9 @@
   "common": {
     "comingSoon": "即将上线",
     "enabled": "启用",
-    "disabled": "停用"
+    "disabled": "停用",
+    "networkError": "网络异常，请重试",
+    "noContentToCopy": "暂无可复制内容"
   },
   "job": {
     "scriptExecution": "脚本执行",
@@ -69,7 +71,6 @@
     "quickExec": "快速执行",
     "quickExecDesc": "在目标主机上快速执行脚本或 Playbook。支持从作业模版选择已有脚本，或临时输入脚本内容直接执行。",
     "jobNamePlaceholder": "请输入作业名称，例如：清理磁盘空间",
-    "targetHost": "目标主机",
     "addTargetHost": "添加目标主机",
     "selectedHosts": "已选择 {count} 台主机",
     "contentSource": "内容来源",
@@ -177,7 +178,6 @@
     "ruleDisabled": "已停用",
     "saveAndEnable": "保存并启用",
     "saveOnly": "仅保存",
-
     "targetManagement": "目标管理",
     "targetManagementDesc": "管理作业执行目标。每个目标都配置了执行驱动，系统会在作业执行时根据目标的驱动自动选择执行通道。",
     "targetName": "目标名称",
@@ -240,7 +240,6 @@
     "save": "保存",
     "selectCredential": "选择凭据",
     "selectCredentialPlaceholder": "请选择凭据",
-
     "scriptLibraryTitle": "脚本库",
     "scriptLibraryDesc": "管理可复用的脚本资源，支持 Shell、Python、Bat、PowerShell 等多种脚本类型",
     "playbookLibrary": "Playbook库",
@@ -272,19 +271,17 @@
     "addParam": "新增参数",
     "paramName": "参数名",
     "paramNamePlaceholder": "请输入参数名",
-    "paramNameHint": "用于Jinja2模板中引用，如 {{ param_name }}",
+    "paramNameHint": "用于Jinja2模板中引用，如 '{{ param_name }}'",
     "paramLabel": "参数标签",
     "paramLabelPlaceholder": "请输入显示名称",
     "paramType": "参数类型",
     "paramTypePlaceholder": "请选择参数类型",
     "paramOptions": "可选项",
     "paramOptionsPlaceholder": "输入选项后按回车添加",
-    "paramRequired": "是否必填",
     "defaultValue": "默认值",
     "defaultValuePlaceholder": "请输入默认值",
     "editParam": "编辑参数",
     "addParamTitle": "新增参数",
-
     "playbookName": "名称",
     "playbookNamePlaceholder": "请输入 Playbook 名称",
     "playbookDescription": "描述",
@@ -315,7 +312,6 @@
     "isEncrypted": "是否加密",
     "paramDescription": "提示信息",
     "paramDescriptionPlaceholder": "请输入提示信息",
-
     "fileDistTitle": "文件分发",
     "fileDistDesc": "快速将文件分发到目标主机。支持上传文件或压缩包，可配置目标路径和覆盖策略。",
     "fileUpload": "文件上传",
@@ -335,7 +331,6 @@
     "uploadingFile": "正在上传文件...",
     "fileUploadFailed": "文件上传失败",
     "dangerousPathCheckFailed": "无法检查高危路径规则，继续执行",
-
     "taskName": "任务名称",
     "taskNamePlaceholder": "请输入任务名称",
     "taskNameRequired": "请输入任务名称",
@@ -344,8 +339,6 @@
     "scheduleType": "执行策略",
     "executeOnce": "单次执行",
     "cronExpression": "Cron 表达式",
-    "enabled": "已启用",
-    "disabled": "已停用",
     "targetCount": "目标数量",
     "hosts": "台",
     "lastRunTime": "上次执行",
@@ -393,7 +386,6 @@
     "runAnyway": "运行（无论上次是否完成）",
     "queueWait": "排队（等待上次完成后执行）",
     "seconds": "秒",
-
     "jobRecord": "作业记录",
     "jobRecordDesc": "查看所有作业的执行历史记录，包括手动执行、定时任务和 API 调用触发的作业。支持按状态、类型、时间等条件筛选。",
     "jobId": "作业ID",
@@ -406,7 +398,6 @@
     "editTask": "编辑定时任务",
     "editTaskDesc": "编辑定时任务的执行策略和执行内容。",
     "editTaskSuccess": "定时任务更新成功",
-
     "reExecute": "重新执行",
     "viewScriptBtn": "查看脚本",
     "targetHosts": "目标主机",
@@ -428,7 +419,7 @@
     "downloadLog": "下载日志",
     "autoScroll": "自动滚动",
     "defaultScriptLanguage": "Shell (Bash)",
-    "scriptTemplateShell": "#!/bin/bash\n\n# 任务正常结束\njob_success() {\n    echo \"[INFO] Job completed successfully\"\n    exit 0\n}\n\n# 任务异常结束\njob_fail() {\n    echo \"[ERROR] Job failed\"\n    exit 1\n}\n\n# ---------- 在此处编写脚本逻辑 ----------\n\n\n\n# ---------- 结束 ----------\njob_success",
+    "scriptTemplateShell": "#!/bin/bash\n\n# 任务正常结束\njob_success() '{'\n    echo \"[INFO] Job completed successfully\"\n    exit 0\n'}'\n\n# 任务异常结束\njob_fail() '{'\n    echo \"[ERROR] Job failed\"\n    exit 1\n'}'\n\n# ---------- 在此处编写脚本逻辑 ----------\n\n\n\n# ---------- 结束 ----------\njob_success",
     "scriptTemplateBat": "@echo off\nREM 在此处编写批处理脚本\n",
     "scriptTemplatePython": "#!/usr/bin/env python3\n# 在此处编写 Python 脚本\n",
     "scriptTemplatePowershell": "# 在此处编写 PowerShell 脚本\n",
@@ -439,7 +430,6 @@
     "lines": "行",
     "executeParams": "执行参数",
     "noExecuteParams": "无执行参数",
-
     "version": "版本",
     "basicInfoTab": "基本信息",
     "paramsDescriptionTab": "参数说明",
@@ -483,7 +473,6 @@
     "nodeManagerPlaybookNotSupported": "目标来源为节点管理的主机不支持执行 Playbook",
     "scriptContentRequired": "请输入脚本内容",
     "executeSuccess": "执行任务已创建",
-    "paramRequired": "请输入 {name}",
     "dangerousCommandDetected": "检测到高危命令",
     "forbiddenCommandMessage": "脚本包含以下禁止执行的命令，无法执行：",
     "dangerousCommandWarning": "高危命令警告",
@@ -499,6 +488,7 @@
     "dangerousPathDetected": "检测到高危路径",
     "forbiddenPathMessage": "目标路径包含以下禁止分发的路径，无法执行：",
     "dangerousPathWarning": "高危路径警告",
-    "confirmPathMessage": "目标路径包含以下需要二次确认的路径："
+    "confirmPathMessage": "目标路径包含以下需要二次确认的路径：",
+    "paramValueRequired": "请输入 {name}"
   }
 }

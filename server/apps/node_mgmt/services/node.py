@@ -681,6 +681,39 @@ class NodeService:
         ]
 
     @staticmethod
+    def get_authorized_execution_targets_by_ids(node_ids, permission_data=None):
+        """返回自动化执行所需的授权节点投影，不改变既有节点 RPC DTO。"""
+        authorized = NodeService.get_authorized_nodes_by_ids(node_ids, permission_data)
+        authorized_ids = [item["id"] for item in authorized]
+        if not authorized_ids:
+            return []
+        active_after = dj_timezone.now() - timedelta(minutes=1)
+        nodes = Node.objects.filter(id__in=authorized_ids).prefetch_related("nodeorganization_set")
+        return [
+            {
+                "id": node.id,
+                "name": node.name,
+                "ip": node.ip,
+                "node_type": node.node_type,
+                "operating_system": node.operating_system,
+                "cpu_architecture": node.cpu_architecture,
+                "cloud_region_id": node.cloud_region_id,
+                "organization_ids": [rel.organization for rel in node.nodeorganization_set.all()],
+                "active": node.updated_at >= active_after,
+            }
+            for node in nodes
+        ]
+
+    @staticmethod
+    def get_authorized_execution_targets_by_ips(ips, permission_data=None):
+        """按 IP 精确匹配自动化目标；权限为空时沿用 fail-closed 语义。"""
+        matched = NodeService.get_nodes_by_ips(ips, permission_data=permission_data or {})
+        return NodeService.get_authorized_execution_targets_by_ids(
+            [item["id"] for item in matched.get("nodes", [])],
+            permission_data or {},
+        )
+
+    @staticmethod
     def get_node_names_by_ids(node_ids):
         normalized_node_ids = list({str(node_id) for node_id in node_ids if node_id not in (None, "")})
         if not normalized_node_ids:

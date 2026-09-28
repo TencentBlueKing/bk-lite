@@ -1,9 +1,6 @@
 Wireless Huawei AC SNMP:
   name: Huawei WLAN AC (Telegraf)
-  desc: SNMP monitoring template for Huawei WLAN AC. It reports entity CPU, memory, temperature,
-    chassis used/total power in watts, fan speed as a percent of full speed, fan state,
-    per-AP environment/CPU/NP temperatures, AP and station counts, radio utilization, channel interference, packet error rate, Tx/Rx ratio, uplink traffic,
-    and optical module DDM.
+  desc: "SNMP monitoring template for Huawei WLAN AC. It reports uptime, CPU utilization, memory utilization, temperature, fan, optical modules, interface traffic, voltage, power, and wireless clients/radio (enterprise PEN 2011)."
 monitor_object:
   Wireless: Wireless
 monitor_object_type:

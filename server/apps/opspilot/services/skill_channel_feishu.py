@@ -123,7 +123,8 @@ class SkillChannelFeishuUtils(BaseChatFlowUtils):
             id=self.channel_id,
             channel_type=SkillChannelChoices.FEISHU,
         ).first()
-        if not channel or not channel.enabled:
+        # URL 校验允许未启用：飞书保存回调地址时就会发 challenge，此时渠道常尚未上线。
+        if not channel:
             return JsonResponse({"result": False, "message": "渠道不存在或已下线"}, status=403)
 
         config = normalize_feishu_channel_config(channel.channel_config)
@@ -139,10 +140,19 @@ class SkillChannelFeishuUtils(BaseChatFlowUtils):
         try:
             payload = self._load_payload(request, config)
         except FeishuChannelError as exc:
+            logger.warning(
+                "智能体飞书回调校验失败 channel_id=%s status=%s error=%s",
+                self.channel_id,
+                exc.status,
+                exc.message,
+            )
             return JsonResponse({"result": False, "message": exc.message}, status=exc.status)
 
         if payload.get("type") == "url_verification":
             return JsonResponse({"challenge": payload.get("challenge", "")})
+
+        if not channel.enabled:
+            return JsonResponse({"result": False, "message": "渠道不存在或已下线"}, status=403)
 
         header = payload.get("header") or {}
         if header.get("event_type") != FEISHU_TEXT_EVENT:
@@ -186,12 +196,16 @@ class SkillChannelFeishuUtils(BaseChatFlowUtils):
 
         encrypt_key = config.get("encrypt_key") or ""
         if encrypt_key:
+            # 飞书「请求网址校验」在配置 Encrypt Key 时只发 encrypt 密文，
+            # 官方说明该握手可不做签名校验，实际也不带 X-Lark-Signature；
+            # 普通事件推送才会带签名头，必须验签。
             signature = request.headers.get("X-Lark-Signature") or ""
             timestamp = request.headers.get("X-Lark-Request-Timestamp") or ""
             nonce = request.headers.get("X-Lark-Request-Nonce") or ""
-            expected = feishu_signature(timestamp, nonce, encrypt_key, request.body or b"")
-            if not signature or not hmac.compare_digest(signature, expected):
-                raise FeishuChannelError("飞书签名校验失败")
+            if signature:
+                expected = feishu_signature(timestamp, nonce, encrypt_key, request.body or b"")
+                if not hmac.compare_digest(signature, expected):
+                    raise FeishuChannelError("飞书签名校验失败")
             encrypt_text = body.get("encrypt")
             if not isinstance(encrypt_text, str) or not encrypt_text:
                 raise FeishuChannelError("飞书回调缺少 encrypt", status=400)
@@ -204,6 +218,8 @@ class SkillChannelFeishuUtils(BaseChatFlowUtils):
                 raise FeishuChannelError("飞书回调解密失败", status=400) from exc
             if not isinstance(body, dict):
                 raise FeishuChannelError("飞书回调解密失败", status=400)
+            if body.get("type") != "url_verification" and not signature:
+                raise FeishuChannelError("飞书签名校验失败")
         elif body.get("encrypt"):
             raise FeishuChannelError("飞书回调已加密，但渠道未配置 Encrypt Key", status=400)
 

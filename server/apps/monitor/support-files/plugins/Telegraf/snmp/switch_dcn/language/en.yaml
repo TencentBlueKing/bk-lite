@@ -1,7 +1,6 @@
 Switch DCN SNMP:
   name: DCN (Telegraf)
-  desc: SNMP monitoring template for DCN switch. It reports CPU utilization, memory
-    utilization, per-port inbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for DCN switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic (enterprise PEN 6339)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -121,16 +120,16 @@ monitor_object_metric:
         SNMP OIDs and normalized to a 0-100 percentage.
     device_memory_usage:
       name: Memory Utilization
-      desc: This metric reports overall memory utilization of the device, computed
-        as used / (used + free) * 100 across all memory pools. High memory usage may
-        indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity,
-        and can cause instability or failed allocations.
+      desc: This metric reports overall memory utilization of the DCN switch, computed
+        as used / total * 100 from switchMemoryBusy and switchMemorySize (already
+        in bytes). High memory usage may indicate memory leaks, oversized routing/MAC/ARP
+        tables, or insufficient capacity, and can cause instability or failed allocations.
     device_memory_used:
       name: Memory Used
-      desc: This metric reports the number of bytes currently in use for each memory
-        pool of the device. It helps administrators understand the absolute memory
-        consumption per pool (for example Processor or I/O pools) and identify which
-        pool is under pressure.
+      desc: This metric reports the number of bytes currently in use by the DCN switch
+        system memory (DCN-MIB switchMemoryBusy, reported directly in bytes). It helps
+        administrators understand absolute memory consumption and identify when the
+        device is under memory pressure.
     device_memory_free:
       name: Memory Free
       desc: This metric reports the number of free bytes available in each memory
@@ -139,34 +138,33 @@ monitor_object_metric:
         pool.
     device_memory_total:
       name: Memory Total
-      desc: This metric reports the total memory capacity of the device. It is the
-        denominator for memory utilization (some vendors compute (total - free) /
-        total) and, together with free memory, reflects overall memory pressure.
+      desc: This metric reports the total size in bytes of the DCN switch system memory
+        (DCN-MIB switchMemorySize, reported directly in bytes). Together with the used
+        bytes it determines overall memory utilization.
     device_temperature_celsius:
       name: Temperature
-      desc: This metric reports the temperature reading of each hardware sensor on
-        the device, in degrees Celsius. Abnormally high temperatures may indicate
-        fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal
-        protection or hardware damage if left unaddressed.
+      desc: This metric reports the chassis temperature of the DCN switch (DCN-MIB
+        switchTemperature), in degrees Celsius from a scalar GET. Abnormally high
+        temperatures may indicate fan failure, blocked airflow, or excessive ambient
+        heat, and can trigger thermal protection or hardware damage if left unaddressed.
     device_fan_state:
       name: Fan Status
-      desc: This metric reports the operational state of each cooling fan on the device.
-        A non-normal state (warning, critical, shutdown, or notFunctioning) indicates
-        a cooling fault that can quickly lead to overheating and should be investigated
-        immediately.
+      desc: This metric reports the operational state of each DCN cooling fan (DCN-MIB
+        sysFanStatus). Native encoding is inverted (normal=0, abnormal=1) and is normalized
+        to 1=normal / 2=abnormal. A non-normal state indicates a cooling fault that
+        can quickly lead to overheating and should be investigated immediately.
     device_psu_state:
       name: Power Supply Status
-      desc: This metric reports the operational state of each power supply unit on
-        the device. A non-normal state signals a power redundancy or hardware fault;
-        on devices with redundant PSUs a single failure may not cause an outage but
-        removes redundancy and must be remediated promptly.
+      desc: This metric reports the operational state of each DCN power supply (DCN-MIB
+        sysPowerStatus native enum normal(0)/abnormal(1)/na(2)), normalized to 1=normal
+        / 2=abnormal. sysPowerState is installed(1)/notInstalled(0). A non-normal
+        state signals a power redundancy or hardware fault and must be remediated
+        promptly.
     device_fan_speed:
-      name: Fan Speed
-      desc: This metric reports the fan rotation speed (RPM) of the device, taken
-        as the maximum across fans. Abnormally low or zero RPM indicates a stalled
-        or failed fan and a risk of overheating; abnormally high RPM may indicate
-        the device is compensating for high temperature. For devices that expose only
-        fan speed without a fan-state enum, speed is the only signal of fan health.
+      name: Fan Speed Grade
+      desc: This metric reports the DCN fan speed grade (DCN-MIB sysFanSpeed) as none(0),
+        low(1), medium-low(2), medium(3), medium-high(4), high(5). It is a discrete
+        enum, not RPM.
     device_flow_bytes_rate:
       name: Device Flow Traffic Rate
       desc: Total device traffic rate estimated from Flow records according to the

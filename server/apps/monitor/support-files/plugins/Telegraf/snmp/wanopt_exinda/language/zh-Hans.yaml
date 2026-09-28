@@ -1,0 +1,46 @@
+Wanopt Exinda SNMP:
+  name: Exinda / GFI ExOS（Telegraf）
+  desc: 面向 Exinda / GFI ExOS WAN优化设备的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、接口流量（企业号 PEN 21091）。
+monitor_object:
+  Wanopt: WAN优化
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Wanopt:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示 Exinda / GFI ExOS WAN 优化设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测运行时间，管理员可以了解设备稳定性，识别意外重启。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: Exinda / GFI ExOS WAN 优化设备的整机 CPU 使用率（EXINDA-MIB cpuUsagePercent），按全部 CPU 近 1 分钟均值以 0-100
+        百分比上报。持续偏高可能表示加速、整形或深度检测负载过重。
+    device_cpu_load_1:
+      name: CPU 负载（1 分钟）
+      desc: Exinda / GFI ExOS WAN 优化设备的 1 分钟 CPU 负载（EXINDA-MIB cpuLoad1）。该值为百分之一负载，不是百分比。
+    device_cpu_load_5:
+      name: CPU 负载（5 分钟）
+      desc: Exinda / GFI ExOS WAN 优化设备的 5 分钟 CPU 负载（EXINDA-MIB cpuLoad5）。该值为百分之一负载，不是百分比。
+    device_cpu_load_15:
+      name: CPU 负载（15 分钟）
+      desc: Exinda / GFI ExOS WAN 优化设备的 15 分钟 CPU 负载（EXINDA-MIB cpuLoad15）。该值为百分之一负载，不是百分比。
+    device_memory_total:
+      name: 内存总量
+      desc: Exinda / GFI ExOS WAN 优化设备的物理内存总量（EXINDA-MIB totalRam，已从 kbytes 换算为字节）。
+    device_memory_used:
+      name: 内存已用量
+      desc: Exinda / GFI ExOS WAN 优化设备当前已使用的物理内存（EXINDA-MIB usedRam，已从 kbytes 换算为字节）。
+    device_memory_free:
+      name: 空闲内存
+      desc: Exinda / GFI ExOS WAN 优化设备当前空闲的物理内存（EXINDA-MIB freeRam，已从 kbytes 换算为字节）。
+    device_memory_usage:
+      name: 内存使用率
+      desc: Exinda / GFI ExOS WAN 优化设备整体内存使用率，按 已用/总量*100 计算（EXINDA-MIB usedRam/totalRam）。持续偏高可能影响加速会话或整形性能。
+    device_temperature_celsius:
+      name: 温度
+      desc: Exinda / GFI ExOS WAN 优化设备的当前 CPU 温度（EXINDA-MIB cpuTemperature）。温度异常升高可能意味着散热故障或环境过热。
+monitor_object_metric_group:
+  Wanopt:
+    Base: 基础
+    CPU: CPU
+    Memory: 内存
+    Temperature: 温度

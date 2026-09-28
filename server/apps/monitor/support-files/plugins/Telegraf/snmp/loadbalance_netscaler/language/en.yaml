@@ -1,7 +1,6 @@
 Loadbalance Citrix NetScaler SNMP:
   name: Citrix NetScaler (Telegraf)
-  desc: SNMP monitoring template for Citrix NetScaler load balancer. It reports system
-    uptime, CPU utilization, memory utilization, and other key metrics
+  desc: "SNMP monitoring template for Citrix NetScaler load balancer. It reports uptime, CPU utilization, memory utilization, sessions/connections, and interface traffic, for NetScaler ADC (enterprise PEN 5951)."
 monitor_object:
   Loadbalance: Load Balance
 monitor_object_type:
@@ -26,27 +25,29 @@ monitor_object_metric:
         A persistently low value indicates memory pressure.
     device_cpu_usage:
       name: CPU Usage
-      desc: This metric reports the overall CPU utilization of the F5 BIG-IP load
-        balancer (F5-BIGIP-SYSTEM-MIB sysGlobalHostCpuUsageRatio5s, 5-second sample).
+      desc: CPU utilization of the Citrix NetScaler appliance. Prefers the appliance-wide
+        NS-ROOT-MIB resCpuUsage scalar; otherwise averages per-CPU nsCPUusage rows.
         Sustained high usage indicates heavy traffic-processing or SSL-offload load.
     device_memory_total:
       name: Total Memory
-      desc: This metric reports the total physical memory capacity of the F5 BIG-IP
-        (F5-BIGIP-SYSTEM-MIB sysStatMemoryTotal) in bytes.
+      desc: Total physical memory capacity of the device in bytes.
     device_memory_used:
       name: Used Memory
-      desc: This metric reports the amount of memory currently used by the F5 BIG-IP
-        (F5-BIGIP-SYSTEM-MIB sysStatMemoryUsed) in bytes.
+      desc: Amount of memory currently used by the device in bytes.
     device_memory_usage:
       name: Memory Usage
-      desc: This metric reports the overall memory utilization of the F5 BIG-IP, computed
-        as used/total (100*used/total). Sustained high usage may be caused by oversized
-        connection tables or memory leaks.
+      desc: System memory utilization of the Citrix NetScaler appliance (NS-ROOT-MIB
+        resMemUsage), reported directly as a percentage. Sustained high usage may
+        be caused by oversized session tables or buffer pressure.
     lb_current_connections:
       name: Current Connections
-      desc: This metric reports the number of active client connections currently
-        tracked by the F5 BIG-IP (F5-BIGIP-SYSTEM-MIB sysStatClientCurConns). A rapidly
-        rising count can indicate a traffic flood or connection-table pressure.
+      desc: Current client connections on the Citrix NetScaler appliance (NS-ROOT-MIB
+        tcpCurClientConn), including Opening, Established and Closing. A rapidly rising
+        count can indicate a traffic flood or connection-table pressure.
+    lb_established_connections:
+      name: Established Connections
+      desc: Client connections in the Established state only (NS-ROOT-MIB tcpCurClientConnEstablished).
+        This is not the primary current-connection count.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate (HC)
       desc: This metric indicates the average rate of bytes received over the past

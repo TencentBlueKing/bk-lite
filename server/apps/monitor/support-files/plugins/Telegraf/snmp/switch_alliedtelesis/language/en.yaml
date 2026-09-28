@@ -1,7 +1,6 @@
 Switch Allied Telesis SNMP:
   name: Allied Telesis (Telegraf)
-  desc: SNMP monitoring template for Allied Telesis switch. It reports system uptime,
-    CPU utilization, interface speed, and other key metrics
+  desc: "SNMP monitoring template for Allied Telesis switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic, for AlliedWare Plus (enterprise PEN 207)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -121,10 +120,10 @@ monitor_object_metric:
         SNMP OIDs and normalized to a 0-100 percentage.
     device_memory_usage:
       name: Memory Utilization
-      desc: This metric reports overall memory utilization of the device, computed
-        as used / (used + free) * 100 across all memory pools. High memory usage may
-        indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity,
-        and can cause instability or failed allocations.
+      desc: This metric reports overall memory utilization of the device as a percentage,
+        derived as 100 minus AT-SYSINFO-MIB freeMemory (percentage of free memory
+        still available). High memory usage may indicate memory leaks, oversized routing/MAC/ARP
+        tables, or insufficient capacity, and can cause instability or failed allocations.
     device_memory_used:
       name: Memory Used
       desc: This metric reports the number of bytes currently in use for each memory

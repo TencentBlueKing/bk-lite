@@ -31,15 +31,15 @@ repos:
     hooks:
       - id: check-migrate
         name: check migrate
-        entry: python ./server/scripts/check_migrate/check_migrate.py
+        entry: python3 ./server/scripts/check_migrate/check_migrate.py
         language: system
         types: [python]
       - id: check-commit-message
         name: Check commit message
-        entry: python ./server/scripts/check_commit_message.py
+        entry: python3 ./server/scripts/check_commit_message.py
         language: system
         stages: [commit-msg]
       - id: check-requirements
         name: Check Requirements
-        entry: python ./server/scripts/check_requirements.py
+        entry: python3 ./server/scripts/check_requirements.py
         language: system

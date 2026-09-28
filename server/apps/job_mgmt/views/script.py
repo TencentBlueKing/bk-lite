@@ -21,6 +21,7 @@ from apps.job_mgmt.serializers.script import (
 )
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.script_pack_service import ScriptPackService
+from apps.job_mgmt.utils.i18n import job_message
 from apps.job_mgmt.views.mixins import BatchDeleteMixin
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
@@ -78,7 +79,14 @@ class ScriptViewSet(BatchDeleteMixin, AuthViewSet):
         if not check_result.can_execute:
             forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
             return Response(
-                {"error": f"脚本包含高危命令，禁止创建: {', '.join(forbidden_rules)}"},
+                {
+                    "error": job_message(
+                        request,
+                        "error.dangerous_command_create_forbidden",
+                        "Script contains high-risk commands and cannot be created: {rules}",
+                        rules=", ".join(forbidden_rules),
+                    )
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -115,7 +123,14 @@ class ScriptViewSet(BatchDeleteMixin, AuthViewSet):
         if not check_result.can_execute:
             forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
             return Response(
-                {"error": f"脚本包含高危命令，禁止修改: {', '.join(forbidden_rules)}"},
+                {
+                    "error": job_message(
+                        request,
+                        "error.dangerous_command_update_forbidden",
+                        "Script contains high-risk commands and cannot be updated: {rules}",
+                        rules=", ".join(forbidden_rules),
+                    )
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -144,7 +159,14 @@ class ScriptViewSet(BatchDeleteMixin, AuthViewSet):
         missing = sorted(set(ids) - found_ids)
         if missing:
             return Response(
-                {"error": f"部分脚本不存在或无权导出: {', '.join(str(i) for i in missing)}"},
+                {
+                    "error": job_message(
+                        request,
+                        "error.scripts_export_missing",
+                        "Some scripts do not exist or cannot be exported: {ids}",
+                        ids=", ".join(str(i) for i in missing),
+                    )
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_ruggedcom",
   "plugin": "Switch RuggedCOM SNMP",
-  "plugin_desc": "RuggedCOM（西门子）工业以太网交换机专用 SNMP 采集模板（RUGGEDCOM-SYS-MIB，企业号 15004）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 RuggedCOM ROS 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）、主内存（已用 + 空闲，字节，用量按 已用/（已用+空闲）推导）、机箱温度（℃）与冗余电源状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。RuggedCOM 工业交换机为无风扇导热式被动散热设计，故风扇为 N/A。适用品牌型号——西门子 RuggedCOM ROS 工业网管交换机（RS/RSG/RST 系列，企业号 15004）。",
+  "plugin_desc": "SNMP monitoring template for RuggedCOM switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic (enterprise PEN 15004).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_ruggedcom'}) by (instance_id)",
   "name": "Switch",
@@ -15,13 +15,15 @@
   ],
   "supplementary_indicators": [
     "snmp_uptime",
-    "device_cpu_usage"
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius"
   ],
   "metrics": [
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "snmp_device_cpu_usage{instance_type='switch', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -29,43 +31,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "CPU utilisation of the RuggedCOM industrial switch (RUGGEDCOM-SYS-MIB, reported directly as a percentage)."
-    },
-    {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Interface Incoming Traffic Rate",
-      "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable)."
-    },
-    {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
-      "display_name": "Interface Outgoing Traffic Rate",
-      "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
+      "description": "CPU utilization of the RuggedCOM industrial switch (RUGGEDCOM-SYS-INFO-MIB rcDeviceStsCpuUsagePercent) as a 0-100 percentage measured over the last second. Do not treat the tenths-of-percent sibling leaf as this value."
     },
     {
       "metric_group": "Memory",
@@ -73,12 +39,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "name": "device_memory_used",
-      "display_name": "内存已用",
-      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id)",
+      "name": "device_memory_total",
+      "display_name": "内存总量",
+      "query": "snmp_device_memory_total{instance_type='switch', __$labels__}",
       "unit": "bytes",
       "data_type": "Number",
-      "description": "Used memory of the RuggedCOM industrial switch in bytes (RUGGEDCOM-SYS-MIB used memory)."
+      "description": "Total RAM of the RuggedCOM industrial switch in bytes (RUGGEDCOM-SYS-INFO-MIB rcDeviceInfoTotalRam)."
     },
     {
       "metric_group": "Memory",
@@ -88,10 +54,23 @@
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲",
-      "query": "sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "snmp_device_memory_free{instance_type='switch', __$labels__}",
       "unit": "bytes",
       "data_type": "Number",
-      "description": "Free memory of the RuggedCOM industrial switch in bytes (RUGGEDCOM-SYS-MIB free memory)."
+      "description": "Available/free RAM of the RuggedCOM industrial switch in bytes (RUGGEDCOM-SYS-INFO-MIB rcDeviceStsAvailableRam). This leaf is free memory, not used memory."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_used",
+      "display_name": "内存已用",
+      "query": "snmp_device_memory_total{instance_type='switch', __$labels__} - snmp_device_memory_free{instance_type='switch', __$labels__}",
+      "unit": "bytes",
+      "data_type": "Number",
+      "description": "Used RAM of the RuggedCOM industrial switch in bytes, derived as rcDeviceInfoTotalRam minus rcDeviceStsAvailableRam."
     },
     {
       "metric_group": "Memory",
@@ -101,10 +80,10 @@
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / (sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) + sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) * 100",
+      "query": "100 * (snmp_device_memory_total{instance_type='switch', __$labels__} - snmp_device_memory_free{instance_type='switch', __$labels__}) / snmp_device_memory_total{instance_type='switch', __$labels__}",
       "unit": "percent",
       "data_type": "Number",
-      "description": "Memory utilisation of the RuggedCOM industrial switch, derived as used/(used+free)."
+      "description": "Memory utilization of the RuggedCOM industrial switch, derived as (total-available)/total*100 from rcDeviceInfoTotalRam and rcDeviceStsAvailableRam."
     },
     {
       "metric_group": "Temperature",
@@ -114,28 +93,36 @@
       ],
       "name": "device_temperature_celsius",
       "display_name": "设备温度",
-      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "snmp_device_temperature_celsius{instance_type='switch', __$labels__}",
       "unit": "celsius",
       "data_type": "Number",
-      "description": "Chassis temperature of the RuggedCOM industrial switch in degrees Celsius (RUGGEDCOM-SYS-MIB chassis temperature)."
+      "description": "Chassis temperature of the RuggedCOM industrial switch in degrees Celsius (RUGGEDCOM-SYS-INFO-MIB rcDeviceStsTemperature)."
     },
     {
       "metric_group": "Hardware Status",
-      "dimensions": [
-        {
-          "name": "index",
-          "description": "SNMP table row index"
-        }
-      ],
+      "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
       "name": "device_psu_state",
       "display_name": "电源状态",
-      "query": "device_psu_state{instance_type='switch', __$labels__}",
+      "query": "snmp_device_psu_state{instance_type='switch', __$labels__}",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "data_type": "Enum",
-      "description": "Power-supply state of the RuggedCOM industrial switch, normalised to 1=normal / 2=abnormal."
+      "description": "Power-supply state of the RuggedCOM industrial switch (rcDeviceStsPowerSupply1/2). RcHardwareStatus functional(2) is normalized to 1=normal, notFunctional(3) to 2=abnormal; notPresent(1) is skipped. The reported value is the worst present module."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_fan_state",
+      "display_name": "风扇状态",
+      "query": "snmp_device_fan_state{instance_type='switch', __$labels__}",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "data_type": "Enum",
+      "description": "Fan-bank state of the RuggedCOM industrial switch (rcDeviceStsFanBank1/2). RcFanStatus on(5)/standby(3) is normalized to 1=normal, failed(2) to 2=abnormal; notPresent(1) is skipped. The reported value is the worst present bank."
     },
     {
       "metric_group": "Base",

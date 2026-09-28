@@ -51,6 +51,11 @@
 - **日志采集时间**：采集或上报事件原有顶层 `timestamp` 的未解析原值，中心归一化后可选保存在 `collect_timestamp`；它不参与日志时间索引。_Avoid_：服务端时间、`_time`。
 - **日志提取器**：把日志事件中的属性提取为结构化属性的一条有序规则；通常绑定日志采集实例，syslog / snmptrap 绑定采集类型并按类型全局匹配。_Avoid_：解析器、清洗规则、Vector 规则。
 - **报告订阅**：绑定一个分析画布、筛选语义、执行周期、邮件渠道和收件地址的持续报告分发规则。_Avoid_：定时任务、邮件规则。
+- **编排中心（Workflow Orchestration）**：BK-Lite 中面向非对话型运维自动化的独立产品域；负责流程设计、发布、执行、人工处理与原子治理，并与 OpsPilot 现有 ChatFlow 并存。_Avoid_：OpsPilot ChatFlow、通用低代码平台、Conductor 管理台。
+- **流程删除（Workflow Deletion）**：不可恢复地终止一条流程资产继续发布或产生新执行的生命周期动作；删除前必须没有未终态执行，历史执行仍作为审计事实保留。_Avoid_：归档、恢复、删除执行记录。
+- **运维原子（Workflow Atom）**：可被编排中心流程复用、具有稳定输入输出契约和执行语义的一项非 Chat 能力；OpsPilot 兼容原子是独立适配实现，不等同于迁移或修改原 OpsPilot 节点。_Avoid_：画布节点样式、OpsPilot 智能体工具、任意脚本。
+- **流程执行结果（Workflow Execution Outcome）**：流程运行的生命周期终态；引擎与必要输出均完成即为成功，非致命告警不形成另一种执行状态。_Avoid_：“成功（有告警）”状态、部分成功状态。
+- **执行告警（Execution Warning）**：附着于成功执行的非致命业务事实，详细证据保留在节点和执行输出中，不把成功改写为失败。_Avoid_：流程执行结果、失败状态。
 - **订阅执行**：报告订阅在一个计划时点或一次手工测试请求下产生的独立生成与投递尝试，是状态、失败和输入快照的审计边界。_Avoid_：发送记录、调度任务。
 - **Stargazer**：`agents/stargazer/` 中的云资源与外部资源采集代理。
 - **CMDB 实例 UUID（`inst_uuid`）**：CMDB 资产实例的不可变业务身份（UUIDv4）；跨模块与前后端定位实例只用它。图节点内部 `_id` 仅同进程工作集。_Avoid_：把 Telegraf 标签 `cmdb_{task_id}`（采集任务身份）当成实例 UUID。详见 `docs/adr/0005-use-uuid-as-cmdb-instance-identity.md`。

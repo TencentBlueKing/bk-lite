@@ -72,6 +72,9 @@ dependencies = [
     "paramiko>=4.0.0",
     "croniter==6.0.0",
     "ldap3==2.9.1",
+    "docxtpl==0.20.1",
+    "xlsxjinja==1.1.1",
+    "python-docx==1.2.0",
 ]
 
 [project.optional-dependencies]

@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_polycom",
   "plugin": "VoiceGateway Polycom SNMP",
-  "plugin_desc": "Polycom RealPresence DMA SNMP collection (POLYCOM-DMA stResources, IANA PEN 13885). Beyond the shared VoiceGateway SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable), it collects per-server CPU utilization (stRsrcCPUUsageCPUUtilizationPct, mapped as cpu_usage_percent, reported directly as a percentage) and per-server memory (stRsrcMemUsageTotalMemory in MB plus stRsrcMemUsageUsed, with optional stRsrcMemUsageFree). Memory utilization is computed as used/total. Interface error counters, ifOperStatus and 32-bit octet counters are not expanded. Supported brands/models — Polycom RealPresence DMA (enterprise 13885).",
+  "plugin_desc": "SNMP monitoring template for Polycom voice gateway. It reports uptime, CPU utilization, memory utilization, and interface traffic, for RealPresence DMA (enterprise PEN 13885).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='voice_gateway', collect_type='snmp_polycom'}) by (instance_id)",
   "name": "VoiceGateway",

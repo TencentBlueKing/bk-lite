@@ -14,43 +14,84 @@ import shlex
 from rest_framework import serializers
 
 from apps.job_mgmt.services.param_crypto import ParamCrypto
+from apps.job_mgmt.utils.i18n import job_message
 
 
 class ScriptParamsService:
     """脚本参数处理服务"""
 
     @staticmethod
-    def validate_params_format(params: list, require_is_modified: bool = True) -> None:
+    def validate_params_format(params: list, require_is_modified: bool = True, request=None) -> None:
         """
         验证 params 格式是否正确
 
         Args:
             params: 参数列表
+            require_is_modified: 是否要求 is_modified 字段
+            request: 可选请求，用于选择语言
 
         Raises:
             serializers.ValidationError: 格式不正确时抛出
         """
         if not isinstance(params, list):
-            raise serializers.ValidationError({"params": "参数必须是列表格式"})
+            raise serializers.ValidationError({"params": job_message(request, "error.params_must_be_list", "Parameters must be a list")})
 
         for i, param in enumerate(params):
+            index = i + 1
             if not isinstance(param, dict):
-                raise serializers.ValidationError({"params": f"第 {i + 1} 个参数必须是字典格式"})
+                raise serializers.ValidationError(
+                    {
+                        "params": job_message(
+                            request,
+                            "error.params_item_must_be_dict",
+                            "Parameter {index} must be an object",
+                            index=index,
+                        )
+                    }
+                )
 
             required_keys = {"value"}
             if require_is_modified:
                 required_keys.add("is_modified")
             missing_keys = required_keys - set(param.keys())
             if missing_keys:
-                raise serializers.ValidationError({"params": f"第 {i + 1} 个参数缺少字段: {missing_keys}"})
+                raise serializers.ValidationError(
+                    {
+                        "params": job_message(
+                            request,
+                            "error.params_item_missing_fields",
+                            "Parameter {index} is missing fields: {fields}",
+                            index=index,
+                            fields=missing_keys,
+                        )
+                    }
+                )
 
             # name 为展示字段；兼容历史 key 字段
             display_name = param.get("name", param.get("key"))
             if display_name is not None and not isinstance(display_name, str):
-                raise serializers.ValidationError({"params": f"第 {i + 1} 个参数的 name 必须是字符串"})
+                raise serializers.ValidationError(
+                    {
+                        "params": job_message(
+                            request,
+                            "error.params_name_must_be_string",
+                            "Parameter {index} name must be a string",
+                            index=index,
+                        )
+                    }
+                )
 
             if "is_modified" in param and not isinstance(param.get("is_modified"), bool):
-                raise serializers.ValidationError({"params": f"第 {i + 1} 个参数的 is_modified 必须是布尔值"})
+                raise serializers.ValidationError(
+                    {
+                        "params": job_message(
+                            request,
+                            "error.params_is_modified_must_be_bool",
+                            "Parameter {index} is_modified must be a boolean",
+                            index=index,
+                        )
+                    }
+                )
 
     @staticmethod
     def get_script_default_params(script) -> list:
@@ -73,6 +114,7 @@ class ScriptParamsService:
         params: list,
         script=None,
         allow_unmodified_without_script: bool = True,
+        request=None,
     ) -> list:
         """
         解析参数，将 is_modified=False 的参数替换为脚本库默认值
@@ -81,6 +123,7 @@ class ScriptParamsService:
             params: 位置参数列表
             script: Script 模型实例（脚本库模式时提供）
             allow_unmodified_without_script: 临时脚本模式下是否允许 is_modified=False
+            request: 可选请求，用于选择语言
 
         Returns:
             list: 解析后的参数列表（按原顺序）
@@ -92,7 +135,7 @@ class ScriptParamsService:
             return []
 
         # 验证格式：临时输入脚本模式可不传 is_modified
-        ScriptParamsService.validate_params_format(params, require_is_modified=script is not None)
+        ScriptParamsService.validate_params_format(params, require_is_modified=script is not None, request=request)
 
         # 获取脚本库默认参数定义（按顺序）
         default_params = ScriptParamsService.get_script_default_params(script)
@@ -107,23 +150,55 @@ class ScriptParamsService:
             name = param.get("name", param.get("key", ""))
             value = param["value"]
             is_modified = param.get("is_modified", True)
+            display_index = index + 1
 
             if not is_modified:
                 if has_script:
                     # 脚本库模式：按位置回填默认值
                     if index >= len(default_params):
-                        raise serializers.ValidationError({"params": f"第 {index + 1} 个参数无法从脚本库按顺序获取默认值"})
+                        raise serializers.ValidationError(
+                            {
+                                "params": job_message(
+                                    request,
+                                    "error.params_default_unavailable",
+                                    "Parameter {index} cannot obtain a default value from the script library by position",
+                                    index=display_index,
+                                )
+                            }
+                        )
                     value = default_params[index].get("default", "")
                 elif not allow_unmodified_without_script:
                     # 临时脚本模式且不允许 is_modified=False
-                    raise serializers.ValidationError({"params": f"临时脚本模式下第 {index + 1} 个参数不能使用默认值"})
+                    raise serializers.ValidationError(
+                        {
+                            "params": job_message(
+                                request,
+                                "error.params_temp_no_default",
+                                "Temporary scripts cannot use the default value for parameter {index}",
+                                index=display_index,
+                            )
+                        }
+                    )
                 # 临时脚本模式且允许：直接使用前端传的 value
 
             # 必填校验：脚本库定义 is_required=true 的参数最终值不能为空
             if has_script and index < len(default_params):
                 if default_params[index].get("is_required") and (value is None or str(value) == ""):
-                    display_name = name or default_params[index].get("name") or f"第 {index + 1} 个参数"
-                    raise serializers.ValidationError({"params": f"参数「{display_name}」为必填项，不能为空"})
+                    display_name = (
+                        name
+                        or default_params[index].get("name")
+                        or job_message(request, "error.params_nth", "parameter {index}", index=display_index)
+                    )
+                    raise serializers.ValidationError(
+                        {
+                            "params": job_message(
+                                request,
+                                "error.params_required_empty",
+                                'Parameter "{name}" is required and cannot be empty',
+                                name=display_name,
+                            )
+                        }
+                    )
 
             resolved_params.append(
                 {

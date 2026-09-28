@@ -5,6 +5,7 @@ import {
   captureRechartsFromDoms,
 } from '@/components/chart-snapshot';
 
+import { overlaySection, PAGE_OVERLAY_SECTION_ID } from './domSnapshot';
 import type {
   AiContextImage,
   AiContextProvider,
@@ -143,6 +144,14 @@ export const createPageContextRegistry = (options?: {
 
   const hasAvailable = () => providers.size > 0 || matchPilots(getPathname(), pilots).length > 0;
 
+  const stripOverlaySections = (part: Partial<AiPageContext> | null): Partial<AiPageContext> | null => {
+    if (!part?.sections?.length) return part;
+    return {
+      ...part,
+      sections: part.sections.filter((section) => section.id !== PAGE_OVERLAY_SECTION_ID),
+    };
+  };
+
   const collectPilot = async (
     pilot: AiPageContextPilot,
     hint?: PageContextCollectHint,
@@ -186,7 +195,10 @@ export const createPageContextRegistry = (options?: {
       next = { ...text, title: text.title || message.title };
     }
     if (message.currentTime && !textFallback) {
-      cache.set(message.title, { currentTime: message.currentTime, content: next });
+      cache.set(message.title, {
+        currentTime: message.currentTime,
+        content: stripOverlaySections(next) || next,
+      });
     } else if (!message.currentTime) {
       cache.delete(message.title);
     }
@@ -217,8 +229,9 @@ export const createPageContextRegistry = (options?: {
     }
 
     if (tasks.length === 0) return null;
-    const parts = await Promise.all(tasks);
-    const merged = mergePageContexts(parts);
+    const parts = (await Promise.all(tasks)).map(stripOverlaySections);
+    // 弹窗/Drawer 每轮现场采集，避免被 pilot cache 冻住开关状态
+    const merged = mergePageContexts([...parts, { sections: overlaySection() }]);
     if (!merged.sections?.length && !merged.images?.length) {
       return null;
     }

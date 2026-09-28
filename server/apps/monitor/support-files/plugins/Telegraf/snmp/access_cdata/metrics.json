@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_cdata",
   "plugin": "Access C-Data SNMP",
-  "plugin_desc": "C-Data GPON and EPON access-device SNMP collection under enterprise PEN 34592 (FD-SYSTEM). Beyond the shared Access SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it collects sysCpuUtilization as CPU percent, chassisTemperature as Celsius with no extra scale, powerStatusBit as PSU A/B on bits, and fanStatusBit as a fan status bitmap. Memory utilization is not collected because no stable private scalar was confirmed. Supported brands/models - C-Data GPON and EPON OLT devices that expose FD-SYSTEM and standard IF-MIB.",
+  "plugin_desc": "SNMP monitoring template for C-Data access device. It reports uptime, CPU utilization, temperature, fan, and interface traffic, for C-Data GPON and EPON OLT (enterprise PEN 34592).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='access', collect_type='snmp_cdata'}) by (instance_id)",
   "name": "Access",

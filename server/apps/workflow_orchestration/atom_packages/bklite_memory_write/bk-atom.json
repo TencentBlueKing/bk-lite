@@ -1,0 +1,21 @@
+{
+  "key": "bklite_memory_write",
+  "name": "记忆写入",
+  "category": "记忆",
+  "description": "将流程产生的内容写入当前组织可用的 OpsPilot 记忆空间",
+  "source_type": "PLATFORM",
+  "driver": "WORKER",
+  "trusted_context": true,
+  "handler": "apps.workflow_orchestration.atom_packages.bklite_memory_write.runtime.handler:execute",
+  "input_schema": "schemas/input.schema.json",
+  "output_schema": "schemas/output.schema.json",
+  "ui_schema": "schemas/ui.schema.json",
+  "timeout_seconds": 900,
+  "retry_count": 0,
+  "retry_delay_seconds": 5,
+  "idempotent": false,
+  "safety_level": "MUTATION",
+  "resource_scope": "ORGANIZATION",
+  "required_permissions": [],
+  "error_types": []
+}

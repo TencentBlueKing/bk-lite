@@ -726,6 +726,49 @@ class BasicNode:
         return {"messages": result}
 
 
+REUSED_PRIOR_RESULT = "reused_prior_result"
+
+
+def tools_invoked_in_step(messages: List[BaseMessage] | None) -> list[str]:
+    names: list[str] = []
+    for message in messages or []:
+        if not isinstance(message, ToolMessage):
+            continue
+        name = str(getattr(message, "name", "") or "").strip()
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def build_planned_step_end_payload(
+    *,
+    step_index: int,
+    total_steps: int,
+    objective: str,
+    planned_tools: list,
+    step_messages: List[BaseMessage] | None = None,
+    status: str | None = None,
+    error: str | None = None,
+    reused: bool = False,
+) -> dict:
+    """规划步结束事件。复用只在调用方明确 reused=True 时打标。"""
+    payload: dict = {
+        "phase": "end",
+        "step_index": step_index,
+        "total_steps": total_steps,
+        "objective": objective,
+        "tools": list(planned_tools),
+        "tools_invoked": tools_invoked_in_step(step_messages),
+    }
+    if status:
+        payload["status"] = status
+    if error:
+        payload["error"] = error
+    if reused:
+        payload["outcome"] = REUSED_PRIOR_RESULT
+    return payload
+
+
 class ToolsNodes(
     BasicNode,
     ApprovalToolsMixin,
@@ -2749,16 +2792,6 @@ class ToolsNodes(
                         return f"工具 {tool_name} 执行失败: {str(content)[:800]}", unrecoverable
                 return "", False
 
-            def _tools_invoked_in_step(messages: List[BaseMessage]) -> list[str]:
-                names: list[str] = []
-                for message in messages:
-                    if not isinstance(message, ToolMessage):
-                        continue
-                    name = str(getattr(message, "name", "") or "").strip()
-                    if name and name not in names:
-                        names.append(name)
-                return names
-
             def _step_end_payload(
                 *,
                 step_index: int,
@@ -2768,26 +2801,18 @@ class ToolsNodes(
                 step_messages: List[BaseMessage] | None = None,
                 status: str | None = None,
                 error: str | None = None,
+                reused: bool = False,
             ) -> dict:
-                invoked = _tools_invoked_in_step(step_messages or [])
-                payload: dict = {
-                    "phase": "end",
-                    "step_index": step_index,
-                    "total_steps": total_steps,
-                    "objective": objective,
-                    "tools": list(planned_tools),
-                    "tools_invoked": invoked,
-                }
-                if status:
-                    payload["status"] = status
-                if error:
-                    payload["error"] = error
-                failed_like = bool(status) and (
-                    status == "failed" or str(status).startswith("failed_") or status in {"missing_params", "target_unresolved"}
+                return build_planned_step_end_payload(
+                    step_index=step_index,
+                    total_steps=total_steps,
+                    objective=objective,
+                    planned_tools=planned_tools,
+                    step_messages=step_messages,
+                    status=status,
+                    error=error,
+                    reused=reused,
                 )
-                if not invoked and not failed_like:
-                    payload["outcome"] = "reused_prior_result"
-                return payload
 
             def _without_substitute_plan_text(messages: List[BaseMessage]) -> List[BaseMessage]:
                 return [message for message in messages if not is_substitute_plan_message(message)]
@@ -3258,6 +3283,7 @@ class ToolsNodes(
                                 objective=step.objective,
                                 planned_tools=list(step.tools),
                                 step_messages=step_messages,
+                                reused=not tools_invoked_in_step(step_messages),
                             ),
                         )
                         step_finished = True

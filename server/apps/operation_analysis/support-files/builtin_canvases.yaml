@@ -2012,6 +2012,8 @@ screens:
       valueConfig:
         chartType: application3D
         sceneWidgetType: application3D
+        application3DWall:
+          autoPageEnabled: true
         appearance:
           frame: bare
     viewport:

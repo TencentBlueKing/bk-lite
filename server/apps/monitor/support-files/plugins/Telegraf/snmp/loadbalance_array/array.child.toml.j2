@@ -1,0 +1,61 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_array"
+        config_type = "array"
+        brand = "array"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Array Networks / ClickArray CPU (cpuUtilization, 直接%, 顶层标量 GET) ----
+    # sysObjectID 门控：1.3.6.1.4.1.7564。cpuUtilization 1.3.6.1.4.1.7564.30.1.0 → device_cpu_usage。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.7564.30.1.0"
+        name = "device_cpu_usage"
+    # ---- Array Networks 内存 (sysMemoryUtilization, 直接利用率%, 顶层标量 GET) ----
+    # sysMemoryUtilization 1.3.6.1.4.1.7564.4.2.0 → device_memory_usage。无 used/free 字节，不采可用内存计数。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.7564.4.2.0"
+        name = "device_memory_usage"
+    # ---- Array Networks 电源 (powerstate, INTEGER ok(0)/fail(1), 顶层标量 GET) ----
+    # powerstate 1.3.6.1.4.1.7564.32.3.0 → device_psu_state。下方 enum 归一为 1=正常 / 2=异常。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.7564.32.3.0"
+        name = "device_psu_state"
+# ---- 电源状态归一：0=ok→1(正常)，1=fail→2(异常)，未知码 default=2。共享盘 1=正常,>1=异常。----
+[[processors.enum]]
+    namepass = ["snmp"]
+    [[processors.enum.mapping]]
+        field = "device_psu_state"
+        dest = "device_psu_state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "0" = 1
+            "1" = 2
+# ---- 温度/风扇：cputemp 与 fanspeed 为 DisplayString，禁止当 Gauge 采集。当前连接数无私有标量 → N/A。----

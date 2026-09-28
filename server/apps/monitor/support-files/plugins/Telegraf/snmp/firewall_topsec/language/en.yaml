@@ -1,0 +1,51 @@
+Firewall Topsec SNMP:
+  name: Topsec TOS (Telegraf)
+  desc: "SNMP monitoring template for Topsec TOS firewalls. It reports uptime, CPU utilization, memory utilization, sessions/connections, session establishment rate, and interface traffic (enterprise PEN 14331)."
+monitor_object:
+  Firewall: Firewall
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Firewall:
+    snmp_uptime:
+      name: System Uptime
+      desc: Uptime of the Topsec TOS firewall since the last restart, derived
+        from sysUpTime. Monitoring uptime helps administrators understand
+        device stability and identify unexpected reboots.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: CPU utilization of the Topsec TOS firewall (TOS-SYSSTATE cpuLoad).
+        The device reports percent times 100, so the query divides by 100 to
+        yield a 0-100 percent. Sustained high CPU may indicate inspection load
+        or attack traffic.
+    device_memory_usage:
+      name: Memory Usage
+      desc: Memory utilization of the Topsec TOS firewall (TOS-SYSSTATE
+        memoryLoad). The device reports percent times 100, so the query divides
+        by 100 to yield a 0-100 percent. High memory pressure can degrade
+        session handling.
+    device_memory_total:
+      name: Total Memory
+      desc: Total physical memory of the Topsec TOS firewall in bytes
+        (TOS-SYSSTATE memoryTotal).
+    device_memory_free:
+      name: Free Memory
+      desc: Free physical memory of the Topsec TOS firewall in bytes
+        (TOS-SYSSTATE memoryFree).
+    device_memory_used:
+      name: Used Memory
+      desc: Used physical memory of the Topsec TOS firewall in bytes, derived
+        as memoryTotal minus memoryFree.
+    firewall_active_sessions:
+      name: Active Sessions
+      desc: Number of current connections on the Topsec TOS firewall
+        (TOS-SYSSTATE currentConnections). A rapid rise can indicate a
+        connection flood or session-table pressure.
+    firewall_session_rate:
+      name: Session Rate
+      desc: New connections per second on the Topsec TOS firewall (TOS-SYSSTATE
+        cps). A sudden spike can indicate a flood or a burst of new sessions.
+monitor_object_metric_group:
+  Firewall:
+    Base: Base
+    Firewall: Firewall

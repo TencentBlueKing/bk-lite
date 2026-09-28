@@ -9,6 +9,7 @@ import type {
   Application3DArchitectureNode,
   Application3DWallItem,
 } from '@/app/ops-analysis/types/sceneWidget';
+import type { Application3DPageEffect } from '@/app/ops-analysis/utils/application3DWallConfig';
 import {
   APPLICATION3D_CAMERA_FOV,
   buildApplication3DLayout,
@@ -38,6 +39,8 @@ import {
 import {
   WALL_ENTRANCE,
   WALL_FILTER_MOTION,
+  WALL_PAGE_FADE_MOTION,
+  WALL_PAGE_FLIP_MOTION,
   WALL_PAGE_TURN_MOTION,
   FOCUS_MOTION,
   ARCHITECTURE_MOTION,
@@ -94,6 +97,7 @@ export interface Application3DSceneController {
       playIntro?: boolean;
       playFilter?: boolean;
       pageDirection?: 'next' | 'prev';
+      pageEffect?: Application3DPageEffect;
       forceRepaint?: boolean;
       layoutCount?: number;
     },
@@ -565,7 +569,8 @@ export const createApplication3DScene = (
       return;
     }
     camera.updateMatrixWorld();
-    visuals.forEach((visual) => {
+    const glassCards = [...visuals.values(), ...retiring];
+    glassCards.forEach((visual) => {
       visual.frontPlane.updateWorldMatrix(true, false);
       for (let i = 0; i < 4; i += 1) {
         glassWorld.copy(glassCorners[i]).applyMatrix4(visual.frontPlane.matrixWorld).project(camera);
@@ -871,9 +876,14 @@ export const createApplication3DScene = (
   const cardFaceGeometry = createRoundedCardFaceGeometry(cardOutline);
   const floorGlowGeometry = new THREE.PlaneGeometry(1, 1);
   const visuals = new Map<string, ApplicationCardVisual>();
+  /** Cards leaving during a fade; kept in the scene until the fade ends. */
+  let retiring: ApplicationCardVisual[] = [];
   /** Display order for the current wall page; Map is lookup-only. */
   let wallItemOrder: string[] = [];
   let wallLayoutCount = 0;
+  /** Card world size of the page currently on screen, so the next turn can grow or shrink into the target tier. */
+  let shownCardWidth = 0;
+  let shownCardHeight = 0;
   const raycaster = new THREE.Raycaster();
 
   const orderedVisuals = () => {
@@ -1250,48 +1260,94 @@ export const createApplication3DScene = (
     });
   };
 
-  const playPageTurnTransition = (direction: 'next' | 'prev') => {
+  const finishRetiring = () => {
+    retiring.forEach((visual) => disposeVisual(visual));
+    retiring = [];
+  };
+
+  const playPageTurnTransition = (
+    direction: 'next' | 'prev',
+    pageEffect: Application3DPageEffect,
+    startCardScale: THREE.Vector3 | null,
+  ) => {
     cancelTweens();
     const entries = orderedVisuals();
-    if (!entries.length) return;
-    if (reducedMotion) {
+    if (!entries.length && retiring.length === 0) return;
+
+    const settleIncoming = () => {
       entries.forEach((visual) => {
         applyHomePose(visual);
         setCardOpacity(visual, 1);
       });
+    };
+
+    if (pageEffect === 'cut') {
+      finishRetiring();
+      settleIncoming();
+      snapCameraHome();
       return;
     }
 
-    const duration = WALL_PAGE_TURN_MOTION.durationMs / 1000;
+    const motion = pageEffect === 'fade'
+      ? WALL_PAGE_FADE_MOTION
+      : pageEffect === 'flip'
+        ? WALL_PAGE_FLIP_MOTION
+        : WALL_PAGE_TURN_MOTION;
+    const duration = motion.durationMs / 1000;
     const sign = direction === 'next' ? 1 : -1;
-    const startXOffset = sign * WALL_PAGE_TURN_MOTION.offsetX;
-    const startZOffset = WALL_PAGE_TURN_MOTION.offsetZ;
-    const startRotY = (sign * -WALL_PAGE_TURN_MOTION.rotateYDeg * Math.PI) / 180;
+    const staggerMs = pageEffect === 'flip'
+      ? WALL_PAGE_FLIP_MOTION.columnStaggerMs
+      : pageEffect === 'slide'
+        ? WALL_PAGE_TURN_MOTION.columnStaggerMs
+        : 0;
+    const maxCol = entries.reduce((acc, visual) => Math.max(acc, visual.columnIndex ?? 0), 0);
 
-    const maxCol = entries.reduce((acc, v) => Math.max(acc, v.columnIndex ?? 0), 0);
+    const fadeOutSeconds = WALL_PAGE_FADE_MOTION.outgoingMs / 1000;
+    const fadeInDelay = WALL_PAGE_FADE_MOTION.incomingDelayMs / 1000;
+    const fadeInSeconds = WALL_PAGE_FADE_MOTION.incomingMs / 1000;
+    if (pageEffect === 'fade') {
+      retiring.forEach((visual) => {
+        startTween(
+          fadeOutSeconds,
+          (t) => setCardOpacity(visual, 1 - t),
+          () => {
+            disposeVisual(visual);
+            retiring = retiring.filter((entry) => entry !== visual);
+          },
+          easeInOutCubic,
+          0,
+          true,
+        );
+      });
+    } else {
+      finishRetiring();
+    }
 
     entries.forEach((visual) => {
       const col = visual.columnIndex ?? 0;
       const staggerCol = direction === 'next' ? col : Math.max(maxCol - col, 0);
-      const delay = (staggerCol * WALL_PAGE_TURN_MOTION.columnStaggerMs) / 1000;
-
-      const fromPos = new THREE.Vector3(
-        visual.homePosition.x + startXOffset,
-        visual.homePosition.y,
-        visual.homePosition.z + startZOffset,
-      );
-      const fromRotY = visual.homeRotationY + startRotY;
-
+      const delay = pageEffect === 'fade' ? fadeInDelay : (staggerCol * staggerMs) / 1000;
+      const cardDuration = pageEffect === 'fade' ? fadeInSeconds : duration;
+      const fromPos = visual.homePosition.clone();
+      let fromRotY = visual.homeRotationY;
+      if (pageEffect === 'slide') {
+        fromPos.x += sign * WALL_PAGE_TURN_MOTION.offsetX;
+        fromPos.z += WALL_PAGE_TURN_MOTION.offsetZ;
+        fromRotY += (sign * -WALL_PAGE_TURN_MOTION.rotateYDeg * Math.PI) / 180;
+      } else if (pageEffect === 'flip') {
+        fromRotY += (sign * -WALL_PAGE_FLIP_MOTION.rotateYDeg * Math.PI) / 180;
+      }
+      const fromScale = startCardScale?.clone() ?? visual.homeScale.clone();
       visual.root.position.copy(fromPos);
       visual.root.rotation.set(0, fromRotY, 0);
-      visual.root.scale.copy(visual.homeScale);
+      visual.root.scale.copy(fromScale);
       setCardOpacity(visual, 0);
-
       startTween(
-        duration,
+        cardDuration,
         (t) => {
           setCardOpacity(visual, t);
           visual.root.position.lerpVectors(fromPos, visual.homePosition, t);
+          visual.root.scale.lerpVectors(fromScale, visual.homeScale, t);
           visual.root.rotation.set(
             0,
             fromRotY + (visual.homeRotationY - fromRotY) * t,
@@ -1302,21 +1358,29 @@ export const createApplication3DScene = (
           applyHomePose(visual);
           setCardOpacity(visual, 1);
         },
-        easeOutEntrance,
+        pageEffect === 'fade' ? easeInOutCubic : easeOutEntrance,
         delay,
+        true,
       );
     });
+    easeCameraTo(wallCameraPosition, wallLookTarget, duration, undefined, true);
   };
 
   const layoutVisuals = (layoutOptions?: {
     playIntro?: boolean;
     playFilter?: boolean;
     pageDirection?: 'next' | 'prev';
+    pageEffect?: Application3DPageEffect;
   }) => {
     const layout = buildApplication3DLayout(
       wallLayoutCount || visuals.size,
       viewportWidth / Math.max(viewportHeight, 1),
     );
+    const startCardScale = shownCardWidth > 0
+      ? new THREE.Vector3(shownCardWidth, shownCardHeight, CARD_THICKNESS)
+      : null;
+    shownCardWidth = layout.cardWidth;
+    shownCardHeight = layout.cardHeight;
 
     let row = 0;
     let column = 0;
@@ -1385,11 +1449,15 @@ export const createApplication3DScene = (
       playEntrance();
     } else {
       if (layoutOptions?.pageDirection) {
-        playPageTurnTransition(layoutOptions.pageDirection);
+        playPageTurnTransition(
+          layoutOptions.pageDirection,
+          layoutOptions.pageEffect ?? 'slide',
+          startCardScale,
+        );
       } else if (layoutOptions?.playFilter) {
         playFilterTransition();
       }
-      snapCameraHome();
+      if (!layoutOptions?.pageDirection) snapCameraHome();
       if (phase === 'initializing') {
         phase = 'wall';
         setOrbitEnabled(true);
@@ -1409,6 +1477,7 @@ export const createApplication3DScene = (
       playIntro?: boolean;
       playFilter?: boolean;
       pageDirection?: 'next' | 'prev';
+      pageEffect?: Application3DPageEffect;
       forceRepaint?: boolean;
       layoutCount?: number;
     },
@@ -1418,6 +1487,7 @@ export const createApplication3DScene = (
       items.length > 0 &&
       !entrancePlayed;
     const pageDirection = reconcileOptions?.pageDirection;
+    const pageEffect = reconcileOptions?.pageEffect ?? 'slide';
     const playFilter =
       Boolean(reconcileOptions?.playFilter) &&
       items.length > 0 &&
@@ -1443,11 +1513,18 @@ export const createApplication3DScene = (
     }
 
     const nextIds = new Set(items.map((item) => item.id));
-    visuals.forEach((visual, id) => {
-      if (!nextIds.has(id)) {
-        disposeVisual(visual);
-        visuals.delete(id);
-      }
+    const holdOutgoing = Boolean(pageDirection) && pageEffect === 'fade';
+    finishRetiring();
+    const leaving: string[] = [];
+    visuals.forEach((_visual, id) => {
+      if (!nextIds.has(id)) leaving.push(id);
+    });
+    leaving.forEach((id) => {
+      const visual = visuals.get(id);
+      if (!visual) return;
+      visuals.delete(id);
+      if (holdOutgoing) retiring.push(visual);
+      else disposeVisual(visual);
     });
     items.forEach((item) => {
       const previous = visuals.get(item.id);
@@ -1536,7 +1613,7 @@ export const createApplication3DScene = (
       particlesBuilt = true;
     }
     syncParticleScale();
-    layoutVisuals({ playIntro, playFilter, pageDirection });
+    layoutVisuals({ playIntro, playFilter, pageDirection, pageEffect });
   };
 
   const shortestAngleDelta = (from: number, to: number) => {
@@ -1551,13 +1628,14 @@ export const createApplication3DScene = (
     target: THREE.Vector3,
     duration = 0.55,
     onComplete?: () => void,
+    forceAnimate = false,
   ) => {
     if (disposed) return;
     cameraComplete = onComplete ?? null;
     desiredCameraPosition.copy(position);
     desiredTarget.copy(target);
     if (
-      reducedMotion
+      (!forceAnimate && reducedMotion)
       || (
         camera.position.distanceTo(position) < 0.08
         && controls.target.distanceTo(target) < 0.08
@@ -2226,6 +2304,7 @@ export const createApplication3DScene = (
       renderer.domElement.removeEventListener('pointerleave', handlePointerLeave);
       renderer.domElement.removeEventListener('wheel', handleWheel);
       controls.dispose();
+      finishRetiring();
       visuals.forEach(disposeVisual);
       visuals.clear();
       wallItemOrder = [];

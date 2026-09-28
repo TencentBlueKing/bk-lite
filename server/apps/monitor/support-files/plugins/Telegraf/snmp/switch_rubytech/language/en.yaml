@@ -1,10 +1,6 @@
 Switch RubyTech SNMP:
   name: RubyTech (Telegraf)
-  desc: SNMP monitoring template for RubyTech switch. CPU utilization uses
-    model-branch selection by sysObjectID (FGS2924R and ES2226, branches are
-    not mixed). It reports CPU usage percent, per-port inbound traffic rate,
-    per-port outbound traffic rate, and system uptime (IANA PEN 5205). RamSize
-    is capacity only and is not treated as memory usage.
+  desc: "SNMP monitoring template for RubyTech switch. It reports uptime, CPU utilization, and interface traffic, for FGS2924R and ES2226 (enterprise PEN 5205)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_peplink",
   "plugin": "Router Peplink SNMP",
-  "plugin_desc": "Peplink and Pepwave Balance, MAX and Edge router SNMP collection (enterprise PEN 23695). Collects device CPU utilization as a 0-100 percent (deviceCpuLoad) and memory used/total in kilobytes converted to bytes (deviceMemoryUsage and deviceTotalMemory). Pepwave devices share the same enterprise tree. Interface traffic is supplied by the shared Router SNMP IF-MIB floor.",
+  "plugin_desc": "SNMP monitoring template for Peplink router. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 23695).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_peplink'}) by (instance_id)",
   "name": "Router",

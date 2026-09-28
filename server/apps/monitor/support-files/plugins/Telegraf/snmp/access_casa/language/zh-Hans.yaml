@@ -1,6 +1,6 @@
 Access Casa Systems SNMP:
   name: Casa Systems（Telegraf）
-  desc: 面向 Casa Systems 接入设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Casa Systems 接入设备的 SNMP 监控模板，可采集运行时长、接口流量，适用于 Casa Systems CMTS 及宽带接入设备（基于标准 MIB）。
 monitor_object:
   Access: 接入设备
 monitor_object_type:

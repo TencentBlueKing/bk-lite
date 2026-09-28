@@ -1,8 +1,6 @@
 Access ARRIS Cadant SNMP:
   name: Access ARRIS Cadant SNMP
-  desc: SNMP monitoring template for ARRIS Cadant access device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime (IANA
-    PEN 4998).
+  desc: "SNMP monitoring template for ARRIS Cadant access device. It reports uptime, temperature, power supply status, disk usage, interface traffic, and card status (enterprise PEN 4998)."
 monitor_object:
   Access: Access
 monitor_object_type:

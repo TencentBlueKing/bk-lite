@@ -1,7 +1,6 @@
 Router NetModule SNMP:
   name: NetModule (Telegraf)
-  desc: SNMP monitoring template for NetModule router. It reports per-port inbound
-    traffic rate, per-port outbound traffic rate, and system uptime (IANA PEN 31496).
+  desc: "SNMP monitoring template for NetModule router. It reports uptime, temperature, and interface traffic (enterprise PEN 31496)."
 monitor_object:
   Router: Router
 monitor_object_type:
