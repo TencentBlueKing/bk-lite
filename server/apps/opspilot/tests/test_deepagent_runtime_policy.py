@@ -261,6 +261,73 @@ def test_tool_exception_middleware_returns_error_tool_message():
     assert "Invalid base64" in result.content
 
 
+def test_tool_timeout_middleware_returns_error_on_slow_sync_call():
+    import time
+
+    from apps.opspilot.metis.llm.middleware.tool_runtime import ToolTimeoutMiddleware
+
+    middleware = ToolTimeoutMiddleware(timeout_seconds=0.05)
+
+    def slow(_req):
+        time.sleep(0.5)
+        return ToolMessage(content="ok", tool_call_id="c1", name="slow_tool")
+
+    req = SimpleNamespace(tool_call={"name": "slow_tool", "id": "c1", "args": {}})
+    result = middleware.wrap_tool_call(req, slow)
+    assert isinstance(result, ToolMessage)
+    assert result.status == "error"
+    assert result.tool_call_id == "c1"
+    assert result.name == "slow_tool"
+    assert "超时" in result.content
+
+
+@pytest.mark.asyncio
+async def test_tool_timeout_middleware_returns_error_on_slow_async_call():
+    import asyncio
+
+    from apps.opspilot.metis.llm.middleware.tool_runtime import ToolTimeoutMiddleware
+
+    middleware = ToolTimeoutMiddleware(timeout_seconds=0.05)
+
+    async def slow(_req):
+        await asyncio.sleep(0.5)
+        return ToolMessage(content="ok", tool_call_id="c2", name="slow_async")
+
+    req = SimpleNamespace(tool_call={"name": "slow_async", "id": "c2", "args": {}})
+    result = await middleware.awrap_tool_call(req, slow)
+    assert isinstance(result, ToolMessage)
+    assert result.status == "error"
+    assert result.tool_call_id == "c2"
+    assert "超时" in result.content
+
+
+@pytest.mark.asyncio
+async def test_tool_timeout_middleware_passes_through_fast_async_call():
+    from apps.opspilot.metis.llm.middleware.tool_runtime import ToolTimeoutMiddleware
+
+    middleware = ToolTimeoutMiddleware(timeout_seconds=2.0)
+
+    async def fast(_req):
+        return ToolMessage(content="done", tool_call_id="c3", name="fast_tool", status="success")
+
+    req = SimpleNamespace(tool_call={"name": "fast_tool", "id": "c3", "args": {}})
+    result = await middleware.awrap_tool_call(req, fast)
+    assert isinstance(result, ToolMessage)
+    assert result.content == "done"
+    assert result.status == "success"
+
+
+def test_tool_invoke_timeout_seconds_defaults_and_rejects_unlimited(monkeypatch):
+    from apps.opspilot.metis.llm.middleware.tool_runtime import tool_invoke_timeout_seconds
+
+    monkeypatch.delenv("TOOL_INVOKE_TIMEOUT", raising=False)
+    assert tool_invoke_timeout_seconds() == 300.0
+    monkeypatch.setenv("TOOL_INVOKE_TIMEOUT", "0")
+    assert tool_invoke_timeout_seconds() == 300.0
+    monkeypatch.setenv("TOOL_INVOKE_TIMEOUT", "120")
+    assert tool_invoke_timeout_seconds() == 120.0
+
+
 def test_tool_exception_middleware_logs_once_without_exception_payload(caplog):
     from apps.opspilot.metis.llm.middleware.tool_runtime import ToolExceptionAsResultMiddleware
 
@@ -901,11 +968,36 @@ def test_rewrite_generic_alert_query_replaces_monitor_active_alerts(caplog):
         user_message="现在还有没有没关的告警啊？",
     )
     assert [step.tools for step in fixed.steps] == [["alerts_list_alerts"]]
-    records = [rec for rec in caplog.records if rec.name == "opspilot" and rec.msg == "DeepAgent 规划硬校验：口语告警改走告警中心 tool=%s"]
+    records = [rec for rec in caplog.records if rec.name == "opspilot" and "口语告警改走告警中心" in rec.getMessage()]
     assert len(records) == 1
-    assert records[0].args == ("alerts_list_alerts",)
     assert "alerts_list_alerts" in records[0].getMessage()
     assert "现在还有没有没关的告警啊？" not in records[0].getMessage()
+
+
+def test_rewrite_host_scoped_alert_keeps_monitor_and_alerts_center():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+        ToolExecutionPlan,
+        ToolExecutionStep,
+        is_host_scoped_alert_query,
+        rewrite_generic_alert_query_to_alerts_center,
+    )
+
+    assert is_host_scoped_alert_query("web-1 那边是不是还在告警") is True
+    assert is_host_scoped_alert_query("172.16.196.222 这台主机有没有告警") is True
+    assert is_host_scoped_alert_query("现在还有没有没关的告警啊？") is False
+
+    plan = ToolExecutionPlan(
+        goal="查主机告警",
+        steps=[ToolExecutionStep(objective="列活跃告警", tools=["monitor_list_active_alerts"])],
+    )
+    fixed = rewrite_generic_alert_query_to_alerts_center(
+        plan,
+        {"alerts_list_alerts", "monitor_list_active_alerts"},
+        user_message="web-1 那边是不是还在告警",
+    )
+    tools = [name for step in fixed.steps for name in step.tools]
+    assert "alerts_list_alerts" in tools
+    assert "monitor_list_active_alerts" in tools
 
 
 def test_extract_declared_cmdb_model_from_user_message():
@@ -973,10 +1065,15 @@ def test_rewrite_generic_alert_query_drops_type_ask_for_host_alert():
     )
     fixed = rewrite_generic_alert_query_to_alerts_center(
         plan,
-        {"alerts_list_alerts", "monitor_list_objects", "request_user_choice", "monitor_list_object_instances"},
+        {"alerts_list_alerts", "monitor_list_objects", "request_user_choice", "monitor_list_object_instances", "monitor_list_active_alerts"},
         user_message="web-1 那边是不是还在告警",
     )
-    assert [step.tools for step in fixed.steps] == [["alerts_list_alerts"]]
+    tools = [name for step in fixed.steps for name in step.tools]
+    assert "alerts_list_alerts" in tools
+    assert "monitor_list_active_alerts" in tools
+    assert "monitor_list_objects" not in tools
+    assert "request_user_choice" not in tools
+    assert "monitor_list_object_instances" not in tools
 
 
 def test_rewrite_generic_alert_query_keeps_monitor_when_user_says_monitor_alert():
@@ -1017,6 +1114,23 @@ async def test_planner_rewrites_open_alerts_to_alerts_center():
 
 
 @pytest.mark.asyncio
+async def test_planner_host_scoped_alert_keeps_monitor_active_alerts():
+    tools = [
+        _tool("monitor_list_active_alerts", "查询监控活跃告警"),
+        _tool("alerts_list_alerts", "查询告警中心"),
+    ]
+
+    class FakeLLM:
+        async def ainvoke(self, messages, config=None):
+            return AIMessage(content='{"goal":"查主机告警","steps":[{"objective":"列告警中心","tools":["alerts_list_alerts"]}]}')
+
+    plan = await ToolExecutionPlanner(FakeLLM()).plan("172.16.196.222 这台主机有没有告警", tools)
+    tools_used = {name for step in plan.steps for name in step.tools}
+    assert "alerts_list_alerts" in tools_used
+    assert "monitor_list_active_alerts" in tools_used
+
+
+@pytest.mark.asyncio
 async def test_planner_catalog_prepends_alerts_monitor_split_hint():
     tools = [
         _tool("alerts_list_alerts", "查询告警中心"),
@@ -1038,7 +1152,8 @@ async def test_planner_catalog_prepends_alerts_monitor_split_hint():
     prompt = "\n".join(str(message.content) for message in llm.messages)
     assert "告警分流" in prompt
     assert "alerts_list_alerts" in prompt
-    assert "禁止规划 monitor_list_active_alerts" in prompt
+    assert "monitor_list_active_alerts" in prompt
+    assert "必须同时规划" in prompt
 
 
 @pytest.mark.parametrize(

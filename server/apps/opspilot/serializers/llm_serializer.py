@@ -175,6 +175,8 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
 class SkillPackageSerializer(AuthSerializer):
     permission_key = "tools"
     variables = serializers.SerializerMethodField()
+    display_name = serializers.SerializerMethodField()
+    description_tr = serializers.SerializerMethodField()
 
     class Meta:
         model = SkillPackage
@@ -200,8 +202,11 @@ class SkillPackageSerializer(AuthSerializer):
             "triggers",
             "team",
             "is_enabled",
+            "is_build_in",
             "permissions",
             "variables",
+            "display_name",
+            "description_tr",
         ]
         read_only_fields = [
             "id",
@@ -213,7 +218,25 @@ class SkillPackageSerializer(AuthSerializer):
             "updated_by_domain",
             "storage_path",
             "manifest",
+            "is_build_in",
         ]
+
+    def _get_language_loader(self):
+        request = self.context.get("request")
+        locale = "en"
+        if request and hasattr(request, "user") and request.user:
+            locale = getattr(request.user, "locale", "en") or "en"
+        return LanguageLoader(app="opspilot", default_lang=locale)
+
+    def get_display_name(self, instance: SkillPackage):
+        loader = self._get_language_loader()
+        translated = loader.get(f"skill_packages.{instance.package_id}.name")
+        return translated or instance.name
+
+    def get_description_tr(self, instance: SkillPackage):
+        loader = self._get_language_loader()
+        translated = loader.get(f"skill_packages.{instance.package_id}.description")
+        return translated or instance.description
 
     @staticmethod
     def get_variables(instance: SkillPackage):

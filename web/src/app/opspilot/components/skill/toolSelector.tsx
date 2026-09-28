@@ -24,6 +24,7 @@ import PostgresToolEditor, { PostgresToolEditorHandle } from './postgresToolEdit
 import ElasticsearchToolEditor, { ElasticsearchToolEditorHandle } from './elasticsearchToolEditor';
 import JenkinsToolEditor, { JenkinsToolEditorHandle } from './jenkinsToolEditor';
 import KubernetesToolEditor, { KubernetesToolEditorHandle } from './kubernetesToolEditor';
+import ActiveDirectoryToolEditor, { ActiveDirectoryToolEditorHandle } from './activeDirectoryToolEditor';
 
 // ── tool type guards ──────────────────────────────────────────────────────────
 const REDIS_TOOL_NAME = 'redis';
@@ -33,6 +34,7 @@ const MSSQL_TOOL_NAME = 'mssql';
 const POSTGRES_TOOL_NAME = 'postgres';
 const ES_TOOL_NAME = 'elasticsearch';
 const JENKINS_TOOL_NAME = 'jenkins';
+const AD_TOOL_NAME = 'activedirectory';
 const KUBERNETES_TOOL_NAMES = new Set(['kubernetes', 'kubernetes_data_collection']);
 
 const isRedisTool = (tool?: SelectTool | null) => (tool?.rawName || tool?.name) === REDIS_TOOL_NAME;
@@ -42,13 +44,15 @@ const isMssqlTool = (tool?: SelectTool | null) => (tool?.rawName || tool?.name) 
 const isPostgresTool = (tool?: SelectTool | null) => (tool?.rawName || tool?.name) === POSTGRES_TOOL_NAME;
 const isEsTool = (tool?: SelectTool | null) => (tool?.rawName || tool?.name) === ES_TOOL_NAME;
 const isJenkinsTool = (tool?: SelectTool | null) => (tool?.rawName || tool?.name) === JENKINS_TOOL_NAME;
+const isActiveDirectoryTool = (tool?: SelectTool | null) => (tool?.rawName || tool?.name) === AD_TOOL_NAME;
 const isKubernetesTool = (tool?: SelectTool | null) => {
   const toolName = tool?.rawName || tool?.name;
   return toolName ? KUBERNETES_TOOL_NAMES.has(toolName) : false;
 };
 const isDbTool = (tool?: SelectTool | null) =>
   isRedisTool(tool) || isMysqlTool(tool) || isOracleTool(tool) || isMssqlTool(tool) ||
-  isPostgresTool(tool) || isEsTool(tool) || isJenkinsTool(tool) || isKubernetesTool(tool);
+  isPostgresTool(tool) || isEsTool(tool) || isJenkinsTool(tool) || isKubernetesTool(tool) ||
+  isActiveDirectoryTool(tool);
 
 const isSameToolVariant = (tool?: SelectTool | null, defaultTool?: SelectTool | null) => {
   if (!tool || !defaultTool) return false;
@@ -81,6 +85,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
   const esRef = useRef<ElasticsearchToolEditorHandle>(null);
   const jenkinsRef = useRef<JenkinsToolEditorHandle>(null);
   const kubernetesRef = useRef<KubernetesToolEditorHandle>(null);
+  const adRef = useRef<ActiveDirectoryToolEditorHandle>(null);
 
   const commitSelectedTools = (nextTools: SelectTool[]) => {
     const normalizedTools = normalizeMonitorToolConfigs(nextTools);
@@ -106,6 +111,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
       const defaultEsTool = normalizedDefaultTools.find((tool) => isEsTool(tool));
       const defaultJenkinsTool = normalizedDefaultTools.find((tool) => isJenkinsTool(tool));
       const defaultKubernetesTool = normalizedDefaultTools.find((tool) => isKubernetesTool(tool));
+      const defaultAdTool = normalizedDefaultTools.find((tool) => isActiveDirectoryTool(tool));
       const fetchedTools = data.map((tool) => {
         const defaultTool = defaultToolMap.get(tool.id);
         const kwargs = (tool.params.kwargs || [])
@@ -134,7 +140,8 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
           || (isPostgresTool(tool) && !!defaultPostgresTool)
           || (isEsTool(tool) && !!defaultEsTool)
           || (isJenkinsTool(tool) && !!defaultJenkinsTool)
-          || (isKubernetesTool(tool) && !!defaultKubernetesTool && isSameToolVariant(tool, defaultKubernetesTool)))
+          || (isKubernetesTool(tool) && !!defaultKubernetesTool && isSameToolVariant(tool, defaultKubernetesTool))
+          || (isActiveDirectoryTool(tool) && !!defaultAdTool))
         .map((tool) => {
           const matchedDefaultTool = defaultToolMap.get(tool.id)
             || (isRedisTool(tool) ? defaultRedisTool : undefined)
@@ -144,7 +151,8 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
             || (isPostgresTool(tool) ? defaultPostgresTool : undefined)
             || (isEsTool(tool) ? defaultEsTool : undefined)
             || (isJenkinsTool(tool) ? defaultJenkinsTool : undefined)
-            || (isKubernetesTool(tool) && isSameToolVariant(tool, defaultKubernetesTool) ? defaultKubernetesTool : undefined);
+            || (isKubernetesTool(tool) && isSameToolVariant(tool, defaultKubernetesTool) ? defaultKubernetesTool : undefined)
+            || (isActiveDirectoryTool(tool) ? defaultAdTool : undefined);
           if (!matchedDefaultTool) return tool;
           return { ...tool, kwargs: matchedDefaultTool.kwargs?.length ? matchedDefaultTool.kwargs : tool.kwargs };
         });
@@ -217,6 +225,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
     if (isEsTool(editingTool)) { esRef.current?.save(); return; }
     if (isJenkinsTool(editingTool)) { jenkinsRef.current?.save(); return; }
     if (isKubernetesTool(editingTool)) { kubernetesRef.current?.save(); return; }
+    if (isActiveDirectoryTool(editingTool)) { adRef.current?.save(); return; }
 
     // Generic form-based tool
     form.validateFields().then((values) => {
@@ -339,6 +348,8 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
             <JenkinsToolEditor ref={jenkinsRef} initialKwargs={editingTool?.kwargs ?? []} onSave={handleDbToolSaved} />
           ) : isKubernetesTool(editingTool) ? (
             <KubernetesToolEditor ref={kubernetesRef} initialKwargs={editingTool?.kwargs ?? []} onSave={handleDbToolSaved} />
+          ) : isActiveDirectoryTool(editingTool) ? (
+            <ActiveDirectoryToolEditor ref={adRef} initialKwargs={editingTool?.kwargs ?? []} onSave={handleDbToolSaved} />
           ) : (
             <Form.List name="kwargs">
               {(fields) => (

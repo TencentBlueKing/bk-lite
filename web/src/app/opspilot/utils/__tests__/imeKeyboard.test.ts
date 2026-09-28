@@ -8,6 +8,7 @@ import {
   isImeCompositionKeyboardEvent,
   shouldSubmitChatOnEnter,
   useImeEnterGuard,
+  useImeSafeSearchInput,
 } from '../imeKeyboard';
 
 describe('imeKeyboard', () => {
@@ -188,5 +189,54 @@ describe('useImeEnterGuard', () => {
     expect(composingPreventDefault).not.toHaveBeenCalled();
 
     vi.useRealTimers();
+  });
+});
+
+describe('useImeSafeSearchInput', () => {
+  it('does not commit pinyin intermediates while composing', () => {
+    const onCommit = vi.fn();
+    const { result, rerender } = renderHook(
+      ({ committed }) => useImeSafeSearchInput(committed, onCommit),
+      { initialProps: { committed: '' } },
+    );
+
+    act(() => {
+      result.current.onCompositionStart();
+      result.current.onChange({
+        target: { value: 'guan' },
+        nativeEvent: { isComposing: true },
+      } as any);
+    });
+
+    expect(result.current.value).toBe('guan');
+    expect(onCommit).not.toHaveBeenCalled();
+
+    act(() => {
+      result.current.onCompositionEnd({
+        currentTarget: { value: '关' },
+      } as any);
+    });
+
+    expect(result.current.value).toBe('关');
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCommit).toHaveBeenCalledWith('关');
+
+    rerender({ committed: '关' });
+    expect(result.current.value).toBe('关');
+  });
+
+  it('commits normal latin onChange immediately when not composing', () => {
+    const onCommit = vi.fn();
+    const { result } = renderHook(() => useImeSafeSearchInput('', onCommit));
+
+    act(() => {
+      result.current.onChange({
+        target: { value: 'api' },
+        nativeEvent: { isComposing: false },
+      } as any);
+    });
+
+    expect(result.current.value).toBe('api');
+    expect(onCommit).toHaveBeenCalledWith('api');
   });
 });

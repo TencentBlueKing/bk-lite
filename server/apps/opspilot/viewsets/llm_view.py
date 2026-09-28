@@ -43,6 +43,7 @@ from apps.opspilot.serializers.llm_serializer import (
     SkillToolsSerializer,
 )
 from apps.opspilot.services.builtin_tools import (
+    BUILTIN_ACTIVEDIRECTORY_TOOL_NAME,
     BUILTIN_ALERTS_TOOL_NAME,
     BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
     BUILTIN_CMDB_TOOL_NAME,
@@ -52,6 +53,7 @@ from apps.opspilot.services.builtin_tools import (
     BUILTIN_MYSQL_TOOL_NAME,
     BUILTIN_ORACLE_TOOL_NAME,
     BUILTIN_REDIS_TOOL_NAME,
+    build_builtin_activedirectory_tool,
     build_builtin_alerts_tool,
     build_builtin_attachment_file_tool,
     build_builtin_cmdb_tool,
@@ -883,9 +885,21 @@ class SkillPackageViewSet(AuthViewSet):
             logger.warning("[skill-package] 清理磁盘目录失败 %s: %r", storage_path_text, e)
         return False
 
+    def get_queryset_by_permission(self, request, queryset, permission_key=None):
+        """组织过滤后仍并入内置技能包，避免 team=[] 的内置行对各团队不可见。"""
+        result = super().get_queryset_by_permission(request, queryset, permission_key)
+        if isinstance(result, JsonResponse):
+            return result
+        return (result | queryset.filter(is_build_in=True)).distinct()
+
     def destroy(self, request, *args, **kwargs):
         """删技能包:DRF 默认 destroy 删 DB 行,再调 _cleanup_storage_path 清磁盘。"""
         instance = self.get_object()
+        if getattr(instance, "is_build_in", False):
+            return Response(
+                {"result": False, "message": "内置技能包不可删除"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         storage_path_text = str(getattr(instance, "storage_path", "") or "")
         response = super().destroy(request, *args, **kwargs)
         self._cleanup_storage_path(storage_path_text)
@@ -1146,6 +1160,8 @@ class SkillToolsViewSet(AuthViewSet):
                 response.data.append(build_builtin_oracle_tool(loader))
             if not any(item.get("name") == BUILTIN_MSSQL_TOOL_NAME for item in response.data):
                 response.data.append(build_builtin_mssql_tool(loader))
+            if not any(item.get("name") == BUILTIN_ACTIVEDIRECTORY_TOOL_NAME for item in response.data):
+                response.data.append(build_builtin_activedirectory_tool(loader))
         return response
 
     @HasPermission("tool_list-Add")
@@ -1389,3 +1405,21 @@ class SkillToolsViewSet(AuthViewSet):
         except Exception as error:
             return JsonResponse({"result": False, "message": f"Kubernetes connection test failed: {error}"}, status=status.HTTP_400_BAD_REQUEST)
         return JsonResponse({"result": False, "message": "Kubernetes connection test failed"}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(methods=["POST"], detail=False)
+    @HasPermission("tool_list-View")
+    def test_ad_connection(self, request):
+        from apps.opspilot.metis.llm.tools.activedirectory.connection import normalize_ad_instance, test_ad_instance
+
+        try:
+            self._guard_connection_host(request.data.get("host"), request.data.get("port"))
+            instance = normalize_ad_instance(request.data)
+            if test_ad_instance(instance):
+                return JsonResponse({"result": True, "data": {"success": True}})
+        except SSRFError as error:
+            return self._ssrf_error_response(error)
+        except ValueError as error:
+            return JsonResponse({"result": False, "message": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as error:
+            return JsonResponse({"result": False, "message": f"Active Directory connection test failed: {error}"}, status=status.HTTP_400_BAD_REQUEST)
+        return JsonResponse({"result": False, "message": "Active Directory connection test failed"}, status=status.HTTP_400_BAD_REQUEST)

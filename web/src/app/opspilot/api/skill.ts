@@ -25,6 +25,7 @@ import type { PostgresInstanceFormValue } from '@/app/opspilot/components/skill/
 import type { ElasticsearchInstanceFormValue } from '@/app/opspilot/components/skill/elasticsearchToolEditor';
 import type { JenkinsInstanceFormValue } from '@/app/opspilot/components/skill/jenkinsToolEditor';
 import type { KubernetesInstanceFormValue } from '@/app/opspilot/components/skill/kubernetesToolEditor';
+import type { ActiveDirectoryInstanceFormValue } from '@/app/opspilot/components/skill/activeDirectoryToolEditor';
 
 export const useSkillApi = () => {
   const { get, post, patch, del, put } = useApiClient();
@@ -99,6 +100,10 @@ export const useSkillApi = () => {
 
   const testKubernetesConnection = async (instance: Omit<KubernetesInstanceFormValue, 'testStatus'>): Promise<void> => {
     await post('/opspilot/model_provider_mgmt/skill_tools/test_kubernetes_connection/', instance);
+  };
+
+  const testAdConnection = async (instance: Omit<ActiveDirectoryInstanceFormValue, 'testStatus'>): Promise<void> => {
+    await post('/opspilot/model_provider_mgmt/skill_tools/test_ad_connection/', instance);
   };
 
   const fetchSkillTemplates = async (): Promise<SkillTemplate[]> => {
@@ -246,6 +251,7 @@ export const useSkillApi = () => {
     testEsConnection,
     testJenkinsConnection,
     testKubernetesConnection,
+    testAdConnection,
     fetchSkillTemplates,
     createSkill,
     togglePin,

@@ -38,9 +38,12 @@ const SkillPackageDetailDrawer: React.FC<SkillPackageDetailDrawerProps> = ({
   open,
   onClose,
 }) => {
+  const displayName = asset?.display_name || asset?.name || '技能包详情';
+  const displayDescription = asset?.description_tr || asset?.description || '暂无描述';
+
   return (
     <Drawer
-      title={asset?.name || '技能包详情'}
+      title={displayName}
       placement="right"
       onClose={onClose}
       open={open}
@@ -52,20 +55,20 @@ const SkillPackageDetailDrawer: React.FC<SkillPackageDetailDrawerProps> = ({
             <div className="flex items-start gap-3">
               <Icon type="jinengpeixun" className="shrink-0 text-4xl" />
               <div className="min-w-0 flex-1">
-                <h2 className="truncate text-base font-semibold text-[var(--color-text-1)]">{asset.name}</h2>
+                <h2 className="truncate text-base font-semibold text-[var(--color-text-1)]">{displayName}</h2>
                 <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[var(--color-text-3)]">
-                  {asset.description || '暂无描述'}
+                  {displayDescription}
                 </p>
               </div>
             </div>
           </div>
 
           <Descriptions bordered size="small" column={1}>
-            <Descriptions.Item label="名称">{asset.name || '暂无数据'}</Descriptions.Item>
+            <Descriptions.Item label="名称">{displayName || '暂无数据'}</Descriptions.Item>
             <Descriptions.Item label="包 ID">{asset.package_id || '暂无数据'}</Descriptions.Item>
             <Descriptions.Item label="版本">{asset.version || '暂无数据'}</Descriptions.Item>
             <Descriptions.Item label="分类">{asset.category || '暂无数据'}</Descriptions.Item>
-            <Descriptions.Item label="来源">{getSkillAssetSourceLabel(asset.source_type)}</Descriptions.Item>
+            <Descriptions.Item label="来源">{getSkillAssetSourceLabel(asset.is_build_in ? 'builtin' : asset.source_type)}</Descriptions.Item>
             <Descriptions.Item label="启用状态">
               <Tag color={asset.is_enabled === false ? 'default' : 'success'}>
                 {asset.is_enabled === false ? '禁用' : '启用'}

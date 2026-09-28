@@ -244,7 +244,7 @@ const SkillSettingsPage: React.FC = () => {
       setSaveLoading(true);
       await saveSkillDetail(id, payload);
       const missingOnSave = effectiveSkillCapabilityProfiles.flatMap((pkg) =>
-        listMissingRequiredParams(pkg, skillPackageParams[pkg.package_id]).map((name) => `${pkg.name} / ${name}`)
+        listMissingRequiredParams(pkg, skillPackageParams[pkg.package_id]).map((name) => `${pkg.display_name || pkg.name} / ${name}`)
       );
       if (missingOnSave.length > 0) {
         message.warning(t('skill.skillPackageParams.saveWarning', '以下技能包缺少必填变量，运行时将不可用：{names}', { names: missingOnSave.join('；') }));
@@ -365,9 +365,10 @@ const SkillSettingsPage: React.FC = () => {
     if (!keyword) return availableSkillAssets;
 
     return availableSkillAssets.filter((asset) => [
+      asset.display_name || asset.name,
       asset.name,
       asset.category,
-      asset.description,
+      asset.description_tr || asset.description,
       asset.package_id,
       ...(asset.triggers || []),
       ...getPackageRequiredTools(asset),
@@ -486,8 +487,8 @@ const SkillSettingsPage: React.FC = () => {
                     <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[var(--color-bg)] text-[var(--color-primary)] shadow-2xs">
                       <Icon type="jinengpeixun" className="text-xs" />
                     </span>
-                    <span className="truncate text-xs font-medium text-[var(--color-text-1)]" title={resolvedAsset.name}>
-                      {resolvedAsset.name}
+                    <span className="truncate text-xs font-medium text-[var(--color-text-1)]" title={resolvedAsset.display_name || resolvedAsset.name}>
+                      {resolvedAsset.display_name || resolvedAsset.name}
                     </span>
                   </div>
                   <div className="ml-2 flex shrink-0 items-center gap-1">
@@ -600,9 +601,9 @@ const SkillSettingsPage: React.FC = () => {
                       <Icon type="jinengpeixun" className="text-xl" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <Tooltip title={asset.name}>
+                      <Tooltip title={asset.display_name || asset.name}>
                         <div className="truncate text-[13px] font-semibold leading-snug text-[var(--color-text-1)]">
-                          {asset.name}
+                          {asset.display_name || asset.name}
                         </div>
                       </Tooltip>
                       {asset.category && (
@@ -622,7 +623,7 @@ const SkillSettingsPage: React.FC = () => {
 
                 <div className="mt-2 min-h-[36px]">
                   <p className="line-clamp-2 text-xs leading-relaxed text-[var(--color-text-3)] m-0">
-                    {asset.description || '暂无描述'}
+                    {asset.description_tr || asset.description || '暂无描述'}
                   </p>
                 </div>
               </div>
@@ -926,6 +927,8 @@ const SkillSettingsPage: React.FC = () => {
                         <Select
                           mode="multiple"
                           allowClear
+                          showSearch
+                          optionFilterProp="label"
                           placeholder={t('wiki.title')}
                           className="min-w-0 flex-1"
                           options={wikiKbs.map((kb) => ({ value: kb.id, label: kb.name }))}

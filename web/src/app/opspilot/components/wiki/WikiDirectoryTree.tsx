@@ -17,6 +17,7 @@ import {
   wikiMaterialTreeKey,
   wikiPageTreeKey,
 } from "@/app/opspilot/utils/wikiDirectoryTreeOps";
+import { useImeSafeSearchInput } from "@/app/opspilot/utils/imeKeyboard";
 
 const directoryKey = (id: number) => `directory:${id}`;
 
@@ -65,6 +66,7 @@ const WikiDirectoryTree: React.FC<WikiDirectoryTreeProps> = ({
 }) => {
   const { t } = useTranslation();
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
+  const searchInput = useImeSafeSearchInput(search, onSearchChange);
 
   const pagesByDirectory = useMemo(() => {
     const map = new Map<number | null, WikiTreePageItem[]>();
@@ -269,10 +271,12 @@ const WikiDirectoryTree: React.FC<WikiDirectoryTreeProps> = ({
           allowClear
           enterButton
           size="small"
-          value={search}
+          value={searchInput.value}
           placeholder={`${t("common.search")}...`}
-          onChange={(event) => onSearchChange(event.target.value)}
-          onSearch={onSearchChange}
+          onChange={searchInput.onChange}
+          onCompositionStart={searchInput.onCompositionStart}
+          onCompositionEnd={searchInput.onCompositionEnd}
+          onSearch={searchInput.onSearch}
         />
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">

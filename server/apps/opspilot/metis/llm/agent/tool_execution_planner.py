@@ -91,8 +91,9 @@ _CMDB_MONITOR_LINK_HINT = (
     "不要把 monitor_list_objects / monitor_list_object_instances 写成查不到再查的下一步。"
 )
 
-# 告警中心工单与监控策略告警不是同一套；口语「没关的告警」必须走 alerts_*。
+# 告警中心工单与监控策略告警不是同一套；监控详情页「告警列表」是 MonitorAlert，未必进告警中心。
 _ALERTS_LIST_TOOL = "alerts_list_alerts"
+_MONITOR_LIST_ACTIVE_ALERTS_TOOL = "monitor_list_active_alerts"
 _MONITOR_ACTIVE_ALERT_TOOLS = frozenset(
     {
         "monitor_list_active_alerts",
@@ -119,13 +120,24 @@ _MONITOR_POLICY_ALERT_RE = re.compile(
     r"监控告警|监控侧|策略告警|策略扫描|MonitorAlert|" r"new\s*状态|活跃的监控告警|monitor.?alert",
     re.I,
 )
+# 点名某台主机/IP/实例时，监控策略告警与告警中心都要查。
+_HOST_SCOPED_ALERT_RE = re.compile(
+    r"(?:这台|那边|该主机|这台机器|主机|实例|Host|host).{0,24}告警|"
+    r"告警.{0,24}(?:这台|那边|该主机|主机|实例)|"
+    r"还在告|"
+    r"(?:\d{1,3}\.){3}\d{1,3}.{0,32}告警|"
+    r"告警.{0,32}(?:\d{1,3}\.){3}\d{1,3}",
+    re.I,
+)
 _ALERTS_MONITOR_SPLIT_HINT = (
-    "告警分流：alerts_* 查统一告警中心工单（未关闭/未分派/告警单/某台还在告）；"
-    "monitor_list_active_alerts 只查监控策略扫描出的活跃告警，不是告警中心。"
-    "用户未点名「监控告警/策略告警」时，禁止规划 monitor_list_active_alerts，"
-    "禁止为查告警先 monitor_list_objects + request_user_choice；"
-    "直接 alerts_list_alerts，主机名/IP/标题放 keyword。"
-    "只有用户明确问监控侧/策略扫描/new 状态的监控告警时才用 monitor_list_active_alerts。"
+    "告警分流：alerts_* 查统一告警中心工单；"
+    "monitor_list_active_alerts 查监控策略扫描出的实例活跃告警（监控详情页「告警列表」），"
+    "可用主机名/IP/instance_id，不必先问对象类型。"
+    "两套数据未必互通：监控侧有告警不代表告警中心有工单。"
+    "用户问某台主机/某 IP「还在告/有没有告警」且目录同时有两类工具时，必须同时规划 alerts_list_alerts "
+    "与 monitor_list_active_alerts，禁止只查告警中心就下「无告警」结论。"
+    "用户只问告警中心未关闭/未分派工单、未点名某台主机时，只规划 alerts_*。"
+    "用户明确问监控侧/策略扫描告警时，用 monitor_list_active_alerts。"
 )
 
 # 告警 RCA：缺 namespace 时必须先反查；禁止用扫全集群当反查。取证链由智能体 prompt 决定。
@@ -1078,16 +1090,25 @@ def is_alerts_center_query(user_message: str) -> bool:
     return bool(_ALERTS_CENTER_QUERY_RE.search(text))
 
 
+def is_host_scoped_alert_query(user_message: str) -> bool:
+    """点名某台主机/IP/实例的告警问法：监控侧与告警中心都要查。"""
+    return bool(_HOST_SCOPED_ALERT_RE.search(user_message or ""))
+
+
 def rewrite_generic_alert_query_to_alerts_center(
     plan: ToolExecutionPlan,
     available_names: set[str],
     user_message: str = "",
 ) -> ToolExecutionPlan:
-    """口语未关闭/某台还在告时，把监控活跃告警和类型询问改成告警中心列表。"""
+    """口语告警问法：告警中心必查；点名某台主机时保留/补上监控侧活跃告警。"""
     if _ALERTS_LIST_TOOL not in available_names:
         return plan
     if not is_alerts_center_query(user_message):
         return plan
+
+    host_scoped = is_host_scoped_alert_query(user_message)
+    monitor_available = _MONITOR_LIST_ACTIVE_ALERTS_TOOL in available_names
+    keep_monitor = host_scoped and monitor_available
 
     kept: list[ToolExecutionStep] = []
     changed = False
@@ -1095,6 +1116,11 @@ def rewrite_generic_alert_query_to_alerts_center(
         new_tools: list[str] = []
         for tool in step.tools or []:
             if tool in _MONITOR_ACTIVE_ALERT_TOOLS:
+                if keep_monitor:
+                    # 点名主机：保留监控侧活跃告警工具，历史片段也允许保留。
+                    if tool not in new_tools:
+                        new_tools.append(tool)
+                    continue
                 changed = True
                 if _ALERTS_LIST_TOOL not in new_tools:
                     new_tools.append(_ALERTS_LIST_TOOL)
@@ -1115,9 +1141,24 @@ def rewrite_generic_alert_query_to_alerts_center(
     if not any(tool.startswith("alerts_") for step in kept for tool in (step.tools or [])):
         kept.insert(0, ToolExecutionStep(objective="查询告警中心", tools=[_ALERTS_LIST_TOOL]))
         changed = True
+    if keep_monitor and not any(tool in _MONITOR_ACTIVE_ALERT_TOOLS for step in kept for tool in (step.tools or [])):
+        # 与告警中心同一步，避免多一步空转。
+        if kept and _ALERTS_LIST_TOOL in (kept[0].tools or []):
+            merged = list(kept[0].tools or [])
+            if _MONITOR_LIST_ACTIVE_ALERTS_TOOL not in merged:
+                merged.append(_MONITOR_LIST_ACTIVE_ALERTS_TOOL)
+                kept[0] = kept[0].model_copy(update={"tools": merged})
+                changed = True
+        else:
+            kept.insert(0, ToolExecutionStep(objective="查询监控策略活跃告警", tools=[_MONITOR_LIST_ACTIVE_ALERTS_TOOL]))
+            changed = True
     if not changed:
         return plan
-    logger.info("DeepAgent 规划硬校验：口语告警改走告警中心 tool=%s", _ALERTS_LIST_TOOL)
+    logger.info(
+        "DeepAgent 规划硬校验：口语告警改走告警中心 tool=%s host_scoped=%s",
+        _ALERTS_LIST_TOOL,
+        int(keep_monitor),
+    )
     return ToolExecutionPlan(goal=plan.goal, steps=kept)
 
 
@@ -1740,8 +1781,11 @@ class ToolExecutionPlanner:
             "规划须对齐「助手任务说明」中的目标；目录「能力导读」只约束工具前置条件，不改写任务目标。"
             "若用户要查某主机/实例的 CPU、内存或磁盘，且目录含 monitor_*，"
             "必须规划对应 monitor_* 步骤，禁止返回空 steps。"
-            "若用户问未关闭/未分派/告警单/某台还在告，且未点名监控告警，目录含 alerts_* 时只规划 alerts_*，"
-            "禁止用 monitor_list_active_alerts 或先问对象类型。"
+            "若用户问未关闭/未分派/告警单，且未点名某台主机，目录含 alerts_* 时只规划 alerts_*，"
+            "禁止为查工单先问监控对象类型。"
+            "若用户问某台主机/某 IP 还在告或该主机告警，且目录同时有 alerts_* 与 monitor_list_active_alerts，"
+            "必须同时规划两者，禁止只查告警中心就下「无告警」结论。"
+            "若用户明确问监控侧/策略告警，规划 monitor_list_active_alerts。"
             "若用户只问纳管规模、主机数量或资产清单，且目录含 cmdb_*，只规划 CMDB 检索，"
             "不要再规划 monitor_* 作为查不到再查的下一步。"
             "若用户点名 nginx/mysql/redis 等中间件且规划 cmdb_search_instances，"

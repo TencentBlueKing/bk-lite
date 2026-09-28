@@ -990,6 +990,39 @@
         "failed": "测试失败"
       }
     },
+    "activedirectory": {
+      "instances": "AD 实例",
+      "noInstances": "暂无 Active Directory 实例",
+      "selectInstance": "请选择一个 AD 实例",
+      "unnamedInstance": "未命名实例",
+      "addressNotConfigured": "未配置域控地址",
+      "configTitle": "{name} 配置",
+      "instanceName": "实例名称",
+      "instanceNamePlaceholder": "请输入实例名称",
+      "host": "域控地址",
+      "hostPlaceholder": "例如 dc01.example.com",
+      "port": "端口",
+      "useSsl": "使用 SSL (LDAPS)",
+      "bindDn": "绑定账号 DN",
+      "bindDnPlaceholder": "例如 CN=svc-opspilot,OU=ServiceAccounts,DC=example,DC=com",
+      "password": "密码",
+      "passwordPlaceholder": "请输入绑定账号密码",
+      "baseDn": "搜索基 DN",
+      "baseDnPlaceholder": "例如 DC=example,DC=com",
+      "baseDnHint": "查询起点，可填域根或某个 OU 的 DN",
+      "testConnection": "测试连接",
+      "instanceNameRequired": "请输入实例名称",
+      "hostRequired": "请输入域控地址",
+      "bindDnRequired": "请输入绑定账号 DN",
+      "passwordRequired": "请输入密码",
+      "baseDnRequired": "请输入搜索基 DN",
+      "duplicateInstanceName": "AD 实例名称不能重复",
+      "status": {
+        "untested": "未测试",
+        "success": "测试成功",
+        "failed": "测试失败"
+      }
+    },
     "oracle": {
       "instances": "Oracle实例",
       "noInstances": "暂无 Oracle 实例",

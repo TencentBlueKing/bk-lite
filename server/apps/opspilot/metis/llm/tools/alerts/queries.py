@@ -7,7 +7,15 @@ from apps.opspilot.metis.llm.tools.alerts.utils import call_alerts_rpc, wrap_err
 from apps.opspilot.metis.llm.tools.search_terms import SEARCH_NOTE, resolve_search_terms, user_message_from_config
 
 
-@tool(description=("查询统一告警中心工单列表。服务端按用户原问生成词表（原词加固定同义词）并做或匹配，" "覆盖标题、正文、资源名和告警 ID。不要自己拼接关键字，也不要因为空结果换词重搜。" "可按 status/level 过滤，只读。"))
+@tool(
+    description=(
+        "查询统一告警中心工单列表。口语「没关的告警/未分派」用本工具。"
+        "查某台主机是否还在告时：本工具查告警中心工单；监控详情页「告警列表」还须用 "
+        "monitor_list_active_alerts（监控策略告警未必进告警中心），两套都要查。"
+        "服务端按用户原问生成词表（原词加固定同义词）并做或匹配，覆盖标题、正文、资源名和告警 ID。"
+        "不要自己拼接关键字，也不要因为空结果换词重搜。可按 status/level 过滤，只读。"
+    )
+)
 def alerts_list_alerts(
     status: Optional[Any] = None,
     level: Optional[Any] = None,

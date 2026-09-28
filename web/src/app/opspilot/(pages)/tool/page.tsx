@@ -438,16 +438,17 @@ const ToolListPage: React.FC = () => {
     .filter((asset) => {
       const keyword = skillSearchKeyword.trim().toLowerCase();
       const matchesKeyword = !keyword || [
+        asset.display_name || asset.name,
         asset.name,
         asset.package_id,
         asset.category || '',
-        asset.description || '',
+        asset.description_tr || asset.description || '',
         (asset.required_tools || []).join(' '),
         (asset.triggers || []).join(' '),
       ].some((value) => value.toLowerCase().includes(keyword));
       return matchesKeyword;
     })
-    .sort((left, right) => Number(right.source_type === 'builtin') - Number(left.source_type === 'builtin'));
+    .sort((left, right) => Number(Boolean(right.is_build_in) || right.source_type === 'builtin') - Number(Boolean(left.is_build_in) || left.source_type === 'builtin'));
 
   const handleImportSkillOk = async () => {
     const file = (skillPackageFileList[0]?.originFileObj || skillPackageFileList[0]) as File | undefined;
@@ -468,8 +469,9 @@ const ToolListPage: React.FC = () => {
   };
 
   const handleDeleteSkillAsset = (asset: SkillPackage) => {
+    const title = asset.display_name || asset.name;
     Modal.confirm({
-      title: `删除技能包「${asset.name}」？`,
+      title: `删除技能包「${title}」？`,
       content: '删除后不会再出现在技能包列表和智能体技能选择中。',
       onOk: async () => {
         await deleteSkillPackage(asset.id);
@@ -554,7 +556,9 @@ const ToolListPage: React.FC = () => {
         <div className="grid w-full grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-6">
           {filteredSkillAssets.map((asset) => {
             const skillAssetKey = `${asset.package_id}:${asset.version}`;
-            const canDeleteSkillAsset = asset.source_type !== 'builtin';
+            const canDeleteSkillAsset = !asset.is_build_in && asset.source_type !== 'builtin';
+            const displayName = asset.display_name || asset.name;
+            const displayDescription = asset.description_tr || asset.description || '';
             const deleteMenu = canDeleteSkillAsset ? (
               <Menu>
                 <Menu.Item key="delete" danger>
@@ -571,10 +575,14 @@ const ToolListPage: React.FC = () => {
             return (
               <UnifiedOpsCard
                 key={skillAssetKey}
-                name={asset.name}
-                description={asset.description || ''}
+                name={displayName}
+                description={displayDescription}
                 icon="jinengpeixun"
-                meta={[asset.category, asset.version].filter(Boolean) as string[]}
+                meta={[
+                  asset.is_build_in || asset.source_type === 'builtin' ? t('common.builtin') : null,
+                  asset.category,
+                  asset.version,
+                ].filter(Boolean) as string[]}
                 footer="none"
                 menuOverlay={deleteMenu}
                 onClick={() => setSelectedSkillAssetForDetail(asset)}
