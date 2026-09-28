@@ -119,6 +119,7 @@ class MonitorPluginSerializer(serializers.ModelSerializer):
         elif template_type == "script":
             validated_data["collect_type"] = "script"
             validated_data["collector"] = "Telegraf"
+            validated_data["support_collect_detect"] = True
 
         with transaction.atomic():
             plugin = super().create(validated_data)

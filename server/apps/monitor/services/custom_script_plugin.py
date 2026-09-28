@@ -71,6 +71,7 @@ DEFAULT_SCRIPT_UI_TEMPLATE = {
     "collect_type": SCRIPT_COLLECT_TYPE,
     "config_type": [SCRIPT_CONFIG_TYPE],
     "collector": "Telegraf",
+    "support_collect_detect": True,
     "instance_id": "{{cloud_region}}_{{instance_type}}_script_{{instance_name}}",
     "form_fields": [
         {
@@ -82,7 +83,7 @@ DEFAULT_SCRIPT_UI_TEMPLATE = {
             "description": "监控采集执行的脚本正文",
             "description_en": "Script body to execute for collection",
             "widget_props": {
-                "placeholder": '#!/bin/sh\n# 采集脚本示例\necho "metric_name value=1"',
+                "placeholder": "粘贴或输入脚本内容",
                 "rows": 6,
             },
             "transform_on_edit": {
@@ -148,7 +149,7 @@ DEFAULT_SCRIPT_UI_TEMPLATE = {
                 {
                     "type": "pattern",
                     "pattern": r"^(?!^root$|^0+$).+$",
-                    "message": "执行用户禁止为 root 或 UID 0",
+                    "message": "不允许以 root 运行",
                 }
             ],
             "transform_on_edit": {
