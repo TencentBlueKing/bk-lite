@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from apps.operation_analysis.services.user_messages import oa_message
+
 
 class SharePrepareSerializer(serializers.Serializer):
     token = serializers.CharField(max_length=512)
@@ -13,7 +15,7 @@ class ShareExchangeSerializer(serializers.Serializer):
         token = (attrs.get("token") or "").strip()
         state = (attrs.get("state") or "").strip()
         if bool(token) == bool(state):
-            raise serializers.ValidationError("必须提供 token 或 state 之一")
+            raise serializers.ValidationError(oa_message("messages.share_token_or_state", "必须提供 token 或 state 之一"))
         attrs["token"] = token or None
         attrs["state"] = state or None
         return attrs

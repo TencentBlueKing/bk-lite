@@ -31,7 +31,13 @@ export const PROMETHEUS_DEFAULT_CHART_TYPES = [
   "topN",
 ] as const;
 
-export function createPrometheusDefaultParams(): ParamItem[] {
+type PrometheusLabel = (id: string, defaultMessage?: string) => string;
+
+export function createPrometheusDefaultParams(
+  translate?: PrometheusLabel,
+): ParamItem[] {
+  const t: PrometheusLabel =
+    translate ?? ((_id, defaultMessage) => defaultMessage ?? "");
   return [
     {
       id: uuidv4(),
@@ -45,7 +51,7 @@ export function createPrometheusDefaultParams(): ParamItem[] {
     {
       id: uuidv4(),
       name: "query_type",
-      alias_name: "查询类型",
+      alias_name: t("dataSource.queryType", "查询类型"),
       type: "string",
       filterType: "params",
       value: "range",
@@ -63,7 +69,7 @@ export function createPrometheusDefaultParams(): ParamItem[] {
     {
       id: uuidv4(),
       name: "time_range",
-      alias_name: "时间范围",
+      alias_name: t("dataSource.paramTypes.timeRange", "时间范围"),
       type: "timeRange",
       filterType: "filter",
       value: 60,
@@ -79,7 +85,7 @@ export function createPrometheusDefaultParams(): ParamItem[] {
     {
       id: uuidv4(),
       name: "max_series",
-      alias_name: "最大序列数",
+      alias_name: t("dataSource.maxSeries", "最大序列数"),
       type: "number",
       filterType: "params",
       value: 20,
@@ -841,6 +847,7 @@ export function buildHydratedDatasourceFormState(
   options?: {
     selectedGroupId?: string | number;
     createId?: () => string;
+    t?: (id: string) => string;
   },
 ): HydratedDatasourceFormState {
   const createId = options?.createId || uuidv4;
@@ -958,7 +965,7 @@ export function buildHydratedDatasourceFormState(
         ? ensurePrometheusQueryRequired(restoredParams)
         : restoredParams;
   } else if (rowSourceType === SOURCE_TYPE_PROMETHEUS) {
-    params = createPrometheusDefaultParams();
+    params = createPrometheusDefaultParams(options?.t);
   }
 
   return {

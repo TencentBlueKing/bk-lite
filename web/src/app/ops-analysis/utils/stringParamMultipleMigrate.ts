@@ -114,7 +114,7 @@ export const normalizeStringListInputConfig = (
     warnings.push({
       code: 'string_list_component_switch_conflict',
       message:
-        '旧 stringList 与 componentSwitch 互斥；已保留列表传参（multiple: true）并关闭 componentSwitch',
+        'Legacy stringList conflicts with componentSwitch; kept list params (multiple: true) and turned componentSwitch off',
     });
   }
 
@@ -282,7 +282,7 @@ export const migrateUnifiedFilterDefinitions = (
         warnings.push({
           code: 'string_list_dual_id_incompatible',
           key,
-          message: `筛选项 ${key} 同时存在 string 与 stringList，配置不兼容；已以 stringList 侧为准合并为 ${stringId}`,
+          message: `Filter ${key} has both string and stringList and the configs are incompatible; merged to ${stringId} using the stringList side`,
           fields: ['control', 'picker', 'optionsSource'],
         });
       }

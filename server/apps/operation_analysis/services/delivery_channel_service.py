@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from apps.operation_analysis.models.subscription_models import DashboardReportExecution, DashboardReportExecutionSnapshot
+from apps.operation_analysis.services.user_messages import oa_message
 from apps.system_mgmt.models import Channel
 from apps.system_mgmt.models import User as SystemUser
 
@@ -29,20 +30,20 @@ class DashboardReportDeliveryChannelService:
         snapshot: DashboardReportExecutionSnapshot,
     ) -> ResolvedEmailChannel:
         if snapshot.email_channel_id is None:
-            raise DashboardReportChannelError("邮件通道未配置", error_code="channel_missing")
+            raise DashboardReportChannelError(oa_message("messages.channel_not_configured", "邮件通道未配置"), error_code="channel_missing")
         channel = Channel.objects.filter(id=snapshot.email_channel_id).first()
         if channel is None:
-            raise DashboardReportChannelError("邮件通道不存在", error_code="channel_missing")
+            raise DashboardReportChannelError(oa_message("messages.channel_not_found", "邮件通道不存在"), error_code="channel_missing")
         if channel.channel_type != "email":
             raise DashboardReportChannelError(
-                "邮件通道不存在或类型不是 email",
+                oa_message("messages.channel_not_email", "邮件通道不存在或类型不是 email"),
                 error_code="channel_not_email",
             )
 
         team_id = snapshot.execution_team_id
         if team_id is None or team_id not in (channel.team or []):
             raise DashboardReportChannelError(
-                "邮件通道已不属于本执行组织",
+                oa_message("messages.channel_left_org", "邮件通道已不属于本执行组织"),
                 error_code="channel_team_denied",
             )
         creator = SystemUser.objects.filter(
@@ -52,7 +53,7 @@ class DashboardReportDeliveryChannelService:
         ).first()
         if team_id not in cls._team_ids(creator):
             raise DashboardReportChannelError(
-                "创建者已无权使用本执行组织的邮件通道",
+                oa_message("messages.channel_creator_denied", "创建者已无权使用本执行组织的邮件通道"),
                 error_code="channel_team_denied",
             )
 
@@ -64,7 +65,7 @@ class DashboardReportDeliveryChannelService:
             Channel.decrypt_field("smtp_pwd", config)
             if encrypted_password.startswith("gAAAA") and config.get("smtp_pwd") == encrypted_password:
                 raise DashboardReportChannelError(
-                    "邮件通道凭据无效",
+                    oa_message("messages.channel_credential_invalid", "邮件通道凭据无效"),
                     error_code="channel_config_invalid",
                 )
         return ResolvedEmailChannel(channel_id=channel.id, config=config)
@@ -88,19 +89,19 @@ class DashboardReportDeliveryChannelService:
             string_fields.extend(["smtp_user", "smtp_pwd"])
         if any(not isinstance(config.get(field), str) or not config[field].strip() for field in string_fields):
             raise DashboardReportChannelError(
-                "邮件通道配置不完整",
+                oa_message("messages.channel_config_incomplete", "邮件通道配置不完整"),
                 error_code="channel_config_invalid",
             )
         try:
             port = int(config["port"])
         except (KeyError, TypeError, ValueError) as exc:
             raise DashboardReportChannelError(
-                "邮件通道端口配置无效",
+                oa_message("messages.channel_port_invalid", "邮件通道端口配置无效"),
                 error_code="channel_config_invalid",
             ) from exc
         if not 1 <= port <= 65535:
             raise DashboardReportChannelError(
-                "邮件通道端口配置无效",
+                oa_message("messages.channel_port_invalid", "邮件通道端口配置无效"),
                 error_code="channel_config_invalid",
             )
         config["port"] = port

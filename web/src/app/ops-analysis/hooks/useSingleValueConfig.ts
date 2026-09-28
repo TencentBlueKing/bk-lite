@@ -198,6 +198,7 @@ export function useSingleValueConfig({
           referenceNow: Date.now(),
           timezone: getDateRangeTimezone(),
         },
+        t,
       });
 
       if (
@@ -216,7 +217,7 @@ export function useSingleValueConfig({
     } finally {
       setLoadingSingleValueData(false);
     }
-  }, [selectedDataSource, dataSourceId, form, getSourceDataByApiId, builtinNamespaceId]);
+  }, [selectedDataSource, dataSourceId, form, getSourceDataByApiId, builtinNamespaceId, t]);
 
   const handleSingleValueFieldChange = useCallback(
     (checkedKeys: any) => {

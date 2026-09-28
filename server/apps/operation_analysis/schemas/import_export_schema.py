@@ -23,6 +23,7 @@ from apps.operation_analysis.constants.import_export import (
     ObjectType,
 )
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+from apps.operation_analysis.services.user_messages import oa_message
 
 DATE_RANGE_QUICK_TYPES = {
     "today",
@@ -36,6 +37,10 @@ DATE_RANGE_QUICK_TYPES = {
     "last_90_days",
 }
 DATE_ONLY_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _blank_field_message(field_name: str) -> str:
+    return oa_message("messages.yaml_field_blank", "字段 '{field}' 不能为空", field=field_name)
 
 
 CanvasRefreshIntervalField = Annotated[int, BeforeValidator(normalize_canvas_refresh_interval)]
@@ -144,7 +149,12 @@ class YAMLMeta(BaseModel):
         if v not in YAML_SUPPORTED_SCHEMA_VERSIONS:
             raise ImportExportValidationError(
                 code=ImportExportErrorCode.YAML_SCHEMA_INVALID,
-                message=f"不支持的schema版本: {v}，当前支持 {', '.join(sorted(YAML_SUPPORTED_SCHEMA_VERSIONS))}",
+                message=oa_message(
+                    "messages.yaml_schema_version_unsupported",
+                    "不支持的schema版本: {version}，当前支持 {supported}",
+                    version=v,
+                    supported=", ".join(sorted(YAML_SUPPORTED_SCHEMA_VERSIONS)),
+                ),
             )
         return v
 
@@ -166,7 +176,7 @@ class NamespaceItem(BaseModel):
     def validate_required_non_empty_fields(cls, v: Any, info) -> str:
         value = "" if v is None else str(v).strip()
         if not value:
-            raise ValueError(f"字段 '{info.field_name}' 不能为空")
+            raise ValueError(_blank_field_message(info.field_name))
         return value
 
 
@@ -193,7 +203,7 @@ class DatasourceItem(BaseModel):
     def validate_required_non_empty_fields(cls, v: Any, info) -> str:
         value = "" if v is None else str(v).strip()
         if not value:
-            raise ValueError(f"字段 '{info.field_name}' 不能为空")
+            raise ValueError(_blank_field_message(info.field_name))
         return value
 
     @field_validator("rest_api", mode="before")
@@ -211,13 +221,13 @@ class DatasourceItem(BaseModel):
     def validate_source_type(cls, v: str) -> str:
         allowed = {choice[0] for choice in DataSourceAPIModel.SOURCE_TYPE_CHOICES}
         if v not in allowed:
-            raise ValueError("source_type 不支持")
+            raise ValueError(oa_message("messages.yaml_source_type_unsupported", "source_type 不支持"))
         return v
 
     @model_validator(mode="after")
     def validate_nats_rest_api(self):
         if self.source_type == "nats" and not self.rest_api:
-            raise ValueError("NATS 数据源的 rest_api 不能为空")
+            raise ValueError(oa_message("messages.yaml_nats_rest_api_required", "NATS 数据源的 rest_api 不能为空"))
         return self
 
 
@@ -245,7 +255,7 @@ class DashboardItem(BaseModel):
     def validate_required_non_empty_fields(cls, v: Any, info) -> str:
         value = "" if v is None else str(v).strip()
         if not value:
-            raise ValueError(f"字段 '{info.field_name}' 不能为空")
+            raise ValueError(_blank_field_message(info.field_name))
         return value
 
     @field_validator("desc", mode="before")
@@ -278,7 +288,7 @@ class TopologyItem(BaseModel):
     def validate_required_non_empty_fields(cls, v: Any, info) -> str:
         value = "" if v is None else str(v).strip()
         if not value:
-            raise ValueError(f"字段 '{info.field_name}' 不能为空")
+            raise ValueError(_blank_field_message(info.field_name))
         return value
 
     @field_validator("desc", mode="before")
@@ -309,7 +319,7 @@ class ArchitectureItem(BaseModel):
     def validate_required_non_empty_fields(cls, v: Any, info) -> str:
         value = "" if v is None else str(v).strip()
         if not value:
-            raise ValueError(f"字段 '{info.field_name}' 不能为空")
+            raise ValueError(_blank_field_message(info.field_name))
         return value
 
     @field_validator("desc", mode="before")
@@ -341,7 +351,7 @@ class ScreenItem(BaseModel):
     def validate_required_non_empty_fields(cls, v: Any, info) -> str:
         value = "" if v is None else str(v).strip()
         if not value:
-            raise ValueError(f"字段 '{info.field_name}' 不能为空")
+            raise ValueError(_blank_field_message(info.field_name))
         return value
 
     @field_validator("desc", mode="before")
@@ -373,7 +383,7 @@ class ReportItem(BaseModel):
     def validate_required_non_empty_fields(cls, v: Any, info) -> str:
         value = "" if v is None else str(v).strip()
         if not value:
-            raise ValueError(f"字段 '{info.field_name}' 不能为空")
+            raise ValueError(_blank_field_message(info.field_name))
         return value
 
     @field_validator("desc", mode="before")
@@ -409,7 +419,7 @@ class NetworkTopologyItem(BaseModel):
     def validate_required_non_empty_fields(cls, v: Any, info) -> str:
         value = "" if v is None else str(v).strip()
         if not value:
-            raise ValueError(f"字段 '{info.field_name}' 不能为空")
+            raise ValueError(_blank_field_message(info.field_name))
         return value
 
     @field_validator("desc", mode="before")
@@ -538,7 +548,7 @@ def detect_db_id_references(data: Any, path: str = "") -> list[dict]:
                             "path": current_path,
                             "field": key,
                             "value": value,
-                            "reason": "字段名疑似数据库ID引用",
+                            "reason": oa_message("messages.yaml_db_id_suspected", "字段名疑似数据库ID引用"),
                         }
                     )
 

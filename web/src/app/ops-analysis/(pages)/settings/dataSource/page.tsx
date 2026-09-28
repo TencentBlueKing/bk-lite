@@ -168,7 +168,7 @@ const Datasource: React.FC = () => {
       onOk: async () => {
         try {
           await deleteDataSource(row.id);
-          message.success(t('successfullyDeleted'));
+          message.success(t('opsAnalysis.successfullyDeleted'));
 
           if (pagination.current > 1 && filteredList.length === 1) {
             setPagination((prev) => ({ ...prev, current: prev.current - 1 }));

@@ -12,27 +12,33 @@ from urllib.parse import urlsplit
 import fitz
 from playwright.async_api import async_playwright
 
-from apps.operation_analysis.services.canvas_report.types import (
-    SCREEN_PDF_FORMAT,
-    SCREEN_PDF_LANDSCAPE,
-)
-
+from apps.operation_analysis.services.canvas_report.types import SCREEN_PDF_FORMAT, SCREEN_PDF_LANDSCAPE
+from apps.operation_analysis.services.user_messages import oa_message
 
 MIN_PDF_BYTES = 1_024
 MAX_PDF_BYTES = 20 * 1024 * 1024
+PDF_TOO_LARGE_ERROR_CODE = "pdf_too_large"
+PDF_GENERATE_FAILED_ERROR_CODE = "pdf_generate_failed"
 VIEWPORT = {"width": 1440, "height": 900}
 RENDER_EVENT = "bk-dashboard-render"
 DEFAULT_TIMEOUT_MS = 120_000
 
 
 class DashboardRenderError(RuntimeError):
+    """详细原因只留在 ``str(exc)`` / 日志。落库用类上的短句。"""
+
     safe_message = "报告 PDF 生成失败"
+    safe_message_key = "messages.pdf_generate_failed"
     error_code = ""
 
     def __init__(self, message: str | None = None, *, error_code: str = ""):
         if error_code:
             self.error_code = error_code
-        super().__init__(message or self.safe_message)
+        detail = message or oa_message(type(self).safe_message_key, type(self).safe_message)
+        super().__init__(detail)
+
+    def persisted_message(self) -> str:
+        return oa_message(type(self).safe_message_key, type(self).safe_message)
 
 
 # report-failed.errorCode → data_load（仅白名单；其它仍视为 render contract）
@@ -55,9 +61,7 @@ def resolve_report_failed_semantics(
     """
     raw = ""
     if isinstance(signal, dict):
-        raw = str(
-            signal.get("errorCode") or signal.get("error_code") or ""
-        ).strip()
+        raw = str(signal.get("errorCode") or signal.get("error_code") or "").strip()
     if raw in _DATA_LOAD_ERROR_CODES:
         return "data_load", raw
     return "render", "render_contract_business_failed"
@@ -65,6 +69,7 @@ def resolve_report_failed_semantics(
 
 class DashboardRenderContractError(DashboardRenderError):
     safe_message = "Dashboard 渲染失败"
+    safe_message_key = "messages.dashboard_render_failed"
     error_code = "render_contract_business_failed"
     failure_stage = "render"
 
@@ -85,26 +90,25 @@ class DashboardRenderContractError(DashboardRenderError):
             self.failure_stage = failure_stage
             resolved_code = error_code
         else:
-            stage, resolved_code = resolve_report_failed_semantics(
-                {"errorCode": error_code or ""}
-            )
+            stage, resolved_code = resolve_report_failed_semantics({"errorCode": error_code or ""})
             self.failure_stage = stage
+        prefix = oa_message("messages.dashboard_render_failed", "Dashboard 渲染失败")
         DashboardRenderError.__init__(
             self,
-            f"{self.safe_message}: widget={self.widget_id}",
+            f"{prefix}: widget={self.widget_id}",
             error_code=resolved_code,
         )
 
 
 class DashboardPdfValidationError(DashboardRenderError):
     safe_message = "报告 PDF 校验失败"
+    safe_message_key = "messages.pdf_validation_failed"
 
-    def __init__(self, message: str, *, error_code: str = ""):
+    def __init__(self, message: str | None = None, *, error_code: str = ""):
+        if message is None:
+            message = oa_message(type(self).safe_message_key, type(self).safe_message)
         if not error_code:
-            if "超过 20 MB" in message or "20 MB" in message:
-                error_code = "pdf_too_large"
-            else:
-                error_code = "pdf_generate_failed"
+            error_code = PDF_GENERATE_FAILED_ERROR_CODE
         super().__init__(message, error_code=error_code)
 
 
@@ -142,10 +146,7 @@ def resolve_screen_pdf_scale(
     viewport_height: int,
 ) -> float:
     """策略 2：等比缩放完整落入 A4 landscape 单页。"""
-    from apps.operation_analysis.services.canvas_report.types import (
-        SCREEN_PDF_PAGE_HEIGHT_PX,
-        SCREEN_PDF_PAGE_WIDTH_PX,
-    )
+    from apps.operation_analysis.services.canvas_report.types import SCREEN_PDF_PAGE_HEIGHT_PX, SCREEN_PDF_PAGE_WIDTH_PX
 
     if viewport_width <= 0 or viewport_height <= 0:
         return 1.0
@@ -159,25 +160,24 @@ def resolve_screen_pdf_scale(
 
 def validate_pdf(path: Path) -> dict[str, int]:
     if not path.is_file():
-        raise DashboardPdfValidationError("PDF 文件未生成")
+        raise DashboardPdfValidationError(oa_message("messages.pdf_not_generated", "PDF 文件未生成"))
     size = path.stat().st_size
     if size < MIN_PDF_BYTES:
-        raise DashboardPdfValidationError(
-            f"PDF 文件过小: {size} bytes"
-        )
+        raise DashboardPdfValidationError(oa_message("messages.pdf_too_small", "PDF 文件过小: {size} bytes", size=size))
     if size > MAX_PDF_BYTES:
         raise DashboardPdfValidationError(
-            f"PDF 文件超过 20 MB: {size} bytes"
+            oa_message("messages.pdf_too_large", "PDF 文件超过 20 MB: {size} bytes", size=size),
+            error_code=PDF_TOO_LARGE_ERROR_CODE,
         )
     try:
         with fitz.open(path) as document:
             if document.page_count == 0:
-                raise DashboardPdfValidationError("PDF 不包含页面")
+                raise DashboardPdfValidationError(oa_message("messages.pdf_no_pages", "PDF 不包含页面"))
             return {"bytes": size, "pages": document.page_count}
     except DashboardPdfValidationError:
         raise
     except Exception as exc:
-        raise DashboardPdfValidationError("PDF 文件无法打开") from exc
+        raise DashboardPdfValidationError(oa_message("messages.pdf_unreadable", "PDF 文件无法打开")) from exc
 
 
 class DashboardChromiumRenderer:
@@ -203,9 +203,7 @@ class DashboardChromiumRenderer:
         self,
         request: DashboardRenderRequest,
     ) -> dict[str, Any]:
-        signal_future: asyncio.Future[dict[str, Any]] = (
-            asyncio.get_running_loop().create_future()
-        )
+        signal_future: asyncio.Future[dict[str, Any]] = asyncio.get_running_loop().create_future()
 
         async def receive_render_signal(
             _source: dict[str, Any],
@@ -216,9 +214,7 @@ class DashboardChromiumRenderer:
 
         async with self.playwright_factory() as playwright:
             launch_options: dict[str, Any] = {"headless": True}
-            executable_path = (
-                request.executable_path or os.getenv("EXECUTABLE_PATH")
-            )
+            executable_path = request.executable_path or os.getenv("EXECUTABLE_PATH")
             if executable_path:
                 launch_options["executable_path"] = executable_path
 
@@ -226,7 +222,7 @@ class DashboardChromiumRenderer:
                 browser = await playwright.chromium.launch(**launch_options)
             except Exception as exc:
                 raise DashboardRenderError(
-                    "Chromium 启动失败",
+                    oa_message("messages.chromium_launch_failed", "Chromium 启动失败"),
                     error_code="chromium_launch_failed",
                 ) from exc
             try:
@@ -263,10 +259,7 @@ class DashboardChromiumRenderer:
                     );
                     """
                 )
-                deadline = (
-                    asyncio.get_running_loop().time()
-                    + request.timeout_ms / 1000
-                )
+                deadline = asyncio.get_running_loop().time() + request.timeout_ms / 1000
                 try:
                     await page.goto(
                         request.render_url,
@@ -275,7 +268,7 @@ class DashboardChromiumRenderer:
                     )
                 except Exception as exc:
                     raise DashboardRenderError(
-                        "渲染页加载失败",
+                        oa_message("messages.render_page_load_failed", "渲染页加载失败"),
                         error_code="page_load_failed",
                     ) from exc
                 remaining_seconds = max(
@@ -289,7 +282,7 @@ class DashboardChromiumRenderer:
                     )
                 except TimeoutError as exc:
                     raise DashboardRenderError(
-                        "等待 report-ready 超时",
+                        oa_message("messages.report_ready_timeout", "等待 report-ready 超时"),
                         error_code="report_ready_timeout",
                     ) from exc
                 if signal.get("type") != "report-ready":
@@ -318,7 +311,7 @@ class DashboardChromiumRenderer:
                     )
                 except Exception as exc:
                     raise DashboardRenderError(
-                        "PDF 生成失败",
+                        oa_message("messages.pdf_render_failed", "PDF 生成失败"),
                         error_code="pdf_generate_failed",
                     ) from exc
                 return signal
@@ -334,31 +327,25 @@ class DashboardChromiumRenderer:
     ) -> None:
         parsed = urlsplit(render_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            raise DashboardRenderError("Render URL 配置无效")
+            raise DashboardRenderError(oa_message("messages.render_url_invalid", "Render URL 配置无效"))
         origin = f"{parsed.scheme}://{parsed.netloc}"
         exchange_response = await context.request.post(
-            f"{origin}/api/proxy/operation_analysis/api/"
-            f"dashboard_execution/{execution_id}/render-token-exchange/",
+            f"{origin}/api/proxy/operation_analysis/api/" f"dashboard_execution/{execution_id}/render-token-exchange/",
             data={"token": render_token},
         )
         if not exchange_response.ok:
-            raise DashboardRenderError("无法建立 Render 会话")
+            raise DashboardRenderError(oa_message("messages.render_session_failed", "无法建立 Render 会话"))
         exchange_payload = await exchange_response.json()
-        session_user = (
-            exchange_payload.get("data", exchange_payload)
-            .get("session_user")
-        )
+        session_user = exchange_payload.get("data", exchange_payload).get("session_user")
         if not isinstance(session_user, dict):
-            raise DashboardRenderError("无法建立 Render 会话")
-        csrf_response = await context.request.get(
-            f"{origin}/api/auth/csrf"
-        )
+            raise DashboardRenderError(oa_message("messages.render_session_failed", "无法建立 Render 会话"))
+        csrf_response = await context.request.get(f"{origin}/api/auth/csrf")
         if not csrf_response.ok:
-            raise DashboardRenderError("无法建立 Render 会话")
+            raise DashboardRenderError(oa_message("messages.render_session_failed", "无法建立 Render 会话"))
         csrf_payload = await csrf_response.json()
         csrf_token = csrf_payload.get("csrfToken")
         if not csrf_token:
-            raise DashboardRenderError("无法建立 Render 会话")
+            raise DashboardRenderError(oa_message("messages.render_session_failed", "无法建立 Render 会话"))
 
         auth_response = await context.request.post(
             f"{origin}/api/auth/callback/credentials?json=true",
@@ -371,7 +358,7 @@ class DashboardChromiumRenderer:
             },
         )
         if not auth_response.ok:
-            raise DashboardRenderError("无法建立 Render 会话")
+            raise DashboardRenderError(oa_message("messages.render_session_failed", "无法建立 Render 会话"))
         auth_payload = await auth_response.json()
         if auth_payload.get("error"):
-            raise DashboardRenderError("无法建立 Render 会话")
+            raise DashboardRenderError(oa_message("messages.render_session_failed", "无法建立 Render 会话"))

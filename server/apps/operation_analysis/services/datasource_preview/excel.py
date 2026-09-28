@@ -4,8 +4,9 @@ from typing import Any
 import pandas as pd
 
 from apps.operation_analysis.services.datasource_preview.base import BaseConnectorExecutor, ConnectorError, PreviewResult
-from apps.operation_analysis.services.datasource_preview.schema import infer_fields
 from apps.operation_analysis.services.datasource_preview.rest_api import maybe_apply_transform
+from apps.operation_analysis.services.datasource_preview.schema import infer_fields
+from apps.operation_analysis.services.user_messages import oa_message
 
 MAX_EXCEL_BYTES = 2 * 1024 * 1024
 MAX_EXCEL_ROWS = 1000
@@ -32,26 +33,28 @@ def _normalize_dataframe_rows(dataframe: pd.DataFrame) -> list[dict[str, Any]]:
 
 def parse_excel_file(file_obj, sheet_name: str | None = None, max_rows: int = MAX_EXCEL_ROWS) -> list[dict[str, Any]]:
     if not file_obj:
-        raise ConnectorError("请上传 Excel 文件", code="excel_file_required", status_code=400)
+        raise ConnectorError(oa_message("messages.excel_file_required", "请上传 Excel 文件"), code="excel_file_required", status_code=400)
 
     file_name = getattr(file_obj, "name", "") or ""
     if not file_name.lower().endswith(".xlsx"):
-        raise ConnectorError("仅支持 Excel 文件（.xlsx）", code="excel_file_type_invalid", status_code=400)
+        raise ConnectorError(oa_message("messages.excel_xlsx_only", "仅支持 Excel 文件（.xlsx）"), code="excel_file_type_invalid", status_code=400)
 
     file_size = getattr(file_obj, "size", None)
     if file_size and file_size > MAX_EXCEL_BYTES:
-        raise ConnectorError("Excel 文件不能超过 2MB", code="excel_file_too_large", status_code=400)
+        raise ConnectorError(oa_message("messages.excel_too_large", "Excel 文件不能超过 2MB"), code="excel_file_too_large", status_code=400)
 
     try:
         if hasattr(file_obj, "seek"):
             file_obj.seek(0)
         dataframe = pd.read_excel(file_obj, sheet_name=sheet_name or 0, nrows=max_rows)
     except Exception as exc:
-        raise ConnectorError(f"Excel 解析失败: {exc}", code="excel_parse_failed", status_code=400)
+        raise ConnectorError(
+            oa_message("messages.excel_parse_failed", "Excel 解析失败: {detail}", detail=exc), code="excel_parse_failed", status_code=400
+        )
 
     dataframe = dataframe.dropna(how="all")
     if dataframe.empty:
-        raise ConnectorError("Excel 没有可预览的数据", code="excel_empty", status_code=400)
+        raise ConnectorError(oa_message("messages.excel_preview_empty", "Excel 没有可预览的数据"), code="excel_empty", status_code=400)
 
     return _normalize_dataframe_rows(dataframe)
 
@@ -66,11 +69,7 @@ def _preview_with_optional_transform(
 ) -> PreviewResult:
     safe_limit = min(max(int(limit or 100), 1), MAX_EXCEL_ROWS)
     raw_limited = items[:safe_limit]
-    raw_fields = (
-        imported_fields
-        if isinstance(imported_fields, list) and imported_fields
-        else infer_fields(raw_limited)
-    )
+    raw_fields = imported_fields if isinstance(imported_fields, list) and imported_fields else infer_fields(raw_limited)
     enabled = bool(isinstance(transform_config, dict) and transform_config.get("enabled"))
     if not enabled:
         return PreviewResult(items=raw_limited, count=len(items), fields=raw_fields)
@@ -121,14 +120,12 @@ class ExcelConnectorExecutor(BaseConnectorExecutor):
             items = [item for item in imported_items if isinstance(item, dict)]
         elif enabled and connection_config.get("file"):
             # Align with materialize: full row set (+ 10001 probe) then transform, then sample.
-            from apps.operation_analysis.services.excel_materialize.row_probe import (
-                read_excel_rows_for_materialize,
-            )
+            from apps.operation_analysis.services.excel_materialize.row_probe import read_excel_rows_for_materialize
 
             file_obj = connection_config.get("file")
             file_size = getattr(file_obj, "size", None)
             if file_size and file_size > MAX_EXCEL_BYTES:
-                raise ConnectorError("Excel 文件不能超过 2MB", code="excel_file_too_large", status_code=400)
+                raise ConnectorError(oa_message("messages.excel_too_large", "Excel 文件不能超过 2MB"), code="excel_file_too_large", status_code=400)
             try:
                 items = read_excel_rows_for_materialize(
                     file_obj,
@@ -137,7 +134,11 @@ class ExcelConnectorExecutor(BaseConnectorExecutor):
             except ConnectorError:
                 raise
             except Exception as exc:
-                raise ConnectorError(f"Excel 解析失败: {exc}", code="excel_parse_failed", status_code=400) from exc
+                raise ConnectorError(
+                    oa_message("messages.excel_parse_failed", "Excel 解析失败: {detail}", detail=exc),
+                    code="excel_parse_failed",
+                    status_code=400,
+                ) from exc
         else:
             items = parse_excel_file(
                 connection_config.get("file"),
@@ -156,9 +157,7 @@ class ExcelConnectorExecutor(BaseConnectorExecutor):
 
 def preview_excel_from_saved_source(datasource, *, transform_config: dict | None, limit: int = 100, org_id=None) -> PreviewResult:
     """已保存 Excel：用原文件 + 请求内脚本做预览，避免静默返回旧成功槽结果。"""
-    from apps.operation_analysis.services.excel_materialize.row_probe import (
-        read_excel_rows_for_materialize,
-    )
+    from apps.operation_analysis.services.excel_materialize.row_probe import read_excel_rows_for_materialize
 
     source_slot = datasource.excel_candidate_slot or datasource.excel_success_slot
     if not source_slot or not source_slot.source_file:

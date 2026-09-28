@@ -495,6 +495,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           referenceNow: Date.now(),
           timezone: getDateRangeTimezone(),
         },
+        t,
       });
 
       if (
@@ -1179,14 +1180,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
       if (submitResult.error) {
         if (submitResult.error === 'duplicateFieldKey') {
-          message.error(
-            t('dashboard.duplicateFieldKey') || '字段 key 不能重复',
-          );
+          message.error(t('dashboard.duplicateFieldKey'));
           return;
         }
         if (submitResult.error === 'atLeastOneVisibleColumn') {
           tableConfig.setDisplayColumnsError(
-            t('dashboard.atLeastOneVisibleColumn') || '请至少保留一列可见',
+            t('dashboard.atLeastOneVisibleColumn'),
           );
           return;
         }

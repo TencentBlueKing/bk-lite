@@ -182,9 +182,7 @@ const EventTable: React.FC<EventTableProps> = ({
   if (!configuredColumns.length) {
     return (
       <WidgetState
-        description={
-          t('dashboard.atLeastOneVisibleColumn') || '请先配置展示字段'
-        }
+        description={t('dashboard.configureDisplayFieldsFirst')}
       />
     );
   }

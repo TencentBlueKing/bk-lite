@@ -170,8 +170,18 @@ export const formatArchitectureHostState = (
 export const formatArchitectureHostAlarmCount = (count: number | null | undefined) =>
   count == null ? UNKNOWN_STATUS_BADGE : String(count);
 
-export const formatArchitectureHostSeverity = (label: string | null | undefined) =>
-  label?.trim() ? label : UNKNOWN_STATUS_BADGE;
+export const formatArchitectureHostSeverity = (
+  label: string | null | undefined,
+  severityId?: string | null,
+  t?: Application3DTranslate,
+) => {
+  const raw = label?.trim() ? label.trim() : '';
+  const id = severityId?.trim();
+  if (id && t) {
+    return t(`dashboard.application3DSeverity_${id}`, raw || undefined);
+  }
+  return raw || UNKNOWN_STATUS_BADGE;
+};
 
 export const formatArchitectureHostIp = (ip: string | undefined) =>
   ip?.trim() ? ip : UNKNOWN_STATUS_BADGE;

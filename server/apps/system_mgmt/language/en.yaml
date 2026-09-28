@@ -270,3 +270,9 @@ tag:
   patch_scan: Patch Scanning
   patch_install: Patch Installation
   patch_library: Patch Library
+# ops-analysis data-permission tabs. GroupDataRuleViewSet looks up display_name as a root key.
+"目录": Directory
+"仪表盘": Dashboard
+"拓扑图": Topology
+"架构图": Architecture
+"数据源": Data source

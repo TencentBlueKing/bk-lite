@@ -539,8 +539,9 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       setDraftViewSets,
       setSelectedItemId,
       rebuildFilters: rebuildDraftFilters,
+      t,
     }),
-    [rebuildDraftFilters],
+    [rebuildDraftFilters, t],
   );
 
   const handleOpenItemConfig = useCallback((itemId: string) => {

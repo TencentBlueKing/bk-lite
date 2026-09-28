@@ -215,8 +215,7 @@ export const validateEventTimelinePayload = (
   if (parsed.total === 0) {
     return {
       isValid: false,
-      message:
-        '数据结构不符：事件时间线期望包含 time 与 title 字段的事件列表',
+      message: 'dashboard.eventTimelineStructureMismatch',
     };
   }
 

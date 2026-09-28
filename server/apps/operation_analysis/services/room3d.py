@@ -2,6 +2,7 @@ from typing import Any
 
 from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.common.get_nats_source_data import build_nats_user_info
+from apps.operation_analysis.services.user_messages import oa_message
 from apps.rpc.cmdb import CMDB
 
 _NATS_CODE_TO_ERROR = {
@@ -11,17 +12,18 @@ _NATS_CODE_TO_ERROR = {
 }
 
 _ERROR_MESSAGES = {
-    "invalid_request": "server_room_id 不合法",
-    "not_found": "机房不存在",
-    "permission_denied": "无权限查看该机房",
-    "source_failure": "3D机房查询失败",
+    "invalid_request": ("messages.room3d_invalid", "server_room_id 不合法"),
+    "not_found": ("messages.room3d_not_found", "机房不存在"),
+    "permission_denied": ("messages.room3d_denied", "无权限查看该机房"),
+    "source_failure": ("messages.room3d_query_failed", "3D机房查询失败"),
 }
 
 
 class Room3DError(Exception):
     def __init__(self, code: str, message: str | None = None):
         self.code = code
-        self.message = message or _ERROR_MESSAGES.get(code, _ERROR_MESSAGES["source_failure"])
+        key, default = _ERROR_MESSAGES.get(code, _ERROR_MESSAGES["source_failure"])
+        self.message = message or oa_message(key, default)
         super().__init__(self.message)
 
 
