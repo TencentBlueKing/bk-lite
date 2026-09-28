@@ -21,7 +21,6 @@ import type { RcFile, UploadFile } from "antd/es/upload/interface";
 import { useWikiApi } from "@/app/opspilot/api/wiki";
 import type {
   WikiDirectoryNode,
-  WikiMarkdownImportArchiveKind,
   WikiMarkdownImportExecuteResult,
   WikiMarkdownImportPreflightOptions,
   WikiMarkdownImportPreflightResult,
@@ -41,7 +40,6 @@ import {
   okfSkippedReasonLabel,
   unwrapMarkdownImportExecuteResult,
   type MarkdownImportGovernanceErrorView,
-  type WikiMarkdownImportFormat,
 } from "@/app/opspilot/utils/wikiMarkdownImport";
 
 type ImportRouteMode = "auto" | "target" | "classification";
@@ -51,7 +49,6 @@ interface WikiMarkdownImportModalProps {
   open: boolean;
   directories: WikiDirectoryNode[];
   directoryEnabled: boolean;
-  importFormat?: WikiMarkdownImportFormat;
   onCancel: () => void;
   onCompleted: (
     result: WikiMarkdownImportExecuteResult,
@@ -77,7 +74,6 @@ const WikiMarkdownImportModal = ({
   open,
   directories,
   directoryEnabled,
-  importFormat = "markdown",
   onCancel,
   onCompleted,
 }: WikiMarkdownImportModalProps) => {
@@ -86,16 +82,14 @@ const WikiMarkdownImportModal = ({
     preflightKnowledgeBaseMarkdown,
     executeKnowledgeBaseMarkdown,
   } = useWikiApi();
-  const isOkf = importFormat === "okf";
-  const archivePattern = markdownImportFilePattern(importFormat);
+  const archivePattern = markdownImportFilePattern();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [routeMode, setRouteMode] = useState<ImportRouteMode>("auto");
   const [targetDirectoryId, setTargetDirectoryId] = useState<number>();
   const [classificationRootId, setClassificationRootId] = useState<number>();
-  const [restoreStructure, setRestoreStructure] = useState(false);
   const [createDirectoriesFromFolders, setCreateDirectoriesFromFolders] =
-    useState(() => initialCreateDirectoriesFromFolders(importFormat));
+    useState(() => initialCreateDirectoriesFromFolders());
   const [preflight, setPreflight] =
     useState<WikiMarkdownImportPreflightResult | null>(null);
   const [preflightExpiresAt, setPreflightExpiresAt] = useState<number | null>(
@@ -116,10 +110,9 @@ const WikiMarkdownImportModal = ({
 
   const preflightOptions = useMemo<WikiMarkdownImportPreflightOptions>(() => {
     const options: WikiMarkdownImportPreflightOptions = {
-      restore_structure: restoreStructure,
       create_directories_from_folders: createDirectoriesFromFolders,
     };
-    if (isOkf) options.import_format = "okf";
+    options.import_format = "okf";
     if (routeMode === "target" && targetDirectoryId) {
       options.target_directory_id = targetDirectoryId;
     }
@@ -130,8 +123,6 @@ const WikiMarkdownImportModal = ({
   }, [
     classificationRootId,
     createDirectoriesFromFolders,
-    isOkf,
-    restoreStructure,
     routeMode,
     targetDirectoryId,
   ]);
@@ -148,9 +139,8 @@ const WikiMarkdownImportModal = ({
     setRouteMode("auto");
     setTargetDirectoryId(undefined);
     setClassificationRootId(undefined);
-    setRestoreStructure(false);
     setCreateDirectoriesFromFolders(
-      initialCreateDirectoriesFromFolders(importFormat),
+      initialCreateDirectoriesFromFolders(),
     );
     setPreflight(null);
     setPreflightExpiresAt(null);
@@ -235,11 +225,11 @@ const WikiMarkdownImportModal = ({
   const handleFileSelect = (file: RcFile) => {
     if (!archivePattern.test(file.name)) {
       message.error(
-        t(isOkf ? "wiki.okfImportFileTypeInvalid" : "wiki.markdownImportFileTypeInvalid"),
+        t("wiki.okfImportFileTypeInvalid"),
       );
       return Upload.LIST_IGNORE;
     }
-    const createFolders = initialCreateDirectoriesFromFolders(importFormat);
+    const createFolders = initialCreateDirectoriesFromFolders();
     preflightSequenceRef.current += 1;
     setSelectedFile(file);
     setFileList([
@@ -250,7 +240,6 @@ const WikiMarkdownImportModal = ({
         originFileObj: file,
       },
     ]);
-    setRestoreStructure(false);
     setCreateDirectoriesFromFolders(createFolders);
     setPreflight(null);
     setPreflightExpiresAt(null);
@@ -259,7 +248,6 @@ const WikiMarkdownImportModal = ({
     setPreflightError(null);
     void runPreflight(file, {
       ...preflightOptions,
-      restore_structure: false,
       create_directories_from_folders: createFolders,
     });
     return false;
@@ -269,9 +257,8 @@ const WikiMarkdownImportModal = ({
     preflightSequenceRef.current += 1;
     setSelectedFile(null);
     setFileList([]);
-    setRestoreStructure(false);
     setCreateDirectoriesFromFolders(
-      initialCreateDirectoriesFromFolders(importFormat),
+      initialCreateDirectoriesFromFolders(),
     );
     setPreflight(null);
     setPreflightExpiresAt(null);
@@ -297,15 +284,8 @@ const WikiMarkdownImportModal = ({
     invalidatePreflight();
   };
 
-  const handleRestoreStructureChange = (checked: boolean) => {
-    setRestoreStructure(checked);
-    if (checked) setCreateDirectoriesFromFolders(false);
-    invalidatePreflight();
-  };
-
   const handleCreateFoldersChange = (checked: boolean) => {
     setCreateDirectoriesFromFolders(checked);
-    if (checked) setRestoreStructure(false);
     invalidatePreflight();
   };
 
@@ -360,16 +340,7 @@ const WikiMarkdownImportModal = ({
     }
   };
 
-  const archiveKindLabel = (kind: WikiMarkdownImportArchiveKind) => {
-    const keyByKind: Record<WikiMarkdownImportArchiveKind, string> = {
-      markdown: "wiki.markdownImportArchiveMarkdown",
-      native: "wiki.markdownImportArchiveNative",
-      opspilot_native: "wiki.markdownImportArchiveNative",
-      third_party: "wiki.markdownImportArchiveThirdParty",
-      okf: "wiki.okfImportArchiveKind",
-    };
-    return t(keyByKind[kind]);
-  };
+  const archiveKindLabel = () => t("wiki.okfImportArchiveKind");
 
   const actionMeta = {
     create: { color: "green", label: t("wiki.markdownImportActionCreate") },
@@ -482,7 +453,7 @@ const WikiMarkdownImportModal = ({
 
   return (
     <Modal
-      title={t(isOkf ? "wiki.okfImportTitle" : "wiki.markdownImportTitle")}
+      title={t("wiki.okfImportTitle")}
       open={open}
       width={1080}
       okText={t("wiki.markdownImportExecute")}
@@ -561,7 +532,7 @@ const WikiMarkdownImportModal = ({
         )}
 
         <Upload.Dragger
-          accept={markdownImportAccept(importFormat)}
+          accept={markdownImportAccept()}
           maxCount={1}
           fileList={fileList}
           disabled={preflighting || executing}
@@ -572,7 +543,7 @@ const WikiMarkdownImportModal = ({
             <InboxOutlined />
           </p>
           <p className="ant-upload-text">
-            {t(isOkf ? "wiki.okfImportDropHint" : "wiki.markdownImportDropHint")}
+            {t("wiki.okfImportDropHint")}
           </p>
           <p className="ant-upload-hint">
             {t("wiki.markdownImportSizeHint")}
@@ -651,7 +622,7 @@ const WikiMarkdownImportModal = ({
                   label: t("wiki.markdownImportArchiveKind"),
                   value: (
                     <Tag color="geekblue">
-                      {archiveKindLabel(preflight.preview.archive_kind)}
+                      {archiveKindLabel()}
                     </Tag>
                   ),
                 },
@@ -711,6 +682,13 @@ const WikiMarkdownImportModal = ({
                       value: preflight.preview.okf.bundle_root || "/",
                     },
                     {
+                      label: t("wiki.okfImportLayerName"),
+                      value:
+                        preflight.preview.okf.import_layer_name ||
+                        preflight.preview.okf.bundle_root ||
+                        "/",
+                    },
+                    {
                       label: t("wiki.okfImportLinksRewritten"),
                       value: preflight.preview.okf.links.rewritten,
                     },
@@ -748,6 +726,33 @@ const WikiMarkdownImportModal = ({
                     </div>
                   ))}
                 </div>
+                {(preflight.preview.okf.alignment || []).length > 0 && (
+                  <div>
+                    <div className="mb-2 text-sm font-medium">
+                      {t("wiki.okfImportAlignmentTitle")}
+                    </div>
+                    <ul className="space-y-1 text-sm text-[var(--color-text-2)]">
+                      {preflight.preview.okf.alignment?.map((item) => {
+                        const key =
+                          item.action === "merge"
+                            ? "wiki.okfImportAlignmentMerge"
+                            : item.action === "new_root"
+                              ? "wiki.okfImportAlignmentNewRoot"
+                              : "wiki.okfImportAlignmentCreate";
+                        const folder = item.folder || item.target || "/";
+                        return (
+                          <li key={`${item.action}:${item.folder}:${item.target}`}>
+                            <span className="text-[var(--color-text-3)]">
+                              {folder}
+                            </span>
+                            {" · "}
+                            {t(key).replace("{target}", item.target || folder)}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
                 {preflight.preview.okf.type_mapping.length > 0 && (
                   <Table
                     size="small"
@@ -844,42 +849,12 @@ const WikiMarkdownImportModal = ({
               </section>
             )}
 
-            {preflight.preview.native_structure_available && (
-              <Alert
-                showIcon
-                type="info"
-                message={t("wiki.markdownImportNativeStructureAvailable")}
-                description={t("wiki.markdownImportRestoreHint")}
-                action={
-                  <Space>
-                    <span className="text-xs">
-                      {t("wiki.markdownImportRestoreStructure")}
-                    </span>
-                    <Switch
-                      checked={restoreStructure}
-                      disabled={executing}
-                      onChange={handleRestoreStructureChange}
-                    />
-                  </Space>
-                }
-              />
-            )}
-
-            {(preflight.preview.archive_kind === "third_party" ||
-              preflight.preview.archive_kind === "okf") && (
+            {preflight.preview.archive_kind === "okf" && (
               <Alert
                 showIcon
                 type="warning"
-                message={t(
-                  preflight.preview.archive_kind === "okf"
-                    ? "wiki.okfImportCreateFoldersTitle"
-                    : "wiki.markdownImportCreateFoldersTitle",
-                )}
-                description={t(
-                  preflight.preview.archive_kind === "okf"
-                    ? "wiki.okfImportCreateFoldersHint"
-                    : "wiki.markdownImportCreateFoldersHint",
-                )}
+                message={t("wiki.okfImportCreateFoldersTitle")}
+                description={t("wiki.okfImportCreateFoldersHint")}
                 action={
                   <Space>
                     <span className="text-xs">

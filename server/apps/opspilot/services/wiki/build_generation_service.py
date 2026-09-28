@@ -4,9 +4,12 @@ from dataclasses import dataclass
 
 from django.db import transaction
 from django.db.models import Max
+from django.utils import timezone
 
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.models import BuildRecord, KnowledgePage, PageEvidence, PageVersion, WikiGeneration, WikiKnowledgeBase
+from apps.opspilot.models import BuildRecord, KnowledgePage, PageEvidence, PageVersion, WikiDirectory, WikiGeneration, WikiKnowledgeBase
+from apps.opspilot.services.wiki.okf_export_service import posix_safe_segment
+from apps.opspilot.services.wiki.structure_service import UNCLASSIFIED_DIRECTORY_KEY, StructureServiceError, bootstrap_knowledge_base
 from apps.opspilot.services.wiki.cascade_service import cascade
 from apps.opspilot.services.wiki.generation_relation_service import rebuild_generation_relations
 from apps.opspilot.services.wiki.generation_service import (
@@ -64,6 +67,29 @@ def freeze_source_fingerprints(materials):
     return [material_fingerprint(material) for material in sorted(materials, key=lambda item: item.pk)]
 
 
+def _ensure_active_generation(knowledge_base, operator=""):
+    revision = knowledge_base.active_structure_revision
+    if revision is None or knowledge_base.active_generation_id is None:
+        try:
+            bootstrap_knowledge_base(knowledge_base, operator=operator or "system")
+        except StructureServiceError as error:
+            if error.code != "knowledge_base_bootstrap_requires_empty":
+                raise
+            raise BuildGenerationError(
+                "generation_pipeline_not_enabled",
+                "存量知识库缺少 active structure/generation，请先完成冻结结构迁移",
+                details=error.details,
+            ) from error
+        knowledge_base.refresh_from_db()
+        revision = knowledge_base.active_structure_revision
+    if revision is None or knowledge_base.active_generation_id is None:
+        raise BuildGenerationError(
+            "active_governance_snapshot_missing",
+            "知识库缺少 active structure/generation",
+        )
+    return knowledge_base, revision
+
+
 def freeze_generation_identity(
     knowledge_base,
     materials,
@@ -72,12 +98,7 @@ def freeze_generation_identity(
 ):
     """Capture the complete governance/source identity for a synchronous job."""
 
-    revision = knowledge_base.active_structure_revision
-    if revision is None or knowledge_base.active_generation_id is None:
-        raise BuildGenerationError(
-            "active_governance_snapshot_missing",
-            "知识库缺少 active structure/generation",
-        )
+    knowledge_base, revision = _ensure_active_generation(knowledge_base)
     source_fingerprints = freeze_source_fingerprints(materials)
     incomplete = [
         fingerprint
@@ -127,16 +148,11 @@ def begin_build_generation(
     """Freeze identities and clone the complete active snapshot."""
 
     knowledge_base = WikiKnowledgeBase.objects.select_related("active_structure_revision").get(pk=knowledge_base.pk)
+    knowledge_base, revision = _ensure_active_generation(knowledge_base, operator=operator)
     if not (knowledge_base.active_generation_id and knowledge_base.active_structure_revision_id):
         raise BuildGenerationError(
             "generation_pipeline_not_enabled",
             "知识库尚未进入 generation truth 状态",
-        )
-    revision = knowledge_base.active_structure_revision
-    if revision is None or knowledge_base.active_generation_id is None:
-        raise BuildGenerationError(
-            "active_governance_snapshot_missing",
-            "知识库缺少 active structure/generation",
         )
     candidate = begin_generation(
         knowledge_base=knowledge_base,
@@ -202,6 +218,46 @@ def _merge_body(current_body, incoming_body, strategy):
 
 
 @transaction.atomic
+def _directory_display_chain(directory_id):
+    parts = []
+    directory = WikiDirectory.objects.filter(pk=directory_id).select_related("parent").first() if directory_id else None
+    while directory is not None:
+        if directory.key != UNCLASSIFIED_DIRECTORY_KEY:
+            parts.append(posix_safe_segment(directory.name))
+        directory = directory.parent
+    parts.reverse()
+    return parts
+
+
+def _native_concept_id(directory_id, title, page_id):
+    slug = posix_safe_segment(title) or f"page-{page_id}"
+    parts = _directory_display_chain(directory_id)
+    return "/".join([*parts, slug]) if parts else slug
+
+
+def _native_okf_meta(page, *, title, page_type, navigation_metadata, directory_id, existing_okf=None, sources=None):
+    existing = dict(existing_okf or {})
+    concept_id = str(existing.get("concept_id") or "").strip() or _native_concept_id(directory_id, title, page.pk)
+    model = getattr(page.knowledge_base, "llm_model", None)
+    model_name = getattr(model, "name", None) or getattr(model, "model", None) or "process:opspilot-llm-wiki/1"
+    generated = existing.get("generated") if isinstance(existing.get("generated"), dict) else None
+    if not generated:
+        generated = {
+            "by": model_name,
+            "at": timezone.now().replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        }
+    return {
+        "type": page_type or page.page_type or "concept",
+        "title": title,
+        "concept_id": concept_id,
+        "description": (navigation_metadata or {}).get("summary") or existing.get("description") or "",
+        "tags": list(page.tags or []),
+        "generated": generated,
+        "sources": list(sources or existing.get("sources") or []),
+    }
+
+
+@transaction.atomic
 def stage_ai_page(
     context,
     *,
@@ -218,6 +274,7 @@ def stage_ai_page(
     change_type="ai_merge",
     body_strategy="merge",
     navigation_metadata=None,
+    okf_sources=None,
 ):
     """Create or reconcile one AI page inside a preparing candidate."""
 
@@ -296,6 +353,15 @@ def stage_ai_page(
         or navigation_changed
     )
     body_changed = source_version is None or source_version.body != merged_body
+    okf_meta = _native_okf_meta(
+        page,
+        title=display_title,
+        page_type=page_type or "concept",
+        navigation_metadata=navigation_metadata,
+        directory_id=directory_id,
+        existing_okf=source_meta.get("okf") if isinstance(source_meta.get("okf"), dict) else None,
+        sources=okf_sources,
+    )
 
     if membership is not None and membership.page_version.created_in_generation_id == candidate.pk:
         version = membership.page_version
@@ -305,13 +371,15 @@ def stage_ai_page(
                 **(version.meta_snapshot or {}),
                 **navigation_metadata,
                 "candidate_generation_id": candidate.pk,
+                "okf": okf_meta,
             }
             version.save(update_fields=["body", "meta_snapshot", "updated_at"])
-        elif navigation_changed:
+        elif navigation_changed or not (version.meta_snapshot or {}).get("okf"):
             version.meta_snapshot = {
                 **(version.meta_snapshot or {}),
                 **navigation_metadata,
                 "candidate_generation_id": candidate.pk,
+                "okf": okf_meta,
             }
             version.save(update_fields=["meta_snapshot", "updated_at"])
     elif body_changed or metadata_changed or created or base_member is None:
@@ -319,7 +387,7 @@ def stage_ai_page(
             page=page,
             no=_next_version_no(page),
             body=merged_body,
-            meta_snapshot={**navigation_metadata, "candidate_generation_id": candidate.pk},
+            meta_snapshot={**navigation_metadata, "candidate_generation_id": candidate.pk, "okf": okf_meta},
             change_type=change_type,
             build_record=build_record,
             created_in_generation=candidate,

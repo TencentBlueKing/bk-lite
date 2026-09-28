@@ -10,7 +10,7 @@ import EllipsisWithTooltip from '../ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
 import ResizableTitle from './resizableTitle';
 import { createRafScheduler, resolveTableDimensions } from './tableHeight';
-import { getColumnKey, resolveColumnLayout } from './columnLayout';
+import { getColumnKey, resolveColumnLayout, resolveSelectionColumnWidth } from './columnLayout';
 import { resolveTableScroll } from './tableScroll';
 
 interface CustomTableProps<T>
@@ -191,6 +191,9 @@ const CustomTable = <T extends object>({
   };
 
   // 将列宽状态和 onHeaderCell 合并到 columns
+  const reservedWidth = rowSelection
+    ? resolveSelectionColumnWidth(rowSelection.columnWidth)
+    : 0;
   const columnLayout = useMemo(() => (
     resolveColumnLayout({
       autoScrollX,
@@ -198,8 +201,9 @@ const CustomTable = <T extends object>({
       columnWidths,
       tableLayout: TableProps.tableLayout,
       containerWidth,
+      reservedWidth,
     })
-  ), [autoScrollX, columns, columnWidths, TableProps.tableLayout, containerWidth]);
+  ), [autoScrollX, columns, columnWidths, TableProps.tableLayout, containerWidth, reservedWidth]);
 
   const resizableColumns = useCallback(() => {
     return columns.map((col: any, index: number) => {
@@ -319,11 +323,12 @@ const CustomTable = <T extends object>({
     calculatedScrollY: tableHeight,
     hasData,
   });
+  const hideHorizontalScroll = mergedScroll.x === undefined;
 
   return (
     <div
       ref={containerRef}
-      className={`relative min-h-0 ${customTableStyle.customTable}${hasPagination && scrollY !== 'auto' ? ' h-full' : ''}`}
+      className={`relative min-h-0 ${customTableStyle.customTable}${hasPagination && scrollY !== 'auto' ? ' h-full' : ''}${hideHorizontalScroll ? ` ${customTableStyle.noHorizontalScroll}` : ''}`}
       style={{
         height: lockVerticalSize
           ? `${containerHeight}px`

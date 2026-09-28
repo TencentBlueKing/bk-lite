@@ -4,6 +4,7 @@ from django.db.models.deletion import ProtectedError
 
 from apps.opspilot.models import WikiDirectory, WikiGenerationPage
 from apps.opspilot.services.wiki.page_service import create_manual_page
+from apps.opspilot.services.wiki.purpose_schema_service import FROZEN_ROOT_KEYS
 from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -20,8 +21,12 @@ def test_directory_key_is_unique_per_knowledge_base_but_reusable_across_kbs(wiki
     first = _ready_kb(wiki_factory)
     second = _ready_kb(wiki_factory)
 
-    assert first.directories.get().key == "__unclassified__"
-    assert second.directories.get().key == "__unclassified__"
+    first_keys = set(first.directories.values_list("key", flat=True))
+    second_keys = set(second.directories.values_list("key", flat=True))
+    assert first_keys == {"__unclassified__", *FROZEN_ROOT_KEYS}
+    assert second_keys == first_keys
+    assert first.directories.filter(key="__unclassified__").count() == 1
+    assert second.directories.filter(key="__unclassified__").count() == 1
     with pytest.raises(IntegrityError), transaction.atomic():
         WikiDirectory.objects.create(
             knowledge_base=first,

@@ -1,85 +1,40 @@
-from types import SimpleNamespace
-from unittest.mock import patch
+from apps.opspilot.services.wiki.purpose_schema_service import (
+    FROZEN_PAGE_TYPES,
+    MATERIALS_ROOT_IMPORT_NAME,
+    MATERIALS_ROOT_KEY,
+    get_frozen_structure,
+    get_template_structure,
+    import_folder_display_name,
+    is_materials_root_name,
+    match_frozen_knowledge_root_name,
+)
 
 
-def test_templates_listed():
-    from apps.opspilot.services.wiki.purpose_schema_service import list_templates
-
-    keys = {t["key"] for t in list_templates()}
-    assert {"ops_qa", "fault_diagnosis", "operation_guide", "product_support", "general"} <= keys
-    assert "okf_bundle" not in keys
-
-
-def test_generate_purpose_schema_uses_llm():
-    from apps.opspilot.services.wiki.purpose_schema_service import generate_purpose_schema
-
-    with patch(
-        "apps.opspilot.services.wiki.purpose_schema_service._llm_generate",
-        return_value=("# Purpose\nX", "# Schema\nY"),
-    ):
-        purpose, schema = generate_purpose_schema(template_key="ops_qa", description="运维问答库", llm_model_id=42)
-    assert purpose.startswith("# Purpose") and schema.startswith("# Schema")
+def test_frozen_structure_has_five_page_types_and_six_roots():
+    structure = get_frozen_structure()
+    assert structure["page_types"] == list(FROZEN_PAGE_TYPES)
+    names = [item["name"] for item in structure["directories"]]
+    assert names == ["实体", "概念", "待研究问题", "对比", "综合", "来源"]
+    source = next(item for item in structure["directories"] if item["key"] == MATERIALS_ROOT_KEY)
+    assert source["accepts_pages"] is False
+    assert source["rules"]["allowed_page_types"] == []
+    assert "source" not in structure["page_types"]
 
 
-def test_generate_purpose_schema_fallback_without_model():
-    from apps.opspilot.services.wiki.purpose_schema_service import generate_purpose_schema
-
-    purpose, schema = generate_purpose_schema(template_key="ops_qa", description="运维问答库", llm_model_id=None)
-    assert "运维问答库" in purpose  # 描述注入到 Purpose 骨架
-    assert "知识类型" in schema  # 模板 Schema 骨架
-
-
-def test_parse_llm_output_requires_markers():
-    from apps.opspilot.services.wiki import purpose_schema_service as service
-
-    purpose, schema = service._parse_llm_output("===PURPOSE===\n# P\n===SCHEMA===\n# S")
-    assert purpose == "# P"
-    assert schema == "# S"
-
-    try:
-        service._parse_llm_output("# P\n# S")
-    except ValueError as exc:
-        assert "PURPOSE/SCHEMA" in str(exc)
-    else:
-        raise AssertionError("invalid output should raise")
+def test_any_template_key_returns_frozen_structure():
+    general = get_template_structure("general")
+    unknown = get_template_structure("ops_qa")
+    assert general["page_types"] == unknown["page_types"]
+    assert [item["key"] for item in general["directories"]] == [item["key"] for item in unknown["directories"]]
 
 
-def test_llm_generate_invokes_model_and_parses_output(monkeypatch):
-    from apps.opspilot.services.wiki import purpose_schema_service as service
-
-    prompts = []
-    monkeypatch.setattr(
-        service.LLMModel.objects,
-        "get",
-        lambda id: SimpleNamespace(openai_api_base="http://llm", openai_api_key="key", model_name="model"),
-    )
-
-    def fake_invoke(request, messages):
-        prompts.append(messages[0]["content"])
-        return "===PURPOSE===\n# Generated Purpose\n===SCHEMA===\n# Generated Schema"
-
-    monkeypatch.setattr(service.LLMClientFactory, "invoke_isolated", fake_invoke)
-
-    template = {"purpose_md": "# Purpose\n{{description}}", "schema_md": "# Schema\n- concept"}
-    purpose, schema = service._llm_generate(template, "蓝鲸平台知识库", llm_model_id=1)
-
-    assert purpose == "# Generated Purpose"
-    assert schema == "# Generated Schema"
-    assert "蓝鲸平台知识库" in prompts[0]
-
-
-def test_llm_generate_falls_back_when_llm_output_invalid(monkeypatch):
-    from apps.opspilot.services.wiki import purpose_schema_service as service
-
-    monkeypatch.setattr(
-        service.LLMModel.objects,
-        "get",
-        lambda id: SimpleNamespace(openai_api_base="http://llm", openai_api_key="key", model_name="model"),
-    )
-    monkeypatch.setattr(service.LLMClientFactory, "invoke_isolated", lambda request, messages: "invalid")
-
-    template = {"purpose_md": "# Purpose\n{{description}}", "schema_md": "# Schema\n- concept"}
-    purpose, schema = service._llm_generate(template, "回退描述", llm_model_id=1)
-
-    assert "回退描述" in purpose
-    assert schema == "# Schema\n- concept"
+def test_display_name_match_ignores_english_type_keys():
+    assert match_frozen_knowledge_root_name("实体")["key"] == "schema_entity"
+    assert match_frozen_knowledge_root_name(" 实体 ")["key"] == "schema_entity"
+    assert match_frozen_knowledge_root_name("entity") is None
+    assert match_frozen_knowledge_root_name("来源") is None
+    assert is_materials_root_name("来源") is True
+    assert is_materials_root_name("sources") is False
+    assert import_folder_display_name("来源", parent_is_root=True) == MATERIALS_ROOT_IMPORT_NAME
+    assert import_folder_display_name("来源", parent_is_root=False) == "来源"
+    assert import_folder_display_name("entity", parent_is_root=True) == "entity"
