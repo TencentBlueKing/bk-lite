@@ -211,8 +211,10 @@ class NodeService:
                     if collector["status"] == 0:
                         collector["message"] = "Running"
                         logger.debug(
-                            f"Changed status to Running for collector {collector_obj.name} "
-                            f"on node {node.get('name', node['id'])}: {verbose_msg.strip()}"
+                            "Changed status to Running for collector %s on node %s: %s",
+                            collector_obj.name,
+                            node.get("name", node["id"]),
+                            verbose_msg.strip(),
                         )
 
         # 计算节点活跃度，一分钟内为活跃
