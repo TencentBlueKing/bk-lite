@@ -1973,10 +1973,10 @@
     "table": "Table",
     "tag": "Tag",
   "Transfer": {
-    "activeHint": "An active or unverified task already exists. If its record has expired, contact an administrator to verify the result.",
+    "activeHint": "You already have 5 queued or running tasks. Wait for completion or cancel a queued task.",
     "retry": "Resubmit export",
     "title": "Import / export history",
-    "retention": "Keep up to 5 records for 7 days. Older completed records are removed automatically. Download your files in time.",
+    "retention": "Keep up to 5 completed records from the last 7 days. Download files promptly. Up to 5 queued or running tasks per user are counted separately.",
     "empty": "No import or export tasks",
     "accepted": "Task created. View the result in import / export history.",
     "submitExport": "Submit export",
@@ -2001,7 +2001,7 @@
       "succeeded": "Succeeded",
       "partial_success": "Partially succeeded",
       "failed": "Failed",
-      "interrupted": "Needs verification",
+      "interrupted": "Failed",
       "cancelled": "Cancelled"
     },
     "scope": {
@@ -2015,7 +2015,12 @@
       "writing_instances": "Writing instances",
       "writing_relations": "Writing relationships",
       "generating_file": "Generating file",
-      "uploading_result": "Uploading result"
+      "uploading_result": "Uploading result",
+      "reading_source": "Reading source file",
+      "validating_file": "Validating file",
+      "interrupted": "Execution interrupted",
+      "finished": "Finishing task",
+      "queued": "Queued"
     },
     "count": {
       "existing_relations": "Existing relationships",
@@ -2025,6 +2030,12 @@
       "created_relations": "Created relationships",
       "failed_relations": "Failed relationships",
       "exported": "Exported instances"
-    }
+    },
+    "unknown": "Unconfirmed",
+    "failureStage": "Failed stage",
+    "taskId": "Task ID",
+    "partialWriteHint": "Some data may have been written. Only confirmed counts are shown; no automatic rollback or replay occurred.",
+    "writesRetained": "Written data is retained. No automatic rollback or replay occurred.",
+    "executionPending": "Waiting for the previous execution to stop. You can submit new tasks; imports for the same model will wait."
   }
 }

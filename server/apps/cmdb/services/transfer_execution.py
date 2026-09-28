@@ -69,30 +69,43 @@ class TransferExecution:
                 if not TransferService.finish(task.pk, token, status, summary=summary, artifacts=artifacts):
                     TransferService.interrupt(task.pk, token, "publication_lost")
         except TransferError as exc:
-            if exc.code == "execution_lost":
-                TransferService.interrupt(task.pk, token, exc.code)
-            elif not TransferService.finish(task.pk, token, "failed", code=exc.code, message=str(exc)):
-                TransferService.interrupt(task.pk, token, exc.code)
+            TransferService.fail_execution(task.pk, token, exc.code, str(exc), execution_stopped=True, error_type="TransferError")
         except Exception as exc:
             storage_code, storage_message = storage_failure_details(exc)
+            task.refresh_from_db()
+            stage = "object_storage" if storage_code else task.summary.get("_failure", {}).get("stage", task.phase)
             logger.error(
                 "event=cmdb_transfer_failed task_id=%s failed_stage=%s error_type=%s storage_code=%s",
                 str(task.pk),
-                "object_storage" if storage_code else "execute",
+                stage,
                 type(exc).__name__,
                 storage_code or "-",
                 exc_info=safe_exception_info(exc),
             )
-            if task.kind == "import":
-                TransferService.interrupt(task.pk, token, "execution_failed")
-            elif not TransferService.finish(
+            if isinstance(exc, TimeoutError):
+                message = "依赖服务请求超时，请稍后重试"
+            elif isinstance(exc, ConnectionError):
+                message = "依赖服务连接失败，请检查服务状态"
+            else:
+                message = "数据处理异常，请根据任务编号联系管理员查看日志"
+            TransferService.fail_execution(
                 task.pk,
                 token,
-                "failed",
-                code="storage_unavailable" if storage_code else "execution_failed",
-                message=storage_message or "文件生成失败，请稍后重新提交",
-            ):
-                TransferService.interrupt(task.pk, token, "execution_failed")
+                "storage_unavailable" if storage_code else "execution_failed",
+                storage_message or f"{message}（{type(exc).__name__}）",
+                execution_stopped=True,
+                error_type=type(exc).__name__,
+            )
+        finally:
+            # 正常回栈就是本执行已停止的确认；不依赖租约过期来假装杀掉线程。
+            # 包括 watchdog 已置失败但旧同步调用现在才返回、以及成功结果被拒绝发布。
+            TransferService.fail_execution(
+                task.pk,
+                token,
+                "execution_stopped",
+                "执行已终止，已写入的数据保留",
+                execution_stopped=True,
+            )
 
     @staticmethod
     def export(task, token, context, files, prefix):
@@ -171,12 +184,15 @@ class TransferExecution:
         def progress(processed, total, summary, phase):
             TransferService.progress(task.pk, token, phase, processed, total, summary)
 
+        TransferService.progress(task.pk, token, "reading_source")
         with files.local_copy(task.source_key) as stream:
             allowed = {item["attr_id"] for item in context.attrs} | {item["model_asst_id"] for item in context.associations}
+            TransferService.progress(task.pk, token, "validating_file")
             inspected = inspect_workbook(stream, task.model_id, allowed_fields=allowed)
             if inspected["sha256"] != task.source_hash:
                 raise TransferError("source_changed", "上传源文件校验失败")
             summary, errors = TransferImport.run(task, stream, context, progress)
+        TransferService.progress(task.pk, token, "uploading_result", summary=summary)
         artifacts = {}
         if errors:
             book = openpyxl.Workbook(write_only=True)

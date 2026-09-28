@@ -27,10 +27,8 @@ def test_submit_replays_same_request_and_rejects_changed_content(transfer_owner)
     with pytest.raises(TransferError) as error:
         submit(transfer_owner, model_id="mysql")
     assert error.value.status_code == 409
-    with pytest.raises(TransferError) as error:
-        submit(transfer_owner, key="second")
-    assert error.value.status_code == 429
-    assert [item.pk for item in TransferService.list(transfer_owner)] == [task.pk]
+    second = submit(transfer_owner, key="second")
+    assert [item.pk for item in TransferService.list(transfer_owner)] == [second.pk, task.pk]
 
 
 def test_owner_scope_cancel_and_duplicate_delivery(transfer_owner):
@@ -87,9 +85,9 @@ def test_history_limit_and_expiry_do_not_release_interrupted_import(transfer_own
     with pytest.raises(TransferError):
         TransferService.request_delete(transfer_owner, task.pk)
     CmdbTransferTask.objects.filter(pk=task.pk).update(expires_at=now() - timedelta(seconds=1))
-    with pytest.raises(TransferError) as error:
-        submit(transfer_owner, key="new-import", kind="import")
-    assert error.value.status_code == 429
+    queued = submit(transfer_owner, key="new-import", kind="import")
+    assert TransferService.claim(queued.pk) is None
+    assert TransferService.get(transfer_owner, task.pk).holds_slot
 
 
 def test_deadline_rejects_old_worker_and_expired_queue_is_never_claimed(transfer_owner):
@@ -165,11 +163,11 @@ def test_rejected_retry_retains_failed_record_and_cannot_replace_another_owner(t
     assert denied.value.status_code == 404
     assert not TransferService.list(other).exists()
     assert not TransferService.get(transfer_owner, failed.pk).delete_pending
-    active = submit(transfer_owner, key="active")
+    active = [submit(transfer_owner, key=f"active-{index}") for index in range(5)]
     with pytest.raises(TransferError) as limited:
         submit(transfer_owner, key="retry", retry_of=failed.pk)
     assert limited.value.status_code == 429
-    assert set(TransferService.list(transfer_owner).values_list("pk", flat=True)) == {failed.pk, active.pk}
+    assert set(TransferService.list(transfer_owner).values_list("pk", flat=True)) == {failed.pk, *(task.pk for task in active)}
 
 
 def test_retry_idempotency_key_cannot_replace_a_different_failed_task(transfer_owner):

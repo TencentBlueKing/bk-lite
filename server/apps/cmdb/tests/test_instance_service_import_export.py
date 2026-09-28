@@ -49,6 +49,12 @@ def _make_excel(model_id, attrs_rows, data_rows):
 # --------------------------------------------------------------------------
 
 
+@pytest.fixture
+def association_endpoints(monkeypatch):
+    # 关联约束使用 UUID 端点；只替换图库读取，保留旧 ID 到 UUID 的真实解析。
+    monkeypatch.setattr(InstanceManage, "query_entity_by_id", lambda inst_id: {"inst_uuid": f"123e4567-e89b-42d3-a456-{inst_id:012d}"})
+
+
 @pytest.mark.django_db
 def test_check_asso_mapping_not_found(monkeypatch):
     monkeypatch.setattr(
@@ -70,7 +76,7 @@ def test_check_asso_mapping_nn(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_check_asso_mapping_1n_existing(monkeypatch, fake_graph):
+def test_check_asso_mapping_1n_existing(monkeypatch, fake_graph, association_endpoints):
     monkeypatch.setattr(
         "apps.cmdb.services.model.ModelManage.model_association_info_search",
         lambda mid: {"mapping": "1:n"},
@@ -81,7 +87,7 @@ def test_check_asso_mapping_1n_existing(monkeypatch, fake_graph):
 
 
 @pytest.mark.django_db
-def test_check_asso_mapping_1n_ok(monkeypatch, fake_graph):
+def test_check_asso_mapping_1n_ok(monkeypatch, fake_graph, association_endpoints):
     monkeypatch.setattr(
         "apps.cmdb.services.model.ModelManage.model_association_info_search",
         lambda mid: {"mapping": "1:n"},
@@ -93,7 +99,7 @@ def test_check_asso_mapping_1n_ok(monkeypatch, fake_graph):
 
 
 @pytest.mark.django_db
-def test_check_asso_mapping_n1_existing(monkeypatch, fake_graph):
+def test_check_asso_mapping_n1_existing(monkeypatch, fake_graph, association_endpoints):
     monkeypatch.setattr(
         "apps.cmdb.services.model.ModelManage.model_association_info_search",
         lambda mid: {"mapping": "n:1"},
@@ -104,7 +110,7 @@ def test_check_asso_mapping_n1_existing(monkeypatch, fake_graph):
 
 
 @pytest.mark.django_db
-def test_check_asso_mapping_11_ok(monkeypatch, fake_graph):
+def test_check_asso_mapping_11_ok(monkeypatch, fake_graph, association_endpoints):
     monkeypatch.setattr(
         "apps.cmdb.services.model.ModelManage.model_association_info_search",
         lambda mid: {"mapping": "1:1"},
@@ -116,7 +122,7 @@ def test_check_asso_mapping_11_ok(monkeypatch, fake_graph):
 
 
 @pytest.mark.django_db
-def test_check_asso_mapping_invalid_mapping(monkeypatch):
+def test_check_asso_mapping_invalid_mapping(monkeypatch, association_endpoints):
     monkeypatch.setattr(
         "apps.cmdb.services.model.ModelManage.model_association_info_search",
         lambda mid: {"mapping": "weird"},
@@ -247,7 +253,7 @@ def test_partial_import_still_records_successful_changes(monkeypatch, fake_graph
     monkeypatch.setattr("apps.cmdb.services.model.ModelManage.search_model_info", lambda _: {"model_name": "主机"})
     successful = {"success": True, "data": {"_id": 9, "model_id": "host", "inst_name": "one"}}
     importer = SimpleNamespace(
-        validation_errors=["第 5 行无效"], inst_list=[{}, {}], import_inst_list_support_edit=lambda *a, **k: ([successful], [], [])
+        validation_errors=["第 5 行无效"], inst_list=[{}, {}], exist_items=[], import_inst_list_support_edit=lambda *a, **k: ([successful], [], [])
     )
     monkeypatch.setattr(f"{MODULE}.Import", lambda *a: importer)
     audit = Mock()

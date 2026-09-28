@@ -38,7 +38,7 @@ def test_watchdog_does_not_replay_uncertain_import(transfer_owner):
     dispatch = Mock()
     TransferMaintenance.maintain(dispatch)
     task.refresh_from_db()
-    assert task.status == "interrupted" and task.holds_slot
+    assert task.status == "failed" and task.holds_slot
     dispatch.assert_not_called()
 
 

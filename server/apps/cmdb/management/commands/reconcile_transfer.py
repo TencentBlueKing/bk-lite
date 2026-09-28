@@ -4,7 +4,7 @@ from apps.cmdb.services.transfer_service import TransferService
 
 
 class Command(BaseCommand):
-    help = "确认旧 Worker 已停止、核对操作账本与图库后，解除导入导出中断占用；不会重放任务"
+    help = "确认旧 Worker 已停止、核对操作账本与图库后，解除失败任务的残留执行占用；不会重放任务"
 
     def add_arguments(self, parser):
         parser.add_argument("task_id")
@@ -21,5 +21,5 @@ class Command(BaseCommand):
         task = CmdbTransferTask.objects.get(pk=options["task_id"])
         summary = dict(task.summary, reconciliation_note=options["note"])
         if not TransferService.reconcile_interrupted(task.pk, verified_stopped=True, summary=summary):
-            raise CommandError("任务不处于待核对状态")
+            raise CommandError("任务没有需要解除的失败执行占用")
         self.stdout.write(self.style.SUCCESS("已解除占用；任务未重跑"))
