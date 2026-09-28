@@ -17,15 +17,22 @@ def test_monitor_language_keys_exist_in_en_and_zh():
     assert en_loader.get("tools.monitor.name")
     assert zh_loader.get("tools.cmdb.tools.cmdb_get_monitor_ids.description")
     assert en_loader.get("tools.cmdb.tools.cmdb_get_monitor_ids.description")
-    assert "monitor_id" in zh_loader.get("tools.cmdb.description")
-    assert "monitor_id" in en_loader.get("tools.cmdb.description")
+    assert (
+        "监控" in zh_loader.get("tools.cmdb.tools.cmdb_get_monitor_ids.description")
+        or "monitor" in en_loader.get("tools.cmdb.tools.cmdb_get_monitor_ids.description").lower()
+    )
+    assert "request_user_choice" not in zh_loader.get("tools.cmdb.description")
+    assert "monitor_list_active_alerts" not in zh_loader.get("tools.cmdb.description")
     assert zh_loader.get("tools.alerts.tools.alerts_list_alerts.description")
-    assert "alerts_list_alerts" in zh_loader.get("tools.monitor.tools.monitor_list_active_alerts.description")
-    assert "monitor_list_active_alerts" in zh_loader.get("tools.alerts.tools.alerts_list_alerts.description")
+    assert "活跃告警" in zh_loader.get("tools.monitor.tools.monitor_list_active_alerts.description")
+    assert "monitor_list_active_alerts" not in zh_loader.get("tools.alerts.description")
+    assert "monitor_list_active_alerts" not in zh_loader.get("tools.alerts.tools.alerts_list_alerts.description")
     assert zh_loader.get("tools.log.tools.log_search_structured.description")
     assert en_loader.get("tools.monitor.description")
     assert zh_loader.get("tools.monitor.name")
     assert zh_loader.get("tools.monitor.description")
+    assert "request_user_choice" not in zh_loader.get("tools.alerts.description")
+    assert "LogsQL" in zh_loader.get("tools.log.description") or "日志" in zh_loader.get("tools.log.description")
 
     sub_tools = [
         "monitor_list_objects",
@@ -42,11 +49,15 @@ def test_monitor_language_keys_exist_in_en_and_zh():
         assert zh_loader.get(f"tools.monitor.tools.{name}.description"), name
 
     zh_pkg = zh_loader.get("tools.monitor.description")
-    assert "CPU" in zh_pkg or "主机" in zh_pkg
-    assert "SSH" in zh_pkg or "top" in zh_pkg or "htop" in zh_pkg
-    assert "第" in zh_loader.get("tools.monitor.tools.monitor_list_objects.description") or "主机" in zh_loader.get(
-        "tools.monitor.tools.monitor_list_objects.description"
-    )
+    assert "指标" in zh_pkg or "时序" in zh_pkg
+    assert "对象" in zh_pkg
+    # 界面描述应是能力说明，不含给模型的调用约束
+    assert "request_user_choice" not in zh_pkg
+    assert "alerts_*" not in zh_pkg
+    assert "SSH" not in zh_pkg and "htop" not in zh_pkg
+    objects_desc = zh_loader.get("tools.monitor.tools.monitor_list_objects.description")
+    assert "对象" in objects_desc
+    assert "request_user_choice" not in objects_desc
 
 
 def test_builtin_tool_display_name_keys_exist_in_en_and_zh():

@@ -14,9 +14,7 @@ _OBJECT_TYPE_CHOICE_HINT = (
     "用户已明确说是主机/Host、Pod 或中间件时，不要 request_user_choice，直接用对应对象 id 列实例。"
 )
 _EMPTY_INSTANCE_NEXT_HINT = (
-    "禁止猜测、递增或改换 monitor_obj_id 重试，禁止截断名称按台循环。"
-    "用户未声明类型时 request_user_choice（single_select）问对象类型；"
-    "用户已声明主机/Pod/中间件时不要再问，把空列表当该类型下无匹配实例。"
+    "禁止猜测、递增或改换 monitor_obj_id 重试，禁止截断名称按台循环。" "用户未声明类型时 request_user_choice（single_select）问对象类型；" "用户已声明主机/Pod/中间件时不要再问，把空列表当该类型下无匹配实例。"
 )
 _UNMATCHED_INSTANCE_KEYWORD_MESSAGE = (
     "该 monitor_obj_id 下未匹配 keyword。"
@@ -154,8 +152,8 @@ def _instance_query_hint(items: list) -> str:
 
 @tool(
     description=(
-        "【主机CPU使用率】第1步：列出BK-Lite已纳管监控对象类型，得到各类型 monitor_obj_id。"
-        "问主机名或IP的CPU/内存/磁盘时必须先调；用平台监控，不要SSH/top/htop。"
+        "列出 BK-Lite 已纳管监控对象类型，得到各类型 monitor_obj_id。"
+        "查任意对象指标/告警前必须先调；用平台监控，不要 SSH/top/htop。"
         "用户未说明是主机/Pod/中间件时，禁止按名称猜类型；列出后必须 request_user_choice。"
         "用户已声明类型时不要再问，直接用对应 id。"
     )
@@ -174,11 +172,11 @@ def monitor_list_objects(
 
 @tool(
     description=(
-        "【主机CPU使用率】第2步：按monitor_obj_id列出实例（含主机名和IP）。"
-        "monitor_obj_id 只能来自第1步返回的对象 id，且须用户已明确类型或已选择；每个 obj_id 只调一次。"
+        "按 monitor_obj_id 列出实例（含主机名和 IP）。"
+        "monitor_obj_id 只能来自 list_objects 返回的对象 id，且须用户已明确类型或已选择；每个 obj_id 只调一次。"
         "keyword 用完整主机名/IP 或用户原词，禁止截断后按台循环，禁止猜测/递增 ID。"
         "空列表且用户未声明类型时须 request_user_choice 问对象类型；已声明类型则不要再问。"
-        "后续 instance_ids 必须用本列表 instance_id，禁止用 name 或 IP 代替，禁止CMDB的inst_uuid/_id。"
+        "后续 instance_ids 必须用本列表 instance_id，禁止用 name 或 IP 代替，禁止 CMDB 的 inst_uuid/_id。"
     )
 )
 def monitor_list_object_instances(

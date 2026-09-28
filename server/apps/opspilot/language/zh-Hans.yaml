@@ -207,33 +207,29 @@ tools:
   monitor:
     name: 监控
     description: |
-      【主机CPU使用率】用当前用户身份查 BK-Lite 已纳管对象、实例、指标时序与监控策略告警。口语「没关的告警/某台还在告」走告警中心 alerts_*，不要用本工具集。
-      典型顺序：对象类型 → 按名称匹配实例 → 按用户词筛选指标名 → 查时序。优先本工具集，不要 SSH/top/htop。
-      用户未说明对象类型时，列出类型后必须 request_user_choice，禁止按名称猜 Host/K8s Pod。
-      查 CPU 时先列指标并按 CPU 筛选，禁止猜测 cpu.util，不要让用户手填指标名。
-      instance_ids 是监控实例 ID（或主机名/IP），不能用 CMDB 的 inst_uuid/_id。
+      用当前用户身份查询 BK-Lite 监控数据：已纳管对象与实例、指标定义与时序、主机资源快照，以及监控策略产生的活跃告警与告警历史。
+      覆盖主机、Kubernetes、中间件等对象上的 CPU/内存/磁盘/业务等指标。
     tools:
       monitor_list_objects:
-        description: 【主机CPU】第1步，列出对象类型；用户未说明类型时不要猜，列出后 request_user_choice。
+        description: 列出已纳管的监控对象类型。
       monitor_list_object_instances:
-        description: 【主机CPU】第2步，按用户确认的对象类型列实例；keyword 用完整名称/IP，每个 obj_id 只调一次，空列表须问对象类型，禁止猜测 ID 或截断名称循环。
+        description: 按对象类型列出监控实例（含名称、IP 等）。
       monitor_list_object_metrics:
-        description: 【主机CPU】第3步，列出指标；用户问 CPU 时 keyword=CPU 筛选 name/display_name，禁止猜测 cpu.util。必须与查时序同一步。
+        description: 列出某对象类型下的指标定义。
       monitor_list_instance_metrics:
-        description: 【主机CPU】可选，确认某实例是否已采集 CPU 等指标。
+        description: 列出某实例已采集的指标。
       monitor_query_metric_data:
-        description: 【主机CPU】第4步，查询指标时序；metric 必须来自 list_object_metrics 返回的 name，禁止猜测 cpu.util。instance_ids 须用监控 ID/主机名/IP，禁止 CMDB inst_uuid。
+        description: 查询指定指标的时序数据。
       monitor_list_active_alerts:
-        description: 【监控策略告警】查询监控扫描产生的主机/实例活跃告警，不是告警中心工单。仅当用户点名监控告警/策略告警时使用；口语没关的告警用 alerts_list_alerts。实例须用监控 instance_id、实例名或 IP，禁止 CMDB inst_uuid。
+        description: 查询监控策略产生的实例活跃告警（监控详情页告警列表，非告警中心工单）。
       monitor_query_alert_segments:
-        description: 【监控策略告警历史】按时间窗查询监控扫描告警片段。
+        description: 按时间窗查询监控策略告警历史片段。
       monitor_get_host_resource_snapshot:
-        description: 【主机CPU】按监控 instance_ids 查询 CPU/内存/磁盘均值与最高值快照；禁止 CMDB inst_uuid。
+        description: 查询主机 CPU/内存/磁盘均值与最高值快照。
   cmdb:
     name: CMDB
     description: |
-      用当前用户身份查询和变更 BK-Lite CMDB 资产。支持模型、实例增删改查、关联与拓扑、全文检索。权限由服务端校验。
-      与监控联动时：CMDB 的 inst_uuid/_id 不能当作监控 instance_id；已联动请用 monitor_id 或 cmdb_get_monitor_ids。
+      用当前用户身份查询和变更 BK-Lite CMDB 资产：模型、实例增删改查、关联与拓扑、全文检索。权限由服务端校验。
     tools:
       cmdb_list_models:
         description: 列出有权限的 CMDB 模型。
@@ -242,11 +238,11 @@ tools:
       cmdb_list_model_attrs:
         description: 列出模型属性。
       cmdb_search_instances:
-        description: 按模型分页查询实例。返回 inst_uuid 与已联动的 monitor_id；查监控勿把 inst_uuid/_id 当 instance_ids。
+        description: 按模型分页查询实例。
       cmdb_get_instance:
-        description: 按 UUID 获取实例。含 monitor_id 时用它查监控，不要把 inst_uuid 当监控 instance_id。
+        description: 按 UUID 获取实例详情。
       cmdb_get_monitor_ids:
-        description: 按 inst_uuid 列表取已联动的监控 instance_id（monitor_id）。
+        description: 按 CMDB 实例 UUID 查询已联动的监控实例 ID。
       cmdb_create_instance:
         description: 创建实例。
       cmdb_update_instance:
@@ -280,19 +276,18 @@ tools:
   alerts:
     name: 告警中心
     description: |
-      用当前用户身份查询统一告警中心的告警列表、详情与关联事件。只读，不做认领或关闭。
-      口语「还有没有没关的告警」「某台还在告警」「未分派」必须用本工具集，不要用 monitor_list_active_alerts。
+      用当前用户身份查询统一告警中心的告警列表、详情与关联事件。只读，不支持认领或关闭。
     tools:
       alerts_list_alerts:
-        description: 查询告警中心工单列表。没关/未分派/某台还在告必须用本工具；主机名/IP/标题放 keyword。不要用 monitor_list_active_alerts，也不要先问监控对象类型。
+        description: 查询告警中心工单列表，可按状态、级别和关键词筛选。
       alerts_get_alert_detail:
-        description: 按 alert_id 查询告警详情。
+        description: 按告警 ID 查询告警详情。
       alerts_list_alert_events:
         description: 查询告警关联事件。
   log:
     name: 日志中心
     description: |
-      用当前用户身份查询日志。先列分组，再用结构化关键词查询；复杂场景可用原生 LogsQL。
+      用当前用户身份查询日志：列出可访问分组，按关键词做结构化检索，复杂场景可用原生 LogsQL。
     tools:
       log_list_groups:
         description: 列出可访问的日志分组。
@@ -936,6 +931,19 @@ tools:
       SQL Server 操作工具模块
 
       提供 Microsoft SQL Server 连接管理、结构查看、安全查询与诊断能力，便于 Agent 查看和操作 SQL Server 数据库。
+  activedirectory:
+    name: Active Directory
+    description: |
+      Active Directory 查询工具
+
+      按表查询域中的用户、组、计算机等对象，可查看表结构，并用只读 SQL 检索数据。
+    tools:
+      activedirectory_get_tables:
+        description: 列出可查询的 Active Directory 对象表（如用户、组、计算机），结果为 CSV。
+      activedirectory_get_columns:
+        description: 查看指定表的字段列表与类型说明，结果为 CSV。
+      activedirectory_run_query:
+        description: 对 Active Directory 虚拟表执行只读 SELECT 查询，支持 JOIN、条件筛选与排序，结果为 CSV。
   elasticsearch:
     name: Elasticsearch
     description: |
@@ -954,3 +962,11 @@ tools:
       智能浏览器工具模块
 
       提供 Agent 驱动的浏览器自动化能力，用于访问网页并提取信息。
+
+skill_packages:
+  kubernetes-configuration:
+    name: Kubernetes 配置
+    description: |
+      面向 Kubernetes 工作负载部署与治理的场景技能包。
+
+      覆盖 Deployment/StatefulSet、网络策略、RBAC、Helm、排障、GitOps、服务网格与多集群等配置与运维场景。

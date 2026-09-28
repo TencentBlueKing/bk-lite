@@ -39,23 +39,34 @@ def _monitor_tools():
     ]
 
 
-def test_monitor_tool_descriptions_guide_host_metric_queries():
-    """规划器只看短描述；前 120 字须能表达主机 CPU 场景与调用步骤。"""
+def test_monitor_tool_descriptions_guide_metric_queries():
+    """规划器只看短描述；须表达监控能力边界与关键调用约束。"""
     tools = {tool.name: tool for tool in _monitor_tools()}
     for name, tool in tools.items():
         text = " ".join((tool.description or "").split())
-        head = text[:120]
-        assert "主机" in head, name
-        assert "CPU" in head or "告警" in head, name
+        assert text, name
+        assert "主机CPU使用率" not in text, name
+        assert any(key in text for key in ("监控", "对象", "实例", "指标", "告警", "时序", "快照")), name
+
+    from apps.opspilot.metis.llm.tools import monitor as monitor_pkg
+
+    pkg_desc = (monitor_pkg.__doc__ or "").strip()
+    assert "主机CPU使用率" not in pkg_desc
+    assert "指标" in pkg_desc and ("告警" in pkg_desc or "时序" in pkg_desc)
+    # 入库/展示用 docstring 不含模型调用约束；约束在各 @tool description
+    assert "request_user_choice" not in pkg_desc
+    assert "alerts_*" not in pkg_desc
+    assert "SSH" not in pkg_desc and "htop" not in pkg_desc
 
     objects = tools["monitor_list_objects"].description
-    assert "第1步" in objects
     assert "monitor_obj_id" in objects
     assert "SSH" in objects or "top" in objects or "htop" in objects
+    assert "request_user_choice" in objects
+    assert "猜" in objects
+    assert "已声明" in objects
 
     query = tools["monitor_query_metric_data"].description
-    assert "第4步" in query
-    assert "CPU" in query
+    assert "时序" in query
     assert "instance_ids" in query
     assert "top" in query or "htop" in query or "SSH" in query
     assert "空矩阵" in query or "无时序" in query
@@ -64,8 +75,7 @@ def test_monitor_tool_descriptions_guide_host_metric_queries():
     assert "禁止用" in query or "不要用" in query
 
     instances = tools["monitor_list_object_instances"].description
-    assert "第2步" in instances
-    assert "主机名" in instances or "名称" in instances or "boxxxxx" in instances
+    assert "主机名" in instances or "名称" in instances
     assert "IP" in instances
     assert "只调一次" in instances
     assert "禁止猜测" in instances or "递增" in instances
@@ -73,13 +83,7 @@ def test_monitor_tool_descriptions_guide_host_metric_queries():
     assert "instance_id" in instances
     assert "禁止用 name" in instances or "禁止用实例名" in instances
 
-    objects = tools["monitor_list_objects"].description
-    assert "request_user_choice" in objects
-    assert "猜" in objects
-    assert "已声明" in objects
-
     metrics = tools["monitor_list_object_metrics"].description
-    assert "第3步" in metrics
     assert "keyword" in metrics
     assert "猜测" in metrics or "cpu.util" in metrics
 
