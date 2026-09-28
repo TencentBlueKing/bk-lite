@@ -3,6 +3,8 @@ export interface BusinessMetricItem {
   name: string;
   value: number | string;
   tags?: Record<string, string>;
+  /** 脚本占用的保留标签键，确认时拦截。 */
+  reservedTagKeys?: string[];
   /** 指标目录分组 ID，确认时写入 metric_group。 */
   metric_group?: number | null;
   /** 指标目录单位 ID（Cascader 叶子 unit_id）。 */
@@ -26,7 +28,29 @@ export interface ParsedScriptOutput {
 
 const SELF_METRIC_NAMES = new Set(['up', 'duration', 'duration_ms', 'duration_seconds', 'exit_code', 'run_duration']);
 const GENERIC_INFLUX_FIELDS = new Set(['value', 'gauge', 'counter', 'untyped']);
-const HIDDEN_DIMENSION_KEYS = new Set(['config_id', 'config_type']);
+/** 用户可见的平台标签。 */
+export const VISIBLE_PLATFORM_TAG_KEYS = new Set(['instance_id', 'agent_id']);
+/** 仅内部隔离，不进调试表。 */
+export const HIDDEN_PLATFORM_TAG_KEYS = new Set([
+  'plugin_id',
+  'instance_type',
+  'collect_type',
+  'config_id',
+  'config_type',
+  'host',
+  'bklite_script_reserved_keys'
+]);
+/** 脚本自定义标签不得使用。 */
+export const RESERVED_SCRIPT_TAG_KEYS = new Set([
+  'instance_id',
+  'instance_type',
+  'collect_type',
+  'config_type',
+  'plugin_id',
+  'agent_id',
+  'config_id'
+]);
+const RESERVED_CONFLICT_TAG = 'bklite_script_reserved_keys';
 const UNRENDERED_PLACEHOLDER_RE = /\$\{[^}]+\}|\{\{[^}]+\}\}/;
 const NUMERIC_OR_DETECT_PREFIX_RE = /^(?:detect_)?\d+_/;
 const HEX32_PREFIX_RE = /^[A-Fa-f0-9]{32}_/;
@@ -107,6 +131,47 @@ export const isSelfMetricName = (name: string, isolationPrefixes: string[] = [])
   });
 };
 
+export const isReservedScriptTagKey = (key: string): boolean => {
+  const tagKey = String(key || '').trim();
+  if (!tagKey) {
+    return false;
+  }
+  if (RESERVED_SCRIPT_TAG_KEYS.has(tagKey)) {
+    return true;
+  }
+  return tagKey.toLowerCase().startsWith('bklite_script_');
+};
+
+export const collectReservedScriptTagKeys = (
+  tags?: Record<string, string>
+): string[] => {
+  if (!tags) {
+    return [];
+  }
+  const found: string[] = [];
+  const mark = (key: string) => {
+    if (key && !found.includes(key)) {
+      found.push(key);
+    }
+  };
+  const marker = String(tags[RESERVED_CONFLICT_TAG] || '');
+  marker
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .forEach(mark);
+  Object.keys(tags).forEach((key) => {
+    const tagKey = String(key || '').trim();
+    if (!tagKey || tagKey === RESERVED_CONFLICT_TAG) {
+      return;
+    }
+    if (tagKey.toLowerCase().startsWith('bklite_script_')) {
+      mark(tagKey);
+    }
+  });
+  return found;
+};
+
 export const cleanDisplayTags = (
   tags?: Record<string, string>
 ): Record<string, string> | undefined => {
@@ -117,10 +182,18 @@ export const cleanDisplayTags = (
   Object.entries(tags).forEach(([key, raw]) => {
     const tagKey = String(key || '').trim();
     const tagValue = raw == null ? '' : String(raw);
-    if (!tagKey || HIDDEN_DIMENSION_KEYS.has(tagKey)) {
+    if (!tagKey || HIDDEN_PLATFORM_TAG_KEYS.has(tagKey)) {
+      return;
+    }
+    if (tagKey.toLowerCase().startsWith('bklite_script_')) {
       return;
     }
     if (!tagValue || UNRENDERED_PLACEHOLDER_RE.test(tagKey) || UNRENDERED_PLACEHOLDER_RE.test(tagValue)) {
+      return;
+    }
+    const isVisiblePlatform = VISIBLE_PLATFORM_TAG_KEYS.has(tagKey);
+    const isScriptBusinessTag = !RESERVED_SCRIPT_TAG_KEYS.has(tagKey);
+    if (!isVisiblePlatform && !isScriptBusinessTag) {
       return;
     }
     if (out[tagKey] === undefined) {
@@ -289,6 +362,7 @@ export const parseScriptMetrics = (
       return;
     }
     const cleanedTags = cleanDisplayTags(tags);
+    const reservedTagKeys = collectReservedScriptTagKeys(tags);
     const metricKey = `${name}|${stableTagKey(cleanedTags)}`;
     if (seenKeys.has(metricKey)) {
       return;
@@ -298,7 +372,8 @@ export const parseScriptMetrics = (
       key: metricKey,
       name,
       value,
-      tags: cleanedTags
+      tags: cleanedTags,
+      reservedTagKeys
     });
   };
 

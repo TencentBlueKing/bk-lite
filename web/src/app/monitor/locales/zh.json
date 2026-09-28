@@ -902,6 +902,8 @@
       "trialRunMetricDescription": "指标描述",
       "trialRunSelectInstance": "调试目标实例",
       "scriptMetricsPersistFailed": "指标保存失败：{error}",
+      "reservedTagRename": "保留字段，请换名",
+      "reservedTagRenameDetail": "保留字段，请换名：{keys}",
       "templateDescription": "模版介绍",
       "noConfigData": "暂无配置数据，请检查插件配置",
       "missingEntryContext": "缺少插件关联的监控对象，无法进入配置",

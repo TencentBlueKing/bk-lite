@@ -1,4 +1,9 @@
-import { BusinessMetricItem } from './scriptMetricsParser';
+import {
+  BusinessMetricItem,
+  collectReservedScriptTagKeys,
+  isReservedScriptTagKey,
+  VISIBLE_PLATFORM_TAG_KEYS
+} from './scriptMetricsParser';
 
 export interface ScriptMetricCatalogDraft {
   metric_group?: number | null;
@@ -95,10 +100,49 @@ export const applyCatalogDraft = (
   draft?: ScriptMetricCatalogDraft
 ): BusinessMetricItem => ({
   ...item,
+  reservedTagKeys: item.reservedTagKeys || collectReservedScriptTagKeys(item.tags),
   metric_group: draft?.metric_group ?? null,
   unit: resolveCatalogUnitId(draft?.unit),
   description: resolveCatalogDescription(draft?.description)
 });
+
+export const collectReservedTagViolations = (
+  metrics: BusinessMetricItem[]
+): string[] => {
+  const found: string[] = [];
+  const mark = (key: string) => {
+    if (key && !found.includes(key)) {
+      found.push(key);
+    }
+  };
+  metrics.forEach((item) => {
+    (item.reservedTagKeys || []).forEach(mark);
+    Object.keys(item.tags || {}).forEach((key) => {
+      if (isReservedScriptTagKey(key) && !VISIBLE_PLATFORM_TAG_KEYS.has(key)) {
+        mark(key);
+      }
+    });
+  });
+  return found;
+};
+
+export const formatReservedTagRenameMessage = (
+  keys: string[],
+  t: TranslateFn
+): string => {
+  const uniqueKeys = keys.filter(Boolean);
+  const rename = t('monitor.integrations.reservedTagRename', '保留字段，请换名');
+  if (!uniqueKeys.length) {
+    return rename;
+  }
+  const joined = uniqueKeys.join(', ');
+  const detailed = t(
+    'monitor.integrations.reservedTagRenameDetail',
+    '保留字段，请换名：{keys}',
+    { keys: joined }
+  );
+  return detailed.includes('{keys}') ? `${rename}：${joined}` : detailed;
+};
 
 export const formatDimensionTagSummary = (
   tags?: Record<string, string>
@@ -186,6 +230,10 @@ export const persistScriptMetrics = async ({
     return;
   }
   const { get, post, patch, t } = client;
+  const reservedKeys = collectReservedTagViolations(metrics);
+  if (reservedKeys.length) {
+    throw new Error(formatReservedTagRenameMessage(reservedKeys, t));
+  }
   try {
     const groupRes = await get('/monitor/api/metrics_group/', {
       params: {
