@@ -88,6 +88,15 @@ import {
 } from './automaticAssetCount';
 import ScriptTrialRunArea from './scriptTrialRunArea';
 import { applyScriptCollectSubmit } from './scriptCollectForm';
+import {
+  collectReservedTagViolations,
+  persistScriptMetrics
+} from './scriptMetricPersist';
+import {
+  buildScriptMetricEditCarry,
+  SCRIPT_METRIC_DRAFT_QUERY,
+  writeScriptMetricEditCarry
+} from './scriptMetricEditCarry';
 import { BusinessMetricItem } from './scriptMetricsParser';
 const { confirm } = Modal;
 
@@ -118,7 +127,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const [form] = Form.useForm();
   const { t } = useTranslation();
   const searchParams = useSearchParams();
-  const { get, post, isLoading } = useApiClient();
+  const { get, post, patch, isLoading } = useApiClient();
   const {
     createCollectDetectTask,
     getCollectDetectTask,
@@ -418,6 +427,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const [trialMetricsByRow, setTrialMetricsByRow] = useState<
     Record<string, BusinessMetricItem[]>
   >({});
+  const [scriptDebugHasBusinessMetrics, setScriptDebugHasBusinessMetrics] =
+    useState(false);
 
   const handleSelectedScriptMetricsChange = useCallback(
     (metrics: BusinessMetricItem[]) => {
@@ -428,6 +439,13 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       }));
     },
     [activeRecord?.key]
+  );
+
+  const handleBusinessMetricsAvailableChange = useCallback(
+    (available: boolean) => {
+      setScriptDebugHasBusinessMetrics(available);
+    },
+    []
   );
 
   const selectedScriptMetrics = useMemo(() => {
@@ -442,111 +460,61 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     return Array.from(map.values());
   }, [trialMetricsByRow]);
 
-  const persistScriptMetrics = async (
+  const reservedScriptTagKeys = useMemo(
+    () => collectReservedTagViolations(selectedScriptMetrics),
+    [selectedScriptMetrics]
+  );
+  const hasReservedScriptTagError = reservedScriptTagKeys.length > 0;
+  const reservedTagRenameText = t(
+    'monitor.integrations.reservedTagRename',
+    '保留字段，请换名'
+  );
+  const goEditSelectFirstText = t(
+    'monitor.integrations.goEditMetricsSelectFirst',
+    '请先勾选指标'
+  );
+  const showGoEditMetrics =
+    isScriptTemplate && scriptDebugHasBusinessMetrics;
+  const showGoEditSelectFirst =
+    showGoEditMetrics &&
+    !hasReservedScriptTagError &&
+    !selectedScriptMetrics.length;
+
+  const persistSelectedScriptMetrics = async (
     targetPluginId: string | number,
     targetObjectId: string | number,
     metricsToPersist: BusinessMetricItem[]
   ) => {
-    if (!metricsToPersist.length) return;
-    const silentReq = { suppressErrorNotification: true } as const;
-    try {
-      const groupRes: any = await get('/monitor/api/metrics_group/', {
-        params: {
-          monitor_object_id: targetObjectId,
-          monitor_plugin_id: targetPluginId
-        },
-        ...silentReq
-      });
-      const groups = Array.isArray(groupRes)
-        ? groupRes
-        : groupRes?.items || [];
-      let targetGroupId = groups[0]?.id;
-      if (!targetGroupId) {
-        const createdGroup: any = await post(
-          '/monitor/api/metrics_group/',
-          {
-            monitor_object: Number(targetObjectId),
-            monitor_plugin: Number(targetPluginId),
-            name: 'Base',
-            description: '基础指标'
-          },
-          silentReq
-        );
-        targetGroupId = createdGroup?.id;
-      }
-      if (!targetGroupId) {
-        throw new Error(t('common.operationFailed'));
-      }
+    await persistScriptMetrics({
+      pluginId: targetPluginId,
+      objectId: targetObjectId,
+      metrics: metricsToPersist,
+      client: { get, post, patch, t }
+    });
+  };
 
-      const existingRes: any = await get('/monitor/api/metrics/', {
-        params: {
-          monitor_object_id: targetObjectId,
-          monitor_plugin_id: targetPluginId
-        },
-        ...silentReq
-      });
-      const existingItems = Array.isArray(existingRes)
-        ? existingRes
-        : existingRes?.items || [];
-      const existingNames = new Set(
-        existingItems.map((m: { name?: string }) => m.name).filter(Boolean)
-      );
-
-      const seen = new Set(existingNames);
-      const uniqueMetrics: BusinessMetricItem[] = [];
-      for (const m of metricsToPersist) {
-        if (!seen.has(m.name)) {
-          seen.add(m.name);
-          uniqueMetrics.push(m);
-        }
-      }
-
-      if (!uniqueMetrics.length) return;
-
-      const results = await Promise.allSettled(
-        uniqueMetrics.map((item) => {
-          const dimensions = Object.keys(item.tags || {}).map((k) => ({
-            name: k,
-            description: k
-          }));
-          return post(
-            '/monitor/api/metrics/',
-            {
-              monitor_object: Number(targetObjectId),
-              monitor_plugin: Number(targetPluginId),
-              metric_group: targetGroupId,
-              name: item.name,
-              display_name: item.name,
-              query: `${item.name}{__$labels__}`,
-              unit: '',
-              data_type: 'Number',
-              description: item.name,
-              dimensions
-            },
-            silentReq
-          );
-        })
-      );
-      const rejected = results.find(
-        (result): result is PromiseRejectedResult => result.status === 'rejected'
-      );
-      if (rejected) {
-        throw rejected.reason;
-      }
-    } catch (error: any) {
-      throw new Error(
-        t(
-          'monitor.integrations.scriptMetricsPersistFailed',
-          '指标保存失败：{error}',
-          {
-            error:
-              error?.response?.data?.message ||
-              error?.message ||
-              t('common.operationFailed')
-          }
-        )
-      );
+  const handleGoEditMetrics = () => {
+    if (
+      confirmLoading ||
+      isAnyTrialRunning ||
+      hasReservedScriptTagError ||
+      !scriptDebugHasBusinessMetrics
+    ) {
+      return;
     }
+    if (!selectedScriptMetrics.length) {
+      return;
+    }
+    const payload = buildScriptMetricEditCarry(selectedScriptMetrics);
+    if (!payload.metrics.length) {
+      return;
+    }
+    writeScriptMetricEditCarry(objectId, pluginId, payload);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set(SCRIPT_METRIC_DRAFT_QUERY, '1');
+    router.push(
+      `/monitor/integration/list/detail/metric?${params.toString()}`
+    );
   };
   const [formSnapshot, setFormSnapshot] = useState<Record<string, any>>({});
   const tableDependencyFields = useMemo(
@@ -1422,6 +1390,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (policyTemplatesLoading || confirmLoading || saveInFlightRef.current) {
       return;
     }
+    if (isScriptTemplate && hasReservedScriptTagError) {
+      return;
+    }
     const normalizedForm = normalizePasswordFields(
       form.getFieldsValue(true),
       currentConfig?.form_fields,
@@ -1502,8 +1473,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     try {
       setConfirmLoading(true);
       const collectResult = await updateNodeChildConfig(params);
-      if (isScriptTemplate && selectedScriptMetrics.length > 0) {
-        await persistScriptMetrics(pluginId, objectId, selectedScriptMetrics);
+      if (
+        isScriptTemplate &&
+        scriptDebugHasBusinessMetrics &&
+        selectedScriptMetrics.length > 0
+      ) {
+        await persistSelectedScriptMetrics(pluginId, objectId, selectedScriptMetrics);
       }
       if (templatesToApply.length) {
         const policyPayload = buildCollectionPolicyApplyPayload({
@@ -1550,11 +1525,17 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       });
       router.push(`/monitor/integration/list?${nextSearch.toString()}`);
     } catch (error: any) {
-      message.error(
+      const errorText =
         error?.response?.data?.message ||
-          error?.message ||
-          t('common.operationFailed')
-      );
+        error?.message ||
+        t('common.operationFailed');
+      if (
+        typeof errorText === 'string' &&
+        errorText.includes(reservedTagRenameText)
+      ) {
+        return;
+      }
+      message.error(errorText);
     } finally {
       saveInFlightRef.current = false;
       setConfirmLoading(false);
@@ -1853,20 +1834,55 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           }}
           nodeSelected={Boolean(getRowNodeId(activeRecord || {}))}
           instanceName={activeRecord?.instance_name || undefined}
+          pluginId={pluginId}
+          objectId={objectId}
           onSelectedMetricsChange={handleSelectedScriptMetricsChange}
+          onBusinessMetricsAvailableChange={handleBusinessMetricsAvailableChange}
         />
       )}
       <Form.Item>
-        <Permission requiredPermissions={['Add']}>
-          <Button
-            type="primary"
-            loading={confirmLoading}
-            disabled={confirmLoading || isAnyTrialRunning}
-            onClick={handleSave}
-          >
-            {t('common.confirm')}
-          </Button>
-        </Permission>
+        <div className="flex flex-wrap items-center gap-3">
+          <Permission requiredPermissions={['Add']}>
+            <Button
+              type="primary"
+              loading={confirmLoading}
+              disabled={
+                confirmLoading || isAnyTrialRunning || hasReservedScriptTagError
+              }
+              onClick={handleSave}
+            >
+              {t('common.confirm')}
+            </Button>
+          </Permission>
+          {showGoEditMetrics && (
+            <Button
+              disabled={
+                confirmLoading ||
+                isAnyTrialRunning ||
+                hasReservedScriptTagError
+              }
+              onClick={handleGoEditMetrics}
+            >
+              {t('monitor.integrations.goEditMetrics', '去编辑指标')}
+            </Button>
+          )}
+          {hasReservedScriptTagError && (
+            <span
+              className="text-[13px] text-[var(--color-fail)]"
+              role="alert"
+            >
+              {reservedTagRenameText}
+            </span>
+          )}
+          {showGoEditSelectFirst && (
+            <span
+              className="text-[13px] text-[var(--color-fail)]"
+              role="alert"
+            >
+              {goEditSelectFirstText}
+            </span>
+          )}
+        </div>
       </Form.Item>
     </Form>
   );

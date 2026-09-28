@@ -425,7 +425,21 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
         try {
           if (type === 'add') {
             formData.type = 'metric';
-            setDimensions([{ ...INIT_DIMENSION }]);
+            formData.data_type = formData.data_type || 'Number';
+            const incomingDimensions = normalizeDimensions(
+              formData.dimensions as DimensionItem[]
+            );
+            const hasPrefill = incomingDimensions.some((item) =>
+              String(item.name || '').trim()
+            );
+            setDimensions(
+              hasPrefill ? incomingDimensions : [{ ...INIT_DIMENSION }]
+            );
+            if (formData.data_type === 'Number' && formData.unit) {
+              formData.unit = Array.isArray(formData.unit)
+                ? formData.unit
+                : findCascaderPath(unitList, formData.unit as string);
+            }
             setEnumList([INIT_UNIT_ITEM]);
           } else {
             setDimensions(

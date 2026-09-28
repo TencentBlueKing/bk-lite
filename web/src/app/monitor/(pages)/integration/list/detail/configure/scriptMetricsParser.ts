@@ -3,6 +3,14 @@ export interface BusinessMetricItem {
   name: string;
   value: number | string;
   tags?: Record<string, string>;
+  /** 脚本占用的保留标签键，确认时拦截。 */
+  reservedTagKeys?: string[];
+  /** 指标目录分组 ID，确认时写入 metric_group。 */
+  metric_group?: number | null;
+  /** 指标目录单位 ID（Cascader 叶子 unit_id）。 */
+  unit?: string;
+  /** 指标目录描述，允许空字符串。 */
+  description?: string;
 }
 
 export interface ParsedScriptOutput {
@@ -19,30 +27,207 @@ export interface ParsedScriptOutput {
 }
 
 const SELF_METRIC_NAMES = new Set(['up', 'duration', 'duration_ms', 'duration_seconds', 'exit_code', 'run_duration']);
+const GENERIC_INFLUX_FIELDS = new Set(['value', 'gauge', 'counter', 'untyped']);
+/** 用户可见的平台标签。 */
+export const VISIBLE_PLATFORM_TAG_KEYS = new Set(['instance_id', 'agent_id']);
+/** 仅内部隔离，不进调试表。 */
+export const HIDDEN_PLATFORM_TAG_KEYS = new Set([
+  'plugin_id',
+  'instance_type',
+  'collect_type',
+  'config_id',
+  'config_type',
+  'host',
+  'bklite_script_reserved_keys'
+]);
+/** 脚本自定义标签不得使用。 */
+export const RESERVED_SCRIPT_TAG_KEYS = new Set([
+  'instance_id',
+  'instance_type',
+  'collect_type',
+  'config_type',
+  'plugin_id',
+  'agent_id',
+  'config_id'
+]);
+const RESERVED_CONFLICT_TAG = 'bklite_script_reserved_keys';
+const UNRENDERED_PLACEHOLDER_RE = /\$\{[^}]+\}|\{\{[^}]+\}\}/;
+const NUMERIC_OR_DETECT_PREFIX_RE = /^(?:detect_)?\d+_/;
+const HEX32_PREFIX_RE = /^[A-Fa-f0-9]{32}_/;
+const HEALTH_LEAF_RE = /^(?:parse_errors|truncated|up|duration(?:_ms|_seconds)?|exit_code)$/i;
+const SCRIPT_HEALTH_NAME_RE =
+  /(?:^|_)bklite_script_(?:parse_errors|truncated|up|duration(?:_ms|_seconds)?|exit_code)(?:_|$)/i;
 
-export const isSelfMetricName = (name: string): boolean => {
-  const lower = name.toLowerCase();
-  if (lower.startsWith('bklite_script_') || lower.startsWith('bklite_script.')) {
-    return true;
+export const normalizeIsolationPrefixes = (raw: unknown): string[] => {
+  if (!Array.isArray(raw)) {
+    return [];
   }
-  return (
-    SELF_METRIC_NAMES.has(lower) ||
-    lower === 'bklite_script'
-  );
+  const prefixes: string[] = [];
+  raw.forEach((item) => {
+    const text = String(item || '');
+    if (text && !prefixes.includes(text)) {
+      prefixes.push(text);
+    }
+  });
+  return prefixes;
 };
 
 /**
- * 清理 measurement 前缀（例如 bklite_script_123_disk_free -> disk_free）
+ * 去掉 child name_prefix / config_id 隔离前缀，得到脚本注册名。
+ * 例：bklite_script_2_prometheus_mock_requests_total -> prometheus_mock_requests_total
+ *     2_prometheus_mock_requests_total -> prometheus_mock_requests_total
  */
-const cleanMeasurementName = (rawName: string): string => {
-  return rawName.replace(/^bklite_script_[^_]+_/, '');
+export const cleanMeasurementName = (rawName: string, isolationPrefixes: string[] = []): string => {
+  let name = String(rawName || '');
+  let changed = true;
+  while (name && changed) {
+    changed = false;
+    for (const prefix of isolationPrefixes) {
+      if (prefix && name.startsWith(prefix) && name.length > prefix.length) {
+        name = name.slice(prefix.length);
+        changed = true;
+      }
+    }
+    if (name.startsWith('bklite_script_')) {
+      const after = name.slice('bklite_script_'.length);
+      // 健康指标本身是 bklite_script_parse_errors，不能把 parse_ 当成 config_id 剥掉。
+      if (!HEALTH_LEAF_RE.test(after)) {
+        const isolation = after.match(/^([^_]+)_/);
+        if (isolation) {
+          name = after.slice(isolation[0].length);
+          changed = true;
+          continue;
+        }
+      }
+    }
+    if (NUMERIC_OR_DETECT_PREFIX_RE.test(name)) {
+      name = name.replace(NUMERIC_OR_DETECT_PREFIX_RE, '');
+      changed = true;
+      continue;
+    }
+    if (HEX32_PREFIX_RE.test(name)) {
+      name = name.replace(HEX32_PREFIX_RE, '');
+      changed = true;
+    }
+  }
+  return name;
+};
+
+export const isSelfMetricName = (name: string, isolationPrefixes: string[] = []): boolean => {
+  const raw = String(name || '');
+  const cleaned = cleanMeasurementName(raw, isolationPrefixes);
+  return [raw, cleaned].some((candidate) => {
+    const lower = candidate.toLowerCase();
+    if (!lower) {
+      return false;
+    }
+    if (lower.startsWith('bklite_script_') || lower.startsWith('bklite_script.')) {
+      return true;
+    }
+    if (SELF_METRIC_NAMES.has(lower) || lower === 'bklite_script') {
+      return true;
+    }
+    return SCRIPT_HEALTH_NAME_RE.test(lower);
+  });
+};
+
+export const isReservedScriptTagKey = (key: string): boolean => {
+  const tagKey = String(key || '').trim();
+  if (!tagKey) {
+    return false;
+  }
+  if (RESERVED_SCRIPT_TAG_KEYS.has(tagKey)) {
+    return true;
+  }
+  return tagKey.toLowerCase().startsWith('bklite_script_');
+};
+
+export const collectReservedScriptTagKeys = (
+  tags?: Record<string, string>
+): string[] => {
+  if (!tags) {
+    return [];
+  }
+  const found: string[] = [];
+  const mark = (key: string) => {
+    if (key && !found.includes(key)) {
+      found.push(key);
+    }
+  };
+  const marker = String(tags[RESERVED_CONFLICT_TAG] || '');
+  marker
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .forEach(mark);
+  Object.keys(tags).forEach((key) => {
+    const tagKey = String(key || '').trim();
+    if (!tagKey || tagKey === RESERVED_CONFLICT_TAG) {
+      return;
+    }
+    if (tagKey.toLowerCase().startsWith('bklite_script_')) {
+      mark(tagKey);
+    }
+  });
+  return found;
+};
+
+export const cleanDisplayTags = (
+  tags?: Record<string, string>
+): Record<string, string> | undefined => {
+  if (!tags) {
+    return undefined;
+  }
+  const out: Record<string, string> = {};
+  Object.entries(tags).forEach(([key, raw]) => {
+    const tagKey = String(key || '').trim();
+    const tagValue = raw == null ? '' : String(raw);
+    if (!tagKey || HIDDEN_PLATFORM_TAG_KEYS.has(tagKey)) {
+      return;
+    }
+    if (tagKey.toLowerCase().startsWith('bklite_script_')) {
+      return;
+    }
+    if (!tagValue || UNRENDERED_PLACEHOLDER_RE.test(tagKey) || UNRENDERED_PLACEHOLDER_RE.test(tagValue)) {
+      return;
+    }
+    const isVisiblePlatform = VISIBLE_PLATFORM_TAG_KEYS.has(tagKey);
+    const isScriptBusinessTag = !RESERVED_SCRIPT_TAG_KEYS.has(tagKey);
+    if (!isVisiblePlatform && !isScriptBusinessTag) {
+      return;
+    }
+    if (out[tagKey] === undefined) {
+      out[tagKey] = tagValue;
+    }
+  });
+  return Object.keys(out).length ? out : undefined;
+};
+
+const businessMetricName = (measurement: string, fieldName: string): string => {
+  if (!fieldName || measurement === fieldName || GENERIC_INFLUX_FIELDS.has(fieldName.toLowerCase())) {
+    return measurement;
+  }
+  return `${measurement}_${fieldName}`;
+};
+
+const stableTagKey = (tags?: Record<string, string>): string => {
+  if (!tags) {
+    return '';
+  }
+  return Object.keys(tags)
+    .sort()
+    .map((key) => `${key}=${tags[key]}`)
+    .join(',');
 };
 
 /**
  * 解析 Influx Line Protocol 格式行
  * 格式：measurement[,tag_k=tag_v...] field_k=field_v[,field_k2=field_v2...] [timestamp]
  */
-const parseInfluxLine = (line: string): { measurement: string; tags: Record<string, string>; fields: Record<string, any> } | null => {
+const parseInfluxLine = (
+  line: string,
+  isolationPrefixes: string[]
+): { measurement: string; tags: Record<string, string>; fields: Record<string, any> } | null => {
   const parts = line.trim().split(/\s+/);
   if (parts.length < 2) return null;
 
@@ -50,7 +235,7 @@ const parseInfluxLine = (line: string): { measurement: string; tags: Record<stri
   const fieldsPart = parts[1];
 
   const headerTokens = headerPart.split(',');
-  const measurement = cleanMeasurementName(headerTokens[0]);
+  const measurement = cleanMeasurementName(headerTokens[0], isolationPrefixes);
   const tags: Record<string, string> = {};
   for (let i = 1; i < headerTokens.length; i++) {
     const eqIdx = headerTokens[i].indexOf('=');
@@ -87,11 +272,14 @@ const parseInfluxLine = (line: string): { measurement: string; tags: Record<stri
  * 解析 Prometheus 格式行
  * 格式：metric_name{tag1="val1"} 123
  */
-const parsePrometheusLine = (line: string): { name: string; value: number | string; tags: Record<string, string> } | null => {
-  const promMatch = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*)(?:\{([^}]*)\})?\s+([^\s]+)(?:\s+\d+)?$/);
+const parsePrometheusLine = (
+  line: string,
+  isolationPrefixes: string[]
+): { name: string; value: number | string; tags: Record<string, string> } | null => {
+  const promMatch = line.match(/^([A-Za-z0-9_:][A-Za-z0-9_:]*)(?:\{([^}]*)\})?\s+([^\s]+)(?:\s+\d+)?$/);
   if (!promMatch) return null;
 
-  const name = cleanMeasurementName(promMatch[1]);
+  const name = cleanMeasurementName(promMatch[1], isolationPrefixes);
   const tagsStr = promMatch[2] || '';
   const valStr = promMatch[3];
   const tags: Record<string, string> = {};
@@ -113,10 +301,13 @@ const parsePrometheusLine = (line: string): { name: string; value: number | stri
 /**
  * 解析简单 key=value 或 key: value 格式
  */
-const parseKeyValueLine = (line: string): { name: string; value: number | string } | null => {
-  const kvMatch = line.match(/^([a-zA-Z_][a-zA-Z0-9_]*)\s*[:=]\s*([^\s]+)$/);
+const parseKeyValueLine = (
+  line: string,
+  isolationPrefixes: string[]
+): { name: string; value: number | string } | null => {
+  const kvMatch = line.match(/^([A-Za-z0-9_:][A-Za-z0-9_:]*)\s*[:=]\s*([^\s]+)$/);
   if (!kvMatch) return null;
-  const name = cleanMeasurementName(kvMatch[1]);
+  const name = cleanMeasurementName(kvMatch[1], isolationPrefixes);
   const valStr = kvMatch[2];
   const value = !isNaN(Number(valStr)) ? Number(valStr) : valStr;
   return { name, value };
@@ -130,6 +321,7 @@ export const parseScriptMetrics = (
 ): ParsedScriptOutput => {
   const stdout = String(result?.stdout || result?.result || '').trim();
   const stderr = String(result?.stderr || result?.error || errorMessage || '').trim();
+  const isolationPrefixes = normalizeIsolationPrefixes(result?.isolation_name_prefixes);
 
   let exitCode = 0;
   if (result?.exit_code !== undefined && result?.exit_code !== null) {
@@ -165,6 +357,26 @@ export const parseScriptMetrics = (
     stderr.toLowerCase().includes('agent offline')
   );
 
+  const pushBusinessMetric = (name: string, value: number | string, tags?: Record<string, string>) => {
+    if (!name || isSelfMetricName(name, isolationPrefixes)) {
+      return;
+    }
+    const cleanedTags = cleanDisplayTags(tags);
+    const reservedTagKeys = collectReservedScriptTagKeys(tags);
+    const metricKey = `${name}|${stableTagKey(cleanedTags)}`;
+    if (seenKeys.has(metricKey)) {
+      return;
+    }
+    seenKeys.add(metricKey);
+    businessMetrics.push({
+      key: metricKey,
+      name,
+      value,
+      tags: cleanedTags,
+      reservedTagKeys
+    });
+  };
+
   if (stdout) {
     const lines = stdout.split('\n');
     for (const rawLine of lines) {
@@ -172,12 +384,15 @@ export const parseScriptMetrics = (
       if (!line || line.startsWith('#')) continue;
 
       // 1. 尝试 Influx Line Protocol
-      const influxData = parseInfluxLine(line);
+      const influxData = parseInfluxLine(line, isolationPrefixes);
       if (influxData) {
         const { measurement, tags, fields } = influxData;
         for (const [fieldName, fieldValue] of Object.entries(fields)) {
           const lowerName = fieldName.toLowerCase();
-          if (isSelfMetricName(fieldName) || isSelfMetricName(measurement)) {
+          if (
+            isSelfMetricName(fieldName, isolationPrefixes) ||
+            isSelfMetricName(measurement, isolationPrefixes)
+          ) {
             if (lowerName.includes('up') && typeof fieldValue === 'number') up = fieldValue;
             if (lowerName.includes('exit_code') && typeof fieldValue === 'number') exitCode = fieldValue;
             if (lowerName.includes('duration') && typeof fieldValue === 'number') {
@@ -185,26 +400,17 @@ export const parseScriptMetrics = (
             }
             continue;
           }
-          const metricKey = `${measurement}.${fieldName}`;
-          if (!seenKeys.has(metricKey)) {
-            seenKeys.add(metricKey);
-            businessMetrics.push({
-              key: metricKey,
-              name: measurement === fieldName ? measurement : `${measurement}_${fieldName}`,
-              value: fieldValue,
-              tags: Object.keys(tags).length ? tags : undefined
-            });
-          }
+          pushBusinessMetric(businessMetricName(measurement, fieldName), fieldValue, tags);
         }
         continue;
       }
 
       // 2. 尝试 Prometheus Line
-      const promData = parsePrometheusLine(line);
+      const promData = parsePrometheusLine(line, isolationPrefixes);
       if (promData) {
         const { name, value, tags } = promData;
         const lowerName = name.toLowerCase();
-        if (isSelfMetricName(name)) {
+        if (isSelfMetricName(name, isolationPrefixes)) {
           if (lowerName.includes('up') && typeof value === 'number') up = value;
           if (lowerName.includes('exit_code') && typeof value === 'number') exitCode = value;
           if (lowerName.includes('duration') && typeof value === 'number') {
@@ -212,24 +418,16 @@ export const parseScriptMetrics = (
           }
           continue;
         }
-        if (!seenKeys.has(name)) {
-          seenKeys.add(name);
-          businessMetrics.push({
-            key: name,
-            name,
-            value,
-            tags: Object.keys(tags).length ? tags : undefined
-          });
-        }
+        pushBusinessMetric(name, value, tags);
         continue;
       }
 
       // 3. 尝试 Key-Value Line
-      const kvData = parseKeyValueLine(line);
+      const kvData = parseKeyValueLine(line, isolationPrefixes);
       if (kvData) {
         const { name, value } = kvData;
         const lowerName = name.toLowerCase();
-        if (isSelfMetricName(name)) {
+        if (isSelfMetricName(name, isolationPrefixes)) {
           if (lowerName.includes('up') && typeof value === 'number') up = value;
           if (lowerName.includes('exit_code') && typeof value === 'number') exitCode = value;
           if (lowerName.includes('duration') && typeof value === 'number') {
@@ -237,14 +435,7 @@ export const parseScriptMetrics = (
           }
           continue;
         }
-        if (!seenKeys.has(name)) {
-          seenKeys.add(name);
-          businessMetrics.push({
-            key: name,
-            name,
-            value
-          });
-        }
+        pushBusinessMetric(name, value);
       }
     }
   }

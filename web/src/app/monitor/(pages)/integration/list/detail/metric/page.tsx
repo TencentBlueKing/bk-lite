@@ -30,7 +30,7 @@ import Collapse from '@/components/collapse';
 import GroupModal from './groupModal';
 import MetricModal from './metricModal';
 import ObjectIcon from '@/app/monitor/components/objectIcon';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Permission from '@/components/permission';
 import {
   needsTagsEntry,
@@ -38,6 +38,11 @@ import {
 } from '@/app/monitor/utils/monitorObject';
 import { cloneDeep } from 'lodash';
 import { buildIfmibMetricView, getDefaultMetricGroupOpenState } from './ifmibMetricView';
+import {
+  consumeScriptMetricEditCarry,
+  SCRIPT_METRIC_DRAFT_QUERY,
+  ScriptMetricEditCarryItem
+} from '../configure/scriptMetricEditCarry';
 
 interface ObjectTabOption {
   label: React.ReactNode;
@@ -77,6 +82,7 @@ const Configure = () => {
   } = useIntegrationApi();
   const { t } = useTranslation();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const groupName = searchParams.get('name') || '';
   const groupId = searchParams.get('id');
   const pluginID = searchParams.get('plugin_id') || '';
@@ -103,6 +109,10 @@ const Configure = () => {
   const [groupConfirmLoading, setGroupConfirmLoading] = useState(false);
   const [showTabs, setShowTabs] = useState<boolean>(false);
   const metricCatalogAbortRef = useRef<AbortController | null>(null);
+  const scriptMetricDraftQueueRef = useRef<ScriptMetricEditCarryItem[]>([]);
+  const scriptMetricDraftConsumedRef = useRef(false);
+  const scriptMetricDraftOpeningRef = useRef(false);
+  const [catalogReady, setCatalogReady] = useState(false);
   const canReorderCatalog = metricCount <= 100 && !searchText.trim();
 
   useEffect(() => () => metricCatalogAbortRef.current?.abort(), []);
@@ -250,6 +260,7 @@ const Configure = () => {
       getInitData(_objId);
     } catch {
       setLoading(false);
+      setCatalogReady(true);
     }
   };
 
@@ -358,6 +369,7 @@ const Configure = () => {
     } finally {
       if (metricCatalogAbortRef.current === abortController) {
         setLoading(false);
+        setCatalogReady(true);
       }
     }
   };
@@ -391,6 +403,10 @@ const Configure = () => {
   };
 
   const openMetricModal = (type: string, row = {}) => {
+    if (!scriptMetricDraftOpeningRef.current) {
+      scriptMetricDraftQueueRef.current = [];
+    }
+    scriptMetricDraftOpeningRef.current = false;
     const title = t(
       type === 'add'
         ? 'monitor.integrations.addMetric'
@@ -405,12 +421,100 @@ const Configure = () => {
     });
   };
 
+  const toDraftMetricForm = (
+    item: ScriptMetricEditCarryItem,
+    existing?: MetricItem
+  ) => {
+    const dimensions = Object.keys(item.tags || {}).map((name) => ({
+      name,
+      description: name
+    }));
+    if (existing) {
+      return {
+        ...existing,
+        metric_group: item.group ?? existing.metric_group,
+        unit: item.unit_id || existing.unit,
+        description: item.description ?? existing.description,
+        dimensions: dimensions.length ? dimensions : existing.dimensions
+      };
+    }
+    return {
+      name: item.name,
+      display_name: item.name,
+      query: `${item.name}{__$labels__}`,
+      metric_group: item.group,
+      unit: item.unit_id || '',
+      data_type: 'Number',
+      description: item.description || '',
+      dimensions
+    };
+  };
+
+  const openNextScriptMetricDraft = (catalogMetrics: MetricItem[] = metrics) => {
+    const next = scriptMetricDraftQueueRef.current.shift();
+    if (!next) {
+      return;
+    }
+    const existing = catalogMetrics.find((metric) => metric.name === next.name);
+    scriptMetricDraftOpeningRef.current = true;
+    openMetricModal(
+      existing ? 'edit' : 'add',
+      toDraftMetricForm(next, existing)
+    );
+  };
+
+  const consumeScriptMetricDraftQuery = () => {
+    const nextParams = new URLSearchParams(searchParams.toString());
+    if (!nextParams.has(SCRIPT_METRIC_DRAFT_QUERY)) {
+      return;
+    }
+    nextParams.delete(SCRIPT_METRIC_DRAFT_QUERY);
+    const nextQuery = nextParams.toString();
+    router.replace(
+      nextQuery
+        ? `/monitor/integration/list/detail/metric?${nextQuery}`
+        : '/monitor/integration/list/detail/metric'
+    );
+  };
+
+  useEffect(() => {
+    if (isLoading || loading || !catalogReady) {
+      return;
+    }
+    if (scriptMetricDraftConsumedRef.current) {
+      return;
+    }
+    if (searchParams.get(SCRIPT_METRIC_DRAFT_QUERY) !== '1') {
+      return;
+    }
+    scriptMetricDraftConsumedRef.current = true;
+    const carry =
+      groupId && pluginID
+        ? consumeScriptMetricEditCarry(groupId, pluginID)
+        : null;
+    consumeScriptMetricDraftQuery();
+    if (!carry?.metrics.length) {
+      return;
+    }
+    scriptMetricDraftQueueRef.current = [...carry.metrics];
+    openNextScriptMetricDraft(metrics);
+  }, [
+    isLoading,
+    loading,
+    catalogReady,
+    metrics,
+    searchParams,
+    groupId,
+    pluginID
+  ]);
+
   const operateGroup = () => {
     getInitData(activeTab, true);
   };
 
   const operateMtric = () => {
     getInitData(activeTab, true);
+    openNextScriptMetricDraft();
   };
 
   const onTabChange = (val: string | number) => {
