@@ -19,6 +19,7 @@ import Permission from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import PermissionWrapper from '@/components/permission';
 import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
+import { COLLECTOR_LABEL } from '@/app/node-manager/constants/collector';
 import type { MenuProps } from 'antd';
 interface HookParams {
   checkConfig: (row: TableDataItem) => void;
@@ -388,59 +389,102 @@ const useInstallMethodMap = (): Record<string, { text: string }> => {
   );
 };
 
+const buildNodeSearchFieldConfigs = ({
+  t,
+  installMethodMap
+}: {
+  t: (key: string, fallback?: string) => string;
+  installMethodMap: Record<string, { text?: string }>;
+}): FieldConfig[] => {
+  const collectorNames = Array.from(
+    new Set(Object.values(COLLECTOR_LABEL).flat())
+  ).map((name) => ({ id: name, name }));
+
+  return [
+    {
+      name: 'name',
+      label: t('node-manager.cloudregion.node.nodeName'),
+      lookup_expr: 'icontains'
+    },
+    {
+      name: 'ip',
+      label: t('node-manager.cloudregion.node.ip'),
+      lookup_expr: 'icontains'
+    },
+    {
+      name: 'operating_system',
+      label: t('node-manager.cloudregion.node.system'),
+      lookup_expr: 'in',
+      options: OPERATE_SYSTEMS.map((item) => ({
+        id: item.value,
+        name: item.label
+      }))
+    },
+    {
+      name: 'install_method',
+      label: t('node-manager.cloudregion.node.installMethod'),
+      lookup_expr: 'in',
+      options: [
+        { id: 'auto', name: installMethodMap['auto']?.text || 'Auto' },
+        { id: 'manual', name: installMethodMap['manual']?.text || 'Manual' }
+      ]
+    },
+    {
+      name: 'upgradeable',
+      label: t('node-manager.cloudregion.node.controllerUpgradeable'),
+      lookup_expr: 'bool',
+      options: [
+        { id: 'true', name: t('common.yes') },
+        { id: 'false', name: t('common.no') }
+      ]
+    },
+    {
+      name: 'cpu_architecture',
+      label: t('node-manager.cloudregion.node.cpuArchitecture'),
+      lookup_expr: 'in',
+      options: [
+        { id: 'x86_64', name: 'X86_64' },
+        { id: 'arm64', name: 'ARM64' }
+      ]
+    },
+    {
+      name: 'active',
+      label: t('node-manager.cloudregion.node.nodeActive'),
+      lookup_expr: 'in',
+      options: [
+        { id: 'true', name: t('node-manager.cloudregion.node.online') },
+        { id: 'false', name: t('node-manager.cloudregion.node.offline') }
+      ]
+    },
+    {
+      name: 'collector_status',
+      label: t('node-manager.cloudregion.node.collectorStatus'),
+      lookup_expr: 'in',
+      options: [
+        { id: '0', name: t('node-manager.cloudregion.node.normal') },
+        { id: '1', name: t('node-manager.cloudregion.node.unknown') },
+        { id: '2', name: t('node-manager.cloudregion.node.error') },
+        { id: '3', name: t('node-manager.cloudregion.node.stopped') },
+        { id: 'not_started', name: t('node-manager.cloudregion.node.notStarted') },
+        { id: '10', name: t('node-manager.cloudregion.node.installing') },
+        { id: '12', name: t('node-manager.cloudregion.node.failInstall') }
+      ]
+    },
+    {
+      name: 'collector_name',
+      label: t('node-manager.cloudregion.node.collectorName'),
+      lookup_expr: 'in',
+      options: collectorNames
+    }
+  ];
+};
+
 const useFieldConfigs = (): FieldConfig[] => {
   const { t } = useTranslation();
   const installMethodMap = useInstallMethodMap();
 
   return useMemo(
-    () => [
-      {
-        name: 'name',
-        label: t('node-manager.cloudregion.node.nodeName'),
-        lookup_expr: 'icontains'
-      },
-      {
-        name: 'ip',
-        label: t('node-manager.cloudregion.node.ip'),
-        lookup_expr: 'icontains'
-      },
-      {
-        name: 'operating_system',
-        label: t('node-manager.cloudregion.node.system'),
-        lookup_expr: 'in',
-        options: OPERATE_SYSTEMS.map((item) => ({
-          id: item.value,
-          name: item.label
-        }))
-      },
-      {
-        name: 'install_method',
-        label: t('node-manager.cloudregion.node.installMethod'),
-        lookup_expr: 'in',
-        options: [
-          { id: 'auto', name: installMethodMap['auto']?.text || 'Auto' },
-          { id: 'manual', name: installMethodMap['manual']?.text || 'Manual' }
-        ]
-      },
-      {
-        name: 'upgradeable',
-        label: t('node-manager.cloudregion.node.controllerUpgradeable'),
-        lookup_expr: 'bool',
-        options: [
-          { id: 'true', name: t('common.yes') },
-          { id: 'false', name: t('common.no') }
-        ]
-      },
-      {
-        name: 'cpu_architecture',
-        label: t('node-manager.cloudregion.node.cpuArchitecture'),
-        lookup_expr: 'in',
-        options: [
-          { id: 'x86_64', name: 'X86_64' },
-          { id: 'arm64', name: 'ARM64' }
-        ]
-      }
-    ],
+    () => buildNodeSearchFieldConfigs({ t, installMethodMap }),
     [t, installMethodMap]
   );
 };
@@ -455,5 +499,6 @@ export {
   useCollectorItems,
   useMenuItem,
   useInstallMethodMap,
-  useFieldConfigs
+  useFieldConfigs,
+  buildNodeSearchFieldConfigs
 };
