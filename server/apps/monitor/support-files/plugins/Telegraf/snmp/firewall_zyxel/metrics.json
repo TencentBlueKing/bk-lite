@@ -1,0 +1,115 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_zyxel_firewall",
+  "plugin": "Firewall Zyxel SNMP",
+  "plugin_desc": "Zyxel-specific SNMP collection for USG / ATP / VPN / ZyWALL ZLD security gateways (ZYXEL private MIB, enterprise 890). In addition to standard IF-MIB interface metrics, it collects ZLD common system scalars for device health: CPU utilization (direct percentage), memory utilization (direct percentage; no byte total is exposed so none is invented), and current session count. Optional CPU windows (5-second / 1-minute / 5-minute) are also collected. The ZLD common system tree has no chassis temperature, fan, or power-supply gauge, so those health items are not collected (N/A). Supported brands/models — Zyxel USG, ATP, VPN and ZyWALL ZLD security gateways.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='firewall', collect_type='snmp_zyxel_firewall'}) by (instance_id)",
+  "name": "Firewall",
+  "icon": "mm-firewall_防火墙",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='firewall'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "firewall_active_sessions"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='firewall', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_cpu_usage",
+      "query": "snmp_device_cpu_usage{instance_type='firewall', __$labels__}",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the overall CPU utilization of the Zyxel ZLD security gateway (ZYXEL private MIB sysCPUUsage), reported directly as a 0-100 percentage. Sustained high CPU usage may indicate heavy traffic inspection load, VPN processing, or an attack."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_cpu_usage_5s",
+      "query": "snmp_device_cpu_usage_5s{instance_type='firewall', __$labels__}",
+      "display_name": "CPU Usage (5s)",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the 5-second CPU utilization of the Zyxel ZLD security gateway (ZYXEL private MIB sysCPU5SecUsage), reported directly as a 0-100 percentage. It captures short-lived CPU spikes that the overall reading may smooth out."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_cpu_usage_1m",
+      "query": "snmp_device_cpu_usage_1m{instance_type='firewall', __$labels__}",
+      "display_name": "CPU Usage (1m)",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the 1-minute CPU utilization of the Zyxel ZLD security gateway (ZYXEL private MIB sysCPU1MinUsage), reported directly as a 0-100 percentage."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_cpu_usage_5m",
+      "query": "snmp_device_cpu_usage_5m{instance_type='firewall', __$labels__}",
+      "display_name": "CPU Usage (5m)",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the 5-minute CPU utilization of the Zyxel ZLD security gateway (ZYXEL private MIB sysCPU5MinUsage), reported directly as a 0-100 percentage. It is useful for observing sustained control-plane or inspection load."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_memory_usage",
+      "query": "snmp_device_memory_usage{instance_type='firewall', __$labels__}",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the overall memory utilization of the Zyxel ZLD security gateway (ZYXEL private MIB sysRAMUsage), reported directly as a 0-100 percentage. No used/total byte OIDs are exposed, so utilization is not derived from byte counters. High memory pressure can degrade session-handling performance."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "firewall_active_sessions",
+      "query": "snmp_firewall_active_sessions{instance_type='firewall', __$labels__}",
+      "display_name": "Active Sessions",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the number of current sessions tracked by the Zyxel ZLD security gateway (ZYXEL private MIB sysSessionNum). A rapid rise can indicate a connection flood or session-table pressure."
+    }
+  ]
+}
