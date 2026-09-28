@@ -677,6 +677,9 @@
       "searchError": "Log grouping cannot be empty"
     },
     "analysis": {
+      "unknownComponent": "Unknown component type: {chartType}",
+      "comparedWithPrevious": "Compared with previous period",
+      "total": "Total",
       "container": "Container",
       "selectContainer": "Select container",
       "selectLogGroup": "Please select a log group",

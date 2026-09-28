@@ -16,6 +16,7 @@ import { useCollectTypeInfo } from '@/app/log/hooks/integration/common/getCollec
 import ResizableSidebar from '@/components/resizable-sidebar';
 import { TreeItem } from '@/app/log/types';
 import { ObjectItem } from '@/app/log/types/event';
+import { useTranslation } from '@/utils/i18n';
 
 const { Search } = Input;
 
@@ -38,6 +39,7 @@ const findFirstLeafKey = (nodes: TreeItem[]): string => {
 };
 
 const Analysis: React.FC = () => {
+  const { t } = useTranslation();
   const menuItems = useBuildInDashBoards();
   const { isLoading } = useApiClient();
   const { getCollectTypes, getDisplayCategoryEnum } = useLogApi();
@@ -204,7 +206,7 @@ const Analysis: React.FC = () => {
         <div className="flex h-full flex-col overflow-hidden bg-[var(--color-bg-1)]">
           <div className="flex-shrink-0 px-2 pb-2 pt-4">
             <Search
-              placeholder="搜索..."
+              placeholder={t('common.searchPlaceHolder', '搜索...')}
               value={searchValue}
               onChange={(e) => setSearchValue(e.target.value)}
               allowClear

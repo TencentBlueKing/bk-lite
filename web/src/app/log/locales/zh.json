@@ -677,6 +677,9 @@
       "searchError": "日志分组不能为空"
     },
     "analysis": {
+      "unknownComponent": "未知的组件类型: {chartType}",
+      "comparedWithPrevious": "较上一周期",
+      "total": "总数",
       "container": "容器",
       "selectContainer": "请选择容器",
       "selectLogGroup": "请选择日志分组",

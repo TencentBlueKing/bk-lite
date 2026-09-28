@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Spin } from 'antd';
+import { useTranslation } from '@/utils/i18n';
 import { BaseWidgetProps } from '@/app/log/types/analysis';
 import useSearchApi from '@/app/log/api/search';
 import useApiClient from '@/utils/request';
@@ -472,6 +473,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   getLatestTimeRange,
   ...otherProps
 }) => {
+  const { t } = useTranslation();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const prevAbortControllerRef = useRef<AbortController | null>(null);
@@ -769,7 +771,11 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   if (!Component) {
     return (
       <div className="h-full flex items-center justify-center">
-        <div className="text-gray-500">未知的组件类型: {chartType}</div>
+        <div className="text-gray-500">
+          {t('log.analysis.unknownComponent', '未知的组件类型: {chartType}', {
+            chartType: chartType ?? ''
+          })}
+        </div>
       </div>
     );
   }

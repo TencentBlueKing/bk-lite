@@ -4,6 +4,7 @@ import ChartEmptyState from '@/components/chart-empty-state';
 import useChartColors from './useChartColors';
 import { formatNumericValue } from '@/app/log/utils/common';
 import { createDockerDonutSizeBinder } from './dockerDonutSizeObserver';
+import { useTranslation } from '@/utils/i18n';
 
 const trimTrailingZeros = (value: string) =>
   value.replace(/\.0+$|(?<=\.\d*[1-9])0+$/g, '');
@@ -58,6 +59,7 @@ const DockerDonutChart: React.FC<DockerDonutChartProps> = ({
   loading = false,
   config
 }) => {
+  const { t } = useTranslation();
   const colors = useChartColors();
   // 容器尺寸，用于计算绝对像素 radius
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -250,7 +252,7 @@ const DockerDonutChart: React.FC<DockerDonutChartProps> = ({
             className="text-[10px] mt-0.5"
             style={{ color: colors.textTertiary }}
           >
-            总数
+            {t('log.analysis.total', '总数')}
           </span>
         </div>
       )}

@@ -8,6 +8,7 @@ from apps.core.utils.permission_utils import get_instance_permissions, get_permi
 from apps.log.constants.permission import PermissionConstants
 from apps.log.models import CollectInstance, CollectType, LogExtractor
 from apps.log.serializers.extractor import LogExtractorSerializer
+from apps.log.utils.locale_text import log_text
 from apps.log.services.access_scope import LogAccessScopeService
 from apps.log.services.log_extractor.publication import get_publication_status, retry_publication
 from apps.log.services.log_extractor.rules import (
@@ -30,10 +31,14 @@ TYPE_SCOPE_VIEW_PERMISSIONS = frozenset({"integration_configure-View", "integrat
 TYPE_SCOPE_WRITE_PERMISSIONS = frozenset({"integration_configure-Add"})
 
 
+def _request_locale(request):
+    return getattr(getattr(request, "user", None), "locale", None)
+
+
 class LogExtractorViewSet(ViewSet):
     def _authorize_instance(self, request, instance_id, required: str) -> CollectInstance:
         if not instance_id:
-            raise ValidationError({"collect_instance": "采集实例必填"})
+            raise ValidationError({"collect_instance": log_text(_request_locale(request), "error.collect_instance_required")})
         instance = (
             CollectInstance.objects.filter(pk=str(instance_id))
             .select_related("collect_type")
@@ -74,7 +79,7 @@ class LogExtractorViewSet(ViewSet):
         return set()
 
     def _authorize_type_scope(self, request, collect_type_name, required: str) -> CollectType:
-        collect_type = resolve_type_scope(collect_type_name)
+        collect_type = resolve_type_scope(collect_type_name, locale=_request_locale(request))
         try:
             LogAccessScopeService.get_data_scope(request)
         except ValueError as exc:
@@ -87,17 +92,17 @@ class LogExtractorViewSet(ViewSet):
             raise PermissionDenied()
         return collect_type
 
-    def _exclusive_scope(self, payload):
+    def _exclusive_scope(self, request, payload):
         instance_id = payload.get("collect_instance")
         collect_type_name = payload.get("collect_type")
         has_instance = bool(instance_id)
         has_type = bool(collect_type_name)
         if has_instance == has_type:
-            raise ValidationError({"collect_instance": "必须且只能提供采集实例或采集类型之一"})
+            raise ValidationError({"collect_instance": log_text(_request_locale(request), "error.scope_exclusive")})
         return instance_id, collect_type_name
 
     def _authorize_scope(self, request, payload, required: str):
-        instance_id, collect_type_name = self._exclusive_scope(payload)
+        instance_id, collect_type_name = self._exclusive_scope(request, payload)
         if instance_id:
             return self._authorize_instance(request, instance_id, required), None
         return None, self._authorize_type_scope(request, collect_type_name, required)
@@ -220,9 +225,9 @@ class LogExtractorViewSet(ViewSet):
     def reorder(self, request):
         instance, collect_type = self._authorize_scope(request, request.data, "Operate")
         if instance is not None:
-            generation = reorder_rules(instance, request.data.get("ids"))
+            generation = reorder_rules(instance, request.data.get("ids"), locale=_request_locale(request))
         else:
-            generation = reorder_type_rules(collect_type, request.data.get("ids"))
+            generation = reorder_type_rules(collect_type, request.data.get("ids"), locale=_request_locale(request))
         log_operation(
             request,
             "update",
@@ -251,9 +256,9 @@ class LogExtractorViewSet(ViewSet):
         instance, collect_type = self._authorize_scope(request, request.data, "View")
         try:
             if instance is not None:
-                result = preview_rule(instance, request.data.get("event"), request.data.get("draft"), request.data.get("rule_id"))
+                result = preview_rule(instance, request.data.get("event"), request.data.get("draft"), request.data.get("rule_id"), locale=_request_locale(request))
             else:
-                result = preview_type_rule(collect_type, request.data.get("event"), request.data.get("draft"), request.data.get("rule_id"))
+                result = preview_type_rule(collect_type, request.data.get("event"), request.data.get("draft"), request.data.get("rule_id"), locale=_request_locale(request))
         except (RuleExecutionBusyError, RuleExecutionTimeoutError, RuleExecutionLimitError) as exc:
             return self._preview_errors(exc)
         except ValueError as exc:
@@ -275,7 +280,7 @@ class LogExtractorViewSet(ViewSet):
         instance, collect_type = self._authorize_scope(request, request.data, "Operate")
         generation = retry_publication()
         if generation is None:
-            return Response({"detail": "当前 generation 已发布"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": log_text(_request_locale(request), "error.generation_published")}, status=status.HTTP_409_CONFLICT)
         log_operation(
             request,
             "execute",

@@ -6,6 +6,7 @@ from apps.core.exceptions.base_app_exception import BaseAppException, Validation
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.web_utils import WebUtils
+from apps.log.utils.locale_text import log_text
 from apps.log.utils.system_mgmt import SystemMgmtUtils
 from apps.rpc.system_mgmt import SystemMgmt
 
@@ -65,8 +66,9 @@ class SystemMgmtView(ViewSet):
             teams=None,
             include_children=actor_context["include_children"],
         )
+        failure = log_text(getattr(getattr(request, "user", None), "locale", None), "error.channel_query_failed")
         if not isinstance(result, dict):
-            raise BaseAppException("通知通道查询失败")
+            raise BaseAppException(failure)
         if result.get("result") is False:
-            raise PermissionDenied(result.get("message") or "通知通道查询失败")
+            raise PermissionDenied(result.get("message") or failure)
         return WebUtils.response_success(result.get("data") or [])
