@@ -1,3 +1,10 @@
+FROM golang:1.22-bookworm AS script-wrapper-build
+ARG TARGETARCH=amd64
+WORKDIR /src
+COPY ./script-wrapper /src
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/bklite-script-wrapper .
+RUN CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/bklite-script-wrapper.exe .
+
 FROM ubuntu:24.04
 
 ENV SERVER_URL ""
@@ -28,6 +35,9 @@ RUN bash -c "mkdir -p /opt/fusion-collectors/{bin,cache,log,generated} /opt/rele
 # Telegraf
 ADD ./mibs /usr/share/snmp/mibs
 ADD ./telegraf ./bin/telegraf
+# 脚本采集 wrapper：独立二进制，不替换 telegraf argv0。linux 跟随镜像 TARGETARCH；windows 固定 amd64。
+COPY --from=script-wrapper-build /out/bklite-script-wrapper /opt/fusion-collectors/bin/bklite-script-wrapper
+RUN chmod +x /opt/fusion-collectors/bin/bklite-script-wrapper
 
 # NatsExecutor
 ADD ./nats-executor ./bin/nats-executor
@@ -42,6 +52,8 @@ ADD ./filebeat ./bin/filebeat
 ADD ./packetbeat ./bin/packetbeat
 ADD ./auditbeat ./bin/auditbeat
 ADD ./windows /opt/release/windows/fusion-collectors
+RUN mkdir -p /opt/release/windows/fusion-collectors/bin
+COPY --from=script-wrapper-build /out/bklite-script-wrapper.exe /opt/release/windows/fusion-collectors/bin/bklite-script-wrapper.exe
 ADD ./linux/bklite-controller-installer /opt/release/linux/fusion-collectors/bklite-controller-installer
 
 # exporters

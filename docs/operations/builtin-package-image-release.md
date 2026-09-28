@@ -52,14 +52,24 @@ docker buildx imagetools inspect "$NATS_EXECUTOR_IMAGE"
 ```text
 /opt/fusion-collectors/misc/VERSION
 /opt/fusion-collectors/bin/telegraf
+/opt/fusion-collectors/bin/bklite-script-wrapper
 /opt/fusion-collectors/bin/vector
 /opt/fusion-collectors/bin/nats-executor
 /opt/release/linux/fusion-collectors/bklite-controller-installer
 /opt/release/windows/fusion-collectors/bklite-controller-installer.exe
 /opt/release/windows/fusion-collectors/bin/telegraf.exe
+/opt/release/windows/fusion-collectors/bin/bklite-script-wrapper.exe
 /opt/release/windows/fusion-collectors/bin/vector.exe
 /opt/release/windows/fusion-collectors/bin/nats-executor.exe
 ```
+
+脚本采集包装器 `bklite-script-wrapper` 与 Telegraf 放在同一 `bin/` 目录，不替换 telegraf argv0。
+导出 linux-x86_64、linux-arm64、windows-x86_64 的 Telegraf 采集器包时，必须把该包装器与 telegraf 一并打入包内：
+
+- Linux：`/opt/fusion-collectors/bin/bklite-script-wrapper`（镜像 `TARGETARCH` 决定 amd64 / arm64）
+- Windows：`/opt/release/windows/fusion-collectors/bin/bklite-script-wrapper.exe`
+
+发布顺序：包装器进入采集器包 → 节点升级到该采集器版本 → 再启用 `template_type=script`。
 
 校验不能只检查镜像能否拉取或容器能否进入 `Started` 状态。平台不匹配警告、容器
 启动和源产物可导出是三个不同条件。
