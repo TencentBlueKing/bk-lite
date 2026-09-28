@@ -14,6 +14,8 @@ from apps.monitor.services.collect_detect_runtime import (
     disable_real_outputs,
     render_telegraf_config_template,
     sanitize_execution_result,
+    script_isolation_name_prefixes,
+    substitute_sidecar_node_variables,
 )
 from apps.monitor.services.website_config import normalize_website_request_config
 from apps.node_mgmt.constants.node import NodeConstants
@@ -118,6 +120,7 @@ class CollectDetectService:
             config_content = disable_real_outputs(
                 "\n\n".join(render_telegraf_config_template(template.content, config_context) for template in templates)
             )
+            config_content = substitute_sidecar_node_variables(config_content, node)
             operating_system, executable_path = cls._resolve_telegraf_runtime(task.node_id)
             config_file_name = f"bklite-telegraf-detect-{task.id}-{uuid.uuid4().hex}.toml"
             command, shell = build_telegraf_detect_execution(
@@ -138,6 +141,8 @@ class CollectDetectService:
             result = sanitize_execution_result(raw_result, sensitive_values=list(env.values()))
             if plugin.collect_type == "web" and config_context.get("request_url"):
                 result["request_url"] = config_context["request_url"]
+            if cls._is_script_plugin(plugin):
+                result["isolation_name_prefixes"] = script_isolation_name_prefixes(config_id)
             task.result = result
             task.status = "success" if result["success"] else "failed"
             task.phase = "parse_output"
