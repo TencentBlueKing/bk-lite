@@ -2,6 +2,7 @@ from django.http import JsonResponse, StreamingHttpResponse
 from rest_framework.decorators import action
 
 from apps.apm.services.probe_artifacts import ProbeArtifactNotFound, open_probe_artifact_stream
+from apps.apm.utils.locale_text import request_text
 from apps.core.logger import apm_logger as logger
 from apps.core.utils.open_base import OpenAPIViewSet
 
@@ -20,13 +21,13 @@ class ApmOpenProbeViewSet(OpenAPIViewSet):
             stream, filename = open_probe_artifact_stream(artifact_name)
         except ProbeArtifactNotFound:
             return JsonResponse(
-                {"code": "probe_artifact_not_found", "detail": "探针文件不存在，请先在服务端初始化探针制品。"},
+                {"code": "probe_artifact_not_found", "detail": request_text(request, "error.probe_artifact_missing")},
                 status=404,
             )
         except Exception as exc:
             logger.warning("APM probe artifact download failed: %s", type(exc).__name__)
             return JsonResponse(
-                {"code": "probe_artifact_unavailable", "detail": "探针文件暂时不可用，请稍后重试。"},
+                {"code": "probe_artifact_unavailable", "detail": request_text(request, "error.probe_artifact_unavailable")},
                 status=503,
             )
         response = StreamingHttpResponse(stream, content_type="application/octet-stream")

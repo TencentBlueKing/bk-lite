@@ -1,7 +1,6 @@
 VoiceGateway Zenitel SNMP:
   name: Zenitel (Telegraf)
-  desc: SNMP monitoring template for Zenitel voice gateway. It reports per-port inbound
-    traffic rate, per-port outbound traffic rate, and system uptime
+  desc: "SNMP monitoring template for Zenitel voice gateway. It reports uptime, temperature, power supply status, and interface traffic (enterprise PEN 26122)."
 monitor_object:
   VoiceGateway: VoiceGateway
 monitor_object_type:

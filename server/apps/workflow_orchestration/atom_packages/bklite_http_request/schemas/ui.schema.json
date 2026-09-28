@@ -1,0 +1,8 @@
+{
+  "query": {"ui:widget": "key-value"},
+  "headers": {"ui:widget": "key-value", "ui:advanced": true},
+  "body": {"ui:widget": "json"},
+  "timeout": {"ui:advanced": true},
+  "response_format": {"ui:advanced": true},
+  "success_status_codes": {"ui:widget": "json", "ui:advanced": true}
+}

@@ -8,6 +8,7 @@ from apps.opspilot.services.wiki.parsed_media_service import rewrite_media_urls_
 
 class WikiKnowledgeBaseSerializer(serializers.ModelSerializer):
     team_name = serializers.SerializerMethodField()
+    introduction = serializers.CharField(allow_blank=False, trim_whitespace=True)
 
     def get_team_name(self, obj):
         if not obj.team:
@@ -15,6 +16,10 @@ class WikiKnowledgeBaseSerializer(serializers.ModelSerializer):
         from apps.system_mgmt.models import Group
 
         return list(Group.objects.filter(id__in=obj.team).values_list("name", flat=True))
+
+    def create(self, validated_data):
+        validated_data["template_key"] = "general"
+        return super().create(validated_data)
 
     class Meta:
         model = WikiKnowledgeBase
@@ -24,8 +29,6 @@ class WikiKnowledgeBaseSerializer(serializers.ModelSerializer):
             "introduction",
             "team",
             "team_name",
-            "purpose_md",
-            "schema_md",
             "llm_model",
             "embed_provider",
             "vision_model",
@@ -39,7 +42,7 @@ class WikiKnowledgeBaseSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_by", "created_at", "updated_at"]
+        read_only_fields = ["id", "template_key", "created_by", "created_at", "updated_at"]
 
 
 class MaterialSerializer(serializers.ModelSerializer):

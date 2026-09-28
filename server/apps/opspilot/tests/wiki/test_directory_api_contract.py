@@ -133,7 +133,7 @@ def _operation_preview_response():
 
 def _import_options():
     return {
-        "restore_native_structure": True,
+        "import_format": "okf",
         "create_directories_from_folders": False,
         "allow_fallback": True,
     }
@@ -141,7 +141,7 @@ def _import_options():
 
 def _import_preflight_request():
     return {
-        "archive_kind": "opspilot_native",
+        "archive_kind": "okf",
         "target_directory": _directory_ref(11, "dir_product"),
         "classification_root_directory": _directory_ref(11, "dir_product"),
         "structure_version": 3,
@@ -155,7 +155,7 @@ def _import_binding():
         "archive_hash": "b" * 64,
         "knowledge_base_id": 7,
         "actor_id": 99,
-        "archive_kind": "opspilot_native",
+        "archive_kind": "okf",
         "target_directory": _directory_ref(11, "dir_product"),
         "classification_root_directory": _directory_ref(11, "dir_product"),
         "structure_version": 3,
@@ -581,7 +581,7 @@ def test_import_preflight_response_aggregates_issues_and_complete_binding():
         "executable": False,
         "requires_confirmation": True,
         "structure_preview": {
-            "restore_native_structure": True,
+            "create_directories_from_folders": True,
             "create_directory_count": 3,
         },
         "structure_diff": [

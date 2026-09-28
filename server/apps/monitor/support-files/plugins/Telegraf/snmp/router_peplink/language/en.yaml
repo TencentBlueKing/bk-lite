@@ -1,7 +1,6 @@
 Router Peplink SNMP:
   name: Peplink (Telegraf)
-  desc: SNMP monitoring template for Peplink and Pepwave Balance, MAX and Edge
-    routers. It reports CPU utilization, memory used/total and derived utilization.
+  desc: "SNMP monitoring template for Peplink router. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 23695)."
 monitor_object:
   Router: Router
 monitor_object_type:

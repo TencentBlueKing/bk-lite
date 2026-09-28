@@ -2,7 +2,9 @@
 
 import os
 
+from apps.core.logger import job_logger as logger
 from apps.rpc.base import AppClient, RpcClient
+from apps.rpc.exceptions import RpcLocalClientRequiredError
 
 
 class JobMgmt:
@@ -10,6 +12,7 @@ class JobMgmt:
 
     def __init__(self, is_local_client=False):
         is_local_client = os.getenv("IS_LOCAL_RPC", "0") == "1" or is_local_client
+        self.is_local_client = is_local_client
         self.client = AppClient("apps.job_mgmt.nats_api") if is_local_client else RpcClient()
 
     def get_module_data(self, **kwargs):
@@ -31,6 +34,24 @@ class JobMgmt:
     def job_script_execute(self, data):
         """触发脚本执行（NATS）。data 见 apps.job_mgmt.nats_api.job_script_execute。"""
         return self.client.run("job_script_execute", data)
+
+    def _run_local_automation(self, operation, *args):
+        if not self.is_local_client:
+            logger.warning("RPC local client required: operation=%s", operation)
+            raise RpcLocalClientRequiredError(operation)
+        return self.client.run(operation, *args)
+
+    def execute_automation_script(self, data, actor_context):
+        return self._run_local_automation("execute_automation_script_local", data, actor_context)
+
+    def get_automation_execution_statuses(self, data, actor_context):
+        return self._run_local_automation("get_automation_execution_statuses_local", data, actor_context)
+
+    def get_automation_execution_detail(self, data, actor_context):
+        return self._run_local_automation("get_automation_execution_detail_local", data, actor_context)
+
+    def list_automation_targets(self, data, actor_context):
+        return self._run_local_automation("list_automation_targets_local", data, actor_context)
 
     def get_script(self, script_id, team=None):
         """读取单个脚本模板完整详情（content/params/script_type/timeout）。

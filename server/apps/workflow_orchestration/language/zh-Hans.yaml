@@ -1,0 +1,22 @@
+choice:
+  execution_status:
+    QUEUED: "排队中"
+    RUNNING: "运行中"
+    WAITING_APPROVAL: "等待审批"
+    TERMINATING: "终止中"
+    SUCCEEDED: "成功"
+    FAILED: "失败"
+    TIMED_OUT: "已超时"
+    TERMINATED: "已终止"
+message:
+  invalid_current_team: "缺少或非法的 current_team"
+  waiting_items: "等 {count} 项"
+  report_link_invalid: "报告下载链接无效"
+  report_expired: "报告已过期"
+  report_unavailable: "报告文件暂不可用"
+  report_too_large: "报告文件超过下载大小限制"
+error:
+  workflow_deleted: "流程已删除，不能创建新执行"
+  workflow_publish_required: "只能执行已发布流程"
+  workflow_disabled: "流程已停用"
+  publish_required: "请先发布流程"

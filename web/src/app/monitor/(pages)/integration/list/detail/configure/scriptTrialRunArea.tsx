@@ -1,0 +1,553 @@
+import React, { useMemo, useState, useEffect } from 'react';
+import { Alert, Button, Checkbox, Spin, Tag, Tooltip } from 'antd';
+import {
+  CheckCircleFilled,
+  CloseCircleFilled,
+  ExclamationCircleFilled,
+  ReloadOutlined,
+  PlayCircleOutlined,
+  DashboardOutlined
+} from '@ant-design/icons';
+import CompactEmptyState from '@/components/compact-empty-state';
+import { useTranslation } from '@/utils/i18n';
+import { parseScriptMetrics, BusinessMetricItem } from './scriptMetricsParser';
+
+export interface TrialRunTaskState {
+  status: 'pending' | 'running' | 'success' | 'failed' | 'warning';
+  warning_type?: 'no_permission' | 'rate_limit';
+  fingerprint?: string;
+  result?: Record<string, any>;
+  error_message?: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+}
+
+interface ScriptTrialRunAreaProps {
+  task?: TrialRunTaskState;
+  spinning?: boolean;
+  onTrialRun: () => void;
+  nodeSelected?: boolean;
+  instanceName?: string;
+  onSelectedMetricsChange?: (metrics: BusinessMetricItem[]) => void;
+}
+
+const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
+  task,
+  spinning = false,
+  onTrialRun,
+  nodeSelected = true,
+  instanceName,
+  onSelectedMetricsChange
+}) => {
+  const { t } = useTranslation();
+  const [selectedMetrics, setSelectedMetrics] = useState<Record<string, boolean>>({});
+  const [trialSubmitting, setTrialSubmitting] = useState(false);
+
+  const isSpinning = spinning || task?.status === 'pending' || task?.status === 'running';
+  const trialBusy = isSpinning || trialSubmitting;
+
+  useEffect(() => {
+    if (isSpinning || (task?.status && task.status !== 'pending')) {
+      setTrialSubmitting(false);
+    }
+  }, [isSpinning, task?.status]);
+
+  const handleTrialClick = () => {
+    if (trialBusy || !nodeSelected) return;
+    setTrialSubmitting(true);
+    onTrialRun();
+  };
+
+  const parsedOutput = useMemo(() => {
+    if (!task?.result && !task?.error_message) {
+      return null;
+    }
+    return parseScriptMetrics(
+      task.result,
+      task.started_at,
+      task.finished_at,
+      task.error_message
+    );
+  }, [task]);
+
+  // 当解析到新指标时，默认全选
+  useEffect(() => {
+    if (parsedOutput?.businessMetrics?.length) {
+      const initialMap: Record<string, boolean> = {};
+      parsedOutput.businessMetrics.forEach((m) => {
+        initialMap[m.key] = true;
+      });
+      setSelectedMetrics(initialMap);
+    } else {
+      setSelectedMetrics({});
+    }
+  }, [parsedOutput]);
+
+  // 通知上层选中的业务指标
+  useEffect(() => {
+    if (!onSelectedMetricsChange) return;
+    if (!parsedOutput?.businessMetrics?.length) {
+      onSelectedMetricsChange([]);
+      return;
+    }
+    const selected = parsedOutput.businessMetrics.filter(
+      (m) => selectedMetrics[m.key] !== false
+    );
+    onSelectedMetricsChange(selected);
+  }, [selectedMetrics, parsedOutput, onSelectedMetricsChange]);
+
+  const toggleMetric = (key: string) => {
+    if (isSpinning) return;
+    setSelectedMetrics((prev) => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
+  const toggleAllMetrics = (checked: boolean) => {
+    if (isSpinning || !parsedOutput?.businessMetrics) return;
+    const nextMap: Record<string, boolean> = {};
+    parsedOutput.businessMetrics.forEach((m) => {
+      nextMap[m.key] = checked;
+    });
+    setSelectedMetrics(nextMap);
+  };
+
+  // 1. 未运行状态
+  if (!task || !task.status) {
+    return (
+      <div className="mt-4 mb-4 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4">
+        <div className="flex items-center justify-between mb-3 border-b border-[var(--color-border-1)] pb-2">
+          <div className="flex items-center gap-2">
+            <DashboardOutlined className="text-[var(--color-primary)] text-[15px]" />
+            <b className="text-[14px] text-[var(--color-text-1)]">
+              {t('monitor.integrations.trialRunAreaTitle', '试运行结果')}
+            </b>
+            {instanceName && (
+              <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
+            )}
+          </div>
+          <Button
+            type="primary"
+            size="small"
+            icon={<PlayCircleOutlined />}
+            loading={trialBusy}
+            disabled={!nodeSelected || trialBusy}
+            onClick={handleTrialClick}
+          >
+            {t('monitor.integrations.trialRun', '试运行')}
+          </Button>
+        </div>
+        <div className="flex flex-col items-center justify-center py-6 px-4 rounded-md border border-dashed border-[var(--color-border-2)] bg-[var(--color-bg-2)]">
+          <CompactEmptyState
+            description={t(
+              'monitor.integrations.trialRunEmptyPrompt',
+              '保存前可先试运行，验证输出指标'
+            )}
+          />
+          <Button
+            type="primary"
+            className="mt-3"
+            loading={trialBusy}
+            disabled={!nodeSelected || trialBusy}
+            onClick={handleTrialClick}
+          >
+            {t('monitor.integrations.trialRun', '试运行')}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. 运行中状态 (Spin)
+  if (isSpinning) {
+    return (
+      <div className="mt-4 mb-4 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4">
+        <div className="flex items-center justify-between mb-3 border-b border-[var(--color-border-1)] pb-2">
+          <div className="flex items-center gap-2">
+            <DashboardOutlined className="text-[var(--color-primary)] text-[15px]" />
+            <b className="text-[14px] text-[var(--color-text-1)]">
+              {t('monitor.integrations.trialRunAreaTitle', '试运行结果')}
+            </b>
+            {instanceName && (
+              <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
+            )}
+          </div>
+          <Button size="small" disabled loading icon={<ReloadOutlined />}>
+            {t('monitor.integrations.reTrialRun', '重新试运行')}
+          </Button>
+        </div>
+        <div className="flex flex-col items-center justify-center py-10 px-4 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
+          <Spin
+            tip={
+              <span className="mt-2 text-[13px] text-[var(--color-text-2)] font-medium">
+                {t(
+                  'monitor.integrations.trialRunSpinning',
+                  '试运行中，不会写入时序库'
+                )}
+              </span>
+            }
+          >
+            <div className="h-10 w-48" />
+          </Spin>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. 告警警告状态 (Alert warning: no permission / rate limit)
+  if (task.status === 'warning' || task.warning_type) {
+    const isRateLimit = task.warning_type === 'rate_limit';
+    const isNoPermission = task.warning_type === 'no_permission';
+    const warningMsg = isRateLimit
+      ? t('monitor.integrations.trialRunRateLimit', '试运行过于频繁，请稍后重试')
+      : isNoPermission
+        ? t('monitor.integrations.trialRunNoPermission', '当前账号无权试运行该对象/节点')
+        : task.error_message || t('monitor.integrations.trialRunWarning', '试运行提示');
+
+    return (
+      <div className="mt-4 mb-4 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4">
+        <div className="flex items-center justify-between mb-3 border-b border-[var(--color-border-1)] pb-2">
+          <div className="flex items-center gap-2">
+            <DashboardOutlined className="text-[var(--color-primary)] text-[15px]" />
+            <b className="text-[14px] text-[var(--color-text-1)]">
+              {t('monitor.integrations.trialRunAreaTitle', '试运行结果')}
+            </b>
+            {instanceName && (
+              <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
+            )}
+          </div>
+          <Button
+            size="small"
+            icon={<ReloadOutlined />}
+            loading={trialSubmitting}
+            disabled={!nodeSelected || trialBusy}
+            onClick={handleTrialClick}
+          >
+            {t('monitor.integrations.reTrialRun', '重新试运行')}
+          </Button>
+        </div>
+        <Alert
+          type="warning"
+          showIcon
+          icon={<ExclamationCircleFilled />}
+          message={warningMsg}
+          description={
+            task.error_message && task.error_message !== warningMsg ? (
+              <div className="mt-1 text-xs">{task.error_message}</div>
+            ) : undefined
+          }
+          action={
+            <Button
+              size="small"
+              loading={trialSubmitting}
+              disabled={trialBusy}
+              onClick={handleTrialClick}
+            >
+              {t('monitor.integrations.reTrialRun', '重新试运行')}
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+
+  // 4. 失败状态 (Alert error: non-zero exit / timeout / parse fail / truncated / node unavailable)
+  const isExitFailure = task.status === 'failed' || (task.result && task.result.exit_code !== 0);
+  if (isExitFailure || parsedOutput?.isTimeout || parsedOutput?.isNodeUnavailable) {
+    let errorTitle = t('monitor.integrations.trialRunNonZeroExit', '脚本执行失败（退出码 {code}）', {
+      code: task.result?.exit_code ?? 1
+    });
+    let errorDesc =
+      task.result?.stderr ||
+      task.result?.stdout ||
+      task.error_message ||
+      t('monitor.integrations.trialRunNonZeroExitDesc', '脚本非零退出，请检查脚本内容或参数');
+
+    if (parsedOutput?.isTimeout) {
+      errorTitle = t('monitor.integrations.trialRunTimeout', '试运行超时');
+      errorDesc = t(
+        'monitor.integrations.trialRunTimeoutDesc',
+        '脚本执行超过限制时间，请检查脚本中是否存在长时间阻塞操作'
+      );
+    } else if (parsedOutput?.isNodeUnavailable) {
+      errorTitle = t('monitor.integrations.trialRunNodeUnavailable', '采集节点不可用');
+      errorDesc =
+        task.error_message ||
+        t('monitor.integrations.trialRunNodeUnavailableDesc', '采集节点离线或 Telegraf 运行环境异常，请检查节点状态');
+    }
+
+    const stderr = task.result?.stderr || task.error_message;
+    const stdout = task.result?.stdout;
+
+    return (
+      <div className="mt-4 mb-4 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4">
+        <div className="flex items-center justify-between mb-3 border-b border-[var(--color-border-1)] pb-2">
+          <div className="flex items-center gap-2">
+            <DashboardOutlined className="text-[var(--color-primary)] text-[15px]" />
+            <b className="text-[14px] text-[var(--color-text-1)]">
+              {t('monitor.integrations.trialRunAreaTitle', '试运行结果')}
+            </b>
+            {instanceName && (
+              <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
+            )}
+          </div>
+          <Button
+            size="small"
+            icon={<ReloadOutlined />}
+            loading={trialSubmitting}
+            disabled={!nodeSelected || trialBusy}
+            onClick={handleTrialClick}
+          >
+            {t('monitor.integrations.reTrialRun', '重新试运行')}
+          </Button>
+        </div>
+        <Alert
+          type="error"
+          showIcon
+          icon={<CloseCircleFilled />}
+          message={errorTitle}
+          description={
+            <div className="mt-2 space-y-2">
+              <div className="text-xs text-[var(--color-text-2)]">{errorDesc}</div>
+              {parsedOutput?.isTruncated && (
+                <div className="text-xs text-[var(--color-warning)] font-medium">
+                  {t('monitor.integrations.trialRunTruncated', '输出结果已被截断')}
+                </div>
+              )}
+              {stderr && (
+                <div className="mt-1">
+                  <div className="text-[11px] font-mono text-[var(--color-text-3)] mb-1">stderr:</div>
+                  <pre className="m-0 max-h-[160px] overflow-auto rounded bg-[#111827] p-2 font-mono text-xs text-[#fca5a5] whitespace-pre-wrap">
+                    {stderr}
+                  </pre>
+                </div>
+              )}
+              {stdout && (
+                <div className="mt-1">
+                  <div className="text-[11px] font-mono text-[var(--color-text-3)] mb-1">stdout:</div>
+                  <pre className="m-0 max-h-[160px] overflow-auto rounded bg-[#111827] p-2 font-mono text-xs text-[#e5e7eb] whitespace-pre-wrap">
+                    {stdout}
+                  </pre>
+                </div>
+              )}
+            </div>
+          }
+          action={
+            <Button
+              size="small"
+              danger
+              loading={trialSubmitting}
+              disabled={trialBusy}
+              onClick={handleTrialClick}
+            >
+              {t('monitor.integrations.reTrialRun', '重新试运行')}
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+
+  // 5. 成功后无指标状态 (Empty after run with no metrics +「重新试运行」)
+  if (!parsedOutput?.hasMetrics) {
+    return (
+      <div className="mt-4 mb-4 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4">
+        <div className="flex items-center justify-between mb-3 border-b border-[var(--color-border-1)] pb-2">
+          <div className="flex items-center gap-2">
+            <DashboardOutlined className="text-[var(--color-primary)] text-[15px]" />
+            <b className="text-[14px] text-[var(--color-text-1)]">
+              {t('monitor.integrations.trialRunAreaTitle', '试运行结果')}
+            </b>
+            {instanceName && (
+              <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
+            )}
+          </div>
+          <Button
+            size="small"
+            icon={<ReloadOutlined />}
+            loading={trialSubmitting}
+            disabled={!nodeSelected || trialBusy}
+            onClick={handleTrialClick}
+          >
+            {t('monitor.integrations.reTrialRun', '重新试运行')}
+          </Button>
+        </div>
+        {/* 仍展示自身指标概览 */}
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="p-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
+            <div className="text-[12px] text-[var(--color-text-3)] font-medium">up (运行状态)</div>
+            <div className="mt-1 text-[16px] font-bold text-[var(--color-success)] flex items-center gap-1">
+              <CheckCircleFilled className="text-[14px]" /> 1 (正常)
+            </div>
+          </div>
+          <div className="p-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
+            <div className="text-[12px] text-[var(--color-text-3)] font-medium">duration (执行耗时)</div>
+            <div className="mt-1 text-[16px] font-bold text-[var(--color-text-1)] font-mono">
+              {parsedOutput?.selfMetrics?.duration_ms !== undefined
+                ? `${parsedOutput.selfMetrics.duration_ms} ms`
+                : '--'}
+            </div>
+          </div>
+          <div className="p-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
+            <div className="text-[12px] text-[var(--color-text-3)] font-medium">exit_code (退出码)</div>
+            <div className="mt-1 text-[16px] font-bold text-[var(--color-text-1)] font-mono">0</div>
+          </div>
+        </div>
+        <div className="flex flex-col items-center justify-center py-6 px-4 rounded-md border border-dashed border-[var(--color-border-2)] bg-[var(--color-bg-2)]">
+          <CompactEmptyState
+            description={t(
+              'monitor.integrations.trialRunEmptyMetrics',
+              '试运行完成，未检测到输出指标'
+            )}
+          />
+          <Button
+            className="mt-3"
+            icon={<ReloadOutlined />}
+            loading={trialSubmitting}
+            disabled={!nodeSelected || trialBusy}
+            onClick={handleTrialClick}
+          >
+            {t('monitor.integrations.reTrialRun', '重新试运行')}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // 6. 成功且有指标状态 (Self-metrics vs Business metrics)
+  const businessMetrics = parsedOutput.businessMetrics;
+  const allChecked =
+    businessMetrics.length > 0 && businessMetrics.every((m) => selectedMetrics[m.key] !== false);
+  const indeterminate =
+    businessMetrics.some((m) => selectedMetrics[m.key] !== false) && !allChecked;
+
+  return (
+    <div className="mt-4 mb-4 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4">
+      <div className="flex items-center justify-between mb-3 border-b border-[var(--color-border-1)] pb-2">
+        <div className="flex items-center gap-2">
+          <DashboardOutlined className="text-[var(--color-primary)] text-[15px]" />
+          <b className="text-[14px] text-[var(--color-text-1)]">
+            {t('monitor.integrations.trialRunAreaTitle', '试运行结果')}
+          </b>
+          {instanceName && (
+            <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
+          )}
+          {parsedOutput.isTruncated && (
+            <Tooltip
+              title={t(
+                'monitor.integrations.trialRunTruncatedDesc',
+                '脚本输出超过大小限制，仅保留部分输出'
+              )}
+            >
+              <Tag color="warning" className="text-[12px]">
+                {t('monitor.integrations.trialRunTruncated', '输出结果已被截断')}
+              </Tag>
+            </Tooltip>
+          )}
+        </div>
+        <Button
+          size="small"
+          icon={<ReloadOutlined />}
+          loading={trialSubmitting}
+          disabled={!nodeSelected || trialBusy}
+          onClick={handleTrialClick}
+        >
+          {t('monitor.integrations.reTrialRun', '重新试运行')}
+        </Button>
+      </div>
+
+      {/* 5) Self-metrics: emphasize up/duration/exit_code */}
+      <div className="mb-4">
+        <div className="text-[12px] font-medium text-[var(--color-text-3)] mb-2">
+          {t('monitor.integrations.trialRunSelfMetrics', '自身运行指标')}
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="p-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
+            <div className="text-[12px] text-[var(--color-text-3)]">up (运行状态)</div>
+            <div className="mt-1 text-[16px] font-bold text-[var(--color-success)] flex items-center gap-1">
+              <CheckCircleFilled className="text-[14px]" /> 1 (正常)
+            </div>
+          </div>
+          <div className="p-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
+            <div className="text-[12px] text-[var(--color-text-3)]">duration (执行耗时)</div>
+            <div className="mt-1 text-[16px] font-bold text-[var(--color-text-1)] font-mono">
+              {parsedOutput.selfMetrics.duration_ms !== undefined
+                ? `${parsedOutput.selfMetrics.duration_ms} ms`
+                : '--'}
+            </div>
+          </div>
+          <div className="p-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
+            <div className="text-[12px] text-[var(--color-text-3)]">exit_code (退出码)</div>
+            <div className="mt-1 text-[16px] font-bold text-[var(--color-text-1)] font-mono">0</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Business metrics with trial-run checkboxes */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              checked={allChecked}
+              indeterminate={indeterminate}
+              onChange={(e) => toggleAllMetrics(e.target.checked)}
+            />
+            <span className="text-[12px] font-medium text-[var(--color-text-2)]">
+              {t('monitor.integrations.trialRunBusinessMetrics', '业务指标')} (
+              {businessMetrics.filter((m) => selectedMetrics[m.key] !== false).length}/
+              {businessMetrics.length})
+            </span>
+          </div>
+        </div>
+        <div className="rounded-md border border-[var(--color-border-1)] overflow-hidden bg-[var(--color-bg)]">
+          <div className="grid grid-cols-[36px_minmax(180px,1.5fr)_minmax(100px,1fr)_minmax(160px,2fr)] border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-3 py-2 text-[12px] font-medium text-[var(--color-text-2)]">
+            <div />
+            <div>{t('monitor.integrations.trialRunMetricName', '指标名称')}</div>
+            <div>{t('monitor.integrations.trialRunMetricValue', '采样值')}</div>
+            <div>{t('monitor.integrations.trialRunMetricDimensions', '维度标签')}</div>
+          </div>
+          <div className="max-h-[260px] overflow-auto divide-y divide-[var(--color-border-1)]">
+            {businessMetrics.map((item: BusinessMetricItem) => {
+              const isChecked = selectedMetrics[item.key] !== false;
+              return (
+                <div
+                  key={item.key}
+                  className={`grid grid-cols-[36px_minmax(180px,1.5fr)_minmax(100px,1fr)_minmax(160px,2fr)] items-center px-3 py-2 text-[13px] hover:bg-[var(--color-fill-2)] transition-colors ${
+                    isChecked ? '' : 'opacity-60 bg-[var(--color-bg-2)]'
+                  }`}
+                >
+                  <div>
+                    <Checkbox
+                      checked={isChecked}
+                      onChange={() => toggleMetric(item.key)}
+                    />
+                  </div>
+                  <div className="font-mono text-xs font-medium text-[var(--color-text-1)] truncate" title={item.name}>
+                    {item.name}
+                  </div>
+                  <div className="font-mono text-xs text-[var(--color-text-2)] truncate" title={String(item.value)}>
+                    {String(item.value)}
+                  </div>
+                  <div className="flex flex-wrap gap-1 items-center">
+                    {item.tags && Object.keys(item.tags).length > 0 ? (
+                      Object.entries(item.tags).map(([tk, tv]) => (
+                        <Tag key={tk} className="m-0 text-[11px] font-mono leading-4 py-0 px-1">
+                          {tk}={tv}
+                        </Tag>
+                      ))
+                    ) : (
+                      <span className="text-[12px] text-[var(--color-text-4)]">--</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default ScriptTrialRunArea;

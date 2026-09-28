@@ -1,8 +1,6 @@
 Switch Extreme SNMP:
   name: Extreme (Telegraf)
-  desc: SNMP monitoring template for Extreme switch. It reports CPU utilization, enclosure
-    temperature, memory utilization, fan and power-supply status, per-port inbound
-    traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Extreme switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic, for ExtremeXOS (enterprise PEN 1916)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

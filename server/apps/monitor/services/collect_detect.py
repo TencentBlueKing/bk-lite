@@ -171,7 +171,7 @@ class CollectDetectService:
             raise ValueError("监控插件不存在")
         if not resolve_support_collect_detect(plugin, fallback=plugin.support_collect_detect):
             raise ValueError("当前插件不支持采集检测")
-        if plugin.collector != "Telegraf" or plugin.template_type != "builtin":
+        if plugin.collector != "Telegraf" or plugin.template_type not in {"builtin", "script"}:
             raise ValueError("当前插件不支持采集检测")
         return plugin
 

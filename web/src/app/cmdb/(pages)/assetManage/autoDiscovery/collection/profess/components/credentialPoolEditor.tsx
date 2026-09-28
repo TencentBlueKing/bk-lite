@@ -268,7 +268,8 @@ function renderVaultDynamicFields(
       )}
       {item.verify_tls !== undefined && (
         <InputRow label={t('Collection.influxdbTask.verifyTls', '校验证书')}>
-          <Switch checked={item.verify_tls !== false}
+          <Switch disabled={collectModelId === 'smartx'}
+            checked={collectModelId === 'smartx' || item.verify_tls !== false}
             onChange={(verify_tls) => updateItem(index, { verify_tls })} />
         </InputRow>
       )}
@@ -281,7 +282,7 @@ function renderVaultDynamicFields(
         <InputRow key={key} label={t(`Collection.${key}`, key)}>
           {typeof value === 'boolean'
             ? <Switch checked={value} onChange={(next) => updateItem(index, { [key]: next })} />
-            : <Input value={value} onChange={(event) => updateItem(index, { [key]: event.target.value })} />}
+            : <Input disabled={collectModelId === 'manageone' && key === 'api_version'} value={value} onChange={(event) => updateItem(index, { [key]: event.target.value })} />}
         </InputRow>
       ))}
     </div>
@@ -690,6 +691,7 @@ function InputRow({
 }
 
 function renderCredentialFields({
+  collectModelId,
   item,
   index,
   shape,
@@ -705,6 +707,7 @@ function renderCredentialFields({
   t,
   updateItem,
 }: {
+  collectModelId?: string;
   item: CredentialPoolItem;
   index: number;
   shape: CredentialShape;
@@ -1156,7 +1159,8 @@ function renderCredentialFields({
         </InputRow>
         <InputRow label={t('Collection.influxdbTask.verifyTls', '校验证书')}>
           <Switch
-            checked={item.verify_tls !== false}
+            disabled={collectModelId === 'smartx'}
+            checked={collectModelId === 'smartx' || item.verify_tls !== false}
             onChange={(verify_tls) => updateItem(index, { verify_tls })}
           />
         </InputRow>
@@ -1177,6 +1181,16 @@ function renderCredentialFields({
   if (shape === 'platform_api') {
     return (
       <div className={styles.credentialFieldGrid}>
+        {item.source !== undefined && (
+          <InputRow label={t('Collection.smartxTask.source', '认证来源')}>
+            <Input value={item.source} onChange={(event) => updateItem(index, { source: event.target.value })} />
+          </InputRow>
+        )}
+        {item.user_type !== undefined && (
+          <InputRow label={t('Collection.fusioncomputeTask.userType', '用户类型')}>
+            <Input value={item.user_type} onChange={(event) => updateItem(index, { user_type: event.target.value })} />
+          </InputRow>
+        )}
         {item.tenant_id !== undefined && (
           <>
             <InputRow label={t('Collection.platformApiTask.tenantId', '租户 ID')}>
@@ -1198,6 +1212,16 @@ function renderCredentialFields({
           </>
         )}
 
+        {item.region !== undefined && (
+          <InputRow label={t('Collection.cloudTask.region', '区域')} required={false}>
+            <Input value={item.region} onChange={(event) => updateItem(index, { region: event.target.value })} />
+          </InputRow>
+        )}
+        {item.api_version !== undefined && (
+          <InputRow label={t('Collection.api_version', 'API 版本')}>
+            <Input disabled={collectModelId === 'manageone'} value={item.api_version} onChange={(event) => updateItem(index, { api_version: event.target.value })} />
+          </InputRow>
+        )}
         {item.scheme !== undefined && (
           <InputRow label={t('Collection.influxdbTask.scheme', '连接协议')}>
             <Select value={item.scheme} options={['http', 'https'].map((value) => ({ label: value.toUpperCase(), value }))}
@@ -1220,7 +1244,7 @@ function renderCredentialFields({
             onChange={(password) => updateItem(index, { password })}
           />
         </InputRow>
-        <InputRow label={t('Collection.port', '端口')}>
+        {showPort && <InputRow label={collectModelId === 'openstack' ? t('Collection.platformApiTask.identityPort', '认证服务端口') : t('Collection.port', '端口')}>
           <InputNumber
             min={1}
             max={65535}
@@ -1228,13 +1252,14 @@ function renderCredentialFields({
             value={item.port}
             onChange={(port) => updateItem(index, { port: port ?? undefined })}
           />
-        </InputRow>
-        <InputRow label={t('Collection.influxdbTask.verifyTls', '校验证书')}>
+        </InputRow>}
+        {collectModelId !== 'azure' && <InputRow label={t('Collection.influxdbTask.verifyTls', '校验证书')}>
           <Switch
-            checked={item.verify_tls !== false}
+            disabled={collectModelId === 'smartx'}
+            checked={collectModelId === 'smartx' || item.verify_tls !== false}
             onChange={(verify_tls) => updateItem(index, { verify_tls })}
           />
-        </InputRow>
+        </InputRow>}
         {item.verify_tls === false && (
           <Alert
             type="warning"
@@ -1315,7 +1340,8 @@ function renderCredentialFields({
         <>
           <InputRow label={t('Collection.RedfishTask.verifyTls', '校验证书')}>
             <Switch
-              checked={item.verify_tls !== false}
+              disabled={collectModelId === 'smartx'}
+            checked={collectModelId === 'smartx' || item.verify_tls !== false}
               onChange={(verify_tls) => updateItem(index, { verify_tls })}
             />
           </InputRow>
@@ -1760,6 +1786,7 @@ export default function CredentialPoolEditor({
                 onCloudRegionRefresh, cloudRegionLoading, collectModelId,
                 cloudRegionOptions, cloudCredentialLabels,
               ) : renderCredentialFields({
+                collectModelId,
                 item,
                 index,
                 shape: credentialShape,

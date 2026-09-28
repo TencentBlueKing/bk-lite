@@ -1,9 +1,6 @@
 Wanopt BlueCoat SNMP:
   name: Blue Coat / Symantec Edge SWG / Broadcom ProxySG (Telegraf)
-  desc: SNMP monitoring template for Blue Coat / Symantec Edge SWG / Broadcom
-    ProxySG appliances. It reports per-core CPU busy percent averaged to a
-    device headline, memory pressure, available memory in bytes, and the
-    system-plus-cache used-memory split (IANA PEN 3417).
+  desc: "SNMP monitoring template for Blue Coat / Symantec Edge SWG / Broadcom ProxySG WAN optimization device. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 3417)."
 monitor_object:
   Wanopt: WAN Optimization
 monitor_object_type:

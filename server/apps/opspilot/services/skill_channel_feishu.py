@@ -87,6 +87,11 @@ class SkillChannelFeishuUtils(BaseChatFlowUtils):
         super().__init__(channel_id)
         self.channel_id = channel_id
 
+    def send_text_reply(self, reply_text: str, sender_id: str, config: dict):
+        """纯文本回复（飞书 text）。"""
+
+        self.send_reply(reply_text, sender_id, config)
+
     def send_reply(self, reply_text: str, sender_id: str, config: dict):
         message_id = (config or {}).get("message_id") or ""
         if not message_id or not reply_text:
@@ -114,6 +119,58 @@ class SkillChannelFeishuUtils(BaseChatFlowUtils):
                 payload.get("code"),
             )
             raise FeishuChannelError("飞书回复失败", status=502)
+
+    def send_image_reply(self, image, sender_id: str, config: dict):
+        """上传图片并以 image 消息回复。"""
+
+        message_id = (config or {}).get("message_id") or ""
+        if not message_id or image is None:
+            return
+        token = self._tenant_access_token(config)
+        files = {
+            "image": (
+                f"{(getattr(image, 'alt', None) or 'image').strip() or 'image'}.png",
+                image.content,
+                image.content_type or "image/png",
+            )
+        }
+        upload = requests.post(
+            "https://open.feishu.cn/open-apis/im/v1/images",
+            headers={"Authorization": f"Bearer {token}"},
+            data={"image_type": "message"},
+            files=files,
+            timeout=30,
+        )
+        try:
+            upload_payload = upload.json()
+        except ValueError as exc:
+            raise FeishuChannelError("飞书图片上传失败", status=502) from exc
+        if upload.status_code >= 400 or upload_payload.get("code") not in (0, None):
+            logger.warning(
+                "智能体飞书图片上传失败 channel_id=%s status=%s code=%s",
+                self.channel_id,
+                upload.status_code,
+                upload_payload.get("code"),
+            )
+            raise FeishuChannelError("飞书图片上传失败", status=502)
+        image_key = ((upload_payload.get("data") or {}).get("image_key")) or ""
+        if not image_key:
+            raise FeishuChannelError("飞书图片上传失败", status=502)
+        response = requests.post(
+            FEISHU_REPLY_URL.format(message_id=message_id),
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "msg_type": "image",
+                "content": json.dumps({"image_key": image_key}, ensure_ascii=False),
+            },
+            timeout=10,
+        )
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise FeishuChannelError("飞书图片回复失败", status=502) from exc
+        if response.status_code >= 400 or payload.get("code") not in (0, None):
+            raise FeishuChannelError("飞书图片回复失败", status=502)
 
     def handle_request(self, request: HttpRequest) -> HttpResponse:
         if request.method != "POST":

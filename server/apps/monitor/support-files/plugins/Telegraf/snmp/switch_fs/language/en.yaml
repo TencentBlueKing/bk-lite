@@ -1,7 +1,6 @@
 Switch FS SNMP:
   name: FS.com (Telegraf)
-  desc: SNMP monitoring template for FS switch. It reports CPU utilization, memory
-    utilization, per-port inbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for FS.com switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic (enterprise PEN 52642)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

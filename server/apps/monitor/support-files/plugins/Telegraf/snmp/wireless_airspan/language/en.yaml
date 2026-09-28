@@ -1,8 +1,6 @@
 Wireless Airspan SNMP:
   name: Airspan (Telegraf)
-  desc: SNMP monitoring template for Airspan wireless device. It reports sensor
-    temperature, optional DC voltage, per-port inbound traffic rate, per-port
-    outbound traffic rate, and system uptime (IANA PEN 989).
+  desc: "SNMP monitoring template for Airspan wireless device. It reports uptime, temperature, interface traffic, and voltage (enterprise PEN 989)."
 monitor_object:
   Wireless: Wireless
 monitor_object_type:

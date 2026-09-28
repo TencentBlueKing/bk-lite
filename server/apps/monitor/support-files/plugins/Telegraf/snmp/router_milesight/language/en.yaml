@@ -1,7 +1,6 @@
 Router Milesight SNMP:
   name: Milesight (Telegraf)
-  desc: SNMP monitoring template for Milesight router. It reports per-port inbound
-    traffic rate, per-port outbound traffic rate, and system uptime
+  desc: "SNMP monitoring template for Milesight router. It reports uptime and interface traffic, for UR32/UR35/UR75 (based on standard MIBs)."
 monitor_object:
   Router: Router
 monitor_object_type:

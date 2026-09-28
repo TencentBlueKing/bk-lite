@@ -116,6 +116,6 @@ describe('监控搜索实体 ID 与下拉选项保持同一类型', () => {
 
     expect(group.object).toBe(12);
     expect(group.plugin).toBe(279);
-    expect(group.metric).toBe(301);
+    expect(group.metric).toEqual([301]);
   });
 });

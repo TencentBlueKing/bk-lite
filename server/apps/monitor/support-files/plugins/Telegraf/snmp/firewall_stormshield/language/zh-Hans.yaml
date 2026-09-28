@@ -1,6 +1,6 @@
 Firewall Stormshield SNMP:
   name: Stormshield（Telegraf）
-  desc: 面向 Stormshield SNS 防火墙的 SNMP 监控模板，可采集运行时长、每核 CPU、UCD 内存、ASQ TCP/UDP 连接、成熟 IPsec 隧道，以及 CPU 温度、电源通电状态和风扇转速。
+  desc: 面向 Stormshield 防火墙的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、VPN隧道、接口流量，适用于 SNS 系列（企业号 PEN 11256）。
 monitor_object:
   Firewall: 防火墙
 monitor_object_type:

@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_rad",
   "plugin": "Access RAD SNMP",
-  "plugin_desc": "RAD access, CPE, industrial-router and broadband-wireless SNMP collection under enterprise PEN 164 (RAD-GEN). Beyond the shared Access SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it walks systemPsTable for per-supply status (notApplicable/failed/ok/degraded) and optionally walks optPrtMonitorTable for optical-port laser temperature in hundredths of a degree Celsius, converted to Celsius on the query side by dividing by 100. Empty optical-monitor tables produce no rows. CPU and memory percentages are not collected because no stable private scalar was confirmed. Alarm-only enumerations are not treated as health scalars. Supported brands/models - RAD access, CPE, industrial router and broadband wireless devices that expose RAD-GEN and standard IF-MIB.",
+  "plugin_desc": "SNMP monitoring template for RAD access device. It reports uptime, temperature, and interface traffic (enterprise PEN 164).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='access', collect_type='snmp_rad'}) by (instance_id)",
   "name": "Access",

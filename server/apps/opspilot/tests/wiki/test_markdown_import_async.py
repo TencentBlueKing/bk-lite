@@ -1,5 +1,6 @@
 import hashlib
 import io
+import json
 import logging
 import zipfile
 from datetime import timedelta
@@ -80,21 +81,49 @@ def _zip(entries):
     return buffer.getvalue()
 
 
+OKF_OPTIONS = {"import_format": "okf"}
+
+
+def _okf_page_doc(title, body="正文。"):
+    return "\n".join(
+        [
+            "---",
+            "type: concept",
+            f'title: "{title}"',
+            "---",
+            "",
+            body,
+            "",
+        ]
+    )
+
+
+def _okf_zip(title, body="正文。"):
+    return _zip(
+        [
+            ("index.md", '---\nokf_version: "0.2"\n---\n\n# Bundle\n'),
+            ("log.md", "# Directory Update Log\n"),
+            (f"概念/{title}.md", _okf_page_doc(title, body)),
+        ]
+    )
+
+
 def test_enqueue_markdown_import_does_not_write_pages(wiki_factory, import_storage):
     knowledge_base = _ready_kb(wiki_factory)
-    content = "# 异步导入\n\n正文。".encode("utf-8")
+    content = _okf_zip("异步导入")
     preflight = preflight_markdown_import(
         knowledge_base,
         content,
-        filename="async.md",
+        filename="okf.zip",
         actor="admin",
+        options=OKF_OPTIONS,
     )
 
     payload, dispatch = enqueue_markdown_import(
         knowledge_base,
         preflight["token"],
         content,
-        filename="async.md",
+        filename="okf.zip",
         actor="admin",
     )
 
@@ -116,7 +145,7 @@ def test_enqueue_markdown_import_does_not_write_pages(wiki_factory, import_stora
         knowledge_base,
         preflight["token"],
         content,
-        filename="async.md",
+        filename="okf.zip",
         actor="admin",
     )
     assert again["build_record_id"] == payload["build_record_id"]
@@ -150,18 +179,19 @@ def test_execute_task_imports_staged_archive_and_deletes_it(wiki_factory, import
     )
 
     knowledge_base = _ready_kb(wiki_factory)
-    content = "# 任务导入\n\n正文。".encode("utf-8")
+    content = _okf_zip("任务导入")
     preflight = preflight_markdown_import(
         knowledge_base,
         content,
-        filename="task.md",
+        filename="okf.zip",
         actor="admin",
+        options=OKF_OPTIONS,
     )
     payload, dispatch = enqueue_markdown_import(
         knowledge_base,
         preflight["token"],
         content,
-        filename="task.md",
+        filename="okf.zip",
         actor="admin",
     )
 
@@ -187,7 +217,7 @@ def test_import_markdown_execute_endpoint_enqueues_without_writing_pages(
     from apps.opspilot import tasks
 
     knowledge_base = _ready_kb(wiki_factory)
-    content = _zip([("pages/async.md", "# 接口导入\n\n正文。")])
+    content = _okf_zip("接口导入")
     calls = []
 
     class Task:
@@ -201,7 +231,7 @@ def test_import_markdown_execute_endpoint_enqueues_without_writing_pages(
         f"/api/v1/opspilot/wiki_mgmt/knowledge_base/{knowledge_base.id}/import_markdown_preflight/",
         {
             "file": SimpleUploadedFile("async.zip", content, content_type="application/zip"),
-            "options": "{}",
+            "options": json.dumps(OKF_OPTIONS),
         },
         format="multipart",
     )
@@ -254,19 +284,20 @@ def test_enqueue_rejects_when_rebuild_is_running(wiki_factory, import_storage):
         status="running",
         stage="generating",
     )
-    content = "# 冲突\n\n正文。".encode("utf-8")
+    content = _okf_zip("冲突")
     preflight = preflight_markdown_import(
         knowledge_base,
         content,
-        filename="busy.md",
+        filename="okf.zip",
         actor="admin",
+        options=OKF_OPTIONS,
     )
     with pytest.raises(MarkdownImportGovernanceError) as captured:
         enqueue_markdown_import(
             knowledge_base,
             preflight["token"],
             content,
-            filename="busy.md",
+            filename="okf.zip",
             actor="admin",
         )
     assert captured.value.code == "knowledge_base_build_in_progress"
@@ -839,18 +870,19 @@ def test_execute_task_skips_failed_build(wiki_factory, import_storage):
 
 def test_direct_execute_still_imports_synchronously(wiki_factory):
     knowledge_base = _ready_kb(wiki_factory)
-    content = "# 同步回归\n\n正文。".encode("utf-8")
+    content = _okf_zip("同步回归")
     preflight = preflight_markdown_import(
         knowledge_base,
         content,
-        filename="sync.md",
+        filename="okf.zip",
         actor="admin",
+        options=OKF_OPTIONS,
     )
     result = execute_markdown_import(
         knowledge_base,
         preflight["token"],
         content,
-        filename="sync.md",
+        filename="okf.zip",
         actor="admin",
     )
     assert result["counts"]["created"] == 1
@@ -874,18 +906,19 @@ def test_markdown_import_runs_search_enrichment_after_activation(wiki_factory, m
         fake_enrich,
     )
     knowledge_base = _ready_kb(wiki_factory)
-    content = "# 先可见\n\n正文。".encode("utf-8")
+    content = _okf_zip("先可见")
     preflight = preflight_markdown_import(
         knowledge_base,
         content,
-        filename="visible.md",
+        filename="okf.zip",
         actor="admin",
+        options=OKF_OPTIONS,
     )
     result = execute_markdown_import(
         knowledge_base,
         preflight["token"],
         content,
-        filename="visible.md",
+        filename="okf.zip",
         actor="admin",
     )
     assert result["counts"]["created"] == 1
@@ -917,18 +950,19 @@ def test_execute_task_defers_search_enrichment_until_pages_are_visible(
         lambda *args: enrich_calls.append(args) or {"status": "ok"},
     )
     knowledge_base = _ready_kb(wiki_factory)
-    content = "# 后台索引\n\n正文。".encode("utf-8")
+    content = _okf_zip("后台索引")
     preflight = preflight_markdown_import(
         knowledge_base,
         content,
-        filename="defer.md",
+        filename="okf.zip",
         actor="admin",
+        options=OKF_OPTIONS,
     )
     _payload, dispatch = enqueue_markdown_import(
         knowledge_base,
         preflight["token"],
         content,
-        filename="defer.md",
+        filename="okf.zip",
         actor="admin",
     )
     result = wiki_execute_markdown_import_task.run(
@@ -968,18 +1002,19 @@ def test_execute_task_search_enrich_dispatch_failure_runs_inline(
         lambda *args: enrich_calls.append(args) or {"status": "ok"},
     )
     knowledge_base = _ready_kb(wiki_factory)
-    content = "# 投递失败\n\n正文。".encode("utf-8")
+    content = _okf_zip("投递失败")
     preflight = preflight_markdown_import(
         knowledge_base,
         content,
-        filename="fallback.md",
+        filename="okf.zip",
         actor="admin",
+        options=OKF_OPTIONS,
     )
     _payload, dispatch = enqueue_markdown_import(
         knowledge_base,
         preflight["token"],
         content,
-        filename="fallback.md",
+        filename="okf.zip",
         actor="admin",
     )
     with caplog.at_level(logging.WARNING, logger="opspilot"):

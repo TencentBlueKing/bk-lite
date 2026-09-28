@@ -1,8 +1,6 @@
 Switch Cambium SNMP:
   name: Cambium (Telegraf)
-  desc: SNMP monitoring template for Cambium cnMatrix enterprise switches. It
-    reports chassis CPU utilization, memory used percent, and chassis
-    temperature in Celsius. It does not cover ePMP or cnPilot wireless devices.
+  desc: "SNMP monitoring template for Cambium switch. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic (enterprise PEN 2076)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

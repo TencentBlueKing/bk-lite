@@ -1,0 +1,14 @@
+{
+  "template": {
+    "ui:label": "用户上传模板",
+    "ui:help": "选择表单触发器中的 Word / Excel 文件字段"
+  },
+  "data": {
+    "ui:label": "文档数据",
+    "ui:help": "拖入上游节点输出，或直接填写用于填充模板的 JSON 数据"
+  },
+  "examples": {
+    "docx": "/workflow-orchestration/templates/health-inspection-example.docx",
+    "xlsx": "/workflow-orchestration/templates/health-inspection-example.xlsx"
+  }
+}

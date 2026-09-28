@@ -1,9 +1,6 @@
 Transmission Pan Dacom SNMP:
   name: Pan Dacom (Telegraf)
-  desc: SNMP monitoring template for Pan Dacom transmission device. It reports NMS
-    board temperature, PSU1 and PSU2 status, optional fan and PSU3 status, per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime (IANA
-    PEN 3652).
+  desc: "SNMP monitoring template for Pan Dacom transmission device. It reports uptime, temperature, fan, and interface traffic, for CWDM optical transmission chassis (enterprise PEN 3652)."
 monitor_object:
   Transmission: Transmission
 monitor_object_type:

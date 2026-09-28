@@ -8,7 +8,13 @@ import yaml
 
 from apps.opspilot.services.wiki.markdown_export_service import QuotaExceededError
 from apps.opspilot.services.wiki.markdown_import_service import split_front_matter_block
-from apps.opspilot.services.wiki.okf_export_service import DEFAULT_MAX_OKF_EXPORT_BYTES, build_okf_export_zip, posix_relpath, zip_root_name
+from apps.opspilot.services.wiki.okf_export_service import (
+    DEFAULT_MAX_OKF_EXPORT_BYTES,
+    build_okf_export_zip,
+    markdown_destination,
+    posix_relpath,
+    zip_root_name,
+)
 from apps.opspilot.tests.wiki.test_okf_import import PNG_BYTES, _add_root_directories, _zip_bytes
 
 _UTF8_FLAG = 0x800
@@ -72,6 +78,12 @@ def test_posix_relpath_from_nested_page():
     assert posix_relpath("assets/ab.png", "guides") == "../assets/ab.png"
     assert posix_relpath("assets/ab.png", "") == "assets/ab.png"
     assert posix_relpath("assets/ab.png", "a/b") == "../../assets/ab.png"
+
+
+def test_markdown_destination_wraps_parentheses_and_spaces():
+    assert markdown_destination("/实体/告警中心.md") == "/实体/告警中心.md"
+    assert markdown_destination("/概念/定义(通知中心).md") == "</概念/定义(通知中心).md>"
+    assert markdown_destination("assets/a b.png") == "<assets/a b.png>"
 
 
 @pytest.mark.django_db
@@ -160,21 +172,16 @@ def test_export_okf_max_bytes_raises(wiki_factory):
 
 
 @pytest.mark.django_db
-def test_export_markdown_endpoint_unchanged(api_client, wiki_factory):
+def test_export_markdown_endpoint_removed(api_client, wiki_factory):
     from apps.opspilot.services.wiki.page_service import create_manual_page
     from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
 
     kb = wiki_factory.knowledge_base()
     bootstrap_knowledge_base(kb, operator="admin")
     kb.refresh_from_db()
-    page = create_manual_page(kb, page_type="concept", title="作业平台", body="作业平台正文", created_by="u")
+    create_manual_page(kb, page_type="concept", title="作业平台", body="作业平台正文", created_by="u")
     response = api_client.get(f"/api/v1/opspilot/wiki_mgmt/knowledge_base/{kb.id}/export_markdown/")
-    assert response.status_code == 200, response.content
-    assert response["Content-Disposition"] == f'attachment; filename="wiki-kb-{kb.id}-markdown.zip"'
-    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
-        names = archive.namelist()
-    assert "manifest.json" in names
-    assert f"pages/unclassified/{page.id}-作业平台.md" in names
+    assert response.status_code == 404, response.content
 
 
 @pytest.mark.django_db
@@ -372,3 +379,84 @@ def test_export_okf_round_trip_preflight_and_visible_images(wiki_factory, monkey
 
 def test_default_okf_quota_is_200mb():
     assert DEFAULT_MAX_OKF_EXPORT_BYTES == 200 * 1024 * 1024
+
+
+@pytest.mark.django_db
+def test_export_okf_index_lists_concepts_and_log_uses_date_heading(wiki_factory):
+    from apps.opspilot.models import WikiDirectory
+    from apps.opspilot.services.wiki.page_service import create_manual_page
+    from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
+
+    kb = wiki_factory.knowledge_base(name="运维知识库", introduction="值班手册用途说明")
+    bootstrap_knowledge_base(kb, operator="admin")
+    kb.refresh_from_db()
+    _add_root_directories(kb, ["运维手册"])
+    directory = WikiDirectory.objects.get(knowledge_base=kb, name="运维手册", status="active")
+    page = create_manual_page(
+        kb,
+        page_type="concept",
+        title="重启指南",
+        body="先停服务。",
+        created_by="u",
+        directory_id=directory.pk,
+        meta_snapshot={"okf": {"description": "先停服务的步骤"}},
+    )
+
+    content, stats = build_okf_export_zip(kb)
+    assert stats["pages"] == 1
+    archive, _names, root = _open_okf_zip(content)
+    with archive:
+        index = archive.read(f"{root}/index.md").decode("utf-8")
+        log = archive.read(f"{root}/log.md").decode("utf-8")
+
+    _front, index_body = _parse_md(index)
+    href = f"/运维手册/{page.id}-重启指南.md"
+    assert "## 运维手册" in index_body
+    assert f"* [重启指南]({href}) - 先停服务的步骤" in index_body
+    assert "待研究问题" not in index_body
+    assert log.startswith("# Directory Update Log\n\n## ")
+    assert "* **Export**: exported 1 concepts from 运维知识库" in log
+    date_line = log.splitlines()[2]
+    assert date_line.startswith("## ")
+    assert len(date_line) == 13
+
+
+@pytest.mark.django_db
+def test_export_okf_wraps_parenthesized_concept_paths(wiki_factory):
+    from apps.opspilot.models import WikiDirectory
+    from apps.opspilot.services.wiki.page_service import create_manual_page
+    from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
+
+    kb = wiki_factory.knowledge_base(name="括号库")
+    bootstrap_knowledge_base(kb, operator="admin")
+    kb.refresh_from_db()
+    directory = WikiDirectory.objects.get(knowledge_base=kb, key="schema_concept", status="active")
+    target = create_manual_page(
+        kb,
+        page_type="concept",
+        title="定义(通知中心)",
+        body="通知中心定义。",
+        created_by="u",
+        directory_id=directory.pk,
+    )
+    create_manual_page(
+        kb,
+        page_type="concept",
+        title="告警中心",
+        body="见 [[定义(通知中心)]]。",
+        created_by="u",
+        directory_id=directory.pk,
+    )
+
+    content, stats = build_okf_export_zip(kb)
+    assert stats["pages"] == 2
+    archive, names, root = _open_okf_zip(content)
+    with archive:
+        source_name = next(name for name in names if name.endswith(".md") and "告警中心" in name)
+        source = archive.read(source_name).decode("utf-8")
+        index = archive.read(f"{root}/index.md").decode("utf-8")
+
+    _meta, body = _parse_md(source)
+    expected = f"[定义(通知中心)](</概念/{target.id}-定义(通知中心).md>)"
+    assert expected in body
+    assert f"* [定义(通知中心)](</概念/{target.id}-定义(通知中心).md>)" in index

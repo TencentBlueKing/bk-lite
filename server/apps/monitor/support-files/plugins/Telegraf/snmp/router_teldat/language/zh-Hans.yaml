@@ -1,6 +1,6 @@
 Router Teldat SNMP:
   name: Teldat（Telegraf）
-  desc: 面向 Teldat 路由器的 SNMP 监控模板（企业号 2007），可采集 5 分钟 CPU 使用率、1 分钟/5 秒 CPU 窗口、cache 内存总量/空闲（字节，并推导使用率）以及标准 IF-MIB 接口流量。温度、风扇与电源为 N/A。
+  desc: 面向 Teldat 路由器的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、接口流量（企业号 PEN 2007）。
 monitor_object:
   Router: 路由器
 monitor_object_type:

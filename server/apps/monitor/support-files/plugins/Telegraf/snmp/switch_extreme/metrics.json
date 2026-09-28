@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_extreme",
   "plugin": "Switch Extreme SNMP",
-  "plugin_desc": "Extreme Networks-specific SNMP collection for switches (EXOS, PEN 1916). In addition to standard IF-MIB interface metrics, it collects device health from EXTREME-SOFTWARE-MONITOR-MIB and EXTREME-SYSTEM-MIB: CPU utilization and enclosure temperature as scalar GET fields (extremeCpuMonitorTotalUtilization / extremeCurrentTemperature), system memory total/free as a table, and fan and power-supply status tables. Memory utilization is computed from total and free; fan/psu states are normalized to the unified 1=normal convention. Supported brands/models — Extreme Networks ExtremeXOS (EXOS) switches (X440/X460/X670/X690, etc.).",
+  "plugin_desc": "SNMP monitoring template for Extreme switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic, for ExtremeXOS (enterprise PEN 1916).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_extreme'}) by (instance_id)",
   "name": "Switch",

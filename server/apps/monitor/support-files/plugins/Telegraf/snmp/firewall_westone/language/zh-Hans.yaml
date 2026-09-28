@@ -1,6 +1,6 @@
 Firewall Westone SNMP:
   name: 卫士通（Telegraf）
-  desc: 面向 Westone 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、接口速率等主要指标。
+  desc: 面向卫士通防火墙的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、接口流量（企业号 PEN 31648）。
 monitor_object:
   Firewall: 防火墙
 monitor_object_type:

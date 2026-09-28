@@ -1,0 +1,56 @@
+{
+  "object": "Firewall",
+  "plugin": "Firewall Zyxel SNMP",
+  "templates": [
+    {
+      "name": "Zyxel防火墙CPU使用率过高",
+      "alert_name": "防火墙${resource_name} CPU 使用率过高",
+      "description": "监控 Zyxel ZLD 安全网关整体 CPU 使用率，当持续高于阈值时触发告警，提示可能存在流量检测负载过高、VPN 处理压力或攻击活动，避免转发与管理响应受影响。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Zyxel防火墙内存使用率过高",
+      "alert_name": "防火墙${resource_name} 内存使用率过高",
+      "description": "监控 Zyxel ZLD 安全网关整体内存使用率，当超过阈值时触发告警，便于及时发现内存压力导致会话处理性能下降的风险。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

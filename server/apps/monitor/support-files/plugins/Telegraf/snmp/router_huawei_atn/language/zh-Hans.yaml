@@ -1,7 +1,6 @@
 Router Huawei ATN SNMP:
   name: 华为 ATN（Telegraf）
-  desc: 面向 Huawei ATN 汇聚路由器的 SNMP 监控模板，覆盖 ATN 910/950/980 与 ATN 905-L 等机型，
-    优先采集实体 CPU、内存、温度，并补充风扇、光模块、电源与接口流量等主要指标。
+  desc: 面向华为 ATN 路由器的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、风扇、电源状态、光模块、接口流量、电压、功率（企业号 PEN 2011）。
 monitor_object:
   Router: 路由器
 monitor_object_type:

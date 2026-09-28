@@ -1,6 +1,6 @@
 Router Vyatta SNMP:
   name: Vyatta（Telegraf）
-  desc: 面向 Vyatta 路由器的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
+  desc: 面向 Vyatta 路由器的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、接口流量，适用于 Vyatta / VyOS（企业号 PEN 2021）。
 monitor_object:
   Router: 路由器
 monitor_object_type:

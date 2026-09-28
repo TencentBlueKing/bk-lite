@@ -1,8 +1,6 @@
 NetworkService Infoblox SNMP:
   name: NetworkService Infoblox SNMP
-  desc: SNMP monitoring template for Infoblox network service device. It reports CPU usage,
-    memory usage, swap usage, per-port inbound traffic rate, per-port outbound traffic rate,
-    and system uptime
+  desc: "SNMP monitoring template for Infoblox network service device. It reports uptime, CPU utilization, memory utilization, interface traffic, and swap usage (enterprise PEN 7779)."
 monitor_object:
   NetworkService: NetworkService
 monitor_object_type:

@@ -1,11 +1,6 @@
 Firewall Huawei SNMP:
   name: Huawei USG (Telegraf)
-  desc: SNMP monitoring for Huawei USG firewalls. It reports per-entity CPU, memory,
-    temperature, and voltage, plus current sessions, new sessions, session-create
-    rate, half-open sessions, TCP/UDP/ICMP session counts, and device forwarding
-    throughput. USG9500 also reports per-SPU CPU usage when those boards are present.
-    Interface metrics use the platform built-in IF-MIB. Supported models include
-    USG6000, USG6000E, USG9500, and HiSecEngine USG.
+  desc: "SNMP monitoring template for Huawei USG firewall. It reports uptime, CPU utilization, memory utilization, temperature, sessions/connections, session establishment rate, interface traffic, and voltage (enterprise PEN 2011)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:

@@ -1,8 +1,6 @@
 Loadbalance RELIANOID SNMP:
   name: RELIANOID (Telegraf)
-  desc: SNMP monitoring template for RELIANOID load balancer. It reports CPU utilization,
-    memory utilization, optional load averages, per-port inbound traffic rate, per-port
-    outbound traffic rate, and system uptime
+  desc: "SNMP monitoring template for RELIANOID load balancer. It reports uptime, CPU utilization, memory utilization, and interface traffic, for RELIANOID ADC (enterprise PEN 61269)."
 monitor_object:
   Loadbalance: Load Balance
 monitor_object_type:

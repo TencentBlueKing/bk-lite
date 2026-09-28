@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_cisco_wireless",
   "plugin": "Wireless Cisco SNMP",
-  "plugin_desc": "Cisco wireless LAN controller SNMP collection for AireOS WLC and Catalyst 9800. Private increment: AireOS controller CPU (agentCurrentCPUUtilization, 0-100) and memory (agentTotalMemory / agentFreeMemory, KBytes, used = total − free), plus connected AP count (cLApGlobalAPConnectCount). Catalyst 9800 falls back to CISCO-PROCESS-MIB 5-minute CPU and CPU-wide used/free memory when AireOS agent scalars are absent. Interface traffic comes from the built-in IF-MIB table. Per-station and per-AP tables are not collected. Applicable brands/models — Cisco AireOS WLC (5500/2500/3504/5520/8540 and virtual WLC) and Catalyst 9800 IOS-XE wireless controllers.",
+  "plugin_desc": "SNMP monitoring template for Cisco wireless device. It reports uptime, CPU utilization, memory utilization, interface traffic, and wireless clients/radio (enterprise PEN 9).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_cisco_wireless'}) by (instance_id)",
   "name": "Wireless",

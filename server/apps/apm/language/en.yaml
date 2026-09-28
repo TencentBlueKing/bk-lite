@@ -1,0 +1,61 @@
+error:
+  application_id_invalid: Application ID may contain letters, digits, dots, underscores, and hyphens, and must start with a letter or digit.
+  application_id_exists: This application ID already exists.
+  field_required: This field is required.
+  field_not_empty: This field may not be empty.
+  otlp_endpoint_server_resolved: The OTLP endpoint is resolved by the server from the cloud region and must not be submitted by the client.
+  started_before_ended: started_at must be earlier than ended_at.
+  unsupported_instance_query: "Unsupported instance query parameters: {names}"
+  latency_threshold_positive: Latency SLO requires a positive threshold.
+  unsupported_red_query: "Unsupported RED query parameters: {names}"
+  ended_after_started: The end time must be later than the start time
+  red_window_limit: RED query window cannot exceed 7 days
+  unsupported_batch_red_query: "Unsupported batch RED query parameters: {names}"
+  batch_red_target_limit: "A batch RED query can include at most {count} targets."
+  unsupported_error_query: "Unsupported error breakdown query parameters: {names}"
+  error_window_limit: Error breakdown query window cannot exceed 7 days
+  unsupported_trace_query: "Unsupported trace query parameters: {names}"
+  duration_range: min_duration_ms cannot be greater than max_duration_ms
+  unsupported_span_query: "Unsupported span query parameters: {names}"
+  unsupported_issue_query: "Unsupported issue query parameters: {names}"
+  issue_window_limit: Issue query window cannot exceed 7 days
+  policy_field_unsupported: APM policies do not support this field.
+  environment_required: Environment is required.
+  threshold_required: Configure at least one alert threshold.
+  versions_required: Specific version mode requires at least one version.
+  versions_mode_only: A version list is only allowed in specific version mode.
+  policy_target_limit: "Endpoint and version combinations cannot exceed {count} in specific version mode."
+  no_data_pair: No-data count and level must be configured together or both left unset.
+  channel_duplicate: The same notification channel cannot be selected twice.
+  level_duplicate: The same alert level cannot be configured twice.
+  threshold_finite: Threshold must be a finite number.
+  error_rate_range: Error-rate threshold must be between 0 and 1.
+  threshold_comparator: Multi-level thresholds must use the same comparator.
+  threshold_monotonic: Multi-level thresholds must stay monotonic across critical, error, and warning.
+  deployment_window_limit: Deployment event query window cannot exceed 90 days
+  event_window_limit: Event query window cannot exceed 90 days
+  alert_window_limit: Alert query window cannot exceed 90 days
+  handler_invalid: Invalid handler identifier
+  handler_required: Specify at least one handler
+  organization_ids_format: organization_ids must be a comma-separated list of positive integers.
+  cloud_region_catalog_unavailable: The cloud region catalog is temporarily unavailable. Try again later.
+  organization_out_of_scope: The current organization is outside the user's authorized scope.
+  cloud_region_config_unavailable: Cloud region configuration is temporarily unavailable. Try again later.
+  probe_artifact_missing: The probe artifact does not exist. Initialize probe artifacts on the server first.
+  probe_artifact_unavailable: The probe artifact is temporarily unavailable. Try again later.
+  organization_missing: The current organization is missing.
+  channel_unavailable: The request includes a notification channel that is unavailable in the current organization.
+  channel_rejects_recipients: "Channel {name} does not accept recipients."
+  channel_requires_recipients: "Channel {name} requires recipients."
+  channel_user_ids_only: "Channel {name} only accepts system user IDs."
+  channel_users_unavailable: "Channel {name} includes system users that are unavailable in the current organization."
+  service_invisible: The service does not exist or is not visible to the current organization
+  unsupported_topology_query: "Unsupported topology query parameters: {names}"
+  topology_window_limit: Topology query window cannot exceed 7 days
+  invalid_cloud_region: The cloud region catalog returned invalid data. Ask operations to check NodeMgmt.
+  cloud_region_receiver_unavailable: The current organization cannot use the selected cloud region's passive receiver address.
+  cloud_region_not_found: The cloud region does not exist or is no longer available.
+  cloud_region_address_missing: The selected cloud region has no usable passive receiver address.
+  cloud_region_address_invalid: The cloud region receiver address is invalid. Ask an administrator to check the configuration.
+  probe_download_url_missing: The selected cloud region has no NODE_SERVER_URL, so a probe download URL cannot be generated. Ask an administrator to configure it.
+  probe_download_url_invalid: The cloud region NODE_SERVER_URL is invalid, so a probe download URL cannot be generated. Ask an administrator to check the configuration.

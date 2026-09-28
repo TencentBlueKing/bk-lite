@@ -1117,6 +1117,8 @@
         "timeout": "超时时间(秒)",
         "opspilotManaged": "OpsPilot 托管",
         "opspilotManagedTip": "OpsPilot 工作流自动创建，不可编辑或删除",
+        "workflowManaged": "编排中心托管",
+        "workflowManagedTip": "编排中心流程自动创建，不可编辑或删除",
         "sign_secret": "签名密钥",
         "sub_type": "类型",
         "request_method": "请求方法",

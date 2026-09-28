@@ -1,7 +1,6 @@
 Switch Red Lion SNMP:
   name: Red Lion (Telegraf)
-  desc: SNMP monitoring template for Red Lion switch. It reports per-port inbound
-    traffic rate, per-port outbound traffic rate, and system uptime (IANA PEN 28381).
+  desc: "SNMP monitoring template for Red Lion switch. It reports uptime, power supply status, and interface traffic, for N-Tron industrial Ethernet switches (enterprise PEN 28381)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

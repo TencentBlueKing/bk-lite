@@ -1,0 +1,4 @@
+{
+  "model_id": {"ui:binding": "literal-only"},
+  "intents": {"ui:widget": "intent-list"}
+}

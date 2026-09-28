@@ -714,7 +714,6 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       "collectType": "snmp_scalance",
       "capabilities": [
         "uptime",
-        "temperature",
         "psu",
         "traffic"
       ]
@@ -734,6 +733,14 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "memory",
         "temperature",
         "fan",
+        "traffic"
+      ]
+    },
+    {
+      "collectType": "snmp_telco",
+      "capabilities": [
+        "uptime",
+        "cpu",
         "traffic"
       ]
     },
@@ -1540,6 +1547,16 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
     },
     {
       "collectType": "snmp_zorp",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "traffic",
+        "session"
+      ]
+    },
+    {
+      "collectType": "snmp_zyxel_firewall",
       "capabilities": [
         "uptime",
         "cpu",

@@ -30,8 +30,11 @@ interface ChannelRow {
   config?: Record<string, any>;
 }
 
-// OpsPilot 工作流自动托管的 NATS 通道：禁止编辑/删除（靠 config.source 标识）
-const isOpspilotManaged = (record: ChannelRow): boolean => record.config?.source === 'opspilot';
+// 平台流程自动托管的 NATS 通道：生命周期由来源流程管理，这里只读展示。
+const managedSource = (record: ChannelRow): 'opspilot' | 'workflow_orchestration' | undefined => {
+  const source = record.config?.source;
+  return source === 'opspilot' || source === 'workflow_orchestration' ? source : undefined;
+};
 
 const ChannelSettingsPage: React.FC = () => {
   const { t } = useTranslation();
@@ -78,12 +81,17 @@ const ChannelSettingsPage: React.FC = () => {
       width: 160,
       fixed: "right",
       render: (key: string, record: ChannelRow) => {
-        // OpsPilot 自动托管的通道不可编辑/删除
-        if (isOpspilotManaged(record)) {
+        const source = managedSource(record);
+        if (source) {
+          const workflowManaged = source === 'workflow_orchestration';
           return (
-            <Tooltip title={t("system.channel.settings.opspilotManagedTip")}>
+            <Tooltip title={t(workflowManaged
+              ? "system.channel.settings.workflowManagedTip"
+              : "system.channel.settings.opspilotManagedTip")}>
               <span className="text-[var(--color-text-secondary)] text-xs">
-                {t("system.channel.settings.opspilotManaged")}
+                {t(workflowManaged
+                  ? "system.channel.settings.workflowManaged"
+                  : "system.channel.settings.opspilotManaged")}
               </span>
             </Tooltip>
           );

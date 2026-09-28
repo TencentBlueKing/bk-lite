@@ -1,7 +1,6 @@
 Switch TP-Link SNMP:
   name: TP-Link (Telegraf)
-  desc: SNMP monitoring template for TP-Link switch. It reports CPU utilization, memory
-    utilization, per-port inbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for TP-Link switch. It reports uptime, CPU utilization, memory utilization, and interface traffic, for JetStream T1500/T1600/T2600 (enterprise PEN 11863)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

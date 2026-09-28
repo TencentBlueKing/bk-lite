@@ -875,6 +875,16 @@ def get_nodes_by_ips(query_data: dict):
     )
 
 
+def get_authorized_execution_targets_by_ids(node_ids: list, permission_data: dict = None):
+    """同进程自动化集成接口；不注册为可远程伪造身份的 NATS handler。"""
+    return NodeService.get_authorized_execution_targets_by_ids(node_ids, permission_data or {})
+
+
+def get_authorized_execution_targets_by_ips(ips: list, permission_data: dict = None):
+    """同进程自动化集成接口；按当前操作者权限精确匹配 IP。"""
+    return NodeService.get_authorized_execution_targets_by_ips(ips, permission_data or {})
+
+
 def _validate_node_info_query_shape(query_data):
     allowed_keys = {
         "ips",

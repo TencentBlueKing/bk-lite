@@ -1,6 +1,6 @@
 Switch ALLNET SNMP:
   name: ALLNET（Telegraf）
-  desc: 面向 ALLNET 交换机的 SNMP 监控模板,可采集 运行时长、接口速率、入向错误包等主要指标。
+  desc: 面向 ALLNET 交换机的 SNMP 监控模板，可采集运行时长、接口流量（基于标准 MIB）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:

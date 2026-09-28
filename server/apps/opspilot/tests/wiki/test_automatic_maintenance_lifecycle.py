@@ -208,7 +208,7 @@ def test_sweep_open_knowledge_conflicts_recounts_source_build_pending_review(che
     assert build.counts["pending_review"] == 0
 
 
-@pytest.mark.parametrize("drift", ["schema", "participant"])
+@pytest.mark.parametrize("drift", ["introduction", "participant"])
 @pytest.mark.django_db
 def test_sweep_auto_resolves_frozen_conflict_when_context_drifts(drift):
     from apps.opspilot.models import MaterialVersion, PageEvidence, WikiDecisionRule
@@ -238,9 +238,9 @@ def test_sweep_auto_resolves_frozen_conflict_when_context_drifts(drift):
     )
     current_version_id = page.current_version_id
 
-    if drift == "schema":
-        kb.schema_md = "# changed schema"
-        kb.save(update_fields=["schema_md", "updated_at"])
+    if drift == "introduction":
+        kb.introduction = "changed introduction"
+        kb.save(update_fields=["introduction", "updated_at"])
     else:
         extra = _material(kb, "late-source")
         extra_version = MaterialVersion.objects.create(material=extra, content_hash="late-v1")
@@ -280,8 +280,8 @@ def test_sweep_auto_resolves_page_identity_when_schema_changes():
             "canonical_title": "配置平台",
         },
     )[0]
-    kb.schema_md = "# changed schema"
-    kb.save(update_fields=["schema_md", "updated_at"])
+    kb.introduction = "changed introduction"
+    kb.save(update_fields=["introduction", "updated_at"])
 
     assert sweep_open_checks(kb) == 1
 

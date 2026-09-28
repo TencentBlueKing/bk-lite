@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_alcoma",
   "plugin": "Transmission Alcoma SNMP",
-  "plugin_desc": "Alcoma microwave transmission SNMP child template for devices under Alcoma PEN 12140 (alMP). Interface traffic is supplied by the shared Transmission SNMP IF-MIB floor. Proven private health scalars are radio temperature in degrees Celsius (alMPTemperature; offline sentinel -1 is skipped), receive level in dB (alMPRX-Level; -128 is skipped), transmit power in dB (alMPTX-PWR; -128 is skipped), and optional SNR in dB (alMPSNR). CPU, memory, fan and power-supply health are not published as stable shared objects, so they are not collected. Supported brands/models — Alcoma microwave radio and wireless transmission devices.",
+  "plugin_desc": "SNMP monitoring template for Alcoma transmission device. It reports uptime, temperature, and interface traffic, for microwave radio and wireless transmission devices (enterprise PEN 12140).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_alcoma'}) by (instance_id)",
   "name": "Transmission",

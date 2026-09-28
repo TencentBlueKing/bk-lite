@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_teltonika",
   "plugin": "Router Teltonika SNMP",
-  "plugin_desc": "Teltonika industrial cellular router SNMP collection (enterprise PEN 48690). Private increment: whole-device CPU utilization from the cpuUsage scalar (0-100 percent, top-level GET with instance .0) as device_cpu_usage; UCD-SNMP memory scalars memTotalReal / memAvailReal (KB, top-level GET with instance .0, used = total − free, dashboard converts KB to bytes); and the modem temperature table mTemperature (integer tenths of a degree Celsius, divided by 10 at collection, headline max by instance as device_temperature_celsius). Fan and power-supply health stay N/A on this fanless compact design. Interface traffic comes from the built-in IF-MIB table. Applicable brands/models — Teltonika RUT / TRB / RUTX industrial 4G/5G cellular routers (RutOS, PEN 48690).",
+  "plugin_desc": "SNMP monitoring template for Teltonika router. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic (enterprise PEN 48690).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_teltonika'}) by (instance_id)",
   "name": "Router",

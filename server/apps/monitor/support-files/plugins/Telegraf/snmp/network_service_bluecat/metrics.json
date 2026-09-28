@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_bluecat",
   "plugin": "NetworkService BlueCat SNMP",
-  "plugin_desc": "BlueCat DDI SNMP collection for appliances under BlueCat PEN 13315. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template adds BCN-DNS operational state and successful-query count, plus UCD-SNMP CPU and memory percent per vendor monitoring documentation.",
+  "plugin_desc": "SNMP monitoring template for BlueCat network service device. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 13315).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_bluecat'}) by (instance_id)",
   "name": "NetworkService",

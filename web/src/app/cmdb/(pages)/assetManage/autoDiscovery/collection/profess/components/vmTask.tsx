@@ -89,22 +89,25 @@ const VMTask: React.FC<VMTaskFormProps> = ({
   });
 
   // 构建表单值，用于复制任务和编辑任务中回填表单数据（true:复制任务，false:编辑任务）
-  const buildFormValues = (values: any, isCopy: boolean) => ({
-    ...getCleanupFormValues(values),
-    ...values,
-    taskName: isCopy ? '' : values.name,
-    enterType:
-      values.input_method === 0 ? ENTER_TYPE.AUTOMATIC : ENTER_TYPE.APPROVAL,
-    accessPointId: values.access_point?.[0]?.id,
-    organization: values.team || [],
-    credentialPool: [withTaskCredentialSource(normalizeCredentialPool(values.credential)[0] || {}, {
-      username: values.credential?.username,
-      password: isCopy ? '' : PASSWORD_PLACEHOLDER,
-      port: values.credential?.port || '443',
-      ssl: values.credential?.ssl,
-    })],
-    instUuid: values.instances?.[0]?.inst_uuid,
-  });
+  const buildFormValues = (values: any, isCopy: boolean) => {
+    const credential = normalizeCredentialPool(values.credential)[0] || {};
+    return {
+      ...getCleanupFormValues(values),
+      ...values,
+      taskName: isCopy ? '' : values.name,
+      enterType:
+        values.input_method === 0 ? ENTER_TYPE.AUTOMATIC : ENTER_TYPE.APPROVAL,
+      accessPointId: values.access_point?.[0]?.id,
+      organization: values.team || [],
+      credentialPool: [withTaskCredentialSource(credential, {
+        username: credential.username,
+        password: isCopy ? '' : PASSWORD_PLACEHOLDER,
+        port: credential.port || '443',
+        ssl: credential.ssl,
+      })],
+      instUuid: values.instances?.[0]?.inst_uuid,
+    };
+  };
 
   useEffect(() => {
     const initForm = async () => {

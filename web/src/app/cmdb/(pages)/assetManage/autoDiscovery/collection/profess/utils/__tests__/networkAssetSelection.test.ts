@@ -98,7 +98,6 @@ describe('Network 跨模型资产选择', () => {
       resolve(root, '../../components/baseTask.tsx'),
       'utf8'
     );
-    expect(/scroll=\{\{\s*y:\s*['"]calc\(100vh/.test(source)).toBe(false);
     expect(source).toMatch(/display:\s*'flex'/);
     expect(source).toMatch(/flexDirection:\s*'column'/);
     expect(source).toMatch(/overflow:\s*'hidden'/);

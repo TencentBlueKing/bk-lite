@@ -27,7 +27,7 @@ import { useTranslation } from '@/utils/i18n';
 
 type ErrorTabState = CatalogStateKind | 'ready';
 
-const LOCATION_LABEL: Record<ApmErrorLocation, string> = {
+const locationFallback: Record<ApmErrorLocation, string> = {
   entry: '入口',
   downstream: '调下游',
   internal: '内部',
@@ -81,7 +81,7 @@ export default function ServiceErrorTab({
       render: (value: ApmErrorLocation) => (
         <StatusPill
           tone={LOCATION_TONE[value]}
-          label={t(`apm.serviceDetail.location.${value}`, LOCATION_LABEL[value])}
+          label={t(`apm.serviceDetail.location.${value}`, locationFallback[value])}
         />
       ),
     },

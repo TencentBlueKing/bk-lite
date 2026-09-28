@@ -27,7 +27,8 @@ def test_unexpected_failure_is_sanitized_and_import_not_replayed(transfer_owner,
     with caplog.at_level(logging.ERROR, logger="cmdb"):
         TransferExecution.run(task.pk, files=Mock())
     task = TransferService.get(transfer_owner, task.pk)
-    assert task.status == "interrupted" and task.holds_slot
+    assert task.status == "failed" and not task.holds_slot
+    assert not task.summary["_failure"]["result_uncertain"]
     records = [record for record in caplog.records if "cmdb_transfer_failed" in record.msg]
     assert len(records) == 1
     assert records[0].args[0] == str(task.pk)

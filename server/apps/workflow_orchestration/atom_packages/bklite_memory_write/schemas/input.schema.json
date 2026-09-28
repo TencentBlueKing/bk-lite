@@ -1,0 +1,40 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "memory_space_id": {
+      "type": "integer",
+      "title": "记忆空间",
+      "x-widget": "select",
+      "x-binding": "literal-only"
+    },
+    "content": {
+      "type": "string",
+      "title": "记忆内容",
+      "minLength": 1,
+      "maxLength": 50000,
+      "x-widget": "textarea"
+    },
+    "title": {
+      "type": "string",
+      "title": "记忆标题",
+      "maxLength": 255
+    },
+    "model_id": {
+      "type": "integer",
+      "title": "处理模型",
+      "x-widget": "select",
+      "x-binding": "literal-only"
+    },
+    "write_batch_size": {
+      "type": "integer",
+      "title": "分批大小",
+      "minimum": 1,
+      "maximum": 500,
+      "default": 30,
+      "x-widget": "number",
+      "x-binding": "literal-only"
+    }
+  },
+  "required": ["memory_space_id", "content", "model_id"]
+}

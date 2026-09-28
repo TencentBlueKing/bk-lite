@@ -26,7 +26,7 @@ def _render(response):
 
 
 @pytest.mark.django_db
-def test_get_channel_list_merges_opspilot_and_excludes_plain_nats(authenticated_user):
+def test_get_channel_list_merges_managed_workflow_channels_and_excludes_plain_nats(authenticated_user):
     authenticated_user.is_superuser = True
     authenticated_user.save(update_fields=["is_superuser"])
     Channel.objects.create(name="邮件A", channel_type="email", config={}, description="", team=[1])
@@ -72,9 +72,13 @@ def test_get_channel_list_merges_opspilot_and_excludes_plain_nats(authenticated_
     request.COOKIES["current_team"] = "1"
 
     opspilot = [{"id": 99, "name": "BotA - NATS触发", "team": [2], "bot_id": 12, "node_id": "nats_entry"}]
+    orchestration = [{"id": 100, "name": "主机巡检 - 告警入口", "team": [1], "workflow_id": 8, "node_key": "nats_alert"}]
     with patch(
         "apps.alerts.views.system_setting.SystemMgmtUtils.search_opspilot_nats_channels",
         return_value=opspilot,
+    ), patch(
+        "apps.alerts.views.system_setting.SystemMgmtUtils.search_workflow_orchestration_nats_channels",
+        return_value=orchestration,
     ):
         response = SystemSettingModelViewSet.as_view({"get": "get_channel_list"})(request)
 
@@ -84,6 +88,7 @@ def test_get_channel_list_merges_opspilot_and_excludes_plain_nats(authenticated_
     assert not any("外组织邮件" in item["name"] for item in data)
     # opspilot nats 通道并入（id=99, channel_type=nats）
     assert any(item["id"] == 99 and item["channel_type"] == "nats" and item["team"] == [2] for item in data)
+    assert any(item["id"] == 100 and item["channel_type"] == "nats" and item["team"] == [1] for item in data)
     # 普通 nats（内部直推）被排除
     assert not any("内部直推" in item["name"] for item in data)
     wechat = next(item for item in data if "企微应用" in item["name"])

@@ -1,8 +1,6 @@
 VoiceGateway Mitel SNMP:
   name: Mitel (Telegraf)
-  desc: SNMP monitoring template for Mitel MiVoice 5000. It reports CPU utilization,
-    memory utilization, optional total free memory, per-port inbound traffic rate,
-    per-port outbound traffic rate, and system uptime
+  desc: "SNMP monitoring template for Mitel voice gateway. It reports uptime, CPU utilization, memory utilization, and interface traffic, for MiVoice 5000 (enterprise PEN 2021)."
 monitor_object:
   VoiceGateway: VoiceGateway
 monitor_object_type:

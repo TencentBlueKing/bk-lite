@@ -47,7 +47,7 @@ class ApmSpanViewSet(viewsets.ViewSet):
         organization_ids = visible_organization_ids(request)
         if not organization_ids:
             return Response({"items": [], "next_cursor": None})
-        serializer = SpanSearchSerializer(data=request.query_params)
+        serializer = SpanSearchSerializer(data=request.query_params, context={"request": request})
         if not serializer.is_valid():
             return Response(
                 {"code": "invalid_query", "detail": serializer.errors},

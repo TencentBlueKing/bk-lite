@@ -1,6 +1,65 @@
 # CMDB 异步导入导出实施测试记录
 
-日期：2026-09-21；最近回归：2026-09-22。对应 [设计与验收矩阵](./spec.md)。
+日期：2026-09-21；最近回归：2026-09-28。对应 [设计与验收矩阵](./spec.md)。
+
+## 2026-09-28：异常直接失败与连续提交
+
+已按用户确认方案实施。本次未修改数据库模型或迁移，不变更桶、队列、Worker 部署方式。
+
+- 异常直接显示失败、安全原因、失败阶段、任务编号；完整 traceback 由执行边界统一脱敏记录。
+- 本人最多 5 个排队/运行任务，已停止执行的历史另保留 5 条/7 天；提交后不立即禁用按钮，也不把列表截断成 5 条。
+- 普通异常回栈释放执行名额；watchdog 失联先失败并保护旧执行，仍允许提交。
+  同模型导入按提交顺序执行，全局并发仍为 2。迟到返回不能覆盖失败或发布产物，但可解除本执行占用。
+- 保留已确认数量及可能部分写入提示，不自动回滚/重跑；未知零值显示“未确认”。
+  错误报告上传失败时保留导入统计，切换阶段不再重置已处理条数。
+- 旧 interrupted 记录对外显示 failed，仍占名额时即使过期也可见，不能删除或重试；
+  管理员确认停止后可沿用 reconcile_transfer 解除占用，解除后仍保留结果不确定性。
+- 修复既有同步导入测试缺少 exist_items 的替身；关联约束测试隔离端点读取，保留 ID→UUID 的真实转换。
+  原先排除的 5 条关系测试纳入本次完整回归。
+
+| 验证 | 本次结果 |
+|---|---|
+| 后端任务、导入导出及启动约束相关回归 | **144 passed**，无 deselected，8.64 秒 |
+| 本次涉及的 5 个后端模块覆盖率 | **91%**；任务服务 95%、执行 89%、导入 88%、HTTP 90%、管理命令 95% |
+| 前端抽屉、连续提交、轮询、导出提交及文件代理 | **10 passed** |
+| pnpm type-check | 退出 0 |
+| 改动文件定向 ESLint、Black/isort/Flake8、git diff --check | 通过 |
+| 全仓 pnpm lint | 31 errors / 90 warnings；错误位于 APM、日志、监控、系统管理等非本次文件，未扩大修改范围 |
+
+后端命令（server 目录）：
+
+```sh
+DB_ENGINE=sqlite DB_NAME=:memory: SECRET_KEY=cursor-cloud-dev ENABLE_CELERY=true \
+COVERAGE_FILE=/tmp/cmdb-transfer-coverage .venv/bin/python -m pytest \
+  apps/cmdb/tests/test_transfer*.py \
+  apps/cmdb/tests/test_instance_export_service.py \
+  apps/cmdb/tests/test_export_helpers.py \
+  apps/cmdb/tests/test_instance_service_import_export.py \
+  apps/core/tests/test_release_startup_service.py \
+  -o addopts='' --nomigrations -q \
+  --cov=apps.cmdb.services.transfer_service \
+  --cov=apps.cmdb.services.transfer_execution \
+  --cov=apps.cmdb.services.transfer_import \
+  --cov=apps.cmdb.views.transfer_task \
+  --cov=apps.cmdb.management.commands.reconcile_transfer --cov-report=term-missing
+```
+
+前端命令（web 目录）：
+
+```sh
+pnpm exec vitest run src/app/cmdb/components/transfer/__tests__ \
+  src/app/cmdb/hooks/__tests__/useTransferTasks.test.tsx \
+  src/utils/__tests__/transferProxyTimeout.test.ts
+pnpm type-check
+```
+
+本地证据：`/tmp/cmdb-transfer-covered-results.log`、`/tmp/cmdb-transfer-final-frontend.log`、
+`/tmp/cmdb-queue-typecheck.log`、`/tmp/cmdb-transfer-eslint.log`、`/tmp/cmdb-transfer-lint.log`。
+本次为真实 ORM / 工作簿 / HTTP + 外部依赖替身验证；未连接真实生产图库、Broker 或 MinIO，
+SQLite 不证明 PostgreSQL 行锁竞争。上线需更新前后端并重启 API 和现有 Celery Worker，
+无需本次新增迁移；本次未操作或批量解锁现存业务任务。
+
+以下为 2026-09-21～22 初版实施归档；历史配额和中断语义以本节及当前设计为准。
 
 ## 实施范围
 

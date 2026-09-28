@@ -21,8 +21,13 @@ def test_build_channel_params_one_per_channel(_mt, _mc):
     params = build_channel_params(["u1", "u2"], channels, alerts=[], object_id="ALERT-1")
     assert isinstance(params, list) and len(params) == 2
     assert params[0] == {
-        "username_list": ["u1", "u2"], "channel_type": "wechat", "channel_id": 7,
-        "title": "t", "content": "c", "object_id": "ALERT-1", "notify_action_object": "alert",
+        "username_list": ["u1", "u2"],
+        "channel_type": "wechat",
+        "channel_id": 7,
+        "title": "t",
+        "content": "c",
+        "object_id": "ALERT-1",
+        "notify_action_object": "alert",
     }
     assert params[1]["channel_type"] == "sms" and params[1]["channel_id"] == 9
 
@@ -35,8 +40,8 @@ def test_build_channel_params_empty_when_no_recipients_or_channels():
 @pytest.mark.django_db
 @mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_content", return_value="正文")
 @mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_title", return_value="标题")
-def test_build_channel_params_nats_builds_dict_content(_mt, _mc):
-    """opspilot 托管 NATS 通道：content 构造为 dict{message,team,user_ids}，team 取单一告警组织。"""
+def test_build_channel_params_nats_builds_retry_stable_event_content(_mt, _mc):
+    """托管 NATS 通道在入队前构造带幂等标识的事件内容。"""
     from apps.alerts.models.models import Alert
 
     alert = Alert(alert_id="ALERT-1", level="0", title="t", content="c", fingerprint="fp", team=[2])
@@ -48,7 +53,14 @@ def test_build_channel_params_nats_builds_dict_content(_mt, _mc):
 
     nats = next(p for p in params if p["channel_type"] == "nats")
     assert nats["title"] == ""
-    assert nats["content"] == {"message": "正文", "team": 2, "user_ids": ["alice", "bob"]}
+    assert nats["content"]["message"] == "正文"
+    assert nats["content"]["team"] == 2
+    assert nats["content"]["user_ids"] == ["alice", "bob"]
+    assert nats["content"]["event_id"].startswith("alert-notification:")
+    assert nats["content"]["occurred_at"]
+    assert nats["content"]["producer"] == "alerts"
+    assert nats["content"]["object_id"] == "ALERT-1"
+    assert nats["content"]["scene"] == "assignment"
     assert nats["object_id"] == "ALERT-1"
     email = next(p for p in params if p["channel_type"] == "email")
     assert email["content"] == "正文"
@@ -83,8 +95,17 @@ def test_enqueue_notifications_empty_is_noop(mock_delay):
 def test_enqueue_notifications_persists_outbox_in_atomic_block(mock_delay, django_capture_on_commit_callbacks):
     from apps.alerts.models import AlertOutbox
 
-    params = [{"username_list": ["u1"], "channel_type": "email", "channel_id": 1,
-               "title": "t", "content": "c", "object_id": "A", "notify_action_object": "alert"}]
+    params = [
+        {
+            "username_list": ["u1"],
+            "channel_type": "email",
+            "channel_id": 1,
+            "title": "t",
+            "content": "c",
+            "object_id": "A",
+            "notify_action_object": "alert",
+        }
+    ]
     with django_capture_on_commit_callbacks(execute=True):
         assert enqueue_notifications(params) is True
     record = AlertOutbox.objects.get()

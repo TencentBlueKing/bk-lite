@@ -1,9 +1,6 @@
 Switch Westermo SNMP:
   name: Westermo (Telegraf)
-  desc: SNMP monitoring template for Westermo WeOS industrial switches (WESTERMO-WEOS-MIB,
-    PEN 16177, WeOS tree 1.3.6.1.4.1.16177.2). It reports 1/5/15-minute CPU load,
-    available memory, and interface traffic. Chassis temperature, fan, and PSU are
-    N/A because WeOS has no private chassis gauges for them.
+  desc: "SNMP monitoring template for Westermo switch. It reports uptime, CPU utilization, and interface traffic (enterprise PEN 16177)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

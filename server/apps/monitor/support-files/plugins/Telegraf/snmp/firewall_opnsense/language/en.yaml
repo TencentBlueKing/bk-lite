@@ -1,7 +1,6 @@
 Firewall OPNsense SNMP:
   name: OPNsense (Telegraf)
-  desc: SNMP monitoring template for OPNsense firewall. It reports system uptime,
-    CPU utilization, interface speed, and other key metrics
+  desc: "SNMP monitoring template for OPNsense firewall. It reports uptime, CPU utilization, sessions/connections, and interface traffic (enterprise PEN 12325)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:

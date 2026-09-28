@@ -606,6 +606,7 @@ class CollectModelSerializer(AuthSerializer):
             credential["password"] = legacy_password
         allowed_fields = {
             "credential_id",
+            "credential_version",
             "credential_source",
             "username",
             "password",
@@ -727,6 +728,46 @@ class CollectModelSerializer(AuthSerializer):
             raise serializers.ValidationError({"credential": errors})
         attrs["credential"] = pool
 
+    def _validate_enterprise_platform_connection(self, attrs, model_id):
+        pool = CollectCredentialPoolService.normalize_pool(self._get_attr_or_instance_value(attrs, "credential"))
+        if len(pool) != 1:
+            raise serializers.ValidationError({"credential": "此插件仅支持一组连接凭据"})
+        item = pool[0]
+        errors = {}
+        if item.get("credential_source") != "vault":
+            for field, alias in (("username", "accessKey"), ("password", "accessSecret")):
+                if not str(item.get(field) or item.get(alias) or "").strip():
+                    errors[field] = "请填写认证信息"
+            if model_id == "azure" and not str(item.get("tenant_id") or "").strip():
+                errors["tenant_id"] = "请输入 Azure 租户 ID"
+        if model_id == "azure":
+            if not str(item.get("subscription_id") or "").strip():
+                errors["subscription_id"] = "请输入 Azure 订阅 ID"
+            # Azure 使用固定的 OAuth/ARM HTTPS 端点，旧通用表单字段不再保存。
+            for field in ("port", "scheme", "verify_tls"):
+                item.pop(field, None)
+        else:
+            if item.get("port") is not None:
+                try:
+                    port = int(item["port"])
+                except (TypeError, ValueError):
+                    port = 0
+                if not 1 <= port <= 65535:
+                    errors["port"] = "端口必须在 1 到 65535 之间"
+                else:
+                    item["port"] = port
+            if item.get("scheme", "https") not in {"http", "https"}:
+                errors["scheme"] = "仅支持 HTTP 或 HTTPS"
+            if "verify_tls" in item and not isinstance(item["verify_tls"], bool):
+                errors["verify_tls"] = "证书校验开关必须为布尔值"
+            if model_id == "smartx" and item.get("verify_tls") is False:
+                errors["verify_tls"] = "SmartX 必须启用证书校验"
+            if model_id == "manageone" and item.get("api_version", "8.2.0") != "8.2.0":
+                errors["api_version"] = "当前仅支持 ManageOne 8.2.0"
+        if errors:
+            raise serializers.ValidationError({"credential": errors})
+        attrs["credential"] = pool
+
     def _validate_ssl_cer_task(self, attrs):
         if self._get_attr_or_instance_value(attrs, "ip_range"):
             raise serializers.ValidationError({"ip_range": "SSL 证书任务不支持 IP 范围"})
@@ -802,6 +843,9 @@ class CollectModelSerializer(AuthSerializer):
             self._validate_hwcloud_credential(attrs)
         elif model_id in {"fusioninsight", "storage", "sangforhci"}:
             self._validate_platform_api_credential(attrs)
+
+        if model_id in {"openstack", "smartx", "manageone", "fusioncompute", "nutanixhci", "inspurincloudrail", "azure"}:
+            self._validate_enterprise_platform_connection(attrs, model_id)
 
         if model_id == "vmware_vc":
             target = {

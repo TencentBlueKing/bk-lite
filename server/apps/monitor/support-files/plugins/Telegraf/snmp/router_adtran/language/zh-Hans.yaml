@@ -1,6 +1,6 @@
 Router Adtran SNMP:
   name: Adtran（Telegraf）
-  desc: 面向 Adtran AOS 路由器的 SNMP 监控模板（ADTRAN-AOSCPU 标量 field+.0），可采集 CPU 使用率（含 1/5 分钟）、内存总量/HeapFree 空闲（…1.4.8）及推导利用率、堆大小，以及 IF-MIB 接口流量。
+  desc: 面向 Adtran 路由器的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、接口流量（企业号 PEN 664）。
 monitor_object:
   Router: 路由器
 monitor_object_type:

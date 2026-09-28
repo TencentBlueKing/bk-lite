@@ -1,8 +1,6 @@
 Access Raisecom SNMP:
   name: Access Raisecom SNMP
-  desc: SNMP monitoring template for Raisecom access device. It reports CPU utilization,
-    memory utilization, per-port inbound traffic rate, and other key metrics (IANA
-    PEN 8886).
+  desc: "SNMP monitoring template for Raisecom ROAP/ROS access devices. It reports uptime, one-minute CPU utilization, memory total/available/usage, chassis temperature, fan state, power-supply state, and IF-MIB interface traffic (enterprise PEN 8886)."
 monitor_object:
   Access: Access
 monitor_object_type:
@@ -41,27 +39,30 @@ monitor_object_metric:
         assess sending performance for traffic management and optimization.
     device_cpu_usage:
       name: CPU Usage
-      desc: Overall CPU utilization of the access device, reported directly as a percentage
-        by a private scalar. Sustained high usage indicates OLT control-plane or management-plane
+      desc: One-minute total CPU busy percentage of the Raisecom access device
+        (raisecomTotalCPUUtilization, index oneMin). Values above 100 are scaled
+        by 1/100. Sustained high usage indicates OLT control-plane or management-plane
         pressure.
     device_memory_total:
       name: Memory Total
-      desc: Total physical memory capacity reported by the access device in bytes.
-        This metric can be combined with free memory to derive overall memory utilization.
+      desc: Total physical memory capacity of the Raisecom access device
+        (raisecomMemoryTotal), reported in bytes. Combined with available memory
+        it determines overall memory utilization.
     device_memory_free:
       name: Memory Free
-      desc: Available physical memory currently reported by the access device in bytes.
-        Persistently decreasing free memory can indicate pressure from control services
-        or service tables.
+      desc: Available physical memory of the Raisecom access device
+        (raisecomMemoryAvailable), reported in bytes. Persistently decreasing
+        free memory can indicate pressure from control services or service tables.
     device_memory_usage:
       name: Memory Usage
-      desc: System memory utilization of the access device, reported directly as a
-        percentage by a private scalar. Sustained high memory can indicate forwarding
-        table, ONU management table, or control-service pressure.
+      desc: System memory utilization of the Raisecom access device, computed as
+        (total - available) / total * 100. Sustained high memory can indicate
+        forwarding table, ONU management table, or control-service pressure.
     device_temperature_celsius:
-      name: System Temperature
-      desc: System temperature of the access device in degrees Celsius. Persistently
-        high values may indicate cooling problems, high ambient temperature, or excessive
+      name: Chassis Temperature
+      desc: Chassis temperature of the Raisecom access device
+        (raisecomTemperatureValue) in degrees Celsius. Persistently high values
+        may indicate cooling problems, high ambient temperature, or excessive
         device load.
     device_card_temperature_level:
       name: Card Temperature Level

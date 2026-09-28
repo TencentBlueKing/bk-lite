@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_sixnet",
   "plugin": "Switch Sixnet SNMP",
-  "plugin_desc": "Sixnet SLX industrial Ethernet switch SNMP collection (IANA PEN 20540). Interface traffic is supplied by the shared Switch SNMP IF-MIB floor. Proven private device-health objects are P1/P2 power-input status and OK alarm-relay status (off/on/unknown). Optional serial number and firmware revision are collected as instance tags when the device returns them. CPU and memory utilization are not collected because no private CPU or memory utilization scalar is published. Supported brands/models — Sixnet SLX/SL SlimLine industrial Ethernet switches.",
+  "plugin_desc": "SNMP monitoring template for Sixnet switch. It reports uptime and interface traffic, for SLX/SL SlimLine (enterprise PEN 20540).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_sixnet'}) by (instance_id)",
   "name": "Switch",

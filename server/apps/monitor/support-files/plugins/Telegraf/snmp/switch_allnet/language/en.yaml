@@ -1,7 +1,6 @@
 Switch ALLNET SNMP:
   name: ALLNET (Telegraf)
-  desc: SNMP monitoring template for ALLNET switch. It reports system uptime, interface
-    speed, inbound error packets, and other key metrics
+  desc: SNMP monitoring template for ALLNET switch. It reports uptime and interface traffic (based on standard MIBs).
 monitor_object:
   Switch: Switch
 monitor_object_type:

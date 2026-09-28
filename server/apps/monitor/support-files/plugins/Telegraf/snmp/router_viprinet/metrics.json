@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_viprinet",
   "plugin": "Router Viprinet SNMP",
-  "plugin_desc": "Viprinet 多 WAN 绑定/SD-WAN 路由器专用 SNMP 采集模板（VIPRINET-MIB，企业号 35424）。除标准 IF-MIB 64 位 HC 接口流量外，采集 vpnRouterHealth 健康树：内存仅上报已用量（KB，换算为字节，MIB 无总量/空闲/使用率）、系统温度（℃，另采集 CPU 温度）、电源失败标志（归一为 1=正常/2=异常）、风扇状态表（及转速），以及 CPU 负载均值（OCTET STRING，解析为无量纲负载，不是百分比）。适用品牌型号——Viprinet 多 WAN 绑定路由器（Multichannel VPN Router 系列，企业号 35424）。",
+  "plugin_desc": "SNMP monitoring template for Viprinet router. It reports uptime, CPU utilization, memory used, temperature, fan, power supply status, and interface traffic (enterprise PEN 35424).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_viprinet'}) by (instance_id)",
   "name": "Router",

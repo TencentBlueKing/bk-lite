@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_redline",
   "plugin": "Transmission Redline SNMP",
-  "plugin_desc": "Redline AN80i broadband wireless transmission SNMP child template for devices under Redline PEN 10728. Interface traffic is supplied by the shared Transmission SNMP IF-MIB floor. Proven private radio objects are the AN80i average SINADR scalar (an80iIfAvrSinAdr) mapped as sinadr, PMP downlink RSSI (an80iIfPmpLinkDLRssi, walked from an80iIfPmpLinkId) mapped as dl_rssi, and optional PMP uplink RSSI (an80iIfPmpLinkULRssi) mapped as ul_rssi. CPU, memory, temperature, fan and power-supply health are not published as stable shared objects, so they are not collected. Supported brands/models — Redline AN80i PTP and PMP broadband wireless units.",
+  "plugin_desc": "SNMP monitoring template for Redline transmission device. It reports uptime and interface traffic, for AN80i PTP and PMP (enterprise PEN 10728).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_redline'}) by (instance_id)",
   "name": "Transmission",

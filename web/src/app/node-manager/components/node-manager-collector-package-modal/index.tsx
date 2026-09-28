@@ -292,7 +292,7 @@ const NodeManagerCollectorPackageModal = forwardRef<
                   />
                 </Form.Item>
                 <Form.Item
-                  label={t('node-manager.cloudregion.Configuration.cpuArchitecture')}
+                  label={t('node-manager.cloudregion.node.cpuArchitecture')}
                   name="cpu_architecture"
                   rules={[{ required: true, message: t('common.selectMsg') }]}
                 >
@@ -302,17 +302,20 @@ const NodeManagerCollectorPackageModal = forwardRef<
                     placeholder={t('common.selectMsg')}
                   />
                 </Form.Item>
-                <Form.Item label={t('common.desc')} name="description">
+                <Form.Item
+                  label={t('node-manager.cloudregion.Configuration.description')}
+                  name="description"
+                >
                   <TextArea rows={4} placeholder={t('common.inputMsg')} />
                 </Form.Item>
                 <Form.Item
-                  label={t('node-manager.packetManage.executablePath')}
+                  label={t('node-manager.collector.executeFilePath')}
                   name="executable_path"
                 >
                   <Input placeholder={t('common.inputMsg')} />
                 </Form.Item>
                 <Form.Item
-                  label={t('node-manager.packetManage.executeParameters')}
+                  label={t('node-manager.collector.executeParameters')}
                   name="execute_parameters"
                 >
                   <Input placeholder={t('common.inputMsg')} />

@@ -8,6 +8,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 
 from apps.apm.services.contracts import IngestSnippet, IngestSnippetRequest
+from apps.apm.utils.locale_text import apm_text
 from apps.apm.services.probe_artifacts import (
     DOTNET_AUTO_ARTIFACT_NAME,
     GO_SDK_ARTIFACT_NAME,
@@ -22,10 +23,12 @@ from apps.apm.services.probe_artifacts import (
 
 
 class CloudRegionConfigurationError(ValueError):
-    def __init__(self, code: str, detail: str):
+    def __init__(self, code: str, detail: str, *, message_key: str | None = None):
         super().__init__(detail)
         self.code = code
         self.detail = detail
+        self.message_key = message_key
+        self.message_values = {}
 
 
 @dataclass(frozen=True)
@@ -491,12 +494,14 @@ class DjangoIntegrationConfigurationService:
             except (KeyError, TypeError, ValueError) as exc:
                 raise CloudRegionConfigurationError(
                     "invalid_cloud_region",
-                    "云区域目录返回了无效数据，请联系运维检查 NodeMgmt。",
+                    apm_text(None, "error.invalid_cloud_region"),
+                    message_key="error.invalid_cloud_region",
                 ) from exc
             if region_id < 1 or not region_name:
                 raise CloudRegionConfigurationError(
                     "invalid_cloud_region",
-                    "云区域目录返回了无效数据，请联系运维检查 NodeMgmt。",
+                    apm_text(None, "error.invalid_cloud_region"),
+                    message_key="error.invalid_cloud_region",
                 )
             normalized.append({"id": region_id, "name": region_name})
         return normalized
@@ -513,12 +518,17 @@ class DjangoIntegrationConfigurationService:
         if not organization_ids:
             raise CloudRegionConfigurationError(
                 "cloud_region_receiver_unavailable",
-                "当前组织无法使用所选云区域的被动接收地址。",
+                apm_text(None, "error.cloud_region_receiver_unavailable"),
+                message_key="error.cloud_region_receiver_unavailable",
             )
         regions = self.list_regions(node_mgmt)
         region = next((item for item in regions if item["id"] == cloud_region_id), None)
         if region is None:
-            raise CloudRegionConfigurationError("cloud_region_not_found", "云区域不存在或已不可用。")
+            raise CloudRegionConfigurationError(
+                "cloud_region_not_found",
+                apm_text(None, "error.cloud_region_not_found"),
+                message_key="error.cloud_region_not_found",
+            )
 
         env_config_cache: dict[str, dict] = {}
 
@@ -536,21 +546,24 @@ class DjangoIntegrationConfigurationService:
             if not str(node_server_url or "").strip():
                 raise CloudRegionConfigurationError(
                     "cloud_region_receiver_unavailable",
-                    "所选云区域没有可用的被动接收地址。",
+                    apm_text(None, "error.cloud_region_address_missing"),
+                    message_key="error.cloud_region_address_missing",
                 )
             try:
                 proxy_address = _receiver_host_from_node_server_url(node_server_url)
             except ValueError as exc:
                 raise CloudRegionConfigurationError(
                     "invalid_cloud_region_proxy_address",
-                    "云区域接收地址格式无效，请联系管理员检查配置。",
+                    apm_text(None, "error.cloud_region_address_invalid"),
+                    message_key="error.cloud_region_address_invalid",
                 ) from exc
         try:
             proxy_address = _normalize_proxy_address(proxy_address)
         except ValueError as exc:
             raise CloudRegionConfigurationError(
                 "invalid_cloud_region_proxy_address",
-                "云区域接收地址格式无效，请联系管理员检查配置。",
+                apm_text(None, "error.cloud_region_address_invalid"),
+                message_key="error.cloud_region_address_invalid",
             ) from exc
 
         probe_download_url = ""
@@ -559,7 +572,8 @@ class DjangoIntegrationConfigurationService:
             if not str(node_server_url or "").strip():
                 raise CloudRegionConfigurationError(
                     "probe_download_unavailable",
-                    "所选云区域缺少 NODE_SERVER_URL，无法生成探针下载地址，请联系管理员配置。",
+                    apm_text(None, "error.probe_download_url_missing"),
+                    message_key="error.probe_download_url_missing",
                 )
             try:
                 download_base = _download_base_from_node_server_url(node_server_url)
@@ -567,7 +581,8 @@ class DjangoIntegrationConfigurationService:
             except (ValueError, ProbeArtifactNotFound) as exc:
                 raise CloudRegionConfigurationError(
                     "probe_download_unavailable",
-                    "云区域 NODE_SERVER_URL 格式无效，无法生成探针下载地址，请联系管理员检查配置。",
+                    apm_text(None, "error.probe_download_url_invalid"),
+                    message_key="error.probe_download_url_invalid",
                 ) from exc
 
         return CloudRegionEndpoints(

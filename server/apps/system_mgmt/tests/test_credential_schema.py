@@ -228,12 +228,13 @@ def test_builtin_type_payloads_match_schema():
 def test_new_builtin_instance_shapes_persist_expected_fields():
     from apps.system_mgmt.services.credential_builtin import BUILTIN_TYPES
 
-    platform = validate_instance_fields(
-        type_fields=BUILTIN_TYPES["platform_api"]["fields"],
-        values={"username": "ops", "password": "secret", "port": 443, "verify_tls": "true"},
-        require_secrets=True,
-    )
-    assert platform["verify_tls"] == "true"
+    # 平台凭据只保存认证信息，端口和 TLS 属于采集任务的连接参数。
+    with pytest.raises(SchemaError, match="unknown field ids: port, verify_tls"):
+        validate_instance_fields(
+            type_fields=BUILTIN_TYPES["platform_api"]["fields"],
+            values={"username": "ops", "password": "secret", "port": 443, "verify_tls": True},
+            require_secrets=True,
+        )
     assert validate_instance_fields(
         type_fields=BUILTIN_TYPES["platform_api"]["fields"],
         values={"username": "ops", "password": "secret"},

@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { Collapse, Form } from 'antd';
-import { useConfigRenderer } from './useConfigRenderer';
+import { FormFieldOptionControls, useConfigRenderer } from './useConfigRenderer';
 import { DataMapper } from './useDataMapper';
 import {
   buildWebsiteRequestUrl,
@@ -240,15 +240,7 @@ export const usePluginFromJson = () => {
         onTableDataChange?: (data: any[]) => void;
         form?: any;
         externalOptions?: Record<string, any[]>;
-        optionControls?: Record<
-          string,
-          {
-            loading?: boolean;
-            onRefresh?: () => void;
-            refreshTip?: string;
-            multiple?: boolean;
-          }
-        >;
+        optionControls?: FormFieldOptionControls;
       }
     ) => {
       // 如果当前没有配置或 pluginId 不匹配，返回空配置
@@ -306,6 +298,27 @@ export const usePluginFromJson = () => {
         ? t('monitor.integrations.advancedFilterConfigurationHint')
         : (advancedPanel.hint || t('monitor.integrations.advancedConfigurationHint'));
 
+      const isWindows = Boolean(
+        extra.optionControls?.run_as?.isWindows ||
+        (() => {
+          const nodes = extra.externalOptions?.node_ids_option || [];
+          const selectedNodeIds = (extra.dataSource || []).flatMap((row: any) =>
+            Array.isArray(row.node_ids) ? row.node_ids : (row.node_ids ? [row.node_ids] : [])
+          );
+          return selectedNodeIds.some((id: any) => {
+            const node = nodes.find((n: any) => String(n.id) === String(id) || String(n.value) === String(id));
+            return String(node?.operating_system || '').toLowerCase() === 'windows';
+          });
+        })()
+      );
+      const effectiveOptionControls: FormFieldOptionControls = {
+        ...extra.optionControls,
+        run_as: {
+          ...extra.optionControls?.run_as,
+          isWindows,
+        },
+      };
+
       const renderAdvancedFieldGroups = (fields: any[]) => {
         const hasSections = fields.some((field) => field.section);
         if (!hasSections) {
@@ -314,7 +327,7 @@ export const usePluginFromJson = () => {
               fieldConfig,
               extra.mode,
               extra.externalOptions,
-              extra.optionControls
+              effectiveOptionControls
             )
           );
         }
@@ -351,7 +364,7 @@ export const usePluginFromJson = () => {
                       fieldConfig,
                       extra.mode,
                       extra.externalOptions,
-                      extra.optionControls
+                      effectiveOptionControls
                     )
                   )}
                 </div>
@@ -368,7 +381,7 @@ export const usePluginFromJson = () => {
               fieldConfig,
               extra.mode,
               extra.externalOptions,
-              extra.optionControls
+              effectiveOptionControls
             )
           )}
           {advancedFields.length > 0 && (() => {

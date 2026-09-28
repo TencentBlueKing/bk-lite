@@ -1,6 +1,6 @@
 Switch Zyxel SNMP:
   name: Zyxel（Telegraf）
-  desc: 面向 Zyxel 交换机的 SNMP 监控模板，可采集 ES-COMMON CPU 使用率、内存使用率（NebulaFlex/XGS1930/XS1930），并保留较老 GS 的 CPU 与温度。
+  desc: 面向 Zyxel 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、接口流量（企业号 PEN 890）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:

@@ -1,0 +1,54 @@
+{
+  "zh": [
+    {
+      "title": "首页",
+      "icon": "home",
+      "url": "/workflow-orchestration/home",
+      "name": "workflow"
+    },
+    {
+      "title": "流程",
+      "icon": "jiqiren2",
+      "url": "/workflow-orchestration/workflows",
+      "name": "workflow"
+    },
+    {
+      "title": "执行记录",
+      "icon": "renwu",
+      "url": "/workflow-orchestration/executions",
+      "name": "workflow"
+    },
+    {
+      "title": "编排中心入口",
+      "url": "/workflow-orchestration",
+      "name": "workflow",
+      "isNotMenuItem": true
+    }
+  ],
+  "en": [
+    {
+      "title": "Home",
+      "icon": "home",
+      "url": "/workflow-orchestration/home",
+      "name": "workflow"
+    },
+    {
+      "title": "Workflows",
+      "icon": "jiqiren2",
+      "url": "/workflow-orchestration/workflows",
+      "name": "workflow"
+    },
+    {
+      "title": "Executions",
+      "icon": "renwu",
+      "url": "/workflow-orchestration/executions",
+      "name": "workflow"
+    },
+    {
+      "title": "Workflow Orchestration Entry",
+      "url": "/workflow-orchestration",
+      "name": "workflow",
+      "isNotMenuItem": true
+    }
+  ]
+}

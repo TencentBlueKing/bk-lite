@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from apps.log.models import LogExtractor
 from apps.log.services.log_extractor.semantics import RuleValidationError, format_path, normalize_rule
+from apps.log.utils.locale_text import serializer_text
 
 
 class LogExtractorSerializer(serializers.ModelSerializer):
@@ -49,7 +50,7 @@ class LogExtractorSerializer(serializers.ModelSerializer):
     def validate_name(self, value):
         value = value.strip()
         if not value:
-            raise serializers.ValidationError("名称不能为空")
+            raise serializers.ValidationError(serializer_text(self, "error.extractor_name_required"))
         return value
 
     def validate(self, attrs):
@@ -58,11 +59,11 @@ class LogExtractorSerializer(serializers.ModelSerializer):
             attrs["_collect_type_name"] = str(collect_type_name).strip()
         if self.instance and "collect_instance" in attrs and attrs["collect_instance"] is not None:
             if attrs["collect_instance"].pk != self.instance.collect_instance_id:
-                raise serializers.ValidationError({"collect_instance": "编辑时不能更换采集实例"})
+                raise serializers.ValidationError({"collect_instance": serializer_text(self, "error.extractor_instance_locked")})
         if self.instance and attrs.get("_collect_type_name"):
             current_name = self.instance.collect_type.name if self.instance.collect_type_id else None
             if attrs["_collect_type_name"] != current_name:
-                raise serializers.ValidationError({"collect_type": "编辑时不能更换采集类型"})
+                raise serializers.ValidationError({"collect_type": serializer_text(self, "error.extractor_type_locked")})
         merged = {
             field: attrs.get(field, getattr(self.instance, field, None) if self.instance else None)
             for field in ("extractor_type", "source_field", "target_field", "condition", "config", "delete_source")

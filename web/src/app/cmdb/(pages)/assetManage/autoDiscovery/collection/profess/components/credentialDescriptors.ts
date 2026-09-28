@@ -283,11 +283,20 @@ export const CREDENTIAL_DESCRIPTORS = {
     sangforscp: platformApiDescriptor(443),
     inspurincloudrail: platformApiDescriptor(443),
     zstack: platformApiDescriptor(8080),
-    openstack: platformApiDescriptor(443),
+    openstack: platformApiDescriptor(5000),
     smartx: platformApiDescriptor(443),
     manageone: platformApiDescriptor(443),
-    // Azure：现有 platform_api 可填 client_id/secret；tenant/subscription 后续专用表单补齐
-    azure: platformApiDescriptor(443),
+    // OAuth 身份来自凭据管理；订阅范围由采集任务设置。
+    azure: {
+      ...platformApiDescriptor(443),
+      defaultPort: undefined,
+      credentialKindKey: 'azureOAuth',
+      instructionKey: 'azureOAuth',
+      fields: [
+        { key: 'azureClientId' }, { key: 'azureClientSecret' },
+        { key: 'azureTenantId' }, { key: 'azureSubscriptionId' },
+      ],
+    },
     aws: {
       formKind: 'cloud',
       protocolKey: 'aws',

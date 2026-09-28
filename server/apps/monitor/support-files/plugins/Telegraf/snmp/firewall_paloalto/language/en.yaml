@@ -1,7 +1,6 @@
 Firewall Palo Alto SNMP:
   name: Palo Alto (Telegraf)
-  desc: SNMP monitoring template for Palo Alto firewall. It reports system uptime,
-    CPU utilization, RAM used/total, session-table health, interface speed, and other key metrics
+  desc: "SNMP monitoring template for Palo Alto firewall. It reports uptime, CPU utilization, memory utilization, sessions/connections, and interface traffic (enterprise PEN 25461)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:

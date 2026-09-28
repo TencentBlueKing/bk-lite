@@ -1,7 +1,6 @@
 Loadbalance Citrix NetScaler SNMP:
   name: Citrix NetScaler (Telegraf)
-  desc: SNMP monitoring template for Citrix NetScaler load balancer. It reports system
-    uptime, CPU utilization, memory utilization, and other key metrics
+  desc: "SNMP monitoring template for Citrix NetScaler load balancer. It reports uptime, CPU utilization, memory utilization, sessions/connections, and interface traffic, for NetScaler ADC (enterprise PEN 5951)."
 monitor_object:
   Loadbalance: Load Balance
 monitor_object_type:

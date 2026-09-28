@@ -1,7 +1,6 @@
 Access V-SOL SNMP:
   name: Access V-SOL SNMP
-  desc: SNMP monitoring template for V-SOL access device. It reports CPU utilization,
-    memory utilization, per-port inbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for V-SOL access device. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic (enterprise PEN 37950)."
 monitor_object:
   Access: Access
 monitor_object_type:

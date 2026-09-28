@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import ChartSurface from '@/components/chart-surface';
 import useChartColors from '@/hooks/useChartColors';
+import { useTranslation } from '@/utils/i18n';
 
 const trimTrailingZeros = (value: string) =>
   value.replace(/\.0+$|(?<=\.\d*[1-9])0+$/g, '');
@@ -87,6 +88,7 @@ const LogDonutChart: React.FC<LogDonutChartProps> = ({
   loading = false,
   config,
 }) => {
+  const { t } = useTranslation();
   const colors = useChartColors();
   const containerRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -275,7 +277,7 @@ const LogDonutChart: React.FC<LogDonutChartProps> = ({
               className="mt-0.5 text-[10px]"
               style={{ color: colors.textTertiary }}
             >
-              总数
+              {t('log.analysis.total', '总数')}
             </span>
           </div>
         )}

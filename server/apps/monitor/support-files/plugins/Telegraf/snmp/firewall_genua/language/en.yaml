@@ -1,7 +1,6 @@
 Firewall genua SNMP:
   name: genua (Telegraf)
-  desc: SNMP monitoring template for genua firewall. It reports system uptime, CPU
-    utilization, memory utilization, and other key metrics
+  desc: "SNMP monitoring template for genua firewall. It reports uptime, CPU utilization, memory utilization, sessions/connections, and interface traffic (enterprise PEN 3717)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:

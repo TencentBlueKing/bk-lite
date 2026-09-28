@@ -1,9 +1,6 @@
 Switch RuggedCOM SNMP:
   name: RuggedCOM (Telegraf)
-  desc: SNMP monitoring template for RuggedCOM ROS industrial switches (RUGGEDCOM-SYS-INFO-MIB,
-    PEN 15004). It reports CPU percent, memory total/free/used and utilization, chassis
-    temperature, and normalized power-supply and fan-bank state. Interface traffic
-    comes from the built-in IF-MIB table.
+  desc: "SNMP monitoring template for RuggedCOM switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic (enterprise PEN 15004)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

@@ -3,7 +3,7 @@ CMDB model_config.xlsx 默认 tag 字段回归测试
 
 业务背景:
 - 4 大目标分类(应用主机/中间件/数据库/物理设备)下的内置模型应统一开启 tag 标签属性
-- 176 个新加 tag 模型:attr_type='tag', option 含 mode=free, attr_group='基本信息',
+- 178 个新加 tag 模型:attr_type='tag', option 含 mode=free, attr_group='基本信息',
   is_required=False, editable=True, is_only=False
 - 14 个已有 tag 模型(qcloud_*/azure_* 14 个云资源):保持 attr_type='str',不迁移
 """
@@ -88,16 +88,16 @@ def _list_target_models(sheets: dict) -> list:
 
 @pytest.mark.unit
 def test_target_categories_yield_190_models():
-    """4 大目标分类下应为 190 个内置模型(含存储以太口/FC口，不含已下线 BMC)。"""
+    """4 大目标分类下应为 192 个内置模型(含存储口、Redfish 控制器/电源，不含已下线 BMC)。"""
     sheets = _load_sheets()
     target_models = _list_target_models(sheets)
-    assert len(target_models) == 190, f"4 类目标分类下应为 190 个内置模型,实际 {len(target_models)}"
+    assert len(target_models) == 192, f"4 类目标分类下应为 192 个内置模型,实际 {len(target_models)}"
 
 
 @pytest.mark.unit
 def test_target_models_have_attr_sheets_with_tag_attribute():
     """
-    190 个目标模型在 model_config.xlsx 中都应有 attr-{model_id} sheet,
+    192 个目标模型在 model_config.xlsx 中都应有 attr-{model_id} sheet,
     且含 attr_id='tag' 的属性。
     """
     sheets = _load_sheets()
@@ -125,7 +125,7 @@ def test_target_models_have_attr_sheets_with_tag_attribute():
 @pytest.mark.unit
 def test_new_tag_attributes_use_tag_type_and_free_mode():
     """
-    176 个新加 tag 模型:
+    178 个新加 tag 模型:
     - attr_type='tag'(专用类型,非 str)
     - option 含 mode=free
     - attr_group='基本信息'
@@ -133,7 +133,7 @@ def test_new_tag_attributes_use_tag_type_and_free_mode():
     sheets = _load_sheets()
     target_models = _list_target_models(sheets)
     new_models = [m for m in target_models if m not in PRE_EXISTING_TAG_MODELS]
-    assert len(new_models) == 176, f"应为 176 个新加 tag 模型,实际 {len(new_models)}"
+    assert len(new_models) == 178, f"应为 178 个新加 tag 模型,实际 {len(new_models)}"
 
     wrong_type = []
     wrong_group = []

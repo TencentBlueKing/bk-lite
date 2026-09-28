@@ -1,0 +1,22 @@
+{
+  "key": "bklite_memory_read",
+  "name": "记忆读取",
+  "category": "记忆",
+  "description": "从当前组织可用的 OpsPilot 记忆空间检索相关上下文",
+  "source_type": "PLATFORM",
+  "driver": "WORKER",
+  "trusted_context": true,
+  "handler": "apps.workflow_orchestration.atom_packages.bklite_memory_read.runtime.handler:execute",
+  "input_schema": "schemas/input.schema.json",
+  "output_schema": "schemas/output.schema.json",
+  "ui_schema": "schemas/ui.schema.json",
+  "timeout_seconds": 120,
+  "retry_count": 0,
+  "retry_delay_seconds": 5,
+  "idempotent": true,
+  "idempotency_key": "memory_space_id,query,top_k",
+  "safety_level": "READ_ONLY",
+  "resource_scope": "ORGANIZATION",
+  "required_permissions": [],
+  "error_types": []
+}

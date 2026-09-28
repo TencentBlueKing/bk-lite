@@ -1,7 +1,6 @@
 Wireless Mimosa SNMP:
   name: Mimosa (Telegraf)
-  desc: SNMP monitoring template for Mimosa wireless device. It reports per-port inbound
-    traffic rate, per-port outbound traffic rate, and system uptime (IANA PEN 43356).
+  desc: "SNMP monitoring template for Mimosa wireless device. It reports uptime, temperature, and interface traffic (enterprise PEN 43356)."
 monitor_object:
   Wireless: Wireless
 monitor_object_type:

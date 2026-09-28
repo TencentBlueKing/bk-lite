@@ -2,7 +2,6 @@ from pathlib import Path
 from django.core.files import File
 from apps.node_mgmt.models import PackageVersion
 from apps.node_mgmt.services.package import PackageService
-from apps.node_mgmt.constants.package import PackageConstants
 from apps.core.logger import node_logger as logger
 
 
@@ -34,10 +33,16 @@ def package_version_upload(_type, options):
     )
 
     pk_v = PackageVersion.objects.filter(os=_os, cpu_architecture=cpu_architecture, object=_object, version=version).first()
-    if pk_v:
-        if version != PackageConstants.VERSION_LATEST and not force_upload:
-            logger.warning(f"{_type} 包版本已存在!")
-            return
+    if pk_v and not force_upload:
+        logger.warning(
+            "包版本已存在，跳过上传 package_type=%s os=%s cpu_architecture=%s object=%s version=%s",
+            _type,
+            _os,
+            cpu_architecture,
+            _object,
+            version,
+        )
+        return
 
     # Keep controller packages on disk while JetStream uploads them in chunks.
     # These packages can exceed 1 GB, so materializing the whole file here can

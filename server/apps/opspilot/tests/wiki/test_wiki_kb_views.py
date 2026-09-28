@@ -12,7 +12,7 @@ class TestWikiKBViews:
     def test_create_and_list(self, api_client):
         resp = api_client.post(
             self.BASE,
-            {"name": "kb1", "team": [1], "purpose_md": "# P", "schema_md": "# S"},
+            {"name": "kb1", "team": [1], "introduction": "kb1 简介"},
             format="json",
         )
         assert resp.status_code in (200, 201), resp.content
@@ -23,23 +23,9 @@ class TestWikiKBViews:
         names = [x["name"] for x in data["items"]]
         assert "kb1" in names
 
-    def test_templates_endpoint(self, api_client):
-        resp = api_client.get(self.BASE + "templates/")
-        assert resp.status_code == 200
-        keys = {t["key"] for t in self._data(resp)}
-        assert "ops_qa" in keys and "general" in keys
-        assert "okf_bundle" not in keys
-
-    def test_generate_purpose_schema_endpoint_fallback(self, api_client):
-        resp = api_client.post(
-            self.BASE + "generate_purpose_schema/",
-            {"template_key": "ops_qa", "description": "运维问答库"},
-            format="json",
-        )
-        assert resp.status_code == 200, resp.content
-        data = self._data(resp)
-        assert "运维问答库" in data["purpose_md"]
-        assert "知识类型" in data["schema_md"]
+    def test_templates_and_generate_purpose_schema_are_removed(self, api_client):
+        assert api_client.get(self.BASE + "templates/").status_code == 404
+        assert api_client.post(self.BASE + "generate_purpose_schema/", {"template_key": "ops_qa"}, format="json").status_code == 404
 
     def test_retrieve_update_patch_search_and_delete(self, api_client):
         from apps.opspilot.models import WikiKnowledgeBase
@@ -56,7 +42,7 @@ class TestWikiKBViews:
 
         updated = api_client.put(
             f"{self.BASE}{kb.id}/",
-            {"name": "updated-kb", "team": [1], "purpose_md": "# P2", "schema_md": "# S2"},
+            {"name": "updated-kb", "team": [1], "introduction": "updated intro"},
             format="json",
         )
         assert updated.status_code == 200
@@ -107,12 +93,15 @@ class TestWikiKBViews:
     def test_reindex_action_records_page_and_chunk_index_result(self, api_client, monkeypatch):
         from apps.opspilot.models import BuildRecord, EmbedProvider, WikiKnowledgeBase
         from apps.opspilot.services.wiki.page_service import create_manual_page
+        from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
         from apps.opspilot.viewsets import wiki_kb_view
 
         provider = EmbedProvider.objects.create(name="embed", model="embed-model")
         kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
         kb.embed_provider = provider
         kb.save(update_fields=["embed_provider"])
+        bootstrap_knowledge_base(kb, operator="u")
+        kb.refresh_from_db()
         first = create_manual_page(kb, page_type="concept", title="页面一", body="body one", created_by="u")
         second = create_manual_page(kb, page_type="concept", title="页面二", body="body two", created_by="u")
         archived = create_manual_page(kb, page_type="concept", title="归档页", body="old", created_by="u")

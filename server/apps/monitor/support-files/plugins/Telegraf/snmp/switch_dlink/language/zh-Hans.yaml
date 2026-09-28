@@ -1,6 +1,6 @@
 Switch D-Link SNMP:
   name: D-Link（Telegraf）
-  desc: 面向 D-Link DGS/DXS 企业交换机的 SNMP 监控模板，可采集 CPU 使用率（5 分钟主指标，可选 5 秒/1 分钟）、DRAM 总量/已用（字节）及厂商直报的利用率。
+  desc: 面向 D-Link 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、接口流量（企业号 PEN 171）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:

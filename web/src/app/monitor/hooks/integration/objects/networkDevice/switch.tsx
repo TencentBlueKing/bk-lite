@@ -193,6 +193,7 @@ export const useSwitchConfig = () => {
       'Switch Scalance SNMP': 'snmp_scalance',
       'Switch 3Com SNMP': 'snmp_3com',
       'Switch DASAN SNMP': 'snmp_dasan',
+      'Switch Telco SNMP': 'snmp_telco',
       'Switch Cambium SNMP': 'snmp_cambium_switch',
       'Switch Robustel SNMP': 'snmp_robustel_switch',
       'Switch Raisecom SNMP': 'snmp_raisecom_switch',

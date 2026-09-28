@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_netscaler",
   "plugin": "Loadbalance Citrix NetScaler SNMP",
-  "plugin_desc": "Citrix NetScaler (NetScaler ADC, formerly Citrix ADC) load-balancer SNMP collection (NS-ROOT-MIB, IANA PEN 5951). In addition to standard IF-MIB interface metrics, it collects NetScaler private OIDs for device health: per-CPU utilization (nsCPUusage, averaged in query) and appliance-wide CPU (resCpuUsage), system memory utilization reported directly as a percentage (resMemUsage), and current client connections (tcpCurClientConn), with established-only client connections (tcpCurClientConnEstablished) as a separate field. Temperature, fan and power sensors live in nsSysHealthTable keyed by sensor name; telegraf inputs.snmp cannot filter those mixed rows, so fan/power/temperature are N/A. Supported brands/models — Citrix / NetScaler ADC (MPX / SDX / VPX / CPX, NetScaler OS; enterprise 5951).",
+  "plugin_desc": "SNMP monitoring template for Citrix NetScaler load balancer. It reports uptime, CPU utilization, memory utilization, sessions/connections, and interface traffic, for NetScaler ADC (enterprise PEN 5951).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='loadbalance', collect_type='snmp_netscaler'}) by (instance_id)",
   "name": "Loadbalance",

@@ -26,7 +26,7 @@ class ApmDeploymentEventViewSet(viewsets.GenericViewSet):
 
     @HasPermission("services-View")
     def list(self, request, *args, **kwargs):
-        serializer = ApmDeploymentQuerySerializer(data=request.query_params)
+        serializer = ApmDeploymentQuerySerializer(data=request.query_params, context={"request": request})
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         queryset = self.get_queryset().filter(

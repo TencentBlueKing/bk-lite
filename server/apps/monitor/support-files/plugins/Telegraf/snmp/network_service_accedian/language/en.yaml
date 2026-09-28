@@ -1,8 +1,6 @@
 NetworkService Accedian SNMP:
   name: Accedian (Telegraf)
-  desc: SNMP monitoring template for Accedian network service device. It reports system
-    uptime, CPU utilization (scalar field with instance .0), chassis temperature,
-    per-port inbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Accedian network service device. It reports uptime, CPU utilization, temperature, and interface traffic, for SkyLIGHT, MetroNID / Nano / Plus (enterprise PEN 22420)."
 monitor_object:
   NetworkService: NetworkService
 monitor_object_type:

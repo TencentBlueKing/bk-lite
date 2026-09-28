@@ -1,6 +1,6 @@
 Switch AsterFusion SNMP:
   name: AsterFusion（Telegraf）
-  desc: 面向 AsterFusion AsterNOS 交换机的 SNMP 监控模板。设备健康来自私有 CPU、内存和温度标量；接口流量使用内置 IF-MIB 底座。
+  desc: 面向 AsterFusion 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、接口流量，适用于 AsterNOS（企业号 PEN 56928）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:

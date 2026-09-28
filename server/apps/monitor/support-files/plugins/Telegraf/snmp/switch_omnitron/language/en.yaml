@@ -1,8 +1,6 @@
 Switch Omnitron SNMP:
   name: Switch Omnitron SNMP
-  desc: SNMP monitoring template for Omnitron switch. It reports per-module CPU
-    utilization, per-module memory used, optional flash used, and system uptime
-    (IANA PEN 7342).
+  desc: "SNMP monitoring template for Omnitron switches. It reports uptime, CPU utilization, memory used, flash used, and interface traffic, for iConverter and ION/IONMM (enterprise PEN 7342)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

@@ -10,6 +10,8 @@
 import uuid
 from typing import Any, Dict, List, Optional
 
+from django.utils import timezone
+
 from apps.alerts.common.notify.base import NotifyParamsFormat
 from apps.alerts.notification_templates.binding import load_event_context, render_bound_template, select_template_id
 from apps.core.logger import alert_logger as logger
@@ -29,7 +31,8 @@ def build_channel_params(
 ) -> List[Dict[str, Any]]:
     """构建 sync_notify 入参(list[dict])。username_list 或 channels 为空 → 返回 []。
 
-    opspilot 托管的 NATS 触发通道需要 dict content {message, team, user_ids}
+    托管的 NATS 触发通道需要 dict content，其中 team 是单一组织整数。
+    event_id 在通知意图入队前生成，因此同一 outbox 的投递重试会复用同一幂等键。
     （title/receivers 被忽略），其中 team 是单一组织整数：仅当本次为单条告警且其
     归属组织非空时构造；否则跳过该 NATS 通道（聚合多告警/无组织无单一上下文）。
     其余通道沿用纯文本 content。
@@ -139,6 +142,11 @@ def build_channel_params(
                     "message": channel_content,
                     "team": nats_team,
                     "user_ids": username_list,
+                    "event_id": f"alert-notification:{uuid.uuid4().hex}",
+                    "occurred_at": timezone.now().isoformat(),
+                    "producer": "alerts",
+                    "object_id": object_id,
+                    "scene": scene,
                 },
                 "object_id": object_id,
                 "notify_action_object": notify_action_object,

@@ -8,6 +8,7 @@ from apps.log.models.extractor import TYPE_SCOPED_COLLECT_TYPE_NAMES
 from apps.log.services.log_extractor.publication import mark_dirty
 from apps.log.services.log_extractor.semantics import execute_rules, normalize_rule
 from apps.log.services.search import SearchService
+from apps.log.utils.locale_text import log_text
 
 MAX_RULES_PER_INSTANCE = 20
 MAX_RULES_PER_SCOPE = MAX_RULES_PER_INSTANCE
@@ -58,13 +59,13 @@ def _restore_sample_payload(payload: object) -> object:
     return payload
 
 
-def resolve_type_scope(collect_type_name) -> CollectType:
+def resolve_type_scope(collect_type_name, locale=None) -> CollectType:
     name = str(collect_type_name or "").strip()
     if name not in TYPE_SCOPED_COLLECT_TYPE_NAMES:
-        raise ValidationError({"collect_type": "仅 syslog 与 snmp_trap 支持类型级提取器"})
+        raise ValidationError({"collect_type": log_text(locale, "error.type_extractor_unsupported")})
     collect_type = CollectType.objects.filter(name=name).first()
     if collect_type is None:
-        raise ValidationError({"collect_type": "采集类型不存在"})
+        raise ValidationError({"collect_type": log_text(locale, "error.collect_type_missing")})
     return collect_type
 
 
@@ -78,7 +79,7 @@ def create_rule(instance: CollectInstance, validated_data: dict, user) -> tuple[
             locked_instance = CollectInstance.objects.select_for_update().get(pk=instance.pk)
             count = LogExtractor.objects.filter(collect_instance=locked_instance).count()
             if count >= MAX_RULES_PER_INSTANCE:
-                raise ValidationError({"collect_instance": f"单个采集实例最多 {MAX_RULES_PER_INSTANCE} 条规则"})
+                raise ValidationError({"collect_instance": log_text(getattr(user, "locale", None), "error.instance_rule_limit", count=MAX_RULES_PER_INSTANCE)})
             rule = LogExtractor.objects.create(
                 **validated_data,
                 collect_instance=locked_instance,
@@ -89,7 +90,7 @@ def create_rule(instance: CollectInstance, validated_data: dict, user) -> tuple[
             generation = mark_dirty()
             return rule, generation
     except IntegrityError as exc:
-        raise ValidationError({"name": "实例内名称或顺序重复"}) from exc
+        raise ValidationError({"name": log_text(getattr(user, "locale", None), "error.instance_name_duplicate")}) from exc
 
 
 def create_type_rule(collect_type: CollectType, validated_data: dict, user) -> tuple[LogExtractor, int]:
@@ -98,7 +99,7 @@ def create_type_rule(collect_type: CollectType, validated_data: dict, user) -> t
             locked_type = CollectType.objects.select_for_update().get(pk=collect_type.pk)
             count = LogExtractor.objects.filter(**_type_scope_filter(locked_type)).count()
             if count >= MAX_RULES_PER_SCOPE:
-                raise ValidationError({"collect_type": f"单个采集类型最多 {MAX_RULES_PER_SCOPE} 条规则"})
+                raise ValidationError({"collect_type": log_text(getattr(user, "locale", None), "error.type_rule_limit", count=MAX_RULES_PER_SCOPE)})
             rule = LogExtractor.objects.create(
                 **validated_data,
                 collect_instance=None,
@@ -109,7 +110,7 @@ def create_type_rule(collect_type: CollectType, validated_data: dict, user) -> t
             generation = mark_dirty()
             return rule, generation
     except IntegrityError as exc:
-        raise ValidationError({"name": "类型内名称或顺序重复"}) from exc
+        raise ValidationError({"name": log_text(getattr(user, "locale", None), "error.type_name_duplicate")}) from exc
 
 
 def update_rule(rule: LogExtractor, validated_data: dict, user) -> tuple[LogExtractor, int]:
@@ -126,7 +127,7 @@ def update_rule(rule: LogExtractor, validated_data: dict, user) -> tuple[LogExtr
             generation = mark_dirty()
             return locked, generation
     except IntegrityError as exc:
-        raise ValidationError({"name": "作用域内名称重复"}) from exc
+        raise ValidationError({"name": log_text(getattr(user, "locale", None), "error.scope_name_duplicate")}) from exc
 
 
 def delete_rule(rule: LogExtractor) -> int:
@@ -145,15 +146,15 @@ def delete_rule(rule: LogExtractor) -> int:
         return mark_dirty()
 
 
-def reorder_rules(instance: CollectInstance, ordered_ids: list[int]) -> int:
+def reorder_rules(instance: CollectInstance, ordered_ids: list[int], locale=None) -> int:
     if not isinstance(ordered_ids, list) or len(ordered_ids) != len(set(ordered_ids)):
-        raise ValidationError({"ids": "必须提交无重复的完整规则 ID 列表"})
+        raise ValidationError({"ids": log_text(locale, "error.rule_ids_unique")})
     with transaction.atomic():
         CollectInstance.objects.select_for_update().get(pk=instance.pk)
         rules = list(LogExtractor.objects.select_for_update().filter(collect_instance=instance).order_by("sort_order", "id"))
         rule_map = {rule.id: rule for rule in rules}
         if set(ordered_ids) != set(rule_map):
-            raise ValidationError({"ids": "必须提交当前实例全部且仅全部规则 ID"})
+            raise ValidationError({"ids": log_text(locale, "error.instance_rule_ids_exact")})
         LogExtractor.objects.filter(collect_instance=instance).update(sort_order=F("sort_order") + 1000)
         for order, rule_id in enumerate(ordered_ids):
             rule_map[rule_id].sort_order = order
@@ -161,9 +162,9 @@ def reorder_rules(instance: CollectInstance, ordered_ids: list[int]) -> int:
         return mark_dirty()
 
 
-def reorder_type_rules(collect_type: CollectType, ordered_ids: list[int]) -> int:
+def reorder_type_rules(collect_type: CollectType, ordered_ids: list[int], locale=None) -> int:
     if not isinstance(ordered_ids, list) or len(ordered_ids) != len(set(ordered_ids)):
-        raise ValidationError({"ids": "必须提交无重复的完整规则 ID 列表"})
+        raise ValidationError({"ids": log_text(locale, "error.rule_ids_unique")})
     with transaction.atomic():
         CollectType.objects.select_for_update().get(pk=collect_type.pk)
         rules = list(
@@ -173,7 +174,7 @@ def reorder_type_rules(collect_type: CollectType, ordered_ids: list[int]) -> int
         )
         rule_map = {rule.id: rule for rule in rules}
         if set(ordered_ids) != set(rule_map):
-            raise ValidationError({"ids": "必须提交当前采集类型全部且仅全部规则 ID"})
+            raise ValidationError({"ids": log_text(locale, "error.type_rule_ids_exact")})
         LogExtractor.objects.filter(**_type_scope_filter(collect_type)).update(sort_order=F("sort_order") + 1000)
         for order, rule_id in enumerate(ordered_ids):
             rule_map[rule_id].sort_order = order
@@ -181,15 +182,15 @@ def reorder_type_rules(collect_type: CollectType, ordered_ids: list[int]) -> int
         return mark_dirty()
 
 
-def _preview(saved, event: dict, draft: dict, before_rule_id: int | None, identity: dict) -> dict:
+def _preview(saved, event: dict, draft: dict, before_rule_id: int | None, identity: dict, locale=None) -> dict:
     if not isinstance(event, dict):
-        raise ValidationError({"event": "必须是日志事件对象"})
+        raise ValidationError({"event": log_text(locale, "error.event_object_required")})
     normalized = normalize_rule(draft)
     queryset = saved
     if before_rule_id is not None:
         target = queryset.filter(pk=before_rule_id).first()
         if not target:
-            raise ValidationError({"rule_id": "规则不属于当前作用域"})
+            raise ValidationError({"rule_id": log_text(locale, "error.rule_out_of_scope")})
         queryset = queryset.filter(sort_order__lt=target.sort_order)
     rules = [
         normalize_rule(
@@ -214,14 +215,14 @@ def _preview(saved, event: dict, draft: dict, before_rule_id: int | None, identi
     }
 
 
-def preview_rule(instance: CollectInstance, event: dict, draft: dict, before_rule_id: int | None = None) -> dict:
+def preview_rule(instance: CollectInstance, event: dict, draft: dict, before_rule_id: int | None = None, locale=None) -> dict:
     saved = LogExtractor.objects.filter(collect_instance=instance).order_by("sort_order", "id")
-    return _preview(saved, event, draft, before_rule_id, {"instance_id": instance.pk})
+    return _preview(saved, event, draft, before_rule_id, {"instance_id": instance.pk}, locale)
 
 
-def preview_type_rule(collect_type: CollectType, event: dict, draft: dict, before_rule_id: int | None = None) -> dict:
+def preview_type_rule(collect_type: CollectType, event: dict, draft: dict, before_rule_id: int | None = None, locale=None) -> dict:
     saved = LogExtractor.objects.filter(**_type_scope_filter(collect_type)).order_by("sort_order", "id")
-    return _preview(saved, event, draft, before_rule_id, {"collect_type": collect_type.name})
+    return _preview(saved, event, draft, before_rule_id, {"collect_type": collect_type.name}, locale)
 
 
 def load_samples(instance: CollectInstance, limit) -> object:

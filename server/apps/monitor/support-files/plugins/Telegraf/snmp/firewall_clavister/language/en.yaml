@@ -1,9 +1,6 @@
 Firewall Clavister SNMP:
   name: Clavister (Telegraf)
-  desc: SNMP monitoring template for Clavister NetWall / cOS Core. It reports CPU
-    percent (clvSysCpuLoad), memory percent (clvSysMemUsage), used/free memory in
-    KiB converted to bytes, and active sessions (clvSysConns). Interface traffic
-    uses the built-in IF-MIB catalog; this plugin does not declare ifHC*.
+  desc: "SNMP monitoring template for Clavister firewall. It reports uptime, CPU utilization, memory utilization, sessions/connections, and interface traffic (enterprise PEN 5089)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:

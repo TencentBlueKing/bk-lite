@@ -46,6 +46,7 @@ import TableFieldEditor from './tableFieldEditor';
 import TagCascaderEditor from './tagCascaderEditor';
 import TagCapsuleGroup from '@/components/tag-capsule-group';
 import { getTagDisplayText } from '@/app/cmdb/utils/tag';
+import { HealthStatusTag, formatPowerState } from '@/app/cmdb/utils/health';
 import {
   FileFieldUpload,
   FileFieldDisplay,
@@ -653,6 +654,20 @@ export const getAssetColumns = (config: {
               return renderCollectTaskValue(record[attrId]);
             }
 
+            if (attrId === 'health') {
+              return <HealthStatusTag value={record[attrId]} />;
+            }
+
+            if (attrId === 'power_state') {
+              const text = formatPowerState(record[attrId]);
+              return (
+                <EllipsisWithTooltip
+                  className="whitespace-nowrap overflow-hidden text-ellipsis"
+                  text={text}
+                ></EllipsisWithTooltip>
+              );
+            }
+
             return (
               <EllipsisWithTooltip
                 className="whitespace-nowrap overflow-hidden text-ellipsis"
@@ -953,6 +968,15 @@ export const getFieldItem = (config: {
             {meta.displayText}
           </a>
         );
+      }
+      if (config.fieldItem.attr_id === 'health') {
+        if (config.hideUserAvatar) {
+          return config.value ? String(config.value) : '--';
+        }
+        return <HealthStatusTag value={config.value} />;
+      }
+      if (config.fieldItem.attr_id === 'power_state') {
+        return formatPowerState(config.value);
       }
       return config.value || '--';
     case 'table':

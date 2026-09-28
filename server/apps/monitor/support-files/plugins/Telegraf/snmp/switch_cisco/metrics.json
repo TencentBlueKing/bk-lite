@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_cisco",
   "plugin": "Switch Cisco SNMP",
-  "plugin_desc": "Cisco IOS-XE / Catalyst switch SNMP collection (CISCO-PROCESS-MIB, CISCO-MEMORY-POOL-MIB, CISCO-ENVMON-MIB, CISCO-ENTITY-SENSOR-MIB). Device-health objects include CPU via cpmCPUTotal5minRev, memory pools via ciscoMemoryPoolUsed/Free, chassis temperature and fan/PSU state via CISCO-ENVMON, and optical DDM from entSensorValueTable: dBm(14) rows split by entPhysicalName matching Rx Power / Tx Power, converted with entSensorScale and entSensorPrecision to dBm. Interface counters come from the built-in IF-MIB catalog, not this plugin. Supported brands/models — Cisco Catalyst campus switches (2960/3650/3850/9200/9300/9500, etc.) and IOS/IOS-XE switches; Nexus (NX-OS) partially compatible.",
+  "plugin_desc": "SNMP monitoring template for Cisco switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, optical modules, and interface traffic, for Catalyst campus switches (enterprise PEN 9).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_cisco'}) by (instance_id)",
   "name": "Switch",

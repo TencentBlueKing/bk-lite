@@ -11,6 +11,9 @@ class Notification(models.Model):
     content = models.TextField(verbose_name=_("通知内容"))
     is_read = models.BooleanField(default=False, verbose_name=_("是否已读（已废弃，保留兼容）"), db_index=True)
     source = models.CharField(max_length=100, default="unknown", verbose_name=_("来源"))
+    recipient_usernames = models.JSONField(default=list, verbose_name=_("接收用户"))
+    target_url = models.CharField(max_length=512, blank=True, default="", verbose_name=_("跳转地址"))
+    event_key = models.CharField(max_length=200, blank=True, null=True, unique=True, verbose_name=_("事件唯一键"))
 
     class Meta:
         verbose_name = _("通知消息")

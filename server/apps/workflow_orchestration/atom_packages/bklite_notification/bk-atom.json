@@ -1,0 +1,21 @@
+{
+  "key": "bklite_notification",
+  "name": "对外通知",
+  "category": "通知",
+  "description": "通过系统管理已配置的邮件、企微、飞书、钉钉或 Webhook 渠道投递",
+  "source_type": "PLATFORM",
+  "driver": "WORKER",
+  "trusted_context": true,
+  "handler": "apps.workflow_orchestration.atom_packages.bklite_notification.runtime.handler:execute",
+  "input_schema": "schemas/input.schema.json",
+  "output_schema": "schemas/output.schema.json",
+  "ui_schema": "schemas/ui.schema.json",
+  "timeout_seconds": 900,
+  "retry_count": 1,
+  "retry_delay_seconds": 2,
+  "idempotent": false,
+  "safety_level": "MUTATION",
+  "resource_scope": "ORGANIZATION",
+  "required_permissions": [],
+  "error_types": []
+}

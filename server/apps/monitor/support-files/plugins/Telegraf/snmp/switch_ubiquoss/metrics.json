@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_ubiquoss",
   "plugin": "Switch Ubiquoss SNMP",
-  "plugin_desc": "Ubiquoss switch SNMP collection (IANA PEN 7800). This child template relies on the shared Switch SNMP floor for MIB-II uptime and IF-MIB interface traffic. Proven private device-health objects: control-plane CPU utilization preferring the 1-minute scalar (5-second and 5-minute windows as fallbacks, 0-100 percent) and memory utilization computed as Alloc/Total or 1-Free/Total from Alloc, Free and Total scalars (Alloc is a quantity, not a precomputed percent). An optional fan reading is collected when the leaf is present. Supported brands/models — Ubiquoss switches.",
+  "plugin_desc": "SNMP monitoring template for Ubiquoss switch. It reports uptime, CPU utilization, memory utilization, fan, and interface traffic (enterprise PEN 7800).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_ubiquoss'}) by (instance_id)",
   "name": "Switch",

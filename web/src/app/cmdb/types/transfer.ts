@@ -10,16 +10,24 @@ export interface TransferTask {
   phase: string;
   processed_rows: number;
   total_rows: number | null;
-  summary: Record<string, number | string>;
+  summary: Record<string, number | string | null>;
+  failure?: {
+    stage: string;
+    error_type: string;
+    result_uncertain: boolean;
+    execution_pending: boolean;
+  } | null;
   message: string;
   available_actions: string[];
   created_at: string;
+  finished_at: string | null;
   expires_at: string;
 }
 
 export interface TransferList {
   items: TransferTask[];
   can_submit: boolean;
+  limits?: { active: number };
 }
 
 export interface TransferExportRequest {

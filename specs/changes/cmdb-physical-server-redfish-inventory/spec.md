@@ -2,6 +2,8 @@
 
 Status: approved
 
+存储控制器、电源、整机电源状态/健康，以及磁盘寿命和网卡速率，见 `cmdb-redfish-hardware-p0`。该扩展新增模型和字段，不再受下文「不新增模型」约束。
+
 取代 `cmdb-physical-server-redfish` 里「只采集整机身份、不创建子实例」的范围。
 凭据、HTTPS、唯一 `ComputerSystem`、实例名和任务归属规则保持不变。
 

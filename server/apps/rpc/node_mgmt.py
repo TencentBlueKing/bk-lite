@@ -176,6 +176,26 @@ class NodeMgmt(object):
         )
         return return_data
 
+    def get_authorized_execution_targets_by_ids(self, node_ids, permission_data=None):
+        if not self.is_local_client:
+            logger.warning("RPC local client required: operation=get_authorized_execution_targets_by_ids")
+            raise RpcLocalClientRequiredError("get_authorized_execution_targets_by_ids")
+        return self.client.run(
+            "get_authorized_execution_targets_by_ids",
+            node_ids,
+            permission_data or {},
+        )
+
+    def get_authorized_execution_targets_by_ips(self, ips, permission_data=None):
+        if not self.is_local_client:
+            logger.warning("RPC local client required: operation=get_authorized_execution_targets_by_ips")
+            raise RpcLocalClientRequiredError("get_authorized_execution_targets_by_ips")
+        return self.client.run(
+            "get_authorized_execution_targets_by_ips",
+            ips,
+            permission_data or {},
+        )
+
     def update_child_config_content(self, id, content, env_config=None):
         """
         :param id: 子配置ID
