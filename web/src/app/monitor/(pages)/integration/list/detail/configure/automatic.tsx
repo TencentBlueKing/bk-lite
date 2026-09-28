@@ -88,7 +88,10 @@ import {
 } from './automaticAssetCount';
 import ScriptTrialRunArea from './scriptTrialRunArea';
 import { applyScriptCollectSubmit } from './scriptCollectForm';
-import { persistScriptMetrics } from './scriptMetricPersist';
+import {
+  collectReservedTagViolations,
+  persistScriptMetrics
+} from './scriptMetricPersist';
 import { BusinessMetricItem } from './scriptMetricsParser';
 const { confirm } = Modal;
 
@@ -442,6 +445,16 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     });
     return Array.from(map.values());
   }, [trialMetricsByRow]);
+
+  const reservedScriptTagKeys = useMemo(
+    () => collectReservedTagViolations(selectedScriptMetrics),
+    [selectedScriptMetrics]
+  );
+  const hasReservedScriptTagError = reservedScriptTagKeys.length > 0;
+  const reservedTagRenameText = t(
+    'monitor.integrations.reservedTagRename',
+    '保留字段，请换名'
+  );
 
   const persistSelectedScriptMetrics = async (
     targetPluginId: string | number,
@@ -1329,6 +1342,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (policyTemplatesLoading || confirmLoading || saveInFlightRef.current) {
       return;
     }
+    if (isScriptTemplate && hasReservedScriptTagError) {
+      return;
+    }
     const normalizedForm = normalizePasswordFields(
       form.getFieldsValue(true),
       currentConfig?.form_fields,
@@ -1457,11 +1473,17 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       });
       router.push(`/monitor/integration/list?${nextSearch.toString()}`);
     } catch (error: any) {
-      message.error(
+      const errorText =
         error?.response?.data?.message ||
-          error?.message ||
-          t('common.operationFailed')
-      );
+        error?.message ||
+        t('common.operationFailed');
+      if (
+        typeof errorText === 'string' &&
+        errorText.includes(reservedTagRenameText)
+      ) {
+        return;
+      }
+      message.error(errorText);
     } finally {
       saveInFlightRef.current = false;
       setConfirmLoading(false);
@@ -1766,16 +1788,28 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         />
       )}
       <Form.Item>
-        <Permission requiredPermissions={['Add']}>
-          <Button
-            type="primary"
-            loading={confirmLoading}
-            disabled={confirmLoading || isAnyTrialRunning}
-            onClick={handleSave}
-          >
-            {t('common.confirm')}
-          </Button>
-        </Permission>
+        <div className="flex flex-wrap items-center gap-3">
+          <Permission requiredPermissions={['Add']}>
+            <Button
+              type="primary"
+              loading={confirmLoading}
+              disabled={
+                confirmLoading || isAnyTrialRunning || hasReservedScriptTagError
+              }
+              onClick={handleSave}
+            >
+              {t('common.confirm')}
+            </Button>
+          </Permission>
+          {hasReservedScriptTagError && (
+            <span
+              className="text-[13px] text-[var(--color-fail)]"
+              role="alert"
+            >
+              {reservedTagRenameText}
+            </span>
+          )}
+        </div>
       </Form.Item>
     </Form>
   );
