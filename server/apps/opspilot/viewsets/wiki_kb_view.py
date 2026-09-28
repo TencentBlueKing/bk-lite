@@ -572,9 +572,10 @@ class WikiKnowledgeBaseViewSet(WikiTeamScopeMixin, AuthViewSet):
                 }
                 yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
-        response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
-        response["Cache-Control"] = "no-cache"
+        response = StreamingHttpResponse(event_stream(), content_type="text/event-stream; charset=utf-8")
+        response["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response["X-Accel-Buffering"] = "no"
+        response["Connection"] = "keep-alive"
         return response
 
     @HasPermission("wiki_list-Edit")

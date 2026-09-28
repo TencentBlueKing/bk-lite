@@ -6,13 +6,13 @@
 """
 
 import re
+import unicodedata
 
 from django.db.models import Q
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import KnowledgePage, PageEvidence, WikiKnowledgeBase
 from apps.opspilot.services.llm_context_budget import working_budget_for_model_id
-from apps.opspilot.services.wiki.parsed_media_service import rewrite_media_urls_for_display
 from apps.opspilot.services.wiki.active_generation_query_service import (
     ActiveGenerationReadError,
     assert_read_scope_current,
@@ -23,6 +23,8 @@ from apps.opspilot.services.wiki.active_generation_query_service import (
     relation_queryset,
 )
 from apps.opspilot.services.wiki.generation_query_routing_service import OverviewRouteResult, route_overview_scopes
+from apps.opspilot.services.wiki.material_service import load_parsed_markdown
+from apps.opspilot.services.wiki.parsed_media_service import rewrite_media_urls_for_display
 from apps.opspilot.services.wiki.retrieval_service import hybrid_search as wiki_hybrid_search
 from apps.opspilot.services.wiki.retrieval_service import search as wiki_search
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, estimate_tokens, load_wiki_budget_config, new_query_call_budget
@@ -31,6 +33,8 @@ _RETRIEVAL_MODES = {"keyword", "hybrid", "chunk"}
 _MD_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
 MAX_CONTEXT_IMAGES_PER_HIT = 4
 MATERIAL_IMAGE_WINDOW_CHARS = 400
+# 问「流程图」时页面 snippet 常落在别处；用查询词在来源 md 里再锚一次图片。
+_QUERY_IMAGE_NEEDLE_MIN = 2
 
 # 寒暄/致谢/短确认：不走 Wiki 检索与 overview 路由，避免问候也烧 LLM/知识库。
 _WIKI_SKIP_QUERY_RE = re.compile(
@@ -98,14 +102,40 @@ def _context_prefix(n, hit):
 
 
 def _markdown_images(text):
+    return _markdown_images_with_context(text)
+
+
+def _image_alt_from_context(text, match_start):
+    """Use the nearest non-empty line before an image as alt when Markdown alt is empty."""
+
+    before = (text or "")[:match_start].rstrip()
+    if not before:
+        return ""
+    for line in reversed(before.splitlines()):
+        candidate = line.strip()
+        if not candidate:
+            continue
+        if candidate.startswith("!["):
+            continue
+        candidate = re.sub(r"^#{1,6}\s+", "", candidate).strip()
+        candidate = candidate.strip(":：")
+        if candidate:
+            return candidate[:80]
+    return ""
+
+
+def _markdown_images_with_context(text):
     images = []
     seen = set()
-    for match in _MD_IMAGE_RE.finditer(text or ""):
-        alt = match.group(1) or ""
+    body = text or ""
+    for match in _MD_IMAGE_RE.finditer(body):
+        alt = (match.group(1) or "").strip()
         url = (match.group(2) or "").strip()
         if not url or url in seen:
             continue
         seen.add(url)
+        if not alt:
+            alt = _image_alt_from_context(body, match.start())
         images.append((alt, url))
     return images
 
@@ -123,23 +153,111 @@ def _images_in_window(text, snippet, window=MATERIAL_IMAGE_WINDOW_CHARS):
         return []
     start = max(0, idx - window)
     end = min(len(body), idx + max(len(needle), 1) + window)
-    return _markdown_images(body[start:end])
+    images = []
+    seen = set()
+    for match in _MD_IMAGE_RE.finditer(body, start, end):
+        alt = (match.group(1) or "").strip()
+        url = (match.group(2) or "").strip()
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        if not alt:
+            alt = _image_alt_from_context(body, match.start())
+        images.append((alt, url))
+    return images
+
+
+def _query_image_needles(query):
+    raw = unicodedata.normalize("NFKC", str(query or "")).strip()
+    if not raw:
+        return ()
+    needles = []
+    seen = set()
+
+    def add(value):
+        text = str(value or "").strip()
+        if len(text) < _QUERY_IMAGE_NEEDLE_MIN or text in seen:
+            return
+        seen.add(text)
+        needles.append(text)
+
+    add(raw)
+    # 去常见标点后整句再试一次，便于对齐「9. 堡垒机资源申请流程图:」这类标题。
+    compact = re.sub(r"[\s\-_/|,:：.。、（）()【】\[\]]+", "", raw)
+    add(compact)
+    for part in re.split(r"[\s\-_/|,:：.。、]+", raw):
+        add(part)
+    return tuple(needles)
+
+
+def _images_near_query(text, query, window=MATERIAL_IMAGE_WINDOW_CHARS):
+    body = text or ""
+    if not body:
+        return []
+    collected = []
+    seen = set()
+    for needle in _query_image_needles(query):
+        start_at = 0
+        while True:
+            idx = body.find(needle, start_at)
+            if idx < 0:
+                break
+            start = max(0, idx - window)
+            end = min(len(body), idx + len(needle) + window)
+            for match in _MD_IMAGE_RE.finditer(body, start, end):
+                alt = (match.group(1) or "").strip()
+                url = (match.group(2) or "").strip()
+                if not url or url in seen:
+                    continue
+                seen.add(url)
+                if not alt:
+                    alt = _image_alt_from_context(body, match.start())
+                collected.append((alt, url))
+            start_at = idx + max(len(needle), 1)
+    return collected
+
+
+def _material_source_markdown(material):
+    """文件资料图片在解析 md（wiki/parsed），不在 text_content。"""
+
+    if material is None:
+        return ""
+    parsed = load_parsed_markdown(material) or ""
+    if parsed.strip():
+        return parsed
+    return str(getattr(material, "text_content", "") or "")
 
 
 def _display_image_markdown(alt, url):
     return rewrite_media_urls_for_display(f"![{alt}]({url})")
 
 
-def attach_hit_images(hits):
+def _page_body_images(body, query=""):
+    """Prefer images near the query; fill empty alt from nearby section text."""
+
+    body = body or ""
+    near = _images_near_query(body, query) if query else []
+    all_images = _markdown_images_with_context(body)
+    ordered = []
+    seen = set()
+    for alt, url in near + all_images:
+        if url in seen:
+            continue
+        seen.add(url)
+        ordered.append((alt, url))
+    return ordered
+
+
+def attach_hit_images(hits, query=""):
     page_ids = [hit.get("id") for hit in hits or [] if hit.get("kind") == "page" and hit.get("id")]
     if not page_ids:
         return hits
-    pages = {
-        page.pk: page
-        for page in KnowledgePage.objects.filter(pk__in=page_ids).select_related("current_version")
-    }
+    pages = {page.pk: page for page in KnowledgePage.objects.filter(pk__in=page_ids).select_related("current_version")}
     evidence_by_page = {}
-    for evidence in PageEvidence.objects.filter(page_id__in=page_ids).select_related("material"):
+    for evidence in PageEvidence.objects.filter(page_id__in=page_ids).select_related(
+        "material",
+        "material__current_version",
+    ):
         evidence_by_page.setdefault(evidence.page_id, []).append(evidence)
     for hit in hits:
         if hit.get("kind") != "page":
@@ -147,11 +265,12 @@ def attach_hit_images(hits):
         page = pages.get(hit.get("id"))
         collected = []
         if page is not None and page.current_version is not None:
-            collected.extend(_markdown_images(page.current_version.body or ""))
+            collected.extend(_page_body_images(page.current_version.body or "", query=query))
         snippet = hit.get("snippet") or ""
         for evidence in evidence_by_page.get(hit.get("id"), []):
-            parsed = getattr(evidence.material, "text_content", "") or ""
+            parsed = _material_source_markdown(evidence.material)
             collected.extend(_images_in_window(parsed, snippet))
+            collected.extend(_images_near_query(parsed, query))
         unique = []
         seen = set()
         for alt, url in collected:
@@ -169,38 +288,56 @@ def _image_block(hit):
     images = [item for item in (hit.get("images") or []) if item]
     if not images:
         return ""
-    return "\n附图（可按需用 Markdown 引用）：\n" + "\n".join(images)
+    return "\n附图（回答中请原样输出下列 Markdown 图片，前端可渲染；禁止改写为「无法展示」）：\n" + "\n".join(images)
 
 
-def _context_line(n, hit):
-    return f"{_context_prefix(n, hit)}{hit['snippet']}{_image_block(hit)}"
+def _hit_snippet_for_context(hit):
+    """Snippet 内裸 wiki/media 路径也改写为可展示 URL，避免模型误判图片不可用。"""
+
+    return rewrite_media_urls_for_display(hit.get("snippet") or "")
 
 
-def _truncate_context_line(n, hit, token_budget):
-    prefix = _context_prefix(n, hit)
-    if _estimate_tokens(prefix) > token_budget:
-        return ""
-    snippet = hit.get("snippet") or ""
-    line = f"{prefix}{snippet}{_image_block(hit)}"
-    if _estimate_tokens(line) <= token_budget:
-        return line
-    line = f"{prefix}{snippet}"
-    if _estimate_tokens(line) <= token_budget:
-        return line
-
+def _shrink_snippet_line(prefix, snippet, suffix, token_budget):
     marker = "..."
     low, high = 0, len(snippet)
     best = ""
     while low <= high:
         midpoint = (low + high) // 2
         candidate_text = snippet[:midpoint].rstrip()
-        candidate = f"{prefix}{candidate_text}{marker}" if candidate_text else f"{prefix}{marker}"
+        if candidate_text:
+            candidate = f"{prefix}{candidate_text}{marker}{suffix}"
+        else:
+            candidate = f"{prefix}{marker}{suffix}" if suffix else f"{prefix}{marker}"
         if _estimate_tokens(candidate) <= token_budget:
             best = candidate
             low = midpoint + 1
         else:
             high = midpoint - 1
     return best
+
+
+def _context_line(n, hit):
+    return f"{_context_prefix(n, hit)}{_hit_snippet_for_context(hit)}{_image_block(hit)}"
+
+
+def _truncate_context_line(n, hit, token_budget):
+    prefix = _context_prefix(n, hit)
+    if _estimate_tokens(prefix) > token_budget:
+        return ""
+    snippet = _hit_snippet_for_context(hit)
+    images = _image_block(hit)
+    line = f"{prefix}{snippet}{images}"
+    if _estimate_tokens(line) <= token_budget:
+        return line
+    # 有附图时优先保图、缩正文，避免流程问把图挤掉后模型只能写「无法展示」。
+    if images:
+        kept = _shrink_snippet_line(prefix, snippet, images, token_budget)
+        if kept:
+            return kept
+    line = f"{prefix}{snippet}"
+    if _estimate_tokens(line) <= token_budget:
+        return line
+    return _shrink_snippet_line(prefix, snippet, "", token_budget)
 
 
 def _hit_key(hit):
@@ -546,7 +683,7 @@ def build_context(
 
     hits = _dedupe_hits(hits)
     hits = _select_hits_direct_first(hits, top_k)
-    attach_hit_images(hits)
+    attach_hit_images(hits, query=query)
     remaining_budget = max(effective_budget - route.knowledge_tokens, 0)
     lines, citations, budget = _render_context(hits, token_budget=remaining_budget)
     budget.update(
@@ -579,7 +716,9 @@ def build_context(
 NON_FORCE_WIKI_RULES = """【知识库参考规则｜非强制】
 当前对话已挂载企业知识库。检索结果仅供参考，按下列优先级处理：
 
-1. 若下方「知识库检索结果」与用户问题相关且足以支撑结论：优先依据这些内容回答，并在末尾用 [n] 标注引用；不要把未出现在结果中的信息说成来自知识库。检索结果内的附图可按需原样引用，不要编造未出现的图。
+1. 若下方「知识库检索结果」与用户问题相关且足以支撑结论：优先依据这些内容回答，并在末尾用 [n] 标注引用；不要把未出现在结果中的信息说成来自知识库。
+检索结果中的「附图」是可直接展示的 Markdown 图片：当用户询问流程/流程图/步骤，或附图与问题相关时，必须在回答正文中原样输出这些 `![...](...)` 行；
+禁止改写为「无法展示」「无法直接展示」「图片形式存在」等说法；不要编造未出现的图。
 2. 若检索结果为空，或明显不相关、不足以支撑结论：可以按你的人设做常规回答，或调用可用工具（如查询当前时间等）完成；此时不要伪造知识库引用，也不要声称“根据知识库”。
 3. 常规回答时允许使用通用知识与经验（例如通用的数据库巡检思路、电脑性能优化建议），但涉及本公司特有的地址、账号、流程、联系人、制度条款时：没有知识库依据就不要编造具体值，应说明知识库未提供该公司内部信息，并给出可执行的一般性建议或引导用户补充资料。
 4. 工具可直接解决的问题（如查询当前时间），必须调用工具并给出具体结果；不要因为知识库未收录而拒绝使用工具，也不要只反问用户是否要查询。
@@ -592,7 +731,9 @@ FORCE_WIKI_RULES = """【知识库强制回答规则｜优先级高于常识发�
 当前技能已开启「强制知识库回答」。按下列顺序判断：
 
 1. 纯工具型问题（例如仅查询当前时间/日期，且可用已提供工具直接完成、不依赖企业文档）：必须调用工具作答并给出工具结果；不要因知识库未收录、或下方检索结果不相关而拒答、空回复或只反问。此类问题即使下方有检索结果也视为无关，不要引用、不要伪造成知识库来源。
-2. 对需要给出企业知识/制度/流程/内部事实的问题，只依据下方「知识库检索结果」作答；公司内部的地址、账号、流程、联系人、规范条款等，一律以检索到的内容为准，禁止用常识补编。检索结果内的附图可按需原样引用，不要编造未出现的图。
+2. 对需要给出企业知识/制度/流程/内部事实的问题，只依据下方「知识库检索结果」作答；公司内部的地址、账号、流程、联系人、规范条款等，一律以检索到的内容为准，禁止用常识补编。
+检索结果中的「附图」是可直接展示的 Markdown 图片：当用户询问流程/流程图/步骤，或附图与问题相关时，必须在回答正文中原样输出这些 `![...](...)` 行；
+禁止改写为「无法展示」「无法直接展示」「图片形式存在」等说法；不要编造未出现的图。
 3. 回答末尾必须列出实际依据的来源：用 [n] 标注（n 与结果编号一致）。未使用某条结果则不要列出。第 1 条的工具作答不要列知识库引用。
 4. 若不属于第 1 条，且检索结果为空，或与问题明显不相关、不足以支撑结论，必须明确说明未在知识库中找到依据，使用固定句或等价表述：
 知识库中暂无相关资料,无法回答该问题。

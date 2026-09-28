@@ -134,23 +134,117 @@ def _keyword_explanation(score, terms, *texts):
     }
 
 
-def _dynamic_snippet(body, terms, *, radius=1000):
-    """Extract a retrieval excerpt centered on the earliest matched term.
+_SNIPPET_SECTION_RE = re.compile(r"(?m)^(?:#{1,6}\s+\S.*|\d+\.\s+\S.*)$")
+_SNIPPET_MAX_ANCHORS_PER_TERM = 8
+_SNIPPET_ANCHOR_BUCKET = 48
+_SNIPPET_SECTION_LOOKBACK = 500
 
-    Default window is ~2000 chars so QA fallback / context is usable without a model.
-    """
-    text = body or ""
-    lowered = text.casefold()
-    positions = [lowered.find(term.casefold()) for term in terms if term]
-    positions = [position for position in positions if position >= 0]
-    if not positions:
-        return text[: radius * 2].strip()
-    position = min(positions)
-    start = max(0, position - radius)
-    end = min(len(text), position + radius)
+
+def _snippet_term_weight(term):
+    """Longer query tokens are more specific than CJK bigrams."""
+
+    return max(len(term or ""), 1)
+
+
+def _snippet_window_score(lowered, start, end, terms):
+    window = lowered[start:end]
+    return sum(_snippet_term_weight(term) for term in terms if term and term.casefold() in window)
+
+
+def _snippet_candidate_anchors(lowered, terms):
+    """Collect anchor positions, preferring longer term hits over early bigrams."""
+
+    ranked_terms = sorted({term for term in terms if term}, key=len, reverse=True)
+    anchors = []
+    seen_buckets = set()
+    for term in ranked_terms:
+        needle = term.casefold()
+        count = 0
+        start_at = 0
+        while count < _SNIPPET_MAX_ANCHORS_PER_TERM:
+            idx = lowered.find(needle, start_at)
+            if idx < 0:
+                break
+            bucket = idx // _SNIPPET_ANCHOR_BUCKET
+            if bucket not in seen_buckets:
+                seen_buckets.add(bucket)
+                anchors.append(idx)
+            start_at = idx + max(len(needle), 1)
+            count += 1
+    return anchors
+
+
+def _snap_snippet_start(text, start, *, lookback=_SNIPPET_SECTION_LOOKBACK):
+    """Pull window start back to the nearest heading / numbered item when nearby."""
+
+    if start <= 0:
+        return 0
+    region_start = max(0, start - lookback)
+    region = text[region_start:start]
+    matches = list(_SNIPPET_SECTION_RE.finditer(region))
+    if not matches:
+        return start
+    return region_start + matches[-1].start()
+
+
+def _format_snippet_window(text, start, end):
     prefix = "..." if start else ""
     suffix = "..." if end < len(text) else ""
     return f"{prefix}{text[start:end].strip()}{suffix}"
+
+
+def _dynamic_snippet(body, terms, *, radius=1000):
+    """Extract a retrieval excerpt around the densest query match window.
+
+    Prefer long-token / exact phrase anchors over the earliest CJK bigram (which often
+    sits in titles or metadata tables). Snap the window start to a nearby heading so
+    section context enters the QA prompt. Default window is ~2000 chars.
+    """
+    text = body or ""
+    if not text:
+        return ""
+    clean_terms = [term for term in terms if term]
+    if not clean_terms:
+        return text[: radius * 2].strip()
+
+    lowered = text.casefold()
+    anchors = _snippet_candidate_anchors(lowered, clean_terms)
+    if not anchors:
+        return text[: radius * 2].strip()
+
+    best = None
+    for position in anchors:
+        raw_start = max(0, position - radius)
+        end = min(len(text), position + radius)
+        start = _snap_snippet_start(text, raw_start)
+        if end - start > radius * 2:
+            start = max(0, end - radius * 2)
+            start = _snap_snippet_start(text, start)
+        score = _snippet_window_score(lowered, start, end, clean_terms)
+        # Prefer denser windows; on ties take the earlier one (stable / readable).
+        candidate = (score, -start, start, end)
+        if best is None or candidate > best:
+            best = candidate
+
+    _score, _neg_start, start, end = best
+    return _format_snippet_window(text, start, end)
+
+
+def _best_heading_path(headings, terms):
+    """Pick the heading that overlaps the most specific query terms."""
+
+    best = ""
+    best_score = 0
+    for heading in headings or []:
+        text = str(heading or "").strip()
+        if not text:
+            continue
+        lowered = text.casefold()
+        score = sum(_snippet_term_weight(term) for term in terms if term and term.casefold() in lowered)
+        if score > best_score:
+            best_score = score
+            best = text
+    return best
 
 
 _FALLBACK_PREFIX = "未使用模型生成回答（知识库未配置模型或模型调用失败）。" "以下为相关页面摘录，用于验证检索是否正常：\n\n"
@@ -158,7 +252,11 @@ _FALLBACK_PREFIX = "未使用模型生成回答（知识库未配置模型或模
 
 def _fallback_answer(contexts):
     top = contexts[0]
-    return f"{_FALLBACK_PREFIX}根据《{top['title']}》：\n{top['snippet']}"
+    images = [item for item in (top.get("images") or []) if item]
+    image_block = ""
+    if images:
+        image_block = "\n\n附图：\n" + "\n".join(images)
+    return f"{_FALLBACK_PREFIX}根据《{top['title']}》：\n{top['snippet']}{image_block}"
 
 
 def _body_excerpt_for_entry(entry, loaded_bodies=None):
@@ -276,10 +374,6 @@ def _generation_index_search(scope, terms, *, query, directory_ids, top_k):
                 entry.page_version_id,
             )
             continue
-        heading_path = next(
-            (heading for heading in (entry.headings or []) if any(term.casefold() in str(heading).casefold() for term in terms)),
-            "",
-        )
         results.append(
             {
                 "kind": "page",
@@ -292,7 +386,7 @@ def _generation_index_search(scope, terms, *, query, directory_ids, top_k):
                 "directory_id": entry.directory_id,
                 "directory_key": entry.directory_key,
                 "directory_breadcrumb": list(entry.directory_breadcrumb or []),
-                "heading_path": heading_path,
+                "heading_path": _best_heading_path(entry.headings, terms),
                 "route_confidence": "high" if high_confidence else "low",
                 "explanation": {
                     **_keyword_explanation(score, terms, entry.search_text),
@@ -608,15 +702,32 @@ def _answer_with_llm(query, contexts, llm_model_id, *, max_output_tokens):
         return None
 
 
+def _build_qa_context_block(index, hit):
+    """Build one numbered context block, including displayable image markdown."""
+
+    from apps.opspilot.services.wiki.parsed_media_service import rewrite_media_urls_for_display
+
+    snippet = rewrite_media_urls_for_display(hit.get("snippet") or "")
+    parts = [f"[{index}]\n# {hit.get('title') or ''}\n{snippet}"]
+    images = [item for item in (hit.get("images") or []) if item]
+    if images:
+        parts.append("附图（回答中请原样输出下列 Markdown 图片，前端可渲染；禁止改写为「无法展示」）：")
+        parts.extend(images)
+    return "\n".join(parts)
+
+
 def _build_qa_prompt(query, contexts):
-    ctx_text = "\n\n".join(f"[{i + 1}]\n# {c['title']}\n{c['snippet']}" for i, c in enumerate(contexts))
+    ctx_text = "\n\n".join(_build_qa_context_block(i + 1, c) for i, c in enumerate(contexts))
     return (
         "你是企业知识库助手。只能依据下面提供的知识页面与资料摘要回答问题。\n"
         "规则：\n"
         "1. 优先使用知识页面;回答末尾用 [n] 标注引用(n 与上文 [n] 一致)。\n"
-        "2. 若上下文没有直接支撑问题结论的信息,必须明确回复："
+        "2. 上下文中的「附图」是可直接展示的 Markdown 图片。当用户询问流程/流程图/步骤，"
+        "或附图与问题相关时，必须在回答正文中原样输出这些 `![...](...)` 行；"
+        "禁止改写为「无法展示」「无法直接展示」「图片形式存在」等说法；不要编造未出现的图。\n"
+        "3. 若上下文没有直接支撑问题结论的信息,必须明确回复："
         "知识库中暂无相关资料,无法回答该问题。\n"
-        "3. 禁止借助常识补全、翻译、创作、编造制度条款或操作步骤;"
+        "4. 禁止借助常识补全、翻译、创作、编造制度条款或操作步骤;"
         "禁止把仅共享个别关键词的无关文档当成依据。\n\n"
         f"# 上下文\n{ctx_text}\n\n# 问题\n{query}\n"
     )
@@ -931,7 +1042,13 @@ def stream_answer(
     retrieval_mode=None,
     embed_fn=None,
 ):
-    """Yield SSE-oriented events: meta / delta / done / error."""
+    """Yield SSE-oriented events: status / meta / delta / done / error.
+
+    Emits an early ``status`` frame before retrieval finishes so clients and
+    proxies see the stream start immediately (retrieval + overview can take seconds).
+    """
+    # 先推一帧，避免检索/overview 阻塞期间客户端以为接口是一次性返回。
+    yield {"event": "status", "phase": "retrieving"}
     prepared = _prepare_answer_context(
         knowledge_base,
         query,
@@ -1022,6 +1139,7 @@ def stream_answer(
         "citations": citations,
         "contexts": contexts,
     }
+    yield {"event": "status", "phase": "generating"}
     parts = []
     try:
         for chunk in LLMClientFactory.stream_isolated(

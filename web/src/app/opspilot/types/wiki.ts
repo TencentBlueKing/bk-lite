@@ -1033,6 +1033,11 @@ export interface WikiQaStreamMeta {
   warning?: string;
 }
 
+export interface WikiQaStreamStatus {
+  event: "status";
+  phase?: "retrieving" | "generating" | string;
+}
+
 export interface WikiQaStreamDelta {
   event: "delta";
   text: string;
@@ -1057,12 +1062,14 @@ export interface WikiQaStreamError {
 }
 
 export type WikiQaStreamEvent =
+  | WikiQaStreamStatus
   | WikiQaStreamMeta
   | WikiQaStreamDelta
   | WikiQaStreamDone
   | WikiQaStreamError;
 
 export interface WikiQaStreamHandlers {
+  onStatus?: (status: WikiQaStreamStatus) => void;
   onMeta?: (meta: WikiQaStreamMeta) => void;
   onDelta?: (text: string) => void;
   onDone?: (done: WikiQaStreamDone) => void;

@@ -188,17 +188,26 @@ def _media_proxy_secret() -> bytes:
 
 
 def build_media_proxy_url(locator: str, *, expires_in: int = 7 * 24 * 3600) -> str:
-    """同源代理 URL（经 /api/proxy，img 无需 Bearer）。"""
+    """同源代理 URL（经 /api/proxy，img 无需 Bearer）。
+
+    若配置 WEB_BASE_URL，返回绝对地址，便于嵌入式跨域与 IM 抓取。
+    """
     import hashlib
     import hmac
     import time
     from urllib.parse import quote
 
+    from django.conf import settings
+
     locator = _normalize_media_locator(locator)
     exp = int(time.time()) + int(expires_in)
     payload = f"{locator}:{exp}".encode("utf-8")
     sig = hmac.new(_media_proxy_secret(), payload, hashlib.sha256).hexdigest()
-    return "/api/proxy/opspilot/wiki_mgmt/media/" f"?locator={quote(locator, safe='')}" f"&exp={exp}&sig={sig}"
+    path = "/api/proxy/opspilot/wiki_mgmt/media/" f"?locator={quote(locator, safe='')}" f"&exp={exp}&sig={sig}"
+    base = (getattr(settings, "WEB_BASE_URL", "") or "").rstrip("/")
+    if base:
+        return f"{base}{path}"
+    return path
 
 
 def verify_media_proxy_request(locator: str, exp: str | int | None, sig: str | None) -> bool:

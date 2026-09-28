@@ -52,6 +52,7 @@ import {
   WikiQaStreamError,
   WikiQaStreamHandlers,
   WikiQaStreamMeta,
+  WikiQaStreamStatus,
   WikiSearchHit,
 } from "@/app/opspilot/types/wiki";
 import {
@@ -171,6 +172,10 @@ export const useWikiApi = () => {
 
     const dispatch = (payload: Record<string, unknown>) => {
       const event = String(payload.event || "");
+      if (event === "status") {
+        handlers.onStatus?.(payload as unknown as WikiQaStreamStatus);
+        return;
+      }
       if (event === "meta") {
         handlers.onMeta?.(payload as unknown as WikiQaStreamMeta);
         return;
