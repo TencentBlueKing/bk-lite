@@ -29,6 +29,8 @@ REST_FRAMEWORK = {
         "dashboard_share_invalid_token": "20/minute",
         # Unauthenticated CI sourcemap upload: per source IP, bounds token guessing.
         "rum_sourcemap_ingest": "60/minute",
+        # Collect-detect trial runs: ~2 QPS per organization.
+        "collect_detect_create": "2/second",
     },
 }
 
