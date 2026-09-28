@@ -6,6 +6,8 @@ from django.db import transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.models import MonitorPlugin, MonitorPluginConfigTemplate, MonitorPluginUITemplate
+from apps.monitor.models.monitor_metrics import Metric, MetricGroup
+from apps.monitor.utils.instance_id_keys import resolve_metric_instance_id_keys
 from apps.monitor.utils.plugin_controller import Controller
 
 SCRIPT_COLLECT_TYPE = "script"
@@ -226,6 +228,37 @@ DEFAULT_SCRIPT_UI_TEMPLATE = {
 }
 
 
+SCRIPT_HEALTH_METRICS = [
+    {
+        "name": "bklite_script_up",
+        "display_name": "脚本运行状态",
+        "query": "bklite_script_up{__$labels__}",
+        "unit": "",
+        "data_type": "Number",
+        "description": "脚本采集执行状态（1=正常，0=异常）",
+        "sort_order": 0,
+    },
+    {
+        "name": "bklite_script_duration_seconds",
+        "display_name": "脚本执行耗时",
+        "query": "bklite_script_duration_seconds{__$labels__}",
+        "unit": "s",
+        "data_type": "Number",
+        "description": "脚本单次执行耗时（秒）",
+        "sort_order": 1,
+    },
+    {
+        "name": "bklite_script_exit_code",
+        "display_name": "脚本退出码",
+        "query": "bklite_script_exit_code{__$labels__}",
+        "unit": "",
+        "data_type": "Number",
+        "description": "脚本执行进程退出码（0 表示成功）",
+        "sort_order": 2,
+    },
+]
+
+
 def _child_render_context(context: dict) -> dict:
     """渲染键以 script 为准；仅当 script 为空时把旧字段 command 迁入 script。"""
     render_context = dict(context)
@@ -272,3 +305,39 @@ class CustomScriptPluginService:
                 plugin=plugin,
                 defaults={"content": ui_template},
             )
+
+            metric_group, _ = MetricGroup.objects.get_or_create(
+                monitor_object=monitor_object,
+                monitor_plugin=plugin,
+                name="Base",
+                defaults={
+                    "description": "基础指标",
+                    "is_pre": False,
+                    "sort_order": 0,
+                },
+            )
+
+            instance_id_keys = resolve_metric_instance_id_keys(
+                [],
+                monitor_object.instance_id_keys,
+                strict=False,
+            ) or ["instance_id"]
+
+            for item in SCRIPT_HEALTH_METRICS:
+                Metric.objects.update_or_create(
+                    monitor_object=monitor_object,
+                    monitor_plugin=plugin,
+                    name=item["name"],
+                    defaults={
+                        "metric_group": metric_group,
+                        "display_name": item["display_name"],
+                        "query": item["query"],
+                        "unit": item["unit"],
+                        "data_type": item["data_type"],
+                        "description": item["description"],
+                        "dimensions": [],
+                        "instance_id_keys": instance_id_keys,
+                        "is_pre": False,
+                        "sort_order": item.get("sort_order", 0),
+                    },
+                )

@@ -28,6 +28,7 @@ interface ScriptTrialRunAreaProps {
   onTrialRun: () => void;
   nodeSelected?: boolean;
   instanceName?: string;
+  onSelectedMetricsChange?: (metrics: BusinessMetricItem[]) => void;
 }
 
 const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
@@ -35,7 +36,8 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
   spinning = false,
   onTrialRun,
   nodeSelected = true,
-  instanceName
+  instanceName,
+  onSelectedMetricsChange
 }) => {
   const { t } = useTranslation();
   const [selectedMetrics, setSelectedMetrics] = useState<Record<string, boolean>>({});
@@ -66,6 +68,19 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
       setSelectedMetrics({});
     }
   }, [parsedOutput]);
+
+  // 通知上层选中的业务指标
+  useEffect(() => {
+    if (!onSelectedMetricsChange) return;
+    if (!parsedOutput?.businessMetrics?.length) {
+      onSelectedMetricsChange([]);
+      return;
+    }
+    const selected = parsedOutput.businessMetrics.filter(
+      (m) => selectedMetrics[m.key] !== false
+    );
+    onSelectedMetricsChange(selected);
+  }, [selectedMetrics, parsedOutput, onSelectedMetricsChange]);
 
   const toggleMetric = (key: string) => {
     if (isSpinning) return;

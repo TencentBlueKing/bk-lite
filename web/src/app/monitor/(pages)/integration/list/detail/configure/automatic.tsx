@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Form, Button, Input, message, Spin, Dropdown, Modal, Tag, Select, Switch } from 'antd';
 import type { MenuProps } from 'antd';
 import {
@@ -87,6 +87,7 @@ import {
   mergeImportedAssetRows
 } from './automaticAssetCount';
 import ScriptTrialRunArea from './scriptTrialRunArea';
+import { BusinessMetricItem } from './scriptMetricsParser';
 const { confirm } = Modal;
 
 interface CollectDetectState {
@@ -116,7 +117,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const [form] = Form.useForm();
   const { t } = useTranslation();
   const searchParams = useSearchParams();
-  const { isLoading } = useApiClient();
+  const { get, post, isLoading } = useApiClient();
   const {
     createCollectDetectTask,
     getCollectDetectTask,
@@ -411,6 +412,116 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       (t) => t?.status === 'pending' || t?.status === 'running'
     );
   }, [collectDetectTasks]);
+
+  const [trialMetricsByRow, setTrialMetricsByRow] = useState<
+    Record<string, BusinessMetricItem[]>
+  >({});
+
+  const handleSelectedScriptMetricsChange = useCallback(
+    (metrics: BusinessMetricItem[]) => {
+      const rowKey = (activeRecord?.key as string) || 'default';
+      setTrialMetricsByRow((prev) => ({
+        ...prev,
+        [rowKey]: metrics
+      }));
+    },
+    [activeRecord?.key]
+  );
+
+  const selectedScriptMetrics = useMemo(() => {
+    const map = new Map<string, BusinessMetricItem>();
+    Object.values(trialMetricsByRow).forEach((items) => {
+      items.forEach((item) => {
+        if (!map.has(item.name)) {
+          map.set(item.name, item);
+        }
+      });
+    });
+    return Array.from(map.values());
+  }, [trialMetricsByRow]);
+
+  const persistScriptMetrics = async (
+    targetPluginId: string | number,
+    targetObjectId: string | number,
+    metricsToPersist: BusinessMetricItem[]
+  ) => {
+    if (!metricsToPersist.length) return;
+    try {
+      const groupRes: any = await get('/monitor/api/metrics_group/', {
+        params: {
+          monitor_object_id: targetObjectId,
+          monitor_plugin_id: targetPluginId
+        }
+      });
+      const groups = Array.isArray(groupRes)
+        ? groupRes
+        : groupRes?.items || [];
+      let targetGroupId = groups[0]?.id;
+      if (!targetGroupId) {
+        const createdGroup: any = await post('/monitor/api/metrics_group/', {
+          monitor_object: Number(targetObjectId),
+          monitor_plugin: Number(targetPluginId),
+          name: 'Base',
+          description: '基础指标'
+        });
+        targetGroupId = createdGroup?.id;
+      }
+      if (!targetGroupId) {
+        return;
+      }
+
+      const existingRes: any = await get('/monitor/api/metrics/', {
+        params: {
+          monitor_object_id: targetObjectId,
+          monitor_plugin_id: targetPluginId
+        }
+      });
+      const existingItems = Array.isArray(existingRes)
+        ? existingRes
+        : existingRes?.items || [];
+      const existingNames = new Set(
+        existingItems.map((m: { name?: string }) => m.name).filter(Boolean)
+      );
+
+      const seen = new Set(existingNames);
+      const uniqueMetrics: BusinessMetricItem[] = [];
+      for (const m of metricsToPersist) {
+        if (!seen.has(m.name)) {
+          seen.add(m.name);
+          uniqueMetrics.push(m);
+        }
+      }
+
+      if (!uniqueMetrics.length) return;
+
+      await Promise.allSettled(
+        uniqueMetrics.map((item) => {
+          const dimensions = Object.keys(item.tags || {}).map((k) => ({
+            name: k,
+            description: k
+          }));
+          return post(
+            '/monitor/api/metrics/',
+            {
+              monitor_object: Number(targetObjectId),
+              monitor_plugin: Number(targetPluginId),
+              metric_group: targetGroupId,
+              name: item.name,
+              display_name: item.name,
+              query: `${item.name}{__$labels__}`,
+              unit: '',
+              data_type: 'Number',
+              description: item.name,
+              dimensions
+            },
+            { suppressErrorNotification: true }
+          );
+        })
+      );
+    } catch (e) {
+      console.error('Failed to persist script metrics:', e);
+    }
+  };
   const [formSnapshot, setFormSnapshot] = useState<Record<string, any>>({});
   const tableDependencyFields = useMemo(
     () => collectDependencyFieldNames(currentConfig?.table_columns),
@@ -1312,6 +1423,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     try {
       setConfirmLoading(true);
       const collectResult = await updateNodeChildConfig(params);
+      if (isScriptTemplate && selectedScriptMetrics.length > 0) {
+        await persistScriptMetrics(pluginId, objectId, selectedScriptMetrics);
+      }
       if (templatesToApply.length) {
         const policyPayload = buildCollectionPolicyApplyPayload({
           monitorObjectId: objectId,
@@ -1659,6 +1773,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           }}
           nodeSelected={Boolean(getRowNodeId(activeRecord || {}))}
           instanceName={activeRecord?.instance_name || undefined}
+          onSelectedMetricsChange={handleSelectedScriptMetricsChange}
         />
       )}
       <Form.Item>

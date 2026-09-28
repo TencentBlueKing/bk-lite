@@ -18,7 +18,18 @@ export interface ParsedScriptOutput {
   isNodeUnavailable: boolean;
 }
 
-const SELF_METRIC_NAMES = new Set(['up', 'duration', 'duration_ms', 'exit_code', 'run_duration']);
+const SELF_METRIC_NAMES = new Set(['up', 'duration', 'duration_ms', 'duration_seconds', 'exit_code', 'run_duration']);
+
+export const isSelfMetricName = (name: string): boolean => {
+  const lower = name.toLowerCase();
+  if (lower.startsWith('bklite_script_') || lower.startsWith('bklite_script.')) {
+    return true;
+  }
+  return (
+    SELF_METRIC_NAMES.has(lower) ||
+    lower === 'bklite_script'
+  );
+};
 
 /**
  * 清理 measurement 前缀（例如 bklite_script_123_disk_free -> disk_free）
@@ -166,11 +177,11 @@ export const parseScriptMetrics = (
         const { measurement, tags, fields } = influxData;
         for (const [fieldName, fieldValue] of Object.entries(fields)) {
           const lowerName = fieldName.toLowerCase();
-          if (SELF_METRIC_NAMES.has(lowerName)) {
-            if (lowerName === 'up' && typeof fieldValue === 'number') up = fieldValue;
-            if (lowerName === 'exit_code' && typeof fieldValue === 'number') exitCode = fieldValue;
-            if (['duration', 'duration_ms', 'run_duration'].includes(lowerName) && typeof fieldValue === 'number') {
-              durationMs = fieldValue;
+          if (isSelfMetricName(fieldName) || isSelfMetricName(measurement)) {
+            if (lowerName.includes('up') && typeof fieldValue === 'number') up = fieldValue;
+            if (lowerName.includes('exit_code') && typeof fieldValue === 'number') exitCode = fieldValue;
+            if (lowerName.includes('duration') && typeof fieldValue === 'number') {
+              durationMs = lowerName.includes('second') ? Math.round(fieldValue * 1000) : fieldValue;
             }
             continue;
           }
@@ -193,11 +204,11 @@ export const parseScriptMetrics = (
       if (promData) {
         const { name, value, tags } = promData;
         const lowerName = name.toLowerCase();
-        if (SELF_METRIC_NAMES.has(lowerName)) {
-          if (lowerName === 'up' && typeof value === 'number') up = value;
-          if (lowerName === 'exit_code' && typeof value === 'number') exitCode = value;
-          if (['duration', 'duration_ms', 'run_duration'].includes(lowerName) && typeof value === 'number') {
-            durationMs = value;
+        if (isSelfMetricName(name)) {
+          if (lowerName.includes('up') && typeof value === 'number') up = value;
+          if (lowerName.includes('exit_code') && typeof value === 'number') exitCode = value;
+          if (lowerName.includes('duration') && typeof value === 'number') {
+            durationMs = lowerName.includes('second') ? Math.round(value * 1000) : value;
           }
           continue;
         }
@@ -218,11 +229,11 @@ export const parseScriptMetrics = (
       if (kvData) {
         const { name, value } = kvData;
         const lowerName = name.toLowerCase();
-        if (SELF_METRIC_NAMES.has(lowerName)) {
-          if (lowerName === 'up' && typeof value === 'number') up = value;
-          if (lowerName === 'exit_code' && typeof value === 'number') exitCode = value;
-          if (['duration', 'duration_ms', 'run_duration'].includes(lowerName) && typeof value === 'number') {
-            durationMs = value;
+        if (isSelfMetricName(name)) {
+          if (lowerName.includes('up') && typeof value === 'number') up = value;
+          if (lowerName.includes('exit_code') && typeof value === 'number') exitCode = value;
+          if (lowerName.includes('duration') && typeof value === 'number') {
+            durationMs = lowerName.includes('second') ? Math.round(value * 1000) : value;
           }
           continue;
         }
