@@ -235,6 +235,7 @@ export default function RumReleasesPage() {
   function errorsHref(release: string) {
     const next = new URLSearchParams({ range, release });
     if (application) next.set('application', application);
+    if (traffic && traffic !== 'visitors') next.set('traffic', traffic);
     return `/rum/errors?${next}`;
   }
 
@@ -381,7 +382,7 @@ export default function RumReleasesPage() {
         ),
       },
     ],
-    [t, application, settingBaseline, range, router],
+    [t, application, settingBaseline, range, traffic, router],
   );
 
   return (

@@ -19,6 +19,7 @@ function formatClock(value: number) {
 
 export default function ReplayPlayer({ events }: { events: unknown[] }) {
   const { t } = useTranslation();
+  const stageRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<RrwebReplayer | null>(null);
   const frameRef = useRef(0);
@@ -28,8 +29,9 @@ export default function ReplayPlayer({ events }: { events: unknown[] }) {
   const [speed, setSpeed] = useState(1);
 
   useEffect(() => {
+    const stage = stageRef.current;
     const root = rootRef.current;
-    if (!root || events.length === 0) return;
+    if (!stage || !root || events.length === 0) return;
     let disposed = false;
     const ownerDocument = root.ownerDocument;
     const originalCreateElement = ownerDocument.createElement;
@@ -58,15 +60,23 @@ export default function ReplayPlayer({ events }: { events: unknown[] }) {
         player.iframe.setAttribute('csp', REPLAY_DOCUMENT_CSP);
         if (!root.contains(player.wrapper)) root.append(player.wrapper);
         const resize = () => {
-          const scale = Math.min(1, root.clientWidth / Math.max(1, viewportWidth));
+          // Fit both axes so the control bar stays visible for tall recordings.
+          const scale = Math.min(
+            1,
+            stage.clientWidth / Math.max(1, viewportWidth),
+            stage.clientHeight / Math.max(1, viewportHeight),
+          );
+          const scaledWidth = Math.ceil(viewportWidth * scale);
+          const scaledHeight = Math.ceil(viewportHeight * scale);
           player.wrapper.style.width = `${viewportWidth}px`;
           player.wrapper.style.height = `${viewportHeight}px`;
           player.wrapper.style.transform = `scale(${scale})`;
           player.wrapper.style.transformOrigin = 'top left';
-          root.style.height = `${Math.ceil(viewportHeight * scale)}px`;
+          root.style.width = `${scaledWidth}px`;
+          root.style.height = `${scaledHeight}px`;
         };
         resizeObserver = new ResizeObserver(resize);
-        resizeObserver.observe(root);
+        resizeObserver.observe(stage);
         resize();
         player.pause(0);
         playerRef.current = player;
@@ -129,12 +139,17 @@ export default function ReplayPlayer({ events }: { events: unknown[] }) {
   };
 
   return (
-    <div className="overflow-hidden rounded-md border border-[var(--color-border-2)] bg-black">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-md border border-[var(--color-border-2)] bg-black">
       <div
-        ref={rootRef}
-        className="min-h-80 overflow-hidden bg-white [&_.replayer-wrapper]:origin-top-left"
-      />
-      <div className="flex flex-wrap items-center gap-2 border-t border-white/10 bg-zinc-950 px-3 py-2 text-white">
+        ref={stageRef}
+        className="flex min-h-0 min-w-0 flex-1 items-start justify-center overflow-hidden bg-white"
+      >
+        <div
+          ref={rootRef}
+          className="overflow-hidden [&_.replayer-wrapper]:origin-top-left"
+        />
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-white/10 bg-zinc-950 px-3 py-2 text-white">
         <Button
           type="text"
           className="text-white hover:bg-white/10 hover:text-white"
@@ -170,6 +185,7 @@ export default function ReplayPlayer({ events }: { events: unknown[] }) {
           value={speed}
           onChange={(value) => changeSpeed(Number(value))}
           options={[1, 2, 4].map((value) => ({ value, label: `${value}×` }))}
+          className="[&_.ant-segmented-item]:text-white/80 [&_.ant-segmented-item-selected]:text-[var(--color-text-1)]"
         />
       </div>
     </div>

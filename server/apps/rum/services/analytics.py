@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import Protocol
 
 from apps.core.logger import rum_logger as logger
@@ -12,6 +13,9 @@ from apps.rum.services.query import (
     empty_session_trend,
     empty_view_list,
 )
+
+# When Victoria is briefly down at first touch, do not pin Unavailable forever.
+_UNAVAILABLE_RETRY_SECONDS = 30.0
 
 
 class Analytics(Protocol):
@@ -87,6 +91,7 @@ class UnavailableAnalytics:
 
 
 _analytics: Analytics | None = None
+_analytics_retry_after: float = 0.0
 
 
 def _build_analytics() -> Analytics:
@@ -111,12 +116,22 @@ def _build_analytics() -> Analytics:
 
 
 def get_analytics() -> Analytics:
-    global _analytics
-    if _analytics is None:
-        _analytics = _build_analytics()
+    global _analytics, _analytics_retry_after
+    now = time.monotonic()
+    if _analytics is not None and _analytics.available():
+        return _analytics
+    if _analytics is not None and not _analytics.available() and now < _analytics_retry_after:
+        return _analytics
+    built = _build_analytics()
+    _analytics = built
+    if built.available():
+        _analytics_retry_after = 0.0
+    else:
+        _analytics_retry_after = now + _UNAVAILABLE_RETRY_SECONDS
     return _analytics
 
 
 def set_analytics(analytics: Analytics | None) -> None:
-    global _analytics
+    global _analytics, _analytics_retry_after
     _analytics = analytics
+    _analytics_retry_after = 0.0

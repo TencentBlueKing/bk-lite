@@ -14,7 +14,7 @@ import {
   useConsoleLayout,
   withScreenQuery,
 } from '@/console-layout';
-import { isMenuPathMatch, resolveMenuIcon } from '@/utils/menuHelpers';
+import { findMatchedMenuPath, resolveMenuIcon } from '@/utils/menuHelpers';
 import { useTranslation } from '@/utils/i18n';
 import type { MenuItem } from '@/types/index';
 
@@ -39,6 +39,12 @@ const AppTopSideNav = ({ menus, pathname }: AppTopSideNavProps) => {
   const { sideNav, setSideNav } = useConsoleLayout();
   const [peeking, setPeeking] = useState(false);
   const groups = buildAppTopSideNavGroups(menus, currentPath);
+  // Prefer tree match over parent-url prefix: sibling leaves like
+  // /rum/monitors under a group whose url is /rum/alert-events must still
+  // light up the first-layer item (same rule as classic TopMenu).
+  const matchedFirstLayerUrl = currentPath
+    ? findMatchedMenuPath(menus, currentPath)?.[0]?.url
+    : undefined;
 
   if (groups.length === 0) {
     return null;
@@ -100,7 +106,7 @@ const AppTopSideNav = ({ menus, pathname }: AppTopSideNavProps) => {
           <ul className="flex flex-col gap-1.5">
             {groups.map((group) => {
               const active = Boolean(
-                currentPath && group.item.url && isMenuPathMatch(group.item.url, currentPath),
+                matchedFirstLayerUrl && group.item.url === matchedFirstLayerUrl,
               );
               const iconType = resolveMenuIcon(group.item);
               const href = withScreenQuery(resolveMenuNavHref(group.item), screenMode);

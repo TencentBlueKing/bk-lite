@@ -213,6 +213,7 @@ export default function ApplicationOverviewPage() {
               badgeClass="bg-sky-500/10 text-sky-600 dark:text-sky-400"
             >
               <DistributionList
+                title={t('rum.overview.countries', '国家 / 地区')}
                 rows={countryRows}
                 strokeColor="#0ea5e9"
                 hoverTextClass="group-hover/dist:text-sky-600"
@@ -226,6 +227,7 @@ export default function ApplicationOverviewPage() {
               badgeClass="bg-indigo-500/10 text-indigo-600 dark:text-indigo-400"
             >
               <DistributionList
+                title={t('rum.overview.devices', '设备')}
                 rows={deviceRows}
                 strokeColor="#6366f1"
                 hoverTextClass="group-hover/dist:text-indigo-600"
@@ -239,6 +241,7 @@ export default function ApplicationOverviewPage() {
               badgeClass="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
             >
               <DistributionList
+                title={t('rum.overview.environments', '环境')}
                 rows={overview.environments}
                 strokeColor="#10b981"
                 hoverTextClass="group-hover/dist:text-emerald-600"
@@ -252,6 +255,7 @@ export default function ApplicationOverviewPage() {
               badgeClass="bg-amber-500/10 text-amber-700 dark:text-amber-400"
             >
               <DistributionList
+                title={t('rum.overview.releases', '版本')}
                 rows={overview.releases}
                 strokeColor="#f59e0b"
                 hoverTextClass="group-hover/dist:text-amber-600"
@@ -303,7 +307,7 @@ function DistributionCard({
   children: ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+    <section className="flex h-full flex-col overflow-hidden rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
       <div className="flex items-center justify-between border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)]/35 px-4 py-2.5">
         <div className="flex items-center gap-2">
           {icon}
@@ -312,7 +316,8 @@ function DistributionCard({
             <span
               className={[
                 'inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-xs font-semibold tabular-nums',
-                badgeClass,
+                badgeClass ||
+                  'bg-[color-mix(in_srgb,var(--color-primary)_12%,var(--color-bg))] text-[var(--color-primary)]',
               ]
                 .filter(Boolean)
                 .join(' ')}
@@ -322,7 +327,7 @@ function DistributionCard({
           ) : null}
         </div>
       </div>
-      <div className="p-3.5">{children}</div>
+      <div className="flex flex-1 flex-col p-3.5">{children}</div>
     </section>
   );
 }
