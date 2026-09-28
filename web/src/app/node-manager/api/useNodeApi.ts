@@ -44,6 +44,24 @@ const useNodeApi = () => {
     return await post(url, bodyParams);
   };
 
+  const exportNodeList = async (params: {
+    cloud_region_id?: number;
+    filters?: SearchFilters;
+    selected_ids?: string[];
+    unassigned?: boolean;
+  }) => {
+    const { unassigned, ...bodyParams } = params;
+    const queryParams = new URLSearchParams();
+    if (unassigned) {
+      queryParams.append('unassigned', 'true');
+    }
+    const queryString = queryParams.toString();
+    const url = queryString
+      ? `/node_mgmt/api/node/export_excel/?${queryString}`
+      : '/node_mgmt/api/node/export_excel/';
+    return await post<Blob>(url, bodyParams, { responseType: 'blob' });
+  };
+
   // 删除节点必清 CMDB 悬挂 node_id（实例保留）。retire_linked=true 时额外退役监控。
   const delNode = async (
     id: React.Key,
@@ -197,6 +215,7 @@ const useNodeApi = () => {
 
   return {
     getNodeList,
+    exportNodeList,
     delNode,
     modulePush,
     getNodeStateEnum,

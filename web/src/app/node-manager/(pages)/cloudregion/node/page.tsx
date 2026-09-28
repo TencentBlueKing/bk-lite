@@ -61,6 +61,7 @@ import {
   selectedNodesFromMap,
   shouldClearNodeSelection
 } from '@/app/node-manager/utils/nodeListSelection';
+import { buildNodeExportRequest } from '@/app/node-manager/utils/nodeListExport';
 import {
   listNodeHostedCollectors,
   listNodeUpgradeableCollectors,
@@ -82,7 +83,7 @@ const Node = () => {
   const cloudId = useCloudId();
   const searchParams = useSearchParams();
   const { isLoading, del } = useApiClient();
-  const { getNodeList, delNode } = useNodeManagerApi();
+  const { getNodeList, delNode, exportNodeList } = useNodeManagerApi();
   const sidecarItems = useSidecarItems();
   const collectorItems = useCollectorItems();
   const statusMap = useTelegrafMap();
@@ -130,6 +131,7 @@ const Node = () => {
   const [activeColumns, setActiveColumns] = useState<ColumnItem[]>([]);
   const [searchFilters, setSearchFilters] = useState<SearchFilters>({});
   const [unassignedOnly, setUnassignedOnly] = useState(false);
+  const [exporting, setExporting] = useState<boolean>(false);
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
@@ -402,6 +404,51 @@ const Node = () => {
   const handleInstallController = () => {
     setShowNodeTable(false);
     setShowInstallController(true);
+  };
+
+  const handleExportNodes = async () => {
+    setExporting(true);
+    try {
+      const request = buildNodeExportRequest({
+        selectedIds: selectedRowKeys.map(String),
+        cloudRegionId: cloudId,
+        filters: searchFilters,
+        unassignedOnly
+      });
+      const blob = await exportNodeList({
+        ...request.body,
+        ...request.query
+      } as any);
+      if (blob.type && blob.type.includes('application/json')) {
+        const payload = JSON.parse(await blob.text());
+        message.error(payload.message || t('common.exportFailed'));
+        return;
+      }
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `nodes.xlsx`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+    } catch (error: any) {
+      const data = error?.payload || error?.response?.data;
+      if (data instanceof Blob) {
+        try {
+          const payload = JSON.parse(await data.text());
+          if (payload?.message) {
+            message.error(payload.message);
+            return;
+          }
+        } catch {
+          /* fall through */
+        }
+      }
+      if (error?.message) {
+        message.error(error.message);
+      }
+    } finally {
+      setExporting(false);
+    }
   };
 
   const getCollectors = async () => {
@@ -779,6 +826,13 @@ const Node = () => {
                       }}
                       className="mr-[8px]"
                     />
+                    <Button
+                      className="mr-[8px]"
+                      loading={exporting}
+                      onClick={handleExportNodes}
+                    >
+                      {t('common.export')}
+                    </Button>
                     <PermissionWrapper
                       requiredPermissions={['InstallController']}
                     >
