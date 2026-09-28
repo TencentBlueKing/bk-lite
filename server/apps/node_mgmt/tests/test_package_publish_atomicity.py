@@ -147,6 +147,71 @@ def test_concurrent_validate_then_only_one_publish_wins(object_store):
     assert object_store.puts.count(FINAL_KEY) == 1
 
 
+def test_package_version_upload_first_insert_stays_ready_and_repeat_skips(object_store, tmp_path, caplog):
+    """首次初始化由 upload_file 落库；同版本再跑只警告，不重复插入。"""
+    import logging
+
+    from apps.node_mgmt.management.utils import package_version_upload
+
+    file_path = tmp_path / "fusion-collectors-linux-amd64.zip"
+    file_path.write_bytes(b"controller-package-sentinel")
+    options = {
+        "os": "linux",
+        "cpu_architecture": "x86_64",
+        "object": "Controller",
+        "pk_version": "1.0.1",
+        "file_path": str(file_path),
+    }
+    final_key = "linux/x86_64/Controller/1.0.1/fusion-collectors-linux-amd64.zip"
+
+    result = package_version_upload("controller", options)
+
+    rows = PackageVersion.objects.filter(os="linux", cpu_architecture="x86_64", object="Controller", version="1.0.1")
+    assert rows.count() == 1
+    package = rows.get()
+    assert package.status == PackageVersion.STATUS_READY
+    assert package.name == "fusion-collectors-linux-amd64.zip"
+    assert package.type == "controller"
+    assert result == {
+        "os": "linux",
+        "cpu_architecture": "x86_64",
+        "type": "controller",
+        "object": "Controller",
+        "version": "1.0.1",
+        "name": "fusion-collectors-linux-amd64.zip",
+        "description": "",
+        "created_by": "system",
+        "updated_by": "system",
+    }
+    assert final_key in object_store.puts
+    assert any(_is_staging_key(path) for path in object_store.deletes)
+
+    object_store.puts.clear()
+    object_store.deletes.clear()
+    caplog.set_level(logging.WARNING, logger="node")
+
+    second = package_version_upload("controller", options)
+
+    package.refresh_from_db()
+    assert second is None
+    assert object_store.puts == []
+    assert object_store.deletes == []
+    assert rows.count() == 1
+    assert package.status == PackageVersion.STATUS_READY
+    assert package.name == "fusion-collectors-linux-amd64.zip"
+    records = [record for record in caplog.records if record.name == "node" and record.levelno == logging.WARNING]
+    assert len(records) == 1
+    record = records[0]
+    assert record.exc_info is None
+    assert record.msg == "包版本已存在，跳过上传 package_type=%s os=%s cpu_architecture=%s object=%s version=%s"
+    assert record.args == ("controller", "linux", "x86_64", "Controller", "1.0.1")
+    formatted = record.getMessage()
+    assert formatted == (
+        "包版本已存在，跳过上传 package_type=controller os=linux cpu_architecture=x86_64 object=Controller version=1.0.1"
+    )
+    assert "controller-package-sentinel" not in formatted
+
+
 def test_duplicate_publish_raises_integrity_error_without_second_final_put(object_store):
     PackageService.upload_file(ContentFile(b"first", name="fusion-collectors.tar.gz"), _package_data())
     object_store.puts.clear()
