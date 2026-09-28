@@ -92,6 +92,11 @@ import {
   collectReservedTagViolations,
   persistScriptMetrics
 } from './scriptMetricPersist';
+import {
+  buildScriptMetricEditCarry,
+  SCRIPT_METRIC_DRAFT_QUERY,
+  writeScriptMetricEditCarry
+} from './scriptMetricEditCarry';
 import { BusinessMetricItem } from './scriptMetricsParser';
 const { confirm } = Modal;
 
@@ -467,6 +472,27 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       metrics: metricsToPersist,
       client: { get, post, patch, t }
     });
+  };
+
+  const handleGoEditMetrics = () => {
+    if (
+      confirmLoading ||
+      isAnyTrialRunning ||
+      hasReservedScriptTagError ||
+      !selectedScriptMetrics.length
+    ) {
+      return;
+    }
+    const payload = buildScriptMetricEditCarry(selectedScriptMetrics);
+    if (!payload.metrics.length) {
+      return;
+    }
+    writeScriptMetricEditCarry(objectId, pluginId, payload);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set(SCRIPT_METRIC_DRAFT_QUERY, '1');
+    router.push(
+      `/monitor/integration/list/detail/metric?${params.toString()}`
+    );
   };
   const [formSnapshot, setFormSnapshot] = useState<Record<string, any>>({});
   const tableDependencyFields = useMemo(
@@ -1801,6 +1827,19 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
               {t('common.confirm')}
             </Button>
           </Permission>
+          {isScriptTemplate && (
+            <Button
+              disabled={
+                confirmLoading ||
+                isAnyTrialRunning ||
+                hasReservedScriptTagError ||
+                !selectedScriptMetrics.length
+              }
+              onClick={handleGoEditMetrics}
+            >
+              {t('monitor.integrations.goEditMetrics', '去编辑指标')}
+            </Button>
+          )}
           {hasReservedScriptTagError && (
             <span
               className="text-[13px] text-[var(--color-fail)]"

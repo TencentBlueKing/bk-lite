@@ -904,6 +904,7 @@
       "scriptMetricsPersistFailed": "Failed to save metrics: {error}",
       "reservedTagRename": "Reserved field, please rename",
       "reservedTagRenameDetail": "Reserved field, please rename: {keys}",
+      "goEditMetrics": "Edit metrics",
       "templateDescription": "Template Description",
       "noConfigData": "No configuration data available, please check plugin settings",
       "missingEntryContext": "The plugin has no associated monitor object, so configuration cannot be opened",
