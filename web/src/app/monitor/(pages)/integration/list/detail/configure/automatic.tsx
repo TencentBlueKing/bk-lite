@@ -503,6 +503,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       return;
     }
     if (!selectedScriptMetrics.length) {
+      message.warning(goEditSelectFirstText);
       return;
     }
     const payload = buildScriptMetricEditCarry(selectedScriptMetrics);
@@ -1393,6 +1394,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (isScriptTemplate && hasReservedScriptTagError) {
       return;
     }
+    if (
+      isScriptTemplate &&
+      scriptDebugHasBusinessMetrics &&
+      !selectedScriptMetrics.length
+    ) {
+      message.warning(goEditSelectFirstText);
+      return;
+    }
     const normalizedForm = normalizePasswordFields(
       form.getFieldsValue(true),
       currentConfig?.form_fields,
@@ -1599,6 +1608,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           )
         ) {
           setFormSnapshot(nextValues);
+        }
+        if (Object.prototype.hasOwnProperty.call(changed, 'script_os')) {
+          form.setFields([{ name: 'run_as', errors: [] }]);
+          if (changed.script_os === 'windows') {
+            form.setFieldValue('run_as', '');
+          } else if (!String(form.getFieldValue('run_as') || '').trim()) {
+            form.setFieldValue('run_as', 'telegraf');
+          }
         }
         if (
           Object.prototype.hasOwnProperty.call(

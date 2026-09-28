@@ -633,7 +633,7 @@ export const useConfigRenderer = () => {
             <div style={{ maxWidth: 640 }} className="w-full">
               <CodeEditor
                 mode={widget_props.mode || 'sh'}
-                theme={widget_props.theme || 'textmate'}
+                theme={widget_props.theme || 'monokai'}
                 height={widget_props.height || '200px'}
                 width="100%"
                 placeholder={widget_props.placeholder || t('monitor.integrations.scriptPlaceholder', '粘贴或输入脚本内容')}
@@ -781,6 +781,38 @@ export const useConfigRenderer = () => {
       </>
     );
 
+    if (name === 'run_as') {
+      return (
+        <Form.Item
+          noStyle
+          shouldUpdate={(prev, curr) => prev.script_os !== curr.script_os}
+          key={name}
+        >
+          {({ getFieldValue }) => {
+            const scriptOs = getFieldValue('script_os');
+            const isWindowsHost = scriptOs === 'windows' || (scriptOs == null && isWindows);
+            if (isWindowsHost) {
+              return null;
+            }
+            return (
+              <Form.Item
+                key={name}
+                required={required}
+                label={renderLabel()}
+              >
+                {renderNamedControl()}
+                {showInlineDescription && (
+                  <div className="mt-2 text-[12px] text-[var(--color-text-3)] leading-[18px]">
+                    {description}
+                  </div>
+                )}
+              </Form.Item>
+            );
+          }}
+        </Form.Item>
+      );
+    }
+
     if (dependency?.field || mutexPeerField || warningOnlyRules.length) {
       return (
         <Form.Item noStyle shouldUpdate={shouldUpdate} key={name}>
@@ -827,9 +859,15 @@ export const useConfigRenderer = () => {
       <Form.Item key={name} required={required} label={renderLabel()}>
         {renderFieldBody()}
         {showInlineDescription && (
-          <span className="align-middle text-[12px] text-[var(--color-text-3)]">
-            {description}
-          </span>
+          name === 'run_as' ? (
+            <div className="mt-2 text-[12px] text-[var(--color-text-3)] leading-[18px]">
+              {description}
+            </div>
+          ) : (
+            <span className="align-middle text-[12px] text-[var(--color-text-3)]">
+              {description}
+            </span>
+          )
         )}
       </Form.Item>
     );
