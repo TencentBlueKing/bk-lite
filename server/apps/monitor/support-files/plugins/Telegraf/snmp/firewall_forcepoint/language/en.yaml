@@ -1,7 +1,6 @@
 Firewall Forcepoint SNMP:
   name: Forcepoint (Telegraf)
-  desc: SNMP monitoring template for Forcepoint firewall. It reports system uptime,
-    CPU utilization, interface speed, and other key metrics
+  desc: "SNMP monitoring template for Forcepoint firewall. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, sessions/connections, and interface traffic (enterprise PEN 47565)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:
@@ -27,8 +26,17 @@ monitor_object_metric:
         session count helps capacity planning and detecting abnormal connection spikes.
     device_psu_state:
       name: Power Supply Status
-      desc: Operational state of each power supply unit (enum). A non-normal state
-        indicates a power redundancy or hardware fault and should be remediated promptly.
+      desc: Operational state of each Forcepoint NGFW power supply (fwPsuStatus),
+        normalized to 1=ok / 2=bad. A non-normal state indicates a power redundancy
+        or hardware fault and should be remediated promptly.
+    device_fan_state:
+      name: Fan Status
+      desc: Operational state of each Forcepoint NGFW cooling fan (fwFanStatus),
+        normalized to 1=ok / 2=bad. A non-normal state indicates a cooling fault
+        that can quickly lead to overheating.
+    device_fan_rpm:
+      name: Fan RPM
+      desc: Rotational speed of each Forcepoint NGFW cooling fan in RPM (fwFan).
     firewall_pf_states:
       name: PF State Table Entries
       desc: This metric reports the current number of entries in the pfSense firewall
@@ -131,11 +139,10 @@ monitor_object_metric:
         firewall (FORTINET-FORTIGATE-MIB fgSysMemCapacity, reported in KB and converted
         to bytes).
     firewall_active_sessions:
-      name: IPv4 Active Sessions
-      desc: This metric reports the number of active IPv4 sessions currently tracked
-        by the FortiGate firewall (FORTINET-FORTIGATE-MIB fgSysSesCount). A rapidly
-        rising session count can indicate a connection flood or session-table exhaustion
-        risk.
+      name: Active Sessions
+      desc: Number of current connections on the Forcepoint NGFW
+        (FORCEPOINT-NGFW-ENGINE-MIB fwConnNumber). A rapidly rising count can
+        indicate a connection flood or session-table pressure.
     firewall_vpn_tunnels:
       name: Active IPsec VPN Tunnels
       desc: This metric reports the number of currently active IPsec VPN tunnels on

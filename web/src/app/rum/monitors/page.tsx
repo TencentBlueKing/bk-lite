@@ -361,16 +361,18 @@ export default function RumMonitorsPage() {
         />
 
         {!pending && filteredItems.length === 0 ? (
-          <Empty
-            description={
-              <div className="flex flex-col gap-1">
-                <span>{t('rum.monitors.empty', '还没有告警策略')}</span>
-                <span className="text-xs text-[var(--color-text-3)]">
-                  {t('rum.monitors.emptyHint', '创建一条策略，监控错误率或 Core Web Vitals。')}
-                </span>
-              </div>
-            }
-          />
+          <div className="flex min-h-0 flex-1 items-center justify-center">
+            <Empty
+              description={
+                <div className="flex flex-col gap-1">
+                  <span>{t('rum.monitors.empty', '还没有告警策略')}</span>
+                  <span className="text-xs text-[var(--color-text-3)]">
+                    {t('rum.monitors.emptyHint', '创建一条策略，监控错误率或 Core Web Vitals。')}
+                  </span>
+                </div>
+              }
+            />
+          </div>
         ) : pending && items.length === 0 ? (
           <RumTableSkeleton columns={rumSkeletonColumns(columns)} />
         ) : filteredItems.length > 0 ? (

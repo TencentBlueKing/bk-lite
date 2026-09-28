@@ -114,8 +114,8 @@ class RunNodeInfoLookup:
                 if remaining <= 0:
                     self._record_failed(ips[offset:])
                     logger.warning(
-                        "event=job_node_info_budget_exhausted task_id=%s remaining_targets=%s",
-                        self._task_id,
+                        "event=job_node_info_budget_exhausted collect_task_id=%s remaining_targets=%s",
+                        self._collect_task_id,
                         len(ips) - offset,
                     )
                     break
@@ -137,8 +137,8 @@ class RunNodeInfoLookup:
                 if remaining <= 0:
                     self._record_failed((ip,))
                     logger.warning(
-                        "event=job_node_info_budget_exhausted task_id=%s remaining_targets=1",
-                        self._task_id,
+                        "event=job_node_info_budget_exhausted collect_task_id=%s remaining_targets=1",
+                        self._collect_task_id,
                     )
                     return None
                 await self._load_batch(
@@ -172,12 +172,11 @@ class RunNodeInfoLookup:
         except Exception as error:  # noqa: BLE001 - 查询失败按批次回退 SSH
             self._record_failed(ips)
             logger.warning(
-                "event=job_node_info_batch_failed task_id=%s batch_size=%s " "batch_index=%s error_type=%s detail=%s",
-                self._task_id,
+                "event=job_node_info_batch_failed collect_task_id=%s batch_size=%s batch_index=%s error_type=%s",
+                self._collect_task_id,
                 len(ips),
                 batch_index,
                 type(error).__name__,
-                str(error)[:200] or "-",
                 exc_info=True,
             )
             return
@@ -234,10 +233,9 @@ class RunNodeInfoLookup:
         if self._metrics is not None:
             self._metrics.observe("job_node_info_lookup_duration_seconds", duration)
         logger.info(
-            "event=job_node_info_lookup task_id=%s targets=%s unique_ips=%s "
-            "found=%s missing=%s ambiguous=%s failed_targets=%s rpc_calls=%s "
-            "duration_ms=%s status=%s",
-            self._task_id,
+            "event=job_node_info_lookup collect_task_id=%s targets=%s unique_ips=%s found=%s missing=%s ambiguous=%s "
+            "failed_targets=%s rpc_calls=%s duration_ms=%s status=%s",
+            self._collect_task_id,
             len(self._targets),
             len(self._statuses),
             counts["found"],
@@ -246,7 +244,7 @@ class RunNodeInfoLookup:
             counts["failed"],
             self._rpc_calls,
             round(duration * 1000, 2),
-            ("cancelled" if self._cancelled else "completed" if counts["failed"] == 0 else "completed_with_errors"),
+            "cancelled" if self._cancelled else "completed" if counts["failed"] == 0 else "completed_with_errors",
         )
 
     def _increment_metric(self, name: str, value: float = 1) -> None:

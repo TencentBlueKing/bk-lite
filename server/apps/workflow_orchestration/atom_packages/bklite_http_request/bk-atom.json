@@ -1,0 +1,26 @@
+{
+  "key": "bklite_http_request",
+  "name": "HTTP 请求",
+  "category": "集成",
+  "description": "按 Method 与完整 URL 发起 HTTP 请求，运行时做 SSRF 与大小限制",
+  "source_type": "PLATFORM",
+  "catalog_visible": true,
+  "driver": "WORKER",
+  "trusted_context": true,
+  "handler": "apps.workflow_orchestration.atom_packages.bklite_http_request.runtime.handler:execute",
+  "input_schema": "schemas/input.schema.json",
+  "output_schema": "schemas/output.schema.json",
+  "ui_schema": "schemas/ui.schema.json",
+  "timeout_seconds": 90,
+  "retry_count": 0,
+  "retry_delay_seconds": 2,
+  "idempotent": false,
+  "safety_level": "MUTATION",
+  "resource_scope": "ORGANIZATION",
+  "required_permissions": [],
+  "error_types": [
+    "connection_unavailable",
+    "request_failed",
+    "response_invalid"
+  ]
+}

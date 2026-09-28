@@ -22,6 +22,7 @@ describe('list page chrome', () => {
     expect(screen.getByText('应用')).toBeTruthy();
     expect(screen.getByText('管理系统应用入口。')).toBeTruthy();
     expect(screen.getByText('管理系统应用入口。').className).toContain('text-xs');
+    expect(screen.getByText('管理系统应用入口。').className).toContain('line-clamp-2');
     expect(screen.getByRole('button', { name: '新建' })).toBeTruthy();
   });
 

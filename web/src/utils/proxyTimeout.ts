@@ -45,3 +45,10 @@ export function consumeProxyTimeoutMs(headers: Headers): number {
 export function scheduleProxyAbort(controller: AbortController, timeoutMs: number): ReturnType<typeof setTimeout> {
   return setTimeout(() => controller.abort(), timeoutMs);
 }
+
+/** CMDB 文件传输通道；普通 API 仍使用默认的响应体超时。 */
+export function getProxyBodyTimeoutMs(path: string, method: string): number {
+  if (method === 'POST' && (/^\/cmdb\/api\/transfer_tasks\/import\/$/.test(path) ||
+      /^\/cmdb\/api\/transfer_tasks\/[0-9a-fA-F-]{36}\/download\/$/.test(path))) return 300_000;
+  return DEFAULT_TIMEOUT_MS;
+}

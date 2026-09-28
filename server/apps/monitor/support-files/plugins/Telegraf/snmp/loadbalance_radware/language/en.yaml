@@ -1,0 +1,42 @@
+Loadbalance Radware SNMP:
+  name: Radware Alteon (Telegraf)
+  desc: "SNMP monitoring template for Radware Alteon load balancer. It reports uptime, CPU utilization, memory utilization, and interface traffic, for Alteon ADC (enterprise PEN 1872)."
+monitor_object:
+  Loadbalance: Load Balance
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Loadbalance:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart.
+        By monitoring the uptime, network administrators can understand the stability
+        and reliability of the device and identify potential reboot or failure issues.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: Management-processor CPU utilization of the Radware Alteon
+        (ALTEON-CHEETAH-SWITCH-MIB mpCpuStatsUtil64Seconds), reported directly as a
+        percentage. Sustained high usage indicates heavy traffic-processing load.
+    device_memory_total:
+      name: Total Memory
+      desc: Total main memory of the Radware Alteon in bytes (mpMemStatsTotal).
+    device_memory_used:
+      name: Used Memory
+      desc: Used main memory of the Radware Alteon in bytes (mpMemStatsUsed).
+    device_memory_free:
+      name: Free Memory
+      desc: Free main memory of the Radware Alteon in bytes (mpMemStatsFree).
+    device_memory_usage:
+      name: Memory Usage
+      desc: Main memory utilization of the Radware Alteon, derived as used/total.
+        Sustained high usage may degrade connection handling.
+monitor_object_metric_group:
+  Loadbalance:
+    Base: Base
+    Loadbalance: Load Balance
+    Traffic: Traffic
+    Status: Status
+    Bandwidth: Bandwidth
+    Packet: Packet
+    Packet Error: Packet Error
+    Packet Loss: Packet Loss

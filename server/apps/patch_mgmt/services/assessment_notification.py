@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from apps.patch_mgmt.constants import ComplianceStatus, GovernanceTaskStatus, GovernanceTaskType
 from apps.patch_mgmt.models import AssessmentNotificationDelivery, HostBaselineBinding
+from apps.patch_mgmt.utils.i18n import patch_message
 
 
 def _assessment_summary(task) -> dict:
@@ -46,14 +47,38 @@ def _format_notification(task, summary: dict) -> tuple[str, str]:
     except (TypeError, ValueError, ZoneInfoNotFoundError):
         target_timezone = timezone.get_default_timezone()
     local_finished_at = timezone.localtime(finished_at, target_timezone).strftime("%Y-%m-%d %H:%M:%S")
-    title = "【补丁管理】周期评估发现需关注项"
+    title = patch_message(
+        None,
+        "message.periodic_assessment_title",
+        "[Patch Management] Periodic assessment found items that need attention",
+    )
     content = "\n".join(
         [
-            "周期评估已完成。",
-            f"评估完成时间：{local_finished_at}",
-            f"主机总数：{summary['total_count']}",
-            f"不合规主机：{summary['non_compliant_count']}",
-            f"评估失败主机：{summary['failed_count']}",
+            patch_message(None, "message.periodic_assessment_done", "Periodic assessment completed."),
+            patch_message(
+                None,
+                "message.periodic_assessment_finished_at",
+                "Completed at: {time}",
+                time=local_finished_at,
+            ),
+            patch_message(
+                None,
+                "message.periodic_assessment_total_hosts",
+                "Total hosts: {count}",
+                count=summary["total_count"],
+            ),
+            patch_message(
+                None,
+                "message.periodic_assessment_non_compliant",
+                "Non-compliant hosts: {count}",
+                count=summary["non_compliant_count"],
+            ),
+            patch_message(
+                None,
+                "message.periodic_assessment_failed_hosts",
+                "Failed hosts: {count}",
+                count=summary["failed_count"],
+            ),
         ]
     )
     return title, content

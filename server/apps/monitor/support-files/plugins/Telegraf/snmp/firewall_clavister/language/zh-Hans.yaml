@@ -1,6 +1,6 @@
 Firewall Clavister SNMP:
   name: Clavister（Telegraf）
-  desc: 面向 Clavister 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
+  desc: 面向 Clavister 防火墙的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、会话/连接数、接口流量（企业号 PEN 5089）。
 monitor_object:
   Firewall: 防火墙
 monitor_object_type:
@@ -65,10 +65,10 @@ monitor_object_metric:
       desc: 该指标报告 Stormshield 防火墙 ASQ 引擎当前的 UDP 连接数（STORMSHIELD-SNS-MIB）。可结合 TCP 连接数评估整体会话负载与异常。
     device_memory_free:
       name: 空闲内存
-      desc: 该指标报告防火墙当前空闲的物理内存字节数（Check Point CHECKPOINT-MIB memTotalReal64 减去 memActiveReal64）。空闲内存持续偏低可能意味着内存压力上升。
+      desc: 该指标报告 Clavister 防火墙当前空闲的物理内存字节数（CLAVISTER-MIB clvSysMemFreeKiB，原始单位 KiB，已换算为字节）。空闲内存持续偏低可能意味着内存压力上升。
     device_memory_used:
       name: 已用内存
-      desc: 该指标报告防火墙当前已使用的物理内存字节数（由内存总量减去空闲内存计算得到）。用于评估绝对内存消耗与压力。
+      desc: 该指标报告 Clavister 防火墙当前已使用的物理内存字节数（CLAVISTER-MIB clvSysMemUsedKiB，原始单位 KiB，已换算为字节）。用于评估绝对内存消耗与压力。
     firewall_vpn_encrypted_pps:
       name: VPN 加密包速率
       desc: 该指标报告防火墙 VPN 加密数据包的速率，单位为包每秒（Check Point CHECKPOINT-MIB encpktsPersec）。可用于观察
@@ -79,18 +79,18 @@ monitor_object_metric:
         VPN 解密流量负载与异常波动。
     device_cpu_usage:
       name: CPU 使用率
-      desc: 该指标报告 FortiGate 防火墙整体 CPU 使用率（FORTINET-FORTIGATE-MIB fgSysCpuUsage）。持续高
+      desc: 该指标报告 Clavister 防火墙整体 CPU 使用率（CLAVISTER-MIB clvSysCpuLoad，直接以 0-100% 上报）。持续高
         CPU 可能意味着流量检测负载过重、攻击活动或控制平面瓶颈。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标报告 FortiGate 防火墙整体内存使用率（FORTINET-FORTIGATE-MIB fgSysMemUsage，直接以百分比上报）。内存压力过高时设备可能进入保护模式并丢弃新会话。
+      desc: 该指标报告 Clavister 防火墙整体内存使用率（CLAVISTER-MIB clvSysMemUsage，直接以 0-100% 上报）。内存压力过高会拖慢会话处理。
     device_memory_total:
       name: 内存总容量
       desc: 该指标报告 FortiGate 防火墙的物理内存总容量（FORTINET-FORTIGATE-MIB fgSysMemCapacity，原始单位
         KB，已换算为字节）。
     firewall_active_sessions:
-      name: IPv4 活动会话数
-      desc: 该指标报告 FortiGate 防火墙当前跟踪的 IPv4 活动会话数（FORTINET-FORTIGATE-MIB fgSysSesCount）。会话数快速上升可能意味着连接洪泛或会话表耗尽风险。
+      name: 活动会话数
+      desc: 该指标报告 Clavister 防火墙当前活动会话数（CLAVISTER-MIB clvSysConns）。会话数快速上升可能意味着连接洪泛或会话表压力。
     firewall_vpn_tunnels:
       name: 活动 IPsec VPN 隧道数
       desc: 该指标报告 FortiGate 防火墙当前活动的 IPsec VPN 隧道数量（FORTINET-FORTIGATE-MIB fgVpnTunnelUpCount）。数量骤降可能意味着

@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_cisco_firewall",
   "plugin": "Firewall Cisco SNMP",
-  "plugin_desc": "Cisco ASA / Secure Firewall SNMP collection (CISCO-PROCESS-MIB, CISCO-MEMORY-POOL-MIB, CISCO-FIREWALL-MIB). Collects 5-minute CPU (cpmCPUTotal5minRev; optional 1-minute Rev), per-pool memory used/free bytes (GLOBAL_SHARED dropped by name), and firewall connection statistics (cfwConnectionStatValue with service+type index; current-in-use type=6 as firewall_active_sessions). Interface counters come from the built-in IF-MIB catalog, not this plugin. Distinct from Switch Cisco SNMP (snmp_cisco). Supported models — ASA 5500-X, ASA Virtual, and Secure Firewall appliances that expose these public MIBs.",
+  "plugin_desc": "SNMP monitoring template for Cisco ASA, ASA Virtual, and Secure Firewall. It reports uptime, CPU utilization, memory utilization, sessions/connections, and interface traffic (enterprise PEN 9).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_cisco_firewall'}) by (instance_id)",
   "name": "Firewall",

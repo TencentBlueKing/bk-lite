@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_omnitron",
   "plugin": "Switch Omnitron SNMP",
-  "plugin_desc": "Omnitron iConverter SNMP collection (OMNITRON-EXT-MIB, IANA PEN 7342). Interface traffic is supplied by the shared Switch SNMP IF-MIB floor. Per-module health comes from ostModuleStatusTable, indexed by ostModuleIndex (CCSS chassis and slot). CPU utilization (ostSnmpCpuUtilization) is Unsigned32 milli-percent and is divided by 1000 to a 0-100 percentage. RAM used (ostSnmpRamUsed) is kbytes where 1 indicates 1000 bytes and is published as memory used bytes. Flash used (ostSnmpFlashUsed) is optional and uses the same kbytes-to-bytes scale. The table does not expose RAM total or free, so memory utilization percent is not derived. Temperature, fan and power-supply sensors are not published in this table and are not collected. Supported brands/models — Omnitron iConverter management modules and industrial Ethernet media converters.",
+  "plugin_desc": "SNMP monitoring template for Omnitron switches. It reports uptime, CPU utilization, memory used, flash used, and interface traffic, for iConverter and ION/IONMM (enterprise PEN 7342).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_omnitron'}) by (instance_id)",
   "name": "Switch",

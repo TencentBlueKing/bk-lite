@@ -20,7 +20,6 @@ import {
 import PipelineDegradedBanner from '@/app/rum/components/pipeline-degraded';
 import ExportButton from '@/app/rum/components/export-button';
 import { RumTableSkeleton, rumSkeletonColumns } from '@/app/rum/components/rum-skeleton';
-import SavedViewsBar, { type ViewPreset } from '@/app/rum/components/saved-views-bar';
 import TrafficScopeControl from '@/app/rum/components/traffic-scope';
 import Sparkline from '@/app/apm/components/home/sparkline';
 import { toneSemanticPalette, type CwvTone } from '@/app/rum/lib/cwv';
@@ -34,24 +33,6 @@ import CustomTable from '@/components/custom-table';
 import { useTranslation } from '@/utils/i18n';
 
 const STATUS_FILTERS = ['all', 'active', 'open', 'reviewed', 'resolved', 'ignored'] as const;
-
-const ERROR_PRESETS: ViewPreset[] = [
-  {
-    nameKey: 'rum.savedViews.presetErrorsActive',
-    fallback: '活跃问题',
-    context: { status: 'active' },
-  },
-  {
-    nameKey: 'rum.savedViews.presetErrorsSessions',
-    fallback: '按会话排序',
-    context: { orderBy: 'sessions' },
-  },
-  {
-    nameKey: 'rum.savedViews.presetErrorsAutomated',
-    fallback: '自动化流量',
-    context: { traffic: 'automated' },
-  },
-];
 
 const statusTone: Record<string, CwvTone> = {
   resolved: 'success',
@@ -321,7 +302,7 @@ export default function RumErrorsPage() {
         aside={
           <>
             <RumFilterBlock title={t('rum.common.timeWindow', '时间')}>
-              <RumRangeSegmented block size="small" value={range} onChange={setRange} />
+              <RumRangeSegmented block size="small" value={range} loading={pending} onChange={setRange} />
             </RumFilterBlock>
             <RumFilterBlock title={t('rum.applications.application', '应用')}>
               <Select
@@ -374,18 +355,19 @@ export default function RumErrorsPage() {
                   { value: 'relevance', label: t('rum.errors.sort.relevance', '相关度') },
                 ]}
               />
-              <SavedViewsBar screen="errors" presets={ERROR_PRESETS} />
               <ExportButton
                 rows={issues as unknown as Record<string, unknown>[]}
                 filename="rum-errors"
               />
             </div>
 
-            {!pending && issues.length === 0 ? (
-              <Empty description={t('rum.errors.empty', '没有错误样本')} />
-            ) : pending && !page ? (
+            {pending ? (
               <RumTableSkeleton columns={rumSkeletonColumns(columns)} />
-            ) : issues.length > 0 ? (
+            ) : issues.length === 0 ? (
+              <div className="flex min-h-0 flex-1 items-center justify-center">
+                <Empty description={t('rum.errors.empty', '没有错误样本')} />
+              </div>
+            ) : (
               <div className="min-h-0 min-w-0 flex-1">
                 <CustomTable<RumErrorIssueItem>
                   rowKey="fingerprint"
@@ -410,7 +392,7 @@ export default function RumErrorsPage() {
                   })}
                 />
               </div>
-            ) : null}
+            )}
           </div>
         }
       />

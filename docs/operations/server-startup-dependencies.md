@@ -35,6 +35,9 @@
 6. `supervisord -n`
 7. Supervisor 才启动 Django API、默认 Celery Worker、独立 Dashboard Report
    Render Worker、Celery Beat、`nats_listener` 和 SNMP Bridge 等运行期进程。
+   若 `INSTALL_APPS` 为空（全装）或包含 `workflow_orchestration`，还会启动编排中心
+   的 Conductor Worker、触发调度器与产物清理调度器；它们只在运行期访问 Conductor，
+   不进入 `batch_init`，也不创建编排专属 Celery 队列。未安装时启动脚本删除对应配置。
    若 `INSTALL_APPS` 为空（全装）或包含 `opspilot`，另有独立 OpsPilot Celery
    Worker 消费 `opspilot_channel` / `opspilot_wiki` / `opspilot_maintenance`；
    未安装 opspilot 时 `startup.sh` 删除该 supervisor 配置，不拉起该进程。
@@ -56,6 +59,13 @@ Supervisor 启动；启动期不得投递任务并等待它消费。
 `DASHBOARD_REPORT_ARTIFACT_ROOT`。该目录只保存当前发送及必要重试窗口内的
 短期 PDF，并按 Execution 子目录隔离；未配置时 Render 明确失败，不回退到容器
 本地 `/tmp`。临时文件清理属于运行期能力，不得加入 `batch_init`。
+
+CMDB 导入导出任务直接由现有默认 Celery Worker 执行，不增加队列或 Supervisor 进程。
+任务数据库领取约束多副本全局导入导出并发为 2，维护补发和日清也走默认队列。
+15 分钟协作预算由数据库截止时间和执行令牌检查；默认 threads 池不能强制终止单个任务，
+阻塞中的任务仍保留占用，必须确认执行退出后再解除。任务声明的 Celery soft/hard time limit
+只有在支持相应能力的池中才生效，不能据此宣称 threads 池具备 16 分钟进程终止保证。
+复用 `cmdb-config-file` 桶；不在启动期调用任务或声明额外桶。API 只接纳和投递，文件处理在 Celery 中执行。
 
 ## Stargazer 独立服务启动边界
 

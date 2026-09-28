@@ -1,7 +1,6 @@
 Wireless Radwin SNMP:
   name: Radwin (Telegraf)
-  desc: SNMP monitoring template for Radwin wireless device. It reports per-port inbound
-    traffic rate, per-port outbound traffic rate, and system uptime (IANA PEN 4458).
+  desc: SNMP monitoring template for Radwin wireless device. It reports uptime and interface traffic (based on standard MIBs).
 monitor_object:
   Wireless: Wireless
 monitor_object_type:

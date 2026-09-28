@@ -632,12 +632,8 @@ class SnmpFacts:
     async def list_all_resources(self):
         """将设备与接口 SNMP 数据转换为标准格式。"""
         logger.debug(
-            "event=snmp_facts_collection_started task_id=%s plugin_ref=%s " "model_id=%s plugin_name=%s target=%s | SNMP采集开始 IP=%s",
-            self.kwargs.get("collection_task_id") or "-",
+            "event=snmp_facts_collection_started plugin_ref=%s target=%s",
             self.kwargs.get("collection_plugin_ref") or "network.config",
-            self.kwargs.get("model_id") or "network",
-            self.kwargs.get("plugin_name") or "snmp_facts",
-            self.host,
             self.host,
         )
         try:

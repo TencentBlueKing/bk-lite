@@ -1,6 +1,6 @@
 Loadbalance Citrix NetScaler SNMP:
   name: Citrix NetScaler（Telegraf）
-  desc: 面向 Citrix NetScaler 负载均衡器的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
+  desc: 面向 Citrix NetScaler 负载均衡设备的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、会话/连接数、接口流量，适用于 NetScaler ADC（企业号 PEN 5951）。
 monitor_object:
   Loadbalance: 负载均衡
 monitor_object_type:
@@ -21,20 +21,23 @@ monitor_object_metric:
       desc: 该指标报告设备当前空闲的物理内存字节数。空闲内存持续偏低可能意味着内存压力上升。
     device_cpu_usage:
       name: CPU 使用率
-      desc: 该指标报告 F5 BIG-IP 负载均衡器的整体 CPU 使用率（F5-BIGIP-SYSTEM-MIB sysGlobalHostCpuUsageRatio5s，5
-        秒采样）。持续偏高说明流量处理或 SSL 卸载负载吃紧。
+      desc: 该指标报告 Citrix NetScaler 的 CPU 使用率。优先取整机标量 resCpuUsage；否则对 nsCPUusage
+        每 CPU 行（管理/报文引擎）取平均。持续偏高说明流量处理或 SSL 卸载负载吃紧。
     device_memory_total:
       name: 内存总量
-      desc: 该指标报告 F5 BIG-IP 的物理内存总容量（F5-BIGIP-SYSTEM-MIB sysStatMemoryTotal），单位为字节。
+      desc: 该指标报告设备的物理内存总容量，单位为字节。
     device_memory_used:
       name: 已用内存
-      desc: 该指标报告 F5 BIG-IP 当前已使用的内存字节数（F5-BIGIP-SYSTEM-MIB sysStatMemoryUsed）。
+      desc: 该指标报告设备当前已使用的内存字节数。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标报告 F5 BIG-IP 整体内存使用率，按 已用/总量 计算（100*used/total）。持续偏高可能由连接表过大或内存泄漏导致。
+      desc: 该指标报告 Citrix NetScaler 的系统内存使用率（NS-ROOT-MIB resMemUsage），设备直接以百分比上报。持续偏高可能由会话表过大或缓冲压力导致。
     lb_current_connections:
       name: 当前连接数
-      desc: 该指标报告 F5 BIG-IP 当前的客户端活动连接数（F5-BIGIP-SYSTEM-MIB sysStatClientCurConns）。连接数快速攀升可能意味着流量洪泛或连接表压力。
+      desc: 该指标报告 Citrix NetScaler 当前的客户端连接数（NS-ROOT-MIB tcpCurClientConn，含 Opening、Established、Closing）。连接数快速攀升可能意味着流量洪泛或连接表压力。
+    lb_established_connections:
+      name: 已建立连接数
+      desc: 该指标报告 Citrix NetScaler 处于 Established 状态的客户端连接数（NS-ROOT-MIB tcpCurClientConnEstablished），不是主当前连接数。
     interface_ifHCInOctets:
       name: 接口接收流量速率(HC)
       desc: 该指标表示过去 5 分钟内接收字节数的平均速率，单位为字节每秒，基于 64 位 ifHCInOctets 计数器，在高速接口上不会回绕。

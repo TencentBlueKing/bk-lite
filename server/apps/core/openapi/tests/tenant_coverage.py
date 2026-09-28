@@ -10,6 +10,12 @@ team_free 端点登记其「响应不含组织字段」断言测试。
 """
 
 TENANT_ISOLATION_COVERAGE = {
+    "workflow-orchestration/trigger": [
+        "apps.workflow_orchestration.tests.test_trigger_entrypoints::test_openapi_trigger_uses_trusted_team_and_rejects_other_tenant",
+    ],
+    "workflow-orchestration/webhook-test": [
+        "apps.workflow_orchestration.tests.test_trigger_entrypoints::test_webhook_test_session_captures_body_only_for_its_tenant",
+    ],
     "patch-mgmt/module-data": [
         "apps.core.openapi.tests.test_gateway::test_tenant_can_read_own_org",
         "apps.core.openapi.tests.test_gateway::test_tenant_cannot_read_other_org",

@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_hphpn",
   "plugin": "Switch HP ProCurve SNMP",
-  "plugin_desc": "HP ProCurve / HP Networking (HPN)-specific SNMP collection for switches (HP-ICF MIBs). In addition to standard IF-MIB interface metrics, it collects HP private OIDs for device health: CPU utilization and system memory (used/total). Temperature and fan/power-supply state live in HP's shared ENTITY-SENSOR / hpicfSensorTable that requires per-row type/class filtering, which telegraf inputs.snmp cannot do, so those are not collected (N/A). Memory utilization is computed from used/total. Supported brands/models — HP / HPE ProCurve switches (2500/2600/2900/2920/3500/5400 ProCurve series, etc., enterprise 11).",
+  "plugin_desc": "SNMP monitoring template for HP ProCurve switch. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 11).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_hphpn'}) by (instance_id)",
   "name": "Switch",
@@ -22,7 +22,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='switch', __$labels__}",
+      "query": "snmp_device_cpu_usage{instance_type='switch', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -30,7 +30,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the CPU utilization of the HP ProCurve / HP Networking device control plane (HP-ICF hpSwitchCpuStat), normalized to a 0-100 percentage. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
+      "description": "This metric reports the CPU utilization of the HP ProCurve / ArubaOS-Switch control plane (STATISTICS-MIB hpSwitchCpuStat) as a 0-100 percentage. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
     },
     {
       "metric_group": "Memory",

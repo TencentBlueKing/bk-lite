@@ -27,6 +27,10 @@ import {
   formatVisibleChartValue,
   getLineBarYAxisName,
 } from '@/app/ops-analysis/utils/chartValueFormat';
+import {
+  countRenderableLinePoints,
+  resolveLineSeriesPointMark,
+} from '@/app/ops-analysis/utils/lineSeriesSymbol';
 
 interface EChartsInstance {
   dispatchAction: (payload: Record<string, any>) => void;
@@ -41,6 +45,19 @@ interface TrendLineProps {
 }
 
 const LINE_SMOOTHNESS = 0.36;
+
+const linePointMark = (
+  data: unknown,
+  screenRenderContext?: ScreenRenderContext,
+) => {
+  const mark = resolveLineSeriesPointMark(countRenderableLinePoints(data));
+  return {
+    showSymbol: mark.showSymbol,
+    showAllSymbol: mark.showAllSymbol,
+    symbol: mark.symbol,
+    symbolSize: scaleScreenMetric(mark.symbolSize, screenRenderContext),
+  };
+};
 
 const withAlpha = (color: string, alpha: number) => {
   const normalized = color.trim();
@@ -420,7 +437,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
       data: item.data,
       smooth: LINE_SMOOTHNESS,
       smoothMonotone: 'x',
-      symbol: 'none',
+      ...linePointMark(item.data, screenRenderContext),
       yAxisIndex: useDualAxis
         ? largeSeriesIndices.includes(index)
           ? 0
@@ -467,7 +484,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
         data: chartData && chartData.values ? chartData.values : [],
         smooth: LINE_SMOOTHNESS,
         smoothMonotone: 'x',
-        symbol: 'none',
+        ...linePointMark(chartData?.values, screenRenderContext),
         lineStyle: {
           width: scaleScreenMetricFloat(chartTheme.lineWidth, screenRenderContext),
           opacity: chartTheme.lineOpacity,

@@ -410,8 +410,7 @@ class SnmpTopo:
                     if null_var_binds[col]:
                         row[col] = (previous_var_binds[col][0], endOfMibView)
                         continue
-                    stop_flag = False
-                    if isinstance(val, Null):
+                    if isinstance(val, Null) or _is_ended_value(val):
                         row[col] = (previous_var_binds[col][0], endOfMibView)
                         null_var_binds[col] = True
                         continue
@@ -419,6 +418,7 @@ class SnmpTopo:
                         row[col] = (previous_var_binds[col][0], endOfMibView)
                         null_var_binds[col] = True
                         continue
+                    stop_flag = False
                 if stop_flag:
                     break
                 processed_rows.append(row)
@@ -848,18 +848,17 @@ class SnmpTopo:
         except Exception as err:
             log_args = (
                 safe_log_value(self.host),
-                safe_log_value(self.collection_task_id),
                 "list_all_resources",
                 type(err).__name__,
             )
             if _is_expected_collection_error(err):
                 logger.debug(
-                    "event=snmp_topo_collect_unavailable host=%s task_id=%s " "failed_stage=%s error_type=%s",
+                    "event=snmp_topo_collect_unavailable host=%s " "failed_stage=%s error_type=%s",
                     *log_args,
                 )
             else:
                 logger.error(
-                    "event=snmp_topo_collect_failed host=%s task_id=%s " "failed_stage=%s error_type=%s",
+                    "event=snmp_topo_collect_failed host=%s " "failed_stage=%s error_type=%s",
                     *log_args,
                     exc_info=safe_exception_info(err),
                 )

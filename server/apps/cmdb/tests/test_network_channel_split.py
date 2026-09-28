@@ -75,6 +75,20 @@ def _network_instance(**overrides):
     return mock.Mock(**base)
 
 
+def test_device_and_topology_share_mixed_model_hosts():
+    instance = _network_instance(
+        instances=[
+            {"inst_uuid": "63e4a531-b6bb-43cc-9eae-8eb8a09f795e", "model_id": "switch", "ip_addr": "10.0.0.1"},
+            {"inst_uuid": "4c6643d2-4dc5-4a2a-8f24-3af72f33f7bc", "model_id": "router", "ip_addr": "10.0.0.2"},
+        ]
+    )
+    device = NetworkNodeParams(instance)
+    topo = NetworkTopoNodeParams(instance)
+
+    assert device.get_hosts() == ("hosts", "10.0.0.1,10.0.0.2")
+    assert topo.get_hosts() == device.get_hosts()
+
+
 def test_device_and_topology_config_ids_differ_metric_scope_same():
     instance = _network_instance()
     device = NetworkNodeParams(instance)

@@ -1,8 +1,6 @@
 Router Advantech SNMP:
   name: Advantech ICR (Telegraf)
-  desc: SNMP monitoring template for Advantech ICR and Conel cellular industrial
-    routers. It reports CPU utilization, memory used/free/total, internal temperature
-    and input voltage (IANA PEN 30140).
+  desc: "SNMP monitoring template for Advantech ICR router. It reports uptime, CPU utilization, memory utilization, temperature, interface traffic, and voltage (enterprise PEN 30140)."
 monitor_object:
   Router: Router
 monitor_object_type:

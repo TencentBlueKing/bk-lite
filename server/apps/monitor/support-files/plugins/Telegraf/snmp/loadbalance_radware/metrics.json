@@ -1,0 +1,103 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_radware",
+  "plugin": "Loadbalance Radware SNMP",
+  "plugin_desc": "SNMP monitoring template for Radware Alteon load balancer. It reports uptime, CPU utilization, memory utilization, and interface traffic, for Alteon ADC (enterprise PEN 1872).",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='loadbalance', collect_type='snmp_radware'}) by (instance_id)",
+  "name": "Loadbalance",
+  "icon": "mm-loadbalance_负载均衡",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='loadbalance'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='loadbalance', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Management-processor CPU utilization of the Radware Alteon (ALTEON-CHEETAH-SWITCH-MIB mpCpuStatsUtil64Seconds), reported directly as a percentage."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "device_memory_total",
+      "query": "device_memory_total{instance_type='loadbalance', __$labels__}",
+      "display_name": "Total Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total main memory of the Radware Alteon in bytes (mpMemStatsTotal)."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "device_memory_used",
+      "query": "device_memory_used{instance_type='loadbalance', __$labels__}",
+      "display_name": "Used Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Used main memory of the Radware Alteon in bytes (mpMemStatsUsed)."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "device_memory_free",
+      "query": "device_memory_free{instance_type='loadbalance', __$labels__}",
+      "display_name": "Free Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Free main memory of the Radware Alteon in bytes (mpMemStatsFree)."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "device_memory_usage",
+      "query": "sum(device_memory_used{instance_type='loadbalance', __$labels__}) by (instance_id) / sum(device_memory_total{instance_type='loadbalance', __$labels__}) by (instance_id) * 100",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Main memory utilization of the Radware Alteon, derived as used/total."
+    }
+  ]
+}

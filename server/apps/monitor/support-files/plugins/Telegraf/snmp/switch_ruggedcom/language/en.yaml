@@ -1,7 +1,6 @@
 Switch RuggedCOM SNMP:
   name: RuggedCOM (Telegraf)
-  desc: SNMP monitoring template for RuggedCOM switch. It reports CPU utilization,
-    per-port inbound traffic rate, per-port outbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for RuggedCOM switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic (enterprise PEN 15004)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -114,52 +113,43 @@ monitor_object_metric:
         more effective traffic management and optimization.
     device_cpu_usage:
       name: CPU Utilization
-      desc: This metric reports the CPU utilization of the device control plane (typically
-        the 5-minute average), as a percentage. Sustained high CPU usage can indicate
-        control-plane overload, routing instability, or attack traffic, and may lead
-        to slow management response or packet processing delays. Sourced from vendor-specific
-        SNMP OIDs and normalized to a 0-100 percentage.
+      desc: CPU utilization of the RuggedCOM industrial switch (rcDeviceStsCpuUsagePercent)
+        as a 0-100 percentage measured over the last second. Sustained high CPU usage
+        can indicate control-plane overload, ring-protocol oscillation, or attack
+        traffic.
     device_memory_usage:
       name: Memory Utilization
-      desc: This metric reports overall memory utilization of the device, computed
-        as used / (used + free) * 100 across all memory pools. High memory usage may
-        indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity,
-        and can cause instability or failed allocations.
+      desc: Memory utilization of the RuggedCOM industrial switch, computed as
+        (total - available) / total * 100 from rcDeviceInfoTotalRam and
+        rcDeviceStsAvailableRam. High usage may indicate leaks or insufficient capacity.
     device_memory_used:
       name: Memory Used
-      desc: This metric reports the number of bytes currently in use for each memory
-        pool of the device. It helps administrators understand the absolute memory
-        consumption per pool (for example Processor or I/O pools) and identify which
-        pool is under pressure.
+      desc: Used RAM of the RuggedCOM industrial switch in bytes, derived as
+        rcDeviceInfoTotalRam minus rcDeviceStsAvailableRam.
     device_memory_free:
       name: Memory Free
-      desc: This metric reports the number of free bytes available in each memory
-        pool of the device. Together with the used bytes it determines overall memory
-        utilization; a persistently low free value indicates memory pressure on that
-        pool.
+      desc: Available/free RAM of the RuggedCOM industrial switch in bytes
+        (rcDeviceStsAvailableRam). This leaf is free memory, not used memory.
     device_memory_total:
       name: Memory Total
-      desc: This metric reports the total memory capacity of the device. It is the
-        denominator for memory utilization (some vendors compute (total - free) /
-        total) and, together with free memory, reflects overall memory pressure.
+      desc: Total RAM of the RuggedCOM industrial switch in bytes
+        (rcDeviceInfoTotalRam). It is the denominator for memory utilization.
     device_temperature_celsius:
       name: Temperature
-      desc: This metric reports the temperature reading of each hardware sensor on
-        the device, in degrees Celsius. Abnormally high temperatures may indicate
-        fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal
-        protection or hardware damage if left unaddressed.
+      desc: Chassis temperature of the RuggedCOM industrial switch in degrees Celsius
+        (rcDeviceStsTemperature). Abnormally high values may indicate cooling failure
+        or excessive ambient heat.
     device_fan_state:
       name: Fan Status
-      desc: This metric reports the operational state of each cooling fan on the device.
-        A non-normal state (warning, critical, shutdown, or notFunctioning) indicates
-        a cooling fault that can quickly lead to overheating and should be investigated
-        immediately.
+      desc: Fan-bank state of the RuggedCOM industrial switch (rcDeviceStsFanBank1/2).
+        on/standby is normalized to 1=normal and failed to 2=abnormal; notPresent is
+        skipped. A value greater than 1 indicates a cooling fault.
     device_psu_state:
       name: Power Supply Status
-      desc: This metric reports the operational state of each power supply unit on
-        the device. A non-normal state signals a power redundancy or hardware fault;
-        on devices with redundant PSUs a single failure may not cause an outage but
-        removes redundancy and must be remediated promptly.
+      desc: Power-supply state of the RuggedCOM industrial switch
+        (rcDeviceStsPowerSupply1/2). functional is normalized to 1=normal and
+        notFunctional to 2=abnormal; notPresent is skipped. A value greater than 1
+        indicates a present module is not functional.
     device_fan_speed:
       name: Fan Speed
       desc: This metric reports the fan rotation speed (RPM) of the device, taken

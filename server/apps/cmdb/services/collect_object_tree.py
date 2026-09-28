@@ -4,6 +4,7 @@ from apps.cmdb.collect.extensions import get_collect_enterprise_extension
 from apps.cmdb.constants.constants import COLLECT_OBJ_TREE
 from apps.cmdb.services.collect_credential_contract import get_collect_credential_contract
 from apps.cmdb.services.collect_vault_binding import actual_builtin_type_keys, binding_for_collect_object
+from apps.cmdb.services.job_host_discovery_policy import supports_host_discovery
 from apps.system_mgmt.models import CredentialType
 
 HOST_COLLECT_OBJECTS_MERGED_TO_HOST = {"aix", "hpux", "domestic_linux"}
@@ -68,6 +69,7 @@ def get_collect_obj_tree(*, with_credential_types=False):
     builtin_rows = list(CredentialType.objects.filter(is_builtin=True)) if with_credential_types else []
     for category in tree:
         for child in category.get("children", []):
+            child["supports_host_discovery"] = supports_host_discovery(child)
             if with_credential_types:
                 binding = binding_for_collect_object(
                     child.get("id"),

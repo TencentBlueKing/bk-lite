@@ -28,7 +28,7 @@ from core.collection.preflight import AsyncProtocolPreflight
 from core.collection.redis_state import RedisCredentialStateStore, RedisRunStateStore
 from core.collection.result_publisher import BufferedResultPublisher, NatsResultPublisher
 from core.collection.round_metadata import RedisRoundMetadataStore
-from core.collection.runtime import CollectionRequest, CollectionRuntime, CollectionRuntimeSettings, RunLease, Submission
+from core.collection.runtime import CollectionRequest, CollectionRuntime, CollectionRuntimeSettings, RunLease, Submission, _run_log_identity
 from core.collection.scheduler import CollectionScheduler
 from core.collection.yaml_target_policy import apply_executor_target_policy, apply_yaml_target_policy_async
 from core.infra.event_loop_monitor import EventLoopLagMonitor
@@ -296,8 +296,8 @@ class CollectionApplication:
     async def submit(self, request: CollectionRequest) -> Submission:
         if _request_requires_metrics_stream(request) and not await metrics_transport_ready():
             logger.error(
-                "event=metrics_transport_not_ready task_id=%s plugin_ref=%s " "failed_stage=run_admission error_type=MetricsTransportNotReady",
-                safe_log_value(request.task_id),
+                "event=metrics_transport_not_ready %s plugin_ref=%s failed_stage=run_admission error_type=MetricsTransportNotReady",
+                _run_log_identity(request),
                 safe_log_value(request.plugin_ref),
             )
             submission = Submission(
@@ -532,8 +532,8 @@ class CollectionApplication:
                     await close_plugin()
                 except Exception as exc:  # noqa: BLE001 - 清理失败不覆盖 Run 原始结果
                     logger.exception(
-                        "event=collection_plugin_close_failed task_id=%s plugin_ref=%s " "failed_stage=plugin_close error_type=PluginCloseFailure",
-                        safe_log_value(request.task_id),
+                        "event=collection_plugin_close_failed %s plugin_ref=%s failed_stage=plugin_close error_type=PluginCloseFailure",
+                        _run_log_identity(request),
                         safe_log_value(request.plugin_ref),
                         exc_info=safe_exception_info(exc),
                     )

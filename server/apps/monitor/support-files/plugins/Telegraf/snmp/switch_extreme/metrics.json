@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_extreme",
   "plugin": "Switch Extreme SNMP",
-  "plugin_desc": "Extreme Networks-specific SNMP collection for switches (EXOS). In addition to standard IF-MIB interface metrics, it collects EXTREME-SYSTEM-MIB private OIDs for device health: CPU utilization, system memory (total/free), temperature, fan and power-supply status. Memory utilization is computed from total and free; fan/psu states are normalized to the unified 1=normal convention. Supported brands/models — Extreme Networks ExtremeXOS (EXOS) switches (X440/X460/X670/X690, etc.).",
+  "plugin_desc": "SNMP monitoring template for Extreme switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic, for ExtremeXOS (enterprise PEN 1916).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_extreme'}) by (instance_id)",
   "name": "Switch",
@@ -22,7 +22,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='switch', __$labels__}",
+      "query": "snmp_device_cpu_usage{instance_type='switch', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -30,7 +30,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the overall CPU utilization of the Extreme Networks device control plane (EXTREME-SYSTEM-MIB extremeCpuMonitorTotalUtilization), as a 0-100 percentage. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
+      "description": "This metric reports the overall CPU utilization of the Extreme Networks device control plane (EXTREME-SOFTWARE-MONITOR-MIB extremeCpuMonitorTotalUtilization), as a 0-100 percentage from a scalar GET. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
     },
     {
       "metric_group": "Memory",
@@ -48,7 +48,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the amount of free system memory available on the Extreme Networks device (EXTREME-SYSTEM-MIB extremeMemoryMonitorSystemFree). Together with total memory it determines overall memory utilization; a persistently low free value indicates memory pressure."
+      "description": "This metric reports the amount of free system memory available on the Extreme Networks device (EXTREME-SOFTWARE-MONITOR-MIB extremeMemoryMonitorSystemFree). Together with total memory it determines overall memory utilization; a persistently low free value indicates memory pressure."
     },
     {
       "metric_group": "Memory",
@@ -66,7 +66,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the total system memory of the Extreme Networks device (EXTREME-SYSTEM-MIB extremeMemoryMonitorSystemTotal). It is the denominator for memory utilization, computed as (total - free) / total."
+      "description": "This metric reports the total system memory of the Extreme Networks device (EXTREME-SOFTWARE-MONITOR-MIB extremeMemoryMonitorSystemTotal). It is the denominator for memory utilization, computed as (total - free) / total."
     },
     {
       "metric_group": "Memory",
@@ -89,7 +89,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
+      "query": "snmp_device_temperature_celsius{instance_type='switch', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -97,7 +97,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the current system temperature of the Extreme Networks device (EXTREME-SYSTEM-MIB extremeCurrentTemperature), in degrees Celsius. Abnormally high temperatures may indicate fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal protection or hardware damage if left unaddressed."
+      "description": "This metric reports the current enclosure temperature of the Extreme Networks device (EXTREME-SYSTEM-MIB extremeCurrentTemperature), in degrees Celsius from a scalar GET. Abnormally high temperatures may indicate fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal protection or hardware damage if left unaddressed."
     },
     {
       "metric_group": "Hardware Status",

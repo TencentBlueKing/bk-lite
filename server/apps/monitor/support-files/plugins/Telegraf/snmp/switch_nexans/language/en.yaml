@@ -1,7 +1,6 @@
 Switch Nexans SNMP:
   name: Nexans (Telegraf)
-  desc: SNMP monitoring template for Nexans switch. It reports per-port inbound traffic
-    rate, per-port outbound traffic rate, and system uptime (IANA PEN 266).
+  desc: "SNMP monitoring template for Nexans switch. It reports uptime, temperature, power supply status, and interface traffic, for ANS GigaSwitch / DualSwitch (enterprise PEN 266)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

@@ -1,0 +1,45 @@
+Router Nokia SNMP:
+  name: Nokia (Telegraf)
+  desc: "SNMP monitoring template for Nokia router. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic (enterprise PEN 6527)."
+monitor_object:
+  Router: Router
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Router:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart.
+        By monitoring the uptime, network administrators can understand the stability
+        and reliability of the device and identify potential reboot or failure issues.
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: This metric reports the CPU utilization of the Nokia TiMOS/SROS router
+        (TIMETRA-SYSTEM-MIB sgiCpuUsage) as a 0-100 percentage. Sustained high CPU
+        usage can indicate control-plane overload, routing churn, or attack traffic.
+    device_memory_used:
+      name: Memory Used
+      desc: This metric reports used pre-allocated pool memory of the Nokia TiMOS/SROS
+        router in bytes. The kilobyte leaf is preferred and scaled by 1024 to avoid
+        Unsigned32 saturation on large systems.
+    device_memory_free:
+      name: Memory Available
+      desc: This metric reports available (unallocated) system memory of the Nokia
+        TiMOS/SROS router in bytes. Persistently low available memory can indicate
+        rising memory pressure.
+    device_memory_usage:
+      name: Memory Utilization
+      desc: This metric reports overall memory utilization of the Nokia TiMOS/SROS
+        router, computed as used / (used + available) * 100. High memory usage may
+        indicate leaks, oversized tables, or insufficient capacity.
+    device_temperature_celsius:
+      name: Temperature
+      desc: Chassis hardware temperature of the Nokia TiMOS/SROS router in degrees
+        Celsius. Rows that report -1 (no sensor) are discarded. Abnormally high
+        values may indicate fan failure, poor airflow, or high ambient temperature.
+monitor_object_metric_group:
+  Router:
+    CPU: CPU
+    Memory: Memory
+    Temperature: Temperature
+    Base: Base

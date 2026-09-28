@@ -20,7 +20,7 @@ from core.collection.credential_policy import CredentialPolicy
 from core.collection.enums import FailureStage
 from core.collection.execution_plan import ExecutionPlan
 from core.collection.metrics import CollectionMetrics
-from core.collection.runtime import CollectionRequest, RunLease
+from core.collection.runtime import CollectionRequest, RunLease, _run_log_identity
 from core.infra.redis_client import is_credential_state_redis_error
 from core.logger import logger, safe_log_value
 from core.plugin.error_logging import PluginExceptionLogBudget
@@ -178,8 +178,8 @@ class TargetAttemptRunner:
         has_matching_credential = bool(self._credential_policy.matching_credentials(request, target))
         error_code = "no_valid_credential" if has_matching_credential else "no_matching_credential"
         logger.debug(
-            "event=target_no_credential task_id=%s target=%s error_code=%s " "next_retry_at=%s",
-            safe_log_value(request.task_id),
+            "event=target_no_credential %s target=%s error_code=%s next_retry_at=%s",
+            _run_log_identity(request),
             safe_log_value(target, max_length=255),
             safe_log_value(error_code),
             next_retry_at,

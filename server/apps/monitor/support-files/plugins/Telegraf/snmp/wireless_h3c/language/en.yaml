@@ -1,7 +1,6 @@
 Wireless H3C SNMP:
   name: H3C (Telegraf)
-  desc: SNMP monitoring template for H3C wireless AC. It reports CPU utilization, memory
-    utilization, AP counts, and station counts (IANA PEN 25506).
+  desc: "SNMP monitoring template for H3C wireless device. It reports uptime, CPU utilization, memory utilization, and wireless clients/radio (enterprise PEN 25506)."
 monitor_object:
   Wireless: Wireless
 monitor_object_type:

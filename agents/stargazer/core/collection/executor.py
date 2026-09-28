@@ -30,7 +30,7 @@ from core.collection.metrics import CollectionMetrics
 from core.collection.result_delivery import PendingPublish, ResultDeliveryCoordinator
 from core.collection.result_publisher import ImmediateResultPublishQueue
 from core.collection.run_result_sink import RunResultSink
-from core.collection.runtime import CollectionRequest, RunLease
+from core.collection.runtime import CollectionRequest, RunLease, _run_log_identity
 from core.collection.scheduler import CollectionScheduler
 from core.collection.target_attempt import TargetAttemptRunner, request_instance_id
 from core.logger import logger, safe_exception_info, safe_log_value
@@ -132,7 +132,7 @@ class TargetCollectionExecutor:
             metrics=self._metrics,
             request=request,
             lease=lease,
-            log_identity=_request_log_identity(request, instance_id),
+            log_identity=_run_log_identity(request),
             failure_log_limit=_FAILURE_SUMMARY_SAMPLE_LIMIT,
         )
         result_sink = RunResultSink(
@@ -159,12 +159,9 @@ class TargetCollectionExecutor:
                     target_started_at = time.monotonic()
                     active_targets.add(target)
                     logger.debug(
-                        "event=target_collection_started instance_id=%s "
-                        "plugin_ref=%s plugin_name=%s model_id=%s target=%s",
+                        "event=target_collection_started instance_id=%s plugin_ref=%s target=%s",
                         safe_log_value(instance_id),
                         safe_log_value(request.plugin_ref),
-                        safe_log_value(request.params.get("plugin_name") or "-"),
-                        safe_log_value(request.params.get("model_id") or "-"),
                         safe_log_value(target, max_length=255),
                     )
                     try:
@@ -180,16 +177,9 @@ class TargetCollectionExecutor:
                         ):
                             duration_ms = round((time.monotonic() - target_started_at) * 1000, 2)
                             logger.debug(
-                                "event=target_collection_succeeded %s "
-                                "plugin_ref=%s plugin_name=%s model_id=%s target=%s "
-                                "credential_id=%s duration_ms=%s | SNMP采集成功 IP=%s 耗时=%sms",
-                                _request_log_identity(request, instance_id),
+                                "event=target_collection_succeeded %s plugin_ref=%s target=%s duration_ms=%s",
+                                _run_log_identity(request),
                                 safe_log_value(request.plugin_ref),
-                                safe_log_value(request.params.get("plugin_name") or "-"),
-                                safe_log_value(request.params.get("model_id") or "-"),
-                                safe_log_value(target, max_length=255),
-                                safe_log_value(result.credential_id or "-"),
-                                duration_ms,
                                 safe_log_value(target, max_length=255),
                                 duration_ms,
                             )
@@ -204,11 +194,9 @@ class TargetCollectionExecutor:
                 self._metrics.increment("target_execution_error_total")
                 if plugin_exception_log_budget.claim():
                     logger.error(
-                        "event=target_execution_failed task_id=%s plugin_ref=%s "
-                        "model_id=%s target=%s failed_stage=framework error_type=%s",
-                        safe_log_value(request.task_id),
+                        "event=target_execution_failed %s plugin_ref=%s target=%s failed_stage=framework error_type=%s",
+                        _run_log_identity(request),
                         safe_log_value(request.plugin_ref),
-                        safe_log_value(request.params.get("model_id") or "-"),
                         safe_log_value(targets[index], max_length=255),
                         type(error).__name__,
                         exc_info=safe_exception_info(error),
@@ -219,6 +207,17 @@ class TargetCollectionExecutor:
                     attempts=0,
                     error_code="target_execution_error",
                     failed_stage=FailureStage.FRAMEWORK,
+                )
+            if result.status in {"failed", "unreachable"} and request.plugin_ref in {"network.config", "network_topo.config"}:
+                logger.warning(
+                    "event=network_collection_failed instance_id=%s plugin_ref=%s target=%s "
+                    "failed_stage=%s error_code=%s duration_ms=%s",
+                    safe_log_value(instance_id),
+                    safe_log_value(request.plugin_ref),
+                    safe_log_value(target, max_length=255),
+                    result.failed_stage.value if result.failed_stage else "-",
+                    safe_log_value(result.error_code or result.status),
+                    round((time.monotonic() - target_started_at) * 1000, 2),
                 )
             self._metrics.increment(
                 f"execution_mode_{self._plan.execution_mode}_{result.status}_total"
@@ -239,15 +238,10 @@ class TargetCollectionExecutor:
                     )
                     or "-"
                 )
-                logger.info(
-                    "event=collection_progress instance_id=%s "
-                    "plugin_ref=%s plugin_name=%s model_id=%s | "
-                    "采集进度 已完成=%s/%s 当前采集=%s 待处理=%s "
-                    "最近完成=%s 最近结果=%s 当前目标样本=%s",
+                logger.debug(
+                    "event=collection_progress instance_id=%s plugin_ref=%s | 采集进度 已完成=%s/%s 当前采集=%s 待处理=%s 最近完成=%s 最近结果=%s 当前目标样本=%s",
                     safe_log_value(instance_id),
                     safe_log_value(request.plugin_ref),
-                    safe_log_value(request.params.get("plugin_name") or "-"),
-                    safe_log_value(request.params.get("model_id") or "-"),
                     progress_completed,
                     len(targets),
                     self._activity_tracker.active,
@@ -324,24 +318,20 @@ class TargetCollectionExecutor:
         report = await result_sink.finish()
         summary = report.summary
         if report.total_failures:
-            logger.info(
-                "event=collection_failure_samples %s plugin_ref=%s model_id=%s "
-                "sample_count=%s total_failures=%s samples=%s",
-                _request_log_identity(request, instance_id),
+            logger.debug(
+                "event=collection_failure_samples %s plugin_ref=%s sample_count=%s total_failures=%s samples=%s",
+                _run_log_identity(request),
                 safe_log_value(request.plugin_ref),
-                safe_log_value(request.params.get("model_id") or "-"),
                 report.failure_sample_count,
                 report.total_failures,
                 report.failure_samples,
             )
         if report.ip_precheck_failure_count:
             logger.warning(
-                "event=ip_precheck_failed %s plugin_ref=%s model_id=%s "
-                "failed_stage=ip_precheck error_type=PreflightFailure "
-                "failure_count=%s sample_count=%s samples=%s",
-                _request_log_identity(request, instance_id),
+                "event=ip_precheck_failed %s plugin_ref=%s failed_stage=ip_precheck error_type=PreflightFailure failure_count=%s "
+                "sample_count=%s samples=%s",
+                _run_log_identity(request),
                 safe_log_value(request.plugin_ref),
-                safe_log_value(request.params.get("model_id") or "-"),
                 report.ip_precheck_failure_count,
                 report.ip_precheck_failure_sample_count,
                 report.ip_precheck_failure_samples,
@@ -356,13 +346,12 @@ class TargetCollectionExecutor:
             else logger.info
         )
         log_summary(
-            "event=collection_run_summary %s plugin_ref=%s model_id=%s "
-            "| 任务汇总 总目标=%s 采集成功=%s 采集失败=%s 不可达=%s 延后处理=%s 跳过=%s "
+            "event=collection_run_summary %s plugin_ref=%s | "
+            "任务汇总 总目标=%s 采集成功=%s 采集失败=%s 不可达=%s 延后处理=%s 跳过=%s "
             "发布成功=%s 无需发布=%s 发布失败=%s 发布状态未知=%s 发布事件失败=%s 发布永久失败=%s "
             "总耗时=%sms 失败类型=%s 失败样本=%s 发布失败类型=%s 发布失败样本=%s",
-            _request_log_identity(request, instance_id),
+            _run_log_identity(request),
             safe_log_value(request.plugin_ref),
-            safe_log_value(request.params.get("model_id") or "-"),
             summary.total,
             summary.collection_succeeded,
             summary.collection_failed,
@@ -392,35 +381,13 @@ class TargetCollectionExecutor:
                 round_complete_marker_failed=int(not marker_published),
             )
         elif marker_skip_reason != "not_applicable":
-            logger.info(
-                "event=round_complete_marker_skipped %s reason=%s round_ts=%s "
-                "total=%s collection_succeeded=%s collection_failed=%s unreachable=%s "
-                "deferred=%s skipped=%s publish_succeeded=%s publish_not_applicable=%s "
-                "publish_failed=%s publish_unknown=%s publish_event_failed=%s "
-                "publish_permanent_failed=%s",
-                _request_log_identity(request, instance_id),
+            logger.debug(
+                "event=round_complete_marker_skipped %s reason=%s round_ts=%s",
+                _run_log_identity(request),
                 marker_skip_reason,
                 round_ts,
-                summary.total,
-                summary.collection_succeeded,
-                summary.collection_failed,
-                summary.unreachable,
-                summary.deferred,
-                summary.skipped,
-                summary.publish_succeeded,
-                summary.publish_not_applicable,
-                summary.publish_failed,
-                summary.publish_unknown,
-                summary.publish_event_failed,
-                summary.publish_permanent_failed,
             )
         return summary
-
-
-def _request_log_identity(request: CollectionRequest, instance_id: str) -> str:
-    if instance_id != "-":
-        return f"instance_id={safe_log_value(instance_id)}"
-    return f"task_id={safe_log_value(request.task_id)}"
 
 
 def _target_status_zh(status: str) -> str:

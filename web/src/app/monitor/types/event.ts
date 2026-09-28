@@ -38,7 +38,7 @@ export interface StrategyFields {
   metric_unit?: string;
   organizations?: string[];
   source?: SourceFeild;
-  collect_type?: number;
+  collect_type?: string | number;
   schedule?: {
     type: string;
     value: number;

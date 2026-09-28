@@ -1,6 +1,6 @@
 Switch DASAN SNMP:
   name: DASAN（Telegraf）
-  desc: 面向 DASAN 以太网交换机的 SNMP 监控模板，可采集 CPU 使用率（1 分钟主指标，可选 5 秒/10 分钟）、内存总量/已用/空闲及推导出的利用率。
+  desc: 面向 DASAN 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、接口流量（企业号 PEN 6296）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:

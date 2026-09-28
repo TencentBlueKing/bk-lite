@@ -468,7 +468,8 @@
     "mlops": "MLOps",
     "patch": "Patch Management",
     "apm": "APM",
-    "playground": "Playground"
+    "playground": "Playground",
+    "workflow-orchestration": "Workflow Orchestration"
   },
   "app": {
     "ops-analysis": "Integrate operation and maintenance data, analyze potential risks and optimization space from multiple dimensions through dashboards and canvases, provide data support for decision-making, and help improve operation and maintenance quality and business continuity",
@@ -484,7 +485,8 @@
     "ops-console": "Unified operations console for managing and monitoring all operational activities",
     "job": "Quickly create and execute jobs, unified management of script execution, file distribution and scheduled tasks",
     "patch": "Centrally manage system patches with scanning, installation, and patch library maintenance to continuously reduce security risks.",
-    "apm": "Application performance and tracing platform that provides service metrics, trace exploration, and alert policies to help quickly locate latency and errors and keep services stable"
+    "apm": "Application performance and tracing platform that provides service metrics, trace exploration, and alert policies to help quickly locate latency and errors and keep services stable",
+    "workflow-orchestration": "Design visual workflows, automate execution, manage human approvals, and track cross-system operations in one place."
   },
   "tag": {
     "user_management": "User Management",
@@ -526,6 +528,10 @@
     "file_distribution": "File Distribution",
     "scheduled_task": "Scheduled Task",
     "patch_scan": "Patch Scanning",
+    "workflow_design": "Workflow Design",
+    "workflow_execution": "Workflow Execution",
+    "automation": "Automation",
+    "approval": "Human Approval",
     "patch_install": "Patch Installation",
     "patch_library": "Patch Library",
     "apm_integration": "App Integration",

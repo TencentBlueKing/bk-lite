@@ -1,0 +1,131 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_topsec",
+  "plugin": "Firewall Topsec SNMP",
+  "plugin_desc": "SNMP monitoring template for Topsec TOS firewalls. It reports uptime, CPU utilization, memory utilization, sessions/connections, session establishment rate, and interface traffic (enterprise PEN 14331).",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='firewall', collect_type='snmp_topsec'}) by (instance_id)",
+  "name": "Firewall",
+  "icon": "mm-firewall_防火墙",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='firewall'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "firewall_active_sessions",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic"
+  ],
+  "display_fields": [],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='firewall', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the Topsec TOS firewall since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_cpu_usage",
+      "query": "snmp_device_cpu_usage{instance_type='firewall', __$labels__} / 100",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization of the Topsec TOS firewall (TOS-SYSSTATE cpuLoad). The device reports percent times 100, so the query divides by 100 to yield a 0-100 percent. Sustained high CPU usage can indicate inspection overload or attack traffic."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_memory_usage",
+      "query": "snmp_device_memory_usage{instance_type='firewall', __$labels__} / 100",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of the Topsec TOS firewall (TOS-SYSSTATE memoryLoad). The device reports percent times 100, so the query divides by 100 to yield a 0-100 percent. High memory pressure can degrade session handling."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_memory_total",
+      "query": "snmp_device_memory_total{instance_type='firewall', __$labels__}",
+      "display_name": "Total Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total physical memory of the Topsec TOS firewall in bytes (TOS-SYSSTATE memoryTotal)."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_memory_free",
+      "query": "snmp_device_memory_free{instance_type='firewall', __$labels__}",
+      "display_name": "Free Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Free physical memory of the Topsec TOS firewall in bytes (TOS-SYSSTATE memoryFree)."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_memory_used",
+      "query": "snmp_device_memory_total{instance_type='firewall', __$labels__} - snmp_device_memory_free{instance_type='firewall', __$labels__}",
+      "display_name": "Used Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Used physical memory of the Topsec TOS firewall in bytes, derived as memoryTotal minus memoryFree."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "firewall_active_sessions",
+      "query": "snmp_firewall_active_sessions{instance_type='firewall', __$labels__}",
+      "display_name": "Active Sessions",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of current connections on the Topsec TOS firewall (TOS-SYSSTATE currentConnections). A rapid rise can indicate a connection flood or session-table pressure."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "firewall_session_rate",
+      "query": "snmp_firewall_session_rate{instance_type='firewall', __$labels__}",
+      "display_name": "Session Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "New connections per second on the Topsec TOS firewall (TOS-SYSSTATE cps). A sudden spike can indicate a flood or a burst of new sessions."
+    }
+  ]
+}

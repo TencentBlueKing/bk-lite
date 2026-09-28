@@ -10,6 +10,7 @@ import {
   collectMetricIdsByResource,
   mergeMetricsById
 } from './savedQueryMetricMerge';
+import { listSelectedMetricIds } from './searchQueryLogic';
 
 interface LoadSavedQueryResourcesArgs {
   queryGroups: QueryGroup[];
@@ -148,7 +149,10 @@ export const loadSavedQueryResources = async ({
           loadedInstancesMap[resourceKey] = await instancesPromise;
 
           for (const group of groupsForResource) {
-            if (group.legacyMetricName && !group.metric) {
+            if (
+              group.legacyMetricName &&
+              listSelectedMetricIds(group.metric).length === 0
+            ) {
               const legacyMetric = resolveLegacyMetric(
                 metrics,
                 group.legacyMetricName

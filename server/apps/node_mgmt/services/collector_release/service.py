@@ -38,6 +38,7 @@ from apps.node_mgmt.services.collector_release.errors import (
     PLUGIN_IMPORT_FAILED,
     PLUGIN_OVERWRITE,
     PREVIEW_EXPIRED,
+    REGISTER_FAILED,
     STORAGE_FAILED,
     PackIssue,
     issue,
@@ -413,14 +414,46 @@ class CollectorReleaseService:
         return result
 
     @staticmethod
-    def _upload_one_artifact(parsed: ParsedPack, artifact, data: dict, executable_name: str) -> None:
-        """从暂存 zip 直接流式打开对应成员上传，不把整个二进制读成一份 bytes（F1）。"""
+    def _is_package_registration_error(exc: Exception) -> bool:
+        """upload_file 里 staging 上传成功后的库表登记失败，不应再报成对象存储写入失败。"""
+        from django.db import DatabaseError, IntegrityError
+
+        return isinstance(exc, (KeyError, IntegrityError, DatabaseError))
+
+    @staticmethod
+    def _upload_one_artifact(
+        parsed: ParsedPack,
+        artifact,
+        data: dict,
+        executable_name: str,
+        existing_package=None,
+    ) -> PackageVersion:
+        """从暂存 zip 直接流式打开对应成员上传，不把整个二进制读成一份 bytes（F1）。
+
+        返回 upload_file 落好的 PackageVersion。覆盖导入必须传入 existing_package，
+        否则 _reserve_pending 会因 unique_together 抛 IntegrityError。
+        """
         arcname = f"{parsed.wrapping_prefix}{artifact.file}"
         try:
             with zipfile.ZipFile(parsed.source_path) as zf, zf.open(arcname) as stream:
-                PackageService.upload_file(_NamedZipStream(stream, executable_name), data)
+                return PackageService.upload_file(
+                    _NamedZipStream(stream, executable_name),
+                    data,
+                    existing_package=existing_package,
+                )
+        except ValidationAppException:
+            raise
         except Exception as exc:
-            logger.exception("collector release storage upload failed: os=%s arch=%s", artifact.os, artifact.arch)
+            logger.exception(
+                "collector release artifact upload failed: os=%s arch=%s",
+                artifact.os,
+                artifact.arch,
+            )
+            if CollectorReleaseService._is_package_registration_error(exc):
+                raise ValidationAppException(
+                    f"{artifact.os}/{artifact.arch} 版本登记失败。",
+                    data={"code": REGISTER_FAILED, "os": artifact.os, "arch": artifact.arch},
+                ) from exc
             raise ValidationAppException(
                 f"{artifact.os}/{artifact.arch} 对象存储写入失败。",
                 data={"code": STORAGE_FAILED, "os": artifact.os, "arch": artifact.arch},
@@ -456,6 +489,7 @@ class CollectorReleaseService:
             version=parsed.version,
         ).first()
         action = "skipped"
+        package = existing
         if not (existing and existing.sha256 == artifact.computed_sha256):
             data = {
                 "os": artifact.os,
@@ -463,26 +497,26 @@ class CollectorReleaseService:
                 "object": parsed.collector,
                 "version": parsed.version,
                 "name": executable_name,
+                "type": PackageConstants.TYPE_COLLECTOR,
+                "sha256": artifact.computed_sha256,
             }
-            CollectorReleaseService._upload_one_artifact(parsed, artifact, data, executable_name)
+            # upload_file 会创建或把 existing 置为 READY；此处不再二次 create，避免 unique_together 冲突。
+            package = CollectorReleaseService._upload_one_artifact(
+                parsed,
+                artifact,
+                data,
+                executable_name,
+                existing_package=existing,
+            )
             action = "overwritten" if existing else "created"
 
         with transaction.atomic():
-            if action == "overwritten":
-                existing.name = executable_name
-                existing.sha256 = artifact.computed_sha256
-                existing.type = PackageConstants.TYPE_COLLECTOR
-                existing.save(update_fields=["name", "sha256", "type"])
-            elif action == "created":
-                PackageVersion.objects.create(
-                    type=PackageConstants.TYPE_COLLECTOR,
-                    os=artifact.os,
-                    cpu_architecture=artifact.arch,
-                    object=parsed.collector,
-                    version=parsed.version,
-                    name=executable_name,
-                    sha256=artifact.computed_sha256,
-                )
+            if action in ("overwritten", "created") and package is not None:
+                # 覆盖路径下 upload_file 不会改 sha256/name/type，这里补齐；创建路径则幂等写回。
+                package.name = executable_name
+                package.sha256 = artifact.computed_sha256
+                package.type = PackageConstants.TYPE_COLLECTOR
+                package.save(update_fields=["name", "sha256", "type"])
             if collector.id not in keep_local_slots and parsed.execute_parameters:
                 collector.execute_parameters = parsed.execute_parameters
             collector.imported_package_version = parsed.version
@@ -538,8 +572,27 @@ class CollectorReleaseService:
                 CollectorReleaseService._renew_import_lock(parsed.collector, token)
                 try:
                     artifact_results.append(CollectorReleaseService._commit_one_artifact(parsed, artifact, keep_local_slots))
+                except ValidationAppException as exc:
+                    code = STORAGE_FAILED
+                    if isinstance(exc.data, dict) and exc.data.get("code"):
+                        code = exc.data["code"]
+                    failed_artifacts.append(
+                        {
+                            "os": artifact.os,
+                            "arch": artifact.arch,
+                            "message": exc.message,
+                            "code": code,
+                        }
+                    )
                 except Exception as exc:
-                    failed_artifacts.append({"os": artifact.os, "arch": artifact.arch, "message": str(exc)})
+                    failed_artifacts.append(
+                        {
+                            "os": artifact.os,
+                            "arch": artifact.arch,
+                            "message": str(exc),
+                            "code": STORAGE_FAILED,
+                        }
+                    )
 
             # 不管有没有架构失败，暂存包这一轮的用途都已经用完了；重试同一个包会
             # 重新走 preview 拿新 token，已成功的架构会因为哈希相同被跳过。
@@ -555,7 +608,7 @@ class CollectorReleaseService:
                     "artifacts": artifact_results,
                     "issues": [
                         issue(
-                            STORAGE_FAILED,
+                            item.get("code") or STORAGE_FAILED,
                             f"{item['os']}/{item['arch']} 写入失败：{item['message']}",
                             details=item,
                         ).to_dict()

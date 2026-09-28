@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_h3c",
   "plugin": "Wireless H3C SNMP",
-  "plugin_desc": "H3C wireless AC SNMP collection for Comware WLAN controllers (HH3C-DOT11-ACMT-MIB and HH3C-ENTITY-EXT-MIB, IANA PEN 25506). It collects controller-level AP and station counts (hh3cDot11APConnectCount, hh3cDot11StationConnectCount, optional hh3cDot11MaxAPNumPermitted, hh3cDot11MasterAPCount, hh3cDot11TotalAPconnected) plus per-entity CPU utilization (hh3cEntityExtCpuUsage) and memory utilization (hh3cEntityExtMemUsage). Both health readings are reported per physical entity, where most entities return 0 and the CPU/memory-bearing board carries the real value. Supported brands/models include H3C Comware WLAN access controllers (WX/WAC families).",
+  "plugin_desc": "SNMP monitoring template for H3C wireless device. It reports uptime, CPU utilization, memory utilization, and wireless clients/radio (enterprise PEN 25506).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_h3c'}) by (instance_id)",
   "name": "Wireless",

@@ -1,7 +1,6 @@
 Router Yamaha SNMP:
   name: Yamaha (Telegraf)
-  desc: SNMP monitoring template for Yamaha router. It reports CPU utilization, per-port
-    inbound traffic rate, per-port outbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Yamaha router. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic (enterprise PEN 1182)."
 monitor_object:
   Router: Router
 monitor_object_type:
@@ -10,8 +9,9 @@ monitor_object_metric:
   Router:
     device_temperature_celsius:
       name: Device Temperature
-      desc: Device hardware temperature sensor reading in degrees Celsius. Abnormally
-        high values may indicate fan failure, poor airflow, or high ambient temperature.
+      desc: Inbox temperature of the Yamaha RTX/NVR/FWX router in degrees Celsius
+        (yrhInboxTemperature). Present only on models that expose this scalar. Abnormally
+        high values may indicate poor airflow or high ambient temperature.
     device_fan_state:
       name: Fan Status
       desc: Operational state of each cooling fan (enum). A non-normal state indicates
@@ -22,8 +22,9 @@ monitor_object_metric:
         indicates a power redundancy or hardware fault and should be remediated promptly.
     device_memory_total:
       name: Total Memory
-      desc: This metric reports the total physical memory capacity of the router (UCD-SNMP-MIB
-        memTotalReal, reported in KB and converted to bytes).
+      desc: This metric reports the total physical memory of the Yamaha RTX/NVR/FWX
+        router (yrhMemorySizeMB, reported in MB and converted to bytes). Present only
+        on models that expose this scalar.
     device_memory_free:
       name: Free Memory
       desc: This metric reports the amount of free physical memory in bytes on the
@@ -36,15 +37,14 @@ monitor_object_metric:
         memory consumption and pressure.
     device_cpu_usage:
       name: CPU Usage
-      desc: This metric reports the average CPU utilization across the operating entities
-        of the Juniper MX router (JUNIPER-MIB jnxOperatingCPU, aggregated per instance_id).
-        Sustained high usage indicates heavy forwarding or control-plane load.
+      desc: This metric reports five-second CPU utilization of the Yamaha RTX/NVR/FWX
+        router (yrhCpuUtil5sec) as a 0-100 percentage. Sustained high usage indicates
+        forwarding overload, frequent route computation, or abnormal traffic.
     device_memory_usage:
       name: Memory Usage
-      desc: This metric reports the average memory utilization across the operating
-        entities of the Juniper MX router (JUNIPER-MIB jnxOperatingBuffer, reported
-        directly as a percentage). Sustained high usage may be caused by oversized
-        routing tables or memory leaks.
+      desc: This metric reports memory utilization of the Yamaha RTX/NVR/FWX router
+        (yrhMemoryUtil) as a 0-100 percentage. Sustained high usage may indicate memory
+        pressure or leaks.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate (HC)
       desc: This metric indicates the average rate of bytes received over the past

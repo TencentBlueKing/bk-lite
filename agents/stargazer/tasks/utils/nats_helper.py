@@ -23,6 +23,7 @@ from typing import Any, Dict, Iterable, Iterator
 from core.collection.contracts import StructuredMetricsPayload
 from core.infra.control_transport import get_control_transport
 from core.infra.nats_utils import NatsLinesPublishError, nats_publish_lines
+from core.logger import safe_exception_info, safe_log_value
 from influxdb_client import Point, WritePrecision
 from sanic.log import logger
 
@@ -120,6 +121,7 @@ class MetricsPublishError(RuntimeError):
         attempted_indices: tuple[int, ...] = (),
         confirmed_indices: tuple[int, ...] = (),
         failed_stage: str = "",
+        publish_diagnostics: dict | None = None,
     ):
         self.task_id = task_id
         self.subject = subject
@@ -132,6 +134,7 @@ class MetricsPublishError(RuntimeError):
         self.attempted_indices = attempted_indices
         self.confirmed_indices = confirmed_indices
         self.failed_stage = failed_stage
+        self.publish_diagnostics = publish_diagnostics or {}
         super().__init__(
             f"metrics publish incomplete: task_id={task_id}, subject={subject}, "
             f"success={success_count}/{total_lines}, delivery_detected={delivery_detected}, "
@@ -176,6 +179,7 @@ async def _publish_lines_with_retry(
             attempted_indices=tuple(getattr(error, "attempted_indices", ())),
             confirmed_indices=tuple(getattr(error, "confirmed_indices", ())),
             failed_stage=str(getattr(error, "timeout_phase", None) or "publish_call"),
+            publish_diagnostics=getattr(error.error, "publish_diagnostics", None),
         ) from error
     except Exception as error:
         # 普通异常无法证明服务端未收到，按不确定投递处理，避免重复数据。
@@ -194,14 +198,8 @@ async def _publish_lines_with_retry(
     expected_count = total_lines - skipped_count
     if success_count == expected_count:
         logger.debug(
-            "event=nats_metrics_publish_succeeded task_id=%s subject=%s "
-            "success_count=%s total_lines=%s skipped_count=%s | "
-            "NATS指标推送成功 成功行数=%s/%s 跳过行数=%s",
-            task_id,
+            "event=nats_metrics_publish_succeeded subject=%s success_count=%s total_lines=%s skipped_count=%s",
             subject,
-            success_count,
-            total_lines,
-            skipped_count,
             success_count,
             total_lines,
             skipped_count,
@@ -267,7 +265,7 @@ class _DeliveryAttemptFilter:
 async def publish_callback_to_nats(result: Dict[str, Any], params: Dict[str, Any], task_id: str):
     callback_subject = params.get("callback_subject")
     if not callback_subject:
-        logger.warning(f"[NATS Helper] callback_subject missing for task {task_id}")
+        logger.warning("event=callback_subject_missing collect_task_id=%s", safe_log_value(params.get("collect_task_id") or "-"))
         return
 
     callback_data = dict(result or {})
@@ -277,13 +275,13 @@ async def publish_callback_to_nats(result: Dict[str, Any], params: Dict[str, Any
 
     try:
         await get_control_transport().publish_collection_callback(str(callback_subject), callback_data)
-        logger.debug(f"[NATS Helper] Published callback to {subject} for task {task_id}")
+        logger.debug("event=callback_published subject=%s", subject)
     except Exception as err:
         logger.exception(
-            "event=callback_publish_failed task_id=%s subject=%s " "failed_stage=callback_publish error_type=%s",
-            task_id,
+            "event=callback_publish_failed subject=%s failed_stage=callback_publish error_type=%s",
             subject,
             type(err).__name__,
+            exc_info=safe_exception_info(err),
         )
         raise
 
@@ -330,8 +328,7 @@ async def publish_metrics_to_nats(ctx: Dict, metrics_data: str, params: Dict[str
         )
         line_ordinal += len(chunk)
     logger.debug(
-        "event=nats_metrics_result_published task_id=%s subject=%s success_count=%s",
-        task_id,
+        "event=nats_metrics_result_published subject=%s success_count=%s",
         subject,
         success_count,
     )
@@ -420,7 +417,7 @@ class _SubjectPublishLane:
     def _next_state_chunk(state):
         if not state["validated"]:
             cached_lines = []
-            state["total_lines"] = _validate_metric_result(state["metrics_data"], state["params"], encoded_cache=cached_lines)
+            state["total_lines"] = _validate_metric_result(state["metrics_data"], state["params"], encoded_cache=cached_lines, stats=state)
             state["validated"] = True
             if len(cached_lines) == state["total_lines"]:
                 state["chunks"] = iter(_iter_line_chunks(cached_lines, max_lines=state["quantum"]))
@@ -523,6 +520,7 @@ class _SubjectPublishLane:
                         attempted_indices=result_attempted_indices,
                         confirmed_indices=result_confirmed_indices,
                         failed_stage=str(getattr(error, "failed_stage", "") or "publish_call"),
+                        publish_diagnostics=getattr(error, "publish_diagnostics", None),
                     )
                     self.failed_result_ids.add(result_id)
                 return
@@ -566,6 +564,10 @@ class _SubjectPublishLane:
                 task_id = state["task_id"]
                 result_id = state["result_id"]
                 attempt_state = self.attempt_states.get(result_id)
+                budget = getattr(attempt_state, "send_budget", None)
+                if budget is not None and state["validated"]:
+                    budget.total_lines = state["total_lines"]
+                    budget.total_bytes = state["total_bytes"]
                 deadline = getattr(attempt_state, "deadline", None)
                 if deadline is not None and asyncio.get_running_loop().time() >= deadline:
                     error = PublishDeadlineExceededError("publish deadline expired during metrics encoding")
@@ -672,7 +674,7 @@ def _iter_line_chunks(
         yield chunk
 
 
-def _validate_metric_result(metrics_data, params: Dict[str, Any], *, encoded_cache=None) -> int:
+def _validate_metric_result(metrics_data, params: Dict[str, Any], *, encoded_cache=None, stats=None) -> int:
     """完整校验后才发送；小结果复用编码，超出 900KB 缓存上限则回退有界游标。"""
     line_count = 0
     byte_count = 0
@@ -696,6 +698,8 @@ def _validate_metric_result(metrics_data, params: Dict[str, Any], *, encoded_cac
             else:
                 encoded_cache.clear()
                 caching = False
+    if stats is not None:
+        stats["total_bytes"] = byte_count
     return line_count
 
 

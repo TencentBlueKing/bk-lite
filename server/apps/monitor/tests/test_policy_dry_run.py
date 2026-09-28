@@ -1,4 +1,4 @@
-"""策略试跑：草稿/已保存、越权过滤、判定、零副作用、连续 N 文案、失败日志。"""
+"""策略预检：草稿/已保存、越权过滤、判定、零副作用、连续 N 文案、失败日志。"""
 
 import logging
 import traceback
@@ -515,7 +515,7 @@ def test_failure_logs_single_warning_without_query_or_payload(metric_ctx, mocker
         side_effect=RuntimeError("query failed"),
     )
     caplog.set_level(logging.DEBUG, logger="monitor")
-    with pytest.raises(BaseAppException, match="试跑失败"):
+    with pytest.raises(BaseAppException, match="预检失败"):
         PolicyDryRunService(
             _payload(metric_ctx, name=sentinel),
             _ACTOR,

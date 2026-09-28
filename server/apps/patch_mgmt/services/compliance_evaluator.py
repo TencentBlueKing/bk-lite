@@ -7,11 +7,12 @@ from dataclasses import dataclass, field
 from typing import Iterable, Mapping
 
 from apps.patch_mgmt.constants import OSType, RequirementAssessmentStatus
-from apps.patch_mgmt.services.linux_platform import (
-    LinuxHostFacts,
-    package_manager_family,
-    validate_linux_host_facts,
-)
+from apps.patch_mgmt.services.linux_platform import LinuxHostFacts, package_manager_family, validate_linux_host_facts
+from apps.patch_mgmt.utils.i18n import patch_message
+
+
+def _pm(key: str, default: str, **values) -> str:
+    return patch_message(None, key, default, **values)
 
 
 @dataclass(frozen=True)
@@ -157,48 +158,70 @@ def _version_matches(actual: str, expected: str) -> bool | None:
 
 
 def _linux_not_applicable_reason(requirement: RequirementSpec, host: LinuxHostFacts) -> str:
-    expected_arches = {
-        _normalized_architecture(value) for value in requirement.architectures if str(value or "").strip()
-    }
+    expected_arches = {_normalized_architecture(value) for value in requirement.architectures if str(value or "").strip()}
     host_arch = _normalized_architecture(host.architecture)
     universal_arches = {"all", "any", "noarch"}
     if expected_arches.isdisjoint(universal_arches) and host_arch not in expected_arches:
-        return f"补丁架构不适用于当前主机（要求 {', '.join(sorted(expected_arches))}，主机 {host_arch}）"
+        return _pm(
+            "assessment.arch_not_applicable",
+            "Patch architecture is not applicable to this host (required {expected}, host {actual})",
+            expected=", ".join(sorted(expected_arches)),
+            actual=host_arch,
+        )
 
     expected_distro = _normalized_distro(requirement.distro_name)
     host_distro = _normalized_distro(host.distro_id)
     if expected_distro and host_distro and expected_distro != host_distro:
-        return f"补丁发行版 {requirement.distro_name} 不适用于当前主机 {host.distro_id}"
+        return _pm(
+            "assessment.distro_not_applicable",
+            "Patch distro {expected} is not applicable to host {actual}",
+            expected=requirement.distro_name,
+            actual=host.distro_id,
+        )
 
     version_matches = _version_matches(host.version_id, requirement.os_version_range)
     if version_matches is False:
-        return f"补丁系统版本 {requirement.os_version_range} 不适用于当前主机 {host.version_id}"
+        return _pm(
+            "assessment.version_not_applicable",
+            "Patch OS version {expected} is not applicable to host {actual}",
+            expected=requirement.os_version_range,
+            actual=host.version_id,
+        )
 
     expected_manager = str(requirement.package_manager or "").strip().lower()
     host_manager = str(host.package_manager or "").strip().lower()
     if package_manager_family(expected_manager) != package_manager_family(host_manager):
-        return f"补丁包管理器 {expected_manager} 不适用于当前主机 {host_manager}"
+        return _pm(
+            "assessment.package_manager_not_applicable",
+            "Patch package manager {expected} is not applicable to host {actual}",
+            expected=expected_manager,
+            actual=host_manager,
+        )
     return ""
 
 
 def _linux_requirement_metadata_error(requirement: RequirementSpec) -> str:
     missing = []
     if not requirement.identifier.strip():
-        missing.append("包名")
+        missing.append(_pm("assessment.field_package_name", "package name"))
     if not requirement.required_version.strip():
-        missing.append("包版本")
+        missing.append(_pm("assessment.field_package_version", "package version"))
     if not requirement.distro_name.strip():
-        missing.append("发行版")
+        missing.append(_pm("assessment.field_distro", "distro"))
     if not requirement.os_version_range.strip():
-        missing.append("系统版本范围")
+        missing.append(_pm("assessment.field_os_version_range", "OS version range"))
     if not tuple(value for value in requirement.architectures if str(value or "").strip()):
-        missing.append("架构")
+        missing.append(_pm("assessment.field_architecture", "architecture"))
     if not package_manager_family(requirement.package_manager):
-        missing.append("包管理器")
+        missing.append(_pm("assessment.field_package_manager", "package manager"))
     if missing:
-        return f"补丁元数据缺少：{', '.join(missing)}"
+        return _pm("assessment.metadata_missing", "Patch metadata is missing: {fields}", fields=", ".join(missing))
     if _version_matches("0", requirement.os_version_range) is None:
-        return f"补丁系统版本范围无法解析：{requirement.os_version_range}"
+        return _pm(
+            "assessment.version_range_unparseable",
+            "Patch OS version range cannot be parsed: {range}",
+            range=requirement.os_version_range,
+        )
     return ""
 
 
@@ -216,22 +239,29 @@ def evaluate_linux_applicability(
     reason = _linux_not_applicable_reason(requirement, host)
     if reason:
         return RequirementAssessmentStatus.NOT_APPLICABLE, reason
-    return RequirementAssessmentStatus.SATISFIED, "补丁适用于当前主机"
+    return RequirementAssessmentStatus.SATISFIED, _pm("assessment.applicable_to_host", "Patch applies to this host")
 
 
 def _windows_not_applicable_reason(requirement: RequirementSpec, host: WindowsHostFacts) -> str:
-    expected_arches = {
-        _normalized_architecture(value) for value in requirement.architectures if str(value or "").strip()
-    }
+    expected_arches = {_normalized_architecture(value) for value in requirement.architectures if str(value or "").strip()}
     host_arch = _normalized_architecture(host.architecture)
     if expected_arches and host_arch and host_arch not in expected_arches:
-        return f"补丁架构不适用于当前主机（要求 {', '.join(sorted(expected_arches))}，主机 {host_arch}）"
+        return _pm(
+            "assessment.arch_not_applicable",
+            "Patch architecture is not applicable to this host (required {expected}, host {actual})",
+            expected=", ".join(sorted(expected_arches)),
+            actual=host_arch,
+        )
 
     product_name = re.sub(r"\s+", " ", str(host.product_name or "").strip().lower())
     products = [re.sub(r"\s+", " ", str(value or "").strip().lower()) for value in requirement.products]
     products = [value for value in products if value]
     if products and product_name and not any(value in product_name for value in products):
-        return f"补丁产品范围不适用于当前主机 {host.product_name}"
+        return _pm(
+            "assessment.product_not_applicable",
+            "Patch product scope is not applicable to host {product}",
+            product=host.product_name,
+        )
     return ""
 
 
@@ -251,9 +281,7 @@ def _evaluate_linux(
         )
     )
     if not legacy_without_host_facts:
-        applicability, applicability_reason = evaluate_linux_applicability(
-            requirement, facts.linux_host
-        )
+        applicability, applicability_reason = evaluate_linux_applicability(requirement, facts.linux_host)
     else:
         applicability, applicability_reason = RequirementAssessmentStatus.SATISFIED, ""
     if applicability == RequirementAssessmentStatus.UNKNOWN:
@@ -281,7 +309,7 @@ def _evaluate_linux(
         return _result(
             requirement.requirement_id,
             RequirementAssessmentStatus.UNKNOWN,
-            f"未采集到 {package_name} 的包事实",
+            _pm("assessment.package_fact_missing", "No package facts collected for {package}", package=package_name),
             pkg_name=package_name,
             required_version=requirement.required_version,
         )
@@ -296,34 +324,51 @@ def _evaluate_linux(
         return _result(
             requirement.requirement_id,
             RequirementAssessmentStatus.UNKNOWN,
-            fact.error or f"无法判断 {package_name} 是否已安装",
+            fact.error
+            or _pm(
+                "assessment.package_install_unknown",
+                "Unable to determine whether {package} is installed",
+                package=package_name,
+            ),
             **evidence,
         )
     if fact.installed is False:
         return _result(
             requirement.requirement_id,
             RequirementAssessmentStatus.MISSING,
-            f"未安装 {package_name}",
+            _pm("assessment.package_not_installed", "{package} is not installed", package=package_name),
             **evidence,
         )
     if fact.comparison is None:
         return _result(
             requirement.requirement_id,
             RequirementAssessmentStatus.UNKNOWN,
-            f"无法比较 {package_name} 的已安装版本和最低版本",
+            _pm(
+                "assessment.package_version_compare_failed",
+                "Unable to compare the installed and minimum versions of {package}",
+                package=package_name,
+            ),
             **evidence,
         )
     if fact.comparison >= 0:
         return _result(
             requirement.requirement_id,
             RequirementAssessmentStatus.SATISFIED,
-            f"{package_name} 已安装版本不低于最低版本",
+            _pm(
+                "assessment.package_version_ok",
+                "Installed version of {package} meets the minimum version",
+                package=package_name,
+            ),
             **evidence,
         )
     return _result(
         requirement.requirement_id,
         RequirementAssessmentStatus.MISSING,
-        f"{package_name} 已安装版本低于最低版本",
+        _pm(
+            "assessment.package_version_below",
+            "Installed version of {package} is below the minimum version",
+            package=package_name,
+        ),
         **evidence,
     )
 
@@ -358,13 +403,13 @@ def _evaluate_windows(
             **evidence,
         )
     # WUA 可能同时返回同一 KB 的已安装旧修订和待安装新修订
-    #（例如 Defender 平台更新）。只要当前仍明确提供目标 KB，就不能
+    # （例如 Defender 平台更新）。只要当前仍明确提供目标 KB，就不能
     # 因为历史修订已安装而判为合规。
     if required_kb in missing:
         return _result(
             requirement.requirement_id,
             RequirementAssessmentStatus.MISSING,
-            f"{required_kb} 适用但未安装",
+            _pm("assessment.kb_applicable_not_installed", "{kb} is applicable but not installed", kb=required_kb),
             **evidence,
         )
     installed_matches = sorted(candidates & installed)
@@ -372,7 +417,7 @@ def _evaluate_windows(
         return _result(
             requirement.requirement_id,
             RequirementAssessmentStatus.SATISFIED,
-            f"已安装 {installed_matches[0]}",
+            _pm("assessment.kb_installed", "{kb} is installed", kb=installed_matches[0]),
             satisfied_by=installed_matches[0],
             **evidence,
         )
@@ -392,13 +437,17 @@ def _evaluate_windows(
         return _result(
             requirement.requirement_id,
             RequirementAssessmentStatus.NOT_APPLICABLE,
-            f"{required_kb} 不适用于当前主机",
+            _pm("assessment.kb_not_applicable", "{kb} is not applicable to this host", kb=required_kb),
             **evidence,
         )
     return _result(
         requirement.requirement_id,
         RequirementAssessmentStatus.UNKNOWN,
-        f"无法确认 {required_kb} 的安装、适用或替代状态",
+        _pm(
+            "assessment.kb_status_unknown",
+            "Unable to confirm install, applicability, or replacement status for {kb}",
+            kb=required_kb,
+        ),
         **evidence,
     )
 
@@ -413,11 +462,14 @@ def evaluate_requirements(
     for requirement in requirements:
         if requirement.configuration_error:
             reasons = {
-                "missing linux_detail": "缺少 Linux 补丁详情",
-                "missing package name": "补丁未配置包名",
-                "conflicting linux package families": "补丁同时关联 APT 与 RPM 家族来源，无法安全判断适用性",
-                "missing windows_detail": "缺少 Windows 补丁详情",
-                "missing KB number": "补丁未配置 KB 号",
+                "missing linux_detail": _pm("assessment.missing_linux_detail", "Linux patch details are missing"),
+                "missing package name": _pm("assessment.missing_package_name", "The patch has no package name configured"),
+                "conflicting linux package families": _pm(
+                    "assessment.conflicting_linux_families",
+                    "The patch is linked to both APT and RPM families and cannot be assessed safely",
+                ),
+                "missing windows_detail": _pm("assessment.missing_windows_detail", "Windows patch details are missing"),
+                "missing KB number": _pm("assessment.missing_kb_number", "The patch has no KB number configured"),
             }
             assessment = _result(
                 requirement.requirement_id,
@@ -440,7 +492,11 @@ def evaluate_requirements(
             assessment = _result(
                 requirement.requirement_id,
                 RequirementAssessmentStatus.UNKNOWN,
-                f"不支持的操作系统类型: {requirement.os_type}",
+                _pm(
+                    "assessment.unsupported_os_type",
+                    "Unsupported operating system type: {os_type}",
+                    os_type=requirement.os_type,
+                ),
             )
         result[requirement.requirement_id] = assessment
     return result

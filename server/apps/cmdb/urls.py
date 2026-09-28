@@ -19,9 +19,11 @@ from apps.cmdb.views.scan import ScanTaskViewSet
 from apps.cmdb.views.scene_view import SceneViewViewSet
 from apps.cmdb.views.service_tree import ServiceTreeViewSet
 from apps.cmdb.views.subscription import SubscriptionViewSet
+from apps.cmdb.views.transfer_task import TransferTaskViewSet
 from apps.cmdb.views.user_personal_config import UserPersonalConfigViewSet
 
 router = routers.DefaultRouter()
+router.register(r"api/transfer_tasks", TransferTaskViewSet, basename="transfer_tasks")
 router.register(r"api/classification", ClassificationViewSet, basename="classification")
 router.register(r"api/model", ModelViewSet, basename="model")
 router.register(r"api/instance", InstanceViewSet, basename="instance")

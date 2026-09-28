@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Input, InputNumber, Button, ConfigProvider } from 'antd';
 import { SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -17,7 +17,11 @@ import type {
   FilterValue,
   TimeRangeValue,
 } from '@/app/ops-analysis/types/dashBoard';
-import type { InputControlConfig } from '@/app/ops-analysis/types/dataSource';
+import type { InputControlConfig, InputOption } from '@/app/ops-analysis/types/dataSource';
+import {
+  isDynamicOptionFilter,
+  reconcileOptionBackedFilterValue,
+} from '@/app/ops-analysis/utils/optionBackedFilterValue';
 import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
 import { useTranslation } from '@/utils/i18n';
 import { useShareMode } from '@/app/ops-analysis/context/shareMode';
@@ -71,6 +75,11 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   const organizationSeed = useShareOrganizationSeed();
   const [localValues, setLocalValues] =
     useState<Record<string, FilterValue>>(values);
+  const localValuesRef = useRef(localValues);
+  const definitionsRef = useRef(definitions);
+  const optionsByFilterRef = useRef<Map<string, InputOption[]>>(new Map());
+  localValuesRef.current = localValues;
+  definitionsRef.current = definitions;
   const organizationTreeData = useMemo(
     () => (shareMode
       ? convertGroupTreeToTreeSelectData(shareOrganization?.groupTree ?? [])
@@ -146,24 +155,57 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
     };
   };
 
+  const publishValues = (
+    next: Record<string, FilterValue>,
+    notify: 'search' | 'reset' = 'search',
+  ) => {
+    localValuesRef.current = next;
+    setLocalValues(next);
+    if (notify === 'reset' && onReset) {
+      onReset(next);
+      return;
+    }
+    (onSearch || onChange)?.(next);
+  };
+
   const handleSearch = () => {
-    (onSearch || onChange)?.(localValues);
+    publishValues(localValuesRef.current);
+  };
+
+  const reconcileFilterOptions = (filterId: string, options: InputOption[]) => {
+    optionsByFilterRef.current.set(filterId, options);
+    const definition = definitionsRef.current.find((item) => item.id === filterId);
+    if (!definition) return;
+    const nextValue = reconcileOptionBackedFilterValue(
+      definition,
+      localValuesRef.current[filterId],
+      options,
+    );
+    if (nextValue === undefined) return;
+    publishValues({
+      ...localValuesRef.current,
+      [filterId]: nextValue,
+    });
   };
 
   const handleReset = () => {
-    const emptyValues = fillMissingOrganizationFilterValues(
+    const resetValues = fillMissingOrganizationFilterValues(
       enabledDefinitions,
       buildResetFilterValues(enabledDefinitions),
       organizationSeed,
     );
-    setLocalValues(emptyValues);
-
-    if (onReset) {
-      onReset(emptyValues);
-      return;
-    }
-
-    (onSearch || onChange)?.(emptyValues);
+    enabledDefinitions.forEach((definition) => {
+      const options = optionsByFilterRef.current.get(definition.id);
+      if (!options) {
+        if (isDynamicOptionFilter(definition)) {
+          resetValues[definition.id] = null;
+        }
+        return;
+      }
+      const retained = reconcileOptionBackedFilterValue(definition, null, options);
+      resetValues[definition.id] = retained === undefined ? null : retained;
+    });
+    publishValues(resetValues, 'reset');
   };
 
   const getFilterInputConfig = (
@@ -287,6 +329,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
             inputConfig={inputConfig}
             fallback={fallbackInput}
             value={controlValue}
+            onOptionsResolved={(options) => reconcileFilterOptions(definition.id, options)}
             onChange={(nextValue) => {
               if (isMultiple) {
                 if (Array.isArray(nextValue)) {

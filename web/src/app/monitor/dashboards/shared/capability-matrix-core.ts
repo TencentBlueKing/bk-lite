@@ -1,5 +1,5 @@
 // SNMP 网络设备仪表盘能力矩阵核心逻辑（无外部依赖，可被 codegen / 测试 / 仪表盘共用）。
-export type ObjectType = 'switch' | 'router' | 'firewall' | 'loadbalance';
+export type ObjectType = 'switch' | 'router' | 'firewall' | 'loadbalance' | 'wanopt';
 
 export type CapabilityKey =
   | 'uptime'
@@ -33,7 +33,7 @@ export interface CapabilityResolution {
   capabilities: Set<CapabilityKey>;
 }
 
-export const ALL_OBJECT_TYPES: ObjectType[] = ['switch', 'router', 'firewall', 'loadbalance'];
+export const ALL_OBJECT_TYPES: ObjectType[] = ['switch', 'router', 'firewall', 'loadbalance', 'wanopt'];
 
 // 每个能力对应的指标名集合：既含后端 metrics.json 原始名（供 codegen 检测），
 // 也含仪表盘卡片/图使用的逻辑名（供前端门控反查）。
@@ -78,7 +78,8 @@ export const CAPABILITY_METRICS: Record<ObjectType, Record<CapabilityKey, string
   switch: { ...NETWORK_BASE, session: [] },
   router: { ...NETWORK_BASE, session: [] },
   firewall: { ...NETWORK_BASE, session: FW_SESSION },
-  loadbalance: { ...NETWORK_BASE, session: LB_SESSION }
+  loadbalance: { ...NETWORK_BASE, session: LB_SESSION },
+  wanopt: { ...NETWORK_BASE, session: [] }
 };
 
 // 反查：某指标名属于哪个能力；未分类返回 undefined。

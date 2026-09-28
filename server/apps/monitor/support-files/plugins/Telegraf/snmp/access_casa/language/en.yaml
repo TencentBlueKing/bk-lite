@@ -1,7 +1,6 @@
 Access Casa Systems SNMP:
   name: Access Casa Systems SNMP
-  desc: SNMP monitoring template for Casa Systems access device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime
+  desc: "SNMP monitoring template for Casa Systems access device. It reports uptime and interface traffic, for Casa Systems CMTS and broadband access devices (based on standard MIBs)."
 monitor_object:
   Access: Access
 monitor_object_type:

@@ -3,15 +3,8 @@
 import pytest
 
 from apps.patch_mgmt.constants import OSType, RequirementAssessmentStatus
-from apps.patch_mgmt.models import (
-    BaselineRequirement,
-    LinuxPatchDetail,
-    Patch,
-    PatchBaseline,
-    WindowsPatchDetail,
-)
+from apps.patch_mgmt.models import BaselineRequirement, LinuxPatchDetail, Patch, PatchBaseline, WindowsPatchDetail
 from apps.patch_mgmt.services import assess_parsers as parsers
-
 
 APT_SAMPLE = """
 Reading package lists... Done
@@ -46,16 +39,18 @@ def test_assess_linux_requirements():
     req_gzip = BaselineRequirement.objects.create(baseline=baseline, patch=patch_gzip)
     req_openssl = BaselineRequirement.objects.create(baseline=baseline, patch=patch_openssl)
 
-    stdout = "\n".join([
-        f"BKPATCH_LINUX|{req_gzip.id}|gzip|installed|1.10|0|",
-        f"BKPATCH_LINUX|{req_openssl.id}|openssl|installed|3.0.7|-1|",
-    ])
+    stdout = "\n".join(
+        [
+            f"BKPATCH_LINUX|{req_gzip.id}|gzip|installed|1.10|0|",
+            f"BKPATCH_LINUX|{req_openssl.id}|openssl|installed|3.0.7|-1|",
+        ]
+    )
     result = parsers.assess_requirements(OSType.LINUX, stdout, [req_gzip, req_openssl])
 
     assert result[req_gzip.id].satisfied is True
     assert result[req_openssl.id].satisfied is False
     assert result[req_gzip.id].evidence["installed_version"] == "1.10"
-    assert result[req_openssl.id].reason == "openssl 已安装版本低于最低版本"
+    assert result[req_openssl.id].reason == "Installed version of openssl is below the minimum version"
 
 
 @pytest.mark.django_db
@@ -88,7 +83,7 @@ def test_assess_linux_requirements_checks_every_advisory_package():
     assert result[req.id].satisfied is False
     assert result[req.id].evidence["pkg_names"] == ["not-upgradable", "openssl"]
     assert result[req.id].evidence["missing_pkg_names"] == ["openssl"]
-    assert result[req.id].reason == "openssl 未满足最低版本要求"
+    assert result[req.id].reason == "openssl do not meet the minimum version requirement"
 
 
 @pytest.mark.django_db
@@ -180,16 +175,18 @@ def test_assess_linux_structured_facts_use_native_version_result_and_explicit_ab
     LinuxPatchDetail.objects.create(patch=patch_absent, pkg_name="curl", pkg_version="8.0.0")
     req_ok = BaselineRequirement.objects.create(baseline=baseline, patch=patch_ok)
     req_absent = BaselineRequirement.objects.create(baseline=baseline, patch=patch_absent)
-    stdout = "\n".join([
-        f"BKPATCH_LINUX|{req_ok.id}|openssl|installed|3.0.1|0|",
-        f"BKPATCH_LINUX|{req_absent.id}|curl|absent|||",
-    ])
+    stdout = "\n".join(
+        [
+            f"BKPATCH_LINUX|{req_ok.id}|openssl|installed|3.0.1|0|",
+            f"BKPATCH_LINUX|{req_absent.id}|curl|absent|||",
+        ]
+    )
 
     result = parsers.assess_requirements(OSType.LINUX, stdout, [req_ok, req_absent])
 
     assert result[req_ok.id].status == RequirementAssessmentStatus.SATISFIED
     assert result[req_absent.id].status == RequirementAssessmentStatus.MISSING
-    assert result[req_absent.id].reason == "未安装 curl"
+    assert result[req_absent.id].reason == "curl is not installed"
 
 
 @pytest.mark.django_db
@@ -216,7 +213,7 @@ def test_assess_linux_marks_foreign_distribution_requirement_not_applicable():
     result = parsers.assess_requirements(OSType.LINUX, stdout, [requirement])
 
     assert result[requirement.id].status == RequirementAssessmentStatus.NOT_APPLICABLE
-    assert "发行版" in result[requirement.id].reason
+    assert "distro" in result[requirement.id].reason.lower()
 
 
 @pytest.mark.django_db
@@ -304,7 +301,7 @@ def test_assess_windows_marks_definite_product_mismatch_not_applicable():
     result = parsers.assess_requirements(OSType.WINDOWS, stdout, [requirement])
 
     assert result[requirement.id].status == RequirementAssessmentStatus.NOT_APPLICABLE
-    assert "产品" in result[requirement.id].reason
+    assert "product" in result[requirement.id].reason.lower()
 
 
 @pytest.mark.django_db
@@ -355,17 +352,19 @@ def test_assess_windows_uses_current_wua_installed_updates():
     patch = Patch.objects.create(title="defender intelligence", os_type=OSType.WINDOWS, team=[1])
     WindowsPatchDetail.objects.create(patch=patch, kb_number="KB2267602")
     req = BaselineRequirement.objects.create(baseline=baseline, patch=patch)
-    stdout = "\n".join([
-        "===WUA===",
-        "KB4052623|Critical|Platform update for Microsoft Defender Antivirus",
-        "===WUA_INSTALLED===",
-        "KB2267602||Microsoft Defender Antivirus security intelligence update",
-        "===HOTFIX===",
-        "KB5072653",
-    ])
+    stdout = "\n".join(
+        [
+            "===WUA===",
+            "KB4052623|Critical|Platform update for Microsoft Defender Antivirus",
+            "===WUA_INSTALLED===",
+            "KB2267602||Microsoft Defender Antivirus security intelligence update",
+            "===HOTFIX===",
+            "KB5072653",
+        ]
+    )
 
     result = parsers.assess_requirements(OSType.WINDOWS, stdout, [req])
 
     assert result[req.id].status == RequirementAssessmentStatus.SATISFIED
-    assert result[req.id].reason == "已安装 KB2267602"
+    assert result[req.id].reason == "KB2267602 is installed"
     assert "KB2267602" in result[req.id].evidence["installed_kbs"]

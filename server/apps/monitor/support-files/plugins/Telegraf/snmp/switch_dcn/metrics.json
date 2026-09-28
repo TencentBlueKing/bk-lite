@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_dcn",
   "plugin": "Switch DCN SNMP",
-  "plugin_desc": "神州数码（DCN）交换机专用 SNMP 采集（DCN-MIB，IANA 私有企业号 6339）。在标准 IF-MIB 接口指标之外，额外采集 DCN 私有 OID 的设备健康指标：CPU 利用率（switchCpuUsage，直接百分比）与系统内存（switchMemorySize 总量 / switchMemoryBusy 已用，单位为字节）。内存利用率按 已用/总量 计算。DCN-MIB 的 switchInfo 系统表仅提供 CPU 与内存标量，不暴露温度/风扇/电源传感器，故这些维度不采集（N/A）。适用品牌型号——神州数码 DCN DCS/DCRS/CS 系列园区交换机。",
+  "plugin_desc": "SNMP monitoring template for DCN switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic (enterprise PEN 6339).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_dcn'}) by (instance_id)",
   "name": "Switch",
@@ -22,7 +22,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "snmp_device_cpu_usage{instance_type='switch', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -30,12 +30,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the CPU utilization of the DCN switch control plane (DCN-MIB switchCpuUsage, a direct percent value), normalized to 0-100. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
+      "description": "This metric reports the CPU utilization of the DCN switch control plane (DCN-MIB switchCpuUsage, a direct percent value from a scalar GET with instance .0), normalized to 0-100. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
     },
     {
       "metric_group": "Memory",
       "name": "device_memory_total",
-      "query": "device_memory_total{instance_type='switch', __$labels__}",
+      "query": "snmp_device_memory_total{instance_type='switch', __$labels__}",
       "display_name": "Memory Total",
       "data_type": "Number",
       "unit": "bytes",
@@ -43,12 +43,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the total size in bytes of the DCN switch system memory (DCN-MIB switchMemorySize, reported directly in bytes). Together with the used bytes it determines overall memory utilization."
+      "description": "This metric reports the total size in bytes of the DCN switch system memory (DCN-MIB switchMemorySize, a scalar GET with instance .0, reported directly in bytes). Together with the used bytes it determines overall memory utilization."
     },
     {
       "metric_group": "Memory",
       "name": "device_memory_used",
-      "query": "device_memory_used{instance_type='switch', __$labels__}",
+      "query": "snmp_device_memory_used{instance_type='switch', __$labels__}",
       "display_name": "Memory Used",
       "data_type": "Number",
       "unit": "bytes",
@@ -56,12 +56,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the number of bytes currently in use by the DCN switch system memory (DCN-MIB switchMemoryBusy, reported directly in bytes). It helps administrators understand absolute memory consumption and identify when the device is under memory pressure."
+      "description": "This metric reports the number of bytes currently in use by the DCN switch system memory (DCN-MIB switchMemoryBusy, a scalar GET with instance .0, reported directly in bytes). It helps administrators understand absolute memory consumption and identify when the device is under memory pressure."
     },
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100",
+      "query": "sum(snmp_device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / sum(snmp_device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -70,6 +70,73 @@
         "instance_id"
       ],
       "description": "This metric reports overall memory utilization of the DCN switch, computed as used / total * 100. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "snmp_device_temperature_celsius{instance_type='switch', __$labels__}",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the chassis temperature of the DCN switch (DCN-MIB switchTemperature), in degrees Celsius from a scalar GET with instance .0. Abnormally high temperatures may indicate fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal protection or hardware damage if left unaddressed."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "device_fan_state{instance_type='switch', __$labels__}",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"shutdown\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notPresent\",\"id\":5,\"color\":\"#d9d9d9\"},{\"name\":\"notFunctioning\",\"id\":6,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the operational state of each DCN cooling fan (DCN-MIB sysFanStatus). The native enum is inverted (normal=0, abnormal=1) and is normalized to the unified convention where 1 means normal and any other value indicates an abnormal/fault state. A non-normal state indicates a cooling fault that can quickly lead to overheating and should be investigated immediately."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_speed",
+      "query": "device_fan_speed{instance_type='switch', __$labels__}",
+      "display_name": "Fan Speed Grade",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"none\",\"id\":0,\"color\":\"#d9d9d9\"},{\"name\":\"low\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"medium-low\",\"id\":2,\"color\":\"#1ac44a\"},{\"name\":\"medium\",\"id\":3,\"color\":\"#faad14\"},{\"name\":\"medium-high\",\"id\":4,\"color\":\"#faad14\"},{\"name\":\"high\",\"id\":5,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the DCN fan speed grade (DCN-MIB sysFanSpeed): none(0), low(1), medium-low(2), medium(3), medium-high(4), high(5). It is a discrete enum, not RPM."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='switch', __$labels__}",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"shutdown\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notPresent\",\"id\":5,\"color\":\"#d9d9d9\"},{\"name\":\"notFunctioning\",\"id\":6,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the operational state of each DCN power supply unit (DCN-MIB sysPowerStatus: native normal(0)/abnormal(1)/na(2)). The native enum is inverted (normal=0) and is normalized to the unified convention where 1 means normal and any other value (including na) indicates an abnormal/unavailable state. sysPowerState (sysPowerInstalled(1)/sysPowerNotInstalled(0)) is collected alongside as device_psu_present. A non-normal state signals a power redundancy or hardware fault and must be remediated promptly."
     },
     {
       "metric_group": "Traffic",

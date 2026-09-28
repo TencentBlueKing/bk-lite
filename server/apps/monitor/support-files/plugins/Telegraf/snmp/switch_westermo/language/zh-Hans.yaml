@@ -1,6 +1,6 @@
 Switch Westermo SNMP:
   name: Westermo（Telegraf）
-  desc: 面向 Westermo 交换机的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
+  desc: 面向 Westermo 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、接口流量（企业号 PEN 16177）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:
@@ -66,10 +66,26 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: 设备发送总流量速率
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
+    device_cpu_load:
+      name: CPU 1 分钟负载
+      desc: Westermo WeOS 交换机的 1 分钟 CPU 负载（WESTERMO-WEOS-MIB loadAvg1）。设备以负载×100 上报（例如
+        150 表示 1.50），不是 0–100% 使用率；查询侧除以 100 后与主机 load average 同量纲。持续偏高可能意味着控制平面过载、环网协议震荡或异常流量。
+    device_cpu_load5:
+      name: CPU 5 分钟负载
+      desc: Westermo WeOS 交换机的 5 分钟 CPU 负载（WESTERMO-WEOS-MIB loadAvg5）。设备以负载×100 上报，查询侧除以
+        100。
+    device_cpu_load15:
+      name: CPU 15 分钟负载
+      desc: Westermo WeOS 交换机的 15 分钟 CPU 负载（WESTERMO-WEOS-MIB loadAvg15）。设备以负载×100 上报，查询侧除以
+        100。
     device_cpu_usage:
       name: CPU 使用率
       desc: 该指标表示设备控制平面的 CPU 使用率（通常为 5 分钟平均值），单位为百分比。CPU 持续偏高可能意味着控制平面过载、路由震荡或异常流量，会导致管理响应变慢或转发延迟。数据来源于各品牌私有
         SNMP OID，并归一化为 0-100 的百分比。
+    device_memory_available:
+      name: 内存可用量
+      desc: Westermo WeOS 交换机当前可用内存（WESTERMO-WEOS-MIB memoryAvail），设备以 KB 上报，查询侧×1024
+        转为字节。WeOS 不提供 used/total 标量，因此不编造已用、空闲配对或使用率。
     device_memory_usage:
       name: 内存使用率
       desc: 该指标表示设备整体内存使用率，按 已用/(已用+空闲)*100 在所有内存池上汇总计算，单位为百分比。内存偏高可能由内存泄漏、路由/MAC/ARP

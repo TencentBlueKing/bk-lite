@@ -47,7 +47,8 @@ const FLOOR: Record<ObjectType, Set<CapabilityKey>> = {
   switch: new Set(),
   router: new Set(),
   firewall: new Set(),
-  loadbalance: new Set()
+  loadbalance: new Set(),
+  wanopt: new Set()
 };
 for (const objectType of ALL_OBJECT_TYPES) {
   const floorFile = path.join(PLUGIN_ROOT, 'snmp', objectType, 'metrics.json');
@@ -66,7 +67,8 @@ const matrix: Record<ObjectType, { collectType: string; capabilities: Capability
   switch: [],
   router: [],
   firewall: [],
-  loadbalance: []
+  loadbalance: [],
+  wanopt: []
 };
 
 // 扁平布局：所有 SNMP 插件目录都在 Telegraf/snmp/ 下一级——
@@ -81,7 +83,7 @@ for (const entry of fs.readdirSync(SNMP_ROOT).sort()) {
   const json = JSON.parse(fs.readFileSync(file, 'utf8'));
   const objectType = String(json.name || '').toLowerCase();
   if (!(ALL_OBJECT_TYPES as string[]).includes(objectType)) {
-    continue; // 仅处理 switch/router/firewall/loadbalance 四类
+    continue; // 仅处理 switch/router/firewall/loadbalance/wanopt
   }
   const ot = objectType as ObjectType;
   const collectType: string = json.collect_type || 'snmp';
@@ -109,5 +111,5 @@ const content =
 fs.writeFileSync(OUT_FILE, content);
 console.log(`generated ${OUT_FILE}`);
 console.log(
-  `switch=${matrix.switch.length} router=${matrix.router.length} firewall=${matrix.firewall.length} loadbalance=${matrix.loadbalance.length}`
+  `switch=${matrix.switch.length} router=${matrix.router.length} firewall=${matrix.firewall.length} loadbalance=${matrix.loadbalance.length} wanopt=${matrix.wanopt.length}`
 );

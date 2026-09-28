@@ -29,6 +29,16 @@ describe('Replay segmentation', () => {
     );
   });
 
+  it('keeps paired surrogates and replaces only unpaired ones', () => {
+    expect(
+      canonicalStringify({
+        broken: 'a\udc00b\ud800',
+        emoji: '😀',
+        pairThenLone: '😀\ud800',
+      }),
+    ).toBe('{"broken":"a�b�","emoji":"😀","pairThenLone":"😀�"}');
+  });
+
   it('matches the exact envelope accepted by the Go receiver', async () => {
     const meta = replayMetaItem(
       1,

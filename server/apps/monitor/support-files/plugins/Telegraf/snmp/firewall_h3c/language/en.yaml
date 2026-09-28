@@ -1,10 +1,6 @@
 Firewall H3C SNMP:
   name: H3C SecPath (Telegraf)
-  desc: SNMP monitoring template for H3C SecPath firewalls. It reports per-entity
-    CPU, memory, temperature (65535 unsupported sentinel filtered), fan/PSU
-    operational state, plus active sessions, session capacity, and session
-    establishment rate. Interface traffic uses the built-in IF-MIB catalog;
-    this plugin does not declare ifHC*. Distinct from Switch H3C SNMP (snmp_h3c).
+  desc: "SNMP monitoring template for H3C SecPath firewalls. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, sessions/connections, session establishment rate, and interface traffic (enterprise PEN 25506)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:

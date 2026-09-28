@@ -1,8 +1,6 @@
 Switch Sixnet SNMP:
   name: Sixnet (Telegraf)
-  desc: SNMP monitoring template for Sixnet SLX industrial Ethernet switches. It reports
-    system uptime, interface traffic via the shared IF-MIB floor, P1 and P2 power-input
-    status, and OK alarm-relay status (IANA PEN 20540).
+  desc: "SNMP monitoring template for Sixnet switch. It reports uptime and interface traffic, for SLX/SL SlimLine (enterprise PEN 20540)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

@@ -19,9 +19,10 @@ import socket
 import ssl
 from urllib.parse import urlsplit
 
+from common.platform_connection import PLATFORM_CONNECTION_MODELS
 from core.collection.contracts import PreflightResult, PreflightStatus
 from core.collection.enums import FailureStage
-from core.collection.runtime import CollectionRequest
+from core.collection.runtime import CollectionRequest, _run_log_identity
 from core.logger import logger, safe_log_value
 
 
@@ -57,8 +58,8 @@ class AsyncProtocolPreflight:
             return await self._check_inner(target, request, timeout_seconds=timeout_seconds)
         except Exception as error:  # noqa: BLE001 - 预检组件故障不得阻断采集
             logger.warning(
-                "event=preflight_component_failed task_id=%s target=%s " "failed_stage=preflight_component error_type=%s action=pass",
-                safe_log_value(request.task_id),
+                "event=preflight_component_failed %s target=%s failed_stage=preflight_component error_type=%s action=pass",
+                _run_log_identity(request),
                 safe_log_value(target, max_length=255),
                 type(error).__name__,
             )
@@ -141,8 +142,8 @@ class AsyncProtocolPreflight:
         if kind in {"udp", "snmp"}:
             if not request.ip_precheck_enabled:
                 logger.debug(
-                    "event=preflight_reachability_skipped task_id=%s target=%s kind=%s",
-                    safe_log_value(request.task_id),
+                    "event=preflight_reachability_skipped %s target=%s kind=%s",
+                    _run_log_identity(request),
                     safe_log_value(target, max_length=255),
                     kind,
                 )
@@ -160,8 +161,8 @@ class AsyncProtocolPreflight:
 
         if not request.ip_precheck_enabled:
             logger.debug(
-                "event=preflight_reachability_skipped task_id=%s target=%s kind=%s",
-                safe_log_value(request.task_id),
+                "event=preflight_reachability_skipped %s target=%s kind=%s",
+                _run_log_identity(request),
                 safe_log_value(target, max_length=255),
                 kind,
             )
@@ -189,8 +190,8 @@ class AsyncProtocolPreflight:
     ) -> PreflightResult:
         if not request.ip_precheck_enabled:
             logger.debug(
-                "event=preflight_reachability_skipped task_id=%s target=%s kind=remote",
-                safe_log_value(request.task_id),
+                "event=preflight_reachability_skipped %s target=%s kind=remote",
+                _run_log_identity(request),
                 safe_log_value(target, max_length=255),
             )
             return PreflightResult(
@@ -292,6 +293,10 @@ class AsyncProtocolPreflight:
             use_tls = parsed.scheme == "https"
             raw_port = request.params.get("port")
             port = parsed.port
+            if request.params.get("model_id") in PLATFORM_CONNECTION_MODELS and raw_port not in (None, ""):
+                port = int(raw_port)
+                if not 1 <= port <= 65535:
+                    raise ValueError("port must be between 1 and 65535")
             if port is None and not has_explicit_endpoint and raw_port not in (None, ""):
                 port = int(raw_port)
                 if not 1 <= port <= 65535:

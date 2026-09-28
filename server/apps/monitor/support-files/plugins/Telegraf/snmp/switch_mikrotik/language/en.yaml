@@ -1,7 +1,6 @@
 Switch MikroTik SNMP:
   name: MikroTik (Telegraf)
-  desc: SNMP monitoring template for MikroTik switch. It reports CPU utilization,
-    memory utilization, per-port inbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for MikroTik switch. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic, for RouterOS (enterprise PEN 14988)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

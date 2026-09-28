@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from apps.patch_mgmt.constants import PackageManagerType
-
+from apps.patch_mgmt.utils.i18n import patch_message
 
 HOST_FACT_PREFIX = "BKPATCH_HOST|LINUX|"
 SUPPORTED_PACKAGE_MANAGERS = {
@@ -53,15 +53,13 @@ def linux_host_facts_command(*, marker: str = "") -> str:
         "&& dpkg-query -W >/dev/null 2>&1; then has_dpkg=1; fi; "
         "if command -v rpm >/dev/null 2>&1 "
         "&& [ -n \"$(rpm -qa --qf '%{NAME}\\n' 2>/dev/null | sed -n '1p')\" ]; then has_rpm=1; fi; "
-        "if [ \"$has_dpkg\" -eq 1 ] && [ \"$has_rpm\" -eq 1 ]; then manager=conflict; "
-        "elif [ \"$has_dpkg\" -eq 1 ]; then "
+        'if [ "$has_dpkg" -eq 1 ] && [ "$has_rpm" -eq 1 ]; then manager=conflict; '
+        'elif [ "$has_dpkg" -eq 1 ]; then '
         "if command -v apt-get >/dev/null 2>&1; then manager=apt; else manager=unknown; fi; "
-        "elif [ \"$has_rpm\" -eq 1 ]; then "
+        'elif [ "$has_rpm" -eq 1 ]; then '
         "if command -v dnf >/dev/null 2>&1; then manager=dnf; "
         "elif command -v yum >/dev/null 2>&1; then manager=yum; else manager=unknown; fi; "
-        "else manager=unknown; fi; "
-        + marker_command
-        + "printf 'BKPATCH_HOST|LINUX|%s|%s|%s|%s|%s\\n' "
+        "else manager=unknown; fi; " + marker_command + "printf 'BKPATCH_HOST|LINUX|%s|%s|%s|%s|%s\\n' "
         '"$os_id" "$os_like" "$os_version" "$host_arch" "$manager"'
     )
 
@@ -89,15 +87,23 @@ def validate_linux_host_facts(facts: LinuxHostFacts) -> str:
     """返回不可安全执行评估/治理的原因；空串表示事实完整。"""
     missing = []
     if not facts.distro_id:
-        missing.append("发行版")
+        missing.append(patch_message(None, "assessment.field_distro", "distro"))
     if not facts.version_id:
-        missing.append("系统版本")
+        missing.append(patch_message(None, "assessment.field_version", "OS version"))
     if not facts.architecture:
-        missing.append("架构")
+        missing.append(patch_message(None, "assessment.field_architecture", "architecture"))
     if missing:
-        return f"主机事实缺少：{', '.join(missing)}"
+        return patch_message(None, "error.host_facts_missing", "Host facts are missing: {fields}", fields=", ".join(missing))
     if facts.package_manager == "conflict":
-        return "同时检测到有效的 dpkg 与 RPM 原生包数据库，无法安全确定包生态"
+        return patch_message(
+            None,
+            "error.dual_package_db",
+            "Both valid dpkg and RPM package databases were detected; the package ecosystem cannot be determined safely",
+        )
     if facts.package_manager not in SUPPORTED_PACKAGE_MANAGERS:
-        return "未识别到可用的原生包管理器（apt-get、dnf 或 yum）"
+        return patch_message(
+            None,
+            "error.no_package_manager",
+            "No usable native package manager was detected (apt-get, dnf, or yum)",
+        )
     return ""

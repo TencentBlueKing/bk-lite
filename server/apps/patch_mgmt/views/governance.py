@@ -3,7 +3,6 @@
 from django.db import transaction
 from django.db.models import Prefetch
 from django.utils import timezone
-
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed
@@ -14,24 +13,10 @@ from apps.core.utils.viewset_utils import AuthViewSet
 from apps.patch_mgmt.constants import GovernanceTaskStatus, GovernanceTaskType
 from apps.patch_mgmt.exceptions import PatchBusinessError
 from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost
-from apps.patch_mgmt.serializers.governance import (
-    GovernanceTaskDetailSerializer,
-    GovernanceTaskListSerializer,
-)
-from apps.patch_mgmt.services.execution_record_service import (
-    build_host_requirement_projection,
-    filter_execution_record_roots,
-)
-from apps.patch_mgmt.services.governance_service import (
-    HostBusyError,
-    create_assess_task,
-    create_reboot_task,
-    create_retry_task,
-)
-from apps.patch_mgmt.services.target_access import (
-    require_target_ids,
-    target_access_scope,
-)
+from apps.patch_mgmt.serializers.governance import GovernanceTaskDetailSerializer, GovernanceTaskListSerializer
+from apps.patch_mgmt.services.execution_record_service import build_host_requirement_projection, filter_execution_record_roots
+from apps.patch_mgmt.services.governance_service import HostBusyError, create_assess_task, create_reboot_task, create_retry_task
+from apps.patch_mgmt.services.target_access import require_target_ids, target_access_scope
 from apps.patch_mgmt.utils.i18n import patch_message, render_business_error
 from apps.patch_mgmt.utils.operation_log import log_governance_task_cancelled
 
@@ -58,9 +43,7 @@ class GovernanceTaskViewSet(AuthViewSet):
         """执行记录只暴露用户直接创建的治理与重启根任务。"""
         visible_targets = target_access_scope(self.request).queryset("View")
         visible_target_ids = visible_targets.values("id")
-        visible_hosts = GovernanceTaskHost.objects.filter(
-            target_id__in=visible_target_ids
-        ).select_related("task")
+        visible_hosts = GovernanceTaskHost.objects.filter(target_id__in=visible_target_ids).select_related("task")
         queryset = (
             super()
             .get_queryset()
@@ -78,9 +61,7 @@ class GovernanceTaskViewSet(AuthViewSet):
         if self.action == "host_log":
             return queryset
         queryset = filter_execution_record_roots(queryset)
-        requested_type = getattr(self, "request", None) and self.request.query_params.get(
-            "task_type"
-        )
+        requested_type = getattr(self, "request", None) and self.request.query_params.get("task_type")
         if requested_type in (GovernanceTaskType.INSTALL, GovernanceTaskType.REBOOT):
             queryset = queryset.filter(task_type=requested_type)
         return queryset
@@ -99,17 +80,9 @@ class GovernanceTaskViewSet(AuthViewSet):
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        visible_target_ids = set(
-            target_access_scope(self.request)
-            .queryset("View")
-            .values_list("id", flat=True)
-        )
+        visible_target_ids = set(target_access_scope(self.request).queryset("View").values_list("id", flat=True))
         context["visible_target_ids"] = visible_target_ids
-        context["operable_target_ids"] = set(
-            target_access_scope(self.request)
-            .queryset("Operate")
-            .values_list("id", flat=True)
-        )
+        context["operable_target_ids"] = set(target_access_scope(self.request).queryset("Operate").values_list("id", flat=True))
         instance = getattr(self, "_requirement_projection_task", None)
         if instance is not None:
             hosts = getattr(instance, "_visible_host_results", None)
@@ -218,18 +191,20 @@ class GovernanceTaskViewSet(AuthViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            operable_target_ids = target_access_scope(request).queryset(
-                "Operate"
-            ).values("id")
+            operable_target_ids = target_access_scope(request).queryset("Operate").values("id")
             waiting_hosts = GovernanceTaskHost.objects.filter(
                 task=task,
                 stage="waiting",
                 target_id__in=operable_target_ids,
             )
-            skipped_count = GovernanceTaskHost.objects.filter(
-                task=task,
-                stage="waiting",
-            ).exclude(target_id__in=operable_target_ids).count()
+            skipped_count = (
+                GovernanceTaskHost.objects.filter(
+                    task=task,
+                    stage="waiting",
+                )
+                .exclude(target_id__in=operable_target_ids)
+                .count()
+            )
             cancelled_count = waiting_hosts.update(
                 stage="cancelled",
                 stage_color="default",
@@ -240,16 +215,16 @@ class GovernanceTaskViewSet(AuthViewSet):
                 return Response(
                     {
                         "code": "no_waiting_hosts_to_cancel",
-                        "detail": patch_message(request, "error.no_waiting_hosts_to_cancel", "There are no waiting targets to cancel; current executions will continue"),
+                        "detail": patch_message(
+                            request, "error.no_waiting_hosts_to_cancel", "There are no waiting targets to cancel; current executions will continue"
+                        ),
                     },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
             now = timezone.now()
             all_cancelled = not task.host_results.exclude(stage="cancelled").exists()
-            task.status = (
-                GovernanceTaskStatus.CANCELLED if all_cancelled else GovernanceTaskStatus.RUNNING
-            )
+            task.status = GovernanceTaskStatus.CANCELLED if all_cancelled else GovernanceTaskStatus.RUNNING
             task.cancelled_by = getattr(request.user, "username", "") or ""
             task.cancelled_at = now
             task.cancel_reason = reason
@@ -281,13 +256,11 @@ class GovernanceTaskViewSet(AuthViewSet):
         task = self.get_object()
         risk_item_id = str(request.data.get("risk_item_id") or "")
         if not risk_item_id:
-            return Response({"detail": patch_message(request, "error.risk_item_id_required", "risk_item_id is required")}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": patch_message(request, "error.risk_item_id_required", "risk_item_id is required")}, status=status.HTTP_400_BAD_REQUEST
+            )
         snapshot = next(
-            (
-                item
-                for item in (task.risk_snapshot or [])
-                if str(item.get("id")) == risk_item_id
-            ),
+            (item for item in (task.risk_snapshot or []) if str(item.get("id")) == risk_item_id),
             None,
         )
         if snapshot is None:
@@ -315,25 +288,19 @@ class GovernanceTaskViewSet(AuthViewSet):
 
         risk_item_id = request.query_params.get("risk_item_id")
         if not risk_item_id:
-            return Response({"detail": patch_message(request, "error.risk_item_id_required", "risk_item_id is required")}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": patch_message(request, "error.risk_item_id_required", "risk_item_id is required")}, status=status.HTTP_400_BAD_REQUEST
+            )
         task = self.get_object()
-        visible_target_ids = set(
-            target_access_scope(request)
-            .queryset("View")
-            .values_list("id", flat=True)
-        )
+        visible_target_ids = set(target_access_scope(request).queryset("View").values_list("id", flat=True))
         selected = next(
-            (
-                item
-                for item in (task.risk_snapshot or [])
-                if str(item.get("id")) == str(risk_item_id)
-            ),
+            (item for item in (task.risk_snapshot or []) if str(item.get("id")) == str(risk_item_id)),
             None,
         )
         if selected is None or int(selected.get("host_id") or 0) not in visible_target_ids:
             return Response({"detail": patch_message(request, "error.risk_item_not_found", "Risk item not found")}, status=status.HTTP_404_NOT_FOUND)
         task._visible_target_ids = visible_target_ids
-        detail = build_risk_item_detail(task, risk_item_id)
+        detail = build_risk_item_detail(task, risk_item_id, request)
         if detail is None:
             return Response({"detail": patch_message(request, "error.risk_item_not_found", "Risk item not found")}, status=status.HTTP_404_NOT_FOUND)
         return Response(detail)

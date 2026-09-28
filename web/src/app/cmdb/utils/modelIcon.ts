@@ -25,15 +25,19 @@ const normalizeSvgIconList = (data: string[]) =>
     };
   });
 
-const standardIconList = normalizeSvgIconList(
-  require.context('../../../../public/assets/icons', false, /\.svg$/).keys()
-);
+const standardIconList = typeof require !== 'undefined' && typeof require.context === 'function'
+  ? normalizeSvgIconList(
+    require.context('../../../../public/assets/icons', false, /\.svg$/).keys()
+  )
+  : [];
 
-const realisticIconList = normalizeSvgIconList(
-  require
-    .context('../../../../public/assets/icons-realistic', false, /\.svg$/)
-    .keys()
-);
+const realisticIconList = typeof require !== 'undefined' && typeof require.context === 'function'
+  ? normalizeSvgIconList(
+    require
+      .context('../../../../public/assets/icons-realistic', false, /\.svg$/)
+      .keys()
+  )
+  : [];
 
 export const iconList = createModelIconOptions(
   standardIconList,

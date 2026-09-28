@@ -1,6 +1,6 @@
 Wireless ASCOM SNMP:
   name: Ascom（Telegraf）
-  desc: 面向 Ascom 无线设备的 SNMP 监控模板,可采集 运行时长、每端口入向流量速率和每端口出向流量速率（企业号 PEN 27614）。
+  desc: 面向 Ascom 无线设备的 SNMP 监控模板，可采集运行时长、接口流量（基于标准 MIB）。
 monitor_object:
   Wireless: 无线设备
 monitor_object_type:

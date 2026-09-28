@@ -72,3 +72,42 @@ def test_collect_target_logs_one_info_summary_and_keeps_details_at_debug(monkeyp
     assert info_args[1:] == (42, 2, 1)
     assert logger.debug.call_count == 2
     assert all("build object key" in call.args[0] for call in logger.debug.call_args_list)
+
+
+def _snmp_task(instances):
+    return SimpleNamespace(
+        id=42,
+        task_type=CollectPluginTypes.SNMP,
+        model_id="network",
+        is_job=False,
+        instances=instances,
+        ip_range="",
+        params={},
+        decrypt_credentials=[{"snmp_port": 161}],
+    )
+
+
+def test_snmp_targets_keep_instance_model_not_task_family():
+    targets = CollectTargetService.build_targets(
+        _snmp_task(
+            [
+                {
+                    "inst_uuid": HOST_UUID,
+                    "model_id": "switch",
+                    "ip_addr": "10.0.0.1",
+                },
+                {
+                    "inst_uuid": SECOND_HOST_UUID,
+                    "model_id": "router",
+                    "ip_addr": "10.0.0.2",
+                },
+            ]
+        )
+    )
+
+    assert [(target.model_id, target.host) for target in targets] == [
+        ("switch", "10.0.0.1"),
+        ("router", "10.0.0.2"),
+    ]
+    assert CollectTargetService.build_object_key(targets[0]) == "42:10.0.0.1:161:-"
+    assert CollectTargetService.build_object_key(targets[1]) == "42:10.0.0.2:161:-"

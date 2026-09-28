@@ -2,6 +2,8 @@
 
 Status: implemented
 
+子实例范围已被 `cmdb-physical-server-redfish-inventory` 取代。本文件保留身份采集、凭据和实例归属的原决定。
+
 ## 目标
 
 在现有“物理服务器 SSH”和“物理服务器 IPMI”旁新增“物理服务器 Redfish”入口，
@@ -18,8 +20,8 @@ Status: implemented
 - Redfish 直接开放，不增加 Agent 能力门控或独立诊断工具。
 - Redfish 固定使用 HTTPS Basic Auth，默认 `verify_tls=true`。首版不支持上传或选择 CA；
   用户可在受信任管理网络中显式关闭证书校验，界面必须提示中间人风险。
-- 首版只采集唯一 `ComputerSystem` 的整机基础身份，不采集 OEM 扩展，也不创建
-  memory、disk、nic、gpu 子实例。
+- 身份采集只依赖唯一 `ComputerSystem`，不采集 OEM 扩展。内存、磁盘、网卡、GPU
+  以及 CPU/主板字段的范围见 `cmdb-physical-server-redfish-inventory`。
 
 ## 调用链
 

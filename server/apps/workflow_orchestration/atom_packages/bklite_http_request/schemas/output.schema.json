@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "properties": {
+    "status_code": {"type": "integer"},
+    "content_type": {"type": "string"},
+    "body": {},
+    "size": {"type": "integer"}
+  },
+  "required": ["status_code", "content_type", "body", "size"]
+}

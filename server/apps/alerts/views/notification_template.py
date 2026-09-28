@@ -14,8 +14,16 @@ from apps.alerts.constants.constants import SessionStatus
 from apps.alerts.filters.notification_template import NotificationTemplateFilter
 from apps.alerts.models.models import Alert
 from apps.alerts.models.notification_template import NotificationTemplate
-from apps.alerts.notification_templates.binding import build_runtime_alert_context
-from apps.alerts.notification_templates.operation import ensure_alert_operation_template
+from apps.alerts.notification_templates.binding import build_runtime_alert_context, load_event_context
+from apps.alerts.notification_templates.events import (
+    DEFAULT_LIMIT,
+    DEFAULT_ORDER,
+    EVENT_SCALAR_FIELDS,
+    MAX_EVENT_COLUMNS,
+    MAX_EVENT_ROWS,
+    inspect_event_usage,
+)
+from apps.alerts.notification_templates.operation import ensure_alert_operation_template, is_managed_nats_channel
 from apps.alerts.notification_templates.renderer import TemplateValidationError, render_source
 from apps.alerts.serializers.notification_template import NotificationTemplateSerializer
 from apps.alerts.utils.permission_scope import (
@@ -29,6 +37,42 @@ from apps.system_mgmt.models.channel import Channel
 from apps.system_mgmt.models.im_notification_channel import IMNotificationChannel
 from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
+
+
+def _preview_events():
+    latest = {
+        "event_id": "EVENT-PREVIEW-2",
+        "title": "CPU 使用率过高",
+        "level": "严重",
+        "status": "received",
+        "item": "cpu_usage",
+        "value": 95,
+        "resource_name": "生产主机 01",
+        "resource_type": "host",
+        "source_name": "Prometheus",
+        "start_time": "2026-09-08 10:05:00+08:00",
+        "received_at": "2026-09-08 10:05:12+08:00",
+        "tags": {"alert": "CpuHigh"},
+        "labels": {"env": "prod"},
+        "enrichment": {"cmdb": {"owner": "张三"}},
+    }
+    first = {
+        "event_id": "EVENT-PREVIEW-1",
+        "title": "CPU 使用率过高",
+        "level": "警告",
+        "status": "received",
+        "item": "cpu_usage",
+        "value": 81,
+        "resource_name": "生产主机 01",
+        "resource_type": "host",
+        "source_name": "Prometheus",
+        "start_time": "2026-09-08 10:00:00+08:00",
+        "received_at": "2026-09-08 10:00:08+08:00",
+        "tags": {"alert": "CpuHigh"},
+        "labels": {"env": "prod"},
+        "enrichment": {"cmdb": {"owner": "张三"}},
+    }
+    return {"count": 2, "latest": latest, "first": first, "rows": [latest, first]}
 
 
 def _preview_context(sample):
@@ -71,6 +115,7 @@ def _preview_context(sample):
             "action_time": "2026-09-08 10:06:00+08:00",
         },
         "summary": sample.get("summary", {"total": 2, "displayed": 2, "omitted": 0, "alerts": []}),
+        "events": sample.get("events") if isinstance(sample.get("events"), dict) else _preview_events(),
     }
 
 
@@ -181,8 +226,8 @@ class NotificationTemplateViewSet(ModelViewSet):
             raise ValidationError({"channel_id": "通知渠道不存在或无权使用"})
         if channel_type and channel.channel_type != channel_type:
             raise ValidationError({"channel_id": "通知渠道不存在或无权使用"})
-        if channel.channel_type == "nats" and (channel.config or {}).get("source") != "opspilot":
-            raise ValidationError({"channel_id": "仅 OpsPilot 托管的 NATS 渠道支持模板试发"})
+        if channel.channel_type == "nats" and not is_managed_nats_channel(channel):
+            raise ValidationError({"channel_id": "仅平台托管的 NATS 渠道支持模板试发"})
         return channel
 
     @staticmethod
@@ -200,7 +245,7 @@ class NotificationTemplateViewSet(ModelViewSet):
         return alert
 
     @staticmethod
-    def _build_test_context(request, alert, scope, receivers):
+    def _build_test_context(request, alert, scope, receivers, sources=()):
         notification_context = None
         if scope == NotificationTemplate.SCOPE_ALERT_OPERATION:
             action_time = timezone.localtime(timezone.now()).strftime("%Y-%m-%d %H:%M:%S")
@@ -210,12 +255,15 @@ class NotificationTemplateViewSet(ModelViewSet):
                 "previous_receiver_names": "",
                 "action_time": action_time,
             }
-        return build_runtime_alert_context(
+        context = build_runtime_alert_context(
             alert,
             receivers,
             "test",
             notification_context,
         )
+        if inspect_event_usage(sources).used:
+            context["events"] = load_event_context(alert, sources)
+        return context
 
     @staticmethod
     def _render_test_content(channel, scope, subject_template, body_template, context):
@@ -373,7 +421,30 @@ class NotificationTemplateViewSet(ModelViewSet):
                     {"path": "labels.env", "label": "标签（示例）"},
                     {"path": "dimensions.instance", "label": "维度（示例）"},
                     {"path": "enrichment.cmdb.owner", "label": "丰富字段（示例）"},
-                ]
+                    {"path": "events.count", "label": "关联事件数"},
+                    {"path": "events.latest.title", "label": "最近事件标题"},
+                    {"path": "events.latest.value", "label": "最近事件值"},
+                    {"path": "events.latest.tags.alert", "label": "最近事件标签（示例）"},
+                ],
+                "event_block": {
+                    "max_rows": MAX_EVENT_ROWS,
+                    "max_columns": MAX_EVENT_COLUMNS,
+                    "default_limit": DEFAULT_LIMIT,
+                    "default_order": DEFAULT_ORDER,
+                    "orders": [
+                        {"value": "-start_time", "label": "发生时间 倒序"},
+                        {"value": "start_time", "label": "发生时间 正序"},
+                        {"value": "-received_at", "label": "接收时间 倒序"},
+                        {"value": "received_at", "label": "接收时间 正序"},
+                    ],
+                    "limits": [5, 10, 20, 50, "all"],
+                    "fields": [{"path": path, "label": label} for path, label in EVENT_SCALAR_FIELDS.items()],
+                    "json_roots": [
+                        {"root": "tags", "label": "事件标签"},
+                        {"root": "labels", "label": "事件标记"},
+                        {"root": "enrichment", "label": "富化数据"},
+                    ],
+                },
             }
         )
 
@@ -443,7 +514,13 @@ class NotificationTemplateViewSet(ModelViewSet):
         receivers = request_serializer.validated_data.get("receivers") or [request.user.username]
         if alert_id:
             alert = self._get_test_alert(request, alert_id)
-            context = self._build_test_context(request, alert, template.scope, receivers)
+            context = self._build_test_context(
+                request,
+                alert,
+                template.scope,
+                receivers,
+                (content.subject_template, content.body_template),
+            )
         else:
             # 兼容第一版 API 调用；新版页面始终要求选择一条真实告警。
             context = _preview_context(request_serializer.validated_data.get("sample"))
@@ -480,7 +557,13 @@ class NotificationTemplateViewSet(ModelViewSet):
                 raise ValidationError({"template_id": "告警操作通知必须使用当前团队的内置模板"})
         alert = self._get_test_alert(request, data["alert_id"])
         receivers = list(dict.fromkeys(data["receivers"]))
-        context = self._build_test_context(request, alert, scope, receivers)
+        context = self._build_test_context(
+            request,
+            alert,
+            scope,
+            receivers,
+            (data["subject_template"], data["body_template"]),
+        )
         subject, body = self._render_test_content(
             channel,
             scope,

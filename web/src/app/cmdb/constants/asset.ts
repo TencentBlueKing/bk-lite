@@ -42,6 +42,8 @@ export const BUILD_IN_MODEL: Array<{
   { key: 'memory', icon: 'cc-memory' },
   { key: 'nic', icon: 'cc-nic' },
   { key: 'gpu', icon: 'cc-gpu' },
+  { key: 'storage_controller', icon: 'cc-storage' },
+  { key: 'psu', icon: 'cc-equipment' },
   // 云厂商资源（复用云/对应技术图标）
   { key: 'aws_cf', icon: 'cc-cloud' },
   { key: 'aws_docdb', icon: 'cc-mongodb' },

@@ -113,5 +113,23 @@ Redfish is the standard REST API provided by a server BMC. This method reads `/r
 | model | ComputerSystem.Model | Product model |
 | brand | ComputerSystem.Manufacturer | Vendor |
 | asset_code | ComputerSystem.AssetTag | Asset tag |
+| cpu_vendor | First CPU Processor.Manufacturer | CPU vendor |
+| cpu_model | First CPU Processor.Model | CPU model |
+| cpu_cores | Sum of CPU Processor.TotalCores | CPU physical core count, stored as `cpu_core` |
+| cpu_threads | Sum of CPU Processor.TotalThreads | CPU thread count |
+| cpu_arch | First CPU InstructionSet | CPU architecture |
+| board_vendor | SystemBoard Assembly.Vendor | Motherboard vendor |
+| board_model | SystemBoard Assembly.Model | Motherboard model |
+| board_serial | SystemBoard Assembly.SerialNumber | Motherboard serial number |
+| power_state | ComputerSystem.PowerState | Power state. `On`/`Off` are case-normalized; other non-empty values are kept |
+| health | ComputerSystem.Status.Health | Health snapshot. Only `OK`/`Warning`/`Critical`/`Unknown` |
 
-> The current Redfish MVP only writes the `physcial_server` main instance and does not create memory, disk, NIC, GPU, or other child instances. Devices such as Huawei iBMC can be onboarded as long as they correctly implement the standard Redfish resources above; vendor OEM extensions are not a first-version dependency.
+**Related children (attached under the physical server by containment/association)**
+- `memory`: `mem_locator`, `mem_part_number`, `mem_type`, `mem_size` (integer GB), `mem_sn`
+- `disk`: `disk_vendor`, `disk` (integer GB), `disk_type`, `disk_sn`, `health` (`Status.Health`; Absent drives are skipped), `disk_life_percent` (`PredictedMediaLifeLeftPercent`)
+- `nic`: `nic_mac`, `nic_vendor`, `nic_model`, `nic_type`, `nic_iface` (function/adapter `Name` or `Id`), `nic_speed_mbps` (current link speed, otherwise max speed)
+- `gpu`: `gpu_name`, `gpu_type`, `gpu_desc`
+- `storage_controller`: `sc_id` (`Id`, otherwise `MemberId`), `sc_name`, `sc_vendor`, `sc_model`, `sc_sn`, `sc_firmware`, `health` (`Storage.StorageControllers`)
+- `psu`: `psu_name`, `psu_vendor`, `psu_model`, `psu_sn`, `psu_capacity_watts`, `health` (`Power.PowerSupplies`; instantaneous power is not stored)
+
+> Note: child instances attach to the BMC IP; `nic_pci_addr` is omitted; if no SystemBoard is present, `board_*` fields are not written; missing standard fields stay empty; a missing `Power` or `StorageControllers` resource skips that child and the task still succeeds; missing children are not auto-deleted; OEM, EthernetInterfaces, fans, and energy/temperature/voltage/RPM are not collected.

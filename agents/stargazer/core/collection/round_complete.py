@@ -167,8 +167,7 @@ async def publish_round_complete_marker(
         await metrics_publish({}, payload, params, request.task_id)
     except Exception as error:  # noqa: BLE001 - 标记失败不得改写已发布数据结果
         logger.error(
-            "event=round_complete_marker_failed task_id=%s instance_id=%s model_id=%s " "round_ts=%s failed_stage=%s error_type=%s",
-            safe_log_value(request.task_id),
+            "event=round_complete_marker_failed instance_id=%s model_id=%s round_ts=%s failed_stage=%s error_type=%s",
             safe_log_value(instance_id),
             safe_log_value(model_id),
             round_ts,
@@ -178,8 +177,7 @@ async def publish_round_complete_marker(
         )
         return False
     logger.info(
-        "event=round_complete_marker_published task_id=%s instance_id=%s " "model_id=%s round_ts=%s",
-        request.task_id,
+        "event=round_complete_marker_published instance_id=%s model_id=%s round_ts=%s",
         instance_id,
         model_id,
         round_ts,

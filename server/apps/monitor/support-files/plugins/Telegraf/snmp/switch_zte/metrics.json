@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_zte",
   "plugin": "Switch ZTE SNMP",
-  "plugin_desc": "ZTE ZXR10-series switch-specific SNMP collection (ZXR10-MIB / POWERFANS-MIB, IANA PEN 3902). In addition to standard IF-MIB interface metrics, it collects ZTE private OIDs for device health: per-unit CPU utilization (zxr10SystemCpuUtility5m), system memory (zxr10SystemMemSize bytes + zxr10SystemMemUsed octets, utilization computed as used/total), slot temperature (zxr10SlotTemperature), fan state (POWERFANS fanStat) and power-supply state (POWERFANS powerStat). Fan raw codes (0=online, 1=offline) and PSU raw codes (0=work, 1=online, 2=offline) are normalized via telegraf processors.enum to 1=healthy / 2=fault. The newer ZXR10-SYSTEM-HARDWARE fan/power objects under 3902.3.6002 overlap POWERFANS and are not collected, to avoid duplicate alerts. Supported brands/models — ZTE ZXR10-series switches.",
+  "plugin_desc": "SNMP monitoring template for ZTE ZXR10 switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic (enterprise PEN 3902).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_zte'}) by (instance_id)",
   "name": "Switch",

@@ -5,10 +5,8 @@ inst_list 与模板生成。
 """
 
 import openpyxl
-import pytest
 
 from apps.cmdb.utils.export import Export, serialize_tag_values_for_export
-
 
 # --------------------------------------------------------------------------
 # serialize_tag_values_for_export
@@ -158,3 +156,42 @@ def test_export_inst_list_empty():
     stream = Export(_ATTRS, model_id="host").export_inst_list([])
     data = stream.read()
     assert data[:2] == b"PK"
+
+
+def test_sequential_export_preserves_headers_styles_and_enum_validation():
+    exporter = Export(_ATTRS, model_id="host")
+    workbook = exporter.generate_header(write_only=True)
+    exporter.append_inst_list(workbook, [{"inst_name": "h1", "status": "1"}])
+    exporter.append_inst_list(workbook, [{"inst_name": "h2", "status": ["2"]}])
+    loaded = openpyxl.load_workbook(exporter.return_bytesio(workbook))
+    sheet = loaded.active
+    assert sheet.title == "host"
+    assert sheet["A1"].fill.fgColor.rgb == "00FFA500"
+    assert sheet["B1"].fill.fgColor.rgb == "0092D050"
+    assert sheet["B2"].fill.fgColor.rgb == "00C6EFCE"
+    assert sheet["B3"].value == "inst_name"
+    assert sheet["D4"].value == "运行"
+    assert sheet["D5"].value == "停止"
+    assert list(loaded["状态"].values) == [("运行",), ("停止",)]
+    validation = list(sheet.data_validations.dataValidation)
+    assert len(validation) == 1
+    assert str(validation[0].sqref) == "D4:D999"
+    assert validation[0].formula1 == "='状态'!$A$1:$A2"
+    assert sheet.sheet_format.defaultColWidth == 20
+
+
+def test_file_fields_are_excluded_from_both_headers_and_rows(monkeypatch):
+    monkeypatch.setattr("apps.cmdb.utils.export.is_file_attr_type", lambda attr_type: attr_type == "file")
+    attrs = [
+        {"attr_id": "file", "attr_name": "附件", "attr_type": "file"},
+        {"attr_id": "inst_name", "attr_name": "实例名", "attr_type": "str"},
+    ]
+    sheet = openpyxl.load_workbook(
+        Export(attrs, model_id="host").export_inst_list(
+            [
+                {"inst_name": "h1", "file": [{"id": "must-not-export"}]},
+            ]
+        )
+    ).active
+    assert [cell.value for cell in sheet[3]] == ["字段标识(请勿编辑)", "inst_name"]
+    assert [cell.value for cell in sheet[4]] == [None, "h1"]

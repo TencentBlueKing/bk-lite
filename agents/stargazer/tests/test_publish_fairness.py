@@ -276,7 +276,7 @@ async def test_invalid_encoding_is_permanent_and_reports_encode_stage_without_pa
         assert pending.receipt.failed_stage == "encode"
         record = next(r for r in caplog.records if "event=result_publish_failed" in r.msg)
         assert "%s" in record.msg and record.args
-        assert "phase=encode" in record.getMessage()
+        assert "failed_stage=encode" in record.getMessage()
         assert "secret-payload-sentinel" not in caplog.text
         assert not record.exc_info
         assert window.snapshot().confirmed_total == 0
@@ -605,11 +605,11 @@ async def test_predelivery_total_deadline_log_uses_total_budget_not_queue_budget
     assert terminal == (0, "failed", "publish_total_timeout_before_delivery")
     assert len(records) == 1
     template, args = records[0]
-    assert "timeout_seconds=%s" in template
+    assert "budget_limit_seconds=%s" in template
     assert args[-1] == 120
     message = template % args
-    assert "phase=before_delivery reason=publish_total_timeout_before_delivery" in message
-    assert "timeout_seconds=120" in message
+    assert "failed_stage=before_delivery error_code=publish_total_timeout_before_delivery" in message
+    assert "budget_limit_seconds=120" in message
     assert "PAYLOAD_SENTINEL" not in message
 
 

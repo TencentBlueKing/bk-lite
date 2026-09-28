@@ -7,6 +7,7 @@ import typing
 import requests
 from common.cmp.cloud_apis.base import PrivateCloudManage
 from common.cmp.cloud_apis.cloud_object.base import VM, BusinessRegion, DataStore, HostMachine
+from common.platform_connection import platform_connection
 from core.logger import logger
 
 MANAGEONE_REQUEST_TIMEOUT = (10, 60)
@@ -93,8 +94,9 @@ class CwManageOne(object):
         self.kwargs = kwargs
         for k, v in kwargs.items():
             setattr(self, k, v)
-        self.host = f"oc.{self.region}.{host}"  # 运维面前缀
-        self.basic_url = f"{self.scheme}://{self.host}"
+        # 既支持完整运维面地址，也保留根域名 + 区域的旧配置。
+        self.host = host if "://" in host or host.startswith("oc.") else f"oc.{self.region}.{host}"
+        self.basic_url, self.verify_tls = platform_connection({"host": self.host, "scheme": scheme, **kwargs})
         self._handle_request = handle_request
         if self.api_version in ["8.2.0"]:
             self.cw_headers = {
@@ -114,10 +116,12 @@ class CwManageOne(object):
         data = {"grantType": "password", "userName": self.account, "value": self.password}
 
         url = get_resource_uri("oc_get_token", self.basic_url)
-        resp = self._handle_request("PUT", url, headers=self.cw_headers, json=data, verify=False)
+        resp = self._handle_request("PUT", url, headers=self.cw_headers, json=data, verify=self.verify_tls)
         if not resp["result"]:
-            return ""
+            raise RuntimeError("ManageOne authentication failed")
         auth_token = resp["data"].get("accessSession", "")
+        if not auth_token:
+            raise RuntimeError("ManageOne authentication token missing")
         logger.debug(
             "获取运维面token成功,token_present:%s",
             bool(auth_token),
@@ -138,6 +142,7 @@ class CwManageOne(object):
             "host": self.host,
             "account": self.account,
             "basic_url": self.basic_url,
+            "verify_tls": self.verify_tls,
         }
         return ManageOne(auth_token=self.auth_token, name=item, **params)
 
@@ -263,6 +268,7 @@ class ManageOne(PrivateCloudManage):
         self.name = name
         self.cw_headers = kwargs.get("cw_headers", "")
         self.basic_url = kwargs.get("basic_url", "")
+        self.verify_tls = kwargs.get("verify_tls", True)
         self._handle_request = handle_request
 
     def __call__(self, *args, **kwargs):
@@ -421,7 +427,7 @@ class ManageOne(PrivateCloudManage):
                 }
             )
         url = get_resource_uri("get_analysis", self.basic_url, stat_type=stat_type)
-        resp = self._handle_request("POST", url, headers=self.cw_headers, params=params, json=data, verify=False)
+        resp = self._handle_request("POST", url, headers=self.cw_headers, params=params, json=data, verify=self.verify_tls)
         if not resp["result"]:
             return {"result": False, "message": resp["message"]}
         stat_data: list = resp["data"]["datas"]
@@ -430,7 +436,7 @@ class ManageOne(PrivateCloudManage):
     def list_resource(self, classname, append_metric=False, format=True):
         params = {"pageSize": 1, "pageNo": 1}
         url = get_resource_uri("list_resource", self.basic_url, res_type=self.get_res_type(classname), class_name=classname)
-        resp = self._handle_request("GET", url, headers=self.cw_headers, params=params, verify=False)
+        resp = self._handle_request("GET", url, headers=self.cw_headers, params=params, verify=self.verify_tls)
         if not resp["result"]:
             return {"result": False, "message": resp["message"]}
 
@@ -451,7 +457,7 @@ class ManageOne(PrivateCloudManage):
                     metric_data.setdefault(i, {}).update(v)
         for i in range(count):
             params = {"pageSize": 1000, "pageNo": i + 1}
-            resp = self._handle_request("GET", url, headers=self.cw_headers, params=params, verify=False)
+            resp = self._handle_request("GET", url, headers=self.cw_headers, params=params, verify=self.verify_tls)
             if not resp["result"]:
                 all_result = False
                 all_message = resp["message"]
@@ -600,7 +606,7 @@ class ManageOne(PrivateCloudManage):
                     }
 
                     url = get_resource_uri("get_monitor", self.basic_url)
-                    resp = self._handle_request("POST", url, headers=self.cw_headers, json=data, verify=False)
+                    resp = self._handle_request("POST", url, headers=self.cw_headers, json=data, verify=self.verify_tls)
                     if not resp["result"]:
                         continue
 

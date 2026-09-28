@@ -3,6 +3,7 @@
 from django.db import connection
 
 from apps.job_mgmt.models import DangerousPath, DangerousRule, JobExecution, Playbook, ScheduledTask, Script, Target
+from apps.job_mgmt.utils.i18n import job_message
 from apps.job_mgmt.utils.team_authz import is_team_authorized, normalize_team
 
 
@@ -42,24 +43,30 @@ def get_module_data(module, child_module, page, page_size, group_id, *, team=Non
     system_model_map = {"dangerous_rule": DangerousRule, "dangerous_path": DangerousPath}
     model = system_model_map.get(child_module) if module == "system" else model_map.get(module)
     if model is None:
-        key = "child_module" if module == "system" else "module"
         value = child_module if module == "system" else module
-        return {"result": False, "message": f"未知 {key}: {value}"}
+        if module == "system":
+            message = job_message(None, "error.unknown_child_module", "Unknown child_module: {value}", value=value)
+        else:
+            message = job_message(None, "error.unknown_module", "Unknown module: {value}", value=value)
+        return {"result": False, "message": message}
 
     requested_teams = normalize_team(group_id)
     authorized_team_ids = normalize_team(team)
     if len(requested_teams) != 1:
-        return {"result": False, "message": "group_id 参数非法"}
+        return {"result": False, "message": job_message(None, "error.group_id_invalid", "Invalid group_id")}
     if not authorized_team_ids:
-        return {"result": False, "message": "team 不能为空"}
+        return {"result": False, "message": job_message(None, "error.team_required", "team is required")}
     group_id = next(iter(requested_teams))
     if not is_team_authorized(group_id, authorized_team_ids):
-        return {"result": False, "message": "无权访问该团队数据"}
+        return {
+            "result": False,
+            "message": job_message(None, "error.team_access_denied", "You do not have access to this team data"),
+        }
     try:
         page = max(1, int(page))
         page_size = max(1, int(page_size))
     except (TypeError, ValueError):
-        return {"result": False, "message": "page/page_size 参数非法"}
+        return {"result": False, "message": job_message(None, "error.page_params_invalid", "Invalid page/page_size")}
     queryset = _filter_by_team(model.objects.all(), group_id)
     start = (page - 1) * page_size
-    return {"count": queryset.count(), "items": list(queryset.values("id", "name")[start:start + page_size])}
+    return {"count": queryset.count(), "items": list(queryset.values("id", "name")[start : start + page_size])}

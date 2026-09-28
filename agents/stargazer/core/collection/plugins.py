@@ -7,7 +7,9 @@ import importlib
 import re
 from collections import deque
 from typing import Any, Callable, Mapping
+from urllib.parse import urlsplit, urlunsplit
 
+from common.platform_connection import PLATFORM_CONNECTION_MODELS
 from core.collection.constants import AUTH_ERROR_WORDS, SNMP_NO_RESPONSE_WORDS, UNREACHABLE_ERROR_WORDS
 from core.collection.contracts import (
     AccessProbeResult,
@@ -19,7 +21,7 @@ from core.collection.contracts import (
     TargetCollectionContext,
 )
 from core.collection.node_info_lookup import RunNodeInfoLookup
-from core.collection.runtime import CollectionRequest
+from core.collection.runtime import CollectionRequest, _run_log_identity
 from core.logger import logger, safe_log_value
 from core.plugin.error_logging import log_plugin_exception, should_log_plugin_exception
 
@@ -68,8 +70,8 @@ class ConfigurationCollectionPlugin:
                 if self._metrics is not None:
                     self._metrics.increment("run_preparation_fallback_total")
                 logger.warning(
-                    "event=collection_run_preparation_fallback task_id=%s " "plugin_ref=%s failed_stage=run_preparation error_type=%s",
-                    safe_log_value(request.task_id),
+                    "event=collection_run_preparation_fallback %s plugin_ref=%s failed_stage=run_preparation error_type=%s",
+                    _run_log_identity(request),
                     safe_log_value(request.plugin_ref),
                     type(exc).__name__,
                 )
@@ -306,7 +308,13 @@ def _target_params(
     params.pop("credentials_pool", None)
     params.update(dict(credential))
     if not params.pop("target_is_logical", False):
-        params["host"] = params.pop("_validated_connect_host", "") or target
+        connect_host = params.pop("_validated_connect_host", "")
+        params["host"] = connect_host or target
+        if connect_host and "://" in target and params.get("model_id") in PLATFORM_CONNECTION_MODELS:
+            endpoint = urlsplit(target)
+            hostname = f"[{connect_host}]" if ":" in connect_host else connect_host
+            netloc = f"{hostname}:{endpoint.port}" if endpoint.port else hostname
+            params["host"] = urlunsplit((endpoint.scheme, netloc, endpoint.path, "", ""))
         params.setdefault("target_hostname", target)
     params["collection_task_id"] = context.task_id
     params["collection_plugin_ref"] = context.plugin_ref

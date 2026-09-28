@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_kyland",
   "plugin": "Switch Kyland SNMP",
-  "plugin_desc": "Kyland industrial managed Ethernet switch SNMP collection (KYLAND-DEV-MIB, IANA PEN 26067). This child template relies on the shared Switch SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Private device-health objects: control-plane CPU utilization (cpuCurrentUtilRate, 0-100 percent), memory utilization (devMemoryUtilRate, percent), and dual power-input state (KylandDevMasterPowerState / KylandDevBackupPowerState, normalized to 1=normal / 2=abnormal). Some models may not implement devMemoryUtilRate / devRingLoadRate. Supported brands/models — Kyland industrial managed Ethernet switches (PEN 26067).",
+  "plugin_desc": "SNMP monitoring template for Kyland switch. It reports uptime, CPU utilization, memory utilization, power supply status, and interface traffic, for industrial managed Ethernet switches (enterprise PEN 26067).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_kyland'}) by (instance_id)",
   "name": "Switch",

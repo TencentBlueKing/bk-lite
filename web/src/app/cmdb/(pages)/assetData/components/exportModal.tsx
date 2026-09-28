@@ -1,14 +1,11 @@
 'use client';
 
-import React, { useState, forwardRef, useImperativeHandle } from 'react';
-import axios from 'axios';
+import React, { useState, forwardRef, useImperativeHandle, useRef } from 'react';
 import OperateModal from '@/components/operate-modal';
-import { Checkbox, Button, Spin, message } from 'antd';
+import { Alert, Checkbox, Button, Spin, message } from 'antd';
 import { HolderOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useModelApi } from '@/app/cmdb/api';
-import { useSession } from 'next-auth/react';
-import { useAuth } from '@/context/auth';
 import {
   AssoFieldType,
   AssoTypeItem,
@@ -20,15 +17,14 @@ import {
   ExportModalConfig,
   ExportModalRef,
 } from '@/app/cmdb/types/assetData';
-import { downloadBlobFile } from './exportDownload';
+import { useTransferApi } from '@/app/cmdb/api/transfer';
 
 const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
-  ({ assoTypes }, ref) => {
+  ({ assoTypes, onSubmitStart, onSubmitted, canSubmit }, ref) => {
     const { t } = useTranslation();
     const { getModelAssociations } = useModelApi();
-    const { data: session } = useSession();
-    const authContext = useAuth();
-    const token = authContext?.token || (session?.user as any)?.token || null;
+    const transferApi = useTransferApi();
+    const submission = useRef({ content: '', key: '' });
 
     const [visible, setVisible] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -200,29 +196,24 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
           .map((col) => col.key as string);
 
         const exportData = {
+          model_id: modelId,
+          scope: exportType,
           inst_uuids: instUuids,
           attr_list: orderedAttrs,
           association_list: selectedRelations,
         };
 
-        const response = await axios({
-          url: `/api/proxy/cmdb/api/instance/${modelId}/inst_export/`,
-          method: 'POST',
-          responseType: 'blob',
-          data: exportData,
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        });
-
-        const blob = new Blob([response.data], {
-          type: response.headers['content-type'] as string,
-        });
-        downloadBlobFile(blob, `${modelId}${t('Model.assetList')}.xlsx`);
-
-        message.success(t('Model.exportSuccess'));
+        const content = JSON.stringify(exportData);
+        if (submission.current.content !== content) submission.current = { content, key: crypto.randomUUID() };
+        setVisible(false);
+        onSubmitStart?.();
+        const task = await transferApi.exportFile(exportData, submission.current.key);
+        onSubmitted(task);
+        submission.current = { content: '', key: '' };
+        message.success(t('Transfer.accepted'));
         setVisible(false);
       } catch (error: any) {
+        setVisible(true);
         console.error('Export failed:', error);
         message.error(error.message || t('Model.exportFailed'));
       } finally {
@@ -257,14 +248,15 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
               type="primary"
               loading={exporting}
               onClick={handleExport}
-              disabled={selectedAttrs.length === 0}
+              disabled={selectedAttrs.length === 0 || !canSubmit}
             >
-              {t('common.confirm')}
+              {t('Transfer.submitExport')}
             </Button>
             <Button onClick={handleCancel}>{t('common.cancel')}</Button>
           </div>
         }
       >
+        {!canSubmit && <Alert type="info" showIcon message={t('Transfer.activeHint')} className="mb-4" />}
         <Spin spinning={loading}>
           <div
             style={{ maxHeight: '500px', overflowY: 'auto', padding: '8px' }}

@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_ubiquiti",
   "plugin": "Switch Ubiquiti SNMP",
-  "plugin_desc": "Ubiquiti EdgeSwitch-specific SNMP collection (EdgeSwitch-SWITCHING-MIB + EdgeSwitch-BOXSERVICES-PRIVATE-MIB, IANA PEN 4413, Broadcom FASTPATH). In addition to standard IF-MIB interface metrics, it collects EdgeSwitch private OIDs for device health: system memory (available/free, KB), chassis temperature (boxServicesTempSensorTemperature) and fan state (boxServicesFanItemState). Fan raw codes are normalized via telegraf processors.enum to 1=healthy / 2=fault. Memory utilization is computed from (total-free)/total. CPU is exposed only as a per-process table (agentSwitchCpuProcessTable) with no aggregate device-CPU scalar, which telegraf inputs.snmp cannot reduce, so CPU is not collected (N/A); the BOXSERVICES MIB has no power-supply state object, so PSU is also N/A. Applies to EdgeSwitch/UniFi-Switch (the wired switch line); airOS/UniFi wireless APs are a different object and out of scope. Supported brands/models — Ubiquiti EdgeSwitch (ES series).",
+  "plugin_desc": "SNMP monitoring template for Ubiquiti switch. It reports uptime, memory utilization, temperature, fan, power supply status, and interface traffic, for EdgeSwitch (enterprise PEN 4413).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_ubiquiti'}) by (instance_id)",
   "name": "Switch",
@@ -17,13 +17,14 @@
     "snmp_uptime",
     "device_memory_usage",
     "device_temperature_celsius",
-    "device_fan_state"
+    "device_fan_state",
+    "device_psu_state"
   ],
   "metrics": [
     {
       "metric_group": "Memory",
       "name": "device_memory_total",
-      "query": "device_memory_total{instance_type='switch', __$labels__} * 1024",
+      "query": "snmp_device_memory_total{instance_type='switch', __$labels__} * 1024",
       "display_name": "Memory Total",
       "data_type": "Number",
       "unit": "bytes",
@@ -31,12 +32,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the total size in bytes of the Ubiquiti EdgeSwitch system memory (EdgeSwitch-SWITCHING-MIB agentSwitchCpuProcessMemAvailable, reported in KB and scaled to bytes). Together with the free bytes it determines overall memory utilization."
+      "description": "This metric reports the total size in bytes of the Ubiquiti EdgeSwitch system memory (EdgeSwitch-SWITCHING-MIB agentSwitchCpuProcessMemAvailable, a scalar GET with instance .0, reported in KB and scaled to bytes). Together with the free bytes it determines overall memory utilization."
     },
     {
       "metric_group": "Memory",
       "name": "device_memory_free",
-      "query": "device_memory_free{instance_type='switch', __$labels__} * 1024",
+      "query": "snmp_device_memory_free{instance_type='switch', __$labels__} * 1024",
       "display_name": "Memory Free",
       "data_type": "Number",
       "unit": "bytes",
@@ -44,12 +45,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the number of free bytes in the Ubiquiti EdgeSwitch system memory (EdgeSwitch-SWITCHING-MIB agentSwitchCpuProcessMemFree, reported in KB and scaled to bytes). Low free memory may indicate memory pressure from oversized tables or leaks."
+      "description": "This metric reports the number of free bytes in the Ubiquiti EdgeSwitch system memory (EdgeSwitch-SWITCHING-MIB agentSwitchCpuProcessMemFree, a scalar GET with instance .0, reported in KB and scaled to bytes). Low free memory may indicate memory pressure from oversized tables or leaks."
     },
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "(sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) - sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) / sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100",
+      "query": "(sum(snmp_device_memory_total{instance_type='switch', __$labels__}) by (instance_id) - sum(snmp_device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) / sum(snmp_device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -94,6 +95,24 @@
         "instance_id"
       ],
       "description": "This metric reports the fan state of the Ubiquiti EdgeSwitch device (EdgeSwitch-BOXSERVICES-PRIVATE-MIB boxServicesFanItemState), normalized via telegraf processors.enum so that 1 = healthy (operational / powering / not-present) and 2 = fault (failed / no-power / not-powering / incompatible). Aggregated as the maximum across fans so any faulty fan surfaces. A value greater than 1 indicates a fan failure that can lead to overheating."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='switch', __$labels__}",
+      "display_name": "PSU State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the power-supply state of the Ubiquiti EdgeSwitch device (EdgeSwitch-BOXSERVICES-PRIVATE-MIB boxServicesPowSupplyItemState), normalized via telegraf processors.enum so that 1 = healthy (operational / powering / not-present) and 2 = fault (failed / no-power / not-powering / incompatible). Aggregated as the maximum across supplies so any failed PSU surfaces. A value greater than 1 indicates a power-supply problem."
     },
     {
       "metric_group": "Traffic",

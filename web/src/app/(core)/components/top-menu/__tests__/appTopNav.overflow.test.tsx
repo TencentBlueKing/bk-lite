@@ -12,7 +12,12 @@ vi.stubGlobal('ResizeObserver', ResizeObserverStub);
 
 vi.mock('@/utils/i18n', () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, fallback?: string) => {
+      if (key === 'apps.workflow-orchestration') {
+        return '编排中心';
+      }
+      return fallback || key;
+    },
   }),
 }));
 
@@ -97,6 +102,28 @@ describe('AppTopNav overflow arrows', () => {
     });
     fireEvent.click(screen.getByRole('button', { name: 'common.scrollAppsRight' }));
     expect(scrollBy).toHaveBeenCalledWith({ left: 224, behavior: 'smooth' });
+  });
+});
+
+describe('AppTopNav builtin app labels', () => {
+  it('localizes workflow-orchestration even when display_name is English', () => {
+    render(
+      <AppTopNav
+        apps={[
+          {
+            name: 'workflow-orchestration',
+            display_name: 'Workflow Orchestration',
+            url: '/workflow-orchestration',
+            icon: 'liuchengguanli1',
+            is_build_in: true,
+          },
+        ] as ClientData[]}
+        pathname="/workflow-orchestration"
+      />,
+    );
+
+    expect(screen.getByRole('link', { name: '编排中心' })).toBeTruthy();
+    expect(screen.queryByText('Workflow Orchestration')).toBeNull();
   });
 });
 

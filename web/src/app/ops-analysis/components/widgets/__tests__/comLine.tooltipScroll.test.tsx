@@ -16,6 +16,11 @@ const chartSpy = vi.hoisted(() => ({
         size: { contentSize: number[]; viewSize: number[] },
       ) => number[];
     };
+    series?: Array<{
+      symbol?: string;
+      symbolSize?: number;
+      showSymbol?: boolean;
+    }>;
   } | null,
 }));
 
@@ -86,5 +91,46 @@ describe('ComLine multi-series tooltip', () => {
 
     expect(tooltipEl.style.maxHeight).toBe('156px');
     expect(tooltipEl.style.overflowY).toBe('auto');
+  });
+
+  it('draws a circle when each series has only one sample', async () => {
+    render(<ComLine rawData={multiSeriesData} loading={false} />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(chartSpy.option?.series?.length).toBeGreaterThan(0);
+    chartSpy.option?.series?.forEach((series) => {
+      expect(series).toMatchObject({
+        showSymbol: true,
+        symbol: 'circle',
+        symbolSize: 8,
+      });
+    });
+  });
+
+  it('hides point marks once a series can form a line', async () => {
+    render(
+      <ComLine
+        rawData={{
+          '整体健康度': [
+            ['2026-09-27', 1.2],
+            ['2026-09-28', 1.75],
+          ],
+        }}
+        loading={false}
+      />,
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(chartSpy.option?.series?.[0]).toMatchObject({
+      showSymbol: false,
+      symbol: 'none',
+      symbolSize: 0,
+    });
   });
 });

@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
@@ -179,10 +179,36 @@ describe('rum page four-state presence (static)', () => {
       expect(src.includes('authReady'), `${rel} missing authReady gate`).toBe(true);
       expect(src.includes('useRumAuthedEffect'), `${rel} missing cancelled authed load`).toBe(true);
       expect(src.includes('RumPageError'), `${rel} missing failed-load chrome`).toBe(true);
+      // Refetch (e.g. time-window change) must enter loading even when prior page is cached.
+      expect(
+        /pending:\s*pending\s*&&\s*page\s*===\s*null/.test(src),
+        `${rel} still gates loading chrome on page === null`,
+      ).toBe(false);
     }
     const catalog = readFileSync(join(RUM_ROOT, 'applications/page.tsx'), 'utf8');
     expect(catalog.includes("chrome === 'error'")).toBe(true);
     expect(catalog.includes("chrome === 'loading'")).toBe(true);
+  });
+
+  it('list empty states are vertically centered and saved-views chrome is gone', () => {
+    const listPages = [
+      'sessions/page.tsx',
+      'views/page.tsx',
+      'errors/page.tsx',
+      'releases/page.tsx',
+      'monitors/page.tsx',
+      'alert-events/page.tsx',
+      'compliance/page.tsx',
+    ] as const;
+    for (const rel of listPages) {
+      const src = readFileSync(join(RUM_ROOT, rel), 'utf8');
+      expect(src.includes('SavedViewsBar'), `${rel} still mounts SavedViewsBar`).toBe(false);
+      expect(
+        /flex min-h-0 flex-1 items-center justify-center[\s\S]{0,200}<Empty/.test(src),
+        `${rel} empty state is not vertically centered`,
+      ).toBe(true);
+    }
+    expect(existsSync(join(RUM_ROOT, 'components/saved-views-bar.tsx'))).toBe(false);
   });
 
   it('page loading uses isomorphic rum skeletons instead of Spin or paragraph Skeleton', () => {

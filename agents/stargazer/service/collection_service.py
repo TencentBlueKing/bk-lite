@@ -149,9 +149,8 @@ class CollectionService:
             executor_type = self.params["executor_type"]
             instance_id = self.params.get("instance_id", "")
             logger.debug(
-                "start collect.  instance_id=%s task_id=%s model_id=%s plugin_name=%s target=%s executor=%s",
+                "start collect.  instance_id=%s model_id=%s plugin_name=%s target=%s executor=%s",
                 instance_id,
-                self.params.get("collection_task_id") or "-",
                 self.model_id,
                 self.plugin_name or "-",
                 self.host or "logical",

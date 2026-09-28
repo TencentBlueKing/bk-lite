@@ -1,7 +1,6 @@
 Switch Alcatel-Lucent SNMP:
   name: Alcatel-Lucent (Telegraf)
-  desc: SNMP monitoring template for Alcatel-Lucent switch. It reports CPU utilization,
-    memory utilization, per-port inbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Alcatel-Lucent switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic, for 7750 SR, 7450 ESS, 7950 XRS (enterprise PEN 6527)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

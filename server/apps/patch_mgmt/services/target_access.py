@@ -41,22 +41,22 @@ class TargetAccessScope:
 
     def _validate_current_team(self) -> int:
         if self.user is None:
-            raise PermissionDenied("用户未登录")
+            raise PermissionDenied(patch_message(self.request, "error.user_not_authenticated", "User is not authenticated"))
         try:
             current_team = int(get_current_team(self.request, "0"))
         except (TypeError, ValueError) as exc:
-            raise PermissionDenied("无权访问该组织数据") from exc
+            raise PermissionDenied(
+                patch_message(self.request, "error.org_access_denied", "You do not have access to this organization data")
+            ) from exc
         if current_team <= 0:
-            raise PermissionDenied("无权访问该组织数据")
+            raise PermissionDenied(patch_message(self.request, "error.org_access_denied", "You do not have access to this organization data"))
         if getattr(self.user, "is_superuser", False):
             return current_team
         group_ids = {
-            int(item["id"])
-            for item in (getattr(self.user, "group_list", []) or [])
-            if isinstance(item, dict) and str(item.get("id", "")).isdigit()
+            int(item["id"]) for item in (getattr(self.user, "group_list", []) or []) if isinstance(item, dict) and str(item.get("id", "")).isdigit()
         }
         if current_team not in group_ids:
-            raise PermissionDenied("无权访问该组织数据")
+            raise PermissionDenied(patch_message(self.request, "error.org_access_denied", "You do not have access to this organization data"))
         return current_team
 
     def _load_rules(self) -> _TargetRules:
@@ -74,11 +74,7 @@ class TargetAccessScope:
             logger.exception("获取补丁目标数据权限失败")
             payload = {}
 
-        team_ids = tuple(
-            int(value)
-            for value in (payload.get("team", []) or [])
-            if str(value).isdigit()
-        )
+        team_ids = tuple(int(value) for value in (payload.get("team", []) or []) if str(value).isdigit())
         visible: set[int] = set()
         operable: set[int] = set()
         for item in payload.get("instance", []) or []:
@@ -97,14 +93,8 @@ class TargetAccessScope:
         queryset = PatchTarget.objects.all()
         if getattr(self.user, "is_superuser", False):
             return queryset
-        instance_ids = (
-            self._rules.operable_instance_ids
-            if operation == "Operate"
-            else self._rules.visible_instance_ids
-        )
-        team_query = build_json_membership_query(
-            queryset, "team", self._rules.team_ids
-        )
+        instance_ids = self._rules.operable_instance_ids if operation == "Operate" else self._rules.visible_instance_ids
+        team_query = build_json_membership_query(queryset, "team", self._rules.team_ids)
         return queryset.filter(team_query | Q(pk__in=instance_ids))
 
     def filter(self, queryset: QuerySet, operation: str = "View") -> QuerySet:
@@ -121,11 +111,7 @@ class TargetAccessScope:
                     "Data ID must be an integer",
                 )
             ) from exc
-        authorized = set(
-            self.queryset(operation)
-            .filter(pk__in=requested)
-            .values_list("pk", flat=True)
-        )
+        authorized = set(self.queryset(operation).filter(pk__in=requested).values_list("pk", flat=True))
         denied = sorted(requested - authorized)
         if denied:
             raise PermissionDenied(
@@ -199,9 +185,7 @@ class TargetRootedResourceMixin:
     def get_queryset_by_permission(self, request, queryset, permission_key=None):
         if (permission_key or getattr(self, "permission_key", None)) == "patch_target":
             return target_access_scope(request).filter(queryset, "View")
-        return super().get_queryset_by_permission(
-            request, queryset, permission_key=permission_key
-        )
+        return super().get_queryset_by_permission(request, queryset, permission_key=permission_key)
 
     def get_detail(self, request, *args, **kwargs):
         instance = self.get_object()

@@ -3,6 +3,7 @@ from pathlib import Path
 from string import Formatter
 from types import SimpleNamespace
 
+import pytest
 import yaml
 
 from apps.core.utils.loader import LanguageLoader
@@ -113,15 +114,107 @@ def test_backend_dynamic_status_translation_contracts_exist():
     contracts = {
         "status.task_type": ("assess", "install", "reboot", "verify"),
         "status.compliance": (
-            "compliant", "non_compliant", "pending", "evaluating", "failed",
-            "unknown", "not_applicable",
+            "compliant",
+            "non_compliant",
+            "pending",
+            "evaluating",
+            "failed",
+            "unknown",
+            "not_applicable",
+            "unconfigured",
         ),
+        "status.execution": (
+            "waiting",
+            "running",
+            "completed",
+            "failed",
+            "partial_success",
+            "partial_cancelled",
+            "cancelled",
+            "skipped",
+            "unknown",
+            "unmet",
+        ),
+        "status.execution_step": ("install", "reboot", "verify"),
     }
     for locale in ("en", "zh-Hans"):
         messages = _flatten(_load_messages(locale))
         for prefix, values in contracts.items():
             for value in values:
                 assert isinstance(messages.get(f"{prefix}.{value}"), str)
+
+
+@pytest.mark.django_db
+def test_execution_record_displays_follow_request_locale():
+    from apps.patch_mgmt.constants import GovernanceTaskStatus, GovernanceTaskType
+    from apps.patch_mgmt.models import GovernanceTask, GovernanceTaskHost
+    from apps.patch_mgmt.services.execution_record_service import build_record_status, build_risk_item_detail
+
+    risk_id = "10:20:30"
+    remediation = GovernanceTask.objects.create(
+        name="locale-record",
+        task_type=GovernanceTaskType.INSTALL,
+        status=GovernanceTaskStatus.COMPLETED,
+        target_list=[10],
+        patch_list=[20],
+        auto_reboot=False,
+        risk_snapshot=[
+            {
+                "id": risk_id,
+                "host_id": 10,
+                "host_name": "host-a",
+                "patch_id": 20,
+                "patch_name": "KB1",
+            }
+        ],
+        team=[1],
+    )
+    GovernanceTaskHost.objects.create(
+        task=remediation,
+        target_id=10,
+        target_name="host-a",
+        stage="pending_reboot",
+    )
+
+    en_status = build_record_status(remediation, _request("en"))
+    zh_status = build_record_status(remediation, _request("zh-Hans"))
+    assert en_status[0] == zh_status[0] == "completed"
+    assert en_status[1] == "Completed"
+    assert zh_status[1] == "已完成"
+
+    en_detail = build_risk_item_detail(remediation, risk_id, _request("en"))
+    zh_detail = build_risk_item_detail(remediation, risk_id, _request("zh-Hans"))
+    assert en_detail["steps"][0]["name"] == "Install Patches"
+    assert zh_detail["steps"][0]["name"] == "安装补丁"
+    assert "Automatic reboot after installation is not enabled" in en_detail["steps"][1]["reason"]
+    assert "未设置安装后自动重启" in zh_detail["steps"][1]["reason"]
+
+
+def test_patch_target_connectivity_errors_are_localized():
+    from apps.patch_mgmt.constants import PatchTargetSource
+    from apps.patch_mgmt.serializers.patch_target import PatchTargetConnectivitySerializer
+
+    en_serializer = PatchTargetConnectivitySerializer(
+        data={
+            "ip": "10.0.0.1",
+            "os_type": "linux",
+            "source_type": PatchTargetSource.NODE_MGMT,
+        },
+        context={"request": _request("en")},
+    )
+    assert not en_serializer.is_valid()
+    assert en_serializer.errors["node_id"][0] == "Node-management targets require node_id"
+
+    zh_serializer = PatchTargetConnectivitySerializer(
+        data={
+            "ip": "10.0.0.1",
+            "os_type": "linux",
+            "source_type": PatchTargetSource.MANUAL,
+        },
+        context={"request": _request("zh-Hans")},
+    )
+    assert not zh_serializer.is_valid()
+    assert zh_serializer.errors["cloud_region_id"][0] == "手动目标必须选择云区域"
 
 
 def test_unknown_compliance_status_uses_unable_to_determine_copy():
@@ -131,9 +224,7 @@ def test_unknown_compliance_status_uses_unable_to_determine_copy():
 
 
 def test_patch_message_uses_request_user_locale():
-    assert patch_message(_request("en"), "error.task_finished_not_cancellable", "fallback") == (
-        "The task has finished and cannot be cancelled"
-    )
+    assert patch_message(_request("en"), "error.task_finished_not_cancellable", "fallback") == ("The task has finished and cannot be cancelled")
     assert patch_message(_request("zh-Hans"), "error.task_finished_not_cancellable", "fallback") == "任务已结束，不可取消"
 
 

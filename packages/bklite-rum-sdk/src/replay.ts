@@ -118,25 +118,47 @@ function parseReplayItem(item: TransportItem): ParsedReplayItem {
 
 const utf8Encoder = new TextEncoder();
 
+// Well-formed strings are returned unchanged. Rebuilding every scalar with
+// repeated concatenation is quadratic and stalls the >4MiB Replay discard path.
 function normalizeUnicodeScalars(value: string): string {
-  let normalized = '';
+  let rewriteAt = -1;
   for (let index = 0; index < value.length; index += 1) {
     const unit = value.charCodeAt(index);
     if (unit >= 0xd800 && unit <= 0xdbff) {
       const next = value.charCodeAt(index + 1);
       if (next >= 0xdc00 && next <= 0xdfff) {
-        normalized += value[index] + value[index + 1];
         index += 1;
-      } else {
-        normalized += '\ufffd';
+        continue;
       }
-    } else if (unit >= 0xdc00 && unit <= 0xdfff) {
-      normalized += '\ufffd';
-    } else {
-      normalized += value[index];
+      rewriteAt = index;
+      break;
+    }
+    if (unit >= 0xdc00 && unit <= 0xdfff) {
+      rewriteAt = index;
+      break;
     }
   }
-  return normalized;
+  if (rewriteAt < 0) return value;
+
+  const parts: string[] = [];
+  let cursor = 0;
+  for (let index = rewriteAt; index < value.length; index += 1) {
+    const unit = value.charCodeAt(index);
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        index += 1;
+        continue;
+      }
+      parts.push(value.slice(cursor, index), '\ufffd');
+      cursor = index + 1;
+    } else if (unit >= 0xdc00 && unit <= 0xdfff) {
+      parts.push(value.slice(cursor, index), '\ufffd');
+      cursor = index + 1;
+    }
+  }
+  parts.push(value.slice(cursor));
+  return parts.join('');
 }
 
 function compareUtf8(left: string, right: string): number {

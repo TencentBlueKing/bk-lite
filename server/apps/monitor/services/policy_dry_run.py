@@ -1,4 +1,4 @@
-"""策略试跑：只读复用扫描判定，不落告警 / 事件 / 快照 / 通知。"""
+"""策略预检：只读复用扫描判定，不落告警 / 事件 / 快照 / 通知。"""
 
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError as DrfValidationError
@@ -34,7 +34,7 @@ _SKIP_POLICY_FIELDS = frozenset({"id", "last_run_time"})
 def _raise_for_vm_error(data):
     if not isinstance(data, dict) or data.get("status") in (None, "success"):
         return
-    raise BaseAppException("试跑失败")
+    raise BaseAppException("预检失败")
 
 
 class PolicyDryRunService:
@@ -93,7 +93,7 @@ class PolicyDryRunService:
                 type(exc).__name__,
                 exc_info=True,
             )
-            raise BaseAppException("试跑失败") from exc
+            raise BaseAppException("预检失败") from exc
 
     @classmethod
     def authorize_preview_payload(cls, payload, actor_context):

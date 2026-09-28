@@ -21,7 +21,7 @@
         "id": "collection-path",
         "label": "采集与扫描链",
         "focus": ["protocol_adapters", "ingestion", "operational_state", "external_execution", "graph_adapter"],
-        "note": "采集、扫描和节点同步横跨外部执行、任务状态与图写入。"
+        "note": "JOB 主机发现按 UUID 校验主机并保存 IP/云区域快照，任务仍决定插件；首次 one-shot 和周期采集共用节点配置，结果按任务组织对账。"
       },
       {
         "id": "consistency",
@@ -123,10 +123,11 @@
       "id": "operational_state",
       "type": "database",
       "label": "Django 运行状态",
-      "sublabel": "任务 / 扫描 / 快照 / 操作账本 / Outbox",
+      "sublabel": "任务 / Transfer / 账本 / Outbox",
       "pos": [845, 420],
       "size": [225, 88],
       "sources": [
+        {"path": "server/apps/cmdb/models/transfer_task.py", "line": 8, "label": "异步导入导出任务"},
         {"path": "server/apps/cmdb/models/operation.py", "line": 25, "label": "操作与 Outbox"},
         {"path": "server/apps/cmdb/models/node_mgmt_sync.py", "line": 34, "label": "同步状态"},
         {"path": "server/apps/cmdb/models/scan_model.py", "line": 126, "label": "扫描执行"}
@@ -196,7 +197,7 @@
       "title": "跨存储一致性",
       "items": [
         "图存储拥有模型、实例和关系事实，Django DB 保存操作与任务状态",
-        "HTTP 创建/更新已有 Operation + Outbox，NATS、批量和采集入口尚未统一"
+        "HTTP 与异步实例导入使用 Operation + Outbox；其它批量入口尚未统一"
       ]
     },
     {
@@ -212,7 +213,8 @@
       "title": "能力被技术目录压平",
       "items": [
         "六类业务能力集中在 services / views / tasks / nats 等技术目录",
-        "新增一种资产来源通常同时修改协议、任务、图写入和跨模块钩子"
+        "新增一种资产来源通常同时修改协议、任务、图写入和跨模块钩子",
+        "Transfer：复用默认 Celery Worker；数据库补发；MinIO 同桶前缀日清"
       ]
     }
   ]

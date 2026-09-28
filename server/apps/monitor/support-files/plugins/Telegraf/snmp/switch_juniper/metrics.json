@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_juniper",
   "plugin": "Switch Juniper SNMP",
-  "plugin_desc": "Juniper switch SNMP collection (JUNIPER-MIB and JUNIPER-DOM-MIB, IANA PEN 2636). Private device-health objects: per-module CPU utilization (jnxOperatingCPU), memory buffer utilization (jnxOperatingBuffer, already a percent), temperature (jnxOperatingTemp), plus fan and power-supply operational state from jnxOperatingState (fan container .4 / power container .2) normalized to 1=ok / 2=bad. Optical DDM is per-ifIndex from jnxDomCurrentTable: tx/rx power (0.01 dBm), module temperature, optional bias current (0.001 mA) and module voltage (0.001 V). Interface counters come from the built-in IF-MIB catalog, not this plugin. Supported brands/models — Juniper EX-series campus switches (EX2300/3400/4300/4600, etc., Junos).",
+  "plugin_desc": "SNMP monitoring template for Juniper switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, optical modules, interface traffic, and voltage (enterprise PEN 2636).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_juniper'}) by (instance_id)",
   "name": "Switch",

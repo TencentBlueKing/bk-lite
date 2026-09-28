@@ -1,6 +1,6 @@
 Firewall Stormshield SNMP:
   name: Stormshield（Telegraf）
-  desc: 面向 Stormshield 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、内存使用率等主要指标。
+  desc: 面向 Stormshield 防火墙的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、VPN隧道、接口流量，适用于 SNS 系列（企业号 PEN 11256）。
 monitor_object:
   Firewall: 防火墙
 monitor_object_type:
@@ -9,7 +9,13 @@ monitor_object_metric:
   Firewall:
     device_temperature_celsius:
       name: 设备温度
-      desc: 该指标报告设备硬件温度传感器读数，单位摄氏度。温度异常升高可能由风扇故障、散热不良或环境温度过高导致，严重时触发热保护或损坏硬件。
+      desc: 该指标报告 Stormshield 防火墙各 CPU 温度传感器读数，单位摄氏度（STORMSHIELD-SYSTEM-MONITOR-MIB snsCpuTemp）。温度异常升高可能由风扇故障、散热不良或环境温度过高导致。
+    device_psu_powered:
+      name: 电源通电状态
+      desc: 该指标报告 Stormshield 防火墙各电源模块是否通电（STORMSHIELD-SYSTEM-MONITOR-MIB snsPowerSupplyPowered，1=通电 / 2=未通电）。未通电表示电源冗余或硬件故障，需尽快处理。
+    device_fan_rpm:
+      name: 风扇转速
+      desc: 该指标报告 Stormshield 防火墙各散热风扇的转速，单位 RPM（STORMSHIELD-SYSTEM-MONITOR-MIB snsFanRpm）。转速过低或为零通常意味着风扇停转，可能迅速导致过热。
     device_swap_usage:
       name: Swap 使用率
       desc: 该指标报告防火墙的 Swap（交换分区）使用率，0~100 直接百分比。Swap 持续被占用通常意味着物理内存耗尽，会拖慢会话处理性能。
@@ -59,16 +65,16 @@ monitor_object_metric:
         会话异常升高可能意味着扫描或攻击活动。
     firewall_tcp_connections:
       name: ASQ TCP 连接数
-      desc: 该指标报告 Stormshield 防火墙 ASQ 引擎当前的 TCP 连接数（STORMSHIELD-SNS-MIB）。连接数快速上升可能意味着连接洪泛或会话表压力。
+      desc: 该指标报告 Stormshield 防火墙 ASQ 引擎当前的有状态 TCP 连接数（STORMSHIELD-ASQ-STATS-MIB snsASQStatsStatefulTcpConn）。连接数快速上升可能意味着连接洪泛或会话表压力。
     firewall_udp_connections:
       name: ASQ UDP 连接数
-      desc: 该指标报告 Stormshield 防火墙 ASQ 引擎当前的 UDP 连接数（STORMSHIELD-SNS-MIB）。可结合 TCP 连接数评估整体会话负载与异常。
+      desc: 该指标报告 Stormshield 防火墙 ASQ 引擎当前的有状态 UDP 连接数（STORMSHIELD-ASQ-STATS-MIB snsASQStatsStatefulUdpConn）。可结合 TCP 连接数评估整体会话负载与异常。
     device_memory_free:
       name: 空闲内存
-      desc: 该指标报告防火墙当前空闲的物理内存字节数（Check Point CHECKPOINT-MIB memTotalReal64 减去 memActiveReal64）。空闲内存持续偏低可能意味着内存压力上升。
+      desc: 该指标报告 Stormshield 防火墙当前空闲的物理内存字节数（UCD-SNMP-MIB memAvailReal，原始单位 KB，已换算为字节）。空闲内存持续偏低可能意味着内存压力上升。
     device_memory_used:
       name: 已用内存
-      desc: 该指标报告防火墙当前已使用的物理内存字节数（由内存总量减去空闲内存计算得到）。用于评估绝对内存消耗与压力。
+      desc: 该指标报告 Stormshield 防火墙当前已使用的物理内存字节数（由 memTotalReal 减去 memAvailReal 计算得到）。用于评估绝对内存消耗与压力。
     firewall_vpn_encrypted_pps:
       name: VPN 加密包速率
       desc: 该指标报告防火墙 VPN 加密数据包的速率，单位为包每秒（Check Point CHECKPOINT-MIB encpktsPersec）。可用于观察
@@ -79,22 +85,19 @@ monitor_object_metric:
         VPN 解密流量负载与异常波动。
     device_cpu_usage:
       name: CPU 使用率
-      desc: 该指标报告 FortiGate 防火墙整体 CPU 使用率（FORTINET-FORTIGATE-MIB fgSysCpuUsage）。持续高
-        CPU 可能意味着流量检测负载过重、攻击活动或控制平面瓶颈。
+      desc: 该指标报告 Stormshield 防火墙各处理器核的 CPU 使用率（HOST-RESOURCES hrProcessorLoad，每核 0-100%）。持续高 CPU 可能意味着流量检测负载过重、攻击活动或控制平面瓶颈。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标报告 FortiGate 防火墙整体内存使用率（FORTINET-FORTIGATE-MIB fgSysMemUsage，直接以百分比上报）。内存压力过高时设备可能进入保护模式并丢弃新会话。
+      desc: 该指标报告 Stormshield 防火墙真实内存使用率，按 (memTotalReal - memAvailReal) / memTotalReal 计算。内存压力过高时可能拖慢会话处理性能。
     device_memory_total:
       name: 内存总容量
-      desc: 该指标报告 FortiGate 防火墙的物理内存总容量（FORTINET-FORTIGATE-MIB fgSysMemCapacity，原始单位
-        KB，已换算为字节）。
+      desc: 该指标报告 Stormshield 防火墙的物理内存总容量（UCD-SNMP-MIB memTotalReal，原始单位 KB，已换算为字节）。
     firewall_active_sessions:
       name: IPv4 活动会话数
       desc: 该指标报告 FortiGate 防火墙当前跟踪的 IPv4 活动会话数（FORTINET-FORTIGATE-MIB fgSysSesCount）。会话数快速上升可能意味着连接洪泛或会话表耗尽风险。
     firewall_vpn_tunnels:
       name: 活动 IPsec VPN 隧道数
-      desc: 该指标报告 FortiGate 防火墙当前活动的 IPsec VPN 隧道数量（FORTINET-FORTIGATE-MIB fgVpnTunnelUpCount）。数量骤降可能意味着
-        VPN 中断，影响站点间互联。
+      desc: 该指标报告 Stormshield 防火墙当前成熟（已建立）的 IPsec 安全关联数量（STORMSHIELD-IPSEC-STATS-MIB snsIPSECStatsSADMature）。数量骤降可能意味着 VPN 中断，影响站点间互联。
     firewall_ha_mode:
       name: 高可用模式
       desc: 该指标报告 FortiGate 防火墙的高可用模式（FORTINET-FORTIGATE-MIB fgHaSystemMode）：独立、双活或主备。可用于确认设备是否处于预期的

@@ -1,7 +1,6 @@
 Switch Pica8 SNMP:
   name: Pica8（Telegraf）
-  desc: 面向 Pica8 PicOS 白盒交换机的 SNMP 监控模板,可采集 CPU 使用率和每个端口的进/出流量速率,用于实时掌握设备负载与端口流量变化（企业号
-    PEN 35098）。
+  desc: 面向 Pica8 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、接口流量，适用于 PicOS 白盒交换机（企业号 PEN 35098）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:
@@ -69,8 +68,8 @@ monitor_object_metric:
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
     device_cpu_usage:
       name: CPU 使用率
-      desc: 该指标表示设备控制平面的 CPU 使用率（通常为 5 分钟平均值），单位为百分比。CPU 持续偏高可能意味着控制平面过载、路由震荡或异常流量，会导致管理响应变慢或转发延迟。数据来源于各品牌私有
-        SNMP OID，并归一化为 0-100 的百分比。
+      desc: 该指标表示 Pica8 PicOS 设备控制平面的 CPU 使用率（PICA-PRIVATE-MIB cpuUsage，INTEGER
+        0..100 标量 GET，实例 .0，设备直接上报百分比）。CPU 持续偏高可能意味着控制平面过载、路由震荡或异常流量，会导致管理响应变慢或转发延迟。
     device_memory_usage:
       name: 内存使用率
       desc: 该指标表示设备整体内存使用率，按 已用/(已用+空闲)*100 在所有内存池上汇总计算，单位为百分比。内存偏高可能由内存泄漏、路由/MAC/ARP

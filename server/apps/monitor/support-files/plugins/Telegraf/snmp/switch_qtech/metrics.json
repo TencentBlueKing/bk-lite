@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_qtech",
   "plugin": "Switch QTech SNMP",
-  "plugin_desc": "QTech (QSW)-specific SNMP collection for switches (QTECH-MIB, enterprise 27514). In addition to standard IF-MIB interface metrics, it collects QTech private OIDs for device health: CPU utilization, system memory (used/total), temperature, fan and power-supply status. Memory utilization is computed from used/total; fan/psu states (native 0=normal) are normalized to the unified 1=normal convention. Supported brands/models — QTech QSW-series switches.",
+  "plugin_desc": "SNMP monitoring template for QTech switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic, for QSW-series (enterprise PEN 27514).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_qtech'}) by (instance_id)",
   "name": "Switch",

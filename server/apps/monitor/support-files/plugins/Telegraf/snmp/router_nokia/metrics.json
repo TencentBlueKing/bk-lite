@@ -1,0 +1,109 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_nokia_router",
+  "plugin": "Router Nokia SNMP",
+  "plugin_desc": "SNMP monitoring template for Nokia router. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic (enterprise PEN 6527).",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='router', collect_type='snmp_nokia_router'}) by (instance_id)",
+  "name": "Router",
+  "icon": "mm-nokia_nokia",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='router'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "snmp_device_cpu_usage{instance_type='router', __$labels__}",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization of the Nokia TiMOS/SROS router (TIMETRA-SYSTEM-MIB sgiCpuUsage) as a 0-100 percent. Sustained high CPU usage can indicate control-plane overload, routing churn, or attack traffic."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "(snmp_device_memory_used_kb{instance_type='router', __$labels__} * 1024) or snmp_device_memory_used{instance_type='router', __$labels__}",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Used pre-allocated pool memory of the Nokia TiMOS/SROS router in bytes. Kilobyte leaf sgiKbMemoryUsed is preferred and scaled by 1024 to avoid Unsigned32 saturation of sgiMemoryUsed on large systems."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_free",
+      "query": "(snmp_device_memory_free_kb{instance_type='router', __$labels__} * 1024) or snmp_device_memory_free{instance_type='router', __$labels__}",
+      "display_name": "Memory Available",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Available (unallocated) system memory of the Nokia TiMOS/SROS router in bytes (sgiKbMemoryAvailable preferred, else sgiMemoryAvailable). This is free memory that can grow memory pools."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "100 * ((snmp_device_memory_used_kb{instance_type='router', __$labels__} * 1024) or snmp_device_memory_used{instance_type='router', __$labels__}) / (((snmp_device_memory_used_kb{instance_type='router', __$labels__} * 1024) or snmp_device_memory_used{instance_type='router', __$labels__}) + ((snmp_device_memory_free_kb{instance_type='router', __$labels__} * 1024) or snmp_device_memory_free{instance_type='router', __$labels__}))",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of the Nokia TiMOS/SROS router, computed as used / (used + available) * 100. Kilobyte and byte units cancel within each preferred path. High usage may indicate leaks, oversized tables, or insufficient capacity."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='router', __$labels__}",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Hardware component name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Chassis hardware temperature of the Nokia TiMOS/SROS router in degrees Celsius (TIMETRA-CHASSIS-MIB tmnxHwTemperature). Rows that report -1 (no sensor) are discarded."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='router', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

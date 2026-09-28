@@ -74,19 +74,26 @@ const HostTask: React.FC<HostTaskFormProps> = ({
       let instanceData;
       if (collectType === 'ip') {
         instanceData = {
-          ip_range: ipRange.join('-'),
+          ip_range: (ipRange || []).join('-'),
           instances: [],
         };
       } else {
         instanceData = {
           ip_range: '',
-          instances: selectedData || [],
+          instances: collectType === 'host'
+            ? (selectedData || []).map(({ inst_uuid }) => ({ inst_uuid }))
+            : selectedData || [],
         };
       }
 
       return {
         ...baseData,
         ...instanceData,
+        params: {
+          ...form.getFieldValue('params'),
+          ...baseData.params,
+          ...(modelItem.supports_host_discovery ? { target_source: collectType } : {}),
+        },
         credential: buildCredentialPool(values.credentialPool, (item) => {
           const credential: Record<string, any> = {};
           if (item.credential_id) {
@@ -122,6 +129,7 @@ const HostTask: React.FC<HostTaskFormProps> = ({
     ipRange,
     ...getCleanupFormValues(values),
     ...values,
+    ip_precheck: Boolean(values.params?.ip_precheck),
     taskName: isCopy ? '' : values.name,
     organization: values.team || [],
     accessPointId: values.access_point?.[0]?.id,
@@ -135,7 +143,7 @@ const HostTask: React.FC<HostTaskFormProps> = ({
         if (values.ip_range?.length) {
           baseRef.current?.initCollectionType(ipRange, 'ip');
         } else {
-          baseRef.current?.initCollectionType(values.instances, 'asset');
+          baseRef.current?.initCollectionType(values.instances, values.params?.target_source === 'host' ? 'host' : 'asset');
         }
 
         // 复制任务中回填表单数据（此时任务名称和密码为空，需要用户手动输入）
@@ -146,7 +154,7 @@ const HostTask: React.FC<HostTaskFormProps> = ({
         if (values.ip_range?.length) {
           baseRef.current?.initCollectionType(ipRange, 'ip');
         } else {
-          baseRef.current?.initCollectionType(values.instances, 'asset');
+          baseRef.current?.initCollectionType(values.instances, values.params?.target_source === 'host' ? 'host' : 'asset');
         }
 
         // 编辑任务中回填表单数据

@@ -1,0 +1,43 @@
+Wanopt BlueCoat SNMP:
+  name: Blue Coat / Symantec Edge SWG / Broadcom ProxySG（Telegraf）
+  desc: 面向 Blue Coat / Symantec Edge SWG / Broadcom ProxySG WAN优化设备的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、接口流量（企业号 PEN 3417）。
+monitor_object:
+  Wanopt: WAN优化
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Wanopt:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示 Blue Coat / Symantec Edge SWG / Broadcom ProxySG 自上次启动以来的运行时间（来自
+        sysUpTime）。通过监测运行时间，管理员可以了解设备稳定性，识别意外重启。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: ProxySG 的整机 CPU 使用率（BLUECOAT-SG-PROXY-MIB sgProxyCpuCoreBusyPerCent），按 CPU
+        核近 1 分钟均值以 0-100 百分比上报。持续偏高可能表示代理、SSL 检查或策略评估负载过重。
+    device_cpu_idle:
+      name: CPU 空闲率
+      desc: ProxySG 的 CPU 空闲百分比（BLUECOAT-SG-PROXY-MIB sgProxyCpuCoreIdlePerCent），按核近
+        1 分钟均值。
+    device_memory_total:
+      name: 内存总量
+      desc: ProxySG 代理可用内存总量（BLUECOAT-SG-PROXY-MIB sgProxyMemAvailable，单位字节）。
+    device_memory_used:
+      name: 内存已用量
+      desc: ProxySG 当前已使用的代理内存，按系统进程用量加对象缓存用量计算（BLUECOAT-SG-PROXY-MIB
+        sgProxyMemSysUsage + sgProxyMemCacheUsage）。
+    device_memory_sys_usage:
+      name: 系统进程内存
+      desc: ProxySG 系统与支撑进程占用的内存（BLUECOAT-SG-PROXY-MIB sgProxyMemSysUsage，单位字节）。
+    device_memory_cache_usage:
+      name: 对象缓存内存
+      desc: ProxySG 对象缓存占用的内存（BLUECOAT-SG-PROXY-MIB sgProxyMemCacheUsage，单位字节）。
+    device_memory_usage:
+      name: 内存使用率
+      desc: ProxySG 代理内存压力，按已用占可用内存的 0-100 百分比上报（BLUECOAT-SG-PROXY-MIB
+        sgProxyMemoryPressure）。持续偏高可能影响缓存或 SSL 检查性能。
+monitor_object_metric_group:
+  Wanopt:
+    Base: 基础
+    CPU: CPU
+    Memory: 内存

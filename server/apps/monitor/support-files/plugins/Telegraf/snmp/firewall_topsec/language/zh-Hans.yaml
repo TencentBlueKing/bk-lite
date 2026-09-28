@@ -1,0 +1,37 @@
+Firewall Topsec SNMP:
+  name: 天融信 TOS（Telegraf）
+  desc: 面向天融信 TOS 防火墙的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、会话/连接数、会话建立速率、接口流量（企业号 PEN 14331）。
+monitor_object:
+  Firewall: 防火墙
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Firewall:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示天融信 TOS 防火墙自上次启动以来的运行时间（来自 sysUpTime）。通过监测运行时间，管理员可以了解设备稳定性，识别意外重启。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 天融信 TOS 防火墙整机 CPU 使用率（TOS-SYSSTATE cpuLoad）。设备以 percent×100 上报，查询侧除以 100 得到 0-100 百分比。持续偏高可能意味着检测负载过重或攻击活动。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 天融信 TOS 防火墙整机内存使用率（TOS-SYSSTATE memoryLoad）。设备以 percent×100 上报，查询侧除以 100 得到 0-100 百分比。内存压力过高时可能影响会话处理。
+    device_memory_total:
+      name: 内存总量
+      desc: 天融信 TOS 防火墙物理内存总量（TOS-SYSSTATE memoryTotal，单位字节）。
+    device_memory_free:
+      name: 空闲内存
+      desc: 天融信 TOS 防火墙当前空闲物理内存（TOS-SYSSTATE memoryFree，单位字节）。
+    device_memory_used:
+      name: 已用内存
+      desc: 天融信 TOS 防火墙当前已使用的物理内存，按 总量减去空闲 计算（单位字节）。
+    firewall_active_sessions:
+      name: 活动会话数
+      desc: 该指标报告天融信 TOS 防火墙当前连接数（TOS-SYSSTATE currentConnections）。数量快速上升可能意味着连接洪泛或会话表压力。
+    firewall_session_rate:
+      name: 会话建立速率
+      desc: 该指标报告天融信 TOS 防火墙新建连接速率（TOS-SYSSTATE cps），单位为连接每秒。速率突增可能意味着连接洪泛或突发新建会话。
+monitor_object_metric_group:
+  Firewall:
+    Base: 基础
+    Firewall: 防火墙

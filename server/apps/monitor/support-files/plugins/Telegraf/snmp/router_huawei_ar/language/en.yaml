@@ -1,11 +1,6 @@
 Router Huawei AR SNMP:
   name: Huawei AR (Telegraf)
-  desc: SNMP monitoring template for Huawei AR routers (sysObjectID family 1.3.6.1.4.1.2011.2.224).
-    It reports system uptime, CPU/memory, entity voltage (mV converted to volts), board
-    power (watts), chassis used/total power in watts, fan speed (percent of full speed),
-    optical-module DDM, chassis and board energy in milliwatts (divide by 1000 for watts),
-    and built-in IF-MIB interface traffic. Supported models include AR8140-12G10XG,
-    AR720/AR730, AR6710-L50T2X4, AR5710-H8T2TS1, AR8700-8, AR5510/AR6510 and AR6500-10.
+  desc: "SNMP monitoring template for Huawei AR router. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, optical modules, interface traffic, voltage, and power (enterprise PEN 2011)."
 monitor_object:
   Router: Router
 monitor_object_type:

@@ -97,6 +97,7 @@ const ICON_LIST = [
   'mm-k8s_K8S',
   'mm-kafka_Kafka',
   'mm-loadbalance_负载均衡',
+  'mm-wanopt_WAN优化',
   'mm-middleware_中间件',
   'mm-minio_Minio',
   'mm-mongodb_Mongodb',

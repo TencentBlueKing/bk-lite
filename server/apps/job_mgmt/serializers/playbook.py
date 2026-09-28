@@ -7,6 +7,7 @@ from rest_framework import serializers
 
 from apps.core.utils.serializers import TeamSerializer
 from apps.job_mgmt.models import Playbook
+from apps.job_mgmt.utils.i18n import serializer_message
 from apps.job_mgmt.utils.playbook_archive import enforce_archive_limits, open_archive, validate_archive_extension
 
 
@@ -386,7 +387,7 @@ class PlaybookCreateSerializer(serializers.Serializer):
     def validate_file(self, value):
         """验证上传的文件"""
         if not value:
-            raise serializers.ValidationError("文件不能为空")
+            raise serializers.ValidationError(serializer_message(self, "error.file_required", "File is required"))
 
         try:
             validate_archive_extension(value.name)
@@ -458,7 +459,7 @@ class PlaybookUpgradeSerializer(serializers.Serializer):
     def validate_file(self, value):
         """验证上传的文件"""
         if not value:
-            raise serializers.ValidationError("文件不能为空")
+            raise serializers.ValidationError(serializer_message(self, "error.file_required", "File is required"))
 
         try:
             validate_archive_extension(value.name)

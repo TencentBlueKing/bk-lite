@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_f5",
   "plugin": "Loadbalance F5 SNMP",
-  "plugin_desc": "F5-specific SNMP collection template for F5 BIG-IP load balancers. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects F5-BIGIP-SYSTEM-MIB private OIDs for device health (host CPU utilization, host memory total/used/usage) and load-balancer-specific state (current client connections). Sourced from the official F5-BIGIP-SYSTEM-MIB. Supported brands/models — F5 BIG-IP (LTM/GTM/DNS; iSeries / VIPRION / VE).",
+  "plugin_desc": "SNMP monitoring template for F5 load balancer. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, sessions/connections, and interface traffic, for BIG-IP (enterprise PEN 3375).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='loadbalance', collect_type='snmp_f5'}) by (instance_id)",
   "name": "Loadbalance",
@@ -38,7 +38,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='loadbalance', __$labels__}",
+      "query": "snmp_device_cpu_usage{instance_type='loadbalance', __$labels__}",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -51,7 +51,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_memory_total",
-      "query": "device_memory_total{instance_type='loadbalance', __$labels__}",
+      "query": "snmp_device_memory_total{instance_type='loadbalance', __$labels__}",
       "display_name": "Total Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -64,7 +64,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_memory_used",
-      "query": "device_memory_used{instance_type='loadbalance', __$labels__}",
+      "query": "snmp_device_memory_used{instance_type='loadbalance', __$labels__}",
       "display_name": "Used Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -77,7 +77,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_memory_usage",
-      "query": "100 * device_memory_used{instance_type='loadbalance', __$labels__} / device_memory_total{instance_type='loadbalance', __$labels__}",
+      "query": "100 * snmp_device_memory_used{instance_type='loadbalance', __$labels__} / snmp_device_memory_total{instance_type='loadbalance', __$labels__}",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -90,7 +90,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "lb_current_connections",
-      "query": "lb_current_connections{instance_type='loadbalance', __$labels__}",
+      "query": "snmp_lb_current_connections{instance_type='loadbalance', __$labels__}",
       "display_name": "Current Connections",
       "data_type": "Number",
       "unit": "short",
@@ -111,7 +111,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the chassis temperature in degrees Celsius of the F5 BIG-IP load balancer, aggregated as the maximum across sensors. High temperatures can indicate cooling failure or airflow obstruction and risk thermal shutdown."
+      "description": "This metric reports chassis temperature in degrees Celsius (sysChassisTempTemperature), aggregated as the maximum across sensors. High temperatures can indicate cooling failure or airflow obstruction and risk thermal shutdown."
     },
     {
       "metric_group": "Hardware Status",
@@ -124,7 +124,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the fan state of the F5 BIG-IP load balancer, normalized via telegraf processors.enum so that 1 = healthy and 2 = fault. Aggregated as the maximum across fans so any faulty fan surfaces."
+      "description": "This metric reports chassis fan status (sysChassisFanStatus: good(1)/bad(0)/notpresent(2)), normalized so that 1 = healthy and 2 = fault. Aggregated as the maximum across fans so any non-good fan surfaces."
     },
     {
       "metric_group": "Hardware Status",
@@ -137,7 +137,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the power-supply state of the F5 BIG-IP load balancer, normalized via telegraf processors.enum so that 1 = healthy and 2 = fault. Aggregated as the maximum across supplies so any failed PSU surfaces."
+      "description": "This metric reports chassis power-supply status (sysChassisPowerSupplyStatus: good(1)/bad(0)/notpresent(2)), normalized so that 1 = healthy and 2 = fault. Aggregated as the maximum across supplies so any non-good PSU surfaces."
     },
     {
       "metric_group": "Status",
@@ -402,7 +402,7 @@
     {
       "metric_group": "Connection",
       "name": "loadbalance_current_connections",
-      "query": "loadbalance_current_connections{instance_type='loadbalance', __$labels__}",
+      "query": "snmp_lb_current_connections{instance_type='loadbalance', __$labels__}",
       "display_name": "Current Connections",
       "data_type": "Number",
       "unit": "connections",

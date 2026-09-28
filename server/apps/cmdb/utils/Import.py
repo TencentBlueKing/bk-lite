@@ -477,6 +477,43 @@ class Import:
 
         return item, row_has_data, row_has_validation_errors
 
+    def iter_transfer_rows(self, stream, allowed_org_ids):
+        """有界异步导入解析；保留 Excel 行号，不记录或返回原始错误单元格。"""
+        maps = self._build_field_maps()
+        book = openpyxl.load_workbook(stream, read_only=True, data_only=False, keep_links=False)
+        try:
+            sheet = book.worksheets[0]
+            sheet.reset_dimensions()
+            keys = [cell.value for cell in sheet[3]]
+            for number, row in enumerate(sheet.iter_rows(min_row=4), 4):
+                if all(cell.value is None for cell in row):
+                    continue
+                item = {"model_id": self.model_id}
+                relations = {}
+                error = ""
+                for key, cell in zip(keys, row):
+                    if key == "字段标识(请勿编辑)" or cell.value is None:
+                        continue
+                    value = cell.value
+                    try:
+                        value = ast.literal_eval(value) if isinstance(value, str) else value
+                    except (ValueError, SyntaxError):
+                        pass
+                    if key in self.model_asso_map:
+                        if not isinstance(value, str):
+                            error = "关联值必须是逗号分隔的实例名"
+                        else:
+                            relations[key] = [name.strip() for name in value.split(",") if name.strip()]
+                        continue
+                    handled, invalid, _ = self._process_cell_value(key, value, number, maps, set(allowed_org_ids), item)
+                    if invalid:
+                        error = "字段类型或取值不合法，请检查模板要求"
+                    elif not handled:
+                        item[key] = value
+                yield number, item, relations, error
+        finally:
+            book.close()
+
     def format_excel_data(self, excel_meta: bytes, allowed_org_ids: list = None):
         """格式化excel数据。
 

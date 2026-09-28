@@ -53,6 +53,86 @@
       "group_algorithm": "avg"
     },
     {
+      "name": "Forcepoint防火墙活动会话数过高",
+      "alert_name": "防火墙${resource_name} 活动会话数过高",
+      "description": "监控 Forcepoint 防火墙当前连接数（fwConnNumber）。会话数快速攀升可能意味着连接洪泛或会话表压力，需及时排查异常流量。",
+      "metric_name": "firewall_active_sessions",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1000000,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 500000,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 200000,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Forcepoint防火墙温度过高",
+      "alert_name": "防火墙${resource_name} 传感器 ${metric_descr} 温度过高",
+      "description": "监控 Forcepoint 防火墙各硬件温度传感器读数，当温度超过安全阈值时触发告警，提示可能存在风扇故障、散热不良或环境过热。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 50,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Forcepoint防火墙风扇异常",
+      "alert_name": "防火墙${resource_name} 风扇 ${metric_descr} 状态异常",
+      "description": "监控 Forcepoint 防火墙各散热风扇的运行状态（已归一化为 1=正常）。任何非正常状态都表示散热故障，可能迅速导致过热，应立即排查处理。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Forcepoint防火墙电源异常",
+      "alert_name": "防火墙${resource_name} 电源 ${metric_descr} 状态异常",
+      "description": "监控 Forcepoint 防火墙各电源模块的运行状态（已归一化为 1=正常）。任何非正常状态表示电源冗余缺失或硬件故障，应尽快修复以恢复冗余能力。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
       "name": "接口接收错误包过高",
       "alert_name": "防火墙${resource_name} 接口 ${metric_ifDescr} 每秒接收错误包数过高",
       "description": "监控设备接口接收的错误包数情况，当每秒错误包数超出设定阈值时触发告警，便于发现网络接口隐患。",

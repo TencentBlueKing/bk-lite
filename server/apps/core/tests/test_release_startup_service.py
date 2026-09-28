@@ -36,6 +36,10 @@ def _supervisor_conf_dir(tmp_path):
     (supervisor_conf_dir / "consumer.conf").write_text("[program:consumer]\n", encoding="utf-8")
     (supervisor_conf_dir / "opspilot_celery.conf").write_text("[program:opspilot_celery]\n", encoding="utf-8")
     (supervisor_conf_dir / "celery.conf").write_text("[program:celery]\n", encoding="utf-8")
+    (supervisor_conf_dir / "workflow_orchestration_worker.conf").write_text(
+        "[program:workflow_orchestration_worker]\n",
+        encoding="utf-8",
+    )
     return supervisor_conf_dir
 
 
@@ -191,6 +195,32 @@ def test_release_startup_removes_opspilot_celery_conf_when_opspilot_not_installe
     assert (conf_dir / "celery.conf").exists()
 
 
+def test_workflow_orchestration_runtime_is_packaged_and_removed_when_app_is_not_installed(tmp_path):
+    dockerfile = (RELEASE_DIR / "Dockerfile").read_text(encoding="utf-8")
+    startup = STARTUP_SCRIPT.read_text(encoding="utf-8")
+
+    assert "workflow_orchestration_worker.conf" in dockerfile
+    assert 'rm -f "$SUPERVISOR_CONF_DIR/workflow_orchestration_worker.conf"' in startup
+
+    result, commands = _run_startup(tmp_path, migrate_returncode=0, install_apps="system_mgmt,console_mgmt")
+
+    assert result.returncode == 0
+    assert commands[-1] == "supervisord:-n"
+    assert not (tmp_path / "supervisor/workflow_orchestration_worker.conf").exists()
+
+
+def test_release_startup_keeps_workflow_orchestration_runtime_when_app_is_installed(tmp_path):
+    result, commands = _run_startup(
+        tmp_path,
+        migrate_returncode=0,
+        install_apps="system_mgmt,workflow_orchestration",
+    )
+
+    assert result.returncode == 0
+    assert commands[-1] == "supervisord:-n"
+    assert (tmp_path / "supervisor/workflow_orchestration_worker.conf").exists()
+
+
 def test_release_startup_keeps_opspilot_celery_conf_when_opspilot_installed(tmp_path):
     result, _commands = _run_startup(tmp_path, migrate_returncode=0, install_apps="system_mgmt,console_mgmt,opspilot")
     conf_dir = tmp_path / "supervisor"
@@ -207,6 +237,18 @@ def test_release_startup_keeps_opspilot_celery_conf_when_install_apps_empty(tmp_
 
     assert result.returncode == 0
     assert (conf_dir / "opspilot_celery.conf").exists()
+
+
+def test_cmdb_transfer_uses_existing_celery_worker_without_extra_process():
+    from apps.cmdb.tasks.transfer import execute_transfer
+
+    result = subprocess.run(["make", "-n", "celery"], cwd=REPOSITORY_ROOT / "server", capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert "--pool threads" in result.stdout
+    route = execute_transfer.app.amqp.router.route(execute_transfer._get_exec_options(), execute_transfer.name)
+    assert route["queue"].name == execute_transfer.app.conf.task_default_queue
+    assert "cmdb_transfer_worker.conf" not in (RELEASE_DIR / "Dockerfile").read_text()
+    assert not (RELEASE_DIR / "supervisor/cmdb_transfer_worker.conf").exists()
 
 
 def test_release_celery_workers_use_prefork_and_child_recycle():

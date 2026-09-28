@@ -183,6 +183,8 @@ MODEL:
   memory: Server Memory
   nic: Server NIC
   gpu: GPU
+  storage_controller: Storage Controller
+  psu: Power Supply Unit
   influxdb: InfluxDB
   storage_pool: Storage Pool
   storage_disk: Storage Disk
@@ -1214,6 +1216,8 @@ ATTR:
     asset_status: Asset Status
     rack_u_start: Start U
     u_size: U Size
+    power_state: Power State
+    health: Health
   hard_server:
     inst_name: Name
     organization: Organization
@@ -2577,6 +2581,8 @@ ATTR:
     disk: Hard Disk Information
     disk_type: Disk Type
     disk_sn: Disk Sn
+    health: Health
+    disk_life_percent: Media Life Left (%)
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
@@ -2604,6 +2610,7 @@ ATTR:
     nic_model: Nic Model
     nic_iface: Nic Iface
     nic_mac: Nic MAC
+    nic_speed_mbps: Speed (Mbps)
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
@@ -2615,6 +2622,35 @@ ATTR:
     gpu_name: GPU
     gpu_type: Gpu Type
     gpu_desc: Gpu Desc
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  storage_controller:
+    inst_name: Name
+    organization: Organization
+    self_device: Self Device
+    tag: Tag
+    sc_id: Controller ID
+    sc_name: Name
+    sc_vendor: Vendor
+    sc_model: Model
+    sc_sn: Serial Number
+    sc_firmware: Firmware Version
+    health: Health
+    auto_collect: Auto Collect
+    collect_time: Last Updated Time
+    collect_task: Collect Task
+  psu:
+    inst_name: Name
+    organization: Organization
+    self_device: Self Device
+    tag: Tag
+    psu_name: Name
+    psu_vendor: Vendor
+    psu_model: Model
+    psu_sn: Serial Number
+    psu_capacity_watts: Capacity (W)
+    health: Health
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task

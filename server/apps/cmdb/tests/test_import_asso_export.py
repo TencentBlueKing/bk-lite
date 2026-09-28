@@ -4,15 +4,10 @@
 inst_association 名称回填、关联校验入口。
 """
 
-import io
-import json
-
-import openpyxl
 import pytest
 
-from apps.cmdb.utils.Import import Import
 from apps.cmdb.utils.export import Export
-
+from apps.cmdb.utils.Import import Import
 
 # --------------------------------------------------------------------------
 # Import.add_asso_data
@@ -115,7 +110,9 @@ def test_format_import_asso_data_ok(fake_graph):
     obj = _make_import()
     obj.model_asso_map = {
         "host_conn_sw": {
-            "asst_id": "conn", "src_model_id": "host", "dst_model_id": "sw",
+            "asst_id": "conn",
+            "src_model_id": "host",
+            "dst_model_id": "sw",
             "model_asst_id": "host_conn_sw",
         }
     }
@@ -135,24 +132,21 @@ def test_format_import_asso_data_ok(fake_graph):
 _RICH_ATTRS = [
     {"attr_id": "inst_name", "attr_name": "实例名", "attr_type": "str", "is_required": True},
     {"attr_id": "tag", "attr_name": "标签", "attr_type": "tag"},
-    {"attr_id": "status", "attr_name": "状态", "attr_type": "enum",
-     "option": [{"id": "1", "name": "运行"}, {"id": "2", "name": "停止"}]},
-    {"attr_id": "org", "attr_name": "组织", "attr_type": "organization",
-     "option": [{"id": 1, "name": "Default"}, {"id": 2, "name": "Tech"}]},
+    {"attr_id": "status", "attr_name": "状态", "attr_type": "enum", "option": [{"id": "1", "name": "运行"}, {"id": "2", "name": "停止"}]},
+    {"attr_id": "org", "attr_name": "组织", "attr_type": "organization", "option": [{"id": 1, "name": "Default"}, {"id": 2, "name": "Tech"}]},
     {"attr_id": "config", "attr_name": "配置", "attr_type": "table"},
-    {"attr_id": "operator", "attr_name": "维护人", "attr_type": "user",
-     "option": [{"id": "alice", "username": "alice", "display_name": "张三", "name": "张三"}]},
+    {
+        "attr_id": "operator",
+        "attr_name": "维护人",
+        "attr_type": "user",
+        "option": [{"id": "alice", "username": "alice", "display_name": "张三", "name": "张三"}],
+    },
 ]
 
 
 def test_export_inst_list_all_types():
     inst_list = [
-        {"_id": 1, "inst_name": "h1",
-         "tag": ["env:prod"],
-         "status": ["1", "2"],
-         "org": [1, 2],
-         "config": [{"k": "v"}],
-         "operator": ["alice"]},
+        {"_id": 1, "inst_name": "h1", "tag": ["env:prod"], "status": ["1", "2"], "org": [1, 2], "config": [{"k": "v"}], "operator": ["alice"]},
     ]
     stream = Export(_RICH_ATTRS, model_id="host").export_inst_list(inst_list)
     data = stream.read()
@@ -172,8 +166,7 @@ def test_export_inst_list_tag_string():
 def test_export_inst_list_enum_single():
     attrs = [
         {"attr_id": "inst_name", "attr_name": "n", "attr_type": "str"},
-        {"attr_id": "status", "attr_name": "状态", "attr_type": "enum",
-         "option": [{"id": "1", "name": "运行"}]},
+        {"attr_id": "status", "attr_name": "状态", "attr_type": "enum", "option": [{"id": "1", "name": "运行"}]},
     ]
     inst_list = [{"_id": 1, "inst_name": "h1", "status": "1"}]
     stream = Export(attrs, model_id="host").export_inst_list(inst_list)
@@ -183,8 +176,7 @@ def test_export_inst_list_enum_single():
 def test_export_inst_list_organization_empty_list():
     attrs = [
         {"attr_id": "inst_name", "attr_name": "n", "attr_type": "str"},
-        {"attr_id": "org", "attr_name": "组织", "attr_type": "organization",
-         "option": [{"id": 1, "name": "Default"}]},
+        {"attr_id": "org", "attr_name": "组织", "attr_type": "organization", "option": [{"id": 1, "name": "Default"}]},
     ]
     inst_list = [{"_id": 1, "inst_name": "h1", "org": []}]
     stream = Export(attrs, model_id="host").export_inst_list(inst_list)
@@ -194,8 +186,12 @@ def test_export_inst_list_organization_empty_list():
 def test_export_inst_list_operator_single_value():
     attrs = [
         {"attr_id": "inst_name", "attr_name": "n", "attr_type": "str"},
-        {"attr_id": "operator", "attr_name": "维护人", "attr_type": "user",
-         "option": [{"id": "alice", "username": "alice", "display_name": "张三", "name": "张三"}]},
+        {
+            "attr_id": "operator",
+            "attr_name": "维护人",
+            "attr_type": "user",
+            "option": [{"id": "alice", "username": "alice", "display_name": "张三", "name": "张三"}],
+        },
     ]
     inst_list = [{"_id": 1, "inst_name": "h1", "operator": "alice"}]
     stream = Export(attrs, model_id="host").export_inst_list(inst_list)
@@ -229,19 +225,29 @@ def test_export_format_inst_asst_name_with_association(monkeypatch):
         "apps.cmdb.services.model.ModelManage.search_model",
         lambda: [{"model_id": "host", "model_name": "主机"}, {"model_id": "sw", "model_name": "交换机"}],
     )
-    monkeypatch.setattr(
-        "apps.cmdb.services.instance.InstanceManage.instance_association_instance_list",
-        lambda mid, iid, **kwargs: [
-            {"model_asst_id": "host_conn_sw",
-             "inst_list": [{"inst_name": "sw1"}, {"inst_name": "sw2"}]}
-        ],
-    )
-    association = [
-        {"asst_id": "conn", "src_model_id": "host", "dst_model_id": "sw",
-         "model_asst_id": "host_conn_sw"}
-    ]
+    association = [{"asst_id": "conn", "src_model_id": "host", "dst_model_id": "sw", "model_asst_id": "host_conn_sw"}]
     obj = Export(_RICH_ATTRS, model_id="host", association=association)
     sheet_data = ["a", "b"]
-    obj.format_inst_asst_name({"_id": 1}, sheet_data)
-    # 应至少追加了一项关联名称
-    assert len(sheet_data) >= 3
+    obj.format_inst_asst_name(
+        {"inst_uuid": "host-uuid"},
+        sheet_data,
+        {"host-uuid": {"host_conn_sw": ["sw1", "sw2"]}},
+    )
+    assert sheet_data == ["a", "b", "sw1,sw2"]
+
+
+def test_sequential_export_can_be_parsed_by_existing_import():
+    attrs = [
+        {"attr_id": "inst_name", "attr_name": "实例名", "attr_type": "str"},
+        {"attr_id": "spec", "attr_name": "配置", "attr_type": "table"},
+    ]
+    stream = Export(attrs, model_id="host").export_inst_list(
+        [
+            {"inst_name": "h1", "spec": [{"cpu": 4}]},
+        ]
+    )
+    importer = _make_import(attrs)
+    rows, associations = importer.format_excel_data(stream)
+    assert importer.validation_errors == []
+    assert rows == [{"model_id": "host", "inst_name": "h1", "spec": [{"cpu": 4}]}]
+    assert associations == {}

@@ -1,8 +1,6 @@
 Router Huawei NE SNMP:
   name: Huawei NE (Telegraf)
-  desc: SNMP monitoring template for Huawei NetEngine router, including NE40E, NetEngine
-    9000-8/9000-20, and NetEngine 8000 M14/X8/F1A chassis. It reports CPU, memory, temperature,
-    fan, optics, power, forwarding usage, interface traffic, BGP, BFD, and other key metrics.
+  desc: "SNMP monitoring template for Huawei NE series routers. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, optical modules, interface traffic, voltage, and power (enterprise PEN 2011)."
 monitor_object:
   Router: Router
 monitor_object_type:

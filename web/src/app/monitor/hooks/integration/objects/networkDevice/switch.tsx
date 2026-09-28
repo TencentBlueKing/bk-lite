@@ -195,6 +195,7 @@ export const useSwitchConfig = () => {
       'Switch DASAN SNMP': 'snmp_dasan',
       'Switch Cambium SNMP': 'snmp_cambium_switch',
       'Switch Robustel SNMP': 'snmp_robustel_switch',
+      'Switch Raisecom SNMP': 'snmp_raisecom_switch',
       'Switch Flow NetFlow': 'netflow',
       'Switch Flow sFlow': 'sflow'
     }

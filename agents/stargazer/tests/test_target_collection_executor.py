@@ -72,6 +72,59 @@ class RecordingPublisher:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("plugin_ref", ["network.config", "network_topo.config", "host.config"])
+async def test_network_failure_logs_include_every_failed_ip_without_success_or_secrets(monkeypatch, plugin_ref):
+    import logging
+
+    warnings = []
+    monkeypatch.setattr("core.collection.executor.logger.warning", lambda template, *args: warnings.append((template, args)))
+    secret = "network-failure-secret-sentinel"
+
+    class Plugin:
+        async def collect(self, target, credential, context):
+            if target.endswith(".1"):
+                return CollectOutcome(status=CollectOutcomeStatus.SUCCESS, value={"data": secret})
+            return CollectOutcome(status=CollectOutcomeStatus.FAILED, error_code="plugin_timeout", detail=secret, value={"response": secret})
+
+    targets = tuple(f"192.168.198.{i}" for i in range(1, 9))
+    request = CollectionRequest(
+        task_id="network-failure-test",
+        plugin_ref=plugin_ref,
+        targets=targets,
+        credentials=({"credential_id": "c1", "community": secret},),
+        params={"collect_task_id": 42, "tags": {"instance_id": "cmdb_42"}},
+    )
+    lease = RunLease(request.task_id, request.digest, "worker-1", 1, 999999, attempt_id="attempt-1")
+    publisher = RecordingPublisher()
+    summary = await TargetCollectionExecutor(preflight=ReachablePreflight(), plugin=Plugin(), publisher=publisher).execute(request, lease)
+    assert (summary.collection_succeeded, summary.collection_failed, summary.publish_succeeded) == (1, 7, 1)
+    assert len(publisher.results) == 1 and publisher.results[0][1].target == targets[0]
+    assert publisher.results[0][1].value == {"data": secret}
+    calls = [(template, args) for template, args in warnings if template.startswith("event=network_collection_failed ")]
+    if plugin_ref == "host.config":
+        assert calls == []
+        return
+    assert len(calls) == 7  # 超过原有 3 条错误样本上限，仍完整记录每个失败 IP。
+    rendered = []
+    for template, args in calls:
+        assert "%s" in template and args
+        record = logging.LogRecord("test", logging.WARNING, __file__, 0, template, args, None)
+        rendered.append(logging.Formatter().format(record))
+    for target in targets[1:]:
+        assert sum(f"target={target} " in line for line in rendered) == 1
+    assert not any(f"target={targets[0]} " in line for line in rendered)
+    assert all(f"plugin_ref={plugin_ref} " in line for line in rendered)
+    assert all("instance_id=cmdb_42 " in line for line in rendered)
+    assert all(
+        [field.split("=", 1)[0] for field in line.split()]
+        == ["event", "instance_id", "plugin_ref", "target", "failed_stage", "error_code", "duration_ms"]
+        for line in rendered
+    )
+    assert all("failed_stage=collection " in line and "error_code=plugin_timeout " in line for line in rendered)
+    assert secret not in "\n".join(rendered) and secret not in repr(calls)
+
+
+@pytest.mark.asyncio
 async def test_empty_successful_snapshot_does_not_publish_completion_marker(monkeypatch):
     marker_calls = []
 
@@ -313,6 +366,8 @@ async def test_all_preflight_failures_do_not_start_job_node_info_lookup():
 @pytest.mark.asyncio
 async def test_collection_failure_logging_is_bounded_at_default_levels(monkeypatch):
     info_logs = []
+    debug_logs = []
+    monkeypatch.setattr("core.collection.executor.logger.debug", lambda template, *args: debug_logs.append(template % args if args else template))
     warning_logs = []
 
     def capture_info(message, *args):
@@ -340,7 +395,7 @@ async def test_collection_failure_logging_is_bounded_at_default_levels(monkeypat
 
     summary = await executor.execute(request, lease)
 
-    samples = [item for item in info_logs if "event=collection_failure_samples" in item]
+    samples = [item for item in debug_logs if "event=collection_failure_samples" in item]
     target_failures = [item for item in warning_logs if "event=target_collection_failed" in item]
     run_summaries = [item for item in warning_logs if "event=collection_run_summary" in item]
     assert summary.unreachable == 25
@@ -355,6 +410,8 @@ async def test_collection_failure_logging_is_bounded_at_default_levels(monkeypat
 @pytest.mark.asyncio
 async def test_collection_failure_summary_bounds_codes_and_omits_detail(monkeypatch):
     info_logs = []
+    debug_logs = []
+    monkeypatch.setattr("core.collection.executor.logger.debug", lambda template, *args: debug_logs.append(template % args if args else template))
     warning_logs = []
     sensitive_detail = "password=collection-detail-sensitive-sentinel"
 
@@ -400,7 +457,7 @@ async def test_collection_failure_summary_bounds_codes_and_omits_detail(monkeypa
     assert sensitive_detail not in rendered
     failure_types = run_summaries[0].split("失败类型=", 1)[1].split(" 失败样本=", 1)[0]
     assert failure_types.count("failure_code_") == 8
-    samples = [item for item in info_logs if "event=collection_failure_samples" in item]
+    samples = [item for item in debug_logs if "event=collection_failure_samples" in item]
     assert len(samples) == 1
     assert samples[0].count("|collection|failure_code_") == 3
 
@@ -408,6 +465,8 @@ async def test_collection_failure_summary_bounds_codes_and_omits_detail(monkeypa
 @pytest.mark.asyncio
 async def test_ip_precheck_failures_use_one_bounded_safe_sample_log(monkeypatch):
     info_calls = []
+    debug_calls = []
+    monkeypatch.setattr("core.collection.executor.logger.debug", lambda template, *args: debug_calls.append((template, args)))
     warning_calls = []
     monkeypatch.setattr(
         "core.collection.executor.logger.info",
@@ -447,14 +506,13 @@ async def test_ip_precheck_failures_use_one_bounded_safe_sample_log(monkeypatch)
         RunLease(request.task_id, request.digest, "pod-a", 1, 999999),
     )
 
-    sample_calls = [item for item in info_calls if item[0].startswith("event=collection_failure_samples")]
+    sample_calls = [item for item in debug_calls if item[0].startswith("event=collection_failure_samples")]
     assert sample_calls == [
         (
-            "event=collection_failure_samples %s plugin_ref=%s model_id=%s " "sample_count=%s total_failures=%s samples=%s",
+            "event=collection_failure_samples %s plugin_ref=%s sample_count=%s total_failures=%s samples=%s",
             (
-                "task_id=ip-precheck-log",
+                "collect_task_id=-",
                 "network.config",
-                "network",
                 3,
                 4,
                 "10.10.69.21\\r\\nforged=true|ip_precheck|tcp_connect_failed,"
@@ -466,20 +524,19 @@ async def test_ip_precheck_failures_use_one_bounded_safe_sample_log(monkeypatch)
     ip_precheck_calls = [item for item in warning_calls if item[0].startswith("event=ip_precheck_failed")]
     assert ip_precheck_calls == [
         (
-            "event=ip_precheck_failed %s plugin_ref=%s model_id=%s "
+            "event=ip_precheck_failed %s plugin_ref=%s "
             "failed_stage=ip_precheck error_type=PreflightFailure "
             "failure_count=%s sample_count=%s samples=%s",
             (
-                "task_id=ip-precheck-log",
+                "collect_task_id=-",
                 "network.config",
-                "network",
                 4,
                 3,
                 "10.10.69.21\\r\\nforged=true|tcp_connect_failed," "10.10.69.22|tcp_connect_failed," "10.10.69.23|tcp_connect_failed",
             ),
         )
     ]
-    rendered = [template % args for template, args in (*info_calls, *warning_calls)]
+    rendered = [template % args for template, args in (*info_calls, *debug_calls, *warning_calls)]
     assert all("precheck-secret-sentinel" not in message for message in rendered)
     assert summary.unreachable == 4
     assert publisher.results == []
@@ -559,18 +616,18 @@ async def test_plugin_failure_has_central_searchable_log_without_secret(monkeypa
     call_chains = [item for item in error_logs if "event=plugin_exception" in item]
     assert summary.failed == 1
     assert len(failures) == 1
-    assert "task_id=vmware-plugin-failure-log" in failures[0]
+    assert "collect_task_id=-" in failures[0]
     assert "instance_id=" not in failures[0]
     assert "plugin_ref=vmware_vc.config" in failures[0]
-    assert "model_id=vmware_vc" in failures[0]
+    assert "model_id=" not in failures[0]
     assert "失败类型=plugin_error:1" in failures[0]
     assert "失败样本=10.10.16.254|collection|plugin_error" in failures[0]
     assert "must-not-be-logged" not in failures[0]
     assert "secret" not in failures[0]
     assert len(call_chains) == 1
-    assert "task_id=vmware-plugin-failure-log" in call_chains[0]
+    assert "task_id=" not in call_chains[0]
     assert "plugin_ref=vmware_vc.config" in call_chains[0]
-    assert "model_id=vmware_vc" in call_chains[0]
+    assert "model_id=" not in call_chains[0]
     assert "target=10.10.16.254" in call_chains[0]
     assert "error_type=RuntimeError" in call_chains[0]
     assert ":collect" in call_chains[0]
@@ -610,7 +667,7 @@ async def test_plugin_exception_call_chains_are_bounded_per_run(monkeypatch):
     call_chains = [item for item in error_logs if "event=plugin_exception" in item]
     assert summary.failed == 10
     assert len(call_chains) == 3
-    assert all("plugin_name=snmp_facts" in item for item in call_chains)
+    assert all("plugin_ref=network.config" in item and "plugin_name=" not in item for item in call_chains)
     assert all("error_message=SNMP authorization failure" in item for item in call_chains)
     assert len({item.split("target=", 1)[1].split(" ", 1)[0] for item in call_chains}) == 3
 
@@ -656,6 +713,8 @@ async def test_late_plugin_exception_keeps_target_context(monkeypatch):
 @pytest.mark.asyncio
 async def test_plugin_failures_use_bounded_samples_and_one_summary(monkeypatch):
     info_logs = []
+    debug_logs = []
+    monkeypatch.setattr("core.collection.executor.logger.debug", lambda template, *args: debug_logs.append(template % args if args else template))
     warning_logs = []
 
     def capture_info(message, *args):
@@ -690,7 +749,7 @@ async def test_plugin_failures_use_bounded_samples_and_one_summary(monkeypatch):
 
     summary = await executor.execute(request, lease)
 
-    samples = [item for item in info_logs if "event=collection_failure_samples" in item]
+    samples = [item for item in debug_logs if "event=collection_failure_samples" in item]
     target_failures = [item for item in warning_logs if "event=target_collection_failed" in item]
     failures = [item for item in warning_logs if "event=collection_run_summary" in item]
     assert summary.failed == 25
@@ -1356,6 +1415,8 @@ async def test_protocol_no_response_stops_after_default_attempt_limit():
 @pytest.mark.asyncio
 async def test_single_snmp_no_response_is_visible_as_timeout_without_plugin_traceback(monkeypatch):
     info_logs = []
+    debug_logs = []
+    monkeypatch.setattr("core.collection.executor.logger.debug", lambda template, *args: debug_logs.append(template % args if args else template))
     warning_logs = []
     error_logs = []
 
@@ -1400,7 +1461,7 @@ async def test_single_snmp_no_response_is_visible_as_timeout_without_plugin_trac
 
     assert summary.failed == 1
     assert publisher.results == []
-    samples = [item for item in info_logs if "event=collection_failure_samples" in item]
+    samples = [item for item in debug_logs if "event=collection_failure_samples" in item]
     target_failures = [item for item in warning_logs if "event=target_collection_failed" in item]
     run_summaries = [item for item in warning_logs if "event=collection_run_summary" in item]
     assert target_failures == []
@@ -1413,6 +1474,8 @@ async def test_single_snmp_no_response_is_visible_as_timeout_without_plugin_trac
 @pytest.mark.asyncio
 async def test_collect_no_response_across_credentials_is_not_reported_as_credentials_exhausted(monkeypatch):
     info_logs = []
+    debug_logs = []
+    monkeypatch.setattr("core.collection.executor.logger.debug", lambda template, *args: debug_logs.append(template % args if args else template))
     warning_logs = []
     monkeypatch.setattr(
         "core.collection.executor.logger.info",
@@ -1456,7 +1519,7 @@ async def test_collect_no_response_across_credentials_is_not_reported_as_credent
 
     assert summary.failed == 1
     assert len(plugin.calls) == 2
-    samples = [item for item in info_logs if "event=collection_failure_samples" in item]
+    samples = [item for item in debug_logs if "event=collection_failure_samples" in item]
     run_summaries = [item for item in warning_logs if "event=collection_run_summary" in item]
     assert "10.10.24.1|collection|snmp_no_response" in samples[0]
     assert "失败类型=snmp_no_response:1" in run_summaries[0]
@@ -1497,14 +1560,15 @@ async def test_collection_info_is_bounded_and_target_details_are_debug(monkeypat
 
     await executor.execute(request, lease)
 
-    progress = [item for item in info_logs if "event=collection_progress" in item]
+    progress = [item for item in debug_logs if "event=collection_progress" in item]
+    assert not any("event=collection_progress" in item for item in info_logs)
     summaries = [item for item in info_logs if "event=collection_run_summary" in item]
     assert 2 <= len(progress) <= 12
     assert len(summaries) == 1
     assert not any("event=target_collection_started" in item for item in info_logs)
     assert not any("event=target_collection_succeeded" in item for item in info_logs)
     assert "plugin_ref=network.config" in progress[0]
-    assert "plugin_name=snmp_facts" in progress[0]
+    assert "plugin_name=" not in progress[0]
     assert "instance_id=cmdb-network-1" in progress[0]
     assert "采集进度" in progress[0]
     assert "已完成=" in progress[0]
@@ -1514,18 +1578,18 @@ async def test_collection_info_is_bounded_and_target_details_are_debug(monkeypat
     starts = [item for item in debug_logs if "event=target_collection_started" in item]
     successes = [item for item in debug_logs if "event=target_collection_succeeded" in item]
     assert len(starts) == 25
-    assert all("plugin_name=snmp_facts" in item for item in starts)
+    assert all("plugin_ref=network.config" in item and "plugin_name=" not in item for item in starts)
     assert all("target=" in item for item in starts)
     assert len(successes) == 25
-    assert all("SNMP采集成功" in item for item in successes)
+    assert all(item.count("target=") == 1 and "IP=" not in item for item in successes)
     assert all("task_id=" not in item for item in successes)
     assert all("instance_id=cmdb-network-1" in item for item in successes)
-    assert all("credential_id=credential-1" in item for item in successes)
-    assert all("耗时=" in item for item in successes)
+    assert all("credential_id=" not in item for item in successes)
+    assert all("duration_ms=" in item and "耗时=" not in item for item in successes)
 
 
 @pytest.mark.asyncio
-async def test_publish_failures_are_sampled_and_aggregated(monkeypatch):
+async def test_network_publish_failures_keep_every_ip_and_aggregate_run_summary(monkeypatch):
     warning_logs = []
 
     def capture_warning(message, *args):
@@ -1563,11 +1627,13 @@ async def test_publish_failures_are_sampled_and_aggregated(monkeypatch):
     old_terminal = [item for item in warning_logs if "event=result_publish_terminal" in item]
     run_summaries = [item for item in warning_logs if "event=collection_run_summary" in item]
     assert summary.publish_failed == 10
-    assert len(publish_failures) == 3
+    assert len(publish_failures) == 10
+    assert all(any(f"target={target} " in line for line in publish_failures) for target in request.targets)
     assert old_terminal == []
-    assert all("phase=enqueue" in item for item in publish_failures)
-    assert all("reason=publish_queue_timeout" in item for item in publish_failures)
-    assert all("timeout_seconds=0.001" in item for item in publish_failures)
+    assert all("failed_stage=enqueue" in item for item in publish_failures)
+    assert all("error_code=publish_queue_timeout" in item for item in publish_failures)
+    assert all("attempts=" not in item and "error_type=PublishFailure" not in item for item in publish_failures)
+    assert all("budget_limit_seconds=0.001" in item for item in publish_failures)
     assert all("instance_id=cmdb-network-2" in item for item in publish_failures)
     assert all("task_id=" not in item for item in publish_failures)
     assert "instance_id=cmdb-network-2" in run_summaries[0]
@@ -1740,7 +1806,7 @@ async def test_access_probe_exception_fails_only_current_target(monkeypatch):
     assert len(error_logs) == 1
     assert "event=plugin_exception" in error_logs[0]
     assert "plugin_ref=mysql.config" in error_logs[0]
-    assert "plugin_name=mysql_info" in error_logs[0]
+    assert "plugin_ref=mysql.config" in error_logs[0]
     assert ":probe" in error_logs[0]
     assert "secret-do-not-publish" not in error_logs[0]
 
@@ -1998,6 +2064,8 @@ async def test_collection_timeout_records_bounded_overshoot():
 @pytest.mark.asyncio
 async def test_target_without_matching_credential_has_stable_error(monkeypatch):
     info_logs = []
+    debug_logs = []
+    monkeypatch.setattr("core.collection.executor.logger.debug", lambda template, *args: debug_logs.append(template % args if args else template))
     warning_logs = []
     monkeypatch.setattr(
         "core.collection.executor.logger.info",
@@ -2038,7 +2106,7 @@ async def test_target_without_matching_credential_has_stable_error(monkeypatch):
     assert summary.failed == 1
     assert publisher.results == []
     target_failures = [item for item in warning_logs if "event=target_collection_failed" in item]
-    samples = [item for item in info_logs if "event=collection_failure_samples" in item]
+    samples = [item for item in debug_logs if "event=collection_failure_samples" in item]
     assert target_failures == []
     assert len(samples) == 1
     assert "10.10.69.245|credential|no_matching_credential" in samples[0]
@@ -2573,3 +2641,79 @@ async def test_credential_state_redis_error_fails_only_that_target():
     assert plugin.calls == []
     assert publisher.results == []
     assert metrics.snapshot()["credential_state_redis_error_total"] == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("plugin_ref", ["network.config", "network_topo.config"])
+async def test_network_run_logs_omit_redundant_context_without_changing_results(caplog, plugin_ref):
+    import logging
+
+    from core.collection.runtime import CollectionRuntime, InMemoryRunStateStore
+
+    secret = "compact-log-secret-sentinel"
+    contexts = []
+
+    class Plugin:
+        async def probe(self, target, credential, context, *, timeout_seconds):
+            contexts.append(context)
+            if target.endswith(".1"):
+                return AccessProbeResult(status=AccessProbeStatus.NO_RESPONSE, error_code="snmp_no_response", detail=secret)
+            return AccessProbeResult(status=AccessProbeStatus.READY)
+
+        async def collect(self, target, credential, context):
+            if target.endswith(".3"):
+                return CollectOutcome(status=CollectOutcomeStatus.FAILED, error_code="plugin_timeout", detail=secret)
+            return CollectOutcome(status=CollectOutcomeStatus.SUCCESS, value={"data": secret})
+
+    request = CollectionRequest(
+        task_id="req-long-id-must-not-be-logged",
+        plugin_ref=plugin_ref,
+        targets=("192.168.198.1", "192.168.198.2", "192.168.198.3"),
+        credentials=({"credential_id": "credential-long-id", "community": secret},),
+        params={"instance_id": "cmdb_5", "model_id": "network", "plugin_name": "snmp_facts", "ip_precheck": True},
+    )
+    publisher = RecordingPublisher()
+    plugin = Plugin()
+    executor = TargetCollectionExecutor(preflight=ReachablePreflight(), access_probe=plugin, plugin=plugin, publisher=publisher)
+    tasks = []
+    summaries = []
+
+    async def execute(run_request, lease):
+        summary = await executor.execute(run_request, lease)
+        summaries.append(summary)
+        return summary
+
+    runtime = CollectionRuntime(
+        state_store=InMemoryRunStateStore(),
+        execute=execute,
+        schedule=lambda coroutine, *, name: tasks.append(asyncio.create_task(coroutine, name=name)) or tasks[-1],
+        owner_id="worker-1",
+    )
+    with caplog.at_level(logging.DEBUG, logger="sanic.root"):
+        submission = await runtime.submit(request)
+        await tasks[0]
+
+    assert (summaries[0].collection_succeeded, summaries[0].collection_failed, summaries[0].publish_succeeded) == (1, 2, 1)
+    assert submission.task_id == request.task_id
+    assert all(context.task_id == request.task_id and context.attempt_id for context in contexts)
+    assert publisher.results[0][0] is request
+    assert publisher.results[0][1].target == "192.168.198.2"
+    assert publisher.results[0][1].value == {"data": secret}
+    records = [record for record in caplog.records if "event=" in str(record.msg)]
+    assert {str(record.msg).split()[0] for record in records} >= {
+        "event=collection_run_started",
+        "event=access_probe_failed",
+        "event=network_collection_failed",
+        "event=target_collection_succeeded",
+        "event=collection_run_summary",
+        "event=collection_run_terminal",
+    }
+    for record in records:
+        assert "%s" in record.msg and record.args
+        rendered = logging.Formatter().format(record)
+        assert secret not in rendered and request.task_id not in rendered
+        assert not any(field in rendered for field in ("task_id=", "attempt_id=", "model_id=", "plugin_name=", "credential_id="))
+    failures = [record.getMessage() for record in records if str(record.msg).startswith("event=network_collection_failed")]
+    assert len(failures) == 2
+    assert any("target=192.168.198.1 " in line and "error_code=snmp_no_response" in line for line in failures)
+    assert any("target=192.168.198.3 " in line and "error_code=plugin_timeout" in line for line in failures)

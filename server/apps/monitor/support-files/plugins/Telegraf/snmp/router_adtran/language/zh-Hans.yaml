@@ -1,6 +1,6 @@
 Router Adtran SNMP:
   name: Adtran（Telegraf）
-  desc: 面向 Adtran 路由器的 SNMP 监控模板,可采集 CPU 使用率、每端口入向流量速率、每端口出向流量速率等主要指标。
+  desc: 面向 Adtran 路由器的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、接口流量（企业号 PEN 664）。
 monitor_object:
   Router: 路由器
 monitor_object_type:
@@ -18,20 +18,28 @@ monitor_object_metric:
       desc: 该指标报告设备电源模块的运行状态（枚举）。非正常状态表示电源冗余或硬件故障；在冗余电源设备上单个故障会移除冗余，需尽快处理。
     device_memory_total:
       name: 内存总量
-      desc: 该指标报告路由器的物理内存总容量（UCD-SNMP-MIB memTotalReal，原始单位 KB，已换算为字节）。
+      desc: 该指标报告 Adtran AOS 路由器的内存池总量（ADTRAN-AOSCPU adGenAOSMemPool …1.4.6.0，单位字节，顶层 field+.0）。
     device_memory_free:
       name: 空闲内存
-      desc: 该指标报告路由器当前空闲的物理内存字节数（UCD-SNMP-MIB memAvailReal，原始单位 KB，已换算为字节）。空闲内存持续偏低可能意味着内存压力上升。
+      desc: 该指标报告 Adtran AOS 路由器当前堆空闲字节数（ADTRAN-AOSCPU adGenAOSHeapFree …1.4.8.0，顶层 field+.0）。这不是 HeapSize（…1.4.7）。空闲内存持续偏低可能意味着内存压力上升。
     device_memory_used:
       name: 已用内存
-      desc: 该指标报告路由器当前已使用的物理内存字节数（由内存总量减去空闲内存计算得到）。用于评估绝对内存消耗与压力。
+      desc: 该指标报告 Adtran AOS 路由器当前已使用的内存字节数（由 adGenAOSMemPool 减去 adGenAOSHeapFree 计算得到）。用于评估绝对内存消耗与压力。
+    device_memory_heap_size:
+      name: 堆大小
+      desc: 该指标报告 Adtran AOS 路由器解压后的堆大小（ADTRAN-AOSCPU adGenAOSHeapSize …1.4.7.0，单位字节，顶层 field+.0）。这是堆总量，不是空闲内存。
     device_cpu_usage:
       name: CPU 使用率
-      desc: 该指标报告 Juniper MX 路由器各运行实体的 CPU 使用率均值（JUNIPER-MIB jnxOperatingCPU，按 instance_id
-        聚合）。持续偏高说明转发/控制平面负载吃紧。
+      desc: 该指标报告 Adtran AOS 路由器最近一秒平均 CPU 使用率（ADTRAN-AOSCPU adGenAOSCurrentCpuUtil …1.4.1.0，直接 0-100%，顶层 field+.0）。持续偏高说明控制平面过载或异常流量。
+    device_cpu_usage_1min:
+      name: CPU 使用率（1 分钟）
+      desc: 该指标报告 Adtran AOS 路由器最近一分钟平均 CPU 使用率（ADTRAN-AOSCPU adGenAOS1MinCpuUtil …1.4.3.0，直接 0-100%，顶层 field+.0）。
+    device_cpu_usage_5min:
+      name: CPU 使用率（5 分钟）
+      desc: 该指标报告 Adtran AOS 路由器最近五分钟平均 CPU 使用率（ADTRAN-AOSCPU adGenAOS5MinCpuUtil …1.4.4.0，直接 0-100%，顶层 field+.0）。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标报告 Juniper MX 路由器各运行实体的内存使用率均值（JUNIPER-MIB jnxOperatingBuffer，直接以百分比上报）。持续偏高可能由路由表过大或内存泄漏导致。
+      desc: 该指标报告 Adtran AOS 路由器内存使用率，由 adGenAOSMemPool 与 adGenAOSHeapFree 按 (总量−空闲)/总量×100 推导。持续偏高可能由内存压力或泄漏导致。
     interface_ifHCInOctets:
       name: 接口接收流量速率(HC)
       desc: 该指标表示过去 5 分钟内接收字节数的平均速率，单位为字节每秒，基于 64 位 ifHCInOctets 计数器，在高速接口上不会回绕。

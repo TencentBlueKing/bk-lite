@@ -1,6 +1,6 @@
 Router Huawei AR SNMP:
   name: Huawei AR（Telegraf）
-  desc: 面向 Huawei AR 路由器的 SNMP 监控模板（sysObjectID 家族 1.3.6.1.4.1.2011.2.224）。可采集运行时长、CPU/内存、实体电压（毫伏换算为伏特）、单板功耗（瓦特）、机箱已用/总功耗（瓦特）、风扇转速（满速百分比）、光模块 DDM、整机与板卡能耗（毫瓦，展示可 ÷1000 为瓦特）；接口流量走内置 IF-MIB，不扩展 IF。覆盖 AR8140-12G10XG、AR720/AR730、AR6710-L50T2X4、AR5710-H8T2TS1、AR8700-8、AR5510/AR6510、AR6500-10 等机型。
+  desc: 面向 Huawei AR 路由器的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、风扇、电源状态、光模块、接口流量、电压、功率（企业号 PEN 2011）。
 monitor_object:
   Router: 路由器
 monitor_object_type:

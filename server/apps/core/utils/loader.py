@@ -17,13 +17,27 @@ _cache_lock = threading.Lock()
 _plugin_translation_cache: Dict[Tuple[str, str, str], dict] = {}
 _plugin_cache_lock = threading.Lock()
 
+# 只归一化扫描点名的别名；未知 locale 保持原值，避免把 zh-TW 等并进简体包。
+_LANGUAGE_ALIASES = {
+    "zh": "zh-Hans",
+    "zh-cn": "zh-Hans",
+    "zh-hans": "zh-Hans",
+    "en": "en",
+    "en-us": "en",
+}
+
+
+def normalize_language(lang: Optional[str]) -> str:
+    raw = (lang or "en").strip() or "en"
+    return _LANGUAGE_ALIASES.get(raw.replace("_", "-").lower(), raw)
+
 
 class LanguageLoader:
     def __init__(self, app: str, default_lang: str = "en"):
         self.app = app
         self.base_dir = f"apps/{app}/language"
-        self.default_lang = default_lang
-        self.translations = self._get_cached_translations(default_lang)
+        self.default_lang = normalize_language(default_lang)
+        self.translations = self._get_cached_translations(self.default_lang)
 
     def _get_cached_translations(self, lang: str) -> dict:
         """
@@ -223,7 +237,8 @@ class LanguageLoader:
 
     def load_language(self, lang: str):
         """加载指定语言的yaml文件 (兼容旧接口)"""
-        self.translations = self._get_cached_translations(lang)
+        self.default_lang = normalize_language(lang)
+        self.translations = self._get_cached_translations(self.default_lang)
 
     def get(self, key: str, default: Optional[str] = None) -> Optional[Any]:
         """

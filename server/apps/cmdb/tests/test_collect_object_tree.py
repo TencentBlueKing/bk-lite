@@ -171,6 +171,7 @@ def test_get_collect_obj_tree_exposes_separate_ipmi_and_redfish_plugins(monkeypa
     assert objects["physcial_server_ipmi"]["credential_default_port"] == 623
     assert objects["physcial_server_redfish"] == {
         "id": "physcial_server_redfish",
+        "supports_host_discovery": False,
         "model_id": "physcial_server",
         "name": "【BETA】物理服务器 Redfish",
         "task_type": CollectPluginTypes.PROTOCOL,

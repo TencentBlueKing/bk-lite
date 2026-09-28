@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_fibrolan",
   "plugin": "Transmission Fibrolan SNMP",
-  "plugin_desc": "Fibrolan Falcon carrier Ethernet and IEEE 1588 transmission SNMP child template (FIBROLAN-DEVICE, enterprise PEN 4467). Beyond the shared Transmission SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it walks flDeviceCpuUtilization to cpu_usage_percent and flDeviceMemoryUtilization to memory_usage_percent, both reported directly as 0-100 percentages. The FIBROLAN-DEVICE index is often 0; the columns are walked and a non-0 index is not hardcoded. Optional NV memory utilization is collected from the sibling column when the device returns it. Temperature, fan and power-supply health are not exposed as stable shared scalars in this pass, so they are N/A. Supported brands/models — Fibrolan Falcon carrier Ethernet and IEEE 1588 transmission devices under enterprise 4467.",
+  "plugin_desc": "SNMP monitoring template for Fibrolan transmission device. It reports uptime, CPU utilization, memory utilization, and interface traffic, for Falcon (enterprise PEN 4467).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_fibrolan'}) by (instance_id)",
   "name": "Transmission",

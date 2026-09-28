@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_huawei_atn",
   "plugin": "Router Huawei ATN SNMP",
-  "plugin_desc": "Huawei ATN SNMP collection for aggregation routers under sysObjectID family 1.3.6.1.4.1.2011.2.220. Device health is collected first from HUAWEI-ENTITY-EXTENT-MIB per-entity CPU (hwEntityCpuUsage), memory (hwEntityMemUsage) and temperature (hwEntityTemperature), plus fan, PSU, voltage and optical DDM. Optional HUAWEI-CPU-MIB duty (hwCpuDevDuty / hwAvgDuty1min) and HUAWEI-MEMORY-MIB 64-bit size/free supplement the entity view. Interface traffic uses the built-in IF-MIB table, including 64-bit HC counters; this plugin does not expand IF-MIB. Supported models include ATN 980/990/910/950 families, ATN 910C-A/B/D/E/F/G/H/S/K/M, ATN 910C-H-C/S-C, ATN 910D-A/B/C/H, ATN 905-L, ATN 905-L-Q, ATN 905-G, ATN 905-S, ATN 950-C, ATN 980D/980E and ATN 910E-A, with IoT variants in the same tree.",
+  "plugin_desc": "SNMP monitoring template for Huawei ATN series routers. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, optical modules, interface traffic, voltage, and power (enterprise PEN 2011).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_huawei_atn'}) by (instance_id)",
   "name": "Router",

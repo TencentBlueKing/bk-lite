@@ -1,7 +1,6 @@
 Router Adtran SNMP:
   name: Adtran (Telegraf)
-  desc: SNMP monitoring template for Adtran router. It reports CPU utilization, per-port
-    inbound traffic rate, per-port outbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Adtran router. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 664)."
 monitor_object:
   Router: Router
 monitor_object_type:
@@ -22,29 +21,44 @@ monitor_object_metric:
         indicates a power redundancy or hardware fault and should be remediated promptly.
     device_memory_total:
       name: Total Memory
-      desc: This metric reports the total physical memory capacity of the router (UCD-SNMP-MIB
-        memTotalReal, reported in KB and converted to bytes).
+      desc: This metric reports the Adtran AOS memory pool size in bytes (ADTRAN-AOSCPU
+        adGenAOSMemPool 1.3.6.1.4.1.664.5.53.1.4.6.0), collected as a top-level field+.0.
     device_memory_free:
       name: Free Memory
-      desc: This metric reports the amount of free physical memory in bytes on the
-        router (UCD-SNMP-MIB memAvailReal, reported in KB and converted to bytes).
-        Persistently low free memory can indicate rising memory pressure.
+      desc: This metric reports the Adtran AOS current heap free in bytes (ADTRAN-AOSCPU
+        adGenAOSHeapFree 1.3.6.1.4.1.664.5.53.1.4.8.0), collected as a top-level field+.0.
+        This is not HeapSize (.4.7). Persistently low free memory can indicate rising
+        memory pressure.
     device_memory_used:
       name: Used Memory
-      desc: This metric reports the amount of used physical memory in bytes on the
-        router, derived as total memory minus free memory. It helps gauge absolute
-        memory consumption and pressure.
+      desc: This metric reports Adtran AOS used memory in bytes, derived as adGenAOSMemPool
+        minus adGenAOSHeapFree. It helps gauge absolute memory consumption and pressure.
+    device_memory_heap_size:
+      name: Heap Size
+      desc: This metric reports Adtran AOS heap size in bytes after decompress (ADTRAN-AOSCPU
+        adGenAOSHeapSize 1.3.6.1.4.1.664.5.53.1.4.7.0), collected as a top-level field+.0.
+        This is total heap, not free memory.
     device_cpu_usage:
       name: CPU Usage
-      desc: This metric reports the average CPU utilization across the operating entities
-        of the Juniper MX router (JUNIPER-MIB jnxOperatingCPU, aggregated per instance_id).
-        Sustained high usage indicates heavy forwarding or control-plane load.
+      desc: This metric reports Adtran AOS CPU utilization over the last second (ADTRAN-AOSCPU
+        adGenAOSCurrentCpuUtil 1.3.6.1.4.1.664.5.53.1.4.1.0, Gauge32 0..100), collected
+        as a top-level field+.0. Sustained high usage indicates control-plane overload
+        or abnormal traffic.
+    device_cpu_usage_1min:
+      name: CPU Usage (1 min)
+      desc: This metric reports Adtran AOS one-minute average CPU utilization (ADTRAN-AOSCPU
+        adGenAOS1MinCpuUtil 1.3.6.1.4.1.664.5.53.1.4.3.0, Gauge32 0..100), collected
+        as a top-level field+.0.
+    device_cpu_usage_5min:
+      name: CPU Usage (5 min)
+      desc: This metric reports Adtran AOS five-minute average CPU utilization (ADTRAN-AOSCPU
+        adGenAOS5MinCpuUtil 1.3.6.1.4.1.664.5.53.1.4.4.0, Gauge32 0..100), collected
+        as a top-level field+.0.
     device_memory_usage:
       name: Memory Usage
-      desc: This metric reports the average memory utilization across the operating
-        entities of the Juniper MX router (JUNIPER-MIB jnxOperatingBuffer, reported
-        directly as a percentage). Sustained high usage may be caused by oversized
-        routing tables or memory leaks.
+      desc: This metric reports Adtran AOS memory utilization, derived as (adGenAOSMemPool
+        - adGenAOSHeapFree) / adGenAOSMemPool * 100. Sustained high usage may indicate
+        memory pressure or leaks.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate (HC)
       desc: This metric indicates the average rate of bytes received over the past

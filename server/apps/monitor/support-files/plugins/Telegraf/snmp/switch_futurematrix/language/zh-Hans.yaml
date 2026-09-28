@@ -1,6 +1,6 @@
 Switch FutureMatrix SNMP:
   name: 华为 FutureMatrix（Telegraf）
-  desc: 面向 FutureMatrix 交换机的 SNMP 监控模板（企业号 56813），指标口径对齐华为交换机：CPU、内存、温度、风扇、光模块收/发光功率（光衰）及接口流量等。
+  desc: 面向华为 FutureMatrix 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、风扇、光模块、接口流量（企业号 PEN 56813）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:

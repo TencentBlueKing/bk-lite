@@ -1,0 +1,41 @@
+Wanopt Riverbed SNMP:
+  name: Riverbed SteelHead（Telegraf）
+  desc: 面向 Riverbed SteelHead WAN优化设备的 SNMP 监控模板，可采集运行时长、CPU 使用率、温度、接口流量（企业号 PEN 17163）。
+monitor_object:
+  Wanopt: WAN 优化
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Wanopt:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标表示 Riverbed SteelHead 近一分钟滚动 CPU 使用率（STEELHEAD-MIB cpuUtil1），按全
+        CPU 聚合的 0-100 百分比记录。持续偏高可能意味着优化服务过载或即将进入准入控制。
+    device_cpu_load1:
+      name: CPU 负载（1 分钟）
+      desc: 该指标表示 Riverbed SteelHead 一分钟 CPU 负载（STEELHEAD-MIB cpuLoad1）。原始值为百分之一负载，展示时除以
+        100。这不是百分比。
+    device_cpu_load5:
+      name: CPU 负载（5 分钟）
+      desc: 该指标表示 Riverbed SteelHead 五分钟 CPU 负载（STEELHEAD-MIB cpuLoad5）。原始值为百分之一负载，展示时除以
+        100。这不是百分比。
+    device_cpu_load15:
+      name: CPU 负载（15 分钟）
+      desc: 该指标表示 Riverbed SteelHead 十五分钟 CPU 负载（STEELHEAD-MIB cpuLoad15）。原始值为百分之一负载，展示时除以
+        100。这不是百分比。
+    device_temperature_celsius:
+      name: 温度
+      desc: 该指标表示 SteelHead 系统温度（STEELHEAD-MIB systemTemperature），单位为摄氏度。持续偏高可能意味着散热不良或环境过热。
+    device_health_state:
+      name: 系统健康
+      desc: 该指标表示 SteelHead 系统健康（STEELHEAD-MIB systemHealth）。原始码 healthy=10000、degraded=30000、admissionControl=31000、critical=50000
+        归一为 1=healthy / 2=非 healthy。大于 1 表示降级、准入控制或严重故障。
+monitor_object_metric_group:
+  Wanopt:
+    CPU: CPU
+    Temperature: 温度
+    Hardware Status: 硬件状态
+    Base: 基础

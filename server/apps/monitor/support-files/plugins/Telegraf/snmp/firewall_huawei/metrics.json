@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_huawei_usg",
   "plugin": "Firewall Huawei SNMP",
-  "plugin_desc": "SNMP monitoring for Huawei USG firewalls. It reports per-entity CPU, memory, temperature, and voltage, plus current sessions, new sessions, session-create rate, half-open sessions, TCP/UDP/ICMP session counts, and device forwarding throughput. USG9500 also reports per-SPU CPU usage when those boards are present. Interface metrics use the platform built-in IF-MIB. Supported models include USG6000, USG6000E, USG9500, and HiSecEngine USG.",
+  "plugin_desc": "SNMP monitoring template for Huawei USG firewall. It reports uptime, CPU utilization, memory utilization, temperature, sessions/connections, session establishment rate, interface traffic, and voltage (enterprise PEN 2011).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_huawei_usg'}) by (instance_id)",
   "name": "Firewall",

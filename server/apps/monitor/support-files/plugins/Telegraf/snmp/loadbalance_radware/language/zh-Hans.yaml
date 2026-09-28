@@ -1,0 +1,37 @@
+Loadbalance Radware SNMP:
+  name: Radware Alteon（Telegraf）
+  desc: 面向 Radware Alteon 负载均衡设备的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、接口流量，适用于 Alteon ADC（企业号 PEN 1872）。
+monitor_object:
+  Loadbalance: 负载均衡
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Loadbalance:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标报告 Radware Alteon 管理处理器 CPU 使用率（ALTEON-CHEETAH-SWITCH-MIB mpCpuStatsUtil64Seconds，64 秒采样，直接百分比）。持续偏高说明流量处理负载吃紧。
+    device_memory_total:
+      name: 内存总量
+      desc: 该指标报告 Radware Alteon 主内存总量（mpMemStatsTotal），单位为字节。
+    device_memory_used:
+      name: 已用内存
+      desc: 该指标报告 Radware Alteon 主内存已用量（mpMemStatsUsed），单位为字节。
+    device_memory_free:
+      name: 空闲内存
+      desc: 该指标报告 Radware Alteon 主内存空闲量（mpMemStatsFree），单位为字节。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 该指标报告 Radware Alteon 主内存使用率，按 已用/总量 计算。持续偏高可能影响连接处理性能。
+monitor_object_metric_group:
+  Loadbalance:
+    Base: 基础
+    Loadbalance: 负载均衡
+    Traffic: 流量
+    Status: 状态
+    Bandwidth: 带宽
+    Packet: 数据包
+    Packet Error: 数据包错误
+    Packet Loss: 数据包丢失

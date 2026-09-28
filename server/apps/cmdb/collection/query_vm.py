@@ -72,6 +72,21 @@ class Collection:
             evaluation_time=evaluation_time,
         )
 
+    def query_instance_data_counts(
+        self,
+        instance_pattern,
+        *,
+        timeout=60,
+        retries=DEFAULT_QUERY_RETRIES,
+    ):
+        """兼容探测：先回看原始样本再计数，避免聚合子查询漏掉冷启动的稀疏数据。"""
+        return self._execute_query(
+            f"count by (instance_id) (last_over_time({{instance_id=~'{instance_pattern}'}}[{DEFAULT_LOOKBACK}]))",
+            timeout=timeout,
+            retries=retries,
+            retry_interval=DEFAULT_RETRY_INTERVAL,
+        )
+
     def _execute_query(
         self,
         query,

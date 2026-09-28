@@ -9,6 +9,8 @@ from rest_framework import serializers
 from apps.alerts.constants.constants import LevelType
 from apps.alerts.models.models import Level
 from apps.alerts.models.notification_template import NotificationTemplate, NotificationTemplateContent, NotificationTemplateReference
+from apps.alerts.notification_templates.events import MAX_EVENT_ROWS, event_row, inspect_event_usage
+from apps.alerts.notification_templates.operation import is_managed_nats_channel
 from apps.alerts.notification_templates.renderer import build_alert_context, render_source
 from apps.alerts.utils.permission_scope import apply_team_scope_with_group_ids, get_authorized_group_ids
 from apps.system_mgmt.models.channel import Channel
@@ -87,7 +89,54 @@ def merge_channel_template_bindings(channels, fallback_channels):
     return merged
 
 
-def build_runtime_alert_context(alert, receivers, scene, notification_context=None):
+def _event_level_names():
+    return {
+        str(level_id): display_name
+        for level_id, display_name in Level.objects.filter(level_type=LevelType.EVENT).values_list("level_id", "level_display_name")
+    }
+
+
+def _event_queryset(alert):
+    return alert.events.select_related("source").defer("raw_data", "enrichment_meta")
+
+
+def _order_by(order):
+    if order.startswith("-"):
+        return (order, "-pk")
+    return (order, "pk")
+
+
+def load_event_context(alert, sources, state=None):
+    """按模板实际引用加载事件快照。``state`` 跨渠道复用已查过的排序和计数。"""
+    usage = inspect_event_usage(sources)
+    state = state if state is not None else {}
+    if not usage.used:
+        return {"count": state.get("count", 0), "latest": state.get("latest") or {}, "first": state.get("first") or {}, "rows_by_order": {}}
+    if usage.need_count and "count" not in state:
+        state["count"] = alert.events.count()
+    if (usage.orders or usage.need_latest or usage.need_first) and "level_names" not in state:
+        state["level_names"] = _event_level_names()
+    rows_by_order = state.setdefault("orders", {})
+    if usage.orders:
+        queryset = _event_queryset(alert)
+        for order in usage.orders:
+            if order not in rows_by_order:
+                rows_by_order[order] = [event_row(event, state["level_names"]) for event in queryset.order_by(*_order_by(order))[:MAX_EVENT_ROWS]]
+    if usage.need_latest and "latest" not in state:
+        event = _event_queryset(alert).order_by("-received_at", "-pk").first()
+        state["latest"] = event_row(event, state["level_names"]) if event is not None else {}
+    if usage.need_first and "first" not in state:
+        event = _event_queryset(alert).order_by("received_at", "pk").first()
+        state["first"] = event_row(event, state["level_names"]) if event is not None else {}
+    return {
+        "count": state.get("count", 0),
+        "latest": state.get("latest") or {},
+        "first": state.get("first") or {},
+        "rows_by_order": {order: rows_by_order[order] for order in usage.orders},
+    }
+
+
+def build_runtime_alert_context(alert, receivers, scene, notification_context=None, events_context=None):
     """使用运行时告警和级别配置构造模板上下文。"""
     try:
         raw_level = int(getattr(alert, "level", ""))
@@ -103,10 +152,11 @@ def build_runtime_alert_context(alert, receivers, scene, notification_context=No
         scene,
         level_display_name=level_display_name,
         notification_context=notification_context,
+        events_context=events_context,
     )
 
 
-def render_bound_template(template_id, channel_type, alert, receivers, scene, notification_context=None):
+def render_bound_template(template_id, channel_type, alert, receivers, scene, notification_context=None, event_context_loader=None):
     try:
         template = NotificationTemplate.objects.get(pk=int(template_id))
         content = NotificationTemplateContent.objects.get(template=template, channel_type=channel_type)
@@ -122,7 +172,14 @@ def render_bound_template(template_id, channel_type, alert, receivers, scene, no
     if not template.is_global and (not template_teams or not template_teams.intersection(alert_teams)):
         raise TemplateBindingError("模板与告警不属于同一团队")
 
-    context = build_runtime_alert_context(alert, receivers, scene, notification_context)
+    sources = (content.subject_template, content.body_template)
+    events_context = None
+    if inspect_event_usage(sources).used:
+        if event_context_loader is not None:
+            events_context = event_context_loader(alert, sources)
+        else:
+            events_context = load_event_context(alert, sources)
+    context = build_runtime_alert_context(alert, receivers, scene, notification_context, events_context)
     subject = render_source(
         content.subject_template,
         context,
@@ -181,8 +238,8 @@ def validate_assignment_template_bindings(notify_channels, config, request=None)
         if channel.get("channel_type") != trusted_channel.channel_type:
             errors.append({"locator": locator, "detail": "通知渠道类型与系统配置不一致"})
             continue
-        if trusted_channel.channel_type == "nats" and (trusted_channel.config or {}).get("source") != "opspilot":
-            errors.append({"locator": locator, "detail": "仅 OpsPilot 托管的 NATS 渠道支持通知模板"})
+        if trusted_channel.channel_type == "nats" and not is_managed_nats_channel(trusted_channel):
+            errors.append({"locator": locator, "detail": "仅平台托管的 NATS 渠道支持通知模板"})
             continue
         for scene, template_id in bindings.items():
             if scene != "default" and scene not in SCENES:

@@ -35,10 +35,10 @@ def test_plugin_exception_log_has_context_and_sanitized_call_chain():
     assert len(logger.entries) == 1
     entry = logger.entries[0]
     assert "event=plugin_exception" in entry
-    assert "task_id=task-7" in entry
+    assert "task_id=" not in entry
     assert "plugin_ref=network.config" in entry
-    assert "model_id=network" in entry
-    assert "plugin_name=snmp_facts" in entry
+    assert "model_id=" not in entry
+    assert "plugin_name=" not in entry
     assert "target=10.3.252.254" in entry
     assert "error_type=RuntimeError" in entry
     assert ":outer>" in entry
@@ -65,7 +65,7 @@ def test_plugin_exception_log_without_traceback_is_still_searchable():
     )
 
     assert len(logger.entries) == 1
-    assert "plugin_name=-" in logger.entries[0]
+    assert "plugin_ref=vmware_vc.config" in logger.entries[0]
     assert "target=logical" in logger.entries[0]
     assert "call_chain=-" in logger.entries[0]
     assert "source_context=\n-" in logger.entries[0]

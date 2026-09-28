@@ -17,6 +17,8 @@ import {
   SaveQueryModalRef,
   SaveQueryModalProps
 } from '@/app/monitor/types/search';
+import { writeSavedChartPresentation } from './searchChartPresentation';
+import { writeSavedMetricIds } from './searchQueryLogic';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
 import OperateModal from '@/components/operate-modal';
@@ -31,10 +33,11 @@ const transformToBackendFormat = (groups: QueryGroup[]): QueryGroupData[] => {
     object: group.object,
     plugin: group.plugin,
     instance_ids: group.instanceIds,
-    metric: group.metric,
+    metric: writeSavedMetricIds(group.metric),
     legacy_metric_name: group.legacyMetricName || null,
     aggregation: group.aggregation,
-    conditions: group.conditions
+    conditions: group.conditions,
+    ...writeSavedChartPresentation(group.viewMode, group.tableKind)
   }));
 };
 

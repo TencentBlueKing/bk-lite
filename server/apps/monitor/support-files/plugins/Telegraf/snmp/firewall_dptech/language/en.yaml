@@ -1,7 +1,6 @@
 Firewall DPtech SNMP:
   name: DPtech (Telegraf)
-  desc: SNMP monitoring template for DPtech firewall. It reports system uptime, CPU
-    utilization, interface speed, and other key metrics (IANA PEN 31648).
+  desc: "SNMP monitoring template for DPtech firewall. It reports uptime, CPU utilization, memory utilization, and interface traffic, for DPtech NGFW/UTM (enterprise PEN 31648)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:

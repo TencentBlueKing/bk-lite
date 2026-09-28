@@ -162,8 +162,8 @@ async def test_cooled_credential_skip_is_logged(monkeypatch):
 
     assert await policy.eligible_credentials(request, "10.10.24.1") == ()
     assert any("event=credential_cooldown_skipped" in item for item in logged)
-    assert any("credential_id=credential-1" in item for item in logged)
-    assert any("task_id=cooldown-skip-log" in item for item in logged)
+    assert all("credential_id=" not in item for item in logged)
+    assert any("collect_task_id=-" in item for item in logged)
     assert any("event=credential_frozen" in item for item in logged)
 
 

@@ -1,0 +1,53 @@
+Wanopt Riverbed SNMP:
+  name: Riverbed SteelHead (Telegraf)
+  desc: "SNMP monitoring template for Riverbed SteelHead WAN optimization device. It reports uptime, CPU utilization, temperature, and interface traffic (enterprise PEN 17163)."
+monitor_object:
+  Wanopt: WAN Optimization
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Wanopt:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart.
+        By monitoring the uptime, network administrators can understand the stability
+        and reliability of the device and identify potential reboot or failure issues.
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: This metric reports the one-minute rolling CPU utilization of the
+        Riverbed SteelHead (STEELHEAD-MIB cpuUtil1) as a 0-100 percentage
+        aggregated across all CPUs. Sustained high CPU usage can indicate
+        optimization-service overload or an admission-control condition.
+    device_cpu_load1:
+      name: CPU Load (1m)
+      desc: This metric reports the one-minute CPU load of the Riverbed SteelHead
+        (STEELHEAD-MIB cpuLoad1). The raw value is hundredths of load and is
+        divided by 100 for display. This is not a percentage.
+    device_cpu_load5:
+      name: CPU Load (5m)
+      desc: This metric reports the five-minute CPU load of the Riverbed SteelHead
+        (STEELHEAD-MIB cpuLoad5). The raw value is hundredths of load and is
+        divided by 100 for display. This is not a percentage.
+    device_cpu_load15:
+      name: CPU Load (15m)
+      desc: This metric reports the fifteen-minute CPU load of the Riverbed
+        SteelHead (STEELHEAD-MIB cpuLoad15). The raw value is hundredths of
+        load and is divided by 100 for display. This is not a percentage.
+    device_temperature_celsius:
+      name: Temperature
+      desc: This metric reports the SteelHead system temperature
+        (STEELHEAD-MIB systemTemperature) in degrees Celsius. Sustained high
+        temperature can indicate cooling failure or an overheated environment.
+    device_health_state:
+      name: System Health
+      desc: This metric reports SteelHead system health (STEELHEAD-MIB
+        systemHealth). Raw codes healthy=10000, degraded=30000,
+        admissionControl=31000 and critical=50000 are normalized to 1=healthy
+        and 2=not-healthy. A value greater than 1 indicates degraded,
+        admission-control or critical health.
+monitor_object_metric_group:
+  Wanopt:
+    CPU: CPU
+    Temperature: Temperature
+    Hardware Status: Hardware Status
+    Base: Base

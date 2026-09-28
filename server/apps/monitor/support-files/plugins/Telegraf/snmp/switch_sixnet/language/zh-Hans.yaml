@@ -1,6 +1,6 @@
 Switch Sixnet SNMP:
   name: Sixnet（Telegraf）
-  desc: 面向 Sixnet SLX 工业以太网交换机的 SNMP 监控模板，可采集运行时长、接口流量、P1/P2 电源输入状态与 OK 告警继电器状态（企业号 PEN 20540）。
+  desc: 面向 Sixnet 交换机的 SNMP 监控模板，可采集运行时长、接口流量，适用于 SLX/SL SlimLine（企业号 PEN 20540）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:

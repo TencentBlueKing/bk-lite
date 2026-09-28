@@ -53,6 +53,31 @@
       "group_algorithm": "avg"
     },
     {
+      "name": "SonicWall防火墙活动会话数过高",
+      "alert_name": "防火墙${resource_name} 活动会话数过高",
+      "description": "监控 SonicWall 防火墙当前连接缓存条目数（sonicCurrentConnCacheEntries）。会话数快速攀升可能意味着连接洪泛或连接表压力，需及时排查异常流量。",
+      "metric_name": "firewall_active_sessions",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1000000,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 500000,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 200000,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
       "name": "接口接收错误包过高",
       "alert_name": "防火墙${resource_name} 接口 ${metric_ifDescr} 每秒接收错误包数过高",
       "description": "监控设备接口接收的错误包数情况，当每秒错误包数超出设定阈值时触发告警，便于发现网络接口隐患。",

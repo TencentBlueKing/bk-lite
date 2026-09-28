@@ -6,10 +6,12 @@ from apps.core.exceptions.base_app_exception import BaseAppException, Unauthoriz
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.permission import PermissionConstants
-from apps.monitor.models import CollectDetectTask
+from apps.monitor.models import CollectDetectTask, MonitorPlugin
 from apps.monitor.services.collect_detect import CollectDetectService
+from apps.monitor.services.collect_detect_throttle import CollectDetectOrgThrottle
 from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.monitor.views.node_mgmt import _build_actor_context
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 def _ensure_monitor_object_access(request, monitor_object_id, actor_context):
@@ -55,6 +57,11 @@ def _ensure_collect_detect_access(request, payload):
 
 
 class CollectDetectViewSet(viewsets.ViewSet):
+    def get_throttles(self):
+        if getattr(self, "action", None) == "create":
+            return [CollectDetectOrgThrottle()]
+        return []
+
     def create(self, request):
         payload = getattr(request, "data", None)
         if payload is None:
@@ -62,6 +69,26 @@ class CollectDetectViewSet(viewsets.ViewSet):
         actor_context = _ensure_collect_detect_access(request, payload)
         organization = actor_context["current_team"]
         task = CollectDetectService.create_task(payload, request.user, organization)
+        template_type = (
+            MonitorPlugin.objects.filter(id=task.monitor_plugin_id).values_list("template_type", flat=True).first() or ""
+        )
+        log_operation(
+            request,
+            "execute",
+            "monitor",
+            f"执行采集探测: {task.collector}/{task.collect_type}",
+            target_type="collect_detect",
+            target_id=task.id,
+            detail={
+                "monitor_plugin_id": task.monitor_plugin_id,
+                "monitor_object_id": task.monitor_object_id,
+                "collector": task.collector,
+                "collect_type": task.collect_type,
+                "template_type": template_type,
+                "node_id": task.node_id,
+                "organization": organization,
+            },
+        )
         return WebUtils.response_success({"task_id": task.id, "status": task.status})
 
     def retrieve(self, request, pk=None):

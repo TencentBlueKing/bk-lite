@@ -11,6 +11,16 @@ from apps.core.utils.permission_utils import delete_instance_rules, get_permissi
 from apps.core.utils.team_utils import get_current_team
 from apps.system_mgmt.models import Group
 
+_TEAM_ACCESS_DENIED_FALLBACK = "No permission to access this team"
+
+
+def team_access_denied_message(request=None, loader=None) -> str:
+    active = loader
+    if active is None:
+        locale = getattr(getattr(request, "user", None), "locale", None) or "en"
+        active = LanguageLoader(app="core", default_lang=locale)
+    return active.get("error.no_permission_access_team", _TEAM_ACCESS_DENIED_FALLBACK) or _TEAM_ACCESS_DENIED_FALLBACK
+
 
 def build_json_membership_query(queryset, field_name, expected_values):
     """构造跨数据库 JSON 数组成员查询。
@@ -194,7 +204,7 @@ class GenericViewSetFun(object):
             user_group_ids = {g["id"] for g in getattr(user, "group_list", [])}
 
             if current_team not in user_group_ids:
-                raise PermissionDenied("无权访问该团队数据")
+                raise PermissionDenied(team_access_denied_message(request))
 
         include_children = request.COOKIES.get("include_children", "0") == "1"
         fields = [i.name for i in queryset.model._meta.fields]
@@ -313,11 +323,11 @@ class AuthViewSet(MaintainerViewSet):
         """
         current_team = self._parse_current_team_cookie(request)
         if not current_team:
-            raise PermissionDenied(self.loader.get("error.no_permission_access_team") if self.loader else "无权访问该团队数据")
+            raise PermissionDenied(team_access_denied_message(request, self.loader))
         if not getattr(request.user, "is_superuser", False):
             user_group_ids = {g["id"] for g in getattr(request.user, "group_list", [])}
             if current_team not in user_group_ids:
-                raise PermissionDenied(self.loader.get("error.no_permission_access_team") if self.loader else "无权访问该团队数据")
+                raise PermissionDenied(team_access_denied_message(request, self.loader))
         return current_team
 
     def _validate_org_field_permission(self, request, org_values):
@@ -540,7 +550,7 @@ class AuthViewSet(MaintainerViewSet):
         current_team = self._parse_current_team_cookie(request)
         user_group_ids = {g["id"] for g in getattr(user, "group_list", [])}
         if current_team not in user_group_ids:
-            raise PermissionDenied("无权访问该团队数据")
+            raise PermissionDenied(team_access_denied_message(request, getattr(self, "loader", None)))
         if hasattr(self, "permission_key"):
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(user, instance, current_team, is_check=True, include_children=include_children)
@@ -568,7 +578,7 @@ class AuthViewSet(MaintainerViewSet):
         current_team = self._parse_current_team_cookie(request)
         user_group_ids = {g["id"] for g in getattr(user, "group_list", [])}
         if current_team not in user_group_ids:
-            raise PermissionDenied("无权访问该团队数据")
+            raise PermissionDenied(team_access_denied_message(request, getattr(self, "loader", None)))
         if hasattr(self, "permission_key"):
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(user, instance, current_team, include_children=include_children)

@@ -22,7 +22,7 @@ from core.collection.credential_policy import CredentialPolicy
 from core.collection.enums import FailureStage
 from core.collection.execution_plan import ExecutionPlan
 from core.collection.metrics import CollectionMetrics
-from core.collection.runtime import CollectionRequest
+from core.collection.runtime import CollectionRequest, _run_log_identity
 from core.infra.redis_client import is_credential_state_redis_error
 from core.logger import logger, safe_log_value
 
@@ -69,8 +69,8 @@ class CredentialAttemptRunner:
                 raise
             self._metrics.increment("credential_state_redis_error_total")
             logger.warning(
-                "event=credential_success_persist_failed task_id=%s target=%s " "failed_stage=credential_state error_type=%s",
-                safe_log_value(request.task_id),
+                "event=credential_success_persist_failed %s target=%s failed_stage=credential_state error_type=%s",
+                _run_log_identity(request),
                 safe_log_value(target, max_length=255),
                 type(exc).__name__,
             )
@@ -95,8 +95,8 @@ class CredentialAttemptRunner:
                 raise
             self._metrics.increment("credential_state_redis_error_total")
             logger.warning(
-                "event=credential_failure_persist_failed task_id=%s target=%s " "failed_stage=credential_state error_type=%s",
-                safe_log_value(request.task_id),
+                "event=credential_failure_persist_failed %s target=%s failed_stage=credential_state error_type=%s",
+                _run_log_identity(request),
                 safe_log_value(target, max_length=255),
                 type(exc).__name__,
             )
@@ -233,15 +233,10 @@ class CredentialAttemptRunner:
                 error_code=error_code,
             )
             logger.debug(
-                "event=access_probe_failed task_id=%s plugin_ref=%s "
-                "model_id=%s target=%s "
-                "credential_id=%s probe_status=%s error_code=%s action=rotate",
-                safe_log_value(request.task_id),
+                "event=access_probe_failed %s plugin_ref=%s target=%s error_code=%s action=rotate",
+                _run_log_identity(request),
                 safe_log_value(request.plugin_ref),
-                safe_log_value(request.params.get("model_id") or "-"),
                 safe_log_value(target, max_length=255),
-                safe_log_value(credential_id or "-"),
-                access.status.value,
                 safe_log_value(error_code),
             )
             return _AttemptDecision(
@@ -261,15 +256,10 @@ class CredentialAttemptRunner:
         }:
             error_code = access.error_code or access.status.value
             logger.debug(
-                "event=access_probe_failed task_id=%s plugin_ref=%s "
-                "model_id=%s target=%s credential_id=%s probe_status=%s "
-                "error_code=%s action=rotate",
-                safe_log_value(request.task_id),
+                "event=access_probe_failed %s plugin_ref=%s target=%s error_code=%s action=rotate",
+                _run_log_identity(request),
                 safe_log_value(request.plugin_ref),
-                safe_log_value(request.params.get("model_id") or "-"),
                 safe_log_value(target, max_length=255),
-                safe_log_value(credential_id or "-"),
-                access.status.value,
                 safe_log_value(error_code),
             )
             return _AttemptDecision(
@@ -283,16 +273,10 @@ class CredentialAttemptRunner:
         if access.status == AccessProbeStatus.NO_RESPONSE:
             no_response_attempts += 1
             logger.debug(
-                "event=access_probe_failed task_id=%s plugin_ref=%s "
-                "model_id=%s target=%s "
-                "credential_id=%s probe_status=%s error_code=%s "
-                "no_response_attempts=%s",
-                safe_log_value(request.task_id),
+                "event=access_probe_failed %s plugin_ref=%s target=%s error_code=%s no_response_attempts=%s",
+                _run_log_identity(request),
                 safe_log_value(request.plugin_ref),
-                safe_log_value(request.params.get("model_id") or "-"),
                 safe_log_value(target, max_length=255),
-                safe_log_value(credential_id or "-"),
-                access.status.value,
                 safe_log_value(access.error_code or access.status.value),
                 no_response_attempts,
             )
@@ -313,12 +297,10 @@ class CredentialAttemptRunner:
             return _AttemptDecision(action=_AttemptAction.CONTINUE, no_response_attempts=no_response_attempts)
         if access.status == AccessProbeStatus.TARGET_UNREACHABLE:
             logger.debug(
-                "event=target_unreachable task_id=%s plugin_ref=%s " "model_id=%s target=%s " "credential_id=%s reason=%s",
-                safe_log_value(request.task_id),
+                "event=target_unreachable %s plugin_ref=%s target=%s reason=%s",
+                _run_log_identity(request),
                 safe_log_value(request.plugin_ref),
-                safe_log_value(request.params.get("model_id") or "-"),
                 safe_log_value(target, max_length=255),
-                safe_log_value(credential_id or "-"),
                 safe_log_value(access.error_code or "target_unreachable"),
             )
             return _AttemptDecision(
@@ -335,15 +317,10 @@ class CredentialAttemptRunner:
             )
         if access.status == AccessProbeStatus.RATE_LIMITED:
             logger.debug(
-                "event=access_probe_failed task_id=%s plugin_ref=%s "
-                "model_id=%s target=%s "
-                "credential_id=%s probe_status=%s error_code=%s action=defer",
-                safe_log_value(request.task_id),
+                "event=access_probe_failed %s plugin_ref=%s target=%s error_code=%s action=defer",
+                _run_log_identity(request),
                 safe_log_value(request.plugin_ref),
-                safe_log_value(request.params.get("model_id") or "-"),
                 safe_log_value(target, max_length=255),
-                safe_log_value(credential_id or "-"),
-                access.status.value,
                 safe_log_value(access.error_code or "rate_limited"),
             )
             return _AttemptDecision(
@@ -364,15 +341,10 @@ class CredentialAttemptRunner:
             AccessProbeStatus.MISCONFIGURED,
         }:
             logger.debug(
-                "event=access_probe_failed task_id=%s plugin_ref=%s "
-                "model_id=%s target=%s "
-                "credential_id=%s probe_status=%s error_code=%s action=stop",
-                safe_log_value(request.task_id),
+                "event=access_probe_failed %s plugin_ref=%s target=%s error_code=%s action=stop",
+                _run_log_identity(request),
                 safe_log_value(request.plugin_ref),
-                safe_log_value(request.params.get("model_id") or "-"),
                 safe_log_value(target, max_length=255),
-                safe_log_value(credential_id or "-"),
-                access.status.value,
                 safe_log_value(access.error_code or access.status.value),
             )
             return _AttemptDecision(
@@ -389,15 +361,10 @@ class CredentialAttemptRunner:
             )
         if access.status != AccessProbeStatus.READY:
             logger.debug(
-                "event=access_probe_failed task_id=%s plugin_ref=%s "
-                "model_id=%s target=%s "
-                "credential_id=%s probe_status=%s error_code=access_probe_misconfigured",
-                safe_log_value(request.task_id),
+                "event=access_probe_failed %s plugin_ref=%s target=%s error_code=access_probe_misconfigured",
+                _run_log_identity(request),
                 safe_log_value(request.plugin_ref),
-                safe_log_value(request.params.get("model_id") or "-"),
                 safe_log_value(target, max_length=255),
-                safe_log_value(credential_id or "-"),
-                access.status.value,
             )
             return _AttemptDecision(
                 action=_AttemptAction.RETURN,

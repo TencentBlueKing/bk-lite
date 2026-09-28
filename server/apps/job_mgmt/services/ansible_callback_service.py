@@ -12,6 +12,7 @@ from apps.core.logger import job_logger as logger
 from apps.job_mgmt.constants import ExecutionStatus
 from apps.job_mgmt.models import JobExecution
 from apps.job_mgmt.services.completion_outbox_service import enqueue_terminal_effects, lock_reconcilable_terminal_effects
+from apps.job_mgmt.utils.i18n import job_message
 from apps.rpc.sensitive import sanitize_sensitive_data, summarize_ansible_callback
 
 CALLBACK_CALLER = "ansible-executor"
@@ -83,7 +84,10 @@ def _target_map(target_list: list[dict]) -> dict[str, dict]:
     result = {}
     for target in target_list:
         result[str(target.get("ip", ""))] = target
-        result[str(target.get("target_id", ""))] = target
+        tid = target.get("target_id")
+        if tid is not None and str(tid) != "":
+            result[str(tid)] = target
+            result[f"manual-{tid}"] = target
     return result
 
 
@@ -123,7 +127,9 @@ def _normalize_results(execution, data: dict, finished_at) -> tuple[list[dict], 
     raw_result = data.get("result", [])
     if not (isinstance(raw_result, list) and raw_result and all(isinstance(item, dict) for item in raw_result)):
         error = f"回调结果格式非法: {sanitize_sensitive_data(raw_result)}"
-        return _failure_results(execution, error, finished_at), "非法的新版本结果格式"
+        return _failure_results(execution, error, finished_at), job_message(
+            None, "error.invalid_callback_result_format", "Invalid new-version result format"
+        )
 
     target_list = execution.target_list or []
     targets_by_key = _target_map(target_list)
@@ -134,11 +140,11 @@ def _normalize_results(execution, data: dict, finished_at) -> tuple[list[dict], 
         host_key = str(host_result.get("host", ""))
         target = targets_by_key.get(host_key)
         if not target:
-            error = f"结果中的主机未匹配到目标: {host_key}"
+            error = job_message(None, "error.host_not_matched", "Host in result did not match any target: {host}", host=host_key)
             return _failure_results(execution, error, finished_at), error
         target_key = str(target.get("target_id", ""))
         if target_key in seen_target_keys:
-            error = f"结果中的主机重复: {host_key}"
+            error = job_message(None, "error.host_duplicated", "Duplicate host in result: {host}", host=host_key)
             return _failure_results(execution, error, finished_at), error
         seen_target_keys.add(target_key)
         results.append(_host_execution_result(execution, target, host_result, callback_finished_at))
@@ -186,33 +192,51 @@ def _write_terminal(execution, data: dict, *, reconcile_cancel_timeout: bool):
 
 def handle_ansible_task_callback(data: dict):
     if not isinstance(data, dict):
-        return {"success": False, "message": "回调数据必须为对象"}
+        return {"success": False, "message": job_message(None, "error.callback_data_must_be_object", "Callback data must be an object")}
     logger.info("[ansible_task_callback] %s", summarize_ansible_callback(data))
     task_id = data.get("task_id")
     if isinstance(task_id, str) and task_id.strip().isdecimal():
         task_id = int(task_id.strip())
     if isinstance(task_id, bool) or not isinstance(task_id, int) or task_id <= 0:
-        message = "缺少 task_id" if task_id is None else "task_id 必须为正整数或其字符串形式"
+        message = (
+            job_message(None, "error.task_id_missing", "Missing task_id")
+            if task_id is None
+            else job_message(None, "error.task_id_invalid", "task_id must be a positive integer or its string form")
+        )
         return {"success": False, "message": message}
 
     with transaction.atomic():
         execution = JobExecution.objects.select_for_update().filter(id=task_id).first()
         if execution is None:
-            return {"success": False, "message": f"执行记录不存在: {task_id}"}
+            return {
+                "success": False,
+                "message": job_message(None, "error.execution_not_found", "Execution record not found: {id}", id=task_id),
+            }
         if not _valid_callback_identity(execution, data):
             logger.warning("[ansible_task_callback] 回调身份校验失败: task_id=%s", task_id)
-            return {"success": False, "message": "回调身份校验失败"}
+            return {
+                "success": False,
+                "message": job_message(None, "error.callback_auth_failed", "Callback identity verification failed"),
+            }
         reconcile_cancel_timeout = (
-            execution.status == ExecutionStatus.CANCELLED
-            and execution.terminal_source == JobExecution.TerminalSource.CANCEL_TIMEOUT
+            execution.status == ExecutionStatus.CANCELLED and execution.terminal_source == JobExecution.TerminalSource.CANCEL_TIMEOUT
         )
         if reconcile_cancel_timeout and not lock_reconcilable_terminal_effects(execution.id):
-            return {"success": True, "message": "任务已处理"}
+            return {"success": True, "message": job_message(None, "message.task_already_processed", "Task already processed")}
         if execution.status in ExecutionStatus.TERMINAL_STATES and not reconcile_cancel_timeout:
-            return {"success": True, "message": "任务已处理"}
+            return {"success": True, "message": job_message(None, "message.task_already_processed", "Task already processed")}
         validation_error = _write_terminal(execution, data, reconcile_cancel_timeout=reconcile_cancel_timeout)
         final_status = execution.status
 
     if validation_error:
-        return {"success": False, "message": f"{validation_error}，已收敛到 {final_status.upper()}"}
-    return {"success": True, "message": "回调处理成功"}
+        return {
+            "success": False,
+            "message": job_message(
+                None,
+                "error.callback_converged",
+                "{detail}, converged to {status}",
+                detail=validation_error,
+                status=final_status.upper(),
+            ),
+        }
+    return {"success": True, "message": job_message(None, "message.callback_success", "Callback processed successfully")}

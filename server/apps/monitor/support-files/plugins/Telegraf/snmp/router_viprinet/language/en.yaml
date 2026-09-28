@@ -1,7 +1,6 @@
 Router Viprinet SNMP:
   name: Viprinet (Telegraf)
-  desc: SNMP monitoring template for Viprinet router. It reports CPU utilization,
-    per-port inbound traffic rate, per-port outbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Viprinet router. It reports uptime, CPU utilization, memory used, temperature, fan, power supply status, and interface traffic (enterprise PEN 35424)."
 monitor_object:
   Router: Router
 monitor_object_type:
@@ -32,8 +31,16 @@ monitor_object_metric:
     device_memory_used:
       name: Used Memory
       desc: This metric reports the amount of used physical memory in bytes on the
-        router, derived as total memory minus free memory. It helps gauge absolute
-        memory consumption and pressure.
+        Viprinet router (vpnRouterMemoryUsage, reported in KB and converted to bytes).
+        The MIB does not expose total, free, or utilization percentage.
+    device_cpu_load:
+      name: CPU Load Average
+      desc: This metric reports the CPU load average of the Viprinet router (vpnRouterCPULoad).
+        It is a parsed load-average value, not a utilization percentage. Unparseable
+        values are dropped.
+    device_fan_speed:
+      name: Fan Speed
+      desc: Current fan RPM of the Viprinet router. Not all models supply this value.
     device_cpu_usage:
       name: CPU Usage
       desc: This metric reports the average CPU utilization across the operating entities

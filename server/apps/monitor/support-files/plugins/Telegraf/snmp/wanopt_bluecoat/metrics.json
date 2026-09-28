@@ -1,0 +1,129 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_bluecoat",
+  "plugin": "Wanopt BlueCoat SNMP",
+  "plugin_desc": "SNMP monitoring template for Blue Coat / Symantec Edge SWG / Broadcom ProxySG WAN optimization device. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 3417).",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='wanopt', collect_type='snmp_bluecoat'}) by (instance_id)",
+  "name": "Wanopt",
+  "icon": "mm-wanopt_WAN优化",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='wanopt'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='wanopt', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the Blue Coat / Symantec Edge SWG / Broadcom ProxySG appliance since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='wanopt', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization of the ProxySG appliance (BLUECOAT-SG-PROXY-MIB sgProxyCpuCoreBusyPerCent) as a 0-100 percentage averaged across CPU cores over the past minute. Sustained high CPU usage can indicate proxy, SSL inspection, or policy evaluation overload."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_idle",
+      "query": "avg(device_cpu_idle{instance_type='wanopt', __$labels__}) by (instance_id)",
+      "display_name": "CPU Idle",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU idle percent of the ProxySG appliance (BLUECOAT-SG-PROXY-MIB sgProxyCpuCoreIdlePerCent), averaged across CPU cores over the past minute."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "snmp_device_memory_total{instance_type='wanopt', __$labels__}",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total memory available to the ProxySG appliance in bytes (BLUECOAT-SG-PROXY-MIB sgProxyMemAvailable)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "snmp_device_memory_sys_usage{instance_type='wanopt', __$labels__} + snmp_device_memory_cache_usage{instance_type='wanopt', __$labels__}",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Used proxy memory of the ProxySG appliance in bytes, computed as system-process usage plus object-cache usage (BLUECOAT-SG-PROXY-MIB sgProxyMemSysUsage + sgProxyMemCacheUsage)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_sys_usage",
+      "query": "snmp_device_memory_sys_usage{instance_type='wanopt', __$labels__}",
+      "display_name": "Memory System Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory used by ProxySG system and support processes in bytes (BLUECOAT-SG-PROXY-MIB sgProxyMemSysUsage)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_cache_usage",
+      "query": "snmp_device_memory_cache_usage{instance_type='wanopt', __$labels__}",
+      "display_name": "Memory Cache Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory used by the ProxySG object cache in bytes (BLUECOAT-SG-PROXY-MIB sgProxyMemCacheUsage)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "snmp_device_memory_usage{instance_type='wanopt', __$labels__}",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Proxy memory pressure of the ProxySG appliance as a 0-100 percentage of available memory (BLUECOAT-SG-PROXY-MIB sgProxyMemoryPressure). Sustained high usage can degrade caching and SSL inspection performance."
+    }
+  ]
+}

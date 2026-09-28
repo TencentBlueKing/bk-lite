@@ -4869,7 +4869,7 @@
       </div>
     </div>
 
-    <script id="archify-guided-views-data" type="application/json">[{"id":"main-write-path","label":"纵向资产主链","focus":["accept","dispatch","normalize","write_fact","project"],"note":"从准入请求一路向下，直到资产图事实和派生投影完成。"},{"id":"collection-branch","label":"外部采集支线","focus":["dispatch","external_runtime","normalize"],"note":"NodeMgmt、Stargazer 和 Job 返回结果后进入统一规范化阶段。"},{"id":"reliability","label":"幂等与补偿","focus":["write_fact","operation_ledger","recovery","project","delivery"],"note":"操作账本、租约和补偿需要覆盖所有写入口。"}]</script>
+    <script id="archify-guided-views-data" type="application/json">[{"id":"main-write-path","label":"纵向资产主链","focus":["accept","dispatch","normalize","write_fact","project"],"note":"从准入请求一路向下，直到资产图事实和派生投影完成。"},{"id":"collection-branch","label":"外部采集支线","focus":["dispatch","external_runtime","normalize"],"note":"JOB 主机发现：可信 host 快照提供执行 IP 和区域，任务模型决定脚本；配置下发后 one-shot/周期执行，结果按原插件与任务组织对账。"},{"id":"reliability","label":"幂等与补偿","focus":["write_fact","operation_ledger","recovery","project","delivery"],"note":"操作账本、租约和补偿需要覆盖所有写入口。"}]</script>
 
     <div class="guided-views no-print" id="guided-views" hidden aria-label="Guided diagram views">
       <button id="guided-view-prev" type="button" aria-label="Previous guided view" title="Previous guided view ([)">&#8592;</button>
@@ -4996,15 +4996,15 @@
           <text data-detail="context" x="300" y="131" class="t-muted" font-size="8" text-anchor="middle">鉴权 / UUID / 幂等键</text>
         </g>
 
-        <g id="node-dispatch" data-node-id="dispatch" data-node-label="采集、扫描或直接写入" tabindex="0" role="button" aria-label="Focus 采集、扫描或直接写入, Collect / Scan / Module Ingest, 02 / 采集与扫描" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Collect / Scan / Module Ingest" data-node-context="02 / 采集与扫描">
-          <title>采集、扫描或直接写入 · Collect / Scan / Module Ingest · 02 / 采集与扫描</title>
+        <g id="node-dispatch" data-node-id="dispatch" data-node-label="采集、扫描或实例导入" tabindex="0" role="button" aria-label="Focus 采集、扫描或实例导入, Collect / Scan / Transfer, 02 / 采集与扫描" aria-pressed="false" data-node-kind="backend" data-node-sublabel="Collect / Scan / Transfer" data-node-context="02 / 采集与扫描">
+          <title>采集、扫描或实例导入 · Collect / Scan / Transfer · 02 / 采集与扫描</title>
           <rect x="228" y="217" width="144" height="52" rx="6" class="c-mask"/>
           <rect x="228" y="217" width="144" height="52" rx="6" class="c-backend" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="backend" class="semantic-sigil s-backend" transform="translate(234 223) scale(0.6875)">
             <path d="M6 3 3 8l3 5M10 3l3 5-3 5"/>
           </g>
-          <text data-detail-anchor x="300" y="238" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">采集、扫描或直接写入</text>
-          <text data-detail="context" x="300" y="255" class="t-muted" font-size="7.5" text-anchor="middle">Collect / Scan / Module Ingest</text>
+          <text data-detail-anchor x="300" y="238" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">采集、扫描或实例导入</text>
+          <text data-detail="context" x="300" y="255" class="t-muted" font-size="7.5" text-anchor="middle">Collect / Scan / Transfer</text>
         </g>
 
         <g id="node-external_runtime" data-node-id="external_runtime" data-node-label="外部执行" tabindex="0" role="button" aria-label="Focus 外部执行, NodeMgmt / Stargazer / Job, 02 / 采集与扫描" aria-pressed="false" data-node-kind="external" data-node-sublabel="NodeMgmt / Stargazer / Job" data-node-context="02 / 采集与扫描">
@@ -5344,7 +5344,7 @@
           <h3>当前断点</h3>
         </div>
         <ul>
-          <li>&bull; HTTP 创建/更新已有 Operation + Outbox</li>
+          <li>&bull; HTTP 与异步导入已有 Operation + Outbox</li>
           <li>&bull; NATS、批量与部分采集路径仍直接写图</li>
         </ul>
       </div>

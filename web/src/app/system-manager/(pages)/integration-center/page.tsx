@@ -13,8 +13,8 @@ import { useUserInfoContext } from '@/context/userInfo';
 import { useTranslation } from '@/utils/i18n';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import SystemManagerEntityGrid from '@/app/system-manager/components/system-manager-entity-grid';
-import SystemManagerUnifiedCard from '@/app/system-manager/components/system-manager-unified-card';
 import TopSection from '@/components/top-section';
+import SystemManagerUnifiedCard from '@/app/system-manager/components/system-manager-unified-card';
 import { formatRelativeTime, pickEntityTimestamp } from '@/utils/relativeTime';
 
 import CreateIntegrationInstanceModal from './CreateIntegrationInstanceModal';
@@ -208,8 +208,9 @@ const IntegrationCenterPage: React.FC = () => {
   );
 
   return (
-    <div className="w-full space-y-4">
+    <div className="w-full">
       <TopSection
+        className="mb-4"
         title={t('system.integrationCenter.pageTitle')}
         content={t('system.integrationCenter.pageDesc')}
       />

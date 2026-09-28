@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_cambium",
   "plugin": "Wireless Cambium SNMP",
-  "plugin_desc": "Cambium ePMP SNMP collection for wireless devices under Cambium PEN 17713. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template adds ePMP CPU usage percent and an optional AP connected-station count. Per-row RF or client tables are not promoted.",
+  "plugin_desc": "SNMP monitoring template for Cambium wireless device. It reports uptime, CPU utilization, interface traffic, and wireless clients/radio (enterprise PEN 17713).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_cambium'}) by (instance_id)",
   "name": "Wireless",

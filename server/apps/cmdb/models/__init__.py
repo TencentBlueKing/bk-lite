@@ -13,5 +13,6 @@ from apps.cmdb.models.scene_view import *  # noqa
 from apps.cmdb.models.show_field import *  # noqa
 from apps.cmdb.models.subscription_delivery import *  # noqa
 from apps.cmdb.models.subscription_rule import *  # noqa
+from apps.cmdb.models.transfer_task import CmdbTransferGuard, CmdbTransferTask  # noqa
 from apps.cmdb.models.user_personal_config import *  # noqa
 from apps.cmdb.models.uuid_migration_state import *  # noqa

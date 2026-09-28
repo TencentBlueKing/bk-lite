@@ -1,7 +1,6 @@
 Firewall Clavister SNMP:
   name: Clavister (Telegraf)
-  desc: SNMP monitoring template for Clavister firewall. It reports system uptime,
-    CPU utilization, memory utilization, and other key metrics
+  desc: "SNMP monitoring template for Clavister firewall. It reports uptime, CPU utilization, memory utilization, sessions/connections, and interface traffic (enterprise PEN 5089)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:
@@ -97,13 +96,13 @@ monitor_object_metric:
     device_memory_free:
       name: Free Memory
       desc: This metric reports the amount of free physical memory in bytes on the
-        firewall (Check Point CHECKPOINT-MIB memTotalReal64 minus memActiveReal64).
-        Persistently low free memory can indicate rising memory pressure.
+        Clavister firewall (CLAVISTER-MIB clvSysMemFreeKiB, reported in KiB and converted
+        to bytes). Persistently low free memory can indicate rising memory pressure.
     device_memory_used:
       name: Used Memory
       desc: This metric reports the amount of used physical memory in bytes on the
-        firewall, derived as total memory minus free memory. It helps gauge absolute
-        memory consumption and pressure.
+        Clavister firewall (CLAVISTER-MIB clvSysMemUsedKiB, reported in KiB and converted
+        to bytes). It helps gauge absolute memory consumption and pressure.
     firewall_vpn_encrypted_pps:
       name: VPN Encrypted Packets Rate
       desc: This metric reports the rate of VPN-encrypted packets on the firewall
@@ -116,26 +115,25 @@ monitor_object_metric:
         for observing VPN decryption load and anomalous spikes.
     device_cpu_usage:
       name: CPU Usage
-      desc: This metric reports the overall CPU utilization of the FortiGate firewall
-        (FORTINET-FORTIGATE-MIB fgSysCpuUsage). Sustained high CPU usage may indicate
-        heavy traffic inspection load, attack activity or a control-plane bottleneck.
+      desc: This metric reports the overall CPU utilization of the Clavister firewall
+        (CLAVISTER-MIB clvSysCpuLoad, reported directly as a 0-100 percentage). Sustained
+        high CPU usage may indicate heavy traffic inspection load, attack activity
+        or a control-plane bottleneck.
     device_memory_usage:
       name: Memory Usage
-      desc: This metric reports the overall memory utilization of the FortiGate firewall
-        (FORTINET-FORTIGATE-MIB fgSysMemUsage, reported directly as a percentage).
-        When memory pressure is high the device may enter conserve mode and drop new
-        sessions.
+      desc: This metric reports the overall memory utilization of the Clavister firewall
+        (CLAVISTER-MIB clvSysMemUsage, reported directly as a 0-100 percentage). High
+        memory pressure can degrade session handling.
     device_memory_total:
       name: Total Memory
       desc: This metric reports the total physical memory capacity of the FortiGate
         firewall (FORTINET-FORTIGATE-MIB fgSysMemCapacity, reported in KB and converted
         to bytes).
     firewall_active_sessions:
-      name: IPv4 Active Sessions
-      desc: This metric reports the number of active IPv4 sessions currently tracked
-        by the FortiGate firewall (FORTINET-FORTIGATE-MIB fgSysSesCount). A rapidly
-        rising session count can indicate a connection flood or session-table exhaustion
-        risk.
+      name: Active Sessions
+      desc: This metric reports the number of currently active sessions on the Clavister
+        firewall (CLAVISTER-MIB clvSysConns). A rapidly rising session count can indicate
+        a connection flood or session-table pressure.
     firewall_vpn_tunnels:
       name: Active IPsec VPN Tunnels
       desc: This metric reports the number of currently active IPsec VPN tunnels on

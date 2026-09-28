@@ -28,6 +28,22 @@ make collect-static   # 收集静态文件
 make init-buckets     # 初始化 MinIO bucket
 ```
 
+CMDB 异步导入导出直接使用现有 `make celery` Worker 的默认队列，另由
+`make celery-beat` 驱动每分钟补发和每日清理；不需要单独的 CMDB Worker。
+API、Worker 和 Beat 必须使用相同的数据库、Broker 和对象存储环境配置。
+修改任务代码后重启现有 Worker；修改 Beat 配置后也重启 Beat。
+
+持续排队时可运行 `uv run celery -A apps.core.celery inspect active_queues --timeout=3`，
+确认在线 Worker 消费默认队列（默认名为 `celery`）；再检查 `inspect registered` 中是否包含
+`apps.cmdb.tasks.transfer.execute_transfer`。旧版本投递到 `cmdb_transfer` 的未超时排队记录，
+由每分钟维护补发到默认队列，复用原任务 ID，无需重新提交。不要清空 Broker 队列。
+若消费和任务注册正常，再检查全局执行占用（最多 2 个）和同模型导入互斥。每人允许
+5 个排队/执行任务，异常直接失败；已捕获异常回栈后自动释放占用。仅 Worker 失联且
+无法确认旧执行停止时保留后台占用，仍允许用户提交；管理员确认旧 Worker 已停止后可执行
+`python manage.py reconcile_transfer <任务ID> --verified-stopped --note "已确认旧执行停止"`，
+解除占用但不重跑、不回滚已写入数据。详情见[异步导入导出设计](specs/changes/cmdb-async-transfer/spec.md)。
+默认 threads 池不提供单任务强制终止；15 分钟预算由数据库截止时间、心跳和执行令牌协作检查。
+
 运营分析目录父链发布前检查：
 
 ```bash
@@ -46,6 +62,39 @@ uv run pytest apps/monitor/tests/test_x.py::TestClass::test_method -v
 uv run pytest -m unit         # 按 marker
 uv run pytest -m "not slow"
 ```
+
+编排中心 MVP 后端验证使用独立覆盖率门禁，只统计该 app 生产代码，不把迁移和测试文件算入分母：
+
+```bash
+cd server
+scripts/test_workflow_orchestration.sh
+```
+
+该命令覆盖编排中心的 TDD 与 BDD 测试，并强制生产代码行覆盖率不低于 80%。
+
+本地页面验收需要保留数据时，先确认页面查看用户已属于目标团队，再显式写入带 `[TDD/BDD]` 标记的幂等演示记录：
+
+```bash
+cd server
+uv run python manage.py seed_workflow_orchestration_demo \
+  --team-id 1 --username admin --domain domain.com --confirm
+```
+
+该命令不是 pytest fixture，不会被测试数据库回滚；它会先将当前原子和流程定义注册到 Conductor，成功后才替换同一组演示数据。重复执行只更新同一组流程（含 Word/Excel 巡检）、11 条执行记录和对应操作日志。
+
+本地真实闭环（不伪造成功）需先启动 Conductor 与 Worker，再执行：
+
+```bash
+CONDUCTOR_BASE_URL=http://127.0.0.1:8091/api \
+uv run python manage.py run_workflow_worker
+
+CONDUCTOR_BASE_URL=http://127.0.0.1:8091/api \
+uv run python manage.py run_workflow_orchestration_live_acceptance \
+  --team-id 1 --username admin --domain domain.com \
+  --report-path ../outputs/workflow-live-acceptance.json
+```
+
+依赖缺失（例如作业平台无 responders、通知渠道未配置）时场景会标记 `FAILED` 并保留原始错误，命令以非零退出码结束。
 
 Wiki Markdown/OKF 导入 ZIP 上限 200MB、解压合计 400MB。反向代理（Nginx `client_max_body_size`、Next `/api/proxy` 等）须放行 ≥200MB 请求体，否则浏览器到 Django 的上传会在应用校验前被截断。
 

@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "noEmit": true
+  },
+  "include": [
+    "next-env.d.ts",
+    "src/app/workflow-orchestration/**/*.ts",
+    "src/app/workflow-orchestration/**/*.tsx",
+    "src/components/dual-selector/**/*.tsx",
+    "src/app/patch-manager/(pages)/baseline/page.tsx",
+    "src/app/patch-manager/(pages)/target/page.tsx",
+    "src/stories/dual-selector.stories.tsx"
+  ]
+}

@@ -181,11 +181,16 @@ def _normalize_nats_content(content):
         if normalized_user_id:
             normalized_user_ids.append(normalized_user_id)
 
-    return {
+    normalized = {
         "message": message.strip(),
         "team": normalized_team,
         "user_ids": normalized_user_ids,
-    }, None
+    }
+    for field in ("event_id", "occurred_at", "producer", "object_id", "scene"):
+        value = content.get(field)
+        if value is not None:
+            normalized[field] = str(value).strip()
+    return normalized, None
 
 
 RAW_PASSTHROUGH_NATS_METHODS = {"receive_alert_events"}
@@ -674,6 +679,12 @@ OPSPILOT_NATS_NAMESPACE = os.getenv("NATS_NAMESPACE", "bklite")
 OPSPILOT_NATS_METHOD = "trigger_workflow_by_nats"
 
 
+WORKFLOW_ORCHESTRATION_CHANNEL_SOURCE = "workflow_orchestration"
+
+
+WORKFLOW_ORCHESTRATION_NATS_METHOD = "trigger_orchestration_workflow_by_nats"
+
+
 def _list_opspilot_nats_channels(bot_id):
     """返回某个 bot 名下、由 OpsPilot 托管的 NATS 通道（DB 无关，Python 侧过滤 config）。"""
     channels = Channel.objects.filter(channel_type=ChannelChoices.NATS)
@@ -765,6 +776,132 @@ def delete_opspilot_nats_channels(bot_id):
         channel.delete()
         deleted += 1
     return {"result": True, "data": {"deleted": deleted}}
+
+
+def _list_workflow_orchestration_nats_channels(workflow_id):
+    """返回单个编排流程名下的托管 NATS 通道。"""
+    result = []
+    for channel in Channel.objects.filter(channel_type=ChannelChoices.NATS):
+        config = channel.config or {}
+        if config.get("source") == WORKFLOW_ORCHESTRATION_CHANNEL_SOURCE and str(config.get("workflow_id")) == str(workflow_id):
+            result.append(channel)
+    return result
+
+
+@nats_client.register
+def sync_workflow_orchestration_nats_channels(workflow_id, workflow_name, team, nodes, active, timeout=60):
+    """对账编排中心某个流程的 NATS 触发通道（增、改、删）。"""
+    try:
+        workflow_id = int(workflow_id)
+    except (TypeError, ValueError):
+        return {"result": False, "message": "workflow_id must be an integer"}
+    if not isinstance(active, bool):
+        return {"result": False, "message": "active must be a boolean"}
+
+    team = team or []
+    nodes = nodes or []
+    existing_by_node = {(channel.config or {}).get("node_key"): channel for channel in _list_workflow_orchestration_nats_channels(workflow_id)}
+    incoming_node_keys = set()
+    created = updated = 0
+    for node in nodes:
+        node_key = str((node or {}).get("node_key") or "").strip()
+        trigger_id = str((node or {}).get("trigger_id") or "").strip()
+        subject = str((node or {}).get("subject") or "").strip()
+        if not node_key or not trigger_id or not subject:
+            continue
+        incoming_node_keys.add(node_key)
+        label = str((node or {}).get("name") or node_key).strip()
+        config = {
+            "namespace": OPSPILOT_NATS_NAMESPACE,
+            "method_name": WORKFLOW_ORCHESTRATION_NATS_METHOD,
+            "workflow_id": workflow_id,
+            "trigger_id": trigger_id,
+            "node_key": node_key,
+            "subject": subject,
+            "timeout": timeout,
+            "source": WORKFLOW_ORCHESTRATION_CHANNEL_SOURCE,
+            "active": active,
+        }
+        values = {
+            "name": f"{workflow_name} - {label}"[:100],
+            "config": config,
+            "team": team,
+            "description": "编排中心流程自动创建的 NATS 触发通道",
+        }
+        channel = existing_by_node.get(node_key)
+        if channel is None:
+            Channel.objects.create(channel_type=ChannelChoices.NATS, **values)
+            created += 1
+        else:
+            for field, value in values.items():
+                setattr(channel, field, value)
+            channel.save()
+            updated += 1
+
+    deleted = 0
+    for node_key, channel in existing_by_node.items():
+        if node_key not in incoming_node_keys:
+            channel.delete()
+            deleted += 1
+    return {"result": True, "data": {"created": created, "updated": updated, "deleted": deleted}}
+
+
+@nats_client.register
+def delete_workflow_orchestration_nats_channels(workflow_id):
+    """删除单个编排流程的全部托管 NATS 通道。"""
+    try:
+        workflow_id = int(workflow_id)
+    except (TypeError, ValueError):
+        return {"result": False, "message": "workflow_id must be an integer"}
+    deleted = 0
+    for channel in _list_workflow_orchestration_nats_channels(workflow_id):
+        channel.delete()
+        deleted += 1
+    return {"result": True, "data": {"deleted": deleted}}
+
+
+@nats_client.register
+def search_workflow_orchestration_nats_channels(teams=None, workflow_id=None, include_children=False, active_only=True):
+    """查询编排中心托管的 NATS 触发通道。"""
+    normalized_team_ids = None
+    if teams:
+        normalized_teams = []
+        for team_id in teams:
+            try:
+                normalized_teams.append(int(team_id))
+            except (TypeError, ValueError):
+                continue
+        if include_children and normalized_teams:
+            normalized_teams = GroupUtils.get_group_with_descendants(normalized_teams)
+        if not normalized_teams:
+            return {"result": True, "data": []}
+        normalized_team_ids = {str(team_id) for team_id in normalized_teams}
+
+    data = []
+    for channel in Channel.objects.filter(channel_type=ChannelChoices.NATS):
+        config = channel.config or {}
+        if config.get("source") != WORKFLOW_ORCHESTRATION_CHANNEL_SOURCE:
+            continue
+        if workflow_id is not None and str(config.get("workflow_id")) != str(workflow_id):
+            continue
+        if active_only and config.get("active") is not True:
+            continue
+        if normalized_team_ids is not None and not normalized_team_ids.intersection(str(team_id) for team_id in (channel.team or [])):
+            continue
+        data.append(
+            {
+                "id": channel.id,
+                "name": channel.name,
+                "description": channel.description,
+                "team": channel.team,
+                "workflow_id": config.get("workflow_id"),
+                "trigger_id": config.get("trigger_id"),
+                "node_key": config.get("node_key"),
+                "active": config.get("active") is True,
+                "supports_notify_person": _supports_notify_person(config),
+            }
+        )
+    return {"result": True, "data": data}
 
 
 @nats_client.register

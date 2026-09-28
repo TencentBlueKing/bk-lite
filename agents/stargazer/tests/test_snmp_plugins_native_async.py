@@ -544,10 +544,9 @@ async def test_snmp_topo_expected_no_response_is_debug_without_traceback(monkeyp
     assert not [record for record in caplog.records if record.levelno >= logging.ERROR]
     records = [record for record in caplog.records if record.levelno == logging.DEBUG]
     assert len(records) == 1
-    assert records[0].msg == ("event=snmp_topo_collect_unavailable host=%s task_id=%s " "failed_stage=%s error_type=%s")
+    assert records[0].msg == ("event=snmp_topo_collect_unavailable host=%s " "failed_stage=%s error_type=%s")
     assert records[0].args == (
         "127.0.0.9",
-        "topology-9",
         "list_all_resources",
         "RuntimeError",
     )

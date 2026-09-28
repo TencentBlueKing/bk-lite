@@ -187,9 +187,9 @@ const PlannedExecutionSteps: React.FC<PlannedExecutionStepsProps> = ({
                             ? (step.error || '本步未完成')
                             : isSkipped
                               ? '因上下文不足已跳过'
-                            : step.reusedPriorResult
-                              ? '复用上一步结果'
-                              : '本步无工具调用'}
+                              : step.reusedPriorResult
+                                ? '复用上一步结果'
+                                : '本步无工具调用'}
                       </div>
                     )}
                   </div>

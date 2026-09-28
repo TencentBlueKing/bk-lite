@@ -1,6 +1,6 @@
 Firewall Fortinet SNMP:
   name: Fortinet（Telegraf）
-  desc: 面向 Fortinet 防火墙的 SNMP 监控模板,可采集运行时长、CPU 使用率、内存使用率、会话建立速率等主要指标。
+  desc: 面向 Fortinet 防火墙的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、会话/连接数、会话建立速率、VPN隧道、HA状态、接口流量，适用于 FortiGate（企业号 PEN 12356）。
 monitor_object:
   Firewall: 防火墙
 monitor_object_type:

@@ -1,0 +1,60 @@
+Wanopt Exinda SNMP:
+  name: Exinda / GFI ExOS (Telegraf)
+  desc: "SNMP monitoring template for Exinda / GFI ExOS WAN optimization device. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic (enterprise PEN 21091)."
+monitor_object:
+  Wanopt: WAN Optimization
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Wanopt:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the Exinda / GFI ExOS WAN optimizer
+        since the last restart, derived from sysUpTime. Monitoring uptime helps
+        administrators understand device stability and identify unexpected reboots.
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: CPU utilization of the Exinda / GFI ExOS WAN optimizer (EXINDA-MIB
+        cpuUsagePercent) as a 0-100 percentage averaged across all CPUs over the
+        past minute. Sustained high CPU usage can indicate optimization, shaping,
+        or inspection overload.
+    device_cpu_load_1:
+      name: CPU Load (1m)
+      desc: One-minute CPU load of the Exinda / GFI ExOS WAN optimizer (EXINDA-MIB
+        cpuLoad1). The value is hundredths of load, not a percentage.
+    device_cpu_load_5:
+      name: CPU Load (5m)
+      desc: Five-minute CPU load of the Exinda / GFI ExOS WAN optimizer (EXINDA-MIB
+        cpuLoad5). The value is hundredths of load, not a percentage.
+    device_cpu_load_15:
+      name: CPU Load (15m)
+      desc: Fifteen-minute CPU load of the Exinda / GFI ExOS WAN optimizer
+        (EXINDA-MIB cpuLoad15). The value is hundredths of load, not a percentage.
+    device_memory_total:
+      name: Memory Total
+      desc: Total physical RAM of the Exinda / GFI ExOS WAN optimizer in bytes
+        (EXINDA-MIB totalRam, reported in kbytes and scaled to bytes).
+    device_memory_used:
+      name: Memory Used
+      desc: Used physical RAM of the Exinda / GFI ExOS WAN optimizer in bytes
+        (EXINDA-MIB usedRam, reported in kbytes and scaled to bytes).
+    device_memory_free:
+      name: Memory Free
+      desc: Free physical RAM of the Exinda / GFI ExOS WAN optimizer in bytes
+        (EXINDA-MIB freeRam, reported in kbytes and scaled to bytes).
+    device_memory_usage:
+      name: Memory Utilization
+      desc: Physical RAM utilization of the Exinda / GFI ExOS WAN optimizer,
+        computed as used/total*100 (EXINDA-MIB usedRam/totalRam). Sustained high
+        usage can degrade acceleration and shaping performance.
+    device_temperature_celsius:
+      name: Temperature
+      desc: Current CPU temperature of the Exinda / GFI ExOS WAN optimizer
+        (EXINDA-MIB cpuTemperature). Abnormally high values may indicate cooling
+        failure or excessive ambient heat.
+monitor_object_metric_group:
+  Wanopt:
+    Base: Base
+    CPU: CPU
+    Memory: Memory
+    Temperature: Temperature

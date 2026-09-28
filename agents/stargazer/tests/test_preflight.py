@@ -552,3 +552,14 @@ async def test_preflight_component_failure_passes(monkeypatch):
     assert len(rendered) == 1
     assert "error_type=RuntimeError" in rendered[0]
     assert secret not in rendered[0]
+
+
+@pytest.mark.parametrize("model_id", ["openstack", "smartx", "manageone", "fusioncompute", "nutanixhci", "inspurincloudrail"])
+def test_platform_preflight_uses_task_port(model_id):
+    request = CollectionRequest(
+        task_id="platform-port",
+        plugin_ref=f"{model_id}.config",
+        targets=("https://platform.example.test:7443",),
+        params={"model_id": model_id, "port": 9443},
+    )
+    assert AsyncProtocolPreflight._endpoint(request.targets[0], request, "cloud") == ("platform.example.test", 9443, True)

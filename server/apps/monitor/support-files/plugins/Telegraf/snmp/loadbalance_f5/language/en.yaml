@@ -1,7 +1,6 @@
 Loadbalance F5 SNMP:
   name: F5 (Telegraf)
-  desc: SNMP monitoring template for F5 load balancer. It reports system uptime, CPU
-    utilization, memory utilization, and other key metrics
+  desc: "SNMP monitoring template for F5 load balancer. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, sessions/connections, and interface traffic, for BIG-IP (enterprise PEN 3375)."
 monitor_object:
   Loadbalance: Load Balance
 monitor_object_type:
@@ -10,15 +9,18 @@ monitor_object_metric:
   Loadbalance:
     device_temperature_celsius:
       name: Device Temperature
-      desc: Device hardware temperature sensor reading in degrees Celsius. Abnormally
-        high values may indicate fan failure, poor airflow, or high ambient temperature.
+      desc: Chassis temperature in degrees Celsius (sysChassisTempTemperature), aggregated
+        as the maximum across sensors. Abnormally high values may indicate fan failure,
+        poor airflow, or high ambient temperature.
     device_fan_state:
       name: Fan Status
-      desc: Operational state of each cooling fan (enum). A non-normal state indicates
-        a cooling fault that can quickly lead to overheating.
+      desc: Chassis fan status (sysChassisFanStatus). good(1) is healthy; bad(0) and
+        notpresent(2) are mapped to fault. A non-normal state indicates a cooling
+        fault that can quickly lead to overheating.
     device_psu_state:
       name: Power Supply Status
-      desc: Operational state of each power supply unit (enum). A non-normal state
+      desc: Chassis power-supply status (sysChassisPowerSupplyStatus). good(1) is
+        healthy; bad(0) and notpresent(2) are mapped to fault. A non-normal state
         indicates a power redundancy or hardware fault and should be remediated promptly.
     device_memory_free:
       name: Memory Free

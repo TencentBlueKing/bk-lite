@@ -1,8 +1,6 @@
 Switch Pica8 SNMP:
   name: Pica8 (Telegraf)
-  desc: SNMP monitoring template for Pica8 PicOS white-box switches. It reports CPU
-    utilization and per-port inbound/outbound traffic rates, giving real-time visibility
-    into device load and port traffic (IANA PEN 35098).
+  desc: "SNMP monitoring template for Pica8 switch. It reports uptime, CPU utilization, and interface traffic, for PicOS white-box switches (enterprise PEN 35098)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -115,11 +113,11 @@ monitor_object_metric:
         more effective traffic management and optimization.
     device_cpu_usage:
       name: CPU Utilization
-      desc: This metric reports the CPU utilization of the device control plane (typically
-        the 5-minute average), as a percentage. Sustained high CPU usage can indicate
-        control-plane overload, routing instability, or attack traffic, and may lead
-        to slow management response or packet processing delays. Sourced from vendor-specific
-        SNMP OIDs and normalized to a 0-100 percentage.
+      desc: Pica8 PicOS control-plane CPU utilization from PICA-PRIVATE-MIB cpuUsage
+        (INTEGER 0..100 scalar GET with instance .0), reported directly as a percentage.
+        Sustained high CPU usage can indicate control-plane overload, routing instability,
+        or attack traffic, and may lead to slow management response or packet processing
+        delays.
     device_memory_usage:
       name: Memory Utilization
       desc: This metric reports overall memory utilization of the device, computed

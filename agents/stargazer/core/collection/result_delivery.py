@@ -357,7 +357,8 @@ class ResultDeliveryCoordinator:
         error_code: str,
         attempts: int,
     ) -> None:
-        if self._failure_log_count >= self._failure_log_limit:
+        network_result = self._request.plugin_ref in {"network.config", "network_topo.config"}
+        if not network_result and self._failure_log_count >= self._failure_log_limit:
             return
         self._failure_log_count += 1
         phase = "enqueue" if error_code == "publish_queue_timeout" else "delivery"
@@ -366,18 +367,49 @@ class ResultDeliveryCoordinator:
         failed_stage = getattr(pending.receipt, "failed_stage", "")
         if failed_stage in {"encode", "round_metadata", "credit_wait", "publish_call", "puback", "core_flush"}:
             phase = failed_stage
+        details = getattr(pending.receipt, "publish_diagnostics", {})
+        if network_result and details:
+
+            def value(name):
+                result = details.get(name)
+                if result is None:
+                    return "-"
+                return round(result, 2) if isinstance(result, (int, float)) else safe_log_value(result)
+
+            logger.warning(
+                "event=result_publish_failed plugin_ref=%s target=%s failed_stage=%s error_type=%s "
+                "timeout_kind=%s timeout_limit_ms=%s budget_limit_ms=%s elapsed_ms=%s send_ms=%s "
+                "confirmed=%s attempted=%s total=%s bytes=%s retries=%s "
+                "connect_ms=%s publish_call_ms=%s puback_ms=%s slowest_ms=%s credit_wait_ms=%s",
+                safe_log_value(self._request.plugin_ref),
+                safe_log_value(pending.target or (pending.result.target if pending.result is not None else "-"), max_length=255),
+                safe_log_value(details.get("failed_stage", phase)),
+                safe_log_value(details.get("error_type", error_code or publish_status)),
+                value("timeout_kind"),
+                value("timeout_limit_ms"),
+                value("budget_limit_ms"),
+                value("elapsed_ms"),
+                value("send_ms"),
+                value("confirmed_lines"),
+                value("attempted_lines"),
+                value("total_lines"),
+                value("total_bytes"),
+                value("retries"),
+                value("connect_ms"),
+                value("publish_call_ms"),
+                value("puback_ms"),
+                value("slowest_ms"),
+                value("credit_wait_ms"),
+            )
+            return
         logger.warning(
-            "event=result_publish_failed %s plugin_ref=%s "
-            "model_id=%s target=%s phase=%s reason=%s attempts=%s "
-            "timeout_seconds=%s failed_stage=result_publish error_type=PublishFailure",
+            "event=result_publish_failed %s plugin_ref=%s target=%s failed_stage=%s error_code=%s budget_limit_seconds=%s",
             safe_log_value(self._log_identity, max_length=255),
             safe_log_value(self._request.plugin_ref),
-            safe_log_value(self._request.params.get("model_id") or "-"),
             safe_log_value(pending.target or (pending.result.target if pending.result is not None else "-"), max_length=255),
             phase,
             safe_log_value(error_code or publish_status),
-            attempts,
-            (self._settings.publish_queue_timeout_seconds if phase == "enqueue" else self._settings.publish_total_timeout_seconds),
+            self._settings.publish_queue_timeout_seconds if phase == "enqueue" else self._settings.publish_total_timeout_seconds,
         )
 
 

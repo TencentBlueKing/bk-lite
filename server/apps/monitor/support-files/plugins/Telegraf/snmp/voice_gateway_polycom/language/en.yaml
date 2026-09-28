@@ -1,8 +1,6 @@
 VoiceGateway Polycom SNMP:
   name: Polycom (Telegraf)
-  desc: SNMP monitoring template for Polycom RealPresence DMA. It reports CPU utilization,
-    memory utilization, per-port inbound traffic rate, per-port outbound traffic rate,
-    and system uptime
+  desc: "SNMP monitoring template for Polycom voice gateway. It reports uptime, CPU utilization, memory utilization, and interface traffic, for RealPresence DMA (enterprise PEN 13885)."
 monitor_object:
   VoiceGateway: VoiceGateway
 monitor_object_type:

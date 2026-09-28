@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_asterfusion",
   "plugin": "Switch AsterFusion SNMP",
-  "plugin_desc": "AsterFusion AsterNOS switch SNMP collection (IANA PEN 56928). This child template relies on the shared Switch SNMP floor for MIB-II uptime and IF-MIB interface traffic. Proven private device-health objects: control-plane CPU utilization (cpuUtilization DisplayString parsed to a 0-100 percent) and memory utilization (memUtilization DisplayString parsed to a 0-100 percent), plus optional CPU and switch temperature scalars (afTemperatureCPU / afTemperatureSwitch) reported as the higher reading. Fan speed/status and power-supply state are not collected because a stable pollable table with conservative status semantics is not in the current proven set. Fabric-oriented private objects are not promoted into shared device-health metrics. Supported brands/models — AsterFusion AsterNOS open-network switches.",
+  "plugin_desc": "SNMP monitoring template for AsterFusion switch. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic, for AsterNOS (enterprise PEN 56928).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_asterfusion'}) by (instance_id)",
   "name": "Switch",

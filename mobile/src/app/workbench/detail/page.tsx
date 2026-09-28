@@ -146,25 +146,6 @@ export default function AppDetailPage() {
 
                 {/* 设置选项 */}
                 <div className="mt-2">
-                    {/* 查找历史记录 */}
-                    {botData.lastMessage && (
-                        <div className="mx-4 mb-4 bg-[var(--color-bg)] rounded-3xl shadow-sm overflow-hidden">
-                            <List>
-                                <List.Item prefix={<span className="iconfont icon-duihualishi text-2xl"></span>}
-                                    onClick={() => {
-                                        const params = new URLSearchParams({
-                                            type: 'ChatHistory',
-                                            bot_id: String(botData.bot),
-                                            node_id: botData.node_id,
-                                        });
-                                        router.push(`/search?${params.toString()}`);
-                                    }}>
-                                    {t('workbench.searchChatHistory')}
-                                </List.Item>
-                            </List>
-                        </div>
-                    )}
-
                     {/* 接收通知 */}
                     <div className="mx-4 mb-4 bg-[var(--color-bg)] rounded-3xl shadow-sm overflow-hidden">
                         <List>

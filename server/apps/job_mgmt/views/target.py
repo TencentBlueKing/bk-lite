@@ -18,6 +18,7 @@ from apps.job_mgmt.models import Target, TargetTeamConcurrentUpdateError
 from apps.job_mgmt.serializers.target import TargetBatchDeleteSerializer, TargetSerializer, TargetTestConnectionSerializer
 from apps.job_mgmt.services.error_response import exception_to_response
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
+from apps.job_mgmt.utils.i18n import job_message
 from apps.job_mgmt.views.mixins import BatchDeleteMixin
 from apps.node_mgmt.models import CloudRegion
 from apps.rpc.ansible import AnsibleExecutor
@@ -126,7 +127,7 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
         try:
             return super().update(request, *args, **kwargs)
         except TargetTeamConcurrentUpdateError as error:
-            return exception_to_response(error, context="[target.update]")
+            return exception_to_response(error, context="[target.update]", request=request)
 
     @HasPermission("target-View")
     def list(self, request, *args, **kwargs):
@@ -256,7 +257,12 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
                 }
             )
         except Exception as e:
-            return exception_to_response(e, context="[query_nodes]", default_message="查询节点失败")
+            return exception_to_response(
+                e,
+                context="[query_nodes]",
+                default_message=job_message(request, "error.query_nodes_failed", "Failed to query nodes"),
+                request=request,
+            )
 
     @action(detail=False, methods=["get"])
     @HasPermission("target-View")
@@ -278,7 +284,12 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
             result = node_mgmt.cloud_region_list()
             return Response({"result": True, "data": result})
         except Exception as e:
-            return exception_to_response(e, context="[cloud_regions]", default_message="查询云区域失败")
+            return exception_to_response(
+                e,
+                context="[cloud_regions]",
+                default_message=job_message(request, "error.query_cloud_regions_failed", "Failed to query cloud regions"),
+                request=request,
+            )
 
     @action(detail=False, methods=["post"])
     @HasPermission("target-Delete")
@@ -359,7 +370,12 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
         if saved_target is not None:
             credentials = ExecutionTaskBaseService._build_host_credentials([saved_target])
             if not credentials:
-                return Response({"success": False, "message": "目标未配置可用凭据"})
+                return Response(
+                    {
+                        "success": False,
+                        "message": job_message(None, "error.target_credentials_missing", "Target has no usable credentials"),
+                    }
+                )
             stored_credential = credentials[0]
 
         password = None
@@ -394,15 +410,39 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
 
             if success and "success" in stdout:
                 logger.info(f"[test_connection] SSH connection test passed: {ssh_user}@{ip}:{ssh_port}")
-                return Response({"success": True, "message": "连接测试成功"})
+                return Response(
+                    {
+                        "success": True,
+                        "message": job_message(None, "message.connection_test_success", "Connection test succeeded"),
+                    }
+                )
             else:
                 error_msg = _build_ssh_test_failure_message(result_detail, error, stdout)
                 logger.warning(f"[test_connection] SSH connection test failed: {ssh_user}@{ip}:{ssh_port}, error: {error_msg}")
-                return Response({"success": False, "message": f"连接测试失败: {error_msg}"})
+                return Response(
+                    {
+                        "success": False,
+                        "message": job_message(
+                            None,
+                            "message.connection_test_failed",
+                            "Connection test failed: {detail}",
+                            detail=error_msg,
+                        ),
+                    }
+                )
 
         except Exception as e:
             logger.exception(f"[test_connection] SSH connection test error: {ssh_user}@{ip}:{ssh_port}, error: {e}")
-            return Response({"success": False, "message": "连接测试异常，请查看后端日志排查"})
+            return Response(
+                {
+                    "success": False,
+                    "message": job_message(
+                        None,
+                        "error.connection_test_exception",
+                        "Connection test failed unexpectedly; check backend logs",
+                    ),
+                }
+            )
 
     @staticmethod
     def _perform_windows_connection_test(validated_data, saved_target=None):
@@ -416,7 +456,12 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
         if saved_target is not None:
             credentials = ExecutionTaskBaseService._build_host_credentials([saved_target])
             if not credentials:
-                return Response({"success": False, "message": "目标未配置可用凭据"})
+                return Response(
+                    {
+                        "success": False,
+                        "message": job_message(None, "error.target_credentials_missing", "Target has no usable credentials"),
+                    }
+                )
             credential = credentials[0]
         else:
             credential = {
@@ -452,14 +497,47 @@ class TargetViewSet(BatchDeleteMixin, AuthViewSet):
             while time.monotonic() < deadline:
                 query_result = executor.task_query(accepted_task_id, timeout=5)
                 if not isinstance(query_result, dict):
-                    return Response({"success": False, "message": "WinRM 测试返回格式异常"})
+                    return Response(
+                        {
+                            "success": False,
+                            "message": job_message(None, "error.winrm_result_invalid", "Unexpected WinRM test result format"),
+                        }
+                    )
                 task_status = query_result.get("status")
                 if task_status == "success":
-                    return Response({"success": True, "message": "WinRM 连接测试成功"})
+                    return Response(
+                        {
+                            "success": True,
+                            "message": job_message(None, "message.winrm_connection_test_success", "WinRM connection test succeeded"),
+                        }
+                    )
                 if task_status in {"failed", "callback_failed"}:
-                    return Response({"success": False, "message": "WinRM 连接测试失败，请查看执行器日志"})
+                    return Response(
+                        {
+                            "success": False,
+                            "message": job_message(
+                                None,
+                                "error.winrm_connection_test_failed",
+                                "WinRM connection test failed; check executor logs",
+                            ),
+                        }
+                    )
                 time.sleep(0.2)
-            return Response({"success": False, "message": "WinRM 连接测试超时"})
+            return Response(
+                {
+                    "success": False,
+                    "message": job_message(None, "error.winrm_connection_test_timeout", "WinRM connection test timed out"),
+                }
+            )
         except Exception as e:
             logger.exception("[test_connection] WinRM connection test error: target=%s, error=%s", credential["host"], e)
-            return Response({"success": False, "message": "WinRM 连接测试异常，请查看后端日志排查"})
+            return Response(
+                {
+                    "success": False,
+                    "message": job_message(
+                        None,
+                        "error.winrm_connection_test_exception",
+                        "WinRM connection test failed unexpectedly; check backend logs",
+                    ),
+                }
+            )

@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "content": {"type": "string", "title": "写入内容", "maxLength": 50000},
+    "written": {"type": "boolean", "title": "是否写入"},
+    "memory_id": {"type": ["string", "null"], "title": "记忆标识", "maxLength": 255},
+    "event_id": {"type": ["string", "null"], "title": "异步事件标识", "maxLength": 255}
+  },
+  "required": ["content", "written", "memory_id", "event_id"]
+}

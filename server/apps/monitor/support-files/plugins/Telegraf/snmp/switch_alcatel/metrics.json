@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_alcatel",
   "plugin": "Switch Alcatel-Lucent SNMP",
-  "plugin_desc": "Alcatel-Lucent (Nokia) TiMOS-specific SNMP collection for switches. In addition to standard IF-MIB interface metrics, it collects TIMETRA-CHASSIS-MIB OIDs for device health: CPU utilization, system memory pool (used/free bytes), hardware temperature sensors, fan and power-supply status. Memory utilization is computed from used/(used+free); fan/psu states (TmnxDeviceState) are normalized to the unified 1=normal convention. Supported brands/models: Alcatel-Lucent / Nokia service routers 7750 SR, 7450 ESS, 7950 XRS and Nokia SR Linux data-center switches (SR-OS/TiMOS/SR Linux, all exposing the TIMETRA MIB; enterprise 6527); NOT for Alcatel OmniSwitch (enterprise 6486, different OIDs).",
+  "plugin_desc": "SNMP monitoring template for Alcatel-Lucent switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic, for 7750 SR, 7450 ESS, 7950 XRS (enterprise PEN 6527).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_alcatel'}) by (instance_id)",
   "name": "Switch",

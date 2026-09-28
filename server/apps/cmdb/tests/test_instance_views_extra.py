@@ -4,6 +4,7 @@
 按模型实例计数、云区域代理列表（节点管理）。
 """
 
+import asyncio
 import io
 import json
 
@@ -210,10 +211,98 @@ def test_fulltext_search_by_model_ok(superuser, monkeypatch):
 
 @pytest.mark.django_db
 def test_inst_export_view(superuser, monkeypatch):
-    monkeypatch.setattr(f"{VIEWS}.InstanceManage.inst_export", lambda **k: io.BytesIO(b"xlsxdata"))
+    stream = io.BytesIO(b"xlsxdata")
+
+    def export(**kwargs):
+        assert kwargs["file_backed"] is True
+        return stream
+
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.inst_export", export)
     response = InstanceViewSet.as_view({"post": "inst_export"})(_req("post", superuser, data={"inst_ids": []}), model_id="host")
     assert response.status_code == 200
     assert response["Content-Disposition"].startswith("attachment")
+    assert response.streaming
+    assert b"".join(response.streaming_content) == b"xlsxdata"
+    response.close()
+    assert stream.closed
+
+
+@pytest.mark.django_db
+def test_inst_export_asgi_stream_is_lazy_and_closes_file(superuser, monkeypatch):
+    from django.core.handlers.asgi import ASGIRequest
+
+    class TrackedFile(io.BytesIO):
+        reads = 0
+
+        def read(self, size=-1):
+            self.reads += 1
+            assert size > 0  # 禁止整文件 .read()。
+            return super().read(size)
+
+    stream = TrackedFile(b"x" * (128 * 1024))
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.inst_export", lambda **kwargs: stream)
+    request = ASGIRequest(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/export/",
+            "query_string": b"",
+            "headers": [(b"content-type", b"application/json")],
+            "server": ("testserver", 80),
+        },
+        io.BytesIO(b"{}"),
+    )
+    force_authenticate(request, user=superuser)
+    response = InstanceViewSet.as_view({"post": "inst_export"})(request, model_id="host")
+    assert response.is_async and stream.reads == 0
+
+    async def consume():
+        return b"".join([chunk async for chunk in response.streaming_content])
+
+    assert asyncio.run(consume()) == b"x" * (128 * 1024)
+    assert stream.closed
+    response.close()
+
+
+def test_export_async_iterator_cleans_up_when_download_stops():
+    from apps.cmdb.views.instance import _iter_export_file
+
+    stream = io.BytesIO(b"x" * (128 * 1024))
+
+    async def cancel():
+        iterator = _iter_export_file(stream)
+        assert len(await anext(iterator)) == 64 * 1024
+        await iterator.aclose()
+
+    asyncio.run(cancel())
+    assert stream.closed
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("found", [True, False])
+def test_selected_export_checks_identity_before_permission_filtered_export(superuser, monkeypatch, found):
+    calls = []
+
+    def identities(values, *, fields):
+        assert values == [U(1)]
+        assert fields == ["inst_uuid", "model_id"]
+        return [{"_id": 1, "inst_uuid": U(1), "model_id": "host"}] if found else []
+
+    def export(**kwargs):
+        calls.append(kwargs)
+        assert kwargs["ids"] == [1]
+        assert kwargs["permissions_map"] == {1: {"permission_instances_map": {}, "inst_names": []}}
+        return io.BytesIO(b"xlsxdata")
+
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.query_entity_by_uuids", identities)
+    monkeypatch.setattr(f"{VIEWS}.InstanceManage.inst_export", export)
+    response = InstanceViewSet.as_view({"post": "inst_export"})(
+        _req("post", superuser, data={"inst_uuids": [U(1)]}),
+        model_id="host",
+    )
+    assert response.status_code == (200 if found else 404)
+    assert len(calls) == int(found)
+    response.close()
 
 
 # --------------------------------------------------------------------------

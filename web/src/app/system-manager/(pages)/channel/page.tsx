@@ -50,6 +50,8 @@ const ChannelPage = () => {
   return (
     <div className="w-full">
       <SystemManagerEntityGrid
+        title={t('system.channel.pageTitle')}
+        description={t('system.channel.pageDesc')}
         items={dataList}
         loading={false}
         compactSkeleton

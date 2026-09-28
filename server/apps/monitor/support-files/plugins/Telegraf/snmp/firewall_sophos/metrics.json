@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_sophos",
   "plugin": "Firewall Sophos XG SNMP",
-  "plugin_desc": "Sophos XG / SFOS firewall SNMP collection (SFOS-FIREWALL-MIB, IANA PEN 21067). In addition to standard IF-MIB interface metrics, it collects Sophos private OIDs for device health: CPU utilization (cpuPercentUsage) and main-memory utilization (memoryPercentUsage), both reported directly as percentages. Sophos exposes live (authenticated) users and disk usage rather than a standard session/connection table, so session count and temperature/fan/power are N/A. Supported brands/models — Sophos XG / XGS Firewall and SFOS-based appliances (Sophos Firewall OS; enterprise 21067), and Cyberoam UTM appliances (CYBEROAM-MIB, same enterprise 21067 and identical health OIDs — Sophos acquired Cyberoam and SFOS forked its MIB).",
+  "plugin_desc": "SNMP monitoring template for Sophos XG firewall. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, disk usage, and interface traffic, for XG/XGS (enterprise PEN 2604).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_sophos'}) by (instance_id)",
   "name": "Firewall",
@@ -17,6 +17,8 @@
     "snmp_uptime",
     "device_cpu_usage",
     "device_memory_usage",
+    "device_disk_usage",
+    "device_temperature_celsius",
     "device_total_incoming_traffic",
     "device_total_outgoing_traffic"
   ],
@@ -46,12 +48,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "CPU utilization of the Sophos XG firewall (SFOS-FIREWALL-MIB cpuPercentUsage). Sustained high CPU indicates heavy traffic inspection load."
+      "description": "Per-core CPU utilization of the Sophos SFOS firewall from HOST-RESOURCES hrProcessorLoad (0-100 percent per processor). The query averages cores for device-level usage. Sustained high CPU indicates heavy traffic inspection load."
     },
     {
       "metric_group": "Firewall",
       "name": "device_memory_usage",
-      "query": "avg(device_memory_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "query": "snmp_device_memory_usage{instance_type='firewall', __$labels__}",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -59,7 +61,72 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Main memory utilization of the Sophos XG firewall (SFOS-FIREWALL-MIB memoryPercentUsage), reported directly. High usage may indicate session/buffer pressure."
+      "description": "Main memory utilization of the Sophos SFOS firewall (sfosMemoryPercentUsage), reported directly as a 0-100 percentage. High usage may indicate session or buffer pressure."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_memory_total",
+      "query": "snmp_device_memory_total{instance_type='firewall', __$labels__}*1024*1024",
+      "display_name": "Total Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total main memory capacity of the Sophos SFOS firewall (sfosMemoryCapacity), reported in megabytes and converted to bytes."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_disk_usage",
+      "query": "snmp_device_disk_usage{instance_type='firewall', __$labels__}",
+      "display_name": "Disk Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Disk-space utilization of the Sophos SFOS firewall (sfosDiskPercentUsage), reported directly as a 0-100 percentage. A nearly full disk can prevent logging and configuration changes and may destabilize the device."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max((snmp_device_temperature_celsius{instance_type='firewall', __$labels__} / 10) or (snmp_device_npu_temperature_celsius{instance_type='firewall', __$labels__} / 10)) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU and NPU temperature of the Sophos SFOS firewall (sfosCPUTemperature / sfosNPUTemperature). The MIB reports tenths of a degree Celsius, so the query divides by 10 and takes the maximum across sensors. High values may indicate cooling failure."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_speed",
+      "query": "max(device_fan_speed{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "Fan Speed",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Fan rotation speed in RPM of the Sophos SFOS firewall (sfosFanSpeed), taken as the maximum across fans. Abnormally low or zero RPM indicates a stalled or failed fan and impending overheating."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "max(device_psu_state{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "PSU State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Power-supply status of the Sophos SFOS firewall (sfosPowerSupplyStatus), normalized so that 1 = up and 2 = down. Aggregated as the maximum across supplies so any failed PSU surfaces."
     },
     {
       "metric_group": "Status",

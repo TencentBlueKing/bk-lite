@@ -85,7 +85,7 @@ def test_periodic_assessment_notification_formats_finished_at_in_schedule_timezo
         {"total_count": 6, "non_compliant_count": 3, "failed_count": 2},
     )
 
-    assert "评估完成时间：2026-08-14 10:11:53" in content
+    assert "Completed at: 2026-08-14 10:11:53" in content
 
 
 @pytest.mark.django_db
@@ -276,8 +276,8 @@ def test_notification_delivery_dispatches_with_alert_event_contract_and_marks_de
         channel_type="nats",
         receivers=[],
         team_id=1,
-        title="【补丁管理】周期评估发现需关注项",
-        content="周期评估已完成。",
+        title="[Patch Management] Periodic assessment found items that need attention",
+        content="Periodic assessment completed.",
         summary={
             "total_count": 1,
             "non_compliant_count": 1,
@@ -366,8 +366,8 @@ def test_notification_delivery_retries_when_channel_capability_changes(mocker):
         channel_type="nats",
         receivers=[],
         team_id=1,
-        title="【补丁管理】周期评估发现需关注项",
-        content="周期评估已完成。",
+        title="[Patch Management] Periodic assessment found items that need attention",
+        content="Periodic assessment completed.",
         summary={"total_count": 1, "non_compliant_count": 1, "failed_count": 0},
     )
     mocker.patch(
@@ -413,8 +413,8 @@ def test_notification_delivery_retries_when_per_event_ack_rejects(mocker):
         channel_type="nats",
         receivers=[],
         team_id=1,
-        title="【补丁管理】周期评估发现需关注项",
-        content="周期评估已完成。",
+        title="[Patch Management] Periodic assessment found items that need attention",
+        content="Periodic assessment completed.",
         summary={"total_count": 1, "non_compliant_count": 1, "failed_count": 0},
     )
     delivery_key = f"patch-periodic-assessment:{delivery.id}"
@@ -471,8 +471,8 @@ def test_notification_delivery_keeps_message_contract_for_regular_nats(mocker):
         channel_type="nats",
         receivers=[],
         team_id=1,
-        title="【补丁管理】周期评估发现需关注项",
-        content="周期评估已完成。",
+        title="[Patch Management] Periodic assessment found items that need attention",
+        content="Periodic assessment completed.",
         summary={"total_count": 1, "non_compliant_count": 1, "failed_count": 0},
     )
     mocker.patch(
@@ -519,8 +519,8 @@ def test_notification_delivery_failure_retries_with_a_finite_limit(mocker):
         channel_type="email",
         receivers=[11],
         team_id=1,
-        title="【补丁管理】周期评估发现需关注项",
-        content="周期评估已完成。",
+        title="[Patch Management] Periodic assessment found items that need attention",
+        content="Periodic assessment completed.",
         summary={"total_count": 1, "non_compliant_count": 1, "failed_count": 0},
         max_attempts=2,
     )

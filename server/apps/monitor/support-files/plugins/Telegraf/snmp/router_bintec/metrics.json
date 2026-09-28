@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_bintec",
   "plugin": "Router Bintec SNMP",
-  "plugin_desc": "Bintec 中小企业路由器/VPN 网关专用 SNMP 采集模板（BINTEC-MIB，企业号 272）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Bintec 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）与主内存（总量 + 空闲，字节，用量按 (总量-空闲)/总量 推导）。Bintec 紧凑型企业路由器多为无风扇固定配置设计，其私有 MIB 未以无需行级过滤的标量形式暴露独立温度/风扇/电源传感器，故温度、风扇与电源为 N/A。适用品牌型号——Bintec 路由器/VPN 网关（bintec-elmeg RS/RXL/be.IP 系列，企业号 272；与 Teldat 同源 MIB）。",
+  "plugin_desc": "SNMP monitoring template for Bintec router. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 272).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_bintec'}) by (instance_id)",
   "name": "Router",
@@ -29,7 +29,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "CPU utilisation of the Bintec router (BINTEC-MIB, reported directly as a percentage)."
+      "description": "CPU utilisation of the Bintec router, derived as 100 minus cpuTable cpuLoadIdle60s (idle percent over the last 60 seconds)."
     },
     {
       "metric_group": "Traffic",
@@ -75,10 +75,10 @@
       ],
       "name": "device_memory_total",
       "display_name": "内存总量",
-      "query": "sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "sum(snmp_device_memory_total{instance_type='router', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
-      "description": "Total memory of the Bintec router in bytes (BINTEC-MIB total memory)."
+      "description": "Total DRAM of the Bintec router in bytes (resource memoryTable memoryTotal, memoryType=dram)."
     },
     {
       "metric_group": "Memory",
@@ -88,10 +88,10 @@
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲",
-      "query": "sum(device_memory_free{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "sum(snmp_device_memory_free{instance_type='router', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
-      "description": "Free memory of the Bintec router in bytes (BINTEC-MIB free memory)."
+      "description": "Free DRAM of the Bintec router in bytes, derived as memoryTotal minus memoryInuse for memoryType=dram."
     },
     {
       "metric_group": "Memory",
@@ -101,10 +101,10 @@
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "(sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id) - sum(device_memory_free{instance_type='router', __$labels__}) by (instance_id)) / sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id) * 100",
+      "query": "(sum(snmp_device_memory_total{instance_type='router', __$labels__}) by (instance_id) - sum(snmp_device_memory_free{instance_type='router', __$labels__}) by (instance_id)) / sum(snmp_device_memory_total{instance_type='router', __$labels__}) by (instance_id) * 100",
       "unit": "percent",
       "data_type": "Number",
-      "description": "Memory utilisation of the Bintec router, derived as (total-free)/total."
+      "description": "Memory utilisation of the Bintec router DRAM, derived as used/total (equivalent to (total-free)/total)."
     },
     {
       "metric_group": "Base",

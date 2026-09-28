@@ -10,8 +10,10 @@
 import uuid
 from typing import Any, Dict, List, Optional
 
+from django.utils import timezone
+
 from apps.alerts.common.notify.base import NotifyParamsFormat
-from apps.alerts.notification_templates.binding import render_bound_template, select_template_id
+from apps.alerts.notification_templates.binding import load_event_context, render_bound_template, select_template_id
 from apps.core.logger import alert_logger as logger
 from apps.system_mgmt.models.channel import ChannelChoices
 
@@ -29,7 +31,8 @@ def build_channel_params(
 ) -> List[Dict[str, Any]]:
     """构建 sync_notify 入参(list[dict])。username_list 或 channels 为空 → 返回 []。
 
-    opspilot 托管的 NATS 触发通道需要 dict content {message, team, user_ids}
+    托管的 NATS 触发通道需要 dict content，其中 team 是单一组织整数。
+    event_id 在通知意图入队前生成，因此同一 outbox 的投递重试会复用同一幂等键。
     （title/receivers 被忽略），其中 team 是单一组织整数：仅当本次为单条告警且其
     归属组织非空时构造；否则跳过该 NATS 通道（聚合多告警/无组织无单一上下文）。
     其余通道沿用纯文本 content。
@@ -60,6 +63,13 @@ def build_channel_params(
             nats_team = alert_team[0]
 
     params: List[Dict[str, Any]] = []
+    event_state: Dict[Any, Dict[str, Any]] = {}
+
+    def load_events_once(alert, sources):
+        key = getattr(alert, "pk", None) or id(alert)
+        state = event_state.setdefault(key, {})
+        return load_event_context(alert, sources, state)
+
     for channel in channels:
         channel_title = None
         channel_content = None
@@ -75,6 +85,7 @@ def build_channel_params(
                     username_list,
                     scene,
                     notification_context=notification_context,
+                    event_context_loader=load_events_once,
                 )
                 channel_title = rendered.title
                 channel_content = rendered.content
@@ -87,14 +98,22 @@ def build_channel_params(
                 if rendered.missing_fields:
                     template_snapshot["missing_fields"] = rendered.missing_fields
             except Exception as exc:
+                error_detail = " ".join(str(exc).split())[:200]
                 logger.warning(
-                    "[AlertNotify] 自定义模板渲染失败，使用默认内容: object_id=%s channel_id=%s template_id=%s error_type=%s",
+                    "[AlertNotify] 自定义模板渲染失败，使用默认内容: object_id=%s channel_id=%s template_id=%s error_type=%s error=%s",
                     object_id,
                     channel.get("id"),
                     template_id,
                     type(exc).__name__,
+                    error_detail,
                 )
-                template_snapshot = {"id": template_id, "scene": scene, "fallback": True, "error_type": type(exc).__name__}
+                template_snapshot = {
+                    "id": template_id,
+                    "scene": scene,
+                    "fallback": True,
+                    "error_type": type(exc).__name__,
+                    "error": error_detail,
+                }
         if channel_title is None or channel_content is None:
             default_title, default_content = get_default_values()
             channel_title = default_title if channel_title is None else channel_title
@@ -123,6 +142,11 @@ def build_channel_params(
                     "message": channel_content,
                     "team": nats_team,
                     "user_ids": username_list,
+                    "event_id": f"alert-notification:{uuid.uuid4().hex}",
+                    "occurred_at": timezone.now().isoformat(),
+                    "producer": "alerts",
+                    "object_id": object_id,
+                    "scene": scene,
                 },
                 "object_id": object_id,
                 "notify_action_object": notify_action_object,

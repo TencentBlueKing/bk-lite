@@ -1408,13 +1408,16 @@ class ModelManage(object):
         return enrich_attrs_with_unique_display(attrs, unique_rules, model_id)
 
     @staticmethod
-    def search_model_attr_v2(model_id: str, language: str = "zh-Hans"):
+    def search_model_attr_v2(model_id: str, language: str = "zh-Hans", *, attr_ids: list[str] | None = None):
         """
         查询模型属性
         """
         model_info = ModelManage.search_model_info(model_id)
         attrs = ModelManage._normalize_attr_constraints(ModelManage.parse_attrs(model_info.get("attrs", "[]")))
         attrs = [ModelManage.sanitize_attr_default_value(attr, log_context="search_model_attr_v2") for attr in attrs]
+        if attr_ids is not None:
+            attrs_by_id = {attr["attr_id"]: attr for attr in attrs}
+            attrs = [attrs_by_id[attr_id] for attr_id in attr_ids if attr_id in attrs_by_id]
         unique_rules = build_unique_rule_context(model_id).unique_rules
         attr_types = {attr["attr_type"] for attr in attrs}
         system_mgmt_client = None

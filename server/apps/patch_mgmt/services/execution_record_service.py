@@ -6,36 +6,81 @@
 """
 
 from collections import defaultdict
+from typing import Any
 
 from apps.patch_mgmt.constants import GovernanceTaskType
-from apps.patch_mgmt.models import (
-    BaselineRequirement,
-    GovernanceTask,
-    GovernanceTaskHost,
-    HostBaselineBinding,
-    HostComplianceSnapshot,
-    Patch,
+from apps.patch_mgmt.models import BaselineRequirement, GovernanceTask, GovernanceTaskHost, HostBaselineBinding, HostComplianceSnapshot, Patch
+from apps.patch_mgmt.utils.i18n import patch_message
+
+STATUS_COLORS = {
+    "waiting": "default",
+    "running": "processing",
+    "completed": "success",
+    "failed": "error",
+    "partial_success": "warning",
+    "partial_cancelled": "warning",
+    "cancelled": "default",
+    "skipped": "default",
+    "unknown": "warning",
+    "unmet": "error",
+}
+
+_STATUS_DEFAULTS = {
+    "waiting": "Waiting",
+    "running": "Running",
+    "completed": "Completed",
+    "failed": "Failed",
+    "partial_success": "Partially Failed",
+    "partial_cancelled": "Partially Cancelled",
+    "cancelled": "Cancelled",
+    "skipped": "Skipped",
+    "unknown": "Unknown",
+    "unmet": "Unmet",
+}
+
+STEP_TYPES = frozenset(
+    {
+        GovernanceTaskType.INSTALL,
+        GovernanceTaskType.REBOOT,
+        GovernanceTaskType.VERIFY,
+    }
 )
 
-
-STATUS_META = {
-    "waiting": ("等待中", "default"),
-    "running": ("执行中", "processing"),
-    "completed": ("已完成", "success"),
-    "failed": ("失败", "error"),
-    "partial_success": ("部分失败", "warning"),
-    "partial_cancelled": ("部分取消", "warning"),
-    "cancelled": ("已取消", "default"),
-    "skipped": ("已跳过", "default"),
-    "unknown": ("未知", "warning"),
-    "unmet": ("未满足", "error"),
+_STEP_NAME_DEFAULTS = {
+    GovernanceTaskType.INSTALL: "Install Patches",
+    GovernanceTaskType.REBOOT: "Reboot Host",
+    GovernanceTaskType.VERIFY: "Verify Result",
 }
 
-STEP_NAMES = {
-    GovernanceTaskType.INSTALL: "安装补丁",
-    GovernanceTaskType.REBOOT: "重启主机",
-    GovernanceTaskType.VERIFY: "验证结果",
-}
+
+def _request_locale(request: Any) -> str:
+    return getattr(getattr(request, "user", None), "locale", None) or "en"
+
+
+def _status_meta(request: Any, status: str) -> tuple[str, str]:
+    key = status if status in STATUS_COLORS else "unknown"
+    display = patch_message(
+        request,
+        f"status.execution.{key}",
+        _STATUS_DEFAULTS[key],
+    )
+    return display, STATUS_COLORS[key]
+
+
+def _step_name(request: Any, task_type: str) -> str:
+    return patch_message(
+        request,
+        f"status.execution_step.{task_type}",
+        _STEP_NAME_DEFAULTS[task_type],
+    )
+
+
+def _default_patch_label(request: Any) -> str:
+    return patch_message(request, "message.default_patch_name", "Patch")
+
+
+def _reboot_patch_label(request: Any) -> str:
+    return patch_message(request, "message.reboot_patch_name", "Reboot")
 
 
 def filter_execution_record_roots(queryset):
@@ -57,9 +102,7 @@ def build_host_requirement_projection(target_ids, patch_ids=None) -> dict[int, l
     if not unique_ids:
         return index
 
-    bindings = list(
-        HostBaselineBinding.objects.filter(target_id__in=unique_ids).select_related("baseline")
-    )
+    bindings = list(HostBaselineBinding.objects.filter(target_id__in=unique_ids).select_related("baseline"))
     if not bindings:
         return index
 
@@ -67,9 +110,9 @@ def build_host_requirement_projection(target_ids, patch_ids=None) -> dict[int, l
     for binding in bindings:
         binding_by_target.setdefault(int(binding.target_id), binding)
 
-    req_qs = BaselineRequirement.objects.filter(
-        baseline_id__in={binding.baseline_id for binding in binding_by_target.values()}
-    ).select_related("patch")
+    req_qs = BaselineRequirement.objects.filter(baseline_id__in={binding.baseline_id for binding in binding_by_target.values()}).select_related(
+        "patch"
+    )
     if patch_ids:
         req_qs = req_qs.filter(patch_id__in=patch_ids)
 
@@ -78,10 +121,8 @@ def build_host_requirement_projection(target_ids, patch_ids=None) -> dict[int, l
         reqs_by_baseline[requirement.baseline_id].append(requirement)
 
     latest_snapshots = {}
-    for snapshot in (
-        HostComplianceSnapshot.objects.filter(
-            binding_id__in=[binding.id for binding in binding_by_target.values()]
-        ).order_by("-evaluated_at")
+    for snapshot in HostComplianceSnapshot.objects.filter(binding_id__in=[binding.id for binding in binding_by_target.values()]).order_by(
+        "-evaluated_at"
     ):
         key = (snapshot.binding_id, snapshot.requirement_id)
         if key not in latest_snapshots:
@@ -121,11 +162,7 @@ def _task_chain(root: GovernanceTask) -> list[GovernanceTask]:
     frontier = [root.id]
     seen = {root.id}
     while frontier:
-        children = list(
-            GovernanceTask.objects.filter(parent_task_id__in=frontier).order_by(
-                "created_at", "id"
-            )
-        )
+        children = list(GovernanceTask.objects.filter(parent_task_id__in=frontier).order_by("created_at", "id"))
         children = [task for task in children if task.id not in seen]
         result.extend(children)
         frontier = [task.id for task in children]
@@ -138,17 +175,11 @@ def _chain_hosts(root: GovernanceTask) -> list[GovernanceTaskHost]:
     cached = getattr(root, "_execution_record_hosts", None)
     if cached is not None:
         return cached
-    queryset = GovernanceTaskHost.objects.filter(
-        task_id__in=[task.id for task in _task_chain(root)]
-    )
+    queryset = GovernanceTaskHost.objects.filter(task_id__in=[task.id for task in _task_chain(root)])
     visible_target_ids = getattr(root, "_visible_target_ids", None)
     if visible_target_ids is not None:
         queryset = queryset.filter(target_id__in=visible_target_ids)
-    hosts = list(
-        queryset
-        .select_related("task")
-        .order_by("created_at", "id")
-    )
+    hosts = list(queryset.select_related("task").order_by("created_at", "id"))
     root._execution_record_hosts = hosts
     return hosts
 
@@ -175,9 +206,14 @@ def _host_stage(host: GovernanceTaskHost) -> str:
     return project_host_state(host).stage
 
 
-def _attempt(task: GovernanceTask, host: GovernanceTaskHost, include_log: bool) -> dict:
+def _attempt(
+    task: GovernanceTask,
+    host: GovernanceTaskHost,
+    include_log: bool,
+    request: Any = None,
+) -> dict:
     status = _step_status(task.task_type, _host_stage(host))
-    display, color = STATUS_META[status]
+    display, color = _status_meta(request, status)
     data = {
         "id": host.id,
         "task_id": task.id,
@@ -185,9 +221,7 @@ def _attempt(task: GovernanceTask, host: GovernanceTaskHost, include_log: bool) 
         "status_display": display,
         "status_color": color,
         "started_at": host.stage_started_at or host.started_at,
-        "finished_at": task.finished_at
-        if status in {"completed", "failed", "cancelled"}
-        else None,
+        "finished_at": task.finished_at if status in {"completed", "failed", "cancelled"} else None,
         "reason": host.reason or host.timeout_reason or "",
         "suggestion": host.suggestion or "",
         "exit_code": host.exit_code,
@@ -197,17 +231,14 @@ def _attempt(task: GovernanceTask, host: GovernanceTaskHost, include_log: bool) 
     return data
 
 
-def _risk_snapshot(root: GovernanceTask) -> list[dict]:
+def _risk_snapshot(root: GovernanceTask, request: Any = None) -> list[dict]:
     visible_target_ids = getattr(root, "_visible_target_ids", None)
     if root.risk_snapshot:
         snapshot = list(root.risk_snapshot)
         if visible_target_ids is not None:
-            snapshot = [
-                item
-                for item in snapshot
-                if int(item.get("host_id") or 0) in visible_target_ids
-            ]
+            snapshot = [item for item in snapshot if int(item.get("host_id") or 0) in visible_target_ids]
         return snapshot
+    reboot_label = _reboot_patch_label(request)
     return [
         {
             "id": f"{target_id}:0:0",
@@ -215,7 +246,7 @@ def _risk_snapshot(root: GovernanceTask) -> list[dict]:
             "host_name": host.target_name if host else str(target_id),
             "host_ip": host.target_ip if host else "",
             "patch_id": 0,
-            "patch_name": "重启",
+            "patch_name": reboot_label,
             "baseline_id": 0,
             "baseline_name": "",
         }
@@ -226,32 +257,32 @@ def _risk_snapshot(root: GovernanceTask) -> list[dict]:
 
 
 def _group_attempts(
-    root: GovernanceTask, target_id: int, include_log: bool
+    root: GovernanceTask,
+    target_id: int,
+    include_log: bool,
+    request: Any = None,
 ) -> dict[str, list[dict]]:
     grouped: dict[str, list[dict]] = defaultdict(list)
-    hosts = {
-        (host.task_id, host.target_id): host
-        for host in _chain_hosts(root)
-        if host.target_id == target_id
-    }
+    hosts = {(host.task_id, host.target_id): host for host in _chain_hosts(root) if host.target_id == target_id}
     for task in _task_chain(root):
-        if task.task_type not in STEP_NAMES:
+        if task.task_type not in STEP_TYPES:
             continue
         host = hosts.get((task.id, target_id))
         if host:
-            grouped[task.task_type].append(_attempt(task, host, include_log))
+            grouped[task.task_type].append(_attempt(task, host, include_log, request))
     return grouped
 
 
-def _summary_index(root: GovernanceTask) -> dict:
+def _summary_index(root: GovernanceTask, request: Any = None) -> dict:
     """为一条根记录构建状态/重试判定所需的任务链索引。"""
+    locale = _request_locale(request)
     cached = getattr(root, "_execution_record_summary_index", None)
-    if cached is not None:
+    if cached is not None and getattr(root, "_execution_record_summary_index_locale", None) == locale:
         return cached
 
     chain = _task_chain(root)
     hosts = _chain_hosts(root)
-    snapshot = _risk_snapshot(root)
+    snapshot = _risk_snapshot(root, request)
     hosts_by_task: dict[int, list[GovernanceTaskHost]] = defaultdict(list)
     root_host_by_target: dict[int, GovernanceTaskHost] = {}
     retryable_target_ids: set[int] = set()
@@ -264,12 +295,10 @@ def _summary_index(root: GovernanceTask) -> dict:
 
     attempts_by_target: dict[int, dict[str, list[dict]]] = defaultdict(lambda: defaultdict(list))
     for task in chain:
-        if task.task_type not in STEP_NAMES:
+        if task.task_type not in STEP_TYPES:
             continue
         for host in hosts_by_task.get(task.id, []):
-            attempts_by_target[host.target_id][task.task_type].append(
-                _attempt(task, host, include_log=False)
-            )
+            attempts_by_target[host.target_id][task.task_type].append(_attempt(task, host, include_log=False, request=request))
 
     verification_hits: dict[tuple, tuple[int, dict]] = {}
     sequence = 0
@@ -287,16 +316,8 @@ def _summary_index(root: GovernanceTask) -> dict:
                 verification_hits[("id", risk_item_id)] = (sequence, result)
             verification_hits[("pair", pair)] = (sequence, result)
 
-    patch_ids = {
-        int(item.get("patch_id") or 0)
-        for item in snapshot
-        if int(item.get("patch_id") or 0)
-    }
-    existing_patch_ids = (
-        set(Patch.objects.filter(pk__in=patch_ids).values_list("pk", flat=True))
-        if patch_ids
-        else set()
-    )
+    patch_ids = {int(item.get("patch_id") or 0) for item in snapshot if int(item.get("patch_id") or 0)}
+    existing_patch_ids = set(Patch.objects.filter(pk__in=patch_ids).values_list("pk", flat=True)) if patch_ids else set()
     risk_ids = [str(item.get("id") or "") for item in snapshot]
     retried_risk_ids = (
         set(
@@ -319,6 +340,7 @@ def _summary_index(root: GovernanceTask) -> dict:
         "retryable_target_ids": retryable_target_ids,
     }
     root._execution_record_summary_index = index
+    root._execution_record_summary_index_locale = locale
     return index
 
 
@@ -339,17 +361,17 @@ def _indexed_verification(index: dict, item: dict) -> dict | None:
     return max(candidates, key=lambda entry: entry[0])[1]
 
 
-def _verification_result(root: GovernanceTask, item: dict) -> dict | None:
+def _verification_result(root: GovernanceTask, item: dict, request: Any = None) -> dict | None:
     """读取该次执行内最新的验证结果快照。"""
-    return _indexed_verification(_summary_index(root), item)
+    return _indexed_verification(_summary_index(root, request), item)
 
 
-def _root_host(root: GovernanceTask, target_id: int) -> GovernanceTaskHost | None:
-    return _summary_index(root)["root_host_by_target"].get(target_id)
+def _root_host(root: GovernanceTask, target_id: int, request: Any = None) -> GovernanceTaskHost | None:
+    return _summary_index(root, request)["root_host_by_target"].get(target_id)
 
 
-def _item_status(root: GovernanceTask, item: dict) -> str:
-    index = _summary_index(root)
+def _item_status(root: GovernanceTask, item: dict, request: Any = None) -> str:
+    index = _summary_index(root, request)
     target_id = int(item["host_id"])
     attempts = index["attempts_by_target"].get(target_id) or {}
 
@@ -393,6 +415,7 @@ def _item_status(root: GovernanceTask, item: dict) -> str:
             target_id,
             GovernanceTaskType.VERIFY,
             attempts,
+            request=request,
         )
         if verify_status == "waiting":
             # 批量任务中单台主机可能先安装/重启完成，但自动验证要等
@@ -403,11 +426,7 @@ def _item_status(root: GovernanceTask, item: dict) -> str:
     if install:
         if install[-1]["status"] in {"failed", "cancelled", "unknown"}:
             return install[-1]["status"]
-        if (
-            root.auto_reboot
-            and root_host
-            and root_host.error_code == "reboot_requirement_unknown"
-        ):
+        if root.auto_reboot and root_host and root_host.error_code == "reboot_requirement_unknown":
             # 用户要求了自动重启，但系统无法判定重启需求，
             # 本次动作未能按设置完成。
             return "failed"
@@ -418,10 +437,15 @@ def _item_status(root: GovernanceTask, item: dict) -> str:
     return "waiting"
 
 
-def _item_can_retry(root: GovernanceTask, item: dict, status: str) -> bool:
+def _item_can_retry(
+    root: GovernanceTask,
+    item: dict,
+    status: str,
+    request: Any = None,
+) -> bool:
     if status not in {"failed", "unknown", "unmet"}:
         return False
-    index = _summary_index(root)
+    index = _summary_index(root, request)
     patch_id = int(item.get("patch_id") or 0)
     if patch_id and patch_id not in index["existing_patch_ids"]:
         return False
@@ -433,18 +457,20 @@ def _item_can_retry(root: GovernanceTask, item: dict, status: str) -> bool:
     return int(item["host_id"]) in index["retryable_target_ids"]
 
 
-def build_risk_item_summaries(root: GovernanceTask) -> list[dict]:
+def build_risk_item_summaries(root: GovernanceTask, request: Any = None) -> list[dict]:
+    locale = _request_locale(request)
     cached = getattr(root, "_execution_record_risk_summaries", None)
-    if cached is not None:
+    if cached is not None and getattr(root, "_execution_record_risk_summaries_locale", None) == locale:
         return cached
     result = []
-    for item in _risk_snapshot(root):
-        status = _item_status(root, item)
-        display, color = STATUS_META.get(status, STATUS_META["unknown"])
+    default_patch = _default_patch_label(request)
+    for item in _risk_snapshot(root, request):
+        status = _item_status(root, item, request)
+        display, color = _status_meta(request, status)
         result.append(
             {
                 "id": str(item["id"]),
-                "display_name": f'{item.get("host_name") or item["host_id"]}-{item.get("patch_name") or "补丁"}',
+                "display_name": (f'{item.get("host_name") or item["host_id"]}-' f'{item.get("patch_name") or default_patch}'),
                 "host_name": item.get("host_name") or str(item["host_id"]),
                 "host_ip": item.get("host_ip") or "",
                 "patch_name": item.get("patch_name") or "",
@@ -453,16 +479,17 @@ def build_risk_item_summaries(root: GovernanceTask) -> list[dict]:
                 "status": status,
                 "status_display": display,
                 "status_color": color,
-                "can_retry": _item_can_retry(root, item, status),
+                "can_retry": _item_can_retry(root, item, status, request),
             }
         )
     root._execution_record_risk_summaries = result
+    root._execution_record_risk_summaries_locale = locale
     return result
 
 
-def build_record_status(root: GovernanceTask) -> tuple[str, str, str]:
+def build_record_status(root: GovernanceTask, request: Any = None) -> tuple[str, str, str]:
     """按本次动作及自动步骤聚合记录状态。"""
-    statuses = [item["status"] for item in build_risk_item_summaries(root)]
+    statuses = [item["status"] for item in build_risk_item_summaries(root, request)]
     if not statuses:
         fallback = {
             "pending": "waiting",
@@ -473,12 +500,10 @@ def build_record_status(root: GovernanceTask) -> tuple[str, str, str]:
             "failed": "failed",
             "cancelled": "cancelled",
         }.get(root.status, "unknown")
-        display, color = STATUS_META[fallback]
+        display, color = _status_meta(request, fallback)
         return fallback, display, color
 
-    values = {
-        "failed" if value in {"unmet", "unknown"} else value for value in statuses
-    }
+    values = {"failed" if value in {"unmet", "unknown"} else value for value in statuses}
     if "running" in values or "waiting" in values:
         status = "running" if values != {"waiting"} else "waiting"
     elif values == {"completed"}:
@@ -493,7 +518,7 @@ def build_record_status(root: GovernanceTask) -> tuple[str, str, str]:
         status = "failed"
     else:
         status = "unknown"
-    display, color = STATUS_META[status]
+    display, color = _status_meta(request, status)
     return status, display, color
 
 
@@ -502,46 +527,86 @@ def _skipped_step_reason(
     target_id: int,
     task_type: str,
     grouped: dict[str, list[dict]],
+    request: Any = None,
 ) -> tuple[str, str]:
-    root_host = _root_host(root, target_id)
+    root_host = _root_host(root, target_id, request)
     install = grouped.get(GovernanceTaskType.INSTALL, [])
     reboot = grouped.get(GovernanceTaskType.REBOOT, [])
+
+    def reason(key: str, default: str) -> tuple[str, str]:
+        return "skipped", patch_message(request, key, default)
 
     if task_type == GovernanceTaskType.REBOOT and install:
         install_status = install[-1]["status"]
         if install_status == "failed":
-            return "skipped", "安装失败，未执行重启"
+            return reason(
+                "message.skip.install_failed_no_reboot",
+                "Install failed; reboot was not executed",
+            )
         if install_status == "cancelled":
-            return "skipped", "安装已取消，未执行重启"
+            return reason(
+                "message.skip.install_cancelled_no_reboot",
+                "Install was cancelled; reboot was not executed",
+            )
         if root_host and root_host.error_code == "reboot_requirement_unknown":
-            return "skipped", "无法判断是否需要重启，未执行自动重启"
+            return reason(
+                "message.skip.reboot_requirement_unknown",
+                "Could not determine whether a reboot is required; automatic reboot was not executed",
+            )
         if root_host and root_host.error_code == "container_reboot_skipped":
-            return (
-                "skipped",
-                "当前节点为容器节点，不支持执行主机重启命令；"
-                "如需重新加载运行进程，请通过容器平台重启或重新部署",
+            return reason(
+                "message.skip.container_reboot_skipped",
+                "This node is a container node and does not support host reboot commands; "
+                "restart or redeploy through the container platform if processes need reloading",
             )
         if root_host and _host_stage(root_host) == "pending_reboot" and not root.auto_reboot:
-            return "skipped", "未设置安装后自动重启"
+            return reason(
+                "message.skip.auto_reboot_disabled",
+                "Automatic reboot after installation is not enabled",
+            )
         if root_host and _host_stage(root_host) == "completed":
-            return "skipped", "安装后确认无需重启"
+            return reason(
+                "message.skip.reboot_not_needed",
+                "Confirmed that a reboot is not required after installation",
+            )
         if install_status in {"completed", "failed", "cancelled"}:
-            return "skipped", "本次动作未执行重启"
+            return reason(
+                "message.skip.reboot_not_executed",
+                "Reboot was not executed for this action",
+            )
 
     if task_type == GovernanceTaskType.VERIFY:
         if install and install[-1]["status"] == "failed":
-            return "skipped", "安装失败，未执行验证"
+            return reason(
+                "message.skip.install_failed_no_verify",
+                "Install failed; verification was not executed",
+            )
         if install and install[-1]["status"] == "cancelled":
-            return "skipped", "安装已取消，未执行验证"
+            return reason(
+                "message.skip.install_cancelled_no_verify",
+                "Install was cancelled; verification was not executed",
+            )
         if root_host and root.task_type == GovernanceTaskType.INSTALL:
             if root_host.error_code == "reboot_requirement_unknown":
-                return "skipped", "重启需求无法判定，未执行验证"
+                return reason(
+                    "message.skip.reboot_unknown_no_verify",
+                    "Reboot requirement could not be determined; verification was not executed",
+                )
             if _host_stage(root_host) == "pending_reboot" and not root.auto_reboot:
-                return "skipped", "未执行重启，本次记录不执行验证"
+                return reason(
+                    "message.skip.no_reboot_no_verify",
+                    "Reboot was not executed; verification is skipped for this record",
+                )
         if reboot and reboot[-1]["status"] == "failed":
-            return "skipped", "重启失败，未执行验证"
+            return reason(
+                "message.skip.reboot_failed_no_verify",
+                "Reboot failed; verification was not executed",
+            )
         if reboot and reboot[-1]["status"] == "cancelled":
-            return "skipped", "重启已取消，未执行验证"
+            return reason(
+                "message.skip.reboot_cancelled_no_verify",
+                "Reboot was cancelled; verification was not executed",
+            )
 
     return "waiting", ""
 
@@ -554,20 +619,20 @@ def _source_record_data(root: GovernanceTask, item: dict) -> dict | None:
     return {"id": source.id, "name": source.name} if source else None
 
 
-def build_risk_item_detail(root: GovernanceTask, risk_item_id: str) -> dict | None:
+def build_risk_item_detail(
+    root: GovernanceTask,
+    risk_item_id: str,
+    request: Any = None,
+) -> dict | None:
     item = next(
-        (
-            entry
-            for entry in _risk_snapshot(root)
-            if str(entry.get("id")) == str(risk_item_id)
-        ),
+        (entry for entry in _risk_snapshot(root, request) if str(entry.get("id")) == str(risk_item_id)),
         None,
     )
     if item is None:
         return None
 
     target_id = int(item["host_id"])
-    grouped = _group_attempts(root, target_id, include_log=True)
+    grouped = _group_attempts(root, target_id, include_log=True, request=request)
     step_types = (
         [GovernanceTaskType.REBOOT, GovernanceTaskType.VERIFY]
         if root.task_type == GovernanceTaskType.REBOOT
@@ -584,14 +649,12 @@ def build_risk_item_detail(root: GovernanceTask, risk_item_id: str) -> dict | No
         if attempts:
             status = attempts[-1]["status"]
         else:
-            status, reason = _skipped_step_reason(
-                root, target_id, task_type, grouped
-            )
-        display, color = STATUS_META[status]
+            status, reason = _skipped_step_reason(root, target_id, task_type, grouped, request=request)
+        display, color = _status_meta(request, status)
         steps.append(
             {
                 "key": task_type,
-                "name": STEP_NAMES[task_type],
+                "name": _step_name(request, task_type),
                 "status": status,
                 "status_display": display,
                 "status_color": color,
@@ -600,18 +663,19 @@ def build_risk_item_detail(root: GovernanceTask, risk_item_id: str) -> dict | No
             }
         )
 
-    status = _item_status(root, item)
-    display, color = STATUS_META.get(status, STATUS_META["unknown"])
-    verification = _verification_result(root, item)
+    status = _item_status(root, item, request)
+    display, color = _status_meta(request, status)
+    verification = _verification_result(root, item, request)
+    default_patch = _default_patch_label(request)
     return {
         **item,
         "id": str(item["id"]),
-        "display_name": f'{item.get("host_name") or target_id}-{item.get("patch_name") or "补丁"}',
+        "display_name": (f'{item.get("host_name") or target_id}-' f'{item.get("patch_name") or default_patch}'),
         "host_ip": item.get("host_ip") or "",
         "status": status,
         "status_display": display,
         "status_color": color,
-        "can_retry": _item_can_retry(root, item, status),
+        "can_retry": _item_can_retry(root, item, status, request),
         "source_record": _source_record_data(root, item),
         "verification_result": verification,
         "steps": steps,

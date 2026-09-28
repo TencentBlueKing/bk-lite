@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_waystream",
   "plugin": "Switch Waystream SNMP",
-  "plugin_desc": "Waystream ASR / FTTH switch SNMP collection (IANA PEN 9303). Interface traffic is supplied by the shared Switch SNMP IF-MIB floor. Device health comes from wsSystem scalars—CPU utilization is 100 minus wsCPUIdleLoad, with a fallback of wsCPUUserLoad plus wsCPUSystemLoad; memory utilization is wsMemoryUsed over wsMemoryTotal after converting kilobytes to bytes, with a fallback of 100 minus wsMemoryPctFree (tenths of a percent divided by 10). Optional chassis temperature comes from the wsTempMeasured table (hundredths of a degree Celsius divided by 100). Fan and power-supply state are not collected. Supported brands/models — Waystream ASR and FTTH access switches.",
+  "plugin_desc": "SNMP monitoring template for Waystream switch. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic, for ASR and FTTH access switches (enterprise PEN 9303).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_waystream'}) by (instance_id)",
   "name": "Switch",

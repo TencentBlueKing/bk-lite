@@ -1,6 +1,6 @@
 Firewall Forcepoint SNMP:
   name: Forcepoint（Telegraf）
-  desc: 面向 Forcepoint 防火墙的 SNMP 监控模板,可采集 运行时长、CPU 使用率、接口速率等主要指标。
+  desc: 面向 Forcepoint 防火墙的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、风扇、电源状态、会话/连接数、接口流量（企业号 PEN 47565）。
 monitor_object:
   Firewall: 防火墙
 monitor_object_type:
@@ -21,7 +21,13 @@ monitor_object_metric:
       desc: 该指标报告网关当前已登录的 Web 用户数量。跟踪活动会话数有助于容量规划与发现异常连接激增。
     device_psu_state:
       name: 电源状态
-      desc: 该指标报告设备电源模块的运行状态（枚举）。非正常状态表示电源冗余或硬件故障；在冗余电源设备上单个故障会移除冗余，需尽快处理。
+      desc: 该指标报告 Forcepoint NGFW 各电源模块的运行状态（fwPsuStatus，已归一为 1=正常 / 2=异常）。非正常状态表示电源冗余或硬件故障，需尽快处理。
+    device_fan_state:
+      name: 风扇状态
+      desc: 该指标报告 Forcepoint NGFW 各散热风扇的运行状态（fwFanStatus，已归一为 1=正常 / 2=异常）。非正常状态表示散热故障，可能迅速导致过热。
+    device_fan_rpm:
+      name: 风扇转速
+      desc: 该指标报告 Forcepoint NGFW 各散热风扇的转速，单位 RPM（fwFan）。
     firewall_pf_states:
       name: pf 状态表条目数
       desc: 该指标报告 pfSense 防火墙 pf 状态表中的当前条目数（BEGEMOT-PF-MIB pfStateTableCount），约等于活动连接数。条目数快速攀升可能意味着连接洪泛或状态表逼近上限。
@@ -89,8 +95,8 @@ monitor_object_metric:
       desc: 该指标报告 FortiGate 防火墙的物理内存总容量（FORTINET-FORTIGATE-MIB fgSysMemCapacity，原始单位
         KB，已换算为字节）。
     firewall_active_sessions:
-      name: IPv4 活动会话数
-      desc: 该指标报告 FortiGate 防火墙当前跟踪的 IPv4 活动会话数（FORTINET-FORTIGATE-MIB fgSysSesCount）。会话数快速上升可能意味着连接洪泛或会话表耗尽风险。
+      name: 活动会话数
+      desc: 该指标报告 Forcepoint NGFW 当前连接数（FORCEPOINT-NGFW-ENGINE-MIB fwConnNumber）。会话数快速上升可能意味着连接洪泛或会话表压力。
     firewall_vpn_tunnels:
       name: 活动 IPsec VPN 隧道数
       desc: 该指标报告 FortiGate 防火墙当前活动的 IPsec VPN 隧道数量（FORTINET-FORTIGATE-MIB fgVpnTunnelUpCount）。数量骤降可能意味着

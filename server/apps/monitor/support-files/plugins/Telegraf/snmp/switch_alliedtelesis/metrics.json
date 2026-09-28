@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_alliedtelesis",
   "plugin": "Switch Allied Telesis SNMP",
-  "plugin_desc": "Allied Telesis AlliedWare Plus (AW+) switch SNMP collection (AT-SYSINFO-MIB / AT-ENVMONv2-MIB, IANA PEN 207). Beyond standard IF-MIB interface metrics, it collects Allied Telesis private OIDs for device health: per-stack-member CPU utilisation (cpuUtilisationStackAvgLastMinute, averaged), chassis temperature sensors (atEnvMonv2TemperatureCurrent, max), and fan and power-supply status, normalised to 1=normal / 2=abnormal. AlliedWare Plus does not expose a standard memory-utilisation OID, so memory is N/A. Supported brands/models — Allied Telesis AlliedWare Plus switches (x-series / IE-series / SwitchBlade running AW+; enterprise 207).",
+  "plugin_desc": "SNMP monitoring template for Allied Telesis switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic, for AlliedWare Plus (enterprise PEN 207).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_alliedtelesis'}) by (instance_id)",
   "name": "Switch",
@@ -16,6 +16,7 @@
   "supplementary_indicators": [
     "snmp_uptime",
     "device_cpu_usage",
+    "device_memory_usage",
     "device_total_incoming_traffic",
     "device_total_outgoing_traffic",
     "device_temperature_celsius",
@@ -54,6 +55,19 @@
         "instance_id"
       ],
       "description": "Per-stack-member CPU utilisation of the Allied Telesis AW+ switch (cpuUtilisationStackAvgLastMinute, averaged)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "100 - snmp_device_memory_free_percent{instance_type='switch', __$labels__}",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Overall memory utilization of the Allied Telesis AW+ switch, derived as 100 minus AT-SYSINFO-MIB freeMemory (percentage of free memory still available, INTEGER 0..100). High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
     },
     {
       "metric_group": "Status",

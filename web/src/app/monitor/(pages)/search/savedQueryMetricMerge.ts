@@ -1,6 +1,7 @@
 import type React from 'react';
 
 import type { MetricItem } from '@/app/monitor/types';
+import { listSelectedMetricIds } from './searchQueryLogic';
 
 export interface ResourceMetricIds {
   objectId: React.Key;
@@ -12,7 +13,7 @@ export const collectMetricIdsByResource = (
   groups: Array<{
     object: React.Key;
     plugin?: React.Key | null;
-    metric?: React.Key | null;
+    metric?: React.Key | React.Key[] | null;
   }>,
   getResourceKey: (objectId: React.Key, pluginId: React.Key | null) => string
 ): Map<string, ResourceMetricIds> => {
@@ -25,13 +26,10 @@ export const collectMetricIdsByResource = (
       pluginId,
       metricIds: []
     };
-    if (
-      group.metric !== null &&
-      group.metric !== undefined &&
-      group.metric !== '' &&
-      !current.metricIds.some((id) => String(id) === String(group.metric))
-    ) {
-      current.metricIds.push(group.metric);
+    for (const metricId of listSelectedMetricIds(group.metric)) {
+      if (!current.metricIds.some((id) => String(id) === String(metricId))) {
+        current.metricIds.push(metricId);
+      }
     }
     collected.set(resourceKey, current);
   }
@@ -72,17 +70,14 @@ export const getMetricsAbortKey = (
   resourceKey: string,
   keyword = '',
   groupId?: string,
-  selectedMetricId?: React.Key | null
+  selectedMetricId?: React.Key | React.Key[] | null
 ): string => {
   if (keyword.trim() && groupId) {
     return `${resourceKey}|${groupId}`;
   }
-  if (
-    selectedMetricId !== null &&
-    selectedMetricId !== undefined &&
-    selectedMetricId !== ''
-  ) {
-    return `${resourceKey}|metric:${String(selectedMetricId)}`;
+  const metricIds = listSelectedMetricIds(selectedMetricId);
+  if (metricIds.length) {
+    return `${resourceKey}|metric:${metricIds.map(String).join(',')}`;
   }
   return resourceKey;
 };

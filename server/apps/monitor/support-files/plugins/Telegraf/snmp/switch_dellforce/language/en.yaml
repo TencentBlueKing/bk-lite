@@ -1,7 +1,6 @@
 Switch Dell Force10 SNMP:
   name: Dell Force10 (Telegraf)
-  desc: SNMP monitoring template for Dell switch. It reports CPU utilization, memory
-    utilization, per-port inbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Dell Force10 switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic, for Dell Networking / Force10 (enterprise PEN 6027)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

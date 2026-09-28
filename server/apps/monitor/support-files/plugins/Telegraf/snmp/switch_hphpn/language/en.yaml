@@ -1,7 +1,6 @@
 Switch HP ProCurve SNMP:
   name: HP ProCurve (Telegraf)
-  desc: SNMP monitoring template for HP switch. It reports CPU utilization, memory
-    utilization, per-port inbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for HP ProCurve switch. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 11)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

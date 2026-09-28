@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_engenius",
   "plugin": "Wireless EnGenius SNMP",
-  "plugin_desc": "EnGenius 无线设备 SNMP 采集（Senao 企业号 14125）。在 IF-MIB 64 位 HC 接口流量（ifHCInOctets/ifHCOutOctets）与 sysUpTime 之外，采集私有 sys_info 健康标量：CPU 使用率（cpu_loading DisplayString 解析为 0-100%）与内存使用率（mem_usage DisplayString 解析为 0-100%）。空串、非数字或解析失败的 CPU/内存读数跳过，不按 0% 上报；设备无该私有叶时缺省，不报错。无私有温度/风扇 Gauge，不臆造。不扩展 ifHC* / ifOperStatus。适用 EnGenius Fit / ECW 等声明支持该私有 MIB 的企业无线 AP。",
+  "plugin_desc": "SNMP monitoring template for EnGenius wireless device. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 14125).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_engenius'}) by (instance_id)",
   "name": "Wireless",

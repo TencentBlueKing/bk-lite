@@ -1,7 +1,6 @@
 Switch Westermo SNMP:
   name: Westermo (Telegraf)
-  desc: SNMP monitoring template for Westermo switch. It reports CPU utilization,
-    per-port inbound traffic rate, per-port outbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Westermo switch. It reports uptime, CPU utilization, and interface traffic (enterprise PEN 16177)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -112,6 +111,21 @@ monitor_object_metric:
         outgoing byte counts from multiple interfaces, this metric allows administrators
         to comprehensively assess the sending performance of the entire system, enabling
         more effective traffic management and optimization.
+    device_cpu_load:
+      name: CPU Load Average 1m
+      desc: 1-minute CPU load average of the Westermo WeOS switch (WESTERMO-WEOS-MIB
+        loadAvg1). The device reports load×100 (for example 150 means 1.50), not a
+        0-100 percent; the query divides by 100 so the value matches host load-average
+        scale. Sustained high load can indicate control-plane overload, ring-protocol
+        instability, or attack traffic.
+    device_cpu_load5:
+      name: CPU Load Average 5m
+      desc: 5-minute CPU load average of the Westermo WeOS switch (WESTERMO-WEOS-MIB
+        loadAvg5). The device reports load×100; the query divides by 100.
+    device_cpu_load15:
+      name: CPU Load Average 15m
+      desc: 15-minute CPU load average of the Westermo WeOS switch (WESTERMO-WEOS-MIB
+        loadAvg15). The device reports load×100; the query divides by 100.
     device_cpu_usage:
       name: CPU Utilization
       desc: This metric reports the CPU utilization of the device control plane (typically
@@ -119,6 +133,12 @@ monitor_object_metric:
         control-plane overload, routing instability, or attack traffic, and may lead
         to slow management response or packet processing delays. Sourced from vendor-specific
         SNMP OIDs and normalized to a 0-100 percentage.
+    device_memory_available:
+      name: Memory Available
+      desc: Available memory of the Westermo WeOS switch (WESTERMO-WEOS-MIB memoryAvail),
+        reported in KB and converted to bytes in the query (×1024). WeOS does not
+        expose used or total memory scalars, so used/free pairs and utilization are
+        not fabricated.
     device_memory_usage:
       name: Memory Utilization
       desc: This metric reports overall memory utilization of the device, computed

@@ -1,8 +1,6 @@
 Switch Zyxel SNMP:
   name: Zyxel (Telegraf)
-  desc: SNMP monitoring template for Zyxel switches. It reports ES-COMMON CPU and
-    memory utilization (NebulaFlex/XGS1930/XS1930), with older GS CPU and temperature
-    as fallback.
+  desc: "SNMP monitoring template for Zyxel switch. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic (enterprise PEN 890)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
