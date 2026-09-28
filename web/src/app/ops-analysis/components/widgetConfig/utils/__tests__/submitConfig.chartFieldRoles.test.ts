@@ -13,64 +13,33 @@ const baseInput = {
   actions: [],
 };
 
-test('line submit omits untouched dimension and value fields', () => {
-  const result = buildWidgetSubmitConfig({
+test('line and bar submit ignore leftover dimension and value fields', () => {
+  const line = buildWidgetSubmitConfig({
     ...baseInput,
     chartType: 'line',
     values: {
       name: '折线',
       chartType: 'line',
+      dimensionField: 'src_ip',
+      valueField: 'value',
     },
   });
-
-  assert.equal(result.error, undefined);
-  assert.equal(result.config?.dimensionField, undefined);
-  assert.equal(result.config?.valueField, undefined);
-});
-
-test('bar submit persists dimension and value after the user selects them', () => {
-  const result = buildWidgetSubmitConfig({
+  const bar = buildWidgetSubmitConfig({
     ...baseInput,
     chartType: 'bar',
     values: {
       name: '柱状',
       chartType: 'bar',
       dimensionField: 'src_ip',
-      valueField: 'value',
     },
   });
 
-  assert.equal(result.error, undefined);
-  assert.equal(result.config?.dimensionField, 'src_ip');
-  assert.equal(result.config?.valueField, 'value');
-});
-
-test('line submit rejects a dimension without a value', () => {
-  const saved = buildWidgetSubmitConfig({
-    ...baseInput,
-    chartType: 'line',
-    values: {
-      name: '折线',
-      chartType: 'line',
-      dimensionField: 'src_ip',
-    },
-  });
-  const preview = buildWidgetSubmitConfig({
-    ...baseInput,
-    chartType: 'line',
-    values: {
-      name: '折线',
-      chartType: 'line',
-      dimensionField: 'src_ip',
-    },
-    forPreview: true,
-  });
-
-  assert.equal(saved.error, 'chartRoleFieldPairRequired');
-  assert.equal(saved.config, undefined);
-  assert.equal(preview.error, undefined);
-  assert.equal(preview.config?.dimensionField, 'src_ip');
-  assert.equal(preview.config?.valueField, undefined);
+  assert.equal(line.error, undefined);
+  assert.equal(line.config?.dimensionField, undefined);
+  assert.equal(line.config?.valueField, undefined);
+  assert.equal(bar.error, undefined);
+  assert.equal(bar.config?.dimensionField, undefined);
+  assert.equal(bar.config?.valueField, undefined);
 });
 
 test('pie submit allows saving without field roles', () => {
@@ -84,6 +53,51 @@ test('pie submit allows saving without field roles', () => {
   });
 
   assert.equal(result.error, undefined);
+});
+
+test('pie submit persists dimension and value after the user selects them', () => {
+  const result = buildWidgetSubmitConfig({
+    ...baseInput,
+    chartType: 'pie',
+    values: {
+      name: '饼图',
+      chartType: 'pie',
+      dimensionField: 'host',
+      valueField: 'count',
+    },
+  });
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.config?.dimensionField, 'host');
+  assert.equal(result.config?.valueField, 'count');
+});
+
+test('pie submit rejects a dimension without a value', () => {
+  const saved = buildWidgetSubmitConfig({
+    ...baseInput,
+    chartType: 'pie',
+    values: {
+      name: '饼图',
+      chartType: 'pie',
+      dimensionField: 'host',
+    },
+  });
+  const preview = buildWidgetSubmitConfig({
+    ...baseInput,
+    chartType: 'pie',
+    values: {
+      name: '饼图',
+      chartType: 'pie',
+      dimensionField: 'host',
+    },
+    forPreview: true,
+  });
+
+  assert.equal(saved.error, 'chartRoleFieldPairRequired');
+  assert.equal(saved.config, undefined);
+  assert.equal(preview.error, undefined);
+  assert.equal(preview.config?.dimensionField, 'host');
+  assert.equal(preview.config?.valueField, undefined);
 });
 
 test('multi value submit rejects missing roles and allows them for preview', () => {

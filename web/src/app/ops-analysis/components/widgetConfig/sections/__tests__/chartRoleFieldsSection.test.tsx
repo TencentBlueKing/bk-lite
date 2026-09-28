@@ -43,7 +43,7 @@ const Harness = ({
         t={(key) => key}
         selectedDataSource={{ id: 1 } as DatasourceItem}
         options={options}
-        roles={buildChartRoleFields('line', (key) => key, false)}
+        roles={buildChartRoleFields('pie', (key) => key, false)}
         onRefreshFields={onRefreshFields}
       />
     </Form>
@@ -51,6 +51,16 @@ const Harness = ({
 };
 
 describe('ChartRoleFieldsSection', () => {
+  it('does not expose field roles for line or bar', () => {
+    const t = (key: string) => key;
+    expect(buildChartRoleFields('line', t, false)).toEqual([]);
+    expect(buildChartRoleFields('bar', t, false)).toEqual([]);
+    expect(buildChartRoleFields('pie', t, false).map((role) => role.name)).toEqual([
+      'dimensionField',
+      'valueField',
+    ]);
+  });
+
   it('shows one refresh button, role tips, and the empty-list hint', () => {
     render(<Harness />);
 
