@@ -497,6 +497,63 @@ def test_list_releases_fills_first_seen_users_issues_and_cwv():
         server.shutdown()
 
 
+def test_list_error_issues_filters_by_release():
+    now = datetime(2026, 8, 18, 12, 0, 0, tzinfo=timezone.utc)
+    rows = [
+        {
+            "_time": now.isoformat().replace("+00:00", "Z"),
+            "rum.application": "storefront",
+            "rum.session.id": "s1",
+            "rum.event.type": "error",
+            "rum.release": "1.0.0",
+            "rum.error.fingerprint": "fp-a",
+            "rum.error.message": "Error: a",
+            "rum.error.type": "Error",
+        },
+        {
+            "_time": now.isoformat().replace("+00:00", "Z"),
+            "rum.application": "storefront",
+            "rum.session.id": "s2",
+            "rum.event.type": "error",
+            "rum.release": "1.1.0",
+            "rum.error.fingerprint": "fp-b",
+            "rum.error.message": "Error: b",
+            "rum.error.type": "Error",
+        },
+        {
+            "_time": now.isoformat().replace("+00:00", "Z"),
+            "rum.application": "storefront",
+            "rum.session.id": "s3",
+            "rum.event.type": "error",
+            "rum.release": "1.0.0",
+            "rum.error.fingerprint": "fp-a",
+            "rum.error.message": "Error: a again",
+            "rum.error.type": "Error",
+        },
+    ]
+    server, base = _serve(rows)
+    try:
+        analytics = VictoriaAnalytics.open(logs_endpoint=base, traces_endpoint=base)
+        page = analytics.list_error_issues(
+            "core",
+            {
+                "from": now - timedelta(hours=1),
+                "to": now + timedelta(minutes=1),
+                "applications": ["storefront"],
+                "release": "1.0.0",
+                "traffic": "all",
+                "limit": 100,
+            },
+        )
+        issues = page["issues"]
+        assert len(issues) == 1
+        assert issues[0]["fingerprint"] == "fp-a"
+        assert issues[0]["count"] == 2
+        assert issues[0]["affectedSessions"] == 2
+    finally:
+        server.shutdown()
+
+
 def test_parse_event_matches_product_kpi_fields():
     row = parse_event(
         {

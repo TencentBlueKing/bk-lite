@@ -191,11 +191,12 @@ export default function RumErrorDetailPage() {
         title: t('rum.sessions.session', '会话'),
         dataIndex: 'sessionId',
         key: 'sessionId',
+        ellipsis: true,
         render: (value: string) => (
-          <div className="flex items-center gap-1.5 font-mono text-xs">
+          <div className="flex min-w-0 items-center gap-1.5 font-mono text-xs">
             <Link
               href={`/rum/sessions/${encodeURIComponent(value)}?application=${encodeURIComponent(detail?.application || app)}&range=${range}`}
-              className="text-[var(--color-primary)] hover:underline"
+              className="min-w-0 truncate text-[var(--color-primary)] hover:underline"
               title={value}
               onClick={(e) => e.stopPropagation()}
             >
@@ -208,25 +209,34 @@ export default function RumErrorDetailPage() {
         title: t('rum.sessions.user', '用户'),
         dataIndex: 'userId',
         key: 'userId',
-        render: (value: string) => (
-          <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-2)]">
-            <UserOutlined className="text-[11px] text-[var(--color-text-4)]" />
-            <span>{value || '—'}</span>
-          </div>
-        ),
+        ellipsis: true,
+        render: (value: string) => {
+          const user = (value || '').trim();
+          return (
+            <div className="flex min-w-0 items-center gap-1.5 text-xs text-[var(--color-text-2)]">
+              <UserOutlined className="shrink-0 text-[11px] text-[var(--color-text-4)]" />
+              <span className="min-w-0 truncate font-mono" title={user || undefined}>
+                {user ? truncateMiddle(user, 18) : '—'}
+              </span>
+            </div>
+          );
+        },
       },
       {
         title: t('rum.errors.lastSeen', '最近出现'),
         dataIndex: 'timestamp',
         key: 'timestamp',
+        width: 132,
         render: (value: string) => (
-          <span className="text-xs tabular-nums text-[var(--color-text-2)]">{formatWhen(value)}</span>
+          <span className="whitespace-nowrap text-xs tabular-nums text-[var(--color-text-2)]">
+            {formatWhen(value)}
+          </span>
         ),
       },
       {
         title: t('rum.common.actions', '操作'),
         key: 'actions',
-        width: 100,
+        width: 108,
         fixed: 'right',
         render: (_, row) =>
           row.hasReplay ? (
@@ -241,7 +251,7 @@ export default function RumErrorDetailPage() {
           ) : (
             <Link
               href={`/rum/sessions/${encodeURIComponent(row.sessionId)}?application=${encodeURIComponent(detail?.application || app)}&range=${range}`}
-              className="inline-flex items-center gap-1 text-xs text-[var(--color-text-3)] transition-colors hover:text-[var(--color-primary)]"
+              className="inline-flex items-center gap-1 whitespace-nowrap text-xs text-[var(--color-text-3)] transition-colors hover:text-[var(--color-primary)]"
               onClick={(e) => e.stopPropagation()}
             >
               <span>{t('rum.sessions.viewSession', '查看会话')}</span>
@@ -446,6 +456,8 @@ export default function RumErrorDetailPage() {
                   rowKey="eventId"
                   size="middle"
                   pagination={false}
+                  tableLayout="fixed"
+                  autoScrollX={false}
                   dataSource={detail.occurrences}
                   columns={occurrenceColumns}
                   locale={{ emptyText: t('rum.errors.detail.occurrencesEmpty', '暂无出现记录') }}

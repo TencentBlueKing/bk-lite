@@ -404,8 +404,14 @@ class VictoriaAnalytics:
             extra='"rum.event.type":error',
             limit=4000,
         )
+        traffic = opts.get("traffic") or "visitors"
+        release_filter = (opts.get("release") or "").strip()
         by_key: dict[str, dict] = {}
         for event in events:
+            if not traffic_ok(event.get("traffic") or "", traffic):
+                continue
+            if release_filter and (event.get("release") or "") != release_filter:
+                continue
             key = event.get("fingerprint") or event.get("errorMessage") or ""
             item = by_key.get(key)
             if item is None:

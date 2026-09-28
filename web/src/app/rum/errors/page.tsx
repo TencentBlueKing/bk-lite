@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Empty, Select, type TableColumnsType } from 'antd';
+import { Empty, Select, Tag, type TableColumnsType } from 'antd';
 
 import {
   useRumQueries,
@@ -63,6 +63,7 @@ export default function RumErrorsPage() {
 
   const status = searchParams.get('status') || 'all';
   const sort = searchParams.get('orderBy') || 'count';
+  const release = (searchParams.get('release') || '').trim();
   const [page, setPage] = useState<RumErrorIssuePage | null>(null);
   const [apps, setApps] = useState<string[]>([]);
   const [pending, setPending] = useState(true);
@@ -72,8 +73,9 @@ export default function RumErrorsPage() {
     const out: Record<string, string> = { range, orderBy: sort, traffic };
     if (application) out.application = application;
     if (status !== 'all') out.status = status;
+    if (release) out.release = release;
     return out;
-  }, [range, sort, traffic, application, status]);
+  }, [range, sort, traffic, application, status, release]);
 
   const load = useCallback(async () => {
     setPending(true);
@@ -119,7 +121,10 @@ export default function RumErrorsPage() {
   );
 
   const issues = page?.issues || [];
-  const table = useRumClientPager(issues, `${range}|${application}|${status}|${sort}|${traffic}`);
+  const table = useRumClientPager(
+    issues,
+    `${range}|${application}|${status}|${sort}|${traffic}|${release}`,
+  );
   const degrade = degradationReason(page);
 
   async function triage(issue: RumErrorIssueItem, nextStatus: string) {
@@ -343,7 +348,18 @@ export default function RumErrorsPage() {
         }
         main={
           <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
-            <div className="flex h-8 shrink-0 flex-wrap items-center justify-end gap-2">
+            <div className="flex h-8 shrink-0 flex-wrap items-center gap-2">
+              {release ? (
+                <Tag
+                  closable
+                  onClose={() => setParams({ release: null })}
+                  className="m-0 max-w-full truncate border-0 bg-[var(--color-fill-2)] font-mono text-xs text-[var(--color-text-2)]"
+                  title={release}
+                >
+                  {t('rum.views.release', '发布版本')} {release}
+                </Tag>
+              ) : null}
+              <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
               <Select
                 value={sort}
                 className="h-8 w-[120px] [&_.ant-select-selector]:!h-8 [&_.ant-select-selector]:!items-center"
@@ -359,6 +375,7 @@ export default function RumErrorsPage() {
                 rows={issues as unknown as Record<string, unknown>[]}
                 filename="rum-errors"
               />
+              </div>
             </div>
 
             {pending ? (

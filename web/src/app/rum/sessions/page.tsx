@@ -13,6 +13,7 @@ import {
   Empty,
   Input,
   Select,
+  Tag,
   type TableColumnsType,
 } from 'antd';
 
@@ -82,6 +83,7 @@ export default function RumSessionsPage() {
   const pageSize = parseRumPageSize(searchParams.get('pageSize'));
   const hasError = searchParams.get('hasError') === '1';
   const hasReplay = searchParams.get('hasReplay') === '1';
+  const route = (searchParams.get('route') || '').trim();
 
   const query = useMemo(() => {
     const out: Record<string, string> = {
@@ -95,8 +97,9 @@ export default function RumSessionsPage() {
     if (sessionId.trim()) out.sessionId = sessionId.trim();
     if (hasError) out.hasError = '1';
     if (hasReplay) out.hasReplay = '1';
+    if (route) out.route = route;
     return out;
-  }, [range, sort, pageNo, pageSize, traffic, application, sessionId, hasError, hasReplay]);
+  }, [range, sort, pageNo, pageSize, traffic, application, sessionId, hasError, hasReplay, route]);
 
   const load = useCallback(async () => {
     setPending(true);
@@ -365,7 +368,18 @@ export default function RumSessionsPage() {
                 </div>
               ) : null}
 
-              <div className="flex h-8 shrink-0 flex-wrap items-center justify-end gap-2">
+              <div className="flex h-8 shrink-0 flex-wrap items-center gap-2">
+                {route ? (
+                  <Tag
+                    closable
+                    onClose={() => setParams({ route: null, page: null })}
+                    className="m-0 max-w-full truncate border-0 bg-[var(--color-fill-2)] font-mono text-xs text-[var(--color-text-2)]"
+                    title={route}
+                  >
+                    {t('rum.sessions.filterRoute', '路由')} {displayRoute(route)}
+                  </Tag>
+                ) : null}
+                <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
                 <Select
                   value={sort}
                   className="h-8 w-[120px] [&_.ant-select-selector]:!h-8 [&_.ant-select-selector]:!items-center"
@@ -398,6 +412,7 @@ export default function RumSessionsPage() {
                   truncated={total > (page?.sessions?.length || 0)}
                   truncatedLimit={page?.sessions?.length || 0}
                 />
+                </div>
               </div>
 
               {!pending && sessions.length === 0 ? (
