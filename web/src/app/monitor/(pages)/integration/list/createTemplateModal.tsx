@@ -6,7 +6,7 @@ import React, {
   useMemo,
   useState
 } from 'react';
-import { Button, Form, Input, Radio, Select, Alert } from 'antd';
+import { Button, Form, Input, Radio, Select, Alert, message } from 'antd';
 import OperateModal from '@/components/operate-modal';
 import { ModalRef, ObjectItem } from '@/app/monitor/types';
 import { useTranslation } from '@/utils/i18n';
@@ -86,7 +86,9 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
               ? 'pull'
               : initialForm?.template_type === 'snmp'
                 ? 'snmp'
-                : 'api'
+                : initialForm?.template_type === 'script'
+                  ? 'script'
+                  : 'api'
         });
       }
     }));
@@ -97,6 +99,9 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
     };
 
     const handleSubmit = async () => {
+      if (loading) {
+        return;
+      }
       const values = await form.validateFields();
       setLoading(true);
       try {
@@ -113,6 +118,10 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
           templateId
         );
         setVisible(false);
+      } catch (error: any) {
+        message.error(
+          error?.message || t('common.operationFailed')
+        );
       } finally {
         setLoading(false);
       }
@@ -130,6 +139,7 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
               className="mr-[10px]"
               type="primary"
               loading={loading}
+              disabled={loading}
               onClick={handleSubmit}
             >
               {t('common.confirm')}
@@ -186,6 +196,7 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
               <Radio value="api">API</Radio>
               <Radio value="pull">PULL</Radio>
               <Radio value="snmp">SNMP</Radio>
+              <Radio value="script">{t('monitor.integrations.script')}</Radio>
             </Radio.Group>
           </Form.Item>
           {templateType === 'pull' && (
@@ -199,6 +210,14 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
           {templateType === 'snmp' && (
             <Alert
               message={t('monitor.integrations.snmpTemplateHint')}
+              type="info"
+              showIcon
+              className="mb-[16px]"
+            />
+          )}
+          {templateType === 'script' && (
+            <Alert
+              message={t('monitor.integrations.scriptTemplateHint')}
               type="info"
               showIcon
               className="mb-[16px]"

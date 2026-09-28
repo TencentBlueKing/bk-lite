@@ -10,8 +10,10 @@ import {
   Switch,
   Segmented,
   Spin,
+  Alert,
 } from 'antd';
 import { ExclamationCircleFilled, MinusCircleOutlined, PlusOutlined, SyncOutlined } from '@ant-design/icons';
+import CodeEditor from '@/components/code-editor';
 import Password from '@/components/password';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
@@ -33,6 +35,7 @@ export type FormFieldOptionControls = Record<
     refreshTip?: string;
     /** 云地域：true=腾讯云多选，false=阿里云单选；用来覆盖 UI.json 残留的 mode。 */
     multiple?: boolean;
+    isWindows?: boolean;
   }
 >;
 
@@ -149,12 +152,18 @@ export const useConfigRenderer = () => {
     const optionControl = resolvedOptionsKey
       ? optionControls?.[resolvedOptionsKey]
       : undefined;
+    const isWindows = Boolean(
+      optionControl?.isWindows ||
+      optionControls?.run_as?.isWindows
+    );
     // 帮助文案只使用当前插件字段自身的 description/tooltip/guide_short，
     // 禁止按 name === "username" 去套 monitor.integrations.usernameDes 或 WMI 文案。
     const guideTip = guide_short || tooltip || description;
     const hasGuideTip = Boolean(guideTip);
-    // 悬浮提示已承载说明时，不再在控件旁重复展示同一段 description
-    const showInlineDescription = Boolean(description && description !== guideTip);
+    // 悬浮提示已承载说明时，不再在控件旁重复展示同一段 description；run_as 保留内联灰字说明
+    const showInlineDescription = Boolean(
+      (description && description !== guideTip) || name === 'run_as'
+    );
 
     if (type === 'hidden') {
       return (
@@ -287,6 +296,55 @@ export const useConfigRenderer = () => {
                     values: rejected.join(', ')
                   })
                 );
+              }
+            }
+          }
+        ]
+        : []),
+      ...(name === 'run_as'
+        ? [
+          {
+            validator: async (_: unknown, value: unknown) => {
+              if (isWindows) return;
+              const str = String(value ?? '').trim().toLowerCase();
+              if (!str) {
+                throw new Error(
+                  t(
+                    'monitor.integrations.runAsRequiredLinux',
+                    'Linux 节点下执行用户不能为空'
+                  )
+                );
+              }
+              if (
+                str === 'root' ||
+                /^0+$/.test(str) ||
+                /^uid\s*[:=]\s*0+$/i.test(str)
+              ) {
+                throw new Error(
+                  t(
+                    'monitor.integrations.runAsNonRoot',
+                    '不允许以 root 运行'
+                  )
+                );
+              }
+            }
+          }
+        ]
+        : []),
+      ...(name === 'interval'
+        ? [
+          {
+            validator: async (_: unknown, value: unknown) => {
+              if (value !== undefined && value !== null && value !== '') {
+                const num = Number(value);
+                if (Number.isFinite(num) && num < 60) {
+                  throw new Error(
+                    t(
+                      'monitor.integrations.intervalMin60',
+                      '采集间隔不能小于 60 秒'
+                    )
+                  );
+                }
               }
             }
           }
@@ -542,7 +600,40 @@ export const useConfigRenderer = () => {
           );
         }
 
+        case 'code_editor':
+        case 'codeEditor':
+          return (
+            <div style={{ maxWidth: 640 }} className="w-full">
+              <CodeEditor
+                mode={widget_props.mode || 'sh'}
+                theme={widget_props.theme || 'textmate'}
+                height={widget_props.height || '200px'}
+                width="100%"
+                placeholder={widget_props.placeholder || t('monitor.integrations.scriptPlaceholder', '粘贴或输入脚本内容')}
+                headerOptions={{ copy: true, fullscreen: true }}
+                readOnly={Boolean(locked || widget_props.disabled || widget_props.readOnly)}
+                {...widget_props}
+              />
+            </div>
+          );
+
         case 'textarea':
+          if (name === 'script') {
+            return (
+              <div style={{ maxWidth: 640 }} className="w-full">
+                <CodeEditor
+                  mode={widget_props.mode || 'sh'}
+                  theme={widget_props.theme || 'textmate'}
+                  height={widget_props.height || '200px'}
+                  width="100%"
+                  placeholder={widget_props.placeholder || t('monitor.integrations.scriptPlaceholder', '粘贴或输入脚本内容')}
+                  headerOptions={{ copy: true, fullscreen: true }}
+                  readOnly={Boolean(locked || widget_props.disabled || widget_props.readOnly)}
+                  {...widget_props}
+                />
+              </div>
+            );
+          }
           return (
             <Input.TextArea
               {...widget_props}
@@ -619,9 +710,11 @@ export const useConfigRenderer = () => {
         default:
           return (
             <Input
-              placeholder={label}
+              {...widget_props}
+              disabled={Boolean(locked || widget_props.disabled || (name === 'run_as' && isWindows))}
+              placeholder={widget_props.placeholder || label}
               className="mr-[10px]"
-              style={formWidgetWidthStyle()}
+              style={formWidgetWidthStyle(widget_props.style)}
             />
           );
       }
@@ -638,6 +731,20 @@ export const useConfigRenderer = () => {
       >
         {renderWidget()}
       </Form.Item>
+    );
+
+    const renderFieldBody = () => (
+      <>
+        {name === 'run_as' && isWindows && (
+          <Alert
+            message={t('monitor.integrations.runAsWindowsHelper', 'Windows 下以 Telegraf 服务账户运行')}
+            type="info"
+            showIcon={false}
+            className="mb-2 max-w-[640px] !bg-[var(--color-fill-1)] !border-[var(--color-border-1)] !text-[var(--color-text-3)] text-xs"
+          />
+        )}
+        {renderNamedControl()}
+      </>
     );
 
     if (dependency?.field || mutexPeerField || warningOnlyRules.length) {
@@ -663,7 +770,7 @@ export const useConfigRenderer = () => {
             );
             return (
               <Form.Item required={required} label={renderLabel()}>
-                {renderNamedControl()}
+                {renderFieldBody()}
                 {showMutexConflict ? (
                   <span className="align-middle text-[12px] leading-[18px] text-[var(--color-fail)]">
                     {mutexPeerOccupiedTip}
@@ -684,15 +791,7 @@ export const useConfigRenderer = () => {
 
     return (
       <Form.Item key={name} required={required} label={renderLabel()}>
-        <Form.Item
-          noStyle
-          name={name}
-          rules={formRules}
-          initialValue={default_value}
-          valuePropName={type === 'switch' ? 'checked' : 'value'}
-        >
-          {renderWidget()}
-        </Form.Item>
+        {renderFieldBody()}
         {showInlineDescription && (
           <span className="align-middle text-[12px] text-[var(--color-text-3)]">
             {description}

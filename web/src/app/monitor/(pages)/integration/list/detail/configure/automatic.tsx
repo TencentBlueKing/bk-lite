@@ -1,10 +1,11 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Form, Button, Input, message, Spin, Dropdown, Modal, Tag, Select, Switch } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   DownOutlined,
+  ExclamationCircleFilled,
   LoadingOutlined,
   UploadOutlined
 } from '@ant-design/icons';
@@ -85,13 +86,18 @@ import {
   countAccessAssets,
   mergeImportedAssetRows
 } from './automaticAssetCount';
+import ScriptTrialRunArea from './scriptTrialRunArea';
+import { BusinessMetricItem } from './scriptMetricsParser';
 const { confirm } = Modal;
 
 interface CollectDetectState {
-  status: 'pending' | 'running' | 'success' | 'failed';
+  status: 'pending' | 'running' | 'success' | 'failed' | 'warning';
+  warning_type?: 'no_permission' | 'rate_limit';
   fingerprint?: string;
   result?: Record<string, any>;
   error_message?: string;
+  started_at?: string | null;
+  finished_at?: string | null;
 }
 
 interface IntegrationTableColumnConfig {
@@ -111,7 +117,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const [form] = Form.useForm();
   const { t } = useTranslation();
   const searchParams = useSearchParams();
-  const { isLoading } = useApiClient();
+  const { get, post, isLoading } = useApiClient();
   const {
     createCollectDetectTask,
     getCollectDetectTask,
@@ -146,6 +152,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   );
   const [nodeList, setNodeList] = useState<TableDataItem[]>([]);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
+  const saveInFlightRef = useRef(false);
   const [nodesLoading, setNodesLoading] = useState<boolean>(false);
   const [initTableItems, setInitTableItems] =
     useState<IntegrationMonitoredObject>({});
@@ -162,6 +169,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     []
   );
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [activeTrialRowKey, setActiveTrialRowKey] = useState<string>('');
   const [collectDetectTasks, setCollectDetectTasks] = useState<
     Record<string, CollectDetectState>
   >({});
@@ -182,6 +190,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const onTableDataChange = (data: IntegrationMonitoredObject[]) => {
     setDataSource(data);
     clearCollectDetectState();
+    if (data.length > 0 && (!activeTrialRowKey || !data.some((r) => r.key === activeTrialRowKey))) {
+      setActiveTrialRowKey(data[0].key as string);
+    }
   };
 
   useEffect(() => {
@@ -379,6 +390,163 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   }, [configsInfo]);
 
   const supportCollectDetect = !!currentConfig?.support_collect_detect;
+  const templateType = searchParams.get('template_type') || '';
+  const isScriptTemplate =
+    templateType === 'script' ||
+    collectType === 'script' ||
+    currentConfig?.collect_type === 'script';
+
+  const activeRecord = useMemo(() => {
+    return (
+      dataSource.find((row) => row.key === activeTrialRowKey) ||
+      dataSource[0]
+    );
+  }, [dataSource, activeTrialRowKey]);
+
+  const activeTrialTask = useMemo(() => {
+    if (!activeRecord?.key) return undefined;
+    return collectDetectTasks[activeRecord.key as string];
+  }, [activeRecord, collectDetectTasks]);
+
+  const isAnyTrialRunning = useMemo(() => {
+    return Object.values(collectDetectTasks).some(
+      (t) => t?.status === 'pending' || t?.status === 'running'
+    );
+  }, [collectDetectTasks]);
+
+  const [trialMetricsByRow, setTrialMetricsByRow] = useState<
+    Record<string, BusinessMetricItem[]>
+  >({});
+
+  const handleSelectedScriptMetricsChange = useCallback(
+    (metrics: BusinessMetricItem[]) => {
+      const rowKey = (activeRecord?.key as string) || 'default';
+      setTrialMetricsByRow((prev) => ({
+        ...prev,
+        [rowKey]: metrics
+      }));
+    },
+    [activeRecord?.key]
+  );
+
+  const selectedScriptMetrics = useMemo(() => {
+    const map = new Map<string, BusinessMetricItem>();
+    Object.values(trialMetricsByRow).forEach((items) => {
+      items.forEach((item) => {
+        if (!map.has(item.name)) {
+          map.set(item.name, item);
+        }
+      });
+    });
+    return Array.from(map.values());
+  }, [trialMetricsByRow]);
+
+  const persistScriptMetrics = async (
+    targetPluginId: string | number,
+    targetObjectId: string | number,
+    metricsToPersist: BusinessMetricItem[]
+  ) => {
+    if (!metricsToPersist.length) return;
+    const silentReq = { suppressErrorNotification: true } as const;
+    try {
+      const groupRes: any = await get('/monitor/api/metrics_group/', {
+        params: {
+          monitor_object_id: targetObjectId,
+          monitor_plugin_id: targetPluginId
+        },
+        ...silentReq
+      });
+      const groups = Array.isArray(groupRes)
+        ? groupRes
+        : groupRes?.items || [];
+      let targetGroupId = groups[0]?.id;
+      if (!targetGroupId) {
+        const createdGroup: any = await post(
+          '/monitor/api/metrics_group/',
+          {
+            monitor_object: Number(targetObjectId),
+            monitor_plugin: Number(targetPluginId),
+            name: 'Base',
+            description: '基础指标'
+          },
+          silentReq
+        );
+        targetGroupId = createdGroup?.id;
+      }
+      if (!targetGroupId) {
+        throw new Error(t('common.operationFailed'));
+      }
+
+      const existingRes: any = await get('/monitor/api/metrics/', {
+        params: {
+          monitor_object_id: targetObjectId,
+          monitor_plugin_id: targetPluginId
+        },
+        ...silentReq
+      });
+      const existingItems = Array.isArray(existingRes)
+        ? existingRes
+        : existingRes?.items || [];
+      const existingNames = new Set(
+        existingItems.map((m: { name?: string }) => m.name).filter(Boolean)
+      );
+
+      const seen = new Set(existingNames);
+      const uniqueMetrics: BusinessMetricItem[] = [];
+      for (const m of metricsToPersist) {
+        if (!seen.has(m.name)) {
+          seen.add(m.name);
+          uniqueMetrics.push(m);
+        }
+      }
+
+      if (!uniqueMetrics.length) return;
+
+      const results = await Promise.allSettled(
+        uniqueMetrics.map((item) => {
+          const dimensions = Object.keys(item.tags || {}).map((k) => ({
+            name: k,
+            description: k
+          }));
+          return post(
+            '/monitor/api/metrics/',
+            {
+              monitor_object: Number(targetObjectId),
+              monitor_plugin: Number(targetPluginId),
+              metric_group: targetGroupId,
+              name: item.name,
+              display_name: item.name,
+              query: `${item.name}{__$labels__}`,
+              unit: '',
+              data_type: 'Number',
+              description: item.name,
+              dimensions
+            },
+            silentReq
+          );
+        })
+      );
+      const rejected = results.find(
+        (result): result is PromiseRejectedResult => result.status === 'rejected'
+      );
+      if (rejected) {
+        throw rejected.reason;
+      }
+    } catch (error: any) {
+      throw new Error(
+        t(
+          'monitor.integrations.scriptMetricsPersistFailed',
+          '指标保存失败：{error}',
+          {
+            error:
+              error?.response?.data?.message ||
+              error?.message ||
+              t('common.operationFailed')
+          }
+        )
+      );
+    }
+  };
   const [formSnapshot, setFormSnapshot] = useState<Record<string, any>>({});
   const tableDependencyFields = useMemo(
     () => collectDependencyFieldNames(currentConfig?.table_columns),
@@ -512,6 +680,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         <CheckCircleOutlined className="text-[#52c41a]" />
       ) : presentation.tone === 'error' ? (
         <CloseCircleOutlined className="text-[#ff4d4f]" />
+      ) : presentation.tone === 'warning' ? (
+        <ExclamationCircleFilled className="text-[#faad14]" />
       ) : (
         <LoadingOutlined className="text-[#1677ff]" />
       );
@@ -532,7 +702,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
                     ? 'success'
                     : presentation.tone === 'error'
                       ? 'error'
-                      : 'processing'
+                      : presentation.tone === 'warning'
+                        ? 'warning'
+                        : 'processing'
                 }
                 className="mt-[6px]"
               >
@@ -611,7 +783,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       ) {
         return;
       }
-      updateCollectDetectState(rowKey, { ...task, fingerprint });
+      updateCollectDetectState(rowKey, {
+        ...task,
+        fingerprint,
+        started_at: (task as any).started_at,
+        finished_at: (task as any).finished_at
+      });
       if (['pending', 'running'].includes(task.status) && retryCount < 60) {
         collectDetectTimersRef.current[rowKey] = setTimeout(() => {
           pollCollectDetectTask(
@@ -650,6 +827,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     mode: CollectDetectMode = 'single'
   ) => {
     const rowKey = record.key as string;
+    setActiveTrialRowKey(rowKey);
     const nodeId = getRowNodeId(record);
     if (!nodeId) {
       message.warning(t('monitor.integrations.collectDetectNodeRequired'));
@@ -668,10 +846,34 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       })) as { task_id: React.Key };
       pollCollectDetectTask(rowKey, data.task_id, fingerprint, mode);
     } catch (error: any) {
+      const status = error?.response?.status;
+      const respMsg = error?.response?.data?.message || error?.message || '';
+      let warningType: 'no_permission' | 'rate_limit' | undefined;
+      if (
+        status === 429 ||
+        respMsg.includes('频繁') ||
+        respMsg.includes('throttle') ||
+        respMsg.includes('Throttled')
+      ) {
+        warningType = 'rate_limit';
+      } else if (
+        status === 403 ||
+        respMsg.includes('无权') ||
+        respMsg.includes('权限') ||
+        respMsg.includes('permission') ||
+        respMsg.includes('Unauthorized')
+      ) {
+        warningType = 'no_permission';
+      }
       updateCollectDetectState(rowKey, {
-        status: 'failed',
+        status: warningType ? 'warning' : 'failed',
         fingerprint,
-        error_message: error?.message || t('common.operationFailed')
+        warning_type: warningType,
+        error_message: warningType === 'rate_limit'
+          ? t('monitor.integrations.trialRunRateLimit', '试运行过于频繁，请稍后重试')
+          : warningType === 'no_permission'
+            ? t('monitor.integrations.trialRunNoPermission', '当前账号无权试运行该对象/节点')
+            : respMsg || t('common.operationFailed')
       });
     }
   };
@@ -702,14 +904,33 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       return <Tag>{t('monitor.integrations.collectDetectUntested')}</Tag>;
     }
     const clickableClassName = 'cursor-pointer';
+    if (task.status === 'warning') {
+      return (
+        <Tag
+          color="warning"
+          className={clickableClassName}
+          onClick={() => {
+            setActiveTrialRowKey(record.key as string);
+            if (!isScriptTemplate) showCollectDetectResult(task);
+          }}
+        >
+          {t('monitor.integrations.trialRunWarning', '警告')}
+        </Tag>
+      );
+    }
     if (['pending', 'running'].includes(task.status)) {
       return (
         <Tag
           color="processing"
           className={clickableClassName}
-          onClick={() => showCollectDetectResult(task)}
+          onClick={() => {
+            setActiveTrialRowKey(record.key as string);
+            if (!isScriptTemplate) showCollectDetectResult(task);
+          }}
         >
-          {t('monitor.integrations.collectDetectRunning')}
+          {isScriptTemplate
+            ? t('monitor.integrations.trialRun', '试运行中')
+            : t('monitor.integrations.collectDetectRunning')}
         </Tag>
       );
     }
@@ -717,7 +938,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       <Tag
         color="success"
         className={clickableClassName}
-        onClick={() => showCollectDetectResult(task)}
+        onClick={() => {
+          setActiveTrialRowKey(record.key as string);
+          if (!isScriptTemplate) showCollectDetectResult(task);
+        }}
       >
         {t('monitor.integrations.collectDetectSuccess')}
       </Tag>
@@ -725,7 +949,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       <Tag
         color="error"
         className={clickableClassName}
-        onClick={() => showCollectDetectResult(task)}
+        onClick={() => {
+          setActiveTrialRowKey(record.key as string);
+          if (!isScriptTemplate) showCollectDetectResult(task);
+        }}
       >
         {t('monitor.integrations.collectDetectFailed')}
       </Tag>
@@ -764,9 +991,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
                   : ''
               )}
               className="mr-[10px]"
-              onClick={() => handleCollectDetect(record)}
+              onClick={() => {
+                setActiveTrialRowKey(record.key as string);
+                handleCollectDetect(record);
+              }}
             >
-              {t('monitor.integrations.collectDetect')}
+              {isScriptTemplate
+                ? t('monitor.integrations.trialRun', '试运行')
+                : t('monitor.integrations.collectDetect')}
             </Button>
           )}
           <Button
@@ -1137,7 +1369,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   };
 
   const handleSave = () => {
-    if (policyTemplatesLoading) {
+    if (policyTemplatesLoading || confirmLoading || saveInFlightRef.current) {
       return;
     }
     const normalizedForm = normalizePasswordFields(
@@ -1213,9 +1445,16 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     pushAlertCenter = false,
     alertCenterChannelIds: Array<string | number> = []
   ) => {
+    if (saveInFlightRef.current) {
+      return;
+    }
+    saveInFlightRef.current = true;
     try {
       setConfirmLoading(true);
       const collectResult = await updateNodeChildConfig(params);
+      if (isScriptTemplate && selectedScriptMetrics.length > 0) {
+        await persistScriptMetrics(pluginId, objectId, selectedScriptMetrics);
+      }
       if (templatesToApply.length) {
         const policyPayload = buildCollectionPolicyApplyPayload({
           monitorObjectId: objectId,
@@ -1267,6 +1506,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           t('common.operationFailed')
       );
     } finally {
+      saveInFlightRef.current = false;
       setConfirmLoading(false);
     }
   };
@@ -1548,11 +1788,30 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           rowSelection={rowSelection}
         />
       </Form.Item>
+      {isScriptTemplate && (
+        <ScriptTrialRunArea
+          task={activeTrialTask}
+          spinning={['pending', 'running'].includes(activeTrialTask?.status || '')}
+          onTrialRun={() => {
+            const target =
+              dataSource.find((row) => row.key === activeTrialRowKey) ||
+              dataSource[0];
+            if (target) {
+              setActiveTrialRowKey(target.key as string);
+              handleCollectDetect(target);
+            }
+          }}
+          nodeSelected={Boolean(getRowNodeId(activeRecord || {}))}
+          instanceName={activeRecord?.instance_name || undefined}
+          onSelectedMetricsChange={handleSelectedScriptMetricsChange}
+        />
+      )}
       <Form.Item>
         <Permission requiredPermissions={['Add']}>
           <Button
             type="primary"
             loading={confirmLoading}
+            disabled={confirmLoading || isAnyTrialRunning}
             onClick={handleSave}
           >
             {t('common.confirm')}
