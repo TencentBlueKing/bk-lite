@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { Alert, Button, Checkbox, Spin, Tag, Tooltip } from 'antd';
+import { Alert, Button, Cascader, Checkbox, Input, Select, Spin, Tag, Tooltip } from 'antd';
 import {
   CheckCircleFilled,
   CloseCircleFilled,
@@ -10,7 +10,14 @@ import {
 } from '@ant-design/icons';
 import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
+import useApiClient from '@/utils/request';
+import { useCommon } from '@/app/monitor/context/common';
 import { parseScriptMetrics, BusinessMetricItem } from './scriptMetricsParser';
+import {
+  applyCatalogDraft,
+  extractCatalogItems,
+  ScriptMetricCatalogDraft
+} from './scriptMetricPersist';
 
 export interface TrialRunTaskState {
   status: 'pending' | 'running' | 'success' | 'failed' | 'warning';
@@ -28,7 +35,15 @@ interface ScriptTrialRunAreaProps {
   onTrialRun: () => void;
   nodeSelected?: boolean;
   instanceName?: string;
+  pluginId?: string | number;
+  objectId?: string | number;
   onSelectedMetricsChange?: (metrics: BusinessMetricItem[]) => void;
+}
+
+interface MetricGroupOption {
+  id?: number;
+  name?: string;
+  display_name?: string;
 }
 
 const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
@@ -37,11 +52,25 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
   onTrialRun,
   nodeSelected = true,
   instanceName,
+  pluginId,
+  objectId,
   onSelectedMetricsChange
 }) => {
   const { t } = useTranslation();
+  const { get } = useApiClient();
+  const commonContext = useCommon();
   const [selectedMetrics, setSelectedMetrics] = useState<Record<string, boolean>>({});
+  const [catalogByKey, setCatalogByKey] = useState<Record<string, ScriptMetricCatalogDraft>>({});
+  const [groupOptions, setGroupOptions] = useState<MetricGroupOption[]>([]);
   const [trialSubmitting, setTrialSubmitting] = useState(false);
+  const unitOptions = useMemo(
+    () =>
+      (commonContext?.groupedUnitList || []).map((item) => ({
+        ...item,
+        value: item.label
+      })),
+    [commonContext?.groupedUnitList]
+  );
 
   const isSpinning = spinning || task?.status === 'pending' || task?.status === 'running';
   const trialBusy = isSpinning || trialSubmitting;
@@ -70,7 +99,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     );
   }, [task]);
 
-  // 当解析到新指标时，默认全选
+  // 当解析到新指标时，默认全选，并清空上一轮目录草稿
   useEffect(() => {
     if (parsedOutput?.businessMetrics?.length) {
       const initialMap: Record<string, boolean> = {};
@@ -81,20 +110,63 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     } else {
       setSelectedMetrics({});
     }
+    setCatalogByKey({});
   }, [parsedOutput]);
 
-  // 通知上层选中的业务指标
+  useEffect(() => {
+    if (!pluginId || !objectId) {
+      setGroupOptions([]);
+      return;
+    }
+    let cancelled = false;
+    const loadGroups = async () => {
+      try {
+        const groupRes = await get('/monitor/api/metrics_group/', {
+          params: {
+            monitor_object_id: objectId,
+            monitor_plugin_id: pluginId,
+            page: 1,
+            page_size: 100
+          },
+          suppressErrorNotification: true
+        });
+        if (!cancelled) {
+          setGroupOptions(extractCatalogItems<MetricGroupOption>(groupRes));
+        }
+      } catch {
+        if (!cancelled) {
+          setGroupOptions([]);
+        }
+      }
+    };
+    void loadGroups();
+    return () => {
+      cancelled = true;
+    };
+  }, [get, pluginId, objectId]);
+
+  // 通知上层选中的业务指标（含分组 / 单位 / 描述）
   useEffect(() => {
     if (!onSelectedMetricsChange) return;
     if (!parsedOutput?.businessMetrics?.length) {
       onSelectedMetricsChange([]);
       return;
     }
-    const selected = parsedOutput.businessMetrics.filter(
-      (m) => selectedMetrics[m.key] !== false
-    );
+    const selected = parsedOutput.businessMetrics
+      .filter((m) => selectedMetrics[m.key] !== false)
+      .map((m) => applyCatalogDraft(m, catalogByKey[m.key]));
     onSelectedMetricsChange(selected);
-  }, [selectedMetrics, parsedOutput, onSelectedMetricsChange]);
+  }, [selectedMetrics, parsedOutput, catalogByKey, onSelectedMetricsChange]);
+
+  const updateCatalog = (key: string, patch: ScriptMetricCatalogDraft) => {
+    setCatalogByKey((prev) => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        ...patch
+      }
+    }));
+  };
 
   const toggleMetric = (key: string) => {
     if (isSpinning) return;
@@ -501,44 +573,105 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           </div>
         </div>
         <div className="rounded-md border border-[var(--color-border-1)] overflow-hidden bg-[var(--color-bg)]">
-          <div className="grid grid-cols-[36px_minmax(180px,1.5fr)_minmax(100px,1fr)_minmax(160px,2fr)] border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-3 py-2 text-[12px] font-medium text-[var(--color-text-2)]">
-            <div />
-            <div>{t('monitor.integrations.trialRunMetricName', '指标名称')}</div>
-            <div>{t('monitor.integrations.trialRunMetricValue', '采样值')}</div>
-            <div>{t('monitor.integrations.trialRunMetricDimensions', '维度标签')}</div>
+          <div className="border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-3 py-2 text-[12px] font-medium text-[var(--color-text-2)]">
+            <div className="grid grid-cols-[36px_minmax(180px,1.5fr)_minmax(100px,1fr)_minmax(160px,2fr)]">
+              <div />
+              <div>{t('monitor.integrations.trialRunMetricName', '指标名称')}</div>
+              <div>{t('monitor.integrations.trialRunMetricValue', '采样值')}</div>
+              <div>{t('monitor.integrations.trialRunMetricDimensions', '维度标签')}</div>
+            </div>
+            <div className="mt-2 grid grid-cols-3 gap-2 pl-[36px]">
+              <div>{t('monitor.integrations.metricGroup', '分组')}</div>
+              <div>{t('common.unit', '单位')}</div>
+              <div>{t('monitor.integrations.trialRunMetricDescription', '指标描述')}</div>
+            </div>
           </div>
-          <div className="max-h-[260px] overflow-auto divide-y divide-[var(--color-border-1)]">
+          <div className="max-h-[360px] overflow-auto divide-y divide-[var(--color-border-1)]">
             {businessMetrics.map((item: BusinessMetricItem) => {
               const isChecked = selectedMetrics[item.key] !== false;
+              const catalog = catalogByKey[item.key] || {};
               return (
                 <div
                   key={item.key}
-                  className={`grid grid-cols-[36px_minmax(180px,1.5fr)_minmax(100px,1fr)_minmax(160px,2fr)] items-center px-3 py-2 text-[13px] hover:bg-[var(--color-fill-2)] transition-colors ${
+                  className={`px-3 py-2 text-[13px] hover:bg-[var(--color-fill-2)] transition-colors ${
                     isChecked ? '' : 'opacity-60 bg-[var(--color-bg-2)]'
                   }`}
                 >
-                  <div>
-                    <Checkbox
-                      checked={isChecked}
-                      onChange={() => toggleMetric(item.key)}
+                  <div className="grid grid-cols-[36px_minmax(180px,1.5fr)_minmax(100px,1fr)_minmax(160px,2fr)] items-center">
+                    <div>
+                      <Checkbox
+                        checked={isChecked}
+                        onChange={() => toggleMetric(item.key)}
+                      />
+                    </div>
+                    <div className="font-mono text-xs font-medium text-[var(--color-text-1)] truncate" title={item.name}>
+                      {item.name}
+                    </div>
+                    <div className="font-mono text-xs text-[var(--color-text-2)] truncate" title={String(item.value)}>
+                      {String(item.value)}
+                    </div>
+                    <div className="flex flex-wrap gap-1 items-center">
+                      {item.tags && Object.keys(item.tags).length > 0 ? (
+                        Object.entries(item.tags).map(([tk, tv]) => (
+                          <Tag key={tk} className="m-0 text-[11px] font-mono leading-4 py-0 px-1">
+                            {tk}={tv}
+                          </Tag>
+                        ))
+                      ) : (
+                        <span className="text-[12px] text-[var(--color-text-4)]">--</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-2 grid grid-cols-3 gap-2 pl-[36px]">
+                    <Select
+                      size="small"
+                      allowClear
+                      showSearch
+                      optionFilterProp="label"
+                      className="w-full"
+                      placeholder={t('monitor.integrations.metricGroup', '分组')}
+                      value={catalog.metric_group ?? undefined}
+                      onChange={(value) =>
+                        updateCatalog(item.key, {
+                          metric_group: typeof value === 'number' ? value : null
+                        })
+                      }
+                      options={groupOptions
+                        .filter((group) => typeof group.id === 'number')
+                        .map((group) => ({
+                          value: group.id as number,
+                          label: group.display_name || group.name || String(group.id)
+                        }))}
                     />
-                  </div>
-                  <div className="font-mono text-xs font-medium text-[var(--color-text-1)] truncate" title={item.name}>
-                    {item.name}
-                  </div>
-                  <div className="font-mono text-xs text-[var(--color-text-2)] truncate" title={String(item.value)}>
-                    {String(item.value)}
-                  </div>
-                  <div className="flex flex-wrap gap-1 items-center">
-                    {item.tags && Object.keys(item.tags).length > 0 ? (
-                      Object.entries(item.tags).map(([tk, tv]) => (
-                        <Tag key={tk} className="m-0 text-[11px] font-mono leading-4 py-0 px-1">
-                          {tk}={tv}
-                        </Tag>
-                      ))
-                    ) : (
-                      <span className="text-[12px] text-[var(--color-text-4)]">--</span>
-                    )}
+                    <Cascader
+                      size="small"
+                      allowClear
+                      showSearch
+                      className="w-full"
+                      placeholder={t('common.unit', '单位')}
+                      options={unitOptions}
+                      value={Array.isArray(catalog.unit) ? catalog.unit : undefined}
+                      onChange={(value) =>
+                        updateCatalog(item.key, {
+                          unit: Array.isArray(value) ? value : undefined
+                        })
+                      }
+                    />
+                    <Input
+                      size="small"
+                      allowClear
+                      className="w-full"
+                      placeholder={t(
+                        'monitor.integrations.trialRunMetricDescription',
+                        '指标描述'
+                      )}
+                      value={catalog.description || ''}
+                      onChange={(event) =>
+                        updateCatalog(item.key, {
+                          description: event.target.value
+                        })
+                      }
+                    />
                   </div>
                 </div>
               );

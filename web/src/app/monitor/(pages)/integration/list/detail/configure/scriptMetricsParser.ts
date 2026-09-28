@@ -3,6 +3,12 @@ export interface BusinessMetricItem {
   name: string;
   value: number | string;
   tags?: Record<string, string>;
+  /** 指标目录分组 ID，确认时写入 metric_group。 */
+  metric_group?: number | null;
+  /** 指标目录单位 ID（Cascader 叶子 unit_id）。 */
+  unit?: string;
+  /** 指标目录描述，允许空字符串。 */
+  description?: string;
 }
 
 export interface ParsedScriptOutput {

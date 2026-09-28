@@ -899,6 +899,7 @@
       "trialRunMetricName": "Metric Name",
       "trialRunMetricValue": "Sample Value",
       "trialRunMetricDimensions": "Dimensions",
+      "trialRunMetricDescription": "Metric Description",
       "trialRunSelectInstance": "Target instance for debug",
       "scriptMetricsPersistFailed": "Failed to save metrics: {error}",
       "templateDescription": "Template Description",

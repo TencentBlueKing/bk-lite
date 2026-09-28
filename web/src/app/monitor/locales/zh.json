@@ -899,6 +899,7 @@
       "trialRunMetricName": "指标名称",
       "trialRunMetricValue": "采样值",
       "trialRunMetricDimensions": "维度标签",
+      "trialRunMetricDescription": "指标描述",
       "trialRunSelectInstance": "调试目标实例",
       "scriptMetricsPersistFailed": "指标保存失败：{error}",
       "templateDescription": "模版介绍",
