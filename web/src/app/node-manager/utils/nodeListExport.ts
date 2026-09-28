@@ -1,32 +1,48 @@
 import { SearchFilters } from '@/components/search-combination/types';
 
+export type NodeExportScope = 'selected' | 'currentPage' | 'all';
+
 export function buildNodeExportRequest({
+  scope,
   selectedIds,
+  currentPageIds,
   cloudRegionId,
   filters,
   unassignedOnly
 }: {
+  scope: NodeExportScope;
   selectedIds: Array<string | number>;
+  currentPageIds: Array<string | number>;
   cloudRegionId: number | string;
   filters?: SearchFilters;
   unassignedOnly: boolean;
-}): { query: { unassigned?: boolean }; body: Record<string, unknown> } {
+}): {
+  empty: boolean;
+  query: { unassigned?: boolean };
+  body?: Record<string, unknown>;
+} {
   const query = unassignedOnly ? { unassigned: true } : {};
-  const ids = selectedIds.map(String).filter(Boolean);
-  if (ids.length) {
-    return {
-      query,
-      body: {
-        cloud_region_id: cloudRegionId,
-        selected_ids: ids
-      }
-    };
+  if (scope === 'all') {
+    const body: Record<string, unknown> = { cloud_region_id: cloudRegionId };
+    if (filters && Object.keys(filters).length > 0) {
+      body.filters = filters;
+    }
+    return { empty: false, query, body };
   }
-  const body: Record<string, unknown> = { cloud_region_id: cloudRegionId };
-  if (filters && Object.keys(filters).length > 0) {
-    body.filters = filters;
+
+  const source = scope === 'currentPage' ? currentPageIds : selectedIds;
+  const ids = source.map(String).filter(Boolean);
+  if (!ids.length) {
+    return { empty: true, query };
   }
-  return { query, body };
+  return {
+    empty: false,
+    query,
+    body: {
+      cloud_region_id: cloudRegionId,
+      selected_ids: ids
+    }
+  };
 }
 
 export function nodeExportQueryString(query: { unassigned?: boolean }): string {

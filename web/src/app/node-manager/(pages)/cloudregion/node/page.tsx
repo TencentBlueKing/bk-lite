@@ -61,7 +61,10 @@ import {
   selectedNodesFromMap,
   shouldClearNodeSelection
 } from '@/app/node-manager/utils/nodeListSelection';
-import { buildNodeExportRequest } from '@/app/node-manager/utils/nodeListExport';
+import {
+  buildNodeExportRequest,
+  NodeExportScope
+} from '@/app/node-manager/utils/nodeListExport';
 import {
   listNodeHostedCollectors,
   listNodeUpgradeableCollectors,
@@ -406,15 +409,30 @@ const Node = () => {
     setShowInstallController(true);
   };
 
-  const handleExportNodes = async () => {
+  const handleExportNodes = async (scope: NodeExportScope) => {
+    if (
+      scope !== 'selected' &&
+      scope !== 'currentPage' &&
+      scope !== 'all'
+    ) {
+      return;
+    }
+    const request = buildNodeExportRequest({
+      scope,
+      selectedIds: selectedRowKeys.map(String),
+      currentPageIds: (nodeList || []).map((row) =>
+        String(row.id || row.key || '')
+      ),
+      cloudRegionId: cloudId,
+      filters: searchFilters,
+      unassignedOnly
+    });
+    if (request.empty || !request.body) {
+      message.error(t('node-manager.cloudregion.node.exportEmpty'));
+      return;
+    }
     setExporting(true);
     try {
-      const request = buildNodeExportRequest({
-        selectedIds: selectedRowKeys.map(String),
-        cloudRegionId: cloudId,
-        filters: searchFilters,
-        unassignedOnly
-      });
       const { blob, filename } = await exportNodeList({
         ...request.body,
         ...request.query
@@ -829,13 +847,41 @@ const Node = () => {
                       }}
                       className="mr-[8px]"
                     />
-                    <Button
-                      className="mr-[8px]"
-                      loading={exporting}
-                      onClick={handleExportNodes}
+                    <Dropdown
+                      overlayClassName="customMenu"
+                      menu={{
+                        items: [
+                          {
+                            key: 'selected',
+                            label: t(
+                              'node-manager.cloudregion.node.exportSelected'
+                            ),
+                            disabled: !selectedRowKeys.length
+                          },
+                          {
+                            key: 'currentPage',
+                            label: t(
+                              'node-manager.cloudregion.node.exportCurrentPage'
+                            )
+                          },
+                          {
+                            key: 'all',
+                            label: t(
+                              'node-manager.cloudregion.node.exportAll'
+                            )
+                          }
+                        ],
+                        onClick: ({ key }) =>
+                          handleExportNodes(key as NodeExportScope)
+                      }}
                     >
-                      {t('common.export')}
-                    </Button>
+                      <Button className="mr-[8px]" loading={exporting}>
+                        <Space>
+                          {t('common.export')}
+                          <DownOutlined />
+                        </Space>
+                      </Button>
+                    </Dropdown>
                     <PermissionWrapper
                       requiredPermissions={['InstallController']}
                     >
