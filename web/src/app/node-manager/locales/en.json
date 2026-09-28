@@ -700,6 +700,7 @@
     "batchbindSuccess": "Bound successfully",
     "successfulDownloaded": "Download successful !",
     "configuration": "Configuration",
-    "successfullyModified": "Modified successfully!"
+    "successfullyModified": "Modified successfully!",
+    "formatError": "Invalid format"
   }
 }

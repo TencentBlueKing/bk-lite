@@ -76,6 +76,21 @@ def test_detect_bundle_root_drills_unique_top_directory():
     )
     assert detect_bundle_root(["tables/orders.md", "metrics/revenue.md"]) == ""
     assert detect_bundle_root(["readme.md"]) == ""
+    assert (
+        detect_bundle_root(
+            [
+                "test/llm_wiki/实体/orders.md",
+                "test/llm_wiki/测试/notes.md",
+                "test/index.md",
+                "test/assets/logo.png",
+            ]
+        )
+        == "test/llm_wiki"
+    )
+    assert detect_bundle_root(["IT/目录介绍.md", "IT/wiki/实体/page.md"]) == "IT"
+    assert detect_bundle_root(["实体/orders.md", "实体/nested.md"]) == ""
+    assert detect_bundle_root(["repo-main/assets/a.png", "repo-main/index.md", "repo-main/wiki/page.md"]) == "repo-main/wiki"
+    assert detect_bundle_root(["index.md", "guides/a.md", "assets/x.png"]) == ""
 
 
 def test_strip_bundle_root_removes_github_prefix():
@@ -120,6 +135,17 @@ def test_rewrite_okf_links_rewrites_bundle_paths_and_leaves_external_and_code():
     assert "[missing](/tables/missing.md)" in rewritten
     assert "```markdown\n[orders](/tables/orders.md)\n```" in rewritten.replace("\r\n", "\n")
     assert stats == {"rewritten": 2, "unresolved": 1}
+
+
+def test_rewrite_okf_links_rewrites_angle_bracket_destinations():
+    titles = {"概念/定义(通知中心)": "定义(通知中心)"}
+    rewritten, stats = rewrite_okf_links(
+        "见 [定义](</概念/定义(通知中心).md>)。",
+        "实体/告警中心.md",
+        titles,
+    )
+    assert rewritten == "见 [[定义(通知中心)|定义]]。"
+    assert stats == {"rewritten": 1, "unresolved": 0}
 
 
 def test_inject_description_skips_when_already_present():
@@ -398,8 +424,13 @@ def test_okf_preflight_and_execute_import_bundle(wiki_factory):
         "metrics/revenue.md",
     }
 
-    third_party = inspect_markdown_archive(content, "plain.zip")
-    assert third_party.archive_kind == "third_party"
+    with pytest.raises(MarkdownImportGovernanceError) as format_error:
+        inspect_markdown_archive(content, "plain.zip")
+    assert format_error.value.code == "import_format_unsupported"
+
+    with pytest.raises(MarkdownImportGovernanceError) as zip_only_error:
+        inspect_markdown_archive(content, "page.md", import_format="okf")
+    assert zip_only_error.value.code == "archive_type_unsupported"
 
     with pytest.raises(MarkdownImportGovernanceError) as restore_error:
         preflight_markdown_import(
@@ -468,10 +499,13 @@ def test_okf_preflight_and_execute_import_bundle(wiki_factory):
         key=UNCLASSIFIED_DIRECTORY_KEY,
         status="active",
     )
+    imported_root = WikiDirectory.objects.get(knowledge_base=knowledge_base, name="okf", status="active")
     tables = WikiDirectory.objects.get(knowledge_base=knowledge_base, name="tables", status="active")
     metrics = WikiDirectory.objects.get(knowledge_base=knowledge_base, name="metrics", status="active")
-    assert tables.parent_id == unclassified.pk
-    assert metrics.parent_id == unclassified.pk
+    assert imported_root.parent_id is None
+    assert tables.parent_id == imported_root.pk
+    assert metrics.parent_id == imported_root.pk
+    assert imported_root.pk != unclassified.pk
 
     knowledge_base.refresh_from_db()
     replay = preflight_markdown_import(
@@ -553,7 +587,7 @@ def test_okf_maps_schema_page_type_and_falls_back_to_concept(wiki_factory):
     knowledge_base.refresh_from_db()
     revision = knowledge_base.active_structure_revision
     snapshot = dict(revision.structure_snapshot or {})
-    snapshot["page_types"] = ["Metric", "concept"]
+    snapshot["page_types"] = ["entity", "concept", "query", "comparison", "synthesis", "Metric"]
     revision.structure_snapshot = snapshot
     revision.save(update_fields=["structure_snapshot"])
 
@@ -657,11 +691,9 @@ def test_okf_import_places_pages_in_matching_structure_directories(wiki_factory)
     knowledge_base = wiki_factory.knowledge_base()
     bootstrap_knowledge_base(knowledge_base, operator="admin")
     knowledge_base.refresh_from_db()
-    _add_root_directories(knowledge_base, ["tables", "operations"])
-
     content = _okf_zip(
         **{
-            "tables/orders.md": "\n".join(
+            "实体/orders.md": "\n".join(
                 [
                     "---",
                     "type: entity",
@@ -671,7 +703,7 @@ def test_okf_import_places_pages_in_matching_structure_directories(wiki_factory)
                     "Orders.",
                 ]
             ),
-            "operations/runbooks/upgrade.md": "\n".join(
+            "测试/runbooks/upgrade.md": "\n".join(
                 [
                     "---",
                     "type: concept",
@@ -681,7 +713,7 @@ def test_okf_import_places_pages_in_matching_structure_directories(wiki_factory)
                     "Steps.",
                 ]
             ),
-            "wiki/operations/nested.md": "\n".join(
+            "wiki/实体/nested.md": "\n".join(
                 [
                     "---",
                     "type: concept",
@@ -701,11 +733,14 @@ def test_okf_import_places_pages_in_matching_structure_directories(wiki_factory)
         options={"import_format": "okf", "create_directories_from_folders": True},
     )
     by_path = {row["archive_path"]: row for row in preflight["preview"]["pages"]}
-    tables = WikiDirectory.objects.get(knowledge_base=knowledge_base, name="tables", status="active")
-    operations = WikiDirectory.objects.get(knowledge_base=knowledge_base, name="operations", status="active")
-    assert by_path["tables/orders.md"]["directory"]["directory_id"] == tables.pk
-    assert by_path["operations/runbooks/upgrade.md"]["directory"]["pending_client_ref"]
-    assert by_path["wiki/operations/nested.md"]["directory"]["pending_client_ref"]
+    entity = WikiDirectory.objects.get(knowledge_base=knowledge_base, name="实体", status="active")
+    assert by_path["实体/orders.md"]["directory"]["directory_id"] == entity.pk
+    assert by_path["测试/runbooks/upgrade.md"]["directory"]["pending_client_ref"]
+    assert by_path["wiki/实体/nested.md"]["directory"]["pending_client_ref"]
+    alignment = {item["folder"]: item for item in preflight["preview"]["okf"]["alignment"]}
+    assert alignment["实体"]["action"] == "merge"
+    assert alignment["测试"]["action"] == "create"
+    assert alignment["wiki"]["action"] == "create"
 
     result = execute_markdown_import(
         knowledge_base,
@@ -716,34 +751,238 @@ def test_okf_import_places_pages_in_matching_structure_directories(wiki_factory)
     )
     assert result["counts"]["created"] == 3
     pages = {page.title: page for page in KnowledgePage.objects.filter(knowledge_base=knowledge_base)}
-    unclassified = WikiDirectory.objects.get(
-        knowledge_base=knowledge_base,
-        key=UNCLASSIFIED_DIRECTORY_KEY,
-        status="active",
-    )
     runbooks = WikiDirectory.objects.get(
         knowledge_base=knowledge_base,
         name="runbooks",
-        parent_id=operations.pk,
+        parent_id=WikiDirectory.objects.get(knowledge_base=knowledge_base, name="测试", status="active").pk,
         status="active",
     )
-    wiki = WikiDirectory.objects.get(knowledge_base=knowledge_base, name="wiki", status="active")
-    nested_ops = WikiDirectory.objects.get(
+    wiki = WikiDirectory.objects.get(knowledge_base=knowledge_base, name="wiki", status="active", parent=None)
+    nested_entity = WikiDirectory.objects.get(
         knowledge_base=knowledge_base,
-        name="operations",
+        name="实体",
         parent_id=wiki.pk,
         status="active",
     )
-    assert pages["Customer Orders"].directory_id == tables.pk
+    assert pages["Customer Orders"].directory_id == entity.pk
     assert pages["Upgrade Runbook"].directory_id == runbooks.pk
-    assert pages["Nested Should Not Hit Root"].directory_id == nested_ops.pk
-    assert wiki.parent_id == unclassified.pk
-    assert not WikiDirectory.objects.filter(
-        knowledge_base=knowledge_base,
-        name="tables",
-        parent_id=unclassified.pk,
-        status="active",
-    ).exists()
+    assert pages["Nested Should Not Hit Root"].directory_id == nested_entity.pk
+    assert wiki.parent_id is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_okf_import_does_not_merge_english_entity_or_source_folder(wiki_factory):
+    from apps.opspilot.models import KnowledgePage, WikiDirectory
+    from apps.opspilot.services.wiki.markdown_import_governance_service import execute_markdown_import, preflight_markdown_import
+    from apps.opspilot.services.wiki.purpose_schema_service import MATERIALS_ROOT_IMPORT_NAME
+    from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
+
+    knowledge_base = wiki_factory.knowledge_base()
+    bootstrap_knowledge_base(knowledge_base, operator="admin")
+    knowledge_base.refresh_from_db()
+    content = _okf_zip(
+        **{
+            "实体/orders.md": "\n".join(
+                [
+                    "---",
+                    "type: entity",
+                    "title: Chinese Entity Folder",
+                    "---",
+                    "",
+                    "Orders.",
+                ]
+            ),
+            "entity/orders.md": "\n".join(
+                [
+                    "---",
+                    "type: entity",
+                    "title: English Entity Folder",
+                    "---",
+                    "",
+                    "Orders.",
+                ]
+            ),
+            "来源/notes.md": "\n".join(
+                [
+                    "---",
+                    "type: concept",
+                    "title: Bundle Source Notes",
+                    "---",
+                    "",
+                    "Notes.",
+                ]
+            ),
+        }
+    )
+    preflight = preflight_markdown_import(
+        knowledge_base,
+        content,
+        filename="okf.zip",
+        actor="admin",
+        options={"import_format": "okf", "create_directories_from_folders": True},
+    )
+    alignment = {item["folder"]: item for item in preflight["preview"]["okf"]["alignment"]}
+    assert alignment["实体"]["action"] == "merge"
+    assert alignment["entity"]["action"] == "create"
+    assert alignment["来源"]["action"] == "create"
+    assert alignment["来源"]["target"] == MATERIALS_ROOT_IMPORT_NAME
+    materials = WikiDirectory.objects.get(knowledge_base=knowledge_base, key="schema_source")
+    entity_root = WikiDirectory.objects.get(knowledge_base=knowledge_base, key="schema_entity")
+    by_path = {row["archive_path"]: row for row in preflight["preview"]["pages"]}
+    assert by_path["实体/orders.md"]["directory"]["directory_id"] == entity_root.pk
+    assert by_path["来源/notes.md"]["directory"].get("directory_id") != materials.pk
+    assert by_path["来源/notes.md"]["directory"]["pending_client_ref"]
+    assert by_path["entity/orders.md"]["directory"]["pending_client_ref"]
+
+    result = execute_markdown_import(
+        knowledge_base,
+        preflight["token"],
+        content,
+        filename="okf.zip",
+        actor="admin",
+    )
+    assert result["counts"]["created"] == 3
+    pages = {page.title: page for page in KnowledgePage.objects.filter(knowledge_base=knowledge_base).select_related("directory")}
+    imported_source = pages["Bundle Source Notes"].directory
+    english_entity = pages["English Entity Folder"].directory
+    assert pages["Chinese Entity Folder"].directory_id == entity_root.pk
+    assert imported_source.pk != materials.pk
+    assert imported_source.key != "schema_source"
+    assert imported_source.name == MATERIALS_ROOT_IMPORT_NAME
+    assert imported_source.origin == "manual"
+    assert imported_source.parent_id is None
+    assert english_entity.name == "entity"
+    assert english_entity.parent_id is None
+    assert english_entity.pk != entity_root.pk
+
+
+@pytest.mark.django_db(transaction=True)
+def test_okf_import_scatter_stop_does_not_promote_nested_entity(wiki_factory):
+    from apps.opspilot.models import KnowledgePage, WikiDirectory
+    from apps.opspilot.services.wiki.markdown_import_governance_service import execute_markdown_import, preflight_markdown_import
+    from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
+
+    knowledge_base = wiki_factory.knowledge_base()
+    bootstrap_knowledge_base(knowledge_base, operator="admin")
+    knowledge_base.refresh_from_db()
+    content = _zip_bytes(
+        {
+            "IT/index.md": '---\nokf_version: "0.2"\n---\n',
+            "IT/目录介绍.md": "\n".join(
+                [
+                    "---",
+                    "type: concept",
+                    "title: IT Intro",
+                    "---",
+                    "",
+                    "Layer intro.",
+                ]
+            ),
+            "IT/wiki/实体/nested.md": "\n".join(
+                [
+                    "---",
+                    "type: entity",
+                    "title: Nested Entity Page",
+                    "---",
+                    "",
+                    "Must stay under IT.",
+                ]
+            ),
+        }
+    )
+    preflight = preflight_markdown_import(
+        knowledge_base,
+        content,
+        filename="it.zip",
+        actor="admin",
+        options={"import_format": "okf", "create_directories_from_folders": True},
+    )
+    assert preflight["preview"]["okf"]["bundle_root"] == "IT"
+    assert preflight["preview"]["okf"]["alignment_mode"] == "new_root"
+    alignment = {item["folder"]: item for item in preflight["preview"]["okf"]["alignment"]}
+    assert alignment[""]["action"] == "new_root"
+    assert alignment[""]["target"] == "IT"
+
+    result = execute_markdown_import(
+        knowledge_base,
+        preflight["token"],
+        content,
+        filename="it.zip",
+        actor="admin",
+    )
+    assert result["counts"]["created"] == 2
+    entity_root = WikiDirectory.objects.get(knowledge_base=knowledge_base, key="schema_entity")
+    it_root = WikiDirectory.objects.get(knowledge_base=knowledge_base, name="IT", parent=None, status="active")
+    wiki = WikiDirectory.objects.get(knowledge_base=knowledge_base, name="wiki", parent=it_root, status="active")
+    nested_entity = WikiDirectory.objects.get(knowledge_base=knowledge_base, name="实体", parent=wiki, status="active")
+    pages = {page.title: page for page in KnowledgePage.objects.filter(knowledge_base=knowledge_base).select_related("directory")}
+    assert pages["IT Intro"].directory_id == it_root.pk
+    assert pages["Nested Entity Page"].directory_id == nested_entity.pk
+    assert pages["Nested Entity Page"].directory_id != entity_root.pk
+
+
+@pytest.mark.django_db(transaction=True)
+def test_okf_import_ignores_inbound_path_mappings(wiki_factory):
+    from apps.opspilot.models import KnowledgePage, WikiDirectory
+    from apps.opspilot.services.wiki.markdown_import_governance_service import execute_markdown_import, preflight_markdown_import
+    from apps.opspilot.services.wiki.purpose_schema_service import MATERIALS_ROOT_IMPORT_NAME
+    from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
+
+    knowledge_base = wiki_factory.knowledge_base()
+    bootstrap_knowledge_base(knowledge_base, operator="admin")
+    knowledge_base.refresh_from_db()
+    materials = WikiDirectory.objects.get(knowledge_base=knowledge_base, key="schema_source")
+    content = _okf_zip(
+        **{
+            "实体/orders.md": "\n".join(
+                [
+                    "---",
+                    "type: entity",
+                    "title: Mapping Anchor Entity",
+                    "---",
+                    "",
+                    "Orders.",
+                ]
+            ),
+            "来源/notes.md": "\n".join(
+                [
+                    "---",
+                    "type: concept",
+                    "title: Mapped Source Notes",
+                    "---",
+                    "",
+                    "Notes.",
+                ]
+            ),
+        }
+    )
+    preflight = preflight_markdown_import(
+        knowledge_base,
+        content,
+        filename="okf.zip",
+        actor="admin",
+        options={
+            "import_format": "okf",
+            "create_directories_from_folders": True,
+            "path_mappings": {"来源": materials.pk},
+        },
+    )
+    alignment = {item["folder"]: item for item in preflight["preview"]["okf"]["alignment"]}
+    assert alignment["来源"]["action"] == "create"
+    assert alignment["来源"]["target"] == MATERIALS_ROOT_IMPORT_NAME
+
+    result = execute_markdown_import(
+        knowledge_base,
+        preflight["token"],
+        content,
+        filename="okf.zip",
+        actor="admin",
+    )
+    assert result["counts"]["created"] == 2
+    page = KnowledgePage.objects.get(knowledge_base=knowledge_base, title="Mapped Source Notes")
+    assert page.directory_id != materials.pk
+    assert page.directory.name == MATERIALS_ROOT_IMPORT_NAME
+    assert page.directory.parent_id is None
 
 
 def _patch_page_media(monkeypatch):
@@ -982,7 +1221,7 @@ def test_okf_execute_persists_shared_image_and_gcs_unreferenced(wiki_factory, mo
 
 @pytest.mark.django_db(transaction=True)
 def test_third_party_markdown_zip_still_skips_images(wiki_factory):
-    from apps.opspilot.services.wiki.markdown_import_governance_service import inspect_markdown_archive
+    from apps.opspilot.services.wiki.markdown_import_governance_service import MarkdownImportGovernanceError, inspect_markdown_archive
 
     content = _zip_bytes(
         {
@@ -990,10 +1229,9 @@ def test_third_party_markdown_zip_still_skips_images(wiki_factory):
             "x.png": PNG_BYTES,
         }
     )
-    inspected = inspect_markdown_archive(content, "plain.zip")
-    assert inspected.archive_kind == "third_party"
-    assert inspected.documents[0]["body"].strip().endswith("![a](./x.png)")
-    assert inspected.skipped_entries >= 1
+    with pytest.raises(MarkdownImportGovernanceError) as captured:
+        inspect_markdown_archive(content, "plain.zip")
+    assert captured.value.code == "import_format_unsupported"
 
 
 @pytest.mark.django_db(transaction=True)
@@ -1053,3 +1291,60 @@ def test_okf_import_enriches_colloquial_aliases_into_index(monkeypatch, wiki_fac
     entry = WikiGenerationIndexEntry.objects.get(generation_id=result["generation_id"], page=page)
     assert "向日葵" in entry.aliases
     assert "远程控制" in entry.aliases
+
+
+@pytest.mark.django_db(transaction=True)
+def test_okf_import_triggers_overview_enhance_and_swallows_failure(monkeypatch, wiki_factory):
+    from apps.opspilot.models import KnowledgePage
+    from apps.opspilot.services.wiki.markdown_import_governance_service import execute_markdown_import, preflight_markdown_import
+    from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
+
+    knowledge_base = wiki_factory.knowledge_base()
+    bootstrap_knowledge_base(knowledge_base, operator="admin")
+    knowledge_base.refresh_from_db()
+    calls = []
+
+    def boom(*args, **kwargs):
+        calls.append(kwargs)
+        raise RuntimeError("overview llm truncated")
+
+    monkeypatch.setattr(
+        "apps.opspilot.services.wiki.markdown_import_governance_service.enhance_generation_overviews",
+        boom,
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.wiki.markdown_import_governance_service._invoke_llm",
+        lambda *_args, **_kwargs: "{}",
+    )
+    content = _okf_zip(
+        **{
+            "guides/remote.md": "\n".join(
+                [
+                    "---",
+                    "type: concept",
+                    "title: 远程协助",
+                    "---",
+                    "",
+                    "连不上时找值班。",
+                ]
+            )
+        }
+    )
+    preflight = preflight_markdown_import(
+        knowledge_base,
+        content,
+        filename="okf.zip",
+        actor="admin",
+        options={"import_format": "okf"},
+    )
+    result = execute_markdown_import(
+        knowledge_base,
+        preflight["token"],
+        content,
+        filename="okf.zip",
+        actor="admin",
+    )
+
+    assert calls
+    assert result["generation_id"]
+    assert KnowledgePage.objects.filter(knowledge_base=knowledge_base, title="远程协助").exists()

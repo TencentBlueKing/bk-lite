@@ -107,7 +107,7 @@ class LogSearchViewSet(ViewSet):
     @action(methods=["post"], detail=False, url_path="top_stats")
     def top_stats(self, request):
         """按字段返回 TopN 统计结果。"""
-        serializer = LogTopStatsSerializer(data=request.data)
+        serializer = LogTopStatsSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
 
         validated_data = serializer.validated_data

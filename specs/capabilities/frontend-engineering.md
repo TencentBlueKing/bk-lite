@@ -28,7 +28,7 @@
 
 ```bash
 cd web    && pnpm lint && pnpm type-check    # web
-cd mobile && pnpm lint && pnpm type-check    # mobile
+cd mobile && pnpm lint && pnpm type-check && pnpm test:i18n    # mobile
 cd webchat && npm run build && npm run test  # webchat
 ```
 `.husky/pre-commit` 会对 web/mobile 的 staged 变更自动执行上述检查。

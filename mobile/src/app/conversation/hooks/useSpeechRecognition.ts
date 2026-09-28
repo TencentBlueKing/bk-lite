@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { Toast } from 'antd-mobile';
+import { useTranslation } from '@/utils/i18n';
 
 interface UseSpeechRecognitionReturn {
     recognizedText: string;
@@ -14,6 +15,7 @@ export const useSpeechRecognition = (
     isLongPressRef: React.MutableRefObject<boolean>,
     isRecordingRef: React.MutableRefObject<boolean>
 ): UseSpeechRecognitionReturn => {
+    const { t } = useTranslation();
     const recognitionRef = useRef<any>(null);
     const [recognizedText, setRecognizedText] = useState('');
 
@@ -43,20 +45,20 @@ export const useSpeechRecognition = (
                     let errorMessage = '';
                     switch (event.error) {
                         case 'not-allowed':
-                            errorMessage = '请允许浏览器访问麦克风权限';
+                            errorMessage = t('chat.microphonePermissionRequired');
                             break;
                         case 'no-speech':
                             return;
                         case 'audio-capture':
-                            errorMessage = '未找到麦克风设备';
+                            errorMessage = t('chat.microphoneNotFound');
                             break;
                         case 'network':
-                            errorMessage = '网络错误，请检查网络连接';
+                            errorMessage = t('chat.speechNetworkError');
                             break;
                         case 'aborted':
                             return;
                         default:
-                            errorMessage = '语音识别失败';
+                            errorMessage = t('chat.speechRecognitionFailed');
                     }
 
                     if (errorMessage) {
@@ -142,7 +144,7 @@ export const useSpeechRecognition = (
         const isSecureContext = window.isSecureContext;
         if (!isSecureContext) {
             Toast.show({
-                content: '语音识别需要 HTTPS 环境',
+                content: t('chat.speechRecognitionRequiresHttps'),
                 icon: 'fail',
                 duration: 2000
             });
@@ -152,7 +154,7 @@ export const useSpeechRecognition = (
         const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
         if (!SpeechRecognition) {
             Toast.show({
-                content: '当前浏览器不支持语音识别',
+                content: t('chat.speechRecognitionUnsupported'),
                 icon: 'fail',
                 duration: 2000
             });
@@ -162,7 +164,7 @@ export const useSpeechRecognition = (
         const hasPermission = await checkMicrophonePermission();
         if (!hasPermission) {
             Toast.show({
-                content: '无法访问麦克风，请检查权限设置',
+                content: t('chat.microphoneAccessDenied'),
                 icon: 'fail',
                 duration: 2000
             });
@@ -177,14 +179,14 @@ export const useSpeechRecognition = (
             } catch (error) {
                 console.error('启动语音识别失败:', error);
                 Toast.show({
-                    content: '语音识别启动失败',
+                    content: t('chat.speechRecognitionStartFailed'),
                     icon: 'fail',
                     duration: 2000
                 });
             }
         } else {
             Toast.show({
-                content: '语音识别初始化失败',
+                content: t('chat.speechRecognitionInitFailed'),
                 icon: 'fail',
                 duration: 2000
             });

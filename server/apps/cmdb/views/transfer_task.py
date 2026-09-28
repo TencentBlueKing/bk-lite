@@ -21,12 +21,30 @@ from apps.system_mgmt.models.user import User
 
 
 def task_data(task):
+    # 老版本遗留的 interrupted 对外也按失败显示，但绝不假装旧 Worker 已退出。
+    status = "failed" if task.status == "interrupted" else task.status
+    failure = None
+    summary = {key: value for key, value in task.summary.items() if not key.startswith("_")}
+    message = task.message
+    if status == "failed" and (task.error_code or task.status == "interrupted"):
+        stored = task.summary.get("_failure", {})
+        uncertain = stored.get("result_uncertain", task.status == "interrupted" and task.kind == "import")
+        failure = {
+            "stage": stored.get("stage", task.phase),
+            "error_type": stored.get("error_type", ""),
+            "result_uncertain": uncertain,
+            "execution_pending": task.holds_slot,
+        }
+        if uncertain:
+            summary = {key: None if value == 0 else value for key, value in summary.items()}
+        if task.status == "interrupted":
+            message = "执行中断，任务已失败" + ("，部分数据可能已导入" if task.kind == "import" else "")
     actions = []
     if task.status == "queued":
         actions.append("cancel")
     if task.status in TransferService.TERMINAL and not task.holds_slot:
         actions.append("delete")
-    if task.kind == "export" and task.status == "failed":
+    if task.kind == "export" and task.status == "failed" and not task.holds_slot:
         actions.append("retry")
     for name in ("result", "errors"):
         if name in task.artifacts and (task.status in ("succeeded", "partial_success") or (name == "errors" and task.status == "failed")):
@@ -39,12 +57,13 @@ def task_data(task):
         team_id=task.team_id,
         scope=task.params.get("scope"),
         filename=task.filename,
-        status=task.status,
+        status=status,
         phase=task.phase,
         processed_rows=task.processed_rows,
         total_rows=task.total_rows,
-        summary=task.summary,
-        message=task.message,
+        summary=summary,
+        message=message,
+        failure=failure,
         error_code=task.error_code,
         available_actions=actions,
         created_at=task.created_at,
@@ -78,9 +97,16 @@ class TransferTaskViewSet(ViewSet):
         owner = self.owner(request)
         return response(
             {
-                "items": [task_data(task) for task in TransferService.list(owner)[:5]],
-                "can_submit": not owner.cmdbtransfertask_set.filter(status__in=TransferService.ACTIVE).exists(),
-                "limits": {"history": 5, "retention_days": 7, "import_bytes": 20 * 1024 * 1024, "import_rows": 10000, "export_rows": 100000},
+                "items": [task_data(task) for task in TransferService.list(owner)[:12]],
+                "can_submit": TransferService.active_count(owner) < TransferService.MAX_ACTIVE,
+                "limits": {
+                    "active": TransferService.MAX_ACTIVE,
+                    "history": 5,
+                    "retention_days": 7,
+                    "import_bytes": 20 * 1024 * 1024,
+                    "import_rows": 10000,
+                    "export_rows": 100000,
+                },
             }
         )
 

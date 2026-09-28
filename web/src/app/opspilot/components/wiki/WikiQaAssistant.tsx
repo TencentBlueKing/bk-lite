@@ -35,6 +35,7 @@ const markdown = new MarkdownIt({ html: false, linkify: true, breaks: true });
 
 const renderMarkdown = (text: string) =>
   DOMPurify.sanitize(markdown.render(text), {
+    // 与 custom-chat 对齐：检索答案里的流程图以 Markdown 图片输出，必须保留 img。
     ALLOWED_TAGS: [
       'p',
       'br',
@@ -62,8 +63,10 @@ const renderMarkdown = (text: string) =>
       'tr',
       'th',
       'td',
+      'img',
+      'hr',
     ],
-    ALLOWED_ATTR: ['href', 'target', 'rel', 'class'],
+    ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'src', 'alt', 'title', 'width', 'height'],
   });
 
 const WaitingDots: React.FC = () => (

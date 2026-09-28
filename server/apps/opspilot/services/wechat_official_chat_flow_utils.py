@@ -4,6 +4,7 @@
 """
 
 import base64
+import io
 import time
 
 import xmltodict
@@ -175,6 +176,19 @@ class WechatOfficialChatFlowUtils(BaseChatFlowUtils):
         except Exception as e:
             logger.error(f"微信公众号发送消息失败，Bot {self.bot_id}，错误: {str(e)}")
             logger.exception(e)
+
+    def send_image_reply(self, image, sender_id: str, config: dict):
+        """公众号客服图片消息。"""
+
+        appid = config["appid"]
+        secret = config["secret"]
+        client = WeChatClient(appid, secret)
+        name = f"{(getattr(image, 'alt', None) or 'image').strip() or 'image'}.png"
+        media = client.media.upload("image", (name, io.BytesIO(image.content)))
+        media_id = media.get("media_id") if isinstance(media, dict) else getattr(media, "media_id", None)
+        if not media_id:
+            raise RuntimeError("微信公众号图片上传未返回 media_id")
+        client.message.send_image(sender_id, media_id)
 
     def decrypt(self, encrypt, aes_key, appid):
         """解密微信公众号消息"""

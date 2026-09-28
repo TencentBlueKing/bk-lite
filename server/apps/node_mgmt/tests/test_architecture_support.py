@@ -3715,6 +3715,61 @@ def test_package_version_upload_force_reuploads_existing_version(monkeypatch, tm
 
 
 @pytest.mark.django_db
+def test_package_version_upload_skips_existing_latest_without_traceback(monkeypatch, tmp_path, caplog):
+    import logging
+
+    existing = PackageVersion.objects.create(
+        type="collector",
+        os="linux",
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        object="Nats-Executor",
+        version="latest",
+        name="nats-executor",
+        created_by="tester",
+        updated_by="tester",
+    )
+    file_path = tmp_path / "nats-executor"
+    file_path.write_bytes(b"nats-executor-payload-sentinel")
+    uploaded = {}
+
+    def fake_upload(file, data, existing_package=None):
+        uploaded["called"] = True
+
+    monkeypatch.setattr("apps.node_mgmt.management.utils.PackageService.upload_file", fake_upload)
+    caplog.set_level(logging.WARNING, logger="node")
+
+    from apps.node_mgmt.management.utils import package_version_upload
+
+    result = package_version_upload(
+        "collector",
+        {
+            "os": "linux",
+            "object": "Nats-Executor",
+            "cpu_architecture": NodeConstants.X86_64_ARCH,
+            "pk_version": "latest",
+            "file_path": str(file_path),
+        },
+    )
+
+    existing.refresh_from_db()
+    assert result is None
+    assert uploaded == {}
+    assert existing.name == "nats-executor"
+    records = [record for record in caplog.records if record.name == "node" and record.levelno == logging.WARNING]
+    assert len(records) == 1
+    record = records[0]
+    assert record.exc_info is None
+    assert record.msg == "包版本已存在，跳过上传 package_type=%s os=%s cpu_architecture=%s object=%s version=%s"
+    assert record.args == ("collector", "linux", NodeConstants.X86_64_ARCH, "Nats-Executor", "latest")
+    formatted = record.getMessage()
+    assert formatted == (
+        "包版本已存在，跳过上传 package_type=collector os=linux "
+        f"cpu_architecture={NodeConstants.X86_64_ARCH} object=Nats-Executor version=latest"
+    )
+    assert "nats-executor-payload-sentinel" not in formatted
+
+
+@pytest.mark.django_db
 def test_package_version_upload_streams_file_without_unbounded_read(monkeypatch, tmp_path):
     file_path = tmp_path / "fusion-collectors-windows-amd64.zip"
     file_path.write_bytes(b"controller-package")

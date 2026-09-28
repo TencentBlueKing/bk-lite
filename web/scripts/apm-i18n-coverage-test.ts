@@ -19,8 +19,13 @@ const localePaths = ['src/app/apm/locales/zh.json', 'src/app/apm/locales/en.json
 const [zh, en] = localePaths.map((localePath) => flatten(JSON.parse(read(localePath)) as Messages));
 const commonEn = flatten(JSON.parse(read('src/locales/en.json')) as Messages);
 
+// 英文没有「个」这种量词，空字符串是有意的译文，不能当成缺 key。
+const emptyEnglishAllowed = new Set(['apm.common.countUnit']);
+
 for (const key of new Set([...Object.keys(zh), ...Object.keys(en)])) {
-  if (!zh[key] || !en[key]) throw new Error(`APM locale key is not bilingual: ${key}`);
+  const zhMissing = zh[key] == null || zh[key] === '';
+  const enMissing = en[key] == null || (en[key] === '' && !emptyEnglishAllowed.has(key));
+  if (zhMissing || enMissing) throw new Error(`APM locale key is not bilingual: ${key}`);
 }
 
 const dynamicKeys = [
@@ -41,6 +46,13 @@ const dynamicKeys = [
   'apm.alerts.deliveryPending',
   'apm.alerts.deliveryDelivered',
   'apm.alerts.deliveryFailed',
+  'apm.health.healthy',
+  'apm.health.warning',
+  'apm.health.critical',
+  'apm.health.unknown',
+  'apm.serviceDetail.location.entry',
+  'apm.serviceDetail.location.downstream',
+  'apm.serviceDetail.location.internal',
 ];
 for (const key of dynamicKeys) {
   if (!zh[key] || !en[key]) throw new Error(`Missing dynamic APM locale key: ${key}`);
@@ -59,6 +71,8 @@ const collectSourcePaths = (directory: string): string[] => fs.readdirSync(path.
 
 const sourcePaths = collectSourcePaths('src/app/apm');
 const sourceErrors: string[] = [];
+// 图标文件名是资源 ID，不是页面文案。Pilot 里的中文是 DOM 选择器或发给模型的上下文，不进页面。
+const iconAssetPaths = new Set(['src/app/apm/components/topology-object-icon.ts']);
 
 for (const sourcePath of sourcePaths) {
   const source = read(sourcePath);
@@ -69,7 +83,9 @@ for (const sourcePath of sourcePaths) {
       const first = node.arguments[0];
       if (first && ts.isStringLiteral(first)) {
         const key = first.text;
-        if (!en[key] && !commonEn[key]) sourceErrors.push(`Missing APM English message used by ${sourcePath}: ${key}`);
+        const hasEnglish = Object.prototype.hasOwnProperty.call(en, key)
+          || Object.prototype.hasOwnProperty.call(commonEn, key);
+        if (!hasEnglish) sourceErrors.push(`Missing APM English message used by ${sourcePath}: ${key}`);
       }
     }
 
@@ -106,7 +122,8 @@ for (const sourcePath of sourcePaths) {
         }
         parent = parent.parent;
       }
-      if (!translated && /[\u3400-\u9fff]/.test(text)) {
+      const modelContext = sourcePath.endsWith('.pilot.ts') || iconAssetPaths.has(sourcePath);
+      if (!translated && !modelContext && /[\u3400-\u9fff]/.test(text)) {
         const line = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
         sourceErrors.push(`Hardcoded APM UI copy remains at ${sourcePath}:${line}: ${text.trim()}`);
       }

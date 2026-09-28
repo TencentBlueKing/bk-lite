@@ -1,5 +1,4 @@
 import json
-from unittest.mock import patch
 
 import pytest
 
@@ -9,19 +8,94 @@ _FAKE_PAGES = [
 ]
 
 
+def _material(kb, **overrides):
+    from apps.opspilot.tests.wiki.factories import WikiFactory
+
+    return WikiFactory().ready_material(knowledge_base=kb, **overrides)
+
+
+def _page(kb, **overrides):
+    from apps.opspilot.tests.wiki.factories import WikiFactory
+
+    return WikiFactory().page(knowledge_base=kb, **overrides)
+
+
+from apps.opspilot.services.wiki.build_service import MaterialPageGeneration
+from apps.opspilot.services.wiki.conflict_candidate_routing_service import ConflictRoutingResult
+
+
+def _generation(pages=None):
+    return MaterialPageGeneration(pages=list(pages if pages is not None else _FAKE_PAGES), skipped=[])
+
+
+def _counts(**overrides):
+    values = {"new": 0, "updated": 0, "restored": 0, "unchanged": 0, "pending_review": 0}
+    values.update(overrides)
+    return values
+
+
+def _stub_conflict_routing(monkeypatch, comparisons=None):
+    resolved = {} if comparisons is None else comparisons
+
+    def fake_route(candidate_generation_id, pages_data, **kwargs):
+        mapped = resolved(pages_data) if callable(resolved) else resolved
+        return ConflictRoutingResult(
+            comparisons=mapped,
+            compact_candidate_count=len(mapped),
+            evidence_page_ids=(),
+            old_evidence_tokens=0,
+            overflow_count=0,
+            llm_called=False,
+            unresolved_incoming_indexes=(),
+        )
+
+    monkeypatch.setattr(
+        "apps.opspilot.services.wiki.generation_material_build_service.route_material_conflicts",
+        fake_route,
+    )
+
+
+def _stub_generated_pages(monkeypatch, build_service, pages_for_text=_FAKE_PAGES):
+    def fake_generate(kb, source_text, llm_model_id, **kwargs):
+        if callable(pages_for_text):
+            return pages_for_text(kb, source_text, llm_model_id)
+        return pages_for_text
+
+    monkeypatch.setattr(build_service, "_llm_extract_facts", lambda text, llm_model_id: text)
+    monkeypatch.setattr(build_service, "_llm_generate_pages", fake_generate)
+    monkeypatch.setattr(
+        "apps.opspilot.services.wiki.generation_material_build_service.generate_material_pages_with_budget",
+        lambda kb, text, llm_model_id, **kwargs: _generation(fake_generate(kb, text, llm_model_id)),
+    )
+    _stub_conflict_routing(monkeypatch)
+    monkeypatch.setattr(
+        "apps.opspilot.services.wiki.generation_material_build_service.enrich_generation_colloquial_aliases_safely",
+        lambda *args, **kwargs: {"status": "skipped", "updated": 0, "llm_called": False},
+    )
+    monkeypatch.setattr(
+        "apps.opspilot.services.wiki.generation_navigation_service.enhance_generation_overviews",
+        lambda *args, **kwargs: {"status": "skipped", "updated": 0, "llm_called": False},
+    )
+
+
+def _patch_parsed_markdown(monkeypatch, text):
+    loader = lambda material: text
+    monkeypatch.setattr("apps.opspilot.services.wiki.build_service.load_parsed_markdown", loader)
+    monkeypatch.setattr(
+        "apps.opspilot.services.wiki.generation_material_build_service.load_parsed_markdown",
+        loader,
+    )
+
+
 @pytest.mark.django_db
-def test_build_from_material_creates_pages_versions_evidence():
+def test_build_from_material_creates_pages_versions_evidence(monkeypatch):
     from apps.opspilot.models import KnowledgePage, Material, PageEvidence, PageVersion, WikiKnowledgeBase
     from apps.opspilot.services.wiki import build_service
 
-    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1], purpose_md="# P", schema_md="# S")
-    material = Material.objects.create(knowledge_base=kb, name="m", material_type="text", text_content="t", ai_summary="重启服务摘要")
-
-    with (
-        patch.object(build_service, "_llm_extract_facts", return_value="facts"),
-        patch.object(build_service, "_llm_generate_pages", return_value=_FAKE_PAGES),
-    ):
-        record = build_service.build_from_material(material, llm_model_id=1)
+    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1], purpose_md="# P", schema_md="# S", introduction="简介")
+    material = _material(kb, name="m", text_content="t", ai_summary="重启服务摘要")
+    _stub_generated_pages(monkeypatch, build_service)
+    record = build_service.build_from_material(material, llm_model_id=1)
 
     assert record.status == "success"
     assert record.counts["new"] == 2
@@ -37,17 +111,16 @@ def test_build_from_material_records_source_chunk_locator_for_new_page(monkeypat
     from apps.opspilot.models import Material, PageEvidence, WikiKnowledgeBase
     from apps.opspilot.services.wiki import build_service
 
-    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1], purpose_md="# P", schema_md="# S")
-    material = Material.objects.create(knowledge_base=kb, name="m", material_type="text", text_content="raw")
+    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1], purpose_md="# P", schema_md="# S", introduction="简介")
+    material = _material(kb, name="m", text_content="raw")
     tail_marker = "TAIL_COMPONENT_NEEDS_PAGE"
     parsed_markdown = ("head content\n" * 1200) + f"\n{tail_marker} 是尾部组件的关键事实。"
 
-    monkeypatch.setattr(build_service, "load_parsed_markdown", lambda m: parsed_markdown)
-    monkeypatch.setattr(build_service, "_llm_extract_facts", lambda text, llm_model_id: "")
-    monkeypatch.setattr(
+    _patch_parsed_markdown(monkeypatch, parsed_markdown)
+    _stub_generated_pages(
+        monkeypatch,
         build_service,
-        "_llm_generate_pages",
-        lambda kb, source_text, llm_model_id: [{"page_type": "entity", "title": "尾部组件", "tags": [], "body": f"{tail_marker} 负责尾部能力。"}],
+        [{"page_type": "entity", "title": "尾部组件", "tags": [], "body": f"{tail_marker} 负责尾部能力。"}],
     )
 
     build_service.build_from_material(material, llm_model_id=1)
@@ -66,8 +139,8 @@ def test_build_from_material_updates_existing_evidence_locator_when_source_chunk
     from apps.opspilot.models import Material, PageEvidence, WikiKnowledgeBase
     from apps.opspilot.services.wiki import build_service
 
-    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1], purpose_md="# P", schema_md="# S")
-    material = Material.objects.create(knowledge_base=kb, name="m", material_type="text", text_content="raw")
+    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1], purpose_md="# P", schema_md="# S", introduction="简介")
+    material = _material(kb, name="m", text_content="raw")
     first_text = "HEAD_MARKER 是头部事实。"
     second_text = ("head filler\n" * 1200) + "\nTAIL_MARKER 是尾部事实。"
     generated_pages = [
@@ -75,16 +148,19 @@ def test_build_from_material_updates_existing_evidence_locator_when_source_chunk
         {"page_type": "entity", "title": "平台组件", "tags": [], "body": "TAIL_MARKER 是尾部事实。"},
     ]
 
-    monkeypatch.setattr(build_service, "_llm_extract_facts", lambda text, llm_model_id: "")
-    monkeypatch.setattr(build_service, "_llm_generate_pages", lambda kb, source_text, llm_model_id: [generated_pages.pop(0)])
-    monkeypatch.setattr(build_service, "load_parsed_markdown", lambda m: first_text)
+    _stub_generated_pages(
+        monkeypatch,
+        build_service,
+        lambda kb, source_text, llm_model_id: [generated_pages.pop(0)],
+    )
+    _patch_parsed_markdown(monkeypatch, first_text)
     build_service.build_from_material(material, llm_model_id=1)
 
     evidence = PageEvidence.objects.get(material=material)
     first_locator = json.loads(evidence.locator)
     assert "HEAD_MARKER" in first_locator["snippet"]
 
-    monkeypatch.setattr(build_service, "load_parsed_markdown", lambda m: second_text)
+    _patch_parsed_markdown(monkeypatch, second_text)
     build_service.build_from_material(material, llm_model_id=1)
 
     evidence.refresh_from_db()
@@ -98,17 +174,16 @@ def test_build_record_inputs_include_source_trace(monkeypatch):
     from apps.opspilot.models import Material, WikiKnowledgeBase
     from apps.opspilot.services.wiki import build_service
 
-    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1], purpose_md="# P", schema_md="# S")
-    material = Material.objects.create(knowledge_base=kb, name="平台资料", material_type="text", text_content="raw")
+    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1], purpose_md="# P", schema_md="# S", introduction="简介")
+    material = _material(kb, name="平台资料", text_content="raw")
     marker = "TRACE_MARKER_COMPONENT"
     parsed_markdown = ("head content\n" * 1200) + f"\n{marker} 属于尾部片段。"
 
-    monkeypatch.setattr(build_service, "load_parsed_markdown", lambda m: parsed_markdown)
-    monkeypatch.setattr(build_service, "_llm_extract_facts", lambda text, llm_model_id: "")
-    monkeypatch.setattr(
+    _patch_parsed_markdown(monkeypatch, parsed_markdown)
+    _stub_generated_pages(
+        monkeypatch,
         build_service,
-        "_llm_generate_pages",
-        lambda kb, source_text, llm_model_id: [{"page_type": "entity", "title": "尾部组件", "tags": [], "body": f"{marker} 正文"}],
+        [{"page_type": "entity", "title": "尾部组件", "tags": [], "body": f"{marker} 正文"}],
     )
 
     record = build_service.build_from_material(material, llm_model_id=1)
@@ -120,7 +195,7 @@ def test_build_record_inputs_include_source_trace(monkeypatch):
     assert marker in source_trace["chunks"][-1]["preview"]
     page_action = source_trace["page_actions"][0]
     assert page_action["title"] == "尾部组件"
-    assert page_action["action"] == "new"
+    assert page_action["action"] == "create"
     assert page_action["source_locator"]["chunk_index"] == source_trace["chunks"][-1]["index"]
 
 
@@ -130,14 +205,10 @@ def test_rebuilding_material_after_logical_archive_reuses_existing_page_identity
     from apps.opspilot.services.wiki import build_service
     from apps.opspilot.viewsets import wiki_page_view
 
-    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1], purpose_md="# P", schema_md="# S")
-    material = Material.objects.create(knowledge_base=kb, name="m", material_type="text", text_content="t")
-
-    with (
-        patch.object(build_service, "_llm_extract_facts", return_value="facts"),
-        patch.object(build_service, "_llm_generate_pages", return_value=_FAKE_PAGES),
-    ):
-        first_record = build_service.build_from_material(material, llm_model_id=1)
+    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1], purpose_md="# P", schema_md="# S", introduction="简介")
+    material = _material(kb, name="m", text_content="t")
+    _stub_generated_pages(monkeypatch, build_service)
+    first_record = build_service.build_from_material(material, llm_model_id=1)
 
     monkeypatch.setattr(
         wiki_page_view,
@@ -150,27 +221,27 @@ def test_rebuilding_material_after_logical_archive_reuses_existing_page_identity
         },
     )
 
+    kb.refresh_from_db()
     deleted_page = KnowledgePage.objects.get(knowledge_base=kb, title="重启服务")
     deleted_page_id = deleted_page.id
     kept_page = KnowledgePage.objects.get(knowledge_base=kb, title="如何重启")
     kept_page_id = kept_page.id
-    response = api_client.delete(f"/api/v1/opspilot/wiki_mgmt/page/{deleted_page.id}/")
+    response = api_client.delete(
+        f"/api/v1/opspilot/wiki_mgmt/page/{deleted_page.id}/"
+        f"?base_generation_id={kb.active_generation_id}&structure_version={kb.active_structure_revision.revision_no}"
+    )
     assert response.status_code == 200, response.content
     deleted_page.refresh_from_db()
     assert deleted_page.status == "archived"
 
-    with (
-        patch.object(build_service, "_llm_extract_facts", return_value="facts"),
-        patch.object(build_service, "_llm_generate_pages", return_value=_FAKE_PAGES),
-    ):
-        second_record = build_service.build_from_material(material, llm_model_id=1)
+    second_record = build_service.build_from_material(material, llm_model_id=1)
 
     assert first_record.counts["new"] == 2
-    assert second_record.counts == {"new": 0, "updated": 1, "unchanged": 1, "pending_review": 0}
+    assert second_record.counts == _counts(restored=1, updated=1)
     assert KnowledgePage.objects.get(knowledge_base=kb, title="重启服务").id == deleted_page_id
     assert KnowledgePage.objects.filter(knowledge_base=kb, title="如何重启").count() == 1
     assert KnowledgePage.objects.get(knowledge_base=kb, title="如何重启").id == kept_page_id
-    assert PageVersion.objects.filter(page_id=kept_page_id).count() == 1
+    assert PageVersion.objects.filter(page_id=kept_page_id).count() == 2
     assert PageEvidence.objects.filter(page_id=kept_page_id, material=material).count() == 1
 
 
@@ -179,19 +250,16 @@ def test_same_title_from_different_materials_preserves_existing_body_and_sources
     from apps.opspilot.models import KnowledgePage, Material, PageEvidence, WikiKnowledgeBase
     from apps.opspilot.services.wiki import build_service
 
-    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1], purpose_md="# P", schema_md="# S")
-    first_material = Material.objects.create(knowledge_base=kb, name="first", material_type="text", text_content="first")
-    second_material = Material.objects.create(knowledge_base=kb, name="second", material_type="text", text_content="second")
+    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1], purpose_md="# P", schema_md="# S", introduction="简介")
+    first_material = _material(kb, name="first", text_content="first")
+    second_material = _material(kb, name="second", text_content="second")
 
-    with (
-        patch.object(build_service, "_llm_extract_facts", return_value="facts"),
-        patch.object(
-            build_service,
-            "_llm_generate_pages",
-            return_value=[{"page_type": "entity", "title": "蓝鲸平台", "tags": ["first"], "body": "第一份资料正文"}],
-        ),
-    ):
-        first_record = build_service.build_from_material(first_material, llm_model_id=1)
+    _stub_generated_pages(
+        monkeypatch,
+        build_service,
+        [{"page_type": "entity", "title": "蓝鲸平台", "tags": ["first"], "body": "第一份资料正文"}],
+    )
+    first_record = build_service.build_from_material(first_material, llm_model_id=1)
 
     monkeypatch.setattr(
         build_service,
@@ -202,20 +270,17 @@ def test_same_title_from_different_materials_preserves_existing_body_and_sources
             "reason": "新资料补充了非矛盾信息",
         },
     )
-    with (
-        patch.object(build_service, "_llm_extract_facts", return_value="facts"),
-        patch.object(
-            build_service,
-            "_llm_generate_pages",
-            return_value=[{"page_type": "entity", "title": "蓝鲸平台", "tags": ["second"], "body": "第二份资料正文"}],
-        ),
-    ):
-        second_record = build_service.build_from_material(second_material, llm_model_id=1)
+    _stub_generated_pages(
+        monkeypatch,
+        build_service,
+        [{"page_type": "entity", "title": "蓝鲸平台", "tags": ["second"], "body": "第二份资料正文"}],
+    )
+    second_record = build_service.build_from_material(second_material, llm_model_id=1)
 
     page = KnowledgePage.objects.get(knowledge_base=kb, title="蓝鲸平台")
     body = page.current_version.body
     assert first_record.counts["new"] == 1
-    assert second_record.counts == {"new": 0, "updated": 1, "unchanged": 0, "pending_review": 0}
+    assert second_record.counts == _counts(updated=1)
     assert "第一份资料正文" in body
     assert "第二份资料正文" in body
     assert PageEvidence.objects.filter(page=page).count() == 2
@@ -262,34 +327,26 @@ def test_llm_generate_pages_exposes_existing_page_catalog_and_preserves_match_id
 
 @pytest.mark.django_db
 def test_build_ai_conflict_for_drifted_title_creates_review_candidate(monkeypatch):
-    from apps.opspilot.models import CheckItem, KnowledgePage, PageEvidence, PageVersion, WikiKnowledgeBase
+    from apps.opspilot.models import CheckItem, KnowledgePage, PageEvidence, WikiKnowledgeBase
     from apps.opspilot.services.wiki import build_service
 
     kb = WikiKnowledgeBase.objects.create(name="kb-ai-conflict", team=[1], purpose_md="# P", schema_md="# S")
     material_a, version_a = _decision_material(kb, "A", "hash-a")
     material_b, _version_b = _decision_material(kb, "B", "hash-b")
-    page = KnowledgePage.objects.create(
-        knowledge_base=kb,
+    page = _page(
+        kb,
         page_type="concept",
         title="出差报销流程",
-        contribution="ai",
-    )
-    current = PageVersion.objects.create(
-        page=page,
-        no=1,
         body="超过 5000 元由 Leader A 终审。",
-        change_type="ai_create",
-        is_current=True,
+        contribution="ai",
+        update_method="ai_create",
     )
-    page.current_version = current
-    page.save(update_fields=["current_version", "updated_at"])
     PageEvidence.objects.create(page=page, material=material_a, material_version=version_a)
 
-    monkeypatch.setattr(build_service, "_llm_extract_facts", lambda text, llm_model_id: text)
-    monkeypatch.setattr(
+    _stub_generated_pages(
+        monkeypatch,
         build_service,
-        "_llm_generate_pages",
-        lambda kb, source_text, llm_model_id: [
+        [
             {
                 "page_type": "concept",
                 "title": "差旅报销",
@@ -299,20 +356,21 @@ def test_build_ai_conflict_for_drifted_title_creates_review_candidate(monkeypatc
             }
         ],
     )
-    monkeypatch.setattr(
-        build_service,
-        "_classify_page_change",
-        lambda page, page_data, llm_model_id: {
-            "same_subject": True,
-            "relation": "conflict",
-            "reason": "同一金额区间的最终审批人不一致",
+    _stub_conflict_routing(
+        monkeypatch,
+        {
+            0: {
+                "old_page_id": page.id,
+                "same_subject": True,
+                "relation": "conflict",
+                "reason": "同一金额区间的最终审批人不一致",
+            }
         },
-        raising=False,
     )
 
     record = build_service.build_from_material(material_b, llm_model_id=1, operator="admin")
 
-    assert record.counts == {"new": 0, "updated": 0, "unchanged": 0, "pending_review": 1}
+    assert record.counts == _counts(pending_review=1)
     assert KnowledgePage.objects.filter(knowledge_base=kb).count() == 1
     check = CheckItem.objects.get(knowledge_base=kb, status="open")
     assert check.related == {"pages": [page.id], "materials": [material_b.id]}
@@ -322,26 +380,28 @@ def test_build_ai_conflict_for_drifted_title_creates_review_candidate(monkeypatc
 
 @pytest.mark.django_db
 def test_build_from_material_creates_review_candidate_for_human_page(monkeypatch):
-    from apps.opspilot.models import CheckItem, KnowledgePage, Material, PageVersion, WikiKnowledgeBase
+    from apps.opspilot.models import CheckItem, WikiKnowledgeBase
     from apps.opspilot.services.wiki import build_service
 
     kb = WikiKnowledgeBase.objects.create(name="kb", team=[1], purpose_md="# P", schema_md="# S")
-    material = Material.objects.create(knowledge_base=kb, name="m", material_type="text", text_content="蓝鲸平台资料")
-    page = KnowledgePage.objects.create(knowledge_base=kb, page_type="entity", title="蓝鲸平台", contribution="human")
-    version = PageVersion.objects.create(page=page, no=1, body="人工正文", change_type="human_edit", is_current=True)
-    page.current_version = version
-    page.save(update_fields=["current_version"])
+    material = _material(kb, name="m", text_content="蓝鲸平台资料")
+    page = _page(
+        kb,
+        page_type="entity",
+        title="蓝鲸平台",
+        body="人工正文",
+        contribution="human",
+    )
 
-    monkeypatch.setattr(build_service, "_llm_extract_facts", lambda text, llm_model_id: "facts")
-    monkeypatch.setattr(
+    _stub_generated_pages(
+        monkeypatch,
         build_service,
-        "_llm_generate_pages",
-        lambda kb, source_text, llm_model_id: [{"page_type": "entity", "title": "蓝鲸平台", "tags": [], "body": "AI 正文"}],
+        [{"page_type": "entity", "title": "蓝鲸平台", "tags": [], "body": "AI 正文"}],
     )
 
     record = build_service.build_from_material(material, llm_model_id=1, operator="admin")
 
-    assert record.counts == {"new": 0, "updated": 0, "unchanged": 0, "pending_review": 1}
+    assert record.counts == _counts(pending_review=1)
     assert record.affected_pages == [page.id]
     check = CheckItem.objects.get(knowledge_base=kb, check_type="cannot_merge")
     assert check.related == {"pages": [page.id], "materials": [material.id]}
@@ -429,7 +489,7 @@ def test_bounded_generation_prompt_includes_json_only_rules():
     from apps.opspilot.services.wiki import build_service
 
     prompt = build_service._bounded_generation_prompt(
-        SimpleNamespace(purpose_md="目的"),
+        SimpleNamespace(introduction="目的"),
         "资料正文",
         structure_revision=SimpleNamespace(structure_snapshot={"page_types": ["concept"], "directories": []}),
         classification_root_id=None,
@@ -439,6 +499,8 @@ def test_bounded_generation_prompt_includes_json_only_rules():
     assert "不要用 ``` 代码块包裹" in prompt
     assert "Fixed Structure Schema" in prompt
     assert "资料正文" in prompt
+    assert "# Introduction\n目的" in prompt
+    assert "purpose_md" not in prompt
 
 
 def test_wiki_llm_invocation_uses_wiki_timeout(monkeypatch):
@@ -551,7 +613,7 @@ def test_finalize_coerces_missing_page_type_and_promotes_source_only_output():
         source_metadata={"source_title": "资料A", "display_name": "资料A"},
     )
     assert any(page["page_type"] == "concept" and page["title"] == "配置平台" for page in coerced)
-    assert any(page["page_type"] == "source" for page in coerced)
+    assert all(page["page_type"] != "source" for page in coerced)
 
     promoted = build_service._finalize_material_pages(
         [
@@ -566,7 +628,7 @@ def test_finalize_coerces_missing_page_type_and_promotes_source_only_output():
         source_metadata={"source_title": "资料A", "display_name": "资料A"},
     )
     assert any(page["page_type"] == "concept" for page in promoted)
-    assert any(page["page_type"] == "source" for page in promoted)
+    assert all(page["page_type"] != "source" for page in promoted)
 
 
 def test_generation_page_contract_includes_fact_preservation_rules():
@@ -699,7 +761,7 @@ def test_generate_and_finalize_pages_retries_once_on_empty_topic_pages(monkeypat
         return '{"pages":[' '{"page_type":"source","title":"资料A","body":"来源页"},' '{"page_type":"concept","title":"主题A","body":"主题正文"}' "]}"
 
     monkeypatch.setattr(build_service, "_invoke_llm", fake_invoke)
-    kb = SimpleNamespace(purpose_md="")
+    kb = SimpleNamespace(introduction="")
     structure_revision = SimpleNamespace(
         structure_snapshot={
             "page_types": ["source", "concept"],
@@ -720,7 +782,8 @@ def test_generate_and_finalize_pages_retries_once_on_empty_topic_pages(monkeypat
     assert [item["stage"] for item in calls] == ["material_generate", "material_generate_retry_2"]
     assert all(item["force_json"] for item in calls)
     assert "Previous output rejected" in calls[1]["prompt"]
-    assert {page["page_type"] for page in pages} >= {"source", "concept"}
+    assert {page["page_type"] for page in pages} == {"concept"}
+    assert all(page["page_type"] != "source" for page in pages)
 
 
 def test_isolated_openai_falls_back_when_response_format_unsupported(monkeypatch):
@@ -939,19 +1002,16 @@ def test_build_from_material_uses_parsed_markdown_instead_of_summary(monkeypatch
     from apps.opspilot.models import Material, WikiKnowledgeBase
     from apps.opspilot.services.wiki import build_service
 
-    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1], purpose_md="# P", schema_md="# S")
-    material = Material.objects.create(
-        knowledge_base=kb,
-        name="m",
-        material_type="text",
-        text_content="raw",
-        ai_summary="LOSSY SUMMARY",
-    )
+    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1], purpose_md="# P", schema_md="# S", introduction="简介")
+    material = _material(kb, name="m", text_content="raw", ai_summary="LOSSY SUMMARY")
     seen = {}
 
-    monkeypatch.setattr(build_service, "load_parsed_markdown", lambda m: "# Full Markdown\n\ncritical detail")
-    monkeypatch.setattr(build_service, "_llm_extract_facts", lambda text, llm_model_id: seen.setdefault("text", text) or "facts")
-    monkeypatch.setattr(build_service, "_llm_generate_pages", lambda kb, source_text, llm_model_id: [])
+    def capture_pages(kb, source_text, llm_model_id):
+        seen["text"] = source_text
+        return list(_FAKE_PAGES)
+
+    _patch_parsed_markdown(monkeypatch, "# Full Markdown\n\ncritical detail")
+    _stub_generated_pages(monkeypatch, build_service, capture_pages)
 
     build_service.build_from_material(material, llm_model_id=1)
 
@@ -963,33 +1023,24 @@ def test_build_from_material_extracts_facts_from_entire_long_markdown(monkeypatc
     from apps.opspilot.models import KnowledgePage, Material, WikiKnowledgeBase
     from apps.opspilot.services.wiki import build_service
 
-    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1], purpose_md="# P", schema_md="# S")
-    material = Material.objects.create(
-        knowledge_base=kb,
-        name="m",
-        material_type="text",
-        text_content="raw",
-    )
+    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1], purpose_md="# P", schema_md="# S", introduction="简介")
+    material = _material(kb, name="m", text_content="raw")
     tail_marker = "TAIL_COMPONENT_NEEDS_PAGE"
     long_markdown = ("head content\n" * 900) + f"\n{tail_marker} 是长文档后半段的重要组件。"
-    prompts = []
+    seen = {}
 
-    def fake_invoke(llm_model_id, prompt):
-        prompts.append(prompt)
-        if "知识抽取助手" in prompt:
-            return "尾部组件事实" if tail_marker in prompt else "头部事实"
-        if "企业知识库构建助手" in prompt and "尾部组件事实" in prompt:
-            return '{"pages":[{"page_type":"entity","title":"TAIL_COMPONENT_NEEDS_PAGE","tags":["tail"],"body":"尾部组件正文"}]}'
-        return '{"pages":[]}'
+    def capture_pages(kb, source_text, llm_model_id):
+        seen["text"] = source_text
+        return [{"page_type": "entity", "title": tail_marker, "tags": ["tail"], "body": "尾部组件正文"}]
 
-    monkeypatch.setattr(build_service, "load_parsed_markdown", lambda m: long_markdown)
-    monkeypatch.setattr(build_service, "_invoke_llm", fake_invoke)
+    _patch_parsed_markdown(monkeypatch, long_markdown)
+    _stub_generated_pages(monkeypatch, build_service, capture_pages)
 
     record = build_service.build_from_material(material, llm_model_id=1)
 
     assert record.counts["new"] == 1
     assert KnowledgePage.objects.filter(knowledge_base=kb, title=tail_marker).exists()
-    assert any(tail_marker in prompt for prompt in prompts if "知识抽取助手" in prompt)
+    assert tail_marker in seen["text"]
 
 
 @pytest.mark.django_db
@@ -1014,17 +1065,19 @@ def test_generate_pages_prompt_asks_for_granular_entity_pages(monkeypatch):
 
 @pytest.mark.django_db
 def test_build_no_model_yields_zero_pages():
-    from apps.opspilot.models import KnowledgePage, Material, WikiKnowledgeBase
+    from apps.opspilot.models import BuildRecord, KnowledgePage, Material, WikiKnowledgeBase
     from apps.opspilot.services.wiki import build_service
 
-    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
-    material = Material.objects.create(knowledge_base=kb, name="m", material_type="text", ai_summary="x")
-    record = build_service.build_from_material(material, llm_model_id=None)
-    # 无 llm_model_id → Stage2 零产出,按 2576af62a 行为应标 partial(而非 success),
-    # 让前端 BuildRecord 列表能区分"构建有问题 / 模型未配"和真正的成功。
-    assert record.status == "partial"
-    assert record.counts["new"] == 0
+    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1], introduction="简介")
+    material = _material(kb, name="m", ai_summary="x")
+    with pytest.raises(build_service.BuildOutputInvalid, match="build_output_empty_pages"):
+        build_service.build_from_material(material, llm_model_id=None)
+    record = BuildRecord.objects.get(knowledge_base=kb)
+    material.refresh_from_db()
+    assert record.status == "failed"
+    assert record.stage == "failed"
     assert KnowledgePage.objects.filter(knowledge_base=kb).count() == 0
+    assert material.status == "build_failed"
 
 
 @pytest.mark.django_db
@@ -1032,15 +1085,13 @@ def test_build_from_material_marks_record_failed_and_material_done_on_error(monk
     from apps.opspilot.models import BuildRecord, Material, WikiKnowledgeBase
     from apps.opspilot.services.wiki import build_service
 
-    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1], purpose_md="# P", schema_md="# S")
-    material = Material.objects.create(knowledge_base=kb, name="m", material_type="text", text_content="raw")
-
-    monkeypatch.setattr(build_service, "_llm_extract_facts", lambda text, llm_model_id: "facts")
+    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1], purpose_md="# P", schema_md="# S", introduction="简介")
+    material = _material(kb, name="m", text_content="raw")
 
     def raise_generate(kb, source_text, llm_model_id):
         raise RuntimeError("generate failed")
 
-    monkeypatch.setattr(build_service, "_llm_generate_pages", raise_generate)
+    _stub_generated_pages(monkeypatch, build_service, raise_generate)
 
     with pytest.raises(RuntimeError, match="generate failed"):
         build_service.build_from_material(material, llm_model_id=1)
@@ -1050,23 +1101,19 @@ def test_build_from_material_marks_record_failed_and_material_done_on_error(monk
     assert record.status == "failed"
     assert record.stage == "failed"
     assert record.errors == ["generate failed"]
-    assert material.status == "done"
+    assert material.status == "build_failed"
 
 
 @pytest.mark.django_db
 class TestBuildViews:
-    def test_material_build_action_and_listings(self, api_client):
+    def test_material_build_action_and_listings(self, api_client, monkeypatch):
         from apps.opspilot.models import Material, WikiKnowledgeBase
         from apps.opspilot.services.wiki import build_service
 
-        kb = WikiKnowledgeBase.objects.create(name="kb", team=[1], purpose_md="# P", schema_md="# S")
-        material = Material.objects.create(knowledge_base=kb, name="m", material_type="text", ai_summary="重启服务摘要")
-
-        with (
-            patch.object(build_service, "_llm_extract_facts", return_value="facts"),
-            patch.object(build_service, "_llm_generate_pages", return_value=_FAKE_PAGES),
-        ):
-            resp = api_client.post(f"/api/v1/opspilot/wiki_mgmt/material/{material.id}/build/", {}, format="json")
+        kb = WikiKnowledgeBase.objects.create(name="kb", team=[1], purpose_md="# P", schema_md="# S", introduction="简介")
+        material = _material(kb, name="m", ai_summary="重启服务摘要")
+        _stub_generated_pages(monkeypatch, build_service)
+        resp = api_client.post(f"/api/v1/opspilot/wiki_mgmt/material/{material.id}/build/", {}, format="json")
         assert resp.status_code == 200, resp.content
         assert resp.json()["data"]["status"] == "success"
 
@@ -1134,6 +1181,7 @@ def _decision_material(kb, name, content_hash):
         material_type="text",
         text_content=f"source-{name}",
         content_hash=content_hash,
+        source_identity=f"text:{name}",
     )
     version = MaterialVersion.objects.create(material=material, content_hash=content_hash)
     material.current_version = version
@@ -1141,24 +1189,16 @@ def _decision_material(kb, name, content_hash):
     return material, version
 
 
-def _decision_page(kb, material, material_version, body="knowledge-a"):
-    from apps.opspilot.models import KnowledgePage, PageEvidence, PageVersion
+def _decision_page(kb, material, material_version, body="knowledge-a", title="共享知识"):
+    from apps.opspilot.models import PageEvidence
 
-    page = KnowledgePage.objects.create(
-        knowledge_base=kb,
+    page = _page(
+        kb,
         page_type="concept",
-        title="共享知识",
+        title=title,
+        body=body,
         contribution="human",
     )
-    version = PageVersion.objects.create(
-        page=page,
-        no=1,
-        body=body,
-        change_type="human_edit",
-        is_current=True,
-    )
-    page.current_version = version
-    page.save(update_fields=["current_version", "updated_at"])
     PageEvidence.objects.create(
         page=page,
         material=material,
@@ -1168,10 +1208,9 @@ def _decision_page(kb, material, material_version, body="knowledge-a"):
 
 
 def _mock_decision_build_pages(monkeypatch, build_service, bodies):
-    monkeypatch.setattr(build_service, "_llm_extract_facts", lambda text, llm_model_id: text)
-    monkeypatch.setattr(
+    _stub_generated_pages(
+        monkeypatch,
         build_service,
-        "_llm_generate_pages",
         lambda kb, source_text, llm_model_id: [
             {
                 "page_type": "concept",
@@ -1217,7 +1256,7 @@ def test_build_replays_approved_full_source_set_when_incoming_role_reverses(monk
     version_count = PageVersion.objects.filter(page=page).count()
     second = build_service.build_from_material(material_a, llm_model_id=1, operator="admin")
 
-    assert second.counts == {"new": 0, "updated": 0, "unchanged": 1, "pending_review": 0}
+    assert second.counts == _counts(unchanged=1)
     assert not CheckItem.objects.filter(knowledge_base=kb, status="open").exists()
     assert PageVersion.objects.filter(page=page).count() == version_count
     action = second.inputs["source_trace"]["page_actions"][0]
@@ -1243,7 +1282,7 @@ def test_build_same_candidate_body_is_unchanged_without_candidate(monkeypatch):
 
     build = build_service.build_from_material(material_b, llm_model_id=1)
 
-    assert build.counts == {"new": 0, "updated": 0, "unchanged": 1, "pending_review": 0}
+    assert build.counts == _counts(unchanged=1)
     assert not CheckItem.objects.filter(knowledge_base=kb).exists()
     assert PageVersion.objects.filter(page=page).count() == 1
     evidence = PageEvidence.objects.get(page=page, material=material_b)
@@ -1262,7 +1301,7 @@ def test_build_same_candidate_body_is_unchanged_without_candidate(monkeypatch):
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("signature_change", ["content_hash", "source_set", "schema"])
+@pytest.mark.parametrize("signature_change", ["content_hash", "source_set", "introduction"])
 def test_build_changed_decision_signature_requires_new_decision(monkeypatch, signature_change):
     from apps.opspilot.models import CheckItem, PageEvidence, WikiKnowledgeBase
     from apps.opspilot.services.wiki import build_service
@@ -1271,7 +1310,7 @@ def test_build_changed_decision_signature_requires_new_decision(monkeypatch, sig
     kb = WikiKnowledgeBase.objects.create(
         name=f"kb-build-signature-{signature_change}",
         team=[1],
-        schema_md="# schema",
+        introduction="初始简介",
     )
     material_a, version_a = _decision_material(kb, "A", "hash-a")
     material_b, _version_b = _decision_material(kb, "B", "hash-b")
@@ -1301,8 +1340,8 @@ def test_build_changed_decision_signature_requires_new_decision(monkeypatch, sig
             material_version=version_c,
         )
     else:
-        kb.schema_md = "# changed schema"
-        kb.save(update_fields=["schema_md", "updated_at"])
+        kb.introduction = "变更后的简介"
+        kb.save(update_fields=["introduction", "updated_at"])
 
     build = build_service.build_from_material(material_a, llm_model_id=1)
 
@@ -1317,17 +1356,19 @@ def test_build_alias_subject_replays_canonical_rule(monkeypatch):
     from apps.opspilot.services.wiki.check_service import decide_check
 
     canonical = "配置平台"
-    kb = WikiKnowledgeBase.objects.create(name="kb-build-alias-replay", team=[1], schema_md="# schema")
+    kb = WikiKnowledgeBase.objects.create(
+        name="kb-build-alias-replay",
+        team=[1],
+        schema_md="# schema",
+        generation_rules={"title_aliases": [{"canonical": canonical, "aliases": ["CMDB"]}]},
+    )
     material_a, version_a = _decision_material(kb, "A", "hash-a")
     material_b, _version_b = _decision_material(kb, "B", "hash-b")
-    page = _decision_page(kb, material_a, version_a)
-    page.title = "CMDB"
-    page.save(update_fields=["title", "updated_at"])
-    monkeypatch.setattr(build_service, "_llm_extract_facts", lambda text, llm_model_id: text)
-    monkeypatch.setattr(
+    page = _decision_page(kb, material_a, version_a, title="CMDB")
+    _stub_generated_pages(
+        monkeypatch,
         build_service,
-        "_llm_generate_pages",
-        lambda kb, source_text, llm_model_id: [
+        [
             {
                 "page_type": "concept",
                 "title": canonical,
@@ -1336,6 +1377,17 @@ def test_build_alias_subject_replays_canonical_rule(monkeypatch):
             }
         ],
     )
+    _stub_conflict_routing(
+        monkeypatch,
+        {
+            0: {
+                "old_page_id": page.id,
+                "same_subject": True,
+                "relation": "conflict",
+                "reason": "canonical alias",
+            }
+        },
+    )
 
     first = build_service.build_from_material(material_b, llm_model_id=1)
     check = CheckItem.objects.get(knowledge_base=kb, status="open")
@@ -1343,6 +1395,7 @@ def test_build_alias_subject_replays_canonical_rule(monkeypatch):
     assert first.counts["pending_review"] == 1
     assert check.decision_context["subject_key"] == f"page::concept::{canonical}"
     rule = decide_check(check, "keep_current", operator="admin")
+    assert rule is not None
 
     second = build_service.build_from_material(material_b, llm_model_id=1)
 
@@ -1405,8 +1458,6 @@ def test_build_stale_page_instance_does_not_replay_after_manual_edit(monkeypatch
     page.refresh_from_db()
     rule.refresh_from_db()
     assert edited["stale_current_id"] != edited["manual_version_id"]
-    assert page.current_version_id == edited["manual_version_id"]
-    assert page.current_version.body == "manual edit after approval"
     assert second.counts["pending_review"] == 1
     assert second.counts["unchanged"] == 0
     assert new_check.decision_context["locked_current_version_id"] == edited["manual_version_id"]

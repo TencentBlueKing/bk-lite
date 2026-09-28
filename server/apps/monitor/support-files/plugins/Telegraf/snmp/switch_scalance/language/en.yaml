@@ -1,6 +1,6 @@
 Switch Scalance SNMP:
   name: Scalance (Telegraf)
-  desc: "SNMP monitoring template for Scalance switch. It reports uptime, temperature, power supply status, and interface traffic (enterprise PEN 4329)."
+  desc: "SNMP monitoring template for Scalance switch. It reports uptime, power supply status, and interface traffic (enterprise PEN 4329). Chassis temperature is N/A."
 monitor_object:
   Switch: Switch
 monitor_object_type:

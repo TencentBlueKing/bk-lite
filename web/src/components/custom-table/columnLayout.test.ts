@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_COL_WIDTH,
+  DEFAULT_SELECTION_COLUMN_WIDTH,
   estimateContentMinWidth,
   resolveColumnLayout,
+  resolveSelectionColumnWidth,
   scaleWidthsToContainer,
 } from './columnLayout';
 
@@ -81,6 +83,45 @@ describe('resolveColumnLayout fill width', () => {
     expect(layout.widths).toEqual(
       scaleWidthsToContainer([160, DEFAULT_COL_WIDTH], 1000),
     );
+  });
+
+  it('reserves the selection column so filling the pane does not create a 32px horizontal gutter', () => {
+    const layout = resolveColumnLayout({
+      autoScrollX: true,
+      columns,
+      columnWidths: {},
+      containerWidth: 800,
+      reservedWidth: DEFAULT_SELECTION_COLUMN_WIDTH,
+    });
+
+    expect(layout.scrollX).toBeUndefined();
+    expect((layout.widths as number[]).reduce((sum, width) => sum + width, 0)).toBe(
+      800 - DEFAULT_SELECTION_COLUMN_WIDTH,
+    );
+  });
+
+  it('counts the selection gutter when deciding that columns overflow', () => {
+    const layout = resolveColumnLayout({
+      autoScrollX: true,
+      columns: [
+        { key: 'a', width: 200 },
+        { key: 'b', width: 200 },
+      ],
+      columnWidths: {},
+      containerWidth: 400,
+      reservedWidth: DEFAULT_SELECTION_COLUMN_WIDTH,
+    });
+
+    expect(layout.scrollX).toBe(400 + DEFAULT_SELECTION_COLUMN_WIDTH);
+    expect(layout.widths).toEqual([200, 200]);
+  });
+});
+
+describe('resolveSelectionColumnWidth', () => {
+  it('uses the antd checkbox default when rowSelection does not set a width', () => {
+    expect(resolveSelectionColumnWidth()).toBe(DEFAULT_SELECTION_COLUMN_WIDTH);
+    expect(resolveSelectionColumnWidth(48)).toBe(48);
+    expect(resolveSelectionColumnWidth('40px')).toBe(40);
   });
 });
 

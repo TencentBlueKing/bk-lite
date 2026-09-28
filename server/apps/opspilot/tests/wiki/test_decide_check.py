@@ -1159,8 +1159,8 @@ def test_decide_api_returns_409_and_preserves_page_when_live_context_drifted(api
     from apps.opspilot.models import WikiDecisionRule
 
     kb, page, current, source, source_version, incoming, incoming_version, check = _create_frozen_conflict()
-    kb.schema_md = "# changed after decision freeze"
-    kb.save(update_fields=["schema_md", "updated_at"])
+    kb.introduction = "changed after decision freeze"
+    kb.save(update_fields=["introduction", "updated_at"])
 
     response = api_client.post(
         f"/api/v1/opspilot/wiki_mgmt/check_item/{check.id}/decide/",
@@ -1432,8 +1432,8 @@ def test_decide_auto_resolves_schema_change_after_candidate_freeze():
     from apps.opspilot.services.wiki.check_service import decide_check
 
     kb, page, current, source, source_version, incoming, incoming_version, check = _create_frozen_conflict()
-    kb.schema_md = "# changed schema"
-    kb.save(update_fields=["schema_md", "updated_at"])
+    kb.introduction = "changed schema"
+    kb.save(update_fields=["introduction", "updated_at"])
 
     assert decide_check(check, action="edit_accept", body="edited", operator="reviewer") is None
 

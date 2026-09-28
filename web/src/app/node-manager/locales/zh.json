@@ -700,6 +700,7 @@
     "batchbindSuccess": "绑定成功",
     "successfulDownloaded": "下载成功！",
     "configuration": "配置",
-    "successfullyModified": "修改成功！"
+    "successfullyModified": "修改成功！",
+    "formatError": "格式错误"
   }
 }

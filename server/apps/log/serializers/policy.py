@@ -4,6 +4,7 @@ from apps.log.models.policy import Alert, Event, EventRawData, Policy
 from apps.log.services.access_scope import LogAccessScopeService
 from apps.log.utils.log_group import LogGroupQueryBuilder
 from apps.log.utils.policy_config import validate_timing_config
+from apps.log.utils.locale_text import serializer_text
 from apps.log.utils.user_display import format_user_identifiers
 
 
@@ -14,10 +15,10 @@ class AssignHandlersSerializer(serializers.Serializer):
         cleaned = []
         for item in value:
             if item in (None, "") or isinstance(item, bool):
-                raise serializers.ValidationError("处理人标识无效")
+                raise serializers.ValidationError(serializer_text(self, "error.handler_invalid"))
             cleaned.append(item)
         if not cleaned:
-            raise serializers.ValidationError("至少指定一名处理人")
+            raise serializers.ValidationError(serializer_text(self, "error.handler_required"))
         return cleaned
 
 
@@ -70,7 +71,7 @@ class PolicySerializer(serializers.ModelSerializer):
             queryset = queryset.exclude(id=self.instance.id)
 
         if queryset.exists():
-            raise serializers.ValidationError("当前范围下策略名称已存在")
+            raise serializers.ValidationError(serializer_text(self, "error.policy_name_exists"))
 
         return value
 

@@ -8,6 +8,7 @@ export function useTransferTasks(open: boolean, onImportFinished: (task: Transfe
   const [error, setError] = useState('');
   const [canSubmit, setCanSubmit] = useState(true);
   const [loading, setLoading] = useState(false);
+  const activeLimit = useRef(5);
   const previous = useRef<Map<string, string>>(new Map());
   const finished = useRef(onImportFinished);
   finished.current = onImportFinished;
@@ -33,6 +34,7 @@ export function useTransferTasks(open: boolean, onImportFinished: (task: Transfe
       }
       previous.current = new Map(data.items.map(task => [task.task_id, task.status]));
       setTasks(data.items);
+      activeLimit.current = data.limits?.active ?? 5;
       setCanSubmit(data.can_submit);
       setError('');
     } catch (failure) {
@@ -57,7 +59,7 @@ export function useTransferTasks(open: boolean, onImportFinished: (task: Transfe
     previousEnabled.current = enabled;
   }, [enabled, api.isLoading, refresh]);
 
-  const active = tasks.some(task => ['queued', 'running'].includes(task.status));
+  const active = tasks.some(task => ['queued', 'running'].includes(task.status) || task.failure?.execution_pending);
   const previousOpen = useRef(open);
   useEffect(() => {
     if (open && !previousOpen.current && !api.isLoading) void refresh();
@@ -85,8 +87,8 @@ export function useTransferTasks(open: boolean, onImportFinished: (task: Transfe
 
   const submitted = useCallback((task: TransferTask) => {
     previous.current.set(task.task_id, task.status);
-    setTasks(current => [task, ...current.filter(item => item.task_id !== task.task_id)].slice(0, 5));
-    setCanSubmit(false);
+    setTasks(current => [task, ...current.filter(item => item.task_id !== task.task_id)]);
+    setCanSubmit([...previous.current.values()].filter(status => ['queued', 'running'].includes(status)).length < activeLimit.current);
     void refresh();
   }, [refresh]);
   return { tasks, error, loading, canSubmit, refresh, submitted };

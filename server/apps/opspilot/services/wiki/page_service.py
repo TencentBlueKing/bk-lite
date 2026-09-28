@@ -19,6 +19,7 @@ from apps.opspilot.services.wiki.generation_service import (
     mark_generation_ready,
     put_generation_member,
 )
+from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
 from apps.opspilot.services.wiki.title_service import InvalidWikiTitle, WikiTitleConflict, assert_unique_title_locked, canonical_title
 
 UNCLASSIFIED_DIRECTORY_KEY = "__unclassified__"
@@ -82,6 +83,9 @@ def _generation_error(error):
 
 def _active_pair_locked(locked_kb):
     if locked_kb.active_structure_revision_id is None or locked_kb.active_generation_id is None:
+        bootstrap_knowledge_base(locked_kb, operator="system")
+        locked_kb.refresh_from_db()
+    if locked_kb.active_structure_revision_id is None or locked_kb.active_generation_id is None:
         raise PageServiceError(
             "active_snapshot_missing",
             "知识库缺少可写入的 active structure/generation",
@@ -106,6 +110,26 @@ def _active_pair_locked(locked_kb):
     return revision, generation
 
 
+def _default_node_for_page_type(nodes, page_type):
+    wanted = str(page_type or "").strip() or "concept"
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        defaults = (node.get("rules") or {}).get("default_for_page_types") or []
+        if wanted in defaults:
+            return node
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        defaults = (node.get("rules") or {}).get("default_for_page_types") or []
+        if "concept" in defaults:
+            return node
+    return next(
+        (node for node in nodes if isinstance(node, dict) and node.get("key") == UNCLASSIFIED_DIRECTORY_KEY),
+        None,
+    )
+
+
 def _target_directory(locked_kb, revision, page_type, directory_id=None):
     snapshot = revision.structure_snapshot or {}
     nodes = snapshot.get("directories")
@@ -117,10 +141,7 @@ def _target_directory(locked_kb, revision, page_type, directory_id=None):
         )
 
     if directory_id is None:
-        target_node = next(
-            (node for node in nodes if isinstance(node, dict) and node.get("key") == UNCLASSIFIED_DIRECTORY_KEY),
-            None,
-        )
+        target_node = _default_node_for_page_type(nodes, page_type)
     else:
         try:
             normalized_directory_id = int(directory_id)

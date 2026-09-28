@@ -26,6 +26,7 @@ from apps.opspilot.models import (
     WikiKnowledgeBase,
     WikiStructureRevision,
 )
+from apps.opspilot.services.wiki.purpose_schema_service import FROZEN_ROOT_BY_KEY, FROZEN_ROOT_KEYS
 from apps.opspilot.services.wiki.title_service import title_identity_key
 
 REPORT_SCHEMA = "opspilot.wiki.directory-readiness/v1"
@@ -505,7 +506,8 @@ def _audit_directory_links(
     system_rows = [row for row in rows if row["origin"] == "system"]
     reserved_rows = [row for row in rows if row["key"] == UNCLASSIFIED_DIRECTORY_KEY]
     candidate_ids = sorted({row["id"] for row in (*system_rows, *reserved_rows)})
-    if not candidate_ids:
+    expected_system_keys = {UNCLASSIFIED_DIRECTORY_KEY, *FROZEN_ROOT_KEYS}
+    if not reserved_rows:
         _issue(
             issues,
             "system_unclassified_directory_missing",
@@ -515,7 +517,7 @@ def _audit_directory_links(
             entity_id=knowledge_base.pk,
             details={"migration_pending": not strict_directory},
         )
-    elif len(system_rows) != 1 or len(reserved_rows) != 1 or system_rows[0]["id"] != reserved_rows[0]["id"]:
+    elif len(reserved_rows) != 1 or reserved_rows[0]["origin"] != "system":
         _issue(
             issues,
             "system_unclassified_directory_not_unique",
@@ -529,7 +531,7 @@ def _audit_directory_links(
             },
         )
     else:
-        unclassified = system_rows[0]
+        unclassified = reserved_rows[0]
         expected = {
             "accepts_pages": True,
             "key": UNCLASSIFIED_DIRECTORY_KEY,
@@ -549,6 +551,46 @@ def _audit_directory_links(
                 entity_id=unclassified["id"],
                 details={"invalid_fields": invalid_fields},
             )
+
+    system_keys = {row["key"] for row in system_rows}
+    if reserved_rows and system_keys != expected_system_keys:
+        _issue(
+            issues,
+            "system_directory_invariant",
+            "系统目录必须恰好是待归类与六个冻结根",
+            entity_type="knowledge_base",
+            entity_id=knowledge_base.pk,
+            details={
+                "missing_keys": sorted(expected_system_keys - system_keys),
+                "unexpected_keys": sorted(system_keys - expected_system_keys),
+                "system_directory_ids": sorted(row["id"] for row in system_rows),
+            },
+        )
+    else:
+        for row in system_rows:
+            spec = FROZEN_ROOT_BY_KEY.get(row["key"])
+            if spec is None:
+                continue
+            expected_frozen = {
+                "accepts_pages": spec["accepts_pages"],
+                "merged_into_id": None,
+                "name": spec["name"],
+                "origin": "system",
+                "parent_id": None,
+                "status": "active",
+            }
+            invalid_fields = sorted(
+                field_name for field_name, expected_value in expected_frozen.items() if row[field_name] != expected_value
+            )
+            if invalid_fields:
+                _issue(
+                    issues,
+                    "frozen_directory_invariant",
+                    "冻结根目录不可删除、改名或移出根",
+                    entity_type="directory",
+                    entity_id=row["id"],
+                    details={"invalid_fields": invalid_fields, "directory_key": row["key"]},
+                )
 
     active_rows = {row_id: row for row_id, row in rows_by_id.items() if row["status"] == "active"}
     for row in active_rows.values():

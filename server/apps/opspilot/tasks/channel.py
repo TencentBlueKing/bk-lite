@@ -175,6 +175,7 @@ def process_skill_channel_aibot_message(self, channel_id, msg_id, message, sende
     from apps.opspilot.models import SkillChannel
     from apps.opspilot.services.skill_channel_aibot import SkillChannelAibotUtils
     from apps.opspilot.services.skill_channel_chat_service import execute_skill_channel_im_sync
+    from apps.opspilot.services.skill_channel_im_media import rewrite_markdown_images_for_im
 
     def _execute():
         handler = SkillChannelAibotUtils(channel_id)
@@ -209,7 +210,8 @@ def process_skill_channel_aibot_message(self, channel_id, msg_id, message, sende
                 external_user_id=sender_id or "",
                 session_id=session_id,
             )
-            process_skill_channel_aibot_reply.delay(channel_id, msg_id, response_url, reply_text)
+            markdown = rewrite_markdown_images_for_im(reply_text)
+            process_skill_channel_aibot_reply.delay(channel_id, msg_id, response_url, markdown)
             logger.info("skill aibot 已提交回覆 channel_id=%s msg_id=%s", channel_id, msg_id)
             return {"accepted": True, "channel_id": channel_id, "msg_id": msg_id}
         except Exception:
@@ -244,6 +246,7 @@ def process_skill_channel_wechat_message(self, channel_id, msg_id, message, send
     """智能体企微应用：异步单 Agent 执行并 API 回覆。"""
     from apps.opspilot.models import SkillChannel
     from apps.opspilot.services.skill_channel_chat_service import execute_skill_channel_im_sync
+    from apps.opspilot.services.skill_channel_im_media import deliver_skill_channel_im_reply
     from apps.opspilot.services.skill_channel_wechat import SkillChannelWechatUtils
 
     def _execute():
@@ -269,7 +272,13 @@ def process_skill_channel_wechat_message(self, channel_id, msg_id, message, send
                 external_user_id=sender_id or "",
                 session_id=sender_id or None,
             )
-            handler.send_reply(reply_text, sender_id or "", config or {})
+            deliver_skill_channel_im_reply(
+                channel_type="enterprise_wechat",
+                handler=handler,
+                reply_text=reply_text,
+                sender_id=sender_id or "",
+                config=config or {},
+            )
             handler.mark_message_completed(msg_id)
             logger.info("skill wechat 处理完成 channel_id=%s msg_id=%s", channel_id, msg_id)
             return {"accepted": True, "channel_id": channel_id, "msg_id": msg_id}
@@ -295,6 +304,7 @@ def process_skill_channel_wechat_official_message(self, channel_id, msg_id, mess
     """智能体微信公众号：异步单 Agent 执行并客服消息回覆。"""
     from apps.opspilot.models import SkillChannel
     from apps.opspilot.services.skill_channel_chat_service import execute_skill_channel_im_sync
+    from apps.opspilot.services.skill_channel_im_media import deliver_skill_channel_im_reply
     from apps.opspilot.services.skill_channel_wechat_official import SkillChannelWechatOfficialUtils
 
     def _execute():
@@ -320,7 +330,13 @@ def process_skill_channel_wechat_official_message(self, channel_id, msg_id, mess
                 external_user_id=sender_id or "",
                 session_id=sender_id or None,
             )
-            handler.send_reply(reply_text, sender_id or "", config or {})
+            deliver_skill_channel_im_reply(
+                channel_type="wechat_official",
+                handler=handler,
+                reply_text=reply_text,
+                sender_id=sender_id or "",
+                config=config or {},
+            )
             handler.mark_message_completed(msg_id)
             logger.info("skill wechat_official 处理完成 channel_id=%s msg_id=%s", channel_id, msg_id)
             return {"accepted": True, "channel_id": channel_id, "msg_id": msg_id}
@@ -343,6 +359,7 @@ def process_skill_channel_dingtalk_message(self, channel_id, msg_id, text_conten
     from apps.opspilot.models import SkillChannel
     from apps.opspilot.services.skill_channel_chat_service import execute_skill_channel_im_sync
     from apps.opspilot.services.skill_channel_dingtalk import SkillChannelDingtalkUtils
+    from apps.opspilot.services.skill_channel_im_media import deliver_skill_channel_im_reply
 
     def _execute():
         handler = SkillChannelDingtalkUtils(channel_id)
@@ -367,8 +384,14 @@ def process_skill_channel_dingtalk_message(self, channel_id, msg_id, text_conten
                 external_user_id=sender_id or "",
                 session_id=sender_id or None,
             )
-            if webhook_url and reply_text:
-                handler.send_message(webhook_url, "markdown", {"title": "机器人回复", "text": reply_text})
+            deliver_skill_channel_im_reply(
+                channel_type="dingtalk",
+                handler=handler,
+                reply_text=reply_text,
+                sender_id=sender_id or "",
+                config=config or {},
+                webhook_url=webhook_url,
+            )
             handler.mark_message_completed(msg_id)
             logger.info("skill dingtalk 处理完成 channel_id=%s msg_id=%s", channel_id, msg_id)
             return {"accepted": True, "channel_id": channel_id, "msg_id": msg_id}
@@ -391,6 +414,7 @@ def process_skill_channel_feishu_message(self, channel_id, msg_id, text_content,
     from apps.opspilot.models import SkillChannel
     from apps.opspilot.services.skill_channel_chat_service import execute_skill_channel_im_sync
     from apps.opspilot.services.skill_channel_feishu import SkillChannelFeishuUtils
+    from apps.opspilot.services.skill_channel_im_media import deliver_skill_channel_im_reply
 
     def _execute():
         handler = SkillChannelFeishuUtils(channel_id)
@@ -418,7 +442,13 @@ def process_skill_channel_feishu_message(self, channel_id, msg_id, text_content,
             reply_config = dict(config or {})
             reply_config["message_id"] = msg_id
             if reply_text:
-                handler.send_reply(reply_text, sender_id or "", reply_config)
+                deliver_skill_channel_im_reply(
+                    channel_type="feishu",
+                    handler=handler,
+                    reply_text=reply_text,
+                    sender_id=sender_id or "",
+                    config=reply_config,
+                )
             handler.mark_message_completed(msg_id)
             logger.info("skill feishu 处理完成 channel_id=%s msg_id=%s", channel_id, msg_id)
             return {"accepted": True, "channel_id": channel_id, "msg_id": msg_id}

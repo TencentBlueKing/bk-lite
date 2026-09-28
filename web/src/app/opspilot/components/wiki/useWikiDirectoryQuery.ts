@@ -19,7 +19,8 @@ type WikiQueryKey =
   | "page_type"
   | "status"
   | "wiki_view"
-  | "wiki_page";
+  | "wiki_page"
+  | "wiki_material";
 type WikiQueryPatch = Partial<
   Record<WikiQueryKey, string | number | boolean | null>
 >;
@@ -41,6 +42,7 @@ export interface WikiDirectoryQuery {
   pageType: string;
   status: string;
   selectedPageId: number | null;
+  selectedMaterialId: number | null;
   setView: (view: WikiView, history?: HistoryMode) => void;
   setDirectoryId: (directoryId: number | null, history?: HistoryMode) => void;
   setIncludeDescendants: (includeDescendants: boolean) => void;
@@ -50,6 +52,10 @@ export interface WikiDirectoryQuery {
   setPagination: (page: number, pageSize: number) => void;
   setSelectedPageId: (
     pageId: number | null,
+    history?: HistoryMode,
+  ) => void;
+  setSelectedMaterialId: (
+    materialId: number | null,
     history?: HistoryMode,
   ) => void;
 }
@@ -86,6 +92,10 @@ export const useWikiDirectoryQuery = (): WikiDirectoryQuery => {
       searchParams?.get("wiki_page") ?? null,
       0,
     );
+    const wikiMaterial = positiveInteger(
+      searchParams?.get("wiki_material") ?? null,
+      0,
+    );
     return {
       view:
         searchParams?.get("wiki_view") === "graph"
@@ -104,6 +114,7 @@ export const useWikiDirectoryQuery = (): WikiDirectoryQuery => {
       pageType: searchParams?.get("page_type") ?? "",
       status: searchParams?.get("status") || DEFAULT_STATUS,
       selectedPageId: wikiPage || null,
+      selectedMaterialId: wikiMaterial || null,
     };
   }, [searchParams]);
 
@@ -123,7 +134,8 @@ export const useWikiDirectoryQuery = (): WikiDirectoryQuery => {
           (key === "page_size" && value === DEFAULT_PAGE_SIZE) ||
           (key === "status" && text === DEFAULT_STATUS) ||
           (key === "wiki_view" && text === DEFAULT_VIEW) ||
-          (key === "wiki_page" && !(Number(text) > 0));
+          (key === "wiki_page" && !(Number(text) > 0)) ||
+          (key === "wiki_material" && !(Number(text) > 0));
 
         if (isDefault) {
           params.delete(key);
@@ -182,6 +194,18 @@ export const useWikiDirectoryQuery = (): WikiDirectoryQuery => {
         updateQuery(
           {
             wiki_page: pageId && pageId > 0 ? pageId : null,
+            wiki_material: null,
+          },
+          history,
+        ),
+      setSelectedMaterialId: (
+        materialId: number | null,
+        history: HistoryMode = "push",
+      ) =>
+        updateQuery(
+          {
+            wiki_material: materialId && materialId > 0 ? materialId : null,
+            wiki_page: null,
           },
           history,
         ),

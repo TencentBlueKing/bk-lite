@@ -109,6 +109,8 @@
     "noData": "No Data",
     "loading": "Loading...",
     "unassigned": "Unassigned",
+    "instance": "instances",
+    "formatError": "Invalid format",
     "currentOrganization": "Current org",
     "catalogScope": "Catalog scope",
     "adjustOrganization": "Assign organization",

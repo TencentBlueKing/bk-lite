@@ -33,6 +33,14 @@ def _zip(entries):
     return buffer.getvalue()
 
 
+def _okf_concept(title, body="正文"):
+    return f"---\ntype: concept\ntitle: {title}\n---\n\n{body}\n"
+
+
+def _okf_single_zip(title, body="正文"):
+    return _zip([("page.md", _okf_concept(title, body))])
+
+
 def test_archive_inspection_rejects_empty_and_oversized_payload():
     from apps.opspilot.services.wiki.markdown_import_governance_service import MAX_ARCHIVE_BYTES
 
@@ -51,7 +59,7 @@ def test_archive_inspection_rejects_zip_slip_before_preflight(wiki_factory):
     content = _zip([("../escape.md", "# 越界")])
 
     with pytest.raises(MarkdownImportGovernanceError) as captured:
-        inspect_markdown_archive(content, "unsafe.zip")
+        inspect_markdown_archive(content, "unsafe.zip", import_format="okf")
 
     assert captured.value.code == "zip_entry_path_invalid"
     assert WikiImportPreflight.objects.count() == 0
@@ -59,26 +67,27 @@ def test_archive_inspection_rejects_zip_slip_before_preflight(wiki_factory):
 
 def test_generation_import_success_is_replayable_without_duplicate_pages(wiki_factory):
     knowledge_base = _ready_kb(wiki_factory)
-    content = "# 幂等导入\n\n这是正文。".encode("utf-8")
+    content = _okf_single_zip("幂等导入", "这是正文。")
     preflight = preflight_markdown_import(
         knowledge_base,
         content,
-        filename="idempotent.md",
+        filename="idempotent.zip",
         actor="admin",
+        options={"import_format": "okf"},
     )
 
     first = execute_markdown_import(
         knowledge_base,
         preflight["token"],
         content,
-        filename="idempotent.md",
+        filename="idempotent.zip",
         actor="admin",
     )
     replay = execute_markdown_import(
         knowledge_base,
         preflight["token"],
         content,
-        filename="idempotent.md",
+        filename="idempotent.zip",
         actor="admin",
     )
 
@@ -94,12 +103,13 @@ def test_generation_import_success_is_replayable_without_duplicate_pages(wiki_fa
 
 def test_preflight_actor_binding_mismatch_does_not_consume_token(wiki_factory):
     knowledge_base = _ready_kb(wiki_factory)
-    content = "# 绑定校验\n\n正文。".encode("utf-8")
+    content = _okf_single_zip("绑定校验")
     preflight = preflight_markdown_import(
         knowledge_base,
         content,
-        filename="binding.md",
+        filename="binding.zip",
         actor="alice",
+        options={"import_format": "okf"},
     )
 
     with pytest.raises(MarkdownImportGovernanceError) as captured:
@@ -107,7 +117,7 @@ def test_preflight_actor_binding_mismatch_does_not_consume_token(wiki_factory):
             knowledge_base,
             preflight["token"],
             content,
-            filename="binding.md",
+            filename="binding.zip",
             actor="bob",
         )
 
@@ -119,12 +129,13 @@ def test_preflight_actor_binding_mismatch_does_not_consume_token(wiki_factory):
 
 def test_execute_rejects_preflight_after_recorded_expiry(wiki_factory):
     knowledge_base = _ready_kb(wiki_factory)
-    content = "# 过期应失败\n\n正文。".encode("utf-8")
+    content = _okf_single_zip("过期应失败")
     preflight = preflight_markdown_import(
         knowledge_base,
         content,
-        filename="expired.md",
+        filename="expired.zip",
         actor="admin",
+        options={"import_format": "okf"},
     )
     assert preflight["expires_in_seconds"] == TOKEN_TTL_MINUTES * 60
     WikiImportPreflight.objects.filter(knowledge_base=knowledge_base).update(
@@ -136,7 +147,7 @@ def test_execute_rejects_preflight_after_recorded_expiry(wiki_factory):
             knowledge_base,
             preflight["token"],
             content,
-            filename="expired.md",
+            filename="expired.zip",
             actor="admin",
         )
 
@@ -147,11 +158,7 @@ def test_execute_rejects_preflight_after_recorded_expiry(wiki_factory):
     assert record.consumed_at is None
 
 
-def _okf_concept(title, body="正文"):
-    return f"---\ntype: concept\ntitle: {title}\n---\n\n{body}\n"
-
-
-def test_create_folders_preflight_rejects_markdown_and_accepts_zip_kinds(wiki_factory):
+def test_create_folders_preflight_rejects_non_okf_and_accepts_okf(wiki_factory):
     knowledge_base = _ready_kb(wiki_factory)
 
     with pytest.raises(MarkdownImportGovernanceError) as markdown_error:
@@ -162,27 +169,17 @@ def test_create_folders_preflight_rejects_markdown_and_accepts_zip_kinds(wiki_fa
             actor="admin",
             options={"create_directories_from_folders": True},
         )
-    assert markdown_error.value.code == "folder_structure_requires_third_party"
+    assert markdown_error.value.code == "import_format_unsupported"
 
-    markdown_default = preflight_markdown_import(
-        knowledge_base,
-        "# 单页默认\n\n正文。".encode("utf-8"),
-        filename="page.md",
-        actor="admin",
-    )
-    assert markdown_default["preview"]["archive_kind"] == "markdown"
-    assert not (markdown_default["preview"].get("structure_preview") or {}).get("create_directories_from_folders")
-
-    third_party = preflight_markdown_import(
-        knowledge_base,
-        _zip([("guides/intro.md", "# Intro\n\nbody")]),
-        filename="pack.zip",
-        actor="admin",
-        options={"create_directories_from_folders": True},
-    )
-    assert third_party["preview"]["archive_kind"] == "third_party"
-    assert third_party["preview"]["structure_preview"]["create_directories_from_folders"] is True
-    assert third_party["preview"]["structure_preview"]["create_directory_count"] >= 1
+    with pytest.raises(MarkdownImportGovernanceError) as third_party_error:
+        preflight_markdown_import(
+            knowledge_base,
+            _zip([("guides/intro.md", "# Intro\n\nbody")]),
+            filename="pack.zip",
+            actor="admin",
+            options={"create_directories_from_folders": True},
+        )
+    assert third_party_error.value.code == "import_format_unsupported"
 
     okf_zip = _zip(
         [
