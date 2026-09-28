@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useSyncExternalStore } from 'react';
 import type { Message, MessageContentItem } from '@/types/conversation';
 import { conversationManager } from '@/context/conversation';
+import { useTranslation } from '@/utils/i18n';
 
 interface UseMessagesReturn {
     messages: Message[];
@@ -31,7 +32,9 @@ export const useMessages = (
     scrollContainerRef: React.RefObject<HTMLDivElement | null>,
     options?: UseMessagesOptions
 ): UseMessagesReturn => {
+    const { t } = useTranslation();
     const { errorMessage: customErrorMessage, bot, nodeId, sessionId } = options || {};
+    const responseErrorMessage = customErrorMessage || t('chat.responseError');
 
     // 订阅全局状态
     const globalState = useSyncExternalStore(
@@ -160,10 +163,10 @@ export const useMessages = (
             nodeId,
             content,
             renderMarkdown,
-            customErrorMessage || '响应异常，请稍后再试',
+            responseErrorMessage,
             true
         );
-    }, [bot, nodeId, sessionId, customErrorMessage]);
+    }, [bot, nodeId, sessionId, responseErrorMessage]);
 
     // 只触发 AI 响应，不添加用户消息（用于文件消息场景）
     const triggerAIResponse = useCallback(async (
@@ -189,10 +192,10 @@ export const useMessages = (
             nodeId,
             content,
             renderMarkdown,
-            customErrorMessage || '响应异常，请稍后再试',
+            responseErrorMessage,
             false
         );
-    }, [bot, nodeId, sessionId, customErrorMessage]);
+    }, [bot, nodeId, sessionId, responseErrorMessage]);
 
     // 监听消息变化，滚动到底部
     useEffect(() => {
