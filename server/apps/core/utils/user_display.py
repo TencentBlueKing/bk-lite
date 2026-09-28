@@ -1,3 +1,9 @@
+"""把处理人等用户标识（ID 或用户名）渲染成「显示名(用户名)」。
+
+业务 app 不应直接查 system_mgmt 的 User 模型；需要展示用户时统一走这里。
+"""
+
+from apps.core.utils.user_lookup import is_int_identifier
 from apps.system_mgmt.models import User
 
 
@@ -15,7 +21,7 @@ def _split_user_identifiers(identifiers):
             continue
         if isinstance(item, bool):
             continue
-        if isinstance(item, int) or (isinstance(item, str) and item.isdigit()):
+        if is_int_identifier(item):
             ids.append(int(item))
         else:
             usernames.append(str(item))

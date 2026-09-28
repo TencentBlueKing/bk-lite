@@ -20,10 +20,10 @@ from apps.apm.models import (
 )
 from apps.apm.services.contracts import MetricDataState, PolicyQueryResult
 from apps.apm.services.policies import DjangoApmPolicyService
-from apps.apm.utils.user_display import build_user_display_map, format_user_identifiers
 from apps.core.logger import apm_logger as logger
+from apps.core.utils.user_display import build_user_display_map, format_user_identifiers
+from apps.core.utils.user_lookup import find_user, is_int_identifier, resolve_actor_user_id
 from apps.core.utils.viewset_utils import build_json_membership_query
-from apps.system_mgmt.models import User
 
 
 class AlertHandlerConflict(Exception):
@@ -380,23 +380,8 @@ class DjangoApmAlertService:
             )
 
     @staticmethod
-    def _is_int_identifier(value) -> bool:
-        if isinstance(value, bool):
-            return False
-        return isinstance(value, int) or (isinstance(value, str) and value.isdigit())
-
-    @staticmethod
     def current_handler_identifier(actor) -> int | str:
-        queryset = User.objects.filter(username=actor.username)
-        domain = getattr(actor, "domain", None)
-        if domain:
-            matched = queryset.filter(domain=domain).first()
-            if matched is not None:
-                return matched.id
-        matched = queryset.first()
-        if matched is not None:
-            return matched.id
-        return actor.username
+        return resolve_actor_user_id(actor)
 
     @staticmethod
     def handler_match_values(actor) -> list:
@@ -416,14 +401,8 @@ class DjangoApmAlertService:
         )
 
     @staticmethod
-    def _lookup_user(identifier) -> User | None:
-        if identifier in (None, "") or isinstance(identifier, bool):
-            return None
-        if DjangoApmAlertService._is_int_identifier(identifier):
-            user = User.objects.filter(id=int(identifier)).first()
-            if user is not None:
-                return user
-        return User.objects.filter(username=str(identifier)).first()
+    def _lookup_user(identifier):
+        return find_user(identifier)
 
     @staticmethod
     def _user_in_organizations(user, organization_ids) -> bool:
@@ -499,12 +478,12 @@ class DjangoApmAlertService:
                 continue
             allowed.add(item)
             allowed.add(str(item))
-            if DjangoApmAlertService._is_int_identifier(item):
+            if is_int_identifier(item):
                 allowed.add(int(item))
         for value in DjangoApmAlertService.handler_match_values(actor):
             if value in allowed or str(value) in allowed:
                 return True
-            if DjangoApmAlertService._is_int_identifier(value) and int(value) in allowed:
+            if is_int_identifier(value) and int(value) in allowed:
                 return True
         return False
 
