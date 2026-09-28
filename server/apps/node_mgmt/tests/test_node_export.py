@@ -1,8 +1,14 @@
+from io import BytesIO
+
+from openpyxl import load_workbook
+
 from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.services.node_export import (
+    EXPORT_HEADERS_ZH,
     EXPORT_LIMIT,
     build_export_filename,
     build_export_row,
+    build_export_workbook_bytes,
     format_hosted_collectors_cell,
     format_organization_cell,
 )
@@ -81,3 +87,14 @@ def test_build_export_row_online_and_upgradeable():
 def test_filename_contains_region_and_xlsx():
     name = build_export_filename("默认云区域", stamp="20260928_120000")
     assert name == "节点清单_默认云区域_20260928_120000.xlsx"
+
+
+def test_workbook_contains_header_and_row():
+    content = build_export_workbook_bytes(
+        [["n1", "10.0.0.1", "Linux", "x86_64", "主机节点", "远程", "alpha", "在线", "t", "1.0", "否", ""]],
+        EXPORT_HEADERS_ZH,
+    )
+    sheet = load_workbook(BytesIO(content)).active
+    assert [cell.value for cell in sheet[1]] == EXPORT_HEADERS_ZH
+    assert sheet[2][0].value == "n1"
+    assert sheet[2][7].value == "在线"
