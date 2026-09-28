@@ -77,6 +77,63 @@ DEFAULT_SCRIPT_UI_TEMPLATE = {
     "instance_id": "{{cloud_region}}_{{instance_type}}_script_{{instance_name}}",
     "form_fields": [
         {
+            "name": "script_os",
+            "label": "操作系统",
+            "label_en": "Operating System",
+            "type": "segmented",
+            "required": True,
+            "default_value": "linux",
+            "description": "决定解释器白名单与执行用户。Windows 以服务账号运行。",
+            "description_en": "Selects the interpreter whitelist and run-as behavior. Windows uses the service account.",
+            "options": [
+                {"label": "Linux", "value": "linux"},
+                {"label": "Windows", "value": "windows"},
+            ],
+            "transform_on_edit": {
+                "origin_path": "child.content.config.script_os",
+                "to_api": {},
+            },
+        },
+        {
+            "name": "interpreter",
+            "label": "解释器",
+            "label_en": "Interpreter",
+            "type": "select",
+            "required": True,
+            "default_value": "/bin/sh",
+            "description": "按操作系统从白名单选择解释器",
+            "description_en": "Interpreter from the operating-system whitelist",
+            "options": [
+                {"label": "/bin/sh", "value": "/bin/sh"},
+                {"label": "/bin/bash", "value": "/bin/bash"},
+                {"label": "/usr/bin/python3", "value": "/usr/bin/python3"},
+            ],
+            "widget_props": {
+                "placeholder": "选择解释器",
+            },
+            "transform_on_edit": {
+                "origin_path": "child.content.config.interpreter",
+                "to_api": {},
+            },
+        },
+        {
+            "name": "run_as",
+            "label": "执行用户",
+            "label_en": "Run As",
+            "type": "input",
+            "required": False,
+            "default_value": "telegraf",
+            "description": "Linux 必填，且不能为 root 或 UID 0。",
+            "description_en": "Required on Linux. Cannot be root or UID 0.",
+            "widget_props": {
+                "placeholder": "telegraf",
+            },
+            "transform_on_edit": {
+                "origin_path": "child.content.config.run_as",
+                "to_api": {},
+            },
+        },
+        {
             "name": "script",
             "label": "脚本内容",
             "label_en": "Script Body",
@@ -90,23 +147,6 @@ DEFAULT_SCRIPT_UI_TEMPLATE = {
             },
             "transform_on_edit": {
                 "origin_path": "child.content.config.script",
-                "to_api": {},
-            },
-        },
-        {
-            "name": "interpreter",
-            "label": "解释器",
-            "label_en": "Interpreter",
-            "type": "input",
-            "required": True,
-            "default_value": "/bin/sh",
-            "description": "脚本执行解释器，例如 /bin/sh、/bin/bash、/usr/bin/python3",
-            "description_en": "Script execution interpreter, e.g. /bin/sh, /bin/bash, /usr/bin/python3",
-            "widget_props": {
-                "placeholder": "/bin/sh",
-            },
-            "transform_on_edit": {
-                "origin_path": "child.content.config.interpreter",
                 "to_api": {},
             },
         },
@@ -130,33 +170,6 @@ DEFAULT_SCRIPT_UI_TEMPLATE = {
                 "origin_path": "child.content.config.interval",
                 "to_form": {"regex": r"^(\d+)s$"},
                 "to_api": {"suffix": "s"},
-            },
-        },
-        {
-            "name": "run_as",
-            "label": "执行用户 (Linux)",
-            "label_en": "Run As (Linux)",
-            "type": "input",
-            "required": False,
-            "default_value": "telegraf",
-            "description": "Linux 节点执行脚本的用户（禁止 root 或 UID 0，默认 telegraf）；Windows 节点将忽略此配置并以服务账号运行。",
-            "description_en": (
-                "User to execute the script on Linux nodes (cannot be root or UID 0, default telegraf); "
-                "Windows nodes will run as the service account."
-            ),
-            "widget_props": {
-                "placeholder": "telegraf",
-            },
-            "rules": [
-                {
-                    "type": "pattern",
-                    "pattern": r"^(?!^root$|^0+$).+$",
-                    "message": "不允许以 root 运行",
-                }
-            ],
-            "transform_on_edit": {
-                "origin_path": "child.content.config.run_as",
-                "to_api": {},
             },
         },
         {

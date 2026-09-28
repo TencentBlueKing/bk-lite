@@ -14,6 +14,13 @@ import {
 } from 'antd';
 import { ExclamationCircleFilled, MinusCircleOutlined, PlusOutlined, SyncOutlined } from '@ant-design/icons';
 import CodeEditor from '@/components/code-editor';
+import {
+  ScriptBodyEditor,
+  ScriptInterpreterSelect,
+  ScriptOsSegmented,
+  ScriptRunAsInput,
+  ScriptWindowsRunAsBanner
+} from '@/app/monitor/(pages)/integration/list/detail/configure/scriptCollectForm';
 import Password from '@/components/password';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
@@ -303,9 +310,11 @@ export const useConfigRenderer = () => {
         : []),
       ...(name === 'run_as'
         ? [
-          {
+          ({ getFieldValue }: { getFieldValue: (name: string) => unknown }) => ({
             validator: async (_: unknown, value: unknown) => {
-              if (isWindows) return;
+              const scriptOs = getFieldValue('script_os');
+              const windows = scriptOs === 'windows' || (scriptOs == null && isWindows);
+              if (windows) return;
               const str = String(value ?? '').trim().toLowerCase();
               if (!str) {
                 throw new Error(
@@ -328,7 +337,7 @@ export const useConfigRenderer = () => {
                 );
               }
             }
-          }
+          })
         ]
         : []),
       ...(name === 'interval'
@@ -460,6 +469,15 @@ export const useConfigRenderer = () => {
     const renderWidget = () => {
       switch (type) {
         case 'input':
+          if (name === 'run_as' && fieldConfig.os_driven) {
+            return (
+              <ScriptRunAsInput
+                disabled={Boolean(locked || widget_props.disabled)}
+                placeholder={widget_props.placeholder || label}
+                style={formWidgetWidthStyle(widget_props.style)}
+              />
+            );
+          }
           return (
             <Input
               {...widget_props}
@@ -502,6 +520,15 @@ export const useConfigRenderer = () => {
         }
 
         case 'select': {
+          if (fieldConfig.options_by_os) {
+            return (
+              <ScriptInterpreterSelect
+                disabled={Boolean(locked || widget_props.disabled)}
+                style={formWidgetWidthStyle(widget_props.style)}
+                placeholder={widget_props.placeholder || label}
+              />
+            );
+          }
           const allowCustomTags =
             name === 'iftype_exclude' || name === 'iftype_include';
           const {
@@ -620,18 +647,11 @@ export const useConfigRenderer = () => {
         case 'textarea':
           if (name === 'script') {
             return (
-              <div style={{ maxWidth: 640 }} className="w-full">
-                <CodeEditor
-                  mode={widget_props.mode || 'sh'}
-                  theme={widget_props.theme || 'textmate'}
-                  height={widget_props.height || '200px'}
-                  width="100%"
-                  placeholder={widget_props.placeholder || t('monitor.integrations.scriptPlaceholder', '粘贴或输入脚本内容')}
-                  headerOptions={{ copy: true, fullscreen: true }}
-                  readOnly={Boolean(locked || widget_props.disabled || widget_props.readOnly)}
-                  {...widget_props}
-                />
-              </div>
+              <ScriptBodyEditor
+                height={widget_props.height || '200px'}
+                placeholder={widget_props.placeholder || t('monitor.integrations.scriptPlaceholder', '粘贴或输入脚本内容')}
+                readOnly={Boolean(locked || widget_props.disabled || widget_props.readOnly)}
+              />
             );
           }
           return (
@@ -652,6 +672,14 @@ export const useConfigRenderer = () => {
           return <Switch {...widget_props} className="mr-[10px]" />;
 
         case 'segmented':
+          if (name === 'script_os') {
+            return (
+              <ScriptOsSegmented
+                disabled={Boolean(locked || widget_props.disabled)}
+                options={options}
+              />
+            );
+          }
           return (
             <Segmented
               {...widget_props}
@@ -724,8 +752,13 @@ export const useConfigRenderer = () => {
       <Form.Item
         noStyle
         name={name}
+        preserve
         rules={formRules}
-        dependencies={[...mutexPeerFields, ...ltPeerFields]}
+        dependencies={[
+          ...mutexPeerFields,
+          ...ltPeerFields,
+          ...(name === 'run_as' ? ['script_os'] : [])
+        ]}
         initialValue={default_value}
         valuePropName={type === 'switch' ? 'checked' : 'value'}
       >
@@ -735,12 +768,13 @@ export const useConfigRenderer = () => {
 
     const renderFieldBody = () => (
       <>
-        {name === 'run_as' && isWindows && (
+        {name === 'run_as' && fieldConfig.os_driven && <ScriptWindowsRunAsBanner />}
+        {name === 'run_as' && !fieldConfig.os_driven && isWindows && (
           <Alert
-            message={t('monitor.integrations.runAsWindowsHelper', 'Windows 下以 Telegraf 服务账户运行')}
+            message={t('monitor.integrations.runAsWindowsHelper', 'Windows 以服务账号运行，执行用户不可修改')}
             type="info"
             showIcon={false}
-            className="mb-2 max-w-[640px] !bg-[var(--color-fill-1)] !border-[var(--color-border-1)] !text-[var(--color-text-3)] text-xs"
+            className="mb-2 max-w-[640px] !border-[var(--color-border-2)] !bg-[var(--color-fill-2)] !text-[var(--color-text-1)] text-xs"
           />
         )}
         {renderNamedControl()}

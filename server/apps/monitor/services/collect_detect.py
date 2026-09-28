@@ -1,11 +1,13 @@
 import hashlib
 import json
+import re
 import uuid
 from datetime import timedelta
 
 from django.conf import settings
 from django.utils import timezone
 
+from apps.core.exceptions.base_app_exception import ValidationAppException
 from apps.monitor.models import CollectDetectTask, MonitorPlugin, MonitorPluginConfigTemplate
 from apps.monitor.services.collect_detect_runtime import (
     build_telegraf_detect_execution,
@@ -36,6 +38,10 @@ MAX_TIMEOUT_SECONDS = 600
 DEFAULT_TERMINAL_TTL_SECONDS = 30 * 24 * 60 * 60
 DEFAULT_CLEANUP_BATCH_SIZE = 500
 TERMINAL_STATUSES = ("success", "failed")
+# 与正式下发 Controller.render_context 对齐；脚本 child 模板无 default 的变量缺了会渲出空 TOML。
+SCRIPT_REQUIRED_RENDER_VARS = ("plugin_id", "instance_id", "instance_type", "config_id", "script", "interval")
+# 与前端 run_as 校验一致：root、纯 0、uid=0 / uid:0。
+_LINUX_ROOT_RUN_AS_UID = re.compile(r"^(?:0+|uid\s*[:=]\s*0+)$")
 
 
 class CollectDetectService:
@@ -45,6 +51,11 @@ class CollectDetectService:
         instance = payload.get("instance") or {}
         if plugin.collect_type == "web":
             instance = normalize_website_request_config(instance)
+        instance = cls._inject_formal_config_vars(plugin, instance)
+        try:
+            cls._ensure_script_run_as(plugin, instance)
+        except ValueError as exc:
+            raise ValidationAppException(str(exc)) from exc
         env = payload.get("env") or {}
         runtime_payload = {
             "instance": instance,
@@ -94,15 +105,16 @@ class CollectDetectService:
                 if fallback_instance_id:
                     instance["instance_id"] = str(fallback_instance_id)
             config_id = instance.get("config_id") or f"detect_{task.id}"
-            env = cls._build_preflight_env(instance, runtime_payload.get("env") or {}, config_id)
-            config_context = {
-                **instance,
-                "config_id": config_id,
-                "monitor_plugin_id": plugin.id,
-                "collector": plugin.collector,
-                "collect_type": plugin.collect_type,
-            }
-            templates = cls._get_child_templates(plugin, cls._resolve_config_types(instance, plugin))
+            node = Node.objects.filter(id=task.node_id).first()
+            config_context = cls._inject_formal_config_vars(
+                plugin,
+                instance,
+                config_id=config_id,
+                node=node,
+            )
+            cls._ensure_required_render_vars(plugin, config_context)
+            env = cls._build_preflight_env(config_context, runtime_payload.get("env") or {}, config_id)
+            templates = cls._get_child_templates(plugin, cls._resolve_config_types(config_context, plugin))
             config_content = disable_real_outputs(
                 "\n\n".join(render_telegraf_config_template(template.content, config_context) for template in templates)
             )
@@ -124,8 +136,8 @@ class CollectDetectService:
                 env=env,
             )
             result = sanitize_execution_result(raw_result, sensitive_values=list(env.values()))
-            if plugin.collect_type == "web" and instance.get("request_url"):
-                result["request_url"] = instance["request_url"]
+            if plugin.collect_type == "web" and config_context.get("request_url"):
+                result["request_url"] = config_context["request_url"]
             task.result = result
             task.status = "success" if result["success"] else "failed"
             task.phase = "parse_output"
@@ -166,7 +178,7 @@ class CollectDetectService:
     def _get_supported_plugin(plugin_id):
         from apps.monitor.services.ui_template_locale import resolve_support_collect_detect
 
-        plugin = MonitorPlugin.objects.filter(id=plugin_id).first()
+        plugin = MonitorPlugin.objects.filter(id=plugin_id).prefetch_related("monitor_object").first()
         if not plugin:
             raise ValueError("监控插件不存在")
         if not resolve_support_collect_detect(plugin, fallback=plugin.support_collect_detect):
@@ -215,10 +227,103 @@ class CollectDetectService:
     def _resolve_config_types(instance, plugin):
         metric_type = instance.get("metric_type")
         if isinstance(metric_type, list):
-            return metric_type
-        if metric_type:
-            return [metric_type]
-        return [plugin.collect_type]
+            config_types = [item for item in metric_type if item]
+        elif metric_type:
+            config_types = [metric_type]
+        else:
+            config_types = [plugin.collect_type]
+        if plugin.template_type == "script" or plugin.collect_type == "script":
+            if "child" not in config_types:
+                config_types = [*config_types, "child"]
+        return config_types
+
+    @staticmethod
+    def _plugin_template_id(plugin):
+        return plugin.template_id or plugin.id
+
+    @classmethod
+    def _inject_formal_config_vars(cls, plugin, instance, *, config_id=None, node=None):
+        """探测渲染与正式采集共用 plugin_id / instance_type 等平台变量。"""
+        context = dict(instance or {})
+        if not context.get("instance_id"):
+            fallback = context.get("instance_name") or context.get("host")
+            if fallback:
+                context["instance_id"] = str(fallback)
+        if not str(context.get("instance_type") or "").strip():
+            monitor_object = plugin.monitor_object.all().order_by("id").first()
+            if monitor_object is not None:
+                context["instance_type"] = monitor_object.name
+        if config_id:
+            context["config_id"] = config_id
+        # 正式下发以平台值为准，覆盖实例里可能带来的空值或伪造 plugin_id。
+        context["monitor_plugin_id"] = plugin.id
+        context["plugin_id"] = cls._plugin_template_id(plugin)
+        context["collector"] = plugin.collector
+        context["collect_type"] = plugin.collect_type
+        if node is not None and not str(context.get("operating_system") or "").strip():
+            context["operating_system"] = node.operating_system
+        if plugin.template_type == "script" or plugin.collect_type == "script":
+            if not str(context.get("script") or "").strip() and context.get("command") not in (None, ""):
+                context["script"] = context["command"]
+        return context
+
+    @classmethod
+    def _ensure_required_render_vars(cls, plugin, context):
+        required = ("plugin_id",)
+        if plugin.template_type == "script" or plugin.collect_type == "script":
+            required = SCRIPT_REQUIRED_RENDER_VARS
+        missing = []
+        for key in required:
+            value = context.get(key)
+            if value is None or (isinstance(value, str) and not str(value).strip()):
+                missing.append(key)
+                continue
+            if key == "interval":
+                try:
+                    if int(value) <= 0:
+                        missing.append(key)
+                except (TypeError, ValueError):
+                    missing.append(key)
+        if missing:
+            raise ValueError(f"采集探测缺少必要配置: {', '.join(missing)}")
+        cls._ensure_script_run_as(plugin, context)
+
+    @staticmethod
+    def _is_script_plugin(plugin) -> bool:
+        return plugin.template_type == "script" or plugin.collect_type == "script"
+
+    @classmethod
+    def _script_run_as_targets_windows(cls, context) -> bool:
+        """与表单一致：显式 script_os 优先；缺省时才看节点操作系统。未知目标按 Linux。"""
+        script_os = str((context or {}).get("script_os") or "").strip().lower()
+        if script_os == "windows":
+            return True
+        if script_os == "linux":
+            return False
+        operating_system = str((context or {}).get("operating_system") or "").strip().lower()
+        return operating_system == NodeConstants.WINDOWS_OS
+
+    @classmethod
+    def _linux_run_as_forbidden(cls, value: str) -> bool:
+        text = value.strip().lower()
+        if text == "root":
+            return True
+        return _LINUX_ROOT_RUN_AS_UID.fullmatch(text) is not None
+
+    @classmethod
+    def _ensure_script_run_as(cls, plugin, context):
+        """Linux 脚本探测失败关闭：缺 run_as 或 root/UID 0 直接拒绝。Windows 省略该字段。"""
+        if not isinstance(context, dict) or not cls._is_script_plugin(plugin):
+            return
+        if cls._script_run_as_targets_windows(context):
+            context.pop("run_as", None)
+            return
+        raw = context.get("run_as")
+        text = "" if raw is None else str(raw).strip()
+        if not text:
+            raise ValueError("采集探测缺少必要配置: run_as")
+        if cls._linux_run_as_forbidden(text):
+            raise ValueError("Linux 脚本探测不允许以 root 或 UID 0 运行")
 
     @classmethod
     def _sanitize_mapping(cls, value):
@@ -279,7 +384,9 @@ class CollectDetectService:
             CollectDetectTask.objects.filter(
                 status__in=TERMINAL_STATUSES,
                 finished_at__lt=cutoff,
-            ).values_list("id", flat=True)[:batch_size]
+            ).values_list(
+                "id", flat=True
+            )[:batch_size]
         )
         if not stale_ids:
             return 0

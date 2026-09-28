@@ -50,7 +50,7 @@ import {
 import { useUserInfoContext } from '@/context/userInfo';
 import Permission from '@/components/permission';
 import { cloneDeep } from 'lodash';
-import { usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
+import { fillOptionalFormFields, usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
 import { useConfigRenderer } from '@/app/monitor/hooks/integration/useConfigRenderer';
 import { cloudRegionProviderFromPlugin, useCloudRegionOptions } from '@/app/monitor/hooks/integration/useQcloudRegionOptions';
 import {
@@ -87,6 +87,7 @@ import {
   mergeImportedAssetRows
 } from './automaticAssetCount';
 import ScriptTrialRunArea from './scriptTrialRunArea';
+import { applyScriptCollectSubmit } from './scriptCollectForm';
 import { BusinessMetricItem } from './scriptMetricsParser';
 const { confirm } = Modal;
 
@@ -625,7 +626,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
 
   const buildDetectInstance = (record: IntegrationMonitoredObject) => {
     const formValues = omitCollectionPolicyField(
-      cloneDeep(form.getFieldsValue())
+      cloneDeep(form.getFieldsValue(true))
     );
     delete formValues.nodes;
     const rowValues = Object.keys(record)
@@ -639,11 +640,17 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         acc[key] = record[key];
         return acc;
       }, {} as Record<string, any>);
-    const instance: Record<string, any> = {
-      ...formValues,
-      ...rowValues,
-      instance_type: configsInfo?.instance_type
-    };
+    const instance: Record<string, any> = fillOptionalFormFields(
+      {
+        ...formValues,
+        ...rowValues,
+        instance_type: configsInfo?.instance_type || formValues.instance_type,
+        collect_type: configsInfo?.collect_type || formValues.collect_type,
+        monitor_plugin_id: Number(pluginId) || formValues.monitor_plugin_id,
+        plugin_id: formValues.plugin_id || pluginId
+      },
+      currentConfig?.form_fields
+    );
     if (!instance.instance_id) {
       instance.instance_id =
         record.instance_id ||
@@ -652,7 +659,28 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         formValues.instance_name ||
         (record.key as string);
     }
-    return instance;
+    const nodeId = getRowNodeId(record);
+    const selectedNode = nodeList.find(
+      (node) =>
+        String(node.id) === String(nodeId) || String(node.value) === String(nodeId)
+    );
+    if (selectedNode?.operating_system && !instance.operating_system) {
+      instance.operating_system = selectedNode.operating_system;
+    }
+    return applyScriptCollectSubmit(instance, instance.collect_type);
+  };
+
+  const ensureCollectFormValid = async () => {
+    try {
+      await form.validateFields();
+      return true;
+    } catch (error: any) {
+      const first = error?.errorFields?.[0]?.errors?.[0];
+      if (first) {
+        message.error(String(first));
+      }
+      return false;
+    }
   };
 
   const buildCollectDetectFingerprint = (record: IntegrationMonitoredObject) =>
@@ -833,6 +861,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       message.warning(t('monitor.integrations.collectDetectNodeRequired'));
       return;
     }
+    if (mode !== 'batch' && !(await ensureCollectFormValid())) {
+      return;
+    }
     const fingerprint = buildCollectDetectFingerprint(record);
     activeCollectDetectFingerprintRef.current[rowKey] = fingerprint;
     updateCollectDetectState(rowKey, { status: 'running', fingerprint });
@@ -870,9 +901,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         fingerprint,
         warning_type: warningType,
         error_message: warningType === 'rate_limit'
-          ? t('monitor.integrations.trialRunRateLimit', '试运行过于频繁，请稍后重试')
+          ? t('monitor.integrations.trialRunRateLimit', '调试过于频繁，请稍后重试')
           : warningType === 'no_permission'
-            ? t('monitor.integrations.trialRunNoPermission', '当前账号无权试运行该对象/节点')
+            ? t('monitor.integrations.trialRunNoPermission', '当前账号无权调试该对象/节点')
             : respMsg || t('common.operationFailed')
       });
     }
@@ -886,6 +917,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     const runnableRows = selectedRows.filter((row) => getRowNodeId(row));
     if (!runnableRows.length) {
       message.warning(t('monitor.integrations.collectDetectNodeRequired'));
+      return;
+    }
+    if (!(await ensureCollectFormValid())) {
       return;
     }
     message.info(
@@ -929,7 +963,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           }}
         >
           {isScriptTemplate
-            ? t('monitor.integrations.trialRun', '试运行中')
+            ? t('monitor.integrations.trialRun', '调试中')
             : t('monitor.integrations.collectDetectRunning')}
         </Tag>
       );
@@ -997,7 +1031,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
               }}
             >
               {isScriptTemplate
-                ? t('monitor.integrations.trialRun', '试运行')
+                ? t('monitor.integrations.trialRun', '调试')
                 : t('monitor.integrations.collectDetect')}
             </Button>
           )}
@@ -1054,9 +1088,25 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     collectDetectTasks
   ]);
 
-  const formItems = useMemo(() => {
-    return formConfig?.formItems || null;
-  }, [formConfig]);
+  const pluginFormCacheKey = [
+    pluginId,
+    currentConfig?.collect_type || '',
+    JSON.stringify(currentConfig?.form_fields ?? null),
+    nodeList.map((node) => node.id || node.value).join(',')
+  ].join('|');
+  const cachedPluginFormRef = useRef<{ key: string; items: React.ReactNode }>({
+    key: '',
+    items: null
+  });
+  if (!pluginId) {
+    cachedPluginFormRef.current = { key: '', items: null };
+  } else if (cachedPluginFormRef.current.key !== pluginFormCacheKey) {
+    cachedPluginFormRef.current = {
+      key: formConfig?.formItems ? pluginFormCacheKey : '',
+      items: formConfig?.formItems || null
+    };
+  }
+  const formItems = cachedPluginFormRef.current.items;
 
   useEffect(() => {
     if (isLoading) return;

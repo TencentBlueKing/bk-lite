@@ -1,6 +1,13 @@
 import { useState, useCallback, useMemo } from 'react';
 import { Collapse, Form } from 'antd';
 import { FormFieldOptionControls, useConfigRenderer } from './useConfigRenderer';
+import {
+  applyScriptCollectSubmit,
+  inferScriptOs,
+  isScriptCollectConfig,
+  normalizeScriptCollectFormFields,
+  omitPersistedWindowsRunAs
+} from '@/app/monitor/(pages)/integration/list/detail/configure/scriptCollectForm';
 import { DataMapper } from './useDataMapper';
 import {
   buildWebsiteRequestUrl,
@@ -201,7 +208,10 @@ export const usePluginFromJson = () => {
             }
             : data;
         if (resolvedConfig && Array.isArray(resolvedConfig.form_fields)) {
-          resolvedConfig.form_fields = resolvedConfig.form_fields.map((field: any) =>
+          const normalizedFields = isScriptCollectConfig(resolvedConfig)
+            ? normalizeScriptCollectFormFields(resolvedConfig.form_fields)
+            : resolvedConfig.form_fields;
+          resolvedConfig.form_fields = normalizedFields.map((field: any) =>
             attachPluginOwnedFieldHelp(field, resolvedConfig)
           );
         }
@@ -478,7 +488,10 @@ export const usePluginFromJson = () => {
                   includeReadOnly: true
                 }).values
             );
-            const filledRow = fillOptionalFormFields(normalizedRow, formFields);
+            const filledRow = applyScriptCollectSubmit(
+              fillOptionalFormFields(normalizedRow, formFields),
+              config.collect_type
+            );
             return DataMapper.transformAutoRequest(
               filledRow,
               normalizedDataSource,
@@ -527,6 +540,9 @@ export const usePluginFromJson = () => {
             if (config.instance_type === 'minio') {
               Object.assign(formValues, getMinioEditCompatibilityValues(apiData));
             }
+            if (isScriptCollectConfig(config) && !formValues.script_os) {
+              formValues.script_os = inferScriptOs(formValues.interpreter);
+            }
             if (config.instance_type === 'web') {
               const requestUrl = apiData?.child?.content?.config?.urls?.[0];
               if (requestUrl) {
@@ -571,7 +587,10 @@ export const usePluginFromJson = () => {
             }
             // 把非必填字段未填的补成空串,避免后端 Jinja2 模板 {{ 字段名 }} 抛
             // UndefinedError；后端 child.toml.j2 用 {% if 字段 %}{% endif %} 跳过空串
-            const filledFormData = { ...formData };
+            const filledFormData = applyScriptCollectSubmit(
+              { ...formData },
+              config.collect_type
+            );
             formFields?.forEach((field: any) => {
               const { name, transform_on_edit, editable } = field;
               const formValue = filledFormData[name];
@@ -821,6 +840,7 @@ export const usePluginFromJson = () => {
                 }
               );
             }
+            omitPersistedWindowsRunAs(result, filledFormData);
             return result;
           }
         };
