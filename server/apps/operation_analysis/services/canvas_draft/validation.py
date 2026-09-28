@@ -7,6 +7,7 @@ from apps.operation_analysis.services.canvas_draft.constants import WIDGET_CHART
 from apps.operation_analysis.services.canvas_draft.errors import DraftValidationFailed
 from apps.operation_analysis.services.import_export.view_sets import normalize_canvas_view_sets_for_storage
 from apps.operation_analysis.services.network_topology.canvas_config import _validate_payload as validate_network_topology_view_sets
+from apps.operation_analysis.services.user_messages import oa_message
 
 
 def _error(code: str, message: str, field: str | None = None) -> dict:
@@ -49,15 +50,17 @@ def _widget_chart_type(item: dict) -> str | None:
 
 def _validate_widget_item(item: Any, *, id_field: str, errors: list[dict], path: str) -> str | None:
     if not isinstance(item, dict):
-        errors.append(_error("invalid_component", "组件必须是对象", path))
+        errors.append(_error("invalid_component", oa_message("messages.draft_component_object", "组件必须是对象"), path))
         return None
     item_id = item.get(id_field) or item.get("id") or item.get("i")
     if item_id in (None, ""):
-        errors.append(_error("missing_id", "组件缺少 id", path))
+        errors.append(_error("missing_id", oa_message("messages.draft_component_missing_id", "组件缺少 id"), path))
         return None
     chart_type = _widget_chart_type(item)
     if chart_type and chart_type not in WIDGET_CHART_TYPES:
-        errors.append(_error("unknown_component_type", f"不支持的组件类型: {chart_type}", path))
+        errors.append(
+            _error("unknown_component_type", oa_message("messages.draft_component_type", "不支持的组件类型: {chart_type}", chart_type=chart_type), path)
+        )
     return str(item_id)
 
 
@@ -89,22 +92,24 @@ def _validate_filter_bindings(items: list, filter_ids: set[str], errors: list[di
             continue
         for filter_id, enabled in bindings.items():
             if enabled and str(filter_id) not in filter_ids:
-                errors.append(_error("broken_filter_binding", "筛选绑定了不存在的筛选字段", f"{path_prefix}[{index}]"))
+                errors.append(
+                    _error("broken_filter_binding", oa_message("messages.draft_broken_filter_binding", "筛选绑定了不存在的筛选字段"), f"{path_prefix}[{index}]")
+                )
 
 
 def _validate_dashboard(view_sets: Any, filters: Any = None) -> list[dict]:
     errors: list[dict] = []
     if not isinstance(view_sets, list):
-        return [_error("invalid_view_sets", "view_sets 必须是列表")]
+        return [_error("invalid_view_sets", oa_message("messages.draft_view_sets_list", "view_sets 必须是列表"))]
     for index, item in enumerate(view_sets):
         path = f"view_sets[{index}]"
         if not isinstance(item, dict):
-            errors.append(_error("invalid_component", "组件必须是对象", path))
+            errors.append(_error("invalid_component", oa_message("messages.draft_component_object", "组件必须是对象"), path))
             continue
         _validate_widget_item(item, id_field="i", errors=errors, path=path)
         for coord in ("x", "y", "w", "h"):
             if not _require_number(item.get(coord)):
-                errors.append(_error("invalid_layout", f"缺少布局字段 {coord}", path))
+                errors.append(_error("invalid_layout", oa_message("messages.draft_layout_field", "缺少布局字段 {coord}", coord=coord), path))
     _validate_filter_bindings(view_sets, _filter_definition_ids(filters), errors, "view_sets")
     return errors
 
@@ -123,7 +128,7 @@ def _validate_screen(view_sets: Any) -> list[dict]:
             continue
         for coord in ("x", "y", "w", "h"):
             if not _require_number(item.get(coord)):
-                errors.append(_error("invalid_layout", f"缺少布局字段 {coord}", path))
+                errors.append(_error("invalid_layout", oa_message("messages.draft_layout_field", "缺少布局字段 {coord}", coord=coord), path))
     _validate_filter_bindings(items, _filter_definition_ids(normalized.get("filters") or []), errors, "view_sets.items")
     return errors
 
@@ -131,37 +136,37 @@ def _validate_screen(view_sets: Any) -> list[dict]:
 def _validate_topology(view_sets: Any) -> list[dict]:
     errors: list[dict] = []
     if not isinstance(view_sets, dict):
-        return [_error("invalid_view_sets", "view_sets 必须是对象")]
+        return [_error("invalid_view_sets", oa_message("messages.draft_view_sets_object", "view_sets 必须是对象"))]
     nodes = view_sets.get("nodes") or []
     if not isinstance(nodes, list):
-        return [_error("invalid_view_sets", "nodes 必须是列表")]
+        return [_error("invalid_view_sets", oa_message("messages.draft_nodes_list", "nodes 必须是列表"))]
     for index, node in enumerate(nodes):
         if not isinstance(node, dict) or not node.get("id"):
-            errors.append(_error("missing_id", "节点缺少 id", f"view_sets.nodes[{index}]"))
+            errors.append(_error("missing_id", oa_message("messages.draft_node_missing_id", "节点缺少 id"), f"view_sets.nodes[{index}]"))
     return errors
 
 
 def _validate_architecture(view_sets: Any) -> list[dict]:
     errors: list[dict] = []
     if not isinstance(view_sets, dict):
-        return [_error("invalid_view_sets", "view_sets 必须是对象")]
+        return [_error("invalid_view_sets", oa_message("messages.draft_view_sets_object", "view_sets 必须是对象"))]
     items = view_sets.get("items") or []
     if not isinstance(items, list):
-        return [_error("invalid_view_sets", "items 必须是列表")]
+        return [_error("invalid_view_sets", oa_message("messages.draft_items_list", "items 必须是列表"))]
     for index, item in enumerate(items):
         if not isinstance(item, dict) or not item.get("id"):
-            errors.append(_error("missing_id", "节点缺少 id", f"view_sets.items[{index}]"))
+            errors.append(_error("missing_id", oa_message("messages.draft_node_missing_id", "节点缺少 id"), f"view_sets.items[{index}]"))
     return errors
 
 
 def _validate_report(view_sets: Any) -> list[dict]:
     if not isinstance(view_sets, dict):
-        return [_error("invalid_view_sets", "view_sets 必须是对象")]
+        return [_error("invalid_view_sets", oa_message("messages.draft_view_sets_object", "view_sets 必须是对象"))]
     sections = view_sets.get("sections")
     if sections is None:
         return []
     if not isinstance(sections, list):
-        return [_error("invalid_view_sets", "sections 必须是列表")]
+        return [_error("invalid_view_sets", oa_message("messages.draft_sections_list", "sections 必须是列表"))]
     return []
 
 
@@ -175,7 +180,7 @@ def _validate_network_topology(view_sets: Any) -> list[dict]:
                 messages.extend(f"{field}: {item}" for item in field_errors)
         else:
             messages.append(str(exc))
-        return [_error("invalid_view_sets", "; ".join(messages) or "view_sets 非法")]
+        return [_error("invalid_view_sets", "; ".join(messages) or oa_message("messages.draft_view_sets_invalid", "view_sets 非法"))]
     return []
 
 

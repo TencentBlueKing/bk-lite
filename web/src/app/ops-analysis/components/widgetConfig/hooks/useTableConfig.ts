@@ -303,6 +303,7 @@ export function useTableConfig({
             referenceNow: Date.now(),
             timezone: getDateRangeTimezone(),
           },
+          t,
         }),
       );
 
@@ -328,6 +329,7 @@ export function useTableConfig({
       filterBindings,
       filterDefinitions,
       builtinNamespaceId,
+      t,
     ],
   );
 
@@ -383,7 +385,7 @@ export function useTableConfig({
         return;
       }
 
-      message.warning(t('dashboard.reProbeNoFields') || '未探测到可用字段');
+      message.warning(t('dashboard.reProbeNoFields'));
     } finally {
       setIsProbingColumns(false);
     }

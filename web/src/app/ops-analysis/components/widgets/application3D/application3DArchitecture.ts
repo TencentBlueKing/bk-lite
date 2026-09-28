@@ -259,10 +259,10 @@ export const ARCH_PLANE_TITLE: Record<
   (typeof ARCH_PLANE_ORDER)[number],
   { titleKey: string; titleFallback: string }
 > = {
-  host: { titleKey: 'dashboard.application3DKindHost', titleFallback: '主机' },
+  host: { titleKey: 'dashboard.application3DKindHost', titleFallback: 'Host' },
   application: {
     titleKey: 'dashboard.application3DKindApplication',
-    titleFallback: '应用',
+    titleFallback: 'Application',
   },
 };
 

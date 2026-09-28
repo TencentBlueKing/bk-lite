@@ -5,22 +5,12 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
-from apps.operation_analysis.models.subscription_models import (
-    DashboardReportExecution,
-    DashboardReportSubscription,
-)
-from apps.operation_analysis.serializers.subscription_serializers import (
-    DashboardReportSubscriptionSerializer,
-)
-from apps.operation_analysis.services.canvas_report.types import (
-    RESOURCE_TYPE_DASHBOARD,
-)
-from apps.operation_analysis.services.execution_service import (
-    DashboardReportExecutionService,
-)
-from apps.operation_analysis.services.subscription_service import (
-    DashboardSubscriptionService,
-)
+from apps.operation_analysis.models.subscription_models import DashboardReportExecution, DashboardReportSubscription
+from apps.operation_analysis.serializers.subscription_serializers import DashboardReportSubscriptionSerializer
+from apps.operation_analysis.services.canvas_report.types import RESOURCE_TYPE_DASHBOARD
+from apps.operation_analysis.services.execution_service import DashboardReportExecutionService
+from apps.operation_analysis.services.subscription_service import DashboardSubscriptionService
+from apps.operation_analysis.services.user_messages import oa_message
 
 
 class DashboardReportSubscriptionViewSet(viewsets.ModelViewSet):
@@ -29,9 +19,7 @@ class DashboardReportSubscriptionViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         # objects 默认排除逻辑删除；勿改用 all_objects，避免详情绕过过滤
-        queryset = DashboardReportSubscription.objects.select_related(
-            "dashboard"
-        ).prefetch_related(
+        queryset = DashboardReportSubscription.objects.select_related("dashboard").prefetch_related(
             Prefetch(
                 "executions",
                 queryset=DashboardReportExecution.objects.filter(
@@ -42,9 +30,7 @@ class DashboardReportSubscriptionViewSet(viewsets.ModelViewSet):
             Prefetch(
                 "executions",
                 queryset=DashboardReportExecution.objects.filter(
-                    trigger_type=(
-                        DashboardReportExecution.TriggerType.MANUAL_TEST
-                    ),
+                    trigger_type=(DashboardReportExecution.TriggerType.MANUAL_TEST),
                 ).order_by("-id"),
                 to_attr="_latest_manual_test_executions",
             ),
@@ -62,21 +48,9 @@ class DashboardReportSubscriptionViewSet(viewsets.ModelViewSet):
 
         if dashboard_id and (resource_type or resource_id):
             if resource_type and resource_type != RESOURCE_TYPE_DASHBOARD:
-                raise ValidationError(
-                    {
-                        "detail": (
-                            "dashboard_id 与 resource_type/resource_id 冲突"
-                        )
-                    }
-                )
+                raise ValidationError({"detail": (oa_message("messages.dashboard_query_conflict", "dashboard_id 与 resource_type/resource_id 冲突"))})
             if resource_id and str(resource_id) != str(dashboard_id):
-                raise ValidationError(
-                    {
-                        "detail": (
-                            "dashboard_id 与 resource_type/resource_id 冲突"
-                        )
-                    }
-                )
+                raise ValidationError({"detail": (oa_message("messages.dashboard_query_conflict", "dashboard_id 与 resource_type/resource_id 冲突"))})
 
         if dashboard_id:
             queryset = queryset.filter(
@@ -85,13 +59,7 @@ class DashboardReportSubscriptionViewSet(viewsets.ModelViewSet):
             )
         elif resource_type or resource_id:
             if not resource_type or not resource_id:
-                raise ValidationError(
-                    {
-                        "detail": (
-                            "resource_type 与 resource_id 必须同时提供"
-                        )
-                    }
-                )
+                raise ValidationError({"detail": (oa_message("messages.resource_pair_required", "resource_type 与 resource_id 必须同时提供"))})
             queryset = queryset.filter(
                 resource_type=resource_type,
                 resource_id=resource_id,
@@ -143,9 +111,5 @@ class DashboardReportSubscriptionViewSet(viewsets.ModelViewSet):
                 "request_id": execution.request_id,
                 "created": created,
             },
-            status=(
-                status.HTTP_201_CREATED
-                if created
-                else status.HTTP_200_OK
-            ),
+            status=(status.HTTP_201_CREATED if created else status.HTTP_200_OK),
         )

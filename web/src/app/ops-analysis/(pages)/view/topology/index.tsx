@@ -607,8 +607,8 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
         <AppViewFullscreenExit visible={isFullscreen} onExit={exitFullscreen} />
         <ViewWorkspace
           selectedItem={selectedTopology}
-          titleFallback="拓扑图"
-          emptyDescription="请选择一个拓扑图"
+          titleFallback={t('topology.canvasTitle')}
+          emptyDescription={t('topology.emptySelect')}
           toolbar={isFullscreen ? undefined : topologyToolbar}
           filterBar={topologyFilterBar}
           headerVisible={!isFullscreen}

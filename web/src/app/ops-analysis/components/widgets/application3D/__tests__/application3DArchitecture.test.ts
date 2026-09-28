@@ -307,8 +307,8 @@ describe('application3D architecture layout', () => {
     expect(layout.planes).toHaveLength(2);
     expect(ARCH_PLANE_COUNT).toBe(2);
     expect(layout.planes.map((plane) => plane.kind)).toEqual(['host', 'application']);
-    expect(layout.planes.map((plane) => plane.titleFallback)).toEqual(['主机', '应用']);
-    expect(layout.planes.map((plane) => plane.titleText)).toEqual(['主机', '应用']);
+    expect(layout.planes.map((plane) => plane.titleFallback)).toEqual(['Host', 'Application']);
+    expect(layout.planes.map((plane) => plane.titleText)).toEqual(['Host', 'Application']);
     expect(layout.planes.map((plane) => plane.y)).toEqual([
       ARCH_PLANE_Y.host,
       ARCH_PLANE_Y.application,
@@ -1115,7 +1115,7 @@ describe('application3D architecture view', () => {
     expect(view.planeGroups[0].position.y).toBeCloseTo(ARCH_PLANE_Y.host);
     expect(view.planeGroups[1].position.y).toBeCloseTo(ARCH_PLANE_Y.application);
     expect(view.planeGroups[0].position.y).toBeLessThan(view.planeGroups[1].position.y);
-    expect(titles.map((title) => title.userData.planeTitle)).toEqual(['主机', '应用']);
+    expect(titles.map((title) => title.userData.planeTitle)).toEqual(['Host', 'Application']);
     expect(titles.every((title) => title.userData.planeTitleSide === 'right')).toBe(true);
     expect(titles.every((title) => title.userData.titleHasBackground === false)).toBe(true);
     expect(titles.every((title) => title.userData.titleHasArrow === false)).toBe(true);
@@ -1259,7 +1259,7 @@ describe('application3D architecture view', () => {
     paintCalls.length = 0;
     fillRectCalls.length = 0;
     const view = createArchitectureTreeGroup(tree(), (_id, fallback = '') => fallback);
-    const titleTexts = paintCalls.filter((call) => call.text === '应用' || call.text === '主机');
+    const titleTexts = paintCalls.filter((call) => call.text === 'Application' || call.text === 'Host');
     expect(titleTexts).toHaveLength(2);
     expect(titleTexts.every((call) => (
       call.fillStyle === ARCH_TITLE_FILL

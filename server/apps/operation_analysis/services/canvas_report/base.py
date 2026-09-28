@@ -1,5 +1,20 @@
 from typing import Any, Protocol
 
+from apps.operation_analysis.services.user_messages import oa_message
+
+_CANVAS_TYPE_LABELS = {
+    "dashboard": ("messages.canvas_label_dashboard", "仪表盘"),
+    "screen": ("messages.canvas_label_screen", "大屏"),
+    "report": ("messages.canvas_label_report", "报表"),
+}
+
+
+def canvas_type_label(resource_type: str | None) -> str | None:
+    spec = _CANVAS_TYPE_LABELS.get(resource_type or "")
+    if spec is None:
+        return None
+    return oa_message(spec[0], spec[1])
+
 
 class CanvasReportAdapter(Protocol):
     """画布报告订阅适配边界：布局/权限/快照契约，不含编排与投递。"""

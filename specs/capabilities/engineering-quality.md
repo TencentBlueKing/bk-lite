@@ -17,8 +17,8 @@
 
 ## 2. 自动门禁(已落地,别绕过)
 
-- `.husky/pre-commit`（仓库根目录唯一逻辑入口）：`web/`、`mobile/` staged 变更自动 eslint + type-check；`mobile/src` 的脚本或语言包变更再跑 `pnpm test:i18n`。`web/`、`mobile/` 的 `prepare` 注册根目录 `.husky`（`web/.husky/pre-commit` 仅转发到根钩子）。
-- `server/.pre-commit-config.yaml`:`black` + `isort` + `flake8` + `check_migrate` + `check_requirements`。
+- `.husky/pre-commit`（仓库根目录唯一逻辑入口）：`web/`、`mobile/` staged 变更自动 eslint + type-check；`mobile/src` 的脚本或语言包变更再跑 `pnpm test:i18n`。`web/`、`mobile/` 的 `prepare` 注册根目录 `.husky`（`web/.husky/pre-commit` 仅转发到根钩子）。运营分析 i18n（`pnpm test:ops-analysis-i18n`）只在 `web/src/app/ops-analysis/`、`web/src/locales/{en,zh}.json` 或门禁脚本暂存时跑。
+- `server/.pre-commit-config.yaml`:`black` + `isort` + `flake8` + `check_migrate` + `check_requirements`。`ops-analysis-i18n` 只在运营分析/系统管理语言包或三份目录测试暂存时跑，并关掉 pytest 默认 addopts。
 - Python 行宽 **150**；`server/apps/` 日志走 `apps.core.logger` 的 `{app}_logger as logger`，`algorithms/` 等独立服务可用 `loguru`。
 
 ## 3. 代码质量红线(硬性)

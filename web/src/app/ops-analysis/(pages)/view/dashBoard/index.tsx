@@ -1524,7 +1524,9 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         syncFilterStateAfterLayoutChange: syncFilterState,
       } = canvasActionStateRef.current;
       if (!currentIsEditMode || currentShareMode) return;
-      const nextLayout = copyDashboardWidget(currentLayout, id);
+      const nextLayout = copyDashboardWidget(currentLayout, id, {
+        t: canvasActionStateRef.current.t,
+      });
       if (nextLayout === currentLayout) return;
 
       const nextDefinitions = buildFilters(nextLayout, currentDefinitions);
@@ -1690,7 +1692,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           <ViewWorkspace
             selectedItem={selectedDashboard}
             loading={loading}
-            titleFallback="仪表盘"
+            titleFallback={t('dashboard.canvasTitle')}
             emptyDescription={t('dashboard.selectDashboardFirst')}
             headerVisible={!isFullscreen}
             filterBarVisible

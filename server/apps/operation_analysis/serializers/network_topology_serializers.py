@@ -27,6 +27,7 @@ from apps.operation_analysis.serializers.directory_serializers import (
     DirectoryChainVisibilityMixin,
     with_canvas_refresh_interval_kwargs,
 )
+from apps.operation_analysis.services.user_messages import oa_message
 
 # --------------------------------------------------------------------------- #
 # Token encryption                                                              #
@@ -173,10 +174,10 @@ class NetworkTopologySerializer(
             # 在 update 模式下保留为占位符(让 ``validate`` 决定语义);
             # 在 create 模式下直接报错,因为创建必须有真 token。
             if self.instance is None:
-                raise serializers.ValidationError("Token 不允许使用占位符")
+                raise serializers.ValidationError(oa_message("messages.nt_token_placeholder", "Token 不允许使用占位符"))
             return candidate
         if len(candidate) < 4:
-            raise serializers.ValidationError("Token 长度过短，至少 4 个字符")
+            raise serializers.ValidationError(oa_message("messages.nt_token_too_short", "Token 长度过短，至少 4 个字符"))
         return encrypt_token(candidate)
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
@@ -195,13 +196,13 @@ class NetworkTopologySerializer(
                 attrs.pop("token", None)
             elif raw_token == "":
                 if self.instance is None:
-                    raise serializers.ValidationError({"token": ["Token 不能为空"]})
+                    raise serializers.ValidationError({"token": [oa_message("messages.nt_token_required", "Token 不能为空")]})
                 attrs.pop("token", None)
         return attrs
 
     def create(self, validated_data: dict[str, Any]) -> NetworkTopology:
         if not validated_data.get("token"):
-            raise serializers.ValidationError({"token": ["Token 不能为空"]})
+            raise serializers.ValidationError({"token": [oa_message("messages.nt_token_required", "Token 不能为空")]})
         request = self.context.get("request")
         user = getattr(request, "user", None) if request else None
         username = getattr(user, "username", None) or "anonymous"

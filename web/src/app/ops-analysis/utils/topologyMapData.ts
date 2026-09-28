@@ -40,6 +40,21 @@ export type TopologyMapParseResult =
   | { ok: true; data: TopologyMapPayload }
   | { ok: false; error: string };
 
+type TopologyMessage = (
+  id: string,
+  defaultMessage?: string,
+  values?: Record<string, string | number>,
+) => string;
+
+const formatTopologyMessage: TopologyMessage = (id, defaultMessage, values) => {
+  const template = defaultMessage ?? id;
+  if (!values) return template;
+  return template.replace(/\{(\w+)\}/g, (match, key: string) => {
+    const value = values[key];
+    return value == null ? match : String(value);
+  });
+};
+
 const NODE_WIDTH = 210;
 const NODE_HEIGHT = 78;
 
@@ -54,9 +69,17 @@ const nonEmptyText = (value: unknown): string | null => {
 
 export const parseTopologyMapPayload = (
   value: unknown,
+  translate?: TopologyMessage,
 ): TopologyMapParseResult => {
+  const t: TopologyMessage = translate ?? formatTopologyMessage;
   if (!isRecord(value) || !Array.isArray(value.nodes) || !Array.isArray(value.edges)) {
-    return { ok: false, error: '数据结构不符：关系拓扑期望 nodes 与 edges 数组' };
+    return {
+      ok: false,
+      error: t(
+        'dashboard.topologyMapInvalidShape',
+        '数据结构不符：关系拓扑期望 nodes 与 edges 数组',
+      ),
+    };
   }
 
   const nodes: TopologyMapNode[] = [];
@@ -64,7 +87,14 @@ export const parseTopologyMapPayload = (
   for (let index = 0; index < value.nodes.length; index += 1) {
     const raw = value.nodes[index];
     if (!isRecord(raw)) {
-      return { ok: false, error: `关系拓扑第 ${index + 1} 个节点格式错误` };
+      return {
+        ok: false,
+        error: t(
+          'dashboard.topologyMapNodeFormatInvalid',
+          '关系拓扑第 {index} 个节点格式错误',
+          { index: index + 1 },
+        ),
+      };
     }
     const id = nonEmptyText(raw.id);
     const instanceName = nonEmptyText(raw.instance_name);
@@ -79,20 +109,44 @@ export const parseTopologyMapPayload = (
         (typeof instanceId === 'number' && Number.isFinite(instanceId))
       )
     ) {
-      return { ok: false, error: `关系拓扑第 ${index + 1} 个节点缺少有效 identity 或展示字段` };
+      return {
+        ok: false,
+        error: t(
+          'dashboard.topologyMapNodeIdentityInvalid',
+          '关系拓扑第 {index} 个节点缺少有效 identity 或展示字段',
+          { index: index + 1 },
+        ),
+      };
     }
     if (nodeIds.has(id)) {
-      return { ok: false, error: `关系拓扑节点 id 重复：${id}` };
+      return {
+        ok: false,
+        error: t('dashboard.topologyMapDuplicateNodeId', '关系拓扑节点 id 重复：{id}', { id }),
+      };
     }
     if (
       typeof raw.alert_count !== 'number' ||
       !Number.isInteger(raw.alert_count) ||
       raw.alert_count < 0
     ) {
-      return { ok: false, error: `关系拓扑节点 ${id} 的 alert_count 必须是非负整数` };
+      return {
+        ok: false,
+        error: t(
+          'dashboard.topologyMapAlertCountInvalid',
+          '关系拓扑节点 {id} 的 alert_count 必须是非负整数',
+          { id },
+        ),
+      };
     }
     if (raw.alert_level !== undefined && typeof raw.alert_level !== 'string') {
-      return { ok: false, error: `关系拓扑节点 ${id} 的 alert_level 必须是字符串` };
+      return {
+        ok: false,
+        error: t(
+          'dashboard.topologyMapAlertLevelInvalid',
+          '关系拓扑节点 {id} 的 alert_level 必须是字符串',
+          { id },
+        ),
+      };
     }
     nodeIds.add(id);
     const subtitle = nonEmptyText(raw.subtitle);
@@ -114,28 +168,63 @@ export const parseTopologyMapPayload = (
   for (let index = 0; index < value.edges.length; index += 1) {
     const raw = value.edges[index];
     if (!isRecord(raw)) {
-      return { ok: false, error: `关系拓扑第 ${index + 1} 条边格式错误` };
+      return {
+        ok: false,
+        error: t(
+          'dashboard.topologyMapEdgeFormatInvalid',
+          '关系拓扑第 {index} 条边格式错误',
+          { index: index + 1 },
+        ),
+      };
     }
     const source = nonEmptyText(raw.source);
     const target = nonEmptyText(raw.target);
     if (!source || !target || !nodeIds.has(source) || !nodeIds.has(target)) {
-      return { ok: false, error: `关系拓扑第 ${index + 1} 条边的 source 或 target 无效` };
+      return {
+        ok: false,
+        error: t(
+          'dashboard.topologyMapEdgeEndpointInvalid',
+          '关系拓扑第 {index} 条边的 source 或 target 无效',
+          { index: index + 1 },
+        ),
+      };
     }
     const lineStyle = raw.line_style ?? 'solid';
     const connectionType = raw.connection_type ?? 'none';
     if (lineStyle !== 'solid' && lineStyle !== 'dashed') {
-      return { ok: false, error: `关系拓扑第 ${index + 1} 条边的 line_style 无效` };
+      return {
+        ok: false,
+        error: t(
+          'dashboard.topologyMapEdgeLineStyleInvalid',
+          '关系拓扑第 {index} 条边的 line_style 无效',
+          { index: index + 1 },
+        ),
+      };
     }
     if (
       connectionType !== 'none' &&
       connectionType !== 'single' &&
       connectionType !== 'double'
     ) {
-      return { ok: false, error: `关系拓扑第 ${index + 1} 条边的 connection_type 无效` };
+      return {
+        ok: false,
+        error: t(
+          'dashboard.topologyMapEdgeConnectionTypeInvalid',
+          '关系拓扑第 {index} 条边的 connection_type 无效',
+          { index: index + 1 },
+        ),
+      };
     }
     const pairKey = JSON.stringify([source, target]);
     if (directedPairs.has(pairKey)) {
-      return { ok: false, error: `关系拓扑 source + target 重复：${source} → ${target}` };
+      return {
+        ok: false,
+        error: t(
+          'dashboard.topologyMapDuplicateEdge',
+          '关系拓扑 source + target 重复：{source} → {target}',
+          { source, target },
+        ),
+      };
     }
     directedPairs.add(pairKey);
     const label = nonEmptyText(raw.label);

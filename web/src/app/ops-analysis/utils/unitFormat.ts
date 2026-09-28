@@ -196,34 +196,42 @@ export interface UnitCategory {
   units: UnitDef[];
 }
 
+type UnitLabelTranslator = (key: string, defaultMessage?: string) => string;
+
+const unitLabel = (
+  t: UnitLabelTranslator | undefined,
+  key: string,
+  fallback: string,
+) => (t ? t(key, fallback) : fallback);
+
 /** 供配置 UI 下拉分组渲染的单位目录。 */
-export const getUnitCategories = (): UnitCategory[] => [
+export const getUnitCategories = (t?: UnitLabelTranslator): UnitCategory[] => [
   {
     key: 'misc',
-    label: '通用',
+    label: unitLabel(t, 'dashboard.unitCategoryMisc', '通用'),
     units: [
-      { id: 'none', label: '无单位' },
-      { id: 'short', label: '计数（自动 K/M/B）' },
-      { id: 'percent', label: '百分比 (0-100)' },
-      { id: 'percentunit', label: '百分比 (0.0-1.0)' },
+      { id: 'none', label: unitLabel(t, 'dashboard.unitNone', '无单位') },
+      { id: 'short', label: unitLabel(t, 'dashboard.unitShort', '计数（自动 K/M/B）') },
+      { id: 'percent', label: unitLabel(t, 'dashboard.unitPercent', '百分比 (0-100)') },
+      { id: 'percentunit', label: unitLabel(t, 'dashboard.unitPercentUnit', '百分比 (0.0-1.0)') },
     ],
   },
   {
     key: 'data',
-    label: '数据量',
+    label: unitLabel(t, 'dashboard.unitCategoryData', '数据量'),
     units: [
-      { id: 'bytesIEC', label: '字节 (IEC, 1024)' },
-      { id: 'bytesSI', label: '字节 (SI, 1000)' },
+      { id: 'bytesIEC', label: unitLabel(t, 'dashboard.unitBytesIec', '字节 (IEC, 1024)') },
+      { id: 'bytesSI', label: unitLabel(t, 'dashboard.unitBytesSi', '字节 (SI, 1000)') },
     ],
   },
   {
     key: 'throughput',
-    label: '速率',
-    units: [{ id: 'bps', label: '比特/秒 (bps)' }],
+    label: unitLabel(t, 'dashboard.unitCategoryThroughput', '速率'),
+    units: [{ id: 'bps', label: unitLabel(t, 'dashboard.unitBps', '比特/秒 (bps)') }],
   },
   {
     key: 'time',
-    label: '时间',
-    units: [{ id: 'ms', label: '毫秒 (自动进位)' }],
+    label: unitLabel(t, 'dashboard.unitCategoryTime', '时间'),
+    units: [{ id: 'ms', label: unitLabel(t, 'dashboard.unitMilliseconds', '毫秒 (自动进位)') }],
   },
 ];

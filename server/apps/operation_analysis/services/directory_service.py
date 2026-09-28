@@ -12,6 +12,7 @@ from apps.operation_analysis.models.models import Directory
 from apps.operation_analysis.services.builtin_i18n import overlay_canvas_payload, overlay_datasource_payload, overlay_directory_payload
 from apps.operation_analysis.services.canvas.registry import CANVAS_TYPE_REGISTRY
 from apps.operation_analysis.services.node_tree import TreeNodeBuilder
+from apps.operation_analysis.services.user_messages import oa_message
 
 
 def _get_visible_canvas_queryset(meta, directories, current_team, group_ids):
@@ -32,7 +33,7 @@ class DictDirectoryService:
         try:
             current_team = int(get_current_team(request))
         except (TypeError, ValueError):
-            raise ValidationError({"detail": "current_team cookie 缺失或格式错误，请重新登录或刷新页面"})
+            raise ValidationError({"detail": oa_message("messages.current_team_cookie_invalid", "current_team cookie 缺失或格式错误，请重新登录或刷新页面")})
         group_ids = [current_team]
         if request.COOKIES.get("include_children", "0") == "1":
             from apps.core.utils.viewset_utils import GenericViewSetFun

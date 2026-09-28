@@ -144,7 +144,7 @@ const OpsAnalysisEventTable: React.FC<OpsAnalysisEventTableProps> = ({
     return (
       <div className="h-full flex items-center justify-center">
         <CompactEmptyState
-          description={t('dashboard.atLeastOneVisibleColumn') || '请先配置展示字段'}
+          description={t('dashboard.configureDisplayFieldsFirst')}
           className="py-6"
         />
       </div>

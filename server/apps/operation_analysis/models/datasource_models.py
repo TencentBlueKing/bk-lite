@@ -11,6 +11,7 @@ from apps.core.models.time_info import TimeInfo
 from apps.core.utils.crypto.password_crypto import PasswordCrypto
 from apps.operation_analysis.constants.constants import SECRET_KEY
 from apps.operation_analysis.services.credential_write_policy import validate_credential_write_key
+from apps.operation_analysis.services.user_messages import oa_message
 
 
 class NamespacePasswordDecryptionError(ValueError):
@@ -62,7 +63,7 @@ class NameSpace(MaintainerInfo, TimeInfo):
             crypto = PasswordCrypto(SECRET_KEY)
             return crypto.decrypt(self.password)
         except Exception as exc:
-            raise NamespacePasswordDecryptionError("命名空间密码解密失败，请重新录入密码") from exc
+            raise NamespacePasswordDecryptionError(oa_message("messages.namespace_password_decrypt_failed", "命名空间密码解密失败，请重新录入密码")) from exc
 
     def set_password(self, raw_password):
         """
