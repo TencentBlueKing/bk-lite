@@ -37,9 +37,27 @@ const cloneJson = <T,>(value: T): T => {
   return JSON.parse(JSON.stringify(value)) as T;
 };
 
-export const cloneCopiedWidgetTitle = (name?: string | null): string => {
+export type CopyMessage = (
+  id: string,
+  defaultMessage?: string,
+  values?: Record<string, string>,
+) => string;
+
+const formatCopyFallback: CopyMessage = (id, defaultMessage, values) => {
+  const template = defaultMessage ?? id;
+  if (!values) return template;
+  return template.replace(/\{(\w+)\}/g, (match, key: string) => values[key] ?? match);
+};
+
+export const cloneCopiedWidgetTitle = (
+  name?: string | null,
+  translate?: CopyMessage,
+): string => {
+  const t: CopyMessage = translate ?? formatCopyFallback;
   const trimmed = name?.trim() ?? '';
-  return trimmed ? `${trimmed} 副本` : '副本';
+  return trimmed
+    ? t('dashboard.copySuffix', '{name} 副本', { name: trimmed })
+    : t('dashboard.copyUntitled', '副本');
 };
 
 export const cloneAnalysisWidgetValueConfig = <T extends ValueConfig>(
@@ -85,13 +103,13 @@ export const shouldShowAnalysisWidgetCopyAction = (input: {
 
 export const cloneAnalysisWidget = (
   source: AnalysisWidgetCloneSource,
-  options?: { createId?: () => string },
+  options?: { createId?: () => string; t?: CopyMessage },
 ): AnalysisWidgetCloneResult => {
   const createId = options?.createId ?? uuidv4;
   const sourceName =
     source.title ??
     (typeof source.valueConfig?.name === 'string' ? source.valueConfig.name : '');
-  const title = cloneCopiedWidgetTitle(sourceName);
+  const title = cloneCopiedWidgetTitle(sourceName, options?.t);
   const valueConfig = cloneAnalysisWidgetValueConfig(source.valueConfig);
   if (source.valueConfig && 'name' in source.valueConfig) {
     (valueConfig as WidgetConfig).name = title;
@@ -132,7 +150,7 @@ const canPlaceDashboardWidgetAt = (
 export const copyDashboardWidget = (
   layout: DashboardLayoutItem[],
   sourceId: string,
-  options?: { createId?: () => string },
+  options?: { createId?: () => string; t?: CopyMessage },
 ): DashboardLayoutItem[] => {
   const source = layout.find((item) => item.i === sourceId);
   if (
@@ -218,7 +236,7 @@ const clamp = (value: number, min: number, max: number) =>
 export const copyScreenWidget = (
   viewSets: ScreenViewSets,
   sourceId: string,
-  options?: { createId?: () => string },
+  options?: { createId?: () => string; t?: CopyMessage },
 ): { viewSets: ScreenViewSets; selectedItemId: string } | null => {
   const source = viewSets.items.find((item) => item.id === sourceId);
   if (
@@ -273,7 +291,7 @@ export const copyScreenWidget = (
 export const copyReportSection = (
   viewSets: ReportViewSets,
   sourceId: string,
-  options?: { createId?: () => string },
+  options?: { createId?: () => string; t?: CopyMessage },
 ): ReportViewSets => {
   const sourceIndex = viewSets.sections.findIndex(
     (section) => section.id === sourceId,

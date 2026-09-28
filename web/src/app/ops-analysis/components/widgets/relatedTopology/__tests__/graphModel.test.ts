@@ -195,10 +195,18 @@ describe('buildRelatedTopologyGraph', () => {
     );
   });
 
-  it('translates asst_id to the same Chinese labels as CMDB when asst_name is absent', () => {
-    expect(resolveAssociationLabel('', 'belong')).toBe('属于');
-    expect(resolveAssociationLabel(null, 'contains')).toBe('包含');
+  it('uses English association fallbacks when asst_name is absent and no translator is passed', () => {
+    expect(resolveAssociationLabel('', 'belong')).toBe('Belongs to');
+    expect(resolveAssociationLabel(null, 'contains')).toBe('Contains');
     expect(resolveAssociationLabel('连接', 'connect')).toBe('连接');
+  });
+
+  it('translates asst_id through t() and still returns a non-empty asst_name unchanged', () => {
+    const t = (id: string, fallback?: string) => (
+      id === 'dashboard.associationType.belong' ? '属于' : (fallback ?? id)
+    );
+    expect(resolveAssociationLabel('', 'belong', t)).toBe('属于');
+    expect(resolveAssociationLabel('连接', 'connect', t)).toBe('连接');
   });
 
   it('marks empty associations when both sides have no children', () => {

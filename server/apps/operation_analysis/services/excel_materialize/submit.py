@@ -9,10 +9,8 @@ from django.db import transaction
 
 from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.models.excel_materialization_models import ExcelMaterializationSlot
-from apps.operation_analysis.services.excel_materialize.materializer import (
-    ExcelMaterializer,
-    script_hash,
-)
+from apps.operation_analysis.services.excel_materialize.materializer import ExcelMaterializer, script_hash
+from apps.operation_analysis.services.user_messages import oa_message
 
 
 def submit_excel_candidate(
@@ -28,11 +26,11 @@ def submit_excel_candidate(
     enabled = bool(transform_config.get("enabled"))
     script = transform_config.get("script") if isinstance(transform_config.get("script"), str) else ""
     if enabled and not script.strip():
-        raise ValueError("启用转换时 script 不能为空")
+        raise ValueError(oa_message("messages.excel_script_required", "启用转换时 script 不能为空"))
 
     filename = getattr(uploaded_file, "name", "") or "upload.xlsx"
     if not str(filename).lower().endswith(".xlsx"):
-        raise ValueError("仅支持 Excel 文件（.xlsx）")
+        raise ValueError(oa_message("messages.excel_xlsx_only", "仅支持 Excel 文件（.xlsx）"))
 
     slot = None
     try:
@@ -102,9 +100,7 @@ def discard_unready_excel_datasource(datasource) -> bool:
     if datasource.excel_success_slot_id:
         return False
     query_config = datasource.query_config if isinstance(datasource.query_config, dict) else {}
-    has_legacy = isinstance(query_config.get("imported_items"), list) and bool(
-        query_config.get("imported_items")
-    )
+    has_legacy = isinstance(query_config.get("imported_items"), list) and bool(query_config.get("imported_items"))
     if has_legacy:
         return False
 
@@ -128,7 +124,7 @@ def submit_excel_candidate_from_saved_source(
     """脚本/开关变更或候选重试：优先候选原文件，避免失败新文件被旧成功文件覆盖。"""
     source_slot = datasource.excel_candidate_slot or datasource.excel_success_slot
     if not source_slot or not source_slot.source_file:
-        raise ValueError("缺少可重算的原 Excel 文件，请重新上传")
+        raise ValueError(oa_message("messages.excel_recalculate_missing", "缺少可重算的原 Excel 文件，请重新上传"))
 
     with source_slot.source_file.open("rb") as handle:
         content = handle.read()

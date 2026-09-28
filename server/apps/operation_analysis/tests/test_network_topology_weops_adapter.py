@@ -23,6 +23,7 @@ import json
 from urllib.parse import urlparse
 
 import pytest
+from django.utils import translation
 
 from apps.operation_analysis.services.network_topology.weops_adapter import (
     WEOPS_TOKEN_INVALID,
@@ -368,6 +369,24 @@ def test_test_connection_passes_when_health_succeeds():
     adapter = _adapter(http_client=client)
     adapter.test_connection()  # does not raise
     assert client.calls[0]["url"] == "https://weops.example.com/open_api/bklite/network_topology/health/"
+
+
+def test_test_connection_wraps_unexpected_probe_failure():
+    adapter = _adapter(http_client=FakeHttpClient(responses=[]))
+
+    def boom():
+        raise RuntimeError("probe down")
+
+    adapter.health = boom
+    with pytest.raises(WeOpsTopologyAdapterError) as exc:
+        adapter.test_connection()
+    assert exc.value.code == "weops_unavailable"
+    assert str(exc.value) == "WeOps 请求失败: probe down"
+
+    with translation.override("en"):
+        with pytest.raises(WeOpsTopologyAdapterError) as exc_en:
+            adapter.test_connection()
+    assert str(exc_en.value) == "WeOps request failed: probe down"
 
 
 def test_test_connection_propagates_token_failure():

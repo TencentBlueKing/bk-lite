@@ -9,6 +9,7 @@ from rest_framework.exceptions import PermissionDenied
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.operation_analysis.constants.import_export import ConflictAction, ConflictReason, ImportExportErrorCode, ObjectType
 from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
+from apps.operation_analysis.services.user_messages import oa_message
 
 
 class ImportExportAuthorizationService:
@@ -70,11 +71,11 @@ class ImportExportAuthorizationService:
             return current_team
 
         if not current_team:
-            raise PermissionDenied("无权访问该团队数据")
+            raise PermissionDenied(oa_message("messages.team_access_denied", "无权访问该团队数据"))
 
         user_group_ids = cls._normalize_ids(getattr(request.user, "group_list", []))
         if current_team not in user_group_ids:
-            raise PermissionDenied("无权访问该团队数据")
+            raise PermissionDenied(oa_message("messages.team_access_denied", "无权访问该团队数据"))
         return current_team
 
     @classmethod
@@ -92,13 +93,20 @@ class ImportExportAuthorizationService:
 
         export_config = cls.EXPORT_PERMISSION_MAP[object_enum]
         if not cls.has_permission(request, export_config["permission"]):
-            raise PermissionDenied(f"缺少导出 {object_enum.value} 所需权限 {export_config['permission']}")
+            raise PermissionDenied(
+                oa_message(
+                    "messages.export_permission_missing",
+                    "缺少导出 {object_type} 所需权限 {permission}",
+                    object_type=object_enum.value,
+                    permission=export_config["permission"],
+                )
+            )
 
         group_ids = cls._get_export_group_ids(request, current_team)
         filtered_ids = cls._filter_ids_by_org(object_enum, object_ids, current_team, group_ids)
         filtered_ids = cls._filter_ids_by_scope(request, object_enum, filtered_ids, current_team)
         if not filtered_ids or (not allow_partial and set(filtered_ids) != set(object_ids)):
-            raise PermissionDenied("无权导出所选对象或对象不存在")
+            raise PermissionDenied(oa_message("messages.export_objects_denied", "无权导出所选对象或对象不存在"))
         return filtered_ids
 
     @classmethod
@@ -125,7 +133,7 @@ class ImportExportAuthorizationService:
         )
         locked_root_ids = cls.filter_export_object_ids(request, object_type, object_ids, current_team)
         if set(locked_root_ids) != set(object_ids):
-            raise PermissionDenied("导出对象的权限范围已发生变化")
+            raise PermissionDenied(oa_message("messages.export_scope_changed", "导出对象的权限范围已发生变化"))
 
         if cls.is_legacy_export_dependency_permission_mode():
             return datasource_ids, namespace_ids, datasource_namespace_ids
@@ -153,7 +161,7 @@ class ImportExportAuthorizationService:
             current_team,
         )
         if set(allowed_ids) != object_ids:
-            raise PermissionDenied("导出依赖包含当前用户无权访问的对象")
+            raise PermissionDenied(oa_message("messages.export_dependency_denied", "导出依赖包含当前用户无权访问的对象"))
 
     @classmethod
     def apply_precheck_permissions(
@@ -187,7 +195,13 @@ class ImportExportAuthorizationService:
                                 object_type,
                                 item,
                                 [permission_config["create"]],
-                                f"{object_type.value} '{item.name}' 缺少权限 {permission_config['create']}",
+                                oa_message(
+                                    "messages.import_item_permission_missing",
+                                    "{object_type} '{name}' 缺少权限 {permission}",
+                                    object_type=object_type.value,
+                                    name=item.name,
+                                    permission=permission_config["create"],
+                                ),
                             )
                         )
                     continue
@@ -207,7 +221,12 @@ class ImportExportAuthorizationService:
                                 object_type,
                                 item,
                                 [cls.EXPORT_PERMISSION_MAP[object_type]["permission"], permission_config["create"]],
-                                f"{object_type.value} '{item.name}' 无权访问现有对象且缺少重命名所需权限",
+                                oa_message(
+                                    "messages.import_item_existing_denied",
+                                    "{object_type} '{name}' 无权访问现有对象且缺少重命名所需权限",
+                                    object_type=object_type.value,
+                                    name=item.name,
+                                ),
                             )
                         )
                     continue
@@ -247,7 +266,12 @@ class ImportExportAuthorizationService:
                 errors.append(
                     {
                         "code": ImportExportErrorCode.IMPORT_PERMISSION_DENIED,
-                        "message": f"对象 '{conflict['object_key']}' 不允许执行冲突动作 {action}",
+                        "message": oa_message(
+                            "messages.conflict_action_denied",
+                            "对象 '{object_key}' 不允许执行冲突动作 {action}",
+                            object_key=conflict["object_key"],
+                            action=action,
+                        ),
                         "object_key": conflict["object_key"],
                         "object_type": conflict["object_type"],
                         "allowed_actions": allowed_actions,
@@ -285,7 +309,12 @@ class ImportExportAuthorizationService:
                     denied_permissions.append(
                         {
                             "code": ImportExportErrorCode.IMPORT_PERMISSION_DENIED,
-                            "message": f"对象 '{item.key}' 不允许执行冲突动作 {action}",
+                            "message": oa_message(
+                                "messages.conflict_action_denied",
+                                "对象 '{object_key}' 不允许执行冲突动作 {action}",
+                                object_key=item.key,
+                                action=action,
+                            ),
                             "object_key": item.key,
                             "object_type": object_type.value,
                             "allowed_actions": conflict.get("suggested_actions", []),
@@ -306,7 +335,13 @@ class ImportExportAuthorizationService:
                             object_type,
                             item,
                             [required_permission],
-                            f"{object_type.value} '{item.name}' 缺少权限 {required_permission}",
+                            oa_message(
+                                "messages.import_item_permission_missing",
+                                "{object_type} '{name}' 缺少权限 {permission}",
+                                object_type=object_type.value,
+                                name=item.name,
+                                permission=required_permission,
+                            ),
                         )
                     )
 
@@ -314,7 +349,7 @@ class ImportExportAuthorizationService:
             raise PermissionDenied(
                 {
                     "success": False,
-                    "message": "当前用户没有本次 YAML 导入所需的对象权限",
+                    "message": oa_message("messages.import_permission_denied", "当前用户没有本次 YAML 导入所需的对象权限"),
                     "errors": denied_permissions,
                 }
             )
@@ -491,9 +526,7 @@ class ImportExportAuthorizationService:
                 for instance in queryset.only(*required_fields):
                     instance_group_ids = {int(group_id) for group_id in (getattr(instance, "groups", None) or [])}
                     is_global_builtin = (
-                        object_type == ObjectType.DATASOURCE
-                        and bool(getattr(instance, "is_build_in", False))
-                        and not instance_group_ids
+                        object_type == ObjectType.DATASOURCE and bool(getattr(instance, "is_build_in", False)) and not instance_group_ids
                     )
                     if is_global_builtin or target_group_ids.intersection(instance_group_ids):
                         visible_ids.append(instance.id)

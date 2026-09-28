@@ -14,6 +14,7 @@ from apps.core.utils.safe_requests import SafeRequestsError, safe_request
 from apps.core.utils.ssrf_validator import SSRFError
 from apps.operation_analysis.services.datasource_preview.base import ConnectorError
 from apps.operation_analysis.services.datasource_preview.rest_api import read_limited_json
+from apps.operation_analysis.services.user_messages import oa_message
 
 DEFAULT_TIMEOUT_SECONDS = 30
 MAX_TIMEOUT_SECONDS = 60
@@ -34,17 +35,21 @@ def _is_timeout_error(exc: BaseException) -> bool:
 
 def normalize_prometheus_origin(url: str) -> str:
     if not url or not isinstance(url, str):
-        raise ConnectorError("Prometheus URL 不能为空", code="prometheus_url_invalid", status_code=400)
+        raise ConnectorError(oa_message("messages.preview_prom_url_required", "Prometheus URL 不能为空"), code="prometheus_url_invalid", status_code=400)
 
     parsed = urlparse(url.strip())
     if parsed.scheme not in {"http", "https"}:
-        raise ConnectorError("Prometheus URL 必须是 http 或 https", code="prometheus_url_invalid", status_code=400)
+        raise ConnectorError(
+            oa_message("messages.preview_prom_url_scheme", "Prometheus URL 必须是 http 或 https"), code="prometheus_url_invalid", status_code=400
+        )
     if parsed.username or parsed.password:
-        raise ConnectorError("Prometheus URL 不能包含用户名或密码", code="prometheus_url_invalid", status_code=400)
+        raise ConnectorError(
+            oa_message("messages.preview_prom_url_userinfo", "Prometheus URL 不能包含用户名或密码"), code="prometheus_url_invalid", status_code=400
+        )
     if parsed.path and parsed.path not in {"", "/"}:
-        raise ConnectorError("Prometheus URL 不能包含路径", code="prometheus_url_invalid", status_code=400)
+        raise ConnectorError(oa_message("messages.preview_prom_url_path", "Prometheus URL 不能包含路径"), code="prometheus_url_invalid", status_code=400)
     if not parsed.netloc:
-        raise ConnectorError("Prometheus URL 无效", code="prometheus_url_invalid", status_code=400)
+        raise ConnectorError(oa_message("messages.preview_prom_url_invalid", "Prometheus URL 无效"), code="prometheus_url_invalid", status_code=400)
 
     return f"{parsed.scheme}://{parsed.netloc}"
 
@@ -59,7 +64,7 @@ def build_auth_headers(connection_config: dict[str, Any]) -> dict[str, str]:
         password = connection_config.get("password")
         if not username or not password:
             raise ConnectorError(
-                "Prometheus Basic 鉴权需要用户名和密码",
+                oa_message("messages.preview_prom_basic_auth", "Prometheus Basic 鉴权需要用户名和密码"),
                 code="prometheus_auth_invalid",
                 status_code=400,
             )
@@ -70,14 +75,14 @@ def build_auth_headers(connection_config: dict[str, Any]) -> dict[str, str]:
         token = connection_config.get("token")
         if not token:
             raise ConnectorError(
-                "Prometheus Bearer 鉴权需要 token",
+                oa_message("messages.preview_prom_bearer_auth", "Prometheus Bearer 鉴权需要 token"),
                 code="prometheus_auth_invalid",
                 status_code=400,
             )
         return {"Authorization": f"Bearer {token}"}
 
     raise ConnectorError(
-        f"不支持的 Prometheus 鉴权类型: {auth_type}",
+        oa_message("messages.preview_prom_auth_type", "不支持的 Prometheus 鉴权类型: {auth_type}", auth_type=auth_type),
         code="prometheus_auth_invalid",
         status_code=400,
     )
@@ -119,7 +124,7 @@ class PrometheusHttpClient:
             return
         if self._is_successful_get(connection_config, f"{origin}/api/v1/status/buildinfo"):
             return
-        raise ConnectorError("Prometheus 健康检查失败", code="prometheus_unhealthy", status_code=502)
+        raise ConnectorError(oa_message("messages.preview_prom_unhealthy", "Prometheus 健康检查失败"), code="prometheus_unhealthy", status_code=502)
 
     def _resolve_timeout(self, connection_config: dict[str, Any]) -> tuple[int, int]:
         raw = connection_config.get("timeout_seconds")
@@ -130,7 +135,7 @@ class PrometheusHttpClient:
                 read_timeout = int(raw)
             except (TypeError, ValueError):
                 raise ConnectorError(
-                    "Prometheus timeout_seconds 无效",
+                    oa_message("messages.preview_prom_timeout_invalid", "Prometheus timeout_seconds 无效"),
                     code="prometheus_timeout_invalid",
                     status_code=400,
                 )
@@ -162,7 +167,7 @@ class PrometheusHttpClient:
         except (SafeRequestsError, requests.RequestException) as exc:
             if _is_timeout_error(exc):
                 raise ConnectorError(
-                    f"Prometheus 请求超时: {exc}",
+                    oa_message("messages.preview_prom_timeout", "Prometheus 请求超时: {detail}", detail=exc),
                     code="prometheus_timeout",
                     status_code=502,
                 ) from exc
@@ -189,20 +194,20 @@ class PrometheusHttpClient:
             try:
                 if response.status_code in {401, 403}:
                     raise ConnectorError(
-                        "Prometheus 鉴权失败",
+                        oa_message("messages.preview_prom_auth_failed", "Prometheus 鉴权失败"),
                         code="prometheus_auth_failed",
                         status_code=400,
                     )
                 if not (200 <= response.status_code < 300):
                     raise ConnectorError(
-                        f"Prometheus 请求失败: HTTP {response.status_code}",
+                        oa_message("messages.preview_prom_http_failed", "Prometheus 请求失败: HTTP {status}", status=response.status_code),
                         code="prometheus_request_failed",
                         status_code=502,
                     )
                 payload = read_limited_json(response)
             except json.JSONDecodeError as exc:
                 raise ConnectorError(
-                    f"Prometheus 响应 JSON 无效: {exc}",
+                    oa_message("messages.preview_prom_json_invalid", "Prometheus 响应 JSON 无效: {detail}", detail=exc),
                     code="prometheus_invalid_response",
                     status_code=502,
                 ) from exc
@@ -218,32 +223,32 @@ class PrometheusHttpClient:
             ) from exc
         except requests.Timeout as exc:
             raise ConnectorError(
-                f"Prometheus 请求超时: {exc}",
+                oa_message("messages.preview_prom_timeout", "Prometheus 请求超时: {detail}", detail=exc),
                 code="prometheus_timeout",
                 status_code=502,
             ) from exc
         except requests.RequestException as exc:
             raise ConnectorError(
-                f"Prometheus 请求失败: {exc}",
+                oa_message("messages.preview_prom_request_failed", "Prometheus 请求失败: {detail}", detail=exc),
                 code="prometheus_request_failed",
                 status_code=502,
             ) from exc
         except SafeRequestsError as exc:
             if _is_timeout_error(exc):
                 raise ConnectorError(
-                    f"Prometheus 请求超时: {exc}",
+                    oa_message("messages.preview_prom_timeout", "Prometheus 请求超时: {detail}", detail=exc),
                     code="prometheus_timeout",
                     status_code=502,
                 ) from exc
             raise ConnectorError(
-                f"Prometheus 请求失败: {exc}",
+                oa_message("messages.preview_prom_request_failed", "Prometheus 请求失败: {detail}", detail=exc),
                 code="prometheus_request_failed",
                 status_code=502,
             ) from exc
 
         if not isinstance(payload, dict):
             raise ConnectorError(
-                "Prometheus 响应格式无效",
+                oa_message("messages.preview_prom_response_invalid", "Prometheus 响应格式无效"),
                 code="prometheus_invalid_response",
                 status_code=502,
             )
@@ -253,7 +258,7 @@ class PrometheusHttpClient:
             if len(error_text) > MAX_ERROR_TEXT_LENGTH:
                 error_text = error_text[:MAX_ERROR_TEXT_LENGTH] + "..."
             raise ConnectorError(
-                f"Prometheus 查询错误: {error_text}",
+                oa_message("messages.preview_prom_query_error", "Prometheus 查询错误: {detail}", detail=error_text),
                 code="prometheus_query_error",
                 status_code=400,
             )

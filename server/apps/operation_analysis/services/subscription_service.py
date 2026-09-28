@@ -1,17 +1,19 @@
 from copy import deepcopy
 
+from django.db import DatabaseError, OperationalError, transaction
+from django.db.models import F
+from django.utils import timezone
+from rest_framework import status
+from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
+
 from apps.core.logger import operation_analysis_logger as logger
 from apps.core.utils.team_utils import get_current_team
 from apps.operation_analysis.models.models import Dashboard
 from apps.operation_analysis.models.subscription_models import DashboardReportExecution, DashboardReportSubscription
 from apps.operation_analysis.services.filter_snapshot import normalize_applied_filter_values
 from apps.operation_analysis.services.schedule_calculator import ScheduleSpec, next_run, validate_iana_timezone
+from apps.operation_analysis.services.user_messages import oa_message
 from apps.system_mgmt.models import Channel
-from django.db import DatabaseError, OperationalError, transaction
-from django.db.models import F
-from django.utils import timezone
-from rest_framework import status
-from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 
 SCHEDULE_FIELDS = frozenset(
     {
@@ -29,8 +31,12 @@ TERMINATION_REASON_DASHBOARD_DELETED = "dashboard_deleted"
 
 class SubscriptionRevisionConflict(APIException):
     status_code = status.HTTP_409_CONFLICT
-    default_detail = "订阅已被其他请求修改，请刷新后重试"
     default_code = "subscription_revision_conflict"
+
+    def __init__(self, detail=None, code=None):
+        if detail is None:
+            detail = oa_message("messages.sub_revision_conflict", "订阅已被其他请求修改，请刷新后重试")
+        super().__init__(detail, code)
 
 
 class DashboardSubscriptionService:
@@ -39,7 +45,7 @@ class DashboardSubscriptionService:
         try:
             return int(get_current_team(request))
         except (TypeError, ValueError) as exc:
-            raise ValidationError({"team": "必须指定当前组织"}) from exc
+            raise ValidationError({"team": oa_message("messages.subscription_team_required", "必须指定当前组织")}) from exc
 
     @staticmethod
     def can_view_dashboard(request, dashboard: Dashboard) -> bool:
@@ -55,7 +61,7 @@ class DashboardSubscriptionService:
     @classmethod
     def require_dashboard_view(cls, request, dashboard: Dashboard) -> None:
         if not cls.can_view_dashboard(request, dashboard):
-            raise PermissionDenied("无权查看该仪表盘")
+            raise PermissionDenied(oa_message("messages.dashboard_view_denied", "无权查看该仪表盘"))
 
     @classmethod
     def can_view_resource(
@@ -87,11 +93,15 @@ class DashboardSubscriptionService:
         resource_type: str,
         resource_id: int | None,
         *,
-        missing_message: str = "源画布已不存在，不能执行该操作",
-        denied_message: str = "无权查看该画布",
+        missing_message: str | None = None,
+        denied_message: str | None = None,
     ) -> None:
         from apps.operation_analysis.services.canvas_report.permissions import canvas_resource_exists
 
+        if missing_message is None:
+            missing_message = oa_message("messages.canvas_missing_action", "源画布已不存在，不能执行该操作")
+        if denied_message is None:
+            denied_message = oa_message("messages.canvas_view_denied", "无权查看该画布")
         if resource_id is None or not canvas_resource_exists(resource_type, resource_id):
             raise PermissionDenied(missing_message)
         if not cls.can_view_resource(request, resource_type, resource_id):
@@ -282,7 +292,9 @@ class DashboardSubscriptionService:
 
         missing = sorted(ds_ids - set(found))
         if missing:
-            raise ValidationError({"resource_id": (f"画布引用的数据源不存在: {', '.join(map(str, missing))}")})
+            raise ValidationError(
+                {"resource_id": oa_message("messages.referenced_datasource_missing", "画布引用的数据源不存在: {ids}", ids=", ".join(map(str, missing)))}
+            )
 
         for ds_id in sorted(found):
             try:
@@ -310,7 +322,7 @@ class DashboardSubscriptionService:
                 )
                 return
             if outcome == "denied":
-                raise PermissionDenied(f"无权查看画布引用的数据源: {ds_id}")
+                raise PermissionDenied(oa_message("messages.referenced_datasource_denied", "无权查看画布引用的数据源: {datasource_id}", datasource_id=ds_id))
 
     @classmethod
     def scan_dashboard_datasources(cls, request, dashboard: Dashboard) -> None:
@@ -351,15 +363,15 @@ class DashboardSubscriptionService:
         required_team_id: int | None = None,
     ) -> None:
         if channel is None:
-            raise ValidationError({"email_channel": "报告订阅必须指定邮件通道"})
+            raise ValidationError({"email_channel": oa_message("messages.email_channel_required", "报告订阅必须指定邮件通道")})
         if channel.channel_type != "email":
-            raise ValidationError({"email_channel": "所选通道不是邮件类型"})
+            raise ValidationError({"email_channel": oa_message("messages.email_channel_type", "所选通道不是邮件类型")})
         current_team_id = cls.require_current_team_id(request)
         resolved_team_id = required_team_id or current_team_id
         if not getattr(request.user, "is_superuser", False) and current_team_id != resolved_team_id:
-            raise ValidationError({"email_channel": "只能在订阅所属组织内修改邮件通道"})
+            raise ValidationError({"email_channel": oa_message("messages.email_channel_org", "只能在订阅所属组织内修改邮件通道")})
         if resolved_team_id not in (channel.team or []):
-            raise ValidationError({"email_channel": "无权使用该邮件通道"})
+            raise ValidationError({"email_channel": oa_message("messages.email_channel_denied", "无权使用该邮件通道")})
 
     @classmethod
     def build_schedule_spec(
@@ -374,7 +386,7 @@ class DashboardSubscriptionService:
         if schedule_type is None:
             return None
         if schedule_hour is None or schedule_minute is None:
-            raise ValidationError({"schedule_hour": "已配置调度时必须指定时分"})
+            raise ValidationError({"schedule_hour": oa_message("messages.schedule_time_required", "已配置调度时必须指定时分")})
         return ScheduleSpec(
             schedule_type=schedule_type,
             hour=schedule_hour,
@@ -405,7 +417,7 @@ class DashboardSubscriptionService:
         if spec is None:
             return None
         if not timezone_name:
-            raise ValidationError({"timezone": "已配置调度时必须指定 IANA 时区"})
+            raise ValidationError({"timezone": oa_message("messages.timezone_required", "已配置调度时必须指定 IANA 时区")})
         try:
             tz = validate_iana_timezone(timezone_name)
             spec.validate()
@@ -474,8 +486,12 @@ class DashboardSubscriptionService:
             request,
             resource_type,
             resource_id,
-            missing_message="源画布已不存在，不能创建该订阅",
-            denied_message=("无权查看该仪表盘" if resource_type == RESOURCE_TYPE_DASHBOARD else "无权查看该画布"),
+            missing_message=oa_message("messages.subscription_source_missing_create", "源画布已不存在，不能创建该订阅"),
+            denied_message=(
+                oa_message("messages.dashboard_view_denied", "无权查看该仪表盘")
+                if resource_type == RESOURCE_TYPE_DASHBOARD
+                else oa_message("messages.canvas_view_denied", "无权查看该画布")
+            ),
         )
         from django.core.exceptions import ObjectDoesNotExist
 
@@ -483,7 +499,7 @@ class DashboardSubscriptionService:
             resource = adapter.load_resource(resource_id)
         except ObjectDoesNotExist as exc:
             # 与 require_canvas_view 之间的竞态或 Adapter 加载失败：不得泄漏为 500
-            raise PermissionDenied("源画布已不存在，不能创建该订阅") from exc
+            raise PermissionDenied(oa_message("messages.subscription_source_missing_create", "源画布已不存在，不能创建该订阅")) from exc
         cls.validate_email_channel(
             request,
             serializer.validated_data.get("email_channel"),
@@ -526,13 +542,13 @@ class DashboardSubscriptionService:
         if (subscription.creator != request.user.username or subscription.creator_domain != request.user.domain) and not getattr(
             request.user, "is_superuser", False
         ):
-            raise PermissionDenied("只能修改自己的报告订阅")
+            raise PermissionDenied(oa_message("messages.subscription_owner_only_update", "只能修改自己的报告订阅"))
         if subscription.deleted_at is not None:
-            raise PermissionDenied("已删除的报告订阅不可修改")
+            raise PermissionDenied(oa_message("messages.subscription_deleted_immutable", "已删除的报告订阅不可修改"))
         if subscription.status == DashboardReportSubscription.Status.TERMINATED:
-            raise ValidationError({"status": "已终止的报告订阅不可修改或恢复"})
+            raise ValidationError({"status": oa_message("messages.subscription_terminated", "已终止的报告订阅不可修改或恢复")})
         if subscription.resource_id is None and subscription.dashboard is None:
-            raise PermissionDenied("源画布已不存在，不能修改该订阅")
+            raise PermissionDenied(oa_message("messages.subscription_source_missing_update", "源画布已不存在，不能修改该订阅"))
 
         from apps.operation_analysis.services.canvas_report.registry import get_canvas_report_adapter
         from apps.operation_analysis.services.canvas_report.types import RESOURCE_TYPE_DASHBOARD
@@ -551,8 +567,12 @@ class DashboardSubscriptionService:
                 request,
                 resource_type,
                 resource_id,
-                missing_message="源画布已不存在，不能修改该订阅",
-                denied_message=("无权查看该仪表盘" if resource_type == RESOURCE_TYPE_DASHBOARD else "无权查看该画布"),
+                missing_message=oa_message("messages.subscription_source_missing_update", "源画布已不存在，不能修改该订阅"),
+                denied_message=(
+                    oa_message("messages.dashboard_view_denied", "无权查看该仪表盘")
+                    if resource_type == RESOURCE_TYPE_DASHBOARD
+                    else oa_message("messages.canvas_view_denied", "无权查看该画布")
+                ),
             )
             cls.validate_email_channel(
                 request,
@@ -570,7 +590,7 @@ class DashboardSubscriptionService:
         schedule_changed = cls._schedule_changed(subscription, serializer.validated_data)
         if schedule_changed:
             if expected_version is not None and expected_version != subscription.version:
-                raise ValidationError({"version": "调度配置版本冲突，请刷新后重试"})
+                raise ValidationError({"version": oa_message("messages.schedule_version_conflict", "调度配置版本冲突，请刷新后重试")})
 
         new_status = serializer.validated_data.get("status", subscription.status)
         pausing = subscription.status == DashboardReportSubscription.Status.ACTIVE and new_status == DashboardReportSubscription.Status.PAUSED
@@ -660,7 +680,7 @@ class DashboardSubscriptionService:
         if (locked.creator != request.user.username or locked.creator_domain != request.user.domain) and not getattr(
             request.user, "is_superuser", False
         ):
-            raise PermissionDenied("只能删除自己的报告订阅")
+            raise PermissionDenied(oa_message("messages.subscription_owner_only_delete", "只能删除自己的报告订阅"))
         if locked.deleted_at is not None:
             return locked
 
@@ -668,7 +688,7 @@ class DashboardSubscriptionService:
         try:
             expected_revision = int(request.query_params.get("revision", ""))
         except (TypeError, ValueError) as exc:
-            raise ValidationError({"revision": "删除订阅必须携带当前 revision"}) from exc
+            raise ValidationError({"revision": oa_message("messages.subscription_revision_required", "删除订阅必须携带当前 revision")}) from exc
         updated = DashboardReportSubscription.all_objects.filter(
             pk=locked.pk,
             revision=expected_revision,

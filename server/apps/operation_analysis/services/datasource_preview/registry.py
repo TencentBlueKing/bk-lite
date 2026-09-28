@@ -4,6 +4,7 @@ from apps.operation_analysis.services.datasource_preview.database import Databas
 from apps.operation_analysis.services.datasource_preview.excel import ExcelConnectorExecutor
 from apps.operation_analysis.services.datasource_preview.prometheus import PrometheusConnectorExecutor
 from apps.operation_analysis.services.datasource_preview.rest_api import RestApiConnectorExecutor
+from apps.operation_analysis.services.user_messages import oa_message
 
 
 def get_preview_executor(source_type: str) -> BaseConnectorExecutor:
@@ -19,4 +20,8 @@ def get_preview_executor(source_type: str) -> BaseConnectorExecutor:
     }:
         return DatabaseConnectorExecutor(source_type)
 
-    raise ConnectorError(f"{source_type or 'unknown'} 暂不支持快速预览", code="preview_type_not_supported", status_code=400)
+    raise ConnectorError(
+        oa_message("messages.preview_type_unsupported", "{source} 暂不支持快速预览", source=source_type or "unknown"),
+        code="preview_type_not_supported",
+        status_code=400,
+    )

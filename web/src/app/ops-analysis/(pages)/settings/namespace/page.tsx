@@ -102,7 +102,7 @@ const Namespace: React.FC = () => {
       onOk: async () => {
         try {
           await deleteNamespace(row.id);
-          message.success(t('successfullyDeleted'));
+          message.success(t('opsAnalysis.successfullyDeleted'));
           await refreshNamespaces();
 
           if (pagination.current > 1 && filteredList.length === 1) {

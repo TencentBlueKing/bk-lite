@@ -318,7 +318,7 @@ export const SingleValueSettingsSection: React.FC<
           className="w-[200px]"
           options={[
             { value: '', label: t('topology.nodeConfig.customSuffix') },
-            ...getUnitCategories().map((cat) => ({
+            ...getUnitCategories(t).map((cat) => ({
               label: cat.label,
               options: cat.units.map((u) => ({ value: u.id, label: u.label })),
             })),

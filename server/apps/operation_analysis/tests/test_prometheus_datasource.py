@@ -8,12 +8,12 @@ from apps.core.utils.ssrf_validator import SSRFError
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 from apps.operation_analysis.services.datasource_preview import prometheus_client
 from apps.operation_analysis.services.datasource_preview.base import ConnectorError, PreviewResult
+from apps.operation_analysis.services.datasource_preview.prometheus import PrometheusConnectorExecutor
 from apps.operation_analysis.services.datasource_preview.prometheus_client import (
     PrometheusHttpClient,
     build_auth_headers,
     normalize_prometheus_origin,
 )
-from apps.operation_analysis.services.datasource_preview.prometheus import PrometheusConnectorExecutor
 from apps.operation_analysis.services.datasource_preview.prometheus_transform import (
     clamp_max_series,
     format_series_legend,
@@ -429,7 +429,7 @@ def test_transform_range_single_and_multi():
 
     data2, warnings2 = transform_range_result(matrix, max_series=1)
     assert isinstance(data2, list)  # single series after truncate -> LIST not dict
-    assert warnings2 and "截断" in warnings2[0]
+    assert warnings2 == ["结果共 2 条序列，已截断为 1 条"]
 
 
 def test_transform_range_single_series_returns_list():
@@ -467,7 +467,7 @@ def test_transform_instant_truncation_warning():
     }
     data, warnings = transform_instant_result(vector, max_series=1)
     assert len(data) == 1
-    assert warnings and "截断" in warnings[0]
+    assert warnings == ["结果共 2 条序列，已截断为 1 条"]
 
 
 def test_clamp_max_series():

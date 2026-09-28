@@ -24,7 +24,11 @@ import { ConfigGroupTitle } from '../configTitles';
 import { ChartRoleLabel, RefreshFieldsButton } from './chartRoleLabel';
 
 interface CardListSettingsSectionProps {
-  t: (key: string) => string;
+  t: (
+    key: string,
+    defaultMessage?: string,
+    values?: Record<string, string | number>,
+  ) => string;
   availableFields: ResponseFieldDefinition[];
   previewRawData?: unknown;
   loadingFields?: boolean;
@@ -392,9 +396,12 @@ export const CardListSettingsSection: React.FC<CardListSettingsSectionProps> = (
     if (!slots.length) {
       return undefined;
     }
-    return t('dashboard.cardListFieldUsedIn').replace(
-      '{{slot}}',
-      slots.map((slot) => t(SLOT_LABEL_KEYS[slot] || slot)).join(' / '),
+    return t(
+      'dashboard.cardListFieldUsedIn',
+      '该字段已用于{slot}',
+      {
+        slot: slots.map((slot) => t(SLOT_LABEL_KEYS[slot] || slot)).join(' / '),
+      },
     );
   };
 

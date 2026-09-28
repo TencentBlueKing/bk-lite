@@ -23,7 +23,16 @@ from apps.operation_analysis.common.datasource_visibility import (
     expand_datasource_org_query,
     is_builtin_globally_visible,
 )
-from apps.operation_analysis.common.get_nats_source_data import GetNatsData
+from apps.operation_analysis.common.get_nats_source_data import (
+    NATS_SOURCE_DATASOURCE_NOT_SELECTED,
+    NATS_SOURCE_DATASOURCE_UNLINKED,
+    NATS_SOURCE_INVALID_NAMESPACE_PARAM,
+    NATS_SOURCE_MODULE_NOT_FOUND,
+    NATS_SOURCE_NAMESPACE_SERVER_MISSING,
+    NATS_SOURCE_NAMESPACE_UNAVAILABLE,
+    GetNatsData,
+    NatsSourceError,
+)
 from apps.operation_analysis.common.visibility_update import partial_update_groups_with_auth
 from apps.operation_analysis.constants.import_export import SENSITIVE_PLACEHOLDER, is_sensitive_field_name
 from apps.operation_analysis.filters.datasource_filters import DataSourceAPIModelFilter, DataSourceTagModelFilter, NameSpaceModelFilter
@@ -39,6 +48,7 @@ from apps.operation_analysis.serializers.datasource_serializers import (
 from apps.operation_analysis.services.data_connection import ConnectionResolveError, resolve_datasource_connection
 from apps.operation_analysis.services.datasource_preview import ConnectorError, get_preview_executor
 from apps.operation_analysis.services.table_query_list import apply_query_list_to_payload
+from apps.operation_analysis.services.user_messages import oa_message
 from apps.operation_analysis.views.data_connection_view import extract_inline_connection
 from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
@@ -53,7 +63,7 @@ def _normalize_downstream_result(result):
         "[DataSourceQuery] 下游返回非标准结果 payload_type=%s",
         type(result).__name__,
     )
-    return {"result": False, "data": result, "message": "下游返回非标准结果"}
+    return {"result": False, "data": result, "message": oa_message("messages.downstream_nonstandard", "下游返回非标准结果")}
 
 
 def _build_error_response(detail, status_code, data=None):
@@ -69,7 +79,7 @@ def _normalize_preview_limit(value):
     try:
         return min(max(int(value or 100), 1), 1000)
     except (TypeError, ValueError):
-        raise ValueError("limit 必须是整数")
+        raise ValueError(oa_message("messages.limit_must_be_int", "limit 必须是整数"))
 
 
 def _normalize_preview_config(value):
@@ -200,7 +210,7 @@ def _resolve_preview_connection_config(request_data, *, current_team=None, group
     try:
         connection = DataConnection.objects.get(pk=connection_id)
     except (DataConnection.DoesNotExist, TypeError, ValueError) as exc:
-        raise ConnectionResolveError("数据连接不存在", code="connection_missing", status_code=400) from exc
+        raise ConnectionResolveError(oa_message("messages.connection_missing", "数据连接不存在"), code="connection_missing", status_code=400) from exc
 
     source_type = request_data.get("source_type") or connection.connection_type
     stub = DataSourceAPIModel(
@@ -211,6 +221,35 @@ def _resolve_preview_connection_config(request_data, *, current_team=None, group
         connection_config=_normalize_preview_config(request_data.get("connection_config")),
     )
     return resolve_datasource_connection(stub, current_team=current_team)
+
+
+def _log_source_query_failure(*, datasource_id, name, namespace, path, error):
+    if isinstance(error, NatsSourceError):
+        details = error.details or {}
+        logger.error(
+            "[DataSourceQuery] 取数失败 datasource_id=%s name=%s namespace=%s path=%s "
+            "code=%s namespace_name=%s namespace_id=%s target_namespace=%s target_path=%s",
+            datasource_id,
+            name,
+            namespace,
+            path,
+            error.code,
+            details.get("namespace_name", ""),
+            details.get("namespace_id", ""),
+            details.get("namespace", ""),
+            details.get("path", ""),
+            exc_info=error,
+        )
+        return
+    logger.error(
+        "[DataSourceQuery] 取数失败 datasource_id=%s name=%s namespace=%s path=%s：%s",
+        datasource_id,
+        name,
+        namespace,
+        path,
+        error,
+        exc_info=error,
+    )
 
 
 def _get_downstream_failure_status(result):
@@ -238,23 +277,33 @@ def _get_downstream_failure_status(result):
     return status.HTTP_502_BAD_GATEWAY
 
 
+_NATS_SOURCE_HTTP = {
+    NATS_SOURCE_INVALID_NAMESPACE_PARAM: status.HTTP_400_BAD_REQUEST,
+    NATS_SOURCE_DATASOURCE_UNLINKED: status.HTTP_400_BAD_REQUEST,
+    NATS_SOURCE_DATASOURCE_NOT_SELECTED: status.HTTP_400_BAD_REQUEST,
+    NATS_SOURCE_NAMESPACE_UNAVAILABLE: status.HTTP_500_INTERNAL_SERVER_ERROR,
+    NATS_SOURCE_NAMESPACE_SERVER_MISSING: status.HTTP_500_INTERNAL_SERVER_ERROR,
+    NATS_SOURCE_MODULE_NOT_FOUND: status.HTTP_500_INTERNAL_SERVER_ERROR,
+}
+
+_NATS_SOURCE_MESSAGES = {
+    NATS_SOURCE_INVALID_NAMESPACE_PARAM: ("messages.namespace_param_invalid", "命名空间参数无效"),
+    NATS_SOURCE_DATASOURCE_UNLINKED: ("messages.datasource_namespace_unlinked", "数据源未关联命名空间"),
+    NATS_SOURCE_DATASOURCE_NOT_SELECTED: ("messages.datasource_namespace_not_selected", "数据源未关联所选命名空间"),
+    NATS_SOURCE_NAMESPACE_UNAVAILABLE: ("messages.namespace_unavailable", "未找到可用命名空间"),
+    NATS_SOURCE_NAMESPACE_SERVER_MISSING: ("messages.namespace_server_missing", "命名空间未配置连接信息"),
+    NATS_SOURCE_MODULE_NOT_FOUND: ("messages.datasource_config_invalid", "数据源配置异常"),
+}
+
+
 def _classify_runtime_exception(error):
-    message = str(error).strip()
     if isinstance(error, NamespacePasswordDecryptionError):
-        return status.HTTP_500_INTERNAL_SERVER_ERROR, message
-    if message == "未找到可用的命名空间":
-        return status.HTTP_500_INTERNAL_SERVER_ERROR, "未找到可用命名空间"
-    if message == "数据源未关联命名空间":
-        return status.HTTP_400_BAD_REQUEST, "数据源未关联命名空间"
-    if message == "数据源未关联所选命名空间":
-        return status.HTTP_400_BAD_REQUEST, "数据源未关联所选命名空间"
-    if message == "命名空间参数无效":
-        return status.HTTP_400_BAD_REQUEST, "命名空间参数无效"
-    if "未配置服务器连接" in message:
-        return status.HTTP_500_INTERNAL_SERVER_ERROR, "命名空间未配置连接信息"
-    if "Module not found func" in message:
-        return status.HTTP_500_INTERNAL_SERVER_ERROR, "数据源配置异常"
-    return status.HTTP_500_INTERNAL_SERVER_ERROR, "数据查询失败"
+        return status.HTTP_500_INTERNAL_SERVER_ERROR, str(error).strip()
+    if isinstance(error, NatsSourceError):
+        http_status = _NATS_SOURCE_HTTP.get(error.code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+        message_key, default = _NATS_SOURCE_MESSAGES.get(error.code, ("messages.datasource_query_failed", "数据查询失败"))
+        return http_status, oa_message(message_key, default)
+    return status.HTTP_500_INTERNAL_SERVER_ERROR, oa_message("messages.datasource_query_failed", "数据查询失败")
 
 
 def _parse_time_value(value):
@@ -262,18 +311,18 @@ def _parse_time_value(value):
         try:
             return parse_rfc3339_utc(value)
         except ValueError as exc:
-            raise ValueError("timeRange 时间必须包含时区") from exc
+            raise ValueError(oa_message("messages.timerange_tz_required", "timeRange 时间必须包含时区")) from exc
 
     if isinstance(value, str):
         text = value.strip()
         if not text:
-            raise ValueError("timeRange 时间不能为空")
+            raise ValueError(oa_message("messages.timerange_empty", "timeRange 时间不能为空"))
         try:
             return parse_rfc3339_utc(text)
         except ValueError as exc:
-            raise ValueError("timeRange 时间必须为带时区的 RFC3339 格式") from exc
+            raise ValueError(oa_message("messages.timerange_rfc3339", "timeRange 时间必须为带时区的 RFC3339 格式")) from exc
 
-    raise ValueError("timeRange 时间必须为带时区的 RFC3339 字符串")
+    raise ValueError(oa_message("messages.timerange_rfc3339_string", "timeRange 时间必须为带时区的 RFC3339 字符串"))
 
 
 def _relative_time_range_minutes(value):
@@ -282,7 +331,7 @@ def _relative_time_range_minutes(value):
     if isinstance(value, (int, float)):
         minutes = int(value)
         if minutes <= 0:
-            raise ValueError("timeRange 必须为正整数分钟数")
+            raise ValueError(oa_message("messages.timerange_minutes", "timeRange 必须为正整数分钟数"))
         return minutes
     if isinstance(value, dict):
         select_value = value.get("selectValue")
@@ -302,17 +351,17 @@ def _normalize_time_range(value):
         start = _parse_time_value(value[0])
         end = _parse_time_value(value[1])
         if start >= end:
-            raise ValueError("timeRange 开始时间必须小于结束时间")
+            raise ValueError(oa_message("messages.timerange_order", "timeRange 开始时间必须小于结束时间"))
         return [format_rfc3339_utc(start), format_rfc3339_utc(end)]
 
     if isinstance(value, dict) and value.get("start") and value.get("end"):
         start = _parse_time_value(value["start"])
         end = _parse_time_value(value["end"])
         if start >= end:
-            raise ValueError("timeRange 开始时间必须小于结束时间")
+            raise ValueError(oa_message("messages.timerange_order", "timeRange 开始时间必须小于结束时间"))
         return [format_rfc3339_utc(start), format_rfc3339_utc(end)]
 
-    raise ValueError("timeRange 参数格式错误")
+    raise ValueError(oa_message("messages.timerange_format", "timeRange 参数格式错误"))
 
 
 def _normalize_param_value(param_name, param_type, raw_value):
@@ -321,7 +370,7 @@ def _normalize_param_value(param_name, param_type, raw_value):
             return raw_value
 
         if isinstance(raw_value, bool):
-            raise ValueError(f"参数 {param_name} 必须是数值")
+            raise ValueError(oa_message("messages.param_must_be_number", "参数 {param_name} 必须是数值", param_name=param_name))
 
         if isinstance(raw_value, (int, float)):
             number_value = float(raw_value)
@@ -329,7 +378,7 @@ def _normalize_param_value(param_name, param_type, raw_value):
             try:
                 number_value = float(str(raw_value).strip())
             except (TypeError, ValueError):
-                raise ValueError(f"参数 {param_name} 必须是数值")
+                raise ValueError(oa_message("messages.param_must_be_number", "参数 {param_name} 必须是数值", param_name=param_name))
 
         if number_value.is_integer():
             return int(number_value)
@@ -337,7 +386,7 @@ def _normalize_param_value(param_name, param_type, raw_value):
         try:
             return number_value
         except (TypeError, ValueError):
-            raise ValueError(f"参数 {param_name} 必须是数值")
+            raise ValueError(oa_message("messages.param_must_be_number", "参数 {param_name} 必须是数值", param_name=param_name))
 
     if param_type == "timeRange":
         return _normalize_time_range(raw_value)
@@ -355,31 +404,31 @@ def _normalize_runtime_params(request_data):
         try:
             page = int(request_data["page"])
         except (TypeError, ValueError):
-            raise ValueError("参数 page 必须是整数")
+            raise ValueError(oa_message("messages.page_must_be_int", "参数 page 必须是整数"))
         if page <= 0:
-            raise ValueError("参数 page 必须大于 0")
+            raise ValueError(oa_message("messages.page_must_be_positive", "参数 page 必须大于 0"))
         runtime_params["page"] = page
 
     if "page_size" in request_data:
         try:
             page_size = int(request_data["page_size"])
         except (TypeError, ValueError):
-            raise ValueError("参数 page_size 必须是整数")
+            raise ValueError(oa_message("messages.page_size_must_be_int", "参数 page_size 必须是整数"))
         if page_size <= 0:
-            raise ValueError("参数 page_size 必须大于 0")
+            raise ValueError(oa_message("messages.page_size_must_be_positive", "参数 page_size 必须大于 0"))
         runtime_params["page_size"] = page_size
 
     if "query_list" in request_data:
         query_list = request_data["query_list"]
         if not isinstance(query_list, (list, dict)):
-            raise ValueError("参数 query_list 必须是数组或对象")
+            raise ValueError(oa_message("messages.query_list_type", "参数 query_list 必须是数组或对象"))
         runtime_params["query_list"] = query_list
 
     if "organization_param" in request_data:
         organization_param = request_data["organization_param"]
         if organization_param not in (None, ""):
             if not isinstance(organization_param, str):
-                raise ValueError("参数 organization_param 必须是字符串")
+                raise ValueError(oa_message("messages.organization_param_string", "参数 organization_param 必须是字符串"))
             stripped = organization_param.strip()
             if stripped:
                 runtime_params["organization_param"] = stripped
@@ -404,7 +453,7 @@ def _resolve_request_params(instance, request_data):
     allowed_request_keys = set(allowed_specs.keys()) | RUNTIME_ALLOWED_KEYS
     unknown_keys = sorted(str(key) for key in sanitized_request.keys() if key not in allowed_request_keys)
     if unknown_keys:
-        raise ValueError(f"存在未声明参数: {', '.join(unknown_keys)}")
+        raise ValueError(oa_message("messages.undeclared_params", "存在未声明参数: {names}", names=", ".join(unknown_keys)))
 
     resolved = {}
     for param_name, spec in allowed_specs.items():
@@ -554,12 +603,15 @@ class DataSourceAPIModelViewSet(AuthViewSet):
             instance = self.get_object()
         except Http404:
             return _build_error_response(
-                "数据源不存在或已删除",
+                oa_message("messages.datasource_missing_or_deleted", "数据源不存在或已删除"),
                 status.HTTP_404_NOT_FOUND,
             )
 
         if is_legacy_raw_monitor_query(source_type=instance.source_type, rest_api=instance.rest_api):
-            return _build_error_response(LEGACY_RAW_MONITOR_QUERY_ERROR, status.HTTP_410_GONE)
+            return _build_error_response(
+                oa_message("messages.import_legacy_raw_monitor", LEGACY_RAW_MONITOR_QUERY_ERROR),
+                status.HTTP_410_GONE,
+            )
 
         raw_request = getattr(request, "_request", request)
         render_scoped = getattr(raw_request, "dashboard_report_render_scope", None) is not None
@@ -570,17 +622,17 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 current_team = self._validate_current_team_permission(request)
             except PermissionDenied:
                 return _build_error_response(
-                    "无权访问当前数据源",
+                    oa_message("messages.datasource_access_denied", "无权访问当前数据源"),
                     status.HTTP_403_FORBIDDEN,
                 )
         else:
             current_team = self._parse_current_team_cookie(request)
 
         if not can_access_datasource_in_org(instance, current_team):
-            return _build_error_response("无权访问当前数据源", status.HTTP_403_FORBIDDEN)
+            return _build_error_response(oa_message("messages.datasource_access_denied", "无权访问当前数据源"), status.HTTP_403_FORBIDDEN)
         if render_scoped and not is_builtin_globally_visible(instance):
             if not self.get_has_permission(request.user, instance, current_team, is_check=True):
-                return _build_error_response("无权访问当前数据源", status.HTTP_403_FORBIDDEN)
+                return _build_error_response(oa_message("messages.datasource_access_denied", "无权访问当前数据源"), status.HTTP_403_FORBIDDEN)
 
         try:
             params = _resolve_request_params(instance, dict(request.data))
@@ -635,13 +687,13 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                     exc,
                     exc_info=True,
                 )
-                return _build_error_response("数据查询失败", status.HTTP_502_BAD_GATEWAY)
+                return _build_error_response(oa_message("messages.datasource_query_failed", "数据查询失败"), status.HTTP_502_BAD_GATEWAY)
 
             # Runtime must not fall back to untransformed wide rows.
             transform_error = payload.get("transform_error") if isinstance(payload, dict) else None
             if isinstance(transform_error, dict) and transform_error.get("message"):
                 return _build_error_response(
-                    transform_error.get("message") or "转换失败",
+                    transform_error.get("message") or oa_message("messages.datasource_transform_failed", "转换失败"),
                     status.HTTP_400_BAD_REQUEST,
                     {"code": transform_error.get("code") or "transform_failed"},
                 )
@@ -682,14 +734,12 @@ class DataSourceAPIModelViewSet(AuthViewSet):
         try:
             result = _normalize_downstream_result(client.get_data())
         except Exception as e:
-            logger.error(
-                "[DataSourceQuery] 取数失败 datasource_id=%s name=%s namespace=%s path=%s：%s",
-                instance.id,
-                instance.name,
-                namespace,
-                path,
-                e,
-                exc_info=True,
+            _log_source_query_failure(
+                datasource_id=instance.id,
+                name=instance.name,
+                namespace=namespace,
+                path=path,
+                error=e,
             )
             error_status, error_message = _classify_runtime_exception(e)
             return _build_error_response(error_message, error_status)
@@ -697,7 +747,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
         if not result.get("result", True):
             error_status = _get_downstream_failure_status(result)
             return _build_error_response(
-                result.get("message") or "数据查询失败",
+                result.get("message") or oa_message("messages.datasource_query_failed", "数据查询失败"),
                 error_status,
                 result.get("data"),
             )
@@ -744,7 +794,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
             return _build_error_response(exc.message, exc.status_code, {"code": exc.code})
         except Exception as exc:
             logger.error("[DataSourcePreview] 未保存配置预览失败 source_type=%s：%s", source_type, exc, exc_info=True)
-            return _build_error_response("数据源预览失败", status.HTTP_502_BAD_GATEWAY)
+            return _build_error_response(oa_message("messages.datasource_preview_failed", "数据源预览失败"), status.HTTP_502_BAD_GATEWAY)
 
         return Response(payload)
 
@@ -754,11 +804,14 @@ class DataSourceAPIModelViewSet(AuthViewSet):
         try:
             instance = self.get_object()
         except Http404:
-            return _build_error_response("数据源不存在或已删除", status.HTTP_404_NOT_FOUND)
+            return _build_error_response(
+                oa_message("messages.datasource_missing_or_deleted", "数据源不存在或已删除"),
+                status.HTTP_404_NOT_FOUND,
+            )
 
         current_team = self._validate_current_team_permission(request)
         if not can_access_datasource_in_org(instance, current_team):
-            return _build_error_response("无权访问当前数据源", status.HTTP_403_FORBIDDEN)
+            return _build_error_response(oa_message("messages.datasource_access_denied", "无权访问当前数据源"), status.HTTP_403_FORBIDDEN)
 
         try:
             limit = _normalize_preview_limit(request.data.get("limit"))
@@ -822,7 +875,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 exc,
                 exc_info=True,
             )
-            return _build_error_response("数据源预览失败", status.HTTP_502_BAD_GATEWAY)
+            return _build_error_response(oa_message("messages.datasource_preview_failed", "数据源预览失败"), status.HTTP_502_BAD_GATEWAY)
 
         return Response(payload)
 
@@ -843,8 +896,11 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 exc,
                 exc_info=True,
             )
-            return _build_error_response("连接测试失败", status.HTTP_502_BAD_GATEWAY)
-        return Response({"result": True, "message": "连接成功"})
+            return _build_error_response(
+                oa_message("messages.datasource_connection_test_failed", "连接测试失败"),
+                status.HTTP_502_BAD_GATEWAY,
+            )
+        return Response({"result": True, "message": oa_message("messages.connection_ok", "连接成功")})
 
     @HasPermission("data_source-Edit")
     @action(detail=True, methods=["post"], url_path="test_connection")
@@ -852,11 +908,14 @@ class DataSourceAPIModelViewSet(AuthViewSet):
         try:
             instance = self.get_object()
         except Http404:
-            return _build_error_response("数据源不存在或已删除", status.HTTP_404_NOT_FOUND)
+            return _build_error_response(
+                oa_message("messages.datasource_missing_or_deleted", "数据源不存在或已删除"),
+                status.HTTP_404_NOT_FOUND,
+            )
 
         current_team = self._validate_current_team_permission(request)
         if not can_access_datasource_in_org(instance, current_team):
-            return _build_error_response("无权访问当前数据源", status.HTTP_403_FORBIDDEN)
+            return _build_error_response(oa_message("messages.datasource_access_denied", "无权访问当前数据源"), status.HTTP_403_FORBIDDEN)
 
         source_type = request.data.get("source_type") or instance.source_type
         try:
@@ -879,8 +938,11 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 exc,
                 exc_info=True,
             )
-            return _build_error_response("连接测试失败", status.HTTP_502_BAD_GATEWAY)
-        return Response({"result": True, "message": "连接成功"})
+            return _build_error_response(
+                oa_message("messages.datasource_connection_test_failed", "连接测试失败"),
+                status.HTTP_502_BAD_GATEWAY,
+            )
+        return Response({"result": True, "message": oa_message("messages.connection_ok", "连接成功")})
 
     @HasPermission("data_source-Edit")
     @action(detail=True, methods=["post"], url_path="extract_connection")
@@ -888,11 +950,14 @@ class DataSourceAPIModelViewSet(AuthViewSet):
         try:
             instance = self.get_object()
         except Http404:
-            return _build_error_response("数据源不存在或已删除", status.HTTP_404_NOT_FOUND)
+            return _build_error_response(
+                oa_message("messages.datasource_missing_or_deleted", "数据源不存在或已删除"),
+                status.HTTP_404_NOT_FOUND,
+            )
 
         current_team = self._validate_current_team_permission(request)
         if not can_access_datasource_in_org(instance, current_team):
-            return _build_error_response("无权访问当前数据源", status.HTTP_403_FORBIDDEN)
+            return _build_error_response(oa_message("messages.datasource_access_denied", "无权访问当前数据源"), status.HTTP_403_FORBIDDEN)
 
         body = request.data if isinstance(request.data, dict) else {}
         incoming_config = body.get("connection_config")
@@ -917,7 +982,10 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 exc,
                 exc_info=True,
             )
-            return _build_error_response("提取数据连接失败", status.HTTP_502_BAD_GATEWAY)
+            return _build_error_response(
+                oa_message("messages.datasource_extract_connection_failed", "提取数据连接失败"),
+                status.HTTP_502_BAD_GATEWAY,
+            )
 
         from apps.operation_analysis.serializers.data_connection_serializers import DataConnectionSerializer
 
@@ -936,17 +1004,20 @@ class DataSourceAPIModelViewSet(AuthViewSet):
         try:
             instance = self.get_object()
         except Http404:
-            return _build_error_response("数据源不存在或已删除", status.HTTP_404_NOT_FOUND)
+            return _build_error_response(
+                oa_message("messages.datasource_missing_or_deleted", "数据源不存在或已删除"),
+                status.HTTP_404_NOT_FOUND,
+            )
 
         current_team = self._validate_current_team_permission(request)
         if not can_access_datasource_in_org(instance, current_team):
-            return _build_error_response("无权访问当前数据源", status.HTTP_403_FORBIDDEN)
+            return _build_error_response(oa_message("messages.datasource_access_denied", "无权访问当前数据源"), status.HTTP_403_FORBIDDEN)
         if instance.source_type != DataSourceAPIModel.SOURCE_TYPE_EXCEL:
-            return _build_error_response("仅 Excel 数据源支持提交文件处理", status.HTTP_400_BAD_REQUEST)
+            return _build_error_response(oa_message("messages.excel_submit_only", "仅 Excel 数据源支持提交文件处理"), status.HTTP_400_BAD_REQUEST)
 
         uploaded = request.FILES.get("file")
         if not uploaded:
-            return _build_error_response("请上传 Excel 文件", status.HTTP_400_BAD_REQUEST)
+            return _build_error_response(oa_message("messages.excel_file_required", "请上传 Excel 文件"), status.HTTP_400_BAD_REQUEST)
 
         transform_config = _normalize_transform_config_payload(request.data.get("transform_config"))
         if not transform_config:
@@ -981,7 +1052,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                     instance.refresh_from_db()
                     if discard_on_fail and discard_unready_excel_datasource(instance):
                         return _build_error_response(
-                            materialize_result.get("message") or "Excel 处理失败，已取消本次创建",
+                            materialize_result.get("message") or oa_message("messages.excel_create_discarded", "Excel 处理失败，已取消本次创建"),
                             status.HTTP_400_BAD_REQUEST,
                             data={
                                 "code": materialize_result.get("code"),
@@ -990,7 +1061,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                         )
                     instance.refresh_from_db()
                     return _build_error_response(
-                        materialize_result.get("message") or "Excel 处理失败",
+                        materialize_result.get("message") or oa_message("messages.excel_process_failed", "Excel 处理失败"),
                         status.HTTP_400_BAD_REQUEST,
                         data={
                             "code": materialize_result.get("code"),
@@ -1018,7 +1089,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                         "[DataSourceSubmitExcel] discard after error failed datasource_id=%s",
                         getattr(instance, "id", None),
                     )
-            return _build_error_response("提交 Excel 文件失败", status.HTTP_502_BAD_GATEWAY)
+            return _build_error_response(oa_message("messages.excel_submit_failed", "提交 Excel 文件失败"), status.HTTP_502_BAD_GATEWAY)
 
         instance.refresh_from_db()
         slot.refresh_from_db()
@@ -1040,19 +1111,22 @@ class DataSourceAPIModelViewSet(AuthViewSet):
         try:
             instance = self.get_object()
         except Http404:
-            return _build_error_response("数据源不存在或已删除", status.HTTP_404_NOT_FOUND)
+            return _build_error_response(
+                oa_message("messages.datasource_missing_or_deleted", "数据源不存在或已删除"),
+                status.HTTP_404_NOT_FOUND,
+            )
 
         current_team = self._validate_current_team_permission(request)
         if not can_access_datasource_in_org(instance, current_team):
-            return _build_error_response("无权访问当前数据源", status.HTTP_403_FORBIDDEN)
+            return _build_error_response(oa_message("messages.datasource_access_denied", "无权访问当前数据源"), status.HTTP_403_FORBIDDEN)
         if instance.source_type != DataSourceAPIModel.SOURCE_TYPE_EXCEL:
-            return _build_error_response("仅 Excel 数据源支持重试处理", status.HTTP_400_BAD_REQUEST)
+            return _build_error_response(oa_message("messages.excel_retry_only", "仅 Excel 数据源支持重试处理"), status.HTTP_400_BAD_REQUEST)
 
         from apps.operation_analysis.services.excel_materialize import excel_can_retry
 
         if not excel_can_retry(instance):
             return _build_error_response(
-                "当前没有可重试的已保存 Excel 原文件，请重新上传",
+                oa_message("messages.excel_retry_file_missing", "当前没有可重试的已保存 Excel 原文件，请重新上传"),
                 status.HTTP_400_BAD_REQUEST,
             )
 
@@ -1075,7 +1149,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 if not materialize_result.get("ok"):
                     instance.refresh_from_db()
                     return _build_error_response(
-                        materialize_result.get("message") or "Excel 处理失败",
+                        materialize_result.get("message") or oa_message("messages.excel_process_failed", "Excel 处理失败"),
                         status.HTTP_400_BAD_REQUEST,
                         data={
                             "code": materialize_result.get("code"),
@@ -1091,7 +1165,7 @@ class DataSourceAPIModelViewSet(AuthViewSet):
                 exc,
                 exc_info=True,
             )
-            return _build_error_response("重试 Excel 处理失败", status.HTTP_502_BAD_GATEWAY)
+            return _build_error_response(oa_message("messages.excel_retry_failed", "重试 Excel 处理失败"), status.HTTP_502_BAD_GATEWAY)
 
         instance.refresh_from_db()
         slot.refresh_from_db()
@@ -1136,10 +1210,16 @@ class DataSourceAPIModelViewSet(AuthViewSet):
         instance = self.get_object()
         visibility_only = kwargs.get("partial", False) and set(request.data.keys()) == {"groups"}
         if instance.is_build_in and not visibility_only:
-            return Response({"detail": "内置数据源不允许通过普通接口修改"}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {"detail": oa_message("messages.builtin_datasource_update_denied", "内置数据源不允许通过普通接口修改")},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         if instance.is_build_in and visibility_only:
             if not getattr(request.user, "is_superuser", False):
-                return Response({"detail": "只有超级管理员可以修改内置数据源的组织可见性"}, status=status.HTTP_403_FORBIDDEN)
+                return Response(
+                    {"detail": oa_message("messages.builtin_datasource_visibility_denied", "只有超级管理员可以修改内置数据源的组织可见性")},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
             response = partial_update_groups_with_auth(self, request, instance)
         else:
             response = super(DataSourceAPIModelViewSet, self).update(request, *args, **kwargs)
@@ -1151,12 +1231,15 @@ class DataSourceAPIModelViewSet(AuthViewSet):
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         if instance.is_build_in:
-            return Response({"detail": "内置数据源不允许通过普通接口删除"}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {"detail": oa_message("messages.builtin_datasource_delete_denied", "内置数据源不允许通过普通接口删除")},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         name = instance.name
         current_team = self._parse_current_team_cookie(request)
 
         if not can_access_datasource_in_org(instance, current_team):
-            return Response({"detail": "无权删除该数据源"}, status=403)
+            return Response({"detail": oa_message("messages.datasource_delete_denied", "无权删除该数据源")}, status=403)
 
         instance.delete()
         response = Response(status=204)

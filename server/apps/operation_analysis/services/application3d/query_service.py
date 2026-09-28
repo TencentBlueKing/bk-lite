@@ -61,6 +61,7 @@ from apps.operation_analysis.services.application3d.presenters import (
 from apps.operation_analysis.services.application3d.relations import project_application_hosts
 from apps.operation_analysis.services.application3d.severity import empty_severity_counts, severity_from_monitor_level
 from apps.operation_analysis.services.application3d.structure import compose_architecture_tree
+from apps.operation_analysis.services.user_messages import oa_message
 
 
 class _AlertPolicyScope(AlertPermissionMixin):
@@ -208,7 +209,7 @@ class Application3DQueryService:
             raise
         except Exception as exc:
             logger.exception("application3D architecture query failed")
-            raise Application3DSourceFailure("应用系统部署架构查询失败") from exc
+            raise Application3DSourceFailure(oa_message("messages.app3d_architecture_failed", "应用系统部署架构查询失败")) from exc
 
         tree = compose_architecture_tree(
             system_id=system_id,
@@ -283,7 +284,7 @@ class Application3DQueryService:
         scope = cls._build_scope(request, [application])
         app_id = cls._instance_uuid(application)
         if app_id not in scope.complete_apps:
-            raise Application3DNotFound("告警不存在")
+            raise Application3DNotFound(oa_message("messages.app3d_alarm_missing", "告警不存在"))
 
         alert = cls._scoped_alert_or_404(scope, app_id, alarm_id)
         previous_id, next_id = cls._adjacent_scoped_alert_ids(scope, app_id, alert)
@@ -404,7 +405,7 @@ class Application3DQueryService:
     @classmethod
     def _visible_application(cls, request, application_id: str) -> dict[str, Any]:
         if not application_id:
-            raise Application3DInvalidRequest("application_id 不能为空")
+            raise Application3DInvalidRequest(oa_message("messages.app3d_application_id_required", "application_id 不能为空"))
         permission_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id="system")
         applications, _ = InstanceManage.instance_list(
             model_id="system",
@@ -417,7 +418,7 @@ class Application3DQueryService:
         )
         application = next((item for item in applications or [] if cls._instance_uuid(item) == str(application_id)), None)
         if application is None:
-            raise Application3DNotFound("应用系统不存在")
+            raise Application3DNotFound(oa_message("messages.app3d_application_missing", "应用系统不存在"))
         return application
 
     @classmethod
@@ -427,7 +428,7 @@ class Application3DQueryService:
         options = cls._enum_options(status_attr.get("option"))
         definition = {
             "id": FILTER_SYSTEM_STATUS,
-            "label": str(status_attr.get("attr_name") or "应用系统运行状态"),
+            "label": str(status_attr.get("attr_name") or oa_message("messages.app3d_status_label", "应用系统运行状态")),
             "type": "multiple",
             "options": options,
         }
@@ -454,13 +455,13 @@ class Application3DQueryService:
         if applied_filters is None:
             return {FILTER_SYSTEM_STATUS: []}
         if not isinstance(applied_filters, dict) or set(applied_filters) - {FILTER_SYSTEM_STATUS}:
-            raise Application3DInvalidRequest("存在不支持的筛选条件")
+            raise Application3DInvalidRequest(oa_message("messages.app3d_filter_unsupported", "存在不支持的筛选条件"))
         values = applied_filters.get(FILTER_SYSTEM_STATUS, [])
         if not isinstance(values, list) or any(not isinstance(value, str) for value in values):
-            raise Application3DInvalidRequest("system_status 必须为字符串数组")
+            raise Application3DInvalidRequest(oa_message("messages.app3d_status_must_be_array", "system_status 必须为字符串数组"))
         normalized = list(dict.fromkeys(values))
         if set(normalized) - allowed_values:
-            raise Application3DInvalidRequest("system_status 包含非法值")
+            raise Application3DInvalidRequest(oa_message("messages.app3d_status_illegal", "system_status 包含非法值"))
         return {FILTER_SYSTEM_STATUS: normalized}
 
     @classmethod
@@ -595,7 +596,7 @@ class Application3DQueryService:
             )
         except Exception as exc:
             logger.exception("application3D scope query failed")
-            raise Application3DSourceFailure("应用系统监控数据查询失败") from exc
+            raise Application3DSourceFailure(oa_message("messages.app3d_monitor_query_failed", "应用系统监控数据查询失败")) from exc
 
     @classmethod
     def _visible_model_instances(cls, request, model_id: str, inst_uuids: list[str]) -> list[dict[str, Any]]:
@@ -850,7 +851,7 @@ class Application3DQueryService:
     def _scoped_alert_or_404(cls, scope: _ApplicationScope, app_id: str, alarm_id: str) -> MonitorAlert:
         alert = cls._ordered_scoped_alerts_qs(scope, app_id).filter(id=alarm_id).first()
         if alert is None:
-            raise Application3DNotFound("告警不存在")
+            raise Application3DNotFound(oa_message("messages.app3d_alarm_missing", "告警不存在"))
         return alert
 
     @classmethod
@@ -895,10 +896,10 @@ class Application3DQueryService:
                 raise ValueError
             cursor_time_raw, cursor_id = payload[0], str(payload[1])
         except (ValueError, TypeError, binascii.Error, json.JSONDecodeError, UnicodeDecodeError) as exc:
-            raise Application3DInvalidRequest("cursor 无效") from exc
+            raise Application3DInvalidRequest(oa_message("messages.app3d_cursor_invalid", "cursor 无效")) from exc
 
         if not queryset.filter(id=cursor_id).exists():
-            raise Application3DInvalidRequest("cursor 已失效")
+            raise Application3DInvalidRequest(oa_message("messages.app3d_cursor_expired", "cursor 已失效"))
 
         if cursor_time_raw in (None, ""):
             return queryset.filter(start_event_time__isnull=True, id__lt=cursor_id)
@@ -906,7 +907,7 @@ class Application3DQueryService:
         try:
             cursor_time = datetime.fromisoformat(str(cursor_time_raw))
         except ValueError as exc:
-            raise Application3DInvalidRequest("cursor 无效") from exc
+            raise Application3DInvalidRequest(oa_message("messages.app3d_cursor_invalid", "cursor 无效")) from exc
 
         return queryset.filter(
             Q(start_event_time__lt=cursor_time) | Q(start_event_time=cursor_time, id__lt=cursor_id) | Q(start_event_time__isnull=True)
@@ -925,7 +926,7 @@ class Application3DQueryService:
         scope = cls._build_scope(request, [application])
         app_id = cls._instance_uuid(application)
         if app_id not in scope.complete_apps:
-            raise Application3DNotFound("告警不存在")
+            raise Application3DNotFound(oa_message("messages.app3d_alarm_missing", "告警不存在"))
         alert = cls._scoped_alert_or_404(scope, app_id, alarm_id)
         return alert, scope.policies.get(alert.policy_id)
 

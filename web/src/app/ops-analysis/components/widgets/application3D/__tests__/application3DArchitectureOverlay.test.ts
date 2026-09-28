@@ -203,4 +203,17 @@ describe('architecture host overlay copy', () => {
     expect(formatArchitectureHostSeverity(null)).toBe(UNKNOWN_STATUS_BADGE);
     expect(formatArchitectureHostSeverity('严重')).toBe('严重');
   });
+
+  it('translates severity by id and keeps a raw label when id is missing', () => {
+    const translate = (id: string, fallback = '') => {
+      if (id === 'dashboard.application3DSeverity_critical') return 'Critical';
+      if (id === 'dashboard.application3DSeverity_normal') return 'Normal';
+      return fallback;
+    };
+    expect(formatArchitectureHostSeverity('严重', 'critical', translate)).toBe('Critical');
+    expect(formatArchitectureHostSeverity('正常', 'normal', translate)).toBe('Normal');
+    expect(formatArchitectureHostSeverity('严重')).toBe('严重');
+    expect(formatArchitectureHostSeverity('严重', undefined, translate)).toBe('严重');
+    expect(formatArchitectureHostSeverity(null, 'critical', translate)).toBe('Critical');
+  });
 });
