@@ -201,15 +201,14 @@ class NodeService:
                     configuration_dict,
                 )
 
-                if collector_obj:
-                    previous_status = collector.get("status")
+                if collector["status"] == 2 and collector_obj:
                     verbose_msg = collector.get("verbose_message", "")
                     collector["status"] = apply_display_collector_status(
-                        previous_status,
+                        collector["status"],
                         collector_obj.name,
                         verbose_msg or "",
                     )
-                    if previous_status == 2 and collector["status"] == 0:
+                    if collector["status"] == 0:
                         collector["message"] = "Running"
                         logger.debug(
                             f"Changed status to Running for collector {collector_obj.name} "
