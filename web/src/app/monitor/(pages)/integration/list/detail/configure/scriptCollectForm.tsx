@@ -45,16 +45,47 @@ export const inferScriptOs = (interpreter: unknown) => {
   return WINDOWS_INTERPRETERS.some((item) => item.value === value) ? 'windows' : 'linux';
 };
 
-/** Windows 不下发 run_as，由服务账号执行。 */
+const isScriptCollectPayload = (
+  values: Record<string, any> | null | undefined,
+  collectType?: unknown
+) => String(collectType || '') === 'script' || values?.script_os != null;
+
+/**
+ * Windows 提交/调试载荷完全省略 run_as（不写空串），由服务账号执行。
+ * 解释器不在当前 OS 白名单内时，重置为该 OS 的默认项。
+ */
 export const applyScriptCollectSubmit = <T extends Record<string, any>>(
   values: T,
   collectType?: unknown
 ): T => {
-  if (String(collectType || '') !== 'script' && values?.script_os == null) {
+  if (!values || !isScriptCollectPayload(values, collectType)) {
     return values;
   }
-  if (values?.script_os !== 'windows') return values;
-  return { ...values, run_as: '' };
+  const next: Record<string, any> = { ...values };
+  const os = next.script_os;
+  if (os === 'linux' || os === 'windows') {
+    const allowed = interpretersForOs(os);
+    const current = String(next.interpreter ?? '');
+    if (!allowed.some((item) => item.value === current)) {
+      next.interpreter = allowed[0].value;
+    }
+  }
+  if (os === 'windows') {
+    delete next.run_as;
+  }
+  return next as T;
+};
+
+/** 编辑保存沿用已落库配置时，Windows 必须删掉历史 run_as，避免空串再次下发。 */
+export const omitPersistedWindowsRunAs = (
+  result: { child?: { content?: { config?: Record<string, any> } } } | null | undefined,
+  values: Record<string, any> | null | undefined
+) => {
+  if (values?.script_os !== 'windows') return;
+  const config = result?.child?.content?.config;
+  if (config && Object.prototype.hasOwnProperty.call(config, 'run_as')) {
+    delete config.run_as;
+  }
 };
 
 export const normalizeScriptCollectFormFields = (fields: any[] = []) => {
@@ -168,20 +199,28 @@ export const ScriptInterpreterSelect: React.FC<{
   style?: React.CSSProperties;
   placeholder?: string;
 }> = ({ value, onChange, disabled, style, placeholder }) => {
+  const form = Form.useFormInstance();
   const os = Form.useWatch('script_os');
   const list = interpretersForOs(os);
-  const options =
-    value && !list.some((item) => item.value === value)
-      ? [{ label: value, value }, ...list]
-      : list;
+  const allowed = !value || list.some((item) => item.value === value);
+  const fallback = list[0]?.value;
+  const osReady = os === 'linux' || os === 'windows';
+  let displayValue = value;
+  if (!allowed) {
+    displayValue = osReady ? fallback : undefined;
+  }
+  React.useEffect(() => {
+    if (!osReady || !value || allowed || !fallback) return;
+    form.setFieldValue('interpreter', fallback);
+  }, [allowed, fallback, form, osReady, value]);
   return (
     <Select
       showSearch
       optionFilterProp="label"
       disabled={disabled}
       style={style}
-      value={value}
-      options={options}
+      value={displayValue}
+      options={list}
       placeholder={placeholder || '选择解释器'}
       onChange={onChange}
     />

@@ -5,7 +5,8 @@ import {
   applyScriptCollectSubmit,
   inferScriptOs,
   isScriptCollectConfig,
-  normalizeScriptCollectFormFields
+  normalizeScriptCollectFormFields,
+  omitPersistedWindowsRunAs
 } from '@/app/monitor/(pages)/integration/list/detail/configure/scriptCollectForm';
 import { DataMapper } from './useDataMapper';
 import {
@@ -839,6 +840,7 @@ export const usePluginFromJson = () => {
                 }
               );
             }
+            omitPersistedWindowsRunAs(result, filledFormData);
             return result;
           }
         };

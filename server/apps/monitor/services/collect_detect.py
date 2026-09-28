@@ -1,11 +1,13 @@
 import hashlib
 import json
+import re
 import uuid
 from datetime import timedelta
 
 from django.conf import settings
 from django.utils import timezone
 
+from apps.core.exceptions.base_app_exception import ValidationAppException
 from apps.monitor.models import CollectDetectTask, MonitorPlugin, MonitorPluginConfigTemplate
 from apps.monitor.services.collect_detect_runtime import (
     build_telegraf_detect_execution,
@@ -38,6 +40,8 @@ DEFAULT_CLEANUP_BATCH_SIZE = 500
 TERMINAL_STATUSES = ("success", "failed")
 # 与正式下发 Controller.render_context 对齐；脚本 child 模板无 default 的变量缺了会渲出空 TOML。
 SCRIPT_REQUIRED_RENDER_VARS = ("plugin_id", "instance_id", "instance_type", "config_id", "script", "interval")
+# 与前端 run_as 校验一致：root、纯 0、uid=0 / uid:0。
+_LINUX_ROOT_RUN_AS_UID = re.compile(r"^(?:0+|uid\s*[:=]\s*0+)$")
 
 
 class CollectDetectService:
@@ -48,6 +52,10 @@ class CollectDetectService:
         if plugin.collect_type == "web":
             instance = normalize_website_request_config(instance)
         instance = cls._inject_formal_config_vars(plugin, instance)
+        try:
+            cls._ensure_script_run_as(plugin, instance)
+        except ValueError as exc:
+            raise ValidationAppException(str(exc)) from exc
         env = payload.get("env") or {}
         runtime_payload = {
             "instance": instance,
@@ -278,6 +286,44 @@ class CollectDetectService:
                     missing.append(key)
         if missing:
             raise ValueError(f"采集探测缺少必要配置: {', '.join(missing)}")
+        cls._ensure_script_run_as(plugin, context)
+
+    @staticmethod
+    def _is_script_plugin(plugin) -> bool:
+        return plugin.template_type == "script" or plugin.collect_type == "script"
+
+    @classmethod
+    def _script_run_as_targets_windows(cls, context) -> bool:
+        """与表单一致：显式 script_os 优先；缺省时才看节点操作系统。未知目标按 Linux。"""
+        script_os = str((context or {}).get("script_os") or "").strip().lower()
+        if script_os == "windows":
+            return True
+        if script_os == "linux":
+            return False
+        operating_system = str((context or {}).get("operating_system") or "").strip().lower()
+        return operating_system == NodeConstants.WINDOWS_OS
+
+    @classmethod
+    def _linux_run_as_forbidden(cls, value: str) -> bool:
+        text = value.strip().lower()
+        if text == "root":
+            return True
+        return _LINUX_ROOT_RUN_AS_UID.fullmatch(text) is not None
+
+    @classmethod
+    def _ensure_script_run_as(cls, plugin, context):
+        """Linux 脚本探测失败关闭：缺 run_as 或 root/UID 0 直接拒绝。Windows 省略该字段。"""
+        if not isinstance(context, dict) or not cls._is_script_plugin(plugin):
+            return
+        if cls._script_run_as_targets_windows(context):
+            context.pop("run_as", None)
+            return
+        raw = context.get("run_as")
+        text = "" if raw is None else str(raw).strip()
+        if not text:
+            raise ValueError("采集探测缺少必要配置: run_as")
+        if cls._linux_run_as_forbidden(text):
+            raise ValueError("Linux 脚本探测不允许以 root 或 UID 0 运行")
 
     @classmethod
     def _sanitize_mapping(cls, value):
@@ -338,7 +384,9 @@ class CollectDetectService:
             CollectDetectTask.objects.filter(
                 status__in=TERMINAL_STATUSES,
                 finished_at__lt=cutoff,
-            ).values_list("id", flat=True)[:batch_size]
+            ).values_list(
+                "id", flat=True
+            )[:batch_size]
         )
         if not stale_ids:
             return 0

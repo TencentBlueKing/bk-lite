@@ -87,6 +87,7 @@ import {
   mergeImportedAssetRows
 } from './automaticAssetCount';
 import ScriptTrialRunArea from './scriptTrialRunArea';
+import { applyScriptCollectSubmit } from './scriptCollectForm';
 import { BusinessMetricItem } from './scriptMetricsParser';
 const { confirm } = Modal;
 
@@ -666,7 +667,20 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (selectedNode?.operating_system && !instance.operating_system) {
       instance.operating_system = selectedNode.operating_system;
     }
-    return instance;
+    return applyScriptCollectSubmit(instance, instance.collect_type);
+  };
+
+  const ensureCollectFormValid = async () => {
+    try {
+      await form.validateFields();
+      return true;
+    } catch (error: any) {
+      const first = error?.errorFields?.[0]?.errors?.[0];
+      if (first) {
+        message.error(String(first));
+      }
+      return false;
+    }
   };
 
   const buildCollectDetectFingerprint = (record: IntegrationMonitoredObject) =>
@@ -847,6 +861,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       message.warning(t('monitor.integrations.collectDetectNodeRequired'));
       return;
     }
+    if (mode !== 'batch' && !(await ensureCollectFormValid())) {
+      return;
+    }
     const fingerprint = buildCollectDetectFingerprint(record);
     activeCollectDetectFingerprintRef.current[rowKey] = fingerprint;
     updateCollectDetectState(rowKey, { status: 'running', fingerprint });
@@ -900,6 +917,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     const runnableRows = selectedRows.filter((row) => getRowNodeId(row));
     if (!runnableRows.length) {
       message.warning(t('monitor.integrations.collectDetectNodeRequired'));
+      return;
+    }
+    if (!(await ensureCollectFormValid())) {
       return;
     }
     message.info(
