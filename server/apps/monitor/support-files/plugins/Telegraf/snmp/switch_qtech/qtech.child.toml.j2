@@ -53,37 +53,26 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
-    # ---- QTech CPU utilization (QTECH-MIB, scalar %) ----
-    # 待现网核验：1.3.6.1.4.1.27514.100.1.11.10.0（已是 0-100%）。用 table(measurement=device_cpu)+field usage → 指标 device_cpu_usage。
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.27514.100.1.11.10"
-        name = "usage"
-    # ---- QTech system memory (QTECH-MIB, used + total, bytes) ----
-    # 待现网核验：used 1.3.6.1.4.1.27514.100.1.11.7.0；total ...1.11.6.0 → device_memory_used/device_memory_total。
-    # 利用率在共享盘按 used/total 计算。
-    [[inputs.snmp.table]]
-        name = "device_memory"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.27514.100.1.11.7"
-        name = "used"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.27514.100.1.11.6"
-        name = "total"
-    # ---- QTech temperature (QTECH-MIB switchTemperature, scalar °C) ----
-    # 待现网核验：1.3.6.1.4.1.27514.100.1.11.9.0（整机 testpoint 单值，°C，无 per-sensor descr）。
-    [[inputs.snmp.table]]
-        name = "device_temperature"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.27514.100.1.11.9"
-        name = "celsius"
-    # ---- QTech fans (QTECH-MIB sysFanStatus) ----
-    # 待现网核验：风扇状态 1.3.6.1.4.1.27514.100.1.12.1.3（无独立 descr 名列，省略 descr）。
-    # 枚举 sysFanStatus：0 normal / 1 abnormal。**正常态=0 非 1 → 下方 processors.enum 归一(0→1，其余→2)**。
+    # ---- QTech CPU（QTECH-MIB switchCpuUsage，标量 Integer32 0-100）----
+    # 顶层 field GET 必须带实例 .0；禁止 table.field（标量 GET-NEXT 会走到空子树）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.27514.100.1.11.10.0"
+        name = "device_cpu_usage"
+    # ---- QTech 内存（QTECH-MIB switchMemoryBusy/Size，标量，bytes）----
+    # used …27514.100.1.11.7.0 / total …11.6.0。利用率按 used/total 计算。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.27514.100.1.11.7.0"
+        name = "device_memory_used"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.27514.100.1.11.6.0"
+        name = "device_memory_total"
+    # ---- QTech 机箱温度（QTECH-MIB switchTemperature，标量 °C）----
+    # 整机 testpoint 单值，无 per-sensor descr。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.27514.100.1.11.9.0"
+        name = "device_temperature_celsius"
+    # ---- QTech 风扇（QTECH-MIB sysFanStatus，表列，禁止 .0）----
+    # 无独立 descr 名列。枚举：0 normal / 1 abnormal。下方 processors.enum 归一 0→1，其余→2。
     [[inputs.snmp.table]]
         name = "device_fan"
         inherit_tags = ["source"]
@@ -91,9 +80,8 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.27514.100.1.12.1.3"
         name = "state"
-    # ---- QTech power supplies (QTECH-MIB sysPowerStatus) ----
-    # 待现网核验：电源状态 1.3.6.1.4.1.27514.100.1.7.1.5（无独立 descr 名列，省略 descr）。
-    # 枚举 sysPowerStatus：0 normal / 1 abnormal / 2 not available。**正常态=0 非 1 → 下方 processors.enum 归一(0→1，其余→2)**。
+    # ---- QTech 电源（QTECH-MIB sysPowerStatus，表列，禁止 .0）----
+    # 无独立 descr 名列。枚举：0 normal / 1 abnormal / 2 not available。下方 processors.enum 归一 0→1，其余→2。
     [[inputs.snmp.table]]
         name = "device_psu"
         inherit_tags = ["source"]
@@ -102,20 +90,19 @@
         oid = "1.3.6.1.4.1.27514.100.1.7.1.5"
         name = "state"
 
-# ---- 枚举归一：QTech sysFanStatus/sysPowerStatus 原生 0=normal → 统一 1=normal/2=abnormal（偏离1即异常）----
-# 待现网核验：仅作用于本品牌(tagpass brand=qtech)。normal(0)→1；其余(1 abnormal / 2 not available)→2。
+# ---- 风扇状态归一：0=normal→1(正常)，其余→2(异常)。共享盘 device_fan_state 约定 1=正常,>1=异常。----
 [[processors.enum]]
-    [processors.enum.tagpass]
-        brand = ["qtech"]
+    namepass = ["device_fan"]
     [[processors.enum.mapping]]
-        field = "device_fan_state"
-        dest = "device_fan_state"
+        field = "state"
         default = 2
         [processors.enum.mapping.value_mappings]
             "0" = 1
+# ---- 电源状态归一：0=normal→1(正常)，其余(1 abnormal / 2 not available)→2(异常)。----
+[[processors.enum]]
+    namepass = ["device_psu"]
     [[processors.enum.mapping]]
-        field = "device_psu_state"
-        dest = "device_psu_state"
+        field = "state"
         default = 2
         [processors.enum.mapping.value_mappings]
             "0" = 1
