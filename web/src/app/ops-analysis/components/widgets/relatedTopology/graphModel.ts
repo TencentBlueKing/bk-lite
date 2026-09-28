@@ -24,12 +24,12 @@ const ASSOCIATION_TYPE_KEY: Record<string, string> = {
 };
 
 const ASSOCIATION_TYPE_FALLBACK: Record<string, string> = {
-  belong: '属于',
-  group: '组成',
-  run: '运行于',
-  install_on: '安装于',
-  contains: '包含',
-  connect: '关联',
+  belong: 'Belongs to',
+  group: 'Composed of',
+  run: 'Runs on',
+  install_on: 'Installed on',
+  contains: 'Contains',
+  connect: 'Related',
 };
 
 type AssociationLabelTranslate = (id: string, defaultMessage?: string) => string;

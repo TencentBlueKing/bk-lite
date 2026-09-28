@@ -240,3 +240,9 @@ tag:
   patch_scan: 补丁扫描
   patch_install: 补丁安装
   patch_library: 补丁库
+# 运营分析数据权限页签。GroupDataRuleViewSet 用 display_name 当根 key 查找。
+"目录": 目录
+"仪表盘": 仪表盘
+"拓扑图": 拓扑图
+"架构图": 架构图
+"数据源": 数据源

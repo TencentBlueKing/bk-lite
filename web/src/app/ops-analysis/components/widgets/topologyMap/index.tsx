@@ -80,7 +80,7 @@ const TopologyMap: React.FC<TopologyMapProps> = ({
   onReadyRef.current = onReady;
   onErrorRef.current = onError;
 
-  const parsed = useMemo(() => parseTopologyMapPayload(rawData), [rawData]);
+  const parsed = useMemo(() => parseTopologyMapPayload(rawData, t), [rawData, t]);
   const isEmpty = parsed.ok && isEmptyTopologyMapPayload(parsed.data);
   const payload = parsed.ok ? parsed.data : null;
   payloadRef.current = payload;

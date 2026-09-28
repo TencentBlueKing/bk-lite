@@ -62,7 +62,7 @@ def _validate_connection_config_shape(connection_type, config):
             raise serializers.ValidationError(oa_message("messages.rest_base_url_required", "REST 连接必须提供 base_url"))
         config["headers"] = validate_rest_headers(config.get("headers"))
     else:
-        raise serializers.ValidationError(oa_message("messages.connection_type_unsupported", "connection_type 不支持"))
+        raise serializers.ValidationError(oa_message("messages.connection_type_unsupported", "连接类型不支持"))
     return config
 
 
@@ -100,7 +100,7 @@ class DataConnectionSerializer(BaseFormatTimeSerializer, AuthSerializer):
     def validate_connection_type(self, value):
         allowed = {choice[0] for choice in DataConnection.TYPE_CHOICES}
         if value not in allowed:
-            raise serializers.ValidationError(oa_message("messages.connection_type_unsupported", "connection_type 不支持"))
+            raise serializers.ValidationError(oa_message("messages.connection_type_unsupported", "连接类型不支持"))
         if self.instance and self.instance.connection_type != value:
             raise serializers.ValidationError(oa_message("messages.connection_type_immutable", "连接类型创建后不可修改"))
         return value

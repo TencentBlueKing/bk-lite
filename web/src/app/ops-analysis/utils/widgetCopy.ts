@@ -43,14 +43,18 @@ export type CopyMessage = (
   values?: Record<string, string>,
 ) => string;
 
+const formatCopyFallback: CopyMessage = (id, defaultMessage, values) => {
+  const template = defaultMessage ?? id;
+  if (!values) return template;
+  return template.replace(/\{(\w+)\}/g, (match, key: string) => values[key] ?? match);
+};
+
 export const cloneCopiedWidgetTitle = (
   name?: string | null,
-  t?: CopyMessage,
+  translate?: CopyMessage,
 ): string => {
+  const t: CopyMessage = translate ?? formatCopyFallback;
   const trimmed = name?.trim() ?? '';
-  if (!t) {
-    return trimmed ? `${trimmed} 副本` : '副本';
-  }
   return trimmed
     ? t('dashboard.copySuffix', '{name} 副本', { name: trimmed })
     : t('dashboard.copyUntitled', '副本');

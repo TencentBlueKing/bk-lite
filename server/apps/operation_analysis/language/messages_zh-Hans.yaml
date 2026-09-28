@@ -92,7 +92,6 @@ messages:
   config_object: "config 必须为对象"
   missing_connection_fields: "缺少连接字段: {names}"
   rest_base_url_required: "REST 连接必须提供 base_url"
-  connection_type_unsupported: "connection_type 不支持"
   connection_type_immutable: "连接类型创建后不可修改"
   groups_empty: "groups 不能为空"
   shrink_groups_out_of_range: "缩小授权组织会导致引用数据源越界"

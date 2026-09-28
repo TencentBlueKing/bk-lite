@@ -342,19 +342,14 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
           }
           actions={
             <div className="flex gap-2">
-              <Tooltip
-                title={
-                  t('dashboard.reProbeColumnsTip') ||
-                  '将基于当前数据源和参数重新探测并恢复默认列，同时保留已有自定义列'
-                }
-              >
+              <Tooltip title={t('dashboard.reProbeColumnsTip')}>
                 <Button
                   size="small"
                   onClick={onReProbeColumns}
                   loading={isProbingColumns}
                   type={paramsChangedAfterProbe ? 'primary' : 'default'}
                 >
-                  {t('dashboard.reProbeColumns') || '重新探测列'}
+                  {t('dashboard.reProbeColumns')}
                 </Button>
               </Tooltip>
               <Dropdown

@@ -5,10 +5,14 @@ export interface SourceDataResult {
 
 export type SourceDataMessage = (id: string, defaultMessage?: string) => string;
 
+const formatSourceDataFallback: SourceDataMessage = (id, defaultMessage) =>
+  defaultMessage ?? id;
+
 export function parseSourceDataResponse(
   payload: unknown,
-  t?: SourceDataMessage,
+  translate?: SourceDataMessage,
 ): SourceDataResult {
+  const t: SourceDataMessage = translate ?? formatSourceDataFallback;
   if (
     payload &&
     typeof payload === "object" &&
@@ -25,8 +29,6 @@ export function parseSourceDataResponse(
     }
   }
   throw new Error(
-    t
-      ? t("dashboard.invalidSourceDataResponse", "统一取数响应格式无效")
-      : "统一取数响应格式无效",
+    t("dashboard.invalidSourceDataResponse", "统一取数响应格式无效"),
   );
 }

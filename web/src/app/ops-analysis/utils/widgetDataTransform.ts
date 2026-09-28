@@ -580,7 +580,7 @@ export const processDataSourceParams = ({
   filterDefinitions,
   resolutionContext = createDateRangeResolutionContext(),
   timeRangeFormatter = formatTimeRange,
-  t,
+  t: translate,
 }: {
   sourceParams: any;
   definitionParams?: ParamItem[];
@@ -592,6 +592,8 @@ export const processDataSourceParams = ({
   timeRangeFormatter?: (timeParams: any) => unknown;
   t?: WidgetMessage;
 }) => {
+  const t: WidgetMessage =
+    translate ?? ((id, defaultMessage) => defaultMessage ?? id);
 
   if (!sourceParams || !Array.isArray(sourceParams)) {
     return Object.fromEntries(
@@ -827,9 +829,7 @@ export const processDataSourceParams = ({
 
   if (organizationNames.length > 1) {
     throw new Error(
-      t
-        ? t('dashboard.multipleOrgParams', '同一请求不能声明多个组织控件参数')
-        : '同一请求不能声明多个组织控件参数',
+      t('dashboard.multipleOrgParams', '同一请求不能声明多个组织控件参数'),
     );
   }
   if (organizationNames.length === 1) {

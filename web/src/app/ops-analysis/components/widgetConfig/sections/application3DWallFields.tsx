@@ -15,11 +15,22 @@ import {
 import { ConfigSectionTitle } from '../configTitles';
 import { ChartRoleLabel } from './chartRoleLabel';
 
-const EFFECT_LABEL_KEYS: Record<Application3DPageEffect, [string, string]> = {
-  slide: ['dashboard.application3DEffectSlide', '横向滑入'],
-  fade: ['dashboard.application3DEffectFade', '淡入淡出'],
-  flip: ['dashboard.application3DEffectFlip', '卡片翻转'],
-  cut: ['dashboard.application3DEffectCut', '直接切换'],
+const effectLabel = (
+  effect: Application3DPageEffect,
+  t: (id: string) => string,
+) => {
+  switch (effect) {
+    case 'slide':
+      return t('dashboard.application3DEffectSlide');
+    case 'fade':
+      return t('dashboard.application3DEffectFade');
+    case 'flip':
+      return t('dashboard.application3DEffectFlip');
+    case 'cut':
+      return t('dashboard.application3DEffectCut');
+    default:
+      return effect;
+  }
 };
 
 interface PageSizeInputControlProps {
@@ -97,7 +108,7 @@ export const Application3DWallFields = () => {
 
   const effectOptions = APPLICATION3D_PAGE_EFFECTS.map((effect) => ({
     value: effect,
-    label: t(EFFECT_LABEL_KEYS[effect][0], EFFECT_LABEL_KEYS[effect][1]),
+    label: effectLabel(effect, t),
   }));
 
   return (

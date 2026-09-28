@@ -265,16 +265,48 @@ export const getColorByThreshold = (
   return sortedThresholds[sortedThresholds.length - 1]?.color || defaultColor;
 };
 
-export const validateThresholds = (thresholds: ThresholdColorConfig[]) => {
+type ThresholdMessage = (
+  id: string,
+  defaultMessage?: string,
+  values?: Record<string, string | number>,
+) => string;
+
+const formatThresholdFallback: ThresholdMessage = (id, defaultMessage, values) => {
+  const template = defaultMessage ?? id;
+  if (!values) return template;
+  return template.replace(/\{(\w+)\}/g, (match, key: string) => {
+    const value = values[key];
+    return value == null ? match : String(value);
+  });
+};
+
+export const validateThresholds = (
+  thresholds: ThresholdColorConfig[],
+  translate?: ThresholdMessage,
+) => {
+  const t: ThresholdMessage = translate ?? formatThresholdFallback;
   const errors: string[] = [];
 
   thresholds.forEach((threshold, index) => {
+    const values = { index: index + 1 };
     if (!threshold.color || !threshold.color.match(/^#[0-9A-Fa-f]{6}$/)) {
-      errors.push(`第${index + 1}个阈值的颜色格式无效`);
+      errors.push(
+        t(
+          'dashboard.thresholdColorInvalid',
+          '第 {index} 个阈值的颜色格式无效',
+          values,
+        ),
+      );
     }
 
     if (Number.isNaN(parseFloat(threshold.value))) {
-      errors.push(`第${index + 1}个阈值的数值无效`);
+      errors.push(
+        t(
+          'dashboard.thresholdValueInvalid',
+          '第 {index} 个阈值的数值无效',
+          values,
+        ),
+      );
     }
   });
 

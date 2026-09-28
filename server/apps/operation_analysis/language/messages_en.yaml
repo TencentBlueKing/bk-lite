@@ -92,7 +92,6 @@ messages:
   config_object: "config must be an object"
   missing_connection_fields: "Missing connection fields: {names}"
   rest_base_url_required: "A REST connection must provide base_url"
-  connection_type_unsupported: "connection_type is not supported"
   connection_type_immutable: "The connection type cannot be changed after creation"
   groups_empty: "groups cannot be empty"
   shrink_groups_out_of_range: "Narrowing authorized organizations would leave referenced datasources out of scope"

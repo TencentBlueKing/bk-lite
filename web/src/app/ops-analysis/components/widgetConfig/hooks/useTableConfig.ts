@@ -385,7 +385,7 @@ export function useTableConfig({
         return;
       }
 
-      message.warning(t('dashboard.reProbeNoFields') || '未探测到可用字段');
+      message.warning(t('dashboard.reProbeNoFields'));
     } finally {
       setIsProbingColumns(false);
     }

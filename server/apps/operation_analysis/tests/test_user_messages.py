@@ -57,6 +57,7 @@ def test_oa_message_uses_request_language_and_keeps_zh_contract():
             == "The result has 3 series and was truncated to 1"
         )
         assert oa_message("messages.weops_request_failed_detail", "WeOps 请求失败: {detail}", detail="probe down") == "WeOps request failed: probe down"
+        assert oa_message("messages.connection_type_unsupported", "连接类型不支持") == "This connection type is not supported"
 
     with translation.override("zh-hans"):
         assert oa_message("messages.yaml_empty", "fallback") == "YAML内容不能为空"
@@ -75,3 +76,4 @@ def test_oa_message_uses_request_language_and_keeps_zh_contract():
             == "结果共 3 条序列，已截断为 1 条"
         )
         assert oa_message("messages.weops_request_failed_detail", "WeOps 请求失败: {detail}", detail="probe down") == "WeOps 请求失败: probe down"
+        assert oa_message("messages.connection_type_unsupported", "fallback") == "连接类型不支持"

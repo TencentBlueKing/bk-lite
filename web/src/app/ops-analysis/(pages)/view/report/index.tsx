@@ -180,7 +180,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
   const applyReportDraftPayload = useCallback(
     (payload: CanvasDraftPayload) => {
       restoreDraftRefreshInterval(payload, setSavedRefreshInterval);
-      const normalized = normalizeReportViewSets(payload.view_sets);
+      const normalized = normalizeReportViewSets(payload.view_sets, t);
       setDraftViewSets(normalized);
       const nextFilterValues = syncFilterValuesWithDefinitions(
         normalized.filters,
@@ -190,7 +190,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
       setAppliedFilterValues(nextFilterValues);
       setAppliedFilterDefinitions(normalized.filters);
     },
-    [filterValues, setSavedRefreshInterval],
+    [filterValues, setSavedRefreshInterval, t],
   );
   const reportDraft = useCanvasDraft({
     resourceType: 'report',
@@ -241,7 +241,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
     try {
       const detail = await getReportDetailRef.current(reportId);
       if (!isCurrentReportLoad(loadGuardRef.current, requestId)) return;
-      const normalized = normalizeReportViewSets(detail.view_sets);
+      const normalized = normalizeReportViewSets(detail.view_sets, t);
       setSavedViewSets(normalized);
       setDraftViewSets(normalized);
       setSavedVersion(detail.updated_at || '');
@@ -414,7 +414,7 @@ const Report = forwardRef<ReportRef, ReportProps>(({
         view_sets: draftViewSets,
         expected_updated_at: savedVersion,
       });
-      const normalized = normalizeReportViewSets(detail.view_sets);
+      const normalized = normalizeReportViewSets(detail.view_sets, t);
       setSavedViewSets(normalized);
       setDraftViewSets(normalized);
       setSavedVersion(detail.updated_at);

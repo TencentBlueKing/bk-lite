@@ -55,23 +55,62 @@ export const canEnterReportEdit = ({
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
-const normalizeSection = (value: unknown, index: number): ReportSection => {
+type ReportMessage = (
+  id: string,
+  defaultMessage?: string,
+  values?: Record<string, string | number>,
+) => string;
+
+const formatReportMessage: ReportMessage = (id, defaultMessage, values) => {
+  const template = defaultMessage ?? id;
+  if (!values) return template;
+  return template.replace(/\{(\w+)\}/g, (match, key: string) => {
+    const value = values[key];
+    return value == null ? match : String(value);
+  });
+};
+
+const normalizeSection = (
+  value: unknown,
+  index: number,
+  t: ReportMessage,
+): ReportSection => {
   if (!isRecord(value)) {
-    throw new Error(`sections[${index}] 必须是对象`);
+    throw new Error(
+      t('dashboard.reportSectionMustBeObject', '报表 sections[{index}] 必须是对象', { index }),
+    );
   }
   const id = typeof value.id === 'string' ? value.id.trim() : '';
   if (!id) {
-    throw new Error(`sections[${index}].id 必须是非空字符串`);
+    throw new Error(
+      t(
+        'dashboard.reportSectionIdRequired',
+        '报表 sections[{index}].id 必须是非空字符串',
+        { index },
+      ),
+    );
   }
   if (!isRecord(value.valueConfig)) {
-    throw new Error(`sections[${index}].valueConfig 必须是对象`);
+    throw new Error(
+      t(
+        'dashboard.reportSectionValueConfigRequired',
+        '报表 sections[{index}].valueConfig 必须是对象',
+        { index },
+      ),
+    );
   }
   const chartType = value.valueConfig.chartType;
   if (
     typeof chartType !== 'string' ||
     !isChartTypeSupportedOnSurface(chartType, 'report')
   ) {
-    throw new Error(`sections[${index}].valueConfig.chartType 当前不受支持`);
+    throw new Error(
+      t(
+        'dashboard.reportSectionChartTypeUnsupported',
+        '报表 sections[{index}].valueConfig.chartType 当前不受支持',
+        { index },
+      ),
+    );
   }
   return {
     id,
@@ -86,18 +125,30 @@ const normalizeSection = (value: unknown, index: number): ReportSection => {
   } as ReportSection;
 };
 
-export const normalizeReportViewSets = (value: unknown): ReportViewSets => {
+export const normalizeReportViewSets = (
+  value: unknown,
+  translate?: ReportMessage,
+): ReportViewSets => {
+  const t: ReportMessage = translate ?? formatReportMessage;
   if (!isRecord(value)) {
     return EMPTY_REPORT_VIEW_SETS;
   }
   if (value.schema_version !== undefined && value.schema_version !== 1) {
-    throw new Error(`schema_version 仅支持 1，收到 ${String(value.schema_version)}`);
+    throw new Error(
+      t(
+        'dashboard.reportSchemaVersionUnsupported',
+        'schema_version 仅支持 1，收到 {version}',
+        { version: String(value.schema_version) },
+      ),
+    );
   }
   const sections = Array.isArray(value.sections) ? value.sections : [];
-  const normalizedSections = sections.map(normalizeSection);
+  const normalizedSections = sections.map((section, index) =>
+    normalizeSection(section, index, t),
+  );
   const ids = new Set(normalizedSections.map((section) => section.id));
   if (ids.size !== normalizedSections.length) {
-    throw new Error('报表组件 ID 不能重复');
+    throw new Error(t('dashboard.reportDuplicateSectionId', '报表组件 ID 不能重复'));
   }
   return {
     schema_version: 1,
