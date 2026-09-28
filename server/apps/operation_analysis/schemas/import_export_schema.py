@@ -22,6 +22,7 @@ from apps.operation_analysis.constants.import_export import (
     ImportExportErrorCode,
     ObjectType,
 )
+from apps.operation_analysis.constants.nats_namespace import resolve_nats_namespace
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 from apps.operation_analysis.services.user_messages import oa_message
 
@@ -165,7 +166,7 @@ class NamespaceItem(BaseModel):
     key: str
     name: str
     domain: str
-    namespace: str = Field(default="bklite")
+    namespace: str = Field(default_factory=resolve_nats_namespace)
     account: str
     password: str = Field(default="")
     enable_tls: bool = Field(default=False)

@@ -14,7 +14,7 @@
 | Dashboard / Topology / Architecture | `models/models.py` | 仪表盘/拓扑/架构图（filters、view_sets JSON）；三者均含 `is_build_in`/`build_in_key`（unique）内置标识 |
 | Screen / Report | `models/models.py` | 大屏/报表画布；均含 `directory`、`view_sets`、`is_build_in`/`build_in_key`、`refresh_interval` |
 | NetworkTopology | `models/models.py` | 第六类画布：网络拓扑；含 WeOps 连接、视图集与运行缓存 |
-| NameSpace | `models/datasource_models.py` | NATS 连接配置（域/账号/密码加密/TLS）；含 `namespace`（NATS 命名空间标识，消息主题前缀，default=`bklite`）；含 `is_active`（内部预留，前端不暴露、运行时不校验） |
+| NameSpace | `models/datasource_models.py` | NATS 连接配置（域/账号/密码加密/TLS）；含 `namespace`（NATS 命名空间标识，消息主题前缀；缺省读取 `NATS_NAMESPACE`，未配置时为 `bklite`）；含 `is_active`（内部预留，前端不暴露、运行时不校验） |
 | DataSourceAPIModel | `models/datasource_models.py` | 数据源定义；含 `source_type`、`connection` FK（可空，引用公共数据连接）、`connection_config`/`connection_overrides`、`query_config`、`transform_config`（REST/Excel 可选 Python）、Excel 双槽 FK（`excel_success_slot`/`excel_candidate_slot`/`excel_materialization_generation`）、`chart_type`、`field_schema`、内置标记与稳定键 |
 | DataConnection | `models/datasource_models.py` | 组织内可复用 MySQL/PostgreSQL/REST 物理连接；凭据加密；被引用时删除受 PROTECT |
 | ExcelMaterializationSlot | `models/excel_materialization_models.py` | Excel 成功/候选物化槽；原文件与结果存对象存储，元数据在库内 |
