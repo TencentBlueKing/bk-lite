@@ -159,7 +159,7 @@ class LogExtractorViewSet(ViewSet):
 
     def create(self, request):
         instance, collect_type = self._authorize_scope(request, request.data, "Operate")
-        serializer = LogExtractorSerializer(data=request.data)
+        serializer = LogExtractorSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         data = dict(serializer.validated_data)
         data.pop("collect_instance", None)
@@ -179,7 +179,7 @@ class LogExtractorViewSet(ViewSet):
 
     def update(self, request, pk=None):
         rule = self._get_rule(request, pk, "Operate")
-        serializer = LogExtractorSerializer(rule, data=request.data)
+        serializer = LogExtractorSerializer(rule, data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         data = dict(serializer.validated_data)
         data.pop("_collect_type_name", None)
@@ -195,7 +195,7 @@ class LogExtractorViewSet(ViewSet):
 
     def partial_update(self, request, pk=None):
         rule = self._get_rule(request, pk, "Operate")
-        serializer = LogExtractorSerializer(rule, data=request.data, partial=True)
+        serializer = LogExtractorSerializer(rule, data=request.data, partial=True, context={"request": request})
         serializer.is_valid(raise_exception=True)
         data = dict(serializer.validated_data)
         data.pop("_collect_type_name", None)

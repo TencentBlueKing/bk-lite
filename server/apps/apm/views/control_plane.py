@@ -121,7 +121,7 @@ def _catalog_list_params(view) -> dict:
     if view.action != "list":
         return {}
     serializer_class = getattr(view, "list_query_serializer", CatalogListQuerySerializer)
-    serializer = serializer_class(data=view.request.query_params)
+    serializer = serializer_class(data=view.request.query_params, context={"request": view.request})
     serializer.is_valid(raise_exception=True)
     return serializer.validated_data
 
@@ -201,7 +201,7 @@ class ApmApplicationViewSet(viewsets.GenericViewSet):
 
     @HasPermission("applications-Operate")
     def create(self, request, *args, **kwargs):
-        serializer = ApplicationMutationSerializer(data=request.data, context={"creating": True})
+        serializer = ApplicationMutationSerializer(data=request.data, context={"creating": True, "request": request})
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         try:
@@ -221,7 +221,7 @@ class ApmApplicationViewSet(viewsets.GenericViewSet):
     def update(self, request, *args, **kwargs):
         application = self.get_object()
         payload = {key: value for key, value in request.data.items() if key != "application_id"}
-        serializer = ApplicationMutationSerializer(data=payload)
+        serializer = ApplicationMutationSerializer(data=payload, context={"request": request})
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         try:
@@ -269,7 +269,7 @@ class ApmIntegrationConfigurationViewSet(viewsets.GenericViewSet):
 
     @HasPermission("integration_add-View")
     def create(self, request, *args, **kwargs):
-        serializer = IngestSnippetSerializer(data=request.data)
+        serializer = IngestSnippetSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         organization_id = current_organization_id(request)
@@ -401,7 +401,7 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
     @HasPermission("services-Operate")
     def organizations(self, request, *args, **kwargs):
         service = self.get_object()
-        serializer = OrganizationAssignmentSerializer(data=request.data)
+        serializer = OrganizationAssignmentSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         organization_ids = serializer.validated_data["organization_ids"]
         try:
@@ -437,7 +437,7 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
     @HasPermission("services-View")
     def metrics(self, request, *args, **kwargs):
         service = self.get_object()
-        serializer = ServiceMetricQuerySerializer(data=request.query_params)
+        serializer = ServiceMetricQuerySerializer(data=request.query_params, context={"request": request})
         if not serializer.is_valid():
             return Response(
                 {"code": "invalid_query", "detail": serializer.errors},
@@ -467,7 +467,7 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
     @action(methods=("post",), detail=False, url_path="metrics/batch")
     @HasPermission("services-View")
     def metrics_batch(self, request, *args, **kwargs):
-        serializer = ServiceMetricBatchSerializer(data=request.data)
+        serializer = ServiceMetricBatchSerializer(data=request.data, context={"request": request})
         if not serializer.is_valid():
             return Response(
                 {"code": "invalid_query", "detail": serializer.errors},
@@ -529,7 +529,7 @@ class ApmServiceViewSet(viewsets.ReadOnlyModelViewSet):
     @HasPermission("services-View")
     def error_breakdown(self, request, *args, **kwargs):
         service = self.get_object()
-        serializer = ServiceErrorBreakdownQuerySerializer(data=request.query_params)
+        serializer = ServiceErrorBreakdownQuerySerializer(data=request.query_params, context={"request": request})
         if not serializer.is_valid():
             return Response(
                 {"code": "invalid_query", "detail": serializer.errors},
@@ -659,7 +659,7 @@ class ApmServiceInstanceViewSet(viewsets.ReadOnlyModelViewSet):
     @HasPermission("integration_instances-Operate")
     def organizations(self, request, *args, **kwargs):
         instance = self.get_object()
-        serializer = OrganizationAssignmentSerializer(data=request.data)
+        serializer = OrganizationAssignmentSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         organization_ids = serializer.validated_data["organization_ids"]
         try:
@@ -1093,7 +1093,7 @@ class ApmEventViewSet(viewsets.GenericViewSet):
         organization_ids = visible_organization_ids(request)
         if not organization_ids:
             return Response([])
-        serializer = ApmEventQuerySerializer(data=request.query_params)
+        serializer = ApmEventQuerySerializer(data=request.query_params, context={"request": request})
         serializer.is_valid(raise_exception=True)
         return Response(self.reader.list(organization_ids=organization_ids, **serializer.validated_data))
 
@@ -1113,7 +1113,7 @@ class ApmAlertViewSet(viewsets.GenericViewSet):
         organization_ids = visible_organization_ids(request)
         if not organization_ids:
             return Response([])
-        serializer = ApmAlertQuerySerializer(data=request.query_params)
+        serializer = ApmAlertQuerySerializer(data=request.query_params, context={"request": request})
         serializer.is_valid(raise_exception=True)
         return Response(
             self.alert_service.list(
@@ -1133,7 +1133,7 @@ class ApmAlertViewSet(viewsets.GenericViewSet):
         organization_ids = visible_organization_ids(request)
         if not organization_ids:
             return Response([])
-        serializer = ApmAlertQuerySerializer(data=request.query_params)
+        serializer = ApmAlertQuerySerializer(data=request.query_params, context={"request": request})
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         return Response(
@@ -1191,7 +1191,7 @@ class ApmAlertViewSet(viewsets.GenericViewSet):
     @HasPermission("policies-Operate")
     def assign(self, request, *args, **kwargs):
         alert = self.get_object()
-        serializer = ApmAlertAssignSerializer(data=request.data)
+        serializer = ApmAlertAssignSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         try:
             assigned = self.alert_service.assign(
@@ -1221,7 +1221,7 @@ class ApmAlertViewSet(viewsets.GenericViewSet):
     @HasPermission("policies-Operate")
     def reassign(self, request, *args, **kwargs):
         alert = self.get_object()
-        serializer = ApmAlertAssignSerializer(data=request.data)
+        serializer = ApmAlertAssignSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         try:
             reassigned = self.alert_service.reassign(
@@ -1303,7 +1303,7 @@ class ApmNotificationDeliveryViewSet(viewsets.GenericViewSet):
 
     @HasPermission("events-View")
     def list(self, request, *args, **kwargs):
-        serializer = NotificationDeliveryQuerySerializer(data=request.query_params)
+        serializer = NotificationDeliveryQuerySerializer(data=request.query_params, context={"request": request})
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         queryset = self.get_queryset()
@@ -1318,7 +1318,7 @@ class ApmNotificationDeliveryViewSet(viewsets.GenericViewSet):
     @HasPermission("policies-Operate")
     def retry(self, request, *args, **kwargs):
         delivery = self.get_object()
-        serializer = NotificationDeliveryRetrySerializer(data=request.data)
+        serializer = NotificationDeliveryRetrySerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         try:
             retried = self.delivery_service.retry(
@@ -1343,7 +1343,7 @@ class ApmNotificationRecipientViewSet(viewsets.GenericViewSet):
         organization_id = current_organization_id(request)
         if organization_id is None:
             return Response([])
-        serializer = NotificationRecipientQuerySerializer(data=request.query_params)
+        serializer = NotificationRecipientQuerySerializer(data=request.query_params, context={"request": request})
         serializer.is_valid(raise_exception=True)
         organization_ids = serializer.validated_data.pop("organization_ids", [])
         if organization_ids:

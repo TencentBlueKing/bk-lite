@@ -29,7 +29,7 @@ class ApmDashboardViewSet(viewsets.ViewSet):
                     "releases": {"status": "empty", "data": {"items": []}},
                 }
             )
-        serializer = ApmDashboardQuerySerializer(data=request.query_params)
+        serializer = ApmDashboardQuerySerializer(data=request.query_params, context={"request": request})
         if not serializer.is_valid():
             return Response(
                 {"code": "invalid_query", "detail": serializer.errors},

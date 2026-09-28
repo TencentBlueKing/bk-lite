@@ -37,6 +37,24 @@ def test_missing_locale_stays_chinese():
     assert apm_text(None, "error.application_id_exists") == "该应用 ID 已存在。"
 
 
+def test_unknown_locale_falls_back_to_chinese_instead_of_key():
+    assert apm_text("zh-TW", "error.application_id_exists") == "该应用 ID 已存在。"
+    assert apm_text("ja", "error.channel_requires_recipients", name="Mail") == "渠道 Mail 必须配置接收人。"
+
+
+def test_views_hand_request_to_serializers():
+    import re
+    from pathlib import Path
+
+    views_dir = Path(__file__).resolve().parents[1] / "views"
+    offenders = []
+    for path in views_dir.glob("*.py"):
+        for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if re.search(r"(Serializer|serializer_class)\(data=", line) and '"request":' not in line:
+                offenders.append(f"{path.name}:{line_no}")
+    assert offenders == []
+
+
 def test_unsupported_query_follows_request_locale():
     english = InstanceCatalogListQuerySerializer(data={"unknown": 1}, context={"request": _request("en")})
     chinese = InstanceCatalogListQuerySerializer(data={"unknown": 1}, context={"request": _request("zh-CN")})

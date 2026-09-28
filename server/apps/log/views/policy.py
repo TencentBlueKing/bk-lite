@@ -797,7 +797,7 @@ class AlertViewSet(viewsets.ModelViewSet):
         auth_error = self._authorize_alert_operate(request, alert)
         if auth_error:
             return auth_error
-        serializer = AssignHandlersSerializer(data=request.data)
+        serializer = AssignHandlersSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         operable_qs = get_visible_log_alert_queryset(request, require_operate=True)
         try:
@@ -821,7 +821,7 @@ class AlertViewSet(viewsets.ModelViewSet):
         auth_error = self._authorize_alert_operate(request, alert)
         if auth_error:
             return auth_error
-        serializer = AssignHandlersSerializer(data=request.data)
+        serializer = AssignHandlersSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         operable_qs = get_visible_log_alert_queryset(request, require_operate=True)
         try:

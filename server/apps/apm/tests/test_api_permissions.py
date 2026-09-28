@@ -719,7 +719,7 @@ def test_integration_config_rejects_client_endpoint_and_invalid_region_proxy_add
         )
 
     assert injected.status_code == 400
-    assert "服务器" in str(injected.data)
+    assert "resolved by the server" in str(injected.data)
     assert invalid_config.status_code == 400
     assert invalid_config.data["code"] == "invalid_cloud_region_proxy_address"
 

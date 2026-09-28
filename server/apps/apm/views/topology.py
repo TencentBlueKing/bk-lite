@@ -85,7 +85,7 @@ class ApmTopologyViewSet(viewsets.ViewSet):
     def list(self, request):
         if not visible_organization_ids(request):
             return Response({"nodes": [], "edges": [], "sampled_traces": 0, "truncated": False, "data_state": "no_data"})
-        serializer = TopologyQuerySerializer(data=request.query_params)
+        serializer = TopologyQuerySerializer(data=request.query_params, context={"request": request})
         if not serializer.is_valid():
             return Response(
                 {"code": "invalid_query", "detail": serializer.errors},

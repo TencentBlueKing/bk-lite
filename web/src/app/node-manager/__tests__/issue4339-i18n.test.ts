@@ -6,9 +6,9 @@ import { describe, expect, it } from 'vitest';
 import en from '@/app/node-manager/locales/en.json';
 import zh from '@/app/node-manager/locales/zh.json';
 
-type NestedMessages = {
+interface NestedMessages {
   [key: string]: string | NestedMessages;
-};
+}
 
 function flattenMessages(nested: NestedMessages, prefix = ''): Record<string, string> {
   return Object.keys(nested).reduce<Record<string, string>>((messages, key) => {

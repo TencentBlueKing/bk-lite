@@ -60,6 +60,25 @@ def test_determined_error_keys_exist_in_both_locales():
         assert en_value != zh_value
 
 
+def test_unknown_locale_falls_back_to_chinese_instead_of_key():
+    assert log_text("zh-TW", "error.topn_unsupported") == "该字段不支持 TopN 统计"
+    assert log_text("ja", "error.instance_rule_limit", count=3) == "单个采集实例最多 3 条规则"
+
+
+def test_views_hand_request_to_localized_serializers():
+    import re
+    from pathlib import Path
+
+    views_dir = Path(__file__).resolve().parents[1] / "views"
+    localized = ("LogTopStatsSerializer", "AssignHandlersSerializer", "LogExtractorSerializer")
+    offenders = []
+    for path in views_dir.glob("*.py"):
+        for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if any(f"{name}(" in line for name in localized) and "data=" in line and '"request": request' not in line:
+                offenders.append(f"{path.name}:{line_no}")
+    assert offenders == []
+
+
 def test_rule_limit_keeps_the_count():
     assert log_text("en", "error.instance_rule_limit", count=20) == "A collect instance can have at most 20 rules"
     assert log_text("zh-Hans", "error.instance_rule_limit", count=20) == "单个采集实例最多 20 条规则"

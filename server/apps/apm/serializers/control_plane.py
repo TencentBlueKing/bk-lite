@@ -617,8 +617,7 @@ class ApmPolicySerializer(serializers.ModelSerializer):
         if handlers_provided:
             attrs["handlers"] = resolved
 
-    @staticmethod
-    def _validate_thresholds(thresholds, metric_type):
+    def _validate_thresholds(self, thresholds, metric_type):
         severity_rank = {"critical": 0, "error": 1, "warning": 2}
         normalized = []
         seen = set()

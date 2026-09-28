@@ -1,10 +1,14 @@
 from apps.core.utils.loader import LanguageLoader
 
 APP = "apm"
+FALLBACK_LOCALE = "zh-Hans"
 
 
 def apm_text(locale, key: str, **values) -> str:
-    template = LanguageLoader(app=APP, default_lang=locale or "zh-Hans").get(key)
+    template = LanguageLoader(app=APP, default_lang=locale or FALLBACK_LOCALE).get(key)
+    if not isinstance(template, str) or not template:
+        # 未收录的语言没有语言包；退回中文，不把 key 交给用户。
+        template = LanguageLoader(app=APP, default_lang=FALLBACK_LOCALE).get(key)
     if not isinstance(template, str) or not template:
         template = key
     return template.format(**values) if values else template

@@ -7,7 +7,9 @@ import monitorZh from '@/app/monitor/locales/zh.json';
 import commonEn from '@/locales/en.json';
 import commonZh from '@/locales/zh.json';
 
-type Nested = { [key: string]: string | Nested };
+interface Nested {
+  [key: string]: string | Nested;
+}
 
 const flatten = (nested: Nested, prefix = ''): Record<string, string> => {
   const messages: Record<string, string> = {};
