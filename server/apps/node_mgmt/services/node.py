@@ -10,13 +10,13 @@ from apps.core.logger import node_logger as logger
 from apps.core.utils.current_team_scope import CurrentTeamDataScope, _normalize_organization_ids
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
 from apps.core.utils.safe_template import build_sandboxed_env
-from apps.node_mgmt.constants.collector import CollectorConstants
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import NodeCollectorInstallStatus
 from apps.node_mgmt.models.action import CollectorActionTask, CollectorActionTaskNode
 from apps.node_mgmt.models.sidecar import Action, ChildConfig, Collector, CollectorConfiguration, Node
 from apps.node_mgmt.serializers.node import NodeSerializer
+from apps.node_mgmt.services.node_status_filter import apply_display_collector_status
 from apps.node_mgmt.services.sidecar import Sidecar
 from apps.node_mgmt.tasks.action_task import ACTION_TASK_TIMEOUT_SECONDS, timeout_collector_action_task
 from apps.node_mgmt.utils.region_display_ip import load_region_display_ips
@@ -201,20 +201,21 @@ class NodeService:
                     configuration_dict,
                 )
 
-                # 判断是否应该将错误状态改为正常
-                if collector["status"] == 2 and collector_obj:  # status=2 表示失败
-                    # 检查是否是需要忽略错误的采集器
-                    if collector_obj.name in CollectorConstants.IGNORE_ERROR_COLLECTORS:
-                        # 检查错误信息是否匹配需要忽略的消息（使用 contains 匹配，兼容动态路径）
-                        verbose_msg = collector.get("verbose_message", "")
-                        if any(msg in verbose_msg for msg in CollectorConstants.IGNORE_ERROR_COLLECTORS_MESSAGES):
-                            # 将状态从失败改为正常
-                            collector["status"] = 0
-                            collector["message"] = "Running"
-                            logger.debug(
-                                f"Changed status to Running for collector {collector_obj.name} "
-                                f"on node {node.get('name', node['id'])}: {verbose_msg.strip()}"
-                            )
+                if collector["status"] == 2 and collector_obj:
+                    verbose_msg = collector.get("verbose_message", "")
+                    collector["status"] = apply_display_collector_status(
+                        collector["status"],
+                        collector_obj.name,
+                        verbose_msg or "",
+                    )
+                    if collector["status"] == 0:
+                        collector["message"] = "Running"
+                        logger.debug(
+                            "Changed status to Running for collector %s on node %s: %s",
+                            collector_obj.name,
+                            node.get("name", node["id"]),
+                            verbose_msg.strip(),
+                        )
 
         # 计算节点活跃度，一分钟内为活跃
         for node in node_data:

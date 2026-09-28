@@ -2,12 +2,18 @@
 
 纯 DB 查询逻辑，无外部边界。断言真实 QuerySet 结果与 ORM 注入防护。
 """
-import pytest
+from datetime import datetime, timedelta
+from datetime import timezone as dt_timezone
+from unittest.mock import patch
 
+import pytest
 from django.db.models import Q
+from django.utils import timezone as dj_timezone
 
 from apps.node_mgmt.models import Node, NodeComponentVersion
 from apps.node_mgmt.models.cloud_region import CloudRegion
+from apps.node_mgmt.models.installer import NodeCollectorInstallStatus
+from apps.node_mgmt.models.sidecar import Collector
 from apps.node_mgmt.views.node import NodeFilterHandler as H
 
 
@@ -15,13 +21,21 @@ from apps.node_mgmt.views.node import NodeFilterHandler as H
 def nodes(db):
     region = CloudRegion.objects.create(name="cr-filter")
     n1 = Node.objects.create(
-        id="fn-1", name="alpha", ip="10.0.0.1", operating_system="linux",
-        cpu_architecture="x86_64", collector_configuration_directory="/etc",
+        id="fn-1",
+        name="alpha",
+        ip="10.0.0.1",
+        operating_system="linux",
+        cpu_architecture="x86_64",
+        collector_configuration_directory="/etc",
         cloud_region=region,
     )
     n2 = Node.objects.create(
-        id="fn-2", name="beta", ip="192.168.1.2", operating_system="windows",
-        cpu_architecture="arm64", collector_configuration_directory="/etc",
+        id="fn-2",
+        name="beta",
+        ip="192.168.1.2",
+        operating_system="windows",
+        cpu_architecture="arm64",
+        collector_configuration_directory="/etc",
         cloud_region=region,
     )
     return region, n1, n2
@@ -33,9 +47,14 @@ def nodes(db):
 @pytest.mark.parametrize(
     "value,expected",
     [
-        ("true", True), ("1", True), ("yes", True),
-        ("false", False), ("0", False), ("no", False),
-        (True, True), (False, False),
+        ("true", True),
+        ("1", True),
+        ("yes", True),
+        ("false", False),
+        ("0", False),
+        ("no", False),
+        (True, True),
+        (False, False),
     ],
 )
 def test_normalize_bool_value(value, expected):
@@ -91,9 +110,7 @@ def test_build_standard_filters_skips_empty_value():
 @pytest.mark.django_db
 def test_handle_upgradeable_true(nodes):
     region, n1, n2 = nodes
-    NodeComponentVersion.objects.create(
-        node=n1, component_type="controller", component_id="c", version="1.0.0", upgradeable=True
-    )
+    NodeComponentVersion.objects.create(node=n1, component_type="controller", component_id="c", version="1.0.0", upgradeable=True)
     result = H.handle_upgradeable_filter(Node.objects.all(), [{"value": True}])
     assert list(result) == [n1]
 
@@ -101,9 +118,7 @@ def test_handle_upgradeable_true(nodes):
 @pytest.mark.django_db
 def test_handle_upgradeable_false_excludes(nodes):
     region, n1, n2 = nodes
-    NodeComponentVersion.objects.create(
-        node=n1, component_type="controller", component_id="c", version="1.0.0", upgradeable=True
-    )
+    NodeComponentVersion.objects.create(node=n1, component_type="controller", component_id="c", version="1.0.0", upgradeable=True)
     result = H.handle_upgradeable_filter(Node.objects.all(), [{"value": False}])
     ids = set(result.values_list("id", flat=True))
     assert ids == {n2.id}
@@ -111,9 +126,7 @@ def test_handle_upgradeable_false_excludes(nodes):
 
 @pytest.mark.django_db
 def test_handle_upgradeable_contradiction_returns_none(nodes):
-    result = H.handle_upgradeable_filter(
-        Node.objects.all(), [{"value": True}, {"value": False}]
-    )
+    result = H.handle_upgradeable_filter(Node.objects.all(), [{"value": True}, {"value": False}])
     assert result.count() == 0
 
 
@@ -141,9 +154,7 @@ def test_apply_filters_empty_returns_queryset(nodes):
 @pytest.mark.django_db
 def test_apply_filters_combines_standard_and_special(nodes):
     region, n1, n2 = nodes
-    NodeComponentVersion.objects.create(
-        node=n1, component_type="controller", component_id="c", version="1.0.0", upgradeable=True
-    )
+    NodeComponentVersion.objects.create(node=n1, component_type="controller", component_id="c", version="1.0.0", upgradeable=True)
     result = H.apply_filters(
         Node.objects.all(),
         {
@@ -162,3 +173,148 @@ def test_apply_filters_standard_only(nodes):
         {"ip": [{"value": "192.168", "lookup_expr": "icontains"}]},
     )
     assert list(result) == [n2]
+
+
+def _set_updated_at(node, *, seconds_ago):
+    Node.objects.filter(id=node.id).update(updated_at=dj_timezone.now() - timedelta(seconds=seconds_ago))
+    node.refresh_from_db()
+
+
+@pytest.mark.django_db
+def test_handle_active_true_keeps_recent_heartbeat(nodes):
+    region, n1, n2 = nodes
+    _set_updated_at(n1, seconds_ago=10)
+    _set_updated_at(n2, seconds_ago=120)
+    result = H.handle_active_filter(Node.objects.all(), [{"lookup_expr": "in", "value": ["true"]}])
+    assert list(result) == [n1]
+
+
+@pytest.mark.django_db
+def test_handle_active_false_keeps_stale_heartbeat(nodes):
+    region, n1, n2 = nodes
+    _set_updated_at(n1, seconds_ago=10)
+    _set_updated_at(n2, seconds_ago=120)
+    result = H.handle_active_filter(Node.objects.all(), [{"lookup_expr": "in", "value": ["false"]}])
+    assert list(result) == [n2]
+
+
+@pytest.mark.django_db
+def test_handle_active_exactly_window_is_offline(nodes):
+    region, n1, n2 = nodes
+    frozen = datetime(2026, 9, 28, 12, 0, 0, tzinfo=dt_timezone.utc)
+    with patch("apps.node_mgmt.views.node.dj_timezone.now", return_value=frozen):
+        Node.objects.filter(id=n1.id).update(updated_at=frozen - timedelta(seconds=60))
+        Node.objects.filter(id=n2.id).update(updated_at=frozen - timedelta(seconds=59))
+        online = list(H.handle_active_filter(Node.objects.all(), [{"lookup_expr": "in", "value": ["true"]}]))
+        offline = list(H.handle_active_filter(Node.objects.all(), [{"lookup_expr": "in", "value": ["false"]}]))
+    assert online == [n2]
+    assert offline == [n1]
+
+
+@pytest.mark.django_db
+def test_handle_active_both_values_does_not_restrict(nodes):
+    region, n1, n2 = nodes
+    result = H.handle_active_filter(
+        Node.objects.all(),
+        [{"lookup_expr": "in", "value": ["true", "false"]}],
+    )
+    assert result.count() == 2
+
+
+@pytest.mark.django_db
+def test_handle_collector_status_any_error(nodes):
+    region, n1, n2 = nodes
+    n1.status = {"collectors": [{"collector_id": "telegraf_linux", "status": 2}]}
+    n1.save(update_fields=["status"])
+    Collector.objects.create(
+        id="telegraf_linux",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system="linux",
+        executable_path="/bin/telegraf",
+        execute_parameters="",
+        created_by="tester",
+        updated_by="tester",
+    )
+    result = H.handle_collector_status_filter(
+        Node.objects.all(),
+        [{"lookup_expr": "in", "value": ["2"]}],
+        collector_name_conditions=None,
+    )
+    assert list(result) == [n1]
+
+
+@pytest.mark.django_db
+def test_handle_collector_status_named_and_install_overlay(nodes):
+    region, n1, n2 = nodes
+    n1.status = {"collectors": [{"collector_id": "telegraf_linux", "status": 0}]}
+    n1.save(update_fields=["status"])
+    Collector.objects.create(
+        id="telegraf_linux",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system="linux",
+        executable_path="/bin/telegraf",
+        execute_parameters="",
+        created_by="tester",
+        updated_by="tester",
+    )
+    vector = Collector.objects.create(
+        id="vector_linux",
+        name="Vector",
+        service_type="exec",
+        node_operating_system="linux",
+        executable_path="/bin/vector",
+        execute_parameters="",
+        created_by="tester",
+        updated_by="tester",
+    )
+    NodeCollectorInstallStatus.objects.create(node=n1, collector=vector, status="error", result={})
+    named_miss = H.handle_collector_status_filter(
+        Node.objects.all(),
+        [{"lookup_expr": "in", "value": ["12"]}],
+        collector_name_conditions=[{"lookup_expr": "in", "value": ["Telegraf"]}],
+    )
+    assert named_miss.count() == 0
+    named_hit = H.handle_collector_status_filter(
+        Node.objects.all(),
+        [{"lookup_expr": "in", "value": ["12"]}],
+        collector_name_conditions=[{"lookup_expr": "in", "value": ["Vector"]}],
+    )
+    assert list(named_hit) == [n1]
+
+
+@pytest.mark.django_db
+def test_apply_filters_ands_active_and_os(nodes):
+    region, n1, n2 = nodes
+    n2.operating_system = "linux"
+    n2.save(update_fields=["operating_system"])
+    _set_updated_at(n1, seconds_ago=10)
+    _set_updated_at(n2, seconds_ago=120)
+    result = H.apply_filters(
+        Node.objects.all(),
+        {
+            "operating_system": [{"value": "linux", "lookup_expr": "exact"}],
+            "active": [{"lookup_expr": "in", "value": ["true"]}],
+        },
+    )
+    assert list(result) == [n1]
+
+
+@pytest.mark.django_db
+def test_collector_name_without_status_is_ignored(nodes):
+    region, n1, n2 = nodes
+    result = H.apply_filters(
+        Node.objects.all(),
+        {"collector_name": [{"lookup_expr": "in", "value": ["Telegraf"]}]},
+    )
+    assert result.count() == 2
+
+
+@pytest.mark.django_db
+def test_invalid_collector_status_is_ignored(nodes):
+    result = H.apply_filters(
+        Node.objects.all(),
+        {"collector_status": [{"lookup_expr": "in", "value": ["nope"]}]},
+    )
+    assert result.count() == 2
