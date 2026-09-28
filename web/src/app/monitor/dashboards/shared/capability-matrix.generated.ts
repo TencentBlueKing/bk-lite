@@ -738,6 +738,14 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_telco",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_tplink",
       "capabilities": [
         "uptime",
