@@ -48,7 +48,6 @@ def package_version_upload(_type, options):
     # These packages can exceed 1 GB, so materializing the whole file here can
     # exhaust the management process before the upload starts.
     with path_obj.open("rb") as source_file:
-        # upload_file 已按唯一键创建或占用版本行，这里不能再 create。
         PackageService.upload_file(File(source_file, name=file_name), data)
 
     if pk_v:
@@ -57,4 +56,5 @@ def package_version_upload(_type, options):
         logger.info(f"{_type} 版本对象已覆盖上传")
         return data
 
+    PackageVersion.objects.create(**data)
     return data
