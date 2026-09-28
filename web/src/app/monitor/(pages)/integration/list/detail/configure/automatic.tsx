@@ -50,7 +50,7 @@ import {
 import { useUserInfoContext } from '@/context/userInfo';
 import Permission from '@/components/permission';
 import { cloneDeep } from 'lodash';
-import { usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
+import { fillOptionalFormFields, usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
 import { useConfigRenderer } from '@/app/monitor/hooks/integration/useConfigRenderer';
 import { cloudRegionProviderFromPlugin, useCloudRegionOptions } from '@/app/monitor/hooks/integration/useQcloudRegionOptions';
 import {
@@ -625,7 +625,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
 
   const buildDetectInstance = (record: IntegrationMonitoredObject) => {
     const formValues = omitCollectionPolicyField(
-      cloneDeep(form.getFieldsValue())
+      cloneDeep(form.getFieldsValue(true))
     );
     delete formValues.nodes;
     const rowValues = Object.keys(record)
@@ -639,11 +639,17 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         acc[key] = record[key];
         return acc;
       }, {} as Record<string, any>);
-    const instance: Record<string, any> = {
-      ...formValues,
-      ...rowValues,
-      instance_type: configsInfo?.instance_type
-    };
+    const instance: Record<string, any> = fillOptionalFormFields(
+      {
+        ...formValues,
+        ...rowValues,
+        instance_type: configsInfo?.instance_type || formValues.instance_type,
+        collect_type: configsInfo?.collect_type || formValues.collect_type,
+        monitor_plugin_id: Number(pluginId) || formValues.monitor_plugin_id,
+        plugin_id: formValues.plugin_id || pluginId
+      },
+      currentConfig?.form_fields
+    );
     if (!instance.instance_id) {
       instance.instance_id =
         record.instance_id ||
@@ -651,6 +657,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         formValues.instance_id ||
         formValues.instance_name ||
         (record.key as string);
+    }
+    const nodeId = getRowNodeId(record);
+    const selectedNode = nodeList.find(
+      (node) =>
+        String(node.id) === String(nodeId) || String(node.value) === String(nodeId)
+    );
+    if (selectedNode?.operating_system && !instance.operating_system) {
+      instance.operating_system = selectedNode.operating_system;
     }
     return instance;
   };
@@ -1054,9 +1068,25 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     collectDetectTasks
   ]);
 
-  const formItems = useMemo(() => {
-    return formConfig?.formItems || null;
-  }, [formConfig]);
+  const pluginFormCacheKey = [
+    pluginId,
+    currentConfig?.collect_type || '',
+    JSON.stringify(currentConfig?.form_fields ?? null),
+    nodeList.map((node) => node.id || node.value).join(',')
+  ].join('|');
+  const cachedPluginFormRef = useRef<{ key: string; items: React.ReactNode }>({
+    key: '',
+    items: null
+  });
+  if (!pluginId) {
+    cachedPluginFormRef.current = { key: '', items: null };
+  } else if (cachedPluginFormRef.current.key !== pluginFormCacheKey) {
+    cachedPluginFormRef.current = {
+      key: formConfig?.formItems ? pluginFormCacheKey : '',
+      items: formConfig?.formItems || null
+    };
+  }
+  const formItems = cachedPluginFormRef.current.items;
 
   useEffect(() => {
     if (isLoading) return;

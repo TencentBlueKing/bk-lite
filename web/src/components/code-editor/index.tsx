@@ -23,13 +23,15 @@ interface EditorToolbarOptions {
 
 interface CodeEditorProps {
   value?: string;
+  onChange?: (value: string) => void;
   className?: string;
   headerOptions?: EditorToolbarOptions;
   [key: string]: unknown;
 }
 
 const CodeEditor: React.FC<CodeEditorProps> = ({
-  value = '',
+  value,
+  onChange,
   headerOptions,
   className = '',
   ...restProps
@@ -37,6 +39,11 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
   const { t } = useTranslation();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const lastValueRef = useRef(typeof value === 'string' ? value : '');
+  if (typeof value === 'string') {
+    lastValueRef.current = value;
+  }
+  const editorValue = typeof value === 'string' ? value : lastValueRef.current;
 
   const enableCopy = headerOptions?.copy ?? false;
   const enableFullscreen = headerOptions?.fullscreen ?? false;
@@ -68,13 +75,23 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
     };
   }, []);
 
+  const handleChange = useCallback(
+    (next: string) => {
+      lastValueRef.current = next;
+      if (typeof onChange === 'function') {
+        onChange(next);
+      }
+    },
+    [onChange]
+  );
+
   const handleCopy = useCallback(async () => {
     try {
       if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(value);
+        await navigator.clipboard.writeText(editorValue);
       } else {
         const textArea = document.createElement('textarea');
-        textArea.value = value;
+        textArea.value = editorValue;
         document.body.appendChild(textArea);
         textArea.select();
         document.execCommand('copy');
@@ -85,7 +102,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
       const errorMsg = error instanceof Error ? error.message : String(error);
       message.error(errorMsg);
     }
-  }, [value, t]);
+  }, [editorValue, t]);
 
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
@@ -178,12 +195,13 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
           marginTop: 0,
           ...(isFullscreen ? { flex: 1, height: '100%', width: '100%' } : {})
         }}
-        width={isFullscreen ? '100%' : (restProps.width as string)}
-        value={value}
         setOptions={{
           showPrintMargin: false
         }}
         {...restProps}
+        width={isFullscreen ? '100%' : (restProps.width as string)}
+        value={editorValue}
+        onChange={handleChange}
       />
     </div>
   );

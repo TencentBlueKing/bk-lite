@@ -724,6 +724,7 @@ export const useConfigRenderer = () => {
       <Form.Item
         noStyle
         name={name}
+        preserve
         rules={formRules}
         dependencies={[...mutexPeerFields, ...ltPeerFields]}
         initialValue={default_value}
