@@ -51,38 +51,21 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
-    # ---- SCALANCE 机箱温度 (Siemens AUTOMATION-SMI, 私有企业号 4329, 直接 ℃, scalar) ----
-    # 待现网核验：机箱温度标量 1.3.6.1.4.1.4329.6.3.3.1.1.0（℃）。
-    # 标量用 table+field 命名 → device_temperature_celsius。
-    [[inputs.snmp.table]]
-        name = "device_temperature"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.4329.6.3.3.1.1"
-        name = "celsius"
-    # ---- SCALANCE 双路电源线状态 (AUTOMATION-SMI powerSupply, 每路 ok(1)/failure(2)) ----
-    # 待现网核验：电源线1 .4329.6.3.4.1.1.1.0 / 电源线2 .4329.6.3.4.1.1.2.0（原始码 ok=1）。
-    # 下方 enum 归一 1→1(正常),其余→2(异常)。
+    # ---- SCALANCE 电源状态 (AUTOMATION-PS automationPSStatus 表列，无 .0) ----
+    # 原始码 inactive(1)/active(2)；下方 enum 将 active(2)→1(正常)，其余→2(异常)。
     [[inputs.snmp.table]]
         name = "device_psu"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.4329.6.3.4.1.1.1"
+        oid = "1.3.6.1.4.1.4329.6.3.5.1.1.1.2"
         name = "state"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.4329.6.3.4.1.1.2"
-        name = "state_backup"
-# ---- CPU/内存/风扇：SCALANCE X 工业以太网交换机基于网管桥 ASIC，私有 MIB 未以无需行级过滤的标量形式暴露 CPU/内存负载,且多为无风扇导热被动散热设计 → CPU/内存/风扇 N/A 不采。仅温度/电源线/接口干净可采。----
-# ---- 状态归一：电源线 ok(1)→1(正常),其余→2(异常)。----
+# ---- CPU/内存/风扇/温度：无私有 CPU/内存标量；多为无风扇被动散热；公开 Automation 对象无机箱温度 Gauge → 均 N/A。----
+# ---- 状态归一：automationPSStatus active(2)→1(正常)，inactive(1)及其余→2(异常)。----
 [[processors.enum]]
     namepass = ["device_psu"]
     [[processors.enum.mapping]]
         field = "state"
         default = 2
         [processors.enum.mapping.value_mappings]
-            "1" = 1
-    [[processors.enum.mapping]]
-        field = "state_backup"
-        default = 2
-        [processors.enum.mapping.value_mappings]
-            "1" = 1
+            "2" = 1
