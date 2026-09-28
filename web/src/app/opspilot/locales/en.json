@@ -984,6 +984,39 @@
         "failed": "Test Failed"
       }
     },
+    "activedirectory": {
+      "instances": "AD Instances",
+      "noInstances": "No Active Directory instances",
+      "selectInstance": "Select an AD instance",
+      "unnamedInstance": "Unnamed instance",
+      "addressNotConfigured": "Domain controller not configured",
+      "configTitle": "{name} Configuration",
+      "instanceName": "Instance Name",
+      "instanceNamePlaceholder": "Enter instance name",
+      "host": "Domain Controller",
+      "hostPlaceholder": "e.g. dc01.example.com",
+      "port": "Port",
+      "useSsl": "Use SSL (LDAPS)",
+      "bindDn": "Bind DN",
+      "bindDnPlaceholder": "e.g. CN=svc-opspilot,OU=ServiceAccounts,DC=example,DC=com",
+      "password": "Password",
+      "passwordPlaceholder": "Enter bind account password",
+      "baseDn": "Base DN",
+      "baseDnPlaceholder": "e.g. DC=example,DC=com",
+      "baseDnHint": "LDAP search base; use domain root or an OU DN",
+      "testConnection": "Test Connection",
+      "instanceNameRequired": "Please enter an instance name",
+      "hostRequired": "Please enter a domain controller address",
+      "bindDnRequired": "Please enter a bind DN",
+      "passwordRequired": "Please enter a password",
+      "baseDnRequired": "Please enter a base DN",
+      "duplicateInstanceName": "AD instance names must be unique",
+      "status": {
+        "untested": "Untested",
+        "success": "Test Succeeded",
+        "failed": "Test Failed"
+      }
+    },
     "oracle": {
       "instances": "Oracle Instances",
       "noInstances": "No Oracle instances",

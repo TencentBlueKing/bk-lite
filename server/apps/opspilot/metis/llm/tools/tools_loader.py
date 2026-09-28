@@ -50,6 +50,7 @@ class ToolsLoader:
         "postgres": ("apps.opspilot.metis.llm.tools.postgres", True),
         "python": ("apps.opspilot.metis.llm.tools.python", False),
         "redis": ("apps.opspilot.metis.llm.tools.redis", True),
+        "activedirectory": ("apps.opspilot.metis.llm.tools.activedirectory", True),
         "shell": ("apps.opspilot.metis.llm.tools.shell", False),
         "ssh": ("apps.opspilot.metis.llm.tools.ssh", False),
     }

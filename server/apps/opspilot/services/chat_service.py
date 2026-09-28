@@ -13,6 +13,7 @@ from apps.opspilot.metis.llm.chain.report_renderers import strip_phantom_tool_ca
 from apps.opspilot.metis.llm.common.llm_client_factory import DEFAULT_CHAT_TEMPERATURE, INTERNAL_SAMPLING_TEMPERATURE_KEY, resolve_gateway_temperature
 from apps.opspilot.models import LLMModel, SkillTools, SkillTypeChoices
 from apps.opspilot.services.builtin_tools import (
+    BUILTIN_ACTIVEDIRECTORY_TOOL_NAME,
     BUILTIN_ALERTS_TOOL_NAME,
     BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
     BUILTIN_CMDB_TOOL_NAME,
@@ -23,6 +24,7 @@ from apps.opspilot.services.builtin_tools import (
     BUILTIN_ORACLE_TOOL_NAME,
     BUILTIN_REDIS_TOOL_NAME,
     IDENTITY_ONLY_BUILTIN_TOOLS,
+    build_builtin_activedirectory_runtime_tool,
     build_builtin_alerts_runtime_tool,
     build_builtin_attachment_file_runtime_tool,
     build_builtin_cmdb_runtime_tool,
@@ -426,6 +428,7 @@ class ChatService:
             BUILTIN_MYSQL_TOOL_NAME: None,
             BUILTIN_ORACLE_TOOL_NAME: None,
             BUILTIN_MSSQL_TOOL_NAME: None,
+            BUILTIN_ACTIVEDIRECTORY_TOOL_NAME: None,
         }
         builtin_builders = {
             BUILTIN_ATTACHMENT_FILE_TOOL_NAME: build_builtin_attachment_file_runtime_tool,
@@ -437,6 +440,7 @@ class ChatService:
             BUILTIN_MYSQL_TOOL_NAME: build_builtin_mysql_runtime_tool,
             BUILTIN_ORACLE_TOOL_NAME: build_builtin_oracle_runtime_tool,
             BUILTIN_MSSQL_TOOL_NAME: build_builtin_mssql_runtime_tool,
+            BUILTIN_ACTIVEDIRECTORY_TOOL_NAME: build_builtin_activedirectory_runtime_tool,
         }
 
         selected_tool_ids = [tool["id"] for tool in selected_tools if isinstance(tool.get("id"), int) and tool["id"] > 0]

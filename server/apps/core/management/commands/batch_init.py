@@ -248,6 +248,10 @@ class Command(BaseCommand):
         self.stdout.write("OpsPilot资源初始化...")
         call_command("init_llm")
         call_command("parse_tools_yml")
+        try:
+            call_command("init_skill_packages")
+        except Exception as error:  # noqa: BLE001 - 非关键可重建数据不得阻断启动
+            self.stdout.write(self.style.WARNING(f"内置技能包同步跳过（{type(error).__name__}）: {error}"))
         call_command("init_chatflow")
 
     def _init_log(self):

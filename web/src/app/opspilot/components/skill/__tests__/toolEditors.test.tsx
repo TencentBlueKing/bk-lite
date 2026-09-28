@@ -10,6 +10,7 @@ import MysqlToolEditor from '../mysqlToolEditor';
 import OracleToolEditor from '../oracleToolEditor';
 import PostgresToolEditor from '../postgresToolEditor';
 import RedisToolEditor from '../redisToolEditor';
+import ActiveDirectoryToolEditor from '../activeDirectoryToolEditor';
 import { parseRedisToolConfig } from '../redisToolEditor';
 import type { ToolVariable } from '@/app/opspilot/types/tool';
 
@@ -27,6 +28,7 @@ const { skillApiMocks } = vi.hoisted(() => ({
     testEsConnection: vi.fn().mockResolvedValue(undefined),
     testJenkinsConnection: vi.fn().mockResolvedValue(undefined),
     testKubernetesConnection: vi.fn().mockResolvedValue(undefined),
+    testAdConnection: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -114,6 +116,24 @@ const editorCases: EditorCase[] = [
     instance: { id: 'kubernetes-1', name: ' Kubernetes Production ', kubeconfig_data: ' apiVersion: v1\nclusters: [] ' },
     trimmedField: 'kubeconfig_data', trimmedValue: 'apiVersion: v1\nclusters: []',
     testButton: 'tool.kubernetes.testConnection', testMethod: 'testKubernetesConnection',
+  },
+  {
+    name: 'ActiveDirectory', Component: ActiveDirectoryToolEditor, instancesKey: 'ad_instances',
+    defaultInstanceIdKey: 'ad_default_instance_id',
+    instance: {
+      id: 'ad-1',
+      name: ' AD Production ',
+      host: ' dc.example.com ',
+      port: 636,
+      use_ssl: true,
+      bind_dn: 'CN=svc,DC=example,DC=com',
+      bind_password: 'secret',
+      base_dn: 'DC=example,DC=com',
+    },
+    trimmedField: 'host',
+    trimmedValue: 'dc.example.com',
+    testButton: 'tool.activedirectory.testConnection',
+    testMethod: 'testAdConnection',
   },
 ];
 

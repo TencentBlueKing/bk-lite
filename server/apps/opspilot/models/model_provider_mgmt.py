@@ -318,6 +318,7 @@ class SkillPackage(MaintainerInfo, TimeInfo):
     triggers = models.JSONField(default=list, verbose_name="触发词")
     team = models.JSONField(default=list, verbose_name="分组")
     is_enabled = models.BooleanField(default=True, verbose_name="是否启用")
+    is_build_in = models.BooleanField(default=False, db_index=True, verbose_name="是否内置")
 
     class Meta:
         db_table = "model_provider_mgmt_skillpackage"
