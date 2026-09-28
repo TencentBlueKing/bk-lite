@@ -100,6 +100,23 @@ export const applyCatalogDraft = (
   description: resolveCatalogDescription(draft?.description)
 });
 
+export const formatDimensionTagSummary = (
+  tags?: Record<string, string>
+): string =>
+  Object.entries(tags || {})
+    .map(([key, value]) => `${key}=${value}`)
+    .join(' ');
+
+/** 确认只落库勾选行，并带上分组 / 单位 / 描述。 */
+export const pickSelectedBusinessMetrics = (
+  items: BusinessMetricItem[],
+  selected: Record<string, boolean>,
+  catalogByKey: Record<string, ScriptMetricCatalogDraft> = {}
+): BusinessMetricItem[] =>
+  items
+    .filter((item) => selected[item.key] !== false)
+    .map((item) => applyCatalogDraft(item, catalogByKey[item.key]));
+
 export const buildScriptMetricRegisterPayload = (
   item: BusinessMetricItem,
   targetObjectId: string | number,
