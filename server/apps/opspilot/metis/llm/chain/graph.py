@@ -4,6 +4,7 @@ import os
 import time
 import uuid
 from abc import ABC, abstractmethod
+from contextlib import aclosing
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 
 from ag_ui.core import (
@@ -1594,11 +1595,9 @@ class BasicGraph(ABC):
     ) -> AsyncGenerator[str, None]:
         """使用 agui 协议以 SSE 格式流式输出事件。"""
         encoder = EventEncoder()
-        async for frame in iter_sse_frames_with_idle_keepalive(
-            self._agui_stream_events(request, token_usage_accumulator),
-            encoder,
-        ):
-            yield frame
+        async with aclosing(iter_sse_frames_with_idle_keepalive(self._agui_stream_events(request, token_usage_accumulator), encoder)) as frames:
+            async for frame in frames:
+                yield frame
 
     async def _agui_stream_events(  # noqa: C901
         self,
@@ -1686,12 +1685,15 @@ class BasicGraph(ABC):
                 yield frame
 
             compile_started = monotonic_ms()
+            compile_task = asyncio.ensure_future(self.compile_graph(request))
             try:
-                compile_task = asyncio.ensure_future(self.compile_graph(request))
                 async for keepalive in iter_sse_keepalive_until(compile_task, encoder, "compile_graph"):
                     yield keepalive
                 graph = compile_task.result()
             finally:
+                if not compile_task.done():
+                    compile_task.cancel()
+                await asyncio.gather(compile_task, return_exceptions=True)
                 log_stage_timing("compile_graph", elapsed_ms(compile_started), thread_id=thread_id)
             if graph is None:
                 raise RuntimeError("Failed to compile graph: graph is None")
