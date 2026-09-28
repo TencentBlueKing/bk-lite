@@ -12,7 +12,7 @@ from apps.monitor.services.custom_script_plugin import (
 PLATFORM_INSTANCE_ID = "platform-instance-1"
 
 RENDER_FIXTURE = {
-    "logical_instance_value": PLATFORM_INSTANCE_ID,
+    "instance_id": PLATFORM_INSTANCE_ID,
     "instance_type": "host",
     "plugin_id": "script-plugin-1",
     "config_id": "CFG1",
