@@ -1994,6 +1994,8 @@
     "delete": "删除记录",
     "download": "下载文件",
     "download_errors": "下载错误报告",
+    "view_errors": "查看错误报告",
+    "errorsEmpty": "错误报告里没有可展示的内容",
     "deleteConfirm": "删除记录及文件？已导入的实例不会撤销。",
     "status": {
       "queued": "排队中",

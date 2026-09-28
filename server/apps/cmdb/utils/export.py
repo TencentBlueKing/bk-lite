@@ -210,48 +210,33 @@ class Export:
                 if is_file_attr_type(attr.get("attr_type")):
                     continue
                 if attr["attr_type"] in {ORGANIZATION, USER}:
-                    # attr_id_value = inst_info.get(attr["attr_id"], [])
-                    # if not isinstance(attr_id_value, list):
-                    #     attr_id_value = [attr_id_value]
-                    # sheet_data.append(
-                    #     str([enum_field_dict[attr["attr_id"]].get(i) for i in attr_id_value])
-                    # )
                     attr_id_value = inst_info.get(attr["attr_id"], "")
-                    # 主要维护人字段（operator）：支持多值，并格式化为 display_name(username)
+                    mapping = enum_field_dict.get(attr["attr_id"], {})
+                    # 空值和无法解析的 id 留空。不能写成字符串 None，也不能回写成数字 id。
                     if attr["attr_type"] == USER and attr.get("attr_id") == "operator":
-                        if isinstance(attr_id_value, list):
-                            formatted = []
-                            for uid in attr_id_value:
-                                text = self._format_user_display_username(user_option_dict.get(attr["attr_id"], {}).get(uid))
-                                if text:
-                                    formatted.append(text)
-                                else:
-                                    mapped = enum_field_dict.get(attr["attr_id"], {}).get(uid)
-                                    if mapped is not None:
-                                        formatted.append(str(mapped))
-                                    elif uid not in (None, ""):
-                                        formatted.append(str(uid))
-                            sheet_data.append(",".join(formatted))
-                        else:
-                            text = self._format_user_display_username(user_option_dict.get(attr["attr_id"], {}).get(attr_id_value))
+                        values = attr_id_value if isinstance(attr_id_value, list) else [attr_id_value]
+                        formatted = []
+                        for uid in values:
+                            if uid in (None, ""):
+                                continue
+                            text = self._format_user_display_username(user_option_dict.get(attr["attr_id"], {}).get(uid))
+                            if not text:
+                                mapped = mapping.get(uid)
+                                text = "" if mapped in (None, "") else str(mapped)
                             if text:
-                                sheet_data.append(text)
-                            else:
-                                mapped = enum_field_dict.get(attr["attr_id"], {}).get(attr_id_value)
-                                sheet_data.append(str(mapped) if mapped is not None else "")
+                                formatted.append(text)
+                        sheet_data.append(",".join(formatted))
                         continue
 
-                    # 其他组织/用户字段保持原有导出格式
-                    # TODO 目前只支持单选组织和用户，所以导出返回str即可 若支持单选则返回[]
-                    if isinstance(attr_id_value, list):
-                        if len(attr_id_value) > 0:
-                            name = ",".join([str(enum_field_dict[attr["attr_id"]].get(i)) for i in attr_id_value])
-                            sheet_data.append(name)
-                        else:
-                            # 兼容空列表，避免 dict.get(list) 触发 TypeError 导致导出 500
-                            sheet_data.append("")
-                    else:
-                        sheet_data.append(str(enum_field_dict[attr["attr_id"]].get(attr_id_value)))
+                    values = attr_id_value if isinstance(attr_id_value, list) else [attr_id_value]
+                    names = []
+                    for item in values:
+                        if item in (None, ""):
+                            continue
+                        mapped = mapping.get(item)
+                        if mapped not in (None, ""):
+                            names.append(str(mapped))
+                    sheet_data.append(",".join(names))
                     continue
 
                 if attr["attr_type"] == "tag":
@@ -266,11 +251,13 @@ class Export:
 
                 _value = inst_info.get(attr["attr_id"])
                 if attr["attr_type"] == ENUM:
+                    enum_names = enum_field_dict[attr["attr_id"]]
                     if isinstance(_value, list):
-                        names = [str(enum_field_dict[attr["attr_id"]].get(v, v)) for v in _value if v is not None]
+                        names = [str(enum_names[v]) for v in _value if v is not None and enum_names.get(v) not in (None, "")]
                         _value = ",".join(names)
                     else:
-                        _value = enum_field_dict[attr["attr_id"]].get(_value)
+                        mapped = enum_names.get(_value)
+                        _value = "" if mapped in (None, "") else mapped
                 elif attr["attr_type"] == "table":
                     # table字段导出为单列JSON字符串
                     if _value:

@@ -1,11 +1,12 @@
 'use client';
 
-import { useRef, useState } from 'react';
-import { Alert, Button, Drawer, Empty, Popconfirm, Spin, Tag } from 'antd';
+import { Fragment, useRef, useState } from 'react';
+import { Alert, Button, Drawer, Empty, Modal, Popconfirm, Spin, Table, Tag } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useTransferApi } from '@/app/cmdb/api/transfer';
 import type { TransferTask } from '@/app/cmdb/types/transfer';
 import { downloadBlobFile } from '@/app/cmdb/(pages)/assetData/components/exportDownload';
+import { parseErrorReport, type ErrorReportTable } from './errorReport';
 
 interface Props {
   open: boolean;
@@ -22,6 +23,26 @@ export default function TransferDrawer({ open, onClose, tasks, error, loading, o
   const retryKeys = useRef<Record<string, string>>({});
   const [busy, setBusy] = useState('');
   const [actionError, setActionError] = useState('');
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
+  const [preview, setPreview] = useState<ErrorReportTable>({ columns: [], rows: [] });
+  const viewErrors = async (task: TransferTask) => {
+    setBusy(`${task.task_id}:view_errors`);
+    setPreviewOpen(true);
+    setPreviewLoading(true);
+    setPreviewError('');
+    setPreview({ columns: [], rows: [] });
+    try {
+      const blob = await api.download(task.task_id, 'errors');
+      setPreview(await parseErrorReport(await blob.arrayBuffer()));
+    } catch (failure) {
+      setPreviewError(failure instanceof Error ? failure.message : t('Transfer.requestFailed'));
+    } finally {
+      setPreviewLoading(false);
+      setBusy('');
+    }
+  };
   const operate = async (task: TransferTask, action: string) => {
     setBusy(`${task.task_id}:${action}`);
     setActionError('');
@@ -81,17 +102,50 @@ export default function TransferDrawer({ open, onClose, tasks, error, loading, o
                 <p className="mt-2 text-[var(--color-text-2)]">{t('Transfer.writesRetained')}</p>}
               {task.failure?.execution_pending && <p className="mt-2 text-[var(--color-text-3)]">{t('Transfer.executionPending')}</p>}
               <div className="mt-3 flex flex-wrap gap-2">
-                {task.available_actions.map(action => action === 'delete' ? (
-                  <Popconfirm key={action} title={t('Transfer.deleteConfirm')} onConfirm={() => operate(task, action)}>
-                    <Button size="small" disabled={Boolean(busy)}>{t('Transfer.delete')}</Button>
-                  </Popconfirm>
-                ) : <Button key={action} size="small" loading={busy === `${task.task_id}:${action}`} disabled={Boolean(busy) && busy !== `${task.task_id}:${action}`}
-                  onClick={() => void operate(task, action)}>{t(`Transfer.${action}`)}</Button>)}
+                {task.available_actions.map(action => (
+                  <Fragment key={action}>
+                    {action === 'download_errors' && (
+                      <Button size="small" loading={busy === `${task.task_id}:view_errors`} disabled={Boolean(busy) && busy !== `${task.task_id}:view_errors`}
+                        onClick={() => void viewErrors(task)}>{t('Transfer.view_errors')}</Button>
+                    )}
+                    {action === 'delete' ? (
+                      <Popconfirm title={t('Transfer.deleteConfirm')} onConfirm={() => operate(task, action)}>
+                        <Button size="small" disabled={Boolean(busy)}>{t('Transfer.delete')}</Button>
+                      </Popconfirm>
+                    ) : (
+                      <Button size="small" loading={busy === `${task.task_id}:${action}`} disabled={Boolean(busy) && busy !== `${task.task_id}:${action}`}
+                        onClick={() => void operate(task, action)}>{t(`Transfer.${action}`)}</Button>
+                    )}
+                  </Fragment>
+                ))}
               </div>
             </article>
           ))}
         </div>
       </Spin>
+      <Modal
+        title={t('Transfer.view_errors')}
+        open={previewOpen}
+        width={840}
+        onCancel={() => setPreviewOpen(false)}
+        footer={<Button type="primary" onClick={() => setPreviewOpen(false)}>{t('common.close')}</Button>}
+      >
+        {previewError && <Alert type="error" showIcon message={previewError} className="mb-4" />}
+        <Table
+          size="small"
+          loading={previewLoading}
+          rowKey="key"
+          pagination={preview.rows.length > 10 ? { pageSize: 10 } : false}
+          scroll={{ y: 420 }}
+          locale={{ emptyText: <Empty description={t('Transfer.errorsEmpty')} /> }}
+          columns={preview.columns.map((column) => ({
+            title: column,
+            dataIndex: column,
+            render: (value: string) => <span className="whitespace-pre-wrap break-words">{value}</span>,
+          }))}
+          dataSource={preview.rows}
+        />
+      </Modal>
     </Drawer>
   );
 }

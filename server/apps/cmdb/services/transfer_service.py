@@ -8,7 +8,13 @@ from django.db.models import Q
 from django.utils.timezone import now
 
 from apps.cmdb.models.transfer_task import CmdbTransferGuard, CmdbTransferTask
+from apps.core.logger import cmdb_logger as logger
 from apps.system_mgmt.models.user import User
+
+# prefork 子进程在 time_limit 被硬杀后不会回到 finally。余量盖住领取与杀进程之间的空隙。
+EXECUTION_HARD_LIMIT = timedelta(seconds=960)
+EXECUTION_SLOT_GRACE = timedelta(minutes=2)
+SLOT_RELEASED_MESSAGE = "执行已超过进程时限，占用已解除；已写入数据保留，未自动重跑"
 
 
 class TransferError(Exception):
@@ -274,6 +280,55 @@ class TransferService:
     def interrupt(cls, task_id, token, code):
         # watchdog 只能终止逻辑执行权，不能证明同步图库调用已经返回。
         return cls.fail_execution(task_id, token, code, "执行超时或 Worker 失联，任务已失败", execution_stopped=False)
+
+    @classmethod
+    def release_expired_slots(cls):
+        cutoff = now() - EXECUTION_HARD_LIMIT - EXECUTION_SLOT_GRACE
+        task_ids = list(
+            CmdbTransferTask.objects.filter(holds_slot=True, started_at__lte=cutoff).order_by("started_at").values_list("pk", flat=True)[:500]
+        )
+        for task_id in task_ids:
+            cls.release_expired_slot(task_id, cutoff)
+
+    @classmethod
+    @transaction.atomic
+    def release_expired_slot(cls, task_id, cutoff):
+        owner_id = CmdbTransferTask.objects.filter(pk=task_id).values_list("owner_id", flat=True).first()
+        if owner_id is None:
+            return False
+        User.objects.select_for_update().get(pk=owner_id)
+        task = CmdbTransferTask.objects.select_for_update().filter(pk=task_id, holds_slot=True, started_at__lte=cutoff).first()
+        if task is None:
+            return False
+        summary = dict(task.summary)
+        failure = dict(summary.get("_failure") or {})
+        stage = failure.get("stage") or task.phase
+        if not failure:
+            summary["_failure"] = {
+                "stage": stage,
+                "error_type": "ExecutionHardLimit",
+                "result_uncertain": task.kind == "import" and stage in ("writing_instances", "writing_relations", "interrupted"),
+            }
+        updated = CmdbTransferTask.objects.filter(pk=task.pk, holds_slot=True, started_at__lte=cutoff).update(
+            status="failed",
+            phase="finished",
+            holds_slot=False,
+            lease_expires_at=None,
+            finished_at=task.finished_at or now(),
+            error_code=task.error_code or "execution_expired",
+            message=SLOT_RELEASED_MESSAGE,
+            summary=summary,
+        )
+        if not updated:
+            return False
+        cls.trim_history(owner_id)
+        logger.info(
+            "event=cmdb_transfer_slot_released task_id=%s failed_stage=%s error_type=%s",
+            str(task.pk),
+            stage,
+            "ExecutionHardLimit",
+        )
+        return True
 
     @classmethod
     @transaction.atomic

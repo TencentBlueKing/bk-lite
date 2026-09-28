@@ -40,6 +40,7 @@ class TransferMaintenance:
             .only("id", "execution_token")[:500]
         ):
             TransferService.interrupt(task.pk, task.execution_token, "worker_lost")
+        TransferService.release_expired_slots()
         can_publish = True
         for task in CmdbTransferTask.objects.filter(status="queued").order_by("created_at")[:500]:
             if task.created_at + timedelta(minutes=30) <= now():

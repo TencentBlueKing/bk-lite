@@ -195,3 +195,47 @@ def test_file_fields_are_excluded_from_both_headers_and_rows(monkeypatch):
     ).active
     assert [cell.value for cell in sheet[3]] == ["字段标识(请勿编辑)", "inst_name"]
     assert [cell.value for cell in sheet[4]] == [None, "h1"]
+
+
+def test_empty_user_and_organization_export_blank_names_not_none_or_ids():
+    attrs = [
+        {"attr_id": "inst_name", "attr_name": "实例名", "attr_type": "str"},
+        {
+            "attr_id": "operator",
+            "attr_name": "运维人员",
+            "attr_type": "user",
+            "option": [{"id": 7, "name": "alice", "username": "alice", "display_name": "张三"}],
+        },
+        {
+            "attr_id": "developer",
+            "attr_name": "开发人员",
+            "attr_type": "user",
+            "option": [{"id": 7, "name": "alice", "username": "alice", "display_name": "张三"}],
+        },
+        {
+            "attr_id": "organization",
+            "attr_name": "组织",
+            "attr_type": "organization",
+            "option": [{"id": 1, "name": "Default"}],
+        },
+        {
+            "attr_id": "status",
+            "attr_name": "状态",
+            "attr_type": "enum",
+            "option": [{"id": "up", "name": "已上线"}],
+        },
+    ]
+    sheet = openpyxl.load_workbook(
+        Export(attrs, model_id="system").export_inst_list(
+            [
+                {
+                    "inst_name": "sys",
+                    "operator": [7, None],
+                    "developer": None,
+                    "organization": None,
+                    "status": ["up", "missing-id"],
+                }
+            ]
+        )
+    ).active
+    assert [cell.value for cell in sheet[4]] == [None, "sys", "张三(alice)", None, None, "已上线"]
