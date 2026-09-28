@@ -1,4 +1,4 @@
-"""脚本 child TOML 契约：inputs.exec 之后的 processor 强制 instance_id。"""
+"""脚本 child TOML 契约：inputs.bklite_script 之后的 processor 强制 instance_id。"""
 
 import tomllib
 
@@ -10,6 +10,7 @@ from apps.monitor.services.custom_script_plugin import (
 
 
 PLATFORM_INSTANCE_ID = "platform-instance-1"
+SCRIPT_BODY = "echo my_metric 1"
 
 RENDER_FIXTURE = {
     "instance_id": PLATFORM_INSTANCE_ID,
@@ -17,8 +18,7 @@ RENDER_FIXTURE = {
     "plugin_id": "script-plugin-1",
     "config_id": "CFG1",
     "interval": 60,
-    "timeout": 10,
-    "command": "/tmp/example-script.sh",
+    "script": SCRIPT_BODY,
 }
 
 
@@ -30,11 +30,11 @@ class FakeMetric:
         self.time = time
 
 
-def _require_processor_after_exec(toml_text: str) -> str:
-    exec_idx = toml_text.index("[[inputs.exec]]")
-    after_exec = toml_text[exec_idx:]
-    assert "[[processors.starlark]]" in after_exec
-    processor = after_exec[after_exec.index("[[processors.starlark]]") :]
+def _require_processor_after_input(toml_text: str) -> str:
+    input_idx = toml_text.index("[[inputs.bklite_script]]")
+    after_input = toml_text[input_idx:]
+    assert "[[processors.starlark]]" in after_input
+    processor = after_input[after_input.index("[[processors.starlark]]") :]
     assert 'metric.tags["instance_id"] = reserved_instance_id' in processor
     assert 'reserved_instance_id = "{{ instance_id }}"' in processor or f'reserved_instance_id = "{PLATFORM_INSTANCE_ID}"' in processor
     return processor
@@ -46,26 +46,45 @@ def _load_starlark_apply(processor: dict):
     return namespace["apply"]
 
 
-def test_script_child_template_locks_instance_id_after_exec():
+def _assert_bklite_script_input(parsed: dict, *, script_body: str) -> dict:
+    script_inputs = parsed["inputs"]["bklite_script"]
+    assert isinstance(script_inputs, list) and script_inputs
+    plugin_cfg = script_inputs[0]
+    assert plugin_cfg["interval"] == "60s"
+    assert plugin_cfg["interpreter"] == "/bin/sh"
+    assert plugin_cfg["script"] == script_body
+    assert plugin_cfg["name_prefix"] == "bklite_script_CFG1_"
+    assert "timeout" not in plugin_cfg
+    assert "data_format" not in plugin_cfg
+    assert "command" not in plugin_cfg
+    assert "commands" not in plugin_cfg
+    assert "script_file" not in plugin_cfg
+    assert "exec" not in parsed.get("inputs", {})
+    return plugin_cfg
+
+
+def test_script_child_template_locks_instance_id_after_bklite_script():
     template = CustomScriptPluginService.child_template()
     assert template == DEFAULT_SCRIPT_CHILD_TEMPLATE
-    assert template.index("[[inputs.exec]]") < template.index("[[processors.starlark]]")
-    processor = _require_processor_after_exec(template)
+    assert "[[inputs.exec]]" not in template
+    assert "[inputs.exec.tags]" not in template
+    assert template.index("[[inputs.bklite_script]]") < template.index("[[processors.starlark]]")
+    processor = _require_processor_after_input(template)
     assert 'reserved_instance_id = "{{ instance_id }}"' in processor
-    assert "[inputs.exec.tags]" in template
-    tags_block = template[template.index("[inputs.exec.tags]") : template.index("[[processors.starlark]]")]
+    assert "[inputs.bklite_script.tags]" in template
+    tags_block = template[template.index("[inputs.bklite_script.tags]") : template.index("[[processors.starlark]]")]
     assert "instance_id = \"{{ instance_id }}\"" in tags_block
     assert "[[processors.starlark]]" not in tags_block
 
     rendered = CustomScriptPluginService.render_child_template(RENDER_FIXTURE)
-    assert rendered.index("[[inputs.exec]]") < rendered.index("[[processors.starlark]]")
-    rendered_processor = _require_processor_after_exec(rendered)
+    assert "[[inputs.exec]]" not in rendered
+    assert rendered.index("[[inputs.bklite_script]]") < rendered.index("[[processors.starlark]]")
+    rendered_processor = _require_processor_after_input(rendered)
     assert f'reserved_instance_id = "{PLATFORM_INSTANCE_ID}"' in rendered_processor
     assert 'reserved_instance_id = "{{ instance_id }}"' not in rendered
 
     parsed = tomllib.loads(rendered)
-    exec_inputs = parsed["inputs"]["exec"]
-    assert isinstance(exec_inputs, list) and exec_inputs
+    _assert_bklite_script_input(parsed, script_body=SCRIPT_BODY)
     starlark = parsed["processors"]["starlark"]
     assert isinstance(starlark, list) and starlark
     processor_cfg = starlark[0]
@@ -97,3 +116,25 @@ def test_script_child_template_locks_instance_id_after_exec():
     assert locked.tags["collect_type"] == "script"
     assert locked.tags["config_type"] == "script"
     assert locked.tags["plugin_id"] == "script-plugin-1"
+
+    command_fixture = {key: value for key, value in RENDER_FIXTURE.items() if key != "script"}
+    command_fixture["command"] = SCRIPT_BODY
+    migrated = tomllib.loads(CustomScriptPluginService.render_child_template(command_fixture))
+    _assert_bklite_script_input(migrated, script_body=SCRIPT_BODY)
+
+    optional_parsed = tomllib.loads(
+        CustomScriptPluginService.render_child_template(
+            {
+                **RENDER_FIXTURE,
+                "params": ["-u"],
+                "environment": ["TOKEN=secret"],
+                "run_as": "telegraf",
+                "script_name": "demo",
+            }
+        )
+    )
+    optional_cfg = _assert_bklite_script_input(optional_parsed, script_body=SCRIPT_BODY)
+    assert optional_cfg["params"] == ["-u"]
+    assert optional_cfg["environment"] == ["TOKEN=secret"]
+    assert optional_cfg["run_as"] == "telegraf"
+    assert optional_cfg["script_name"] == "demo"
