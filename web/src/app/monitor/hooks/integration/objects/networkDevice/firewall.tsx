@@ -95,6 +95,7 @@ export const useFirewallConfig = () => {
       'Firewall WatchGuard SNMP': 'snmp_watchguard',
       'Firewall pfSense SNMP': 'snmp_pfsense',
       'Firewall OPNsense SNMP': 'snmp_opnsense',
+      'Firewall Zyxel SNMP': 'snmp_zyxel_firewall',
       'Firewall Flow NetFlow': 'netflow',
       'Firewall Flow sFlow': 'sflow'
     }

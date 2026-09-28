@@ -27,7 +27,8 @@ export const FIREWALL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description:
         '防火墙 CPU 使用率。品牌自适应：直报利用率（Fortinet/Check Point/SonicWall）或各核负载均值（Palo Alto/Stormshield 走 HOST-RESOURCES hrProcessorLoad）。持续偏高说明流量检测/威胁防护负载吃紧。',
       unit: 'percent',
-      query: 'avg(device_cpu_usage{__$labels__}) by (instance_id)',
+      query:
+        'avg(device_cpu_usage{__$labels__}) by (instance_id) or avg(snmp_device_cpu_usage{__$labels__}) by (instance_id)',
       color: '#2f6bff'
     },
     {
@@ -37,7 +38,7 @@ export const FIREWALL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         '防火墙内存使用率（百分比）。品牌自适应：①设备直报利用率（Fortinet/SonicWall）；②(总量-空闲)/总量（Check Point/Stormshield）。部分型号（Palo Alto/WatchGuard）无标准 SNMP 内存利用率，显示「--」。',
       unit: 'percent',
       query:
-        'avg(device_memory_usage{__$labels__}) by (instance_id) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100)',
+        'avg(device_memory_usage{__$labels__}) by (instance_id) or avg(snmp_device_memory_usage{__$labels__}) by (instance_id) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100)',
       color: '#ff8a1f'
     },
     {
@@ -47,7 +48,7 @@ export const FIREWALL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         '防火墙当前活动会话或连接数。品牌自适应回退：活动会话（Fortinet/Palo Alto）→ 当前连接（SonicWall）→ 活动连接（WatchGuard）→ ASQ TCP 连接（Stormshield）。反映负载与会话表压力。',
       unit: 'counts',
       query:
-        'firewall_active_sessions{__$labels__} or firewall_current_connections{__$labels__} or firewall_active_connections{__$labels__} or firewall_tcp_connections{__$labels__} or firewall_pf_states{__$labels__}',
+        'firewall_active_sessions{__$labels__} or snmp_firewall_active_sessions{__$labels__} or firewall_current_connections{__$labels__} or firewall_active_connections{__$labels__} or firewall_tcp_connections{__$labels__} or firewall_pf_states{__$labels__}',
       color: '#13c2c2'
     },
     {

@@ -872,6 +872,16 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "traffic",
         "session"
       ]
+    },
+    {
+      "collectType": "snmp_zyxel_firewall",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "traffic",
+        "session"
+      ]
     }
   ],
   "loadbalance": [
