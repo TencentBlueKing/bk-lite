@@ -31,6 +31,7 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "ENV_BEARER_TOKEN",
     "ENV_PASSWORD",
     "agents",
+    "allow_root",
     "auth_password",
     "auth_protocol",
     "auth_type",
@@ -125,6 +126,7 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "winrm_cert_validation",
     "winrm_scheme",
     "winrm_transport",
+    "wrapper_path",
 }
 
 
@@ -379,6 +381,10 @@ class Controller:
             resolved_os = resolve_operating_system(_context)
             if resolved_os:
                 _context["operating_system"] = resolved_os
+        if not str(_context.get("wrapper_path") or "").strip():
+            from apps.monitor.services.custom_script_plugin import script_wrapper_path
+
+            _context["wrapper_path"] = script_wrapper_path(_context.get("operating_system"))
 
         # 优先使用显式 logical_instance_value（已规范化的逻辑实例值）。
         # 仅在缺失时才尝试解析 instance_id，保持向后兼容。

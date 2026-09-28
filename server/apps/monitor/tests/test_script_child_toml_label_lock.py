@@ -18,7 +18,7 @@ RENDER_FIXTURE = {
     "config_id": "CFG1",
     "interval": 60,
     "timeout": 10,
-    "command": "/tmp/example-script.sh",
+    "username": "nobody",
 }
 
 
@@ -66,6 +66,15 @@ def test_script_child_template_locks_instance_id_after_exec():
     parsed = tomllib.loads(rendered)
     exec_inputs = parsed["inputs"]["exec"]
     assert isinstance(exec_inputs, list) and exec_inputs
+    exec_cfg = exec_inputs[0]
+    assert exec_cfg["commands"] == ["/opt/fusion-collectors/bin/bklite-script-wrapper"]
+    assert exec_cfg["data_format"] == "prometheus"
+    env_values = exec_cfg["environment"]
+    assert "BK_SCRIPT_CONFIG_ID=CFG1" in env_values
+    assert "BK_SCRIPT_INSTANCE_ID=platform-instance-1" in env_values
+    assert "BK_SCRIPT_BODY=${SCRIPT_BODY__CFG1}" in env_values
+    assert "BK_SCRIPT_USER=nobody" in env_values
+    assert all("SCRIPT_BODY=" not in item or item.startswith("BK_SCRIPT_BODY=${") for item in env_values)
     starlark = parsed["processors"]["starlark"]
     assert isinstance(starlark, list) and starlark
     processor_cfg = starlark[0]
@@ -97,3 +106,10 @@ def test_script_child_template_locks_instance_id_after_exec():
     assert locked.tags["collect_type"] == "script"
     assert locked.tags["config_type"] == "script"
     assert locked.tags["plugin_id"] == "script-plugin-1"
+
+
+def test_script_child_template_uses_windows_wrapper_path():
+    rendered = CustomScriptPluginService.render_child_template({**RENDER_FIXTURE, "operating_system": "windows"})
+    parsed = tomllib.loads(rendered)
+    assert parsed["inputs"]["exec"][0]["commands"] == [r"C:\fusion-collectors\bin\bklite-script-wrapper.exe"]
+    assert parsed["inputs"]["exec"][0]["data_format"] == "prometheus"
