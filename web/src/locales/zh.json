@@ -228,7 +228,9 @@
     "minute": "分钟",
     "second": "秒",
     "hour": "小时",
-    "day": "天"
+    "day": "天",
+    "saved": "状态已更新",
+    "copied": "已复制"
   },
   "userInfo": {
     "basicInfo": "基础信息",
