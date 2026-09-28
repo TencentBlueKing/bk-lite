@@ -427,6 +427,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const [trialMetricsByRow, setTrialMetricsByRow] = useState<
     Record<string, BusinessMetricItem[]>
   >({});
+  const [scriptDebugHasBusinessMetrics, setScriptDebugHasBusinessMetrics] =
+    useState(false);
 
   const handleSelectedScriptMetricsChange = useCallback(
     (metrics: BusinessMetricItem[]) => {
@@ -437,6 +439,13 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       }));
     },
     [activeRecord?.key]
+  );
+
+  const handleBusinessMetricsAvailableChange = useCallback(
+    (available: boolean) => {
+      setScriptDebugHasBusinessMetrics(available);
+    },
+    []
   );
 
   const selectedScriptMetrics = useMemo(() => {
@@ -460,6 +469,16 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     'monitor.integrations.reservedTagRename',
     '保留字段，请换名'
   );
+  const goEditSelectFirstText = t(
+    'monitor.integrations.goEditMetricsSelectFirst',
+    '请先勾选指标'
+  );
+  const showGoEditMetrics =
+    isScriptTemplate && scriptDebugHasBusinessMetrics;
+  const showGoEditSelectFirst =
+    showGoEditMetrics &&
+    !hasReservedScriptTagError &&
+    !selectedScriptMetrics.length;
 
   const persistSelectedScriptMetrics = async (
     targetPluginId: string | number,
@@ -475,12 +494,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   };
 
   const handleGoEditMetrics = () => {
-    if (
-      confirmLoading ||
-      isAnyTrialRunning ||
-      hasReservedScriptTagError ||
-      !selectedScriptMetrics.length
-    ) {
+    if (confirmLoading || isAnyTrialRunning || hasReservedScriptTagError) {
+      return;
+    }
+    if (!selectedScriptMetrics.length) {
       return;
     }
     const payload = buildScriptMetricEditCarry(selectedScriptMetrics);
@@ -1811,6 +1828,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           pluginId={pluginId}
           objectId={objectId}
           onSelectedMetricsChange={handleSelectedScriptMetricsChange}
+          onBusinessMetricsAvailableChange={handleBusinessMetricsAvailableChange}
         />
       )}
       <Form.Item>
@@ -1827,13 +1845,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
               {t('common.confirm')}
             </Button>
           </Permission>
-          {isScriptTemplate && (
+          {showGoEditMetrics && (
             <Button
               disabled={
                 confirmLoading ||
                 isAnyTrialRunning ||
-                hasReservedScriptTagError ||
-                !selectedScriptMetrics.length
+                hasReservedScriptTagError
               }
               onClick={handleGoEditMetrics}
             >
@@ -1846,6 +1863,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
               role="alert"
             >
               {reservedTagRenameText}
+            </span>
+          )}
+          {showGoEditSelectFirst && (
+            <span
+              className="text-[13px] text-[var(--color-fail)]"
+              role="alert"
+            >
+              {goEditSelectFirstText}
             </span>
           )}
         </div>

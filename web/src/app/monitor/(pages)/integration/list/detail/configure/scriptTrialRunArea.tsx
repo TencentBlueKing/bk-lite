@@ -66,6 +66,7 @@ interface ScriptTrialRunAreaProps {
   pluginId?: string | number;
   objectId?: string | number;
   onSelectedMetricsChange?: (metrics: BusinessMetricItem[]) => void;
+  onBusinessMetricsAvailableChange?: (available: boolean) => void;
 }
 
 interface MetricGroupOption {
@@ -82,7 +83,8 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
   instanceName,
   pluginId,
   objectId,
-  onSelectedMetricsChange
+  onSelectedMetricsChange,
+  onBusinessMetricsAvailableChange
 }) => {
   const { t } = useTranslation();
   const { get } = useApiClient();
@@ -188,6 +190,17 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
       )
     );
   }, [selectedMetrics, parsedOutput, catalogByKey, onSelectedMetricsChange]);
+
+  useEffect(() => {
+    onBusinessMetricsAvailableChange?.(
+      task?.status === 'success' &&
+        (parsedOutput?.businessMetrics?.length || 0) > 0
+    );
+  }, [task?.status, parsedOutput, onBusinessMetricsAvailableChange]);
+
+  useEffect(() => {
+    return () => onBusinessMetricsAvailableChange?.(false);
+  }, [onBusinessMetricsAvailableChange]);
 
   const updateCatalog = (key: string, patch: ScriptMetricCatalogDraft) => {
     setCatalogByKey((prev) => ({
