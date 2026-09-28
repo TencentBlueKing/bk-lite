@@ -415,10 +415,13 @@ const Node = () => {
         filters: searchFilters,
         unassignedOnly
       });
-      const blob = await exportNodeList({
+      const { blob, filename } = await exportNodeList({
         ...request.body,
         ...request.query
       } as any);
+      if (!(blob instanceof Blob)) {
+        return;
+      }
       if (blob.type && blob.type.includes('application/json')) {
         const payload = JSON.parse(await blob.text());
         message.error(payload.message || t('common.exportFailed'));
@@ -427,7 +430,7 @@ const Node = () => {
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `nodes.xlsx`;
+      link.download = filename || 'nodes.xlsx';
       link.click();
       window.URL.revokeObjectURL(url);
     } catch (error: any) {

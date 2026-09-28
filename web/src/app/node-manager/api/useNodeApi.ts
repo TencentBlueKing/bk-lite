@@ -1,4 +1,5 @@
 import useApiClient from '@/utils/request';
+import type { AxiosResponse } from 'axios';
 import type {
   ControllerInstallFields,
   NodeItem,
@@ -9,6 +10,7 @@ import {
   NodeParams
 } from '../types/node';
 import { SearchFilters } from '@/components/search-combination/types';
+import { parseContentDispositionFilename } from '../utils/nodeListExport';
 
 /**
  * 节点管理API Hook
@@ -59,7 +61,24 @@ const useNodeApi = () => {
     const url = queryString
       ? `/node_mgmt/api/node/export_excel/?${queryString}`
       : '/node_mgmt/api/node/export_excel/';
-    return await post<Blob>(url, bodyParams, { responseType: 'blob' });
+    const res = await post<{
+      data: Blob;
+      headers: AxiosResponse['headers'];
+    }>(url, bodyParams, {
+      responseType: 'blob',
+      blobMeta: true,
+      suppressErrorNotification: true
+    });
+    const disposition =
+      res.headers?.['content-disposition'] ??
+      res.headers?.['Content-Disposition'];
+    return {
+      blob: res.data,
+      filename:
+        parseContentDispositionFilename(
+          typeof disposition === 'string' ? disposition : undefined
+        ) || 'nodes.xlsx'
+    };
   };
 
   // 删除节点必清 CMDB 悬挂 node_id（实例保留）。retire_linked=true 时额外退役监控。

@@ -168,6 +168,17 @@ def test_export_over_limit_fails_without_truncation(monkeypatch):
     assert resp.get("Content-Disposition") is None
 
 
+def test_export_selected_ids_not_list_returns_400(monkeypatch):
+    region, keep, other = _region_and_nodes()
+    resp = _post_export(
+        monkeypatch,
+        [keep, other],
+        {"cloud_region_id": region.id, "selected_ids": "keep-id"},
+    )
+    assert resp.status_code == 400
+    assert resp.get("Content-Disposition") is None
+
+
 def test_export_hosted_cell_uses_collector_display_name(monkeypatch):
     region, keep, other = _region_and_nodes()
     resp = _post_export(

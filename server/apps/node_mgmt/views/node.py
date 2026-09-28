@@ -392,7 +392,12 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
         labels = export_labels(getattr(request.user, "locale", None))
         permission = get_node_permission(request)
         queryset = get_catalog_node_queryset(request, permission)
-        selected_ids = [str(item).strip() for item in (request.data.get("selected_ids") or []) if str(item).strip()]
+        raw_selected_ids = request.data.get("selected_ids")
+        if raw_selected_ids is None:
+            raw_selected_ids = []
+        elif not isinstance(raw_selected_ids, (list, tuple)):
+            return WebUtils.response_error(error_message="selected_ids must be a list")
+        selected_ids = [str(item).strip() for item in raw_selected_ids if str(item).strip()]
 
         cloud_region_id = request.query_params.get("cloud_region_id") or request.data.get("cloud_region_id")
         if not cloud_region_id:
