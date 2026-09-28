@@ -235,19 +235,22 @@ class PhyscialServerRedfishInfo:
         return [resource for resource in results if resource is not None]
 
     async def _read_inventory(self, client, system):
-        processors, memory, drives, chassis_inventory = await asyncio.gather(
+        processors, memory, storage_inventory, chassis_inventory = await asyncio.gather(
             self._read_collection_resources(client, system.get("Processors")),
             self._read_collection_resources(client, system.get("Memory")),
-            self._read_drives(client, system.get("Storage")),
+            self._read_storage_inventory(client, system.get("Storage")),
             self._read_chassis_inventory(client, system),
         )
-        assemblies, nic_records = chassis_inventory
+        drives, storage_controllers = storage_inventory
+        assemblies, nic_records, power_supplies = chassis_inventory
         return {
             "processors": processors,
             "memory": memory,
             "drives": drives,
             "nic_records": nic_records,
             "assemblies": assemblies,
+            "storage_controllers": storage_controllers,
+            "power_supplies": power_supplies,
         }
 
     async def _read_collection_resources(self, client, link):
@@ -256,12 +259,20 @@ class PhyscialServerRedfishInfo:
             return None
         return await self._read_linked_resources(client, links)
 
-    async def _read_drives(self, client, storage_link):
+    @staticmethod
+    def _is_link_only(node):
+        if not isinstance(node, dict) or not node.get("@odata.id"):
+            return False
+        return not any(not str(key).startswith("@odata.") for key in node)
+
+    async def _read_storage_inventory(self, client, storage_link):
         storage_links = await self._read_optional_collection(client, storage_link)
         if storage_links is None:
-            return None
+            return None, None
         storages = await self._read_linked_resources(client, storage_links)
         drive_links = []
+        controllers = []
+        saw_controller_source = False
         for storage in storages:
             drives = storage.get("Drives")
             if isinstance(drives, list):
@@ -270,7 +281,72 @@ class PhyscialServerRedfishInfo:
                 members = await self._read_optional_collection(client, drives)
                 if members:
                     drive_links.extend(members)
-        return await self._read_linked_resources(client, drive_links)
+            collected, saw_source = await self._read_storage_controllers(client, storage.get("StorageControllers"))
+            if saw_source:
+                saw_controller_source = True
+            controllers.extend(collected)
+        drives = await self._read_linked_resources(client, drive_links)
+        if not saw_controller_source:
+            controllers = None
+        return drives, controllers
+
+    async def _read_storage_controllers(self, client, raw_controllers):
+        if raw_controllers is None:
+            return [], False
+        if isinstance(raw_controllers, list):
+            controllers = []
+            for item in raw_controllers:
+                if self._is_link_only(item):
+                    resource = await self._read_resource(client, item)
+                    if resource is not None:
+                        controllers.append(resource)
+                elif isinstance(item, dict):
+                    controllers.append(item)
+            return controllers, True
+        if isinstance(raw_controllers, dict):
+            members = await self._read_optional_collection(client, raw_controllers)
+            if members is None:
+                return [], True
+            return await self._read_linked_resources(client, members), True
+        return [], False
+
+    async def _read_power_supplies(self, client, chassis_resources):
+        power_links = [chassis.get("Power") for chassis in chassis_resources if isinstance(chassis, dict) and chassis.get("Power")]
+        if not power_links:
+            return None
+        supplies = []
+        any_success = False
+        for link in power_links:
+            payload = await self._read_resource(client, link)
+            if payload is None:
+                continue
+            any_success = True
+            raw_supplies = payload.get("PowerSupplies")
+            if isinstance(raw_supplies, list):
+                for item in raw_supplies:
+                    if self._is_link_only(item):
+                        resource = await self._read_resource(client, item)
+                        if resource is not None:
+                            supplies.append(resource)
+                    elif isinstance(item, dict):
+                        supplies.append(item)
+            elif isinstance(raw_supplies, dict):
+                members = await self._read_optional_collection(client, raw_supplies)
+                if members:
+                    supplies.extend(await self._read_linked_resources(client, members))
+        if not any_success:
+            return None
+        return supplies
+
+    def _nic_port_link(self, function):
+        if not isinstance(function, dict):
+            return None
+        links = function.get("Links") if isinstance(function.get("Links"), dict) else {}
+        for key in ("PhysicalNetworkPortAssignment", "PhysicalPortAssignment"):
+            link = links.get(key) or function.get(key)
+            if link:
+                return link
+        return None
 
     async def _read_chassis_inventory(self, client, system):
         links = system.get("Links") if isinstance(system.get("Links"), dict) else {}
@@ -301,12 +377,19 @@ class PhyscialServerRedfishInfo:
                 if not functions:
                     continue
                 for function in await self._read_linked_resources(client, functions):
-                    nic_records.append({"adapter": adapter, "function": function})
+                    record = {"adapter": adapter, "function": function}
+                    port_link = self._nic_port_link(function)
+                    if port_link:
+                        port = await self._read_resource(client, port_link)
+                        if port is not None:
+                            record["port"] = port
+                    nic_records.append(record)
         if not saw_assembly:
             assemblies = None
         if not adapter_sources or successful_adapter_sources == 0:
             nic_records = None
-        return assemblies, nic_records
+        power_supplies = await self._read_power_supplies(client, chassis_resources)
+        return assemblies, nic_records, power_supplies
 
     async def probe(self):
         try:
@@ -365,6 +448,7 @@ class PhyscialServerRedfishInfo:
                 system = await self._get_json(client, members[0])
                 inventory = await self._read_inventory(client, system)
 
+            status = system.get("Status") if isinstance(system.get("Status"), dict) else {}
             server = {
                 "ip_addr": self.host,
                 "port": self.port,
@@ -372,6 +456,8 @@ class PhyscialServerRedfishInfo:
                 "model": system.get("Model"),
                 "brand": system.get("Manufacturer"),
                 "asset_code": system.get("AssetTag"),
+                "power_state": system.get("PowerState"),
+                "health": status.get("Health"),
             }
             return {"success": True, "result": build_redfish_result(server, **inventory)}
         except RedfishCollectionError as exc:

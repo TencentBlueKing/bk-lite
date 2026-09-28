@@ -1,6 +1,16 @@
 from plugins.inputs.physcial_server.redfish_inventory import build_redfish_result
 
 
+def _mapping_keys(value):
+    if isinstance(value, dict):
+        for key, item in value.items():
+            yield key
+            yield from _mapping_keys(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _mapping_keys(item)
+
+
 def test_build_redfish_result_maps_standard_inventory():
     result = build_redfish_result(
         {"ip_addr": "10.0.0.8", "port": 443, "serial_number": "SERVER-SN-8"},
@@ -342,3 +352,150 @@ def test_non_dict_members_are_skipped_without_error():
     assert result["disk"] == [{"disk_name": "Disk.0", "self_device": "10.0.0.8"}]
     assert result["nic"] == [{"nic_mac": "aa:bb:cc:dd:ee:01", "nic_type": "Ethernet", "self_device": "10.0.0.8"}]
     assert result["gpu"] == [{"gpu_name": "Acc1", "gpu_type": "Accelerator", "self_device": "10.0.0.8"}]
+
+
+def test_redfish_p0_maps_health_controller_psu_disk_and_nic():
+    result = build_redfish_result(
+        {
+            "ip_addr": "10.0.0.8",
+            "power_state": "On",
+            "health": "OK",
+        },
+        processors=None,
+        memory=None,
+        drives=[
+            {
+                "Id": "Disk.Bay.0",
+                "Status": {"Health": "Warning", "State": "Enabled", "HealthRollup": "Critical"},
+                "PredictedMediaLifeLeftPercent": 87.6,
+                "PowerInputWatts": 8,
+            },
+            {"Id": "Disk.Bay.1", "Status": {"State": "Absent", "Health": "Critical"}},
+            {"Id": "Disk.Bay.2", "Status": {"Health": "Degraded"}},
+        ],
+        nic_records=[
+            {
+                "adapter": {"Name": "NIC.Slot.1", "Id": "1"},
+                "function": {
+                    "Name": "NIC.Slot.1-1",
+                    "HostInterface": "eth0",
+                    "Ethernet": {"MACAddress": "AA-BB-CC-DD-EE-FF", "InterfaceName": "ens1"},
+                },
+                "port": {"CurrentSpeedGbps": 25, "CurrentLinkSpeedMbps": 10000, "MaxSpeedMbps": 25000},
+            },
+            {
+                "adapter": {"Id": "2"},
+                "function": {"Id": "2", "Ethernet": {"MACAddress": "AA-BB-CC-DD-EE-02"}},
+                "port": {"CurrentLinkSpeedMbps": 0, "MaxSpeedGbps": 1},
+            },
+        ],
+        assemblies=None,
+        storage_controllers=[
+            {
+                "Id": "RAID.Integrated.1",
+                "MemberId": "0",
+                "Name": "RAID",
+                "Manufacturer": "Broadcom",
+                "Model": "SAS3408",
+                "SerialNumber": "SC-1",
+                "FirmwareVersion": "5.1",
+                "Status": {"Health": "ok"},
+            },
+            {"Name": "name-only"},
+            {"Id": "RAID.Integrated.1", "Name": "duplicate"},
+            {"MemberId": "3", "Name": "MemberOnly"},
+            {"Status": {"State": "Absent"}, "MemberId": "9"},
+        ],
+        power_supplies=[
+            {
+                "Name": "PSU1",
+                "Manufacturer": "Delta",
+                "Model": "DPS-1600",
+                "SerialNumber": "PSU-SN",
+                "PowerCapacityWatts": 1600,
+                "PowerInputWatts": 120,
+                "PowerOutputWatts": 100,
+                "LineInputVoltage": 220,
+                "Status": {"Health": "OK"},
+            },
+            {"Status": {"State": "Absent"}, "Name": "PSU2"},
+        ],
+    )
+
+    assert result["physcial_server"][0]["power_state"] == "On"
+    assert result["physcial_server"][0]["health"] == "OK"
+    assert result["disk"][0]["health"] == "Warning"
+    assert result["disk"][0]["disk_life_percent"] == 88
+    assert "PowerInputWatts" not in result["disk"][0]
+    assert [item["disk_name"] for item in result["disk"]] == ["Disk.Bay.0", "Disk.Bay.2"]
+    assert "health" not in result["disk"][1]
+    assert result["nic"][0]["nic_iface"] == "NIC.Slot.1-1"
+    assert result["nic"][0]["nic_speed_mbps"] == 10000
+    assert result["nic"][1]["nic_iface"] == "2"
+    assert result["nic"][1]["nic_speed_mbps"] == 1000
+    assert result["storage_controller"] == [
+        {
+            "sc_id": "RAID.Integrated.1",
+            "sc_name": "RAID",
+            "sc_vendor": "Broadcom",
+            "sc_model": "SAS3408",
+            "sc_sn": "SC-1",
+            "sc_firmware": "5.1",
+            "health": "OK",
+            "self_device": "10.0.0.8",
+        },
+        {
+            "sc_id": "3",
+            "sc_name": "MemberOnly",
+            "self_device": "10.0.0.8",
+        },
+    ]
+    psu = result["psu"][0]
+    assert psu["psu_name"] == "PSU1"
+    assert psu["psu_capacity_watts"] == 1600
+    assert psu["health"] == "OK"
+    assert "PowerInputWatts" not in psu
+    assert "psu_input_watts" not in psu
+    assert len(result["psu"]) == 1
+    forbidden = {
+        "PowerInputWatts",
+        "PowerOutputWatts",
+        "PowerConsumedWatts",
+        "LineInputVoltage",
+        "ReadingVolts",
+        "ReadingCelsius",
+    }
+    assert forbidden.isdisjoint(_mapping_keys(result))
+
+
+def test_missing_controller_and_power_collections_omit_keys():
+    result = build_redfish_result(
+        {"ip_addr": "10.0.0.8", "serial_number": "SERVER-SN-8"},
+        processors=None,
+        memory=None,
+        drives=[{"Id": "Disk.Bay.0"}],
+        nic_records=None,
+        assemblies=None,
+        storage_controllers=None,
+        power_supplies=None,
+    )
+
+    assert set(result) == {"physcial_server", "disk"}
+    assert "power_state" not in result["physcial_server"][0]
+    assert "health" not in result["physcial_server"][0]
+    assert "storage_controller" not in result
+    assert "psu" not in result
+
+
+def test_host_snapshot_keeps_on_off_and_known_health_only():
+    result = build_redfish_result(
+        {"ip_addr": "10.0.0.8", "power_state": " on ", "health": "Degraded"},
+        processors=None,
+        memory=None,
+        drives=None,
+        nic_records=None,
+        assemblies=None,
+    )
+
+    assert result["physcial_server"][0]["power_state"] == "On"
+    assert "health" not in result["physcial_server"][0]

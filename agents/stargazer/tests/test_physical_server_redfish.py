@@ -1,4 +1,5 @@
 import asyncio
+import json
 import ssl
 import traceback
 
@@ -682,3 +683,162 @@ async def test_redfish_child_member_fetches_use_bounded_concurrency():
     assert [item["Id"] for item in resources] == [str(index) for index in range(12)]
     assert peak > 1
     assert peak <= PhyscialServerRedfishInfo.CHILD_CONCURRENCY
+
+
+async def test_redfish_missing_power_and_controllers_stay_successful():
+    def handler(request):
+        payloads = {
+            "/redfish/v1/": {"Systems": {"@odata.id": "/redfish/v1/Systems"}},
+            "/redfish/v1/Systems": {"Members": [{"@odata.id": "/redfish/v1/Systems/1"}]},
+            "/redfish/v1/Systems/1": {
+                "SerialNumber": "SERVER-SN-8",
+                "PowerState": "On",
+                "Status": {"Health": "OK"},
+                "Storage": {"@odata.id": "/redfish/v1/Systems/1/Storage"},
+                "Links": {"Chassis": [{"@odata.id": "/redfish/v1/Chassis/1"}]},
+            },
+            "/redfish/v1/Systems/1/Storage": {"Members": [{"@odata.id": "/redfish/v1/Systems/1/Storage/1"}]},
+            "/redfish/v1/Systems/1/Storage/1": {
+                "Drives": [{"@odata.id": "/redfish/v1/Chassis/1/Drives/1"}],
+                "StorageControllers": {"@odata.id": "/redfish/v1/Systems/1/Storage/1/Controllers"},
+            },
+            "/redfish/v1/Chassis/1/Drives/1": {"Id": "Disk.Bay.0", "Status": {"Health": "OK"}},
+            "/redfish/v1/Chassis/1": {"Power": {"@odata.id": "/redfish/v1/Chassis/1/Power"}},
+        }
+        if request.url.path == "/redfish/v1/Systems/1/Storage/1/Controllers":
+            return httpx.Response(404, json={"error": "missing"}, request=request)
+        if request.url.path == "/redfish/v1/Chassis/1/Power":
+            return httpx.Response(404, json={"error": "missing"}, request=request)
+        if request.url.path not in payloads:
+            raise AssertionError(request.url.path)
+        return _response(request, payloads[request.url.path])
+
+    collector = PhyscialServerProtocolInfo(
+        {
+            "collection_protocol": "redfish",
+            "host": "10.0.0.8",
+            "username": "Administrator",
+            "password": "secret",
+        },
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await collector.list_all_resources()
+
+    assert result["success"] is True
+    assert result["result"]["physcial_server"][0]["serial_number"] == "SERVER-SN-8"
+    assert result["result"]["physcial_server"][0]["power_state"] == "On"
+    assert result["result"]["physcial_server"][0]["health"] == "OK"
+    assert result["result"]["disk"][0]["disk_name"] == "Disk.Bay.0"
+    assert result["result"]["disk"][0]["health"] == "OK"
+    assert "storage_controller" not in result["result"]
+    assert "psu" not in result["result"]
+
+
+async def test_redfish_maps_controllers_psu_and_nic_speed_when_present():
+    def handler(request):
+        payloads = {
+            "/redfish/v1/": {"Systems": {"@odata.id": "/redfish/v1/Systems"}},
+            "/redfish/v1/Systems": {"Members": [{"@odata.id": "/redfish/v1/Systems/1"}]},
+            "/redfish/v1/Systems/1": {
+                "SerialNumber": "SERVER-SN-8",
+                "PowerState": "Off",
+                "Status": {"Health": "Warning"},
+                "Storage": {"@odata.id": "/redfish/v1/Systems/1/Storage"},
+                "Links": {"Chassis": [{"@odata.id": "/redfish/v1/Chassis/1"}]},
+            },
+            "/redfish/v1/Systems/1/Storage": {"Members": [{"@odata.id": "/redfish/v1/Systems/1/Storage/1"}]},
+            "/redfish/v1/Systems/1/Storage/1": {
+                "Drives": [{"@odata.id": "/redfish/v1/Chassis/1/Drives/1"}],
+                "StorageControllers": [
+                    {
+                        "Id": "RAID.Integrated.1",
+                        "MemberId": "0",
+                        "Name": "RAID",
+                        "Manufacturer": "Broadcom",
+                        "Model": "SAS3408",
+                        "SerialNumber": "SC-1",
+                        "FirmwareVersion": "5.1",
+                        "Status": {"Health": "OK"},
+                    }
+                ],
+            },
+            "/redfish/v1/Chassis/1/Drives/1": {
+                "Id": "Disk.Bay.0",
+                "Status": {"Health": "OK"},
+                "PredictedMediaLifeLeftPercent": 90,
+            },
+            "/redfish/v1/Chassis/1": {
+                "Power": {"@odata.id": "/redfish/v1/Chassis/1/Power"},
+                "NetworkAdapters": {"@odata.id": "/redfish/v1/Chassis/1/NetworkAdapters"},
+            },
+            "/redfish/v1/Chassis/1/Power": {
+                "PowerControl": [{"PowerConsumedWatts": 240}],
+                "Voltages": [{"ReadingVolts": 12}],
+                "PowerSupplies": [
+                    {
+                        "Name": "PSU1",
+                        "Manufacturer": "Delta",
+                        "Model": "DPS-1600",
+                        "SerialNumber": "PSU-SN",
+                        "PowerCapacityWatts": 1600,
+                        "PowerInputWatts": 120,
+                        "Status": {"Health": "OK"},
+                    }
+                ],
+            },
+            "/redfish/v1/Chassis/1/NetworkAdapters": {"Members": [{"@odata.id": "/redfish/v1/Chassis/1/NetworkAdapters/1"}]},
+            "/redfish/v1/Chassis/1/NetworkAdapters/1": {
+                "Name": "NIC.Slot.1",
+                "Manufacturer": "Broadcom",
+                "Model": "BCM5720",
+                "NetworkDeviceFunctions": {"@odata.id": "/redfish/v1/Chassis/1/NetworkAdapters/1/NetworkDeviceFunctions"},
+            },
+            "/redfish/v1/Chassis/1/NetworkAdapters/1/NetworkDeviceFunctions": {
+                "Members": [{"@odata.id": "/redfish/v1/Chassis/1/NetworkAdapters/1/NetworkDeviceFunctions/1"}]
+            },
+            "/redfish/v1/Chassis/1/NetworkAdapters/1/NetworkDeviceFunctions/1": {
+                "Name": "NIC.Slot.1-1",
+                "NetDevFuncType": "Ethernet",
+                "Ethernet": {"MACAddress": "AA-BB-CC-DD-EE-FF"},
+                "Links": {"PhysicalNetworkPortAssignment": {"@odata.id": "/redfish/v1/Chassis/1/NetworkAdapters/1/Ports/1"}},
+            },
+            "/redfish/v1/Chassis/1/NetworkAdapters/1/Ports/1": {"CurrentLinkSpeedMbps": 25000},
+        }
+        if request.url.path not in payloads:
+            raise AssertionError(request.url.path)
+        return _response(request, payloads[request.url.path])
+
+    collector = PhyscialServerProtocolInfo(
+        {
+            "collection_protocol": "redfish",
+            "host": "10.0.0.8",
+            "username": "Administrator",
+            "password": "secret",
+        },
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await collector.list_all_resources()
+
+    assert result["success"] is True
+    server = result["result"]["physcial_server"][0]
+    assert server["power_state"] == "Off"
+    assert server["health"] == "Warning"
+    assert result["result"]["disk"][0]["disk_life_percent"] == 90
+    controller = result["result"]["storage_controller"][0]
+    assert controller["sc_id"] == "RAID.Integrated.1"
+    assert controller["sc_firmware"] == "5.1"
+    assert controller["self_device"] == "10.0.0.8"
+    psu = result["result"]["psu"][0]
+    assert psu["psu_name"] == "PSU1"
+    assert psu["psu_capacity_watts"] == 1600
+    assert "PowerInputWatts" not in psu
+    assert "psu_input_watts" not in psu
+    nic = result["result"]["nic"][0]
+    assert nic["nic_iface"] == "NIC.Slot.1-1"
+    assert nic["nic_speed_mbps"] == 25000
+    assert "fan" not in result["result"]
+    flat = json.dumps(result["result"])
+    for forbidden in ("PowerInputWatts", "PowerConsumedWatts", "ReadingVolts", "ReadingCelsius", "PowerOutputWatts"):
+        assert forbidden not in flat
