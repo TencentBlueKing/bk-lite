@@ -42,6 +42,20 @@ RESERVED_SCRIPT_TAG_KEYS = (
     "agent_id",
     "script",
 )
+RESERVED_SCRIPT_METRIC_PREFIX = "bklite_script_"
+RESERVED_SCRIPT_METRIC_NAME_ERROR = "指标 ID 与保留字段冲突，请更换"
+
+
+def is_reserved_script_metric_name(name) -> bool:
+    """指标 ID 不得占用平台保留标签名或 bklite_script_ 前缀。"""
+    text = str(name or "").strip()
+    if not text:
+        return False
+    lower = text.casefold()
+    if lower in {key.casefold() for key in RESERVED_SCRIPT_TAG_KEYS}:
+        return True
+    return lower.startswith(RESERVED_SCRIPT_METRIC_PREFIX)
+
 
 # name_prefix + namepass 按 config_id 隔离，避免合并进同一 Telegraf 后改写其他采集。
 # 插件契约：script 为脚本正文（可从旧字段 command 迁入）；timeout / data_format /

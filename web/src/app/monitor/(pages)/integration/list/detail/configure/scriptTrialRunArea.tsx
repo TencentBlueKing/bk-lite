@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Alert, Button, Cascader, Checkbox, Input, Spin, Tag, Tooltip } from 'antd';
+import { Alert, Button, Cascader, Checkbox, Spin, Tag, Tooltip } from 'antd';
 import {
   CheckCircleFilled,
   CloseCircleFilled,
@@ -12,7 +12,7 @@ import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import { useCommon } from '@/app/monitor/context/common';
-import { parseScriptMetrics, BusinessMetricItem, cleanDisplayTags } from './scriptMetricsParser';
+import { parseScriptMetrics, BusinessMetricItem, cleanDisplayTags, isReservedScriptMetricId } from './scriptMetricsParser';
 import {
   applyDefaultCatalogDrafts,
   buildUnitCascaderOptions,
@@ -21,14 +21,13 @@ import {
   mergeRetainedTrialMetricState,
   pickSelectedBusinessMetrics,
   resolveDefaultCatalogGroupId,
-  resolveDefaultCatalogUnitPath,
   CatalogMetricGroupOption,
   ScriptMetricCatalogDraft
 } from './scriptMetricPersist';
 import ScriptMetricGroupSelect from './scriptMetricGroupSelect';
 
 const BUSINESS_METRIC_GRID =
-  'grid-cols-[36px_minmax(160px,1.3fr)_minmax(72px,0.55fr)_minmax(110px,0.95fr)_minmax(128px,1.05fr)_minmax(140px,1.2fr)]';
+  'grid-cols-[36px_minmax(148px,1.2fr)_minmax(132px,1fr)_minmax(128px,0.95fr)_minmax(132px,1fr)_minmax(96px,0.7fr)]';
 
 const DimensionTagLine: React.FC<{ tags?: Record<string, string> }> = ({
   tags
@@ -65,7 +64,7 @@ export interface TrialRunTaskState {
   finished_at?: string | null;
 }
 
-/** 与失败 Alert 同一判定：未通过则确认与去编辑不可用。运行中不算失败。 */
+/** 与失败 Alert 同一判定：未通过则确认不可用。运行中不算失败。 */
 export const scriptTrialBlocksMetricActions = (
   task?: TrialRunTaskState | null
 ): boolean => {
@@ -98,7 +97,7 @@ const TrialActionsBlockedNote: React.FC = () => {
     <div className="text-[13px] font-medium text-[var(--color-text-1)]">
       {t(
         'monitor.integrations.trialRunActionsUnavailable',
-        '调试未通过，确认与去编辑不可用。'
+        '调试未通过，确认不可用。'
       )}
     </div>
   );
@@ -170,7 +169,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     );
   }, [task]);
 
-  // 与失败 Alert 同一判定：只有 status=success 且退出码为 0，且不是超时 / 节点不可用 / 告警，才允许确认与去编辑。
+  // 与失败 Alert 同一判定：只有 status=success 且退出码为 0，且不是超时 / 节点不可用 / 告警，才允许确认。
   const isNonZeroExit = Boolean(task?.result && task.result.exit_code !== 0);
   const blocksMetricActions = scriptTrialBlocksMetricActions(task);
   const canFeedScriptMetricActions =
@@ -179,10 +178,6 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
   const defaultGroupId = useMemo(
     () => resolveDefaultCatalogGroupId(groupOptions),
     [groupOptions]
-  );
-  const defaultUnitPath = useMemo(
-    () => resolveDefaultCatalogUnitPath(unitOptions),
-    [unitOptions]
   );
 
   useEffect(() => {
@@ -213,13 +208,13 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
       metrics,
       merged.catalog,
       defaultGroupId,
-      defaultUnitPath
+      unitOptions
     );
     const next = { selected: merged.selected, catalog: withDefaults.catalog };
     retainedMetricStateRef.current = next;
     setSelectedMetrics(next.selected);
     setCatalogByKey(next.catalog);
-  }, [parsedOutput, defaultGroupId, defaultUnitPath]);
+  }, [parsedOutput, defaultGroupId, unitOptions]);
 
   useEffect(() => {
     if (!pluginId || !objectId) {
@@ -253,7 +248,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     };
   }, [get, pluginId, objectId]);
 
-  // 仅成功调试把勾选业务指标交给确认 / 去编辑；失败即使解析到行也不喂。
+  // 仅成功调试把勾选业务指标交给确认；失败即使解析到行也不喂。
   useEffect(() => {
     if (!onSelectedMetricsChange) return;
     if (!canFeedScriptMetricActions || !parsedOutput?.businessMetrics?.length) {
@@ -300,8 +295,8 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     }));
   };
 
-  const toggleMetric = (key: string) => {
-    if (isSpinning) return;
+  const toggleMetric = (key: string, disabled = false) => {
+    if (isSpinning || disabled) return;
     setSelectedMetrics((prev) => ({
       ...prev,
       [key]: !prev[key]
@@ -312,7 +307,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     if (isSpinning || !parsedOutput?.businessMetrics) return;
     const nextMap: Record<string, boolean> = {};
     parsedOutput.businessMetrics.forEach((m) => {
-      nextMap[m.key] = checked;
+      nextMap[m.key] = checked && !isReservedScriptMetricId(m.name);
     });
     setSelectedMetrics(nextMap);
   };
@@ -601,10 +596,15 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
 
   // 6. 成功且有指标状态 (Self-metrics vs Business metrics)
   const businessMetrics = parsedOutput.businessMetrics;
+  const selectableMetrics = businessMetrics.filter(
+    (m) => !isReservedScriptMetricId(m.name)
+  );
   const allChecked =
-    businessMetrics.length > 0 && businessMetrics.every((m) => selectedMetrics[m.key] !== false);
+    selectableMetrics.length > 0 &&
+    selectableMetrics.every((m) => selectedMetrics[m.key] !== false);
   const indeterminate =
-    businessMetrics.some((m) => selectedMetrics[m.key] !== false) && !allChecked;
+    selectableMetrics.some((m) => selectedMetrics[m.key] !== false) &&
+    !allChecked;
 
   return (
     <div className="mt-4 mb-4 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4">
@@ -679,38 +679,43 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
             />
             <span className="text-[12px] font-medium text-[var(--color-text-2)]">
               {t('monitor.integrations.trialRunBusinessMetrics', '业务指标')} (
-              {businessMetrics.filter((m) => selectedMetrics[m.key] !== false).length}/
-              {businessMetrics.length})
+              {selectableMetrics.filter((m) => selectedMetrics[m.key] !== false).length}/
+              {selectableMetrics.length})
             </span>
           </div>
         </div>
         <div className="rounded-md border border-[var(--color-border-1)] overflow-hidden bg-[var(--color-bg)]">
           <div className="overflow-x-auto">
             <div
-              className={`grid ${BUSINESS_METRIC_GRID} min-w-[760px] border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-3 py-2 text-[12px] font-medium text-[var(--color-text-2)]`}
+              className={`grid ${BUSINESS_METRIC_GRID} min-w-[780px] border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-3 py-1.5 text-[12px] font-medium text-[var(--color-text-2)]`}
             >
               <div />
-              <div>{t('monitor.integrations.trialRunMetricName', '指标名称')}</div>
-              <div>{t('monitor.integrations.trialRunMetricValue', '采样值')}</div>
+              <div>{t('monitor.integrations.trialRunMetricId', '指标 ID')}</div>
+              <div>{t('monitor.integrations.trialRunMetricDimensions', '维度')}</div>
               <div>{t('monitor.integrations.metricGroup', '分组')}</div>
               <div>{t('common.unit', '单位')}</div>
-              <div>{t('monitor.integrations.trialRunMetricDescription', '指标描述')}</div>
+              <div className="text-right">
+                {t('monitor.integrations.trialRunMetricValue', '采样值')}
+              </div>
             </div>
-            <div className="max-h-[360px] min-w-[760px] overflow-auto divide-y divide-[var(--color-border-1)]">
+            <div className="max-h-[360px] min-w-[780px] overflow-auto divide-y divide-[var(--color-border-1)]">
               {businessMetrics.map((item: BusinessMetricItem) => {
-                const isChecked = selectedMetrics[item.key] !== false;
+                const reservedMetricId = isReservedScriptMetricId(item.name);
+                const isChecked =
+                  !reservedMetricId && selectedMetrics[item.key] !== false;
                 const catalog = catalogByKey[item.key] || {};
                 return (
                   <div
                     key={item.key}
-                    className={`grid ${BUSINESS_METRIC_GRID} items-center px-3 py-2 text-[13px] hover:bg-[var(--color-fill-2)] transition-colors ${
+                    className={`grid ${BUSINESS_METRIC_GRID} items-center px-3 py-1.5 text-[13px] hover:bg-[var(--color-fill-2)] transition-colors ${
                       isChecked ? '' : 'opacity-60 bg-[var(--color-bg-2)]'
                     }`}
                   >
                     <div>
                       <Checkbox
                         checked={isChecked}
-                        onChange={() => toggleMetric(item.key)}
+                        disabled={reservedMetricId}
+                        onChange={() => toggleMetric(item.key, reservedMetricId)}
                       />
                     </div>
                     <div className="min-w-0 pr-2">
@@ -720,6 +725,19 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                       >
                         {item.name}
                       </div>
+                      {reservedMetricId ? (
+                        <div
+                          className="mt-0.5 text-[11px] text-[var(--color-fail)]"
+                          role="alert"
+                        >
+                          {t(
+                            'monitor.integrations.reservedMetricId',
+                            '指标 ID 与保留字段冲突，请更换'
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className="min-w-0 pr-2">
                       <DimensionTagLine tags={item.tags} />
                       {Boolean(item.reservedTagKeys?.length) && (
                         <div
@@ -730,18 +748,12 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                         </div>
                       )}
                     </div>
-                    <div
-                      className="min-w-0 truncate font-mono text-xs text-[var(--color-text-2)]"
-                      title={String(item.value)}
-                    >
-                      {String(item.value)}
-                    </div>
                     <div className="min-w-0 pr-1">
                       <ScriptMetricGroupSelect
                         size="small"
                         allowClear
                         disabled={!isChecked}
-                        className="w-full"
+                        className="w-full [&_.ant-select-selector]:!min-h-[24px] [&_.ant-select-selector]:!h-[24px]"
                         placeholder={t('monitor.integrations.metricGroup', '分组')}
                         value={
                           typeof catalog.metric_group === 'number'
@@ -764,7 +776,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                         size="small"
                         allowClear
                         disabled={!isChecked}
-                        className="w-full"
+                        className="w-full [&_.ant-select-selector]:!min-h-[24px] [&_.ant-select-selector]:!h-[24px]"
                         placeholder={t('common.unit', '单位')}
                         options={unitOptions}
                         displayRender={(labels) => {
@@ -796,23 +808,11 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                         }
                       />
                     </div>
-                    <div className="min-w-0">
-                      <Input
-                        size="small"
-                        allowClear
-                        disabled={!isChecked}
-                        className="w-full"
-                        placeholder={t(
-                          'monitor.integrations.trialRunMetricDescription',
-                          '指标描述'
-                        )}
-                        value={catalog.description || ''}
-                        onChange={(event) =>
-                          updateCatalog(item.key, {
-                            description: event.target.value
-                          })
-                        }
-                      />
+                    <div
+                      className="min-w-0 truncate text-right font-mono text-xs tabular-nums text-[var(--color-text-2)]"
+                      title={String(item.value)}
+                    >
+                      {String(item.value)}
                     </div>
                   </div>
                 );

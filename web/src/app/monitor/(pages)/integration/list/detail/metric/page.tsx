@@ -50,16 +50,17 @@ import {
 } from '../configure/scriptMetricPersist';
 import {
   consumeScriptMetricEditCarry,
-  carryItemsToBusinessMetrics,
   SCRIPT_METRIC_DRAFT_QUERY,
   ScriptMetricEditCarry
 } from '../configure/scriptMetricEditCarry';
-import { persistScriptMetrics } from '../configure/scriptMetricPersist';
 import {
   cleanMeasurementName,
   isSelfMetricName,
   visibleDimensionItems
 } from '../configure/scriptMetricsParser';
+import MetricBatchEditModal, {
+  MetricBatchEditModalRef
+} from './metricBatchEditModal';
 
 interface ObjectTabOption {
   label: React.ReactNode;
@@ -88,7 +89,7 @@ const ObjectTabLabel = ({
 );
 
 const Configure = () => {
-  const { isLoading, get, post, patch, del } = useApiClient();
+  const { isLoading } = useApiClient();
   const { getMonitorObject, getMetricsGroup, getMonitorMetrics } =
     useMonitorApi();
   const {
@@ -107,6 +108,7 @@ const Configure = () => {
   const enableIfmib = searchParams.get('enable_ifmib') !== 'false';
   const groupRef = useRef<ModalRef>(null);
   const metricRef = useRef<ModalRef>(null);
+  const batchEditRef = useRef<MetricBatchEditModalRef>(null);
   const [searchText, setSearchText] = useState<string>('');
   const [metricData, setMetricData] = useState<MetricListItem[]>([]);
   const [filteredMetricData, setFilteredMetricData] = useState<
@@ -128,6 +130,7 @@ const Configure = () => {
   const metricCatalogAbortRef = useRef<AbortController | null>(null);
   const scriptMetricDraftConsumedRef = useRef(false);
   const [catalogReady, setCatalogReady] = useState(false);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const canReorderCatalog = metricCount <= 100 && !searchText.trim();
 
   useEffect(() => () => metricCatalogAbortRef.current?.abort(), []);
@@ -419,6 +422,16 @@ const Configure = () => {
       const defaultOpenState = getDefaultMetricGroupOpenState(metricView);
       const expandNameSet = new Set(expandMetricNames.filter(Boolean));
       const expandGroupSet = new Set(expandGroupIds.filter(Boolean).map(String));
+      if (expandNameSet.size) {
+        setSelectedRowKeys(
+          catalogMetrics
+            .filter(
+              (metric) =>
+                expandNameSet.has(metric.name) && metric.is_pre !== true
+            )
+            .map((metric) => metric.id)
+        );
+      }
       const groupData = metricView.map((group) => {
         const expandByCarry =
           expandNameSet.size > 0 &&
@@ -507,35 +520,23 @@ const Configure = () => {
   };
 
   const landScriptMetricCarry = async (carry: ScriptMetricEditCarry) => {
-    const payload = carryItemsToBusinessMetrics(carry.metrics);
-    if (!payload.length) {
+    const names = carry.metrics
+      .map((item) => String(item?.name || '').trim())
+      .filter(Boolean);
+    if (!names.length) {
       return;
     }
     const targetObjectId = activeTab || groupId;
     if (!targetObjectId || !pluginID) {
       return;
     }
-    try {
-      setLoading(true);
-      await persistScriptMetrics({
-        pluginId: pluginID,
-        objectId: targetObjectId,
-        metrics: payload,
-        client: { get, post, patch, del, t }
-      });
-      await getInitData(
-        String(targetObjectId),
-        true,
-        metricPage,
-        searchText.trim(),
-        payload.map((item) => item.name)
-      );
-    } catch (error: unknown) {
-      const text =
-        error instanceof Error ? error.message : t('common.operationFailed');
-      message.error(text);
-      setLoading(false);
-    }
+    await getInitData(
+      String(targetObjectId),
+      true,
+      metricPage,
+      searchText.trim(),
+      names
+    );
   };
 
   useEffect(() => {
@@ -580,6 +581,7 @@ const Configure = () => {
     setMetricData([]);
     setActiveTab(next);
     setMetricPage(1);
+    setSelectedRowKeys([]);
     getInitData(next, false, 1);
   };
 
@@ -694,6 +696,47 @@ const Configure = () => {
     filteredMetricData.length > 0 &&
     filteredMetricData.every((group) => group.isOpen);
 
+  const selectedIdSet = new Set(selectedRowKeys.map((key) => Number(key)));
+  const selectedMetrics = metrics.filter(
+    (item) => selectedIdSet.has(Number(item.id)) && item.is_pre !== true
+  );
+
+  const openBatchEdit = () => {
+    if (!selectedMetrics.length) {
+      message.warning(
+        t('monitor.integrations.goEditMetricsSelectFirst', '请先勾选指标')
+      );
+      return;
+    }
+    batchEditRef.current?.showModal({
+      metrics: selectedMetrics,
+      groups: apiGroupList.map((item) => {
+        const plugin = item.monitor_plugin;
+        return {
+          id: Number(item.id),
+          name: item.name,
+          display_name: item.display_name || item.name,
+          monitor_plugin:
+            typeof plugin === 'number' || typeof plugin === 'string'
+              ? plugin
+              : undefined,
+          is_pre: item.is_pre
+        };
+      })
+    });
+  };
+
+  const handleGroupSelectChange = (
+    groupMetricIds: number[],
+    keys: React.Key[]
+  ) => {
+    const groupIdSet = new Set(groupMetricIds);
+    setSelectedRowKeys((prev) => [
+      ...prev.filter((id) => !groupIdSet.has(Number(id))),
+      ...keys
+    ]);
+  };
+
   const setAllGroupsOpen = (isOpen: boolean) => {
     const next = (groups: MetricListItem[]) =>
       groups.map((group) => ({ ...group, isOpen }));
@@ -737,6 +780,14 @@ const Configure = () => {
           <Permission requiredPermissions={['Add Group']} className="mr-[8px]">
             <Button type="primary" onClick={() => openGroupModal('add')}>
               {t('monitor.integrations.addGroup')}
+            </Button>
+          </Permission>
+          <Permission requiredPermissions={['Edit Metric']} className="mr-[8px]">
+            <Button
+              disabled={!selectedMetrics.length}
+              onClick={openBatchEdit}
+            >
+              {t('common.batchEdit')}
             </Button>
           </Permission>
           <Permission requiredPermissions={['Add Metric']}>
@@ -819,6 +870,17 @@ const Configure = () => {
                   dataSource={metricItem.child || []}
                   columns={columns}
                   rowKey="id"
+                  rowSelection={{
+                    selectedRowKeys,
+                    onChange: (keys) =>
+                      handleGroupSelectChange(
+                        (metricItem.child || []).map((item) => Number(item.id)),
+                        keys
+                      ),
+                    getCheckboxProps: (record: MetricItem) => ({
+                      disabled: record.is_pre === true
+                    })
+                  }}
                   rowDraggable={
                     canReorderCatalog &&
                     metricItem.child?.length > 1 &&
@@ -856,6 +918,7 @@ const Configure = () => {
         monitorObject={+activeTab}
         pluginId={+pluginID}
         groupList={apiGroupList}
+        catalogMetrics={metrics}
         onGroupListChange={(created) => {
           const groupId = created?.id != null ? String(created.id) : '';
           void getInitData(
@@ -868,6 +931,26 @@ const Configure = () => {
           );
         }}
         onSuccess={operateMtric}
+      />
+      <MetricBatchEditModal
+        ref={batchEditRef}
+        monitorObject={+activeTab}
+        pluginId={+pluginID}
+        onGroupListChange={(created) => {
+          const groupId = created?.id != null ? String(created.id) : '';
+          void getInitData(
+            activeTab,
+            true,
+            metricPage,
+            searchText.trim(),
+            [],
+            groupId ? [groupId] : []
+          );
+        }}
+        onSuccess={() => {
+          setSelectedRowKeys([]);
+          operateMtric();
+        }}
       />
     </div>
   );

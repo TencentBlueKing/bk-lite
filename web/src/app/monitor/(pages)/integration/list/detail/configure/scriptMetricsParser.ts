@@ -188,11 +188,16 @@ export const isReservedScriptTagKey = (key: string): boolean => {
   if (!tagKey) {
     return false;
   }
-  if (RESERVED_SCRIPT_TAG_KEYS.has(tagKey)) {
+  const lower = tagKey.toLowerCase();
+  if (RESERVED_SCRIPT_TAG_KEYS.has(tagKey) || RESERVED_SCRIPT_TAG_KEYS.has(lower)) {
     return true;
   }
-  return tagKey.toLowerCase().startsWith('bklite_script_');
+  return lower.startsWith('bklite_script_');
 };
+
+/** 指标 ID 与保留标签共用同一黑名单（精确 key + bklite_script_ 前缀）。 */
+export const isReservedScriptMetricId = (name: string): boolean =>
+  isReservedScriptTagKey(name);
 
 export const collectReservedScriptTagKeys = (
   tags?: Record<string, string>

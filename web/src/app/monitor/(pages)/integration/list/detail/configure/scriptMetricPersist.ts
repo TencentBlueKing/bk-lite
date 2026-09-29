@@ -4,10 +4,16 @@ import {
   cleanMeasurementName,
   collectReservedScriptTagKeys,
   isHiddenPlatformDimensionKey,
+  isReservedScriptMetricId,
   isReservedScriptTagKey,
   isSelfMetricName,
   keepStoredTags
 } from './scriptMetricsParser';
+
+export type ScriptMetricPersistMode = 'add' | 'overwrite';
+export const SCRIPT_METRIC_PERSIST_MODE_ADD: ScriptMetricPersistMode = 'add';
+export const SCRIPT_METRIC_PERSIST_MODE_OVERWRITE: ScriptMetricPersistMode =
+  'overwrite';
 
 export interface ScriptMetricCatalogDraft {
   metric_group?: number | null;
@@ -75,7 +81,7 @@ export const extractCatalogItems = <T>(response: unknown): T[] => {
   return Array.isArray(items) ? (items as T[]) : [];
 };
 
-/** 目录已有的无单位叶子，Confirm / 去编辑必须回传 unit_id 而不是展示文案。 */
+/** 目录已有的无单位叶子，确认写入必须回传 unit_id 而不是展示文案。 */
 export const DEFAULT_CATALOG_UNIT_ID = 'none';
 /** 目录默认分组名，优先复用已有「无分组」/ Default / Base。 */
 export const DEFAULT_CATALOG_GROUP_NAMES = ['无分组', 'Default', 'default', 'Base'];
@@ -202,6 +208,51 @@ export const resolveDefaultCatalogUnitPath = (
     }
   }
   return undefined;
+};
+
+/** 按指标 ID 后缀猜测目录单位；与指标页同一套 unit_id。 */
+export const guessCatalogUnitId = (metricName: string): string => {
+  const lower = String(metricName || '').toLowerCase();
+  if (lower.endsWith('_bytes')) {
+    return 'bytes';
+  }
+  if (lower.endsWith('_percent') || lower.endsWith('_pct')) {
+    return 'percent';
+  }
+  if (lower.endsWith('_seconds')) {
+    return 's';
+  }
+  if (lower.endsWith('_ms')) {
+    return 'ms';
+  }
+  return DEFAULT_CATALOG_UNIT_ID;
+};
+
+export const resolveGuessedCatalogUnitPath = (
+  metricName: string,
+  options: Array<{ value?: string; children?: Array<{ value: string }> }> = []
+): string[] | undefined => {
+  const guessed = guessCatalogUnitId(metricName);
+  return (
+    resolveDefaultCatalogUnitPath(options, guessed) ||
+    resolveDefaultCatalogUnitPath(options, DEFAULT_CATALOG_UNIT_ID)
+  );
+};
+
+/** 调试采样值：数字走指标页「数字」类型，其余同样默认 Number。 */
+export const inferCatalogDataType = (
+  value: unknown
+): ScriptMetricRegisterPayload['data_type'] => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return 'Number';
+  }
+  if (typeof value === 'string' && value.trim() !== '') {
+    const numeric = Number(value);
+    if (!Number.isNaN(numeric) && Number.isFinite(numeric)) {
+      return 'Number';
+    }
+  }
+  return 'Number';
 };
 
 export const resolvePersistCatalogUnitId = (unit: unknown): string =>
@@ -405,6 +456,19 @@ export const collectReservedTagViolations = (
   return found;
 };
 
+export const collectReservedMetricIdViolations = (
+  metrics: BusinessMetricItem[]
+): string[] => {
+  const found: string[] = [];
+  metrics.forEach((item) => {
+    const name = cleanMeasurementName(String(item?.name || '').trim());
+    if (name && isReservedScriptMetricId(name) && !found.includes(name)) {
+      found.push(name);
+    }
+  });
+  return found;
+};
+
 export const formatReservedTagRenameMessage = (
   keys: string[],
   t: TranslateFn
@@ -418,6 +482,27 @@ export const formatReservedTagRenameMessage = (
   const detailed = t(
     'monitor.integrations.reservedTagRenameDetail',
     '保留字段，请换名：{keys}',
+    { keys: joined }
+  );
+  return detailed.includes('{keys}') ? `${rename}：${joined}` : detailed;
+};
+
+export const formatReservedMetricIdMessage = (
+  keys: string[],
+  t: TranslateFn
+): string => {
+  const uniqueKeys = keys.filter(Boolean);
+  const rename = t(
+    'monitor.integrations.reservedMetricId',
+    '指标 ID 与保留字段冲突，请更换'
+  );
+  if (!uniqueKeys.length) {
+    return rename;
+  }
+  const joined = uniqueKeys.join(', ');
+  const detailed = t(
+    'monitor.integrations.reservedMetricIdDetail',
+    '指标 ID 与保留字段冲突：{keys}',
     { keys: joined }
   );
   return detailed.includes('{keys}') ? `${rename}：${joined}` : detailed;
@@ -441,6 +526,7 @@ export const pickSelectedBusinessMetrics = (
 ): BusinessMetricItem[] =>
   items
     .filter((item) => !isSelfMetricName(item.name))
+    .filter((item) => !isReservedScriptMetricId(item.name))
     .filter((item) => selected[item.key] !== false)
     .map((item) =>
       applyCatalogDraft(
@@ -468,12 +554,11 @@ export const mergeRetainedTrialMetricState = ({
     if (!item?.key || isSelfMetricName(item.name)) {
       return;
     }
-    selected[item.key] = Object.prototype.hasOwnProperty.call(
-      prevSelected,
-      item.key
-    )
-      ? Boolean(prevSelected[item.key])
-      : true;
+    selected[item.key] = isReservedScriptMetricId(item.name)
+      ? false
+      : Object.prototype.hasOwnProperty.call(prevSelected, item.key)
+        ? Boolean(prevSelected[item.key])
+        : true;
     if (prevCatalog[item.key]) {
       catalog[item.key] = { ...prevCatalog[item.key] };
     }
@@ -490,7 +575,7 @@ export const applyDefaultCatalogDrafts = (
   metrics: BusinessMetricItem[],
   catalogByKey: Record<string, ScriptMetricCatalogDraft>,
   defaultGroupId?: number | null,
-  defaultUnitPath?: string[]
+  unitOptions: Array<{ value?: string; children?: Array<{ value: string }> }> = []
 ): { catalog: Record<string, ScriptMetricCatalogDraft>; changed: boolean } => {
   const next = { ...catalogByKey };
   let changed = false;
@@ -505,11 +590,13 @@ export const applyDefaultCatalogDrafts = (
       patched = true;
     }
     if (
-      (draft.unit == null || (Array.isArray(draft.unit) && !draft.unit.length)) &&
-      defaultUnitPath
+      (draft.unit == null || (Array.isArray(draft.unit) && !draft.unit.length))
     ) {
-      draft.unit = defaultUnitPath;
-      patched = true;
+      const guessedPath = resolveGuessedCatalogUnitPath(item.name, unitOptions);
+      if (guessedPath) {
+        draft.unit = guessedPath;
+        patched = true;
+      }
     }
     if (patched) {
       next[item.key] = draft;
@@ -619,6 +706,44 @@ export const planScriptMetricHardSyncDeletes = (
   });
 };
 
+export const findDuplicateDisplayNames = (
+  metrics: Array<{ name?: string; display_name?: string }>,
+  existing: CatalogMetricRef[] = []
+): string[] => {
+  const existingByDisplay = new Map<string, string>();
+  existing.forEach((item) => {
+    const metricId = String(item.name || '').trim();
+    const label = String(item.display_name || item.name || '')
+      .trim()
+      .toLowerCase();
+    if (label && metricId && !existingByDisplay.has(label)) {
+      existingByDisplay.set(label, metricId);
+    }
+  });
+  const found: string[] = [];
+  const seenInBatch = new Map<string, string>();
+  metrics.forEach((item) => {
+    const metricId = String(item.name || '').trim();
+    const display = String(item.display_name || item.name || '').trim();
+    if (!display || !metricId) {
+      return;
+    }
+    const key = display.toLowerCase();
+    const existingName = existingByDisplay.get(key);
+    if (existingName && existingName !== metricId && !found.includes(display)) {
+      found.push(display);
+    }
+    const batchName = seenInBatch.get(key);
+    if (batchName && batchName !== metricId && !found.includes(display)) {
+      found.push(display);
+    }
+    if (!seenInBatch.has(key)) {
+      seenInBatch.set(key, metricId);
+    }
+  });
+  return found;
+};
+
 export const buildScriptMetricRegisterPayload = (
   item: BusinessMetricItem,
   targetObjectId: string | number,
@@ -632,7 +757,7 @@ export const buildScriptMetricRegisterPayload = (
   display_name: item.name,
   query: `${item.name}{__$labels__}`,
   unit: resolvePersistCatalogUnitId(item.unit),
-  data_type: 'Number',
+  data_type: inferCatalogDataType(item.value),
   description: resolveCatalogDescription(item.description),
   dimensions: Object.keys(keepStoredTags(item.tags) || {}).map((key) => ({
     name: key,
@@ -678,25 +803,33 @@ export const persistScriptMetrics = async ({
   objectId,
   metrics,
   client,
+  mode = SCRIPT_METRIC_PERSIST_MODE_ADD,
   staleDeletes = []
 }: {
   pluginId: string | number;
   objectId: string | number;
   metrics: BusinessMetricItem[];
   client: PersistScriptMetricsClient;
+  mode?: ScriptMetricPersistMode;
   staleDeletes?: CatalogMetricRef[];
 }): Promise<void> => {
   const persistableMetrics = applyStdoutMetricNames(metrics);
-  if (!persistableMetrics.length && !staleDeletes.length) {
+  const overwriteDeletes =
+    mode === SCRIPT_METRIC_PERSIST_MODE_OVERWRITE ? staleDeletes : [];
+  if (!persistableMetrics.length && !overwriteDeletes.length) {
     return;
   }
   const { get, post, patch, del, t } = client;
+  const reservedMetricIds = collectReservedMetricIdViolations(persistableMetrics);
+  if (reservedMetricIds.length) {
+    throw new Error(formatReservedMetricIdMessage(reservedMetricIds, t));
+  }
   const reservedKeys = collectReservedTagViolations(persistableMetrics);
   if (reservedKeys.length) {
     throw new Error(formatReservedTagRenameMessage(reservedKeys, t));
   }
   try {
-    const deletable = staleDeletes.filter(
+    const deletable = overwriteDeletes.filter(
       (item) => item?.id && item?.name && !isSelfMetricName(item.name)
     );
     if (deletable.length) {

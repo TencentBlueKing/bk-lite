@@ -1,5 +1,6 @@
 import re
 
+from django.db import transaction
 from django.db.models import Q, Subquery
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -17,7 +18,7 @@ from apps.monitor.filters.monitor_metrics import MetricFilter, MetricGroupFilter
 from apps.monitor.models import MonitorPlugin
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.models.monitor_object import MonitorObject
-from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, MetricSerializer
+from apps.monitor.serializers.monitor_metrics import MetricBatchUpdateSerializer, MetricGroupSerializer, MetricSerializer
 from apps.monitor.utils.metric_enum_locale import localize_metric_enum_unit
 from apps.monitor.utils.metric_keyword import apply_metric_keyword_filter
 from apps.monitor.utils.metric_query_labels import ensure_metric_labels_placeholder, is_raw_vector_selector
@@ -526,6 +527,45 @@ class MetricViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         self._ensure_modifiable(self.get_object())
         return super().destroy(request, *args, **kwargs)
+
+    @action(detail=False, methods=["post"], url_path="batch_update")
+    @HasPermission("integration_metric-Edit Metric")
+    def batch_update(self, request, *args, **kwargs):
+        serializer = MetricBatchUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payload = serializer.validated_data
+        patch = payload["_patch"]
+        metric_ids = payload["ids"]
+        plugin_id = payload["monitor_plugin"]
+
+        metrics = list(Metric.objects.select_related("monitor_object", "monitor_plugin", "metric_group").filter(id__in=metric_ids))
+        found_ids = {metric.id for metric in metrics}
+        missing_ids = [metric_id for metric_id in metric_ids if metric_id not in found_ids]
+        if missing_ids:
+            raise ValidationAppException("部分指标不存在")
+        if any(metric.monitor_plugin_id != plugin_id for metric in metrics):
+            raise ValidationAppException("只能批量编辑同一插件的指标")
+        for metric in metrics:
+            self._ensure_modifiable(metric)
+        if "unit" in patch and "data_type" not in patch and any((metric.data_type or "") == "Enum" for metric in metrics):
+            raise ValidationAppException("所选指标包含枚举类型，无法批量设置单位")
+
+        with transaction.atomic():
+            for metric in metrics:
+                item_patch = dict(patch)
+                if item_patch.get("data_type") == "Number" and "unit" not in item_patch and (metric.data_type or "") == "Enum":
+                    item_patch["unit"] = "none"
+                item_serializer = MetricSerializer(metric, data=item_patch, partial=True)
+                item_serializer.is_valid(raise_exception=True)
+                item_serializer.save()
+
+        logger.info(
+            "metric batch_update completed monitor_plugin_id=%s count=%s fields=%s",
+            plugin_id,
+            len(metrics),
+            ",".join(sorted(patch.keys())),
+        )
+        return WebUtils.response_success({"updated": len(metrics)})
 
     def list(self, request, *args, **kwargs):
         # Do not union a select_related queryset: joins would make the two SELECT

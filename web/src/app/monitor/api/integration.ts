@@ -66,6 +66,16 @@ const useIntegrationApi = () => {
       updateMonitorMetrics: async (data: OrderParam[]) => {
         return await post('/monitor/api/metrics/set_order/', data);
       },
+      batchUpdateMonitorMetrics: async (data: {
+        ids: number[];
+        monitor_plugin: number;
+        metric_group?: number;
+        unit?: string;
+        data_type?: string;
+        description?: string;
+      }) => {
+        return await post('/monitor/api/metrics/batch_update/', data);
+      },
       updateNodeChildConfig: async (data: NodeConfigParam) => {
         return await post(
           '/monitor/api/node_mgmt/batch_setting_node_child_config/',

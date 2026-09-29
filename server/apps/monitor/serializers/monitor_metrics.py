@@ -1,8 +1,13 @@
 from rest_framework import serializers
 
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
+from apps.monitor.services.custom_script_plugin import RESERVED_SCRIPT_METRIC_NAME_ERROR, is_reserved_script_metric_name, is_script_collect_type
 from apps.monitor.utils.instance_id_keys import resolve_metric_instance_id_keys
 from apps.monitor.utils.metric_query_labels import ensure_metric_labels_placeholder
+
+METRIC_BATCH_UPDATE_FIELDS = ("metric_group", "unit", "data_type", "description")
+METRIC_BATCH_UPDATE_MAX_SIZE = 100
+METRIC_DATA_TYPES = ("Number", "Enum")
 
 
 class MetricGroupSerializer(serializers.ModelSerializer):
@@ -127,6 +132,11 @@ class MetricSerializer(serializers.ModelSerializer):
         if self.instance is None:
             attrs["instance_id_keys"] = resolved_instance_id_keys
 
+        name_submitted = self.instance is None or "name" in attrs
+        if name_submitted and name and is_script_collect_type(getattr(monitor_plugin, "collect_type", None)):
+            if is_reserved_script_metric_name(name):
+                raise serializers.ValidationError({"name": RESERVED_SCRIPT_METRIC_NAME_ERROR})
+
         queryset = Metric.objects.filter(
             monitor_object=monitor_object,
             monitor_plugin=monitor_plugin,
@@ -169,3 +179,38 @@ class MetricSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         validated_data.pop("instance_id_keys", None)
         return super().update(instance, validated_data)
+
+
+class MetricBatchUpdateSerializer(serializers.Serializer):
+    ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+        max_length=METRIC_BATCH_UPDATE_MAX_SIZE,
+    )
+    monitor_plugin = serializers.IntegerField(min_value=1)
+    metric_group = serializers.IntegerField(min_value=1, required=False)
+    unit = serializers.CharField(required=False, allow_blank=True)
+    data_type = serializers.ChoiceField(choices=METRIC_DATA_TYPES, required=False)
+    description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+
+    def validate_ids(self, value):
+        unique_ids = []
+        seen = set()
+        for metric_id in value:
+            if metric_id in seen:
+                continue
+            seen.add(metric_id)
+            unique_ids.append(metric_id)
+        if len(unique_ids) > METRIC_BATCH_UPDATE_MAX_SIZE:
+            raise serializers.ValidationError(f"单次批量更新不超过 {METRIC_BATCH_UPDATE_MAX_SIZE} 条")
+        return unique_ids
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        patch = {field: attrs[field] for field in METRIC_BATCH_UPDATE_FIELDS if field in attrs}
+        if not patch:
+            raise serializers.ValidationError("未指定要更新的字段")
+        if patch.get("data_type") == "Enum" and "unit" not in patch:
+            raise serializers.ValidationError({"unit": "批量设为枚举时必须提供映射"})
+        attrs["_patch"] = patch
+        return attrs

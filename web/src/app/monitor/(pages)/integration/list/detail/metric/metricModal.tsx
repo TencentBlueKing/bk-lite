@@ -51,6 +51,7 @@ import {
 } from '../configure/scriptMetricPersist';
 import {
   isHiddenPlatformDimensionKey,
+  isReservedScriptMetricId,
   visibleDimensionItems
 } from '../configure/scriptMetricsParser';
 const { Option } = Select;
@@ -59,6 +60,11 @@ interface ModalProps {
   onSuccess: () => void;
   onGroupListChange?: (group?: CatalogMetricGroupOption) => void;
   groupList: ListItem[];
+  catalogMetrics?: Array<{
+    id?: number;
+    name?: string;
+    display_name?: string;
+  }>;
   monitorObject: number;
   pluginId: number;
 }
@@ -188,7 +194,17 @@ const splitScriptVisibleDimensions = (
 const buildMetricSnippet = (metricName: string) => metricName;
 
 const MetricModal = forwardRef<ModalRef, ModalProps>(
-  ({ onSuccess, onGroupListChange, groupList, monitorObject, pluginId }, ref) => {
+  (
+    {
+      onSuccess,
+      onGroupListChange,
+      groupList,
+      catalogMetrics = [],
+      monitorObject,
+      pluginId
+    },
+    ref
+  ) => {
     const { post, put } = useApiClient();
     const { getVmMetricNames, testMetricQuery } = useMonitorApi();
     const { t } = useTranslation();
@@ -964,14 +980,72 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
               <Form.Item<MetricInfo>
                 label={t('common.id')}
                 name="name"
-                rules={[{ required: true, message: t('common.required') }]}
+                rules={[
+                  { required: true, message: t('common.required') },
+                  {
+                    validator: async (_, value) => {
+                      const metricId = String(value || '').trim();
+                      if (!metricId) {
+                        return;
+                      }
+                      if (
+                        isScriptTemplate &&
+                        isReservedScriptMetricId(metricId)
+                      ) {
+                        throw new Error(
+                          t(
+                            'monitor.integrations.reservedMetricId',
+                            '指标 ID 与保留字段冲突，请更换'
+                          )
+                        );
+                      }
+                      const duplicated = catalogMetrics.some(
+                        (item) =>
+                          String(item.name || '').trim() === metricId &&
+                          String(item.id) !== String(groupForm.id)
+                      );
+                      if (duplicated) {
+                        throw new Error(
+                          t('monitor.integrations.duplicateMetricId')
+                        );
+                      }
+                    }
+                  }
+                ]}
               >
                 <Input disabled={type === 'edit'} />
               </Form.Item>
               <Form.Item<MetricInfo>
                 label={t('common.name')}
                 name="display_name"
-                rules={[{ required: true, message: t('common.required') }]}
+                rules={[
+                  { required: true, message: t('common.required') },
+                  {
+                    warningOnly: true,
+                    validator: async (_, value) => {
+                      const displayName = String(value || '').trim();
+                      if (!displayName) {
+                        return;
+                      }
+                      const duplicated = catalogMetrics.some((item) => {
+                        const other =
+                          String(item.display_name || item.name || '').trim();
+                        return (
+                          other.toLowerCase() === displayName.toLowerCase() &&
+                          String(item.id) !== String(groupForm.id)
+                        );
+                      });
+                      if (duplicated) {
+                        throw new Error(
+                          t(
+                            'monitor.integrations.duplicateDisplayName',
+                            '展示名称与已有指标重复'
+                          )
+                        );
+                      }
+                    }
+                  }
+                ]}
               >
                 <Input />
               </Form.Item>
