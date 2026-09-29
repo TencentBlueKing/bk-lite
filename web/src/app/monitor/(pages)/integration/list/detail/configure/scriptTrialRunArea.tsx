@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { Alert, Button, Cascader, Checkbox, Spin, Tag, Tooltip } from 'antd';
 import {
   CheckCircleFilled,
@@ -9,6 +9,7 @@ import {
   DashboardOutlined
 } from '@ant-design/icons';
 import CompactEmptyState from '@/components/compact-empty-state';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import { useCommon } from '@/app/monitor/context/common';
@@ -18,7 +19,6 @@ import {
   buildUnitCascaderOptions,
   catalogMetricsByName,
   extractCatalogItems,
-  formatDimensionTagSummary,
   listPluginCatalogMetrics,
   mergeRetainedTrialMetricState,
   pickSelectedBusinessMetrics,
@@ -29,31 +29,178 @@ import {
 } from './scriptMetricPersist';
 import ScriptMetricGroupSelect from './scriptMetricGroupSelect';
 
+/** checkbox | 指标 ID | 维度 | 分组 180 | 单位 150 | 采样值 120，列间距 12px。 */
 const BUSINESS_METRIC_GRID =
-  'grid-cols-[36px_minmax(148px,1.2fr)_minmax(132px,1fr)_minmax(128px,0.95fr)_minmax(132px,1fr)_minmax(96px,0.7fr)]';
+  'grid grid-cols-[48px_minmax(220px,1.6fr)_minmax(160px,1fr)_180px_150px_120px] items-center gap-x-3 px-3';
+
+const BUSINESS_METRIC_TABLE_MIN_WIDTH = 'min-w-[962px]';
+
+const INLINE_CONTROL_CLASS = 'w-full';
+
+const DIMENSION_TAG_GAP = 4;
+const DIMENSION_TAG_MAX_LINES = 2;
+const DIMENSION_CHIP_CLASS =
+  'inline-flex h-5 max-w-full min-w-0 items-center overflow-hidden rounded border border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-1 font-mono text-[11px] leading-none text-[var(--color-text-2)]';
+const DIMENSION_MORE_CLASS =
+  'inline-flex h-5 shrink-0 items-center rounded border border-[var(--color-border-1)] bg-[var(--color-fill-2)] px-1 font-mono text-[11px] leading-none tabular-nums text-[var(--color-text-3)]';
+
+/** 按真实宽度把维度标签排进两行，并为 +N 预留宽度。 */
+const visibleDimensionTagCount = (
+  tagWidths: number[],
+  containerWidth: number,
+  badgeWidth: number,
+  gap = DIMENSION_TAG_GAP,
+  maxLines = DIMENSION_TAG_MAX_LINES
+): number => {
+  if (!tagWidths.length) return 0;
+  if (containerWidth <= 0) return tagWidths.length;
+
+  const fits = (count: number, includeBadge: boolean) => {
+    const widths = tagWidths
+      .slice(0, count)
+      .map((width) => Math.min(Math.max(width, 0), containerWidth));
+    if (includeBadge) {
+      widths.push(Math.min(Math.max(badgeWidth, 0), containerWidth));
+    }
+    let line = 1;
+    let used = 0;
+    for (const width of widths) {
+      if (used === 0) {
+        used = width;
+        continue;
+      }
+      if (used + gap + width <= containerWidth + 0.5) {
+        used += gap + width;
+        continue;
+      }
+      line += 1;
+      used = width;
+      if (line > maxLines) return false;
+    }
+    return true;
+  };
+
+  if (fits(tagWidths.length, false)) return tagWidths.length;
+
+  let low = 0;
+  let high = tagWidths.length - 1;
+  let best = 0;
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    if (fits(mid, true)) {
+      best = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return best;
+};
+
+const DimensionChip: React.FC<{ label: string; measure?: boolean }> = ({
+  label,
+  measure = false
+}) => (
+  <span
+    className={
+      measure
+        ? 'inline-flex h-5 shrink-0 items-center whitespace-nowrap rounded border border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-1 font-mono text-[11px] leading-none text-[var(--color-text-2)]'
+        : DIMENSION_CHIP_CLASS
+    }
+  >
+    <span className={measure ? undefined : 'min-w-0 truncate'}>{label}</span>
+  </span>
+);
 
 const DimensionTagLine: React.FC<{ tags?: Record<string, string> }> = ({
   tags
 }) => {
-  const displayTags = cleanDisplayTags(tags);
-  const entries = Object.entries(displayTags || {});
+  const entries = Object.entries(cleanDisplayTags(tags) || {});
+  const signature = entries.map(([key, value]) => `${key}=${value}`).join('\n');
+  const containerRef = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLDivElement>(null);
+  const badgeMeasureRef = useRef<HTMLSpanElement>(null);
+  const [visibleCount, setVisibleCount] = useState(entries.length);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    const measure = measureRef.current;
+    if (!container || !measure) return undefined;
+
+    const recalc = () => {
+      const widths = Array.from(measure.children, (node) =>
+        (node as HTMLElement).getBoundingClientRect().width
+      );
+      const badgeWidth = badgeMeasureRef.current?.getBoundingClientRect().width ?? 28;
+      const next = visibleDimensionTagCount(
+        widths,
+        container.clientWidth,
+        badgeWidth
+      );
+      setVisibleCount((prev) => (prev === next ? prev : next));
+    };
+
+    recalc();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(recalc);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [signature]);
+
   if (!entries.length) {
     return null;
   }
-  const summary = formatDimensionTagSummary(displayTags);
+
+  const count = Math.min(visibleCount, entries.length);
+  const visible = entries.slice(0, count);
+  const hidden = entries.slice(count);
+
   return (
-    <Tooltip title={summary}>
-      <div className="mt-0.5 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
-        {entries.map(([key, value]) => (
-          <Tag
-            key={key}
-            className="m-0 mr-1 inline-block text-[11px] font-mono leading-4 py-0 px-1"
+    <div ref={containerRef} className="relative w-full min-w-0 overflow-hidden">
+      <div className="flex max-h-11 min-w-0 flex-wrap content-start items-center gap-1 overflow-hidden">
+        {visible.map(([key, value]) => {
+          const label = `${key}=${value}`;
+          return (
+            <Tooltip key={key} title={label}>
+              <span className="inline-flex max-w-full min-w-0 overflow-hidden">
+                <DimensionChip label={label} />
+              </span>
+            </Tooltip>
+          );
+        })}
+        {hidden.length > 0 ? (
+          <Tooltip
+            title={(
+              <div className="flex max-w-[280px] flex-col gap-0.5">
+                {hidden.map(([key, value]) => (
+                  <span key={key} className="break-all font-mono text-xs">
+                    {key}={value}
+                  </span>
+                ))}
+              </div>
+            )}
           >
-            {key}={value}
-          </Tag>
+            <span className={DIMENSION_MORE_CLASS}>+{hidden.length}</span>
+          </Tooltip>
+        ) : null}
+      </div>
+      <div
+        ref={measureRef}
+        aria-hidden
+        className="pointer-events-none absolute left-0 top-0 flex w-max gap-1 opacity-0"
+      >
+        {entries.map(([key, value]) => (
+          <DimensionChip key={key} measure label={`${key}=${value}`} />
         ))}
       </div>
-    </Tooltip>
+      <span
+        ref={badgeMeasureRef}
+        aria-hidden
+        className={`${DIMENSION_MORE_CLASS} pointer-events-none absolute left-0 top-0 opacity-0`}
+      >
+        +{entries.length}
+      </span>
+    </div>
   );
 };
 
@@ -724,146 +871,146 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
         </div>
         <div className="rounded-md border border-[var(--color-border-1)] overflow-hidden bg-[var(--color-bg)]">
           <div className="overflow-x-auto">
-            <div
-              className={`grid ${BUSINESS_METRIC_GRID} min-w-[780px] border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-3 py-1.5 text-[12px] font-medium text-[var(--color-text-2)]`}
-            >
-              <div />
-              <div>{t('monitor.integrations.trialRunMetricId', '指标 ID')}</div>
-              <div>{t('monitor.integrations.trialRunMetricDimensions', '维度')}</div>
-              <div>{t('monitor.integrations.metricGroup', '分组')}</div>
-              <div>{t('common.unit', '单位')}</div>
-              <div className="text-right">
-                {t('monitor.integrations.trialRunMetricValue', '采样值')}
+            <div className={BUSINESS_METRIC_TABLE_MIN_WIDTH}>
+              <div
+                className={`${BUSINESS_METRIC_GRID} border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)] py-2 text-[12px] font-medium text-[var(--color-text-2)]`}
+              >
+                <div />
+                <div className="min-w-0">{t('monitor.integrations.trialRunMetricId', '指标 ID')}</div>
+                <div className="min-w-0">{t('monitor.integrations.trialRunMetricDimensions', '维度')}</div>
+                <div className="min-w-0">{t('monitor.integrations.metricGroup', '分组')}</div>
+                <div className="min-w-0">{t('common.unit', '单位')}</div>
+                <div className="min-w-0 text-right">
+                  {t('monitor.integrations.trialRunMetricValue', '采样值')}
+                </div>
               </div>
-            </div>
-            <div className="max-h-[360px] min-w-[780px] overflow-auto divide-y divide-[var(--color-border-1)]">
-              {businessMetrics.map((item: BusinessMetricItem) => {
-                const reservedMetricId = isReservedScriptMetricId(item.name);
-                const isChecked =
-                  !reservedMetricId && selectedMetrics[item.key] !== false;
-                const catalog = catalogByKey[item.key] || {};
-                const existingEnum =
-                  String(
-                    catalog.data_type ||
-                      existingByName.get(cleanMeasurementName(item.name))
-                        ?.data_type ||
-                      ''
-                  ).toLowerCase() === 'enum';
-                return (
-                  <div
-                    key={item.key}
-                    className={`grid ${BUSINESS_METRIC_GRID} items-center px-3 py-1.5 text-[13px] hover:bg-[var(--color-fill-2)] transition-colors ${
-                      isChecked ? '' : 'opacity-60 bg-[var(--color-bg-2)]'
-                    }`}
-                  >
-                    <div>
-                      <Checkbox
-                        checked={isChecked}
-                        disabled={reservedMetricId}
-                        onChange={() => toggleMetric(item.key, reservedMetricId)}
-                      />
-                    </div>
-                    <div className="min-w-0 pr-2">
-                      <div
-                        className="truncate font-mono text-xs font-medium text-[var(--color-text-1)]"
-                        title={item.name}
-                      >
-                        {item.name}
-                      </div>
-                      {reservedMetricId ? (
-                        <div
-                          className="mt-0.5 text-[11px] text-[var(--color-fail)]"
-                          role="alert"
-                        >
-                          {t(
-                            'monitor.integrations.reservedMetricId',
-                            '指标 ID 与保留字段冲突，请更换'
-                          )}
-                        </div>
-                      ) : null}
-                    </div>
-                    <div className="min-w-0 pr-2">
-                      <DimensionTagLine tags={item.tags} />
-                      {Boolean(item.reservedTagKeys?.length) && (
-                        <div
-                          className="mt-0.5 text-[11px] text-[var(--color-fail)]"
-                          role="alert"
-                        >
-                          {t('monitor.integrations.reservedTagRename', '保留字段，请换名')}
-                        </div>
-                      )}
-                    </div>
-                    <div className="min-w-0 pr-1">
-                      <ScriptMetricGroupSelect
-                        size="small"
-                        allowClear
-                        disabled={!isChecked}
-                        className="w-full [&_.ant-select-selector]:!min-h-[24px] [&_.ant-select-selector]:!h-[24px]"
-                        placeholder={t('monitor.integrations.metricGroup', '分组')}
-                        value={
-                          typeof catalog.metric_group === 'number'
-                            ? catalog.metric_group
-                            : undefined
-                        }
-                        groups={groupOptions}
-                        onGroupsChange={setGroupOptions}
-                        objectId={objectId}
-                        pluginId={pluginId}
-                        onChange={(next) =>
-                          updateCatalog(item.key, {
-                            metric_group: typeof next === 'number' ? next : null,
-                            editedGroup: true
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="min-w-0 pr-1">
-                      <Cascader
-                        size="small"
-                        allowClear
-                        disabled={!isChecked || existingEnum}
-                        className="w-full [&_.ant-select-selector]:!min-h-[24px] [&_.ant-select-selector]:!h-[24px]"
-                        placeholder={t('common.unit', '单位')}
-                        options={unitOptions}
-                        displayRender={(labels) => {
-                          const leaf = labels[labels.length - 1];
-                          return leaf == null ? '' : String(leaf);
-                        }}
-                        showSearch={{
-                          filter: (inputValue, path) => {
-                            const needle = inputValue.trim().toLowerCase();
-                            if (!needle) return true;
-                            return path.some((option) => {
-                              const label = String(option.label ?? '').toLowerCase();
-                              const extra = String(
-                                (option as { searchText?: string }).searchText ?? ''
-                              ).toLowerCase();
-                              return label.includes(needle) || extra.includes(needle);
-                            });
-                          }
-                        }}
-                        value={
-                          Array.isArray(catalog.unit)
-                            ? catalog.unit.map((unit) => String(unit))
-                            : undefined
-                        }
-                        onChange={(value) =>
-                          updateCatalog(item.key, {
-                            unit: Array.isArray(value) ? value : undefined,
-                            editedUnit: true
-                          })
-                        }
-                      />
-                    </div>
+              <div className="max-h-[360px] overflow-y-auto overflow-x-hidden divide-y divide-[var(--color-border-1)]">
+                {businessMetrics.map((item: BusinessMetricItem) => {
+                  const reservedMetricId = isReservedScriptMetricId(item.name);
+                  const isChecked =
+                    !reservedMetricId && selectedMetrics[item.key] !== false;
+                  const catalog = catalogByKey[item.key] || {};
+                  const existingEnum =
+                    String(
+                      catalog.data_type ||
+                        existingByName.get(cleanMeasurementName(item.name))
+                          ?.data_type ||
+                        ''
+                    ).toLowerCase() === 'enum';
+                  return (
                     <div
-                      className="min-w-0 truncate text-right font-mono text-xs tabular-nums text-[var(--color-text-2)]"
-                      title={String(item.value)}
+                      key={item.key}
+                      className={`${BUSINESS_METRIC_GRID} py-2 text-[13px] hover:bg-[var(--color-fill-2)] transition-colors ${
+                        isChecked ? '' : 'opacity-60 bg-[var(--color-bg-2)]'
+                      }`}
                     >
-                      {String(item.value)}
+                      <div className="flex items-center justify-center">
+                        <Checkbox
+                          checked={isChecked}
+                          disabled={reservedMetricId}
+                          onChange={() => toggleMetric(item.key, reservedMetricId)}
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <EllipsisWithTooltip
+                          className="truncate font-mono text-xs font-medium text-[var(--color-text-1)]"
+                          text={item.name}
+                        />
+                        {reservedMetricId ? (
+                          <div
+                            className="mt-0.5 text-[11px] text-[var(--color-fail)]"
+                            role="alert"
+                          >
+                            {t(
+                              'monitor.integrations.reservedMetricId',
+                              '指标 ID 与保留字段冲突，请更换'
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="min-w-0">
+                        <DimensionTagLine tags={item.tags} />
+                        {Boolean(item.reservedTagKeys?.length) && (
+                          <div
+                            className="mt-0.5 text-[11px] text-[var(--color-fail)]"
+                            role="alert"
+                          >
+                            {t('monitor.integrations.reservedTagRename', '保留字段，请换名')}
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <ScriptMetricGroupSelect
+                          size="middle"
+                          allowClear
+                          disabled={!isChecked}
+                          className={INLINE_CONTROL_CLASS}
+                          placeholder={t('monitor.integrations.metricGroup', '分组')}
+                          value={
+                            typeof catalog.metric_group === 'number'
+                              ? catalog.metric_group
+                              : undefined
+                          }
+                          groups={groupOptions}
+                          onGroupsChange={setGroupOptions}
+                          objectId={objectId}
+                          pluginId={pluginId}
+                          onChange={(next) =>
+                            updateCatalog(item.key, {
+                              metric_group: typeof next === 'number' ? next : null,
+                              editedGroup: true
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <Cascader
+                          size="middle"
+                          allowClear
+                          disabled={!isChecked || existingEnum}
+                          className={INLINE_CONTROL_CLASS}
+                          placeholder={t('common.unit', '单位')}
+                          options={unitOptions}
+                          displayRender={(labels) => {
+                            const leaf = labels[labels.length - 1];
+                            return leaf == null ? '' : String(leaf);
+                          }}
+                          showSearch={{
+                            filter: (inputValue, path) => {
+                              const needle = inputValue.trim().toLowerCase();
+                              if (!needle) return true;
+                              return path.some((option) => {
+                                const label = String(option.label ?? '').toLowerCase();
+                                const extra = String(
+                                  (option as { searchText?: string }).searchText ?? ''
+                                ).toLowerCase();
+                                return label.includes(needle) || extra.includes(needle);
+                              });
+                            }
+                          }}
+                          value={
+                            Array.isArray(catalog.unit)
+                              ? catalog.unit.map((unit) => String(unit))
+                              : undefined
+                          }
+                          onChange={(value) =>
+                            updateCatalog(item.key, {
+                              unit: Array.isArray(value) ? value : undefined,
+                              editedUnit: true
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <EllipsisWithTooltip
+                          className="truncate text-right font-mono text-xs tabular-nums text-[var(--color-text-3)]"
+                          text={String(item.value)}
+                        />
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>
