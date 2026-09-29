@@ -43,6 +43,8 @@ import {
   stripMetricLabelsPlaceholder
 } from '@/app/monitor/utils/metricQueryLabels';
 import { cloneDeep } from 'lodash';
+import ScriptMetricGroupSelect from '../configure/scriptMetricGroupSelect';
+import { CatalogMetricGroupOption } from '../configure/scriptMetricPersist';
 const { Option } = Select;
 
 interface ModalProps {
@@ -945,22 +947,36 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
                 label={t('monitor.integrations.metricGroup')}
                 name="metric_group"
                 rules={[{ required: true, message: t('common.required') }]}
+                getValueFromEvent={(next: number | null) => {
+                  selectedGroupIdRef.current = next;
+                  return next;
+                }}
               >
-                <Select
-                  showSearch
-                  filterOption={false}
+                <ScriptMetricGroupSelect
+                  allowClear={false}
                   loading={groupLoading}
+                  filterOption={false}
                   onSearch={handleGroupSearch}
-                  onDropdownVisibleChange={(open) =>
-                    !open && handleGroupSearch('')
-                  }
-                >
-                  {groupOptions.map((item) => (
-                    <Option key={item.id} value={item.id}>
-                      {item.display_name}
-                    </Option>
-                  ))}
-                </Select>
+                  placeholder={t('monitor.integrations.metricGroup')}
+                  objectId={monitorObject}
+                  pluginId={pluginId}
+                  groups={groupOptions.map((item) => ({
+                    id:
+                      typeof item.id === 'number'
+                        ? item.id
+                        : Number(item.id),
+                    name: item.name,
+                    display_name: item.display_name || item.name
+                  }))}
+                  onGroupsChange={(next: CatalogMetricGroupOption[]) => {
+                    setGroupOptions(
+                      next.map((item) => ({
+                        ...item,
+                        id: item.id
+                      })) as ListItem[]
+                    );
+                  }}
+                />
               </Form.Item>
               <Form.Item<MetricInfo>
                 label={t('monitor.integrations.formula')}

@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { Alert, Button, Cascader, Checkbox, Input, Select, Spin, Tag, Tooltip } from 'antd';
+import { Alert, Button, Cascader, Checkbox, Input, Spin, Tag, Tooltip } from 'antd';
 import {
   CheckCircleFilled,
   CloseCircleFilled,
@@ -18,8 +18,12 @@ import {
   extractCatalogItems,
   formatDimensionTagSummary,
   pickSelectedBusinessMetrics,
+  resolveDefaultCatalogGroupId,
+  resolveDefaultCatalogUnitPath,
+  CatalogMetricGroupOption,
   ScriptMetricCatalogDraft
 } from './scriptMetricPersist';
+import ScriptMetricGroupSelect from './scriptMetricGroupSelect';
 
 const BUSINESS_METRIC_GRID =
   'grid-cols-[36px_minmax(160px,1.3fr)_minmax(72px,0.55fr)_minmax(110px,0.95fr)_minmax(128px,1.05fr)_minmax(140px,1.2fr)]';
@@ -70,12 +74,6 @@ interface ScriptTrialRunAreaProps {
   onBusinessMetricsAvailableChange?: (available: boolean) => void;
 }
 
-interface MetricGroupOption {
-  id?: number;
-  name?: string;
-  display_name?: string;
-}
-
 const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
   task,
   spinning = false,
@@ -92,7 +90,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
   const commonContext = useCommon();
   const [selectedMetrics, setSelectedMetrics] = useState<Record<string, boolean>>({});
   const [catalogByKey, setCatalogByKey] = useState<Record<string, ScriptMetricCatalogDraft>>({});
-  const [groupOptions, setGroupOptions] = useState<MetricGroupOption[]>([]);
+  const [groupOptions, setGroupOptions] = useState<CatalogMetricGroupOption[]>([]);
   const [trialSubmitting, setTrialSubmitting] = useState(false);
   const unitOptions = useMemo(
     () => buildUnitCascaderOptions(commonContext?.groupedUnitList || []),
@@ -127,6 +125,15 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     );
   }, [task]);
 
+  const defaultGroupId = useMemo(
+    () => resolveDefaultCatalogGroupId(groupOptions),
+    [groupOptions]
+  );
+  const defaultUnitPath = useMemo(
+    () => resolveDefaultCatalogUnitPath(unitOptions),
+    [unitOptions]
+  );
+
   // 当解析到新指标时，默认全选，并清空上一轮目录草稿
   useEffect(() => {
     if (parsedOutput?.businessMetrics?.length) {
@@ -140,6 +147,34 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     }
     setCatalogByKey({});
   }, [parsedOutput]);
+
+  // 调试勾选后预填目录已有 Default / 无分组 与 unit_id=none，Confirm 不必再填。
+  useEffect(() => {
+    if (!parsedOutput?.businessMetrics?.length) {
+      return;
+    }
+    setCatalogByKey((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      parsedOutput.businessMetrics.forEach((item) => {
+        const draft = next[item.key] || {};
+        const patch: ScriptMetricCatalogDraft = { ...draft };
+        if (patch.metric_group == null && defaultGroupId) {
+          patch.metric_group = defaultGroupId;
+          changed = true;
+        }
+        if (
+          (patch.unit == null || (Array.isArray(patch.unit) && !patch.unit.length)) &&
+          defaultUnitPath
+        ) {
+          patch.unit = defaultUnitPath;
+          changed = true;
+        }
+        next[item.key] = patch;
+      });
+      return changed ? next : prev;
+    });
+  }, [parsedOutput, defaultGroupId, defaultUnitPath]);
 
   useEffect(() => {
     if (!pluginId || !objectId) {
@@ -159,7 +194,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           suppressErrorNotification: true
         });
         if (!cancelled) {
-          setGroupOptions(extractCatalogItems<MetricGroupOption>(groupRes));
+          setGroupOptions(extractCatalogItems<CatalogMetricGroupOption>(groupRes));
         }
       } catch {
         if (!cancelled) {
@@ -669,26 +704,26 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                       {String(item.value)}
                     </div>
                     <div className="min-w-0 pr-1">
-                      <Select
+                      <ScriptMetricGroupSelect
                         size="small"
                         allowClear
-                        showSearch
                         disabled={!isChecked}
-                        optionFilterProp="label"
                         className="w-full"
                         placeholder={t('monitor.integrations.metricGroup', '分组')}
-                        value={catalog.metric_group ?? undefined}
-                        onChange={(value) =>
+                        value={
+                          typeof catalog.metric_group === 'number'
+                            ? catalog.metric_group
+                            : undefined
+                        }
+                        groups={groupOptions}
+                        onGroupsChange={setGroupOptions}
+                        objectId={objectId}
+                        pluginId={pluginId}
+                        onChange={(next) =>
                           updateCatalog(item.key, {
-                            metric_group: typeof value === 'number' ? value : null
+                            metric_group: typeof next === 'number' ? next : null
                           })
                         }
-                        options={groupOptions
-                          .filter((group) => typeof group.id === 'number')
-                          .map((group) => ({
-                            value: group.id as number,
-                            label: group.display_name || group.name || String(group.id)
-                          }))}
                       />
                     </div>
                     <div className="min-w-0 pr-1">

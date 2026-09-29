@@ -906,6 +906,8 @@
       "reservedTagRenameDetail": "保留字段，请换名：{keys}",
       "goEditMetrics": "去编辑指标",
       "goEditMetricsSelectFirst": "请先勾选指标",
+      "createMetricGroup": "新建分组",
+      "createMetricGroupPlaceholder": "输入分组名",
       "templateDescription": "模版介绍",
       "noConfigData": "暂无配置数据，请检查插件配置",
       "missingEntryContext": "缺少插件关联的监控对象，无法进入配置",

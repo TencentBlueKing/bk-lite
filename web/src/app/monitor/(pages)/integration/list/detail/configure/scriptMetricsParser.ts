@@ -30,7 +30,7 @@ const SELF_METRIC_NAMES = new Set(['up', 'duration', 'duration_ms', 'duration_se
 const GENERIC_INFLUX_FIELDS = new Set(['value', 'gauge', 'counter', 'untyped']);
 /** 用户可见的平台标签。 */
 export const VISIBLE_PLATFORM_TAG_KEYS = new Set(['instance_id', 'agent_id']);
-/** 仅内部隔离，不进调试表。 */
+/** 仅内部隔离，不进调试表。精确 key，不做前缀匹配。 */
 export const HIDDEN_PLATFORM_TAG_KEYS = new Set([
   'plugin_id',
   'instance_type',
@@ -38,9 +38,10 @@ export const HIDDEN_PLATFORM_TAG_KEYS = new Set([
   'config_id',
   'config_type',
   'host',
+  'script',
   'bklite_script_reserved_keys'
 ]);
-/** 脚本自定义标签不得使用。 */
+/** 脚本自定义标签不得使用。精确 key，不做前缀匹配。 */
 export const RESERVED_SCRIPT_TAG_KEYS = new Set([
   'instance_id',
   'instance_type',
@@ -48,7 +49,8 @@ export const RESERVED_SCRIPT_TAG_KEYS = new Set([
   'config_type',
   'plugin_id',
   'agent_id',
-  'config_id'
+  'config_id',
+  'script'
 ]);
 const RESERVED_CONFLICT_TAG = 'bklite_script_reserved_keys';
 const UNRENDERED_PLACEHOLDER_RE = /\$\{[^}]+\}|\{\{[^}]+\}\}/;
