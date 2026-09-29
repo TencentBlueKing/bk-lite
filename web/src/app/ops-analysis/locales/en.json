@@ -1289,7 +1289,7 @@
     "application3DWallPage": "{page} / {total} pages",
     "application3DWallSection": "Application wall",
     "application3DPageSize": "Applications per page",
-    "application3DPageSizeTip": "Supports 1-36 (default 24). 1-16 for close-up large cards, 17-36 for standard/dense view",
+    "application3DPageSizeTip": "Any integer of at least 1 (default 24). 1-16 for close-up large cards, 17-36 for the standard dense view, and above 36 the camera pulls back to fit more cards",
     "application3DCountUnit": "items",
     "application3DTier16": "16 Large",
     "application3DTier24": "24 Standard",

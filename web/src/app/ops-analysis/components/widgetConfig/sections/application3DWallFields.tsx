@@ -8,7 +8,6 @@ import {
   APPLICATION3D_WALL_DWELL_MAX,
   APPLICATION3D_WALL_DWELL_MIN,
   APPLICATION3D_WALL_PAGE_SIZE_DEFAULT,
-  APPLICATION3D_WALL_PAGE_SIZE_MAX,
   APPLICATION3D_WALL_PAGE_SIZE_MIN,
   type Application3DPageEffect,
 } from '@/app/ops-analysis/utils/application3DWallConfig';
@@ -59,7 +58,6 @@ const PageSizeInputControl: React.FC<PageSizeInputControlProps> = ({
     <div id={id} className="flex flex-wrap items-center gap-2">
       <InputNumber
         min={APPLICATION3D_WALL_PAGE_SIZE_MIN}
-        max={APPLICATION3D_WALL_PAGE_SIZE_MAX}
         precision={0}
         disabled={disabled}
         value={value ?? APPLICATION3D_WALL_PAGE_SIZE_DEFAULT}
@@ -117,7 +115,7 @@ export const Application3DWallFields = () => {
         {t('dashboard.application3DWallSection', '应用墙')}
       </ConfigSectionTitle>
 
-      {/* 1. 每页应用数（保留 Tooltip：解释 1~16 大卡与 17~36 标准取景的镜头自适应规则） */}
+      {/* 1. 每页应用数（保留 Tooltip：解释 1~16 大卡、17~36 标准取景，以及超过 36 的镜头拉远） */}
       <Form.Item
         name={['application3DWall', 'pageSize']}
         label={
@@ -125,7 +123,7 @@ export const Application3DWallFields = () => {
             text={t('dashboard.application3DPageSize', '每页应用数')}
             tip={t(
               'dashboard.application3DPageSizeTip',
-              '支持 1～36（默认 24）。1～16 为近景大卡聚焦，17～36 为标准/高密展示',
+              '不小于 1 的整数（默认 24）。1～16 为近景大卡聚焦，17～36 为标准/高密展示，超过 36 镜头拉远以放入更多卡片',
             )}
           />
         }
