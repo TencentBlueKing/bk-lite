@@ -1345,6 +1345,7 @@
             "switch": "Switch"
         },
         "objectType": "Object type",
+        "selectedAssetCount": "{count} selected",
         "selectDeviceModels": "Device models",
         "selectDeviceModelsPlaceholder": "Select models",
         "duplicateManageIp": "The same management IP cannot be selected twice: {ip}",
