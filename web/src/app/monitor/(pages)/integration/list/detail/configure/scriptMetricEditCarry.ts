@@ -1,6 +1,7 @@
 import {
   BusinessMetricItem,
-  cleanDisplayTags,
+  cleanMeasurementName,
+  keepStoredTags,
   isSelfMetricName
 } from './scriptMetricsParser';
 import {
@@ -51,12 +52,12 @@ export const buildScriptMetricEditCarry = (
   const items: ScriptMetricEditCarryItem[] = [];
   const seen = new Set<string>();
   metrics.forEach((item) => {
-    const name = String(item?.name || '').trim();
+    const name = cleanMeasurementName(String(item?.name || '').trim());
     if (!name || seen.has(name) || isSelfMetricName(name)) {
       return;
     }
     seen.add(name);
-    const tags = cleanDisplayTags(item.tags) || {};
+    const tags = keepStoredTags(item.tags) || {};
     const unitId = resolveCatalogUnitId(item.unit) || DEFAULT_CATALOG_UNIT_ID;
     const group =
       typeof item.metric_group === 'number' && item.metric_group > 0
@@ -115,7 +116,7 @@ export const consumeScriptMetricEditCarry = (
       metrics: parsed.metrics
         .filter((item) => item?.name && !isSelfMetricName(item.name))
         .map((item) => ({
-          name: String(item.name).trim(),
+          name: cleanMeasurementName(String(item.name).trim()),
           sample: item.sample,
           ...(typeof item.group === 'number' && item.group > 0
             ? { group: item.group }
@@ -124,7 +125,7 @@ export const consumeScriptMetricEditCarry = (
             ? String(item.unit_id)
             : DEFAULT_CATALOG_UNIT_ID,
           ...(item.description ? { description: String(item.description) } : {}),
-          tags: cleanDisplayTags(item.tags) || {}
+          tags: keepStoredTags(item.tags) || {}
         }))
     };
   } catch {
@@ -144,7 +145,7 @@ export const carryItemsToBusinessMetrics = (
     key: item.name,
     name: item.name,
     value: item.sample,
-    tags: cleanDisplayTags(item.tags) || {},
+    tags: keepStoredTags(item.tags) || {},
     metric_group: typeof item.group === 'number' && item.group > 0 ? item.group : null,
     unit: item.unit_id || DEFAULT_CATALOG_UNIT_ID,
     description: typeof item.description === 'string' ? item.description : ''

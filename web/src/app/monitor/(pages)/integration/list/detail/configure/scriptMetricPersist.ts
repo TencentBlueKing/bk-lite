@@ -1,8 +1,12 @@
 import {
   BusinessMetricItem,
+  cleanDisplayTags,
+  cleanMeasurementName,
   collectReservedScriptTagKeys,
+  isHiddenPlatformDimensionKey,
   isReservedScriptTagKey,
-  VISIBLE_PLATFORM_TAG_KEYS
+  isSelfMetricName,
+  keepStoredTags
 } from './scriptMetricsParser';
 
 export interface ScriptMetricCatalogDraft {
@@ -46,7 +50,13 @@ export interface PersistScriptMetricsClient {
   get: (url: string, config?: { params?: Record<string, unknown> } & RequestConfig) => Promise<unknown>;
   post: (url: string, data?: unknown, config?: RequestConfig) => Promise<unknown>;
   patch: (url: string, data?: unknown, config?: RequestConfig) => Promise<unknown>;
+  del?: (url: string, config?: RequestConfig) => Promise<unknown>;
   t: TranslateFn;
+}
+
+export interface CatalogMetricRef {
+  id: number;
+  name: string;
 }
 
 const SILENT_REQ = { suppressErrorNotification: true } as const;
@@ -105,7 +115,11 @@ export const resolveDefaultCatalogUnitPath = (
   unitId: string = DEFAULT_CATALOG_UNIT_ID
 ): string[] | undefined => {
   for (const group of options) {
-    const child = (group.children || []).find((item) => item.value === unitId);
+    const children = group.children || [];
+    if (!children.length && group.value && String(group.value) === unitId) {
+      return [String(group.value)];
+    }
+    const child = children.find((item) => item.value === unitId);
     if (child && group.value) {
       return [String(group.value), String(child.value)];
     }
@@ -153,30 +167,93 @@ export const createCatalogMetricGroup = async ({
   };
 };
 
-/** Cascader 分组用类目名，叶子必须是 unit_id，禁止改成展示文案。 */
+export interface ScriptUnitCascaderOption {
+  label: string;
+  value: string;
+  searchText?: string;
+  children?: ScriptUnitCascaderOption[];
+}
+
+const PERCENT_UNIT_IDS = new Set(['percent', 'percentunit']);
+
+/**
+ * 表格单位下拉用短名（如 W），避免「Other / Watts (W)」撑满窄列。
+ * percent / percentunit 保留量纲区分；none 保持目录原名。
+ */
+export const shortenScriptUnitLabel = (item: {
+  unitId: string;
+  label?: string;
+  displayUnit?: string;
+}): string => {
+  const unitId = String(item.unitId || '').trim();
+  const label = String(item.label || '').trim();
+  const displayUnit = String(item.displayUnit || '').trim();
+  if (!unitId || unitId === DEFAULT_CATALOG_UNIT_ID) {
+    return label || DEFAULT_CATALOG_UNIT_ID;
+  }
+  if (PERCENT_UNIT_IDS.has(unitId)) {
+    return label || unitId;
+  }
+  if (displayUnit) {
+    return displayUnit;
+  }
+  const wrapped = label.match(/\(([^)]+)\)\s*$/);
+  if (wrapped?.[1]?.trim()) {
+    return wrapped[1].trim();
+  }
+  return label || unitId;
+};
+
+/** Cascader 分组用类目名，叶子 value 必须是 unit_id。展示名缩短，none 钉在最前。 */
 export const buildUnitCascaderOptions = (
   grouped: Array<{
     label?: string;
-    children?: Array<{ label?: string; value?: string; unit_id?: string }>;
+    children?: Array<{
+      label?: string;
+      value?: string;
+      unit_id?: string;
+      unit?: string;
+      display_unit?: string;
+    }>;
   }> = []
-): Array<{
-  label?: string;
-  value?: string;
-  children: Array<{ label?: string; value: string }>;
-}> =>
-  grouped.map((group) => ({
-    label: group.label,
-    value: group.label,
-    children: (group.children || [])
-      .map((item) => {
-        const unitId = String(item.unit_id || item.value || '').trim();
-        return {
-          label: item.label,
-          value: unitId
-        };
-      })
-      .filter((item) => item.value)
-  }));
+): ScriptUnitCascaderOption[] => {
+  let noneOption: ScriptUnitCascaderOption | null = null;
+  const groups: ScriptUnitCascaderOption[] = [];
+  grouped.forEach((group) => {
+    const children: ScriptUnitCascaderOption[] = [];
+    (group.children || []).forEach((item) => {
+      const unitId = String(item.unit_id || item.value || '').trim();
+      if (!unitId) return;
+      const rawLabel = String(item.label || '').trim();
+      const displayUnit = String(item.unit || item.display_unit || '').trim();
+      const option: ScriptUnitCascaderOption = {
+        label: shortenScriptUnitLabel({
+          unitId,
+          label: rawLabel,
+          displayUnit
+        }),
+        value: unitId,
+        searchText: [rawLabel, displayUnit, unitId, group.label]
+          .filter(Boolean)
+          .join(' ')
+      };
+      if (unitId === DEFAULT_CATALOG_UNIT_ID) {
+        noneOption = option;
+        return;
+      }
+      children.push(option);
+    });
+    if (children.length && group.label) {
+      groups.push({
+        label: String(group.label),
+        value: String(group.label),
+        searchText: String(group.label),
+        children
+      });
+    }
+  });
+  return noneOption ? [noneOption, ...groups] : groups;
+};
 
 /** Cascader 叶子为 unit_id；已解析的字符串原样回传。 */
 export const resolveCatalogUnitId = (unit: unknown): string => {
@@ -236,7 +313,10 @@ export const collectReservedTagViolations = (
   metrics.forEach((item) => {
     (item.reservedTagKeys || []).forEach(mark);
     Object.keys(item.tags || {}).forEach((key) => {
-      if (isReservedScriptTagKey(key) && !VISIBLE_PLATFORM_TAG_KEYS.has(key)) {
+      if (isHiddenPlatformDimensionKey(key)) {
+        return;
+      }
+      if (isReservedScriptTagKey(key)) {
         mark(key);
       }
     });
@@ -265,19 +345,184 @@ export const formatReservedTagRenameMessage = (
 export const formatDimensionTagSummary = (
   tags?: Record<string, string>
 ): string =>
-  Object.entries(tags || {})
+  Object.entries(cleanDisplayTags(tags) || {})
     .map(([key, value]) => `${key}=${value}`)
     .join(' ');
 
-/** 确认只落库勾选行，并带上分组 / 单位 / 描述。 */
+const toStdoutMetricName = (name: string): string =>
+  cleanMeasurementName(String(name || '').trim());
+
+/** 确认只落库勾选的业务指标，并带上分组 / 单位 / 描述。自监控指标不可勾选。 */
 export const pickSelectedBusinessMetrics = (
   items: BusinessMetricItem[],
   selected: Record<string, boolean>,
   catalogByKey: Record<string, ScriptMetricCatalogDraft> = {}
 ): BusinessMetricItem[] =>
   items
+    .filter((item) => !isSelfMetricName(item.name))
     .filter((item) => selected[item.key] !== false)
-    .map((item) => applyCatalogDraft(item, catalogByKey[item.key]));
+    .map((item) =>
+      applyCatalogDraft(
+        { ...item, name: toStdoutMetricName(item.name) },
+        catalogByKey[item.key]
+      )
+    );
+
+/** 重新调试：刷新采样值，保留仍存在指标的勾选/分组/单位/描述，消失的视为未勾选。 */
+export const mergeRetainedTrialMetricState = ({
+  nextMetrics,
+  prevSelected,
+  prevCatalog
+}: {
+  nextMetrics: BusinessMetricItem[];
+  prevSelected: Record<string, boolean>;
+  prevCatalog: Record<string, ScriptMetricCatalogDraft>;
+}): {
+  selected: Record<string, boolean>;
+  catalog: Record<string, ScriptMetricCatalogDraft>;
+} => {
+  const selected: Record<string, boolean> = {};
+  const catalog: Record<string, ScriptMetricCatalogDraft> = {};
+  nextMetrics.forEach((item) => {
+    if (!item?.key || isSelfMetricName(item.name)) {
+      return;
+    }
+    selected[item.key] = Object.prototype.hasOwnProperty.call(
+      prevSelected,
+      item.key
+    )
+      ? Boolean(prevSelected[item.key])
+      : true;
+    if (prevCatalog[item.key]) {
+      catalog[item.key] = { ...prevCatalog[item.key] };
+    }
+  });
+  return { selected, catalog };
+};
+
+export const excludeSelfMonitorMetrics = (
+  metrics: BusinessMetricItem[]
+): BusinessMetricItem[] =>
+  metrics.filter((item) => item?.name && !isSelfMetricName(item.name));
+
+export const applyDefaultCatalogDrafts = (
+  metrics: BusinessMetricItem[],
+  catalogByKey: Record<string, ScriptMetricCatalogDraft>,
+  defaultGroupId?: number | null,
+  defaultUnitPath?: string[]
+): { catalog: Record<string, ScriptMetricCatalogDraft>; changed: boolean } => {
+  const next = { ...catalogByKey };
+  let changed = false;
+  metrics.forEach((item) => {
+    if (!item?.key || isSelfMetricName(item.name)) {
+      return;
+    }
+    const draft = { ...(next[item.key] || {}) };
+    let patched = false;
+    if (draft.metric_group == null && defaultGroupId) {
+      draft.metric_group = defaultGroupId;
+      patched = true;
+    }
+    if (
+      (draft.unit == null || (Array.isArray(draft.unit) && !draft.unit.length)) &&
+      defaultUnitPath
+    ) {
+      draft.unit = defaultUnitPath;
+      patched = true;
+    }
+    if (patched) {
+      next[item.key] = draft;
+      changed = true;
+    }
+  });
+  return { catalog: changed ? next : catalogByKey, changed };
+};
+
+export const applyStdoutMetricNames = (
+  metrics: BusinessMetricItem[]
+): BusinessMetricItem[] =>
+  excludeSelfMonitorMetrics(metrics).map((item) => ({
+    ...item,
+    name: toStdoutMetricName(item.name)
+  }));
+
+export const CATALOG_METRIC_PAGE_SIZE = 100;
+
+const toCatalogMetricRefs = (
+  items: Array<{ id?: number; name?: string }>
+): CatalogMetricRef[] => {
+  const refs: CatalogMetricRef[] = [];
+  items.forEach((item) => {
+    if (item?.name && typeof item.id === 'number') {
+      refs.push({ id: item.id, name: item.name });
+    }
+  });
+  return refs;
+};
+
+export const listPluginCatalogMetrics = async ({
+  pluginId,
+  objectId,
+  client
+}: {
+  pluginId: string | number;
+  objectId: string | number;
+  client: Pick<PersistScriptMetricsClient, 'get'>;
+}): Promise<CatalogMetricRef[]> => {
+  const pageSize = CATALOG_METRIC_PAGE_SIZE;
+  const refs: CatalogMetricRef[] = [];
+  let page = 1;
+  while (true) {
+    const existingRes = await client.get('/monitor/api/metrics/', {
+      params: {
+        monitor_object_id: objectId,
+        monitor_plugin_id: pluginId,
+        page,
+        page_size: pageSize
+      },
+      ...SILENT_REQ
+    });
+    if (Array.isArray(existingRes) && page === 1) {
+      return toCatalogMetricRefs(
+        existingRes as Array<{ id?: number; name?: string }>
+      );
+    }
+    const batch = extractCatalogItems<{ id?: number; name?: string }>(
+      existingRes
+    );
+    refs.push(...toCatalogMetricRefs(batch));
+    const countRaw = asRecord(existingRes)?.count;
+    if (!batch.length || batch.length < pageSize) {
+      break;
+    }
+    if (typeof countRaw === 'number' && refs.length >= countRaw) {
+      break;
+    }
+    page += 1;
+  }
+  return refs;
+};
+
+/** 硬覆盖：删除当前勾选集合之外的旧业务指标，永不删除自监控。 */
+export const planScriptMetricHardSyncDeletes = (
+  existing: CatalogMetricRef[],
+  checked: BusinessMetricItem[]
+): CatalogMetricRef[] => {
+  const keep = new Set(
+    applyStdoutMetricNames(checked)
+      .map((item) => item.name)
+      .filter(Boolean)
+  );
+  return existing.filter((item) => {
+    if (!item?.name || typeof item.id !== 'number') {
+      return false;
+    }
+    if (isSelfMetricName(item.name)) {
+      return false;
+    }
+    return !keep.has(item.name);
+  });
+};
 
 export const buildScriptMetricRegisterPayload = (
   item: BusinessMetricItem,
@@ -294,7 +539,7 @@ export const buildScriptMetricRegisterPayload = (
   unit: resolvePersistCatalogUnitId(item.unit),
   data_type: 'Number',
   description: resolveCatalogDescription(item.description),
-  dimensions: Object.keys(item.tags || {}).map((key) => ({
+  dimensions: Object.keys(keepStoredTags(item.tags) || {}).map((key) => ({
     name: key,
     description: key
   }))
@@ -337,22 +582,49 @@ export const persistScriptMetrics = async ({
   pluginId,
   objectId,
   metrics,
-  client
+  client,
+  staleDeletes = []
 }: {
   pluginId: string | number;
   objectId: string | number;
   metrics: BusinessMetricItem[];
   client: PersistScriptMetricsClient;
+  staleDeletes?: CatalogMetricRef[];
 }): Promise<void> => {
-  if (!metrics.length) {
+  const persistableMetrics = applyStdoutMetricNames(metrics);
+  if (!persistableMetrics.length && !staleDeletes.length) {
     return;
   }
-  const { get, post, patch, t } = client;
-  const reservedKeys = collectReservedTagViolations(metrics);
+  const { get, post, patch, del, t } = client;
+  const reservedKeys = collectReservedTagViolations(persistableMetrics);
   if (reservedKeys.length) {
     throw new Error(formatReservedTagRenameMessage(reservedKeys, t));
   }
   try {
+    const deletable = staleDeletes.filter(
+      (item) => item?.id && item?.name && !isSelfMetricName(item.name)
+    );
+    if (deletable.length) {
+      if (!del) {
+        throw new Error(t('common.operationFailed'));
+      }
+      const deleteResults = await Promise.allSettled(
+        deletable.map((item) =>
+          del(`/monitor/api/metrics/${item.id}/`, SILENT_REQ)
+        )
+      );
+      const deleteRejected = deleteResults.find(
+        (result): result is PromiseRejectedResult => result.status === 'rejected'
+      );
+      if (deleteRejected) {
+        throw deleteRejected.reason;
+      }
+    }
+
+    if (!persistableMetrics.length) {
+      return;
+    }
+
     const groupRes = await get('/monitor/api/metrics_group/', {
       params: {
         monitor_object_id: objectId,
@@ -378,23 +650,19 @@ export const persistScriptMetrics = async ({
       throw new Error(t('common.operationFailed'));
     }
 
-    const existingRes = await get('/monitor/api/metrics/', {
-      params: {
-        monitor_object_id: objectId,
-        monitor_plugin_id: pluginId,
-        page: 1,
-        page_size: 100
-      },
-      ...SILENT_REQ
+    const existing = await listPluginCatalogMetrics({
+      pluginId,
+      objectId,
+      client
     });
     const existingByName = new Map<string, number>();
-    extractCatalogItems<{ id?: number; name?: string }>(existingRes).forEach((item) => {
-      if (item?.name && typeof item.id === 'number' && !existingByName.has(item.name)) {
+    existing.forEach((item) => {
+      if (!existingByName.has(item.name)) {
         existingByName.set(item.name, item.id);
       }
     });
 
-    const uniqueMetrics = uniqueMetricsByName(metrics);
+    const uniqueMetrics = uniqueMetricsByName(persistableMetrics);
     if (!uniqueMetrics.length) {
       return;
     }

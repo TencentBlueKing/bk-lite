@@ -86,11 +86,17 @@ import {
   countAccessAssets,
   mergeImportedAssetRows
 } from './automaticAssetCount';
-import ScriptTrialRunArea from './scriptTrialRunArea';
+import ScriptTrialRunArea, {
+  scriptTrialBlocksMetricActions
+} from './scriptTrialRunArea';
 import { applyScriptCollectSubmit, syncScriptRunAsForOs } from './scriptCollectForm';
 import {
   collectReservedTagViolations,
-  persistScriptMetrics
+  excludeSelfMonitorMetrics,
+  listPluginCatalogMetrics,
+  persistScriptMetrics,
+  planScriptMetricHardSyncDeletes,
+  CatalogMetricRef
 } from './scriptMetricPersist';
 import {
   buildScriptMetricEditCarry,
@@ -127,7 +133,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const [form] = Form.useForm();
   const { t } = useTranslation();
   const searchParams = useSearchParams();
-  const { get, post, patch, isLoading } = useApiClient();
+  const { get, post, patch, del, isLoading } = useApiClient();
   const {
     createCollectDetectTask,
     getCollectDetectTask,
@@ -418,6 +424,25 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     return collectDetectTasks[activeRecord.key as string];
   }, [activeRecord, collectDetectTasks]);
 
+  const scriptTrialFailed =
+    isScriptTemplate && scriptTrialBlocksMetricActions(activeTrialTask);
+
+  const activeTrialInstanceName = useMemo(() => {
+    if (!activeRecord) return undefined;
+    const named =
+      activeRecord.instance_name ||
+      activeRecord.ip ||
+      activeRecord.host ||
+      activeRecord.instance_id;
+    if (named) return String(named);
+    if (dataSource.length < 2) return undefined;
+    const index = dataSource.findIndex((row) => row.key === activeRecord.key);
+    if (index < 0) return undefined;
+    return t('monitor.integrations.trialRunBoundInstance', '实例 {index}', {
+      index: index + 1
+    });
+  }, [activeRecord, dataSource, t]);
+
   const isAnyTrialRunning = useMemo(() => {
     return Object.values(collectDetectTasks).some(
       (t) => t?.status === 'pending' || t?.status === 'running'
@@ -483,13 +508,15 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const persistSelectedScriptMetrics = async (
     targetPluginId: string | number,
     targetObjectId: string | number,
-    metricsToPersist: BusinessMetricItem[]
+    metricsToPersist: BusinessMetricItem[],
+    staleDeletes: CatalogMetricRef[] = []
   ) => {
     await persistScriptMetrics({
       pluginId: targetPluginId,
       objectId: targetObjectId,
-      metrics: metricsToPersist,
-      client: { get, post, patch, t }
+      metrics: excludeSelfMonitorMetrics(metricsToPersist),
+      staleDeletes,
+      client: { get, post, patch, del, t }
     });
   };
 
@@ -819,10 +846,39 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     }
   };
 
+  const cancelInFlightCollectDetectExcept = (keepKey: string) => {
+    Object.keys(collectDetectTimersRef.current).forEach((key) => {
+      if (key === keepKey) return;
+      clearTimeout(collectDetectTimersRef.current[key]);
+      delete collectDetectTimersRef.current[key];
+    });
+    Object.keys(activeCollectDetectFingerprintRef.current).forEach((key) => {
+      if (key !== keepKey) {
+        delete activeCollectDetectFingerprintRef.current[key];
+      }
+    });
+    setCollectDetectTasks((prev) => {
+      const runningKeys = Object.keys(prev).filter((key) => {
+        if (key === keepKey) return false;
+        const status = prev[key]?.status;
+        return status === 'pending' || status === 'running';
+      });
+      if (!runningKeys.length) return prev;
+      const next = { ...prev };
+      runningKeys.forEach((key) => {
+        delete next[key];
+      });
+      return next;
+    });
+  };
+
   const handleCollectDetect = async (
     record: IntegrationMonitoredObject,
     mode: CollectDetectMode = 'single'
   ) => {
+    if (isScriptTemplate && mode === 'batch') {
+      return;
+    }
     const rowKey = record.key as string;
     setActiveTrialRowKey(rowKey);
     const nodeId = getRowNodeId(record);
@@ -834,6 +890,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       return;
     }
     const fingerprint = buildCollectDetectFingerprint(record);
+    if (isScriptTemplate) {
+      cancelInFlightCollectDetectExcept(rowKey);
+    }
     activeCollectDetectFingerprintRef.current[rowKey] = fingerprint;
     updateCollectDetectState(rowKey, { status: 'running', fingerprint });
     try {
@@ -879,6 +938,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   };
 
   const handleBatchCollectDetect = async () => {
+    if (isScriptTemplate) {
+      return;
+    }
     const selectedRows = getRowsForBatchCollectDetect(
       dataSource,
       selectedRowKeys
@@ -1240,7 +1302,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   };
 
   const batchMenuItems: MenuProps['items'] = [
-    ...(supportCollectDetect
+    ...(supportCollectDetect && !isScriptTemplate
       ? [
         {
           key: 'batchCollectDetect',
@@ -1394,6 +1456,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (isScriptTemplate && hasReservedScriptTagError) {
       return;
     }
+    if (isScriptTemplate && scriptTrialBlocksMetricActions(activeTrialTask)) {
+      return;
+    }
     if (
       isScriptTemplate &&
       scriptDebugHasBusinessMetrics &&
@@ -1419,7 +1484,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (!tableValidation.data) {
       return;
     }
-    form.validateFields().then((values) => {
+    form.validateFields().then(async (values) => {
       try {
         const mutexErrors = getSnmpFilterMutexConflicts(values, t);
         if (mutexErrors.length) {
@@ -1455,12 +1520,50 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           }) || {};
         params.monitor_object_id = Number(objectId);
         params.monitor_plugin_id = Number(pluginId);
+        let staleDeletes: CatalogMetricRef[] = [];
+        if (
+          isScriptTemplate &&
+          scriptDebugHasBusinessMetrics &&
+          selectedScriptMetrics.length > 0
+        ) {
+          const persistable = excludeSelfMonitorMetrics(selectedScriptMetrics);
+          const existing = await listPluginCatalogMetrics({
+            pluginId,
+            objectId,
+            client: { get }
+          });
+          staleDeletes = planScriptMetricHardSyncDeletes(existing, persistable);
+          if (staleDeletes.length) {
+            const confirmed = await new Promise<boolean>((resolve) => {
+              Modal.confirm({
+                title: t(
+                  'monitor.integrations.scriptMetricsHardSyncTitle',
+                  '将按当前勾选覆盖指标'
+                ),
+                content: t(
+                  'monitor.integrations.scriptMetricsHardSyncHint',
+                  '将删除本插件目录中 {count} 个未勾选的旧指标，并保存当前勾选。取消则中止本次确认。',
+                  { count: staleDeletes.length }
+                ),
+                okText: t('common.confirm'),
+                cancelText: t('common.cancel'),
+                centered: true,
+                onOk: () => resolve(true),
+                onCancel: () => resolve(false)
+              });
+            });
+            if (!confirmed) {
+              return;
+            }
+          }
+        }
         addNodesConfig(
           params,
           templatesToApply,
           values[COLLECTION_POLICY_NAME_PREFIX_FIELD],
           pushAlertCenter,
-          alertCenterChannelIds
+          alertCenterChannelIds,
+          staleDeletes
         );
       } catch (error: any) {
         message.error(error?.message || t('common.operationFailed'));
@@ -1473,7 +1576,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     templatesToApply: PolicyTemplateItem[] = [],
     namePrefix?: string,
     pushAlertCenter = false,
-    alertCenterChannelIds: Array<string | number> = []
+    alertCenterChannelIds: Array<string | number> = [],
+    staleDeletes: CatalogMetricRef[] = []
   ) => {
     if (saveInFlightRef.current) {
       return;
@@ -1482,13 +1586,32 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     try {
       setConfirmLoading(true);
       const collectResult = await updateNodeChildConfig(params);
+      let didPersistMetrics = false;
       if (
         isScriptTemplate &&
         scriptDebugHasBusinessMetrics &&
         selectedScriptMetrics.length > 0
       ) {
-        await persistSelectedScriptMetrics(pluginId, objectId, selectedScriptMetrics);
+        await persistSelectedScriptMetrics(
+          pluginId,
+          objectId,
+          excludeSelfMonitorMetrics(selectedScriptMetrics),
+          staleDeletes
+        );
+        didPersistMetrics = true;
       }
+      const goIntegrationList = () => {
+        const nextSearch = new URLSearchParams({
+          objId: objectId
+        });
+        router.push(`/monitor/integration/list?${nextSearch.toString()}`);
+      };
+      const goPersistedMetrics = () => {
+        const metricSearch = new URLSearchParams(searchParams.toString());
+        router.push(
+          `/monitor/integration/list/detail/metric?${metricSearch.toString()}`
+        );
+      };
       if (templatesToApply.length) {
         const policyPayload = buildCollectionPolicyApplyPayload({
           monitorObjectId: objectId,
@@ -1526,13 +1649,32 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
             );
           }
         }
+      } else if (didPersistMetrics) {
+        message.success(
+          t('monitor.integrations.scriptMetricsPersistSuccess', '指标已保存')
+        );
       } else {
         message.success(t('common.addSuccess'));
       }
-      const nextSearch = new URLSearchParams({
-        objId: objectId
-      });
-      router.push(`/monitor/integration/list?${nextSearch.toString()}`);
+      if (didPersistMetrics) {
+        Modal.confirm({
+          title: t('common.addSuccess'),
+          content: t(
+            'monitor.integrations.scriptMetricsPersistSuccessHint',
+            '可前往指标页查看刚保存的指标'
+          ),
+          okText: t(
+            'monitor.integrations.goViewPersistedMetrics',
+            '去查看指标'
+          ),
+          cancelText: t('common.back'),
+          centered: true,
+          onOk: goPersistedMetrics,
+          onCancel: goIntegrationList
+        });
+      } else {
+        goIntegrationList();
+      }
     } catch (error: any) {
       const errorText =
         error?.response?.data?.message ||
@@ -1542,6 +1684,19 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         typeof errorText === 'string' &&
         errorText.includes(reservedTagRenameText)
       ) {
+        return;
+      }
+      if (
+        isScriptTemplate &&
+        typeof errorText === 'string' &&
+        errorText.includes('已存在采集配置')
+      ) {
+        message.warning(
+          t(
+            'monitor.integrations.scriptCollectConfigExistsUpdating',
+            '该实例已有脚本采集配置，将更新现有配置'
+          )
+        );
         return;
       }
       message.error(errorText);
@@ -1845,7 +2000,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
             }
           }}
           nodeSelected={Boolean(getRowNodeId(activeRecord || {}))}
-          instanceName={activeRecord?.instance_name || undefined}
+          instanceName={activeTrialInstanceName}
           pluginId={pluginId}
           objectId={objectId}
           onSelectedMetricsChange={handleSelectedScriptMetricsChange}
@@ -1859,7 +2014,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
               type="primary"
               loading={confirmLoading}
               disabled={
-                confirmLoading || isAnyTrialRunning || hasReservedScriptTagError
+                confirmLoading ||
+                isAnyTrialRunning ||
+                hasReservedScriptTagError ||
+                scriptTrialFailed
               }
               onClick={handleSave}
             >

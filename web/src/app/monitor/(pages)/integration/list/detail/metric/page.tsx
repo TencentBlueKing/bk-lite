@@ -45,6 +45,11 @@ import {
   ScriptMetricEditCarry
 } from '../configure/scriptMetricEditCarry';
 import { persistScriptMetrics } from '../configure/scriptMetricPersist';
+import {
+  cleanMeasurementName,
+  isSelfMetricName,
+  visibleDimensionItems
+} from '../configure/scriptMetricsParser';
 
 interface ObjectTabOption {
   label: React.ReactNode;
@@ -73,7 +78,7 @@ const ObjectTabLabel = ({
 );
 
 const Configure = () => {
-  const { isLoading, get, post, patch } = useApiClient();
+  const { isLoading, get, post, patch, del } = useApiClient();
   const { getMonitorObject, getMetricsGroup, getMonitorMetrics } =
     useMonitorApi();
   const {
@@ -117,13 +122,36 @@ const Configure = () => {
 
   useEffect(() => () => metricCatalogAbortRef.current?.abort(), []);
 
+  const displayScriptMetricName = (name?: string) => {
+    const raw = String(name || '').trim();
+    if (!raw) {
+      return '--';
+    }
+    if (templateType !== 'script' || isSelfMetricName(raw)) {
+      return raw;
+    }
+    return cleanMeasurementName(raw) || raw;
+  };
+
+  const displayScriptDimensions = (dims?: DimensionItem[]) => {
+    const source =
+      templateType === 'script'
+        ? visibleDimensionItems(dims || [])
+        : dims || [];
+    const names = source
+      .map((item) => String(item?.name || '').trim())
+      .filter(Boolean);
+    return names.length ? names.join(',') : '--';
+  };
+
   const columns: ColumnItem[] = [
     {
       title: t('common.id'),
       dataIndex: 'name',
       width: 120,
       key: 'name',
-      ellipsis: true
+      ellipsis: true,
+      render: (value: string) => <>{displayScriptMetricName(value)}</>
     },
     {
       title: t('common.name'),
@@ -133,7 +161,9 @@ const Configure = () => {
       ellipsis: true,
       render: (_, record) => (
         <div className="flex items-center gap-1 overflow-hidden">
-          <span className="truncate">{record.display_name || '--'}</span>
+          <span className="truncate">
+            {displayScriptMetricName(record.display_name || record.name)}
+          </span>
         </div>
       )
     },
@@ -143,15 +173,7 @@ const Configure = () => {
       width: 100,
       key: 'dimensions',
       ellipsis: true,
-      render: (_, record) => (
-        <>
-          {record.dimensions?.length
-            ? record.dimensions
-              .map((item: DimensionItem) => item.name)
-              .join(',')
-            : '--'}
-        </>
-      )
+      render: (_, record) => <>{displayScriptDimensions(record.dimensions)}</>
     },
     {
       title: t('monitor.integrations.dataType'),
@@ -455,7 +477,7 @@ const Configure = () => {
         pluginId: pluginID,
         objectId: targetObjectId,
         metrics: payload,
-        client: { get, post, patch, t }
+        client: { get, post, patch, del, t }
       });
       await getInitData(
         String(targetObjectId),

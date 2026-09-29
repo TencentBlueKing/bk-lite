@@ -28,10 +28,10 @@ export interface ParsedScriptOutput {
 
 const SELF_METRIC_NAMES = new Set(['up', 'duration', 'duration_ms', 'duration_seconds', 'exit_code', 'run_duration']);
 const GENERIC_INFLUX_FIELDS = new Set(['value', 'gauge', 'counter', 'untyped']);
-/** 用户可见的平台标签。 */
-export const VISIBLE_PLATFORM_TAG_KEYS = new Set(['instance_id', 'agent_id']);
-/** 仅内部隔离，不进调试表。精确 key，不做前缀匹配。 */
+/** 展示层隐藏的平台内置维度。精确 key，不做前缀匹配。 */
 export const HIDDEN_PLATFORM_TAG_KEYS = new Set([
+  'instance_id',
+  'agent_id',
   'plugin_id',
   'instance_type',
   'collect_type',
@@ -41,6 +41,8 @@ export const HIDDEN_PLATFORM_TAG_KEYS = new Set([
   'script',
   'bklite_script_reserved_keys'
 ]);
+/** @deprecated 展示层已全部隐藏平台内置维度；保留空集以免旧调用方误放开。 */
+export const VISIBLE_PLATFORM_TAG_KEYS = new Set<string>();
 /** 脚本自定义标签不得使用。精确 key，不做前缀匹配。 */
 export const RESERVED_SCRIPT_TAG_KEYS = new Set([
   'instance_id',
@@ -74,10 +76,30 @@ export const normalizeIsolationPrefixes = (raw: unknown): string[] => {
   return prefixes;
 };
 
+const PROMETHEUS_MEASUREMENT_PREFIX = 'prometheus_';
+
+const isProtectedSelfMonitorName = (name: string): boolean => {
+  const lower = String(name || '').toLowerCase();
+  if (!lower) {
+    return false;
+  }
+  if (lower === 'bklite_script' || HEALTH_LEAF_RE.test(lower)) {
+    return true;
+  }
+  if (SCRIPT_HEALTH_NAME_RE.test(lower)) {
+    return true;
+  }
+  if (lower.startsWith('bklite_script_')) {
+    return HEALTH_LEAF_RE.test(lower.slice('bklite_script_'.length));
+  }
+  return lower.startsWith('bklite_script.');
+};
+
 /**
- * 去掉 child name_prefix / config_id 隔离前缀，得到脚本注册名。
- * 例：bklite_script_2_prometheus_mock_requests_total -> prometheus_mock_requests_total
- *     2_prometheus_mock_requests_total -> prometheus_mock_requests_total
+ * 去掉隔离前缀与 prometheus_ measurement 前缀，得到脚本 stdout 名。
+ * 自监控 bklite_script_* / 健康叶名保持平台名。
+ * 例：bklite_script_2_prometheus_mock_requests_total -> mock_requests_total
+ *     prometheus_host_cpu_usage_percent -> host_cpu_usage_percent
  */
 export const cleanMeasurementName = (rawName: string, isolationPrefixes: string[] = []): string => {
   let name = String(rawName || '');
@@ -110,10 +132,38 @@ export const cleanMeasurementName = (rawName: string, isolationPrefixes: string[
     if (HEX32_PREFIX_RE.test(name)) {
       name = name.replace(HEX32_PREFIX_RE, '');
       changed = true;
+      continue;
+    }
+    if (name.toLowerCase().startsWith(PROMETHEUS_MEASUREMENT_PREFIX)) {
+      const rest = name.slice(PROMETHEUS_MEASUREMENT_PREFIX.length);
+      if (rest && !isProtectedSelfMonitorName(rest)) {
+        name = rest;
+        changed = true;
+      }
     }
   }
   return name;
 };
+
+/** 展示层隐藏平台内置维度；精确黑名单，无前缀匹配。 */
+export const isHiddenPlatformDimensionKey = (key: string): boolean => {
+  const tagKey = String(key || '').trim();
+  if (!tagKey) {
+    return true;
+  }
+  if (HIDDEN_PLATFORM_TAG_KEYS.has(tagKey)) {
+    return true;
+  }
+  return tagKey.toLowerCase().startsWith('bklite_script_');
+};
+
+export const visibleDimensionItems = <T extends { name?: string }>(
+  items: T[] = []
+): T[] =>
+  items.filter((item) => {
+    const name = String(item?.name || '').trim();
+    return Boolean(name) && !isHiddenPlatformDimensionKey(name);
+  });
 
 export const isSelfMetricName = (name: string, isolationPrefixes: string[] = []): boolean => {
   const raw = String(name || '');
@@ -174,7 +224,7 @@ export const collectReservedScriptTagKeys = (
   return found;
 };
 
-export const cleanDisplayTags = (
+export const keepStoredTags = (
   tags?: Record<string, string>
 ): Record<string, string> | undefined => {
   if (!tags) {
@@ -184,18 +234,10 @@ export const cleanDisplayTags = (
   Object.entries(tags).forEach(([key, raw]) => {
     const tagKey = String(key || '').trim();
     const tagValue = raw == null ? '' : String(raw);
-    if (!tagKey || HIDDEN_PLATFORM_TAG_KEYS.has(tagKey)) {
-      return;
-    }
-    if (tagKey.toLowerCase().startsWith('bklite_script_')) {
+    if (!tagKey || tagKey === RESERVED_CONFLICT_TAG) {
       return;
     }
     if (!tagValue || UNRENDERED_PLACEHOLDER_RE.test(tagKey) || UNRENDERED_PLACEHOLDER_RE.test(tagValue)) {
-      return;
-    }
-    const isVisiblePlatform = VISIBLE_PLATFORM_TAG_KEYS.has(tagKey);
-    const isScriptBusinessTag = !RESERVED_SCRIPT_TAG_KEYS.has(tagKey);
-    if (!isVisiblePlatform && !isScriptBusinessTag) {
       return;
     }
     if (out[tagKey] === undefined) {
@@ -205,11 +247,34 @@ export const cleanDisplayTags = (
   return Object.keys(out).length ? out : undefined;
 };
 
-const businessMetricName = (measurement: string, fieldName: string): string => {
-  if (!fieldName || measurement === fieldName || GENERIC_INFLUX_FIELDS.has(fieldName.toLowerCase())) {
-    return measurement;
+export const cleanDisplayTags = (
+  tags?: Record<string, string>
+): Record<string, string> | undefined => {
+  const stored = keepStoredTags(tags);
+  if (!stored) {
+    return undefined;
   }
-  return `${measurement}_${fieldName}`;
+  const out: Record<string, string> = {};
+  Object.entries(stored).forEach(([tagKey, tagValue]) => {
+    if (isHiddenPlatformDimensionKey(tagKey)) {
+      return;
+    }
+    out[tagKey] = tagValue;
+  });
+  return Object.keys(out).length ? out : undefined;
+};
+
+const businessMetricName = (measurement: string, fieldName: string): string => {
+  const meas = String(measurement || '');
+  const field = String(fieldName || '');
+  // Telegraf prometheus 封装：measurement=prometheus，字段才是脚本 stdout 名。
+  if (meas.toLowerCase() === 'prometheus' && field && !GENERIC_INFLUX_FIELDS.has(field.toLowerCase())) {
+    return field;
+  }
+  if (!field || meas === field || GENERIC_INFLUX_FIELDS.has(field.toLowerCase())) {
+    return meas;
+  }
+  return `${meas}_${field}`;
 };
 
 const stableTagKey = (tags?: Record<string, string>): string => {
@@ -360,21 +425,22 @@ export const parseScriptMetrics = (
   );
 
   const pushBusinessMetric = (name: string, value: number | string, tags?: Record<string, string>) => {
-    if (!name || isSelfMetricName(name, isolationPrefixes)) {
+    const stdoutName = cleanMeasurementName(name, isolationPrefixes);
+    if (!stdoutName || isSelfMetricName(stdoutName, isolationPrefixes)) {
       return;
     }
-    const cleanedTags = cleanDisplayTags(tags);
+    const storedTags = keepStoredTags(tags);
     const reservedTagKeys = collectReservedScriptTagKeys(tags);
-    const metricKey = `${name}|${stableTagKey(cleanedTags)}`;
+    const metricKey = `${stdoutName}|${stableTagKey(cleanDisplayTags(storedTags))}`;
     if (seenKeys.has(metricKey)) {
       return;
     }
     seenKeys.add(metricKey);
     businessMetrics.push({
       key: metricKey,
-      name,
+      name: stdoutName,
       value,
-      tags: cleanedTags,
+      tags: storedTags,
       reservedTagKeys
     });
   };

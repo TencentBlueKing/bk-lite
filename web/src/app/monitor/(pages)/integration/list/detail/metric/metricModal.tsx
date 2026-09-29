@@ -43,8 +43,13 @@ import {
   stripMetricLabelsPlaceholder
 } from '@/app/monitor/utils/metricQueryLabels';
 import { cloneDeep } from 'lodash';
+import { useSearchParams } from 'next/navigation';
 import ScriptMetricGroupSelect from '../configure/scriptMetricGroupSelect';
 import { CatalogMetricGroupOption } from '../configure/scriptMetricPersist';
+import {
+  isHiddenPlatformDimensionKey,
+  visibleDimensionItems
+} from '../configure/scriptMetricsParser';
 const { Option } = Select;
 
 interface ModalProps {
@@ -160,6 +165,22 @@ const normalizeDimensions = (items?: DimensionItem[]): DimensionItem[] => {
   }));
 };
 
+const splitScriptVisibleDimensions = (
+  items?: DimensionItem[]
+): { visible: DimensionItem[]; hidden: DimensionItem[] } => {
+  const normalized = normalizeDimensions(items).filter((item) =>
+    String(item.name || '').trim()
+  );
+  const hidden = normalized.filter((item) =>
+    isHiddenPlatformDimensionKey(String(item.name || '').trim())
+  );
+  const visible = visibleDimensionItems(normalized);
+  return {
+    visible: visible.length ? visible : [{ ...INIT_DIMENSION }],
+    hidden
+  };
+};
+
 const buildMetricSnippet = (metricName: string) => metricName;
 
 const MetricModal = forwardRef<ModalRef, ModalProps>(
@@ -168,6 +189,10 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
     const { getMetricsGroup, getVmMetricNames, testMetricQuery } =
       useMonitorApi();
     const { t } = useTranslation();
+    const searchParams = useSearchParams();
+    const isScriptTemplate =
+      String(searchParams.get('template_type') || '') === 'script';
+    const hiddenDimensionsRef = useRef<DimensionItem[]>([]);
     const { token } = theme.useToken();
     const presets = genPresets({
       primary: generate(token.colorPrimary),
@@ -428,14 +453,22 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
           if (type === 'add') {
             formData.type = 'metric';
             formData.data_type = formData.data_type || 'Number';
-            const incomingDimensions = normalizeDimensions(
-              formData.dimensions as DimensionItem[]
-            );
-            const hasPrefill = incomingDimensions.some((item) =>
+            const incomingDimensions = isScriptTemplate
+              ? splitScriptVisibleDimensions(
+                  formData.dimensions as DimensionItem[]
+              )
+              : {
+                visible: normalizeDimensions(
+                    formData.dimensions as DimensionItem[]
+                ),
+                hidden: [] as DimensionItem[]
+              };
+            hiddenDimensionsRef.current = incomingDimensions.hidden;
+            const hasPrefill = incomingDimensions.visible.some((item) =>
               String(item.name || '').trim()
             );
             setDimensions(
-              hasPrefill ? incomingDimensions : [{ ...INIT_DIMENSION }]
+              hasPrefill ? incomingDimensions.visible : [{ ...INIT_DIMENSION }]
             );
             if (formData.data_type === 'Number' && formData.unit) {
               formData.unit = Array.isArray(formData.unit)
@@ -444,9 +477,18 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
             }
             setEnumList([INIT_UNIT_ITEM]);
           } else {
-            setDimensions(
-              normalizeDimensions(formData.dimensions as DimensionItem[])
-            );
+            const loaded = isScriptTemplate
+              ? splitScriptVisibleDimensions(
+                  formData.dimensions as DimensionItem[]
+              )
+              : {
+                visible: normalizeDimensions(
+                    formData.dimensions as DimensionItem[]
+                ),
+                hidden: [] as DimensionItem[]
+              };
+            hiddenDimensionsRef.current = loaded.hidden;
+            setDimensions(loaded.visible);
             if (formData.data_type === 'Number') {
               formData.unit = findCascaderPath(
                 unitList,
@@ -569,7 +611,13 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
               const keys = Array.isArray(result.label_keys)
                 ? result.label_keys
                 : [];
-              setDimensionLabelKeys(keys);
+              setDimensionLabelKeys(
+                isScriptTemplate
+                  ? keys.filter(
+                    (key: string) => !isHiddenPlatformDimensionKey(key)
+                  )
+                  : keys
+              );
               markFormulaProbeAllowed(normalizedQuery);
               if (keys.length) {
                 setDimensionMode('select');
@@ -577,12 +625,31 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
             }
           }
 
-          const cleanedDimensions = dimensions
-            .filter((item) => item.name?.trim())
+          const visibleDimensions = dimensions
+            .filter((item) => String(item.name || '').trim())
+            .filter(
+              (item) =>
+                !isScriptTemplate ||
+                !isHiddenPlatformDimensionKey(String(item.name || '').trim())
+            )
             .map((item) => ({
-              name: item.name.trim(),
-              description: (item.description || item.name).trim()
+              name: String(item.name || '').trim(),
+              description: String(item.description || item.name || '').trim()
             }));
+          const hiddenDimensions = isScriptTemplate
+            ? hiddenDimensionsRef.current
+              .filter((item) => String(item.name || '').trim())
+              .filter(
+                (item) =>
+                  !visibleDimensions.some(
+                    (visible) => visible.name === item.name
+                  )
+              )
+            : [];
+          const cleanedDimensions = [
+            ...visibleDimensions,
+            ...hiddenDimensions
+          ];
           await operateGroup({
             ...values,
             query: normalizedQuery,

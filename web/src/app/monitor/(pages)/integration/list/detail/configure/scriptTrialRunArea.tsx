@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Alert, Button, Cascader, Checkbox, Input, Spin, Tag, Tooltip } from 'antd';
 import {
   CheckCircleFilled,
@@ -14,9 +14,11 @@ import useApiClient from '@/utils/request';
 import { useCommon } from '@/app/monitor/context/common';
 import { parseScriptMetrics, BusinessMetricItem, cleanDisplayTags } from './scriptMetricsParser';
 import {
+  applyDefaultCatalogDrafts,
   buildUnitCascaderOptions,
   extractCatalogItems,
   formatDimensionTagSummary,
+  mergeRetainedTrialMetricState,
   pickSelectedBusinessMetrics,
   resolveDefaultCatalogGroupId,
   resolveDefaultCatalogUnitPath,
@@ -63,6 +65,45 @@ export interface TrialRunTaskState {
   finished_at?: string | null;
 }
 
+/** 与失败 Alert 同一判定：未通过则确认与去编辑不可用。运行中不算失败。 */
+export const scriptTrialBlocksMetricActions = (
+  task?: TrialRunTaskState | null
+): boolean => {
+  if (!task?.status || task.status === 'pending' || task.status === 'running') {
+    return false;
+  }
+  const parsed =
+    task.result || task.error_message
+      ? parseScriptMetrics(
+        task.result,
+        task.started_at,
+        task.finished_at,
+        task.error_message
+      )
+      : null;
+  const isNonZeroExit = Boolean(task.result && task.result.exit_code !== 0);
+  return (
+    task.status === 'failed' ||
+    task.status === 'warning' ||
+    Boolean(task.warning_type) ||
+    isNonZeroExit ||
+    Boolean(parsed?.isTimeout) ||
+    Boolean(parsed?.isNodeUnavailable)
+  );
+};
+
+const TrialActionsBlockedNote: React.FC = () => {
+  const { t } = useTranslation();
+  return (
+    <div className="text-[13px] font-medium text-[var(--color-text-1)]">
+      {t(
+        'monitor.integrations.trialRunActionsUnavailable',
+        '调试未通过，确认与去编辑不可用。'
+      )}
+    </div>
+  );
+};
+
 interface ScriptTrialRunAreaProps {
   task?: TrialRunTaskState;
   spinning?: boolean;
@@ -93,6 +134,10 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
   const [catalogByKey, setCatalogByKey] = useState<Record<string, ScriptMetricCatalogDraft>>({});
   const [groupOptions, setGroupOptions] = useState<CatalogMetricGroupOption[]>([]);
   const [trialSubmitting, setTrialSubmitting] = useState(false);
+  const retainedMetricStateRef = useRef({
+    selected: {} as Record<string, boolean>,
+    catalog: {} as Record<string, ScriptMetricCatalogDraft>
+  });
   const unitOptions = useMemo(
     () => buildUnitCascaderOptions(commonContext?.groupedUnitList || []),
     [commonContext?.groupedUnitList]
@@ -127,15 +172,9 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
 
   // 与失败 Alert 同一判定：只有 status=success 且退出码为 0，且不是超时 / 节点不可用 / 告警，才允许确认与去编辑。
   const isNonZeroExit = Boolean(task?.result && task.result.exit_code !== 0);
-  const isScriptTrialFailure =
-    task?.status === 'failed' ||
-    task?.status === 'warning' ||
-    Boolean(task?.warning_type) ||
-    isNonZeroExit ||
-    Boolean(parsedOutput?.isTimeout) ||
-    Boolean(parsedOutput?.isNodeUnavailable);
+  const blocksMetricActions = scriptTrialBlocksMetricActions(task);
   const canFeedScriptMetricActions =
-    task?.status === 'success' && !isScriptTrialFailure;
+    task?.status === 'success' && !blocksMetricActions;
 
   const defaultGroupId = useMemo(
     () => resolveDefaultCatalogGroupId(groupOptions),
@@ -146,46 +185,40 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     [unitOptions]
   );
 
-  // 当解析到新指标时，默认全选，并清空上一轮目录草稿
   useEffect(() => {
-    if (parsedOutput?.businessMetrics?.length) {
-      const initialMap: Record<string, boolean> = {};
-      parsedOutput.businessMetrics.forEach((m) => {
-        initialMap[m.key] = true;
-      });
-      setSelectedMetrics(initialMap);
-    } else {
-      setSelectedMetrics({});
-    }
-    setCatalogByKey({});
-  }, [parsedOutput]);
+    retainedMetricStateRef.current.selected = selectedMetrics;
+  }, [selectedMetrics]);
 
-  // 调试勾选后预填目录已有 Default / 无分组 与 unit_id=none，Confirm 不必再填。
   useEffect(() => {
-    if (!parsedOutput?.businessMetrics?.length) {
+    retainedMetricStateRef.current.catalog = catalogByKey;
+  }, [catalogByKey]);
+
+  // 重新调试成功：刷新采样值；仍存在的指标保留勾选/分组/单位/描述；消失的视为未勾选。
+  useEffect(() => {
+    const metrics = parsedOutput?.businessMetrics;
+    if (!metrics?.length) {
+      if (parsedOutput) {
+        retainedMetricStateRef.current = { selected: {}, catalog: {} };
+        setSelectedMetrics({});
+        setCatalogByKey({});
+      }
       return;
     }
-    setCatalogByKey((prev) => {
-      const next = { ...prev };
-      let changed = false;
-      parsedOutput.businessMetrics.forEach((item) => {
-        const draft = next[item.key] || {};
-        const patch: ScriptMetricCatalogDraft = { ...draft };
-        if (patch.metric_group == null && defaultGroupId) {
-          patch.metric_group = defaultGroupId;
-          changed = true;
-        }
-        if (
-          (patch.unit == null || (Array.isArray(patch.unit) && !patch.unit.length)) &&
-          defaultUnitPath
-        ) {
-          patch.unit = defaultUnitPath;
-          changed = true;
-        }
-        next[item.key] = patch;
-      });
-      return changed ? next : prev;
+    const merged = mergeRetainedTrialMetricState({
+      nextMetrics: metrics,
+      prevSelected: retainedMetricStateRef.current.selected,
+      prevCatalog: retainedMetricStateRef.current.catalog
     });
+    const withDefaults = applyDefaultCatalogDrafts(
+      metrics,
+      merged.catalog,
+      defaultGroupId,
+      defaultUnitPath
+    );
+    const next = { selected: merged.selected, catalog: withDefaults.catalog };
+    retainedMetricStateRef.current = next;
+    setSelectedMetrics(next.selected);
+    setCatalogByKey(next.catalog);
   }, [parsedOutput, defaultGroupId, defaultUnitPath]);
 
   useEffect(() => {
@@ -396,9 +429,14 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           icon={<ExclamationCircleFilled />}
           message={warningMsg}
           description={
-            task.error_message && task.error_message !== warningMsg ? (
-              <div className="mt-1 text-xs">{task.error_message}</div>
-            ) : undefined
+            <div className="mt-1 space-y-2">
+              {task.error_message && task.error_message !== warningMsg ? (
+                <div className="text-xs text-[var(--color-text-2)]">
+                  {task.error_message}
+                </div>
+              ) : null}
+              <TrialActionsBlockedNote />
+            </div>
           }
         />
       </div>
@@ -432,6 +470,14 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
       errorDesc =
         task.error_message ||
         t('monitor.integrations.trialRunNodeUnavailableDesc', '采集节点离线或 Telegraf 运行环境异常，请检查节点状态');
+    } else if (task.status === 'failed' && !isNonZeroExit) {
+      errorTitle = t('monitor.integrations.trialRunFailed', '调试未通过');
+      errorDesc =
+        task.error_message ||
+        t(
+          'monitor.integrations.trialRunParseFailDesc',
+          '脚本输出格式不符合规范，无法解析为时序指标'
+        );
     }
 
     const stderr = task.result?.stderr || task.error_message;
@@ -467,6 +513,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           description={
             <div className="mt-2 space-y-2">
               <div className="text-xs text-[var(--color-text-2)]">{errorDesc}</div>
+              <TrialActionsBlockedNote />
               {parsedOutput?.isTruncated && (
                 <div className="text-xs text-[var(--color-warning)] font-medium">
                   {t('monitor.integrations.trialRunTruncated', '输出结果已被截断')}
@@ -594,8 +641,8 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
         </Button>
       </div>
 
-      {/* 5) Self-metrics: emphasize up/duration/exit_code */}
-      <div className="mb-4">
+      {/* 自监控指标仅展示，不可勾选落库 */}
+      <div className="mb-4" aria-disabled="true">
         <div className="text-[12px] font-medium text-[var(--color-text-3)] mb-2">
           {t('monitor.integrations.trialRunSelfMetrics', '自监控指标')}
         </div>
@@ -716,14 +763,30 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                       <Cascader
                         size="small"
                         allowClear
-                        showSearch
                         disabled={!isChecked}
                         className="w-full"
                         placeholder={t('common.unit', '单位')}
                         options={unitOptions}
+                        displayRender={(labels) => {
+                          const leaf = labels[labels.length - 1];
+                          return leaf == null ? '' : String(leaf);
+                        }}
+                        showSearch={{
+                          filter: (inputValue, path) => {
+                            const needle = inputValue.trim().toLowerCase();
+                            if (!needle) return true;
+                            return path.some((option) => {
+                              const label = String(option.label ?? '').toLowerCase();
+                              const extra = String(
+                                (option as { searchText?: string }).searchText ?? ''
+                              ).toLowerCase();
+                              return label.includes(needle) || extra.includes(needle);
+                            });
+                          }
+                        }}
                         value={
                           Array.isArray(catalog.unit)
-                            ? catalog.unit.map((item) => String(item))
+                            ? catalog.unit.map((unit) => String(unit))
                             : undefined
                         }
                         onChange={(value) =>

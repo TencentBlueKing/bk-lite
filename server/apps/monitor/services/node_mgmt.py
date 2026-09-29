@@ -617,7 +617,7 @@ class InstanceConfigService:
 
         # 检查已存在的配置（避免重复创建相同采集配置）。
         # 脚本采集同一实例+script 走更新而非拒绝，由 Controller 复用已有 CollectConfig。
-        allow_script_upsert = str(collect_type or "") == "script"
+        allow_script_upsert = str(collect_type or "").casefold() == "script"
         if config_types_to_create:
             existing_qs = CollectConfig.objects.filter(
                 monitor_instance_id__in=instance_ids,
