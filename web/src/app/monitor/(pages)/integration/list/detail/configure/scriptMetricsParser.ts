@@ -11,6 +11,10 @@ export interface BusinessMetricItem {
   unit?: string;
   /** 指标目录描述，允许空字符串。 */
   description?: string;
+  /** 指标展示名。确认时写入 display_name；空则回落到指标 ID。 */
+  display_name?: string;
+  /** 与指标页一致：Number / Enum。默认 Number。 */
+  data_type?: 'Number' | 'Enum';
 }
 
 export interface ParsedScriptOutput {

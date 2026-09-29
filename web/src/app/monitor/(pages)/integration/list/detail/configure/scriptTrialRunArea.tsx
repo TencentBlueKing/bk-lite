@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Alert, Button, Cascader, Checkbox, Input, Spin, Tag, Tooltip } from 'antd';
+import { Alert, Button, Cascader, Checkbox, Input, Select, Spin, Tag, Tooltip } from 'antd';
 import {
   CheckCircleFilled,
   CloseCircleFilled,
@@ -28,7 +28,7 @@ import {
 import ScriptMetricGroupSelect from './scriptMetricGroupSelect';
 
 const BUSINESS_METRIC_GRID =
-  'grid-cols-[36px_minmax(160px,1.3fr)_minmax(72px,0.55fr)_minmax(110px,0.95fr)_minmax(128px,1.05fr)_minmax(140px,1.2fr)]';
+  'grid-cols-[36px_minmax(148px,1.15fr)_minmax(148px,1.15fr)_minmax(108px,0.75fr)_minmax(72px,0.5fr)_minmax(120px,0.9fr)_minmax(128px,0.95fr)_minmax(140px,1.05fr)]';
 
 const DimensionTagLine: React.FC<{ tags?: Record<string, string> }> = ({
   tags
@@ -65,7 +65,7 @@ export interface TrialRunTaskState {
   finished_at?: string | null;
 }
 
-/** 与失败 Alert 同一判定：未通过则确认与去编辑不可用。运行中不算失败。 */
+/** 与失败 Alert 同一判定：未通过则确认不可用。运行中不算失败。 */
 export const scriptTrialBlocksMetricActions = (
   task?: TrialRunTaskState | null
 ): boolean => {
@@ -98,7 +98,7 @@ const TrialActionsBlockedNote: React.FC = () => {
     <div className="text-[13px] font-medium text-[var(--color-text-1)]">
       {t(
         'monitor.integrations.trialRunActionsUnavailable',
-        '调试未通过，确认与去编辑不可用。'
+        '调试未通过，确认不可用。'
       )}
     </div>
   );
@@ -113,6 +113,7 @@ interface ScriptTrialRunAreaProps {
   pluginId?: string | number;
   objectId?: string | number;
   onSelectedMetricsChange?: (metrics: BusinessMetricItem[]) => void;
+  onDebugBusinessMetricsChange?: (metrics: BusinessMetricItem[]) => void;
   onBusinessMetricsAvailableChange?: (available: boolean) => void;
 }
 
@@ -125,6 +126,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
   pluginId,
   objectId,
   onSelectedMetricsChange,
+  onDebugBusinessMetricsChange,
   onBusinessMetricsAvailableChange
 }) => {
   const { t } = useTranslation();
@@ -170,7 +172,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     );
   }, [task]);
 
-  // 与失败 Alert 同一判定：只有 status=success 且退出码为 0，且不是超时 / 节点不可用 / 告警，才允许确认与去编辑。
+  // 与失败 Alert 同一判定：只有 status=success 且退出码为 0，且不是超时 / 节点不可用 / 告警，才允许确认。
   const isNonZeroExit = Boolean(task?.result && task.result.exit_code !== 0);
   const blocksMetricActions = scriptTrialBlocksMetricActions(task);
   const canFeedScriptMetricActions =
@@ -253,7 +255,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     };
   }, [get, pluginId, objectId]);
 
-  // 仅成功调试把勾选业务指标交给确认 / 去编辑；失败即使解析到行也不喂。
+  // 仅成功调试把勾选业务指标交给确认；失败即使解析到行也不喂。
   useEffect(() => {
     if (!onSelectedMetricsChange) return;
     if (!canFeedScriptMetricActions || !parsedOutput?.businessMetrics?.length) {
@@ -273,6 +275,20 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     parsedOutput,
     catalogByKey,
     onSelectedMetricsChange
+  ]);
+
+  // 覆盖删除以「本次调试结果里出现过的业务指标」为保留集，含未勾选行。
+  useEffect(() => {
+    if (!onDebugBusinessMetricsChange) return;
+    if (!canFeedScriptMetricActions || !parsedOutput?.businessMetrics?.length) {
+      onDebugBusinessMetricsChange([]);
+      return;
+    }
+    onDebugBusinessMetricsChange(parsedOutput.businessMetrics);
+  }, [
+    canFeedScriptMetricActions,
+    parsedOutput,
+    onDebugBusinessMetricsChange
   ]);
 
   useEffect(() => {
@@ -687,16 +703,18 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
         <div className="rounded-md border border-[var(--color-border-1)] overflow-hidden bg-[var(--color-bg)]">
           <div className="overflow-x-auto">
             <div
-              className={`grid ${BUSINESS_METRIC_GRID} min-w-[760px] border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-3 py-2 text-[12px] font-medium text-[var(--color-text-2)]`}
+              className={`grid ${BUSINESS_METRIC_GRID} min-w-[1080px] border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-3 py-2 text-[12px] font-medium text-[var(--color-text-2)]`}
             >
               <div />
+              <div>{t('monitor.integrations.trialRunMetricId', '指标 ID')}</div>
               <div>{t('monitor.integrations.trialRunMetricName', '指标名称')}</div>
+              <div>{t('monitor.integrations.dataType', '数据类型')}</div>
               <div>{t('monitor.integrations.trialRunMetricValue', '采样值')}</div>
               <div>{t('monitor.integrations.metricGroup', '分组')}</div>
               <div>{t('common.unit', '单位')}</div>
               <div>{t('monitor.integrations.trialRunMetricDescription', '指标描述')}</div>
             </div>
-            <div className="max-h-[360px] min-w-[760px] overflow-auto divide-y divide-[var(--color-border-1)]">
+            <div className="max-h-[360px] min-w-[1080px] overflow-auto divide-y divide-[var(--color-border-1)]">
               {businessMetrics.map((item: BusinessMetricItem) => {
                 const isChecked = selectedMetrics[item.key] !== false;
                 const catalog = catalogByKey[item.key] || {};
@@ -729,6 +747,46 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                           {t('monitor.integrations.reservedTagRename', '保留字段，请换名')}
                         </div>
                       )}
+                    </div>
+                    <div className="min-w-0 pr-1">
+                      <Input
+                        size="small"
+                        disabled={!isChecked}
+                        className="w-full"
+                        maxLength={100}
+                        placeholder={item.name}
+                        value={
+                          catalog.display_name !== undefined
+                            ? catalog.display_name
+                            : item.name
+                        }
+                        onChange={(event) =>
+                          updateCatalog(item.key, {
+                            display_name: event.target.value
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="min-w-0 pr-1">
+                      <Select
+                        size="small"
+                        disabled={!isChecked}
+                        className="w-full"
+                        value={catalog.data_type === 'Enum' ? 'Enum' : 'Number'}
+                        options={[
+                          {
+                            value: 'Number',
+                            label: t('monitor.integrations.number', '数字')
+                          },
+                          {
+                            value: 'Enum',
+                            label: t('monitor.integrations.enum', '枚举')
+                          }
+                        ]}
+                        onChange={(value: 'Number' | 'Enum') =>
+                          updateCatalog(item.key, { data_type: value })
+                        }
+                      />
                     </div>
                     <div
                       className="min-w-0 truncate font-mono text-xs text-[var(--color-text-2)]"

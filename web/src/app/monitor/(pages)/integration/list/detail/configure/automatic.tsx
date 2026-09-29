@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Form, Button, Input, message, Spin, Dropdown, Modal, Tag, Select, Switch } from 'antd';
+import { Form, Button, Input, message, Spin, Dropdown, Modal, Radio, Tag, Select, Switch } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   CheckCircleOutlined,
@@ -100,15 +100,21 @@ import {
   planScriptMetricHardSyncDeletes,
   CatalogMetricRef
 } from './scriptMetricPersist';
-import {
-  buildScriptMetricEditCarry,
-  SCRIPT_METRIC_DRAFT_QUERY,
-  writeScriptMetricEditCarry
-} from './scriptMetricEditCarry';
 import { BusinessMetricItem } from './scriptMetricsParser';
 const { confirm } = Modal;
 
 const OVERWRITE_NAME_PREVIEW = 8;
+
+type ScriptMetricWriteMode = 'append' | 'overwrite';
+
+interface PendingScriptMetricWrite {
+  params: Record<string, any>;
+  templatesToApply: PolicyTemplateItem[];
+  namePrefix?: string;
+  pushAlertCenter: boolean;
+  alertCenterChannelIds: Array<string | number>;
+  staleDeletes: CatalogMetricRef[];
+}
 
 const ScriptMetricOverwriteContent = ({
   names,
@@ -542,13 +548,31 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const [trialMetricsByRow, setTrialMetricsByRow] = useState<
     Record<string, BusinessMetricItem[]>
   >({});
+  const [debugMetricsByRow, setDebugMetricsByRow] = useState<
+    Record<string, BusinessMetricItem[]>
+  >({});
   const [scriptDebugHasBusinessMetrics, setScriptDebugHasBusinessMetrics] =
     useState(false);
+  const [scriptWriteMode, setScriptWriteMode] =
+    useState<ScriptMetricWriteMode>('append');
+  const [scriptWriteChoice, setScriptWriteChoice] =
+    useState<PendingScriptMetricWrite | null>(null);
 
   const handleSelectedScriptMetricsChange = useCallback(
     (metrics: BusinessMetricItem[]) => {
       const rowKey = (activeRecord?.key as string) || 'default';
       setTrialMetricsByRow((prev) => ({
+        ...prev,
+        [rowKey]: metrics
+      }));
+    },
+    [activeRecord?.key]
+  );
+
+  const handleDebugBusinessMetricsChange = useCallback(
+    (metrics: BusinessMetricItem[]) => {
+      const rowKey = (activeRecord?.key as string) || 'default';
+      setDebugMetricsByRow((prev) => ({
         ...prev,
         [rowKey]: metrics
       }));
@@ -575,6 +599,18 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     return Array.from(map.values());
   }, [trialMetricsByRow]);
 
+  const debugBusinessMetrics = useMemo(() => {
+    const map = new Map<string, BusinessMetricItem>();
+    Object.values(debugMetricsByRow).forEach((items) => {
+      items.forEach((item) => {
+        if (item?.name && !map.has(item.name)) {
+          map.set(item.name, item);
+        }
+      });
+    });
+    return Array.from(map.values());
+  }, [debugMetricsByRow]);
+
   const reservedScriptTagKeys = useMemo(
     () => collectReservedTagViolations(selectedScriptMetrics),
     [selectedScriptMetrics]
@@ -588,10 +624,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     'monitor.integrations.goEditMetricsSelectFirst',
     '请先勾选指标'
   );
-  const showGoEditMetrics =
-    isScriptTemplate && scriptDebugHasBusinessMetrics;
-  const showGoEditSelectFirst =
-    showGoEditMetrics &&
+  const showSelectMetricsFirst =
+    isScriptTemplate &&
+    scriptDebugHasBusinessMetrics &&
     !hasReservedScriptTagError &&
     !selectedScriptMetrics.length;
 
@@ -610,30 +645,6 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     });
   };
 
-  const handleGoEditMetrics = () => {
-    if (
-      confirmLoading ||
-      isAnyTrialRunning ||
-      hasReservedScriptTagError ||
-      !scriptDebugHasBusinessMetrics
-    ) {
-      return;
-    }
-    if (!selectedScriptMetrics.length) {
-      message.warning(goEditSelectFirstText);
-      return;
-    }
-    const payload = buildScriptMetricEditCarry(selectedScriptMetrics);
-    if (!payload.metrics.length) {
-      return;
-    }
-    writeScriptMetricEditCarry(objectId, pluginId, payload);
-    const params = new URLSearchParams(searchParams.toString());
-    params.set(SCRIPT_METRIC_DRAFT_QUERY, '1');
-    router.push(
-      `/monitor/integration/list/detail/metric?${params.toString()}`
-    );
-  };
   const [formSnapshot, setFormSnapshot] = useState<Record<string, any>>({});
   const tableDependencyFields = useMemo(
     () => collectDependencyFieldNames(currentConfig?.table_columns),
@@ -1582,7 +1593,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   };
 
   const handleSave = () => {
-    if (policyTemplatesLoading || confirmLoading || saveInFlightRef.current) {
+    if (
+      policyTemplatesLoading ||
+      confirmLoading ||
+      saveInFlightRef.current ||
+      scriptWriteChoice
+    ) {
       return;
     }
     if (isScriptTemplate && hasReservedScriptTagError) {
@@ -1652,64 +1668,34 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           }) || {};
         params.monitor_object_id = Number(objectId);
         params.monitor_plugin_id = Number(pluginId);
-        let staleDeletes: CatalogMetricRef[] = [];
         if (
           isScriptTemplate &&
           scriptDebugHasBusinessMetrics &&
           selectedScriptMetrics.length > 0
         ) {
-          const persistable = excludeSelfMonitorMetrics(selectedScriptMetrics);
           const existing = await listPluginCatalogMetrics({
             pluginId,
             objectId,
             client: { get }
           });
-          staleDeletes = planScriptMetricHardSyncDeletes(existing, persistable);
-          if (staleDeletes.length) {
-            const overwriteNames = staleDeletes
-              .map((item) => catalogMetricRefLabel(item))
-              .filter(Boolean);
-            const confirmed = await new Promise<boolean>((resolve) => {
-              Modal.confirm({
-                title: t(
-                  'monitor.integrations.scriptMetricsHardSyncTitle',
-                  '覆盖目录中未出现的旧指标'
-                ),
-                width: 520,
-                content: (
-                  <ScriptMetricOverwriteContent
-                    names={overwriteNames}
-                    summary={t(
-                      'monitor.integrations.scriptMetricsHardSyncHint',
-                      '将删除本插件目录中、本次调试结果里没有的旧指标，共 {count} 个。',
-                      { count: overwriteNames.length }
-                    )}
-                    cancelHint={t(
-                      'monitor.integrations.scriptMetricsHardSyncCancel',
-                      '取消则中止本次确认。'
-                    )}
-                    expandLabel={t(
-                      'monitor.integrations.scriptMetricsHardSyncMore',
-                      '展开全部（共 {count} 个）',
-                      { count: overwriteNames.length }
-                    )}
-                    collapseLabel={t(
-                      'monitor.integrations.scriptMetricsHardSyncCollapse',
-                      '收起'
-                    )}
-                  />
-                ),
-                okText: t('common.confirm'),
-                cancelText: t('common.cancel'),
-                centered: true,
-                onOk: () => resolve(true),
-                onCancel: () => resolve(false)
-              });
-            });
-            if (!confirmed) {
-              return;
-            }
-          }
+          const keepMetrics =
+            debugBusinessMetrics.length > 0
+              ? debugBusinessMetrics
+              : selectedScriptMetrics;
+          const staleDeletes = planScriptMetricHardSyncDeletes(
+            existing,
+            excludeSelfMonitorMetrics(keepMetrics)
+          );
+          setScriptWriteMode('append');
+          setScriptWriteChoice({
+            params,
+            templatesToApply,
+            namePrefix: values[COLLECTION_POLICY_NAME_PREFIX_FIELD],
+            pushAlertCenter,
+            alertCenterChannelIds,
+            staleDeletes
+          });
+          return;
         }
         addNodesConfig(
           params,
@@ -1717,7 +1703,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           values[COLLECTION_POLICY_NAME_PREFIX_FIELD],
           pushAlertCenter,
           alertCenterChannelIds,
-          staleDeletes
+          []
         );
       } catch (error: any) {
         message.error(error?.message || t('common.operationFailed'));
@@ -2158,6 +2144,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           pluginId={pluginId}
           objectId={objectId}
           onSelectedMetricsChange={handleSelectedScriptMetricsChange}
+          onDebugBusinessMetricsChange={handleDebugBusinessMetricsChange}
           onBusinessMetricsAvailableChange={handleBusinessMetricsAvailableChange}
         />
       )}
@@ -2178,26 +2165,6 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
               {t('common.confirm')}
             </Button>
           </Permission>
-          {showGoEditMetrics && (
-            <>
-              <Button
-                disabled={
-                  confirmLoading ||
-                  isAnyTrialRunning ||
-                  hasReservedScriptTagError
-                }
-                onClick={handleGoEditMetrics}
-              >
-                {t('monitor.integrations.goEditMetrics', '去编辑指标')}
-              </Button>
-              <span className="text-[13px] text-[var(--color-text-3)]">
-                {t(
-                  'monitor.integrations.goEditMetricsHint',
-                  '将勾选的调试指标带去新建或编辑；要覆盖目录请点左侧「确认」。'
-                )}
-              </span>
-            </>
-          )}
           {hasReservedScriptTagError && (
             <span
               className="text-[13px] text-[var(--color-fail)]"
@@ -2206,7 +2173,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
               {reservedTagRenameText}
             </span>
           )}
-          {showGoEditSelectFirst && (
+          {showSelectMetricsFirst && (
             <span
               className="text-[13px] text-[var(--color-fail)]"
               role="alert"
@@ -2219,6 +2186,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     </Form>
   );
 
+  const scriptWriteDeleteNames = (scriptWriteChoice?.staleDeletes || [])
+    .map((item) => catalogMetricRefLabel(item))
+    .filter(Boolean);
+
   return (
     <Spin spinning={configLoading || nodesLoading || policyTemplatesLoading}>
       <div className="px-[10px]">
@@ -2229,6 +2200,106 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           {configSection}
         </PluginGuidePanel>
       </div>
+      <Modal
+        title={t('monitor.integrations.scriptMetricsWriteTitle', '确认写入指标')}
+        open={Boolean(scriptWriteChoice)}
+        width={560}
+        centered
+        destroyOnHidden
+        maskClosable={!confirmLoading}
+        confirmLoading={confirmLoading}
+        okText={t('common.confirm')}
+        cancelText={t('common.cancel')}
+        onCancel={() => {
+          if (confirmLoading) return;
+          setScriptWriteChoice(null);
+        }}
+        onOk={() => {
+          const choice = scriptWriteChoice;
+          if (!choice || confirmLoading || saveInFlightRef.current) return;
+          const staleDeletes =
+            scriptWriteMode === 'overwrite' ? choice.staleDeletes : [];
+          setScriptWriteChoice(null);
+          void addNodesConfig(
+            choice.params,
+            choice.templatesToApply,
+            choice.namePrefix,
+            choice.pushAlertCenter,
+            choice.alertCenterChannelIds,
+            staleDeletes
+          );
+        }}
+      >
+        <Radio.Group
+          className="flex w-full flex-col gap-3"
+          value={scriptWriteMode}
+          onChange={(event) =>
+            setScriptWriteMode(event.target.value as ScriptMetricWriteMode)
+          }
+        >
+          <Radio value="append" className="whitespace-normal">
+            {t(
+              'monitor.integrations.scriptMetricsWriteAppend',
+              '仅新增：写入本次勾选指标，不删除目录中的旧指标'
+            )}
+          </Radio>
+          <Radio value="overwrite" className="whitespace-normal">
+            {t(
+              'monitor.integrations.scriptMetricsWriteOverwrite',
+              '覆盖：写入本次勾选，并删除本次调试结果中未出现的旧指标'
+            )}
+          </Radio>
+        </Radio.Group>
+        {scriptWriteMode === 'overwrite' ? (
+          <div className="mt-3">
+            {scriptWriteDeleteNames.length > 0 ? (
+              <ScriptMetricOverwriteContent
+                names={scriptWriteDeleteNames}
+                summary={t(
+                  'monitor.integrations.scriptMetricsHardSyncHint',
+                  '将删除本插件目录中、本次调试结果里没有的旧指标，共 {count} 个。',
+                  { count: scriptWriteDeleteNames.length }
+                )}
+                cancelHint={t(
+                  'monitor.integrations.scriptMetricsHardSyncCancel',
+                  '取消则中止本次确认。'
+                )}
+                expandLabel={t(
+                  'monitor.integrations.scriptMetricsHardSyncMore',
+                  '展开全部（共 {count} 个）',
+                  { count: scriptWriteDeleteNames.length }
+                )}
+                collapseLabel={t(
+                  'monitor.integrations.scriptMetricsHardSyncCollapse',
+                  '收起'
+                )}
+              />
+            ) : (
+              <div className="space-y-2 text-[13px] text-[var(--color-text-3)]">
+                <p className="mb-0">
+                  {t(
+                    'monitor.integrations.scriptMetricsWriteOverwriteEmpty',
+                    '没有需要删除的旧指标。'
+                  )}
+                </p>
+                <p className="mb-0">
+                  {t(
+                    'monitor.integrations.scriptMetricsHardSyncCancel',
+                    '取消则中止本次确认。'
+                  )}
+                </p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="mb-0 mt-3 text-[13px] text-[var(--color-text-3)]">
+            {t(
+              'monitor.integrations.scriptMetricsHardSyncCancel',
+              '取消则中止本次确认。'
+            )}
+          </p>
+        )}
+      </Modal>
       <BatchEditModal
         ref={batchEditModalRef}
         onSuccess={handleBatchEditSuccess}

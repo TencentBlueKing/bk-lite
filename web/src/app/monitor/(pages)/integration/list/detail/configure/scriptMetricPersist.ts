@@ -13,6 +13,10 @@ export interface ScriptMetricCatalogDraft {
   metric_group?: number | null;
   unit?: Array<string | number> | string;
   description?: string;
+  /** 指标名称，确认时写入 display_name。 */
+  display_name?: string;
+  /** 与指标页数据类型选项一致。 */
+  data_type?: 'Number' | 'Enum';
 }
 
 export interface ScriptMetricRegisterPayload {
@@ -23,7 +27,7 @@ export interface ScriptMetricRegisterPayload {
   display_name: string;
   query: string;
   unit: string;
-  data_type: 'Number';
+  data_type: 'Number' | 'Enum';
   description: string;
   dimensions: Array<{ name: string; description: string }>;
 }
@@ -32,6 +36,8 @@ export interface ScriptMetricCatalogUpdatePayload {
   metric_group: number;
   unit: string;
   description: string;
+  display_name: string;
+  data_type: 'Number' | 'Enum';
 }
 
 interface TranslateFn {
@@ -75,7 +81,7 @@ export const extractCatalogItems = <T>(response: unknown): T[] => {
   return Array.isArray(items) ? (items as T[]) : [];
 };
 
-/** 目录已有的无单位叶子，Confirm / 去编辑必须回传 unit_id 而不是展示文案。 */
+/** 目录已有的无单位叶子，确认必须回传 unit_id 而不是展示文案。 */
 export const DEFAULT_CATALOG_UNIT_ID = 'none';
 /** 目录默认分组名，优先复用已有「无分组」/ Default / Base。 */
 export const DEFAULT_CATALOG_GROUP_NAMES = ['无分组', 'Default', 'default', 'Base'];
@@ -371,6 +377,20 @@ export const resolveCatalogMetricGroupId = (
 export const resolveCatalogDescription = (description: unknown): string =>
   typeof description === 'string' ? description : '';
 
+/** 指标名称默认等于指标 ID；空白回落到 ID。 */
+export const resolveCatalogDisplayName = (
+  displayName: unknown,
+  metricId: string
+): string => {
+  const text = typeof displayName === 'string' ? displayName.trim() : '';
+  return text || String(metricId || '').trim();
+};
+
+/** 与指标页 Select 一致，缺省为数字。 */
+export const resolveCatalogDataType = (
+  dataType: unknown
+): 'Number' | 'Enum' => (dataType === 'Enum' ? 'Enum' : 'Number');
+
 export const applyCatalogDraft = (
   item: BusinessMetricItem,
   draft?: ScriptMetricCatalogDraft
@@ -379,7 +399,9 @@ export const applyCatalogDraft = (
   reservedTagKeys: item.reservedTagKeys || collectReservedScriptTagKeys(item.tags),
   metric_group: draft?.metric_group ?? null,
   unit: resolveCatalogUnitId(draft?.unit),
-  description: resolveCatalogDescription(draft?.description)
+  description: resolveCatalogDescription(draft?.description),
+  display_name: resolveCatalogDisplayName(draft?.display_name, item.name),
+  data_type: resolveCatalogDataType(draft?.data_type)
 });
 
 export const collectReservedTagViolations = (
@@ -449,7 +471,7 @@ export const pickSelectedBusinessMetrics = (
       )
     );
 
-/** 重新调试：刷新采样值，保留仍存在指标的勾选/分组/单位/描述，消失的视为未勾选。 */
+/** 重新调试：刷新采样值，保留仍存在指标的勾选/名称/类型/分组/单位/描述，消失的视为未勾选。 */
 export const mergeRetainedTrialMetricState = ({
   nextMetrics,
   prevSelected,
@@ -598,7 +620,7 @@ export const listPluginCatalogMetrics = async ({
   return refs;
 };
 
-/** 硬覆盖：删除当前勾选集合之外的旧业务指标，永不删除自监控。 */
+/** 硬覆盖：删除 keep 之外的旧业务指标。keep 应为本次调试结果里出现的指标，永不删除自监控。 */
 export const planScriptMetricHardSyncDeletes = (
   existing: CatalogMetricRef[],
   checked: BusinessMetricItem[]
@@ -629,10 +651,10 @@ export const buildScriptMetricRegisterPayload = (
   monitor_plugin: Number(targetPluginId),
   metric_group: resolveCatalogMetricGroupId(item.metric_group, fallbackGroupId),
   name: item.name,
-  display_name: item.name,
+  display_name: resolveCatalogDisplayName(item.display_name, item.name),
   query: `${item.name}{__$labels__}`,
   unit: resolvePersistCatalogUnitId(item.unit),
-  data_type: 'Number',
+  data_type: resolveCatalogDataType(item.data_type),
   description: resolveCatalogDescription(item.description),
   dimensions: Object.keys(keepStoredTags(item.tags) || {}).map((key) => ({
     name: key,
@@ -646,7 +668,9 @@ export const buildScriptMetricCatalogUpdatePayload = (
 ): ScriptMetricCatalogUpdatePayload => ({
   metric_group: resolveCatalogMetricGroupId(item.metric_group, fallbackGroupId),
   unit: resolvePersistCatalogUnitId(item.unit),
-  description: resolveCatalogDescription(item.description)
+  description: resolveCatalogDescription(item.description),
+  display_name: resolveCatalogDisplayName(item.display_name, item.name),
+  data_type: resolveCatalogDataType(item.data_type)
 });
 
 const uniqueMetricsByName = (metrics: BusinessMetricItem[]): BusinessMetricItem[] => {
