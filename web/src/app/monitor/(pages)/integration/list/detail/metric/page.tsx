@@ -1,6 +1,6 @@
 'use client';
 import './register-metric-pilot';
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import {
   Input,
@@ -111,6 +111,7 @@ const Configure = () => {
   const batchEditRef = useRef<MetricBatchEditModalRef>(null);
   const [searchText, setSearchText] = useState<string>('');
   const [nameInFilter, setNameInFilter] = useState<string>('');
+  const batchMetricByIdRef = useRef<Map<number, MetricItem>>(new Map());
   const [metricData, setMetricData] = useState<MetricListItem[]>([]);
   const [filteredMetricData, setFilteredMetricData] = useState<
     MetricListItem[]
@@ -338,14 +339,9 @@ const Configure = () => {
     const metricParams = {
       monitor_object_id: +objId,
       monitor_plugin_id: +pluginID,
-      ...(nameIn
-        ? {
-          name_in: nameIn,
-          page_size: Math.max(100, nameInNames.length)
-        }
-        : keyword
-          ? { keyword }
-          : {})
+      // 后端 page_size 上限 100；本批超过一页时仍带 name_in 分页，并合并跨页勾选。
+      ...(nameIn ? { name_in: nameIn } : {}),
+      ...(keyword ? { keyword } : {})
     };
     const groupParams = {
       monitor_object_id: +objId,
@@ -363,6 +359,7 @@ const Configure = () => {
     if (!preserveState) {
       setSearchText('');
       setNameInFilter('');
+      batchMetricByIdRef.current.clear();
     }
     try {
       // 厂商指标按页分页；IF-MIB 固定约十余条，单独拉全量后置底归并，避免拆页。
@@ -434,7 +431,9 @@ const Configure = () => {
         (key) => t(key)
       );
       const defaultOpenState = getDefaultMetricGroupOpenState(metricView);
-      const expandNameSet = new Set(expandMetricNames.filter(Boolean));
+      const expandNameSet = new Set(
+        [...expandMetricNames, ...nameInNames].filter(Boolean)
+      );
       const matchesCarryName = (name?: string) => {
         const raw = String(name || '').trim();
         if (!raw) {
@@ -448,14 +447,24 @@ const Configure = () => {
       };
       const expandGroupSet = new Set(expandGroupIds.filter(Boolean).map(String));
       if (expandNameSet.size) {
-        setSelectedRowKeys(
-          catalogMetrics
-            .filter(
-              (metric) =>
-                matchesCarryName(metric.name) && metric.is_pre !== true
-            )
-            .map((metric) => metric.id)
+        const pageIds = new Set(
+          catalogMetrics.map((metric) => Number(metric.id))
         );
+        catalogMetrics.forEach((metric) => {
+          if (matchesCarryName(metric.name) && metric.is_pre !== true) {
+            batchMetricByIdRef.current.set(Number(metric.id), metric);
+          }
+        });
+        const pageSelected = catalogMetrics
+          .filter(
+            (metric) =>
+              matchesCarryName(metric.name) && metric.is_pre !== true
+          )
+          .map((metric) => metric.id);
+        setSelectedRowKeys((prev) => [
+          ...prev.filter((id) => !pageIds.has(Number(id))),
+          ...pageSelected
+        ]);
       }
       const groupData = metricView.map((group) => {
         const expandByCarry =
@@ -474,11 +483,13 @@ const Configure = () => {
       setMetrics(groupData.flatMap((group) => group.child));
       setMetricData(groupData);
       setFilteredMetricData(groupData);
+      return { count: metricsPage.count };
     } catch {
       if (!abortController.signal.aborted) {
         setMetricData([]);
         setFilteredMetricData([]);
       }
+      return { count: 0 };
     } finally {
       if (metricCatalogAbortRef.current === abortController) {
         setLoading(false);
@@ -492,16 +503,14 @@ const Configure = () => {
   };
 
   const onTxtPressEnter = () => {
-    setNameInFilter('');
     setMetricPage(1);
-    getInitData(activeTab, true, 1, searchText.trim(), [], [], '');
+    getInitData(activeTab, true, 1, searchText.trim());
   };
 
   const onTxtClear = () => {
     setSearchText('');
-    setNameInFilter('');
     setMetricPage(1);
-    getInitData(activeTab, true, 1, '', [], [], '');
+    getInitData(activeTab, true, 1, '');
   };
 
   const openGroupModal = (type: string, row = {}) => {
@@ -558,18 +567,57 @@ const Configure = () => {
       return;
     }
     const nameIn = names.join(',');
+    batchMetricByIdRef.current.clear();
+    setSelectedRowKeys([]);
+    setSearchText('');
     setNameInFilter(nameIn);
-    setSearchText(nameIn);
     setMetricPage(1);
-    await getInitData(
+    const landed = await getInitData(
       String(targetObjectId),
       true,
       1,
-      nameIn,
+      '',
       names,
       [],
       nameIn
     );
+    const batchCount = landed?.count ?? 0;
+    // 后端 max_page_size=100。第一页已勾选；本批更多页则继续拉取并入勾选与 ref。
+    if (batchCount <= 100) {
+      return;
+    }
+    try {
+      const pageSize = 100;
+      const pages = Math.ceil(batchCount / pageSize);
+      const extraIds: React.Key[] = [];
+      for (let page = 2; page <= pages; page += 1) {
+        const extra = await getMonitorMetrics({
+          monitor_object_id: +targetObjectId,
+          monitor_plugin_id: +pluginID,
+          name_in: nameIn,
+          include_ifmib: false,
+          page
+        });
+        (extra?.items || []).forEach((metric) => {
+          if (metric.is_pre === true) {
+            return;
+          }
+          batchMetricByIdRef.current.set(Number(metric.id), metric);
+          extraIds.push(metric.id);
+        });
+      }
+      if (extraIds.length) {
+        setSelectedRowKeys((prev) => {
+          const seen = new Set(prev.map((id) => Number(id)));
+          return [
+            ...prev,
+            ...extraIds.filter((id) => !seen.has(Number(id)))
+          ];
+        });
+      }
+    } catch {
+      // 后续页失败时保留已加载页的勾选。
+    }
   };
 
   useEffect(() => {
@@ -616,6 +664,7 @@ const Configure = () => {
     setMetricPage(1);
     setSelectedRowKeys([]);
     setNameInFilter('');
+    batchMetricByIdRef.current.clear();
     getInitData(next, false, 1);
   };
 
@@ -731,9 +780,28 @@ const Configure = () => {
     filteredMetricData.every((group) => group.isOpen);
 
   const selectedIdSet = new Set(selectedRowKeys.map((key) => Number(key)));
-  const selectedMetrics = metrics.filter(
+  const batchFilterNames = useMemo(
+    () =>
+      nameInFilter
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean),
+    [nameInFilter]
+  );
+  const selectedMetrics = (
+    batchFilterNames.length && batchMetricByIdRef.current.size
+      ? Array.from(batchMetricByIdRef.current.values())
+      : metrics
+  ).filter(
     (item) => selectedIdSet.has(Number(item.id)) && item.is_pre !== true
   );
+
+  const clearBatchFilter = () => {
+    batchMetricByIdRef.current.clear();
+    setNameInFilter('');
+    setMetricPage(1);
+    getInitData(activeTab, true, 1, searchText.trim(), [], [], '');
+  };
 
   const openBatchEdit = () => {
     if (!selectedMetrics.length) {
@@ -792,15 +860,33 @@ const Configure = () => {
         {t('monitor.integrations.metricTitle')}
       </p>
       <div className="flex items-center justify-between mb-[15px]">
-        <Input
-          className="w-[400px]"
-          placeholder={t('monitor.integrations.searchMetricPlaceholder')}
-          value={searchText}
-          allowClear
-          onChange={onSearchTxtChange}
-          onPressEnter={onTxtPressEnter}
-          onClear={onTxtClear}
-        />
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {batchFilterNames.length > 0 ? (
+            <Tag
+              color="blue"
+              closable
+              onClose={(e) => {
+                e.preventDefault();
+                clearBatchFilter();
+              }}
+            >
+              {t(
+                'monitor.integrations.batchMetricFilter',
+                '本批 {count} 个指标',
+                { count: batchFilterNames.length }
+              )}
+            </Tag>
+          ) : null}
+          <Input
+            className="w-[400px]"
+            placeholder={t('monitor.integrations.searchMetricPlaceholder')}
+            value={searchText}
+            allowClear
+            onChange={onSearchTxtChange}
+            onPressEnter={onTxtPressEnter}
+            onClear={onTxtClear}
+          />
+        </div>
         <div>
           <Button
             className="mr-[8px]"
