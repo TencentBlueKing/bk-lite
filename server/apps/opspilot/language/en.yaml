@@ -231,6 +231,8 @@ tools:
         description: Query monitor-policy alert history segments in a time window.
       monitor_get_host_resource_snapshot:
         description: Query host CPU/memory/disk avg and max snapshot.
+      monitor_get_host_resource_top_by_time:
+        description: Rank all hosts by CPU/memory/disk usage within a time window (Top N).
   cmdb:
     name: CMDB
     description: |
