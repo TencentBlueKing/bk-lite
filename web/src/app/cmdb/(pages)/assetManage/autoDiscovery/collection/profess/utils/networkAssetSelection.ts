@@ -5,8 +5,11 @@ export const NETWORK_COLLECTION_ASSET_MODELS = [
   'loadbalance',
 ] as const;
 
+export const DEFAULT_NETWORK_ASSET_TAB = NETWORK_COLLECTION_ASSET_MODELS[0];
+
 interface AssetRow {
   inst_uuid?: string;
+  model_id?: string;
   ip_addr?: string;
   ip?: string;
   host?: string;
@@ -40,6 +43,14 @@ export const mergeVisibleNetworkAssetSelection = <T extends AssetRow>(input: {
   return merged;
 };
 
+export const selectedKeysForNetworkAssetTab = (
+  selectedRows: AssetRow[],
+  modelId: string
+): string[] =>
+  selectedRows.flatMap((row) =>
+    row.model_id === modelId && row.inst_uuid ? [row.inst_uuid] : []
+  );
+
 export const findDuplicateNetworkAssetIp = (
   instances: AssetRow[]
 ): string | null => {
@@ -55,18 +66,4 @@ export const findDuplicateNetworkAssetIp = (
     seen.add(ip);
   }
   return null;
-};
-
-export const mergeNetworkAssetSearchPages = <T>(
-  pages: Array<{ insts?: T[]; count?: number }>
-): { insts: T[]; count: number } => {
-  const insts: T[] = [];
-  let count = 0;
-  for (const page of pages) {
-    if (Array.isArray(page.insts)) {
-      insts.push(...page.insts);
-    }
-    count += Number(page.count) || 0;
-  }
-  return { insts, count };
 };

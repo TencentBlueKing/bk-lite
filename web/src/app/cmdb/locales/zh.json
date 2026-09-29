@@ -1041,6 +1041,7 @@
         "instanceName": "实例名",
         "manageIp": "管理IP",
         "objectType": "对象类型",
+        "selectedAssetCount": "已选 {count} 项",
         "selectDeviceModels": "设备模型",
         "selectDeviceModelsPlaceholder": "请选择模型",
         "duplicateManageIp": "同一任务中管理 IP 不能重复：{ip}",
