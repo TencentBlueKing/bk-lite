@@ -280,6 +280,10 @@ export const useWikiApi = () => {
       responseType: "blob",
     });
 
+  /** 经 Server 代理下载资料原始文件（Blob，带鉴权头，不直连 MinIO）。 */
+  const downloadMaterialFile = (id: number): Promise<Blob> =>
+    get(`${BASE}/material/${id}/download/`, { responseType: "blob" });
+
   const previewMergeKnowledgeBase = (
     id: number,
   ): Promise<WikiPreviewMergeResult> =>
@@ -763,6 +767,7 @@ export const useWikiApi = () => {
     buildContext,
     reindexKnowledgeBase,
     exportKnowledgeBaseOkf,
+    downloadMaterialFile,
     preflightKnowledgeBaseMarkdown,
     executeKnowledgeBaseMarkdown,
     previewMergeKnowledgeBase,

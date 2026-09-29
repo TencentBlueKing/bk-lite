@@ -322,6 +322,7 @@
     "parsedMarkdown": "Parsed markdown",
     "openFile": "Open File",
     "downloadFile": "Download",
+    "downloadFileFailed": "Failed to download the file. Please try again later.",
     "aiSummary": "AI Summary",
     "buildStartedAt": "Build Started",
     "buildFinishedAt": "Build Finished",

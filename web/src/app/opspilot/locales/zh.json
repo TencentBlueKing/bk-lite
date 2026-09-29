@@ -323,6 +323,7 @@
     "parsedMarkdown": "解析正文",
     "openFile": "打开文件",
     "downloadFile": "下载",
+    "downloadFileFailed": "文件下载失败,请稍后重试",
     "aiSummary": "AI 解读",
     "buildStartedAt": "构建开始时间",
     "buildFinishedAt": "构建结束时间",
