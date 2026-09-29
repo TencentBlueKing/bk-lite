@@ -1060,12 +1060,13 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
                   objectId={monitorObject}
                   pluginId={pluginId}
                   groups={groupOptions}
-                  onCreated={(created) => {
-                    setPendingGroups((current) =>
-                      current.some((group) => group.id === created.id)
-                        ? current
-                        : [...current, created]
+                  onGroupsChange={(next) => {
+                    const known = new Set(groupList.map((item) => String(item.id)));
+                    setPendingGroups(
+                      next.filter((group) => !known.has(String(group.id)))
                     );
+                  }}
+                  onCreated={(created) => {
                     onGroupListChange?.(created);
                   }}
                 />

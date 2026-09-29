@@ -294,12 +294,8 @@ const MetricBatchEditModal = forwardRef<
               objectId={monitorObject}
               pluginId={pluginId}
               groups={groups}
+              onGroupsChange={setGroups}
               onCreated={(created) => {
-                setGroups((current) =>
-                  current.some((group) => group.id === created.id)
-                    ? current
-                    : [...current, created]
-                );
                 onGroupListChange?.(created);
               }}
             />

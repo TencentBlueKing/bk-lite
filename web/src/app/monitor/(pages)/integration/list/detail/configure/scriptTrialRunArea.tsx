@@ -996,14 +996,23 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                           ?.data_type ||
                         ''
                     ).toLowerCase() === 'enum';
+                  const visibleDimensionNames = unionVisibleDimensionNames(
+                    item.tags,
+                    item.samples
+                  );
                   const sampleCount = item.samples?.length || 1;
+                  const showSamplePreview = visibleDimensionNames.length > 0;
+                  const previewSamples =
+                    item.samples?.length
+                      ? item.samples
+                      : [{ value: item.value, tags: item.tags }];
                   const sampleStack = (
                     <div className={SAMPLE_VALUE_STACK_CLASS}>
                       <div className="h-4 min-w-0 truncate text-right font-mono text-xs leading-4 tabular-nums text-[var(--color-text-3)]">
                         {String(item.value)}
                       </div>
                       <div className="h-4 min-w-0 truncate text-right text-[11px] leading-4 text-[var(--color-text-3)]">
-                        {sampleCount > 1
+                        {showSamplePreview
                           ? t(
                             'monitor.integrations.trialRunSampleCount',
                             '共 {count} 条',
@@ -1045,9 +1054,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                         ) : null}
                       </div>
                       <div className="min-w-0">
-                        <DimensionTagLine
-                          names={unionVisibleDimensionNames(item.tags, item.samples)}
-                        />
+                        <DimensionTagLine names={visibleDimensionNames} />
                         {Boolean(item.reservedTagKeys?.length) && (
                           <div
                             className="mt-0.5 text-[11px] text-[var(--color-fail)]"
@@ -1120,14 +1127,13 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                         />
                       </div>
                       <div className="min-w-0">
-                        {sampleCount > 1 ? (
+                        {showSamplePreview ? (
                           <Tooltip
-                            placement="topRight"
+                            placement="leftTop"
+                            autoAdjustOverflow={false}
                             styles={{ body: { padding: 8 } }}
                             title={(
-                              <SamplePreviewTable
-                                samples={item.samples || []}
-                              />
+                              <SamplePreviewTable samples={previewSamples} />
                             )}
                           >
                             {sampleStack}
