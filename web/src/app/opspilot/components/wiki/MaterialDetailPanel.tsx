@@ -1,13 +1,15 @@
 "use client";
 
-import React from "react";
-import { Button, Descriptions, List, Tag } from "antd";
+import React, { useCallback, useState } from "react";
+import { Button, Descriptions, List, Tag, message } from "antd";
 import { ArrowLeftOutlined, DownloadOutlined } from "@ant-design/icons";
 import MarkdownRenderer from "@/components/markdown";
 import {
   isRedundantWikiAiSummary,
   pickWikiMaterialBodyMarkdown,
 } from "@/app/opspilot/utils/wikiMaterialDisplay";
+import { parseJsonErrorBlob, parseExportBlobError } from "@/app/opspilot/utils/wikiExportBlobError";
+import { useWikiApi } from "@/app/opspilot/api/wiki";
 import type { MaterialInfo, MaterialType } from "@/app/opspilot/types/wiki";
 import { useTranslation } from "@/utils/i18n";
 import { formatPageTypeLabel } from "./wikiFormat";
@@ -41,6 +43,8 @@ const MaterialDetailPanel: React.FC<MaterialDetailPanelProps> = ({
   showBack = true,
 }) => {
   const { t } = useTranslation();
+  const { downloadMaterialFile } = useWikiApi();
+  const [downloading, setDownloading] = useState(false);
   const bodyMarkdown = pickWikiMaterialBodyMarkdown(
     detail.parsed_markdown,
     detail.ai_summary,
@@ -51,6 +55,33 @@ const MaterialDetailPanel: React.FC<MaterialDetailPanelProps> = ({
   );
   const materialTypeLabel = (type: MaterialType) =>
     MATERIAL_TYPE_KEY[type] ? t(MATERIAL_TYPE_KEY[type]) : type;
+
+  // 经 Server 代理下载（带鉴权头），不复用 file_url 直连对象存储。
+  const handleDownload = useCallback(async () => {
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const blob = await downloadMaterialFile(detail.material.id);
+      const jsonError = await parseJsonErrorBlob(blob);
+      if (jsonError) {
+        message.error(jsonError.message);
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = detail.material.name || "download";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      const parsed = await parseExportBlobError(error);
+      message.error(parsed?.message || t("wiki.downloadFileFailed"));
+    } finally {
+      setDownloading(false);
+    }
+  }, [downloading, downloadMaterialFile, detail.material.id, detail.material.name, t]);
 
   return (
     <div className="flex h-full min-h-0 min-w-0 w-full flex-col overflow-hidden">
@@ -99,9 +130,8 @@ const MaterialDetailPanel: React.FC<MaterialDetailPanelProps> = ({
                 type="link"
                 size="small"
                 icon={<DownloadOutlined />}
-                href={detail.file_url}
-                target="_blank"
-                rel="noreferrer"
+                loading={downloading}
+                onClick={handleDownload}
                 className="h-auto px-0"
                 style={{ color: "var(--color-primary)" }}
               >
