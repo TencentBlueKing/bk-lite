@@ -30,13 +30,17 @@ export interface ScriptMetricCatalogUpdatePayload {
   description: string;
 }
 
-type TranslateFn = (
-  key: string,
-  defaultValue?: string,
-  options?: Record<string, unknown>
-) => string;
+interface TranslateFn {
+  (
+    key: string,
+    defaultValue?: string,
+    options?: Record<string, unknown>
+  ): string;
+}
 
-type RequestConfig = { suppressErrorNotification?: boolean };
+interface RequestConfig {
+  suppressErrorNotification?: boolean;
+}
 
 export interface PersistScriptMetricsClient {
   get: (url: string, config?: { params?: Record<string, unknown> } & RequestConfig) => Promise<unknown>;
@@ -84,26 +88,26 @@ export const resolveDefaultCatalogGroupId = (
   if (!valid.length) {
     return null;
   }
-  const matched = DEFAULT_CATALOG_GROUP_NAMES.reduce<
-    (CatalogMetricGroupOption & { id: number }) | undefined
-  >((found, name) => {
-    if (found) {
-      return found;
-    }
+  for (const name of DEFAULT_CATALOG_GROUP_NAMES) {
     const target = name.toLowerCase();
-    return valid.find((group) => catalogGroupLabel(group).toLowerCase() === target);
-  }, undefined);
-  return matched?.id ?? valid[0].id;
+    const matched = valid.find(
+      (group) => catalogGroupLabel(group).toLowerCase() === target
+    );
+    if (matched) {
+      return matched.id;
+    }
+  }
+  return valid[0].id;
 };
 
 export const resolveDefaultCatalogUnitPath = (
   options: Array<{ value?: string; children?: Array<{ value: string }> }> = [],
   unitId: string = DEFAULT_CATALOG_UNIT_ID
-): Array<string | number> | undefined => {
+): string[] | undefined => {
   for (const group of options) {
     const child = (group.children || []).find((item) => item.value === unitId);
     if (child && group.value) {
-      return [group.value, child.value];
+      return [String(group.value), String(child.value)];
     }
   }
   return undefined;
