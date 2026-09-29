@@ -56,6 +56,7 @@ import {
   resolveIntegrationEntryContext
 } from '@/app/monitor/utils/integrationEntryContext';
 import { buildCollectNeedUpdateAssetUrl } from '@/app/monitor/utils/collectNeedUpdate';
+import { resolvePluginSourceBadge } from '@/app/monitor/utils/pluginSourceBadge';
 import { downloadPluginConfig } from './exportDownload';
 
 const { confirm } = Modal;
@@ -539,9 +540,11 @@ const Integration = () => {
                   );
                   const objectName = parentObject?.name || '';
                   const staleCount = Number(app.stale_instance_count) || 0;
-                  const packVersionText = app.pack_version
-                    ? app.pack_version
-                    : t('monitor.integrations.builtinPack');
+                  const sourceBadge = resolvePluginSourceBadge(app);
+                  const packVersionText =
+                    sourceBadge.packKind === 'pinned'
+                      ? sourceBadge.packVersion
+                      : t('monitor.integrations.builtinPack');
 
                   return (
                     <div
@@ -579,53 +582,87 @@ const Integration = () => {
                                 app.collect_type ||
                                 '--'}
                             </Tag>
-                            <Tooltip
-                              title={
-                                staleCount > 0
-                                  ? t('monitor.integrations.staleInstanceHint', '', {
-                                    count: staleCount,
-                                    version: packVersionText
-                                  })
-                                  : app.pack_version
-                                    ? t('monitor.integrations.pinnedPackHint', '', {
-                                      version: app.pack_version
-                                    })
-                                    : t('monitor.integrations.builtinPackHint')
-                              }
-                            >
-                              <Tag
-                                color={staleCount > 0 ? 'warning' : undefined}
-                                className={`mt-[4px] ml-[6px]${staleCount > 0 ? ' cursor-pointer' : ''}`}
-                                onClick={
+                            {sourceBadge.showPackTag && (
+                              <Tooltip
+                                title={
                                   staleCount > 0
-                                    ? (e) => {
-                                      e.stopPropagation();
-                                      const result =
-                                        resolveIntegrationEntryContext(
-                                          app,
-                                          objects
-                                        );
-                                      router.push(
-                                        buildCollectNeedUpdateAssetUrl({
-                                          monitorObjectId: result.ok
-                                            ? result.context.objectId
-                                            : app.parent_monitor_object ||
-                                              String(objectId),
-                                          pluginId: app.id,
-                                          needUpdate: true
-                                        })
-                                      );
-                                    }
-                                    : undefined
+                                    ? t('monitor.integrations.staleInstanceHint', '', {
+                                      count: staleCount,
+                                      version: packVersionText
+                                    })
+                                    : sourceBadge.packKind === 'pinned'
+                                      ? t('monitor.integrations.pinnedPackHint', '', {
+                                        version: sourceBadge.packVersion
+                                      })
+                                      : t('monitor.integrations.builtinPackHint')
                                 }
                               >
-                                {packVersionText}
-                                {staleCount > 0
-                                  ? ` · ${t('monitor.integrations.needUpdate')} ${staleCount}`
-                                  : ''}
-                              </Tag>
-                            </Tooltip>
-                            {app.is_custom && (
+                                <Tag
+                                  color={staleCount > 0 ? 'warning' : undefined}
+                                  className={`mt-[4px] ml-[6px]${staleCount > 0 ? ' cursor-pointer' : ''}`}
+                                  onClick={
+                                    staleCount > 0
+                                      ? (e) => {
+                                        e.stopPropagation();
+                                        const result =
+                                          resolveIntegrationEntryContext(
+                                            app,
+                                            objects
+                                          );
+                                        router.push(
+                                          buildCollectNeedUpdateAssetUrl({
+                                            monitorObjectId: result.ok
+                                              ? result.context.objectId
+                                              : app.parent_monitor_object ||
+                                                String(objectId),
+                                            pluginId: app.id,
+                                            needUpdate: true
+                                          })
+                                        );
+                                      }
+                                      : undefined
+                                  }
+                                >
+                                  {packVersionText}
+                                  {staleCount > 0
+                                    ? ` · ${t('monitor.integrations.needUpdate')} ${staleCount}`
+                                    : ''}
+                                </Tag>
+                              </Tooltip>
+                            )}
+                            {staleCount > 0 && !sourceBadge.showPackTag && (
+                              <Tooltip
+                                title={t('monitor.integrations.staleInstanceHint', '', {
+                                  count: staleCount,
+                                  version: packVersionText
+                                })}
+                              >
+                                <Tag
+                                  color="warning"
+                                  className="mt-[4px] ml-[6px] cursor-pointer"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const result = resolveIntegrationEntryContext(
+                                      app,
+                                      objects
+                                    );
+                                    router.push(
+                                      buildCollectNeedUpdateAssetUrl({
+                                        monitorObjectId: result.ok
+                                          ? result.context.objectId
+                                          : app.parent_monitor_object ||
+                                            String(objectId),
+                                        pluginId: app.id,
+                                        needUpdate: true
+                                      })
+                                    );
+                                  }}
+                                >
+                                  {`${t('monitor.integrations.needUpdate')} ${staleCount}`}
+                                </Tag>
+                              </Tooltip>
+                            )}
+                            {sourceBadge.showSelfBuilt && (
                               <Tag className="mt-[4px] ml-[6px]">
                                 {t('monitor.integrations.selfBuilt')}
                               </Tag>
