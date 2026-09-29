@@ -93,6 +93,7 @@ import { applyScriptCollectSubmit, syncScriptRunAsForOs } from './scriptCollectF
 import {
   collectReservedTagViolations,
   excludeSelfMonitorMetrics,
+  catalogMetricRefLabel,
   listPluginCatalogMetrics,
   persistScriptMetrics,
   planScriptMetricHardSyncDeletes,
@@ -105,6 +106,55 @@ import {
 } from './scriptMetricEditCarry';
 import { BusinessMetricItem } from './scriptMetricsParser';
 const { confirm } = Modal;
+
+const OVERWRITE_NAME_PREVIEW = 8;
+
+const ScriptMetricOverwriteContent = ({
+  names,
+  summary,
+  cancelHint,
+  expandLabel,
+  collapseLabel
+}: {
+  names: string[];
+  summary: string;
+  cancelHint: string;
+  expandLabel: string;
+  collapseLabel: string;
+}) => {
+  const [expanded, setExpanded] = useState(false);
+  const hiddenCount = names.length - OVERWRITE_NAME_PREVIEW;
+  const visible =
+    expanded || hiddenCount <= 0
+      ? names
+      : names.slice(0, OVERWRITE_NAME_PREVIEW);
+  return (
+    <div>
+      <p className="mb-2">{summary}</p>
+      <ul className="mb-2 max-h-40 list-disc overflow-auto pl-5">
+        {visible.map((name, index) => (
+          <li key={`${name}-${index}`} className="break-all">
+            {name}
+          </li>
+        ))}
+      </ul>
+      {hiddenCount > 0 ? (
+        <Button
+          type="link"
+          className="h-auto px-0"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setExpanded((open) => !open);
+          }}
+        >
+          {expanded ? collapseLabel : expandLabel}
+        </Button>
+      ) : null}
+      <p className="mb-0 mt-2 text-[var(--color-text-3)]">{cancelHint}</p>
+    </div>
+  );
+};
 
 interface CollectDetectState {
   status: 'pending' | 'running' | 'success' | 'failed' | 'warning';
@@ -966,7 +1016,13 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const renderCollectDetectStatus = (record: IntegrationMonitoredObject) => {
     const task = collectDetectTasks[record.key as string];
     if (!task || task.fingerprint !== buildCollectDetectFingerprint(record)) {
-      return <Tag>{t('monitor.integrations.collectDetectUntested')}</Tag>;
+      return (
+        <Tag>
+          {isScriptTemplate
+            ? t('monitor.integrations.scriptCollectUntested', '未调试')
+            : t('monitor.integrations.collectDetectUntested')}
+        </Tag>
+      );
     }
     const clickableClassName = 'cursor-pointer';
     if (task.status === 'warning') {
@@ -994,7 +1050,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           }}
         >
           {isScriptTemplate
-            ? t('monitor.integrations.trialRun', '调试中')
+            ? t('monitor.integrations.scriptCollectRunning', '调试中')
             : t('monitor.integrations.collectDetectRunning')}
         </Tag>
       );
@@ -1096,7 +1152,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     const collectDetectStatusColumn = supportCollectDetect
       ? [
         {
-          title: t('monitor.integrations.collectDetectStatus'),
+          title: isScriptTemplate
+            ? t('monitor.integrations.scriptCollectStatus', '调试状态')
+            : t('monitor.integrations.collectDetectStatus'),
           key: 'collect_detect_status',
           dataIndex: 'collect_detect_status',
           width: 140,
@@ -1116,7 +1174,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     t,
     collectType,
     supportCollectDetect,
-    collectDetectTasks
+    collectDetectTasks,
+    isScriptTemplate
   ]);
 
   const pluginFormCacheKey = [
@@ -1534,16 +1593,38 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           });
           staleDeletes = planScriptMetricHardSyncDeletes(existing, persistable);
           if (staleDeletes.length) {
+            const overwriteNames = staleDeletes
+              .map((item) => catalogMetricRefLabel(item))
+              .filter(Boolean);
             const confirmed = await new Promise<boolean>((resolve) => {
               Modal.confirm({
                 title: t(
                   'monitor.integrations.scriptMetricsHardSyncTitle',
-                  '将按当前勾选覆盖指标'
+                  '覆盖目录中未出现的旧指标'
                 ),
-                content: t(
-                  'monitor.integrations.scriptMetricsHardSyncHint',
-                  '将删除本插件目录中 {count} 个未勾选的旧指标，并保存当前勾选。取消则中止本次确认。',
-                  { count: staleDeletes.length }
+                width: 520,
+                content: (
+                  <ScriptMetricOverwriteContent
+                    names={overwriteNames}
+                    summary={t(
+                      'monitor.integrations.scriptMetricsHardSyncHint',
+                      '将删除本插件目录中、本次调试结果里没有的旧指标，共 {count} 个。',
+                      { count: overwriteNames.length }
+                    )}
+                    cancelHint={t(
+                      'monitor.integrations.scriptMetricsHardSyncCancel',
+                      '取消则中止本次确认。'
+                    )}
+                    expandLabel={t(
+                      'monitor.integrations.scriptMetricsHardSyncMore',
+                      '展开全部（共 {count} 个）',
+                      { count: overwriteNames.length }
+                    )}
+                    collapseLabel={t(
+                      'monitor.integrations.scriptMetricsHardSyncCollapse',
+                      '收起'
+                    )}
+                  />
                 ),
                 okText: t('common.confirm'),
                 cancelText: t('common.cancel'),
@@ -2025,16 +2106,24 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
             </Button>
           </Permission>
           {showGoEditMetrics && (
-            <Button
-              disabled={
-                confirmLoading ||
-                isAnyTrialRunning ||
-                hasReservedScriptTagError
-              }
-              onClick={handleGoEditMetrics}
-            >
-              {t('monitor.integrations.goEditMetrics', '去编辑指标')}
-            </Button>
+            <>
+              <Button
+                disabled={
+                  confirmLoading ||
+                  isAnyTrialRunning ||
+                  hasReservedScriptTagError
+                }
+                onClick={handleGoEditMetrics}
+              >
+                {t('monitor.integrations.goEditMetrics', '去编辑指标')}
+              </Button>
+              <span className="text-[13px] text-[var(--color-text-3)]">
+                {t(
+                  'monitor.integrations.goEditMetricsHint',
+                  '将勾选的调试指标带去新建或编辑；要覆盖目录请点左侧「确认」。'
+                )}
+              </span>
+            </>
           )}
           {hasReservedScriptTagError && (
             <span
