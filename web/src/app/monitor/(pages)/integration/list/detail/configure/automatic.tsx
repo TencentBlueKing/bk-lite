@@ -87,7 +87,7 @@ import {
   mergeImportedAssetRows
 } from './automaticAssetCount';
 import ScriptTrialRunArea from './scriptTrialRunArea';
-import { applyScriptCollectSubmit } from './scriptCollectForm';
+import { applyScriptCollectSubmit, syncScriptRunAsForOs } from './scriptCollectForm';
 import {
   collectReservedTagViolations,
   persistScriptMetrics
@@ -503,6 +503,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       return;
     }
     if (!selectedScriptMetrics.length) {
+      message.warning(goEditSelectFirstText);
       return;
     }
     const payload = buildScriptMetricEditCarry(selectedScriptMetrics);
@@ -1393,6 +1394,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (isScriptTemplate && hasReservedScriptTagError) {
       return;
     }
+    if (
+      isScriptTemplate &&
+      scriptDebugHasBusinessMetrics &&
+      !selectedScriptMetrics.length
+    ) {
+      message.warning(goEditSelectFirstText);
+      return;
+    }
     const normalizedForm = normalizePasswordFields(
       form.getFieldsValue(true),
       currentConfig?.form_fields,
@@ -1599,6 +1608,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           )
         ) {
           setFormSnapshot(nextValues);
+        }
+        if (Object.prototype.hasOwnProperty.call(changed, 'script_os')) {
+          syncScriptRunAsForOs(form, String(changed.script_os ?? ''));
         }
         if (
           Object.prototype.hasOwnProperty.call(

@@ -12,7 +12,7 @@ import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import { useCommon } from '@/app/monitor/context/common';
-import { parseScriptMetrics, BusinessMetricItem } from './scriptMetricsParser';
+import { parseScriptMetrics, BusinessMetricItem, cleanDisplayTags } from './scriptMetricsParser';
 import {
   buildUnitCascaderOptions,
   extractCatalogItems,
@@ -31,11 +31,12 @@ const BUSINESS_METRIC_GRID =
 const DimensionTagLine: React.FC<{ tags?: Record<string, string> }> = ({
   tags
 }) => {
-  const entries = Object.entries(tags || {});
+  const displayTags = cleanDisplayTags(tags);
+  const entries = Object.entries(displayTags || {});
   if (!entries.length) {
     return null;
   }
-  const summary = formatDimensionTagSummary(tags);
+  const summary = formatDimensionTagSummary(displayTags);
   return (
     <Tooltip title={summary}>
       <div className="mt-0.5 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
@@ -96,7 +97,6 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     () => buildUnitCascaderOptions(commonContext?.groupedUnitList || []),
     [commonContext?.groupedUnitList]
   );
-  const canFeedScriptMetricActions = task?.status === 'success';
 
   const isSpinning = spinning || task?.status === 'pending' || task?.status === 'running';
   const trialBusy = isSpinning || trialSubmitting;
@@ -124,6 +124,18 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
       task.error_message
     );
   }, [task]);
+
+  // 与失败 Alert 同一判定：只有 status=success 且退出码为 0，且不是超时 / 节点不可用 / 告警，才允许确认与去编辑。
+  const isNonZeroExit = Boolean(task?.result && task.result.exit_code !== 0);
+  const isScriptTrialFailure =
+    task?.status === 'failed' ||
+    task?.status === 'warning' ||
+    Boolean(task?.warning_type) ||
+    isNonZeroExit ||
+    Boolean(parsedOutput?.isTimeout) ||
+    Boolean(parsedOutput?.isNodeUnavailable);
+  const canFeedScriptMetricActions =
+    task?.status === 'success' && !isScriptTrialFailure;
 
   const defaultGroupId = useMemo(
     () => resolveDefaultCatalogGroupId(groupOptions),
@@ -286,16 +298,6 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
             )}
           </div>
-          <Button
-            type="primary"
-            size="small"
-            icon={<PlayCircleOutlined />}
-            loading={trialBusy}
-            disabled={!nodeSelected || trialBusy}
-            onClick={handleTrialClick}
-          >
-            {t('monitor.integrations.trialRun', '调试')}
-          </Button>
         </div>
         <div className="flex flex-col items-center justify-center py-6 px-4 rounded-md border border-dashed border-[var(--color-border-2)] bg-[var(--color-bg-2)]">
           <CompactEmptyState
@@ -303,16 +305,18 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               'monitor.integrations.trialRunEmptyPrompt',
               '保存前可先调试，验证输出指标'
             )}
-          />
-          <Button
-            type="primary"
-            className="mt-3"
-            loading={trialBusy}
-            disabled={!nodeSelected || trialBusy}
-            onClick={handleTrialClick}
           >
-            {t('monitor.integrations.trialRun', '调试')}
-          </Button>
+            <Button
+              type="primary"
+              className="mt-3"
+              icon={<PlayCircleOutlined />}
+              loading={trialBusy}
+              disabled={!nodeSelected || trialBusy}
+              onClick={handleTrialClick}
+            >
+              {t('monitor.integrations.trialRun', '调试')}
+            </Button>
+          </CompactEmptyState>
         </div>
       </div>
     );
@@ -396,24 +400,18 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               <div className="mt-1 text-xs">{task.error_message}</div>
             ) : undefined
           }
-          action={
-            <Button
-              size="small"
-              loading={trialSubmitting}
-              disabled={trialBusy}
-              onClick={handleTrialClick}
-            >
-              {t('monitor.integrations.reTrialRun', '重新调试')}
-            </Button>
-          }
         />
       </div>
     );
   }
 
   // 4. 失败状态 (Alert error: non-zero exit / timeout / parse fail / truncated / node unavailable)
-  const isExitFailure = task.status === 'failed' || (task.result && task.result.exit_code !== 0);
-  if (isExitFailure || parsedOutput?.isTimeout || parsedOutput?.isNodeUnavailable) {
+  if (
+    task.status === 'failed' ||
+    isNonZeroExit ||
+    parsedOutput?.isTimeout ||
+    parsedOutput?.isNodeUnavailable
+  ) {
     let errorTitle = t('monitor.integrations.trialRunNonZeroExit', '脚本执行失败（退出码 {code}）', {
       code: task.result?.exit_code ?? 1
     });
@@ -492,17 +490,6 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               )}
             </div>
           }
-          action={
-            <Button
-              size="small"
-              danger
-              loading={trialSubmitting}
-              disabled={trialBusy}
-              onClick={handleTrialClick}
-            >
-              {t('monitor.integrations.reTrialRun', '重新调试')}
-            </Button>
-          }
         />
       </div>
     );
@@ -560,15 +547,6 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               '调试完成，未检测到输出指标'
             )}
           />
-          <Button
-            className="mt-3"
-            icon={<ReloadOutlined />}
-            loading={trialSubmitting}
-            disabled={!nodeSelected || trialBusy}
-            onClick={handleTrialClick}
-          >
-            {t('monitor.integrations.reTrialRun', '重新调试')}
-          </Button>
         </div>
       </div>
     );
@@ -619,7 +597,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
       {/* 5) Self-metrics: emphasize up/duration/exit_code */}
       <div className="mb-4">
         <div className="text-[12px] font-medium text-[var(--color-text-3)] mb-2">
-          {t('monitor.integrations.trialRunSelfMetrics', '自身运行指标')}
+          {t('monitor.integrations.trialRunSelfMetrics', '自监控指标')}
         </div>
         <div className="grid grid-cols-3 gap-3">
           <div className="p-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
@@ -696,6 +674,14 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                         {item.name}
                       </div>
                       <DimensionTagLine tags={item.tags} />
+                      {Boolean(item.reservedTagKeys?.length) && (
+                        <div
+                          className="mt-0.5 text-[11px] text-[var(--color-fail)]"
+                          role="alert"
+                        >
+                          {t('monitor.integrations.reservedTagRename', '保留字段，请换名')}
+                        </div>
+                      )}
                     </div>
                     <div
                       className="min-w-0 truncate font-mono text-xs text-[var(--color-text-2)]"
