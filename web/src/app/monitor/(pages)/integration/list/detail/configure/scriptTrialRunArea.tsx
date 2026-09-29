@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Alert, Button, Cascader, Checkbox, Input, Spin, Tag, Tooltip } from 'antd';
 import {
   CheckCircleFilled,
@@ -14,9 +14,11 @@ import useApiClient from '@/utils/request';
 import { useCommon } from '@/app/monitor/context/common';
 import { parseScriptMetrics, BusinessMetricItem, cleanDisplayTags } from './scriptMetricsParser';
 import {
+  applyDefaultCatalogDrafts,
   buildUnitCascaderOptions,
   extractCatalogItems,
   formatDimensionTagSummary,
+  mergeRetainedTrialMetricState,
   pickSelectedBusinessMetrics,
   resolveDefaultCatalogGroupId,
   resolveDefaultCatalogUnitPath,
@@ -132,6 +134,10 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
   const [catalogByKey, setCatalogByKey] = useState<Record<string, ScriptMetricCatalogDraft>>({});
   const [groupOptions, setGroupOptions] = useState<CatalogMetricGroupOption[]>([]);
   const [trialSubmitting, setTrialSubmitting] = useState(false);
+  const retainedMetricStateRef = useRef({
+    selected: {} as Record<string, boolean>,
+    catalog: {} as Record<string, ScriptMetricCatalogDraft>
+  });
   const unitOptions = useMemo(
     () => buildUnitCascaderOptions(commonContext?.groupedUnitList || []),
     [commonContext?.groupedUnitList]
@@ -179,46 +185,40 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     [unitOptions]
   );
 
-  // 当解析到新指标时，默认全选，并清空上一轮目录草稿
   useEffect(() => {
-    if (parsedOutput?.businessMetrics?.length) {
-      const initialMap: Record<string, boolean> = {};
-      parsedOutput.businessMetrics.forEach((m) => {
-        initialMap[m.key] = true;
-      });
-      setSelectedMetrics(initialMap);
-    } else {
-      setSelectedMetrics({});
-    }
-    setCatalogByKey({});
-  }, [parsedOutput]);
+    retainedMetricStateRef.current.selected = selectedMetrics;
+  }, [selectedMetrics]);
 
-  // 调试勾选后预填目录已有 Default / 无分组 与 unit_id=none，Confirm 不必再填。
   useEffect(() => {
-    if (!parsedOutput?.businessMetrics?.length) {
+    retainedMetricStateRef.current.catalog = catalogByKey;
+  }, [catalogByKey]);
+
+  // 重新调试成功：刷新采样值；仍存在的指标保留勾选/分组/单位/描述；消失的视为未勾选。
+  useEffect(() => {
+    const metrics = parsedOutput?.businessMetrics;
+    if (!metrics?.length) {
+      if (parsedOutput) {
+        retainedMetricStateRef.current = { selected: {}, catalog: {} };
+        setSelectedMetrics({});
+        setCatalogByKey({});
+      }
       return;
     }
-    setCatalogByKey((prev) => {
-      const next = { ...prev };
-      let changed = false;
-      parsedOutput.businessMetrics.forEach((item) => {
-        const draft = next[item.key] || {};
-        const patch: ScriptMetricCatalogDraft = { ...draft };
-        if (patch.metric_group == null && defaultGroupId) {
-          patch.metric_group = defaultGroupId;
-          changed = true;
-        }
-        if (
-          (patch.unit == null || (Array.isArray(patch.unit) && !patch.unit.length)) &&
-          defaultUnitPath
-        ) {
-          patch.unit = defaultUnitPath;
-          changed = true;
-        }
-        next[item.key] = patch;
-      });
-      return changed ? next : prev;
+    const merged = mergeRetainedTrialMetricState({
+      nextMetrics: metrics,
+      prevSelected: retainedMetricStateRef.current.selected,
+      prevCatalog: retainedMetricStateRef.current.catalog
     });
+    const withDefaults = applyDefaultCatalogDrafts(
+      metrics,
+      merged.catalog,
+      defaultGroupId,
+      defaultUnitPath
+    );
+    const next = { selected: merged.selected, catalog: withDefaults.catalog };
+    retainedMetricStateRef.current = next;
+    setSelectedMetrics(next.selected);
+    setCatalogByKey(next.catalog);
   }, [parsedOutput, defaultGroupId, defaultUnitPath]);
 
   useEffect(() => {
@@ -641,8 +641,8 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
         </Button>
       </div>
 
-      {/* 5) Self-metrics: emphasize up/duration/exit_code */}
-      <div className="mb-4">
+      {/* 自监控指标仅展示，不可勾选落库 */}
+      <div className="mb-4" aria-disabled="true">
         <div className="text-[12px] font-medium text-[var(--color-text-3)] mb-2">
           {t('monitor.integrations.trialRunSelfMetrics', '自监控指标')}
         </div>

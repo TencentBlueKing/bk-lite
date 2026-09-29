@@ -1,6 +1,7 @@
 import {
   BusinessMetricItem,
   cleanDisplayTags,
+  cleanMeasurementName,
   isSelfMetricName
 } from './scriptMetricsParser';
 import {
@@ -51,7 +52,7 @@ export const buildScriptMetricEditCarry = (
   const items: ScriptMetricEditCarryItem[] = [];
   const seen = new Set<string>();
   metrics.forEach((item) => {
-    const name = String(item?.name || '').trim();
+    const name = cleanMeasurementName(String(item?.name || '').trim());
     if (!name || seen.has(name) || isSelfMetricName(name)) {
       return;
     }

@@ -499,10 +499,14 @@ class Controller:
 
     @staticmethod
     def _is_script_collect(collect_type) -> bool:
-        return str(collect_type or "") == "script"
+        return str(collect_type or "").casefold() == "script"
 
     def _lookup_existing_script_collect_configs(self, configs, collect_type, plugin_id):
-        """脚本采集复用已有 CollectConfig：同一实例+script 不得再创建。"""
+        """脚本采集复用已有 CollectConfig：同一实例+script 不得再创建。
+
+        unique_together 是 (instance, collector, collect_type, config_type)，不含 plugin。
+        按 plugin 优先匹配，否则复用已有行做 update，避免再走创建撞唯一键。
+        """
         if not self._is_script_collect(collect_type):
             return {}
         instance_ids = [item.get("instance_id") for item in configs if item.get("instance_id")]
@@ -511,14 +515,16 @@ class Controller:
             return {}
         qs = CollectConfig.objects.select_for_update().filter(
             monitor_instance_id__in=instance_ids,
-            collect_type=collect_type,
+            collect_type__iexact=str(collect_type or ""),
             config_type__in=config_types,
         )
-        if plugin_id not in (None, ""):
-            qs = qs.filter(monitor_plugin_id=plugin_id)
         existing = {}
+        preferred_plugin_id = None if plugin_id in (None, "") else str(plugin_id)
         for obj in qs:
-            existing[(obj.monitor_instance_id, obj.config_type, bool(obj.is_child))] = obj
+            key = (obj.monitor_instance_id, obj.config_type, bool(obj.is_child))
+            same_plugin = preferred_plugin_id is not None and str(obj.monitor_plugin_id or "") == preferred_plugin_id
+            if same_plugin or key not in existing:
+                existing[key] = obj
         return existing
 
     @staticmethod
@@ -536,14 +542,29 @@ class Controller:
             "content_hand_edited",
             "updated_at",
         ]
+        plugin_pk = getattr(plugin_obj, "id", None)
+
+        def _save_updated(obj, extra_fields):
+            fields = list(update_fields)
+            if extra_fields:
+                fields.extend(extra_fields)
+            obj.save(update_fields=fields)
+
+        def _stamp_plugin(obj):
+            extra = []
+            if plugin_pk and obj.monitor_plugin_id != plugin_pk:
+                obj.monitor_plugin_id = plugin_pk
+                extra.append("monitor_plugin_id")
+            return extra
+
         for obj, content, env_config in child_updates:
             node_mgmt.update_child_config_content(obj.id, content, env_config)
             stamp_applied(obj, plugin_fp=plugin_fp, rendered_content=content, hand_edited=False)
-            obj.save(update_fields=update_fields)
+            _save_updated(obj, _stamp_plugin(obj))
         for obj, content, env_config in base_updates:
             node_mgmt.update_config_content(obj.id, content, env_config)
             stamp_applied(obj, plugin_fp=plugin_fp, rendered_content=content, hand_edited=False)
-            obj.save(update_fields=update_fields)
+            _save_updated(obj, _stamp_plugin(obj))
         logger.info(
             "event=script_collect_config_updated child=%s base=%s",
             len(child_updates),

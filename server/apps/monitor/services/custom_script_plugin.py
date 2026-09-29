@@ -12,6 +12,25 @@ from apps.monitor.utils.plugin_controller import Controller
 
 SCRIPT_COLLECT_TYPE = "script"
 SCRIPT_CONFIG_TYPE = "script"
+# 脚本采集模板只允许绑在「操作系统」分类（id 在库内为 os / OS）。
+SCRIPT_COLLECT_ALLOWED_OBJECT_TYPE_ID = "os"
+SCRIPT_COLLECT_ALLOWED_OBJECT_TYPE_NAMES = frozenset({"操作系统", "os", "operating system"})
+SCRIPT_COLLECT_OBJECT_TYPE_ERROR = "脚本采集模板仅允许绑定「操作系统」监控对象"
+
+
+def is_script_collect_type(collect_type) -> bool:
+    return str(collect_type or "").casefold() == SCRIPT_COLLECT_TYPE
+
+
+def is_script_collect_allowed_object(monitor_object) -> bool:
+    """创建脚本采集模板时，绑定对象必须属于操作系统分类。"""
+    type_id = str(getattr(monitor_object, "type_id", None) or "").strip().casefold()
+    if type_id == SCRIPT_COLLECT_ALLOWED_OBJECT_TYPE_ID:
+        return True
+    obj_type = getattr(monitor_object, "type", None)
+    type_name = str(getattr(obj_type, "name", None) or "").strip().casefold()
+    return type_name in SCRIPT_COLLECT_ALLOWED_OBJECT_TYPE_NAMES
+
 
 # 平台保留标签。stdout / [inputs.bklite_script.tags] 不得作为最终来源。
 RESERVED_SCRIPT_TAG_KEYS = (
