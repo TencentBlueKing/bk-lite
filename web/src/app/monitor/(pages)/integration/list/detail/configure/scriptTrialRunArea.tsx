@@ -97,7 +97,6 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     () => buildUnitCascaderOptions(commonContext?.groupedUnitList || []),
     [commonContext?.groupedUnitList]
   );
-  const canFeedScriptMetricActions = task?.status === 'success';
 
   const isSpinning = spinning || task?.status === 'pending' || task?.status === 'running';
   const trialBusy = isSpinning || trialSubmitting;
@@ -125,6 +124,18 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
       task.error_message
     );
   }, [task]);
+
+  // 与失败 Alert 同一判定：只有 status=success 且退出码为 0，且不是超时 / 节点不可用 / 告警，才允许确认与去编辑。
+  const isNonZeroExit = Boolean(task?.result && task.result.exit_code !== 0);
+  const isScriptTrialFailure =
+    task?.status === 'failed' ||
+    task?.status === 'warning' ||
+    Boolean(task?.warning_type) ||
+    isNonZeroExit ||
+    Boolean(parsedOutput?.isTimeout) ||
+    Boolean(parsedOutput?.isNodeUnavailable);
+  const canFeedScriptMetricActions =
+    task?.status === 'success' && !isScriptTrialFailure;
 
   const defaultGroupId = useMemo(
     () => resolveDefaultCatalogGroupId(groupOptions),
@@ -395,8 +406,12 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
   }
 
   // 4. 失败状态 (Alert error: non-zero exit / timeout / parse fail / truncated / node unavailable)
-  const isExitFailure = task.status === 'failed' || (task.result && task.result.exit_code !== 0);
-  if (isExitFailure || parsedOutput?.isTimeout || parsedOutput?.isNodeUnavailable) {
+  if (
+    task.status === 'failed' ||
+    isNonZeroExit ||
+    parsedOutput?.isTimeout ||
+    parsedOutput?.isNodeUnavailable
+  ) {
     let errorTitle = t('monitor.integrations.trialRunNonZeroExit', '脚本执行失败（退出码 {code}）', {
       code: task.result?.exit_code ?? 1
     });
