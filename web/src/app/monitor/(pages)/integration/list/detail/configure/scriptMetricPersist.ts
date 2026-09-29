@@ -5,7 +5,8 @@ import {
   collectReservedScriptTagKeys,
   isHiddenPlatformDimensionKey,
   isReservedScriptTagKey,
-  isSelfMetricName
+  isSelfMetricName,
+  keepStoredTags
 } from './scriptMetricsParser';
 
 export interface ScriptMetricCatalogDraft {
@@ -538,7 +539,7 @@ export const buildScriptMetricRegisterPayload = (
   unit: resolvePersistCatalogUnitId(item.unit),
   data_type: 'Number',
   description: resolveCatalogDescription(item.description),
-  dimensions: Object.keys(item.tags || {}).map((key) => ({
+  dimensions: Object.keys(keepStoredTags(item.tags) || {}).map((key) => ({
     name: key,
     description: key
   }))

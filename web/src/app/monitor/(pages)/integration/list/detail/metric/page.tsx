@@ -47,8 +47,8 @@ import {
 import { persistScriptMetrics } from '../configure/scriptMetricPersist';
 import {
   cleanMeasurementName,
-  isHiddenPlatformDimensionKey,
-  isSelfMetricName
+  isSelfMetricName,
+  visibleDimensionItems
 } from '../configure/scriptMetricsParser';
 
 interface ObjectTabOption {
@@ -134,9 +134,13 @@ const Configure = () => {
   };
 
   const displayScriptDimensions = (dims?: DimensionItem[]) => {
-    const names = (dims || [])
+    const source =
+      templateType === 'script'
+        ? visibleDimensionItems(dims || [])
+        : dims || [];
+    const names = source
       .map((item) => String(item?.name || '').trim())
-      .filter((name) => name && !isHiddenPlatformDimensionKey(name));
+      .filter(Boolean);
     return names.length ? names.join(',') : '--';
   };
 

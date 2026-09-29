@@ -151,11 +151,19 @@ export const isHiddenPlatformDimensionKey = (key: string): boolean => {
   if (!tagKey) {
     return true;
   }
-  if (HIDDEN_PLATFORM_TAG_KEYS.has(tagKey) || RESERVED_SCRIPT_TAG_KEYS.has(tagKey)) {
+  if (HIDDEN_PLATFORM_TAG_KEYS.has(tagKey)) {
     return true;
   }
   return tagKey.toLowerCase().startsWith('bklite_script_');
 };
+
+export const visibleDimensionItems = <T extends { name?: string }>(
+  items: T[] = []
+): T[] =>
+  items.filter((item) => {
+    const name = String(item?.name || '').trim();
+    return Boolean(name) && !isHiddenPlatformDimensionKey(name);
+  });
 
 export const isSelfMetricName = (name: string, isolationPrefixes: string[] = []): boolean => {
   const raw = String(name || '');
@@ -216,7 +224,7 @@ export const collectReservedScriptTagKeys = (
   return found;
 };
 
-export const cleanDisplayTags = (
+export const keepStoredTags = (
   tags?: Record<string, string>
 ): Record<string, string> | undefined => {
   if (!tags) {
@@ -226,7 +234,7 @@ export const cleanDisplayTags = (
   Object.entries(tags).forEach(([key, raw]) => {
     const tagKey = String(key || '').trim();
     const tagValue = raw == null ? '' : String(raw);
-    if (isHiddenPlatformDimensionKey(tagKey)) {
+    if (!tagKey || tagKey === RESERVED_CONFLICT_TAG) {
       return;
     }
     if (!tagValue || UNRENDERED_PLACEHOLDER_RE.test(tagKey) || UNRENDERED_PLACEHOLDER_RE.test(tagValue)) {
@@ -235,6 +243,23 @@ export const cleanDisplayTags = (
     if (out[tagKey] === undefined) {
       out[tagKey] = tagValue;
     }
+  });
+  return Object.keys(out).length ? out : undefined;
+};
+
+export const cleanDisplayTags = (
+  tags?: Record<string, string>
+): Record<string, string> | undefined => {
+  const stored = keepStoredTags(tags);
+  if (!stored) {
+    return undefined;
+  }
+  const out: Record<string, string> = {};
+  Object.entries(stored).forEach(([tagKey, tagValue]) => {
+    if (isHiddenPlatformDimensionKey(tagKey)) {
+      return;
+    }
+    out[tagKey] = tagValue;
   });
   return Object.keys(out).length ? out : undefined;
 };
@@ -404,9 +429,9 @@ export const parseScriptMetrics = (
     if (!stdoutName || isSelfMetricName(stdoutName, isolationPrefixes)) {
       return;
     }
-    const cleanedTags = cleanDisplayTags(tags);
+    const storedTags = keepStoredTags(tags);
     const reservedTagKeys = collectReservedScriptTagKeys(tags);
-    const metricKey = `${stdoutName}|${stableTagKey(cleanedTags)}`;
+    const metricKey = `${stdoutName}|${stableTagKey(cleanDisplayTags(storedTags))}`;
     if (seenKeys.has(metricKey)) {
       return;
     }
@@ -415,7 +440,7 @@ export const parseScriptMetrics = (
       key: metricKey,
       name: stdoutName,
       value,
-      tags: cleanedTags,
+      tags: storedTags,
       reservedTagKeys
     });
   };
