@@ -276,20 +276,22 @@ def _mask_sensitive_data(data: Any) -> Any:
         return data
 
 
-def agui_run_deadline_seconds() -> float:
-    """整轮 SSE 硬上限。显式 AGUI_RUN_DEADLINE_SECONDS 优先，否则取两倍 LLM 超时。"""
+def agui_run_deadline_seconds() -> float | None:
+    """整轮 SSE 墙钟上限；默认关闭。
+
+    - 未设置 / 0 / off / none / false → 无死线（长任务靠单工具超时与用户中断）
+    - 显式正数 → max(value, 30) 秒，运维可临时打开
+    """
     explicit = os.getenv("AGUI_RUN_DEADLINE_SECONDS")
-    if explicit:
-        try:
-            return max(float(explicit), 30.0)
-        except (TypeError, ValueError):
-            pass
-    raw = os.getenv("LLM_INVOKE_TIMEOUT", "300")
+    if explicit is None or not str(explicit).strip():
+        return None
+    raw = str(explicit).strip().lower()
+    if raw in {"0", "off", "none", "false", "disabled"}:
+        return None
     try:
-        base = float(raw)
+        return max(float(raw), 30.0)
     except (TypeError, ValueError):
-        base = 300.0
-    return max(base * 2, 180.0)
+        return None
 
 
 def log_lingering_agui_tasks(thread_id: str, *, reason: str) -> None:
@@ -1720,14 +1722,15 @@ class BasicGraph(ABC):
             )
 
             node_finished_at: float | None = None
-            deadline_ms = agui_run_deadline_seconds() * 1000
+            deadline_seconds = agui_run_deadline_seconds()
+            deadline_ms = deadline_seconds * 1000 if deadline_seconds is not None else None
             async for stream_type, stream_data in _merge_async_streams(
                 langgraph_stream,
                 browser_event_queue,
                 stop_event,
                 owned_queue,
             ):
-                if elapsed_ms(run_started) >= deadline_ms:
+                if deadline_ms is not None and elapsed_ms(run_started) >= deadline_ms:
                     log_lingering_agui_tasks(thread_id, reason="deadline")
                     yield encoder.encode(
                         RunErrorEvent(

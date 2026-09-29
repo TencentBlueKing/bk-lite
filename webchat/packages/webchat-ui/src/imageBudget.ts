@@ -1,4 +1,4 @@
-import type { WebChatConfig } from '@webchat/core';
+import { translate, type WebChatConfig } from '@webchat/core';
 
 const MEBIBYTE = 1024 * 1024;
 
@@ -180,7 +180,7 @@ export const inspectImageBatch = async <T extends ImageFile & { arrayBuffer(): P
     }
   };
   await Promise.all(Array.from({ length: workerCount }, () => worker()));
-  if (signal?.aborted) throw new Error('图片尺寸读取已取消。');
+  if (signal?.aborted) throw new Error(translate('image.readAborted', '图片尺寸读取已取消。'));
   if (firstError !== undefined) throw firstError;
   return results;
 };
@@ -231,11 +231,11 @@ export const readFileAsDataUrl = (file: File, signal?: AbortSignal): Promise<str
     };
     reader.onerror = () => {
       cleanup();
-      reject(reader.error || new Error(`读取图片“${file.name}”失败。`));
+      reject(reader.error || new Error(translate('image.readFailed', '读取图片“{name}”失败。', { name: file.name })));
     };
     reader.onabort = () => {
       cleanup();
-      reject(new Error(`读取图片“${file.name}”已取消。`));
+      reject(new Error(translate('image.readCancelled', '读取图片“{name}”已取消。', { name: file.name })));
     };
     if (signal?.aborted) return abort();
     signal?.addEventListener('abort', abort, { once: true });
@@ -280,7 +280,7 @@ export const readImageBatch = async <T extends ImageFile>(
   };
 
   await Promise.all(Array.from({ length: workerCount }, () => worker()));
-  if (signal?.aborted) throw new Error('图片读取已取消。');
+  if (signal?.aborted) throw new Error(translate('image.readFileAborted', '图片读取已取消。'));
   if (firstError !== undefined) throw firstError;
   return results;
 };

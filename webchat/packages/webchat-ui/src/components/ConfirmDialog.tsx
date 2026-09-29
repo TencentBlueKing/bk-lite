@@ -1,5 +1,6 @@
 import React from 'react';
 import { WC } from '../chrome';
+import { useTranslator } from '../useTranslator';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -17,9 +18,10 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   message,
   onConfirm,
   onCancel,
-  confirmText = '确定',
-  cancelText = '取消',
+  confirmText,
+  cancelText,
 }) => {
+  const t = useTranslator();
   if (!isOpen) return null;
 
   return (
@@ -72,14 +74,14 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             className="rounded-lg px-4 py-2 text-sm font-medium"
             style={{ background: WC.page, color: WC.botText }}
           >
-            {cancelText}
+            {cancelText ?? t('common.cancel', '取消')}
           </button>
           <button
             onClick={onConfirm}
             className="rounded-lg px-4 py-2 text-sm font-medium"
             style={{ background: WC.fail, color: WC.onPrimary }}
           >
-            {confirmText}
+            {confirmText ?? t('common.confirm', '确定')}
           </button>
         </div>
       </div>

@@ -17,6 +17,18 @@ export {
   type HistoryToolCall,
 } from './aguiHistoryText';
 export { extractMessageText } from './messageContent';
+export {
+  DEFAULT_LOCALE,
+  createTranslator,
+  getWebChatLocale,
+  normalizeLocale,
+  setWebChatLocale,
+  translate,
+  type Locale,
+  type Translate,
+  type TranslateValues,
+  type WebChatCatalog,
+} from './i18n';
 export * from './utils';
 export * from './imeKeyboard';
 export * from './platform';

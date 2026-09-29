@@ -595,9 +595,6 @@ export const renderAllToolCalls = (toolCalls: Map<string, ToolCallInfo>, isStrea
   const hasError = toolsArray.some(([, info]) => info.status === 'error');
   const hasRunning = completedCount < totalCount;
 
-  // 如果传入了 isStreaming 参数，使用它；否则根据工具状态判断
-  const shouldExpand = isStreaming !== undefined ? isStreaming : hasRunning;
-
   // 组头部状态图标
   const groupStatusIcon = hasRunning
     ? `<span style="display: inline-block; width: 10px; height: 10px; border: 1.5px solid #1677ff; border-top-color: transparent; border-radius: 50%; animation: tool-spin 0.8s linear infinite;"></span>`
@@ -608,8 +605,15 @@ export const renderAllToolCalls = (toolCalls: Map<string, ToolCallInfo>, isStrea
   // 渲染所有工具项
   const toolItems = toolsArray.map(([id, info]) => renderToolItem(id, info)).join('');
 
-  // 提示文字：流式回复中显示"执行中"，完成后显示"点击展开查看详情"
-  const hintText = shouldExpand ? '执行中...' : '点击展开查看详情';
+  // 提示文字：工具还在跑 → 执行中；工具都结束但流未收尾 → 正在分析；否则引导展开
+  const hintText = hasRunning
+    ? '执行中...'
+    : isStreaming
+      ? '正在分析工具结果...'
+      : '点击展开查看详情';
+
+  // 流式中默认展开：仍在跑工具或仍在等模型输出
+  const shouldExpand = isStreaming !== undefined ? isStreaming : hasRunning;
 
   // 组头部
   const header = `<div class="tool-call-group-header" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; cursor: pointer; user-select: none; font-size: 12px; color: var(--color-text-3); border-radius: 4px; margin: 2px 0;"><span class="tool-call-expand-icon" style="font-size: 8px; width: 12px; display: inline-flex; align-items: center; justify-content: center;">▶</span><span class="tool-call-group-status" style="display: inline-flex; align-items: center;">${groupStatusIcon}</span><span>已调用 ${totalCount} 个工具</span><span style="color: var(--color-text-4);">${hintText}</span></div>`;

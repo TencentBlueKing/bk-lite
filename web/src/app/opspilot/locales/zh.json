@@ -1248,7 +1248,8 @@
     "choiceTextPlaceholder": "输入你的回答...",
     "replyToPendingChoice": "回复上面的问题...",
     "planningExecution": "正在分析任务并规划执行步骤…",
-    "replanningExecution": "正在根据执行结果重新规划…"
+    "replanningExecution": "正在根据执行结果重新规划…",
+    "analyzingResult": "正在分析工具结果…"
   },
   "settings": {
     "secret": {
