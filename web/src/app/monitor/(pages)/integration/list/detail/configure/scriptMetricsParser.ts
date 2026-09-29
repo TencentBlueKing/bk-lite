@@ -13,6 +13,10 @@ export interface BusinessMetricItem {
   description?: string;
   /** 指标目录数据类型，已有枚举指标不改单位。 */
   data_type?: string;
+  /** 用户在调试表改过分组时，已有指标才 PATCH metric_group。 */
+  editedGroup?: boolean;
+  /** 用户在调试表改过单位时，已有指标才 PATCH unit。 */
+  editedUnit?: boolean;
 }
 
 export interface ParsedScriptOutput {

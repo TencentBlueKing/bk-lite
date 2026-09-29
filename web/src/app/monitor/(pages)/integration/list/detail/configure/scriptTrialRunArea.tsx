@@ -263,6 +263,8 @@ interface ScriptTrialRunAreaProps {
   objectId?: string | number;
   onSelectedMetricsChange?: (metrics: BusinessMetricItem[]) => void;
   onBusinessMetricsAvailableChange?: (available: boolean) => void;
+  onCatalogBlockingChange?: (blocking: boolean) => void;
+  onCatalogErrorChange?: (failed: boolean) => void;
 }
 
 const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
@@ -274,7 +276,9 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
   pluginId,
   objectId,
   onSelectedMetricsChange,
-  onBusinessMetricsAvailableChange
+  onBusinessMetricsAvailableChange,
+  onCatalogBlockingChange,
+  onCatalogErrorChange
 }) => {
   const { t } = useTranslation();
   const { get } = useApiClient();
@@ -284,6 +288,8 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
   const [groupOptions, setGroupOptions] = useState<CatalogMetricGroupOption[]>([]);
   const [catalogMetrics, setCatalogMetrics] = useState<CatalogMetricRef[]>([]);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
+  const [catalogError, setCatalogError] = useState(false);
+  const [catalogEpoch, setCatalogEpoch] = useState(0);
   const [trialSubmitting, setTrialSubmitting] = useState(false);
   const retainedMetricStateRef = useRef({
     selected: {} as Record<string, boolean>,
@@ -389,11 +395,13 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     if (!pluginId || !objectId) {
       setGroupOptions([]);
       setCatalogMetrics([]);
+      setCatalogError(false);
       setCatalogLoaded(true);
       return;
     }
     let cancelled = false;
     setCatalogLoaded(false);
+    setCatalogError(false);
     const loadCatalog = async () => {
       try {
         const [groupRes, metricRefs] = await Promise.all([
@@ -415,15 +423,15 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
         if (!cancelled) {
           setGroupOptions(extractCatalogItems<CatalogMetricGroupOption>(groupRes));
           setCatalogMetrics(metricRefs);
+          setCatalogError(false);
+          setCatalogLoaded(true);
         }
       } catch {
         if (!cancelled) {
           setGroupOptions([]);
           setCatalogMetrics([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setCatalogLoaded(true);
+          setCatalogError(true);
+          setCatalogLoaded(false);
         }
       }
     };
@@ -431,12 +439,34 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [get, pluginId, objectId]);
+  }, [get, pluginId, objectId, catalogEpoch]);
 
   // 仅成功调试把勾选业务指标交给确认；失败即使解析到行也不喂。
+  // 目录未就绪时不喂，避免把空草稿当新建指标写入。
+  const catalogBlocking = Boolean(pluginId && objectId && !catalogLoaded);
+
+  useEffect(() => {
+    onCatalogBlockingChange?.(catalogBlocking);
+  }, [catalogBlocking, onCatalogBlockingChange]);
+
+  useEffect(() => {
+    onCatalogErrorChange?.(catalogError);
+  }, [catalogError, onCatalogErrorChange]);
+
+  useEffect(() => {
+    return () => {
+      onCatalogBlockingChange?.(false);
+      onCatalogErrorChange?.(false);
+    };
+  }, [onCatalogBlockingChange, onCatalogErrorChange]);
+
   useEffect(() => {
     if (!onSelectedMetricsChange) return;
-    if (!canFeedScriptMetricActions || !parsedOutput?.businessMetrics?.length) {
+    if (
+      catalogBlocking ||
+      !canFeedScriptMetricActions ||
+      !parsedOutput?.businessMetrics?.length
+    ) {
       onSelectedMetricsChange([]);
       return;
     }
@@ -448,6 +478,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
       )
     );
   }, [
+    catalogBlocking,
     canFeedScriptMetricActions,
     selectedMetrics,
     parsedOutput,
@@ -457,10 +488,12 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
 
   useEffect(() => {
     onBusinessMetricsAvailableChange?.(
-      canFeedScriptMetricActions &&
+      !catalogBlocking &&
+        canFeedScriptMetricActions &&
         (parsedOutput?.businessMetrics?.length || 0) > 0
     );
   }, [
+    catalogBlocking,
     canFeedScriptMetricActions,
     parsedOutput,
     onBusinessMetricsAvailableChange
@@ -496,6 +529,31 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     });
     setSelectedMetrics(nextMap);
   };
+
+  const retryCatalog = () => setCatalogEpoch((n) => n + 1);
+  const catalogErrorAlert = catalogError ? (
+    <Alert
+      className="mb-3 py-1 text-[13px]"
+      type="warning"
+      showIcon
+      message={
+        <span>
+          {t(
+            'monitor.integrations.scriptCatalogLoadFailed',
+            '指标目录加载失败，暂无法确认写入'
+          )}
+          <Button
+            type="link"
+            size="small"
+            className="ml-1 h-auto px-0"
+            onClick={retryCatalog}
+          >
+            {t('common.retry', '重试')}
+          </Button>
+        </span>
+      }
+    />
+  ) : null;
 
   // 1. 未运行状态
   if (!task || !task.status) {
@@ -855,6 +913,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
 
       {/* Business metrics with trial-run checkboxes */}
       <div>
+        {catalogErrorAlert}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <Checkbox
@@ -943,7 +1002,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                         <ScriptMetricGroupSelect
                           size="middle"
                           allowClear
-                          disabled={!isChecked}
+                          disabled={!isChecked || catalogError}
                           className={INLINE_CONTROL_CLASS}
                           placeholder={t('monitor.integrations.metricGroup', '分组')}
                           value={
@@ -967,7 +1026,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                         <Cascader
                           size="middle"
                           allowClear
-                          disabled={!isChecked || existingEnum}
+                          disabled={!isChecked || existingEnum || catalogError}
                           className={INLINE_CONTROL_CLASS}
                           placeholder={t('common.unit', '单位')}
                           options={unitOptions}

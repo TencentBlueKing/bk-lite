@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Form, Button, Input, message, Spin, Dropdown, Modal, Radio, Tag, Select, Switch } from 'antd';
+import { Form, Button, Input, message, Spin, Dropdown, Modal, Radio, Tag, Select, Switch, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   CheckCircleOutlined,
@@ -559,6 +559,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   >({});
   const [scriptDebugHasBusinessMetrics, setScriptDebugHasBusinessMetrics] =
     useState(false);
+  const [scriptCatalogBlocking, setScriptCatalogBlocking] = useState(false);
+  const [scriptCatalogError, setScriptCatalogError] = useState(false);
   const [scriptWriteMode, setScriptWriteMode] =
     useState<ScriptMetricWriteMode>(SCRIPT_METRIC_PERSIST_MODE_ADD);
   const [scriptWriteChoice, setScriptWriteChoice] =
@@ -1593,6 +1595,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     ) {
       return;
     }
+    if (isScriptTemplate && scriptCatalogBlocking) {
+      return;
+    }
     if (isScriptTemplate && hasReservedScriptError) {
       return;
     }
@@ -2132,24 +2137,40 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           objectId={objectId}
           onSelectedMetricsChange={handleSelectedScriptMetricsChange}
           onBusinessMetricsAvailableChange={handleBusinessMetricsAvailableChange}
+          onCatalogBlockingChange={setScriptCatalogBlocking}
+          onCatalogErrorChange={setScriptCatalogError}
         />
       )}
       <Form.Item>
         <div className="flex flex-wrap items-center gap-3">
           <Permission requiredPermissions={['Add']}>
-            <Button
-              type="primary"
-              loading={confirmLoading}
-              disabled={
-                confirmLoading ||
-                isAnyTrialRunning ||
-                hasReservedScriptError ||
-                scriptTrialFailed
+            <Tooltip
+              title={
+                scriptCatalogError
+                  ? t(
+                    'monitor.integrations.scriptCatalogLoadFailed',
+                    '指标目录加载失败，暂无法确认写入'
+                  )
+                  : undefined
               }
-              onClick={handleSave}
             >
-              {t('common.confirm')}
-            </Button>
+              <span className="inline-block">
+                <Button
+                  type="primary"
+                  loading={confirmLoading}
+                  disabled={
+                    confirmLoading ||
+                    isAnyTrialRunning ||
+                    hasReservedScriptError ||
+                    scriptTrialFailed ||
+                    scriptCatalogBlocking
+                  }
+                  onClick={handleSave}
+                >
+                  {t('common.confirm')}
+                </Button>
+              </span>
+            </Tooltip>
           </Permission>
           {hasReservedScriptTagError && (
             <span

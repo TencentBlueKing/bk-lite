@@ -423,7 +423,9 @@ export const applyCatalogDraft = (
   metric_group: draft?.metric_group ?? null,
   unit: resolveCatalogUnitId(draft?.unit),
   description: resolveCatalogDescription(draft?.description),
-  data_type: draft?.data_type || item.data_type
+  data_type: draft?.data_type || item.data_type,
+  editedGroup: Boolean(draft?.editedGroup),
+  editedUnit: Boolean(draft?.editedUnit)
 });
 
 export const collectReservedTagViolations = (
@@ -839,12 +841,16 @@ export const buildScriptMetricCatalogUpdatePayload = (
   const nextGroup = resolveCatalogMetricGroupId(item.metric_group, 0);
   const existingGroup = Number(existing?.metric_group);
   if (
+    item.editedGroup &&
     nextGroup > 0 &&
     (!Number.isFinite(existingGroup) || existingGroup !== nextGroup)
   ) {
     payload.metric_group = nextGroup;
   }
-  if (!isCatalogEnumType(existing?.data_type || item.data_type)) {
+  if (
+    item.editedUnit &&
+    !isCatalogEnumType(existing?.data_type || item.data_type)
+  ) {
     const nextUnit = resolveCatalogUnitId(item.unit);
     const existingUnit = String(existing?.unit || '').trim();
     const sameUnit =
