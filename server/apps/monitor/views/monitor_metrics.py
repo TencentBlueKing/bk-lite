@@ -19,6 +19,7 @@ from apps.monitor.models import MonitorPlugin
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.models.monitor_object import MonitorObject
 from apps.monitor.serializers.monitor_metrics import MetricBatchUpdateSerializer, MetricGroupSerializer, MetricSerializer
+from apps.monitor.services.custom_script_plugin import SCRIPT_SELF_MONITOR_METRIC_DELETE_ERROR, is_script_self_monitor_metric_name
 from apps.monitor.utils.metric_enum_locale import localize_metric_enum_unit
 from apps.monitor.utils.metric_keyword import apply_metric_keyword_filter
 from apps.monitor.utils.metric_query_labels import ensure_metric_labels_placeholder, is_raw_vector_selector
@@ -525,8 +526,19 @@ class MetricViewSet(viewsets.ModelViewSet):
 
     @HasPermission("integration_metric-Delete Metric")
     def destroy(self, request, *args, **kwargs):
-        self._ensure_modifiable(self.get_object())
+        metric = self.get_object()
+        self._ensure_modifiable(metric)
+        self._ensure_script_metric_deletable(metric, request)
         return super().destroy(request, *args, **kwargs)
+
+    @staticmethod
+    def _ensure_script_metric_deletable(metric, request):
+        collect_type = getattr(getattr(metric, "monitor_plugin", None), "collect_type", None)
+        if is_script_self_monitor_metric_name(getattr(metric, "name", None), collect_type):
+            raise BaseAppException(SCRIPT_SELF_MONITOR_METRIC_DELETE_ERROR)
+        plugin_id = parse_optional_positive_id(request.query_params.get("monitor_plugin_id"), "monitor_plugin_id")
+        if plugin_id is not None and metric.monitor_plugin_id != plugin_id:
+            raise ValidationAppException("只能删除当前插件的指标")
 
     @action(detail=False, methods=["post"], url_path="batch_update")
     @HasPermission("integration_metric-Edit Metric")

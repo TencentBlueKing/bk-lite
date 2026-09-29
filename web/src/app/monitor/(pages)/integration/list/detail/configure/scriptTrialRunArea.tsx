@@ -12,16 +12,19 @@ import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import { useCommon } from '@/app/monitor/context/common';
-import { parseScriptMetrics, BusinessMetricItem, cleanDisplayTags, isReservedScriptMetricId } from './scriptMetricsParser';
+import { parseScriptMetrics, BusinessMetricItem, cleanDisplayTags, cleanMeasurementName, isReservedScriptMetricId } from './scriptMetricsParser';
 import {
   applyDefaultCatalogDrafts,
   buildUnitCascaderOptions,
+  catalogMetricsByName,
   extractCatalogItems,
   formatDimensionTagSummary,
+  listPluginCatalogMetrics,
   mergeRetainedTrialMetricState,
   pickSelectedBusinessMetrics,
   resolveDefaultCatalogGroupId,
   CatalogMetricGroupOption,
+  CatalogMetricRef,
   ScriptMetricCatalogDraft
 } from './scriptMetricPersist';
 import ScriptMetricGroupSelect from './scriptMetricGroupSelect';
@@ -132,6 +135,8 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
   const [selectedMetrics, setSelectedMetrics] = useState<Record<string, boolean>>({});
   const [catalogByKey, setCatalogByKey] = useState<Record<string, ScriptMetricCatalogDraft>>({});
   const [groupOptions, setGroupOptions] = useState<CatalogMetricGroupOption[]>([]);
+  const [catalogMetrics, setCatalogMetrics] = useState<CatalogMetricRef[]>([]);
+  const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [trialSubmitting, setTrialSubmitting] = useState(false);
   const retainedMetricStateRef = useRef({
     selected: {} as Record<string, boolean>,
@@ -179,6 +184,10 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     () => resolveDefaultCatalogGroupId(groupOptions),
     [groupOptions]
   );
+  const existingByName = useMemo(
+    () => catalogMetricsByName(catalogMetrics),
+    [catalogMetrics]
+  );
 
   useEffect(() => {
     retainedMetricStateRef.current.selected = selectedMetrics;
@@ -189,6 +198,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
   }, [catalogByKey]);
 
   // 重新调试成功：刷新采样值；仍存在的指标保留勾选/分组/单位/描述；消失的视为未勾选。
+  // 已有目录指标的分组/单位从目录预填，不用后缀猜测。
   useEffect(() => {
     const metrics = parsedOutput?.businessMetrics;
     if (!metrics?.length) {
@@ -197,6 +207,9 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
         setSelectedMetrics({});
         setCatalogByKey({});
       }
+      return;
+    }
+    if (pluginId && objectId && !catalogLoaded) {
       return;
     }
     const merged = mergeRetainedTrialMetricState({
@@ -208,41 +221,66 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
       metrics,
       merged.catalog,
       defaultGroupId,
-      unitOptions
+      unitOptions,
+      existingByName
     );
     const next = { selected: merged.selected, catalog: withDefaults.catalog };
     retainedMetricStateRef.current = next;
     setSelectedMetrics(next.selected);
     setCatalogByKey(next.catalog);
-  }, [parsedOutput, defaultGroupId, unitOptions]);
+  }, [
+    parsedOutput,
+    defaultGroupId,
+    unitOptions,
+    existingByName,
+    catalogLoaded,
+    pluginId,
+    objectId
+  ]);
 
   useEffect(() => {
     if (!pluginId || !objectId) {
       setGroupOptions([]);
+      setCatalogMetrics([]);
+      setCatalogLoaded(true);
       return;
     }
     let cancelled = false;
-    const loadGroups = async () => {
+    setCatalogLoaded(false);
+    const loadCatalog = async () => {
       try {
-        const groupRes = await get('/monitor/api/metrics_group/', {
-          params: {
-            monitor_object_id: objectId,
-            monitor_plugin_id: pluginId,
-            page: 1,
-            page_size: 100
-          },
-          suppressErrorNotification: true
-        });
+        const [groupRes, metricRefs] = await Promise.all([
+          get('/monitor/api/metrics_group/', {
+            params: {
+              monitor_object_id: objectId,
+              monitor_plugin_id: pluginId,
+              page: 1,
+              page_size: 100
+            },
+            suppressErrorNotification: true
+          }),
+          listPluginCatalogMetrics({
+            pluginId,
+            objectId,
+            client: { get }
+          })
+        ]);
         if (!cancelled) {
           setGroupOptions(extractCatalogItems<CatalogMetricGroupOption>(groupRes));
+          setCatalogMetrics(metricRefs);
         }
       } catch {
         if (!cancelled) {
           setGroupOptions([]);
+          setCatalogMetrics([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setCatalogLoaded(true);
         }
       }
     };
-    void loadGroups();
+    void loadCatalog();
     return () => {
       cancelled = true;
     };
@@ -704,6 +742,13 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                 const isChecked =
                   !reservedMetricId && selectedMetrics[item.key] !== false;
                 const catalog = catalogByKey[item.key] || {};
+                const existingEnum =
+                  String(
+                    catalog.data_type ||
+                      existingByName.get(cleanMeasurementName(item.name))
+                        ?.data_type ||
+                      ''
+                  ).toLowerCase() === 'enum';
                 return (
                   <div
                     key={item.key}
@@ -766,7 +811,8 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                         pluginId={pluginId}
                         onChange={(next) =>
                           updateCatalog(item.key, {
-                            metric_group: typeof next === 'number' ? next : null
+                            metric_group: typeof next === 'number' ? next : null,
+                            editedGroup: true
                           })
                         }
                       />
@@ -775,7 +821,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                       <Cascader
                         size="small"
                         allowClear
-                        disabled={!isChecked}
+                        disabled={!isChecked || existingEnum}
                         className="w-full [&_.ant-select-selector]:!min-h-[24px] [&_.ant-select-selector]:!h-[24px]"
                         placeholder={t('common.unit', '单位')}
                         options={unitOptions}
@@ -803,7 +849,8 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                         }
                         onChange={(value) =>
                           updateCatalog(item.key, {
-                            unit: Array.isArray(value) ? value : undefined
+                            unit: Array.isArray(value) ? value : undefined,
+                            editedUnit: true
                           })
                         }
                       />

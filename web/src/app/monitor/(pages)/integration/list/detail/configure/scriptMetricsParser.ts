@@ -11,6 +11,8 @@ export interface BusinessMetricItem {
   unit?: string;
   /** 指标目录描述，允许空字符串。 */
   description?: string;
+  /** 指标目录数据类型，已有枚举指标不改单位。 */
+  data_type?: string;
 }
 
 export interface ParsedScriptOutput {
@@ -195,9 +197,26 @@ export const isReservedScriptTagKey = (key: string): boolean => {
   return lower.startsWith('bklite_script_');
 };
 
-/** 指标 ID 与保留标签共用同一黑名单（精确 key + bklite_script_ 前缀）。 */
-export const isReservedScriptMetricId = (name: string): boolean =>
-  isReservedScriptTagKey(name);
+/** 指标 ID 黑名单：保留标签 + config_id + bklite_script_ 前缀。 */
+export const RESERVED_SCRIPT_METRIC_NAMES = new Set<string>([
+  ...RESERVED_SCRIPT_TAG_KEYS,
+  'config_id'
+]);
+
+export const isReservedScriptMetricId = (name: string): boolean => {
+  const text = String(name || '').trim();
+  if (!text) {
+    return false;
+  }
+  const lower = text.toLowerCase();
+  if (
+    RESERVED_SCRIPT_METRIC_NAMES.has(text) ||
+    RESERVED_SCRIPT_METRIC_NAMES.has(lower)
+  ) {
+    return true;
+  }
+  return lower.startsWith('bklite_script_');
+};
 
 export const collectReservedScriptTagKeys = (
   tags?: Record<string, string>

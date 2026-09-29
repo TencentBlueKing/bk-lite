@@ -132,8 +132,9 @@ class MetricSerializer(serializers.ModelSerializer):
         if self.instance is None:
             attrs["instance_id_keys"] = resolved_instance_id_keys
 
-        name_submitted = self.instance is None or "name" in attrs
-        if name_submitted and name and is_script_collect_type(getattr(monitor_plugin, "collect_type", None)):
+        current_name = getattr(self.instance, "name", None) if self.instance is not None else None
+        name_changed = self.instance is None or ("name" in attrs and attrs.get("name") != current_name)
+        if name_changed and name and is_script_collect_type(getattr(monitor_plugin, "collect_type", None)):
             if is_reserved_script_metric_name(name):
                 raise serializers.ValidationError({"name": RESERVED_SCRIPT_METRIC_NAME_ERROR})
 

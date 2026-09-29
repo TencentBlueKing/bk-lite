@@ -110,6 +110,7 @@ const Configure = () => {
   const metricRef = useRef<ModalRef>(null);
   const batchEditRef = useRef<MetricBatchEditModalRef>(null);
   const [searchText, setSearchText] = useState<string>('');
+  const [nameInFilter, setNameInFilter] = useState<string>('');
   const [metricData, setMetricData] = useState<MetricListItem[]>([]);
   const [filteredMetricData, setFilteredMetricData] = useState<
     MetricListItem[]
@@ -131,7 +132,7 @@ const Configure = () => {
   const scriptMetricDraftConsumedRef = useRef(false);
   const [catalogReady, setCatalogReady] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
-  const canReorderCatalog = metricCount <= 100 && !searchText.trim();
+  const canReorderCatalog = metricCount <= 100 && !searchText.trim() && !nameInFilter;
 
   useEffect(() => () => metricCatalogAbortRef.current?.abort(), []);
 
@@ -327,12 +328,24 @@ const Configure = () => {
     page = metricPage,
     keyword = searchText.trim(),
     expandMetricNames: string[] = [],
-    expandGroupIds: string[] = []
+    expandGroupIds: string[] = [],
+    nameIn = nameInFilter
   ) => {
+    const nameInNames = nameIn
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
     const metricParams = {
       monitor_object_id: +objId,
       monitor_plugin_id: +pluginID,
-      ...(keyword ? { keyword } : {})
+      ...(nameIn
+        ? {
+          name_in: nameIn,
+          page_size: Math.max(100, nameInNames.length)
+        }
+        : keyword
+          ? { keyword }
+          : {})
     };
     const groupParams = {
       monitor_object_id: +objId,
@@ -349,6 +362,7 @@ const Configure = () => {
 
     if (!preserveState) {
       setSearchText('');
+      setNameInFilter('');
     }
     try {
       // 厂商指标按页分页；IF-MIB 固定约十余条，单独拉全量后置底归并，避免拆页。
@@ -421,13 +435,24 @@ const Configure = () => {
       );
       const defaultOpenState = getDefaultMetricGroupOpenState(metricView);
       const expandNameSet = new Set(expandMetricNames.filter(Boolean));
+      const matchesCarryName = (name?: string) => {
+        const raw = String(name || '').trim();
+        if (!raw) {
+          return false;
+        }
+        if (expandNameSet.has(raw)) {
+          return true;
+        }
+        const cleaned = cleanMeasurementName(raw);
+        return Boolean(cleaned && expandNameSet.has(cleaned));
+      };
       const expandGroupSet = new Set(expandGroupIds.filter(Boolean).map(String));
       if (expandNameSet.size) {
         setSelectedRowKeys(
           catalogMetrics
             .filter(
               (metric) =>
-                expandNameSet.has(metric.name) && metric.is_pre !== true
+                matchesCarryName(metric.name) && metric.is_pre !== true
             )
             .map((metric) => metric.id)
         );
@@ -435,7 +460,7 @@ const Configure = () => {
       const groupData = metricView.map((group) => {
         const expandByCarry =
           expandNameSet.size > 0 &&
-          group.child.some((metric) => expandNameSet.has(metric.name));
+          group.child.some((metric) => matchesCarryName(metric.name));
         const expandGroup = expandGroupSet.has(String(group.id));
         return {
           ...group,
@@ -467,14 +492,16 @@ const Configure = () => {
   };
 
   const onTxtPressEnter = () => {
+    setNameInFilter('');
     setMetricPage(1);
-    getInitData(activeTab, true, 1, searchText.trim());
+    getInitData(activeTab, true, 1, searchText.trim(), [], [], '');
   };
 
   const onTxtClear = () => {
     setSearchText('');
+    setNameInFilter('');
     setMetricPage(1);
-    getInitData(activeTab, true, 1, '');
+    getInitData(activeTab, true, 1, '', [], [], '');
   };
 
   const openGroupModal = (type: string, row = {}) => {
@@ -530,12 +557,18 @@ const Configure = () => {
     if (!targetObjectId || !pluginID) {
       return;
     }
+    const nameIn = names.join(',');
+    setNameInFilter(nameIn);
+    setSearchText(nameIn);
+    setMetricPage(1);
     await getInitData(
       String(targetObjectId),
       true,
-      metricPage,
-      searchText.trim(),
-      names
+      1,
+      nameIn,
+      names,
+      [],
+      nameIn
     );
   };
 
@@ -582,6 +615,7 @@ const Configure = () => {
     setActiveTab(next);
     setMetricPage(1);
     setSelectedRowKeys([]);
+    setNameInFilter('');
     getInitData(next, false, 1);
   };
 

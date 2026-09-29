@@ -42,19 +42,45 @@ RESERVED_SCRIPT_TAG_KEYS = (
     "agent_id",
     "script",
 )
+# 指标 ID 黑名单：保留标签 + config_id。不得并入 RESERVED_SCRIPT_TAG_KEYS（TOML 锁依赖该元组）。
+RESERVED_SCRIPT_METRIC_NAMES = RESERVED_SCRIPT_TAG_KEYS + ("config_id",)
 RESERVED_SCRIPT_METRIC_PREFIX = "bklite_script_"
 RESERVED_SCRIPT_METRIC_NAME_ERROR = "指标 ID 与保留字段冲突，请更换"
+SCRIPT_SELF_MONITOR_METRIC_NAMES = frozenset(
+    {
+        "up",
+        "duration",
+        "duration_ms",
+        "duration_seconds",
+        "exit_code",
+        "run_duration",
+        "bklite_script",
+    }
+)
+SCRIPT_SELF_MONITOR_METRIC_DELETE_ERROR = "脚本自监控指标禁止删除"
 
 
 def is_reserved_script_metric_name(name) -> bool:
-    """指标 ID 不得占用平台保留标签名或 bklite_script_ 前缀。"""
+    """指标 ID 不得占用平台保留标签名、config_id 或 bklite_script_ 前缀。"""
     text = str(name or "").strip()
     if not text:
         return False
     lower = text.casefold()
-    if lower in {key.casefold() for key in RESERVED_SCRIPT_TAG_KEYS}:
+    if lower in {key.casefold() for key in RESERVED_SCRIPT_METRIC_NAMES}:
         return True
     return lower.startswith(RESERVED_SCRIPT_METRIC_PREFIX)
+
+
+def is_script_self_monitor_metric_name(name, collect_type=None) -> bool:
+    """脚本健康/自监控指标不可删：bklite_script_*，以及脚本插件下的 up / duration / exit_code。"""
+    lower = str(name or "").strip().casefold()
+    if not lower:
+        return False
+    if lower.startswith(RESERVED_SCRIPT_METRIC_PREFIX) or lower.startswith("bklite_script."):
+        return True
+    if is_script_collect_type(collect_type) and lower in SCRIPT_SELF_MONITOR_METRIC_NAMES:
+        return True
+    return False
 
 
 # name_prefix + namepass 按 config_id 隔离，避免合并进同一 Telegraf 后改写其他采集。

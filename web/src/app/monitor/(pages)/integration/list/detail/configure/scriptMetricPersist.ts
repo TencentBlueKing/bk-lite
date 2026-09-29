@@ -19,6 +19,9 @@ export interface ScriptMetricCatalogDraft {
   metric_group?: number | null;
   unit?: Array<string | number> | string;
   description?: string;
+  data_type?: string;
+  editedGroup?: boolean;
+  editedUnit?: boolean;
 }
 
 export interface ScriptMetricRegisterPayload {
@@ -35,9 +38,8 @@ export interface ScriptMetricRegisterPayload {
 }
 
 export interface ScriptMetricCatalogUpdatePayload {
-  metric_group: number;
-  unit: string;
-  description: string;
+  metric_group?: number;
+  unit?: string;
 }
 
 interface TranslateFn {
@@ -56,7 +58,10 @@ export interface PersistScriptMetricsClient {
   get: (url: string, config?: { params?: Record<string, unknown> } & RequestConfig) => Promise<unknown>;
   post: (url: string, data?: unknown, config?: RequestConfig) => Promise<unknown>;
   patch: (url: string, data?: unknown, config?: RequestConfig) => Promise<unknown>;
-  del?: (url: string, config?: RequestConfig) => Promise<unknown>;
+  del?: (
+    url: string,
+    config?: RequestConfig & { params?: Record<string, unknown> }
+  ) => Promise<unknown>;
   t: TranslateFn;
 }
 
@@ -64,6 +69,9 @@ export interface CatalogMetricRef {
   id: number;
   name: string;
   display_name?: string;
+  metric_group?: number | null;
+  unit?: string;
+  data_type?: string;
 }
 
 const SILENT_REQ = { suppressErrorNotification: true } as const;
@@ -239,21 +247,9 @@ export const resolveGuessedCatalogUnitPath = (
   );
 };
 
-/** 调试采样值：数字走指标页「数字」类型，其余同样默认 Number。 */
-export const inferCatalogDataType = (
-  value: unknown
-): ScriptMetricRegisterPayload['data_type'] => {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return 'Number';
-  }
-  if (typeof value === 'string' && value.trim() !== '') {
-    const numeric = Number(value);
-    if (!Number.isNaN(numeric) && Number.isFinite(numeric)) {
-      return 'Number';
-    }
-  }
-  return 'Number';
-};
+/** 调试采样一律按指标页「数字」类型落库。 */
+export const inferCatalogDataType = (): ScriptMetricRegisterPayload['data_type'] =>
+  'Number';
 
 export const resolvePersistCatalogUnitId = (unit: unknown): string =>
   resolveCatalogUnitId(unit) || DEFAULT_CATALOG_UNIT_ID;
@@ -430,7 +426,8 @@ export const applyCatalogDraft = (
   reservedTagKeys: item.reservedTagKeys || collectReservedScriptTagKeys(item.tags),
   metric_group: draft?.metric_group ?? null,
   unit: resolveCatalogUnitId(draft?.unit),
-  description: resolveCatalogDescription(draft?.description)
+  description: resolveCatalogDescription(draft?.description),
+  data_type: draft?.data_type || item.data_type
 });
 
 export const collectReservedTagViolations = (
@@ -571,11 +568,25 @@ export const excludeSelfMonitorMetrics = (
 ): BusinessMetricItem[] =>
   metrics.filter((item) => item?.name && !isSelfMetricName(item.name));
 
+const isCatalogEnumType = (dataType?: string): boolean =>
+  String(dataType || '').toLowerCase() === 'enum';
+
+const sameCatalogUnit = (
+  current: ScriptMetricCatalogDraft['unit'],
+  nextPath: string[]
+): boolean => {
+  if (!Array.isArray(current) || current.length !== nextPath.length) {
+    return false;
+  }
+  return current.every((part, index) => String(part) === nextPath[index]);
+};
+
 export const applyDefaultCatalogDrafts = (
   metrics: BusinessMetricItem[],
   catalogByKey: Record<string, ScriptMetricCatalogDraft>,
   defaultGroupId?: number | null,
-  unitOptions: Array<{ value?: string; children?: Array<{ value: string }> }> = []
+  unitOptions: Array<{ value?: string; children?: Array<{ value: string }> }> = [],
+  existingByName: Map<string, CatalogMetricRef> = new Map()
 ): { catalog: Record<string, ScriptMetricCatalogDraft>; changed: boolean } => {
   const next = { ...catalogByKey };
   let changed = false;
@@ -583,19 +594,50 @@ export const applyDefaultCatalogDrafts = (
     if (!item?.key || isSelfMetricName(item.name)) {
       return;
     }
+    const existing = existingByName.get(toStdoutMetricName(item.name));
     const draft = { ...(next[item.key] || {}) };
     let patched = false;
-    if (draft.metric_group == null && defaultGroupId) {
-      draft.metric_group = defaultGroupId;
-      patched = true;
-    }
-    if (
-      (draft.unit == null || (Array.isArray(draft.unit) && !draft.unit.length))
-    ) {
-      const guessedPath = resolveGuessedCatalogUnitPath(item.name, unitOptions);
-      if (guessedPath) {
-        draft.unit = guessedPath;
+    if (existing) {
+      if (existing.data_type && draft.data_type !== existing.data_type) {
+        draft.data_type = existing.data_type;
         patched = true;
+      }
+      if (!draft.editedGroup && existing.metric_group) {
+        const groupId = Number(existing.metric_group);
+        if (Number.isFinite(groupId) && groupId > 0 && draft.metric_group !== groupId) {
+          draft.metric_group = groupId;
+          patched = true;
+        }
+      }
+      if (!draft.editedUnit) {
+        if (isCatalogEnumType(existing.data_type)) {
+          if (draft.unit != null) {
+            draft.unit = undefined;
+            patched = true;
+          }
+        } else {
+          const unitId = String(existing.unit || '').trim() || DEFAULT_CATALOG_UNIT_ID;
+          const catalogPath = resolveDefaultCatalogUnitPath(unitOptions, unitId);
+          if (catalogPath && !sameCatalogUnit(draft.unit, catalogPath)) {
+            draft.unit = catalogPath;
+            patched = true;
+          }
+        }
+      }
+    } else {
+      if (draft.metric_group == null && defaultGroupId) {
+        draft.metric_group = defaultGroupId;
+        patched = true;
+      }
+      if (
+        !draft.editedUnit &&
+        (draft.unit == null || (Array.isArray(draft.unit) && !draft.unit.length))
+      ) {
+        const guessedPath = resolveGuessedCatalogUnitPath(item.name, unitOptions);
+        if (guessedPath) {
+          draft.unit = guessedPath;
+          patched = true;
+        }
       }
     }
     if (patched) {
@@ -617,20 +659,48 @@ export const applyStdoutMetricNames = (
 export const CATALOG_METRIC_PAGE_SIZE = 100;
 
 const toCatalogMetricRefs = (
-  items: Array<{ id?: number; name?: string; display_name?: string }>
+  items: Array<{
+    id?: number;
+    name?: string;
+    display_name?: string;
+    metric_group?: number | string | null;
+    unit?: string;
+    data_type?: string;
+  }>
 ): CatalogMetricRef[] => {
   const refs: CatalogMetricRef[] = [];
   items.forEach((item) => {
     if (item?.name && typeof item.id === 'number') {
       const displayName = String(item.display_name || '').trim();
+      const groupId = Number(item.metric_group);
       refs.push({
         id: item.id,
         name: item.name,
-        ...(displayName ? { display_name: displayName } : {})
+        ...(displayName ? { display_name: displayName } : {}),
+        ...(Number.isFinite(groupId) && groupId > 0
+          ? { metric_group: groupId }
+          : {}),
+        ...(typeof item.unit === 'string' ? { unit: item.unit } : {}),
+        ...(typeof item.data_type === 'string'
+          ? { data_type: item.data_type }
+          : {})
       });
     }
   });
   return refs;
+};
+
+export const catalogMetricsByName = (
+  refs: CatalogMetricRef[]
+): Map<string, CatalogMetricRef> => {
+  const map = new Map<string, CatalogMetricRef>();
+  refs.forEach((item) => {
+    const name = String(item.name || '').trim();
+    if (name && !map.has(name)) {
+      map.set(name, item);
+    }
+  });
+  return map;
 };
 
 export const catalogMetricRefLabel = (item: CatalogMetricRef): string => {
@@ -757,7 +827,7 @@ export const buildScriptMetricRegisterPayload = (
   display_name: item.name,
   query: `${item.name}{__$labels__}`,
   unit: resolvePersistCatalogUnitId(item.unit),
-  data_type: inferCatalogDataType(item.value),
+  data_type: inferCatalogDataType(),
   description: resolveCatalogDescription(item.description),
   dimensions: Object.keys(keepStoredTags(item.tags) || {}).map((key) => ({
     name: key,
@@ -767,12 +837,31 @@ export const buildScriptMetricRegisterPayload = (
 
 export const buildScriptMetricCatalogUpdatePayload = (
   item: BusinessMetricItem,
-  fallbackGroupId: number
-): ScriptMetricCatalogUpdatePayload => ({
-  metric_group: resolveCatalogMetricGroupId(item.metric_group, fallbackGroupId),
-  unit: resolvePersistCatalogUnitId(item.unit),
-  description: resolveCatalogDescription(item.description)
-});
+  existing?: CatalogMetricRef | null
+): ScriptMetricCatalogUpdatePayload | null => {
+  const payload: ScriptMetricCatalogUpdatePayload = {};
+  const nextGroup = resolveCatalogMetricGroupId(item.metric_group, 0);
+  const existingGroup = Number(existing?.metric_group);
+  if (
+    nextGroup > 0 &&
+    (!Number.isFinite(existingGroup) || existingGroup !== nextGroup)
+  ) {
+    payload.metric_group = nextGroup;
+  }
+  if (!isCatalogEnumType(existing?.data_type || item.data_type)) {
+    const nextUnit = resolveCatalogUnitId(item.unit);
+    const existingUnit = String(existing?.unit || '').trim();
+    const sameUnit =
+      !nextUnit ||
+      nextUnit === existingUnit ||
+      (nextUnit === DEFAULT_CATALOG_UNIT_ID &&
+        (!existingUnit || existingUnit === DEFAULT_CATALOG_UNIT_ID));
+    if (!sameUnit) {
+      payload.unit = nextUnit;
+    }
+  }
+  return Object.keys(payload).length ? payload : null;
+};
 
 const uniqueMetricsByName = (metrics: BusinessMetricItem[]): BusinessMetricItem[] => {
   const seen = new Set<string>();
@@ -838,7 +927,10 @@ export const persistScriptMetrics = async ({
       }
       const deleteResults = await Promise.allSettled(
         deletable.map((item) =>
-          del(`/monitor/api/metrics/${item.id}/`, SILENT_REQ)
+          del(`/monitor/api/metrics/${item.id}/`, {
+            ...SILENT_REQ,
+            params: { monitor_plugin_id: pluginId }
+          })
         )
       );
       const deleteRejected = deleteResults.find(
@@ -883,10 +975,10 @@ export const persistScriptMetrics = async ({
       objectId,
       client
     });
-    const existingByName = new Map<string, number>();
+    const existingByName = new Map<string, CatalogMetricRef>();
     existing.forEach((item) => {
       if (!existingByName.has(item.name)) {
-        existingByName.set(item.name, item.id);
+        existingByName.set(item.name, item);
       }
     });
 
@@ -897,11 +989,18 @@ export const persistScriptMetrics = async ({
 
     const results = await Promise.allSettled(
       uniqueMetrics.map((item) => {
-        const existingId = existingByName.get(item.name);
-        if (existingId) {
+        const existingRow = existingByName.get(item.name);
+        if (existingRow?.id) {
+          const patchPayload = buildScriptMetricCatalogUpdatePayload(
+            item,
+            existingRow
+          );
+          if (!patchPayload) {
+            return Promise.resolve();
+          }
           return patch(
-            `/monitor/api/metrics/${existingId}/`,
-            buildScriptMetricCatalogUpdatePayload(item, fallbackGroupId),
+            `/monitor/api/metrics/${existingRow.id}/`,
+            patchPayload,
             SILENT_REQ
           );
         }

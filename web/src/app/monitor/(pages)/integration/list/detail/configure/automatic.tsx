@@ -92,12 +92,10 @@ import ScriptTrialRunArea, {
 import { applyScriptCollectSubmit, syncScriptRunAsForOs } from './scriptCollectForm';
 import { hydrateScriptCollectFormValues } from './scriptCollectHydrate';
 import {
-  collectReservedMetricIdViolations,
   collectReservedTagViolations,
   excludeSelfMonitorMetrics,
   catalogMetricRefLabel,
   findDuplicateDisplayNames,
-  formatReservedMetricIdMessage,
   listPluginCatalogMetrics,
   persistScriptMetrics,
   planScriptMetricHardSyncDeletes,
@@ -602,21 +600,15 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     () => collectReservedTagViolations(selectedScriptMetrics),
     [selectedScriptMetrics]
   );
-  const reservedMetricIds = useMemo(
-    () => collectReservedMetricIdViolations(selectedScriptMetrics),
-    [selectedScriptMetrics]
-  );
   const hasReservedScriptTagError = reservedScriptTagKeys.length > 0;
-  const hasReservedMetricIdError = reservedMetricIds.length > 0;
-  const hasReservedScriptError =
-    hasReservedScriptTagError || hasReservedMetricIdError;
+  const hasReservedScriptError = hasReservedScriptTagError;
   const reservedTagRenameText = t(
     'monitor.integrations.reservedTagRename',
     '保留字段，请换名'
   );
-  const reservedMetricIdText = formatReservedMetricIdMessage(
-    reservedMetricIds,
-    t
+  const reservedMetricIdText = t(
+    'monitor.integrations.reservedMetricId',
+    '指标 ID 与保留字段冲突，请更换'
   );
   const goEditSelectFirstText = t(
     'monitor.integrations.goEditMetricsSelectFirst',
@@ -2159,14 +2151,6 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
               {t('common.confirm')}
             </Button>
           </Permission>
-          {hasReservedMetricIdError && (
-            <span
-              className="text-[13px] text-[var(--color-fail)]"
-              role="alert"
-            >
-              {reservedMetricIdText}
-            </span>
-          )}
           {hasReservedScriptTagError && (
             <span
               className="text-[13px] text-[var(--color-fail)]"
