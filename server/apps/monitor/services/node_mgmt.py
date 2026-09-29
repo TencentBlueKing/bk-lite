@@ -372,6 +372,38 @@ class InstanceConfigService:
         return result
 
     @staticmethod
+    def get_plugin_child_config_content(monitor_plugin_id, actor_context=None):
+        """读取插件最近一条已授权 child CollectConfig，供脚本接入页回填正文。"""
+        try:
+            plugin_pk = int(monitor_plugin_id)
+        except (TypeError, ValueError):
+            return {}
+        rows = list(
+            CollectConfig.objects.filter(
+                monitor_plugin_id=plugin_pk,
+                is_child=True,
+                collect_type="script",
+            ).order_by("-updated_at", "-id")[:20]
+        )
+        if not rows:
+            return {}
+        for row in rows:
+            try:
+                content = InstanceConfigService.get_config_content([row.id], actor_context)
+            except UnauthorizedException:
+                continue
+            except BaseAppException:
+                logger.warning(
+                    "event=script_collect_config_refill_failed plugin_id=%s config_id=%s error_type=BaseAppException failed_stage=get_config_content",
+                    plugin_pk,
+                    row.id,
+                )
+                continue
+            if content.get("child"):
+                return content
+        return {}
+
+    @staticmethod
     def get_instance_configs(collect_instance_id, actor_context=None, monitor_plugin_id=None, collector=None, collect_type=None):
         """获取实例配置"""
 

@@ -90,6 +90,7 @@ import ScriptTrialRunArea, {
   scriptTrialBlocksMetricActions
 } from './scriptTrialRunArea';
 import { applyScriptCollectSubmit, syncScriptRunAsForOs } from './scriptCollectForm';
+import { hydrateScriptCollectFormValues } from './scriptCollectHydrate';
 import {
   collectReservedTagViolations,
   excludeSelfMonitorMetrics,
@@ -138,7 +139,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     createCollectDetectTask,
     getCollectDetectTask,
     getMonitorNodeList,
-    updateNodeChildConfig
+    updateNodeChildConfig,
+    getPluginChildConfig
   } = useIntegrationApi();
   const {
     getPolicyTemplate,
@@ -174,6 +176,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     useState<IntegrationMonitoredObject>({});
   const [isTableInitialized, setIsTableInitialized] = useState<boolean>(false);
   const hasInitializedFormRef = useRef(false);
+  const [storedScriptForm, setStoredScriptForm] = useState<
+    Record<string, any> | undefined
+  >(undefined);
+  const [scriptValuesApplied, setScriptValuesApplied] = useState(false);
   const [currentConfig, setCurrentConfig] = useState<any>(null);
   const [configLoading, setConfigLoading] = useState<boolean>(false);
   const [policyTemplates, setPolicyTemplates] = useState<PolicyTemplateItem[]>(
@@ -411,6 +417,40 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     templateType === 'script' ||
     collectType === 'script' ||
     currentConfig?.collect_type === 'script';
+
+  useEffect(() => {
+    if (!pluginId || configLoading) return;
+    if (!isScriptTemplate) {
+      setStoredScriptForm((prev) => (prev === undefined ? {} : prev));
+      return;
+    }
+    let cancelled = false;
+    getPluginChildConfig({ monitor_plugin_id: pluginId })
+      .then((content) => {
+        if (cancelled) return;
+        setStoredScriptForm(
+          hydrateScriptCollectFormValues(
+            currentConfig?.form_fields,
+            content,
+            currentConfig?.collect_type || 'script'
+          )
+        );
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setStoredScriptForm({});
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    pluginId,
+    isScriptTemplate,
+    configLoading,
+    currentConfig,
+    getPluginChildConfig
+  ]);
 
   const activeRecord = useMemo(() => {
     return (
@@ -1138,6 +1178,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     };
   }
   const formItems = cachedPluginFormRef.current.items;
+  const visibleFormItems =
+    !isScriptTemplate || scriptValuesApplied ? formItems : null;
 
   useEffect(() => {
     if (isLoading) return;
@@ -1146,6 +1188,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
 
   useEffect(() => {
     hasInitializedFormRef.current = false;
+    setStoredScriptForm(undefined);
+    setScriptValuesApplied(false);
   }, [pluginId]);
 
   useEffect(() => {
@@ -1173,11 +1217,31 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (configLoading) return;
     const defaults = formConfig?.defaultForm;
     if (!defaults) return;
+    if (isScriptTemplate && storedScriptForm === undefined) return;
     if (!hasInitializedFormRef.current) {
-      const initialValues = applyIfmibDeploymentState(defaults, enableIfmibFromUrl);
+      const initialValues = applyIfmibDeploymentState(
+        {
+          ...defaults,
+          ...(storedScriptForm || {})
+        },
+        enableIfmibFromUrl
+      );
       form.setFieldsValue(initialValues);
       trackSnmpFilterMutexLastChanged({}, form.getFieldsValue(true), form);
       hasInitializedFormRef.current = true;
+      if (isScriptTemplate) {
+        setScriptValuesApplied(true);
+      }
+    } else if (isScriptTemplate && storedScriptForm) {
+      if (!scriptValuesApplied) {
+        form.setFieldsValue(storedScriptForm);
+        setScriptValuesApplied(true);
+      } else if (storedScriptForm.script) {
+        const currentScript = form.getFieldValue('script');
+        if (currentScript === undefined || currentScript === null || currentScript === '') {
+          form.setFieldValue('script', storedScriptForm.script);
+        }
+      }
     }
     // UI 字段可能在首次初始化后才挂载；其自身 default_value=true 会覆盖前一次
     // 空表单初始化。因此只在 IF-MIB 字段真实可用时，以 URL 中当前下发流程状态回填。
@@ -1188,6 +1252,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     setFormSnapshot((prev) => {
       const next = {
         ...defaults,
+        ...(storedScriptForm || {}),
         ...prev,
         ...form.getFieldsValue(true)
       };
@@ -1200,7 +1265,15 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       return unchanged ? prev : next;
     });
     // 刻意依赖 defaultFormKey 而非 defaultForm 对象引用。
-  }, [configLoading, defaultFormKey, enableIfmibFromUrl, form]);
+  }, [
+    configLoading,
+    defaultFormKey,
+    enableIfmibFromUrl,
+    form,
+    isScriptTemplate,
+    scriptValuesApplied,
+    storedScriptForm
+  ]);
 
   const handleAdd = (key: string) => {
     const index = dataSource.findIndex((item) => item.key === key);
@@ -1796,7 +1869,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         </b>
         <GuideEntryButton />
       </div>
-      {formItems}
+      {visibleFormItems}
       <Form.Item
         name={COLLECTION_POLICY_FIELD}
         label={
