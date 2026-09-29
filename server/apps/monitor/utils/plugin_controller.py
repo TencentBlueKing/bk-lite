@@ -290,7 +290,9 @@ def operating_system_by_node_ids(node_ids) -> dict[str, str]:
     from apps.node_mgmt.models import Node
 
     rows = Node.objects.filter(id__in=ids).values_list("id", "operating_system")
-    return {str(node_id): str(os_value or "").strip().lower() for node_id, os_value in rows if str(os_value or "").strip().lower() in {"linux", "windows"}}
+    return {
+        str(node_id): str(os_value or "").strip().lower() for node_id, os_value in rows if str(os_value or "").strip().lower() in {"linux", "windows"}
+    }
 
 
 def _normalize_template_context(context: dict) -> dict:
@@ -495,6 +497,59 @@ class Controller:
 
         return configs
 
+    @staticmethod
+    def _is_script_collect(collect_type) -> bool:
+        return str(collect_type or "") == "script"
+
+    def _lookup_existing_script_collect_configs(self, configs, collect_type, plugin_id):
+        """脚本采集复用已有 CollectConfig：同一实例+script 不得再创建。"""
+        if not self._is_script_collect(collect_type):
+            return {}
+        instance_ids = [item.get("instance_id") for item in configs if item.get("instance_id")]
+        config_types = {item.get("type") for item in configs if item.get("type")}
+        if not instance_ids or not config_types:
+            return {}
+        qs = CollectConfig.objects.select_for_update().filter(
+            monitor_instance_id__in=instance_ids,
+            collect_type=collect_type,
+            config_type__in=config_types,
+        )
+        if plugin_id not in (None, ""):
+            qs = qs.filter(monitor_plugin_id=plugin_id)
+        existing = {}
+        for obj in qs:
+            existing[(obj.monitor_instance_id, obj.config_type, bool(obj.is_child))] = obj
+        return existing
+
+    @staticmethod
+    def _apply_existing_collect_config_updates(child_updates, base_updates, plugin_obj):
+        if not child_updates and not base_updates:
+            return
+        from apps.monitor.services.collect_config_update import plugin_content_fingerprint, stamp_applied
+
+        node_mgmt = NodeMgmt(is_local_client=True)
+        plugin_fp = plugin_content_fingerprint(plugin_obj)
+        update_fields = [
+            "applied_content_sha256",
+            "applied_rendered_sha256",
+            "applied_pack_version",
+            "content_hand_edited",
+            "updated_at",
+        ]
+        for obj, content, env_config in child_updates:
+            node_mgmt.update_child_config_content(obj.id, content, env_config)
+            stamp_applied(obj, plugin_fp=plugin_fp, rendered_content=content, hand_edited=False)
+            obj.save(update_fields=update_fields)
+        for obj, content, env_config in base_updates:
+            node_mgmt.update_config_content(obj.id, content, env_config)
+            stamp_applied(obj, plugin_fp=plugin_fp, rendered_content=content, hand_edited=False)
+            obj.save(update_fields=update_fields)
+        logger.info(
+            "event=script_collect_config_updated child=%s base=%s",
+            len(child_updates),
+            len(base_updates),
+        )
+
     def controller(self):  # noqa: C901
         """
         创建采集配置的控制器方法
@@ -531,9 +586,11 @@ class Controller:
                 plugin_template_id = plugin_obj.template_id
         configs = self.format_configs()
         node_configs, node_child_configs, collect_configs = [], [], []
+        existing_child_updates, existing_base_updates = [], []
 
         templates_by_type = self.get_templates_by_collector(collector, collect_type)
         os_by_node = operating_system_by_node_ids(config_info.get("node_id") for config_info in configs)
+        existing_config_map = self._lookup_existing_script_collect_configs(configs, collect_type, plugin_id)
 
         if not templates_by_type:
             logger.warning(f"未找到任何模板：collector={collector}, collect_type={collect_type}")
@@ -565,7 +622,8 @@ class Controller:
             for template in templates:
                 is_child = template["config_type"] == "child"
                 collector_name = "Telegraf" if is_child else collector
-                config_id = str(uuid.uuid4().hex)
+                existing_obj = existing_config_map.get((config_info["instance_id"], type_name, is_child))
+                config_id = existing_obj.id if existing_obj else str(uuid.uuid4().hex)
 
                 try:
                     render_context = {
@@ -621,8 +679,15 @@ class Controller:
                     logger.error(f"渲染模板失败：type={type_name}, config_id={config_id}, instance_id={config_info.get('instance_id')}, 错误: {e}")
                     raise BaseAppException(f"渲染采集模板失败：type={type_name}, instance_id={config_info.get('instance_id')}") from e
 
+                child_env_config = {f"{k.upper()}__{config_id.upper()}": v for k, v in env_config.items()} if is_child else env_config
+                if existing_obj:
+                    if is_child:
+                        existing_child_updates.append((existing_obj, template_config, child_env_config))
+                    else:
+                        existing_base_updates.append((existing_obj, template_config, env_config))
+                    continue
+
                 if is_child:
-                    child_env_config = {f"{k.upper()}__{config_id.upper()}": v for k, v in env_config.items()}
                     node_child_configs.append(
                         dict(
                             id=config_id,
@@ -665,17 +730,18 @@ class Controller:
                     )
                 )
 
-        if not collect_configs:
+        if not collect_configs and not existing_child_updates and not existing_base_updates:
             logger.warning(f"没有生成任何配置：collector={collector}, collect_type={collect_type}")
             raise BaseAppException(f"没有生成任何采集配置：collector={collector}, collect_type={collect_type}")
 
         # 步骤2：批量创建 CollectConfig（使用外层事务，不新建事务）
-        try:
-            CollectConfig.objects.bulk_create(collect_configs, batch_size=DatabaseConstants.COLLECT_CONFIG_BATCH_SIZE)
-            logger.info(f"创建 CollectConfig 成功，数量={len(collect_configs)}")
-        except Exception as e:
-            logger.error(f"批量创建 CollectConfig 失败：{e}")
-            raise
+        if collect_configs:
+            try:
+                CollectConfig.objects.bulk_create(collect_configs, batch_size=DatabaseConstants.COLLECT_CONFIG_BATCH_SIZE)
+                logger.info(f"创建 CollectConfig 成功，数量={len(collect_configs)}")
+            except Exception as e:
+                logger.error(f"批量创建 CollectConfig 失败：{e}")
+                raise
 
         # 必须本进程写入：Controller 常处于外层 atomic（节点推送还会锁 Node 行）。
         # 再 NATS 到另一连接写 NodeCollectorConfiguration 会与父行锁自死锁。
@@ -687,4 +753,11 @@ class Controller:
                 logger.error(f"本进程写入采集配置失败：node_configs={len(node_configs)}, child_configs={len(node_child_configs)}, 错误: {e}")
                 raise
 
-        logger.info(f"创建采集配置成功，共{len(collect_configs)}个配置")
+        self._apply_existing_collect_config_updates(existing_child_updates, existing_base_updates, plugin_obj)
+        logger.info(
+            "event=collect_config_apply_finished created=%s updated_child=%s updated_base=%s collect_type=%s",
+            len(collect_configs),
+            len(existing_child_updates),
+            len(existing_base_updates),
+            collect_type,
+        )
