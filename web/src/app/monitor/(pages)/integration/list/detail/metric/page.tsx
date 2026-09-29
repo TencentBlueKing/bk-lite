@@ -1,6 +1,6 @@
 'use client';
 import './register-metric-pilot';
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import {
   Input,
@@ -50,16 +50,17 @@ import {
 } from '../configure/scriptMetricPersist';
 import {
   consumeScriptMetricEditCarry,
-  carryItemsToBusinessMetrics,
   SCRIPT_METRIC_DRAFT_QUERY,
   ScriptMetricEditCarry
 } from '../configure/scriptMetricEditCarry';
-import { persistScriptMetrics } from '../configure/scriptMetricPersist';
 import {
   cleanMeasurementName,
   isSelfMetricName,
   visibleDimensionItems
 } from '../configure/scriptMetricsParser';
+import MetricBatchEditModal, {
+  MetricBatchEditModalRef
+} from './metricBatchEditModal';
 
 interface ObjectTabOption {
   label: React.ReactNode;
@@ -88,7 +89,7 @@ const ObjectTabLabel = ({
 );
 
 const Configure = () => {
-  const { isLoading, get, post, patch, del } = useApiClient();
+  const { isLoading } = useApiClient();
   const { getMonitorObject, getMetricsGroup, getMonitorMetrics } =
     useMonitorApi();
   const {
@@ -107,7 +108,11 @@ const Configure = () => {
   const enableIfmib = searchParams.get('enable_ifmib') !== 'false';
   const groupRef = useRef<ModalRef>(null);
   const metricRef = useRef<ModalRef>(null);
+  const batchEditRef = useRef<MetricBatchEditModalRef>(null);
   const [searchText, setSearchText] = useState<string>('');
+  const [nameInFilter, setNameInFilter] = useState<string>('');
+  const batchMetricByIdRef = useRef<Map<number, MetricItem>>(new Map());
+  const batchUncheckedIdsRef = useRef<Set<number>>(new Set());
   const [metricData, setMetricData] = useState<MetricListItem[]>([]);
   const [filteredMetricData, setFilteredMetricData] = useState<
     MetricListItem[]
@@ -128,7 +133,8 @@ const Configure = () => {
   const metricCatalogAbortRef = useRef<AbortController | null>(null);
   const scriptMetricDraftConsumedRef = useRef(false);
   const [catalogReady, setCatalogReady] = useState(false);
-  const canReorderCatalog = metricCount <= 100 && !searchText.trim();
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const canReorderCatalog = metricCount <= 100 && !searchText.trim() && !nameInFilter;
 
   useEffect(() => () => metricCatalogAbortRef.current?.abort(), []);
 
@@ -324,11 +330,18 @@ const Configure = () => {
     page = metricPage,
     keyword = searchText.trim(),
     expandMetricNames: string[] = [],
-    expandGroupIds: string[] = []
+    expandGroupIds: string[] = [],
+    nameIn = nameInFilter
   ) => {
+    const nameInNames = nameIn
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
     const metricParams = {
       monitor_object_id: +objId,
       monitor_plugin_id: +pluginID,
+      // 后端 page_size 上限 100；本批超过一页时仍带 name_in 分页，并合并跨页勾选。
+      ...(nameIn ? { name_in: nameIn } : {}),
       ...(keyword ? { keyword } : {})
     };
     const groupParams = {
@@ -346,6 +359,9 @@ const Configure = () => {
 
     if (!preserveState) {
       setSearchText('');
+      setNameInFilter('');
+      batchMetricByIdRef.current.clear();
+      batchUncheckedIdsRef.current.clear();
     }
     try {
       // 厂商指标按页分页；IF-MIB 固定约十余条，单独拉全量后置底归并，避免拆页。
@@ -417,12 +433,47 @@ const Configure = () => {
         (key) => t(key)
       );
       const defaultOpenState = getDefaultMetricGroupOpenState(metricView);
-      const expandNameSet = new Set(expandMetricNames.filter(Boolean));
+      const expandNameSet = new Set(
+        [...expandMetricNames, ...nameInNames].filter(Boolean)
+      );
+      const matchesCarryName = (name?: string) => {
+        const raw = String(name || '').trim();
+        if (!raw) {
+          return false;
+        }
+        if (expandNameSet.has(raw)) {
+          return true;
+        }
+        const cleaned = cleanMeasurementName(raw);
+        return Boolean(cleaned && expandNameSet.has(cleaned));
+      };
       const expandGroupSet = new Set(expandGroupIds.filter(Boolean).map(String));
+      if (expandNameSet.size) {
+        const pageIds = new Set(
+          catalogMetrics.map((metric) => Number(metric.id))
+        );
+        catalogMetrics.forEach((metric) => {
+          if (matchesCarryName(metric.name) && metric.is_pre !== true) {
+            batchMetricByIdRef.current.set(Number(metric.id), metric);
+          }
+        });
+        const pageSelected = catalogMetrics
+          .filter(
+            (metric) =>
+              matchesCarryName(metric.name) &&
+              metric.is_pre !== true &&
+              !batchUncheckedIdsRef.current.has(Number(metric.id))
+          )
+          .map((metric) => metric.id);
+        setSelectedRowKeys((prev) => [
+          ...prev.filter((id) => !pageIds.has(Number(id))),
+          ...pageSelected
+        ]);
+      }
       const groupData = metricView.map((group) => {
         const expandByCarry =
           expandNameSet.size > 0 &&
-          group.child.some((metric) => expandNameSet.has(metric.name));
+          group.child.some((metric) => matchesCarryName(metric.name));
         const expandGroup = expandGroupSet.has(String(group.id));
         return {
           ...group,
@@ -436,11 +487,13 @@ const Configure = () => {
       setMetrics(groupData.flatMap((group) => group.child));
       setMetricData(groupData);
       setFilteredMetricData(groupData);
+      return { count: metricsPage.count };
     } catch {
       if (!abortController.signal.aborted) {
         setMetricData([]);
         setFilteredMetricData([]);
       }
+      return { count: 0 };
     } finally {
       if (metricCatalogAbortRef.current === abortController) {
         setLoading(false);
@@ -507,34 +560,71 @@ const Configure = () => {
   };
 
   const landScriptMetricCarry = async (carry: ScriptMetricEditCarry) => {
-    const payload = carryItemsToBusinessMetrics(carry.metrics);
-    if (!payload.length) {
+    const names = carry.metrics
+      .map((item) => String(item?.name || '').trim())
+      .filter(Boolean);
+    if (!names.length) {
       return;
     }
     const targetObjectId = activeTab || groupId;
     if (!targetObjectId || !pluginID) {
       return;
     }
+    const nameIn = names.join(',');
+    batchMetricByIdRef.current.clear();
+    batchUncheckedIdsRef.current.clear();
+    setSelectedRowKeys([]);
+    setSearchText('');
+    setNameInFilter(nameIn);
+    setMetricPage(1);
+    const landed = await getInitData(
+      String(targetObjectId),
+      true,
+      1,
+      '',
+      names,
+      [],
+      nameIn
+    );
+    const batchCount = landed?.count ?? 0;
+    // 后端 max_page_size=100。第一页已勾选；本批更多页则继续拉取并入勾选与 ref。
+    if (batchCount <= 100) {
+      return;
+    }
     try {
-      setLoading(true);
-      await persistScriptMetrics({
-        pluginId: pluginID,
-        objectId: targetObjectId,
-        metrics: payload,
-        client: { get, post, patch, del, t }
-      });
-      await getInitData(
-        String(targetObjectId),
-        true,
-        metricPage,
-        searchText.trim(),
-        payload.map((item) => item.name)
-      );
-    } catch (error: unknown) {
-      const text =
-        error instanceof Error ? error.message : t('common.operationFailed');
-      message.error(text);
-      setLoading(false);
+      const pageSize = 100;
+      const pages = Math.ceil(batchCount / pageSize);
+      const extraIds: React.Key[] = [];
+      for (let page = 2; page <= pages; page += 1) {
+        const extra = await getMonitorMetrics({
+          monitor_object_id: +targetObjectId,
+          monitor_plugin_id: +pluginID,
+          name_in: nameIn,
+          include_ifmib: false,
+          page
+        });
+        (extra?.items || []).forEach((metric) => {
+          if (metric.is_pre === true) {
+            return;
+          }
+          const id = Number(metric.id);
+          batchMetricByIdRef.current.set(id, metric);
+          if (!batchUncheckedIdsRef.current.has(id)) {
+            extraIds.push(metric.id);
+          }
+        });
+      }
+      if (extraIds.length) {
+        setSelectedRowKeys((prev) => {
+          const seen = new Set(prev.map((id) => Number(id)));
+          return [
+            ...prev,
+            ...extraIds.filter((id) => !seen.has(Number(id)))
+          ];
+        });
+      }
+    } catch {
+      // 后续页失败时保留已加载页的勾选。
     }
   };
 
@@ -580,6 +670,10 @@ const Configure = () => {
     setMetricData([]);
     setActiveTab(next);
     setMetricPage(1);
+    setSelectedRowKeys([]);
+    setNameInFilter('');
+    batchMetricByIdRef.current.clear();
+    batchUncheckedIdsRef.current.clear();
     getInitData(next, false, 1);
   };
 
@@ -694,6 +788,77 @@ const Configure = () => {
     filteredMetricData.length > 0 &&
     filteredMetricData.every((group) => group.isOpen);
 
+  const selectedIdSet = new Set(selectedRowKeys.map((key) => Number(key)));
+  const batchFilterNames = useMemo(
+    () =>
+      nameInFilter
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean),
+    [nameInFilter]
+  );
+  const selectedMetrics = (
+    batchFilterNames.length && batchMetricByIdRef.current.size
+      ? Array.from(batchMetricByIdRef.current.values())
+      : metrics
+  ).filter(
+    (item) => selectedIdSet.has(Number(item.id)) && item.is_pre !== true
+  );
+
+  const clearBatchFilter = () => {
+    batchMetricByIdRef.current.clear();
+    batchUncheckedIdsRef.current.clear();
+    setNameInFilter('');
+    setMetricPage(1);
+    getInitData(activeTab, true, 1, searchText.trim(), [], [], '');
+  };
+
+  const openBatchEdit = () => {
+    if (!selectedMetrics.length) {
+      message.warning(
+        t('monitor.integrations.goEditMetricsSelectFirst', '请先勾选指标')
+      );
+      return;
+    }
+    batchEditRef.current?.showModal({
+      metrics: selectedMetrics,
+      groups: apiGroupList.map((item) => {
+        const plugin = item.monitor_plugin;
+        return {
+          id: Number(item.id),
+          name: item.name,
+          display_name: item.display_name || item.name,
+          monitor_plugin:
+            typeof plugin === 'number' || typeof plugin === 'string'
+              ? plugin
+              : undefined,
+          is_pre: item.is_pre
+        };
+      })
+    });
+  };
+
+  const handleGroupSelectChange = (
+    groupMetricIds: number[],
+    keys: React.Key[]
+  ) => {
+    const groupIdSet = new Set(groupMetricIds);
+    const selectedNow = new Set(keys.map((id) => Number(id)));
+    if (nameInFilter) {
+      groupMetricIds.forEach((id) => {
+        if (selectedNow.has(id)) {
+          batchUncheckedIdsRef.current.delete(id);
+        } else {
+          batchUncheckedIdsRef.current.add(id);
+        }
+      });
+    }
+    setSelectedRowKeys((prev) => [
+      ...prev.filter((id) => !groupIdSet.has(Number(id))),
+      ...keys
+    ]);
+  };
+
   const setAllGroupsOpen = (isOpen: boolean) => {
     const next = (groups: MetricListItem[]) =>
       groups.map((group) => ({ ...group, isOpen }));
@@ -715,15 +880,33 @@ const Configure = () => {
         {t('monitor.integrations.metricTitle')}
       </p>
       <div className="flex items-center justify-between mb-[15px]">
-        <Input
-          className="w-[400px]"
-          placeholder={t('monitor.integrations.searchMetricPlaceholder')}
-          value={searchText}
-          allowClear
-          onChange={onSearchTxtChange}
-          onPressEnter={onTxtPressEnter}
-          onClear={onTxtClear}
-        />
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          {batchFilterNames.length > 0 ? (
+            <Tag
+              color="blue"
+              closable
+              onClose={(e) => {
+                e.preventDefault();
+                clearBatchFilter();
+              }}
+            >
+              {t(
+                'monitor.integrations.batchMetricFilter',
+                '本批 {count} 个指标',
+                { count: batchFilterNames.length }
+              )}
+            </Tag>
+          ) : null}
+          <Input
+            className="w-[400px]"
+            placeholder={t('monitor.integrations.searchMetricPlaceholder')}
+            value={searchText}
+            allowClear
+            onChange={onSearchTxtChange}
+            onPressEnter={onTxtPressEnter}
+            onClear={onTxtClear}
+          />
+        </div>
         <div>
           <Button
             className="mr-[8px]"
@@ -737,6 +920,14 @@ const Configure = () => {
           <Permission requiredPermissions={['Add Group']} className="mr-[8px]">
             <Button type="primary" onClick={() => openGroupModal('add')}>
               {t('monitor.integrations.addGroup')}
+            </Button>
+          </Permission>
+          <Permission requiredPermissions={['Edit Metric']} className="mr-[8px]">
+            <Button
+              disabled={!selectedMetrics.length}
+              onClick={openBatchEdit}
+            >
+              {t('common.batchEdit')}
             </Button>
           </Permission>
           <Permission requiredPermissions={['Add Metric']}>
@@ -819,6 +1010,17 @@ const Configure = () => {
                   dataSource={metricItem.child || []}
                   columns={columns}
                   rowKey="id"
+                  rowSelection={{
+                    selectedRowKeys,
+                    onChange: (keys) =>
+                      handleGroupSelectChange(
+                        (metricItem.child || []).map((item) => Number(item.id)),
+                        keys
+                      ),
+                    getCheckboxProps: (record: MetricItem) => ({
+                      disabled: record.is_pre === true
+                    })
+                  }}
                   rowDraggable={
                     canReorderCatalog &&
                     metricItem.child?.length > 1 &&
@@ -856,6 +1058,7 @@ const Configure = () => {
         monitorObject={+activeTab}
         pluginId={+pluginID}
         groupList={apiGroupList}
+        catalogMetrics={metrics}
         onGroupListChange={(created) => {
           const groupId = created?.id != null ? String(created.id) : '';
           void getInitData(
@@ -868,6 +1071,27 @@ const Configure = () => {
           );
         }}
         onSuccess={operateMtric}
+      />
+      <MetricBatchEditModal
+        ref={batchEditRef}
+        monitorObject={+activeTab}
+        pluginId={+pluginID}
+        onGroupListChange={(created) => {
+          const groupId = created?.id != null ? String(created.id) : '';
+          void getInitData(
+            activeTab,
+            true,
+            metricPage,
+            searchText.trim(),
+            [],
+            groupId ? [groupId] : []
+          );
+        }}
+        onSuccess={() => {
+          setSelectedRowKeys([]);
+          operateMtric();
+        }}
+        onRefresh={operateMtric}
       />
     </div>
   );
