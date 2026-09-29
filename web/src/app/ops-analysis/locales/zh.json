@@ -1289,7 +1289,7 @@
     "application3DWallPage": "{page} / {total} 页",
     "application3DWallSection": "应用墙",
     "application3DPageSize": "每页应用数",
-    "application3DPageSizeTip": "支持 1～36（默认 24）。1～16 为近景大卡聚焦，17～36 为标准/高密展示",
+    "application3DPageSizeTip": "不小于 1 的整数（默认 24）。1～16 为近景大卡聚焦，17～36 为标准/高密展示，超过 36 镜头拉远以放入更多卡片",
     "application3DCountUnit": "个",
     "application3DTier16": "16 大卡",
     "application3DTier24": "24 标配",

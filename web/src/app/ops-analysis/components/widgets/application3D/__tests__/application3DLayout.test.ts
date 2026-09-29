@@ -18,6 +18,7 @@ import {
   UNKNOWN_STATUS_BADGE,
   WALL_CAMERA_HEIGHT_FACTOR,
   WALL_VIEW_COVERAGE,
+  WALL_VIEW_COVERAGE_PAST_DENSE,
   type Application3DTranslate,
 } from '../application3DLayout';
 import {
@@ -531,9 +532,18 @@ describe('application3D layout', () => {
       fortyEight.wallWidth,
       fortyEight.wallHeight,
       viewportAspect,
+      APPLICATION3D_CAMERA_FOV,
+      WALL_VIEW_COVERAGE_PAST_DENSE,
     );
 
     expect(fortyEightCam.z).toBeGreaterThan(twentyFourCam.z);
+    expect(fortyEightCam.z).toBeLessThan(
+      fitApplication3DCameraDistanceToWall(
+        fortyEight.wallWidth,
+        fortyEight.wallHeight,
+        viewportAspect,
+      ),
+    );
     expect(fortyEightCam.z).toBeCloseTo(fitted48, 8);
     expect(eightyCam.z).toBeGreaterThan(fortyEightCam.z);
     expect(fortyEightCam.y).toBeCloseTo(
@@ -545,7 +555,35 @@ describe('application3D layout', () => {
     const tan = Math.tan(halfFov);
     const widthFill = (fortyEight.wallWidth / (2 * tan * viewportAspect)) / fortyEightCam.z;
     const heightFill = (fortyEight.wallHeight / (2 * tan)) / fortyEightCam.z;
-    expect(Math.max(widthFill, heightFill)).toBeCloseTo(WALL_VIEW_COVERAGE, 5);
+    expect(Math.max(widthFill, heightFill)).toBeCloseTo(WALL_VIEW_COVERAGE_PAST_DENSE, 5);
+  });
+
+  it('fits walls past 36 to the viewport instead of a too-wide grid', () => {
+    const aspect = 16 / 9;
+    const fifty = buildApplication3DLayout(50, aspect);
+    expect(fifty.columns).toBe(8);
+    expect(fifty.rows).toBe(7);
+    expect(fifty.rowCardCounts.slice(0, -1)).toEqual([8, 8, 8, 8, 8, 8]);
+    expect(fifty.rowCardCounts.at(-1)).toBe(2);
+
+    expect(buildApplication3DLayout(40, aspect)).toMatchObject({ columns: 6, rows: 7 });
+    expect(buildApplication3DLayout(49, aspect)).toMatchObject({ columns: 7, rows: 7 });
+    expect(buildApplication3DLayout(100, aspect)).toMatchObject({ columns: 10, rows: 10 });
+    expect(buildApplication3DLayout(120, aspect)).toMatchObject({ columns: 10, rows: 12 });
+    for (const count of [37, 43, 57, 65, 73, 91, 111]) {
+      const layout = buildApplication3DLayout(count, aspect);
+      expect(layout.rowCardCounts.at(-1)).toBeGreaterThan(1);
+    }
+
+    const density = 0.82;
+    const tenWideDistance = fitApplication3DCameraDistanceToWall(
+      (10 * CARD_WORLD_WIDTH + 9 * CARD_GAP) * density,
+      (5 * CARD_WORLD_HEIGHT + 4 * CARD_GAP) * density,
+      aspect,
+      APPLICATION3D_CAMERA_FOV,
+      WALL_VIEW_COVERAGE_PAST_DENSE,
+    );
+    expect(resolveApplication3DWallCamera(50, aspect).z).toBeLessThan(tenWideDistance);
   });
 
   it('uses one world size for every card so a planar wall keeps them equal', () => {
