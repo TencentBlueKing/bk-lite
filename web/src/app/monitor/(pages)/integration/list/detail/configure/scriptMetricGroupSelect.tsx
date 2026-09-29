@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Button, Divider, Input, Select, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
@@ -8,7 +8,8 @@ import useApiClient from '@/utils/request';
 import {
   CatalogMetricGroupOption,
   catalogGroupLabel,
-  createCatalogMetricGroup
+  createCatalogMetricGroup,
+  dedupeCatalogMetricGroups
 } from './scriptMetricPersist';
 
 interface ScriptMetricGroupSelectProps {
@@ -16,6 +17,7 @@ interface ScriptMetricGroupSelectProps {
   onChange?: (value: number | null) => void;
   groups: CatalogMetricGroupOption[];
   onGroupsChange?: (groups: CatalogMetricGroupOption[]) => void;
+  onCreated?: (group: CatalogMetricGroupOption & { id: number }) => void;
   objectId?: string | number;
   pluginId?: string | number;
   disabled?: boolean;
@@ -33,6 +35,7 @@ const ScriptMetricGroupSelect: React.FC<ScriptMetricGroupSelectProps> = ({
   onChange,
   groups,
   onGroupsChange,
+  onCreated,
   objectId,
   pluginId,
   disabled,
@@ -47,20 +50,37 @@ const ScriptMetricGroupSelect: React.FC<ScriptMetricGroupSelectProps> = ({
   const { t } = useTranslation();
   const { post } = useApiClient();
   const [newName, setNewName] = useState('');
+  const [searchText, setSearchText] = useState('');
   const [creating, setCreating] = useState(false);
   const canCreate = Boolean(objectId && pluginId) && !disabled;
+  const uniqueGroups = useMemo(
+    () =>
+      dedupeCatalogMetricGroups(groups, { preferredPluginId: pluginId }).groups,
+    [groups, pluginId]
+  );
+  const trimmedSearch = searchText.trim();
+  const searchHasMatch =
+    !trimmedSearch ||
+    uniqueGroups.some((group) =>
+      catalogGroupLabel(group).toLowerCase().includes(trimmedSearch.toLowerCase())
+    );
+  const showCreateFromSearch = canCreate && !!trimmedSearch && !searchHasMatch;
+  const createNameReady = !!newName.trim() && !creating;
 
-  const handleCreate = async () => {
-    const trimmed = newName.trim();
+  const handleCreate = async (rawName?: string) => {
+    const trimmed = String(rawName ?? newName).trim();
     if (!trimmed || !objectId || !pluginId || creating) {
       return;
     }
-    const existing = groups.find(
-      (group) => catalogGroupLabel(group).toLowerCase() === trimmed.toLowerCase()
+    const existing = uniqueGroups.find(
+      (group) =>
+        catalogGroupLabel(group).toLowerCase() === trimmed.toLowerCase() ||
+        String(group.name || '').trim().toLowerCase() === trimmed.toLowerCase()
     );
     if (typeof existing?.id === 'number') {
       onChange?.(existing.id);
       setNewName('');
+      setSearchText('');
       return;
     }
     setCreating(true);
@@ -71,12 +91,14 @@ const ScriptMetricGroupSelect: React.FC<ScriptMetricGroupSelectProps> = ({
         pluginId,
         name: trimmed
       });
-      const nextGroups = groups.some((group) => group.id === created.id)
-        ? groups
-        : [...groups, created];
+      const nextGroups = uniqueGroups.some((group) => group.id === created.id)
+        ? uniqueGroups
+        : [...uniqueGroups, created];
       onGroupsChange?.(nextGroups);
       onChange?.(created.id);
+      onCreated?.(created);
       setNewName('');
+      setSearchText('');
       message.success(t('common.successfullyAdded'));
     } catch {
       message.error(t('common.operationFailed'));
@@ -103,14 +125,37 @@ const ScriptMetricGroupSelect: React.FC<ScriptMetricGroupSelectProps> = ({
       className={className}
       placeholder={placeholder}
       value={value}
-      onChange={(next) => onChange?.(typeof next === 'number' ? next : null)}
-      onSearch={onSearch}
-      options={groups
-        .filter((group) => typeof group.id === 'number')
-        .map((group) => ({
-          value: group.id as number,
-          label: catalogGroupLabel(group) || String(group.id)
-        }))}
+      searchValue={searchText}
+      onChange={(next) => {
+        setSearchText('');
+        onChange?.(typeof next === 'number' ? next : null);
+      }}
+      onSearch={(text) => {
+        setSearchText(text);
+        onSearch?.(text);
+      }}
+      notFoundContent={
+        showCreateFromSearch ? (
+          <Button
+            type="link"
+            size="small"
+            className="h-auto px-1"
+            loading={creating}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => void handleCreate(trimmedSearch)}
+          >
+            {t(
+              'monitor.integrations.createMetricGroupFromSearch',
+              '新建『{name}』',
+              { name: trimmedSearch }
+            )}
+          </Button>
+        ) : undefined
+      }
+      options={uniqueGroups.map((group) => ({
+        value: group.id as number,
+        label: catalogGroupLabel(group) || String(group.id)
+      }))}
       dropdownRender={(menu) => (
         <>
           {menu}
@@ -143,7 +188,7 @@ const ScriptMetricGroupSelect: React.FC<ScriptMetricGroupSelectProps> = ({
                   className="h-auto shrink-0 px-1"
                   icon={<PlusOutlined />}
                   loading={creating}
-                  disabled={!newName.trim() || creating}
+                  disabled={!createNameReady}
                   onClick={() => void handleCreate()}
                 >
                   {t('monitor.integrations.createMetricGroup', '新建分组')}

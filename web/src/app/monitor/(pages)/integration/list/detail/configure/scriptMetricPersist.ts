@@ -57,6 +57,7 @@ export interface PersistScriptMetricsClient {
 export interface CatalogMetricRef {
   id: number;
   name: string;
+  display_name?: string;
 }
 
 const SILENT_REQ = { suppressErrorNotification: true } as const;
@@ -83,10 +84,86 @@ export interface CatalogMetricGroupOption {
   id?: number;
   name?: string;
   display_name?: string;
+  monitor_plugin?: string | number | null;
+  is_pre?: boolean;
 }
 
 export const catalogGroupLabel = (group?: CatalogMetricGroupOption | null): string =>
   String(group?.display_name || group?.name || '').trim();
+
+/** 同名分组只保留一条：当前插件优先，其次是本页指标正在引用的 id。 */
+export const dedupeCatalogMetricGroups = <T extends CatalogMetricGroupOption>(
+  groups: T[] = [],
+  options?: {
+    preferredPluginId?: string | number | null;
+    preferredIds?: Array<string | number | null | undefined>;
+  }
+): { groups: T[]; idAlias: Map<string, string> } => {
+  const preferredPlugin =
+    options?.preferredPluginId != null && String(options.preferredPluginId) !== ''
+      ? String(options.preferredPluginId)
+      : '';
+  const preferredIds = new Set(
+    (options?.preferredIds || [])
+      .filter((id) => id != null && String(id) !== '')
+      .map((id) => String(id))
+  );
+  const idAlias = new Map<string, string>();
+  const kept = new Map<string, T>();
+
+  const rank = (group: CatalogMetricGroupOption) => {
+    const pluginId =
+      group.monitor_plugin != null ? String(group.monitor_plugin) : '';
+    if (preferredPlugin && pluginId === preferredPlugin) return 0;
+    const id = group.id != null ? String(group.id) : '';
+    if (id && preferredIds.has(id)) return 1;
+    return 2;
+  };
+
+  const retarget = (fromId: string, toId: string) => {
+    if (!fromId || fromId === toId) return;
+    idAlias.set(fromId, toId);
+    idAlias.forEach((target, source) => {
+      if (target === fromId) idAlias.set(source, toId);
+    });
+  };
+
+  groups.forEach((group) => {
+    const idNum = typeof group.id === 'number' ? group.id : Number(group.id);
+    if (!Number.isFinite(idNum) || idNum <= 0) return;
+    const id = String(idNum);
+    const nameKey = String(group.name || catalogGroupLabel(group) || '')
+      .trim()
+      .toLowerCase();
+    const key = nameKey || `id:${id}`;
+    const normalized = { ...group, id: idNum } as T;
+    const current = kept.get(key);
+    if (!current) {
+      kept.set(key, normalized);
+      return;
+    }
+    const currentId = String(current.id);
+    if (rank(normalized) < rank(current)) {
+      kept.set(key, normalized);
+      retarget(currentId, id);
+      return;
+    }
+    if (currentId !== id) retarget(id, currentId);
+  });
+
+  return { groups: Array.from(kept.values()), idAlias };
+};
+
+export const canonicalCatalogGroupId = (
+  groupId: unknown,
+  idAlias: Map<string, string>
+): number | null => {
+  const raw = groupId != null ? String(groupId) : '';
+  if (!raw) return null;
+  const resolved = idAlias.get(raw) || raw;
+  const numeric = Number(resolved);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+};
 
 export const resolveDefaultCatalogGroupId = (
   groups: CatalogMetricGroupOption[] = []
@@ -163,7 +240,11 @@ export const createCatalogMetricGroup = async ({
   return {
     id,
     name: String(created?.name || trimmed),
-    display_name: String(created?.display_name || created?.name || trimmed)
+    display_name: String(created?.display_name || created?.name || trimmed),
+    monitor_plugin:
+      (created?.monitor_plugin as string | number | null | undefined) ??
+      Number(pluginId),
+    is_pre: false
   };
 };
 
@@ -449,15 +530,29 @@ export const applyStdoutMetricNames = (
 export const CATALOG_METRIC_PAGE_SIZE = 100;
 
 const toCatalogMetricRefs = (
-  items: Array<{ id?: number; name?: string }>
+  items: Array<{ id?: number; name?: string; display_name?: string }>
 ): CatalogMetricRef[] => {
   const refs: CatalogMetricRef[] = [];
   items.forEach((item) => {
     if (item?.name && typeof item.id === 'number') {
-      refs.push({ id: item.id, name: item.name });
+      const displayName = String(item.display_name || '').trim();
+      refs.push({
+        id: item.id,
+        name: item.name,
+        ...(displayName ? { display_name: displayName } : {})
+      });
     }
   });
   return refs;
+};
+
+export const catalogMetricRefLabel = (item: CatalogMetricRef): string => {
+  const displayName = String(item.display_name || '').trim();
+  const name = String(item.name || '').trim();
+  if (displayName && name && displayName !== name) {
+    return `${displayName} (${name})`;
+  }
+  return displayName || name;
 };
 
 export const listPluginCatalogMetrics = async ({

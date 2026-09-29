@@ -45,7 +45,10 @@ import {
 import { cloneDeep } from 'lodash';
 import { useSearchParams } from 'next/navigation';
 import ScriptMetricGroupSelect from '../configure/scriptMetricGroupSelect';
-import { CatalogMetricGroupOption } from '../configure/scriptMetricPersist';
+import {
+  CatalogMetricGroupOption,
+  dedupeCatalogMetricGroups
+} from '../configure/scriptMetricPersist';
 import {
   isHiddenPlatformDimensionKey,
   visibleDimensionItems
@@ -54,6 +57,7 @@ const { Option } = Select;
 
 interface ModalProps {
   onSuccess: () => void;
+  onGroupListChange?: (group?: CatalogMetricGroupOption) => void;
   groupList: ListItem[];
   monitorObject: number;
   pluginId: number;
@@ -184,10 +188,9 @@ const splitScriptVisibleDimensions = (
 const buildMetricSnippet = (metricName: string) => metricName;
 
 const MetricModal = forwardRef<ModalRef, ModalProps>(
-  ({ onSuccess, groupList, monitorObject, pluginId }, ref) => {
+  ({ onSuccess, onGroupListChange, groupList, monitorObject, pluginId }, ref) => {
     const { post, put } = useApiClient();
-    const { getMetricsGroup, getVmMetricNames, testMetricQuery } =
-      useMonitorApi();
+    const { getVmMetricNames, testMetricQuery } = useMonitorApi();
     const { t } = useTranslation();
     const searchParams = useSearchParams();
     const isScriptTemplate =
@@ -212,14 +215,9 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
     const [groupVisible, setGroupVisible] = useState<boolean>(false);
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
     const [groupForm, setGroupForm] = useState<MetricInfo>({});
-    const [groupOptions, setGroupOptions] = useState<ListItem[]>(groupList);
-    const [groupLoading, setGroupLoading] = useState(false);
-    const groupSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-      null
+    const [pendingGroups, setPendingGroups] = useState<CatalogMetricGroupOption[]>(
+      []
     );
-    const selectedGroupIdRef = useRef<React.Key | null>(null);
-    const allowInheritedGroupsRef = useRef(false);
-    const groupRequestGenerationRef = useRef(0);
     const [title, setTitle] = useState<string>('');
     const [type, setType] = useState<string>('');
     const [dimensions, setDimensions] = useState<DimensionItem[]>([
@@ -341,49 +339,27 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
       return formFields.length > 0 || leftover.length > 0;
     };
 
-    const loadGroupOptions = async (keyword = '') => {
-      const generation = groupRequestGenerationRef.current + 1;
-      groupRequestGenerationRef.current = generation;
-      setGroupLoading(true);
-      try {
-        const page = await getMetricsGroup({
-          monitor_object_id: monitorObject,
-          monitor_plugin_id: pluginId,
-          ...(keyword.trim() ? { keyword: keyword.trim() } : {})
-        });
-        const items = page.items.filter(
-          (item) =>
-            allowInheritedGroupsRef.current ||
-            String(item.monitor_plugin) === String(pluginId)
-        ) as ListItem[];
-        const selectedGroup = groupList.find(
-          (item) => String(item.id) === String(selectedGroupIdRef.current)
-        );
-        if (groupRequestGenerationRef.current !== generation) return;
-        setGroupOptions(
-          selectedGroup && !items.some((item) => item.id === selectedGroup.id)
-            ? [...items, selectedGroup]
-            : items
-        );
-      } catch {
-        if (groupRequestGenerationRef.current === generation) {
-          setGroupOptions(groupList);
-        }
-      } finally {
-        if (groupRequestGenerationRef.current === generation) {
-          setGroupLoading(false);
-        }
-      }
-    };
+    const groupOptions = useMemo(() => {
+      const fromPage: CatalogMetricGroupOption[] = groupList.map((item) => ({
+        id: typeof item.id === 'number' ? item.id : Number(item.id),
+        name: item.name,
+        display_name: item.display_name || item.name,
+        monitor_plugin: (item as { monitor_plugin?: string | number }).monitor_plugin,
+        is_pre: (item as { is_pre?: boolean }).is_pre
+      }));
+      return dedupeCatalogMetricGroups(
+        [...fromPage, ...pendingGroups],
+        { preferredPluginId: pluginId }
+      ).groups;
+    }, [groupList, pendingGroups, pluginId]);
 
-    const handleGroupSearch = (value: string) => {
-      if (groupSearchTimerRef.current) {
-        clearTimeout(groupSearchTimerRef.current);
-      }
-      groupSearchTimerRef.current = setTimeout(() => {
-        loadGroupOptions(value);
-      }, 300);
-    };
+    useEffect(() => {
+      const known = new Set(groupList.map((item) => String(item.id)));
+      setPendingGroups((current) => {
+        const next = current.filter((group) => !known.has(String(group.id)));
+        return next.length === current.length ? current : next;
+      });
+    }, [groupList]);
 
     const loadVmMetricNames = async (keyword = '') => {
       const generation = metricRequestGenerationRef.current + 1;
@@ -420,9 +396,6 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
 
     useEffect(
       () => () => {
-        if (groupSearchTimerRef.current) {
-          clearTimeout(groupSearchTimerRef.current);
-        }
         if (metricSearchTimerRef.current) {
           clearTimeout(metricSearchTimerRef.current);
         }
@@ -430,18 +403,10 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
       []
     );
 
-    useEffect(() => {
-      setGroupOptions(groupList);
-    }, [groupList]);
-
     useImperativeHandle(ref, () => ({
       showModal: ({ type, form, title }) => {
         const formData = cloneDeep(form);
-        allowInheritedGroupsRef.current = type === 'view';
-        selectedGroupIdRef.current =
-          (formData.metric_group as React.Key) || null;
         setGroupVisible(true);
-        void loadGroupOptions();
         setType(type);
         setTitle(title);
         resetDimensionGuideState();
@@ -1014,34 +979,20 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
                 label={t('monitor.integrations.metricGroup')}
                 name="metric_group"
                 rules={[{ required: true, message: t('common.required') }]}
-                getValueFromEvent={(next: number | null) => {
-                  selectedGroupIdRef.current = next;
-                  return next;
-                }}
               >
                 <ScriptMetricGroupSelect
                   allowClear={false}
-                  loading={groupLoading}
-                  filterOption={false}
-                  onSearch={handleGroupSearch}
                   placeholder={t('monitor.integrations.metricGroup')}
                   objectId={monitorObject}
                   pluginId={pluginId}
-                  groups={groupOptions.map((item) => ({
-                    id:
-                      typeof item.id === 'number'
-                        ? item.id
-                        : Number(item.id),
-                    name: item.name,
-                    display_name: item.display_name || item.name
-                  }))}
-                  onGroupsChange={(next: CatalogMetricGroupOption[]) => {
-                    setGroupOptions(
-                      next.map((item) => ({
-                        ...item,
-                        id: item.id
-                      })) as ListItem[]
+                  groups={groupOptions}
+                  onCreated={(created) => {
+                    setPendingGroups((current) =>
+                      current.some((group) => group.id === created.id)
+                        ? current
+                        : [...current, created]
                     );
+                    onGroupListChange?.(created);
                   }}
                 />
               </Form.Item>
