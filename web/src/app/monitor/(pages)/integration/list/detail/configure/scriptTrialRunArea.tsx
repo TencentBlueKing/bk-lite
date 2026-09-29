@@ -582,7 +582,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
       {/* 5) Self-metrics: emphasize up/duration/exit_code */}
       <div className="mb-4">
         <div className="text-[12px] font-medium text-[var(--color-text-3)] mb-2">
-          {t('monitor.integrations.trialRunSelfMetrics', '自身运行指标')}
+          {t('monitor.integrations.trialRunSelfMetrics', '自监控指标')}
         </div>
         <div className="grid grid-cols-3 gap-3">
           <div className="p-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">

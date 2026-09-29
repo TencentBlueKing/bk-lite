@@ -894,7 +894,7 @@
       "trialRunNodeUnavailable": "采集节点不可用",
       "trialRunNodeUnavailableDesc": "采集节点离线或 Telegraf 运行环境异常，请检查节点状态",
       "trialRunWarning": "调试提示",
-      "trialRunSelfMetrics": "自身运行指标",
+      "trialRunSelfMetrics": "自监控指标",
       "trialRunBusinessMetrics": "业务指标",
       "trialRunMetricName": "指标名称",
       "trialRunMetricValue": "采样值",
