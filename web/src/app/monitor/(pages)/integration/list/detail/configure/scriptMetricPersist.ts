@@ -105,7 +105,11 @@ export const resolveDefaultCatalogUnitPath = (
   unitId: string = DEFAULT_CATALOG_UNIT_ID
 ): string[] | undefined => {
   for (const group of options) {
-    const child = (group.children || []).find((item) => item.value === unitId);
+    const children = group.children || [];
+    if (!children.length && group.value && String(group.value) === unitId) {
+      return [String(group.value)];
+    }
+    const child = children.find((item) => item.value === unitId);
     if (child && group.value) {
       return [String(group.value), String(child.value)];
     }
@@ -153,30 +157,93 @@ export const createCatalogMetricGroup = async ({
   };
 };
 
-/** Cascader 分组用类目名，叶子必须是 unit_id，禁止改成展示文案。 */
+export interface ScriptUnitCascaderOption {
+  label: string;
+  value: string;
+  searchText?: string;
+  children?: ScriptUnitCascaderOption[];
+}
+
+const PERCENT_UNIT_IDS = new Set(['percent', 'percentunit']);
+
+/**
+ * 表格单位下拉用短名（如 W），避免「Other / Watts (W)」撑满窄列。
+ * percent / percentunit 保留量纲区分；none 保持目录原名。
+ */
+export const shortenScriptUnitLabel = (item: {
+  unitId: string;
+  label?: string;
+  displayUnit?: string;
+}): string => {
+  const unitId = String(item.unitId || '').trim();
+  const label = String(item.label || '').trim();
+  const displayUnit = String(item.displayUnit || '').trim();
+  if (!unitId || unitId === DEFAULT_CATALOG_UNIT_ID) {
+    return label || DEFAULT_CATALOG_UNIT_ID;
+  }
+  if (PERCENT_UNIT_IDS.has(unitId)) {
+    return label || unitId;
+  }
+  if (displayUnit) {
+    return displayUnit;
+  }
+  const wrapped = label.match(/\(([^)]+)\)\s*$/);
+  if (wrapped?.[1]?.trim()) {
+    return wrapped[1].trim();
+  }
+  return label || unitId;
+};
+
+/** Cascader 分组用类目名，叶子 value 必须是 unit_id。展示名缩短，none 钉在最前。 */
 export const buildUnitCascaderOptions = (
   grouped: Array<{
     label?: string;
-    children?: Array<{ label?: string; value?: string; unit_id?: string }>;
+    children?: Array<{
+      label?: string;
+      value?: string;
+      unit_id?: string;
+      unit?: string;
+      display_unit?: string;
+    }>;
   }> = []
-): Array<{
-  label?: string;
-  value?: string;
-  children: Array<{ label?: string; value: string }>;
-}> =>
-  grouped.map((group) => ({
-    label: group.label,
-    value: group.label,
-    children: (group.children || [])
-      .map((item) => {
-        const unitId = String(item.unit_id || item.value || '').trim();
-        return {
-          label: item.label,
-          value: unitId
-        };
-      })
-      .filter((item) => item.value)
-  }));
+): ScriptUnitCascaderOption[] => {
+  let noneOption: ScriptUnitCascaderOption | null = null;
+  const groups: ScriptUnitCascaderOption[] = [];
+  grouped.forEach((group) => {
+    const children: ScriptUnitCascaderOption[] = [];
+    (group.children || []).forEach((item) => {
+      const unitId = String(item.unit_id || item.value || '').trim();
+      if (!unitId) return;
+      const rawLabel = String(item.label || '').trim();
+      const displayUnit = String(item.unit || item.display_unit || '').trim();
+      const option: ScriptUnitCascaderOption = {
+        label: shortenScriptUnitLabel({
+          unitId,
+          label: rawLabel,
+          displayUnit
+        }),
+        value: unitId,
+        searchText: [rawLabel, displayUnit, unitId, group.label]
+          .filter(Boolean)
+          .join(' ')
+      };
+      if (unitId === DEFAULT_CATALOG_UNIT_ID) {
+        noneOption = option;
+        return;
+      }
+      children.push(option);
+    });
+    if (children.length && group.label) {
+      groups.push({
+        label: String(group.label),
+        value: String(group.label),
+        searchText: String(group.label),
+        children
+      });
+    }
+  });
+  return noneOption ? [noneOption, ...groups] : groups;
+};
 
 /** Cascader 叶子为 unit_id；已解析的字符串原样回传。 */
 export const resolveCatalogUnitId = (unit: unknown): string => {

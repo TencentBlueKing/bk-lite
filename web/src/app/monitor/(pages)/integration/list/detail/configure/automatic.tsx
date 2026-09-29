@@ -86,7 +86,9 @@ import {
   countAccessAssets,
   mergeImportedAssetRows
 } from './automaticAssetCount';
-import ScriptTrialRunArea from './scriptTrialRunArea';
+import ScriptTrialRunArea, {
+  scriptTrialBlocksMetricActions
+} from './scriptTrialRunArea';
 import { applyScriptCollectSubmit, syncScriptRunAsForOs } from './scriptCollectForm';
 import {
   collectReservedTagViolations,
@@ -417,6 +419,25 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (!activeRecord?.key) return undefined;
     return collectDetectTasks[activeRecord.key as string];
   }, [activeRecord, collectDetectTasks]);
+
+  const scriptTrialFailed =
+    isScriptTemplate && scriptTrialBlocksMetricActions(activeTrialTask);
+
+  const activeTrialInstanceName = useMemo(() => {
+    if (!activeRecord) return undefined;
+    const named =
+      activeRecord.instance_name ||
+      activeRecord.ip ||
+      activeRecord.host ||
+      activeRecord.instance_id;
+    if (named) return String(named);
+    if (dataSource.length < 2) return undefined;
+    const index = dataSource.findIndex((row) => row.key === activeRecord.key);
+    if (index < 0) return undefined;
+    return t('monitor.integrations.trialRunBoundInstance', '实例 {index}', {
+      index: index + 1
+    });
+  }, [activeRecord, dataSource, t]);
 
   const isAnyTrialRunning = useMemo(() => {
     return Object.values(collectDetectTasks).some(
@@ -819,10 +840,39 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     }
   };
 
+  const cancelInFlightCollectDetectExcept = (keepKey: string) => {
+    Object.keys(collectDetectTimersRef.current).forEach((key) => {
+      if (key === keepKey) return;
+      clearTimeout(collectDetectTimersRef.current[key]);
+      delete collectDetectTimersRef.current[key];
+    });
+    Object.keys(activeCollectDetectFingerprintRef.current).forEach((key) => {
+      if (key !== keepKey) {
+        delete activeCollectDetectFingerprintRef.current[key];
+      }
+    });
+    setCollectDetectTasks((prev) => {
+      const runningKeys = Object.keys(prev).filter((key) => {
+        if (key === keepKey) return false;
+        const status = prev[key]?.status;
+        return status === 'pending' || status === 'running';
+      });
+      if (!runningKeys.length) return prev;
+      const next = { ...prev };
+      runningKeys.forEach((key) => {
+        delete next[key];
+      });
+      return next;
+    });
+  };
+
   const handleCollectDetect = async (
     record: IntegrationMonitoredObject,
     mode: CollectDetectMode = 'single'
   ) => {
+    if (isScriptTemplate && mode === 'batch') {
+      return;
+    }
     const rowKey = record.key as string;
     setActiveTrialRowKey(rowKey);
     const nodeId = getRowNodeId(record);
@@ -834,6 +884,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       return;
     }
     const fingerprint = buildCollectDetectFingerprint(record);
+    if (isScriptTemplate) {
+      cancelInFlightCollectDetectExcept(rowKey);
+    }
     activeCollectDetectFingerprintRef.current[rowKey] = fingerprint;
     updateCollectDetectState(rowKey, { status: 'running', fingerprint });
     try {
@@ -879,6 +932,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   };
 
   const handleBatchCollectDetect = async () => {
+    if (isScriptTemplate) {
+      return;
+    }
     const selectedRows = getRowsForBatchCollectDetect(
       dataSource,
       selectedRowKeys
@@ -1240,7 +1296,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   };
 
   const batchMenuItems: MenuProps['items'] = [
-    ...(supportCollectDetect
+    ...(supportCollectDetect && !isScriptTemplate
       ? [
         {
           key: 'batchCollectDetect',
@@ -1392,6 +1448,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       return;
     }
     if (isScriptTemplate && hasReservedScriptTagError) {
+      return;
+    }
+    if (isScriptTemplate && scriptTrialBlocksMetricActions(activeTrialTask)) {
       return;
     }
     if (
@@ -1845,7 +1904,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
             }
           }}
           nodeSelected={Boolean(getRowNodeId(activeRecord || {}))}
-          instanceName={activeRecord?.instance_name || undefined}
+          instanceName={activeTrialInstanceName}
           pluginId={pluginId}
           objectId={objectId}
           onSelectedMetricsChange={handleSelectedScriptMetricsChange}
@@ -1859,7 +1918,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
               type="primary"
               loading={confirmLoading}
               disabled={
-                confirmLoading || isAnyTrialRunning || hasReservedScriptTagError
+                confirmLoading ||
+                isAnyTrialRunning ||
+                hasReservedScriptTagError ||
+                scriptTrialFailed
               }
               onClick={handleSave}
             >
