@@ -920,6 +920,8 @@
       "scriptMetricsWriteOverwrite": "Overwrite: upsert the selected metrics and delete old metrics not in this selection",
       "scriptMetricsWriteOverwriteEmpty": "There are no old metrics to delete.",
       "metricBatchEditHint": "Only checked fields are changed. Unchecked fields stay as they are. {count} metrics selected.",
+      "metricBatchEditSuccess": "Updated {count} metrics",
+      "metricBatchEditPartialFailed": "Updated {updated} metrics; {remaining} were not updated",
       "batchEditEnumUnitBlocked": "The selection includes enum metrics, so unit cannot be batch-updated",
       "reservedTagRename": "Reserved field, please rename",
       "reservedTagRenameDetail": "Reserved field, please rename: {keys}",

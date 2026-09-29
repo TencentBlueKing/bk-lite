@@ -23,6 +23,7 @@ import { MetricItem } from '@/app/monitor/types';
 import ScriptMetricGroupSelect from '../configure/scriptMetricGroupSelect';
 import {
   CatalogMetricGroupOption,
+  METRIC_BATCH_UPDATE_MAX_SIZE,
   buildUnitCascaderOptions,
   resolvePersistCatalogUnitId
 } from '../configure/scriptMetricPersist';
@@ -44,6 +45,7 @@ interface MetricBatchEditModalProps {
   monitorObject: number;
   pluginId: number;
   onSuccess: () => void;
+  onRefresh?: () => void;
   onGroupListChange?: (group?: CatalogMetricGroupOption) => void;
 }
 
@@ -52,7 +54,7 @@ type BatchField = 'metric_group' | 'unit' | 'data_type' | 'description';
 const MetricBatchEditModal = forwardRef<
   MetricBatchEditModalRef,
   MetricBatchEditModalProps
->(({ monitorObject, pluginId, onSuccess, onGroupListChange }, ref) => {
+>(({ monitorObject, pluginId, onSuccess, onRefresh, onGroupListChange }, ref) => {
   const { t } = useTranslation();
   const { batchUpdateMonitorMetrics } = useIntegrationApi();
   const [form] = Form.useForm();
@@ -147,15 +149,29 @@ const MetricBatchEditModal = forwardRef<
         );
         return;
       }
+      const ids: number[] = [];
+      const seenIds = new Set<number>();
+      metrics.forEach((item) => {
+        const id = Number(item.id);
+        if (!Number.isFinite(id) || id <= 0 || seenIds.has(id)) {
+          return;
+        }
+        seenIds.add(id);
+        ids.push(id);
+      });
+      if (!ids.length) {
+        message.warning(
+          t('monitor.integrations.goEditMetricsSelectFirst', '请先勾选指标')
+        );
+        return;
+      }
       const payload: {
-        ids: number[];
         monitor_plugin: number;
         metric_group?: number;
         unit?: string;
         data_type?: string;
         description?: string;
       } = {
-        ids: metrics.map((item) => Number(item.id)),
         monitor_plugin: pluginId
       };
       if (enabledFields.metric_group) {
@@ -177,10 +193,42 @@ const MetricBatchEditModal = forwardRef<
         payload.description = values.description || '';
       }
       setConfirmLoading(true);
-      await batchUpdateMonitorMetrics(payload);
-      message.success(t('common.updateSuccess'));
-      handleCancel();
-      onSuccess();
+      let updated = 0;
+      try {
+        for (
+          let offset = 0;
+          offset < ids.length;
+          offset += METRIC_BATCH_UPDATE_MAX_SIZE
+        ) {
+          const chunk = ids.slice(offset, offset + METRIC_BATCH_UPDATE_MAX_SIZE);
+          await batchUpdateMonitorMetrics({
+            ...payload,
+            ids: chunk
+          });
+          updated += chunk.length;
+        }
+        message.success(
+          t(
+            'monitor.integrations.metricBatchEditSuccess',
+            '已更新 {count} 个指标',
+            { count: updated }
+          )
+        );
+        handleCancel();
+        onSuccess();
+      } catch {
+        message.error(
+          t(
+            'monitor.integrations.metricBatchEditPartialFailed',
+            '已更新 {updated} 个指标，{remaining} 个未更新',
+            {
+              updated,
+              remaining: ids.length - updated
+            }
+          )
+        );
+        onRefresh?.();
+      }
     } catch (error: unknown) {
       if (error && typeof error === 'object' && 'errorFields' in error) {
         return;

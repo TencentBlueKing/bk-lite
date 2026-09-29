@@ -1071,6 +1071,7 @@ const Configure = () => {
           setSelectedRowKeys([]);
           operateMtric();
         }}
+        onRefresh={operateMtric}
       />
     </div>
   );

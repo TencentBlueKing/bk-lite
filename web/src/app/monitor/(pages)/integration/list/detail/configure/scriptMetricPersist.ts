@@ -655,6 +655,8 @@ export const applyStdoutMetricNames = (
   }));
 
 export const CATALOG_METRIC_PAGE_SIZE = 100;
+/** 与后端 `METRIC_BATCH_UPDATE_MAX_SIZE` 对齐。 */
+export const METRIC_BATCH_UPDATE_MAX_SIZE = 100;
 
 const toCatalogMetricRefs = (
   items: Array<{
