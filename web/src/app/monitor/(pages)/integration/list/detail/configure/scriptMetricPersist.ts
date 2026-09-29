@@ -551,23 +551,49 @@ export const persistScriptMetrics = async ({
   pluginId,
   objectId,
   metrics,
-  client
+  client,
+  staleDeletes = []
 }: {
   pluginId: string | number;
   objectId: string | number;
   metrics: BusinessMetricItem[];
   client: PersistScriptMetricsClient;
+  staleDeletes?: CatalogMetricRef[];
 }): Promise<void> => {
   const persistableMetrics = applyStdoutMetricNames(metrics);
-  if (!persistableMetrics.length) {
+  if (!persistableMetrics.length && !staleDeletes.length) {
     return;
   }
-  const { get, post, patch, t } = client;
+  const { get, post, patch, del, t } = client;
   const reservedKeys = collectReservedTagViolations(persistableMetrics);
   if (reservedKeys.length) {
     throw new Error(formatReservedTagRenameMessage(reservedKeys, t));
   }
   try {
+    const deletable = staleDeletes.filter(
+      (item) => item?.id && item?.name && !isSelfMetricName(item.name)
+    );
+    if (deletable.length) {
+      if (!del) {
+        throw new Error(t('common.operationFailed'));
+      }
+      const deleteResults = await Promise.allSettled(
+        deletable.map((item) =>
+          del(`/monitor/api/metrics/${item.id}/`, SILENT_REQ)
+        )
+      );
+      const deleteRejected = deleteResults.find(
+        (result): result is PromiseRejectedResult => result.status === 'rejected'
+      );
+      if (deleteRejected) {
+        throw deleteRejected.reason;
+      }
+    }
+
+    if (!persistableMetrics.length) {
+      return;
+    }
+
     const groupRes = await get('/monitor/api/metrics_group/', {
       params: {
         monitor_object_id: objectId,
