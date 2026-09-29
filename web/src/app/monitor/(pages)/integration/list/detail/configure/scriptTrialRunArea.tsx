@@ -202,9 +202,9 @@ const DimensionTagLine: React.FC<{ names: string[] }> = ({
 };
 
 const SAMPLE_PREVIEW_MAX = 20;
-/** 采样值 +「共 N 条」两行；无第二行时也占位，避免行高跳动。 */
-const SAMPLE_VALUE_STACK_CLASS =
-  'flex h-8 w-full min-w-0 cursor-default flex-col justify-center';
+/** 采样值格固定两行高；内容作为一组垂直居中，避免贴顶。 */
+const SAMPLE_VALUE_CELL_CLASS =
+  'flex h-8 w-full min-w-0 items-center justify-end';
 
 const SamplePreviewTable: React.FC<{
   samples: Array<{ value: number | string; tags?: Record<string, string> }>;
@@ -1007,18 +1007,24 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                       ? item.samples
                       : [{ value: item.value, tags: item.tags }];
                   const sampleStack = (
-                    <div className={SAMPLE_VALUE_STACK_CLASS}>
-                      <div className="h-4 min-w-0 truncate text-right font-mono text-xs leading-4 tabular-nums text-[var(--color-text-3)]">
-                        {String(item.value)}
-                      </div>
-                      <div className="h-4 min-w-0 truncate text-right text-[11px] leading-4 text-[var(--color-text-3)]">
-                        {showSamplePreview
-                          ? t(
-                            'monitor.integrations.trialRunSampleCount',
-                            '共 {count} 条',
-                            { count: sampleCount }
-                          )
-                          : '\u00a0'}
+                    <div
+                      className={`${SAMPLE_VALUE_CELL_CLASS} ${
+                        showSamplePreview ? 'cursor-help' : 'cursor-default'
+                      }`}
+                    >
+                      <div className="flex min-w-0 flex-col items-end">
+                        <div className="min-w-0 max-w-full truncate text-right font-mono text-xs leading-4 tabular-nums text-[var(--color-text-3)]">
+                          {String(item.value)}
+                        </div>
+                        {showSamplePreview ? (
+                          <div className="text-right text-[11px] leading-[14px] text-[var(--color-text-3)] underline decoration-dashed decoration-[var(--color-text-3)] underline-offset-2">
+                            {t(
+                              'monitor.integrations.trialRunSampleCount',
+                              '共 {count} 条',
+                              { count: sampleCount }
+                            )}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   );
