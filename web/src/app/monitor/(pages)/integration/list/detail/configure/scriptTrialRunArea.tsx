@@ -700,7 +700,11 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                         className="w-full"
                         placeholder={t('common.unit', '单位')}
                         options={unitOptions}
-                        value={Array.isArray(catalog.unit) ? catalog.unit : undefined}
+                        value={
+                          Array.isArray(catalog.unit)
+                            ? catalog.unit.map((part) => String(part))
+                            : undefined
+                        }
                         onChange={(value) =>
                           updateCatalog(item.key, {
                             unit: Array.isArray(value) ? value : undefined
