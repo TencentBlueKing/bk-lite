@@ -930,6 +930,7 @@
       "metricInlineEditUnsavedContent": "Continuing will discard unsaved changes. Continue?",
       "metricInlineEditEnumDisabled": "Use single-row edit to configure mapping",
       "metricInlineEditEmpty": "There are no changes to save",
+      "metricInlineEditReadonlyHint": "Built-in / self-monitoring metrics cannot be edited",
       "batchMetricFilterBanner": "Showing this batch of {count} metrics. Other metrics (including self-monitoring) are hidden",
       "batchMetricFilterShowAll": "Show all",
       "reservedTagRename": "Reserved field, please rename",

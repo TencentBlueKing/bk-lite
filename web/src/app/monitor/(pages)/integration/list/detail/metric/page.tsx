@@ -1,7 +1,7 @@
 'use client';
 import './register-metric-pilot';
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, LockOutlined } from '@ant-design/icons';
 import {
   Alert,
   Input,
@@ -90,6 +90,27 @@ interface ObjectTabOption {
   value: string;
   title?: string;
 }
+
+const INLINE_CONTROL_CLASS =
+  'h-8 w-full min-w-0 [&_.ant-select-selector]:!h-8 [&_.ant-select-selector]:!min-h-8 [&_.ant-select-selector]:items-center [&_.ant-select-selection-item]:!leading-8';
+const DIRTY_CELL_CLASS =
+  'bg-[var(--color-primary-light-1,var(--color-primary-bg-active))] shadow-[inset_2px_0_0_var(--color-primary)]';
+const ERROR_CELL_CLASS =
+  'outline outline-1 -outline-offset-1 outline-[var(--color-fail)]';
+
+const InlineFieldWrap = ({
+  error,
+  children
+}: {
+  error?: string;
+  children: React.ReactNode;
+}) => {
+  const control = <div className="h-8 w-full min-w-0">{children}</div>;
+  if (!error) {
+    return control;
+  }
+  return <Tooltip title={error}>{control}</Tooltip>;
+};
 
 const ObjectTabLabel = ({
   icon,
@@ -1013,13 +1034,21 @@ const Configure = () => {
   };
 
   const dirtyCellClass = (record: MetricItem, field: keyof MetricInlineDraft) => {
-    if (!batchEditing || isMetricInlineReadonly(record)) {
+    if (!batchEditing) {
       return undefined;
     }
+    const classes = ['!py-1'];
+    if (isMetricInlineReadonly(record)) {
+      return classes.join(' ');
+    }
     const id = Number(record.id);
-    return isInlineFieldDirty(inlineDrafts[id], inlineBaseline[id], field)
-      ? 'bg-[var(--color-fill-2)]'
-      : undefined;
+    if (isInlineFieldDirty(inlineDrafts[id], inlineBaseline[id], field)) {
+      classes.push(DIRTY_CELL_CLASS);
+    }
+    if (fieldErrorMessage(inlineErrors[id], field)) {
+      classes.push(ERROR_CELL_CLASS);
+    }
+    return classes.join(' ');
   };
 
   const columns: ColumnItem[] = [
@@ -1029,7 +1058,25 @@ const Configure = () => {
       width: 120,
       key: 'name',
       ellipsis: true,
-      render: (value: string) => <>{displayScriptMetricName(value)}</>
+      render: (value: string, record: MetricItem) => {
+        const name = displayScriptMetricName(value);
+        if (!batchEditing || !isMetricInlineReadonly(record)) {
+          return <>{name}</>;
+        }
+        return (
+          <span className="inline-flex max-w-full items-center gap-1">
+            <span className="min-w-0 truncate">{name}</span>
+            <Tooltip
+              title={t(
+                'monitor.integrations.metricInlineEditReadonlyHint',
+                '内置/自监控指标不可编辑'
+              )}
+            >
+              <LockOutlined className="shrink-0 text-[12px] text-[var(--color-text-4)]" />
+            </Tooltip>
+          </span>
+        );
+      }
     },
     {
       title: t('common.name'),
@@ -1053,15 +1100,17 @@ const Configure = () => {
         const id = Number(record.id);
         const error = fieldErrorMessage(inlineErrors[id], 'display_name');
         return (
-          <Input
-            size="small"
-            status={error ? 'error' : undefined}
-            value={inlineDrafts[id]?.display_name ?? ''}
-            onChange={(event) =>
-              patchInlineDraft(id, 'display_name', event.target.value)
-            }
-            title={error || undefined}
-          />
+          <InlineFieldWrap error={error}>
+            <Input
+              size="middle"
+              className={INLINE_CONTROL_CLASS}
+              status={error ? 'error' : undefined}
+              value={inlineDrafts[id]?.display_name ?? ''}
+              onChange={(event) =>
+                patchInlineDraft(id, 'display_name', event.target.value)
+              }
+            />
+          </InlineFieldWrap>
         );
       }
     },
@@ -1095,10 +1144,11 @@ const Configure = () => {
         const id = Number(record.id);
         const error = fieldErrorMessage(inlineErrors[id], 'metric_group');
         return (
+          <InlineFieldWrap error={error}>
           <ScriptMetricGroupSelect
-            size="small"
+            size="middle"
             allowClear={false}
-            className="w-full"
+            className={INLINE_CONTROL_CLASS}
             objectId={activeTab}
             pluginId={pluginID}
             groups={inlineGroups}
@@ -1129,8 +1179,9 @@ const Configure = () => {
                 patchInlineDraft(id, 'metric_group', value);
               }
             }}
-            placeholder={error || t('monitor.integrations.metricGroup')}
+            placeholder={t('monitor.integrations.metricGroup')}
           />
+          </InlineFieldWrap>
         );
       }
     },
@@ -1157,15 +1208,16 @@ const Configure = () => {
         const id = Number(record.id);
         const error = fieldErrorMessage(inlineErrors[id], 'data_type');
         return (
-          <Select
-            size="small"
-            className="w-full"
-            status={error ? 'error' : undefined}
-            value={inlineDrafts[id]?.data_type || 'Number'}
-            getPopupContainer={popupContainer}
-            popupClassName="[&_.ant-select-item-option-disabled]:pointer-events-auto"
-            onChange={(next) => patchInlineDraft(id, 'data_type', next)}
-          >
+          <InlineFieldWrap error={error}>
+            <Select
+              size="middle"
+              className={INLINE_CONTROL_CLASS}
+              status={error ? 'error' : undefined}
+              value={inlineDrafts[id]?.data_type || 'Number'}
+              getPopupContainer={popupContainer}
+              popupClassName="[&_.ant-select-item-option-disabled]:pointer-events-auto"
+              onChange={(next) => patchInlineDraft(id, 'data_type', next)}
+            >
             <Select.Option value="Number">
               {t('monitor.integrations.number')}
             </Select.Option>
@@ -1182,6 +1234,7 @@ const Configure = () => {
               </Tooltip>
             </Select.Option>
           </Select>
+          </InlineFieldWrap>
         );
       }
     },
@@ -1208,11 +1261,12 @@ const Configure = () => {
           ? findCascaderPath(unitOptions as never, unitId)
           : [];
         return (
+          <InlineFieldWrap error={error}>
           <Cascader
-            size="small"
+            size="middle"
             allowClear
             status={error ? 'error' : undefined}
-            className="w-full"
+            className={INLINE_CONTROL_CLASS}
             options={unitOptions}
             value={
               cascaderValue.length
@@ -1241,6 +1295,7 @@ const Configure = () => {
               }
             }}
           />
+          </InlineFieldWrap>
         );
       }
     },
@@ -1248,7 +1303,8 @@ const Configure = () => {
       title: t('common.descripition'),
       dataIndex: 'display_description',
       key: 'display_description',
-      width: 180,
+      width: batchEditing ? 240 : 180,
+      minWidth: batchEditing ? 240 : undefined,
       onCell: (record: MetricItem) => ({
         className: dirtyCellClass(record, 'description')
       }),
@@ -1259,15 +1315,17 @@ const Configure = () => {
         const id = Number(record.id);
         const error = fieldErrorMessage(inlineErrors[id], 'description');
         return (
-          <Input
-            size="small"
-            status={error ? 'error' : undefined}
-            value={inlineDrafts[id]?.description ?? ''}
-            onChange={(event) =>
-              patchInlineDraft(id, 'description', event.target.value)
-            }
-            title={error || undefined}
-          />
+          <InlineFieldWrap error={error}>
+            <Input
+              size="middle"
+              className={INLINE_CONTROL_CLASS}
+              status={error ? 'error' : undefined}
+              value={inlineDrafts[id]?.description ?? ''}
+              onChange={(event) =>
+                patchInlineDraft(id, 'description', event.target.value)
+              }
+            />
+          </InlineFieldWrap>
         );
       }
     },
@@ -1278,9 +1336,6 @@ const Configure = () => {
       fixed: 'right',
       width: 110,
       render: (_, record) => {
-        if (batchEditing) {
-          return <span className="text-[var(--color-text-4)]">--</span>;
-        }
         return record.is_pre ? (
           <Button type="link" onClick={() => openMetricModal('view', record)}>
             {t('common.view')}
@@ -1315,9 +1370,15 @@ const Configure = () => {
       }
     }
   ];
-  const tableColumns = batchEditing
-    ? columns
-    : columns.filter((column) => column.key !== 'metric_group');
+  const tableColumns = columns.filter((column) => {
+    if (column.key === 'metric_group') {
+      return batchEditing;
+    }
+    if (column.key === 'action') {
+      return !batchEditing;
+    }
+    return true;
+  });
 
   const handleGroupSelectChange = (
     groupMetricIds: number[],
@@ -1360,7 +1421,13 @@ const Configure = () => {
       <p className="mb-[10px] text-[var(--color-text-2)]">
         {t('monitor.integrations.metricTitle')}
       </p>
-      <div className="flex items-center justify-between mb-[15px]">
+      <div
+        className={`flex items-center justify-between mb-[15px] ${
+          batchEditing
+            ? 'sticky top-0 z-20 bg-[var(--color-bg)] py-2 shadow-[0_1px_0_0_var(--color-border)]'
+            : ''
+        }`}
+      >
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           {batchFilterNames.length > 0 ? (
             <Tag
@@ -1391,7 +1458,7 @@ const Configure = () => {
         <div>
           <Button
             className="mr-[8px]"
-            disabled={!filteredMetricData.length}
+            disabled={batchEditing || !filteredMetricData.length}
             onClick={() => setAllGroupsOpen(!allGroupsExpanded)}
           >
             {allGroupsExpanded
@@ -1400,7 +1467,7 @@ const Configure = () => {
           </Button>
           <Permission requiredPermissions={['Add Group']} className="mr-[8px]">
             <Button
-              type="primary"
+              type={batchEditing ? 'default' : 'primary'}
               disabled={batchEditing}
               onClick={() => openGroupModal('add')}
             >
@@ -1409,6 +1476,11 @@ const Configure = () => {
           </Permission>
           {batchEditing ? (
             <>
+              <Permission requiredPermissions={['Add Metric']} className="mr-[8px]">
+                <Button disabled onClick={() => openMetricModal('add')}>
+                  {t('monitor.integrations.addMetric')}
+                </Button>
+              </Permission>
               <Button
                 type="primary"
                 className="mr-[8px]"
@@ -1422,29 +1494,24 @@ const Configure = () => {
                   { count: dirtyFieldCount }
                 )}
               </Button>
-              <Button
-                className="mr-[8px]"
-                disabled={batchSaving}
-                onClick={handleBatchEditCancel}
-              >
+              <Button disabled={batchSaving} onClick={handleBatchEditCancel}>
                 {t('common.cancel')}
               </Button>
             </>
           ) : (
-            <Permission requiredPermissions={['Edit Metric']} className="mr-[8px]">
-              <Button onClick={enterBatchEditing}>
-                {t('common.batchEdit')}
-              </Button>
-            </Permission>
+            <>
+              <Permission requiredPermissions={['Edit Metric']} className="mr-[8px]">
+                <Button onClick={enterBatchEditing}>
+                  {t('common.batchEdit')}
+                </Button>
+              </Permission>
+              <Permission requiredPermissions={['Add Metric']}>
+                <Button onClick={() => openMetricModal('add')}>
+                  {t('monitor.integrations.addMetric')}
+                </Button>
+              </Permission>
+            </>
           )}
-          <Permission requiredPermissions={['Add Metric']}>
-            <Button
-              disabled={batchEditing}
-              onClick={() => openMetricModal('add')}
-            >
-              {t('monitor.integrations.addMetric')}
-            </Button>
-          </Permission>
         </div>
       </div>
       <Spin spinning={loading}>
@@ -1550,6 +1617,11 @@ const Configure = () => {
                   dataSource={metricItem.child || []}
                   columns={tableColumns}
                   rowKey="id"
+                  className={
+                    batchEditing
+                      ? '[&_.ant-table-tbody_td]:!py-1 [&_.ant-table-tbody_td]:align-middle'
+                      : undefined
+                  }
                   rowSelection={{
                     selectedRowKeys,
                     onChange: (keys) =>
@@ -1569,7 +1641,7 @@ const Configure = () => {
                   }
                   rowClassName={(record: MetricItem) =>
                     batchEditing && isMetricInlineReadonly(record)
-                      ? 'bg-[var(--color-fill-1)] text-[var(--color-text-4)]'
+                      ? '[&_td]:text-[var(--color-text-4)]'
                       : ''
                   }
                   onRowDragEnd={onRowDragEnd}

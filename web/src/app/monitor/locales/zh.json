@@ -930,6 +930,7 @@
       "metricInlineEditUnsavedContent": "继续将丢弃未保存的修改，是否继续？",
       "metricInlineEditEnumDisabled": "请用单条编辑配置映射",
       "metricInlineEditEmpty": "没有需要保存的修改",
+      "metricInlineEditReadonlyHint": "内置/自监控指标不可编辑",
       "batchMetricFilterBanner": "仅显示本批 {count} 个指标，其他指标（含自监控）已隐藏",
       "batchMetricFilterShowAll": "查看全部",
       "reservedTagRename": "保留字段，请换名",
