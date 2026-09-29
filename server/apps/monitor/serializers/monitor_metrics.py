@@ -201,17 +201,19 @@ class MetricBatchUpdateSerializer(serializers.Serializer):
     )
 
     def validate_items(self, value):
-        unique_items = []
         seen = set()
+        duplicates = []
         for item in value:
             metric_id = item["id"]
             if metric_id in seen:
+                if metric_id not in duplicates:
+                    duplicates.append(metric_id)
                 continue
             seen.add(metric_id)
-            unique_items.append(item)
-        if len(unique_items) > METRIC_BATCH_UPDATE_MAX_SIZE:
-            raise serializers.ValidationError(f"单次批量更新不超过 {METRIC_BATCH_UPDATE_MAX_SIZE} 条")
-        return unique_items
+        if duplicates:
+            duplicate_ids = ", ".join(str(metric_id) for metric_id in duplicates)
+            raise serializers.ValidationError(f"items 中存在重复 id：{duplicate_ids}")
+        return value
 
 
 class MetricBatchDeleteSerializer(serializers.Serializer):

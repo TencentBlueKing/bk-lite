@@ -160,8 +160,6 @@ const Configure = () => {
   const metricRef = useRef<ModalRef>(null);
   const [searchText, setSearchText] = useState<string>('');
   const [nameInFilter, setNameInFilter] = useState<string>('');
-  const batchMetricByIdRef = useRef<Map<number, MetricItem>>(new Map());
-  const batchUncheckedIdsRef = useRef<Set<number>>(new Set());
   const [metricData, setMetricData] = useState<MetricListItem[]>([]);
   const [filteredMetricData, setFilteredMetricData] = useState<
     MetricListItem[]
@@ -182,7 +180,6 @@ const Configure = () => {
   const metricCatalogAbortRef = useRef<AbortController | null>(null);
   const scriptMetricDraftConsumedRef = useRef(false);
   const [catalogReady, setCatalogReady] = useState(false);
-  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [batchEditing, setBatchEditing] = useState(false);
   const [batchSaving, setBatchSaving] = useState(false);
   const [inlineDrafts, setInlineDrafts] = useState<
@@ -216,6 +213,13 @@ const Configure = () => {
     }
     return cleanMeasurementName(raw) || raw;
   };
+
+  const isScriptPlugin = templateType === 'script';
+  const isReadonlyMetric = (metric: {
+    id?: unknown;
+    is_pre?: unknown;
+    name?: unknown;
+  }) => isMetricInlineReadonly(metric, isScriptPlugin);
 
   const displayScriptDimensions = (dims?: DimensionItem[]) => {
     const source =
@@ -348,7 +352,7 @@ const Configure = () => {
     const metricParams = {
       monitor_object_id: +objId,
       monitor_plugin_id: +pluginID,
-      // 后端 page_size 上限 100；本批超过一页时仍带 name_in 分页，并合并跨页勾选。
+      // 后端 page_size 上限 100；本批筛选走 name_in。
       ...(nameIn ? { name_in: nameIn } : {}),
       ...(keyword ? { keyword } : {})
     };
@@ -368,8 +372,6 @@ const Configure = () => {
     if (!preserveState) {
       setSearchText('');
       setNameInFilter('');
-      batchMetricByIdRef.current.clear();
-      batchUncheckedIdsRef.current.clear();
     }
     try {
       // 厂商指标按页分页；IF-MIB 固定约十余条，单独拉全量后置底归并，避免拆页。
@@ -456,28 +458,6 @@ const Configure = () => {
         return Boolean(cleaned && expandNameSet.has(cleaned));
       };
       const expandGroupSet = new Set(expandGroupIds.filter(Boolean).map(String));
-      if (expandNameSet.size) {
-        const pageIds = new Set(
-          catalogMetrics.map((metric) => Number(metric.id))
-        );
-        catalogMetrics.forEach((metric) => {
-          if (matchesCarryName(metric.name) && metric.is_pre !== true) {
-            batchMetricByIdRef.current.set(Number(metric.id), metric);
-          }
-        });
-        const pageSelected = catalogMetrics
-          .filter(
-            (metric) =>
-              matchesCarryName(metric.name) &&
-              metric.is_pre !== true &&
-              !batchUncheckedIdsRef.current.has(Number(metric.id))
-          )
-          .map((metric) => metric.id);
-        setSelectedRowKeys((prev) => [
-          ...prev.filter((id) => !pageIds.has(Number(id))),
-          ...pageSelected
-        ]);
-      }
       const groupData = metricView.map((group) => {
         const expandByCarry =
           expandNameSet.size > 0 &&
@@ -525,7 +505,7 @@ const Configure = () => {
       inlineBaseline,
       new Set(
         metrics
-          .filter((item) => isMetricInlineReadonly(item))
+          .filter((item) => isReadonlyMetric(item))
           .map((item) => Number(item.id))
       )
     );
@@ -620,13 +600,10 @@ const Configure = () => {
       return;
     }
     const nameIn = names.join(',');
-    batchMetricByIdRef.current.clear();
-    batchUncheckedIdsRef.current.clear();
-    setSelectedRowKeys([]);
     setSearchText('');
     setNameInFilter(nameIn);
     setMetricPage(1);
-    const landed = await getInitData(
+    await getInitData(
       String(targetObjectId),
       true,
       1,
@@ -635,46 +612,6 @@ const Configure = () => {
       [],
       nameIn
     );
-    const batchCount = landed?.count ?? 0;
-    // 后端 max_page_size=100。第一页已勾选；本批更多页则继续拉取并入勾选与 ref。
-    if (batchCount <= 100) {
-      return;
-    }
-    try {
-      const pageSize = 100;
-      const pages = Math.ceil(batchCount / pageSize);
-      const extraIds: React.Key[] = [];
-      for (let page = 2; page <= pages; page += 1) {
-        const extra = await getMonitorMetrics({
-          monitor_object_id: +targetObjectId,
-          monitor_plugin_id: +pluginID,
-          name_in: nameIn,
-          include_ifmib: false,
-          page
-        });
-        (extra?.items || []).forEach((metric) => {
-          if (metric.is_pre === true) {
-            return;
-          }
-          const id = Number(metric.id);
-          batchMetricByIdRef.current.set(id, metric);
-          if (!batchUncheckedIdsRef.current.has(id)) {
-            extraIds.push(metric.id);
-          }
-        });
-      }
-      if (extraIds.length) {
-        setSelectedRowKeys((prev) => {
-          const seen = new Set(prev.map((id) => Number(id)));
-          return [
-            ...prev,
-            ...extraIds.filter((id) => !seen.has(Number(id)))
-          ];
-        });
-      }
-    } catch {
-      // 后续页失败时保留已加载页的勾选。
-    }
   };
 
   useEffect(() => {
@@ -720,10 +657,7 @@ const Configure = () => {
       setMetricData([]);
       setActiveTab(next);
       setMetricPage(1);
-      setSelectedRowKeys([]);
       setNameInFilter('');
-      batchMetricByIdRef.current.clear();
-      batchUncheckedIdsRef.current.clear();
       getInitData(next, false, 1);
     });
   };
@@ -853,7 +787,7 @@ const Configure = () => {
     () =>
       new Set(
         metrics
-          .filter((item) => isMetricInlineReadonly(item))
+          .filter((item) => isReadonlyMetric(item))
           .map((item) => Number(item.id))
       ),
     [metrics]
@@ -868,8 +802,6 @@ const Configure = () => {
 
   const clearBatchFilter = () => {
     confirmIfDirtyThen(() => {
-      batchMetricByIdRef.current.clear();
-      batchUncheckedIdsRef.current.clear();
       setNameInFilter('');
       setMetricPage(1);
       getInitData(activeTab, true, 1, searchText.trim(), [], [], '');
@@ -1038,7 +970,7 @@ const Configure = () => {
       return undefined;
     }
     const classes = ['!py-1'];
-    if (isMetricInlineReadonly(record)) {
+    if (isReadonlyMetric(record)) {
       return classes.join(' ');
     }
     const id = Number(record.id);
@@ -1060,7 +992,7 @@ const Configure = () => {
       ellipsis: true,
       render: (value: string, record: MetricItem) => {
         const name = displayScriptMetricName(value);
-        if (!batchEditing || !isMetricInlineReadonly(record)) {
+        if (!batchEditing || !isReadonlyMetric(record)) {
           return <>{name}</>;
         }
         return (
@@ -1088,7 +1020,7 @@ const Configure = () => {
         className: dirtyCellClass(record, 'display_name')
       }),
       render: (_, record) => {
-        if (!batchEditing || isMetricInlineReadonly(record)) {
+        if (!batchEditing || isReadonlyMetric(record)) {
           return (
             <div className="flex items-center gap-1 overflow-hidden">
               <span className="truncate">
@@ -1135,7 +1067,7 @@ const Configure = () => {
         if (!batchEditing) {
           return null;
         }
-        if (isMetricInlineReadonly(record)) {
+        if (isReadonlyMetric(record)) {
           const group = inlineGroups.find(
             (item) => Number(item.id) === Number(record.metric_group)
           );
@@ -1194,7 +1126,7 @@ const Configure = () => {
         className: dirtyCellClass(record, 'data_type')
       }),
       render: (value: string, record: MetricItem) => {
-        if (!batchEditing || isMetricInlineReadonly(record)) {
+        if (!batchEditing || isReadonlyMetric(record)) {
           return (
             <>
               {value === 'Enum'
@@ -1207,6 +1139,8 @@ const Configure = () => {
         }
         const id = Number(record.id);
         const error = fieldErrorMessage(inlineErrors[id], 'data_type');
+        const wasEnum =
+          (inlineBaseline[id]?.data_type || record.data_type) === 'Enum';
         return (
           <InlineFieldWrap error={error}>
             <Select
@@ -1221,17 +1155,21 @@ const Configure = () => {
             <Select.Option value="Number">
               {t('monitor.integrations.number')}
             </Select.Option>
-            <Select.Option value="Enum" disabled>
-              <Tooltip
-                title={t(
-                  'monitor.integrations.metricInlineEditEnumDisabled',
-                  '请用单条编辑配置映射'
-                )}
-              >
-                <span className="block">
-                  {t('monitor.integrations.enum')}
-                </span>
-              </Tooltip>
+            <Select.Option value="Enum" disabled={!wasEnum}>
+              {wasEnum ? (
+                t('monitor.integrations.enum')
+              ) : (
+                <Tooltip
+                  title={t(
+                    'monitor.integrations.metricInlineEditEnumDisabled',
+                    '请用单条编辑配置映射'
+                  )}
+                >
+                  <span className="block">
+                    {t('monitor.integrations.enum')}
+                  </span>
+                </Tooltip>
+              )}
             </Select.Option>
           </Select>
           </InlineFieldWrap>
@@ -1251,7 +1189,7 @@ const Configure = () => {
         const dataType = batchEditing
           ? draft?.data_type || record.data_type
           : record.data_type;
-        if (!batchEditing || isMetricInlineReadonly(record) || dataType === 'Enum') {
+        if (!batchEditing || isReadonlyMetric(record) || dataType === 'Enum') {
           return <>{dataType === 'Enum' ? '--' : record.unit || '--'}</>;
         }
         const id = Number(record.id);
@@ -1309,7 +1247,7 @@ const Configure = () => {
         className: dirtyCellClass(record, 'description')
       }),
       render: (value: string, record: MetricItem) => {
-        if (!batchEditing || isMetricInlineReadonly(record)) {
+        if (!batchEditing || isReadonlyMetric(record)) {
           return <>{value || '--'}</>;
         }
         const id = Number(record.id);
@@ -1380,27 +1318,6 @@ const Configure = () => {
     return true;
   });
 
-  const handleGroupSelectChange = (
-    groupMetricIds: number[],
-    keys: React.Key[]
-  ) => {
-    const groupIdSet = new Set(groupMetricIds);
-    const selectedNow = new Set(keys.map((id) => Number(id)));
-    if (nameInFilter) {
-      groupMetricIds.forEach((id) => {
-        if (selectedNow.has(id)) {
-          batchUncheckedIdsRef.current.delete(id);
-        } else {
-          batchUncheckedIdsRef.current.add(id);
-        }
-      });
-    }
-    setSelectedRowKeys((prev) => [
-      ...prev.filter((id) => !groupIdSet.has(Number(id))),
-      ...keys
-    ]);
-  };
-
   const setAllGroupsOpen = (isOpen: boolean) => {
     const next = (groups: MetricListItem[]) =>
       groups.map((group) => ({ ...group, isOpen }));
@@ -1450,6 +1367,7 @@ const Configure = () => {
             placeholder={t('monitor.integrations.searchMetricPlaceholder')}
             value={searchText}
             allowClear
+            disabled={batchSaving}
             onChange={onSearchTxtChange}
             onPressEnter={onTxtPressEnter}
             onClear={onTxtClear}
@@ -1622,17 +1540,6 @@ const Configure = () => {
                       ? '[&_.ant-table-tbody_td]:!py-1 [&_.ant-table-tbody_td]:align-middle'
                       : undefined
                   }
-                  rowSelection={{
-                    selectedRowKeys,
-                    onChange: (keys) =>
-                      handleGroupSelectChange(
-                        (metricItem.child || []).map((item) => Number(item.id)),
-                        keys
-                      ),
-                    getCheckboxProps: (record: MetricItem) => ({
-                      disabled: record.is_pre === true
-                    })
-                  }}
                   rowDraggable={
                     !batchEditing &&
                     canReorderCatalog &&
@@ -1640,7 +1547,7 @@ const Configure = () => {
                     metricItem.child.every((item) => !item.is_pre)
                   }
                   rowClassName={(record: MetricItem) =>
-                    batchEditing && isMetricInlineReadonly(record)
+                    batchEditing && isReadonlyMetric(record)
                       ? '[&_td]:text-[var(--color-text-4)]'
                       : ''
                   }
@@ -1661,6 +1568,7 @@ const Configure = () => {
             pageSize={100}
             showSizeChanger={false}
             total={metricCount}
+            disabled={batchSaving}
             onChange={onMetricPageChange}
           />
         </div>

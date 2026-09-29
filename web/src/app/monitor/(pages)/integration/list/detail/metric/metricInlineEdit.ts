@@ -43,12 +43,30 @@ const asRecord = (value: unknown): Record<string, unknown> | null =>
     ? (value as Record<string, unknown>)
     : null;
 
-export const isMetricInlineReadonly = (metric: {
-  id?: unknown;
-  is_pre?: unknown;
-  name?: unknown;
-}): boolean =>
-  metric.is_pre === true || isSelfMetricName(String(metric.name || ''));
+const hasBkliteScriptMetricPrefix = (name: string): boolean => {
+  const lower = String(name || '').toLowerCase();
+  return (
+    lower.startsWith('bklite_script_') || lower.startsWith('bklite_script.')
+  );
+};
+
+export const isMetricInlineReadonly = (
+  metric: {
+    id?: unknown;
+    is_pre?: unknown;
+    name?: unknown;
+  },
+  isScriptPlugin: boolean
+): boolean => {
+  if (metric.is_pre === true) {
+    return true;
+  }
+  const name = String(metric.name || '');
+  if (isScriptPlugin) {
+    return isSelfMetricName(name);
+  }
+  return hasBkliteScriptMetricPrefix(name);
+};
 
 export const snapshotMetricInlineDraft = (
   metric: MetricItem
