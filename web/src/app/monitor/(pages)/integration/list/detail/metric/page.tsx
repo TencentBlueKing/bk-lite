@@ -3,18 +3,24 @@ import './register-metric-pilot';
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import {
+  Alert,
   Input,
   Button,
+  Cascader,
   Popconfirm,
   message,
+  Modal,
   Spin,
   Segmented,
+  Select,
   Pagination,
-  Tag
+  Tag,
+  Tooltip
 } from 'antd';
-import useApiClient from '@/utils/request';
+import useApiClient, { HandledRequestError } from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
+import { useCommon } from '@/app/monitor/context/common';
 import metricStyle from './index.module.scss';
 import { useTranslation } from '@/utils/i18n';
 import CompactEmptyState from '@/components/compact-empty-state';
@@ -36,6 +42,7 @@ import {
   needsTagsEntry,
   getPluginFamilyObjects
 } from '@/app/monitor/utils/monitorObject';
+import { findCascaderPath } from '@/app/monitor/utils/common';
 import { cloneDeep } from 'lodash';
 import {
   buildIfmibMetricView,
@@ -44,9 +51,13 @@ import {
 } from './ifmibMetricView';
 import { fetchAllMetricsGroups } from '@/app/monitor/api/fetchMetricCatalogPages';
 import {
+  CatalogMetricGroupOption,
+  METRIC_BATCH_UPDATE_MAX_SIZE,
+  buildUnitCascaderOptions,
   canonicalCatalogGroupId,
   catalogGroupLabel,
-  dedupeCatalogMetricGroups
+  dedupeCatalogMetricGroups,
+  resolvePersistCatalogUnitId
 } from '../configure/scriptMetricPersist';
 import {
   consumeScriptMetricEditCarry,
@@ -58,9 +69,21 @@ import {
   isSelfMetricName,
   visibleDimensionItems
 } from '../configure/scriptMetricsParser';
-import MetricBatchEditModal, {
-  MetricBatchEditModalRef
-} from './metricBatchEditModal';
+import ScriptMetricGroupSelect from '../configure/scriptMetricGroupSelect';
+import {
+  MetricInlineDraft,
+  MetricInlineItemError,
+  applySuccessfulItemsToBaseline,
+  chunkMetricBatchItems,
+  collectDirtyBatchItems,
+  countDirtyInlineFields,
+  fieldErrorMessage,
+  groupErrorsByMetricId,
+  isInlineFieldDirty,
+  isMetricInlineReadonly,
+  parseMetricBatchUpdateErrors,
+  snapshotMetricInlineDraft
+} from './metricInlineEdit';
 
 interface ObjectTabOption {
   label: React.ReactNode;
@@ -96,9 +119,15 @@ const Configure = () => {
     updateMetricsGroup,
     updateMonitorMetrics,
     deleteMonitorMetrics,
-    deleteMetricsGroup
+    deleteMetricsGroup,
+    batchUpdateMonitorMetrics
   } = useIntegrationApi();
   const { t } = useTranslation();
+  const commonContext = useCommon();
+  const unitOptions = useMemo(
+    () => buildUnitCascaderOptions(commonContext?.groupedUnitList || []),
+    [commonContext?.groupedUnitList]
+  );
   const searchParams = useSearchParams();
   const router = useRouter();
   const groupName = searchParams.get('name') || '';
@@ -108,7 +137,6 @@ const Configure = () => {
   const enableIfmib = searchParams.get('enable_ifmib') !== 'false';
   const groupRef = useRef<ModalRef>(null);
   const metricRef = useRef<ModalRef>(null);
-  const batchEditRef = useRef<MetricBatchEditModalRef>(null);
   const [searchText, setSearchText] = useState<string>('');
   const [nameInFilter, setNameInFilter] = useState<string>('');
   const batchMetricByIdRef = useRef<Map<number, MetricItem>>(new Map());
@@ -134,7 +162,26 @@ const Configure = () => {
   const scriptMetricDraftConsumedRef = useRef(false);
   const [catalogReady, setCatalogReady] = useState(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
-  const canReorderCatalog = metricCount <= 100 && !searchText.trim() && !nameInFilter;
+  const [batchEditing, setBatchEditing] = useState(false);
+  const [batchSaving, setBatchSaving] = useState(false);
+  const [inlineDrafts, setInlineDrafts] = useState<
+    Record<number, MetricInlineDraft>
+  >({});
+  const [inlineBaseline, setInlineBaseline] = useState<
+    Record<number, MetricInlineDraft>
+  >({});
+  const [inlineErrors, setInlineErrors] = useState<
+    Record<number, MetricInlineItemError[]>
+  >({});
+  const [inlineGroups, setInlineGroups] = useState<CatalogMetricGroupOption[]>(
+    []
+  );
+  const batchEditingRef = useRef(false);
+  const canReorderCatalog =
+    metricCount <= 100 &&
+    !searchText.trim() &&
+    !nameInFilter &&
+    !batchEditing;
 
   useEffect(() => () => metricCatalogAbortRef.current?.abort(), []);
 
@@ -160,105 +207,45 @@ const Configure = () => {
     return names.length ? names.join(',') : '--';
   };
 
-  const columns: ColumnItem[] = [
-    {
-      title: t('common.id'),
-      dataIndex: 'name',
-      width: 120,
-      key: 'name',
-      ellipsis: true,
-      render: (value: string) => <>{displayScriptMetricName(value)}</>
-    },
-    {
-      title: t('common.name'),
-      dataIndex: 'display_name',
-      width: 120,
-      key: 'display_name',
-      ellipsis: true,
-      render: (_, record) => (
-        <div className="flex items-center gap-1 overflow-hidden">
-          <span className="truncate">
-            {displayScriptMetricName(record.display_name || record.name)}
-          </span>
-        </div>
-      )
-    },
-    {
-      title: t('monitor.integrations.dimension'),
-      dataIndex: 'dimensions',
-      width: 100,
-      key: 'dimensions',
-      ellipsis: true,
-      render: (_, record) => <>{displayScriptDimensions(record.dimensions)}</>
-    },
-    {
-      title: t('monitor.integrations.dataType'),
-      dataIndex: 'data_type',
-      key: 'data_type',
-      width: 100,
-      render: (value: string) => (
-        <>{value === 'Enum'
-          ? t('monitor.integrations.enum')
-          : value === 'Number'
-            ? t('monitor.integrations.number')
-            : value}</>
-      )
-    },
-    {
-      title: t('common.unit'),
-      dataIndex: 'unit',
-      width: 80,
-      key: 'unit',
-      render: (_, record) => (
-        <>{record.data_type === 'Enum' ? '--' : record.unit || '--'}</>
-      )
-    },
-    {
-      title: t('common.descripition'),
-      dataIndex: 'display_description',
-      key: 'display_description',
-      width: 150
-    },
-    {
-      title: t('common.action'),
-      key: 'action',
-      dataIndex: 'action',
-      fixed: 'right',
-      width: 110,
-      render: (_, record) =>
-        record.is_pre ? (
-          <Button type="link" onClick={() => openMetricModal('view', record)}>
-            {t('common.view')}
-          </Button>
-        ) : (
-          <>
-            <Permission
-              requiredPermissions={['Edit Metric']}
-              className="mr-[10px]"
-            >
-              <Button
-                type="link"
-                onClick={() => openMetricModal('edit', record)}
-              >
-                {t('common.edit')}
-              </Button>
-            </Permission>
-            <Permission requiredPermissions={['Delete Metric']}>
-              <Popconfirm
-                title={t('common.deleteTitle')}
-                description={t('common.deleteContent')}
-                okText={t('common.confirm')}
-                cancelText={t('common.cancel')}
-                okButtonProps={{ loading: confirmLoading }}
-                onConfirm={() => handleDeleteConfirm(record as MetricItem)}
-              >
-                <Button type="link">{t('common.delete')}</Button>
-              </Popconfirm>
-            </Permission>
-          </>
-        )
-    }
-  ];
+  const mapGroupOptions = (
+    groups: MetricListItem[]
+  ): CatalogMetricGroupOption[] =>
+    groups.map((item) => {
+      const plugin = item.monitor_plugin;
+      return {
+        id: Number(item.id),
+        name: item.name,
+        display_name: item.display_name || item.name,
+        monitor_plugin:
+          typeof plugin === 'number' || typeof plugin === 'string'
+            ? plugin
+            : undefined,
+        is_pre: item.is_pre
+      };
+    });
+
+  const hydrateInlineDrafts = (metricItems: MetricItem[]) => {
+    const nextDrafts: Record<number, MetricInlineDraft> = {};
+    metricItems.forEach((metric) => {
+      const id = Number(metric.id);
+      if (!Number.isFinite(id) || id <= 0) {
+        return;
+      }
+      nextDrafts[id] = snapshotMetricInlineDraft(metric);
+    });
+    setInlineDrafts(nextDrafts);
+    setInlineBaseline(cloneDeep(nextDrafts));
+    setInlineErrors({});
+  };
+
+  const exitBatchEditing = () => {
+    batchEditingRef.current = false;
+    setBatchEditing(false);
+    setBatchSaving(false);
+    setInlineDrafts({});
+    setInlineBaseline({});
+    setInlineErrors({});
+  };
 
   useEffect(() => {
     if (isLoading) return;
@@ -484,9 +471,14 @@ const Configure = () => {
               : (defaultOpenState.get(group.id) ?? false)
         };
       });
-      setMetrics(groupData.flatMap((group) => group.child));
+      const flattened = groupData.flatMap((group) => group.child);
+      setMetrics(flattened);
       setMetricData(groupData);
       setFilteredMetricData(groupData);
+      if (batchEditingRef.current) {
+        hydrateInlineDrafts(flattened);
+        setInlineGroups(mapGroupOptions(rawGroupList));
+      }
       return { count: metricsPage.count };
     } catch {
       if (!abortController.signal.aborted) {
@@ -506,15 +498,51 @@ const Configure = () => {
     setSearchText(e.target.value);
   };
 
+  const confirmIfDirtyThen = (action: () => void) => {
+    const dirtyCount = countDirtyInlineFields(
+      inlineDrafts,
+      inlineBaseline,
+      new Set(
+        metrics
+          .filter((item) => isMetricInlineReadonly(item))
+          .map((item) => Number(item.id))
+      )
+    );
+    if (!batchEditing || dirtyCount <= 0) {
+      action();
+      return;
+    }
+    Modal.confirm({
+      title: t(
+        'monitor.integrations.metricInlineEditUnsavedTitle',
+        '有未保存的修改'
+      ),
+      content: t(
+        'monitor.integrations.metricInlineEditUnsavedContent',
+        '继续将丢弃未保存的修改，是否继续？'
+      ),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      onOk: () => {
+        exitBatchEditing();
+        action();
+      }
+    });
+  };
+
   const onTxtPressEnter = () => {
-    setMetricPage(1);
-    getInitData(activeTab, true, 1, searchText.trim());
+    confirmIfDirtyThen(() => {
+      setMetricPage(1);
+      getInitData(activeTab, true, 1, searchText.trim());
+    });
   };
 
   const onTxtClear = () => {
-    setSearchText('');
-    setMetricPage(1);
-    getInitData(activeTab, true, 1, '');
+    confirmIfDirtyThen(() => {
+      setSearchText('');
+      setMetricPage(1);
+      getInitData(activeTab, true, 1, '');
+    });
   };
 
   const openGroupModal = (type: string, row = {}) => {
@@ -666,20 +694,24 @@ const Configure = () => {
   };
 
   const onTabChange = (val: string | number) => {
-    const next = String(val);
-    setMetricData([]);
-    setActiveTab(next);
-    setMetricPage(1);
-    setSelectedRowKeys([]);
-    setNameInFilter('');
-    batchMetricByIdRef.current.clear();
-    batchUncheckedIdsRef.current.clear();
-    getInitData(next, false, 1);
+    confirmIfDirtyThen(() => {
+      const next = String(val);
+      setMetricData([]);
+      setActiveTab(next);
+      setMetricPage(1);
+      setSelectedRowKeys([]);
+      setNameInFilter('');
+      batchMetricByIdRef.current.clear();
+      batchUncheckedIdsRef.current.clear();
+      getInitData(next, false, 1);
+    });
   };
 
   const onMetricPageChange = (page: number) => {
-    setMetricPage(page);
-    getInitData(activeTab, true, page, searchText.trim());
+    confirmIfDirtyThen(() => {
+      setMetricPage(page);
+      getInitData(activeTab, true, page, searchText.trim());
+    });
   };
 
   const onDragStart = (e: React.DragEvent<HTMLDivElement>, id: string) => {
@@ -788,7 +820,6 @@ const Configure = () => {
     filteredMetricData.length > 0 &&
     filteredMetricData.every((group) => group.isOpen);
 
-  const selectedIdSet = new Set(selectedRowKeys.map((key) => Number(key)));
   const batchFilterNames = useMemo(
     () =>
       nameInFilter
@@ -797,46 +828,496 @@ const Configure = () => {
         .filter(Boolean),
     [nameInFilter]
   );
-  const selectedMetrics = (
-    batchFilterNames.length && batchMetricByIdRef.current.size
-      ? Array.from(batchMetricByIdRef.current.values())
-      : metrics
-  ).filter(
-    (item) => selectedIdSet.has(Number(item.id)) && item.is_pre !== true
+  const readonlyMetricIds = useMemo(
+    () =>
+      new Set(
+        metrics
+          .filter((item) => isMetricInlineReadonly(item))
+          .map((item) => Number(item.id))
+      ),
+    [metrics]
+  );
+  const dirtyFieldCount = countDirtyInlineFields(
+    inlineDrafts,
+    inlineBaseline,
+    readonlyMetricIds
   );
 
+  const popupContainer = () => document.body;
+
   const clearBatchFilter = () => {
-    batchMetricByIdRef.current.clear();
-    batchUncheckedIdsRef.current.clear();
-    setNameInFilter('');
-    setMetricPage(1);
-    getInitData(activeTab, true, 1, searchText.trim(), [], [], '');
+    confirmIfDirtyThen(() => {
+      batchMetricByIdRef.current.clear();
+      batchUncheckedIdsRef.current.clear();
+      setNameInFilter('');
+      setMetricPage(1);
+      getInitData(activeTab, true, 1, searchText.trim(), [], [], '');
+    });
   };
 
-  const openBatchEdit = () => {
-    if (!selectedMetrics.length) {
+  const enterBatchEditing = () => {
+    batchEditingRef.current = true;
+    setBatchEditing(true);
+    hydrateInlineDrafts(metrics);
+    setInlineGroups(mapGroupOptions(apiGroupList));
+  };
+
+  const patchInlineDraft = (
+    metricId: number,
+    field: keyof MetricInlineDraft,
+    value: MetricInlineDraft[keyof MetricInlineDraft]
+  ) => {
+    setInlineDrafts((prev) => {
+      const current = prev[metricId];
+      if (!current) {
+        return prev;
+      }
+      const nextDraft = { ...current, [field]: value };
+      if (field === 'data_type' && value === 'Number' && current.data_type === 'Enum') {
+        nextDraft.unit = 'none';
+      }
+      return { ...prev, [metricId]: nextDraft };
+    });
+    setInlineErrors((prev) => {
+      if (!prev[metricId]) {
+        return prev;
+      }
+      const remain = prev[metricId].filter((item) => item.field && item.field !== field);
+      if (remain.length === prev[metricId].length) {
+        return prev;
+      }
+      const next = { ...prev };
+      if (remain.length) {
+        next[metricId] = remain;
+      } else {
+        delete next[metricId];
+      }
+      return next;
+    });
+  };
+
+  const handleBatchEditCancel = () => {
+    confirmIfDirtyThen(() => {
+      exitBatchEditing();
+    });
+  };
+
+  const handleBatchEditSave = async () => {
+    const items = collectDirtyBatchItems(
+      inlineDrafts,
+      inlineBaseline,
+      readonlyMetricIds
+    );
+    if (!items.length) {
       message.warning(
-        t('monitor.integrations.goEditMetricsSelectFirst', '请先勾选指标')
+        t('monitor.integrations.metricInlineEditEmpty', '没有需要保存的修改')
       );
       return;
     }
-    batchEditRef.current?.showModal({
-      metrics: selectedMetrics,
-      groups: apiGroupList.map((item) => {
-        const plugin = item.monitor_plugin;
-        return {
-          id: Number(item.id),
-          name: item.name,
-          display_name: item.display_name || item.name,
-          monitor_plugin:
-            typeof plugin === 'number' || typeof plugin === 'string'
-              ? plugin
-              : undefined,
-          is_pre: item.is_pre
-        };
-      })
-    });
+    const emptyName = items.find(
+      (item) => item.display_name !== undefined && !String(item.display_name).trim()
+    );
+    if (emptyName) {
+      setInlineErrors((prev) => ({
+        ...prev,
+        [emptyName.id]: [
+          {
+            id: emptyName.id,
+            name: '',
+            field: 'display_name',
+            message: t('common.required'),
+            code: 'validation'
+          }
+        ]
+      }));
+      return;
+    }
+    setBatchSaving(true);
+    let updated = 0;
+    let workingBaseline = inlineBaseline;
+    const remaining = [...items];
+    try {
+      const chunks = chunkMetricBatchItems(remaining, METRIC_BATCH_UPDATE_MAX_SIZE);
+      for (const chunk of chunks) {
+        try {
+          await batchUpdateMonitorMetrics({
+            monitor_plugin: +pluginID,
+            items: chunk
+          });
+          updated += chunk.length;
+          const ids = chunk.map((item) => item.id);
+          workingBaseline = applySuccessfulItemsToBaseline(
+            workingBaseline,
+            inlineDrafts,
+            ids
+          );
+          setInlineBaseline(workingBaseline);
+          setInlineErrors((prev) => {
+            const next = { ...prev };
+            ids.forEach((id) => {
+              delete next[id];
+            });
+            return next;
+          });
+        } catch (error: unknown) {
+          const parsed = parseMetricBatchUpdateErrors(error);
+          const grouped = groupErrorsByMetricId(parsed);
+          if (Object.keys(grouped).length) {
+            setInlineErrors((prev) => ({ ...prev, ...grouped }));
+          } else {
+            const fallback =
+              error instanceof HandledRequestError
+                ? error.message
+                : error instanceof Error
+                  ? error.message
+                  : t('common.operationFailed');
+            const chunkErrors: Record<number, MetricInlineItemError[]> = {};
+            chunk.forEach((item) => {
+              chunkErrors[item.id] = [
+                {
+                  id: item.id,
+                  name: '',
+                  field: null,
+                  message: fallback,
+                  code: 'request_failed'
+                }
+              ];
+            });
+            setInlineErrors((prev) => ({ ...prev, ...chunkErrors }));
+          }
+          message.error(
+            t(
+              'monitor.integrations.metricBatchEditPartialFailed',
+              '已更新 {updated} 个指标，{remaining} 个未更新',
+              {
+                updated,
+                remaining: items.length - updated
+              }
+            )
+          );
+          return;
+        }
+      }
+      message.success(
+        t(
+          'monitor.integrations.metricBatchEditSuccess',
+          '已更新 {count} 个指标',
+          { count: updated }
+        )
+      );
+      exitBatchEditing();
+      getInitData(activeTab, true);
+    } finally {
+      setBatchSaving(false);
+    }
   };
+
+  const dirtyCellClass = (record: MetricItem, field: keyof MetricInlineDraft) => {
+    if (!batchEditing || isMetricInlineReadonly(record)) {
+      return undefined;
+    }
+    const id = Number(record.id);
+    return isInlineFieldDirty(inlineDrafts[id], inlineBaseline[id], field)
+      ? 'bg-[var(--color-fill-2)]'
+      : undefined;
+  };
+
+  const columns: ColumnItem[] = [
+    {
+      title: t('common.id'),
+      dataIndex: 'name',
+      width: 120,
+      key: 'name',
+      ellipsis: true,
+      render: (value: string) => <>{displayScriptMetricName(value)}</>
+    },
+    {
+      title: t('common.name'),
+      dataIndex: 'display_name',
+      width: 160,
+      key: 'display_name',
+      ellipsis: true,
+      onCell: (record: MetricItem) => ({
+        className: dirtyCellClass(record, 'display_name')
+      }),
+      render: (_, record) => {
+        if (!batchEditing || isMetricInlineReadonly(record)) {
+          return (
+            <div className="flex items-center gap-1 overflow-hidden">
+              <span className="truncate">
+                {displayScriptMetricName(record.display_name || record.name)}
+              </span>
+            </div>
+          );
+        }
+        const id = Number(record.id);
+        const error = fieldErrorMessage(inlineErrors[id], 'display_name');
+        return (
+          <Input
+            size="small"
+            status={error ? 'error' : undefined}
+            value={inlineDrafts[id]?.display_name ?? ''}
+            onChange={(event) =>
+              patchInlineDraft(id, 'display_name', event.target.value)
+            }
+            title={error || undefined}
+          />
+        );
+      }
+    },
+    {
+      title: t('monitor.integrations.dimension'),
+      dataIndex: 'dimensions',
+      width: 100,
+      key: 'dimensions',
+      ellipsis: true,
+      render: (_, record) => <>{displayScriptDimensions(record.dimensions)}</>
+    },
+    {
+      title: t('monitor.integrations.metricGroup'),
+      dataIndex: 'metric_group',
+      width: 160,
+      key: 'metric_group',
+      ellipsis: true,
+      onCell: (record: MetricItem) => ({
+        className: dirtyCellClass(record, 'metric_group')
+      }),
+      render: (_, record) => {
+        if (!batchEditing) {
+          return null;
+        }
+        if (isMetricInlineReadonly(record)) {
+          const group = inlineGroups.find(
+            (item) => Number(item.id) === Number(record.metric_group)
+          );
+          return <>{catalogGroupLabel(group) || '--'}</>;
+        }
+        const id = Number(record.id);
+        const error = fieldErrorMessage(inlineErrors[id], 'metric_group');
+        return (
+          <ScriptMetricGroupSelect
+            size="small"
+            allowClear={false}
+            className="w-full"
+            objectId={activeTab}
+            pluginId={pluginID}
+            groups={inlineGroups}
+            onGroupsChange={setInlineGroups}
+            value={inlineDrafts[id]?.metric_group}
+            getPopupContainer={popupContainer}
+            popupMatchSelectWidth={false}
+            onCreated={(created) => {
+              setApiGroupList((prev) => {
+                if (prev.some((item) => Number(item.id) === created.id)) {
+                  return prev;
+                }
+                return [
+                  ...prev,
+                  {
+                    id: String(created.id),
+                    name: created.name || catalogGroupLabel(created),
+                    display_name: catalogGroupLabel(created),
+                    monitor_plugin: created.monitor_plugin ?? undefined,
+                    is_pre: false,
+                    child: []
+                  }
+                ];
+              });
+            }}
+            onChange={(value) => {
+              if (typeof value === 'number') {
+                patchInlineDraft(id, 'metric_group', value);
+              }
+            }}
+            placeholder={error || t('monitor.integrations.metricGroup')}
+          />
+        );
+      }
+    },
+    {
+      title: t('monitor.integrations.dataType'),
+      dataIndex: 'data_type',
+      key: 'data_type',
+      width: 120,
+      onCell: (record: MetricItem) => ({
+        className: dirtyCellClass(record, 'data_type')
+      }),
+      render: (value: string, record: MetricItem) => {
+        if (!batchEditing || isMetricInlineReadonly(record)) {
+          return (
+            <>
+              {value === 'Enum'
+                ? t('monitor.integrations.enum')
+                : value === 'Number'
+                  ? t('monitor.integrations.number')
+                  : value}
+            </>
+          );
+        }
+        const id = Number(record.id);
+        const error = fieldErrorMessage(inlineErrors[id], 'data_type');
+        return (
+          <Select
+            size="small"
+            className="w-full"
+            status={error ? 'error' : undefined}
+            value={inlineDrafts[id]?.data_type || 'Number'}
+            getPopupContainer={popupContainer}
+            popupClassName="[&_.ant-select-item-option-disabled]:pointer-events-auto"
+            onChange={(next) => patchInlineDraft(id, 'data_type', next)}
+          >
+            <Select.Option value="Number">
+              {t('monitor.integrations.number')}
+            </Select.Option>
+            <Select.Option value="Enum" disabled>
+              <Tooltip
+                title={t(
+                  'monitor.integrations.metricInlineEditEnumDisabled',
+                  '请用单条编辑配置映射'
+                )}
+              >
+                <span className="block">
+                  {t('monitor.integrations.enum')}
+                </span>
+              </Tooltip>
+            </Select.Option>
+          </Select>
+        );
+      }
+    },
+    {
+      title: t('common.unit'),
+      dataIndex: 'unit',
+      width: 140,
+      key: 'unit',
+      onCell: (record: MetricItem) => ({
+        className: dirtyCellClass(record, 'unit')
+      }),
+      render: (_, record) => {
+        const draft = inlineDrafts[Number(record.id)];
+        const dataType = batchEditing
+          ? draft?.data_type || record.data_type
+          : record.data_type;
+        if (!batchEditing || isMetricInlineReadonly(record) || dataType === 'Enum') {
+          return <>{dataType === 'Enum' ? '--' : record.unit || '--'}</>;
+        }
+        const id = Number(record.id);
+        const error = fieldErrorMessage(inlineErrors[id], 'unit');
+        const unitId = draft?.unit || '';
+        const cascaderValue = unitId
+          ? findCascaderPath(unitOptions as never, unitId)
+          : [];
+        return (
+          <Cascader
+            size="small"
+            allowClear
+            status={error ? 'error' : undefined}
+            className="w-full"
+            options={unitOptions}
+            value={
+              cascaderValue.length
+                ? cascaderValue.map((item) => String(item))
+                : undefined
+            }
+            getPopupContainer={popupContainer}
+            displayRender={(labels) => {
+              const leaf = labels[labels.length - 1];
+              return leaf == null ? '' : String(leaf);
+            }}
+            onChange={(next) =>
+              patchInlineDraft(id, 'unit', resolvePersistCatalogUnitId(next))
+            }
+            showSearch={{
+              filter: (inputValue, path) => {
+                const needle = inputValue.trim().toLowerCase();
+                if (!needle) return true;
+                return path.some((option) => {
+                  const label = String(option.label ?? '').toLowerCase();
+                  const extra = String(
+                    (option as { searchText?: string }).searchText ?? ''
+                  ).toLowerCase();
+                  return label.includes(needle) || extra.includes(needle);
+                });
+              }
+            }}
+          />
+        );
+      }
+    },
+    {
+      title: t('common.descripition'),
+      dataIndex: 'display_description',
+      key: 'display_description',
+      width: 180,
+      onCell: (record: MetricItem) => ({
+        className: dirtyCellClass(record, 'description')
+      }),
+      render: (value: string, record: MetricItem) => {
+        if (!batchEditing || isMetricInlineReadonly(record)) {
+          return <>{value || '--'}</>;
+        }
+        const id = Number(record.id);
+        const error = fieldErrorMessage(inlineErrors[id], 'description');
+        return (
+          <Input
+            size="small"
+            status={error ? 'error' : undefined}
+            value={inlineDrafts[id]?.description ?? ''}
+            onChange={(event) =>
+              patchInlineDraft(id, 'description', event.target.value)
+            }
+            title={error || undefined}
+          />
+        );
+      }
+    },
+    {
+      title: t('common.action'),
+      key: 'action',
+      dataIndex: 'action',
+      fixed: 'right',
+      width: 110,
+      render: (_, record) => {
+        if (batchEditing) {
+          return <span className="text-[var(--color-text-4)]">--</span>;
+        }
+        return record.is_pre ? (
+          <Button type="link" onClick={() => openMetricModal('view', record)}>
+            {t('common.view')}
+          </Button>
+        ) : (
+          <>
+            <Permission
+              requiredPermissions={['Edit Metric']}
+              className="mr-[10px]"
+            >
+              <Button
+                type="link"
+                onClick={() => openMetricModal('edit', record)}
+              >
+                {t('common.edit')}
+              </Button>
+            </Permission>
+            <Permission requiredPermissions={['Delete Metric']}>
+              <Popconfirm
+                title={t('common.deleteTitle')}
+                description={t('common.deleteContent')}
+                okText={t('common.confirm')}
+                cancelText={t('common.cancel')}
+                okButtonProps={{ loading: confirmLoading }}
+                onConfirm={() => handleDeleteConfirm(record as MetricItem)}
+              >
+                <Button type="link">{t('common.delete')}</Button>
+              </Popconfirm>
+            </Permission>
+          </>
+        );
+      }
+    }
+  ];
+  const tableColumns = batchEditing
+    ? columns
+    : columns.filter((column) => column.key !== 'metric_group');
 
   const handleGroupSelectChange = (
     groupMetricIds: number[],
@@ -892,7 +1373,7 @@ const Configure = () => {
             >
               {t(
                 'monitor.integrations.batchMetricFilter',
-                '本批 {count} 个指标',
+                '仅显示本批 {count} 个',
                 { count: batchFilterNames.length }
               )}
             </Tag>
@@ -918,20 +1399,49 @@ const Configure = () => {
               : t('common.expandAll')}
           </Button>
           <Permission requiredPermissions={['Add Group']} className="mr-[8px]">
-            <Button type="primary" onClick={() => openGroupModal('add')}>
+            <Button
+              type="primary"
+              disabled={batchEditing}
+              onClick={() => openGroupModal('add')}
+            >
               {t('monitor.integrations.addGroup')}
             </Button>
           </Permission>
-          <Permission requiredPermissions={['Edit Metric']} className="mr-[8px]">
-            <Button
-              disabled={!selectedMetrics.length}
-              onClick={openBatchEdit}
-            >
-              {t('common.batchEdit')}
-            </Button>
-          </Permission>
+          {batchEditing ? (
+            <>
+              <Button
+                type="primary"
+                className="mr-[8px]"
+                loading={batchSaving}
+                disabled={dirtyFieldCount <= 0}
+                onClick={() => void handleBatchEditSave()}
+              >
+                {t(
+                  'monitor.integrations.metricInlineEditSave',
+                  '保存（{count} 处修改）',
+                  { count: dirtyFieldCount }
+                )}
+              </Button>
+              <Button
+                className="mr-[8px]"
+                disabled={batchSaving}
+                onClick={handleBatchEditCancel}
+              >
+                {t('common.cancel')}
+              </Button>
+            </>
+          ) : (
+            <Permission requiredPermissions={['Edit Metric']} className="mr-[8px]">
+              <Button onClick={enterBatchEditing}>
+                {t('common.batchEdit')}
+              </Button>
+            </Permission>
+          )}
           <Permission requiredPermissions={['Add Metric']}>
-            <Button onClick={() => openMetricModal('add')}>
+            <Button
+              disabled={batchEditing}
+              onClick={() => openMetricModal('add')}
+            >
               {t('monitor.integrations.addMetric')}
             </Button>
           </Permission>
@@ -944,6 +1454,34 @@ const Configure = () => {
             height: showTabs ? 'calc(100vh - 396px)' : 'calc(100vh - 346px)'
           }}
         >
+          {batchFilterNames.length > 0 ? (
+            <Alert
+              type="info"
+              showIcon
+              className="mb-[10px]"
+              message={
+                <div className="flex items-center justify-between gap-3">
+                  <span>
+                    {t(
+                      'monitor.integrations.batchMetricFilterBanner',
+                      '仅显示本批 {count} 个指标，其他指标（含自监控）已隐藏',
+                      { count: batchFilterNames.length }
+                    )}
+                  </span>
+                  <Button
+                    type="link"
+                    className="h-auto p-0"
+                    onClick={clearBatchFilter}
+                  >
+                    {t(
+                      'monitor.integrations.batchMetricFilterShowAll',
+                      '查看全部'
+                    )}
+                  </Button>
+                </div>
+              }
+            />
+          ) : null}
           {!!filteredMetricData.length ? (
             filteredMetricData.map((metricItem) => (
               <div key={metricItem.id} data-metric-group-id={metricItem.id}>
@@ -954,7 +1492,7 @@ const Configure = () => {
                     ? 'border-t-[1px] border-blue-200'
                     : ''
                 }`}
-                sortable={!metricItem.is_pre && canReorderCatalog}
+                sortable={!metricItem.is_pre && canReorderCatalog && !batchEditing}
                 dragHandleOnly
                 onDragStart={(e) => onDragStart(e, metricItem.id)}
                 onDragEnd={onDragEnd}
@@ -978,7 +1516,7 @@ const Configure = () => {
                       <Button
                         type="link"
                         size="small"
-                        disabled={metricItem.is_pre}
+                        disabled={metricItem.is_pre || batchEditing}
                         icon={<EditOutlined />}
                         onClick={() => openGroupModal('edit', metricItem)}
                       ></Button>
@@ -996,7 +1534,9 @@ const Configure = () => {
                           type="link"
                           size="small"
                           disabled={
-                            !!metricItem.child?.length || metricItem.is_pre
+                            batchEditing ||
+                            !!metricItem.child?.length ||
+                            metricItem.is_pre
                           }
                           icon={<DeleteOutlined />}
                         ></Button>
@@ -1008,7 +1548,7 @@ const Configure = () => {
                 <CustomTable
                   pagination={false}
                   dataSource={metricItem.child || []}
-                  columns={columns}
+                  columns={tableColumns}
                   rowKey="id"
                   rowSelection={{
                     selectedRowKeys,
@@ -1022,9 +1562,15 @@ const Configure = () => {
                     })
                   }}
                   rowDraggable={
+                    !batchEditing &&
                     canReorderCatalog &&
                     metricItem.child?.length > 1 &&
                     metricItem.child.every((item) => !item.is_pre)
+                  }
+                  rowClassName={(record: MetricItem) =>
+                    batchEditing && isMetricInlineReadonly(record)
+                      ? 'bg-[var(--color-fill-1)] text-[var(--color-text-4)]'
+                      : ''
                   }
                   onRowDragEnd={onRowDragEnd}
                 />
@@ -1071,27 +1617,6 @@ const Configure = () => {
           );
         }}
         onSuccess={operateMtric}
-      />
-      <MetricBatchEditModal
-        ref={batchEditRef}
-        monitorObject={+activeTab}
-        pluginId={+pluginID}
-        onGroupListChange={(created) => {
-          const groupId = created?.id != null ? String(created.id) : '';
-          void getInitData(
-            activeTab,
-            true,
-            metricPage,
-            searchText.trim(),
-            [],
-            groupId ? [groupId] : []
-          );
-        }}
-        onSuccess={() => {
-          setSelectedRowKeys([]);
-          operateMtric();
-        }}
-        onRefresh={operateMtric}
       />
     </div>
   );

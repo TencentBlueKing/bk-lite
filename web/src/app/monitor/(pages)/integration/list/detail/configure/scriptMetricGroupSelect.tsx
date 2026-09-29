@@ -28,6 +28,8 @@ interface ScriptMetricGroupSelectProps {
   loading?: boolean;
   onSearch?: (value: string) => void;
   filterOption?: boolean | ((input: string, option?: { label?: string }) => boolean);
+  getPopupContainer?: (node: HTMLElement) => HTMLElement;
+  popupMatchSelectWidth?: boolean;
 }
 
 const ScriptMetricGroupSelect: React.FC<ScriptMetricGroupSelectProps> = ({
@@ -45,7 +47,9 @@ const ScriptMetricGroupSelect: React.FC<ScriptMetricGroupSelectProps> = ({
   className,
   loading,
   onSearch,
-  filterOption = true
+  filterOption = true,
+  getPopupContainer,
+  popupMatchSelectWidth
 }) => {
   const { t } = useTranslation();
   const { post } = useApiClient();
@@ -135,6 +139,8 @@ const ScriptMetricGroupSelect: React.FC<ScriptMetricGroupSelectProps> = ({
       }
       className={className}
       placeholder={placeholder}
+      getPopupContainer={getPopupContainer}
+      popupMatchSelectWidth={popupMatchSelectWidth}
       value={value}
       onChange={(next) => onChange?.(typeof next === 'number' ? next : null)}
       onSearch={onSearch}
