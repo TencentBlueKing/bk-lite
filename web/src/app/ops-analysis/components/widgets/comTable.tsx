@@ -51,6 +51,11 @@ import { useTableBodyScrollY } from './shared/useTableBodyScrollY';
 
 const { RangePicker } = DatePicker;
 const DEFAULT_CELL_MAX_WIDTH = 260;
+const TOOLTIP_MAX_WIDTH = 480;
+const TOOLTIP_STYLES = {
+  root: { maxWidth: TOOLTIP_MAX_WIDTH },
+  body: { whiteSpace: 'pre-line' as const, maxWidth: TOOLTIP_MAX_WIDTH },
+};
 
 interface ComTableProps {
   rawData: any;
@@ -270,7 +275,11 @@ const ComTable: React.FC<ComTableProps> = ({
               : presentation;
           if (formattedPresentation.mode === 'colorBackground') {
             return (
-              <Tooltip placement="topLeft" title={formattedPresentation.tooltipText}>
+              <Tooltip
+                placement="topLeft"
+                title={formattedPresentation.tooltipText}
+                styles={TOOLTIP_STYLES}
+              >
                 <div
                   role="img"
                   aria-label={formattedPresentation.tooltipText}
@@ -288,7 +297,11 @@ const ComTable: React.FC<ComTableProps> = ({
           }
 
           return (
-            <Tooltip placement="topLeft" title={formattedPresentation.displayText}>
+            <Tooltip
+              placement="topLeft"
+              title={formattedPresentation.displayText}
+              styles={TOOLTIP_STYLES}
+            >
               <div
                 style={{
                   maxWidth: DEFAULT_CELL_MAX_WIDTH,
