@@ -445,6 +445,20 @@ export const applyStdoutMetricNames = (
     name: toStdoutMetricName(item.name)
   }));
 
+export const CATALOG_METRIC_PAGE_SIZE = 100;
+
+const toCatalogMetricRefs = (
+  items: Array<{ id?: number; name?: string }>
+): CatalogMetricRef[] => {
+  const refs: CatalogMetricRef[] = [];
+  items.forEach((item) => {
+    if (item?.name && typeof item.id === 'number') {
+      refs.push({ id: item.id, name: item.name });
+    }
+  });
+  return refs;
+};
+
 export const listPluginCatalogMetrics = async ({
   pluginId,
   objectId,
@@ -454,21 +468,37 @@ export const listPluginCatalogMetrics = async ({
   objectId: string | number;
   client: Pick<PersistScriptMetricsClient, 'get'>;
 }): Promise<CatalogMetricRef[]> => {
-  const existingRes = await client.get('/monitor/api/metrics/', {
-    params: {
-      monitor_object_id: objectId,
-      monitor_plugin_id: pluginId,
-      page: 1,
-      page_size: 100
-    },
-    ...SILENT_REQ
-  });
+  const pageSize = CATALOG_METRIC_PAGE_SIZE;
   const refs: CatalogMetricRef[] = [];
-  extractCatalogItems<{ id?: number; name?: string }>(existingRes).forEach((item) => {
-    if (item?.name && typeof item.id === 'number') {
-      refs.push({ id: item.id, name: item.name });
+  let page = 1;
+  while (true) {
+    const existingRes = await client.get('/monitor/api/metrics/', {
+      params: {
+        monitor_object_id: objectId,
+        monitor_plugin_id: pluginId,
+        page,
+        page_size: pageSize
+      },
+      ...SILENT_REQ
+    });
+    if (Array.isArray(existingRes) && page === 1) {
+      return toCatalogMetricRefs(
+        existingRes as Array<{ id?: number; name?: string }>
+      );
     }
-  });
+    const batch = extractCatalogItems<{ id?: number; name?: string }>(
+      existingRes
+    );
+    refs.push(...toCatalogMetricRefs(batch));
+    const countRaw = asRecord(existingRes)?.count;
+    if (!batch.length || batch.length < pageSize) {
+      break;
+    }
+    if (typeof countRaw === 'number' && refs.length >= countRaw) {
+      break;
+    }
+    page += 1;
+  }
   return refs;
 };
 
