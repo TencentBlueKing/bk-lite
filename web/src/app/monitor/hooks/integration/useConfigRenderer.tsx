@@ -315,7 +315,11 @@ export const useConfigRenderer = () => {
               const scriptOs = getFieldValue('script_os');
               const windows = scriptOs === 'windows' || (scriptOs == null && isWindows);
               if (windows) return;
-              const str = String(value ?? '').trim().toLowerCase();
+              // 依赖字段触发的校验会抓住切换前的值；以 store 里的当前值为准。
+              const live = getFieldValue('run_as');
+              const str = String((live === undefined ? value : live) ?? '')
+                .trim()
+                .toLowerCase();
               if (!str) {
                 throw new Error(
                   t(
@@ -791,17 +795,15 @@ export const useConfigRenderer = () => {
           {({ getFieldValue }) => {
             const scriptOs = getFieldValue('script_os');
             const isWindowsHost = scriptOs === 'windows' || (scriptOs == null && isWindows);
-            if (isWindowsHost) {
-              return null;
-            }
             return (
               <Form.Item
                 key={name}
                 required={required}
+                hidden={isWindowsHost}
                 label={renderLabel()}
               >
                 {renderNamedControl()}
-                {showInlineDescription && (
+                {showInlineDescription && !isWindowsHost && (
                   <div className="mt-2 text-[12px] text-[var(--color-text-3)] leading-[18px]">
                     {description}
                   </div>

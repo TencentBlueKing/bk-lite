@@ -87,7 +87,7 @@ import {
   mergeImportedAssetRows
 } from './automaticAssetCount';
 import ScriptTrialRunArea from './scriptTrialRunArea';
-import { applyScriptCollectSubmit } from './scriptCollectForm';
+import { applyScriptCollectSubmit, syncScriptRunAsForOs } from './scriptCollectForm';
 import {
   collectReservedTagViolations,
   persistScriptMetrics
@@ -1610,12 +1610,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           setFormSnapshot(nextValues);
         }
         if (Object.prototype.hasOwnProperty.call(changed, 'script_os')) {
-          form.setFields([{ name: 'run_as', errors: [] }]);
-          if (changed.script_os === 'windows') {
-            form.setFieldValue('run_as', '');
-          } else if (!String(form.getFieldValue('run_as') || '').trim()) {
-            form.setFieldValue('run_as', 'telegraf');
-          }
+          syncScriptRunAsForOs(form, String(changed.script_os ?? ''));
         }
         if (
           Object.prototype.hasOwnProperty.call(

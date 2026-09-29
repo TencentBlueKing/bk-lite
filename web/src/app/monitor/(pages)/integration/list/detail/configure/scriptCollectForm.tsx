@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Alert, Form, Input, Segmented, Select } from 'antd';
+import type { FormInstance } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import CodeEditor from '@/components/code-editor';
 
@@ -159,6 +160,28 @@ export const normalizeScriptCollectFormFields = (fields: any[] = []) => {
   return [scriptOs, interpreter, runAs, ...rest];
 };
 
+const LINUX_RUN_AS_DEFAULT = 'telegraf';
+
+/**
+ * 先写入 run_as，再改 script_os。
+ * 依赖校验会在 script_os 变更时抓当前值；若之后才补默认值，异步校验仍会用空串报「不能为空」。
+ */
+export const syncScriptRunAsForOs = (form: FormInstance, os: string) => {
+  if (os === 'windows') {
+    form.setFields([{ name: 'run_as', value: '', errors: [] }]);
+  } else {
+    const current = String(form.getFieldValue('run_as') || '').trim();
+    if (!current) {
+      form.setFields([{ name: 'run_as', value: LINUX_RUN_AS_DEFAULT, errors: [] }]);
+    } else {
+      form.setFields([{ name: 'run_as', errors: [] }]);
+    }
+  }
+  void Promise.resolve().then(() => {
+    form.validateFields(['run_as']).catch(() => undefined);
+  });
+};
+
 export const ScriptOsSegmented: React.FC<{
   value?: string;
   onChange?: (value: string) => void;
@@ -176,18 +199,13 @@ export const ScriptOsSegmented: React.FC<{
       ]}
       onChange={(next) => {
         const os = String(next);
+        syncScriptRunAsForOs(form, os);
         onChange?.(os);
         const interpreters = interpretersForOs(os);
         const current = String(form.getFieldValue('interpreter') || '');
         if (!interpreters.some((item) => item.value === current)) {
           form.setFieldValue('interpreter', interpreters[0].value);
         }
-        if (os === 'windows') {
-          form.setFieldValue('run_as', '');
-        } else if (!String(form.getFieldValue('run_as') || '').trim()) {
-          form.setFieldValue('run_as', 'telegraf');
-        }
-        form.setFields([{ name: 'run_as', errors: [] }]);
       }}
     />
   );

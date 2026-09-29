@@ -294,17 +294,18 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               'monitor.integrations.trialRunEmptyPrompt',
               '保存前可先调试，验证输出指标'
             )}
-          />
-          <Button
-            type="primary"
-            className="mt-3"
-            icon={<PlayCircleOutlined />}
-            loading={trialBusy}
-            disabled={!nodeSelected || trialBusy}
-            onClick={handleTrialClick}
           >
-            {t('monitor.integrations.trialRun', '调试')}
-          </Button>
+            <Button
+              type="primary"
+              className="mt-3"
+              icon={<PlayCircleOutlined />}
+              loading={trialBusy}
+              disabled={!nodeSelected || trialBusy}
+              onClick={handleTrialClick}
+            >
+              {t('monitor.integrations.trialRun', '调试')}
+            </Button>
+          </CompactEmptyState>
         </div>
       </div>
     );
