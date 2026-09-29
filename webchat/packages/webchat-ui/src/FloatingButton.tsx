@@ -6,6 +6,7 @@ import { ChatState, isPlatformMode } from '@webchat/core';
 import { createFloatingButtonChatCallbacks } from './floatingButtonCallbacks';
 import { ConversationSkeleton } from './components/ConversationSkeleton';
 import { WC } from './chrome';
+import { useTranslator } from './useTranslator';
 
 const Chat = React.lazy(async () => {
   const mod = await import('./Chat');
@@ -57,6 +58,7 @@ export const FloatingButton = React.memo(React.forwardRef<HTMLDivElement, Floati
     ...chatProps
   } = props;
 
+  const t = useTranslator();
   const [isOpen, setIsOpen] = useState(false);
   const [hasOpened, setHasOpened] = useState(false);
   const [hidden, setHidden] = useState(false);
@@ -240,8 +242,8 @@ export const FloatingButton = React.memo(React.forwardRef<HTMLDivElement, Floati
           }}
           onClick={() => !isDragging && (isOpen ? close() : open())}
           onMouseDown={handleMouseDown}
-          title="打开对话"
-          aria-label="打开对话"
+          title={t('chat.openConversation', '打开对话')}
+          aria-label={t('chat.openConversation', '打开对话')}
         >
           <span className="pointer-events-none flex items-center justify-center">
             {buttonIcon}

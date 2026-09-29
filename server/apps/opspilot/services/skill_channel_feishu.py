@@ -20,6 +20,7 @@ from django.core.cache import cache
 from django.http import HttpRequest, HttpResponse, JsonResponse
 
 from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import safe_log_value
 from apps.opspilot.enum import SkillChannelChoices
 from apps.opspilot.models import SkillChannel
 from apps.opspilot.utils.base_chat_flow_utils import BaseChatFlowUtils
@@ -112,11 +113,12 @@ class SkillChannelFeishuUtils(BaseChatFlowUtils):
             raise FeishuChannelError("飞书回复失败", status=502) from exc
         if response.status_code >= 400 or payload.get("code") not in (0, None):
             logger.warning(
-                "智能体飞书回复失败 channel_id=%s message_id=%s status=%s code=%s",
+                "智能体飞书回复失败 channel_id=%s message_id=%s status=%s code=%s msg=%s",
                 self.channel_id,
                 message_id,
                 response.status_code,
                 payload.get("code"),
+                safe_log_value(payload.get("msg")),
             )
             raise FeishuChannelError("飞书回复失败", status=502)
 

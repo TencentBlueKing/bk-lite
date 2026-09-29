@@ -3,6 +3,7 @@
 import React from 'react';
 import { WC } from '../chrome';
 import { useImeEnterGuard } from '../useImeEnterGuard';
+import { useTranslator } from '../useTranslator';
 
 export interface PillComposerProps {
   value: string;
@@ -24,13 +25,14 @@ export const PillComposer = React.memo(function PillComposer({
   value,
   onChange,
   onSubmit,
-  placeholder = '请输入消息...',
+  placeholder,
   loading = false,
   onCancel,
   imageSlot,
   leftExtra,
   onPaste,
 }: PillComposerProps) {
+  const t = useTranslator();
   const imeEnterGuard = useImeEnterGuard();
 
   const submit = () => {
@@ -102,7 +104,7 @@ export const PillComposer = React.memo(function PillComposer({
         onPaste={onPaste}
         onCompositionStart={imeEnterGuard.onCompositionStart}
         onCompositionEnd={imeEnterGuard.onCompositionEnd}
-        placeholder={placeholder}
+        placeholder={placeholder ?? t('chat.inputPlaceholder', '请输入消息...')}
         disabled={loading}
         style={{
           display: 'block',
@@ -130,7 +132,7 @@ export const PillComposer = React.memo(function PillComposer({
 
       <button
         type="button"
-        title={loading ? '停止' : '发送'}
+        title={loading ? t('chat.stop', '停止') : t('chat.send', '发送')}
         onClick={loading ? onCancel : submit}
         style={{
           flexShrink: 0,

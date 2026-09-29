@@ -16,8 +16,8 @@ from typing import Any, Callable, Iterable
 from apps.core.utils.time_util import parse_rfc3339_range_utc, rfc3339_to_timestamp
 from apps.monitor.services.host_metric_queries import (
     cpu_usage_query,
-    disk_used_percent_query,
     disk_read_latency_query,
+    disk_used_percent_query,
     disk_write_latency_query,
     diskio_io_util_query,
     diskio_read_bytes_query,
@@ -31,10 +31,14 @@ from apps.monitor.services.host_metric_queries import (
 )
 from apps.monitor.services.host_resource_top import (
     DEFAULT_INTERVAL_SECONDS,
+    DEFAULT_WINDOW_TOP_LIMIT,
     HostCandidate,
     HostResourceTopService,
+    build_window_ranked_rows,
     host_display_name,
     normalize_metric_candidates,
+    resolve_window_step,
+    validate_window_aggregation,
 )
 from apps.monitor.utils.alert_name_variables import resolve_resource_ip
 from apps.monitor.utils.dimension import parse_instance_id
@@ -473,3 +477,60 @@ class HostResourceSnapshotService:
     def _lookback(self, instances: list[Any]) -> int:
         host_meta = build_host_meta(instances)
         return max(2 * int(meta.get("interval") or DEFAULT_INTERVAL_SECONDS) for meta in host_meta.values())
+
+
+class HostResourceTopByTimeService:
+    """Rank authorized hosts by their usage inside an explicit time window.
+
+    复用 range 侧既有的 PromQL 与折叠口径（磁盘按挂载点取 max），
+    因此与 get_host_metric_range / get_host_resource_top 的数值定义一致。
+    """
+
+    def __init__(self, *, vm_api, now: datetime | None = None):
+        self.vm_api = vm_api
+        self.now = now
+
+    def run(
+        self,
+        *,
+        metric_type: str,
+        time_range: list | tuple,
+        instances: list[Any],
+        aggregation: str = "max",
+        limit: int = DEFAULT_WINDOW_TOP_LIMIT,
+        step: str = "",
+    ) -> list[dict[str, Any]]:
+        if not instances:
+            return []
+        normalized_type = validate_range_metric_type(metric_type)
+        normalized_aggregation = validate_window_aggregation(aggregation)
+        start, end = parse_rfc3339_range_utc(time_range)
+        host_meta = build_host_meta(instances)
+        window_seconds = max(1, int((end - start).total_seconds()))
+        query_step = step or resolve_window_step(window_seconds)
+        spec = RANGE_METRIC_SPECS[normalized_type]
+        response = self.vm_api.query_range(
+            spec["query"],
+            rfc3339_to_timestamp(start),
+            rfc3339_to_timestamp(end),
+            query_step,
+        )
+        if not isinstance(response, dict) or response.get("status") != "success":
+            message = response.get("error") if isinstance(response, dict) else None
+            raise RuntimeError(message or "主机指标查询失败")
+        result = response.get("data", {}).get("result", [])
+        if not isinstance(result, list):
+            return []
+        window_series = fold_host_range_series(
+            result,
+            host_meta,
+            fold=spec["fold"],
+            transform=spec.get("transform"),
+        )
+        return build_window_ranked_rows(
+            window_series,
+            host_meta,
+            metric_type=normalized_type,
+            aggregation=normalized_aggregation,
+            limit=limit,
+        )

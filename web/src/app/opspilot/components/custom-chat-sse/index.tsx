@@ -636,6 +636,11 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       ? reportFileDownloads.filter(isRenderableReportDownload)
       : [];
 
+    // 工具全部完成但模型还没吐字：这轮最容易被误读成「已结束」，显式提示仍在分析
+    const hasTools = Array.isArray(toolCalls) && toolCalls.length > 0;
+    const allToolsFinished = hasTools && toolCalls!.every(tool => tool.status !== 'calling');
+    const isAwaitingAssistant = Boolean(isStreamingTools) && allToolsFinished && !(content || '').trim() && !isThinking;
+
     let replacedContent = parseReferenceLinks(stripPlannedExecutionDumps(content || ''));
     replacedContent = parseSuggestionLinks(replacedContent);
     replacedContent = rewriteAttachmentDownloadMentions(replacedContent, reportFileDownloads);
@@ -898,6 +903,16 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           <BrowserStepProgress history={browserStepsHistory} />
         )}
         {renderContentWithInlineComponents()}
+        {isAwaitingAssistant && (
+          <div
+            className="my-1.5 flex items-center gap-1.5 py-0.5 text-xs text-[var(--color-text-3)]"
+            role="status"
+            aria-live="polite"
+          >
+            <LoadingOutlined className="text-[var(--color-primary)] text-xs" spin />
+            <span>{t('chat.analyzingResult')}</span>
+          </div>
+        )}
         {!!msg.wikiCitations?.length && <WikiCitations citations={msg.wikiCitations} content={replacedContent} />}
       </>
     );
