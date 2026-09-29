@@ -20,6 +20,7 @@ import {
   DeleteOutlined,
 } from '@ant-design/icons';
 import { deepClone, getOrganizationDisplayText } from '@/app/cmdb/utils/common';
+import { collectPublicEnumOptionsForSave, trimPublicEnumText } from '@/app/cmdb/utils/publicEnumLibraryInput';
 import { PublicEnumLibraryItem, PublicEnumOption } from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
 import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
@@ -204,11 +205,15 @@ const PublicEnumLibraryModal = forwardRef<PublicEnumLibraryModalRef, PublicEnumL
 
     const handleSubmitLibrary = async () => {
       try {
+        libraryFormRef.current?.setFieldValue(
+          'name',
+          trimPublicEnumText(libraryFormRef.current?.getFieldValue('name'))
+        );
         const values = await libraryFormRef.current?.validateFields();
 
         setConfirmLoading(true);
         const params = {
-          name: values.name,
+          name: trimPublicEnumText(values.name),
           team: Array.isArray(values.team) ? values.team : [values.team],
           options:
             libraryModalMode === 'add' ? [] : editingLibrary?.options || [],
@@ -250,7 +255,7 @@ const PublicEnumLibraryModal = forwardRef<PublicEnumLibraryModalRef, PublicEnumL
     const handleSaveOptions = async () => {
       if (!selectedLibrary) return;
 
-      const validOptions = optionList.filter((opt) => opt.id && opt.name);
+      const validOptions = collectPublicEnumOptionsForSave(optionList);
 
 
       const ids = validOptions.map((o) => o.id);
@@ -472,6 +477,9 @@ const PublicEnumLibraryModal = forwardRef<PublicEnumLibraryModalRef, PublicEnumL
                           onChange={(e) =>
                             onOptionChange('id', e.target.value, index)
                           }
+                          onBlur={(e) =>
+                            onOptionChange('id', trimPublicEnumText(e.target.value), index)
+                          }
                         />
                         <Input
                           placeholder={t('PublicEnumLibrary.optionName')}
@@ -481,6 +489,9 @@ const PublicEnumLibraryModal = forwardRef<PublicEnumLibraryModalRef, PublicEnumL
                           variant={isEditingOptions ? 'outlined' : 'filled'}
                           onChange={(e) =>
                             onOptionChange('name', e.target.value, index)
+                          }
+                          onBlur={(e) =>
+                            onOptionChange('name', trimPublicEnumText(e.target.value), index)
                           }
                         />
                         {isEditingOptions && (
@@ -552,6 +563,7 @@ const PublicEnumLibraryModal = forwardRef<PublicEnumLibraryModalRef, PublicEnumL
               rules={[
                 {
                   required: true,
+                  whitespace: true,
                   message: t('PublicEnumLibrary.nameRequired'),
                 },
                 {
@@ -559,7 +571,7 @@ const PublicEnumLibraryModal = forwardRef<PublicEnumLibraryModalRef, PublicEnumL
                     if (!value) return Promise.resolve();
                     const isDuplicate = libraries.some(
                       (lib) =>
-                        lib.name === value &&
+                        lib.name === trimPublicEnumText(value) &&
                         lib.library_id !== editingLibrary?.library_id
                     );
                     if (isDuplicate) {
@@ -572,7 +584,12 @@ const PublicEnumLibraryModal = forwardRef<PublicEnumLibraryModalRef, PublicEnumL
                 },
               ]}
             >
-              <Input placeholder={t('PublicEnumLibrary.namePlaceholder')} />
+              <Input
+                placeholder={t('PublicEnumLibrary.namePlaceholder')}
+                onBlur={(e) =>
+                  libraryFormRef.current?.setFieldValue('name', trimPublicEnumText(e.target.value))
+                }
+              />
             </Form.Item>
             <Form.Item
               label={t('PublicEnumLibrary.team')}
