@@ -78,6 +78,40 @@ async def test_tail_async_idle_wait_does_not_busy_poll(mocker):
 
 
 @pytest.mark.asyncio
+async def test_tail_async_idle_yields_sentinel_without_log_line(mocker):
+    fake_resp = _IdleStreamResponse()
+    mocker.patch("apps.log.utils.query_log.requests.post", return_value=fake_resp)
+    mocker.patch("apps.log.utils.query_log.TAIL_IDLE_INTERVAL_SECONDS", 0.01)
+
+    api = VictoriaMetricsAPI()
+    api.host = "http://victorialogs.local"
+    stream = api.tail_async("*")
+    item = await asyncio.wait_for(stream.__anext__(), timeout=0.5)
+    await stream.aclose()
+
+    from apps.log.utils.query_log import TAIL_IDLE
+
+    assert item is TAIL_IDLE
+    assert fake_resp.finished.wait(0.5)
+
+
+@pytest.mark.asyncio
+async def test_tail_async_requests_identity_encoding(mocker):
+    fake_resp = _IdleStreamResponse()
+    post = mocker.patch("apps.log.utils.query_log.requests.post", return_value=fake_resp)
+    mocker.patch("apps.log.utils.query_log.TAIL_IDLE_INTERVAL_SECONDS", 0.01)
+
+    api = VictoriaMetricsAPI()
+    api.host = "http://victorialogs.local"
+    stream = api.tail_async("*")
+    await asyncio.wait_for(stream.__anext__(), timeout=0.5)
+    await stream.aclose()
+
+    assert post.call_args.kwargs["headers"]["Accept-Encoding"] == "identity"
+    assert fake_resp.finished.wait(0.5)
+
+
+@pytest.mark.asyncio
 async def test_tail_async_cancel_releases_producer_blocked_by_backpressure(mocker):
     fake_resp = _EndlessStreamResponse()
     mocker.patch("apps.log.utils.query_log.requests.post", return_value=fake_resp)
