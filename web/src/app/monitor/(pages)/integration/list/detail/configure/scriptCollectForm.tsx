@@ -156,7 +156,18 @@ export const normalizeScriptCollectFormFields = (fields: any[] = []) => {
       to_api: {}
     }
   };
-  const rest = kept.filter((field) => field.name !== 'interpreter' && field.name !== 'run_as');
+  const rest = kept
+    .filter((field) => field.name !== 'interpreter' && field.name !== 'run_as')
+    .map((field) => {
+      if (field?.name !== 'script') return field;
+      return {
+        ...field,
+        transform_on_edit: field.transform_on_edit || {
+          origin_path: 'child.content.config.script',
+          to_api: {}
+        }
+      };
+    });
   return [scriptOs, interpreter, runAs, ...rest];
 };
 

@@ -110,6 +110,11 @@ const useIntegrationApi = () => {
       getConfigContent: async (data: { ids: string[] }) => {
         return await post('/monitor/api/node_mgmt/get_config_content/', data);
       },
+      getPluginChildConfig: async (data: {
+        monitor_plugin_id: string | number;
+      }) => {
+        return await post('/monitor/api/node_mgmt/get_plugin_child_config/', data);
+      },
       updateMonitorInstance: async (data: InstanceInfo) => {
         return await post(
           '/monitor/api/monitor_instance/update_monitor_instance/',

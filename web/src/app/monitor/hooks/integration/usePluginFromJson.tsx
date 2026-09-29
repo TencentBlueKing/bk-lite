@@ -8,6 +8,7 @@ import {
   normalizeScriptCollectFormFields,
   omitPersistedWindowsRunAs
 } from '@/app/monitor/(pages)/integration/list/detail/configure/scriptCollectForm';
+import { hydrateScriptCollectFormValues } from '@/app/monitor/(pages)/integration/list/detail/configure/scriptCollectHydrate';
 import { DataMapper } from './useDataMapper';
 import {
   buildWebsiteRequestUrl,
@@ -540,8 +541,14 @@ export const usePluginFromJson = () => {
             if (config.instance_type === 'minio') {
               Object.assign(formValues, getMinioEditCompatibilityValues(apiData));
             }
-            if (isScriptCollectConfig(config) && !formValues.script_os) {
-              formValues.script_os = inferScriptOs(formValues.interpreter);
+            if (isScriptCollectConfig(config)) {
+              Object.assign(
+                formValues,
+                hydrateScriptCollectFormValues(formFields, apiData, config.collect_type)
+              );
+              if (!formValues.script_os) {
+                formValues.script_os = inferScriptOs(formValues.interpreter);
+              }
             }
             if (config.instance_type === 'web') {
               const requestUrl = apiData?.child?.content?.config?.urls?.[0];
