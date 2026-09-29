@@ -8,6 +8,7 @@ from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.operation_service import OperationService
 from apps.cmdb.services.transfer_authorization import TransferAuthorization
 from apps.cmdb.services.transfer_service import TransferError, fingerprint
+from apps.cmdb.services.unique_rule import collect_instance_unique_conflicts
 from apps.cmdb.utils.base import format_groups_params
 from apps.cmdb.utils.Import import Import
 from apps.cmdb.validators import FieldValidator
@@ -26,6 +27,123 @@ class TransferImport:
         errors.append((number, importer.column_label(field_id), field_id or "", TransferImport._public_reason(field_id, reason)))
 
     @staticmethod
+    def _unique_write_failure(exc, check):
+        """仅识别写图前的唯一性拒绝。其它异常仍上抛，避免把未确认写入当成行失败。"""
+        message = getattr(exc, "message", "") or ""
+        if "exist；" not in message and "与现有实例冲突" not in message and "与本批次数据冲突" not in message:
+            return None
+        names = check.get("is_only") or {}
+        for field_id, name in names.items():
+            if name and name in message:
+                return field_id, f"{name}已存在" if "exist；" in message else message
+        field_id = next(iter(names), "")
+        if "exist；" in message:
+            return field_id, message.replace(" exist；", "已存在").replace("exist；", "已存在")
+        return field_id, message
+
+    @staticmethod
+    def _load_unique_conflict_candidates(model_id, identities, attrs, batch, candidates, seen_ids):
+        """按单个唯一字段补齐冲突候选。查不到或超上限时不阻断导入，写入期再兜底。"""
+        for field in identities:
+            values = list({row[1][field] for row in batch if row[1].get(field) is not None})
+            if not values:
+                continue
+            attr = next((item for item in attrs if item["attr_id"] == field), {})
+            cursor = None
+            while len(candidates) < 5000:
+                page_params = [
+                    {"field": "model_id", "type": "str=", "value": model_id},
+                    {"field": field, "type": "int[]" if attr.get("attr_type") == "int" else "str[]", "value": values},
+                ]
+                if cursor is not None:
+                    page_params.append({"field": "inst_uuid", "type": "str>", "value": cursor})
+                with GraphClient() as graph:
+                    found, _ = graph.query_entity(INSTANCE, page_params, page={"skip": 0, "limit": 500}, order="inst_uuid", include_count=False)
+                for existing in found:
+                    key = existing.get("_id", existing.get("inst_uuid"))
+                    if key not in seen_ids:
+                        seen_ids.add(key)
+                        candidates.append(existing)
+                if len(found) < 500:
+                    break
+                cursor = found[-1]["inst_uuid"]
+
+    @staticmethod
+    def _match_batch(model_id, identities, attrs, batch, progress, offset, summary, total):
+        """更新按全部唯一字段组合匹配；单字段查询只补冲突候选。"""
+        params = [{"field": "model_id", "type": "str=", "value": model_id}]
+        for field in identities:
+            values = list({row[1][field] for row in batch if row[1].get(field) is not None})
+            attr = next((item for item in attrs if item["attr_id"] == field), {})
+            params.append({"field": field, "type": "int[]" if attr.get("attr_type") == "int" else "str[]", "value": values})
+        matches = defaultdict(list)
+        candidates = []
+        seen_ids = set()
+        combo_matched = False
+        if all(param["value"] for param in params):
+            combo_matched = True
+            cursor = None
+            while True:
+                page_params = params + ([{"field": "inst_uuid", "type": "str>", "value": cursor}] if cursor else [])
+                with GraphClient() as graph:
+                    found, _ = graph.query_entity(INSTANCE, page_params, page={"skip": 0, "limit": 500}, order="inst_uuid", include_count=False)
+                for existing in found:
+                    matches[fingerprint([existing.get(field) for field in identities])].append(existing)
+                    key = existing.get("_id", existing.get("inst_uuid"))
+                    if key not in seen_ids:
+                        seen_ids.add(key)
+                        candidates.append(existing)
+                if sum(map(len, matches.values())) > 10000:
+                    raise TransferError("ambiguous_identity", "匹配到过多重复标识，请先清理实例唯一性")
+                if len(found) < 500:
+                    break
+                cursor = found[-1]["inst_uuid"]
+                progress(offset, total, summary, "matching")
+        if not (combo_matched and len(identities) == 1):
+            TransferImport._load_unique_conflict_candidates(model_id, identities, attrs, batch, candidates, seen_ids)
+        return matches, candidates
+
+    @staticmethod
+    def _execute_instance_write(task, context, check, before, item, number):
+        data = {key: value for key, value in item.items() if key != "model_id"}
+        if before:
+            data = {key: value for key, value in data.items() if check["editable"].get(key) or key == "organization"}
+        action = "update" if before else "create"
+        event_context = {"attribute_snapshot": load_attribute_snapshot(task.model_id, data.keys())}
+        if before:
+            event_context["before_data"] = before
+        operation = OperationService.start(
+            operator=context.actor.username,
+            idempotency_key=f"transfer:{task.pk}:{number}",
+            action=f"instance.{action}",
+            target={"model_id": task.model_id, **({"inst_uuid": before["inst_uuid"]} if before else {})},
+            request_payload={"update_attr": data} if before else data,
+            event_context=event_context,
+        ).operation
+
+        # 从此边界起任何异常都可能已有写入，由任务边界置为失败并保留未确认提示，绝不猜测失败后继续/重放。
+        def write(operation_id):
+            common = dict(allowed_org_ids=context.teams, record_change=False, operation_id=operation_id, schedule_post_actions=False)
+            if before:
+                return InstanceManage.instance_update_by_uuid(
+                    format_groups_params(context.teams),
+                    context.actor.roles,
+                    before["inst_uuid"],
+                    data,
+                    context.actor.username,
+                    **common,
+                )
+            return InstanceManage.instance_create(task.model_id, data, context.actor.username, **common)
+
+        try:
+            return OperationService.execute_graph(operation, graph_write=write, events=OperationService.events_for_operation(operation)), None
+        except BaseAppException as exc:
+            unique_failure = TransferImport._unique_write_failure(exc, check)
+            if unique_failure is None:
+                raise
+            return None, unique_failure
+
+    @staticmethod
     def run(task, stream, context, progress):
         attrs = ModelManage.search_model_attr_v2(task.model_id)
         importer = Import(task.model_id, attrs, [], context.actor.username)
@@ -41,27 +159,7 @@ class TransferImport:
             progress(offset, len(rows), summary, "matching")
             context = TransferAuthorization.revalidate(task)
             batch = rows[offset : offset + 200]
-            # 按本批唯一标识过滤候选，不读取整个模型；组合值在内存做精确匹配。
-            params = [{"field": "model_id", "type": "str=", "value": task.model_id}]
-            for field in identities:
-                values = list({row[1][field] for row in batch if row[1].get(field) is not None})
-                attr = next((item for item in attrs if item["attr_id"] == field), {})
-                params.append({"field": field, "type": "int[]" if attr.get("attr_type") == "int" else "str[]", "value": values})
-            matches = defaultdict(list)
-            if all(param["value"] for param in params):
-                cursor = None
-                while True:
-                    page_params = params + ([{"field": "inst_uuid", "type": "str>", "value": cursor}] if cursor else [])
-                    with GraphClient() as graph:
-                        found, _ = graph.query_entity(INSTANCE, page_params, page={"skip": 0, "limit": 500}, order="inst_uuid", include_count=False)
-                    for existing in found:
-                        matches[fingerprint([existing.get(field) for field in identities])].append(existing)
-                    if sum(map(len, matches.values())) > 10000:
-                        raise TransferError("ambiguous_identity", "匹配到过多重复标识，请先清理实例唯一性")
-                    if len(found) < 500:
-                        break
-                    cursor = found[-1]["inst_uuid"]
-                    progress(offset, len(rows), summary, "matching")
+            matches, candidates = TransferImport._match_batch(task.model_id, identities, attrs, batch, progress, offset, summary, len(rows))
             for index, (number, item, row_relations, error) in enumerate(batch, offset + 1):
                 progress(index - 1, len(rows), summary, "writing_instances")
                 item.setdefault("organization", [task.team_id])
@@ -95,45 +193,24 @@ class TransferImport:
                         TransferAuthorization.check_instance(context, item, write=True, require_edit=False)
                 except TransferError:
                     row_problems.append(("organization", "没有该实例或目标组织的操作权限"))
+                exclude_ids = {before["_id"]} if before and before.get("_id") is not None else set()
+                for conflict in collect_instance_unique_conflicts(check, [item], candidates, exclude_instance_ids=exclude_ids):
+                    row_problems.append((conflict.field_ids[0] if conflict.field_ids else identities[0], conflict.message))
                 if row_problems:
                     for field_id, reason in row_problems:
                         TransferImport._record(errors, number, importer, field_id, reason)
                     summary["failed_rows"] += 1
                     progress(index, len(rows), summary, "writing_instances")
                     continue
-                data = {key: value for key, value in item.items() if key != "model_id"}
-                if before:
-                    data = {key: value for key, value in data.items() if check["editable"].get(key) or key == "organization"}
-                action = "update" if before else "create"
-                event_context = {"attribute_snapshot": load_attribute_snapshot(task.model_id, data.keys())}
-                if before:
-                    event_context["before_data"] = before
-                operation = OperationService.start(
-                    operator=context.actor.username,
-                    idempotency_key=f"transfer:{task.pk}:{number}",
-                    action=f"instance.{action}",
-                    target={"model_id": task.model_id, **({"inst_uuid": before["inst_uuid"]} if before else {})},
-                    request_payload={"update_attr": data} if before else data,
-                    event_context=event_context,
-                ).operation
-
-                # 从此边界起任何异常都可能已有写入，由任务边界置为失败并保留未确认提示，绝不猜测失败后继续/重放。
-                def write(operation_id):
-                    common = dict(allowed_org_ids=context.teams, record_change=False, operation_id=operation_id, schedule_post_actions=False)
-                    if before:
-                        return InstanceManage.instance_update_by_uuid(
-                            format_groups_params(context.teams),
-                            context.actor.roles,
-                            before["inst_uuid"],
-                            data,
-                            context.actor.username,
-                            **common,
-                        )
-                    return InstanceManage.instance_create(task.model_id, data, context.actor.username, **common)
-
-                result = OperationService.execute_graph(operation, graph_write=write, events=OperationService.events_for_operation(operation))
+                result, unique_failure = TransferImport._execute_instance_write(task, context, check, before, item, number)
+                if unique_failure:
+                    TransferImport._record(errors, number, importer, unique_failure[0], unique_failure[1])
+                    summary["failed_rows"] += 1
+                    progress(index, len(rows), summary, "writing_instances")
+                    continue
                 summary["updated" if before else "created"] += 1
                 successful[number] = result
+                candidates.append(result)
                 relations.extend((number, key, name) for key, names in row_relations.items() for name in names)
                 progress(index, len(rows), summary, "writing_instances")
         TransferImport._write_relations(task, context, importer, relations, successful, summary, errors, progress, len(rows))
