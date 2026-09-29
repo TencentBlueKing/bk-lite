@@ -57,14 +57,6 @@
   pointer-events: none;
 }
 
-.app3d-wall-glass-frost {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-
 .app3d-wall-glass {
   position: absolute;
   left: 0;
@@ -78,8 +70,6 @@
     linear-gradient(120deg, rgba(206, 224, 240, 0.1), transparent 48%),
     linear-gradient(180deg, rgba(30, 62, 94, 0.7) 0%, rgba(14, 34, 56, 0.68) 100%)
   );
-  backdrop-filter: blur(10px) saturate(114%);
-  -webkit-backdrop-filter: blur(10px) saturate(114%);
   border: 1.5px solid rgba(100, 162, 198, 0.74);
   box-shadow: none;
 }
