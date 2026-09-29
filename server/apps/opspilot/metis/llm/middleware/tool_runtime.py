@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import json
 import os
 import re
@@ -474,6 +476,63 @@ class ToolExceptionAsResultMiddleware(AgentMiddleware):
             return await handler(request)
         except Exception as exc:
             return self._error_message(request, exc)
+
+
+_DEFAULT_TOOL_INVOKE_TIMEOUT_SECONDS = 300.0
+
+
+def tool_invoke_timeout_seconds() -> float:
+    """单次工具调用墙钟上限；默认 300s，非法或 ≤0 回退默认（不允许无限）。"""
+    raw = os.getenv("TOOL_INVOKE_TIMEOUT", str(int(_DEFAULT_TOOL_INVOKE_TIMEOUT_SECONDS)))
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return _DEFAULT_TOOL_INVOKE_TIMEOUT_SECONDS
+    if value <= 0:
+        return _DEFAULT_TOOL_INVOKE_TIMEOUT_SECONDS
+    return value
+
+
+class ToolTimeoutMiddleware(AgentMiddleware):
+    """单次工具调用超时兜底：超时写成错误 ToolMessage，由模型决定重试或结束。"""
+
+    def __init__(self, timeout_seconds: float | None = None) -> None:
+        super().__init__()
+        self._timeout_seconds = tool_invoke_timeout_seconds() if timeout_seconds is None else float(timeout_seconds)
+        if self._timeout_seconds <= 0:
+            self._timeout_seconds = _DEFAULT_TOOL_INVOKE_TIMEOUT_SECONDS
+
+    def _timeout_message(self, request: Any) -> ToolMessage:
+        call = getattr(request, "tool_call", None) or {}
+        name = str(call.get("name") or "unknown")
+        call_id = str(call.get("id") or "")
+        logger.warning(
+            "event=agent_tool_timeout failed_stage=tool_call tool_name=%s timeout_seconds=%s",
+            name,
+            self._timeout_seconds,
+        )
+        text = f"工具调用超时（>{int(self._timeout_seconds)}s），已中断。可换参数重试或改用其他方式。"
+        return ToolMessage(
+            content=text[:2000],
+            tool_call_id=call_id,
+            name=name,
+            status="error",
+        )
+
+    def wrap_tool_call(self, request: Any, handler: Callable[[Any], Any]) -> Any:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(handler, request)
+            try:
+                return future.result(timeout=self._timeout_seconds)
+            except concurrent.futures.TimeoutError:
+                future.cancel()
+                return self._timeout_message(request)
+
+    async def awrap_tool_call(self, request: Any, handler: Callable[[Any], Any]) -> Any:
+        try:
+            return await asyncio.wait_for(handler(request), timeout=self._timeout_seconds)
+        except asyncio.TimeoutError:
+            return self._timeout_message(request)
 
 
 class ToolResultCompactionMiddleware(AgentMiddleware):

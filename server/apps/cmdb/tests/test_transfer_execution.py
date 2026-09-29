@@ -28,6 +28,8 @@ def test_unexpected_failure_is_sanitized_and_import_not_replayed(transfer_owner,
         TransferExecution.run(task.pk, files=Mock())
     task = TransferService.get(transfer_owner, task.pk)
     assert task.status == "failed" and not task.holds_slot
+    assert task.message.startswith("RuntimeError: PRIVATE-PAYLOAD-SENTINEL")
+    assert "transfer_execution.py" in task.message
     assert not task.summary["_failure"]["result_uncertain"]
     records = [record for record in caplog.records if "cmdb_transfer_failed" in record.msg]
     assert len(records) == 1

@@ -1345,6 +1345,7 @@
             "switch": "Switch"
         },
         "objectType": "Object type",
+        "selectedAssetCount": "{count} selected",
         "selectDeviceModels": "Device models",
         "selectDeviceModelsPlaceholder": "Select models",
         "duplicateManageIp": "The same management IP cannot be selected twice: {ip}",
@@ -1994,6 +1995,8 @@
     "delete": "Delete record",
     "download": "Download file",
     "download_errors": "Download error report",
+    "view_errors": "View error report",
+    "errorsEmpty": "The error report has nothing to show",
     "deleteConfirm": "Delete this record and its files? Imported instances will remain.",
     "status": {
       "queued": "Queued",

@@ -1,6 +1,6 @@
 from collections import defaultdict
 
-from apps.cmdb.constants.constants import INSTANCE
+from apps.cmdb.constants.constants import ENCRYPTED_KEY, INSTANCE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.services.change_record_snapshot import load_attribute_snapshot
 from apps.cmdb.services.instance import InstanceManage
@@ -8,12 +8,23 @@ from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.operation_service import OperationService
 from apps.cmdb.services.transfer_authorization import TransferAuthorization
 from apps.cmdb.services.transfer_service import TransferError, fingerprint
+from apps.cmdb.utils.base import format_groups_params
 from apps.cmdb.utils.Import import Import
 from apps.cmdb.validators import FieldValidator
 from apps.core.exceptions.base_app_exception import BaseAppException
 
 
 class TransferImport:
+    @staticmethod
+    def _public_reason(field_id, reason):
+        if field_id in ENCRYPTED_KEY:
+            return "凭据字段格式不正确"
+        return reason
+
+    @staticmethod
+    def _record(errors, number, importer, field_id, reason):
+        errors.append((number, importer.column_label(field_id), field_id or "", TransferImport._public_reason(field_id, reason)))
+
     @staticmethod
     def run(task, stream, context, progress):
         attrs = ModelManage.search_model_attr_v2(task.model_id)
@@ -54,19 +65,28 @@ class TransferImport:
             for index, (number, item, row_relations, error) in enumerate(batch, offset + 1):
                 progress(index - 1, len(rows), summary, "writing_instances")
                 item.setdefault("organization", [task.team_id])
+                if error:
+                    for column, field_id, reason in error:
+                        errors.append((number, column, field_id, TransferImport._public_reason(field_id, reason)))
+                    summary["failed_rows"] += 1
+                    progress(index, len(rows), summary, "writing_instances")
+                    continue
                 identity = fingerprint([item.get(field) for field in identities])
                 existing = matches.get(identity, [])
+                row_problems = []
                 if identity in seen or len(existing) > 1:
-                    error = "文件内标识重复或匹配到多个已有实例"
+                    row_problems.append((identities[0], "文件内标识重复或匹配到多个已有实例"))
                 seen.add(identity)
-                if any(item.get(field) in (None, "") for field in identities):
-                    error = "缺少实例唯一标识"
-                if any(item.get(field) in (None, "", []) and not (existing and existing[0].get(field)) for field in check["is_required"]):
-                    error = "缺少模型必填字段"
-                if FieldValidator.validate_instance_data(item, attrs):
-                    error = "字段值不符合模型校验规则"
+                row_problems.extend((field, "缺少实例唯一标识") for field in identities if item.get(field) in (None, ""))
+                row_problems.extend(
+                    (field, f"缺少必填字段「{name}」")
+                    for field, name in check["is_required"].items()
+                    if item.get(field) in (None, "", []) and not (existing and existing[0].get(field))
+                )
+                for field_error in FieldValidator.validate_instance_data(item, attrs):
+                    row_problems.append((field_error.get("field") or "", field_error.get("error") or "字段值不符合模型校验规则"))
                 if not isinstance(item["organization"], list) or not set(item["organization"]).issubset(context.teams):
-                    error = "目标组织不在授权范围内"
+                    row_problems.append(("organization", "目标组织不在授权范围内"))
                 before = existing[0] if len(existing) == 1 else None
                 try:
                     if before:
@@ -74,9 +94,10 @@ class TransferImport:
                     else:
                         TransferAuthorization.check_instance(context, item, write=True, require_edit=False)
                 except TransferError:
-                    error = "没有该实例或目标组织的操作权限"
-                if error:
-                    errors.append((number, "instance", error))
+                    row_problems.append(("organization", "没有该实例或目标组织的操作权限"))
+                if row_problems:
+                    for field_id, reason in row_problems:
+                        TransferImport._record(errors, number, importer, field_id, reason)
                     summary["failed_rows"] += 1
                     progress(index, len(rows), summary, "writing_instances")
                     continue
@@ -101,7 +122,12 @@ class TransferImport:
                     common = dict(allowed_org_ids=context.teams, record_change=False, operation_id=operation_id, schedule_post_actions=False)
                     if before:
                         return InstanceManage.instance_update_by_uuid(
-                            context.teams, context.actor.roles, before["inst_uuid"], data, context.actor.username, **common
+                            format_groups_params(context.teams),
+                            context.actor.roles,
+                            before["inst_uuid"],
+                            data,
+                            context.actor.username,
+                            **common,
                         )
                     return InstanceManage.instance_create(task.model_id, data, context.actor.username, **common)
 
@@ -110,11 +136,11 @@ class TransferImport:
                 successful[number] = result
                 relations.extend((number, key, name) for key, names in row_relations.items() for name in names)
                 progress(index, len(rows), summary, "writing_instances")
-        TransferImport._write_relations(task, context, relations, successful, summary, errors, progress, len(rows))
+        TransferImport._write_relations(task, context, importer, relations, successful, summary, errors, progress, len(rows))
         return summary, errors
 
     @staticmethod
-    def _write_relations(task, context, relations, successful, summary, errors, progress, total):
+    def _write_relations(task, context, importer, relations, successful, summary, errors, progress, total):
         association_map = {item["model_asst_id"]: item for item in context.associations}
         for number, key, name in relations:
             progress(total, total, summary, "writing_relations")
@@ -137,7 +163,7 @@ class TransferImport:
                 TransferAuthorization.check_instance(context, source, write=True)
                 TransferAuthorization.check_instance(peer_context, peers[0], write=True)
             except TransferError:
-                errors.append((number, "relation", "关联目标不存在、不唯一或无操作权限"))
+                TransferImport._record(errors, number, importer, key, "关联目标不存在、不唯一或无操作权限")
                 summary["failed_relations"] += 1
                 continue
             src, dst = (source, peers[0]) if source_is_src else (peers[0], source)
@@ -161,7 +187,7 @@ class TransferImport:
                     "source instance already exists association!",
                     "destination instance already exists association!",
                 ):
-                    errors.append((number, "relation", "关联端点已变化或不满足关系数量约束"))
+                    TransferImport._record(errors, number, importer, key, "关联端点已变化或不满足关系数量约束")
                     summary["failed_relations"] += 1
                     continue
                 raise  # 只处理已证明在写图前抛出的领域错误；未知写入结果不得猜测。

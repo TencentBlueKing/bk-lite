@@ -56,6 +56,7 @@ from apps.monitor.services.host_dashboard import (
     HOST_OBJECT_NAME,
     HostMetricRangeService,
     HostResourceSnapshotService,
+    HostResourceTopByTimeService,
     build_host_instance_rows,
     empty_host_snapshot,
     looks_like_cmdb_instance_locator,
@@ -64,7 +65,13 @@ from apps.monitor.services.host_dashboard import (
     unresolved_monitor_instance_message,
     validate_range_metric_type,
 )
-from apps.monitor.services.host_resource_top import HostResourceTopService, validate_metric_type
+from apps.monitor.services.host_resource_top import (
+    DEFAULT_WINDOW_TOP_LIMIT,
+    MAX_HOST_RESOURCE_TOP_LIMIT,
+    HostResourceTopService,
+    validate_metric_type,
+    validate_window_aggregation,
+)
 from apps.monitor.services.interface_metrics_query import InterfaceMetricsQueryError, normalize_instance_ids, query_interface_metric_items
 from apps.monitor.services.metric_query_contract import escape_metric_label_value
 from apps.monitor.services.metric_series import (
@@ -782,8 +789,7 @@ def monitor_object_instance_count(*args, **kwargs):
             return error
         queryset = queryset.filter(id__in=list(authorized.keys()))
     data = {
-        item["monitor_object__name"]: item["instance_count"]
-        for item in queryset.values("monitor_object__name").annotate(instance_count=Count("id"))
+        item["monitor_object__name"]: item["instance_count"] for item in queryset.values("monitor_object__name").annotate(instance_count=Count("id"))
     }
     return {"result": True, "data": data, "message": ""}
 
@@ -1566,6 +1572,112 @@ def get_host_resource_top(metric_type: str, *args, **kwargs):
         logger.exception("host resource top query failed metric_type=%s", metric_type)
         return {"result": False, "data": [], "message": "主机资源指标查询失败"}
     return {"result": True, "data": rows, "message": ""}
+
+
+@nats_client.register
+def get_host_resource_top_by_time(metric_type: str, *args, **kwargs):
+    """Rank authorized hosts by usage inside an explicit window (max/avg, Top N).
+
+    与 get_host_resource_top 的差异：后者只取最新采样点，本接口按时间窗聚合。
+    窗口既可传 RFC3339 的 time，也可传相对窗口 lookback_minutes（面向 LLM 口语口径）。
+    """
+    try:
+        metric_type = validate_range_metric_type(metric_type)
+    except ValueError as exc:
+        return {"result": False, "data": [], "message": str(exc)}
+    try:
+        aggregation = validate_window_aggregation(kwargs.get("aggregation"))
+    except ValueError as exc:
+        return {"result": False, "data": [], "message": str(exc)}
+    try:
+        limit = _normalize_top_limit(kwargs.get("limit"))
+    except ValueError as exc:
+        return {"result": False, "data": [], "message": str(exc)}
+
+    try:
+        time_range = _resolve_top_by_time_range(
+            kwargs.get("time"),
+            kwargs.get("lookback_minutes"),
+            kwargs.get("start"),
+            kwargs.get("end"),
+        )
+    except ValueError as exc:
+        return {"result": False, "data": [], "message": str(exc)}
+
+    user_info = kwargs.get("user_info") or {}
+    _, _, _, scope_ids, _, error = _get_nats_actor_scope(user_info)
+    if error:
+        return error
+    authorized_instances, error = _get_authorized_monitor_instances(user_info, scope_ids)
+    if error:
+        return error
+    if "instance_ids" in kwargs:
+        try:
+            requested_ids = _normalize_filter_values(kwargs.get("instance_ids"), "instance_ids")
+        except ValueError as exc:
+            return {"result": False, "data": [], "message": str(exc)}
+        selected_instances = select_instances_by_ids(authorized_instances, requested_ids)
+    else:
+        selected_instances = list(authorized_instances.values())
+    if not selected_instances:
+        return {"result": True, "data": [], "message": ""}
+
+    try:
+        rows = HostResourceTopByTimeService(vm_api=VictoriaMetricsAPI()).run(
+            metric_type=metric_type,
+            time_range=time_range,
+            instances=selected_instances,
+            aggregation=aggregation,
+            limit=limit,
+            step=str(kwargs.get("step") or ""),
+        )
+    except ValueError as exc:
+        return {"result": False, "data": [], "message": str(exc)}
+    except Exception:
+        logger.exception("host resource top by time query failed metric_type=%s", metric_type)
+        return {"result": False, "data": [], "message": "主机资源指标查询失败"}
+    return {"result": True, "data": rows, "message": ""}
+
+
+def _normalize_top_limit(value: object) -> int:
+    """Top N 上限；不传沿用既有 Top10 口径，显式传值才允许放大。"""
+    if value in (None, ""):
+        return DEFAULT_WINDOW_TOP_LIMIT
+    try:
+        limit = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("limit 必须是正整数") from exc
+    if limit <= 0:
+        raise ValueError("limit 必须是正整数")
+    return min(limit, MAX_HOST_RESOURCE_TOP_LIMIT)
+
+
+def _resolve_top_by_time_range(
+    time_range: object,
+    lookback_minutes: object,
+    start: object,
+    end: object,
+) -> list:
+    """把绝对时间窗、相对窗口与 start/end 统一成 RFC3339 区间。"""
+    if isinstance(time_range, (list, tuple)) and time_range:
+        start_dt, end_dt = parse_rfc3339_range_utc(time_range)
+        return [format_rfc3339_utc(start_dt), format_rfc3339_utc(end_dt)]
+    if start not in (None, "") or end not in (None, ""):
+        if start in (None, "") or end in (None, ""):
+            raise ValueError("start 和 end 必须同时提供")
+        start_dt, end_dt = parse_rfc3339_range_utc([start, end])
+        return [format_rfc3339_utc(start_dt), format_rfc3339_utc(end_dt)]
+    if lookback_minutes in (None, ""):
+        raise ValueError("必须提供 time 时间窗或 lookback_minutes 相对窗口")
+    try:
+        minutes = float(lookback_minutes)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("lookback_minutes 必须是正数") from exc
+    if minutes <= 0:
+        raise ValueError("lookback_minutes 必须是正数")
+    end_dt = datetime.now(dt_timezone.utc)
+    start_dt = end_dt - timedelta(minutes=minutes)
+    return [format_rfc3339_utc(start_dt), format_rfc3339_utc(end_dt)]
 
 
 @nats_client.register

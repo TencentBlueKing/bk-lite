@@ -1,9 +1,13 @@
 import {
   BusinessMetricItem,
-  cleanDisplayTags,
+  cleanMeasurementName,
+  keepStoredTags,
   isSelfMetricName
 } from './scriptMetricsParser';
-import { resolveCatalogUnitId } from './scriptMetricPersist';
+import {
+  DEFAULT_CATALOG_UNIT_ID,
+  resolveCatalogUnitId
+} from './scriptMetricPersist';
 
 const getSessionStorage = (): {
   getItem: (key: string) => string | null;
@@ -48,13 +52,13 @@ export const buildScriptMetricEditCarry = (
   const items: ScriptMetricEditCarryItem[] = [];
   const seen = new Set<string>();
   metrics.forEach((item) => {
-    const name = String(item?.name || '').trim();
+    const name = cleanMeasurementName(String(item?.name || '').trim());
     if (!name || seen.has(name) || isSelfMetricName(name)) {
       return;
     }
     seen.add(name);
-    const tags = cleanDisplayTags(item.tags) || {};
-    const unitId = resolveCatalogUnitId(item.unit);
+    const tags = keepStoredTags(item.tags) || {};
+    const unitId = resolveCatalogUnitId(item.unit) || DEFAULT_CATALOG_UNIT_ID;
     const group =
       typeof item.metric_group === 'number' && item.metric_group > 0
         ? item.metric_group
@@ -65,7 +69,7 @@ export const buildScriptMetricEditCarry = (
       name,
       sample: item.value,
       ...(group ? { group } : {}),
-      ...(unitId ? { unit_id: unitId } : {}),
+      unit_id: unitId,
       ...(description ? { description } : {}),
       tags
     });
@@ -112,14 +116,16 @@ export const consumeScriptMetricEditCarry = (
       metrics: parsed.metrics
         .filter((item) => item?.name && !isSelfMetricName(item.name))
         .map((item) => ({
-          name: String(item.name).trim(),
+          name: cleanMeasurementName(String(item.name).trim()),
           sample: item.sample,
           ...(typeof item.group === 'number' && item.group > 0
             ? { group: item.group }
             : {}),
-          ...(item.unit_id ? { unit_id: String(item.unit_id) } : {}),
+          unit_id: item.unit_id
+            ? String(item.unit_id)
+            : DEFAULT_CATALOG_UNIT_ID,
           ...(item.description ? { description: String(item.description) } : {}),
-          tags: cleanDisplayTags(item.tags) || {}
+          tags: keepStoredTags(item.tags) || {}
         }))
     };
   } catch {
@@ -131,3 +137,16 @@ export const consumeScriptMetricEditCarry = (
     return null;
   }
 };
+
+export const carryItemsToBusinessMetrics = (
+  items: ScriptMetricEditCarryItem[]
+): BusinessMetricItem[] =>
+  items.map((item) => ({
+    key: item.name,
+    name: item.name,
+    value: item.sample,
+    tags: keepStoredTags(item.tags) || {},
+    metric_group: typeof item.group === 'number' && item.group > 0 ? item.group : null,
+    unit: item.unit_id || DEFAULT_CATALOG_UNIT_ID,
+    description: typeof item.description === 'string' ? item.description : ''
+  }));

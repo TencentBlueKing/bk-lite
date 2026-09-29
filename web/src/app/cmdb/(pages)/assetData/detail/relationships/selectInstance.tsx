@@ -104,7 +104,7 @@ const SelectInstance = forwardRef<RelationInstanceRef, SelectInstanceProps>(
                     isRelated ? 'Delete Associate' : 'Add Associate',
                   ]}
                   permissionPath={RACK_ROOM_ASSET_PERMISSION_PATH}
-                  instPermissions={record.permission || []}
+                  instPermissions={record.permission}
                 >
                   <Button
                     type="link"

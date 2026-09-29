@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { type MessageContent } from '@webchat/core';
 import { getMessageCopyText } from '../messageContentActions';
 import { WC } from '../chrome';
+import { useTranslator } from '../useTranslator';
 
 interface MessageActionsProps {
   messageId: string;
@@ -15,7 +16,7 @@ interface MessageActionsProps {
   onDelete?: (messageId: string) => void;
 }
 
-export const COPY_SUCCESS_LABEL = '已复制到剪贴板';
+export const COPY_SUCCESS_LABEL_KEY = 'message.copied';
 export const COPY_FEEDBACK_MS = 1600;
 export const WEBCHAT_ROOT_ID = 'webchat-root';
 
@@ -78,6 +79,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   onCopy,
   onDelete,
 }) => {
+  const t = useTranslator();
   const [copied, setCopied] = useState(false);
   const [tip, setTip] = useState<{ top: number; left: number } | null>(null);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -108,7 +110,8 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
     }, COPY_FEEDBACK_MS);
   }, [messageContent, onCopy]);
 
-  const copyLabel = copied ? COPY_SUCCESS_LABEL : '复制';
+  const copySuccessLabel = t(COPY_SUCCESS_LABEL_KEY, '已复制到剪贴板');
+  const copyLabel = copied ? copySuccessLabel : t('message.copy', '复制');
   const visible = showActions || copied;
   const portalTarget =
     copied && tip ? resolveWebchatPortalTarget(copyBtnRef.current) : null;
@@ -124,7 +127,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
           type="button"
           onClick={() => onRegenerate?.(messageId)}
           className={iconBtnClass}
-          title="重新生成"
+          title={t('message.regenerate', '重新生成')}
         >
           <Icon>
             <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
@@ -138,7 +141,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
           void handleCopy();
         }}
         className={iconBtnClass}
-        title={copied ? undefined : '复制'}
+        title={copied ? undefined : t('message.copy', '复制')}
         aria-label={copyLabel}
       >
         {copied ? (
@@ -156,7 +159,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
         type="button"
         onClick={() => onDelete?.(messageId)}
         className={iconBtnClass}
-        title="删除"
+        title={t('message.delete', '删除')}
       >
         <Icon>
           <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
@@ -183,7 +186,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
                 boxShadow: WC.shadow,
               }}
             >
-              {COPY_SUCCESS_LABEL}
+              {copySuccessLabel}
             </div>,
             portalTarget
           )

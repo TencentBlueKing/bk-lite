@@ -1,4 +1,5 @@
 import { WC } from '../chrome';
+import { useTranslator } from '../useTranslator';
 
 const bars = [
   { side: 'user' as const, widths: ['42%'] },
@@ -17,8 +18,9 @@ function Bone({ width }: { width: string }) {
 }
 
 export function ConversationSkeleton() {
+  const t = useTranslator();
   return (
-    <div className="flex flex-col gap-5" aria-busy="true" aria-label="加载对话">
+    <div className="flex flex-col gap-5" aria-busy="true" aria-label={t('common.loading', '加载对话')}>
       {bars.map((row, index) => {
         const isBot = row.side === 'bot';
         return (

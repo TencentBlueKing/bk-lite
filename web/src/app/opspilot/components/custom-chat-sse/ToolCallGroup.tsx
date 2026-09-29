@@ -144,6 +144,8 @@ const ToolCallGroup: React.FC<ToolCallGroupProps> = ({ toolCalls, isStreaming })
   const hasError = toolCalls.some(t => t.status === 'error');
   const totalCount = toolCalls.length;
   const hasRunning = finishedCount < totalCount;
+  // 工具都跑完但本轮还在流式输出，说明正在等模型解读结果
+  const awaitingAnalysis = !hasRunning && Boolean(isStreaming);
   const shouldAutoExpand = isStreaming || hasRunning;
 
   const isExpanded = shouldAutoExpand || expanded;
@@ -173,8 +175,13 @@ const ToolCallGroup: React.FC<ToolCallGroupProps> = ({ toolCalls, isStreaming })
             {expanded ? '点击收起' : '点击展开查看详情'}
           </span>
         )}
-        {shouldAutoExpand && (
+        {hasRunning && (
           <span className="text-[var(--color-text-4)]">执行中...</span>
+        )}
+        {awaitingAnalysis && (
+          <span className="inline-flex items-center gap-1 text-[var(--color-text-4)]">
+            正在分析工具结果...
+          </span>
         )}
       </div>
       {isExpanded && (

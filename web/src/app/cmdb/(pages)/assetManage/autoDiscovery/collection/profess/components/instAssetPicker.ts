@@ -1,6 +1,17 @@
 import type { Key } from 'react';
 
 export const DEFAULT_INST_PAGE_SIZE = 10;
+export const SELECTED_ASSET_TABLE_VISIBLE_ROWS = 8;
+export const SELECTED_ASSET_TABLE_ROW_HEIGHT = 47;
+export const SELECTED_ASSET_TABLE_SCROLL_Y =
+  SELECTED_ASSET_TABLE_VISIBLE_ROWS * SELECTED_ASSET_TABLE_ROW_HEIGHT;
+
+export function resolveSelectedAssetTableScroll(rowCount: number) {
+  if (rowCount <= SELECTED_ASSET_TABLE_VISIBLE_ROWS) {
+    return undefined;
+  }
+  return { y: SELECTED_ASSET_TABLE_SCROLL_Y };
+}
 
 export interface InstAssetRow {
   inst_uuid?: string;

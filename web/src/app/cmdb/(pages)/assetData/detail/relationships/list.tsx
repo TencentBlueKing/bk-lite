@@ -272,7 +272,7 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
             <PermissionWrapper
               requiredPermissions={['Delete Associate']}
               permissionPath={RACK_ROOM_ASSET_PERMISSION_PATH}
-              instPermissions={record.permission || []}
+              instPermissions={record.permission}
             >
               <Button
                 type="link"

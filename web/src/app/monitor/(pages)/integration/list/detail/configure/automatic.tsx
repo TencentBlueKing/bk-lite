@@ -86,11 +86,19 @@ import {
   countAccessAssets,
   mergeImportedAssetRows
 } from './automaticAssetCount';
-import ScriptTrialRunArea from './scriptTrialRunArea';
-import { applyScriptCollectSubmit } from './scriptCollectForm';
+import ScriptTrialRunArea, {
+  scriptTrialBlocksMetricActions
+} from './scriptTrialRunArea';
+import { applyScriptCollectSubmit, syncScriptRunAsForOs } from './scriptCollectForm';
+import { hydrateScriptCollectFormValues } from './scriptCollectHydrate';
 import {
   collectReservedTagViolations,
-  persistScriptMetrics
+  excludeSelfMonitorMetrics,
+  catalogMetricRefLabel,
+  listPluginCatalogMetrics,
+  persistScriptMetrics,
+  planScriptMetricHardSyncDeletes,
+  CatalogMetricRef
 } from './scriptMetricPersist';
 import {
   buildScriptMetricEditCarry,
@@ -99,6 +107,55 @@ import {
 } from './scriptMetricEditCarry';
 import { BusinessMetricItem } from './scriptMetricsParser';
 const { confirm } = Modal;
+
+const OVERWRITE_NAME_PREVIEW = 8;
+
+const ScriptMetricOverwriteContent = ({
+  names,
+  summary,
+  cancelHint,
+  expandLabel,
+  collapseLabel
+}: {
+  names: string[];
+  summary: string;
+  cancelHint: string;
+  expandLabel: string;
+  collapseLabel: string;
+}) => {
+  const [expanded, setExpanded] = useState(false);
+  const hiddenCount = names.length - OVERWRITE_NAME_PREVIEW;
+  const visible =
+    expanded || hiddenCount <= 0
+      ? names
+      : names.slice(0, OVERWRITE_NAME_PREVIEW);
+  return (
+    <div>
+      <p className="mb-2">{summary}</p>
+      <ul className="mb-2 max-h-40 list-disc overflow-auto pl-5">
+        {visible.map((name, index) => (
+          <li key={`${name}-${index}`} className="break-all">
+            {name}
+          </li>
+        ))}
+      </ul>
+      {hiddenCount > 0 ? (
+        <Button
+          type="link"
+          className="h-auto px-0"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setExpanded((open) => !open);
+          }}
+        >
+          {expanded ? collapseLabel : expandLabel}
+        </Button>
+      ) : null}
+      <p className="mb-0 mt-2 text-[var(--color-text-3)]">{cancelHint}</p>
+    </div>
+  );
+};
 
 interface CollectDetectState {
   status: 'pending' | 'running' | 'success' | 'failed' | 'warning';
@@ -127,12 +184,13 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const [form] = Form.useForm();
   const { t } = useTranslation();
   const searchParams = useSearchParams();
-  const { get, post, patch, isLoading } = useApiClient();
+  const { get, post, patch, del, isLoading } = useApiClient();
   const {
     createCollectDetectTask,
     getCollectDetectTask,
     getMonitorNodeList,
-    updateNodeChildConfig
+    updateNodeChildConfig,
+    getPluginChildConfig
   } = useIntegrationApi();
   const {
     getPolicyTemplate,
@@ -168,6 +226,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     useState<IntegrationMonitoredObject>({});
   const [isTableInitialized, setIsTableInitialized] = useState<boolean>(false);
   const hasInitializedFormRef = useRef(false);
+  const [storedScriptForm, setStoredScriptForm] = useState<
+    Record<string, any> | undefined
+  >(undefined);
+  const [scriptValuesApplied, setScriptValuesApplied] = useState(false);
   const [currentConfig, setCurrentConfig] = useState<any>(null);
   const [configLoading, setConfigLoading] = useState<boolean>(false);
   const [policyTemplates, setPolicyTemplates] = useState<PolicyTemplateItem[]>(
@@ -406,6 +468,40 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     collectType === 'script' ||
     currentConfig?.collect_type === 'script';
 
+  useEffect(() => {
+    if (!pluginId || configLoading) return;
+    if (!isScriptTemplate) {
+      setStoredScriptForm((prev) => (prev === undefined ? {} : prev));
+      return;
+    }
+    let cancelled = false;
+    getPluginChildConfig({ monitor_plugin_id: pluginId })
+      .then((content) => {
+        if (cancelled) return;
+        setStoredScriptForm(
+          hydrateScriptCollectFormValues(
+            currentConfig?.form_fields,
+            content,
+            currentConfig?.collect_type || 'script'
+          )
+        );
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setStoredScriptForm({});
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    pluginId,
+    isScriptTemplate,
+    configLoading,
+    currentConfig,
+    getPluginChildConfig
+  ]);
+
   const activeRecord = useMemo(() => {
     return (
       dataSource.find((row) => row.key === activeTrialRowKey) ||
@@ -417,6 +513,25 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (!activeRecord?.key) return undefined;
     return collectDetectTasks[activeRecord.key as string];
   }, [activeRecord, collectDetectTasks]);
+
+  const scriptTrialFailed =
+    isScriptTemplate && scriptTrialBlocksMetricActions(activeTrialTask);
+
+  const activeTrialInstanceName = useMemo(() => {
+    if (!activeRecord) return undefined;
+    const named =
+      activeRecord.instance_name ||
+      activeRecord.ip ||
+      activeRecord.host ||
+      activeRecord.instance_id;
+    if (named) return String(named);
+    if (dataSource.length < 2) return undefined;
+    const index = dataSource.findIndex((row) => row.key === activeRecord.key);
+    if (index < 0) return undefined;
+    return t('monitor.integrations.trialRunBoundInstance', '实例 {index}', {
+      index: index + 1
+    });
+  }, [activeRecord, dataSource, t]);
 
   const isAnyTrialRunning = useMemo(() => {
     return Object.values(collectDetectTasks).some(
@@ -483,13 +598,15 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const persistSelectedScriptMetrics = async (
     targetPluginId: string | number,
     targetObjectId: string | number,
-    metricsToPersist: BusinessMetricItem[]
+    metricsToPersist: BusinessMetricItem[],
+    staleDeletes: CatalogMetricRef[] = []
   ) => {
     await persistScriptMetrics({
       pluginId: targetPluginId,
       objectId: targetObjectId,
-      metrics: metricsToPersist,
-      client: { get, post, patch, t }
+      metrics: excludeSelfMonitorMetrics(metricsToPersist),
+      staleDeletes,
+      client: { get, post, patch, del, t }
     });
   };
 
@@ -503,6 +620,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       return;
     }
     if (!selectedScriptMetrics.length) {
+      message.warning(goEditSelectFirstText);
       return;
     }
     const payload = buildScriptMetricEditCarry(selectedScriptMetrics);
@@ -818,10 +936,39 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     }
   };
 
+  const cancelInFlightCollectDetectExcept = (keepKey: string) => {
+    Object.keys(collectDetectTimersRef.current).forEach((key) => {
+      if (key === keepKey) return;
+      clearTimeout(collectDetectTimersRef.current[key]);
+      delete collectDetectTimersRef.current[key];
+    });
+    Object.keys(activeCollectDetectFingerprintRef.current).forEach((key) => {
+      if (key !== keepKey) {
+        delete activeCollectDetectFingerprintRef.current[key];
+      }
+    });
+    setCollectDetectTasks((prev) => {
+      const runningKeys = Object.keys(prev).filter((key) => {
+        if (key === keepKey) return false;
+        const status = prev[key]?.status;
+        return status === 'pending' || status === 'running';
+      });
+      if (!runningKeys.length) return prev;
+      const next = { ...prev };
+      runningKeys.forEach((key) => {
+        delete next[key];
+      });
+      return next;
+    });
+  };
+
   const handleCollectDetect = async (
     record: IntegrationMonitoredObject,
     mode: CollectDetectMode = 'single'
   ) => {
+    if (isScriptTemplate && mode === 'batch') {
+      return;
+    }
     const rowKey = record.key as string;
     setActiveTrialRowKey(rowKey);
     const nodeId = getRowNodeId(record);
@@ -833,6 +980,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       return;
     }
     const fingerprint = buildCollectDetectFingerprint(record);
+    if (isScriptTemplate) {
+      cancelInFlightCollectDetectExcept(rowKey);
+    }
     activeCollectDetectFingerprintRef.current[rowKey] = fingerprint;
     updateCollectDetectState(rowKey, { status: 'running', fingerprint });
     try {
@@ -878,6 +1028,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   };
 
   const handleBatchCollectDetect = async () => {
+    if (isScriptTemplate) {
+      return;
+    }
     const selectedRows = getRowsForBatchCollectDetect(
       dataSource,
       selectedRowKeys
@@ -903,7 +1056,13 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const renderCollectDetectStatus = (record: IntegrationMonitoredObject) => {
     const task = collectDetectTasks[record.key as string];
     if (!task || task.fingerprint !== buildCollectDetectFingerprint(record)) {
-      return <Tag>{t('monitor.integrations.collectDetectUntested')}</Tag>;
+      return (
+        <Tag>
+          {isScriptTemplate
+            ? t('monitor.integrations.scriptCollectUntested', '未调试')
+            : t('monitor.integrations.collectDetectUntested')}
+        </Tag>
+      );
     }
     const clickableClassName = 'cursor-pointer';
     if (task.status === 'warning') {
@@ -931,7 +1090,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           }}
         >
           {isScriptTemplate
-            ? t('monitor.integrations.trialRun', '调试中')
+            ? t('monitor.integrations.scriptCollectRunning', '调试中')
             : t('monitor.integrations.collectDetectRunning')}
         </Tag>
       );
@@ -1033,7 +1192,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     const collectDetectStatusColumn = supportCollectDetect
       ? [
         {
-          title: t('monitor.integrations.collectDetectStatus'),
+          title: isScriptTemplate
+            ? t('monitor.integrations.scriptCollectStatus', '调试状态')
+            : t('monitor.integrations.collectDetectStatus'),
           key: 'collect_detect_status',
           dataIndex: 'collect_detect_status',
           width: 140,
@@ -1053,7 +1214,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     t,
     collectType,
     supportCollectDetect,
-    collectDetectTasks
+    collectDetectTasks,
+    isScriptTemplate
   ]);
 
   const pluginFormCacheKey = [
@@ -1075,6 +1237,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     };
   }
   const formItems = cachedPluginFormRef.current.items;
+  const visibleFormItems =
+    !isScriptTemplate || scriptValuesApplied ? formItems : null;
 
   useEffect(() => {
     if (isLoading) return;
@@ -1083,6 +1247,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
 
   useEffect(() => {
     hasInitializedFormRef.current = false;
+    setStoredScriptForm(undefined);
+    setScriptValuesApplied(false);
   }, [pluginId]);
 
   useEffect(() => {
@@ -1110,11 +1276,31 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (configLoading) return;
     const defaults = formConfig?.defaultForm;
     if (!defaults) return;
+    if (isScriptTemplate && storedScriptForm === undefined) return;
     if (!hasInitializedFormRef.current) {
-      const initialValues = applyIfmibDeploymentState(defaults, enableIfmibFromUrl);
+      const initialValues = applyIfmibDeploymentState(
+        {
+          ...defaults,
+          ...(storedScriptForm || {})
+        },
+        enableIfmibFromUrl
+      );
       form.setFieldsValue(initialValues);
       trackSnmpFilterMutexLastChanged({}, form.getFieldsValue(true), form);
       hasInitializedFormRef.current = true;
+      if (isScriptTemplate) {
+        setScriptValuesApplied(true);
+      }
+    } else if (isScriptTemplate && storedScriptForm) {
+      if (!scriptValuesApplied) {
+        form.setFieldsValue(storedScriptForm);
+        setScriptValuesApplied(true);
+      } else if (storedScriptForm.script) {
+        const currentScript = form.getFieldValue('script');
+        if (currentScript === undefined || currentScript === null || currentScript === '') {
+          form.setFieldValue('script', storedScriptForm.script);
+        }
+      }
     }
     // UI 字段可能在首次初始化后才挂载；其自身 default_value=true 会覆盖前一次
     // 空表单初始化。因此只在 IF-MIB 字段真实可用时，以 URL 中当前下发流程状态回填。
@@ -1125,6 +1311,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     setFormSnapshot((prev) => {
       const next = {
         ...defaults,
+        ...(storedScriptForm || {}),
         ...prev,
         ...form.getFieldsValue(true)
       };
@@ -1137,7 +1324,15 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       return unchanged ? prev : next;
     });
     // 刻意依赖 defaultFormKey 而非 defaultForm 对象引用。
-  }, [configLoading, defaultFormKey, enableIfmibFromUrl, form]);
+  }, [
+    configLoading,
+    defaultFormKey,
+    enableIfmibFromUrl,
+    form,
+    isScriptTemplate,
+    scriptValuesApplied,
+    storedScriptForm
+  ]);
 
   const handleAdd = (key: string) => {
     const index = dataSource.findIndex((item) => item.key === key);
@@ -1239,7 +1434,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   };
 
   const batchMenuItems: MenuProps['items'] = [
-    ...(supportCollectDetect
+    ...(supportCollectDetect && !isScriptTemplate
       ? [
         {
           key: 'batchCollectDetect',
@@ -1393,6 +1588,17 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (isScriptTemplate && hasReservedScriptTagError) {
       return;
     }
+    if (isScriptTemplate && scriptTrialBlocksMetricActions(activeTrialTask)) {
+      return;
+    }
+    if (
+      isScriptTemplate &&
+      scriptDebugHasBusinessMetrics &&
+      !selectedScriptMetrics.length
+    ) {
+      message.warning(goEditSelectFirstText);
+      return;
+    }
     const normalizedForm = normalizePasswordFields(
       form.getFieldsValue(true),
       currentConfig?.form_fields,
@@ -1410,7 +1616,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (!tableValidation.data) {
       return;
     }
-    form.validateFields().then((values) => {
+    form.validateFields().then(async (values) => {
       try {
         const mutexErrors = getSnmpFilterMutexConflicts(values, t);
         if (mutexErrors.length) {
@@ -1446,12 +1652,72 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           }) || {};
         params.monitor_object_id = Number(objectId);
         params.monitor_plugin_id = Number(pluginId);
+        let staleDeletes: CatalogMetricRef[] = [];
+        if (
+          isScriptTemplate &&
+          scriptDebugHasBusinessMetrics &&
+          selectedScriptMetrics.length > 0
+        ) {
+          const persistable = excludeSelfMonitorMetrics(selectedScriptMetrics);
+          const existing = await listPluginCatalogMetrics({
+            pluginId,
+            objectId,
+            client: { get }
+          });
+          staleDeletes = planScriptMetricHardSyncDeletes(existing, persistable);
+          if (staleDeletes.length) {
+            const overwriteNames = staleDeletes
+              .map((item) => catalogMetricRefLabel(item))
+              .filter(Boolean);
+            const confirmed = await new Promise<boolean>((resolve) => {
+              Modal.confirm({
+                title: t(
+                  'monitor.integrations.scriptMetricsHardSyncTitle',
+                  '覆盖目录中未出现的旧指标'
+                ),
+                width: 520,
+                content: (
+                  <ScriptMetricOverwriteContent
+                    names={overwriteNames}
+                    summary={t(
+                      'monitor.integrations.scriptMetricsHardSyncHint',
+                      '将删除本插件目录中、本次调试结果里没有的旧指标，共 {count} 个。',
+                      { count: overwriteNames.length }
+                    )}
+                    cancelHint={t(
+                      'monitor.integrations.scriptMetricsHardSyncCancel',
+                      '取消则中止本次确认。'
+                    )}
+                    expandLabel={t(
+                      'monitor.integrations.scriptMetricsHardSyncMore',
+                      '展开全部（共 {count} 个）',
+                      { count: overwriteNames.length }
+                    )}
+                    collapseLabel={t(
+                      'monitor.integrations.scriptMetricsHardSyncCollapse',
+                      '收起'
+                    )}
+                  />
+                ),
+                okText: t('common.confirm'),
+                cancelText: t('common.cancel'),
+                centered: true,
+                onOk: () => resolve(true),
+                onCancel: () => resolve(false)
+              });
+            });
+            if (!confirmed) {
+              return;
+            }
+          }
+        }
         addNodesConfig(
           params,
           templatesToApply,
           values[COLLECTION_POLICY_NAME_PREFIX_FIELD],
           pushAlertCenter,
-          alertCenterChannelIds
+          alertCenterChannelIds,
+          staleDeletes
         );
       } catch (error: any) {
         message.error(error?.message || t('common.operationFailed'));
@@ -1464,7 +1730,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     templatesToApply: PolicyTemplateItem[] = [],
     namePrefix?: string,
     pushAlertCenter = false,
-    alertCenterChannelIds: Array<string | number> = []
+    alertCenterChannelIds: Array<string | number> = [],
+    staleDeletes: CatalogMetricRef[] = []
   ) => {
     if (saveInFlightRef.current) {
       return;
@@ -1473,13 +1740,32 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     try {
       setConfirmLoading(true);
       const collectResult = await updateNodeChildConfig(params);
+      let didPersistMetrics = false;
       if (
         isScriptTemplate &&
         scriptDebugHasBusinessMetrics &&
         selectedScriptMetrics.length > 0
       ) {
-        await persistSelectedScriptMetrics(pluginId, objectId, selectedScriptMetrics);
+        await persistSelectedScriptMetrics(
+          pluginId,
+          objectId,
+          excludeSelfMonitorMetrics(selectedScriptMetrics),
+          staleDeletes
+        );
+        didPersistMetrics = true;
       }
+      const goIntegrationList = () => {
+        const nextSearch = new URLSearchParams({
+          objId: objectId
+        });
+        router.push(`/monitor/integration/list?${nextSearch.toString()}`);
+      };
+      const goPersistedMetrics = () => {
+        const metricSearch = new URLSearchParams(searchParams.toString());
+        router.push(
+          `/monitor/integration/list/detail/metric?${metricSearch.toString()}`
+        );
+      };
       if (templatesToApply.length) {
         const policyPayload = buildCollectionPolicyApplyPayload({
           monitorObjectId: objectId,
@@ -1517,13 +1803,32 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
             );
           }
         }
+      } else if (didPersistMetrics) {
+        message.success(
+          t('monitor.integrations.scriptMetricsPersistSuccess', '指标已保存')
+        );
       } else {
         message.success(t('common.addSuccess'));
       }
-      const nextSearch = new URLSearchParams({
-        objId: objectId
-      });
-      router.push(`/monitor/integration/list?${nextSearch.toString()}`);
+      if (didPersistMetrics) {
+        Modal.confirm({
+          title: t('common.addSuccess'),
+          content: t(
+            'monitor.integrations.scriptMetricsPersistSuccessHint',
+            '可前往指标页查看刚保存的指标'
+          ),
+          okText: t(
+            'monitor.integrations.goViewPersistedMetrics',
+            '去查看指标'
+          ),
+          cancelText: t('common.back'),
+          centered: true,
+          onOk: goPersistedMetrics,
+          onCancel: goIntegrationList
+        });
+      } else {
+        goIntegrationList();
+      }
     } catch (error: any) {
       const errorText =
         error?.response?.data?.message ||
@@ -1533,6 +1838,19 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         typeof errorText === 'string' &&
         errorText.includes(reservedTagRenameText)
       ) {
+        return;
+      }
+      if (
+        isScriptTemplate &&
+        typeof errorText === 'string' &&
+        errorText.includes('已存在采集配置')
+      ) {
+        message.warning(
+          t(
+            'monitor.integrations.scriptCollectConfigExistsUpdating',
+            '该实例已有脚本采集配置，将更新现有配置'
+          )
+        );
         return;
       }
       message.error(errorText);
@@ -1600,6 +1918,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         ) {
           setFormSnapshot(nextValues);
         }
+        if (Object.prototype.hasOwnProperty.call(changed, 'script_os')) {
+          syncScriptRunAsForOs(form, String(changed.script_os ?? ''));
+        }
         if (
           Object.prototype.hasOwnProperty.call(
             changed,
@@ -1629,7 +1950,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         </b>
         <GuideEntryButton />
       </div>
-      {formItems}
+      {visibleFormItems}
       <Form.Item
         name={COLLECTION_POLICY_FIELD}
         label={
@@ -1833,7 +2154,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
             }
           }}
           nodeSelected={Boolean(getRowNodeId(activeRecord || {}))}
-          instanceName={activeRecord?.instance_name || undefined}
+          instanceName={activeTrialInstanceName}
           pluginId={pluginId}
           objectId={objectId}
           onSelectedMetricsChange={handleSelectedScriptMetricsChange}
@@ -1847,7 +2168,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
               type="primary"
               loading={confirmLoading}
               disabled={
-                confirmLoading || isAnyTrialRunning || hasReservedScriptTagError
+                confirmLoading ||
+                isAnyTrialRunning ||
+                hasReservedScriptTagError ||
+                scriptTrialFailed
               }
               onClick={handleSave}
             >
@@ -1855,16 +2179,24 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
             </Button>
           </Permission>
           {showGoEditMetrics && (
-            <Button
-              disabled={
-                confirmLoading ||
-                isAnyTrialRunning ||
-                hasReservedScriptTagError
-              }
-              onClick={handleGoEditMetrics}
-            >
-              {t('monitor.integrations.goEditMetrics', '去编辑指标')}
-            </Button>
+            <>
+              <Button
+                disabled={
+                  confirmLoading ||
+                  isAnyTrialRunning ||
+                  hasReservedScriptTagError
+                }
+                onClick={handleGoEditMetrics}
+              >
+                {t('monitor.integrations.goEditMetrics', '去编辑指标')}
+              </Button>
+              <span className="text-[13px] text-[var(--color-text-3)]">
+                {t(
+                  'monitor.integrations.goEditMetricsHint',
+                  '将勾选的调试指标带去新建或编辑；要覆盖目录请点左侧「确认」。'
+                )}
+              </span>
+            </>
           )}
           {hasReservedScriptTagError && (
             <span

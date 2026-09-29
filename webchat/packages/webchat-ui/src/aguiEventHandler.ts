@@ -1,12 +1,13 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
 import {
   generateId,
+  translate,
   type Message,
   type SessionManager,
   type StateMachine,
 } from '@webchat/core';
 import type { AGUIEvent } from './agui';
-import type { ToolCall } from './contentChunks';
+import type { ContentChunk, ToolCall } from './contentChunks';
 import {
   appendToolCallArgs,
   appendToolCallChunk,
@@ -55,6 +56,36 @@ export function shouldShowTypingPlaceholder(
   }
   const last = messages[messages.length - 1];
   return last?.sender !== 'bot';
+}
+
+/**
+ * Tools finished but the model has not produced text yet: the bot bubble already
+ * exists, so the typing placeholder is hidden. Without this the turn looks frozen.
+ */
+export function shouldShowAnalyzingIndicator(
+  isLoading: boolean,
+  isThinking: boolean,
+  messages: Array<{ sender: string; content?: unknown; metadata?: Record<string, unknown> | null }>
+): boolean {
+  if (!isLoading || isThinking) {
+    return false;
+  }
+  const last = messages[messages.length - 1];
+  if (!last || last.sender !== 'bot') {
+    return false;
+  }
+  const chunks = (last.metadata?.contentChunks as ContentChunk[] | undefined) || [];
+  const hasToolCalls = chunks.some((chunk) => chunk.type === 'toolCalls' && chunk.toolCalls.length > 0);
+  if (!hasToolCalls) {
+    return false;
+  }
+  const allToolsDone = chunks.every((chunk) => chunk.type !== 'toolCalls' || chunk.toolCalls.every((tool) => tool.status !== 'running'));
+  if (!allToolsDone) {
+    return false;
+  }
+  const hasVisibleText = chunks.some((chunk) => chunk.type === 'text' && chunk.content.trim().length > 0)
+    || typeof last.content === 'string' && last.content.trim().length > 0;
+  return !hasVisibleText;
 }
 
 /** Create the AG-UI protocol event dispatcher used by Chat. */
@@ -221,8 +252,9 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
       case 'RUN_ERROR': {
         textBatcher.flush();
         setIsThinking(false);
-        const error = event.message || 'Unknown error';
-        const errorContent = `\n\n❌ **错误**: ${error}`;
+        const error = event.message || translate('chat.defaultError', '未知错误');
+        const errorLabel = translate('chat.errorTitle', '错误');
+        const errorContent = `\n\n❌ **${errorLabel}**: ${error}`;
 
         if (currentMessageIdRef.current) {
           streamingContentRef.current += errorContent;
@@ -234,7 +266,7 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
           addMessage({
             id: generateId(),
             type: 'text',
-            content: `❌ **错误**\n\n${error}`,
+            content: `❌ **${errorLabel}**\n\n${error}`,
             sender: 'bot',
             timestamp: Date.now(),
           });

@@ -149,11 +149,16 @@ def test_import_partial_success_keeps_operation_audit_and_row_numbers(transfer_o
         "failed_relations": 0,
     }
     assert writes.call_count + updates.call_count == 2
+    if update_existing:
+        assert updates.call_args_list[0].args[0] == [{"id": 1}]
     assert CmdbOperation.objects.filter(idempotency_key__startswith=f"transfer:{task.pk}:").count() == 2
     assert CmdbOperationOutbox.objects.filter(event_type="change_record").count() == 2
     report = openpyxl.load_workbook(io.BytesIO(files.objects[task.artifacts["errors"]["key"]])).active
+    assert report.cell(1, 2).value == "列"
     assert report.cell(2, 1).value == 5
-    assert report.cell(2, 2).value == "instance"
+    assert report.cell(2, 2).value == "A 实例名"
+    assert report.cell(2, 3).value == "inst_name"
+    assert report.cell(2, 4).value == "文件内标识重复或匹配到多个已有实例"
 
 
 @pytest.mark.parametrize("source_changed", [False, True])

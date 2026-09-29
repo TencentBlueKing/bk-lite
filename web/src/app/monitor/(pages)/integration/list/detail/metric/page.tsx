@@ -37,12 +37,29 @@ import {
   getPluginFamilyObjects
 } from '@/app/monitor/utils/monitorObject';
 import { cloneDeep } from 'lodash';
-import { buildIfmibMetricView, getDefaultMetricGroupOpenState } from './ifmibMetricView';
+import {
+  buildIfmibMetricView,
+  getDefaultMetricGroupOpenState,
+  isIfmibMetric
+} from './ifmibMetricView';
+import { fetchAllMetricsGroups } from '@/app/monitor/api/fetchMetricCatalogPages';
+import {
+  canonicalCatalogGroupId,
+  catalogGroupLabel,
+  dedupeCatalogMetricGroups
+} from '../configure/scriptMetricPersist';
 import {
   consumeScriptMetricEditCarry,
+  carryItemsToBusinessMetrics,
   SCRIPT_METRIC_DRAFT_QUERY,
-  ScriptMetricEditCarryItem
+  ScriptMetricEditCarry
 } from '../configure/scriptMetricEditCarry';
+import { persistScriptMetrics } from '../configure/scriptMetricPersist';
+import {
+  cleanMeasurementName,
+  isSelfMetricName,
+  visibleDimensionItems
+} from '../configure/scriptMetricsParser';
 
 interface ObjectTabOption {
   label: React.ReactNode;
@@ -71,7 +88,7 @@ const ObjectTabLabel = ({
 );
 
 const Configure = () => {
-  const { isLoading } = useApiClient();
+  const { isLoading, get, post, patch, del } = useApiClient();
   const { getMonitorObject, getMetricsGroup, getMonitorMetrics } =
     useMonitorApi();
   const {
@@ -109,13 +126,33 @@ const Configure = () => {
   const [groupConfirmLoading, setGroupConfirmLoading] = useState(false);
   const [showTabs, setShowTabs] = useState<boolean>(false);
   const metricCatalogAbortRef = useRef<AbortController | null>(null);
-  const scriptMetricDraftQueueRef = useRef<ScriptMetricEditCarryItem[]>([]);
   const scriptMetricDraftConsumedRef = useRef(false);
-  const scriptMetricDraftOpeningRef = useRef(false);
   const [catalogReady, setCatalogReady] = useState(false);
   const canReorderCatalog = metricCount <= 100 && !searchText.trim();
 
   useEffect(() => () => metricCatalogAbortRef.current?.abort(), []);
+
+  const displayScriptMetricName = (name?: string) => {
+    const raw = String(name || '').trim();
+    if (!raw) {
+      return '--';
+    }
+    if (templateType !== 'script' || isSelfMetricName(raw)) {
+      return raw;
+    }
+    return cleanMeasurementName(raw) || raw;
+  };
+
+  const displayScriptDimensions = (dims?: DimensionItem[]) => {
+    const source =
+      templateType === 'script'
+        ? visibleDimensionItems(dims || [])
+        : dims || [];
+    const names = source
+      .map((item) => String(item?.name || '').trim())
+      .filter(Boolean);
+    return names.length ? names.join(',') : '--';
+  };
 
   const columns: ColumnItem[] = [
     {
@@ -123,7 +160,8 @@ const Configure = () => {
       dataIndex: 'name',
       width: 120,
       key: 'name',
-      ellipsis: true
+      ellipsis: true,
+      render: (value: string) => <>{displayScriptMetricName(value)}</>
     },
     {
       title: t('common.name'),
@@ -133,7 +171,9 @@ const Configure = () => {
       ellipsis: true,
       render: (_, record) => (
         <div className="flex items-center gap-1 overflow-hidden">
-          <span className="truncate">{record.display_name || '--'}</span>
+          <span className="truncate">
+            {displayScriptMetricName(record.display_name || record.name)}
+          </span>
         </div>
       )
     },
@@ -143,15 +183,7 @@ const Configure = () => {
       width: 100,
       key: 'dimensions',
       ellipsis: true,
-      render: (_, record) => (
-        <>
-          {record.dimensions?.length
-            ? record.dimensions
-              .map((item: DimensionItem) => item.name)
-              .join(',')
-            : '--'}
-        </>
-      )
+      render: (_, record) => <>{displayScriptDimensions(record.dimensions)}</>
     },
     {
       title: t('monitor.integrations.dataType'),
@@ -290,12 +322,18 @@ const Configure = () => {
     objId = activeTab,
     preserveState = false,
     page = metricPage,
-    keyword = searchText.trim()
+    keyword = searchText.trim(),
+    expandMetricNames: string[] = [],
+    expandGroupIds: string[] = []
   ) => {
-    const params = {
+    const metricParams = {
       monitor_object_id: +objId,
       monitor_plugin_id: +pluginID,
       ...(keyword ? { keyword } : {})
+    };
+    const groupParams = {
+      monitor_object_id: +objId,
+      monitor_plugin_id: +pluginID
     };
     metricCatalogAbortRef.current?.abort();
     const abortController = new AbortController();
@@ -311,16 +349,16 @@ const Configure = () => {
     }
     try {
       // 厂商指标按页分页；IF-MIB 固定约十余条，单独拉全量后置底归并，避免拆页。
-      const [groupPage, metricsPage, ifmibPage] = await Promise.all([
-        getMetricsGroup(params, config),
+      const [groupCatalog, metricsPage, ifmibPage] = await Promise.all([
+        fetchAllMetricsGroups(getMetricsGroup, groupParams, config),
         getMonitorMetrics(
-          { ...params, include_ifmib: false, page },
+          { ...metricParams, include_ifmib: false, page },
           config
         ),
         enableIfmib
           ? getMonitorMetrics(
             {
-              ...params,
+              ...metricParams,
               include_ifmib: true,
               is_ifmib: true,
               page: 1,
@@ -331,20 +369,47 @@ const Configure = () => {
           : Promise.resolve({ count: 0, items: [], metric_groups: [] })
       ]);
       if (abortController.signal.aborted) return;
-      const rawGroupList: MetricListItem[] = (
-        metricsPage.metric_groups || groupPage.items
-      ).map((group) => ({
-        ...group,
+      const pageMetrics = enableIfmib
+        ? [...metricsPage.items, ...ifmibPage.items]
+        : metricsPage.items;
+      const { groups: dedupedGroups, idAlias } = dedupeCatalogMetricGroups(
+        [
+          ...(groupCatalog.items || []),
+          ...(metricsPage.metric_groups || []),
+          ...(enableIfmib ? ifmibPage.metric_groups || [] : [])
+        ],
+        {
+          preferredPluginId: pluginID,
+          preferredIds: pageMetrics.map((metric) => metric.metric_group)
+        }
+      );
+      const rawGroupList: MetricListItem[] = dedupedGroups.map((group) => ({
         id: String(group.id),
-        name: group.name || '',
+        name: group.name || catalogGroupLabel(group),
+        display_name: catalogGroupLabel(group),
+        monitor_plugin: group.monitor_plugin ?? undefined,
         is_pre: group.is_pre === true,
         child: []
       }));
       setMetricCount(metricsPage.count);
-      setApiGroupList(rawGroupList);
-      const catalogMetrics = enableIfmib
-        ? [...metricsPage.items, ...ifmibPage.items]
-        : metricsPage.items;
+      const catalogMetrics = pageMetrics.map((metric) => {
+        const metricGroup = canonicalCatalogGroupId(metric.metric_group, idAlias);
+        if (metricGroup == null || metricGroup === metric.metric_group) {
+          return metric;
+        }
+        return { ...metric, metric_group: metricGroup };
+      });
+      const visibleGroupIds = new Set(
+        catalogMetrics
+          .filter((metric) => !isIfmibMetric(metric))
+          .map((metric) => String(metric.metric_group))
+      );
+      setApiGroupList(
+        rawGroupList.filter(
+          (group) =>
+            visibleGroupIds.has(String(group.id)) || group.is_pre === false
+        )
+      );
       const metricView = buildIfmibMetricView(
         rawGroupList,
         catalogMetrics,
@@ -352,12 +417,22 @@ const Configure = () => {
         (key) => t(key)
       );
       const defaultOpenState = getDefaultMetricGroupOpenState(metricView);
-      const groupData = metricView.map((group) => ({
-        ...group,
-        isOpen: currentOpenState
-          ? (currentOpenState.get(group.id) ?? defaultOpenState.get(group.id) ?? false)
-          : (defaultOpenState.get(group.id) ?? false)
-      }));
+      const expandNameSet = new Set(expandMetricNames.filter(Boolean));
+      const expandGroupSet = new Set(expandGroupIds.filter(Boolean).map(String));
+      const groupData = metricView.map((group) => {
+        const expandByCarry =
+          expandNameSet.size > 0 &&
+          group.child.some((metric) => expandNameSet.has(metric.name));
+        const expandGroup = expandGroupSet.has(String(group.id));
+        return {
+          ...group,
+          isOpen: expandGroup || expandByCarry
+            ? true
+            : currentOpenState
+              ? (currentOpenState.get(group.id) ?? defaultOpenState.get(group.id) ?? false)
+              : (defaultOpenState.get(group.id) ?? false)
+        };
+      });
       setMetrics(groupData.flatMap((group) => group.child));
       setMetricData(groupData);
       setFilteredMetricData(groupData);
@@ -403,10 +478,6 @@ const Configure = () => {
   };
 
   const openMetricModal = (type: string, row = {}) => {
-    if (!scriptMetricDraftOpeningRef.current) {
-      scriptMetricDraftQueueRef.current = [];
-    }
-    scriptMetricDraftOpeningRef.current = false;
     const title = t(
       type === 'add'
         ? 'monitor.integrations.addMetric'
@@ -421,48 +492,6 @@ const Configure = () => {
     });
   };
 
-  const toDraftMetricForm = (
-    item: ScriptMetricEditCarryItem,
-    existing?: MetricItem
-  ) => {
-    const dimensions = Object.keys(item.tags || {}).map((name) => ({
-      name,
-      description: name
-    }));
-    if (existing) {
-      return {
-        ...existing,
-        metric_group: item.group ?? existing.metric_group,
-        unit: item.unit_id || existing.unit,
-        description: item.description ?? existing.description,
-        dimensions: dimensions.length ? dimensions : existing.dimensions
-      };
-    }
-    return {
-      name: item.name,
-      display_name: item.name,
-      query: `${item.name}{__$labels__}`,
-      metric_group: item.group,
-      unit: item.unit_id || '',
-      data_type: 'Number',
-      description: item.description || '',
-      dimensions
-    };
-  };
-
-  const openNextScriptMetricDraft = (catalogMetrics: MetricItem[] = metrics) => {
-    const next = scriptMetricDraftQueueRef.current.shift();
-    if (!next) {
-      return;
-    }
-    const existing = catalogMetrics.find((metric) => metric.name === next.name);
-    scriptMetricDraftOpeningRef.current = true;
-    openMetricModal(
-      existing ? 'edit' : 'add',
-      toDraftMetricForm(next, existing)
-    );
-  };
-
   const consumeScriptMetricDraftQuery = () => {
     const nextParams = new URLSearchParams(searchParams.toString());
     if (!nextParams.has(SCRIPT_METRIC_DRAFT_QUERY)) {
@@ -475,6 +504,38 @@ const Configure = () => {
         ? `/monitor/integration/list/detail/metric?${nextQuery}`
         : '/monitor/integration/list/detail/metric'
     );
+  };
+
+  const landScriptMetricCarry = async (carry: ScriptMetricEditCarry) => {
+    const payload = carryItemsToBusinessMetrics(carry.metrics);
+    if (!payload.length) {
+      return;
+    }
+    const targetObjectId = activeTab || groupId;
+    if (!targetObjectId || !pluginID) {
+      return;
+    }
+    try {
+      setLoading(true);
+      await persistScriptMetrics({
+        pluginId: pluginID,
+        objectId: targetObjectId,
+        metrics: payload,
+        client: { get, post, patch, del, t }
+      });
+      await getInitData(
+        String(targetObjectId),
+        true,
+        metricPage,
+        searchText.trim(),
+        payload.map((item) => item.name)
+      );
+    } catch (error: unknown) {
+      const text =
+        error instanceof Error ? error.message : t('common.operationFailed');
+      message.error(text);
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -496,13 +557,11 @@ const Configure = () => {
     if (!carry?.metrics.length) {
       return;
     }
-    scriptMetricDraftQueueRef.current = [...carry.metrics];
-    openNextScriptMetricDraft(metrics);
+    void landScriptMetricCarry(carry);
   }, [
     isLoading,
     loading,
     catalogReady,
-    metrics,
     searchParams,
     groupId,
     pluginID
@@ -514,7 +573,6 @@ const Configure = () => {
 
   const operateMtric = () => {
     getInitData(activeTab, true);
-    openNextScriptMetricDraft();
   };
 
   const onTabChange = (val: string | number) => {
@@ -798,6 +856,17 @@ const Configure = () => {
         monitorObject={+activeTab}
         pluginId={+pluginID}
         groupList={apiGroupList}
+        onGroupListChange={(created) => {
+          const groupId = created?.id != null ? String(created.id) : '';
+          void getInitData(
+            activeTab,
+            true,
+            metricPage,
+            searchText.trim(),
+            [],
+            groupId ? [groupId] : []
+          );
+        }}
         onSuccess={operateMtric}
       />
     </div>

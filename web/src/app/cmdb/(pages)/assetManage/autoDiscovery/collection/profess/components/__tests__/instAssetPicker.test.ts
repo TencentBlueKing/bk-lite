@@ -1,11 +1,36 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   mergeInstSelection,
   resolveInstFetchModelId,
   resolveInstPaginationChange,
   restoreInstDrawerSelection,
+  resolveSelectedAssetTableScroll,
+  SELECTED_ASSET_TABLE_SCROLL_Y,
+  SELECTED_ASSET_TABLE_VISIBLE_ROWS,
 } from '../instAssetPicker';
+
+describe('已选资产表高度', () => {
+  it('不超过 8 行时不锁高度，超过后按 8 行滚动', () => {
+    expect(SELECTED_ASSET_TABLE_VISIBLE_ROWS).toBe(8);
+    expect(SELECTED_ASSET_TABLE_SCROLL_Y).toBe(8 * 47);
+    expect(resolveSelectedAssetTableScroll(8)).toBeUndefined();
+    expect(resolveSelectedAssetTableScroll(9)).toEqual({
+      y: SELECTED_ASSET_TABLE_SCROLL_Y,
+    });
+  });
+
+  it('确认后的已选资产表使用该滚动高度', () => {
+    const root = dirname(fileURLToPath(import.meta.url));
+    const source = readFileSync(resolve(root, '../baseTask.tsx'), 'utf8');
+    expect(source).toMatch(
+      /scroll=\{resolveSelectedAssetTableScroll\(selectedData\.length\)\}/
+    );
+  });
+});
 
 describe('选择资产分页', () => {
   it('切换页码时保留当前每页条数，而不是回到 10', () => {

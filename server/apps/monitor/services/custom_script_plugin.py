@@ -12,6 +12,25 @@ from apps.monitor.utils.plugin_controller import Controller
 
 SCRIPT_COLLECT_TYPE = "script"
 SCRIPT_CONFIG_TYPE = "script"
+# 脚本采集模板只允许绑在「操作系统」分类（id 在库内为 os / OS）。
+SCRIPT_COLLECT_ALLOWED_OBJECT_TYPE_ID = "os"
+SCRIPT_COLLECT_ALLOWED_OBJECT_TYPE_NAMES = frozenset({"操作系统", "os", "operating system"})
+SCRIPT_COLLECT_OBJECT_TYPE_ERROR = "脚本采集模板仅允许绑定「操作系统」监控对象"
+
+
+def is_script_collect_type(collect_type) -> bool:
+    return str(collect_type or "").casefold() == SCRIPT_COLLECT_TYPE
+
+
+def is_script_collect_allowed_object(monitor_object) -> bool:
+    """创建脚本采集模板时，绑定对象必须属于操作系统分类。"""
+    type_id = str(getattr(monitor_object, "type_id", None) or "").strip().casefold()
+    if type_id == SCRIPT_COLLECT_ALLOWED_OBJECT_TYPE_ID:
+        return True
+    obj_type = getattr(monitor_object, "type", None)
+    type_name = str(getattr(obj_type, "name", None) or "").strip().casefold()
+    return type_name in SCRIPT_COLLECT_ALLOWED_OBJECT_TYPE_NAMES
+
 
 # 平台保留标签。stdout / [inputs.bklite_script.tags] 不得作为最终来源。
 RESERVED_SCRIPT_TAG_KEYS = (
@@ -21,6 +40,7 @@ RESERVED_SCRIPT_TAG_KEYS = (
     "config_type",
     "plugin_id",
     "agent_id",
+    "script",
 )
 
 # name_prefix + namepass 按 config_id 隔离，避免合并进同一 Telegraf 后改写其他采集。
@@ -55,6 +75,7 @@ def apply(metric):
     config_type = ""
     plugin_id = ""
     agent_id = ""
+    script = ""
     for k in metric.tags:
         if k == "instance_id":
             instance_id = metric.tags[k]
@@ -68,6 +89,8 @@ def apply(metric):
             plugin_id = metric.tags[k]
         elif k == "agent_id":
             agent_id = metric.tags[k]
+        elif k == "script":
+            script = metric.tags[k]
         elif k.startswith("bklite_script_"):
             conflicts.append(k)
     if instance_id != "" and instance_id != reserved_instance_id:
@@ -82,12 +105,15 @@ def apply(metric):
         conflicts.append("plugin_id")
     if agent_id != "" and agent_id != reserved_agent_id:
         conflicts.append("agent_id")
+    if script != "" and script != reserved_script:
+        conflicts.append("script")
     metric.tags["instance_id"] = reserved_instance_id
     metric.tags["instance_type"] = reserved_instance_type
     metric.tags["collect_type"] = reserved_collect_type
     metric.tags["config_type"] = reserved_config_type
     metric.tags["plugin_id"] = reserved_plugin_id
     metric.tags["agent_id"] = reserved_agent_id
+    metric.tags["script"] = reserved_script
     if len(conflicts) > 0:
         metric.tags["bklite_script_reserved_keys"] = ",".join(conflicts)
     return metric
@@ -100,6 +126,7 @@ def apply(metric):
         reserved_config_type = "script"
         reserved_plugin_id = "{{ plugin_id }}"
         reserved_agent_id = "${node.ip}-${node.cloud_region}"
+        reserved_script = "default"
 """
 
 

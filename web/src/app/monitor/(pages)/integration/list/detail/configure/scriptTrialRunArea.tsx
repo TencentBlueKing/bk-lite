@@ -1,5 +1,5 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import { Alert, Button, Cascader, Checkbox, Input, Select, Spin, Tag, Tooltip } from 'antd';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { Alert, Button, Cascader, Checkbox, Input, Spin, Tag, Tooltip } from 'antd';
 import {
   CheckCircleFilled,
   CloseCircleFilled,
@@ -12,14 +12,20 @@ import CompactEmptyState from '@/components/compact-empty-state';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import { useCommon } from '@/app/monitor/context/common';
-import { parseScriptMetrics, BusinessMetricItem } from './scriptMetricsParser';
+import { parseScriptMetrics, BusinessMetricItem, cleanDisplayTags } from './scriptMetricsParser';
 import {
+  applyDefaultCatalogDrafts,
   buildUnitCascaderOptions,
   extractCatalogItems,
   formatDimensionTagSummary,
+  mergeRetainedTrialMetricState,
   pickSelectedBusinessMetrics,
+  resolveDefaultCatalogGroupId,
+  resolveDefaultCatalogUnitPath,
+  CatalogMetricGroupOption,
   ScriptMetricCatalogDraft
 } from './scriptMetricPersist';
+import ScriptMetricGroupSelect from './scriptMetricGroupSelect';
 
 const BUSINESS_METRIC_GRID =
   'grid-cols-[36px_minmax(160px,1.3fr)_minmax(72px,0.55fr)_minmax(110px,0.95fr)_minmax(128px,1.05fr)_minmax(140px,1.2fr)]';
@@ -27,11 +33,12 @@ const BUSINESS_METRIC_GRID =
 const DimensionTagLine: React.FC<{ tags?: Record<string, string> }> = ({
   tags
 }) => {
-  const entries = Object.entries(tags || {});
+  const displayTags = cleanDisplayTags(tags);
+  const entries = Object.entries(displayTags || {});
   if (!entries.length) {
     return null;
   }
-  const summary = formatDimensionTagSummary(tags);
+  const summary = formatDimensionTagSummary(displayTags);
   return (
     <Tooltip title={summary}>
       <div className="mt-0.5 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
@@ -58,6 +65,45 @@ export interface TrialRunTaskState {
   finished_at?: string | null;
 }
 
+/** 与失败 Alert 同一判定：未通过则确认与去编辑不可用。运行中不算失败。 */
+export const scriptTrialBlocksMetricActions = (
+  task?: TrialRunTaskState | null
+): boolean => {
+  if (!task?.status || task.status === 'pending' || task.status === 'running') {
+    return false;
+  }
+  const parsed =
+    task.result || task.error_message
+      ? parseScriptMetrics(
+        task.result,
+        task.started_at,
+        task.finished_at,
+        task.error_message
+      )
+      : null;
+  const isNonZeroExit = Boolean(task.result && task.result.exit_code !== 0);
+  return (
+    task.status === 'failed' ||
+    task.status === 'warning' ||
+    Boolean(task.warning_type) ||
+    isNonZeroExit ||
+    Boolean(parsed?.isTimeout) ||
+    Boolean(parsed?.isNodeUnavailable)
+  );
+};
+
+const TrialActionsBlockedNote: React.FC = () => {
+  const { t } = useTranslation();
+  return (
+    <div className="text-[13px] font-medium text-[var(--color-text-1)]">
+      {t(
+        'monitor.integrations.trialRunActionsUnavailable',
+        '调试未通过，确认与去编辑不可用。'
+      )}
+    </div>
+  );
+};
+
 interface ScriptTrialRunAreaProps {
   task?: TrialRunTaskState;
   spinning?: boolean;
@@ -68,12 +114,6 @@ interface ScriptTrialRunAreaProps {
   objectId?: string | number;
   onSelectedMetricsChange?: (metrics: BusinessMetricItem[]) => void;
   onBusinessMetricsAvailableChange?: (available: boolean) => void;
-}
-
-interface MetricGroupOption {
-  id?: number;
-  name?: string;
-  display_name?: string;
 }
 
 const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
@@ -92,13 +132,16 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
   const commonContext = useCommon();
   const [selectedMetrics, setSelectedMetrics] = useState<Record<string, boolean>>({});
   const [catalogByKey, setCatalogByKey] = useState<Record<string, ScriptMetricCatalogDraft>>({});
-  const [groupOptions, setGroupOptions] = useState<MetricGroupOption[]>([]);
+  const [groupOptions, setGroupOptions] = useState<CatalogMetricGroupOption[]>([]);
   const [trialSubmitting, setTrialSubmitting] = useState(false);
+  const retainedMetricStateRef = useRef({
+    selected: {} as Record<string, boolean>,
+    catalog: {} as Record<string, ScriptMetricCatalogDraft>
+  });
   const unitOptions = useMemo(
     () => buildUnitCascaderOptions(commonContext?.groupedUnitList || []),
     [commonContext?.groupedUnitList]
   );
-  const canFeedScriptMetricActions = task?.status === 'success';
 
   const isSpinning = spinning || task?.status === 'pending' || task?.status === 'running';
   const trialBusy = isSpinning || trialSubmitting;
@@ -127,19 +170,56 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     );
   }, [task]);
 
-  // 当解析到新指标时，默认全选，并清空上一轮目录草稿
+  // 与失败 Alert 同一判定：只有 status=success 且退出码为 0，且不是超时 / 节点不可用 / 告警，才允许确认与去编辑。
+  const isNonZeroExit = Boolean(task?.result && task.result.exit_code !== 0);
+  const blocksMetricActions = scriptTrialBlocksMetricActions(task);
+  const canFeedScriptMetricActions =
+    task?.status === 'success' && !blocksMetricActions;
+
+  const defaultGroupId = useMemo(
+    () => resolveDefaultCatalogGroupId(groupOptions),
+    [groupOptions]
+  );
+  const defaultUnitPath = useMemo(
+    () => resolveDefaultCatalogUnitPath(unitOptions),
+    [unitOptions]
+  );
+
   useEffect(() => {
-    if (parsedOutput?.businessMetrics?.length) {
-      const initialMap: Record<string, boolean> = {};
-      parsedOutput.businessMetrics.forEach((m) => {
-        initialMap[m.key] = true;
-      });
-      setSelectedMetrics(initialMap);
-    } else {
-      setSelectedMetrics({});
+    retainedMetricStateRef.current.selected = selectedMetrics;
+  }, [selectedMetrics]);
+
+  useEffect(() => {
+    retainedMetricStateRef.current.catalog = catalogByKey;
+  }, [catalogByKey]);
+
+  // 重新调试成功：刷新采样值；仍存在的指标保留勾选/分组/单位/描述；消失的视为未勾选。
+  useEffect(() => {
+    const metrics = parsedOutput?.businessMetrics;
+    if (!metrics?.length) {
+      if (parsedOutput) {
+        retainedMetricStateRef.current = { selected: {}, catalog: {} };
+        setSelectedMetrics({});
+        setCatalogByKey({});
+      }
+      return;
     }
-    setCatalogByKey({});
-  }, [parsedOutput]);
+    const merged = mergeRetainedTrialMetricState({
+      nextMetrics: metrics,
+      prevSelected: retainedMetricStateRef.current.selected,
+      prevCatalog: retainedMetricStateRef.current.catalog
+    });
+    const withDefaults = applyDefaultCatalogDrafts(
+      metrics,
+      merged.catalog,
+      defaultGroupId,
+      defaultUnitPath
+    );
+    const next = { selected: merged.selected, catalog: withDefaults.catalog };
+    retainedMetricStateRef.current = next;
+    setSelectedMetrics(next.selected);
+    setCatalogByKey(next.catalog);
+  }, [parsedOutput, defaultGroupId, defaultUnitPath]);
 
   useEffect(() => {
     if (!pluginId || !objectId) {
@@ -159,7 +239,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           suppressErrorNotification: true
         });
         if (!cancelled) {
-          setGroupOptions(extractCatalogItems<MetricGroupOption>(groupRes));
+          setGroupOptions(extractCatalogItems<CatalogMetricGroupOption>(groupRes));
         }
       } catch {
         if (!cancelled) {
@@ -251,16 +331,6 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
             )}
           </div>
-          <Button
-            type="primary"
-            size="small"
-            icon={<PlayCircleOutlined />}
-            loading={trialBusy}
-            disabled={!nodeSelected || trialBusy}
-            onClick={handleTrialClick}
-          >
-            {t('monitor.integrations.trialRun', '调试')}
-          </Button>
         </div>
         <div className="flex flex-col items-center justify-center py-6 px-4 rounded-md border border-dashed border-[var(--color-border-2)] bg-[var(--color-bg-2)]">
           <CompactEmptyState
@@ -268,16 +338,18 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               'monitor.integrations.trialRunEmptyPrompt',
               '保存前可先调试，验证输出指标'
             )}
-          />
-          <Button
-            type="primary"
-            className="mt-3"
-            loading={trialBusy}
-            disabled={!nodeSelected || trialBusy}
-            onClick={handleTrialClick}
           >
-            {t('monitor.integrations.trialRun', '调试')}
-          </Button>
+            <Button
+              type="primary"
+              className="mt-3"
+              icon={<PlayCircleOutlined />}
+              loading={trialBusy}
+              disabled={!nodeSelected || trialBusy}
+              onClick={handleTrialClick}
+            >
+              {t('monitor.integrations.trialRun', '调试')}
+            </Button>
+          </CompactEmptyState>
         </div>
       </div>
     );
@@ -357,19 +429,14 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           icon={<ExclamationCircleFilled />}
           message={warningMsg}
           description={
-            task.error_message && task.error_message !== warningMsg ? (
-              <div className="mt-1 text-xs">{task.error_message}</div>
-            ) : undefined
-          }
-          action={
-            <Button
-              size="small"
-              loading={trialSubmitting}
-              disabled={trialBusy}
-              onClick={handleTrialClick}
-            >
-              {t('monitor.integrations.reTrialRun', '重新调试')}
-            </Button>
+            <div className="mt-1 space-y-2">
+              {task.error_message && task.error_message !== warningMsg ? (
+                <div className="text-xs text-[var(--color-text-2)]">
+                  {task.error_message}
+                </div>
+              ) : null}
+              <TrialActionsBlockedNote />
+            </div>
           }
         />
       </div>
@@ -377,8 +444,12 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
   }
 
   // 4. 失败状态 (Alert error: non-zero exit / timeout / parse fail / truncated / node unavailable)
-  const isExitFailure = task.status === 'failed' || (task.result && task.result.exit_code !== 0);
-  if (isExitFailure || parsedOutput?.isTimeout || parsedOutput?.isNodeUnavailable) {
+  if (
+    task.status === 'failed' ||
+    isNonZeroExit ||
+    parsedOutput?.isTimeout ||
+    parsedOutput?.isNodeUnavailable
+  ) {
     let errorTitle = t('monitor.integrations.trialRunNonZeroExit', '脚本执行失败（退出码 {code}）', {
       code: task.result?.exit_code ?? 1
     });
@@ -399,6 +470,14 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
       errorDesc =
         task.error_message ||
         t('monitor.integrations.trialRunNodeUnavailableDesc', '采集节点离线或 Telegraf 运行环境异常，请检查节点状态');
+    } else if (task.status === 'failed' && !isNonZeroExit) {
+      errorTitle = t('monitor.integrations.trialRunFailed', '调试未通过');
+      errorDesc =
+        task.error_message ||
+        t(
+          'monitor.integrations.trialRunParseFailDesc',
+          '脚本输出格式不符合规范，无法解析为时序指标'
+        );
     }
 
     const stderr = task.result?.stderr || task.error_message;
@@ -434,6 +513,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           description={
             <div className="mt-2 space-y-2">
               <div className="text-xs text-[var(--color-text-2)]">{errorDesc}</div>
+              <TrialActionsBlockedNote />
               {parsedOutput?.isTruncated && (
                 <div className="text-xs text-[var(--color-warning)] font-medium">
                   {t('monitor.integrations.trialRunTruncated', '输出结果已被截断')}
@@ -456,17 +536,6 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                 </div>
               )}
             </div>
-          }
-          action={
-            <Button
-              size="small"
-              danger
-              loading={trialSubmitting}
-              disabled={trialBusy}
-              onClick={handleTrialClick}
-            >
-              {t('monitor.integrations.reTrialRun', '重新调试')}
-            </Button>
           }
         />
       </div>
@@ -525,15 +594,6 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               '调试完成，未检测到输出指标'
             )}
           />
-          <Button
-            className="mt-3"
-            icon={<ReloadOutlined />}
-            loading={trialSubmitting}
-            disabled={!nodeSelected || trialBusy}
-            onClick={handleTrialClick}
-          >
-            {t('monitor.integrations.reTrialRun', '重新调试')}
-          </Button>
         </div>
       </div>
     );
@@ -581,10 +641,10 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
         </Button>
       </div>
 
-      {/* 5) Self-metrics: emphasize up/duration/exit_code */}
-      <div className="mb-4">
+      {/* 自监控指标仅展示，不可勾选落库 */}
+      <div className="mb-4" aria-disabled="true">
         <div className="text-[12px] font-medium text-[var(--color-text-3)] mb-2">
-          {t('monitor.integrations.trialRunSelfMetrics', '自身运行指标')}
+          {t('monitor.integrations.trialRunSelfMetrics', '自监控指标')}
         </div>
         <div className="grid grid-cols-3 gap-3">
           <div className="p-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
@@ -661,6 +721,14 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                         {item.name}
                       </div>
                       <DimensionTagLine tags={item.tags} />
+                      {Boolean(item.reservedTagKeys?.length) && (
+                        <div
+                          className="mt-0.5 text-[11px] text-[var(--color-fail)]"
+                          role="alert"
+                        >
+                          {t('monitor.integrations.reservedTagRename', '保留字段，请换名')}
+                        </div>
+                      )}
                     </div>
                     <div
                       className="min-w-0 truncate font-mono text-xs text-[var(--color-text-2)]"
@@ -669,38 +737,58 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                       {String(item.value)}
                     </div>
                     <div className="min-w-0 pr-1">
-                      <Select
+                      <ScriptMetricGroupSelect
                         size="small"
                         allowClear
-                        showSearch
                         disabled={!isChecked}
-                        optionFilterProp="label"
                         className="w-full"
                         placeholder={t('monitor.integrations.metricGroup', '分组')}
-                        value={catalog.metric_group ?? undefined}
-                        onChange={(value) =>
+                        value={
+                          typeof catalog.metric_group === 'number'
+                            ? catalog.metric_group
+                            : undefined
+                        }
+                        groups={groupOptions}
+                        onGroupsChange={setGroupOptions}
+                        objectId={objectId}
+                        pluginId={pluginId}
+                        onChange={(next) =>
                           updateCatalog(item.key, {
-                            metric_group: typeof value === 'number' ? value : null
+                            metric_group: typeof next === 'number' ? next : null
                           })
                         }
-                        options={groupOptions
-                          .filter((group) => typeof group.id === 'number')
-                          .map((group) => ({
-                            value: group.id as number,
-                            label: group.display_name || group.name || String(group.id)
-                          }))}
                       />
                     </div>
                     <div className="min-w-0 pr-1">
                       <Cascader
                         size="small"
                         allowClear
-                        showSearch
                         disabled={!isChecked}
                         className="w-full"
                         placeholder={t('common.unit', '单位')}
                         options={unitOptions}
-                        value={Array.isArray(catalog.unit) ? catalog.unit : undefined}
+                        displayRender={(labels) => {
+                          const leaf = labels[labels.length - 1];
+                          return leaf == null ? '' : String(leaf);
+                        }}
+                        showSearch={{
+                          filter: (inputValue, path) => {
+                            const needle = inputValue.trim().toLowerCase();
+                            if (!needle) return true;
+                            return path.some((option) => {
+                              const label = String(option.label ?? '').toLowerCase();
+                              const extra = String(
+                                (option as { searchText?: string }).searchText ?? ''
+                              ).toLowerCase();
+                              return label.includes(needle) || extra.includes(needle);
+                            });
+                          }
+                        }}
+                        value={
+                          Array.isArray(catalog.unit)
+                            ? catalog.unit.map((unit) => String(unit))
+                            : undefined
+                        }
                         onChange={(value) =>
                           updateCatalog(item.key, {
                             unit: Array.isArray(value) ? value : undefined
