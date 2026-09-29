@@ -570,6 +570,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
             )}
           </div>
         </div>
+        {catalogErrorAlert}
         <div className="flex flex-col items-center justify-center py-6 px-4 rounded-md border border-dashed border-[var(--color-border-2)] bg-[var(--color-bg-2)]">
           <CompactEmptyState
             description={t(
@@ -611,6 +612,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
             {t('monitor.integrations.reTrialRun', '重新调试')}
           </Button>
         </div>
+        {catalogErrorAlert}
         <div className="flex flex-col items-center justify-center py-10 px-4 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
           <Spin
             tip={
@@ -661,6 +663,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
             {t('monitor.integrations.reTrialRun', '重新调试')}
           </Button>
         </div>
+        {catalogErrorAlert}
         <Alert
           type="warning"
           showIcon
@@ -743,6 +746,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
             {t('monitor.integrations.reTrialRun', '重新调试')}
           </Button>
         </div>
+        {catalogErrorAlert}
         <Alert
           type="error"
           showIcon
@@ -804,6 +808,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
             {t('monitor.integrations.reTrialRun', '重新调试')}
           </Button>
         </div>
+        {catalogErrorAlert}
         {/* 仍展示自身指标概览 */}
         <div className="grid grid-cols-3 gap-3 mb-4">
           <div className="p-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">

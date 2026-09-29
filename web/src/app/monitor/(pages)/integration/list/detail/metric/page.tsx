@@ -112,6 +112,7 @@ const Configure = () => {
   const [searchText, setSearchText] = useState<string>('');
   const [nameInFilter, setNameInFilter] = useState<string>('');
   const batchMetricByIdRef = useRef<Map<number, MetricItem>>(new Map());
+  const batchUncheckedIdsRef = useRef<Set<number>>(new Set());
   const [metricData, setMetricData] = useState<MetricListItem[]>([]);
   const [filteredMetricData, setFilteredMetricData] = useState<
     MetricListItem[]
@@ -360,6 +361,7 @@ const Configure = () => {
       setSearchText('');
       setNameInFilter('');
       batchMetricByIdRef.current.clear();
+      batchUncheckedIdsRef.current.clear();
     }
     try {
       // 厂商指标按页分页；IF-MIB 固定约十余条，单独拉全量后置底归并，避免拆页。
@@ -458,7 +460,9 @@ const Configure = () => {
         const pageSelected = catalogMetrics
           .filter(
             (metric) =>
-              matchesCarryName(metric.name) && metric.is_pre !== true
+              matchesCarryName(metric.name) &&
+              metric.is_pre !== true &&
+              !batchUncheckedIdsRef.current.has(Number(metric.id))
           )
           .map((metric) => metric.id);
         setSelectedRowKeys((prev) => [
@@ -568,6 +572,7 @@ const Configure = () => {
     }
     const nameIn = names.join(',');
     batchMetricByIdRef.current.clear();
+    batchUncheckedIdsRef.current.clear();
     setSelectedRowKeys([]);
     setSearchText('');
     setNameInFilter(nameIn);
@@ -602,8 +607,11 @@ const Configure = () => {
           if (metric.is_pre === true) {
             return;
           }
-          batchMetricByIdRef.current.set(Number(metric.id), metric);
-          extraIds.push(metric.id);
+          const id = Number(metric.id);
+          batchMetricByIdRef.current.set(id, metric);
+          if (!batchUncheckedIdsRef.current.has(id)) {
+            extraIds.push(metric.id);
+          }
         });
       }
       if (extraIds.length) {
@@ -665,6 +673,7 @@ const Configure = () => {
     setSelectedRowKeys([]);
     setNameInFilter('');
     batchMetricByIdRef.current.clear();
+    batchUncheckedIdsRef.current.clear();
     getInitData(next, false, 1);
   };
 
@@ -798,6 +807,7 @@ const Configure = () => {
 
   const clearBatchFilter = () => {
     batchMetricByIdRef.current.clear();
+    batchUncheckedIdsRef.current.clear();
     setNameInFilter('');
     setMetricPage(1);
     getInitData(activeTab, true, 1, searchText.trim(), [], [], '');
@@ -833,6 +843,16 @@ const Configure = () => {
     keys: React.Key[]
   ) => {
     const groupIdSet = new Set(groupMetricIds);
+    const selectedNow = new Set(keys.map((id) => Number(id)));
+    if (nameInFilter) {
+      groupMetricIds.forEach((id) => {
+        if (selectedNow.has(id)) {
+          batchUncheckedIdsRef.current.delete(id);
+        } else {
+          batchUncheckedIdsRef.current.add(id);
+        }
+      });
+    }
     setSelectedRowKeys((prev) => [
       ...prev.filter((id) => !groupIdSet.has(Number(id))),
       ...keys
