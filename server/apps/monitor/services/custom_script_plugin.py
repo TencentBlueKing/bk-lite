@@ -40,10 +40,13 @@ RESERVED_SCRIPT_TAG_KEYS = (
     "config_type",
     "plugin_id",
     "agent_id",
+    "config_id",
     "script",
 )
 
-# name_prefix + namepass 按 config_id 隔离，避免合并进同一 Telegraf 后改写其他采集。
+# 业务指标不下发 name_prefix，入库使用脚本 stdout 短名（不含 bklite_script_{id}_）。
+# 多实例隔离依赖点上的 instance_id / config_id / collect_type；starlark 用 tagpass
+# 只处理本 child，避免改写同一 Telegraf 上的其他采集。
 # 插件契约：script 为脚本正文（可从旧字段 command 迁入）；timeout / data_format /
 # command / commands / script_file 不下发。interval 由平台传秒，模板拼 "Ns"；
 # 子进程 timeout 由插件按 interval-1s 推导。
@@ -56,18 +59,22 @@ DEFAULT_SCRIPT_CHILD_TEMPLATE = """[[inputs.bklite_script]]
     {% if environment %}environment = {{ environment | to_toml_str_array }}{% endif %}
     {% if run_as %}run_as = "{{ run_as }}"{% endif %}
     {% if script_name %}script_name = "{{ script_name }}"{% endif %}
-    name_prefix = "bklite_script_{{ config_id }}_"
     [inputs.bklite_script.tags]
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type }}"
         collect_type = "script"
         config_type = "script"
         plugin_id = "{{ plugin_id }}"
+        config_id = "{{ config_id }}"
 
 [[processors.starlark]]
-    namepass = ["bklite_script_{{ config_id }}_*"]
     source = '''
 def apply(metric):
+    name = metric.name
+    if name.startswith("prometheus_"):
+        trimmed = name[len("prometheus_"):]
+        if trimmed != "":
+            metric.name = trimmed
     conflicts = []
     instance_id = ""
     instance_type = ""
@@ -75,6 +82,7 @@ def apply(metric):
     config_type = ""
     plugin_id = ""
     agent_id = ""
+    config_id = ""
     script = ""
     for k in metric.tags:
         if k == "instance_id":
@@ -89,6 +97,8 @@ def apply(metric):
             plugin_id = metric.tags[k]
         elif k == "agent_id":
             agent_id = metric.tags[k]
+        elif k == "config_id":
+            config_id = metric.tags[k]
         elif k == "script":
             script = metric.tags[k]
         elif k.startswith("bklite_script_"):
@@ -105,6 +115,8 @@ def apply(metric):
         conflicts.append("plugin_id")
     if agent_id != "" and agent_id != reserved_agent_id:
         conflicts.append("agent_id")
+    if config_id != "" and config_id != reserved_config_id:
+        conflicts.append("config_id")
     if script != "" and script != reserved_script:
         conflicts.append("script")
     metric.tags["instance_id"] = reserved_instance_id
@@ -113,6 +125,7 @@ def apply(metric):
     metric.tags["config_type"] = reserved_config_type
     metric.tags["plugin_id"] = reserved_plugin_id
     metric.tags["agent_id"] = reserved_agent_id
+    metric.tags["config_id"] = reserved_config_id
     metric.tags["script"] = reserved_script
     if len(conflicts) > 0:
         metric.tags["bklite_script_reserved_keys"] = ",".join(conflicts)
@@ -126,7 +139,13 @@ def apply(metric):
         reserved_config_type = "script"
         reserved_plugin_id = "{{ plugin_id }}"
         reserved_agent_id = "${node.ip}-${node.cloud_region}"
+        reserved_config_id = "{{ config_id }}"
         reserved_script = "default"
+
+    [processors.starlark.tagpass]
+        instance_id = ["{{ instance_id }}"]
+        collect_type = ["script"]
+        config_id = ["{{ config_id }}"]
 """
 
 
