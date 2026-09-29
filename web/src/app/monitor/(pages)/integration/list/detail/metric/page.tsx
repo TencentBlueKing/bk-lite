@@ -37,7 +37,17 @@ import {
   getPluginFamilyObjects
 } from '@/app/monitor/utils/monitorObject';
 import { cloneDeep } from 'lodash';
-import { buildIfmibMetricView, getDefaultMetricGroupOpenState } from './ifmibMetricView';
+import {
+  buildIfmibMetricView,
+  getDefaultMetricGroupOpenState,
+  isIfmibMetric
+} from './ifmibMetricView';
+import { fetchAllMetricsGroups } from '@/app/monitor/api/fetchMetricCatalogPages';
+import {
+  canonicalCatalogGroupId,
+  catalogGroupLabel,
+  dedupeCatalogMetricGroups
+} from '../configure/scriptMetricPersist';
 import {
   consumeScriptMetricEditCarry,
   carryItemsToBusinessMetrics,
@@ -313,12 +323,17 @@ const Configure = () => {
     preserveState = false,
     page = metricPage,
     keyword = searchText.trim(),
-    expandMetricNames: string[] = []
+    expandMetricNames: string[] = [],
+    expandGroupIds: string[] = []
   ) => {
-    const params = {
+    const metricParams = {
       monitor_object_id: +objId,
       monitor_plugin_id: +pluginID,
       ...(keyword ? { keyword } : {})
+    };
+    const groupParams = {
+      monitor_object_id: +objId,
+      monitor_plugin_id: +pluginID
     };
     metricCatalogAbortRef.current?.abort();
     const abortController = new AbortController();
@@ -334,16 +349,16 @@ const Configure = () => {
     }
     try {
       // 厂商指标按页分页；IF-MIB 固定约十余条，单独拉全量后置底归并，避免拆页。
-      const [groupPage, metricsPage, ifmibPage] = await Promise.all([
-        getMetricsGroup(params, config),
+      const [groupCatalog, metricsPage, ifmibPage] = await Promise.all([
+        fetchAllMetricsGroups(getMetricsGroup, groupParams, config),
         getMonitorMetrics(
-          { ...params, include_ifmib: false, page },
+          { ...metricParams, include_ifmib: false, page },
           config
         ),
         enableIfmib
           ? getMonitorMetrics(
             {
-              ...params,
+              ...metricParams,
               include_ifmib: true,
               is_ifmib: true,
               page: 1,
@@ -354,20 +369,47 @@ const Configure = () => {
           : Promise.resolve({ count: 0, items: [], metric_groups: [] })
       ]);
       if (abortController.signal.aborted) return;
-      const rawGroupList: MetricListItem[] = (
-        metricsPage.metric_groups || groupPage.items
-      ).map((group) => ({
-        ...group,
+      const pageMetrics = enableIfmib
+        ? [...metricsPage.items, ...ifmibPage.items]
+        : metricsPage.items;
+      const { groups: dedupedGroups, idAlias } = dedupeCatalogMetricGroups(
+        [
+          ...(groupCatalog.items || []),
+          ...(metricsPage.metric_groups || []),
+          ...(enableIfmib ? ifmibPage.metric_groups || [] : [])
+        ],
+        {
+          preferredPluginId: pluginID,
+          preferredIds: pageMetrics.map((metric) => metric.metric_group)
+        }
+      );
+      const rawGroupList: MetricListItem[] = dedupedGroups.map((group) => ({
         id: String(group.id),
-        name: group.name || '',
+        name: group.name || catalogGroupLabel(group),
+        display_name: catalogGroupLabel(group),
+        monitor_plugin: group.monitor_plugin ?? undefined,
         is_pre: group.is_pre === true,
         child: []
       }));
       setMetricCount(metricsPage.count);
-      setApiGroupList(rawGroupList);
-      const catalogMetrics = enableIfmib
-        ? [...metricsPage.items, ...ifmibPage.items]
-        : metricsPage.items;
+      const catalogMetrics = pageMetrics.map((metric) => {
+        const metricGroup = canonicalCatalogGroupId(metric.metric_group, idAlias);
+        if (metricGroup == null || metricGroup === metric.metric_group) {
+          return metric;
+        }
+        return { ...metric, metric_group: metricGroup };
+      });
+      const visibleGroupIds = new Set(
+        catalogMetrics
+          .filter((metric) => !isIfmibMetric(metric))
+          .map((metric) => String(metric.metric_group))
+      );
+      setApiGroupList(
+        rawGroupList.filter(
+          (group) =>
+            visibleGroupIds.has(String(group.id)) || group.is_pre === false
+        )
+      );
       const metricView = buildIfmibMetricView(
         rawGroupList,
         catalogMetrics,
@@ -376,13 +418,15 @@ const Configure = () => {
       );
       const defaultOpenState = getDefaultMetricGroupOpenState(metricView);
       const expandNameSet = new Set(expandMetricNames.filter(Boolean));
+      const expandGroupSet = new Set(expandGroupIds.filter(Boolean).map(String));
       const groupData = metricView.map((group) => {
         const expandByCarry =
           expandNameSet.size > 0 &&
           group.child.some((metric) => expandNameSet.has(metric.name));
+        const expandGroup = expandGroupSet.has(String(group.id));
         return {
           ...group,
-          isOpen: expandByCarry
+          isOpen: expandGroup || expandByCarry
             ? true
             : currentOpenState
               ? (currentOpenState.get(group.id) ?? defaultOpenState.get(group.id) ?? false)
@@ -812,6 +856,17 @@ const Configure = () => {
         monitorObject={+activeTab}
         pluginId={+pluginID}
         groupList={apiGroupList}
+        onGroupListChange={(created) => {
+          const groupId = created?.id != null ? String(created.id) : '';
+          void getInitData(
+            activeTab,
+            true,
+            metricPage,
+            searchText.trim(),
+            [],
+            groupId ? [groupId] : []
+          );
+        }}
         onSuccess={operateMtric}
       />
     </div>
