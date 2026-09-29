@@ -93,10 +93,7 @@ import { applyScriptCollectSubmit, syncScriptRunAsForOs } from './scriptCollectF
 import {
   collectReservedTagViolations,
   excludeSelfMonitorMetrics,
-  listPluginCatalogMetrics,
-  persistScriptMetrics,
-  planScriptMetricHardSyncDeletes,
-  CatalogMetricRef
+  persistScriptMetrics
 } from './scriptMetricPersist';
 import {
   buildScriptMetricEditCarry,
@@ -508,14 +505,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const persistSelectedScriptMetrics = async (
     targetPluginId: string | number,
     targetObjectId: string | number,
-    metricsToPersist: BusinessMetricItem[],
-    staleDeletes: CatalogMetricRef[] = []
+    metricsToPersist: BusinessMetricItem[]
   ) => {
     await persistScriptMetrics({
       pluginId: targetPluginId,
       objectId: targetObjectId,
       metrics: excludeSelfMonitorMetrics(metricsToPersist),
-      staleDeletes,
       client: { get, post, patch, del, t }
     });
   };
@@ -1520,50 +1515,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           }) || {};
         params.monitor_object_id = Number(objectId);
         params.monitor_plugin_id = Number(pluginId);
-        let staleDeletes: CatalogMetricRef[] = [];
-        if (
-          isScriptTemplate &&
-          scriptDebugHasBusinessMetrics &&
-          selectedScriptMetrics.length > 0
-        ) {
-          const persistable = excludeSelfMonitorMetrics(selectedScriptMetrics);
-          const existing = await listPluginCatalogMetrics({
-            pluginId,
-            objectId,
-            client: { get }
-          });
-          staleDeletes = planScriptMetricHardSyncDeletes(existing, persistable);
-          if (staleDeletes.length) {
-            const confirmed = await new Promise<boolean>((resolve) => {
-              Modal.confirm({
-                title: t(
-                  'monitor.integrations.scriptMetricsHardSyncTitle',
-                  '将按当前勾选覆盖指标'
-                ),
-                content: t(
-                  'monitor.integrations.scriptMetricsHardSyncHint',
-                  '将删除本插件目录中 {count} 个未勾选的旧指标，并保存当前勾选。取消则中止本次确认。',
-                  { count: staleDeletes.length }
-                ),
-                okText: t('common.confirm'),
-                cancelText: t('common.cancel'),
-                centered: true,
-                onOk: () => resolve(true),
-                onCancel: () => resolve(false)
-              });
-            });
-            if (!confirmed) {
-              return;
-            }
-          }
-        }
         addNodesConfig(
           params,
           templatesToApply,
           values[COLLECTION_POLICY_NAME_PREFIX_FIELD],
           pushAlertCenter,
-          alertCenterChannelIds,
-          staleDeletes
+          alertCenterChannelIds
         );
       } catch (error: any) {
         message.error(error?.message || t('common.operationFailed'));
@@ -1576,8 +1533,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     templatesToApply: PolicyTemplateItem[] = [],
     namePrefix?: string,
     pushAlertCenter = false,
-    alertCenterChannelIds: Array<string | number> = [],
-    staleDeletes: CatalogMetricRef[] = []
+    alertCenterChannelIds: Array<string | number> = []
   ) => {
     if (saveInFlightRef.current) {
       return;
@@ -1595,8 +1551,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         await persistSelectedScriptMetrics(
           pluginId,
           objectId,
-          excludeSelfMonitorMetrics(selectedScriptMetrics),
-          staleDeletes
+          excludeSelfMonitorMetrics(selectedScriptMetrics)
         );
         didPersistMetrics = true;
       }

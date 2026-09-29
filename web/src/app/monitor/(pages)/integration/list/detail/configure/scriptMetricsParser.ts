@@ -240,10 +240,16 @@ export const cleanDisplayTags = (
 };
 
 const businessMetricName = (measurement: string, fieldName: string): string => {
-  if (!fieldName || measurement === fieldName || GENERIC_INFLUX_FIELDS.has(fieldName.toLowerCase())) {
-    return measurement;
+  const meas = String(measurement || '');
+  const field = String(fieldName || '');
+  // Telegraf prometheus 封装：measurement=prometheus，字段才是脚本 stdout 名。
+  if (meas.toLowerCase() === 'prometheus' && field && !GENERIC_INFLUX_FIELDS.has(field.toLowerCase())) {
+    return field;
   }
-  return `${measurement}_${fieldName}`;
+  if (!field || meas === field || GENERIC_INFLUX_FIELDS.has(field.toLowerCase())) {
+    return meas;
+  }
+  return `${meas}_${field}`;
 };
 
 const stableTagKey = (tags?: Record<string, string>): string => {
@@ -394,19 +400,20 @@ export const parseScriptMetrics = (
   );
 
   const pushBusinessMetric = (name: string, value: number | string, tags?: Record<string, string>) => {
-    if (!name || isSelfMetricName(name, isolationPrefixes)) {
+    const stdoutName = cleanMeasurementName(name, isolationPrefixes);
+    if (!stdoutName || isSelfMetricName(stdoutName, isolationPrefixes)) {
       return;
     }
     const cleanedTags = cleanDisplayTags(tags);
     const reservedTagKeys = collectReservedScriptTagKeys(tags);
-    const metricKey = `${name}|${stableTagKey(cleanedTags)}`;
+    const metricKey = `${stdoutName}|${stableTagKey(cleanedTags)}`;
     if (seenKeys.has(metricKey)) {
       return;
     }
     seenKeys.add(metricKey);
     businessMetrics.push({
       key: metricKey,
-      name,
+      name: stdoutName,
       value,
       tags: cleanedTags,
       reservedTagKeys

@@ -116,7 +116,7 @@ export const consumeScriptMetricEditCarry = (
       metrics: parsed.metrics
         .filter((item) => item?.name && !isSelfMetricName(item.name))
         .map((item) => ({
-          name: String(item.name).trim(),
+          name: cleanMeasurementName(String(item.name).trim()),
           sample: item.sample,
           ...(typeof item.group === 'number' && item.group > 0
             ? { group: item.group }
