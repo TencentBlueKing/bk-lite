@@ -556,8 +556,9 @@ class MetricViewSet(viewsets.ModelViewSet):
             self._ensure_modifiable(metric)
             self._ensure_script_self_monitor_not_deleted(metric)
 
-        for metric in metrics:
-            metric.delete()
+        with transaction.atomic():
+            for metric in metrics:
+                metric.delete()
 
         logger.info(
             "metric batch_delete completed monitor_plugin_id=%s count=%s",
