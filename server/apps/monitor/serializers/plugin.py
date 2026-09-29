@@ -6,6 +6,7 @@ from apps.monitor.services.custom_pull_plugin import CustomPullPluginService
 from apps.monitor.services.custom_script_plugin import CustomScriptPluginService
 from apps.monitor.services.custom_snmp_plugin import CustomSnmpPluginService
 from apps.monitor.utils.node_selector import normalize_node_selector
+from apps.monitor.utils.plugin_source import CUSTOM_PLUGIN_TEMPLATE_TYPES, is_custom_plugin_template
 
 
 class MonitorPluginSerializer(serializers.ModelSerializer):
@@ -28,7 +29,7 @@ class MonitorPluginSerializer(serializers.ModelSerializer):
         display_name = attrs.get("display_name", getattr(instance, "display_name", ""))
         monitor_objects = attrs.get("monitor_object")
 
-        if template_type in {"api", "pull", "snmp", "script"}:
+        if is_custom_plugin_template(template_type):
             if not template_id:
                 raise serializers.ValidationError({"template_id": "模板ID不能为空"})
             if not display_name:
@@ -57,7 +58,7 @@ class MonitorPluginSerializer(serializers.ModelSerializer):
         return attrs
 
     def validate_template_type(self, value):
-        allowed = {"builtin", "api", "pull", "snmp", "script"}
+        allowed = {"builtin", *CUSTOM_PLUGIN_TEMPLATE_TYPES}
         if value not in allowed:
             raise serializers.ValidationError("模板类型不合法")
         return value

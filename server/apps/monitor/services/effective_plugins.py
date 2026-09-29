@@ -7,6 +7,7 @@ from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.constants.plugin import PluginConstants
 from apps.monitor.models import CollectConfig, MonitorObject, MonitorPlugin
 from apps.monitor.utils.dimension import parse_instance_id
+from apps.monitor.utils.plugin_source import is_built_in_plugin, is_custom_plugin_template
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.monitor.utils.vm_query_batch import run_unique_vm_queries
 
@@ -161,7 +162,8 @@ class MonitorEffectivePluginService:
 
     @staticmethod
     def _serialize_plugin(plugin: MonitorPlugin, lan: LanguageLoader) -> dict:
-        is_custom = plugin.template_type in {"api", "pull", "snmp", "script"}
+        is_custom = is_custom_plugin_template(plugin.template_type)
+        is_built_in = is_built_in_plugin(plugin.template_type, plugin.is_pre)
         if is_custom:
             display_name = plugin.display_name or plugin.name
             display_description = plugin.description
@@ -181,6 +183,7 @@ class MonitorEffectivePluginService:
             "collect_type": plugin.collect_type,
             "is_pre": plugin.is_pre,
             "is_custom": is_custom,
+            "is_built_in": is_built_in,
         }
 
     @staticmethod

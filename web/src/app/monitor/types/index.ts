@@ -235,6 +235,8 @@ export interface ObjectItem {
   template_id?: string;
   template_type?: string;
   is_custom?: boolean;
+  is_built_in?: boolean;
+  is_pre?: boolean;
   is_visible?: boolean;
   parent?: number | null;
   level?: 'base' | 'derivative';

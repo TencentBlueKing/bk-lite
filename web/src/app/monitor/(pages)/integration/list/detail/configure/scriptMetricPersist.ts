@@ -30,13 +30,17 @@ export interface ScriptMetricCatalogUpdatePayload {
   description: string;
 }
 
-type TranslateFn = (
-  key: string,
-  defaultValue?: string,
-  options?: Record<string, unknown>
-) => string;
+interface TranslateFn {
+  (
+    key: string,
+    defaultValue?: string,
+    options?: Record<string, unknown>
+  ): string;
+}
 
-type RequestConfig = { suppressErrorNotification?: boolean };
+interface RequestConfig {
+  suppressErrorNotification?: boolean;
+}
 
 export interface PersistScriptMetricsClient {
   get: (url: string, config?: { params?: Record<string, unknown> } & RequestConfig) => Promise<unknown>;
@@ -58,6 +62,95 @@ export const extractCatalogItems = <T>(response: unknown): T[] => {
   }
   const items = asRecord(response)?.items;
   return Array.isArray(items) ? (items as T[]) : [];
+};
+
+/** 目录已有的无单位叶子，Confirm / 去编辑必须回传 unit_id 而不是展示文案。 */
+export const DEFAULT_CATALOG_UNIT_ID = 'none';
+/** 目录默认分组名，优先复用已有「无分组」/ Default / Base。 */
+export const DEFAULT_CATALOG_GROUP_NAMES = ['无分组', 'Default', 'default', 'Base'];
+
+export interface CatalogMetricGroupOption {
+  id?: number;
+  name?: string;
+  display_name?: string;
+}
+
+export const catalogGroupLabel = (group?: CatalogMetricGroupOption | null): string =>
+  String(group?.display_name || group?.name || '').trim();
+
+export const resolveDefaultCatalogGroupId = (
+  groups: CatalogMetricGroupOption[] = []
+): number | null => {
+  const valid = groups.filter(
+    (group): group is CatalogMetricGroupOption & { id: number } =>
+      typeof group.id === 'number' && Number.isFinite(group.id) && group.id > 0
+  );
+  if (!valid.length) {
+    return null;
+  }
+  for (const name of DEFAULT_CATALOG_GROUP_NAMES) {
+    const target = name.toLowerCase();
+    const matched = valid.find(
+      (group) => catalogGroupLabel(group).toLowerCase() === target
+    );
+    if (matched) {
+      return matched.id;
+    }
+  }
+  return valid[0].id;
+};
+
+export const resolveDefaultCatalogUnitPath = (
+  options: Array<{ value?: string; children?: Array<{ value: string }> }> = [],
+  unitId: string = DEFAULT_CATALOG_UNIT_ID
+): string[] | undefined => {
+  for (const group of options) {
+    const child = (group.children || []).find((item) => item.value === unitId);
+    if (child && group.value) {
+      return [String(group.value), String(child.value)];
+    }
+  }
+  return undefined;
+};
+
+export const resolvePersistCatalogUnitId = (unit: unknown): string =>
+  resolveCatalogUnitId(unit) || DEFAULT_CATALOG_UNIT_ID;
+
+export const createCatalogMetricGroup = async ({
+  post,
+  objectId,
+  pluginId,
+  name
+}: {
+  post: PersistScriptMetricsClient['post'];
+  objectId: string | number;
+  pluginId: string | number;
+  name: string;
+}): Promise<CatalogMetricGroupOption & { id: number }> => {
+  const trimmed = String(name || '').trim();
+  if (!trimmed) {
+    throw new Error('group name required');
+  }
+  const created = asRecord(
+    await post(
+      '/monitor/api/metrics_group/',
+      {
+        monitor_object: Number(objectId),
+        monitor_plugin: Number(pluginId),
+        name: trimmed
+      },
+      SILENT_REQ
+    )
+  );
+  const id = typeof created?.id === 'number' ? created.id : Number(created?.id);
+  if (!id) {
+    throw new Error('group create failed');
+  }
+  return {
+    id,
+    name: String(created?.name || trimmed),
+    display_name: String(created?.display_name || created?.name || trimmed)
+  };
 };
 
 /** Cascader 分组用类目名，叶子必须是 unit_id，禁止改成展示文案。 */
@@ -198,7 +291,7 @@ export const buildScriptMetricRegisterPayload = (
   name: item.name,
   display_name: item.name,
   query: `${item.name}{__$labels__}`,
-  unit: resolveCatalogUnitId(item.unit),
+  unit: resolvePersistCatalogUnitId(item.unit),
   data_type: 'Number',
   description: resolveCatalogDescription(item.description),
   dimensions: Object.keys(item.tags || {}).map((key) => ({
@@ -212,7 +305,7 @@ export const buildScriptMetricCatalogUpdatePayload = (
   fallbackGroupId: number
 ): ScriptMetricCatalogUpdatePayload => ({
   metric_group: resolveCatalogMetricGroupId(item.metric_group, fallbackGroupId),
-  unit: resolveCatalogUnitId(item.unit),
+  unit: resolvePersistCatalogUnitId(item.unit),
   description: resolveCatalogDescription(item.description)
 });
 
@@ -269,23 +362,17 @@ export const persistScriptMetrics = async ({
       },
       ...SILENT_REQ
     });
-    const groups = extractCatalogItems<{ id?: number }>(groupRes);
-    let fallbackGroupId = groups[0]?.id;
+    const groups = extractCatalogItems<CatalogMetricGroupOption>(groupRes);
+    let fallbackGroupId = resolveDefaultCatalogGroupId(groups) ?? undefined;
     if (!fallbackGroupId) {
-      const createdGroup = asRecord(
-        await post(
-          '/monitor/api/metrics_group/',
-          {
-            monitor_object: Number(objectId),
-            monitor_plugin: Number(pluginId),
-            name: 'Base',
-            description: '基础指标'
-          },
-          SILENT_REQ
-        )
-      );
-      fallbackGroupId =
-        typeof createdGroup?.id === 'number' ? createdGroup.id : Number(createdGroup?.id);
+      fallbackGroupId = (
+        await createCatalogMetricGroup({
+          post,
+          objectId,
+          pluginId,
+          name: 'Base'
+        })
+      ).id;
     }
     if (!fallbackGroupId) {
       throw new Error(t('common.operationFailed'));

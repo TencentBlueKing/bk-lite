@@ -40,9 +40,11 @@ import { cloneDeep } from 'lodash';
 import { buildIfmibMetricView, getDefaultMetricGroupOpenState } from './ifmibMetricView';
 import {
   consumeScriptMetricEditCarry,
+  carryItemsToBusinessMetrics,
   SCRIPT_METRIC_DRAFT_QUERY,
-  ScriptMetricEditCarryItem
+  ScriptMetricEditCarry
 } from '../configure/scriptMetricEditCarry';
+import { persistScriptMetrics } from '../configure/scriptMetricPersist';
 
 interface ObjectTabOption {
   label: React.ReactNode;
@@ -71,7 +73,7 @@ const ObjectTabLabel = ({
 );
 
 const Configure = () => {
-  const { isLoading } = useApiClient();
+  const { isLoading, get, post, patch } = useApiClient();
   const { getMonitorObject, getMetricsGroup, getMonitorMetrics } =
     useMonitorApi();
   const {
@@ -109,9 +111,7 @@ const Configure = () => {
   const [groupConfirmLoading, setGroupConfirmLoading] = useState(false);
   const [showTabs, setShowTabs] = useState<boolean>(false);
   const metricCatalogAbortRef = useRef<AbortController | null>(null);
-  const scriptMetricDraftQueueRef = useRef<ScriptMetricEditCarryItem[]>([]);
   const scriptMetricDraftConsumedRef = useRef(false);
-  const scriptMetricDraftOpeningRef = useRef(false);
   const [catalogReady, setCatalogReady] = useState(false);
   const canReorderCatalog = metricCount <= 100 && !searchText.trim();
 
@@ -290,7 +290,8 @@ const Configure = () => {
     objId = activeTab,
     preserveState = false,
     page = metricPage,
-    keyword = searchText.trim()
+    keyword = searchText.trim(),
+    expandMetricNames: string[] = []
   ) => {
     const params = {
       monitor_object_id: +objId,
@@ -352,12 +353,20 @@ const Configure = () => {
         (key) => t(key)
       );
       const defaultOpenState = getDefaultMetricGroupOpenState(metricView);
-      const groupData = metricView.map((group) => ({
-        ...group,
-        isOpen: currentOpenState
-          ? (currentOpenState.get(group.id) ?? defaultOpenState.get(group.id) ?? false)
-          : (defaultOpenState.get(group.id) ?? false)
-      }));
+      const expandNameSet = new Set(expandMetricNames.filter(Boolean));
+      const groupData = metricView.map((group) => {
+        const expandByCarry =
+          expandNameSet.size > 0 &&
+          group.child.some((metric) => expandNameSet.has(metric.name));
+        return {
+          ...group,
+          isOpen: expandByCarry
+            ? true
+            : currentOpenState
+              ? (currentOpenState.get(group.id) ?? defaultOpenState.get(group.id) ?? false)
+              : (defaultOpenState.get(group.id) ?? false)
+        };
+      });
       setMetrics(groupData.flatMap((group) => group.child));
       setMetricData(groupData);
       setFilteredMetricData(groupData);
@@ -403,10 +412,6 @@ const Configure = () => {
   };
 
   const openMetricModal = (type: string, row = {}) => {
-    if (!scriptMetricDraftOpeningRef.current) {
-      scriptMetricDraftQueueRef.current = [];
-    }
-    scriptMetricDraftOpeningRef.current = false;
     const title = t(
       type === 'add'
         ? 'monitor.integrations.addMetric'
@@ -421,48 +426,6 @@ const Configure = () => {
     });
   };
 
-  const toDraftMetricForm = (
-    item: ScriptMetricEditCarryItem,
-    existing?: MetricItem
-  ) => {
-    const dimensions = Object.keys(item.tags || {}).map((name) => ({
-      name,
-      description: name
-    }));
-    if (existing) {
-      return {
-        ...existing,
-        metric_group: item.group ?? existing.metric_group,
-        unit: item.unit_id || existing.unit,
-        description: item.description ?? existing.description,
-        dimensions: dimensions.length ? dimensions : existing.dimensions
-      };
-    }
-    return {
-      name: item.name,
-      display_name: item.name,
-      query: `${item.name}{__$labels__}`,
-      metric_group: item.group,
-      unit: item.unit_id || '',
-      data_type: 'Number',
-      description: item.description || '',
-      dimensions
-    };
-  };
-
-  const openNextScriptMetricDraft = (catalogMetrics: MetricItem[] = metrics) => {
-    const next = scriptMetricDraftQueueRef.current.shift();
-    if (!next) {
-      return;
-    }
-    const existing = catalogMetrics.find((metric) => metric.name === next.name);
-    scriptMetricDraftOpeningRef.current = true;
-    openMetricModal(
-      existing ? 'edit' : 'add',
-      toDraftMetricForm(next, existing)
-    );
-  };
-
   const consumeScriptMetricDraftQuery = () => {
     const nextParams = new URLSearchParams(searchParams.toString());
     if (!nextParams.has(SCRIPT_METRIC_DRAFT_QUERY)) {
@@ -475,6 +438,38 @@ const Configure = () => {
         ? `/monitor/integration/list/detail/metric?${nextQuery}`
         : '/monitor/integration/list/detail/metric'
     );
+  };
+
+  const landScriptMetricCarry = async (carry: ScriptMetricEditCarry) => {
+    const payload = carryItemsToBusinessMetrics(carry.metrics);
+    if (!payload.length) {
+      return;
+    }
+    const targetObjectId = activeTab || groupId;
+    if (!targetObjectId || !pluginID) {
+      return;
+    }
+    try {
+      setLoading(true);
+      await persistScriptMetrics({
+        pluginId: pluginID,
+        objectId: targetObjectId,
+        metrics: payload,
+        client: { get, post, patch, t }
+      });
+      await getInitData(
+        String(targetObjectId),
+        true,
+        metricPage,
+        searchText.trim(),
+        payload.map((item) => item.name)
+      );
+    } catch (error: unknown) {
+      const text =
+        error instanceof Error ? error.message : t('common.operationFailed');
+      message.error(text);
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -496,13 +491,11 @@ const Configure = () => {
     if (!carry?.metrics.length) {
       return;
     }
-    scriptMetricDraftQueueRef.current = [...carry.metrics];
-    openNextScriptMetricDraft(metrics);
+    void landScriptMetricCarry(carry);
   }, [
     isLoading,
     loading,
     catalogReady,
-    metrics,
     searchParams,
     groupId,
     pluginID
@@ -514,7 +507,6 @@ const Configure = () => {
 
   const operateMtric = () => {
     getInitData(activeTab, true);
-    openNextScriptMetricDraft();
   };
 
   const onTabChange = (val: string | number) => {

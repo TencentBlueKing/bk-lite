@@ -906,6 +906,8 @@
       "reservedTagRenameDetail": "Reserved field, please rename: {keys}",
       "goEditMetrics": "Edit metrics",
       "goEditMetricsSelectFirst": "Please select metrics first",
+      "createMetricGroup": "Create group",
+      "createMetricGroupPlaceholder": "Enter group name",
       "templateDescription": "Template Description",
       "noConfigData": "No configuration data available, please check plugin settings",
       "missingEntryContext": "The plugin has no associated monitor object, so configuration cannot be opened",
