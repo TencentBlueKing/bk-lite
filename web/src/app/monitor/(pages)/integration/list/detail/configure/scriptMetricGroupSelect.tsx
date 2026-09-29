@@ -50,7 +50,6 @@ const ScriptMetricGroupSelect: React.FC<ScriptMetricGroupSelectProps> = ({
   const { t } = useTranslation();
   const { post } = useApiClient();
   const [newName, setNewName] = useState('');
-  const [searchText, setSearchText] = useState('');
   const [creating, setCreating] = useState(false);
   const canCreate = Boolean(objectId && pluginId) && !disabled;
   const uniqueGroups = useMemo(
@@ -58,17 +57,10 @@ const ScriptMetricGroupSelect: React.FC<ScriptMetricGroupSelectProps> = ({
       dedupeCatalogMetricGroups(groups, { preferredPluginId: pluginId }).groups,
     [groups, pluginId]
   );
-  const trimmedSearch = searchText.trim();
-  const searchHasMatch =
-    !trimmedSearch ||
-    uniqueGroups.some((group) =>
-      catalogGroupLabel(group).toLowerCase().includes(trimmedSearch.toLowerCase())
-    );
-  const showCreateFromSearch = canCreate && !!trimmedSearch && !searchHasMatch;
   const createNameReady = !!newName.trim() && !creating;
 
-  const handleCreate = async (rawName?: string) => {
-    const trimmed = String(rawName ?? newName).trim();
+  const handleCreate = async () => {
+    const trimmed = newName.trim();
     if (!trimmed || !objectId || !pluginId || creating) {
       return;
     }
@@ -80,7 +72,6 @@ const ScriptMetricGroupSelect: React.FC<ScriptMetricGroupSelectProps> = ({
     if (typeof existing?.id === 'number') {
       onChange?.(existing.id);
       setNewName('');
-      setSearchText('');
       return;
     }
     setCreating(true);
@@ -98,7 +89,6 @@ const ScriptMetricGroupSelect: React.FC<ScriptMetricGroupSelectProps> = ({
       onChange?.(created.id);
       onCreated?.(created);
       setNewName('');
-      setSearchText('');
       message.success(t('common.successfullyAdded'));
     } catch {
       message.error(t('common.operationFailed'));
@@ -125,33 +115,8 @@ const ScriptMetricGroupSelect: React.FC<ScriptMetricGroupSelectProps> = ({
       className={className}
       placeholder={placeholder}
       value={value}
-      searchValue={searchText}
-      onChange={(next) => {
-        setSearchText('');
-        onChange?.(typeof next === 'number' ? next : null);
-      }}
-      onSearch={(text) => {
-        setSearchText(text);
-        onSearch?.(text);
-      }}
-      notFoundContent={
-        showCreateFromSearch ? (
-          <Button
-            type="link"
-            size="small"
-            className="h-auto px-1"
-            loading={creating}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => void handleCreate(trimmedSearch)}
-          >
-            {t(
-              'monitor.integrations.createMetricGroupFromSearch',
-              '新建『{name}』',
-              { name: trimmedSearch }
-            )}
-          </Button>
-        ) : undefined
-      }
+      onChange={(next) => onChange?.(typeof next === 'number' ? next : null)}
+      onSearch={onSearch}
       options={uniqueGroups.map((group) => ({
         value: group.id as number,
         label: catalogGroupLabel(group) || String(group.id)
