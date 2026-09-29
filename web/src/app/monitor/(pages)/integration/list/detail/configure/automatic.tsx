@@ -199,7 +199,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const [form] = Form.useForm();
   const { t } = useTranslation();
   const searchParams = useSearchParams();
-  const { get, post, patch, del, isLoading } = useApiClient();
+  const { get, post, patch, isLoading } = useApiClient();
   const {
     createCollectDetectTask,
     getCollectDetectTask,
@@ -633,7 +633,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       metrics: excludeSelfMonitorMetrics(metricsToPersist),
       staleDeletes,
       mode,
-      client: { get, post, patch, del, t }
+      client: { get, post, patch, t }
     });
   };
 

@@ -58,10 +58,6 @@ export interface PersistScriptMetricsClient {
   get: (url: string, config?: { params?: Record<string, unknown> } & RequestConfig) => Promise<unknown>;
   post: (url: string, data?: unknown, config?: RequestConfig) => Promise<unknown>;
   patch: (url: string, data?: unknown, config?: RequestConfig) => Promise<unknown>;
-  del?: (
-    url: string,
-    config?: RequestConfig & { params?: Record<string, unknown> }
-  ) => Promise<unknown>;
   t: TranslateFn;
 }
 
@@ -908,7 +904,7 @@ export const persistScriptMetrics = async ({
   if (!persistableMetrics.length && !overwriteDeletes.length) {
     return;
   }
-  const { get, post, patch, del, t } = client;
+  const { get, post, patch, t } = client;
   const reservedMetricIds = collectReservedMetricIdViolations(persistableMetrics);
   if (reservedMetricIds.length) {
     throw new Error(formatReservedMetricIdMessage(reservedMetricIds, t));
@@ -922,22 +918,16 @@ export const persistScriptMetrics = async ({
       (item) => item?.id && item?.name && !isSelfMetricName(item.name)
     );
     if (deletable.length) {
-      if (!del) {
-        throw new Error(t('common.operationFailed'));
-      }
-      const deleteResults = await Promise.allSettled(
-        deletable.map((item) =>
-          del(`/monitor/api/metrics/${item.id}/`, {
-            ...SILENT_REQ,
-            params: { monitor_plugin_id: pluginId }
-          })
-        )
-      );
-      const deleteRejected = deleteResults.find(
-        (result): result is PromiseRejectedResult => result.status === 'rejected'
-      );
-      if (deleteRejected) {
-        throw deleteRejected.reason;
+      const ids = deletable.map((item) => item.id);
+      for (let offset = 0; offset < ids.length; offset += CATALOG_METRIC_PAGE_SIZE) {
+        await post(
+          '/monitor/api/metrics/batch_delete/',
+          {
+            ids: ids.slice(offset, offset + CATALOG_METRIC_PAGE_SIZE),
+            monitor_plugin: Number(pluginId)
+          },
+          SILENT_REQ
+        );
       }
     }
 

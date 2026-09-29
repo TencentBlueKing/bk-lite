@@ -18,7 +18,7 @@ from apps.monitor.filters.monitor_metrics import MetricFilter, MetricGroupFilter
 from apps.monitor.models import MonitorPlugin
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.models.monitor_object import MonitorObject
-from apps.monitor.serializers.monitor_metrics import MetricBatchUpdateSerializer, MetricGroupSerializer, MetricSerializer
+from apps.monitor.serializers.monitor_metrics import MetricBatchDeleteSerializer, MetricBatchUpdateSerializer, MetricGroupSerializer, MetricSerializer
 from apps.monitor.services.custom_script_plugin import SCRIPT_SELF_MONITOR_METRIC_DELETE_ERROR, is_script_self_monitor_metric_name
 from apps.monitor.utils.metric_enum_locale import localize_metric_enum_unit
 from apps.monitor.utils.metric_keyword import apply_metric_keyword_filter
@@ -528,17 +528,43 @@ class MetricViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         metric = self.get_object()
         self._ensure_modifiable(metric)
-        self._ensure_script_metric_deletable(metric, request)
+        self._ensure_script_self_monitor_not_deleted(metric)
         return super().destroy(request, *args, **kwargs)
 
     @staticmethod
-    def _ensure_script_metric_deletable(metric, request):
+    def _ensure_script_self_monitor_not_deleted(metric):
         collect_type = getattr(getattr(metric, "monitor_plugin", None), "collect_type", None)
         if is_script_self_monitor_metric_name(getattr(metric, "name", None), collect_type):
             raise BaseAppException(SCRIPT_SELF_MONITOR_METRIC_DELETE_ERROR)
-        plugin_id = parse_optional_positive_id(request.query_params.get("monitor_plugin_id"), "monitor_plugin_id")
-        if plugin_id is not None and metric.monitor_plugin_id != plugin_id:
+
+    @action(detail=False, methods=["post"], url_path="batch_delete")
+    @HasPermission("integration_metric-Delete Metric")
+    def batch_delete(self, request, *args, **kwargs):
+        serializer = MetricBatchDeleteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        metric_ids = serializer.validated_data["ids"]
+        plugin_id = serializer.validated_data["monitor_plugin"]
+
+        metrics = list(Metric.objects.select_related("monitor_object", "monitor_plugin").filter(id__in=metric_ids))
+        found_ids = {metric.id for metric in metrics}
+        missing_ids = [metric_id for metric_id in metric_ids if metric_id not in found_ids]
+        if missing_ids:
+            raise ValidationAppException("部分指标不存在")
+        if any(metric.monitor_plugin_id != plugin_id for metric in metrics):
             raise ValidationAppException("只能删除当前插件的指标")
+        for metric in metrics:
+            self._ensure_modifiable(metric)
+            self._ensure_script_self_monitor_not_deleted(metric)
+
+        for metric in metrics:
+            metric.delete()
+
+        logger.info(
+            "metric batch_delete completed monitor_plugin_id=%s count=%s",
+            plugin_id,
+            len(metrics),
+        )
+        return WebUtils.response_success({"deleted": len(metrics)})
 
     @action(detail=False, methods=["post"], url_path="batch_update")
     @HasPermission("integration_metric-Edit Metric")

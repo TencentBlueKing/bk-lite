@@ -7,6 +7,7 @@ from apps.monitor.utils.metric_query_labels import ensure_metric_labels_placehol
 
 METRIC_BATCH_UPDATE_FIELDS = ("metric_group", "unit", "data_type", "description")
 METRIC_BATCH_UPDATE_MAX_SIZE = 100
+METRIC_BATCH_DELETE_MAX_SIZE = 100
 METRIC_DATA_TYPES = ("Number", "Enum")
 
 
@@ -215,3 +216,26 @@ class MetricBatchUpdateSerializer(serializers.Serializer):
             raise serializers.ValidationError({"unit": "批量设为枚举时必须提供映射"})
         attrs["_patch"] = patch
         return attrs
+
+
+class MetricBatchDeleteSerializer(serializers.Serializer):
+    """覆盖路径专用：必须带 monitor_plugin，只能删该插件指标。"""
+
+    ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+        max_length=METRIC_BATCH_DELETE_MAX_SIZE,
+    )
+    monitor_plugin = serializers.IntegerField(min_value=1)
+
+    def validate_ids(self, value):
+        unique_ids = []
+        seen = set()
+        for metric_id in value:
+            if metric_id in seen:
+                continue
+            seen.add(metric_id)
+            unique_ids.append(metric_id)
+        if len(unique_ids) > METRIC_BATCH_DELETE_MAX_SIZE:
+            raise serializers.ValidationError(f"单次批量删除不超过 {METRIC_BATCH_DELETE_MAX_SIZE} 条")
+        return unique_ids
