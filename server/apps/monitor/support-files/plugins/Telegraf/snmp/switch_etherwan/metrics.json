@@ -22,7 +22,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}/10) by (instance_id)",
+      "query": "max(snmp_device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -30,7 +30,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the chassis temperature in degrees Celsius of the EtherWAN device (private ewnSensorTempValue scalar under IANA PEN 2736). The raw object value is in tenths of a degree, so the query divides it by 10 to obtain Celsius. High temperatures can indicate cooling failure or airflow obstruction in the cabinet and risk thermal damage. The temperature sensor is SKU-dependent; on models without a sensor this object is absent and the metric is simply not reported."
+      "description": "This metric reports the chassis temperature in degrees Celsius of the EtherWAN device (private ewnSensorTempValue scalar under IANA PEN 2736). The raw object is the reading multiplied by 10 in the unit selected by ewnSensorTempUnit; the collector divides by 10 and converts Fahrenheit readings to Celsius. Models without the optional temperature sensor do not report this metric."
     },
     {
       "metric_group": "Hardware Status",
