@@ -41,7 +41,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='firewall', __$labels__}",
+      "query": "snmp_device_cpu_usage{instance_type='firewall', __$labels__}",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -54,7 +54,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_memory_usage",
-      "query": "device_memory_usage{instance_type='firewall', __$labels__}",
+      "query": "snmp_device_memory_usage{instance_type='firewall', __$labels__}",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -67,7 +67,7 @@
     {
       "metric_group": "Firewall",
       "name": "firewall_current_connections",
-      "query": "firewall_current_connections{instance_type='firewall', __$labels__}",
+      "query": "snmp_firewall_current_connections{instance_type='firewall', __$labels__}",
       "display_name": "Current Connections",
       "data_type": "Number",
       "unit": "short",
@@ -80,7 +80,7 @@
     {
       "metric_group": "Firewall",
       "name": "firewall_new_sessions_per_sec",
-      "query": "firewall_new_sessions_per_sec{instance_type='firewall', __$labels__}",
+      "query": "snmp_firewall_new_sessions_per_sec{instance_type='firewall', __$labels__}",
       "display_name": "New Sessions Per Second",
       "data_type": "Number",
       "unit": "cps",
@@ -93,7 +93,7 @@
     {
       "metric_group": "Firewall",
       "name": "firewall_max_sessions",
-      "query": "firewall_max_sessions{instance_type='firewall', __$labels__}",
+      "query": "snmp_firewall_max_sessions{instance_type='firewall', __$labels__}",
       "display_name": "Max Sessions",
       "data_type": "Number",
       "unit": "short",
