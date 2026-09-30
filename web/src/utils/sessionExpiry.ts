@@ -25,6 +25,7 @@ const SESSION_EXPIRY_IGNORED_REQUEST_PATHS = [
 ];
 
 let sessionExpiredDispatched = false;
+let sessionExpiryConfirming = false;
 
 export interface SessionExpiredDetail {
   reason?: string;
@@ -32,7 +33,7 @@ export interface SessionExpiredDetail {
 }
 
 export const emitSessionExpired = (detail?: SessionExpiredDetail) => {
-  if (typeof window === 'undefined' || sessionExpiredDispatched) {
+  if (typeof window === 'undefined' || sessionExpiredDispatched || sessionExpiryConfirming) {
     return;
   }
 
@@ -41,15 +42,30 @@ export const emitSessionExpired = (detail?: SessionExpiredDetail) => {
     return;
   }
 
-  sessionExpiredDispatched = true;
+  // 先进入探活，不置失效门闩。单次偶发 401 不应挡住同页其它请求。
+  sessionExpiryConfirming = true;
   window.dispatchEvent(new CustomEvent<SessionExpiredDetail>(SESSION_EXPIRED_EVENT, { detail }));
+};
+
+export const latchSessionExpired = () => {
+  sessionExpiryConfirming = false;
+  sessionExpiredDispatched = true;
+};
+
+export const releaseSessionExpiryConfirmation = () => {
+  if (!sessionExpiredDispatched) {
+    sessionExpiryConfirming = false;
+  }
 };
 
 export const resetSessionExpiredState = () => {
   sessionExpiredDispatched = false;
+  sessionExpiryConfirming = false;
 };
 
 export const isSessionExpiredState = () => sessionExpiredDispatched;
+
+export const isSessionExpiryConfirming = () => sessionExpiryConfirming;
 
 export const SESSION_EXPIRED_REQUEST_ERROR = 'SESSION_EXPIRED_REQUEST_ERROR';
 
