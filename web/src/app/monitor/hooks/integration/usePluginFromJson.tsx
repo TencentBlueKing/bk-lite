@@ -6,9 +6,9 @@ import {
   inferScriptOs,
   isScriptCollectConfig,
   normalizeScriptCollectFormFields,
-  omitPersistedDefaultScriptTimeout,
+  omitPersistedScriptTimeout,
   omitPersistedWindowsRunAs,
-  ScriptIntervalTimeoutFields
+  ScriptIntervalField
 } from '@/app/monitor/(pages)/integration/list/detail/configure/scriptCollectForm';
 import { hydrateScriptCollectFormValues } from '@/app/monitor/(pages)/integration/list/detail/configure/scriptCollectHydrate';
 import { DataMapper } from './useDataMapper';
@@ -337,21 +337,14 @@ export const usePluginFromJson = () => {
         const scriptCollect = isScriptCollectConfig(config);
         for (let index = 0; index < fields.length; index += 1) {
           const fieldConfig = fields[index];
-          const nextField = fields[index + 1];
-          if (
-            scriptCollect &&
-            fieldConfig?.name === 'interval' &&
-            nextField?.name === 'timeout'
-          ) {
+          if (scriptCollect && fieldConfig?.name === 'interval') {
             nodes.push(
-              <ScriptIntervalTimeoutFields
-                key="script-interval-timeout"
+              <ScriptIntervalField
+                key="script-interval"
                 intervalField={fieldConfig}
-                timeoutField={nextField}
                 mode={extra.mode}
               />
             );
-            index += 1;
             continue;
           }
           if (scriptCollect && fieldConfig?.name === 'timeout') {
@@ -873,7 +866,7 @@ export const usePluginFromJson = () => {
               );
             }
             omitPersistedWindowsRunAs(result, filledFormData);
-            omitPersistedDefaultScriptTimeout(
+            omitPersistedScriptTimeout(
               result,
               filledFormData,
               config.collect_type

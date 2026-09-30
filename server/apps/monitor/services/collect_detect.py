@@ -20,7 +20,7 @@ from apps.monitor.services.collect_detect_runtime import (
 from apps.monitor.services.custom_script_plugin import (
     SCRIPT_DETECT_TIMEOUT_MARGIN,
     CustomScriptPluginService,
-    assert_script_interval_and_timeout,
+    assert_script_interval,
     default_script_timeout_seconds,
 )
 from apps.monitor.services.website_config import normalize_website_request_config
@@ -65,13 +65,9 @@ class CollectDetectService:
         except ValueError as exc:
             raise ValidationAppException(str(exc)) from exc
         if cls._is_script_plugin(plugin):
-            interval_seconds, timeout_seconds = assert_script_interval_and_timeout(
-                instance.get("interval"),
-                payload.get("timeout", instance.get("timeout")),
-            )
-            if timeout_seconds is None:
-                timeout_seconds = default_script_timeout_seconds(interval_seconds)
-            instance["timeout"] = timeout_seconds
+            interval_seconds = assert_script_interval(instance.get("interval"))
+            instance.pop("timeout", None)
+            timeout_seconds = default_script_timeout_seconds(interval_seconds)
             runtime_timeout = timeout_seconds + SCRIPT_DETECT_TIMEOUT_MARGIN
         else:
             runtime_timeout = cls._normalize_timeout(payload.get("timeout"))

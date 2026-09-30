@@ -90,7 +90,7 @@ import ScriptTrialRunArea, {
   scriptTrialBlocksMetricActions
 } from './scriptTrialRunArea';
 import { applyScriptCollectSubmit, syncScriptRunAsForOs } from './scriptCollectForm';
-import { resolveScriptTimeoutSeconds, SCRIPT_DETECT_TIMEOUT_MARGIN_SECONDS } from './scriptCollectTimeout';
+import { scriptTimeoutFromInterval, SCRIPT_DETECT_TIMEOUT_MARGIN_SECONDS } from './scriptCollectTimeout';
 import { hydrateScriptCollectFormValues } from './scriptCollectHydrate';
 import {
   collectReservedTagViolations,
@@ -1020,10 +1020,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     }
     activeCollectDetectFingerprintRef.current[rowKey] = fingerprint;
     const debugTimeout = isScriptTemplate
-      ? resolveScriptTimeoutSeconds(
-        form.getFieldValue('timeout'),
-        form.getFieldValue('interval')
-      )
+      ? scriptTimeoutFromInterval(form.getFieldValue('interval'))
       : 60;
     const maxRetries = isScriptTemplate
       ? Math.max(
@@ -1045,7 +1042,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         node_id: nodeId,
         instance_key: record.instance_id || record.instance_name || rowKey,
         instance: buildDetectInstance(record),
-        timeout: debugTimeout
+        ...(isScriptTemplate ? {} : { timeout: debugTimeout })
       })) as { task_id: React.Key };
       pollCollectDetectTask(
         rowKey,
@@ -2196,10 +2193,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           }}
           timeoutSeconds={
             activeTrialTask?.debug_timeout ??
-            resolveScriptTimeoutSeconds(
-              form.getFieldValue('timeout'),
-              form.getFieldValue('interval')
-            )
+            scriptTimeoutFromInterval(form.getFieldValue('interval'))
           }
           nodeSelected={Boolean(getRowNodeId(activeRecord || {}))}
           instanceName={activeTrialInstanceName}

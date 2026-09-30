@@ -392,9 +392,6 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
                 enrich_ui_template_from_plugin_files(ui_template.content, plugin),
                 plugin,
             )
-            from apps.monitor.services.custom_script_plugin import patch_script_ui_template_content
-
-            content = patch_script_ui_template_content(content, plugin)
             return WebUtils.response_success(
                 {
                     "ui_template": localize_ui_template(content, locale),
@@ -443,9 +440,6 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
             enrich_ui_template_from_plugin_files(ui_template.get("ui_template"), plugin),
             plugin,
         )
-        from apps.monitor.services.custom_script_plugin import patch_script_ui_template_content
-
-        content = patch_script_ui_template_content(content, plugin)
         ui_template["ui_template"] = localize_ui_template(content or {}, locale) if content else content
         ui_template["support_collect_detect"] = resolve_support_collect_detect(plugin, fallback=bool(ui_template.get("support_collect_detect")))
         return WebUtils.response_success(ui_template)

@@ -89,13 +89,12 @@ def is_script_self_monitor_metric_name(name, collect_type=None) -> bool:
 # 只处理本 child，避免改写同一 Telegraf 上的其他采集。
 # 插件契约：script 为脚本正文（可从旧字段 command 迁入）；data_format /
 # command / commands / script_file 不下发。interval 由平台传秒，模板拼 "Ns"。
-# timeout 仅在用户值不等于 interval-1 时下发；缺省由采集器按 interval-1s 推导。
+# timeout 不下发，由采集器按 interval-1s 推导。
 SCRIPT_MIN_INTERVAL_SECONDS = 60
 SCRIPT_INTERVAL_MIN_ERROR = "脚本采集间隔不能小于 60 秒"
 SCRIPT_DETECT_TIMEOUT_MARGIN = 10
 DEFAULT_SCRIPT_CHILD_TEMPLATE = """[[inputs.bklite_script]]
     interval = "{{ interval }}s"
-    {% if timeout %}timeout = "{{ timeout }}s"{% endif %}
     interpreter = "{{ interpreter | default('/bin/sh', true) }}"
     script = "{{ script }}"
     {% if script_env %}script_env = "{{ script_env }}"{% endif %}
@@ -297,30 +296,6 @@ DEFAULT_SCRIPT_UI_TEMPLATE = {
                 "to_form": {"regex": r"^(\d+)s$"},
                 "to_api": {"suffix": "s"},
             },
-            "script_collect": True,
-        },
-        {
-            "name": "timeout",
-            "label": "脚本超时（秒）",
-            "label_en": "Script Timeout (seconds)",
-            "type": "inputNumber",
-            "required": True,
-            "default_value": 59,
-            "description": "默认 = 间隔 − 1",
-            "description_en": "Default = interval − 1",
-            "widget_props": {
-                "min": 1,
-                "precision": 0,
-                "placeholder": "超时",
-                "placeholder_en": "Timeout",
-                "addonAfter": "秒",
-            },
-            "transform_on_edit": {
-                "origin_path": "child.content.config.timeout",
-                "to_form": {"regex": r"^(\d+)s$"},
-                "to_api": {"suffix": "s"},
-            },
-            "script_collect": True,
         },
         {
             "name": "environment",
@@ -448,97 +423,23 @@ def default_script_timeout_seconds(interval_seconds: int) -> int:
     return max(1, int(interval_seconds) - 1)
 
 
-def should_emit_script_timeout(timeout_seconds, interval_seconds) -> bool:
-    if timeout_seconds is None or interval_seconds is None:
-        return False
-    if int(timeout_seconds) < 1:
-        return False
-    return int(timeout_seconds) != default_script_timeout_seconds(int(interval_seconds))
-
-
-def assert_script_interval_and_timeout(interval, timeout):
+def assert_script_interval(interval):
     interval_seconds = parse_script_duration_seconds(interval)
     if interval_seconds is None or interval_seconds < SCRIPT_MIN_INTERVAL_SECONDS:
         raise ValidationAppException(SCRIPT_INTERVAL_MIN_ERROR)
-    timeout_seconds = parse_script_duration_seconds(timeout)
-    max_timeout = default_script_timeout_seconds(interval_seconds)
-    if timeout_seconds is None:
-        return interval_seconds, None
-    if timeout_seconds < 1 or timeout_seconds > max_timeout:
-        raise ValidationAppException(f"脚本超时必须在 1 到 {max_timeout} 秒之间")
-    return interval_seconds, timeout_seconds
-
-
-def _script_timeout_form_field() -> dict:
-    for field in DEFAULT_SCRIPT_UI_TEMPLATE.get("form_fields") or []:
-        if isinstance(field, dict) and field.get("name") == "timeout":
-            return copy.deepcopy(field)
-    raise BaseAppException("脚本 UI 模板缺少 timeout 字段")
-
-
-def ensure_script_ui_timeout_fields(content):
-    """已有脚本插件 UI 补 timeout 字段，并给 interval 打 script_collect。幂等。"""
-    if not isinstance(content, dict):
-        return content
-    fields = content.get("form_fields")
-    if not isinstance(fields, list):
-        return content
-    has_timeout = any(isinstance(field, dict) and field.get("name") == "timeout" for field in fields)
-    needs_interval_marker = any(isinstance(field, dict) and field.get("name") == "interval" and not field.get("script_collect") for field in fields)
-    needs_timeout_marker = any(isinstance(field, dict) and field.get("name") == "timeout" and not field.get("script_collect") for field in fields)
-    if has_timeout and not needs_interval_marker and not needs_timeout_marker:
-        return content
-
-    updated = copy.deepcopy(content)
-    next_fields = []
-    inserted_timeout = False
-    timeout_field = _script_timeout_form_field()
-    for field in updated.get("form_fields") or []:
-        if not isinstance(field, dict):
-            next_fields.append(field)
-            continue
-        if field.get("name") == "interval":
-            field["script_collect"] = True
-            next_fields.append(field)
-            if not has_timeout:
-                next_fields.append(timeout_field)
-                inserted_timeout = True
-            continue
-        if field.get("name") == "timeout":
-            field["script_collect"] = True
-            next_fields.append(field)
-            continue
-        next_fields.append(field)
-    if not has_timeout and not inserted_timeout:
-        next_fields.append(timeout_field)
-    updated["form_fields"] = next_fields
-    return updated
+    return interval_seconds
 
 
 def prepare_script_child_content_for_save(content):
-    """编辑保存：校验间隔/超时，默认 timeout 不写入 TOML。"""
+    """编辑保存：校验间隔，去掉 timeout，由采集器按 interval-1s 推导。"""
     if not isinstance(content, dict):
         return content
     prepared = copy.deepcopy(content)
     config = prepared.get("config") if isinstance(prepared.get("config"), dict) else {}
-    interval_seconds, timeout_seconds = assert_script_interval_and_timeout(config.get("interval"), config.get("timeout"))
-    if should_emit_script_timeout(timeout_seconds, interval_seconds):
-        config["timeout"] = f"{timeout_seconds}s"
-        prepared["config"] = config
-        return prepared
+    assert_script_interval(config.get("interval"))
     config.pop("timeout", None)
     prepared["config"] = config
     return prepared
-
-
-def patch_script_ui_template_content(content, plugin):
-    collect_type = str(getattr(plugin, "collect_type", "") or "") if plugin is not None else ""
-    template_type = str(getattr(plugin, "template_type", "") or "") if plugin is not None else ""
-    if not collect_type and isinstance(content, dict):
-        collect_type = str(content.get("collect_type") or "")
-    if collect_type.casefold() != "script" and template_type.casefold() != "script":
-        return content
-    return ensure_script_ui_timeout_fields(content)
 
 
 def _child_render_context(context: dict) -> dict:
@@ -551,11 +452,7 @@ def _child_render_context(context: dict) -> dict:
     interval_seconds = parse_script_duration_seconds(render_context.get("interval"))
     if interval_seconds is not None:
         render_context["interval"] = interval_seconds
-    timeout_seconds = parse_script_duration_seconds(render_context.get("timeout"))
-    if should_emit_script_timeout(timeout_seconds, interval_seconds):
-        render_context["timeout"] = timeout_seconds
-    else:
-        render_context.pop("timeout", None)
+    render_context.pop("timeout", None)
     return render_context
 
 

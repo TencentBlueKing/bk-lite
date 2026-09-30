@@ -32,27 +32,7 @@ export const parseScriptDurationSeconds = (value: unknown): number | null => {
 export const defaultScriptTimeoutSeconds = (intervalSeconds: number): number =>
   Math.max(1, Math.trunc(intervalSeconds) - 1);
 
-export const resolveScriptTimeoutSeconds = (
-  timeout: unknown,
-  interval: unknown
-): number => {
-  const intervalSeconds =
-    parseScriptDurationSeconds(interval) ?? SCRIPT_MIN_INTERVAL_SECONDS;
-  const timeoutSeconds = parseScriptDurationSeconds(timeout);
-  if (timeoutSeconds == null || timeoutSeconds <= 0) {
-    return defaultScriptTimeoutSeconds(intervalSeconds);
-  }
-  return timeoutSeconds;
-};
-
-export const shouldEmitScriptTimeout = (
-  timeout: unknown,
-  interval: unknown
-): boolean => {
-  const intervalSeconds = parseScriptDurationSeconds(interval);
-  const timeoutSeconds = parseScriptDurationSeconds(timeout);
-  if (intervalSeconds == null || timeoutSeconds == null || timeoutSeconds < 1) {
-    return false;
-  }
-  return timeoutSeconds !== defaultScriptTimeoutSeconds(intervalSeconds);
-};
+export const scriptTimeoutFromInterval = (interval: unknown): number =>
+  defaultScriptTimeoutSeconds(
+    parseScriptDurationSeconds(interval) ?? SCRIPT_MIN_INTERVAL_SECONDS
+  );

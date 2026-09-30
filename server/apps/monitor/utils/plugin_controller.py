@@ -685,9 +685,9 @@ class Controller:
                         )
                     script_collect = str(collect_type or "") == "script"
                     if script_collect and is_child:
-                        from apps.monitor.services.custom_script_plugin import CustomScriptPluginService, assert_script_interval_and_timeout
+                        from apps.monitor.services.custom_script_plugin import CustomScriptPluginService, assert_script_interval
 
-                        assert_script_interval_and_timeout(config_info.get("interval"), config_info.get("timeout"))
+                        assert_script_interval(config_info.get("interval"))
                         template_config = CustomScriptPluginService.render_child_template(render_context)
                     else:
                         template_config = self.render_template(

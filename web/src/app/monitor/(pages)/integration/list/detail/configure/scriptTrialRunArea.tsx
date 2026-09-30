@@ -339,9 +339,13 @@ const TrialTimeoutHint: React.FC<{ seconds: number }> = ({ seconds }) => {
   const { t } = useTranslation();
   return (
     <span className="text-[12px] text-[var(--color-text-3)]">
-      {t('monitor.integrations.trialRunTimeoutSeconds', '超时 {n} 秒', {
-        n: seconds
-      })}
+      {t(
+        'monitor.integrations.trialRunTimeoutFollowsInterval',
+        '超时 = 采集间隔 − 1 秒（{n} 秒）',
+        {
+          n: seconds
+        }
+      )}
     </span>
   );
 };

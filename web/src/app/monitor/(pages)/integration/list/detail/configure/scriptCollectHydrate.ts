@@ -1,8 +1,4 @@
 import { DataMapper } from '@/app/monitor/hooks/integration/useDataMapper';
-import {
-  defaultScriptTimeoutSeconds,
-  parseScriptDurationSeconds
-} from './scriptCollectTimeout';
 
 const WINDOWS_INTERPRETER_VALUES = new Set([
   'powershell.exe',
@@ -112,24 +108,7 @@ export const hydrateScriptCollectFormValues = (
       formValues.interval = Number(formValues.interval);
     }
   }
-  if (formValues.timeout == null || formValues.timeout === '') {
-    const rawTimeout = config.timeout || plugin.timeout;
-    if (rawTimeout != null) formValues.timeout = rawTimeout;
-  }
-  if (typeof formValues.timeout === 'string') {
-    const match = formValues.timeout.match(/^(\d+)s$/);
-    if (match) {
-      formValues.timeout = Number(match[1]);
-    } else if (/^\d+$/.test(formValues.timeout)) {
-      formValues.timeout = Number(formValues.timeout);
-    }
-  }
-  if (formValues.timeout == null || formValues.timeout === '') {
-    const intervalSec = parseScriptDurationSeconds(formValues.interval);
-    if (intervalSec != null) {
-      formValues.timeout = defaultScriptTimeoutSeconds(intervalSec);
-    }
-  }
+  delete formValues.timeout;
   if (!formValues.script_os) {
     formValues.script_os = inferStoredScriptOs(formValues.interpreter);
   }
