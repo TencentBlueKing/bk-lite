@@ -347,6 +347,13 @@
       "template": "rate(mongodb_commands{__$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:0cc5ce4e",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "sum(device_memory_used{__$labels__}) by (instance_id) or (sum(snmp_device_memory_total{__$labels__}) by (instance_id) - sum(snmp_device_memory_free{__$labels__}) by (instance_id))"
+    },
+    {
       "id": "dashboard:v1:0d432287",
       "object_names": [
         "Host"
@@ -445,18 +452,18 @@
       "template": "100 * ( sum(irate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k8s\",__$labels__}[__$window__])) by (instance_id,pod) / on(instance_id,pod) sum(prometheus_remote_write_kube_pod_container_resource_limits{instance_type=\"k8s\", resource=\"cpu\",__$labels__}) by (instance_id,pod) )"
     },
     {
+      "id": "dashboard:v1:10ddbbf7",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "max(device_cpu_usage{__$labels__}) by (instance_id) or max(snmp_device_cpu_usage{__$labels__}) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:113f8935",
       "object_names": [
         "K3SCluster"
       ],
       "template": "topk(5, sum by (pod) (increase(prometheus_remote_write_kube_pod_container_status_restarts_total{instance_type=\"k3s\",__$labels__}[1h])))"
-    },
-    {
-      "id": "dashboard:v1:1182a607",
-      "object_names": [
-        "Switch"
-      ],
-      "template": "max(device_memory_usage{__$labels__}) by (instance_id) or avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)"
     },
     {
       "id": "dashboard:v1:11eabfbd",
@@ -2141,8 +2148,7 @@
     {
       "id": "dashboard:v1:525575db",
       "object_names": [
-        "Loadbalance",
-        "Switch"
+        "Loadbalance"
       ],
       "template": "sum(device_memory_used{__$labels__}) by (instance_id)"
     },
@@ -2777,6 +2783,13 @@
         "Redis"
       ],
       "template": "count({instance_type='redis', collect_type='database', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:6cfc04c8",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "max(device_memory_usage{__$labels__}) by (instance_id) or avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or max(snmp_device_memory_usage{__$labels__}) by (instance_id) or ((sum(snmp_device_memory_total{__$labels__}) by (instance_id) - sum(snmp_device_memory_free{__$labels__}) by (instance_id)) / sum(snmp_device_memory_total{__$labels__}) by (instance_id) * 100)"
     },
     {
       "id": "dashboard:v1:6d074c64",
@@ -3934,6 +3947,13 @@
       "template": "rate(prometheus_remote_write_net_bytes_sent{instance_type=\"k8s\", __$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:9f8aca6d",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "sum(device_memory_free{__$labels__}) by (instance_id) or sum(snmp_device_memory_free{__$labels__}) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:9f9b304e",
       "object_names": [
         "Etcd"
@@ -4175,8 +4195,7 @@
       "id": "dashboard:v1:aa39e9d2",
       "object_names": [
         "Loadbalance",
-        "Router",
-        "Switch"
+        "Router"
       ],
       "template": "max(device_temperature_celsius{__$labels__}) by (instance_id)"
     },
@@ -4722,13 +4741,6 @@
         "Ping"
       ],
       "template": "min(ping_minimum_response_ms{__$labels__})"
-    },
-    {
-      "id": "dashboard:v1:c2e57aaf",
-      "object_names": [
-        "Switch"
-      ],
-      "template": "max(device_cpu_usage{__$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:c3434181",
@@ -5637,13 +5649,6 @@
       "template": "rabbitmq_overview_consumers{__$labels__}"
     },
     {
-      "id": "dashboard:v1:e766f12a",
-      "object_names": [
-        "Switch"
-      ],
-      "template": "sum(device_memory_free{__$labels__}) by (instance_id)"
-    },
-    {
       "id": "dashboard:v1:e823e064",
       "object_names": [
         "Host"
@@ -6106,6 +6111,13 @@
         "Process"
       ],
       "template": "sum(procstat_memory_rss{instance_type=\"process\", __$labels__}) by (instance_id, process_name)"
+    },
+    {
+      "id": "dashboard:v1:fe2e0d57",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "max(device_temperature_celsius{__$labels__}) by (instance_id) or max(snmp_device_temperature_celsius{__$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:fea6f24d",
