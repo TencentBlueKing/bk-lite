@@ -510,9 +510,8 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       "collectType": "snmp_microsens",
       "capabilities": [
         "uptime",
-        "cpu",
-        "memory",
         "temperature",
+        "fan",
         "psu",
         "traffic"
       ]

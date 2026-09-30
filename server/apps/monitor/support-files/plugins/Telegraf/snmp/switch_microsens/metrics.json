@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_microsens",
   "plugin": "Switch Microsens SNMP",
-  "plugin_desc": "SNMP monitoring template for Microsens switch. It reports uptime, CPU utilization, memory utilization, temperature, power supply status, and interface traffic (enterprise PEN 3181).",
+  "plugin_desc": "SNMP monitoring template for Microsens G6 switch. It reports uptime, temperature, power supply status, fan status, and interface traffic (enterprise PEN 3181).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_microsens'}) by (instance_id)",
   "name": "Switch",
@@ -15,22 +15,9 @@
   ],
   "supplementary_indicators": [
     "snmp_uptime",
-    "device_cpu_usage"
+    "device_temperature_celsius"
   ],
   "metrics": [
-    {
-      "metric_group": "CPU",
-      "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
-      "display_name": "CPU Utilization",
-      "data_type": "Number",
-      "unit": "percent",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "CPU utilisation of the MICROSENS industrial switch (MICROSENS-G6-MIB, reported directly as a percentage)."
-    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
@@ -68,45 +55,6 @@
       "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
     },
     {
-      "metric_group": "Memory",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "name": "device_memory_used",
-      "display_name": "内存已用",
-      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id)",
-      "unit": "bytes",
-      "data_type": "Number",
-      "description": "Used memory of the MICROSENS industrial switch in bytes (MICROSENS-G6-MIB used memory)."
-    },
-    {
-      "metric_group": "Memory",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "name": "device_memory_free",
-      "display_name": "内存空闲",
-      "query": "sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)",
-      "unit": "bytes",
-      "data_type": "Number",
-      "description": "Free memory of the MICROSENS industrial switch in bytes (MICROSENS-G6-MIB free memory)."
-    },
-    {
-      "metric_group": "Memory",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "name": "device_memory_usage",
-      "display_name": "内存使用率",
-      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / (sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) + sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) * 100",
-      "unit": "percent",
-      "data_type": "Number",
-      "description": "Memory utilisation of the MICROSENS industrial switch, derived as used/(used+free)."
-    },
-    {
       "metric_group": "Temperature",
       "dimensions": [],
       "instance_id_keys": [
@@ -114,17 +62,17 @@
       ],
       "name": "device_temperature_celsius",
       "display_name": "设备温度",
-      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
       "unit": "celsius",
       "data_type": "Number",
-      "description": "Chassis temperature of the MICROSENS industrial switch in degrees Celsius (MICROSENS-G6-MIB chassis temperature)."
+      "description": "Chassis temperature of the MICROSENS G6 industrial switch in degrees Celsius (G6-SYSTEM systemTemperature scalar)."
     },
     {
       "metric_group": "Hardware Status",
       "dimensions": [
         {
           "name": "index",
-          "description": "SNMP table row index"
+          "description": "Power supply number (1/2)"
         }
       ],
       "instance_id_keys": [
@@ -135,7 +83,25 @@
       "query": "device_psu_state{instance_type='switch', __$labels__}",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "data_type": "Enum",
-      "description": "Power-supply state of the MICROSENS industrial switch, normalised to 1=normal / 2=abnormal."
+      "description": "Power-supply state of the MICROSENS G6 industrial switch (G6-HARDWARE hardwarePowerSupply1Status / hardwarePowerSupply2Status), normalised to 1=normal / 2=abnormal. Slots reported as notApplicable or notInstalled are skipped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Fan index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_fan_state",
+      "display_name": "风扇状态",
+      "query": "device_fan_state{instance_type='switch', __$labels__}",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "data_type": "Enum",
+      "description": "Cooling-fan state of the MICROSENS G6 industrial switch (G6-HARDWARE hardwareFanStatus), normalised to 1=normal / 2=abnormal (degraded, fail or missing). Fanless models report unused and the metric is skipped."
     },
     {
       "metric_group": "Base",
