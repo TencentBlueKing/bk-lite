@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_asterfusion",
   "plugin": "Switch AsterFusion SNMP",
-  "plugin_desc": "SNMP monitoring template for AsterFusion switch. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic, for AsterNOS (enterprise PEN 56928).",
+  "plugin_desc": "SNMP monitoring template for AsterFusion switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic, for AsterNOS (enterprise PEN 56928).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_asterfusion'}) by (instance_id)",
   "name": "Switch",
@@ -17,13 +17,15 @@
     "snmp_uptime",
     "device_cpu_usage",
     "device_memory_usage",
-    "device_temperature_celsius"
+    "device_temperature_celsius",
+    "device_fan_state",
+    "device_psu_state"
   ],
   "metrics": [
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "avg(snmp_device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -31,12 +33,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the CPU utilization of the AsterFusion AsterNOS device control plane (cpuUtilization scalar under IANA PEN 56928). The vendor exposes a DisplayString percentage which is parsed to a 0-100 numeric gauge. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
+      "description": "This metric reports the CPU utilization of the AsterFusion AsterNOS device control plane (cpuUtilization, a scalar GET with instance .0 under enterprise PEN 56928). The vendor exposes a DisplayString percentage which is parsed to a 0-100 numeric gauge. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
     },
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "avg(device_memory_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "avg(snmp_device_memory_usage{instance_type='switch', __$labels__}) by (instance_id)",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -44,12 +46,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports overall memory utilization of the AsterFusion AsterNOS device (memUtilization scalar under IANA PEN 56928). The vendor exposes a DisplayString percentage which is parsed to a 0-100 numeric gauge. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
+      "description": "This metric reports overall memory utilization of the AsterFusion AsterNOS device (memUtilization, a scalar GET with instance .0 under enterprise PEN 56928). The vendor exposes a DisplayString percentage which is parsed to a 0-100 numeric gauge. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
     },
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -57,7 +59,43 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the higher of the AsterFusion AsterNOS CPU and switch temperature scalars (afTemperatureCPU and afTemperatureSwitch), in degrees Celsius. Abnormally high temperatures may indicate fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal protection or hardware damage if left unaddressed."
+      "description": "This metric reports the higher of the AsterFusion AsterNOS CPU and switch chip temperature scalars (afTemperatureCPU and afTemperatureSwitch, scalar GETs with instance .0), parsed from DisplayString to degrees Celsius. Abnormally high temperatures may indicate fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal protection or hardware damage if left unaddressed."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "device_fan_state{instance_type='switch', __$labels__}",
+      "display_name": "Fan State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "fanName",
+          "description": "Fan name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the state of each fan on the AsterFusion AsterNOS device (fanStatus, DisplayString), normalized so that 1 = healthy (OK / Present) and 2 = any other status. A value greater than 1 indicates a fan fault that can lead to overheating."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='switch', __$labels__}",
+      "display_name": "PSU State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "psuName",
+          "description": "Power supply name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the state of each power supply on the AsterFusion AsterNOS device (psuStatus, DisplayString), normalized so that 1 = healthy (OK / Present) and 2 = any other status. A value greater than 1 indicates a power supply problem or lost redundancy."
     },
     {
       "metric_group": "Traffic",

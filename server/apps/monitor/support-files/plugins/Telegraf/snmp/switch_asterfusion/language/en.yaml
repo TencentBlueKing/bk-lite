@@ -1,6 +1,6 @@
 Switch AsterFusion SNMP:
   name: AsterFusion (Telegraf)
-  desc: "SNMP monitoring template for AsterFusion switch. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic, for AsterNOS (enterprise PEN 56928)."
+  desc: "SNMP monitoring template for AsterFusion switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic, for AsterNOS (enterprise PEN 56928)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

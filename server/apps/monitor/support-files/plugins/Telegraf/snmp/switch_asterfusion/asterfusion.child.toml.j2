@@ -33,82 +33,109 @@
         name = "source"
         is_tag = true
 # @bk_include_ifmib_table
-    # ---- CPU：cpuUtilization 标量，DisplayString 百分比文本，解析为 device_cpu_usage ----
-    # OID 1.3.6.1.4.1.56928.2.1.1.0。starlark 去掉 % 后转为 0-100 数值。
+    # ---- CPU：cpuUtilization 标量，DisplayString 百分比文本 ----
+    # 顶层 field GET 必须带实例 .0 → measurement snmp → 查询 snmp_device_cpu_usage；下方 starlark 解析为 0-100 数值。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.56928.2.1.1.0"
+        name = "device_cpu_usage"
+    # ---- 内存：memUtilization 标量，DisplayString 百分比文本 → snmp_device_memory_usage ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.56928.2.1.2.0"
+        name = "device_memory_usage"
+    # ---- 温度：afTemperatureCPU / afTemperatureSwitch 标量，DisplayString 摄氏度文本 ----
+    # 下方 starlark 解析后取较大值写入 device_temperature_celsius（→ snmp_device_temperature_celsius），原始文本字段丢弃。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.56928.2.1.3.31.0"
+        name = "temperature_cpu_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.56928.2.1.3.30.0"
+        name = "temperature_switch_raw"
+    # ---- 风扇：fanTable，名称 fanName ...2.1.4.1.1 作 tag；状态 fanStatus ...2.1.4.1.5 为 DisplayString ----
+    # 列 OID 走表，不带 .0；下方 starlark 归一 OK/Present→1(正常)，其余→2(异常)。
     [[inputs.snmp.table]]
-        name = "device_cpu"
+        name = "device_fan"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.56928.2.1.1"
-        name = "usage"
-    # ---- 内存：memUtilization 标量，DisplayString 百分比文本，解析为 device_memory_usage ----
-    # OID 1.3.6.1.4.1.56928.2.1.2.0。
+        oid = "1.3.6.1.4.1.56928.2.1.4.1.1"
+        name = "fanName"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.56928.2.1.4.1.5"
+        name = "state"
+    # ---- 电源：psuTable，名称 psuName ...2.1.5.1.1 作 tag；状态 psuStatus ...2.1.5.1.3 为 DisplayString ----
+    # 归一规则同风扇。
     [[inputs.snmp.table]]
-        name = "device_memory"
+        name = "device_psu"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.56928.2.1.2"
-        name = "usage"
-    # ---- 温度：afTemperatureCPU / afTemperatureSwitch 标量，取较大值写入 device_temperature_celsius ----
-    # CPU 1.3.6.1.4.1.56928.2.1.3.31.0；交换机 1.3.6.1.4.1.56928.2.1.3.30.0。
-    [[inputs.snmp.table]]
-        name = "device_temperature"
-        inherit_tags = ["source"]
+        oid = "1.3.6.1.4.1.56928.2.1.5.1.1"
+        name = "psuName"
+        is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.56928.2.1.3.31"
-        name = "cpu"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.56928.2.1.3.30"
-        name = "switch_sensor"
-# ---- 风扇转速/状态表列 OID 未纳入本轮已证明集合，电源健康也无稳定枚举，均不采。----
+        oid = "1.3.6.1.4.1.56928.2.1.5.1.3"
+        name = "state"
 
+# ---- CPU/内存/温度为文本标量：解析出数值（无法解析则丢弃该字段）；温度取 CPU 与交换芯片中的较大值。----
 [[processors.starlark]]
-    namepass = ["device_cpu", "device_memory"]
+    namepass = ["snmp"]
     source = '''
-def parse_percent(raw):
+NUMERIC = "0123456789.+-"
+
+def _to_float(raw):
     if raw == None:
         return None
-    text = str(raw).strip()
-    if text.endswith("%"):
-        text = text[:-1].strip()
-    if text == "":
+    if type(raw) == "int" or type(raw) == "float":
+        return float(raw)
+    cleaned = ""
+    for ch in str(raw).strip().elems():
+        if ch in NUMERIC:
+            cleaned += ch
+        elif cleaned != "":
+            break
+    if cleaned == "" or cleaned == "." or cleaned == "+" or cleaned == "-":
         return None
-    return float(text)
+    err = catch(lambda: float(cleaned))
+    if err != None:
+        return None
+    return float(cleaned)
 
 def apply(metric):
-    parsed = parse_percent(metric.fields.get("usage"))
-    if parsed == None:
-        return None
-    metric.fields["usage"] = parsed
+    for key in ("device_cpu_usage", "device_memory_usage"):
+        if key in metric.fields:
+            value = _to_float(metric.fields[key])
+            if value == None:
+                metric.fields.pop(key)
+            else:
+                metric.fields[key] = value
+    temps = []
+    for key in ("temperature_cpu_raw", "temperature_switch_raw"):
+        if key in metric.fields:
+            value = _to_float(metric.fields.pop(key))
+            if value != None:
+                temps.append(value)
+    if temps:
+        metric.fields["device_temperature_celsius"] = max(temps)
     return metric
 '''
     [processors.starlark.tagpass]
         brand = ["asterfusion"]
 
+# ---- 风扇/电源状态为文本：OK/Present→1(正常)，其余→2(异常)；空值丢弃该行。----
 [[processors.starlark]]
-    namepass = ["device_temperature"]
+    namepass = ["device_fan", "device_psu"]
     source = '''
-def parse_number(raw):
-    if raw == None:
-        return None
-    text = str(raw).strip()
-    if text.endswith("%") or text.endswith("C") or text.endswith("c"):
-        text = text[:-1].strip()
+def apply(metric):
+    if "state" not in metric.fields:
+        return metric
+    text = str(metric.fields["state"]).strip().lower()
     if text == "":
         return None
-    return float(text)
-
-def apply(metric):
-    vals = []
-    for key in ("cpu", "switch_sensor"):
-        parsed = parse_number(metric.fields.get(key))
-        if parsed != None:
-            vals.append(parsed)
-        if key in metric.fields:
-            metric.fields.pop(key)
-    if not vals:
-        return None
-    metric.fields["celsius"] = max(vals)
+    if text == "ok" or text == "present":
+        metric.fields["state"] = 1
+    else:
+        metric.fields["state"] = 2
     return metric
 '''
     [processors.starlark.tagpass]
