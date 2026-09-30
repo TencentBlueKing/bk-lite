@@ -6,7 +6,7 @@ export interface CollectDetectFingerprintInput {
 }
 
 export interface CollectDetectTaskLike {
-  status: 'pending' | 'running' | 'success' | 'failed' | 'warning';
+  status: 'pending' | 'running' | 'success' | 'failed' | 'warning' | 'stopped';
   warning_type?: 'no_permission' | 'rate_limit';
 }
 

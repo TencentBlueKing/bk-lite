@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, type ReactNode } from 'react';
 import { Collapse, Form } from 'antd';
 import { FormFieldOptionControls, useConfigRenderer } from './useConfigRenderer';
 import {
@@ -6,7 +6,9 @@ import {
   inferScriptOs,
   isScriptCollectConfig,
   normalizeScriptCollectFormFields,
-  omitPersistedWindowsRunAs
+  omitPersistedScriptTimeout,
+  omitPersistedWindowsRunAs,
+  ScriptIntervalField
 } from '@/app/monitor/(pages)/integration/list/detail/configure/scriptCollectForm';
 import { hydrateScriptCollectFormValues } from '@/app/monitor/(pages)/integration/list/detail/configure/scriptCollectHydrate';
 import { DataMapper } from './useDataMapper';
@@ -330,10 +332,25 @@ export const usePluginFromJson = () => {
         },
       };
 
-      const renderAdvancedFieldGroups = (fields: any[]) => {
-        const hasSections = fields.some((field) => field.section);
-        if (!hasSections) {
-          return fields.map((fieldConfig: any) =>
+      const renderConfigFields = (fields: any[]) => {
+        const nodes: ReactNode[] = [];
+        const scriptCollect = isScriptCollectConfig(config);
+        for (let index = 0; index < fields.length; index += 1) {
+          const fieldConfig = fields[index];
+          if (scriptCollect && fieldConfig?.name === 'interval') {
+            nodes.push(
+              <ScriptIntervalField
+                key="script-interval"
+                intervalField={fieldConfig}
+                mode={extra.mode}
+              />
+            );
+            continue;
+          }
+          if (scriptCollect && fieldConfig?.name === 'timeout') {
+            continue;
+          }
+          nodes.push(
             renderFormField(
               fieldConfig,
               extra.mode,
@@ -341,6 +358,14 @@ export const usePluginFromJson = () => {
               effectiveOptionControls
             )
           );
+        }
+        return nodes;
+      };
+
+      const renderAdvancedFieldGroups = (fields: any[]) => {
+        const hasSections = fields.some((field) => field.section);
+        if (!hasSections) {
+          return renderConfigFields(fields);
         }
 
         const sectionMap = new Map<string, any[]>();
@@ -387,14 +412,7 @@ export const usePluginFromJson = () => {
 
       const formItems = (
         <>
-          {basicFields.map((fieldConfig: any) =>
-            renderFormField(
-              fieldConfig,
-              extra.mode,
-              extra.externalOptions,
-              effectiveOptionControls
-            )
-          )}
+          {renderConfigFields(basicFields)}
           {advancedFields.length > 0 && (() => {
             // Ant Design：函数子节点的 Form.Item 必须带 truthy 的 shouldUpdate/dependencies，
             // 否则子节点不会渲染。网站拨测等非 IF-MIB 面板不能写 shouldUpdate={false}。
@@ -848,6 +866,11 @@ export const usePluginFromJson = () => {
               );
             }
             omitPersistedWindowsRunAs(result, filledFormData);
+            omitPersistedScriptTimeout(
+              result,
+              filledFormData,
+              config.collect_type
+            );
             return result;
           }
         };

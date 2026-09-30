@@ -108,6 +108,7 @@ export const hydrateScriptCollectFormValues = (
       formValues.interval = Number(formValues.interval);
     }
   }
+  delete formValues.timeout;
   if (!formValues.script_os) {
     formValues.script_os = inferStoredScriptOs(formValues.interpreter);
   }

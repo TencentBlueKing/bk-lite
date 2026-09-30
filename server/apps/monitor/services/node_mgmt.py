@@ -383,7 +383,9 @@ class InstanceConfigService:
                 monitor_plugin_id=plugin_pk,
                 is_child=True,
                 collect_type="script",
-            ).order_by("-updated_at", "-id")[:20]
+            ).order_by(
+                "-updated_at", "-id"
+            )[:20]
         )
         if not rows:
             return {}
@@ -1273,6 +1275,10 @@ class InstanceConfigService:
 
             # 表单把 disk_*_fstypes 写在 content.config；Telegraf inputs.* 不认，必须挪回 starlark。
             child_info["content"] = sync_disk_fstype_filters_on_writeback(child_info.get("content"))
+            if str(config_obj.collect_type or "").casefold() == "script":
+                from apps.monitor.services.custom_script_plugin import prepare_script_child_content_for_save
+
+                child_info["content"] = prepare_script_child_content_for_save(child_info.get("content") or {})
             content = ConfigFormat.json_to_toml(child_info["content"]) if child_info else None
             if ifmib_capable and content is not None:
                 from apps.monitor.utils.snmp_interface_template import (

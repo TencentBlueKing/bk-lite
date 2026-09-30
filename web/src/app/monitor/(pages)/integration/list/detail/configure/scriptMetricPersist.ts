@@ -1,18 +1,26 @@
 import {
   BusinessMetricItem,
-  cleanDisplayTags,
   cleanMeasurementName,
   collectReservedScriptTagKeys,
   isHiddenPlatformDimensionKey,
+  isReservedScriptMetricId,
   isReservedScriptTagKey,
   isSelfMetricName,
   keepStoredTags
 } from './scriptMetricsParser';
 
+export type ScriptMetricPersistMode = 'add' | 'overwrite';
+export const SCRIPT_METRIC_PERSIST_MODE_ADD: ScriptMetricPersistMode = 'add';
+export const SCRIPT_METRIC_PERSIST_MODE_OVERWRITE: ScriptMetricPersistMode =
+  'overwrite';
+
 export interface ScriptMetricCatalogDraft {
   metric_group?: number | null;
   unit?: Array<string | number> | string;
   description?: string;
+  data_type?: string;
+  editedGroup?: boolean;
+  editedUnit?: boolean;
 }
 
 export interface ScriptMetricRegisterPayload {
@@ -29,9 +37,8 @@ export interface ScriptMetricRegisterPayload {
 }
 
 export interface ScriptMetricCatalogUpdatePayload {
-  metric_group: number;
-  unit: string;
-  description: string;
+  metric_group?: number;
+  unit?: string;
 }
 
 interface TranslateFn {
@@ -50,7 +57,6 @@ export interface PersistScriptMetricsClient {
   get: (url: string, config?: { params?: Record<string, unknown> } & RequestConfig) => Promise<unknown>;
   post: (url: string, data?: unknown, config?: RequestConfig) => Promise<unknown>;
   patch: (url: string, data?: unknown, config?: RequestConfig) => Promise<unknown>;
-  del?: (url: string, config?: RequestConfig) => Promise<unknown>;
   t: TranslateFn;
 }
 
@@ -58,6 +64,9 @@ export interface CatalogMetricRef {
   id: number;
   name: string;
   display_name?: string;
+  metric_group?: number | null;
+  unit?: string;
+  data_type?: string;
 }
 
 const SILENT_REQ = { suppressErrorNotification: true } as const;
@@ -75,7 +84,7 @@ export const extractCatalogItems = <T>(response: unknown): T[] => {
   return Array.isArray(items) ? (items as T[]) : [];
 };
 
-/** 目录已有的无单位叶子，Confirm / 去编辑必须回传 unit_id 而不是展示文案。 */
+/** 目录已有的无单位叶子，确认写入必须回传 unit_id 而不是展示文案。 */
 export const DEFAULT_CATALOG_UNIT_ID = 'none';
 /** 目录默认分组名，优先复用已有「无分组」/ Default / Base。 */
 export const DEFAULT_CATALOG_GROUP_NAMES = ['无分组', 'Default', 'default', 'Base'];
@@ -203,6 +212,39 @@ export const resolveDefaultCatalogUnitPath = (
   }
   return undefined;
 };
+
+/** 按指标 ID 后缀猜测目录单位；与指标页同一套 unit_id。 */
+export const guessCatalogUnitId = (metricName: string): string => {
+  const lower = String(metricName || '').toLowerCase();
+  if (lower.endsWith('_bytes')) {
+    return 'bytes';
+  }
+  if (lower.endsWith('_percent') || lower.endsWith('_pct')) {
+    return 'percent';
+  }
+  if (lower.endsWith('_seconds')) {
+    return 's';
+  }
+  if (lower.endsWith('_ms')) {
+    return 'ms';
+  }
+  return DEFAULT_CATALOG_UNIT_ID;
+};
+
+export const resolveGuessedCatalogUnitPath = (
+  metricName: string,
+  options: Array<{ value?: string; children?: Array<{ value: string }> }> = []
+): string[] | undefined => {
+  const guessed = guessCatalogUnitId(metricName);
+  return (
+    resolveDefaultCatalogUnitPath(options, guessed) ||
+    resolveDefaultCatalogUnitPath(options, DEFAULT_CATALOG_UNIT_ID)
+  );
+};
+
+/** 调试采样一律按指标页「数字」类型落库。 */
+export const inferCatalogDataType = (): ScriptMetricRegisterPayload['data_type'] =>
+  'Number';
 
 export const resolvePersistCatalogUnitId = (unit: unknown): string =>
   resolveCatalogUnitId(unit) || DEFAULT_CATALOG_UNIT_ID;
@@ -379,7 +421,10 @@ export const applyCatalogDraft = (
   reservedTagKeys: item.reservedTagKeys || collectReservedScriptTagKeys(item.tags),
   metric_group: draft?.metric_group ?? null,
   unit: resolveCatalogUnitId(draft?.unit),
-  description: resolveCatalogDescription(draft?.description)
+  description: resolveCatalogDescription(draft?.description),
+  data_type: draft?.data_type || item.data_type,
+  editedGroup: Boolean(draft?.editedGroup),
+  editedUnit: Boolean(draft?.editedUnit)
 });
 
 export const collectReservedTagViolations = (
@@ -405,6 +450,19 @@ export const collectReservedTagViolations = (
   return found;
 };
 
+export const collectReservedMetricIdViolations = (
+  metrics: BusinessMetricItem[]
+): string[] => {
+  const found: string[] = [];
+  metrics.forEach((item) => {
+    const name = cleanMeasurementName(String(item?.name || '').trim());
+    if (name && isReservedScriptMetricId(name) && !found.includes(name)) {
+      found.push(name);
+    }
+  });
+  return found;
+};
+
 export const formatReservedTagRenameMessage = (
   keys: string[],
   t: TranslateFn
@@ -423,17 +481,45 @@ export const formatReservedTagRenameMessage = (
   return detailed.includes('{keys}') ? `${rename}：${joined}` : detailed;
 };
 
-export const formatDimensionTagSummary = (
-  tags?: Record<string, string>
-): string =>
-  Object.entries(cleanDisplayTags(tags) || {})
-    .map(([key, value]) => `${key}=${value}`)
-    .join(' ');
+export const formatReservedMetricIdMessage = (
+  keys: string[],
+  t: TranslateFn
+): string => {
+  const uniqueKeys = keys.filter(Boolean);
+  const rename = t(
+    'monitor.integrations.reservedMetricId',
+    '指标 ID 与保留字段冲突，请更换'
+  );
+  if (!uniqueKeys.length) {
+    return rename;
+  }
+  const joined = uniqueKeys.join(', ');
+  const detailed = t(
+    'monitor.integrations.reservedMetricIdDetail',
+    '指标 ID 与保留字段冲突：{keys}',
+    { keys: joined }
+  );
+  return detailed.includes('{keys}') ? `${rename}：${joined}` : detailed;
+};
 
 const toStdoutMetricName = (name: string): string =>
   cleanMeasurementName(String(name || '').trim());
 
-/** 确认只落库勾选的业务指标，并带上分组 / 单位 / 描述。自监控指标不可勾选。 */
+const collectStoredDimensionNames = (item: BusinessMetricItem): string[] => {
+  const names: string[] = [];
+  const add = (tags?: Record<string, string>) => {
+    Object.keys(keepStoredTags(tags) || {}).forEach((key) => {
+      if (!names.includes(key)) {
+        names.push(key);
+      }
+    });
+  };
+  add(item.tags);
+  item.samples?.forEach((sample) => add(sample.tags));
+  return names;
+};
+
+/** 确认只落库勾选的业务指标（按短名一行），并带上分组 / 单位 / 描述。自监控指标不可勾选。 */
 export const pickSelectedBusinessMetrics = (
   items: BusinessMetricItem[],
   selected: Record<string, boolean>,
@@ -441,6 +527,7 @@ export const pickSelectedBusinessMetrics = (
 ): BusinessMetricItem[] =>
   items
     .filter((item) => !isSelfMetricName(item.name))
+    .filter((item) => !isReservedScriptMetricId(item.name))
     .filter((item) => selected[item.key] !== false)
     .map((item) =>
       applyCatalogDraft(
@@ -449,7 +536,7 @@ export const pickSelectedBusinessMetrics = (
       )
     );
 
-/** 重新调试：刷新采样值，保留仍存在指标的勾选/分组/单位/描述，消失的视为未勾选。 */
+/** 重新调试：按指标短名刷新采样值，保留仍存在指标的勾选/分组/单位/描述，消失的视为未勾选。 */
 export const mergeRetainedTrialMetricState = ({
   nextMetrics,
   prevSelected,
@@ -468,12 +555,11 @@ export const mergeRetainedTrialMetricState = ({
     if (!item?.key || isSelfMetricName(item.name)) {
       return;
     }
-    selected[item.key] = Object.prototype.hasOwnProperty.call(
-      prevSelected,
-      item.key
-    )
-      ? Boolean(prevSelected[item.key])
-      : true;
+    selected[item.key] = isReservedScriptMetricId(item.name)
+      ? false
+      : Object.prototype.hasOwnProperty.call(prevSelected, item.key)
+        ? Boolean(prevSelected[item.key])
+        : true;
     if (prevCatalog[item.key]) {
       catalog[item.key] = { ...prevCatalog[item.key] };
     }
@@ -486,11 +572,25 @@ export const excludeSelfMonitorMetrics = (
 ): BusinessMetricItem[] =>
   metrics.filter((item) => item?.name && !isSelfMetricName(item.name));
 
+const isCatalogEnumType = (dataType?: string): boolean =>
+  String(dataType || '').toLowerCase() === 'enum';
+
+const sameCatalogUnit = (
+  current: ScriptMetricCatalogDraft['unit'],
+  nextPath: string[]
+): boolean => {
+  if (!Array.isArray(current) || current.length !== nextPath.length) {
+    return false;
+  }
+  return current.every((part, index) => String(part) === nextPath[index]);
+};
+
 export const applyDefaultCatalogDrafts = (
   metrics: BusinessMetricItem[],
   catalogByKey: Record<string, ScriptMetricCatalogDraft>,
   defaultGroupId?: number | null,
-  defaultUnitPath?: string[]
+  unitOptions: Array<{ value?: string; children?: Array<{ value: string }> }> = [],
+  existingByName: Map<string, CatalogMetricRef> = new Map()
 ): { catalog: Record<string, ScriptMetricCatalogDraft>; changed: boolean } => {
   const next = { ...catalogByKey };
   let changed = false;
@@ -498,18 +598,51 @@ export const applyDefaultCatalogDrafts = (
     if (!item?.key || isSelfMetricName(item.name)) {
       return;
     }
+    const existing = existingByName.get(toStdoutMetricName(item.name));
     const draft = { ...(next[item.key] || {}) };
     let patched = false;
-    if (draft.metric_group == null && defaultGroupId) {
-      draft.metric_group = defaultGroupId;
-      patched = true;
-    }
-    if (
-      (draft.unit == null || (Array.isArray(draft.unit) && !draft.unit.length)) &&
-      defaultUnitPath
-    ) {
-      draft.unit = defaultUnitPath;
-      patched = true;
+    if (existing) {
+      if (existing.data_type && draft.data_type !== existing.data_type) {
+        draft.data_type = existing.data_type;
+        patched = true;
+      }
+      if (!draft.editedGroup && existing.metric_group) {
+        const groupId = Number(existing.metric_group);
+        if (Number.isFinite(groupId) && groupId > 0 && draft.metric_group !== groupId) {
+          draft.metric_group = groupId;
+          patched = true;
+        }
+      }
+      if (!draft.editedUnit) {
+        if (isCatalogEnumType(existing.data_type)) {
+          if (draft.unit != null) {
+            draft.unit = undefined;
+            patched = true;
+          }
+        } else {
+          const unitId = String(existing.unit || '').trim() || DEFAULT_CATALOG_UNIT_ID;
+          const catalogPath = resolveDefaultCatalogUnitPath(unitOptions, unitId);
+          if (catalogPath && !sameCatalogUnit(draft.unit, catalogPath)) {
+            draft.unit = catalogPath;
+            patched = true;
+          }
+        }
+      }
+    } else {
+      if (draft.metric_group == null && defaultGroupId) {
+        draft.metric_group = defaultGroupId;
+        patched = true;
+      }
+      if (
+        !draft.editedUnit &&
+        (draft.unit == null || (Array.isArray(draft.unit) && !draft.unit.length))
+      ) {
+        const guessedPath = resolveGuessedCatalogUnitPath(item.name, unitOptions);
+        if (guessedPath) {
+          draft.unit = guessedPath;
+          patched = true;
+        }
+      }
     }
     if (patched) {
       next[item.key] = draft;
@@ -528,22 +661,52 @@ export const applyStdoutMetricNames = (
   }));
 
 export const CATALOG_METRIC_PAGE_SIZE = 100;
+/** 与后端 `METRIC_BATCH_UPDATE_MAX_SIZE` 对齐。 */
+export const METRIC_BATCH_UPDATE_MAX_SIZE = 100;
 
 const toCatalogMetricRefs = (
-  items: Array<{ id?: number; name?: string; display_name?: string }>
+  items: Array<{
+    id?: number;
+    name?: string;
+    display_name?: string;
+    metric_group?: number | string | null;
+    unit?: string;
+    data_type?: string;
+  }>
 ): CatalogMetricRef[] => {
   const refs: CatalogMetricRef[] = [];
   items.forEach((item) => {
     if (item?.name && typeof item.id === 'number') {
       const displayName = String(item.display_name || '').trim();
+      const groupId = Number(item.metric_group);
       refs.push({
         id: item.id,
         name: item.name,
-        ...(displayName ? { display_name: displayName } : {})
+        ...(displayName ? { display_name: displayName } : {}),
+        ...(Number.isFinite(groupId) && groupId > 0
+          ? { metric_group: groupId }
+          : {}),
+        ...(typeof item.unit === 'string' ? { unit: item.unit } : {}),
+        ...(typeof item.data_type === 'string'
+          ? { data_type: item.data_type }
+          : {})
       });
     }
   });
   return refs;
+};
+
+export const catalogMetricsByName = (
+  refs: CatalogMetricRef[]
+): Map<string, CatalogMetricRef> => {
+  const map = new Map<string, CatalogMetricRef>();
+  refs.forEach((item) => {
+    const name = String(item.name || '').trim();
+    if (name && !map.has(name)) {
+      map.set(name, item);
+    }
+  });
+  return map;
 };
 
 export const catalogMetricRefLabel = (item: CatalogMetricRef): string => {
@@ -619,6 +782,44 @@ export const planScriptMetricHardSyncDeletes = (
   });
 };
 
+export const findDuplicateDisplayNames = (
+  metrics: Array<{ name?: string; display_name?: string }>,
+  existing: CatalogMetricRef[] = []
+): string[] => {
+  const existingByDisplay = new Map<string, string>();
+  existing.forEach((item) => {
+    const metricId = String(item.name || '').trim();
+    const label = String(item.display_name || item.name || '')
+      .trim()
+      .toLowerCase();
+    if (label && metricId && !existingByDisplay.has(label)) {
+      existingByDisplay.set(label, metricId);
+    }
+  });
+  const found: string[] = [];
+  const seenInBatch = new Map<string, string>();
+  metrics.forEach((item) => {
+    const metricId = String(item.name || '').trim();
+    const display = String(item.display_name || item.name || '').trim();
+    if (!display || !metricId) {
+      return;
+    }
+    const key = display.toLowerCase();
+    const existingName = existingByDisplay.get(key);
+    if (existingName && existingName !== metricId && !found.includes(display)) {
+      found.push(display);
+    }
+    const batchName = seenInBatch.get(key);
+    if (batchName && batchName !== metricId && !found.includes(display)) {
+      found.push(display);
+    }
+    if (!seenInBatch.has(key)) {
+      seenInBatch.set(key, metricId);
+    }
+  });
+  return found;
+};
+
 export const buildScriptMetricRegisterPayload = (
   item: BusinessMetricItem,
   targetObjectId: string | number,
@@ -632,9 +833,9 @@ export const buildScriptMetricRegisterPayload = (
   display_name: item.name,
   query: `${item.name}{__$labels__}`,
   unit: resolvePersistCatalogUnitId(item.unit),
-  data_type: 'Number',
+  data_type: inferCatalogDataType(),
   description: resolveCatalogDescription(item.description),
-  dimensions: Object.keys(keepStoredTags(item.tags) || {}).map((key) => ({
+  dimensions: collectStoredDimensionNames(item).map((key) => ({
     name: key,
     description: key
   }))
@@ -642,13 +843,37 @@ export const buildScriptMetricRegisterPayload = (
 
 export const buildScriptMetricCatalogUpdatePayload = (
   item: BusinessMetricItem,
-  fallbackGroupId: number
-): ScriptMetricCatalogUpdatePayload => ({
-  metric_group: resolveCatalogMetricGroupId(item.metric_group, fallbackGroupId),
-  unit: resolvePersistCatalogUnitId(item.unit),
-  description: resolveCatalogDescription(item.description)
-});
+  existing?: CatalogMetricRef | null
+): ScriptMetricCatalogUpdatePayload | null => {
+  const payload: ScriptMetricCatalogUpdatePayload = {};
+  const nextGroup = resolveCatalogMetricGroupId(item.metric_group, 0);
+  const existingGroup = Number(existing?.metric_group);
+  if (
+    item.editedGroup &&
+    nextGroup > 0 &&
+    (!Number.isFinite(existingGroup) || existingGroup !== nextGroup)
+  ) {
+    payload.metric_group = nextGroup;
+  }
+  if (
+    item.editedUnit &&
+    !isCatalogEnumType(existing?.data_type || item.data_type)
+  ) {
+    const nextUnit = resolveCatalogUnitId(item.unit);
+    const existingUnit = String(existing?.unit || '').trim();
+    const sameUnit =
+      !nextUnit ||
+      nextUnit === existingUnit ||
+      (nextUnit === DEFAULT_CATALOG_UNIT_ID &&
+        (!existingUnit || existingUnit === DEFAULT_CATALOG_UNIT_ID));
+    if (!sameUnit) {
+      payload.unit = nextUnit;
+    }
+  }
+  return Object.keys(payload).length ? payload : null;
+};
 
+/** 确认按指标短名各提交一次；解析已按名合并，此处再去重。 */
 const uniqueMetricsByName = (metrics: BusinessMetricItem[]): BusinessMetricItem[] => {
   const seen = new Set<string>();
   const unique: BusinessMetricItem[] = [];
@@ -678,41 +903,46 @@ export const persistScriptMetrics = async ({
   objectId,
   metrics,
   client,
+  mode = SCRIPT_METRIC_PERSIST_MODE_ADD,
   staleDeletes = []
 }: {
   pluginId: string | number;
   objectId: string | number;
   metrics: BusinessMetricItem[];
   client: PersistScriptMetricsClient;
+  mode?: ScriptMetricPersistMode;
   staleDeletes?: CatalogMetricRef[];
 }): Promise<void> => {
   const persistableMetrics = applyStdoutMetricNames(metrics);
-  if (!persistableMetrics.length && !staleDeletes.length) {
+  const overwriteDeletes =
+    mode === SCRIPT_METRIC_PERSIST_MODE_OVERWRITE ? staleDeletes : [];
+  if (!persistableMetrics.length && !overwriteDeletes.length) {
     return;
   }
-  const { get, post, patch, del, t } = client;
+  const { get, post, patch, t } = client;
+  const reservedMetricIds = collectReservedMetricIdViolations(persistableMetrics);
+  if (reservedMetricIds.length) {
+    throw new Error(formatReservedMetricIdMessage(reservedMetricIds, t));
+  }
   const reservedKeys = collectReservedTagViolations(persistableMetrics);
   if (reservedKeys.length) {
     throw new Error(formatReservedTagRenameMessage(reservedKeys, t));
   }
   try {
-    const deletable = staleDeletes.filter(
+    const deletable = overwriteDeletes.filter(
       (item) => item?.id && item?.name && !isSelfMetricName(item.name)
     );
     if (deletable.length) {
-      if (!del) {
-        throw new Error(t('common.operationFailed'));
-      }
-      const deleteResults = await Promise.allSettled(
-        deletable.map((item) =>
-          del(`/monitor/api/metrics/${item.id}/`, SILENT_REQ)
-        )
-      );
-      const deleteRejected = deleteResults.find(
-        (result): result is PromiseRejectedResult => result.status === 'rejected'
-      );
-      if (deleteRejected) {
-        throw deleteRejected.reason;
+      const ids = deletable.map((item) => item.id);
+      for (let offset = 0; offset < ids.length; offset += CATALOG_METRIC_PAGE_SIZE) {
+        await post(
+          '/monitor/api/metrics/batch_delete/',
+          {
+            ids: ids.slice(offset, offset + CATALOG_METRIC_PAGE_SIZE),
+            monitor_plugin: Number(pluginId)
+          },
+          SILENT_REQ
+        );
       }
     }
 
@@ -750,10 +980,10 @@ export const persistScriptMetrics = async ({
       objectId,
       client
     });
-    const existingByName = new Map<string, number>();
+    const existingByName = new Map<string, CatalogMetricRef>();
     existing.forEach((item) => {
       if (!existingByName.has(item.name)) {
-        existingByName.set(item.name, item.id);
+        existingByName.set(item.name, item);
       }
     });
 
@@ -764,11 +994,18 @@ export const persistScriptMetrics = async ({
 
     const results = await Promise.allSettled(
       uniqueMetrics.map((item) => {
-        const existingId = existingByName.get(item.name);
-        if (existingId) {
+        const existingRow = existingByName.get(item.name);
+        if (existingRow?.id) {
+          const patchPayload = buildScriptMetricCatalogUpdatePayload(
+            item,
+            existingRow
+          );
+          if (!patchPayload) {
+            return Promise.resolve();
+          }
           return patch(
-            `/monitor/api/metrics/${existingId}/`,
-            buildScriptMetricCatalogUpdatePayload(item, fallbackGroupId),
+            `/monitor/api/metrics/${existingRow.id}/`,
+            patchPayload,
             SILENT_REQ
           );
         }
