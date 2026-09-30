@@ -5,7 +5,7 @@ from apps.monitor.services.custom_script_plugin import RESERVED_SCRIPT_METRIC_NA
 from apps.monitor.utils.instance_id_keys import resolve_metric_instance_id_keys
 from apps.monitor.utils.metric_query_labels import ensure_metric_labels_placeholder
 
-METRIC_BATCH_UPDATE_FIELDS = ("display_name", "metric_group", "unit", "data_type", "description")
+METRIC_BATCH_UPDATE_FIELDS = ("display_name", "metric_group", "unit", "data_type", "description", "dimensions")
 METRIC_BATCH_UPDATE_MAX_SIZE = 100
 METRIC_BATCH_DELETE_MAX_SIZE = 100
 METRIC_DATA_TYPES = ("Number", "Enum")
@@ -190,6 +190,13 @@ class MetricBatchUpdateItemSerializer(serializers.Serializer):
     unit = serializers.CharField(required=False, allow_blank=True)
     data_type = serializers.ChoiceField(choices=METRIC_DATA_TYPES, required=False)
     description = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    dimensions = serializers.ListField(
+        child=serializers.CharField(allow_blank=True, max_length=100),
+        required=False,
+    )
+
+    def validate_dimensions(self, value):
+        return [str(item or "").strip() for item in value if str(item or "").strip()]
 
 
 class MetricBatchUpdateSerializer(serializers.Serializer):
@@ -237,3 +244,48 @@ class MetricBatchDeleteSerializer(serializers.Serializer):
         if len(unique_ids) > METRIC_BATCH_DELETE_MAX_SIZE:
             raise serializers.ValidationError(f"单次批量删除不超过 {METRIC_BATCH_DELETE_MAX_SIZE} 条")
         return unique_ids
+
+
+def dimension_entry_name(item):
+    if isinstance(item, dict):
+        return str(item.get("name") or "").strip()
+    return str(item or "").strip()
+
+
+def validate_batch_dimension_names(names, metric_name=""):
+    seen = set()
+    metric_label = str(metric_name or "").strip() or "未知指标"
+    for dim in names:
+        lower = dim.casefold()
+        if is_reserved_script_metric_name(dim):
+            return f"指标 {metric_label} 的维度 {dim} 与保留字段冲突"
+        if lower in seen:
+            return f"指标 {metric_label} 的维度 {dim} 重复"
+        seen.add(lower)
+    return ""
+
+
+def merge_batch_dimensions(existing, names):
+    existing_by_lower = {}
+    preserved = []
+    for item in existing or []:
+        name = dimension_entry_name(item)
+        if not name:
+            continue
+        if is_reserved_script_metric_name(name):
+            preserved.append(dict(item) if isinstance(item, dict) else {"name": name, "description": name})
+            continue
+        existing_by_lower[name.casefold()] = item
+    merged = []
+    for name in names:
+        prev = existing_by_lower.get(name.casefold())
+        if isinstance(prev, dict):
+            entry = dict(prev)
+            entry["name"] = name
+            if not str(entry.get("description") or "").strip():
+                entry["description"] = name
+            merged.append(entry)
+        else:
+            merged.append({"name": name, "description": name})
+    merged.extend(preserved)
+    return merged

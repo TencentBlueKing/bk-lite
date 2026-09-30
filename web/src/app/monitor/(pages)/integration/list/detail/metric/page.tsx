@@ -1,7 +1,7 @@
 'use client';
 import './register-metric-pilot';
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { EditOutlined, DeleteOutlined, LockOutlined } from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, LockOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import {
   Alert,
   Input,
@@ -31,7 +31,7 @@ import {
   ObjectItem,
   MetricItem
 } from '@/app/monitor/types';
-import { MetricListItem, DimensionItem } from '@/app/monitor/types/integration';
+import { MetricListItem } from '@/app/monitor/types/integration';
 import Collapse from '@/components/collapse';
 import GroupModal from './groupModal';
 import MetricModal from './metricModal';
@@ -66,8 +66,7 @@ import {
 } from '../configure/scriptMetricEditCarry';
 import {
   cleanMeasurementName,
-  isSelfMetricName,
-  visibleDimensionItems
+  isSelfMetricName
 } from '../configure/scriptMetricsParser';
 import ScriptMetricGroupSelect from '../configure/scriptMetricGroupSelect';
 import {
@@ -76,8 +75,10 @@ import {
   applySuccessfulItemsToBaseline,
   chunkMetricBatchItems,
   collectDirtyBatchItems,
+  catalogEditableDimensionNames,
   countDirtyInlineFields,
   fieldErrorMessage,
+  findInlineDimensionIssue,
   groupErrorsByMetricId,
   isInlineFieldDirty,
   isMetricInlineReadonly,
@@ -93,6 +94,10 @@ interface ObjectTabOption {
 
 const INLINE_CONTROL_CLASS =
   'h-8 w-full min-w-0 [&_.ant-select-selector]:!h-8 [&_.ant-select-selector]:!min-h-8 [&_.ant-select-selector]:items-center [&_.ant-select-selection-item]:!leading-8';
+const DIMENSION_SELECT_CLASS =
+  `${INLINE_CONTROL_CLASS} [&_.ant-select-selector]:!max-h-8 [&_.ant-select-selector]:overflow-hidden [&_.ant-select-selection-overflow]:flex-nowrap`;
+const DIMENSION_CHIP_CLASS =
+  'inline-flex h-5 max-w-full min-w-0 items-center overflow-hidden rounded border border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-1 font-mono text-[11px] leading-none text-[var(--color-text-2)]';
 const DIRTY_CELL_CLASS =
   'bg-[var(--color-primary-light-1,var(--color-primary-bg-active))] shadow-[inset_2px_0_0_var(--color-primary)]';
 const ERROR_CELL_CLASS =
@@ -110,6 +115,21 @@ const InlineFieldWrap = ({
     return control;
   }
   return <Tooltip title={error}>{control}</Tooltip>;
+};
+
+const MetricDimensionTags = ({ names }: { names: string[] }) => {
+  if (!names.length) {
+    return <>--</>;
+  }
+  return (
+    <div className="flex max-w-full min-w-0 flex-nowrap items-center gap-1 overflow-hidden">
+      {names.map((name) => (
+        <span key={name} className={DIMENSION_CHIP_CLASS} title={name}>
+          <span className="min-w-0 truncate">{name}</span>
+        </span>
+      ))}
+    </div>
+  );
 };
 
 const ObjectTabLabel = ({
@@ -219,18 +239,7 @@ const Configure = () => {
     id?: unknown;
     is_pre?: unknown;
     name?: unknown;
-  }) => isMetricInlineReadonly(metric, isScriptPlugin);
-
-  const displayScriptDimensions = (dims?: DimensionItem[]) => {
-    const source =
-      templateType === 'script'
-        ? visibleDimensionItems(dims || [])
-        : dims || [];
-    const names = source
-      .map((item) => String(item?.name || '').trim())
-      .filter(Boolean);
-    return names.length ? names.join(',') : '--';
-  };
+  }) =>     isMetricInlineReadonly(metric, isScriptPlugin);
 
   const mapGroupOptions = (
     groups: MetricListItem[]
@@ -797,8 +806,39 @@ const Configure = () => {
     inlineBaseline,
     readonlyMetricIds
   );
+  const pluginDimensionOptions = useMemo(() => {
+    const seen = new Set<string>();
+    const options: { label: string; value: string }[] = [];
+    metrics.forEach((metric) => {
+      catalogEditableDimensionNames(metric.dimensions).forEach((name) => {
+        const key = name.toLowerCase();
+        if (seen.has(key)) {
+          return;
+        }
+        seen.add(key);
+        options.push({ label: name, value: name });
+      });
+    });
+    return options;
+  }, [metrics]);
 
   const popupContainer = () => document.body;
+
+  const dimensionIssueMessage = (issue: {
+    code: 'reserved' | 'duplicate';
+    name: string;
+  }) =>
+    issue.code === 'reserved'
+      ? t(
+        'monitor.integrations.reservedTagRenameDetail',
+        '保留字段，请换名：{keys}',
+        { keys: issue.name }
+      )
+      : t(
+        'monitor.integrations.metricInlineEditDimensionDuplicate',
+        '维度名重复：{name}',
+        { name: issue.name }
+      );
 
   const clearBatchFilter = () => {
     confirmIfDirtyThen(() => {
@@ -883,6 +923,29 @@ const Configure = () => {
           }
         ]
       }));
+      return;
+    }
+    const dimensionErrors: Record<number, MetricInlineItemError[]> = {};
+    items.forEach((item) => {
+      if (!item.dimensions) {
+        return;
+      }
+      const issue = findInlineDimensionIssue(item.dimensions);
+      if (!issue) {
+        return;
+      }
+      dimensionErrors[item.id] = [
+        {
+          id: item.id,
+          name: '',
+          field: 'dimensions',
+          message: dimensionIssueMessage(issue),
+          code: issue.code
+        }
+      ];
+    });
+    if (Object.keys(dimensionErrors).length) {
+      setInlineErrors((prev) => ({ ...prev, ...dimensionErrors }));
       return;
     }
     setBatchSaving(true);
@@ -1047,12 +1110,81 @@ const Configure = () => {
       }
     },
     {
-      title: t('monitor.integrations.dimension'),
+      title: (
+        <span className="inline-flex items-center gap-1">
+          {t('monitor.integrations.dimension')}
+          <Tooltip
+            title={t(
+              'monitor.integrations.metricInlineEditDimensionHint',
+              '这里改的只是指标说明里的维度，脚本实际输出什么标签不会因此改变，维度名要和脚本输出的标签名一致才有效'
+            )}
+          >
+            <QuestionCircleOutlined
+              className="text-[12px] text-[var(--color-text-3)]"
+              onClick={(event) => event.stopPropagation()}
+            />
+          </Tooltip>
+        </span>
+      ) as unknown as string,
       dataIndex: 'dimensions',
-      width: 100,
+      width: batchEditing ? 200 : 140,
+      minWidth: batchEditing ? 200 : undefined,
       key: 'dimensions',
       ellipsis: true,
-      render: (_, record) => <>{displayScriptDimensions(record.dimensions)}</>
+      onCell: (record: MetricItem) => ({
+        className: dirtyCellClass(record, 'dimensions')
+      }),
+      render: (_, record) => {
+        const names = catalogEditableDimensionNames(record.dimensions);
+        if (!batchEditing || isReadonlyMetric(record)) {
+          return <MetricDimensionTags names={names} />;
+        }
+        const id = Number(record.id);
+        const error = fieldErrorMessage(inlineErrors[id], 'dimensions');
+        return (
+          <InlineFieldWrap error={error}>
+            <Select
+              mode="tags"
+              size="middle"
+              maxTagCount="responsive"
+              className={DIMENSION_SELECT_CLASS}
+              status={error ? 'error' : undefined}
+              value={inlineDrafts[id]?.dimensions ?? []}
+              options={pluginDimensionOptions}
+              getPopupContainer={popupContainer}
+              popupMatchSelectWidth={false}
+              onChange={(next) => {
+                const dimensionNames = Array.isArray(next)
+                  ? next.map((item) => String(item))
+                  : [];
+                patchInlineDraft(id, 'dimensions', dimensionNames);
+                const issue = findInlineDimensionIssue(dimensionNames);
+                if (!issue) {
+                  return;
+                }
+                setInlineErrors((prev) => {
+                  const others = (prev[id] || []).filter(
+                    (item) => item.field !== 'dimensions'
+                  );
+                  return {
+                    ...prev,
+                    [id]: [
+                      ...others,
+                      {
+                        id,
+                        name: String(record.name || ''),
+                        field: 'dimensions',
+                        message: dimensionIssueMessage(issue),
+                        code: issue.code
+                      }
+                    ]
+                  };
+                });
+              }}
+            />
+          </InlineFieldWrap>
+        );
+      }
     },
     {
       title: t('monitor.integrations.metricGroup'),

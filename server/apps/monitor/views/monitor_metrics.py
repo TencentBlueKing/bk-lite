@@ -24,6 +24,8 @@ from apps.monitor.serializers.monitor_metrics import (
     MetricBatchUpdateSerializer,
     MetricGroupSerializer,
     MetricSerializer,
+    merge_batch_dimensions,
+    validate_batch_dimension_names,
 )
 from apps.monitor.services.custom_script_plugin import SCRIPT_SELF_MONITOR_METRIC_DELETE_ERROR, is_script_self_monitor_metric_name
 from apps.monitor.utils.metric_enum_locale import localize_metric_enum_unit
@@ -640,6 +642,12 @@ class MetricViewSet(viewsets.ModelViewSet):
             if not patch:
                 errors.append(_metric_batch_item_error(metric_id, name, None, "未指定要更新的字段", "empty_patch"))
                 continue
+            if "dimensions" in patch:
+                dimension_error = validate_batch_dimension_names(patch["dimensions"], name)
+                if dimension_error:
+                    errors.append(_metric_batch_item_error(metric_id, name, "dimensions", dimension_error, "invalid_dimension"))
+                    continue
+                patch["dimensions"] = merge_batch_dimensions(metric.dimensions, patch["dimensions"])
             if patch.get("data_type") == "Enum" and "unit" not in patch:
                 errors.append(_metric_batch_item_error(metric_id, name, "unit", "设为枚举时必须提供映射", "enum_mapping_required"))
                 continue

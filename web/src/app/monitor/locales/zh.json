@@ -930,6 +930,8 @@
       "metricInlineEditEnumDisabled": "请用单条编辑配置映射",
       "metricInlineEditEmpty": "没有需要保存的修改",
       "metricInlineEditReadonlyHint": "内置/自监控指标不可编辑",
+      "metricInlineEditDimensionHint": "这里改的只是指标说明里的维度，脚本实际输出什么标签不会因此改变，维度名要和脚本输出的标签名一致才有效",
+      "metricInlineEditDimensionDuplicate": "维度名重复：{name}",
       "batchMetricFilterBanner": "仅显示本批 {count} 个指标，其他指标（含自监控）已隐藏",
       "batchMetricFilterShowAll": "查看全部",
       "reservedTagRename": "保留字段，请换名",

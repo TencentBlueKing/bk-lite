@@ -75,6 +75,7 @@ const useIntegrationApi = () => {
           unit?: string;
           data_type?: string;
           description?: string;
+          dimensions?: string[];
         }>;
       }) => {
         return await post('/monitor/api/metrics/batch_update/', data, {

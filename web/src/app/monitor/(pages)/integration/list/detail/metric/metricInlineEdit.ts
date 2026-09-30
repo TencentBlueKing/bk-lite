@@ -1,6 +1,10 @@
 import { HandledRequestError } from '@/utils/request';
 import { MetricItem } from '@/app/monitor/types';
-import { isSelfMetricName } from '../configure/scriptMetricsParser';
+import {
+  isHiddenPlatformDimensionKey,
+  isReservedScriptTagKey,
+  isSelfMetricName
+} from '../configure/scriptMetricsParser';
 import { resolveCatalogUnitId } from '../configure/scriptMetricPersist';
 
 export const METRIC_INLINE_EDIT_FIELDS = [
@@ -8,7 +12,8 @@ export const METRIC_INLINE_EDIT_FIELDS = [
   'metric_group',
   'unit',
   'data_type',
-  'description'
+  'description',
+  'dimensions'
 ] as const;
 
 export type MetricInlineEditField = (typeof METRIC_INLINE_EDIT_FIELDS)[number];
@@ -19,6 +24,7 @@ export interface MetricInlineDraft {
   unit: string;
   data_type: string;
   description: string;
+  dimensions: string[];
 }
 
 export interface MetricInlineItemError {
@@ -36,6 +42,7 @@ export interface MetricBatchUpdateItem {
   unit?: string;
   data_type?: string;
   description?: string;
+  dimensions?: string[];
 }
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
@@ -68,6 +75,41 @@ export const isMetricInlineReadonly = (
   return hasBkliteScriptMetricPrefix(name);
 };
 
+export const catalogEditableDimensionNames = (
+  dims?: Array<{ name?: string }> | null
+): string[] =>
+  (dims || [])
+    .map((item) => String(item?.name || '').trim())
+    .filter(
+      (name) =>
+        Boolean(name) &&
+        !isHiddenPlatformDimensionKey(name) &&
+        !isReservedScriptTagKey(name)
+    );
+
+export const normalizeInlineDimensionNames = (names: string[] | undefined): string[] =>
+  (names || []).map((name) => String(name || '').trim()).filter(Boolean);
+
+export const findInlineDimensionIssue = (
+  names: string[] | undefined
+): { code: 'reserved' | 'duplicate'; name: string } | null => {
+  const seen = new Set<string>();
+  for (const name of normalizeInlineDimensionNames(names)) {
+    const lower = name.toLowerCase();
+    if (isReservedScriptTagKey(name)) {
+      return { code: 'reserved', name };
+    }
+    if (seen.has(lower)) {
+      return { code: 'duplicate', name };
+    }
+    seen.add(lower);
+  }
+  return null;
+};
+
+const sameDimensionNames = (left: string[], right: string[]): boolean =>
+  left.length === right.length && left.every((name, index) => name === right[index]);
+
 export const snapshotMetricInlineDraft = (
   metric: MetricItem
 ): MetricInlineDraft => {
@@ -86,7 +128,8 @@ export const snapshotMetricInlineDraft = (
       (typeof metric.description === 'string' ? metric.description : '') ||
         metric.display_description ||
         ''
-    )
+    ),
+    dimensions: catalogEditableDimensionNames(metric.dimensions)
   };
 };
 
@@ -97,7 +140,8 @@ export const normalizeMetricInlineDraft = (
   metric_group: Number(draft.metric_group) || 0,
   unit: String(draft.unit || ''),
   data_type: draft.data_type === 'Enum' ? 'Enum' : 'Number',
-  description: draft.description == null ? '' : String(draft.description)
+  description: draft.description == null ? '' : String(draft.description),
+  dimensions: normalizeInlineDimensionNames(draft.dimensions)
 });
 
 export const isInlineFieldDirty = (
@@ -116,6 +160,9 @@ export const isInlineFieldDirty = (
     prev.data_type === 'Enum'
   ) {
     return false;
+  }
+  if (field === 'dimensions') {
+    return !sameDimensionNames(next.dimensions, prev.dimensions);
   }
   return next[field] !== prev[field];
 };
@@ -174,6 +221,10 @@ export const buildMetricBatchUpdateItem = (
   }
   if (next.description !== prev.description) {
     item.description = next.description;
+    changed = true;
+  }
+  if (!sameDimensionNames(next.dimensions, prev.dimensions)) {
+    item.dimensions = next.dimensions;
     changed = true;
   }
   return changed ? item : null;

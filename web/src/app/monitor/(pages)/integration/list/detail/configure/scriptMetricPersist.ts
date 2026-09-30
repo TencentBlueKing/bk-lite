@@ -1,6 +1,5 @@
 import {
   BusinessMetricItem,
-  cleanDisplayTags,
   cleanMeasurementName,
   collectReservedScriptTagKeys,
   isHiddenPlatformDimensionKey,
@@ -502,13 +501,6 @@ export const formatReservedMetricIdMessage = (
   );
   return detailed.includes('{keys}') ? `${rename}：${joined}` : detailed;
 };
-
-export const formatDimensionTagSummary = (
-  tags?: Record<string, string>
-): string =>
-  Object.entries(cleanDisplayTags(tags) || {})
-    .map(([key, value]) => `${key}=${value}`)
-    .join(' ');
 
 const toStdoutMetricName = (name: string): string =>
   cleanMeasurementName(String(name || '').trim());
