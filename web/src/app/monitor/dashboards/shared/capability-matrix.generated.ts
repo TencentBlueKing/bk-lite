@@ -1020,6 +1020,15 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_firebrick",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_harbour",
       "capabilities": [
         "uptime",
