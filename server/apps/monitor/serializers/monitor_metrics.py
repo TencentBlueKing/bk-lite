@@ -252,12 +252,37 @@ def dimension_entry_name(item):
     return str(item or "").strip()
 
 
-def validate_batch_dimension_names(names, metric_name=""):
+# 脚本插件隐藏并在合并时原样保留的平台维度。前后端同内容。
+PRESERVED_METRIC_DIMENSION_KEYS = (
+    "instance_id",
+    "agent_id",
+    "plugin_id",
+    "instance_type",
+    "collect_type",
+    "config_id",
+    "config_type",
+    "host",
+    "script",
+    "bklite_script_reserved_keys",
+)
+PRESERVED_METRIC_DIMENSION_PREFIX = "bklite_script_"
+_PRESERVED_METRIC_DIMENSION_KEY_SET = {key.casefold() for key in PRESERVED_METRIC_DIMENSION_KEYS}
+
+
+def is_preserved_metric_dimension_name(name):
+    text = str(name or "").strip()
+    if not text:
+        return False
+    lower = text.casefold()
+    return lower in _PRESERVED_METRIC_DIMENSION_KEY_SET or lower.startswith(PRESERVED_METRIC_DIMENSION_PREFIX)
+
+
+def validate_batch_dimension_names(names, metric_name="", preserve_hidden=False):
     seen = set()
     metric_label = str(metric_name or "").strip() or "未知指标"
     for dim in names:
         lower = dim.casefold()
-        if is_reserved_script_metric_name(dim):
+        if preserve_hidden and is_preserved_metric_dimension_name(dim):
             return f"指标 {metric_label} 的维度 {dim} 与保留字段冲突"
         if lower in seen:
             return f"指标 {metric_label} 的维度 {dim} 重复"
@@ -265,27 +290,45 @@ def validate_batch_dimension_names(names, metric_name=""):
     return ""
 
 
-def merge_batch_dimensions(existing, names):
+def _dimension_entry_for_name(name, existing_by_lower):
+    prev = existing_by_lower.get(name.casefold())
+    if isinstance(prev, dict):
+        entry = dict(prev)
+        entry["name"] = name
+        if not str(entry.get("description") or "").strip():
+            entry["description"] = name
+        return entry
+    return {"name": name, "description": name}
+
+
+def _copy_dimension_entry(item, name):
+    if isinstance(item, dict):
+        return dict(item)
+    return {"name": name, "description": name}
+
+
+def merge_batch_dimensions(existing, names, preserve_hidden=False):
+    existing_items = []
     existing_by_lower = {}
-    preserved = []
     for item in existing or []:
         name = dimension_entry_name(item)
         if not name:
             continue
-        if is_reserved_script_metric_name(name):
-            preserved.append(dict(item) if isinstance(item, dict) else {"name": name, "description": name})
-            continue
+        existing_items.append(item)
         existing_by_lower[name.casefold()] = item
+    if not preserve_hidden:
+        return [_dimension_entry_for_name(name, existing_by_lower) for name in names]
+    user_names = iter(names)
     merged = []
-    for name in names:
-        prev = existing_by_lower.get(name.casefold())
-        if isinstance(prev, dict):
-            entry = dict(prev)
-            entry["name"] = name
-            if not str(entry.get("description") or "").strip():
-                entry["description"] = name
-            merged.append(entry)
-        else:
-            merged.append({"name": name, "description": name})
-    merged.extend(preserved)
+    for item in existing_items:
+        name = dimension_entry_name(item)
+        if is_preserved_metric_dimension_name(name):
+            merged.append(_copy_dimension_entry(item, name))
+            continue
+        try:
+            user_name = next(user_names)
+        except StopIteration:
+            continue
+        merged.append(_dimension_entry_for_name(user_name, existing_by_lower))
+    merged.extend(_dimension_entry_for_name(user_name, existing_by_lower) for user_name in user_names)
     return merged

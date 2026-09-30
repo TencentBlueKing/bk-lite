@@ -1,11 +1,38 @@
 import { HandledRequestError } from '@/utils/request';
 import { MetricItem } from '@/app/monitor/types';
-import {
-  isHiddenPlatformDimensionKey,
-  isReservedScriptTagKey,
-  isSelfMetricName
-} from '../configure/scriptMetricsParser';
+import { isSelfMetricName } from '../configure/scriptMetricsParser';
 import { resolveCatalogUnitId } from '../configure/scriptMetricPersist';
+
+/** 脚本插件隐藏并在合并时原样保留的平台维度。前后端同内容。 */
+export const PRESERVED_METRIC_DIMENSION_KEYS = [
+  'instance_id',
+  'agent_id',
+  'plugin_id',
+  'instance_type',
+  'collect_type',
+  'config_id',
+  'config_type',
+  'host',
+  'script',
+  'bklite_script_reserved_keys'
+] as const;
+
+const PRESERVED_METRIC_DIMENSION_KEY_SET = new Set(
+  PRESERVED_METRIC_DIMENSION_KEYS.map((key) => key.toLowerCase())
+);
+const PRESERVED_METRIC_DIMENSION_PREFIX = 'bklite_script_';
+
+export const isPreservedMetricDimensionName = (name: string): boolean => {
+  const text = String(name || '').trim();
+  if (!text) {
+    return false;
+  }
+  const lower = text.toLowerCase();
+  return (
+    PRESERVED_METRIC_DIMENSION_KEY_SET.has(lower) ||
+    lower.startsWith(PRESERVED_METRIC_DIMENSION_PREFIX)
+  );
+};
 
 export const METRIC_INLINE_EDIT_FIELDS = [
   'display_name',
@@ -76,27 +103,29 @@ export const isMetricInlineReadonly = (
 };
 
 export const catalogEditableDimensionNames = (
-  dims?: Array<{ name?: string }> | null
+  dims?: Array<{ name?: string }> | null,
+  isScriptPlugin = false
 ): string[] =>
   (dims || [])
     .map((item) => String(item?.name || '').trim())
-    .filter(
-      (name) =>
-        Boolean(name) &&
-        !isHiddenPlatformDimensionKey(name) &&
-        !isReservedScriptTagKey(name)
-    );
+    .filter((name) => {
+      if (!name) {
+        return false;
+      }
+      return !(isScriptPlugin && isPreservedMetricDimensionName(name));
+    });
 
 export const normalizeInlineDimensionNames = (names: string[] | undefined): string[] =>
   (names || []).map((name) => String(name || '').trim()).filter(Boolean);
 
 export const findInlineDimensionIssue = (
-  names: string[] | undefined
+  names: string[] | undefined,
+  isScriptPlugin = false
 ): { code: 'reserved' | 'duplicate'; name: string } | null => {
   const seen = new Set<string>();
   for (const name of normalizeInlineDimensionNames(names)) {
     const lower = name.toLowerCase();
-    if (isReservedScriptTagKey(name)) {
+    if (isScriptPlugin && isPreservedMetricDimensionName(name)) {
       return { code: 'reserved', name };
     }
     if (seen.has(lower)) {
@@ -111,7 +140,8 @@ const sameDimensionNames = (left: string[], right: string[]): boolean =>
   left.length === right.length && left.every((name, index) => name === right[index]);
 
 export const snapshotMetricInlineDraft = (
-  metric: MetricItem
+  metric: MetricItem,
+  isScriptPlugin = false
 ): MetricInlineDraft => {
   const dataType =
     String(metric.data_type || 'Number') === 'Enum' ? 'Enum' : 'Number';
@@ -129,7 +159,10 @@ export const snapshotMetricInlineDraft = (
         metric.display_description ||
         ''
     ),
-    dimensions: catalogEditableDimensionNames(metric.dimensions)
+    dimensions: catalogEditableDimensionNames(
+      metric.dimensions,
+      isScriptPlugin
+    )
   };
 };
 

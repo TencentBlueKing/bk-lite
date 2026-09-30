@@ -239,7 +239,7 @@ const Configure = () => {
     id?: unknown;
     is_pre?: unknown;
     name?: unknown;
-  }) =>     isMetricInlineReadonly(metric, isScriptPlugin);
+  }) => isMetricInlineReadonly(metric, isScriptPlugin);
 
   const mapGroupOptions = (
     groups: MetricListItem[]
@@ -265,7 +265,7 @@ const Configure = () => {
       if (!Number.isFinite(id) || id <= 0) {
         return;
       }
-      nextDrafts[id] = snapshotMetricInlineDraft(metric);
+      nextDrafts[id] = snapshotMetricInlineDraft(metric, isScriptPlugin);
     });
     setInlineDrafts(nextDrafts);
     setInlineBaseline(cloneDeep(nextDrafts));
@@ -810,17 +810,19 @@ const Configure = () => {
     const seen = new Set<string>();
     const options: { label: string; value: string }[] = [];
     metrics.forEach((metric) => {
-      catalogEditableDimensionNames(metric.dimensions).forEach((name) => {
-        const key = name.toLowerCase();
-        if (seen.has(key)) {
-          return;
+      catalogEditableDimensionNames(metric.dimensions, isScriptPlugin).forEach(
+        (name) => {
+          const key = name.toLowerCase();
+          if (seen.has(key)) {
+            return;
+          }
+          seen.add(key);
+          options.push({ label: name, value: name });
         }
-        seen.add(key);
-        options.push({ label: name, value: name });
-      });
+      );
     });
     return options;
-  }, [metrics]);
+  }, [metrics, isScriptPlugin]);
 
   const popupContainer = () => document.body;
 
@@ -930,7 +932,7 @@ const Configure = () => {
       if (!item.dimensions) {
         return;
       }
-      const issue = findInlineDimensionIssue(item.dimensions);
+      const issue = findInlineDimensionIssue(item.dimensions, isScriptPlugin);
       if (!issue) {
         return;
       }
@@ -1135,7 +1137,10 @@ const Configure = () => {
         className: dirtyCellClass(record, 'dimensions')
       }),
       render: (_, record) => {
-        const names = catalogEditableDimensionNames(record.dimensions);
+        const names = catalogEditableDimensionNames(
+          record.dimensions,
+          isScriptPlugin
+        );
         if (!batchEditing || isReadonlyMetric(record)) {
           return <MetricDimensionTags names={names} />;
         }
@@ -1158,14 +1163,25 @@ const Configure = () => {
                   ? next.map((item) => String(item))
                   : [];
                 patchInlineDraft(id, 'dimensions', dimensionNames);
-                const issue = findInlineDimensionIssue(dimensionNames);
-                if (!issue) {
-                  return;
-                }
+                const issue = findInlineDimensionIssue(
+                  dimensionNames,
+                  isScriptPlugin
+                );
                 setInlineErrors((prev) => {
                   const others = (prev[id] || []).filter(
                     (item) => item.field !== 'dimensions'
                   );
+                  if (!issue) {
+                    if (!others.length) {
+                      if (!prev[id]) {
+                        return prev;
+                      }
+                      const nextErrors = { ...prev };
+                      delete nextErrors[id];
+                      return nextErrors;
+                    }
+                    return { ...prev, [id]: others };
+                  }
                   return {
                     ...prev,
                     [id]: [
