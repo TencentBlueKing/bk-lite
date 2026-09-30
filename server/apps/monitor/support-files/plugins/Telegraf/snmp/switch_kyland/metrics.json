@@ -23,7 +23,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "avg(snmp_device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -36,7 +36,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "avg(device_memory_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "avg(snmp_device_memory_usage{instance_type='switch', __$labels__}) by (instance_id)",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
