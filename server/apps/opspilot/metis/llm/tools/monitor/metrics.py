@@ -210,3 +210,37 @@ def monitor_get_host_resource_snapshot(
         config,
         instance_ids=instance_ids,
     )
+
+
+@tool(
+    description=(
+        "按时间窗对全量主机做 CPU/内存/磁盘监控指标使用率排行（Top N）。"
+        "用户问「最近/近 N 分钟使用率最高的前 M 台主机」「哪些主机磁盘高」等排名类问题时必须用本工具，"
+        "不要用 monitor_get_host_resource_snapshot（它只出全局聚合快照值、不排名、不接受时间窗），"
+        "也不要逐台传 instance_ids 调 query_metric_data 再手工排序。"
+        "metric_type 取 cpu/memory/disk；窗口用 lookback_minutes（如「最近5分钟」传 5），"
+        "或 time 传 RFC3339 区间；limit 默认 10。"
+        "aggregation=max 看窗口内峰值（默认，瞬时打满），avg 看持续偏高；返回行同时含 peak_percent 与 avg_percent。"
+    )
+)
+def monitor_get_host_resource_top_by_time(
+    metric_type: str = "disk",
+    lookback_minutes: Optional[float] = None,
+    time: Optional[List[str]] = None,
+    aggregation: str = "max",
+    limit: int = 10,
+    config: RunnableConfig = None,
+) -> Dict[str, Any]:
+    if not metric_type:
+        return wrap_error("metric_type is required")
+    if lookback_minutes in (None, "") and not time:
+        return wrap_error("lookback_minutes 或 time is required")
+    return call_monitor_rpc(
+        "get_host_resource_top_by_time",
+        config,
+        metric_type=metric_type,
+        lookback_minutes=lookback_minutes,
+        time=time,
+        aggregation=aggregation,
+        limit=limit,
+    )
