@@ -80,10 +80,10 @@
       ],
       "name": "device_memory_total",
       "display_name": "内存总量",
-      "query": "sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "sum(snmp_device_memory_total{instance_type='switch', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
-      "description": "Total physical memory of the Pluribus Netvisor ONE switch in bytes (UCD-SNMP-MIB memTotalReal)."
+      "description": "Total physical memory of the Pluribus Netvisor ONE switch in bytes (UCD-SNMP-MIB memTotalReal scalar, reported in kB and converted to bytes by the collector)."
     },
     {
       "metric_group": "Memory",
@@ -93,10 +93,10 @@
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲",
-      "query": "sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "sum(snmp_device_memory_free{instance_type='switch', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
-      "description": "Free physical memory of the Pluribus Netvisor ONE switch in bytes (UCD-SNMP-MIB memAvailReal)."
+      "description": "Available physical memory of the Pluribus Netvisor ONE switch in bytes (UCD-SNMP-MIB memAvailReal scalar, reported in kB and converted to bytes by the collector)."
     },
     {
       "metric_group": "Memory",
@@ -106,10 +106,10 @@
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "(sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) - sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) / sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100",
+      "query": "avg(snmp_device_memory_usage{instance_type='switch', __$labels__}) by (instance_id)",
       "unit": "percent",
       "data_type": "Number",
-      "description": "Memory utilisation of the Pluribus Netvisor ONE switch, derived as (total-free)/total."
+      "description": "Memory utilization of the Pluribus Netvisor ONE switch, computed by the collector as (memTotalReal - memAvailReal) / memTotalReal * 100."
     },
     {
       "metric_group": "Temperature",
