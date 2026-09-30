@@ -790,7 +790,7 @@ const Configure = () => {
           .filter((item) => isReadonlyMetric(item))
           .map((item) => Number(item.id))
       ),
-    [metrics]
+    [metrics, templateType]
   );
   const dirtyFieldCount = countDirtyInlineFields(
     inlineDrafts,

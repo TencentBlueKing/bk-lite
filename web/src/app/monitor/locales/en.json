@@ -905,6 +905,7 @@
       "trialRunMetricValue": "Sample Value",
       "trialRunSampleCount": "{count} samples",
       "trialRunSampleMore": "{count} more",
+      "trialRunDimensionValues": "Dimension values ({count})",
       "trialRunMetricDimensions": "Dimensions",
       "trialRunMetricDescription": "Metric Description",
       "trialRunSelectInstance": "Target instance for debug",

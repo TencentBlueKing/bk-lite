@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef, useLayoutEffect } from 'react';
-import { Alert, Button, Cascader, Checkbox, Spin, Tag, Tooltip } from 'antd';
+import { Alert, Button, Cascader, Checkbox, Popover, Spin, Tag, Tooltip } from 'antd';
 import {
   CheckCircleFilled,
   CloseCircleFilled,
@@ -19,7 +19,6 @@ import {
   buildUnitCascaderOptions,
   catalogMetricsByName,
   extractCatalogItems,
-  formatDimensionTagSummary,
   listPluginCatalogMetrics,
   mergeRetainedTrialMetricState,
   pickSelectedBusinessMetrics,
@@ -201,41 +200,88 @@ const DimensionTagLine: React.FC<{ names: string[] }> = ({
   );
 };
 
-const SAMPLE_PREVIEW_MAX = 20;
+const SAMPLE_PREVIEW_MAX = 100;
 /** 采样值格固定两行高；内容作为一组垂直居中，避免贴顶。 */
 const SAMPLE_VALUE_CELL_CLASS =
   'flex h-8 w-full min-w-0 items-center justify-end';
+/** 表头吸顶：浅灰叠在不透明底色上，暗色主题滚动时不透出正文。 */
+const SAMPLE_PREVIEW_HEAD_CLASS =
+  'sticky top-0 z-[1] h-7 whitespace-nowrap border-b border-[var(--color-border-1)] [background:linear-gradient(var(--color-fill-1),var(--color-fill-1)),var(--color-bg)] px-2 font-medium text-[var(--color-text-2)]';
+const SAMPLE_PREVIEW_CELL_CLASS =
+  'h-7 border-b border-[var(--color-border-1)] px-2 align-middle';
+const SAMPLE_PREVIEW_EMPTY = '--';
 
+interface SamplePreviewItem {
+  value: number | string;
+  tags?: Record<string, string>;
+}
+
+/** 维度值弹层：每个维度一列，末列为采样值；表头吸顶，超出高度内部滚动。 */
 const SamplePreviewTable: React.FC<{
-  samples: Array<{ value: number | string; tags?: Record<string, string> }>;
-}> = ({ samples }) => {
+  dimensionNames: string[];
+  samples: SamplePreviewItem[];
+}> = ({ dimensionNames, samples }) => {
   const { t } = useTranslation();
   const visible = samples.slice(0, SAMPLE_PREVIEW_MAX);
   const remaining = Math.max(0, samples.length - SAMPLE_PREVIEW_MAX);
   return (
-    <table className="border-separate border-spacing-x-3 border-spacing-y-0.5 text-[11px] leading-4">
-      <tbody>
-        {visible.map((sample, index) => (
-          <tr key={index}>
-            <td className="max-w-[220px] truncate align-top font-mono">
-              {formatDimensionTagSummary(sample.tags) || '—'}
-            </td>
-            <td className="whitespace-nowrap text-right align-top font-mono tabular-nums">
-              {String(sample.value)}
-            </td>
-          </tr>
-        ))}
-        {remaining > 0 ? (
-          <tr>
-            <td colSpan={2} className="pt-1 text-right opacity-80">
-              {t('monitor.integrations.trialRunSampleMore', '还有 {count} 条', {
-                count: remaining
-              })}
-            </td>
-          </tr>
-        ) : null}
-      </tbody>
-    </table>
+    <div className="min-w-[200px] max-w-[480px]">
+      <div className="max-h-[240px] overflow-auto">
+        <table className="w-full border-separate border-spacing-0 text-xs leading-4">
+          <thead>
+            <tr>
+              {dimensionNames.map((name) => (
+                <th
+                  key={name}
+                  title={name}
+                  className={`${SAMPLE_PREVIEW_HEAD_CLASS} text-left`}
+                >
+                  <div className="max-w-[160px] truncate font-mono">{name}</div>
+                </th>
+              ))}
+              <th className={`${SAMPLE_PREVIEW_HEAD_CLASS} text-right`}>
+                {t('monitor.integrations.trialRunMetricValue', '采样值')}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map((sample, index) => (
+              <tr key={index}>
+                {dimensionNames.map((name) => {
+                  const raw = sample.tags?.[name];
+                  const text =
+                    raw === undefined || raw === null || String(raw) === ''
+                      ? SAMPLE_PREVIEW_EMPTY
+                      : String(raw);
+                  return (
+                    <td
+                      key={name}
+                      className={`${SAMPLE_PREVIEW_CELL_CLASS} text-left text-[var(--color-text-1)]`}
+                    >
+                      <div className="max-w-[160px] truncate" title={text}>
+                        {text}
+                      </div>
+                    </td>
+                  );
+                })}
+                <td
+                  className={`${SAMPLE_PREVIEW_CELL_CLASS} whitespace-nowrap text-right font-mono tabular-nums text-[var(--color-text-1)]`}
+                >
+                  {String(sample.value)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {remaining > 0 ? (
+        <div className="pt-1.5 text-right text-xs text-[var(--color-text-3)]">
+          {t('monitor.integrations.trialRunSampleMore', '还有 {count} 条', {
+            count: remaining
+          })}
+        </div>
+      ) : null}
+    </div>
   );
 };
 
@@ -1007,23 +1053,45 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                       ? item.samples
                       : [{ value: item.value, tags: item.tags }];
                   const sampleStack = (
-                    <div
-                      className={`${SAMPLE_VALUE_CELL_CLASS} ${
-                        showSamplePreview ? 'cursor-help' : 'cursor-default'
-                      }`}
-                    >
+                    <div className={SAMPLE_VALUE_CELL_CLASS}>
                       <div className="flex min-w-0 flex-col items-end">
                         <div className="min-w-0 max-w-full truncate text-right font-mono text-xs leading-4 tabular-nums text-[var(--color-text-3)]">
                           {String(item.value)}
                         </div>
                         {showSamplePreview ? (
-                          <div className="text-right text-[11px] leading-[14px] text-[var(--color-text-3)] underline decoration-dashed decoration-[var(--color-text-3)] underline-offset-2">
-                            {t(
-                              'monitor.integrations.trialRunSampleCount',
-                              '共 {count} 条',
-                              { count: sampleCount }
+                          <Popover
+                            placement="bottomRight"
+                            arrow={false}
+                            title={(
+                              <span className="text-xs font-medium text-[var(--color-text-1)]">
+                                {t(
+                                  'monitor.integrations.trialRunDimensionValues',
+                                  '维度值（{count}）',
+                                  { count: sampleCount }
+                                )}
+                              </span>
                             )}
-                          </div>
+                            styles={{
+                              body: {
+                                padding: '8px 10px',
+                                border: '1px solid var(--color-border-1)'
+                              }
+                            }}
+                            content={(
+                              <SamplePreviewTable
+                                dimensionNames={visibleDimensionNames}
+                                samples={previewSamples}
+                              />
+                            )}
+                          >
+                            <div className="cursor-help text-right text-[11px] leading-[14px] text-[var(--color-text-3)] underline decoration-dashed decoration-[var(--color-text-3)] underline-offset-2">
+                              {t(
+                                'monitor.integrations.trialRunSampleCount',
+                                '共 {count} 条',
+                                { count: sampleCount }
+                              )}
+                            </div>
+                          </Popover>
                         ) : null}
                       </div>
                     </div>
@@ -1132,22 +1200,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
                           }
                         />
                       </div>
-                      <div className="min-w-0">
-                        {showSamplePreview ? (
-                          <Tooltip
-                            placement="leftTop"
-                            autoAdjustOverflow={false}
-                            styles={{ body: { padding: 8 } }}
-                            title={(
-                              <SamplePreviewTable samples={previewSamples} />
-                            )}
-                          >
-                            {sampleStack}
-                          </Tooltip>
-                        ) : (
-                          sampleStack
-                        )}
-                      </div>
+                      <div className="min-w-0">{sampleStack}</div>
                     </div>
                   );
                 })}

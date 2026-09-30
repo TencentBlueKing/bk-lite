@@ -905,6 +905,7 @@
       "trialRunMetricValue": "采样值",
       "trialRunSampleCount": "共 {count} 条",
       "trialRunSampleMore": "还有 {count} 条",
+      "trialRunDimensionValues": "维度值（{count}）",
       "trialRunMetricDimensions": "维度",
       "trialRunMetricDescription": "指标描述",
       "trialRunSelectInstance": "调试目标实例",
