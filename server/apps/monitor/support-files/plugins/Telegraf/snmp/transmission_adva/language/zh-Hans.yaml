@@ -1,0 +1,43 @@
+Transmission ADVA SNMP:
+  name: ADVA (Telegraf)
+  desc: 面向 ADVA / ADTRAN 光传输设备的 SNMP 监控模板，可采集运行时长、内存总量/空闲/已用/使用率、接口流量，适用于 FSP 150 / FSP 3000 网元（企业号 PEN 2544）。
+monitor_object:
+  Transmission: 传输设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Transmission:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64
+        位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64
+        位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+    device_total_incoming_traffic:
+      name: 设备接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率（按所有接口的 64 位 ifHCInOctets 汇总），单位为字节每秒。帮助管理员获取整个设备的接收流量情况，支持总体流量监控与容量规划。
+    device_total_outgoing_traffic:
+      name: 设备发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
+    device_memory_total:
+      name: 内存总量
+      desc: ADVA 网元内存总量（neMemorySizeTotal），设备以 kBytes 上报，展示时换算为字节。
+    device_memory_free:
+      name: 内存空闲
+      desc: ADVA 网元空闲内存（neMemorySizeFree），设备以 kBytes 上报，展示时换算为字节。
+    device_memory_used:
+      name: 内存已用
+      desc: ADVA 网元已用内存，按 总量-空闲 计算，并由 kBytes 换算为字节。
+    device_memory_usage:
+      name: 内存使用率
+      desc: ADVA 网元内存使用率，按 (总量-空闲)/总量 计算。持续偏高可能表示控制面资源压力或设备服务不稳定。
+monitor_object_metric_group:
+  Transmission:
+    Base: 基础
+    Traffic: 流量
+    Memory: 内存

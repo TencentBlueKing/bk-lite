@@ -1,0 +1,151 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_adva",
+  "plugin": "Transmission ADVA SNMP",
+  "plugin_desc": "SNMP monitoring template for ADVA / ADTRAN optical transmission device. It reports uptime, memory total/free/used/utilization, and interface traffic, for FSP 150 / FSP 3000 network elements (enterprise PEN 2544).",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='transmission', collect_type='snmp_adva'}) by (instance_id)",
+  "name": "Transmission",
+  "icon": "mm-transmission_传输设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='transmission'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_memory_usage",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "snmp_device_memory_total{instance_type='transmission', __$labels__} * 1024",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the total memory of the ADVA network element (neMemorySizeTotal). The device reports kBytes; the value is scaled to bytes."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_free",
+      "query": "snmp_device_memory_free{instance_type='transmission', __$labels__} * 1024",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the free memory of the ADVA network element (neMemorySizeFree). The device reports kBytes; the value is scaled to bytes."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "(snmp_device_memory_total{instance_type='transmission', __$labels__} - snmp_device_memory_free{instance_type='transmission', __$labels__}) * 1024",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the used memory of the ADVA network element, calculated as total minus free (neMemorySizeTotal - neMemorySizeFree) and scaled from kBytes to bytes."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "100 * (snmp_device_memory_total{instance_type='transmission', __$labels__} - snmp_device_memory_free{instance_type='transmission', __$labels__}) / snmp_device_memory_total{instance_type='transmission', __$labels__}",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the memory utilization of the ADVA network element, calculated as (total - free) / total. Sustained high memory usage may indicate control-plane resource pressure or unstable device services."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_incoming_traffic",
+      "query": "sum(rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, summed from the 64-bit IF-MIB ifHCInOctets counters."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_outgoing_traffic",
+      "query": "sum(rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, summed from the 64-bit IF-MIB ifHCOutOctets counters."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the Ciena CES/SAOS transmission device and identify potential reboot or failure issues."
+    }
+  ]
+}
