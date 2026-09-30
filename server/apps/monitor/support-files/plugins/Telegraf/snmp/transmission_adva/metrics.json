@@ -145,7 +145,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the Ciena CES/SAOS transmission device and identify potential reboot or failure issues."
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the ADVA transmission device and identify potential reboot or failure issues."
     }
   ]
 }
