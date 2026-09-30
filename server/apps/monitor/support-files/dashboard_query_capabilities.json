@@ -2015,7 +2015,8 @@
     {
       "id": "dashboard:v1:4d34db2f",
       "object_names": [
-        "Firewall"
+        "Firewall",
+        "Router"
       ],
       "template": "avg(device_cpu_usage{__$labels__}) by (instance_id) or avg(snmp_device_cpu_usage{__$labels__}) by (instance_id)"
     },
@@ -3469,6 +3470,13 @@
       "template": "rate(mysql_queries{__$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:8abc1975",
+      "object_names": [
+        "Router"
+      ],
+      "template": "avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or avg(snmp_device_memory_usage{__$labels__}) by (instance_id) or ((sum(snmp_device_memory_total{__$labels__}) by (instance_id) - sum(snmp_device_memory_free{__$labels__}) by (instance_id)) / sum(snmp_device_memory_total{__$labels__}) by (instance_id) * 100)"
+    },
+    {
       "id": "dashboard:v1:8ae3b991",
       "object_names": [
         "RabbitMQ"
@@ -3576,8 +3584,7 @@
     {
       "id": "dashboard:v1:91755901",
       "object_names": [
-        "Loadbalance",
-        "Router"
+        "Loadbalance"
       ],
       "template": "avg(device_cpu_usage{__$labels__}) by (instance_id)"
     },
@@ -4246,13 +4253,6 @@
         "Host"
       ],
       "template": "sum by (instance_id) (rate(diskio_read_bytes{instance_type=\"os\", __$labels__}[__$window__]) or rate(diskio_read_bytes_total_gauge{instance_type=\"os\", config_type!~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__}[__$window__]) or rate(diskio_read_bytes_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__]) or diskio_read_bytes_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__})"
-    },
-    {
-      "id": "dashboard:v1:aed37e56",
-      "object_names": [
-        "Router"
-      ],
-      "template": "avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)"
     },
     {
       "id": "dashboard:v1:af0b870f",

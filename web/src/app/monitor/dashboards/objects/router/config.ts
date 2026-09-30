@@ -30,7 +30,8 @@ export const ROUTER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       description:
         '路由器 CPU 使用率。品牌自适应：直报利用率或各运行实体（路由引擎/FPC）负载均值（Juniper jnxOperatingCPU）。持续偏高说明控制平面过载或路由震荡。',
       unit: 'percent',
-      query: 'avg(device_cpu_usage{__$labels__}) by (instance_id)',
+      query:
+        'avg(device_cpu_usage{__$labels__}) by (instance_id) or avg(snmp_device_cpu_usage{__$labels__}) by (instance_id)',
       color: '#2f6bff'
     },
     {
@@ -40,7 +41,7 @@ export const ROUTER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         '路由器内存使用率（百分比）。品牌自适应：①设备直报利用率（Juniper jnxOperatingBuffer）；②已用/(已用+空闲)（思科内存池）；③(总量-空闲)/总量。',
       unit: 'percent',
       query:
-        'avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)',
+        'avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or avg(snmp_device_memory_usage{__$labels__}) by (instance_id) or ((sum(snmp_device_memory_total{__$labels__}) by (instance_id) - sum(snmp_device_memory_free{__$labels__}) by (instance_id)) / sum(snmp_device_memory_total{__$labels__}) by (instance_id) * 100)',
       color: '#ff8a1f'
     },
     {

@@ -112,6 +112,7 @@ export const useRouterConfig = () => {
       'Router Peplink SNMP': 'snmp_peplink',
       'Router Advantech SNMP': 'snmp_advantech_router',
       'Router Nokia SNMP': 'snmp_nokia_router',
+      'Router FireBrick SNMP': 'snmp_firebrick',
       'Router Flow NetFlow': 'netflow',
       'Router Flow sFlow': 'sflow'
     }
