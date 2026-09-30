@@ -999,6 +999,15 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_digi_transport",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "temperature",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_draytek",
       "capabilities": [
         "uptime",
