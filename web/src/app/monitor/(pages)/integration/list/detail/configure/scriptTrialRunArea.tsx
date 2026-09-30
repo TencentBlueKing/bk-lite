@@ -5,7 +5,8 @@ import {
   CloseCircleFilled,
   ExclamationCircleFilled,
   PlayCircleOutlined,
-  DashboardOutlined
+  DashboardOutlined,
+  QuestionCircleOutlined
 } from '@ant-design/icons';
 import CompactEmptyState from '@/components/compact-empty-state';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
@@ -338,14 +339,24 @@ const TrialActionsBlockedNote: React.FC = () => {
 const TrialTimeoutHint: React.FC<{ seconds: number }> = ({ seconds }) => {
   const { t } = useTranslation();
   return (
-    <span className="text-[12px] text-[var(--color-text-3)]">
-      {t(
-        'monitor.integrations.trialRunTimeoutFollowsInterval',
-        '超时 = 采集间隔 − 1 秒（{n} 秒）',
-        {
-          n: seconds
-        }
-      )}
+    <span className="inline-flex items-center gap-1 text-[12px] text-[var(--color-text-3)]">
+      <span>
+        {t(
+          'monitor.integrations.trialRunTimeoutFollowsInterval',
+          '超时 {n} 秒（= 采集间隔 − 1）',
+          {
+            n: seconds
+          }
+        )}
+      </span>
+      <Tooltip
+        title={t(
+          'monitor.integrations.trialRunTimeoutFollowsIntervalHelp',
+          '调试与正式采集使用同一超时，修改采集间隔即可调整'
+        )}
+      >
+        <QuestionCircleOutlined className="cursor-help text-[12px] text-[var(--color-text-3)]" />
+      </Tooltip>
     </span>
   );
 };
@@ -422,7 +433,10 @@ const DurationElapsed: React.FC<{
   }
   return (
     <Tooltip
-      title={t('monitor.integrations.trialRunNearTimeout', '接近超时上限')}
+      title={t(
+        'monitor.integrations.trialRunNearTimeout',
+        '接近超时上限（采集间隔 − 1 秒）'
+      )}
     >
       <span className="mt-1 text-[16px] font-bold font-mono text-[var(--color-warning)]">
         {text}

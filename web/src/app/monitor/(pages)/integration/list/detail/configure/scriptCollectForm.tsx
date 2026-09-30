@@ -206,45 +206,53 @@ export const ScriptIntervalField: React.FC<{
     mode === 'edit' && intervalField?.editable === false;
 
   return (
-    <Form.Item
-      className="mb-3"
-      name="interval"
-      required
-      label={intervalField?.label || t('monitor.integrations.interval', '采集间隔')}
-      rules={[
-        { required: true, message: t('common.required') },
-        {
-          validator: async (_, value) => {
-            const seconds = parseScriptDurationSeconds(value);
-            if (seconds == null) {
-              return;
-            }
-            if (seconds < SCRIPT_MIN_INTERVAL_SECONDS) {
-              throw new Error(
-                t(
-                  'monitor.integrations.intervalMin60',
-                  '采集间隔不能小于 60 秒'
-                )
-              );
+    <div className="mb-3 inline-block" style={{ width: SCRIPT_INTERVAL_WIDTH }}>
+      <Form.Item
+        className="mb-0"
+        name="interval"
+        required
+        label={intervalField?.label || t('monitor.integrations.interval', '采集间隔')}
+        rules={[
+          { required: true, message: t('common.required') },
+          {
+            validator: async (_, value) => {
+              const seconds = parseScriptDurationSeconds(value);
+              if (seconds == null) {
+                return;
+              }
+              if (seconds < SCRIPT_MIN_INTERVAL_SECONDS) {
+                throw new Error(
+                  t(
+                    'monitor.integrations.intervalMin60',
+                    '采集间隔不能小于 60 秒'
+                  )
+                );
+              }
             }
           }
-        }
-      ]}
-      initialValue={intervalField?.default_value ?? SCRIPT_MIN_INTERVAL_SECONDS}
-    >
-      <InputNumber
-        min={SCRIPT_MIN_INTERVAL_SECONDS}
-        precision={0}
-        disabled={intervalLocked}
-        addonAfter={intervalField?.widget_props?.addonAfter || 's'}
-        placeholder={
-          intervalField?.widget_props?.placeholder ||
-          t('monitor.integrations.interval', '间隔')
-        }
-        className="align-middle"
-        style={{ width: SCRIPT_INTERVAL_WIDTH }}
-      />
-    </Form.Item>
+        ]}
+        initialValue={intervalField?.default_value ?? SCRIPT_MIN_INTERVAL_SECONDS}
+      >
+        <InputNumber
+          min={SCRIPT_MIN_INTERVAL_SECONDS}
+          precision={0}
+          disabled={intervalLocked}
+          addonAfter={intervalField?.widget_props?.addonAfter || 's'}
+          placeholder={
+            intervalField?.widget_props?.placeholder ||
+            t('monitor.integrations.interval', '间隔')
+          }
+          className="align-middle"
+          style={{ width: SCRIPT_INTERVAL_WIDTH }}
+        />
+      </Form.Item>
+      <div className="mt-1 text-[12px] leading-[18px] text-[var(--color-text-3)]">
+        {t(
+          'monitor.integrations.scriptTimeoutFollowsInterval',
+          '脚本超时 = 采集间隔 − 1 秒'
+        )}
+      </div>
+    </div>
   );
 };
 
