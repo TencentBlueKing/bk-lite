@@ -805,9 +805,8 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       "collectType": "snmp_waystream",
       "capabilities": [
         "uptime",
-        "cpu",
-        "memory",
         "temperature",
+        "fan",
         "traffic"
       ]
     },
