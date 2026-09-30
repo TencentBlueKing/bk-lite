@@ -1,0 +1,31 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission ADVA SNMP",
+  "templates": [
+    {
+      "name": "ADVA传输设备内存使用率过高",
+      "alert_name": "传输设备${resource_name} 内存使用率过高",
+      "description": "监控 ADVA 传输设备网元的内存使用率（按 (总量-空闲)/总量 计算），当持续高于阈值时触发告警，便于及时发现控制面资源压力或设备服务异常。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}
