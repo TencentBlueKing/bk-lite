@@ -33,35 +33,50 @@
         name = "source"
         is_tag = true
 # @bk_include_ifmib_table
-    # ---- Kyland CPU (KYLAND-DEV-MIB cpuCurrentUtilRate, 0-100, scalar) ----
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.26067.1.9.2.1"
-        name = "usage"
-    # ---- Kyland memory util (KYLAND-DEV-MIB devMemoryUtilRate, %, scalar) ----
-    # 部分型号可能未实现 devMemoryUtilRate / devRingLoadRate。
-    [[inputs.snmp.table]]
-        name = "device_memory"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.26067.1.9.2.9"
-        name = "usage"
-    # ---- Kyland 主备电源状态 (KylandDevMasterPowerState / KylandDevBackupPowerState) ----
-    # 原始码 1=normal / 2=abnormal；下方 enum 归一 1→1(正常),其余→2(异常)。
-    [[inputs.snmp.table]]
-        name = "device_psu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.26067.1.9.1.18"
-        name = "state"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.26067.1.9.1.19"
-        name = "state_backup"
+    # ---- Kyland CPU / 内存（KYLAND-DEV kylandDevPerformInfo 26067.1.9.2）：标量，顶层 field 带 .0 → measurement snmp。----
+    # cpuCurrentUtilRate 26067.1.9.2.1.0（0-100）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.26067.1.9.2.1.0"
+        name = "device_cpu_usage"
+    # devMemoryUtilRate 26067.1.9.2.9.0（%）；部分型号可能未实现，未实现时该字段不上报。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.26067.1.9.2.9.0"
+        name = "device_memory_usage"
+    # ---- Kyland 主备电源状态（kylandDevInfo 26067.1.9.1）：KylandDevMasterPowerState .18.0 / KylandDevBackupPowerState .19.0，标量 ----
+    # 原始码 1=normal / 2=abnormal；下方 starlark 拆到 device_psu 测量（state / state_backup），再由 enum 归一 1→1(正常),其余→2(异常)。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.26067.1.9.1.18.0"
+        name = "psu_master_state"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.26067.1.9.1.19.0"
+        name = "psu_backup_state"
+# ---- 温度/风扇：DEV 树无对应读数对象 → N/A 不采。----
+# ---- 将主备电源标量从 snmp 测量拆到 device_psu 测量，保持指标名 device_psu_state / device_psu_state_backup。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    master = metric.fields.pop("psu_master_state", None)
+    backup = metric.fields.pop("psu_backup_state", None)
+    if master == None and backup == None:
+        return metric
+    psu = Metric("device_psu")
+    for key, value in metric.tags.items():
+        psu.tags[key] = value
+    psu.time = metric.time
+    if master != None:
+        psu.fields["state"] = master
+    if backup != None:
+        psu.fields["state_backup"] = backup
+    return [metric, psu]
+'''
+    [processors.starlark.tagpass]
+        brand = ["kyland"]
 # ---- 状态归一：电源 1→1(正常),其余→2(异常)。----
 [[processors.enum]]
     namepass = ["device_psu"]
+    [processors.enum.tagpass]
+        brand = ["kyland"]
     [[processors.enum.mapping]]
         field = "state"
         default = 2
