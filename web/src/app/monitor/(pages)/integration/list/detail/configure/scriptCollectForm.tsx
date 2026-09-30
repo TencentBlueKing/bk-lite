@@ -1,10 +1,16 @@
 'use client';
 
 import React from 'react';
-import { Alert, Form, Input, Segmented, Select } from 'antd';
+import { Alert, Form, Input, InputNumber, Segmented, Select } from 'antd';
 import type { FormInstance } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import CodeEditor from '@/components/code-editor';
+import {
+  SCRIPT_MIN_INTERVAL_SECONDS,
+  defaultScriptTimeoutSeconds,
+  parseScriptDurationSeconds,
+  shouldEmitScriptTimeout
+} from './scriptCollectTimeout';
 
 export const LINUX_INTERPRETERS = [
   { label: '/bin/sh', value: '/bin/sh' },
@@ -19,7 +25,6 @@ export const WINDOWS_INTERPRETERS = [
 ];
 
 const RESOURCE_KNOB_FIELDS = new Set([
-  'timeout',
   'cpu',
   'memory',
   'mem',
@@ -27,6 +32,32 @@ const RESOURCE_KNOB_FIELDS = new Set([
   'mem_limit',
   'memory_limit'
 ]);
+
+const SCRIPT_TIMEOUT_FIELD = {
+  name: 'timeout',
+  label: '脚本超时（秒）',
+  label_en: 'Script Timeout (seconds)',
+  type: 'inputNumber',
+  required: true,
+  default_value: 59,
+  description: '默认 = 间隔 − 1',
+  description_en: 'Default = interval − 1',
+  widget_props: {
+    min: 1,
+    precision: 0,
+    placeholder: '超时',
+    placeholder_en: 'Timeout',
+    addonAfter: '秒'
+  },
+  transform_on_edit: {
+    origin_path: 'child.content.config.timeout',
+    to_form: { regex: '^(\\d+)s$' },
+    to_api: { suffix: 's' }
+  },
+  script_collect: true
+};
+
+const SCRIPT_INTERVAL_TIMEOUT_WIDTH = 300;
 
 export const isScriptCollectConfig = (
   config: { collect_type?: unknown; config_type?: unknown } | null | undefined
@@ -86,6 +117,22 @@ export const omitPersistedWindowsRunAs = (
   const config = result?.child?.content?.config;
   if (config && Object.prototype.hasOwnProperty.call(config, 'run_as')) {
     delete config.run_as;
+  }
+};
+
+/** 默认 timeout（interval-1）不写入 child 配置，由采集器按间隔推导。 */
+export const omitPersistedDefaultScriptTimeout = (
+  result: { child?: { content?: { config?: Record<string, any> } } } | null | undefined,
+  values: Record<string, any> | null | undefined,
+  collectType?: unknown
+) => {
+  if (!isScriptCollectPayload(values, collectType)) return;
+  const config = result?.child?.content?.config;
+  if (!config) return;
+  const interval = values?.interval ?? config.interval;
+  const timeout = values?.timeout ?? config.timeout;
+  if (!shouldEmitScriptTimeout(timeout, interval)) {
+    delete config.timeout;
   }
 };
 
@@ -157,7 +204,12 @@ export const normalizeScriptCollectFormFields = (fields: any[] = []) => {
     }
   };
   const rest = kept
-    .filter((field) => field.name !== 'interpreter' && field.name !== 'run_as')
+    .filter(
+      (field) =>
+        field.name !== 'interpreter' &&
+        field.name !== 'run_as' &&
+        field.name !== 'timeout'
+    )
     .map((field) => {
       if (field?.name !== 'script') return field;
       return {
@@ -168,10 +220,257 @@ export const normalizeScriptCollectFormFields = (fields: any[] = []) => {
         }
       };
     });
-  return [scriptOs, interpreter, runAs, ...rest];
+  const withTimeout: any[] = [];
+  let insertedTimeout = false;
+  rest.forEach((field) => {
+    const nextField =
+      field?.name === 'interval'
+        ? { ...field, script_collect: true }
+        : field;
+    withTimeout.push(nextField);
+    if (field?.name === 'interval') {
+      withTimeout.push({
+        ...SCRIPT_TIMEOUT_FIELD,
+        ...(byName.get('timeout') || {}),
+        ...SCRIPT_TIMEOUT_FIELD
+      });
+      insertedTimeout = true;
+    }
+  });
+  if (!insertedTimeout) {
+    withTimeout.push({ ...SCRIPT_TIMEOUT_FIELD });
+  }
+  return [scriptOs, interpreter, runAs, ...withTimeout];
 };
 
 const LINUX_RUN_AS_DEFAULT = 'telegraf';
+
+export const ScriptIntervalTimeoutFields: React.FC<{
+  intervalField?: Record<string, any>;
+  timeoutField?: Record<string, any>;
+  mode?: string;
+}> = ({ intervalField, timeoutField, mode }) => {
+  const { t } = useTranslation();
+  const form = Form.useFormInstance();
+  const interval = Form.useWatch('interval');
+  const timeout = Form.useWatch('timeout');
+  const [clampHint, setClampHint] = React.useState<number | null>(null);
+  const clampTimerRef = React.useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined
+  );
+  const prevIntervalRef = React.useRef<number | null>(null);
+  const createTimeoutInitedRef = React.useRef(false);
+  const intervalLocked =
+    mode === 'edit' && intervalField?.editable === false;
+  const timeoutLocked = mode === 'edit' && timeoutField?.editable === false;
+  const intervalInitial =
+    parseScriptDurationSeconds(intervalField?.default_value) ??
+    SCRIPT_MIN_INTERVAL_SECONDS;
+  const timeoutFromInterval = defaultScriptTimeoutSeconds(intervalInitial);
+  const timeoutTemplateDefault = parseScriptDurationSeconds(
+    timeoutField?.default_value
+  );
+  const timeoutInitial =
+    timeoutTemplateDefault != null && timeoutTemplateDefault === timeoutFromInterval
+      ? timeoutTemplateDefault
+      : timeoutFromInterval;
+  const intervalSeconds =
+    parseScriptDurationSeconds(interval) ?? intervalInitial;
+  const maxTimeout = defaultScriptTimeoutSeconds(
+    intervalSeconds > 0 ? intervalSeconds : SCRIPT_MIN_INTERVAL_SECONDS
+  );
+
+  const showClampHint = React.useCallback((value: number) => {
+    setClampHint(value);
+    if (clampTimerRef.current !== undefined) {
+      clearTimeout(clampTimerRef.current);
+    }
+    clampTimerRef.current = setTimeout(() => {
+      setClampHint(null);
+    }, 3000);
+  }, []);
+
+  const handleIntervalChange = (value: number | string | null) => {
+    const newInterval = parseScriptDurationSeconds(value);
+    if (newInterval == null || newInterval < 1) {
+      return;
+    }
+    const formInterval = parseScriptDurationSeconds(form.getFieldValue('interval'));
+    const oldInterval =
+      formInterval != null && formInterval !== newInterval
+        ? formInterval
+        : prevIntervalRef.current;
+    const timeoutSec = parseScriptDurationSeconds(form.getFieldValue('timeout'));
+    const nextMax = defaultScriptTimeoutSeconds(newInterval);
+    prevIntervalRef.current = newInterval;
+    const wasDefault =
+      timeoutSec == null ||
+      timeoutSec <= 0 ||
+      (oldInterval != null &&
+        timeoutSec === defaultScriptTimeoutSeconds(oldInterval));
+    if (wasDefault) {
+      if (timeoutSec !== nextMax) {
+        form.setFieldValue('timeout', nextMax);
+      }
+      return;
+    }
+    if (timeoutSec != null && timeoutSec > nextMax) {
+      form.setFieldValue('timeout', nextMax);
+      showClampHint(nextMax);
+    }
+  };
+
+  React.useEffect(() => {
+    const intervalSec = parseScriptDurationSeconds(interval);
+    if (intervalSec == null || intervalSec < 1) {
+      return;
+    }
+    prevIntervalRef.current = intervalSec;
+    const nextMax = defaultScriptTimeoutSeconds(intervalSec);
+    const timeoutSec = parseScriptDurationSeconds(timeout);
+    if (timeoutSec == null || timeoutSec <= 0) {
+      form.setFieldValue('timeout', nextMax);
+      createTimeoutInitedRef.current = true;
+      return;
+    }
+    if (timeoutSec > nextMax) {
+      form.setFieldValue('timeout', nextMax);
+      createTimeoutInitedRef.current = true;
+      return;
+    }
+    if (
+      !createTimeoutInitedRef.current &&
+      mode !== 'edit'
+    ) {
+      const templateDefault =
+        timeoutTemplateDefault ??
+        defaultScriptTimeoutSeconds(SCRIPT_MIN_INTERVAL_SECONDS);
+      if (timeoutSec === templateDefault && timeoutSec !== nextMax) {
+        form.setFieldValue('timeout', nextMax);
+      }
+    }
+    createTimeoutInitedRef.current = true;
+  }, [form, interval, timeout, mode, timeoutTemplateDefault]);
+
+  React.useEffect(
+    () => () => {
+      if (clampTimerRef.current !== undefined) {
+        clearTimeout(clampTimerRef.current);
+      }
+    },
+    []
+  );
+
+  return (
+    <div className="mb-3 flex flex-wrap items-start gap-4">
+      <Form.Item
+        className="mb-0"
+        name="interval"
+        required
+        label={intervalField?.label || t('monitor.integrations.interval', '采集间隔')}
+        rules={[
+          { required: true, message: t('common.required') },
+          {
+            validator: async (_, value) => {
+              const seconds = parseScriptDurationSeconds(value);
+              if (seconds == null) {
+                return;
+              }
+              if (seconds < SCRIPT_MIN_INTERVAL_SECONDS) {
+                throw new Error(
+                  t(
+                    'monitor.integrations.intervalMin60',
+                    '采集间隔不能小于 60 秒'
+                  )
+                );
+              }
+            }
+          }
+        ]}
+        initialValue={intervalField?.default_value ?? SCRIPT_MIN_INTERVAL_SECONDS}
+      >
+        <InputNumber
+          min={SCRIPT_MIN_INTERVAL_SECONDS}
+          precision={0}
+          disabled={intervalLocked}
+          addonAfter={intervalField?.widget_props?.addonAfter || 's'}
+          placeholder={
+            intervalField?.widget_props?.placeholder ||
+            t('monitor.integrations.interval', '间隔')
+          }
+          className="align-middle"
+          style={{ width: SCRIPT_INTERVAL_TIMEOUT_WIDTH }}
+          onChange={handleIntervalChange}
+        />
+      </Form.Item>
+      <div className="flex min-w-0 flex-col">
+        <Form.Item
+          className="mb-0"
+          name="timeout"
+          required
+          label={
+            timeoutField?.label ||
+            t('monitor.integrations.scriptTimeout', '脚本超时（秒）')
+          }
+          rules={[
+            { required: true, message: t('common.required') },
+            {
+              validator: async (_, value) => {
+                const seconds = parseScriptDurationSeconds(value);
+                if (seconds == null) {
+                  return;
+                }
+                if (seconds < 1 || seconds > maxTimeout) {
+                  throw new Error(
+                    t(
+                      'monitor.integrations.scriptTimeoutRange',
+                      '脚本超时必须在 1 到 {max} 秒之间',
+                      { max: maxTimeout }
+                    )
+                  );
+                }
+              }
+            }
+          ]}
+          initialValue={timeoutInitial}
+        >
+          <InputNumber
+            min={1}
+            max={maxTimeout}
+            precision={0}
+            disabled={timeoutLocked}
+            addonAfter={t('monitor.integrations.scriptTimeoutUnit', '秒')}
+            placeholder={
+              timeoutField?.widget_props?.placeholder ||
+              t('monitor.integrations.scriptTimeout', '超时')
+            }
+            className="align-middle"
+            style={{ width: SCRIPT_INTERVAL_TIMEOUT_WIDTH }}
+          />
+        </Form.Item>
+        <div className="mt-1 min-h-[18px] text-[12px] leading-[18px]">
+          {clampHint != null ? (
+            <span className="text-[var(--color-warning)]">
+              {t(
+                'monitor.integrations.scriptTimeoutClamped',
+                '已按新间隔调整为 {value} 秒',
+                { value: clampHint }
+              )}
+            </span>
+          ) : (
+            <span className="text-[var(--color-text-3)]">
+              {t(
+                'monitor.integrations.scriptTimeoutHelper',
+                '默认 = 间隔 − 1，最大 {max} 秒',
+                { max: maxTimeout }
+              )}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
 
 /**
  * 先写入 run_as，再改 script_os。

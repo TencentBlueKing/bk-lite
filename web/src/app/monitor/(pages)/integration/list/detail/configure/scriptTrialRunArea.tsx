@@ -4,7 +4,6 @@ import {
   CheckCircleFilled,
   CloseCircleFilled,
   ExclamationCircleFilled,
-  ReloadOutlined,
   PlayCircleOutlined,
   DashboardOutlined
 } from '@ant-design/icons';
@@ -286,20 +285,22 @@ const SamplePreviewTable: React.FC<{
 };
 
 export interface TrialRunTaskState {
-  status: 'pending' | 'running' | 'success' | 'failed' | 'warning';
+  status: 'pending' | 'running' | 'success' | 'failed' | 'warning' | 'stopped';
   warning_type?: 'no_permission' | 'rate_limit';
   fingerprint?: string;
   result?: Record<string, any>;
   error_message?: string;
   started_at?: string | null;
   finished_at?: string | null;
+  debug_timeout?: number;
+  wait_stopped?: boolean;
 }
 
 /** 与失败 Alert 同一判定：未通过则确认不可用。运行中不算失败。 */
 export const scriptTrialBlocksMetricActions = (
   task?: TrialRunTaskState | null
 ): boolean => {
-  if (!task?.status || task.status === 'pending' || task.status === 'running') {
+  if (!task?.status || task.status === 'pending' || task.status === 'running' || task.status === 'stopped') {
     return false;
   }
   const parsed =
@@ -334,10 +335,104 @@ const TrialActionsBlockedNote: React.FC = () => {
   );
 };
 
+const TrialTimeoutHint: React.FC<{ seconds: number }> = ({ seconds }) => {
+  const { t } = useTranslation();
+  return (
+    <span className="text-[12px] text-[var(--color-text-3)]">
+      {t('monitor.integrations.trialRunTimeoutSeconds', '超时 {n} 秒', {
+        n: seconds
+      })}
+    </span>
+  );
+};
+
+const TrialDebugActions: React.FC<{
+  running?: boolean;
+  loading?: boolean;
+  disabled?: boolean;
+  timeoutSeconds: number;
+  debugLabel: string;
+  onDebug: () => void;
+  onStopWaiting?: () => void;
+  primary?: boolean;
+  size?: 'small' | 'middle';
+}> = ({
+  running,
+  loading,
+  disabled,
+  timeoutSeconds,
+  debugLabel,
+  onDebug,
+  onStopWaiting,
+  primary = true,
+  size
+}) => {
+  const { t } = useTranslation();
+  return (
+    <div className="flex items-center gap-2">
+      <Button
+        type={primary ? 'primary' : 'default'}
+        size={size}
+        icon={running ? undefined : <PlayCircleOutlined />}
+        loading={Boolean(loading || running)}
+        disabled={disabled}
+        onClick={onDebug}
+      >
+        {debugLabel}
+      </Button>
+      {running ? (
+        <Tooltip
+          title={t(
+            'monitor.integrations.trialRunStopWaitingTooltip',
+            '脚本将在 {n} 秒超时后自行结束',
+            { n: timeoutSeconds }
+          )}
+        >
+          <Button size={size} onClick={onStopWaiting}>
+            {t('monitor.integrations.trialRunStopWaiting', '停止等待')}
+          </Button>
+        </Tooltip>
+      ) : null}
+      <TrialTimeoutHint seconds={timeoutSeconds} />
+    </div>
+  );
+};
+
+const DurationElapsed: React.FC<{
+  durationMs?: number;
+  timeoutSeconds: number;
+}> = ({ durationMs, timeoutSeconds }) => {
+  const { t } = useTranslation();
+  if (durationMs === undefined) {
+    return <>--</>;
+  }
+  const text = `${durationMs} ms`;
+  const nearTimeout =
+    timeoutSeconds > 0 && durationMs > timeoutSeconds * 1000 * 0.8;
+  if (!nearTimeout) {
+    return (
+      <span className="mt-1 text-[16px] font-bold font-mono text-[var(--color-text-1)]">
+        {text}
+      </span>
+    );
+  }
+  return (
+    <Tooltip
+      title={t('monitor.integrations.trialRunNearTimeout', '接近超时上限')}
+    >
+      <span className="mt-1 text-[16px] font-bold font-mono text-[var(--color-warning)]">
+        {text}
+      </span>
+    </Tooltip>
+  );
+};
+
 interface ScriptTrialRunAreaProps {
   task?: TrialRunTaskState;
   spinning?: boolean;
   onTrialRun: () => void;
+  onStopWaiting?: () => void;
+  timeoutSeconds?: number;
   nodeSelected?: boolean;
   instanceName?: string;
   pluginId?: string | number;
@@ -352,6 +447,8 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
   task,
   spinning = false,
   onTrialRun,
+  onStopWaiting,
+  timeoutSeconds = 59,
   nodeSelected = true,
   instanceName,
   pluginId,
@@ -383,6 +480,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
 
   const isSpinning = spinning || task?.status === 'pending' || task?.status === 'running';
   const trialBusy = isSpinning || trialSubmitting;
+  const runTimeoutSeconds = task?.debug_timeout ?? timeoutSeconds;
 
   useEffect(() => {
     if (isSpinning || (task?.status && task.status !== 'pending')) {
@@ -659,16 +757,15 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               '保存前可先调试，验证输出指标'
             )}
           >
-            <Button
-              type="primary"
-              className="mt-3"
-              icon={<PlayCircleOutlined />}
-              loading={trialBusy}
-              disabled={!nodeSelected || trialBusy}
-              onClick={handleTrialClick}
-            >
-              {t('monitor.integrations.trialRun', '调试')}
-            </Button>
+            <div className="mt-3">
+              <TrialDebugActions
+                timeoutSeconds={runTimeoutSeconds}
+                debugLabel={t('monitor.integrations.trialRun', '调试')}
+                loading={trialBusy}
+                disabled={!nodeSelected || trialBusy}
+                onDebug={handleTrialClick}
+              />
+            </div>
           </CompactEmptyState>
         </div>
       </div>
@@ -689,9 +786,16 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
             )}
           </div>
-          <Button size="small" disabled loading icon={<ReloadOutlined />}>
-            {t('monitor.integrations.reTrialRun', '重新调试')}
-          </Button>
+          <TrialDebugActions
+            running
+            size="small"
+            timeoutSeconds={runTimeoutSeconds}
+            debugLabel={t('monitor.integrations.trialRun', '调试')}
+            loading
+            disabled
+            onDebug={handleTrialClick}
+            onStopWaiting={onStopWaiting}
+          />
         </div>
         {catalogErrorAlert}
         <div className="flex flex-col items-center justify-center py-10 px-4 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
@@ -707,6 +811,41 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           >
             <div className="h-10 w-48" />
           </Spin>
+        </div>
+      </div>
+    );
+  }
+
+  // 2b. 停止等待（仅停前端轮询，节点上的脚本仍会跑到超时）
+  if (task.status === 'stopped' || task.wait_stopped) {
+    return (
+      <div className="mt-4 mb-4 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4">
+        <div className="flex items-center justify-between mb-3 border-b border-[var(--color-border-1)] pb-2">
+          <div className="flex items-center gap-2">
+            <DashboardOutlined className="text-[var(--color-primary)] text-[15px]" />
+            <b className="text-[14px] text-[var(--color-text-1)]">
+              {t('monitor.integrations.trialRunAreaTitle', '调试结果')}
+            </b>
+            {instanceName && (
+              <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
+            )}
+          </div>
+          <TrialDebugActions
+            size="small"
+            primary={false}
+            timeoutSeconds={runTimeoutSeconds}
+            debugLabel={t('monitor.integrations.reTrialRun', '重新调试')}
+            loading={trialSubmitting}
+            disabled={!nodeSelected || trialBusy}
+            onDebug={handleTrialClick}
+          />
+        </div>
+        {catalogErrorAlert}
+        <div className="rounded-md border border-dashed border-[var(--color-border-2)] bg-[var(--color-bg-2)] px-4 py-6 text-center text-[12px] text-[var(--color-text-3)]">
+          {t(
+            'monitor.integrations.trialRunWaitStopped',
+            '已停止等待，节点上的脚本仍会运行到超时'
+          )}
         </div>
       </div>
     );
@@ -734,15 +873,15 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
             )}
           </div>
-          <Button
+          <TrialDebugActions
             size="small"
-            icon={<ReloadOutlined />}
+            primary={false}
+            timeoutSeconds={runTimeoutSeconds}
+            debugLabel={t('monitor.integrations.reTrialRun', '重新调试')}
             loading={trialSubmitting}
             disabled={!nodeSelected || trialBusy}
-            onClick={handleTrialClick}
-          >
-            {t('monitor.integrations.reTrialRun', '重新调试')}
-          </Button>
+            onDebug={handleTrialClick}
+          />
         </div>
         {catalogErrorAlert}
         <Alert
@@ -817,15 +956,15 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
             )}
           </div>
-          <Button
+          <TrialDebugActions
             size="small"
-            icon={<ReloadOutlined />}
+            primary={false}
+            timeoutSeconds={runTimeoutSeconds}
+            debugLabel={t('monitor.integrations.reTrialRun', '重新调试')}
             loading={trialSubmitting}
             disabled={!nodeSelected || trialBusy}
-            onClick={handleTrialClick}
-          >
-            {t('monitor.integrations.reTrialRun', '重新调试')}
-          </Button>
+            onDebug={handleTrialClick}
+          />
         </div>
         {catalogErrorAlert}
         <Alert
@@ -879,15 +1018,15 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
             )}
           </div>
-          <Button
+          <TrialDebugActions
             size="small"
-            icon={<ReloadOutlined />}
+            primary={false}
+            timeoutSeconds={runTimeoutSeconds}
+            debugLabel={t('monitor.integrations.reTrialRun', '重新调试')}
             loading={trialSubmitting}
             disabled={!nodeSelected || trialBusy}
-            onClick={handleTrialClick}
-          >
-            {t('monitor.integrations.reTrialRun', '重新调试')}
-          </Button>
+            onDebug={handleTrialClick}
+          />
         </div>
         {catalogErrorAlert}
         {/* 仍展示自身指标概览 */}
@@ -900,11 +1039,10 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           </div>
           <div className="p-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
             <div className="text-[12px] text-[var(--color-text-3)] font-medium">duration (执行耗时)</div>
-            <div className="mt-1 text-[16px] font-bold text-[var(--color-text-1)] font-mono">
-              {parsedOutput?.selfMetrics?.duration_ms !== undefined
-                ? `${parsedOutput.selfMetrics.duration_ms} ms`
-                : '--'}
-            </div>
+            <DurationElapsed
+              durationMs={parsedOutput?.selfMetrics?.duration_ms}
+              timeoutSeconds={runTimeoutSeconds}
+            />
           </div>
           <div className="p-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
             <div className="text-[12px] text-[var(--color-text-3)] font-medium">exit_code (退出码)</div>
@@ -959,15 +1097,15 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
             </Tooltip>
           )}
         </div>
-        <Button
+        <TrialDebugActions
           size="small"
-          icon={<ReloadOutlined />}
+          primary={false}
+          timeoutSeconds={runTimeoutSeconds}
+          debugLabel={t('monitor.integrations.reTrialRun', '重新调试')}
           loading={trialSubmitting}
           disabled={!nodeSelected || trialBusy}
-          onClick={handleTrialClick}
-        >
-          {t('monitor.integrations.reTrialRun', '重新调试')}
-        </Button>
+          onDebug={handleTrialClick}
+        />
       </div>
 
       {/* 自监控指标仅展示，不可勾选落库 */}
@@ -984,11 +1122,10 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           </div>
           <div className="p-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
             <div className="text-[12px] text-[var(--color-text-3)]">duration (执行耗时)</div>
-            <div className="mt-1 text-[16px] font-bold text-[var(--color-text-1)] font-mono">
-              {parsedOutput.selfMetrics.duration_ms !== undefined
-                ? `${parsedOutput.selfMetrics.duration_ms} ms`
-                : '--'}
-            </div>
+            <DurationElapsed
+              durationMs={parsedOutput.selfMetrics.duration_ms}
+              timeoutSeconds={runTimeoutSeconds}
+            />
           </div>
           <div className="p-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
             <div className="text-[12px] text-[var(--color-text-3)]">exit_code (退出码)</div>

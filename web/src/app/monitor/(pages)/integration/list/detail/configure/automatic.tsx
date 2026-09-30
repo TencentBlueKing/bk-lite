@@ -90,6 +90,7 @@ import ScriptTrialRunArea, {
   scriptTrialBlocksMetricActions
 } from './scriptTrialRunArea';
 import { applyScriptCollectSubmit, syncScriptRunAsForOs } from './scriptCollectForm';
+import { resolveScriptTimeoutSeconds, SCRIPT_DETECT_TIMEOUT_MARGIN_SECONDS } from './scriptCollectTimeout';
 import { hydrateScriptCollectFormValues } from './scriptCollectHydrate';
 import {
   collectReservedTagViolations,
@@ -173,13 +174,15 @@ const ScriptMetricOverwriteContent = ({
 };
 
 interface CollectDetectState {
-  status: 'pending' | 'running' | 'success' | 'failed' | 'warning';
+  status: 'pending' | 'running' | 'success' | 'failed' | 'warning' | 'stopped';
   warning_type?: 'no_permission' | 'rate_limit';
   fingerprint?: string;
   result?: Record<string, any>;
   error_message?: string;
   started_at?: string | null;
   finished_at?: string | null;
+  debug_timeout?: number;
+  wait_stopped?: boolean;
 }
 
 interface IntegrationTableColumnConfig {
@@ -890,7 +893,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     taskId: React.Key,
     fingerprint: string,
     mode: CollectDetectMode,
-    retryCount = 0
+    retryCount = 0,
+    maxRetries = 60,
+    debugTimeout?: number
   ) => {
     try {
       const task = (await getCollectDetectTask(taskId)) as CollectDetectState;
@@ -906,16 +911,19 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         ...task,
         fingerprint,
         started_at: (task as any).started_at,
-        finished_at: (task as any).finished_at
+        finished_at: (task as any).finished_at,
+        debug_timeout: debugTimeout
       });
-      if (['pending', 'running'].includes(task.status) && retryCount < 60) {
+      if (['pending', 'running'].includes(task.status) && retryCount < maxRetries) {
         collectDetectTimersRef.current[rowKey] = setTimeout(() => {
           pollCollectDetectTask(
             rowKey,
             taskId,
             fingerprint,
             mode,
-            retryCount + 1
+            retryCount + 1,
+            maxRetries,
+            debugTimeout
           );
         }, 2000);
         return;
@@ -939,6 +947,28 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         error_message: error?.message || t('common.operationFailed')
       });
     }
+  };
+
+  const stopCollectDetectWait = (rowKey: string) => {
+    if (collectDetectTimersRef.current[rowKey]) {
+      clearTimeout(collectDetectTimersRef.current[rowKey]);
+      delete collectDetectTimersRef.current[rowKey];
+    }
+    delete activeCollectDetectFingerprintRef.current[rowKey];
+    setCollectDetectTasks((prev) => {
+      const current = prev[rowKey];
+      if (!current) {
+        return prev;
+      }
+      return {
+        ...prev,
+        [rowKey]: {
+          ...current,
+          status: 'stopped',
+          wait_stopped: true
+        }
+      };
+    });
   };
 
   const cancelInFlightCollectDetectExcept = (keepKey: string) => {
@@ -989,16 +1019,43 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       cancelInFlightCollectDetectExcept(rowKey);
     }
     activeCollectDetectFingerprintRef.current[rowKey] = fingerprint;
-    updateCollectDetectState(rowKey, { status: 'running', fingerprint });
+    const debugTimeout = isScriptTemplate
+      ? resolveScriptTimeoutSeconds(
+        form.getFieldValue('timeout'),
+        form.getFieldValue('interval')
+      )
+      : 60;
+    const maxRetries = isScriptTemplate
+      ? Math.max(
+        1,
+        Math.ceil(
+          ((debugTimeout + SCRIPT_DETECT_TIMEOUT_MARGIN_SECONDS) * 1000) / 2000
+        ) + 2
+      )
+      : 60;
+    updateCollectDetectState(rowKey, {
+      status: 'running',
+      fingerprint,
+      debug_timeout: debugTimeout
+    });
     try {
       const data = (await createCollectDetectTask({
         monitor_plugin_id: Number(pluginId),
         monitor_object_id: Number(objectId),
         node_id: nodeId,
         instance_key: record.instance_id || record.instance_name || rowKey,
-        instance: buildDetectInstance(record)
+        instance: buildDetectInstance(record),
+        timeout: debugTimeout
       })) as { task_id: React.Key };
-      pollCollectDetectTask(rowKey, data.task_id, fingerprint, mode);
+      pollCollectDetectTask(
+        rowKey,
+        data.task_id,
+        fingerprint,
+        mode,
+        0,
+        maxRetries,
+        debugTimeout
+      );
     } catch (error: any) {
       const status = error?.response?.status;
       const respMsg = error?.response?.data?.message || error?.message || '';
@@ -2131,6 +2188,19 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
               handleCollectDetect(target);
             }
           }}
+          onStopWaiting={() => {
+            const rowKey = (activeRecord?.key || activeTrialRowKey) as string;
+            if (rowKey) {
+              stopCollectDetectWait(rowKey);
+            }
+          }}
+          timeoutSeconds={
+            activeTrialTask?.debug_timeout ??
+            resolveScriptTimeoutSeconds(
+              form.getFieldValue('timeout'),
+              form.getFieldValue('interval')
+            )
+          }
           nodeSelected={Boolean(getRowNodeId(activeRecord || {}))}
           instanceName={activeTrialInstanceName}
           pluginId={pluginId}
