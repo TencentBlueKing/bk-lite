@@ -520,7 +520,8 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       "collectType": "snmp_moxa",
       "capabilities": [
         "uptime",
-        "temperature",
+        "cpu",
+        "memory",
         "psu",
         "traffic"
       ]
