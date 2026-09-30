@@ -3465,7 +3465,7 @@ class ToolsNodes(
 
         async def _signaled_deep_wrapper(state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
             result = await _deep_impl(state, config)
-            publish_node_finished(config)
+            await publish_node_finished(config)
             return result
 
         graph_builder.add_node(deep_wrapper_name, _signaled_deep_wrapper)
