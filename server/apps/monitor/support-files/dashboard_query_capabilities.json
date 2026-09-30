@@ -2006,6 +2006,13 @@
       "template": "rate(nginx_accepts{__$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:4d34db2f",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "avg(device_cpu_usage{__$labels__}) by (instance_id) or avg(snmp_device_cpu_usage{__$labels__}) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:4d3788b9",
       "object_names": [
         "InfluxDB"
@@ -2327,13 +2334,6 @@
         "Etcd"
       ],
       "template": "sum by (instance_id) (rate(etcd_mvcc_delete_total_counter{__$labels__}[__$window__]))"
-    },
-    {
-      "id": "dashboard:v1:59ae969c",
-      "object_names": [
-        "Firewall"
-      ],
-      "template": "firewall_active_sessions{__$labels__} or firewall_current_connections{__$labels__} or firewall_active_connections{__$labels__} or firewall_tcp_connections{__$labels__} or firewall_pf_states{__$labels__}"
     },
     {
       "id": "dashboard:v1:5a55e526",
@@ -3102,6 +3102,13 @@
       "template": "sum by (instance_id) (haproxy_req_rate{svname=\"FRONTEND\",__$labels__})"
     },
     {
+      "id": "dashboard:v1:7d59476a",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "avg(device_memory_usage{__$labels__}) by (instance_id) or avg(snmp_device_memory_usage{__$labels__}) by (instance_id) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100)"
+    },
+    {
       "id": "dashboard:v1:7d6fd449",
       "object_names": [
         "MSSQL"
@@ -3556,7 +3563,6 @@
     {
       "id": "dashboard:v1:91755901",
       "object_names": [
-        "Firewall",
         "Loadbalance",
         "Router"
       ],
@@ -4023,6 +4029,13 @@
         "InfluxDB"
       ],
       "template": "sum by (instance_id) (rate(influxdb_httpd_serverError{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:a4345e6b",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "firewall_active_sessions{__$labels__} or snmp_firewall_active_sessions{__$labels__} or firewall_current_connections{__$labels__} or snmp_firewall_current_connections{__$labels__} or firewall_active_connections{__$labels__} or firewall_tcp_connections{__$labels__} or firewall_pf_states{__$labels__}"
     },
     {
       "id": "dashboard:v1:a4719240",
@@ -4908,13 +4921,6 @@
       "template": "count({instance_type='console_server', __$labels__}) by (instance_id)"
     },
     {
-      "id": "dashboard:v1:c9f0ea5c",
-      "object_names": [
-        "Firewall"
-      ],
-      "template": "firewall_session_utilization{__$labels__} or (firewall_active_sessions{__$labels__} / firewall_max_sessions{__$labels__} * 100) or (firewall_current_connections{__$labels__} / firewall_max_sessions{__$labels__} * 100) or (firewall_current_connections{__$labels__} / firewall_max_connections{__$labels__} * 100)"
-    },
-    {
       "id": "dashboard:v1:ca17f83c",
       "object_names": [
         "SGLang"
@@ -5467,6 +5473,13 @@
       "template": "rate(elasticsearch_breakers_request_tripped{__$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:dfa359d3",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "firewall_session_utilization{__$labels__} or (firewall_active_sessions{__$labels__} / firewall_max_sessions{__$labels__} * 100) or (firewall_current_connections{__$labels__} / firewall_max_sessions{__$labels__} * 100) or (snmp_firewall_current_connections{__$labels__} / snmp_firewall_max_sessions{__$labels__} * 100) or (firewall_current_connections{__$labels__} / firewall_max_connections{__$labels__} * 100)"
+    },
+    {
       "id": "dashboard:v1:dfdd50bc",
       "object_names": [
         "Website"
@@ -6015,13 +6028,6 @@
         "Firewall"
       ],
       "template": "sum(netflow_in_packets{instance_type='firewall', collect_type='netflow', __$labels__} * label_value(netflow_in_packets{instance_type='firewall', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
-    },
-    {
-      "id": "dashboard:v1:f9276881",
-      "object_names": [
-        "Firewall"
-      ],
-      "template": "avg(device_memory_usage{__$labels__}) by (instance_id) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100)"
     },
     {
       "id": "dashboard:v1:f9d16f6f",
