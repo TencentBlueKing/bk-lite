@@ -4,7 +4,7 @@ import copy
 
 from django.db import transaction
 
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.monitor.models import MonitorPlugin, MonitorPluginConfigTemplate, MonitorPluginUITemplate
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.utils.instance_id_keys import resolve_metric_instance_id_keys
@@ -40,13 +40,59 @@ RESERVED_SCRIPT_TAG_KEYS = (
     "config_type",
     "plugin_id",
     "agent_id",
+    "config_id",
     "script",
 )
+# 指标 ID 黑名单：保留标签 + config_id。不得并入 RESERVED_SCRIPT_TAG_KEYS（TOML 锁依赖该元组）。
+RESERVED_SCRIPT_METRIC_NAMES = RESERVED_SCRIPT_TAG_KEYS + ("config_id",)
+RESERVED_SCRIPT_METRIC_PREFIX = "bklite_script_"
+RESERVED_SCRIPT_METRIC_NAME_ERROR = "指标 ID 与保留字段冲突，请更换"
+SCRIPT_SELF_MONITOR_METRIC_NAMES = frozenset(
+    {
+        "up",
+        "duration",
+        "duration_ms",
+        "duration_seconds",
+        "exit_code",
+        "run_duration",
+        "bklite_script",
+    }
+)
+SCRIPT_SELF_MONITOR_METRIC_DELETE_ERROR = "脚本自监控指标禁止删除"
 
-# name_prefix + namepass 按 config_id 隔离，避免合并进同一 Telegraf 后改写其他采集。
-# 插件契约：script 为脚本正文（可从旧字段 command 迁入）；timeout / data_format /
-# command / commands / script_file 不下发。interval 由平台传秒，模板拼 "Ns"；
-# 子进程 timeout 由插件按 interval-1s 推导。
+
+def is_reserved_script_metric_name(name) -> bool:
+    """指标 ID 不得占用平台保留标签名、config_id 或 bklite_script_ 前缀。"""
+    text = str(name or "").strip()
+    if not text:
+        return False
+    lower = text.casefold()
+    if lower in {key.casefold() for key in RESERVED_SCRIPT_METRIC_NAMES}:
+        return True
+    return lower.startswith(RESERVED_SCRIPT_METRIC_PREFIX)
+
+
+def is_script_self_monitor_metric_name(name, collect_type=None) -> bool:
+    """脚本健康/自监控指标不可删：bklite_script_*，以及脚本插件下的 up / duration / exit_code。"""
+    lower = str(name or "").strip().casefold()
+    if not lower:
+        return False
+    if lower.startswith(RESERVED_SCRIPT_METRIC_PREFIX) or lower.startswith("bklite_script."):
+        return True
+    if is_script_collect_type(collect_type) and lower in SCRIPT_SELF_MONITOR_METRIC_NAMES:
+        return True
+    return False
+
+
+# 业务指标不下发 name_prefix，入库使用脚本 stdout 短名（不含 bklite_script_{id}_）。
+# 多实例隔离依赖点上的 instance_id / config_id / collect_type；starlark 用 tagpass
+# 只处理本 child，避免改写同一 Telegraf 上的其他采集。
+# 插件契约：script 为脚本正文（可从旧字段 command 迁入）；data_format /
+# command / commands / script_file 不下发。interval 由平台传秒，模板拼 "Ns"。
+# timeout 不下发，由采集器按 interval-1s 推导。
+SCRIPT_MIN_INTERVAL_SECONDS = 60
+SCRIPT_INTERVAL_MIN_ERROR = "脚本采集间隔不能小于 60 秒"
+SCRIPT_DETECT_TIMEOUT_MARGIN = 10
 DEFAULT_SCRIPT_CHILD_TEMPLATE = """[[inputs.bklite_script]]
     interval = "{{ interval }}s"
     interpreter = "{{ interpreter | default('/bin/sh', true) }}"
@@ -56,18 +102,22 @@ DEFAULT_SCRIPT_CHILD_TEMPLATE = """[[inputs.bklite_script]]
     {% if environment %}environment = {{ environment | to_toml_str_array }}{% endif %}
     {% if run_as %}run_as = "{{ run_as }}"{% endif %}
     {% if script_name %}script_name = "{{ script_name }}"{% endif %}
-    name_prefix = "bklite_script_{{ config_id }}_"
     [inputs.bklite_script.tags]
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type }}"
         collect_type = "script"
         config_type = "script"
         plugin_id = "{{ plugin_id }}"
+        config_id = "{{ config_id }}"
 
 [[processors.starlark]]
-    namepass = ["bklite_script_{{ config_id }}_*"]
     source = '''
 def apply(metric):
+    name = metric.name
+    if name.startswith("prometheus_"):
+        trimmed = name[len("prometheus_"):]
+        if trimmed != "":
+            metric.name = trimmed
     conflicts = []
     instance_id = ""
     instance_type = ""
@@ -75,6 +125,7 @@ def apply(metric):
     config_type = ""
     plugin_id = ""
     agent_id = ""
+    config_id = ""
     script = ""
     for k in metric.tags:
         if k == "instance_id":
@@ -89,6 +140,8 @@ def apply(metric):
             plugin_id = metric.tags[k]
         elif k == "agent_id":
             agent_id = metric.tags[k]
+        elif k == "config_id":
+            config_id = metric.tags[k]
         elif k == "script":
             script = metric.tags[k]
         elif k.startswith("bklite_script_"):
@@ -105,6 +158,8 @@ def apply(metric):
         conflicts.append("plugin_id")
     if agent_id != "" and agent_id != reserved_agent_id:
         conflicts.append("agent_id")
+    if config_id != "" and config_id != reserved_config_id:
+        conflicts.append("config_id")
     if script != "" and script != reserved_script:
         conflicts.append("script")
     metric.tags["instance_id"] = reserved_instance_id
@@ -113,6 +168,7 @@ def apply(metric):
     metric.tags["config_type"] = reserved_config_type
     metric.tags["plugin_id"] = reserved_plugin_id
     metric.tags["agent_id"] = reserved_agent_id
+    metric.tags["config_id"] = reserved_config_id
     metric.tags["script"] = reserved_script
     if len(conflicts) > 0:
         metric.tags["bklite_script_reserved_keys"] = ",".join(conflicts)
@@ -126,7 +182,13 @@ def apply(metric):
         reserved_config_type = "script"
         reserved_plugin_id = "{{ plugin_id }}"
         reserved_agent_id = "${node.ip}-${node.cloud_region}"
+        reserved_config_id = "{{ config_id }}"
         reserved_script = "default"
+
+    [processors.starlark.tagpass]
+        instance_id = ["{{ instance_id }}"]
+        collect_type = ["script"]
+        config_id = ["{{ config_id }}"]
 """
 
 
@@ -335,14 +397,62 @@ SCRIPT_HEALTH_METRICS = [
 ]
 
 
+def parse_script_duration_seconds(value):
+    if value is None or value is False or value == "":
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.endswith("s") and text[:-1].lstrip("-").isdigit():
+        return int(text[:-1])
+    if text.lstrip("-").isdigit():
+        return int(text)
+    try:
+        return int(float(text))
+    except (TypeError, ValueError):
+        return None
+
+
+def default_script_timeout_seconds(interval_seconds: int) -> int:
+    return max(1, int(interval_seconds) - 1)
+
+
+def assert_script_interval(interval):
+    interval_seconds = parse_script_duration_seconds(interval)
+    if interval_seconds is None or interval_seconds < SCRIPT_MIN_INTERVAL_SECONDS:
+        raise ValidationAppException(SCRIPT_INTERVAL_MIN_ERROR)
+    return interval_seconds
+
+
+def prepare_script_child_content_for_save(content):
+    """编辑保存：校验间隔，去掉 timeout，由采集器按 interval-1s 推导。"""
+    if not isinstance(content, dict):
+        return content
+    prepared = copy.deepcopy(content)
+    config = prepared.get("config") if isinstance(prepared.get("config"), dict) else {}
+    assert_script_interval(config.get("interval"))
+    config.pop("timeout", None)
+    prepared["config"] = config
+    return prepared
+
+
 def _child_render_context(context: dict) -> dict:
     """渲染键以 script 为准；仅当 script 为空时把旧字段 command 迁入 script。"""
     render_context = dict(context)
-    if str(render_context.get("script") or "").strip():
-        return render_context
-    command = render_context.get("command")
-    if command not in (None, ""):
-        render_context["script"] = command
+    if not str(render_context.get("script") or "").strip():
+        command = render_context.get("command")
+        if command not in (None, ""):
+            render_context["script"] = command
+    interval_seconds = parse_script_duration_seconds(render_context.get("interval"))
+    if interval_seconds is not None:
+        render_context["interval"] = interval_seconds
+    render_context.pop("timeout", None)
     return render_context
 
 

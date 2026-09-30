@@ -66,6 +66,50 @@ const wait = (milliseconds: number) => new Promise<void>((resolve) => {
   window.setTimeout(resolve, milliseconds);
 });
 
+export const CONFIRM_AUTH_NETWORK_RETRY_DELAY_MS = 300;
+
+export const confirmAuthStillValid = async (
+  expectedUserIdentity: string | null,
+  checkAuth: () => Promise<RecoveredAuthUser | null> = fetchRecoveredAuth,
+  retryDelay = CONFIRM_AUTH_NETWORK_RETRY_DELAY_MS,
+  waitForDelay: (milliseconds: number) => Promise<void> = wait,
+  signal?: AbortSignal,
+): Promise<AuthRecoveryResult> => {
+  if (!expectedUserIdentity) {
+    return { status: 'unavailable' };
+  }
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (signal?.aborted) {
+      return { status: 'unavailable' };
+    }
+
+    try {
+      const recoveredUser = await checkAuth();
+      if (signal?.aborted) {
+        return { status: 'unavailable' };
+      }
+      if (!recoveredUser) {
+        return { status: 'unavailable' };
+      }
+      if (getAuthUserIdentity(recoveredUser) !== expectedUserIdentity) {
+        return { status: 'account-changed' };
+      }
+      return { status: 'recovered', user: recoveredUser };
+    } catch (error) {
+      if (signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) {
+        return { status: 'unavailable' };
+      }
+      if (attempt === 1) {
+        return { status: 'unavailable' };
+      }
+      await waitForDelay(retryDelay);
+    }
+  }
+
+  return { status: 'unavailable' };
+};
+
 export const recoverAuthWithRetry = async (
   expectedUserIdentity: string | null,
   checkAuth: () => Promise<RecoveredAuthUser | null> = fetchRecoveredAuth,

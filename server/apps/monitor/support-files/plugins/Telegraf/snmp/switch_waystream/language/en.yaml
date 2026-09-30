@@ -1,6 +1,6 @@
 Switch Waystream SNMP:
   name: Waystream (Telegraf)
-  desc: "SNMP monitoring template for Waystream switch. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic, for ASR and FTTH access switches (enterprise PEN 9303)."
+  desc: "SNMP monitoring template for Waystream switch. It reports uptime, temperature, fan speed, and interface traffic, for ASR and FTTH access switches (enterprise PEN 9303). CPU, memory, and power supply are not exposed by the private MIB and are not collected."
 monitor_object:
   Switch: Switch
 monitor_object_type:

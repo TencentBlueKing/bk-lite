@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import AuthProvider from '@/context/auth';
-import { emitSessionExpired, resetSessionExpiredState } from '@/utils/sessionExpiry';
+import AuthProvider, { useAuth } from '@/context/auth';
+import { emitSessionExpired, isSessionExpiredState, resetSessionExpiredState } from '@/utils/sessionExpiry';
 
 const mocks = vi.hoisted(() => ({
   messageSuccess: vi.fn(),
@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
     occurredAt: Date.now(),
   })),
   recoverAuthWithRetry: vi.fn(),
+  confirmAuthStillValid: vi.fn(),
   routerPush: vi.fn(),
 }));
 
@@ -68,6 +69,7 @@ vi.mock('@/utils/authRecovery', async () => {
   return {
     ...actual,
     recoverAuthWithRetry: mocks.recoverAuthWithRetry,
+    confirmAuthStillValid: mocks.confirmAuthStillValid,
   };
 });
 
@@ -100,6 +102,11 @@ const BusinessPage = () => {
   );
 };
 
+const TokenProbe = () => {
+  const { token } = useAuth();
+  return <span>token:{token}</span>;
+};
+
 const validRecovery = {
   status: 'recovered' as const,
   user: {
@@ -115,6 +122,7 @@ beforeEach(() => {
   businessMountCount = 0;
   resetSessionExpiredState();
   mocks.recoverAuthWithRetry.mockReset();
+  mocks.confirmAuthStillValid.mockReset();
   mocks.messageSuccess.mockReset();
   mocks.publishAuthRecovery.mockClear();
   mocks.routerPush.mockReset();
@@ -155,6 +163,7 @@ describe('AuthProvider protected content lifecycle', () => {
     expect(screen.queryByText('common.sessionExpiredTitle')).toBeNull();
     expect(businessMountCount).toBe(1);
     expect(mocks.recoverAuthWithRetry).toHaveBeenCalledTimes(2);
+    expect(mocks.confirmAuthStillValid).not.toHaveBeenCalled();
   });
 
   it('does not let an in-flight expired probe swallow a successful relogin', async () => {
@@ -180,6 +189,7 @@ describe('AuthProvider protected content lifecycle', () => {
     act(() => {
       emitSessionExpired({ reason: 'test-stale-probe-during-relogin', status: 401 });
     });
+    expect(mocks.confirmAuthStillValid).not.toHaveBeenCalled();
 
     await waitFor(() => {
       expect(screen.getByText('common.sessionExpiredTitle')).toBeTruthy();
@@ -204,8 +214,9 @@ describe('AuthProvider protected content lifecycle', () => {
     expect(screen.queryByText('common.sessionExpiredTitle')).toBeNull();
   });
 
-  it('keeps an already mounted page and its draft during reauthentication', async () => {
+  it('keeps an already mounted page and its draft when the session is actually expired', async () => {
     mocks.recoverAuthWithRetry.mockResolvedValue(validRecovery);
+    mocks.confirmAuthStillValid.mockResolvedValue({ status: 'unavailable' });
 
     render(
       <AuthProvider>
@@ -224,6 +235,8 @@ describe('AuthProvider protected content lifecycle', () => {
     await waitFor(() => {
       expect(screen.getByText('common.sessionExpiredTitle')).toBeTruthy();
     });
+    expect(isSessionExpiredState()).toBe(true);
+    expect(mocks.confirmAuthStillValid).toHaveBeenCalledTimes(1);
     expect(
       (screen.getByRole('textbox', { name: 'draft' }) as HTMLInputElement).value,
     ).toBe('unfinished alert filter');
@@ -233,9 +246,112 @@ describe('AuthProvider protected content lifecycle', () => {
     await waitFor(() => {
       expect(screen.queryByText('common.sessionExpiredTitle')).toBeNull();
     });
+    expect(mocks.messageSuccess).toHaveBeenCalledTimes(1);
     expect(
       (screen.getByRole('textbox', { name: 'draft' }) as HTMLInputElement).value,
     ).toBe('unfinished alert filter');
+    expect(businessMountCount).toBe(1);
+  });
+
+  it('does not open the login overlay when a warm 401 still has a valid session', async () => {
+    mocks.recoverAuthWithRetry.mockResolvedValue(validRecovery);
+    mocks.confirmAuthStillValid.mockResolvedValue({
+      status: 'recovered',
+      user: {
+        ...validRecovery.user,
+        token: 'probed-token',
+      },
+    });
+
+    render(
+      <AuthProvider>
+        <BusinessPage />
+        <TokenProbe />
+      </AuthProvider>,
+    );
+
+    const draft = await screen.findByRole('textbox', { name: 'draft' });
+    fireEvent.change(draft, { target: { value: 'unfinished alert filter' } });
+    expect(screen.getByText('token:fresh-backend-token')).toBeTruthy();
+
+    act(() => {
+      emitSessionExpired({ reason: 'test-warm-spurious-401', status: 401 });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('token:probed-token')).toBeTruthy();
+    });
+    expect(mocks.confirmAuthStillValid).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('common.sessionExpiredTitle')).toBeNull();
+    expect(isSessionExpiredState()).toBe(false);
+    expect(mocks.messageSuccess).not.toHaveBeenCalled();
+    expect(
+      (screen.getByRole('textbox', { name: 'draft' }) as HTMLInputElement).value,
+    ).toBe('unfinished alert filter');
+    expect(businessMountCount).toBe(1);
+  });
+
+  it('coalesces concurrent warm 401s into one probe before opening the overlay', async () => {
+    mocks.recoverAuthWithRetry.mockResolvedValue(validRecovery);
+    let resolveConfirm: ((value: { status: 'unavailable' }) => void) | undefined;
+    mocks.confirmAuthStillValid.mockImplementation(
+      () => new Promise((resolve) => {
+        resolveConfirm = resolve;
+      }),
+    );
+
+    render(
+      <AuthProvider>
+        <BusinessPage />
+      </AuthProvider>,
+    );
+
+    await screen.findByRole('textbox', { name: 'draft' });
+
+    act(() => {
+      emitSessionExpired({ reason: 'test-warm-401-a', status: 401 });
+      emitSessionExpired({ reason: 'test-warm-401-b', status: 401 });
+    });
+
+    await waitFor(() => {
+      expect(mocks.confirmAuthStillValid).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByText('common.sessionExpiredTitle')).toBeNull();
+    expect(isSessionExpiredState()).toBe(false);
+
+    await act(async () => {
+      resolveConfirm?.({ status: 'unavailable' });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('common.sessionExpiredTitle')).toBeTruthy();
+    });
+    expect(mocks.confirmAuthStillValid).toHaveBeenCalledTimes(1);
+    expect(isSessionExpiredState()).toBe(true);
+  });
+
+  it('opens the login overlay when the warm probe sees a different account', async () => {
+    mocks.recoverAuthWithRetry.mockResolvedValue(validRecovery);
+    mocks.confirmAuthStillValid.mockResolvedValue({ status: 'account-changed' });
+
+    render(
+      <AuthProvider>
+        <BusinessPage />
+        <TokenProbe />
+      </AuthProvider>,
+    );
+
+    await screen.findByText('token:fresh-backend-token');
+
+    act(() => {
+      emitSessionExpired({ reason: 'test-warm-account-changed', status: 401 });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('common.sessionExpiredTitle')).toBeTruthy();
+    });
+    expect(screen.getByText('token:fresh-backend-token')).toBeTruthy();
+    expect(mocks.messageSuccess).not.toHaveBeenCalled();
     expect(businessMountCount).toBe(1);
   });
 });

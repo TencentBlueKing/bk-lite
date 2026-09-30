@@ -75,6 +75,10 @@ _MONITOR_CATALOG_HINT = (
     "禁止截断后按台循环；空列表禁止换 ID 重试；用户未声明类型时 request_user_choice 问对象类型，已声明则把空列表当该类型下无匹配；"
     "instance_ids 必须用 list_object_instances 返回的 instance_id，禁止用实例名或 IP 代替；"
     "query_metric_data 空矩阵是有效结论，禁止换 ID/IP/维度/时间窗/指标名重试；"
+    "主机使用率排行/Top N（问「最近 N 分钟哪些主机磁盘高」「使用率最高的前 M 台」）必须规划 "
+    "monitor_get_host_resource_top_by_time，它自带时间窗且直接返回排行，"
+    "不要用 monitor_get_host_resource_snapshot（只出全局聚合、不排名、不接受时间窗），"
+    "也不要先列实例再逐台 query_metric_data 手工排序；"
     "禁止返回空 steps，不要改去规划 SSH/top/htop。"
 )
 

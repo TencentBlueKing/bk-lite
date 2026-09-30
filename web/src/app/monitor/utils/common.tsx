@@ -668,6 +668,7 @@ export const getIconByObjectName = (objectName = '', objects: ObjectItem[]) => {
 // 品牌专属采集模板/实例（如思科交换机）的品牌识别：按名称匹配 → 提供品牌标签（及可选 logo 图标）。
 // icon 可选：未提供时集成卡片回退到监控对象默认图标，仪表盘头部仍展示品牌文字标签。
 const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
+  { match: /ciscosb|cisco\s*small\s*business/i, label: 'Cisco Small Business', icon: 'mm-ciscosb_ciscosb' },
   { match: /^(?!.*san_cisco).*cisco/i, label: 'Cisco', icon: 'mm-cisco_思科' },
   { match: /futurematrix/i, label: 'FutureMatrix', icon: 'mm-huawei_华为' },
   { match: /huawei/i, label: 'Huawei', icon: 'mm-huawei_华为' },
@@ -717,6 +718,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /aethra|dolcevita/i, label: 'Aethra', icon: 'mm-aethra_aethra' },
   { match: /relianoid|\bzva\b/i, label: 'RELIANOID', icon: 'mm-relianoid_relianoid' },
   { match: /velocloud|vmware\s*sd-?wan|\bvce\b/i, label: 'VeloCloud', icon: 'mm-velocloud_velocloud' },
+  { match: /viptela/i, label: 'Viptela', icon: 'mm-viptela_viptela' },
   { match: /benu|benu\s*networks|\bmeg\d+/i, label: 'Benu Networks', icon: 'mm-benu_benu' },
   { match: /forcepoint|stonesoft|stonegate|ngfw/i, label: 'Forcepoint', icon: 'mm-forcepoint_forcepoint' },
   { match: /screenos|netscreen|\bssg\b/i, label: 'Juniper ScreenOS', icon: 'mm-screenos_screenos' },
@@ -737,6 +739,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /\bdigi\b|digi.?transport/i, label: 'Digi', icon: 'mm-digi_digi' },
   { match: /oneaccess/i, label: 'OneAccess', icon: 'mm-oneaccess_oneaccess' },
   { match: /teldat/i, label: 'Teldat', icon: 'mm-teldat_teldat' },
+  { match: /firebrick/i, label: 'FireBrick', icon: 'mm-firebrick_firebrick' },
   { match: /teltonika|rutos/i, label: 'Teltonika', icon: 'mm-teltonika_teltonika' },
   { match: /versa|flexvnf|\bvos\b/i, label: 'Versa', icon: 'mm-versa_versa' },
   { match: /viprinet/i, label: 'Viprinet', icon: 'mm-viprinet_viprinet' },
@@ -915,6 +918,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /smartoptics/i, label: 'Smartoptics', icon: 'mm-smartoptics_smartoptics' },
   { match: /racom|\bray\b/i, label: 'RACOM', icon: 'mm-racom_racom' },
   { match: /ifotec/i, label: 'Ifotec', icon: 'mm-ifotec_ifotec' },
+  { match: /\badva\b|snmp_adva|fsp\s*(150|3000)/i, label: 'ADVA', icon: 'mm-adva_adva' },
   { match: /exalt|ex-i|exaltcom/i, label: 'Exalt', icon: 'mm-exalt_exalt' },
   { match: /bdcom/i, label: 'BDCOM', icon: 'mm-bdcom_bdcom' },
   { match: /cambium/i, label: 'Cambium', icon: 'mm-cambium_cambium' },

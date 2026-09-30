@@ -137,16 +137,3 @@ export const consumeScriptMetricEditCarry = (
     return null;
   }
 };
-
-export const carryItemsToBusinessMetrics = (
-  items: ScriptMetricEditCarryItem[]
-): BusinessMetricItem[] =>
-  items.map((item) => ({
-    key: item.name,
-    name: item.name,
-    value: item.sample,
-    tags: keepStoredTags(item.tags) || {},
-    metric_group: typeof item.group === 'number' && item.group > 0 ? item.group : null,
-    unit: item.unit_id || DEFAULT_CATALOG_UNIT_ID,
-    description: typeof item.description === 'string' ? item.description : ''
-  }));

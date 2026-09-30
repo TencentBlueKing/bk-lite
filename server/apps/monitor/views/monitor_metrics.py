@@ -1,5 +1,6 @@
 import re
 
+from django.db import transaction
 from django.db.models import Q, Subquery
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -17,7 +18,20 @@ from apps.monitor.filters.monitor_metrics import MetricFilter, MetricGroupFilter
 from apps.monitor.models import MonitorPlugin
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.models.monitor_object import MonitorObject
-from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, MetricSerializer
+from apps.monitor.serializers.monitor_metrics import (
+    METRIC_BATCH_UPDATE_FIELDS,
+    MetricBatchDeleteSerializer,
+    MetricBatchUpdateSerializer,
+    MetricGroupSerializer,
+    MetricSerializer,
+    merge_batch_dimensions,
+    validate_batch_dimension_names,
+)
+from apps.monitor.services.custom_script_plugin import (
+    SCRIPT_SELF_MONITOR_METRIC_DELETE_ERROR,
+    is_script_collect_type,
+    is_script_self_monitor_metric_name,
+)
 from apps.monitor.utils.metric_enum_locale import localize_metric_enum_unit
 from apps.monitor.utils.metric_keyword import apply_metric_keyword_filter
 from apps.monitor.utils.metric_query_labels import ensure_metric_labels_placeholder, is_raw_vector_selector
@@ -178,6 +192,41 @@ def parse_optional_positive_id_list(value, param_name):
     if not raw_values:
         return None
     return [parse_optional_positive_id(item, param_name) for item in raw_values]
+
+
+def _metric_batch_item_error(metric_id, name, field, message, code):
+    """Structured per-item error so the metric table can mark the failing row."""
+    return {
+        "id": metric_id,
+        "name": name or "",
+        "field": field,
+        "message": message,
+        "code": code,
+    }
+
+
+def _flatten_serializer_errors(errors):
+    flattened = []
+    if isinstance(errors, dict):
+        for field, value in errors.items():
+            key = "" if field in ("non_field_errors", "non_field_error") else field
+            if isinstance(value, dict):
+                for nested_field, nested_message in _flatten_serializer_errors(value):
+                    flattened.append((nested_field or key, nested_message))
+            elif isinstance(value, (list, tuple)):
+                for item in value:
+                    if isinstance(item, dict):
+                        flattened.extend((nested_field or key, nested_message) for nested_field, nested_message in _flatten_serializer_errors(item))
+                    else:
+                        flattened.append((key, str(item)))
+            else:
+                flattened.append((key, str(value)))
+    elif isinstance(errors, (list, tuple)):
+        for item in errors:
+            flattened.append(("", str(item)))
+    elif errors:
+        flattened.append(("", str(errors)))
+    return flattened
 
 
 def merge_inherited_metric_groups(vendor_groups, base_groups):
@@ -524,8 +573,118 @@ class MetricViewSet(viewsets.ModelViewSet):
 
     @HasPermission("integration_metric-Delete Metric")
     def destroy(self, request, *args, **kwargs):
-        self._ensure_modifiable(self.get_object())
+        metric = self.get_object()
+        self._ensure_modifiable(metric)
+        self._ensure_script_self_monitor_not_deleted(metric)
         return super().destroy(request, *args, **kwargs)
+
+    @staticmethod
+    def _ensure_script_self_monitor_not_deleted(metric):
+        collect_type = getattr(getattr(metric, "monitor_plugin", None), "collect_type", None)
+        if is_script_self_monitor_metric_name(getattr(metric, "name", None), collect_type):
+            raise BaseAppException(SCRIPT_SELF_MONITOR_METRIC_DELETE_ERROR)
+
+    @action(detail=False, methods=["post"], url_path="batch_delete")
+    @HasPermission("integration_metric-Delete Metric")
+    def batch_delete(self, request, *args, **kwargs):
+        serializer = MetricBatchDeleteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        metric_ids = serializer.validated_data["ids"]
+        plugin_id = serializer.validated_data["monitor_plugin"]
+
+        metrics = list(Metric.objects.select_related("monitor_object", "monitor_plugin").filter(id__in=metric_ids))
+        found_ids = {metric.id for metric in metrics}
+        missing_ids = [metric_id for metric_id in metric_ids if metric_id not in found_ids]
+        if missing_ids:
+            raise ValidationAppException("部分指标不存在")
+        if any(metric.monitor_plugin_id != plugin_id for metric in metrics):
+            raise ValidationAppException("只能删除当前插件的指标")
+        for metric in metrics:
+            self._ensure_modifiable(metric)
+            self._ensure_script_self_monitor_not_deleted(metric)
+
+        with transaction.atomic():
+            for metric in metrics:
+                metric.delete()
+
+        logger.info(
+            "metric batch_delete completed monitor_plugin_id=%s count=%s",
+            plugin_id,
+            len(metrics),
+        )
+        return WebUtils.response_success({"deleted": len(metrics)})
+
+    @action(detail=False, methods=["post"], url_path="batch_update")
+    @HasPermission("integration_metric-Edit Metric")
+    def batch_update(self, request, *args, **kwargs):
+        serializer = MetricBatchUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payload = serializer.validated_data
+        plugin_id = payload["monitor_plugin"]
+        items = payload["items"]
+        metric_ids = [item["id"] for item in items]
+
+        metrics = list(Metric.objects.select_related("monitor_object", "monitor_plugin", "metric_group").filter(id__in=metric_ids))
+        metrics_by_id = {metric.id: metric for metric in metrics}
+        errors = []
+        prepared = []
+
+        for item in items:
+            metric_id = item["id"]
+            metric = metrics_by_id.get(metric_id)
+            name = getattr(metric, "name", "") if metric is not None else ""
+            patch = {field: item[field] for field in METRIC_BATCH_UPDATE_FIELDS if field in item}
+            if metric is None:
+                errors.append(_metric_batch_item_error(metric_id, "", "id", "指标不存在", "not_found"))
+                continue
+            if metric.monitor_plugin_id != plugin_id:
+                errors.append(_metric_batch_item_error(metric_id, name, "id", "只能批量编辑同一插件的指标", "wrong_plugin"))
+                continue
+            if getattr(metric, "is_pre", False):
+                errors.append(_metric_batch_item_error(metric_id, name, "id", "内置指标为只读，禁止修改或删除", "builtin_readonly"))
+                continue
+            if not patch:
+                errors.append(_metric_batch_item_error(metric_id, name, None, "未指定要更新的字段", "empty_patch"))
+                continue
+            if "dimensions" in patch:
+                preserve_hidden = is_script_collect_type(getattr(metric.monitor_plugin, "collect_type", None))
+                dimension_error = validate_batch_dimension_names(patch["dimensions"], name, preserve_hidden=preserve_hidden)
+                if dimension_error:
+                    errors.append(_metric_batch_item_error(metric_id, name, "dimensions", dimension_error, "invalid_dimension"))
+                    continue
+                patch["dimensions"] = merge_batch_dimensions(metric.dimensions, patch["dimensions"], preserve_hidden=preserve_hidden)
+            if patch.get("data_type") == "Enum" and "unit" not in patch:
+                errors.append(_metric_batch_item_error(metric_id, name, "unit", "设为枚举时必须提供映射", "enum_mapping_required"))
+                continue
+            if "unit" in patch and patch.get("data_type") != "Number" and (metric.data_type or "") == "Enum":
+                errors.append(_metric_batch_item_error(metric_id, name, "unit", "枚举指标不能直接改单位", "enum_unit_blocked"))
+                continue
+            item_patch = dict(patch)
+            if item_patch.get("data_type") == "Number" and "unit" not in item_patch and (metric.data_type or "") == "Enum":
+                item_patch["unit"] = "none"
+            item_serializer = MetricSerializer(metric, data=item_patch, partial=True)
+            if not item_serializer.is_valid():
+                for field, message in _flatten_serializer_errors(item_serializer.errors):
+                    errors.append(_metric_batch_item_error(metric_id, name, field or None, message, "validation"))
+                continue
+            prepared.append(item_serializer)
+
+        if errors:
+            return WebUtils.response_error(
+                response_data={"errors": errors},
+                error_message="部分指标无法更新",
+            )
+
+        with transaction.atomic():
+            for item_serializer in prepared:
+                item_serializer.save()
+
+        logger.info(
+            "metric batch_update completed monitor_plugin_id=%s count=%s",
+            plugin_id,
+            len(prepared),
+        )
+        return WebUtils.response_success({"updated": len(prepared)})
 
     def list(self, request, *args, **kwargs):
         # Do not union a select_related queryset: joins would make the two SELECT

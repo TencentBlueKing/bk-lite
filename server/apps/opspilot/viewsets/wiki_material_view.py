@@ -1,6 +1,6 @@
 from django.db import transaction
 from django.db.models import Case, IntegerField, Value, When
-from django.http import JsonResponse
+from django.http import FileResponse, JsonResponse
 from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
@@ -40,6 +40,40 @@ _MATERIAL_STATUS_GROUPS = {
     "built": _MATERIAL_LIST_BUILT_STATUSES,
     "failed": _MATERIAL_LIST_FAILED_STATUSES,
 }
+
+# 下载响应按扩展名给保守类型；不引入用户可控的 content-type。
+_MATERIAL_DOWNLOAD_CONTENT_TYPES = {
+    ".pdf": "application/pdf",
+    ".doc": "application/msword",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xls": "application/vnd.ms-excel",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".ppt": "application/vnd.ms-powerpoint",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".txt": "text/plain",
+    ".md": "text/markdown",
+    ".csv": "text/csv",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+}
+
+
+def _material_download_content_type(filename: str) -> str:
+    suffix = ("." + filename.rsplit(".", 1)[-1].lower()) if "." in filename else ""
+    return _MATERIAL_DOWNLOAD_CONTENT_TYPES.get(suffix, "application/octet-stream")
+
+
+def build_material_download_url(material) -> str:
+    """原始文件下载 URL（Server 代理，不暴露 MinIO 直链）。
+
+    走 /api/proxy 前缀，让浏览器经 Next 代理到 Server，而不是当成页面路由。
+    """
+    if not material or not material.pk or not material.file or not material.file.name:
+        return ""
+    return f"/api/proxy/opspilot/wiki_mgmt/material/{material.pk}/download/"
 
 
 def _split_query_values(request, key):
@@ -563,7 +597,7 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
         page_ids = list(PageEvidence.objects.filter(material=material).values_list("page_id", flat=True).distinct())
         pages = [{"id": p.id, "title": p.title, "page_type": p.page_type, "status": p.status} for p in KnowledgePage.objects.filter(id__in=page_ids)]
         try:
-            file_url = material.file.url if material.file else ""
+            file_url = build_material_download_url(material) if material.file else ""
         except Exception:
             file_url = ""
         original = material.text_content if material.material_type == "text" else (material.url or "")
@@ -594,6 +628,37 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
                 },
             }
         )
+
+    @HasPermission("wiki_list-View")
+    @action(methods=["GET"], detail=True)
+    def download(self, request, pk=None):
+        """经 Server 代理下载原始文件。
+
+        不下发 MinIO 直链：对象存储通常不对浏览器可达，且直链会绕过权限与
+        内容处置策略。Server 用自身凭据从 MinIO 拉流，权限复用 get_object 的团队边界。
+        """
+        material = self.get_object()
+        file_field = material.file
+        if not file_field or not file_field.name:
+            return JsonResponse({"result": False, "message": "该资料没有可下载的原始文件"}, status=404)
+        try:
+            fileobj = file_field.storage.open(file_field.name, "rb")
+        except FileNotFoundError:
+            return JsonResponse({"result": False, "message": "原始文件不存在"}, status=404)
+        except Exception as exc:
+            logger.warning(
+                "wiki material download open failed material=%s error_type=%s failed_stage=%s",
+                material.id,
+                type(exc).__name__,
+                "storage_open",
+            )
+            return JsonResponse({"result": False, "message": "对象存储不可用，请稍后重试"}, status=503)
+
+        filename = file_field.name.rsplit("/", 1)[-1] or "download"
+        content_type = _material_download_content_type(filename)
+        response = FileResponse(fileobj, content_type=content_type, as_attachment=True, filename=filename)
+        response["Cache-Control"] = "private, no-store"
+        return response
 
     @HasPermission("wiki_list-View")
     @action(methods=["POST"], detail=True)

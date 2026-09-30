@@ -174,6 +174,17 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_ciscosb",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "temperature",
+        "fan",
+        "psu",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_comtrol",
       "capabilities": [
         "uptime",
@@ -499,9 +510,8 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       "collectType": "snmp_microsens",
       "capabilities": [
         "uptime",
-        "cpu",
-        "memory",
         "temperature",
+        "fan",
         "psu",
         "traffic"
       ]
@@ -790,7 +800,9 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "uptime",
         "cpu",
         "memory",
+        "temperature",
         "fan",
+        "psu",
         "traffic"
       ]
     },
@@ -805,9 +817,8 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       "collectType": "snmp_waystream",
       "capabilities": [
         "uptime",
-        "cpu",
-        "memory",
         "temperature",
+        "fan",
         "traffic"
       ]
     },
@@ -1000,6 +1011,15 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
     },
     {
       "collectType": "snmp_draytek",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "traffic"
+      ]
+    },
+    {
+      "collectType": "snmp_firebrick",
       "capabilities": [
         "uptime",
         "cpu",
@@ -1219,6 +1239,15 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_viptela",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_vyatta",
       "capabilities": [
         "uptime",
@@ -1286,7 +1315,11 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "uptime",
         "cpu",
         "memory",
-        "traffic"
+        "temperature",
+        "fan",
+        "psu",
+        "traffic",
+        "session"
       ]
     },
     {

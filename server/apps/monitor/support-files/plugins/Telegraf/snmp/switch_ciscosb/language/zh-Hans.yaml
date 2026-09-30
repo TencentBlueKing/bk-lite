@@ -1,0 +1,30 @@
+Switch CiscoSB SNMP:
+  name: Cisco Small Business（Telegraf）
+  desc: 面向 Cisco Small Business 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、温度、风扇、电源状态、接口流量，适用于 Cisco Business CBS、SG300/SG500、Catalyst 1200/1300 系列（企业号 PEN 9，CISCOSB 子树）。内存无可采集对象，不采集。
+monitor_object:
+  Switch: 交换机
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Switch:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标表示 Cisco Small Business 交换机 1 分钟平均 CPU 使用率（rlCpuUtilDuringLastMinute），按 0-100 百分比记录；取值 101（未启用 CPU 统计）会被丢弃。持续偏高可能意味着控制平面过载、广播风暴或异常流量。
+    device_temperature_celsius:
+      name: 温度
+      desc: 该指标表示 Cisco Small Business 交换机各堆叠单元的温度（rlEnvFanDataTemp），单位摄氏度。温度过高可能意味着散热故障或风道堵塞，存在热保护停机风险。
+    device_fan_state:
+      name: 风扇状态
+      desc: 该指标表示 Cisco Small Business 交换机风扇状态（rlEnvMonFanState），归一为 1=正常（normal/缺位）、2=异常。大于 1 表示风扇故障，可能导致设备过热。
+    device_psu_state:
+      name: 电源状态
+      desc: 该指标表示 Cisco Small Business 交换机电源状态（rlEnvMonSupplyState），归一为 1=正常（normal/缺位）、2=异常。大于 1 表示电源故障或冗余缺失。
+monitor_object_metric_group:
+  Switch:
+    CPU: CPU
+    Temperature: 温度
+    Hardware Status: 硬件状态
+    Base: 基础

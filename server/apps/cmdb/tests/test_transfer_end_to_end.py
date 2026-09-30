@@ -323,6 +323,72 @@ def test_relation_failures_are_separate_from_successful_instance_rows(transfer_o
     assert edges.call_args.kwargs["dst_inst_uuid"] == "123e4567-e89b-42d3-a456-426614174001"
 
 
+def test_import_single_unique_conflict_does_not_stop_other_rows(transfer_owner, authorized, fake_graph, monkeypatch):
+    from apps.cmdb.services.instance import InstanceManage
+    from apps.cmdb.services.transfer_validation import inspect_workbook
+    from apps.core.exceptions.base_app_exception import BaseAppException
+
+    attrs = [
+        {"attr_id": "inst_name", "attr_name": "实例名", "attr_type": "str", "is_only": True, "is_required": True, "editable": True},
+        {"attr_id": "serial", "attr_name": "编号", "attr_type": "str", "is_only": True, "is_required": True, "editable": True},
+    ]
+    existing = dict(INSTANCE, inst_name="one", serial="IT-225")
+    monkeypatch.setattr(ModelManage, "search_model_attr", lambda *a, **k: attrs)
+    monkeypatch.setattr(ModelManage, "search_model_attr_v2", lambda *a, **k: attrs)
+    monkeypatch.setattr(
+        "apps.cmdb.utils.Import.build_unique_rule_context",
+        lambda _: SimpleNamespace(unique_rules=[], attrs_by_id={item["attr_id"]: item for item in attrs}),
+    )
+
+    def create(model, data, operator, **kwargs):
+        if data.get("inst_name") == "one":
+            raise BaseAppException("实例名 exist；")
+        return dict(INSTANCE, **data)
+
+    writes = Mock(side_effect=create)
+    monkeypatch.setattr(InstanceManage, "instance_create", writes)
+    fake_graph("apps.cmdb.services.transfer_import", query_entity=([existing], 0))
+    book = openpyxl.Workbook()
+    book.active.title = "host"
+    for row in (["实例名", "编号"], ["str", "str"], ["inst_name", "serial"], ["one", "-225"], ["two", "NEW-1"]):
+        book.active.append(row)
+    stream = io.BytesIO()
+    book.save(stream)
+    info = inspect_workbook(stream, "host", allowed_fields={"inst_name", "serial"})
+    files = MemoryFiles()
+    files.put("transfer/tmp/unique/source.xlsx", stream)
+    context = TransferAuthorization.resolve(transfer_owner, 1, False, "host", "import")
+    task = TransferService.submit(
+        owner=transfer_owner,
+        kind="import",
+        model_id="host",
+        team_id=1,
+        include_children=False,
+        params={},
+        authorization=context.snapshot,
+        schema_hash=context.schema_hash,
+        idempotency_key="unique-row",
+        source_key="transfer/tmp/unique/source.xlsx",
+        source_hash=info["sha256"],
+    )
+    TransferExecution.run(task.pk, files=files)
+    task = TransferService.get(transfer_owner, task.pk)
+    assert task.status == "partial_success"
+    assert task.summary == {
+        "created": 1,
+        "updated": 0,
+        "failed_rows": 1,
+        "created_relations": 0,
+        "failed_relations": 0,
+    }
+    writes.assert_called_once()
+    assert writes.call_args.args[1]["inst_name"] == "two"
+    report = openpyxl.load_workbook(io.BytesIO(files.objects[task.artifacts["errors"]["key"]])).active
+    assert report.cell(2, 1).value == 4
+    assert report.cell(2, 3).value == "inst_name"
+    assert "实例名" in str(report.cell(2, 4).value)
+
+
 def test_all_invalid_rows_fail_with_downloadable_report_and_no_writes(transfer_owner, authorized, fake_graph, monkeypatch):
     from apps.cmdb.services.instance import InstanceManage
     from apps.cmdb.services.transfer_validation import inspect_workbook
