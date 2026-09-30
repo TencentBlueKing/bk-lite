@@ -59,10 +59,15 @@
         oid = "1.3.6.1.4.1.1991.1.1.2.1.52.0"
         name = "device_cpu_usage"
     # ---- 系统 DRAM (snAgSystemDRAMUtil %, snAgSystemDRAMTotal / snAgSystemDRAMFree 字节, 标量) ----
-    # 顶层 field GET 必须带实例 .0。替代已弃用的 snAgGblDynMemUtil。
+    # 顶层 field GET 必须带实例 .0。
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.1991.1.1.2.12.4.1.0"
         name = "device_memory_usage"
+    # ---- 动态内存使用率回退 (snAgGblDynMemUtil %, 标量) ----
+    # 顶层 field GET 必须带实例 .0。无 DRAM OID 的机型用此指标。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1991.1.1.2.1.53.0"
+        name = "device_memory_dynmem_usage"
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.1991.1.1.2.12.4.2.0"
         name = "device_memory_total"
