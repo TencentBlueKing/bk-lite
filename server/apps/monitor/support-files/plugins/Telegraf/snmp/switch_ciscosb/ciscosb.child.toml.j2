@@ -1,0 +1,99 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_ciscosb"
+        config_type = "ciscosb"
+        brand = "ciscosb"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- CPU：rlCpuUtilDuringLastMinute 标量（1 分钟平均，0-100%；101 表示未测量）----
+    # 顶层 field GET 必须带实例 .0 → measurement snmp → 查询 snmp_device_cpu_usage；下方 starlark 丢弃 101。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9.6.1.101.1.8.0"
+        name = "device_cpu_usage"
+    # ---- 温度：rlEnvFanDataTemp（每个堆叠单元一行，摄氏度，无除数）----
+    # 列 OID 走表，不带 .0；index 为堆叠单元号。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.6.1.101.83.5.1.1.2"
+        name = "celsius"
+    # ---- 风扇：rlEnvMonFanStatusTable，描述 ...83.1.1.1.2 作 tag，状态 rlEnvMonFanState ...83.1.1.1.3 ----
+    # 原始码 1 normal / 2 warning / 3 critical / 4 shutdown / 5 notPresent / 6 notFunctioning → 下方 processors.enum 归一。
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.6.1.101.83.1.1.1.2"
+        name = "fanName"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.6.1.101.83.1.1.1.3"
+        name = "state"
+    # ---- 电源：rlEnvMonSupplyStatusTable，描述 ...83.1.2.1.2 作 tag，状态 rlEnvMonSupplyState ...83.1.2.1.3 ----
+    # 枚举同风扇 → 下方 processors.enum 归一。
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.6.1.101.83.1.2.1.2"
+        name = "psuName"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.6.1.101.83.1.2.1.3"
+        name = "state"
+# ---- 内存：无可轮询的系统内存对象，不采集。----
+
+# ---- CPU 取值 101 表示未测量（CPU 统计未启用），丢弃该字段，避免写入超过 100% 的假值。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    raw = metric.fields.get("device_cpu_usage")
+    if raw != None and int(raw) > 100:
+        metric.fields.pop("device_cpu_usage")
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["ciscosb"]
+
+# ---- 风扇/电源状态归一：1 normal / 5 notPresent(缺位) → 1(正常)，其余(2 warning / 3 critical / 4 shutdown / 6 notFunctioning) → 2(异常)。----
+[[processors.enum]]
+    namepass = ["device_fan", "device_psu"]
+    [processors.enum.tagpass]
+        brand = ["ciscosb"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+            "5" = 1

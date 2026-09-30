@@ -194,6 +194,7 @@ export const useSwitchConfig = () => {
       'Switch 3Com SNMP': 'snmp_3com',
       'Switch DASAN SNMP': 'snmp_dasan',
       'Switch Telco SNMP': 'snmp_telco',
+      'Switch CiscoSB SNMP': 'snmp_ciscosb',
       'Switch Cambium SNMP': 'snmp_cambium_switch',
       'Switch Robustel SNMP': 'snmp_robustel_switch',
       'Switch Raisecom SNMP': 'snmp_raisecom_switch',
