@@ -71,6 +71,7 @@ export const useWirelessConfig = () => {
       'Wireless H3C SNMP': 'snmp_h3c',
       'Wireless Ruckus SNMP': 'snmp_ruckus_wireless',
       'Wireless Aruba SNMP': 'snmp_aruba_wireless',
+      'Wireless Aruba Instant SNMP': 'snmp_aruba_instant',
       'Wireless Cisco SNMP': 'snmp_cisco_wireless'
     }
   };
