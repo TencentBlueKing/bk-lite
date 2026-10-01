@@ -24,7 +24,7 @@
     {
       "metric_group": "Temperature",
       "name": "temperature_celsius",
-      "query": "max(temperature_celsius{instance_type='transmission', __$labels__} != -1) by (instance_id)",
+      "query": "max(snmp_temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -32,12 +32,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Alcoma alMP radio temperature in degrees Celsius (alMPTemperature under PEN 12140). Offline units report -1 and those samples are skipped. High values may indicate RF hardware thermal stress, high ambient temperature or overloaded hardware."
+      "description": "Alcoma alMP radio temperature in degrees Celsius (alMPTemperature, scalar 1.3.6.1.4.1.12140.2.3.9.0 under PEN 12140). Offline units report -1, which is dropped at collection time. High values may indicate RF hardware thermal stress, high ambient temperature or overloaded hardware."
     },
     {
       "metric_group": "Radio",
       "name": "rx_level_db",
-      "query": "max(rx_level_db{instance_type='transmission', __$labels__} != -128) by (instance_id)",
+      "query": "max(snmp_rx_level_db{instance_type='transmission', __$labels__}) by (instance_id)",
       "display_name": "Receive Level",
       "data_type": "Number",
       "unit": "none",
@@ -45,12 +45,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Alcoma alMP receive level in dB (alMPRX-Level under PEN 12140). Offline units report -128 and those samples are skipped. A dropping receive level is an early sign of path fade, antenna misalignment or radio degradation."
+      "description": "Alcoma alMP receive level in dB (alMPRX-Level, scalar 1.3.6.1.4.1.12140.2.3.4.0 under PEN 12140). Offline units report -128, which is dropped at collection time. A dropping receive level is an early sign of path fade, antenna misalignment or radio degradation."
     },
     {
       "metric_group": "Radio",
       "name": "tx_power_db",
-      "query": "max(tx_power_db{instance_type='transmission', __$labels__} != -128) by (instance_id)",
+      "query": "max(snmp_tx_power_db{instance_type='transmission', __$labels__}) by (instance_id)",
       "display_name": "Transmit Power",
       "data_type": "Number",
       "unit": "none",
@@ -58,12 +58,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Alcoma alMP transmit power in dB (alMPTX-PWR under PEN 12140). Offline units report -128 and those samples are skipped. Unexpectedly low transmit power can indicate radio mute, hardware fault or configuration change."
+      "description": "Alcoma alMP transmit power in dB (alMPTX-PWR, scalar 1.3.6.1.4.1.12140.2.3.3.0 under PEN 12140). Offline units report -128, which is dropped at collection time. Unexpectedly low transmit power can indicate radio mute, hardware fault or configuration change."
     },
     {
       "metric_group": "Radio",
       "name": "snr_db",
-      "query": "max(snr_db{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_snr_db{instance_type='transmission', __$labels__}) by (instance_id)",
       "display_name": "SNR",
       "data_type": "Number",
       "unit": "none",
@@ -71,7 +71,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Optional Alcoma alMP signal-to-noise ratio in dB (alMPSNR under PEN 12140). Some firmware omits this object; missing rows are skipped. A dropping SNR is an early sign of path fade or interference."
+      "description": "Optional Alcoma alMP signal-to-noise ratio in dB (alMPSNR, scalar 1.3.6.1.4.1.12140.2.4.2.0 under PEN 12140). The device returns text; the first number in it is used, and empty or non-numeric text is dropped. Some firmware omits this object. A dropping SNR is an early sign of path fade or interference."
     },
     {
       "metric_group": "Traffic",
