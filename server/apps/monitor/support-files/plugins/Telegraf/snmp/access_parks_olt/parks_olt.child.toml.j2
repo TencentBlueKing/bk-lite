@@ -38,7 +38,7 @@
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.3893.4.4.1.2.0"
         name = "device_cpu_usage"
-    # pkMemoryTotal .4.4.2.1.0 / pkMemoryFree .4.4.2.2.0 / pkMemoryUsed .4.4.2.3.0：KB（查询侧 ×1024 换算为字节）。
+    # pkMemoryTotal .4.4.2.1.0 / pkMemoryFree .4.4.2.2.0 / pkMemoryUsed .4.4.2.3.0：KB（下方 starlark 采集侧 ×1024 换算为字节）。
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.3893.4.4.2.1.0"
         name = "device_memory_total"
@@ -68,7 +68,7 @@
         oid = "1.3.6.1.4.1.3893.1.27.1.1.4"
         name = "state"
 # ---- 风扇/电源：通用传感器表混合多种类型，需按标签/类型逐行区分，本模板不采集。----
-# ---- CPU 换算：pkCpuSystem 以 0.1% 为单位，÷10 得百分比。----
+# ---- CPU 换算：pkCpuSystem 以 0.1% 为单位，÷10 得百分比；内存 total/free/used 为 KB，×1024 存为字节。----
 [[processors.starlark]]
     namepass = ["snmp"]
     source = '''
@@ -76,6 +76,10 @@ def apply(metric):
     v = metric.fields.get("device_cpu_usage")
     if v != None:
         metric.fields["device_cpu_usage"] = int(v) / 10.0
+    for key in ["device_memory_total", "device_memory_free", "device_memory_used"]:
+        m = metric.fields.get(key)
+        if m != None:
+            metric.fields[key] = int(m) * 1024
     return metric
 '''
     [processors.starlark.tagpass]
