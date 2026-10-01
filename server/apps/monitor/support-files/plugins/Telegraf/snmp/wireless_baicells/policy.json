@@ -1,0 +1,31 @@
+{
+  "object": "Wireless",
+  "plugin": "Wireless Baicells SNMP",
+  "templates": [
+    {
+      "name": "Baicells无线设备内存使用率过高",
+      "alert_name": "无线设备${resource_name} 内存使用率过高",
+      "description": "监控 Baicells LTE CPE 的内存使用率（由内存总量与空闲量推导），当持续高于阈值时触发告警，提示可能存在内存压力并影响业务转发或管理服务。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

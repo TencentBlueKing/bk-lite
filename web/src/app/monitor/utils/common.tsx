@@ -886,6 +886,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /\bxirrus\b/i, label: 'Xirrus', icon: 'mm-xirrus_xirrus' },
   { match: /ruckus|zonedirector|\bsmartzone\b/i, label: 'Ruckus', icon: 'mm-ruckus_ruckus' },
   { match: /prosoft|radiolinx|\brlx2?\b|icx35/i, label: 'ProSoft Technology', icon: 'mm-prosoft_prosoft' },
+  { match: /baicells?/i, label: 'Baicells' },
   { match: /socomec|net\s*vision/i, label: 'Socomec', icon: 'mm-socomec_socomec' },
   { match: /liebert|vertiv/i, label: 'Liebert', icon: 'mm-liebert_liebert' },
   { match: /wti|western\s*telematic/i, label: 'WTI', icon: 'mm-wti_wti' },
