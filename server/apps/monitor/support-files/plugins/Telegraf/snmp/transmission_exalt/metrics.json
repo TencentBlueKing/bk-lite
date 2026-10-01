@@ -22,7 +22,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(device_temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -35,7 +35,7 @@
     {
       "metric_group": "Status",
       "name": "device_temp_alarm",
-      "query": "device_temp_alarm{instance_type='transmission', __$labels__}",
+      "query": "max(snmp_device_temp_alarm{instance_type='transmission', __$labels__}) by (instance_id)",
       "display_name": "Temperature Alarm",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"minor\",\"id\":1,\"color\":\"#faad14\"},{\"name\":\"major\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -43,12 +43,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Optional Exalt temperature alarm from locTempAlarm under enterprise PEN 25651. Values are almNORMAL(0), almMINOR(1) and almMAJOR(2). Some revisions omit this leaf; missing rows are skipped."
+      "description": "Optional Exalt temperature alarm from locTempAlarm under enterprise PEN 25651. Values are almNORMAL(0), almMINOR(1) and almMAJOR(2). Some revisions omit this scalar; when absent the field is not collected."
     },
     {
       "metric_group": "Radio",
       "name": "rsl_dbm",
-      "query": "avg(rsl_dbm{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_rsl_dbm{instance_type='transmission', __$labels__}) by (instance_id)",
       "display_name": "Received Signal Level",
       "data_type": "Number",
       "unit": "none",
@@ -61,7 +61,7 @@
     {
       "metric_group": "Status",
       "name": "device_link_state",
-      "query": "device_link_state{instance_type='transmission', __$labels__}",
+      "query": "max(snmp_device_link_state{instance_type='transmission', __$labels__}) by (instance_id)",
       "display_name": "Link State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"minor\",\"id\":1,\"color\":\"#faad14\"},{\"name\":\"major\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -69,7 +69,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Optional Exalt microwave link alarm from locLinkState under enterprise PEN 25651. Values are almNORMAL(0) error-free, almMINOR(1) errored connection, and almMAJOR(2) no link. Some revisions omit this leaf; missing rows are skipped."
+      "description": "Optional Exalt microwave link alarm from locLinkState under enterprise PEN 25651. Values are almNORMAL(0) error-free, almMINOR(1) errored connection, and almMAJOR(2) no link. Some revisions omit this scalar; when absent the field is not collected."
     },
     {
       "metric_group": "Traffic",
