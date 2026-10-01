@@ -1,0 +1,77 @@
+Access Parks OLT SNMP:
+  name: Parks OLT (Telegraf)
+  desc: SNMP monitoring template for Parks Fiberlink OLT access device. It reports uptime,
+    CPU utilization, memory (total, free, used, utilization), temperature sensors with alarm
+    status, and interface traffic (enterprise PEN 3893). Fan and power supply status are not
+    collected.
+monitor_object:
+  Access: Access
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Access:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, derived
+        from sysUpTime. Monitoring uptime helps administrators understand device stability
+        and identify unexpected reboots or failures.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes,
+        measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable).
+        The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed ports,
+        keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes,
+        measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable).
+        The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed ports,
+        keeping the rate accurate.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device
+        over the past 5 minutes, measured in bytes per second, summed across all interfaces
+        from the 64-bit ifHCInOctets counter. It helps administrators obtain an overview of
+        incoming traffic for overall monitoring and capacity planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device
+        over the past 5 minutes, measured in bytes per second, summed across all interfaces
+        from the 64-bit ifHCOutOctets counter. It helps administrators assess sending performance
+        for traffic management and optimization.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: Average CPU utilization of the Parks OLT in percent (pkCpuSystem, reported in
+        tenths of a percent). Sustained high usage indicates control-plane or management-plane
+        pressure.
+    device_memory_total:
+      name: Memory Total
+      desc: Total memory of the Parks OLT in bytes (pkMemoryTotal, reported in KB).
+    device_memory_free:
+      name: Memory Free
+      desc: Free memory of the Parks OLT in bytes (pkMemoryFree, reported in KB). A persistently
+        decreasing value indicates memory pressure.
+    device_memory_used:
+      name: Memory Used
+      desc: Used memory of the Parks OLT in bytes (pkMemoryUsed, reported in KB).
+    device_memory_usage:
+      name: Memory Usage
+      desc: Memory utilization of the Parks OLT, computed as used / total * 100. Sustained
+        high values can indicate ONU management table or control-service pressure.
+    device_temperature_celsius:
+      name: Temperature
+      desc: Reading of each temperature sensor of the Parks OLT in degrees Celsius, labelled
+        by sensor location. Persistently high values may indicate cooling problems or high
+        ambient temperature.
+    device_temperature_state:
+      name: Temperature Sensor State
+      desc: Alarm status of each temperature sensor of the Parks OLT. normal is mapped to
+        1; limitexceeded and other values are mapped to 2, meaning the sensor has crossed
+        its limit.
+monitor_object_metric_group:
+  Access:
+    Base: Base
+    Traffic: Traffic
+    Access: Access
+    Temperature: Temperature
+    Hardware Status: Hardware Status
