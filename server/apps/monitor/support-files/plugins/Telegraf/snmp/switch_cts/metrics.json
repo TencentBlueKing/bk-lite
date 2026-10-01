@@ -1,0 +1,72 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_cts",
+  "plugin": "Switch CTS SNMP",
+  "plugin_desc": "SNMP monitoring template for CTS (Connection Technology Systems) IES-3110 industrial switch (IES-3110-MIB, enterprise PEN 9304). It reports uptime, CPU / switch / power temperature, power supply A/B presence, and interface traffic. The private MIB has no CPU or memory utilization objects.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='switch', collect_type='snmp_cts'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_temperature_celsius",
+    "device_psu_present"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id, sensor)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "sensor",
+          "description": "Temperature sensor (cpu / switch / power)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Temperature of the CTS IES-3110 switch in degrees Celsius, one series per sensor: CPU (swhCPUTemperature), switch board (swhSwitchTemperature) and power module (swhPowerTemperature). The device reports these as strings; the numeric value is parsed at collection time and unreadable values are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_present",
+      "query": "max(device_psu_present{instance_type='switch', __$labels__}) by (instance_id, psu)",
+      "display_name": "PSU Present Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"present\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"absent\",\"id\":2,\"color\":\"#d9d9d9\"}]",
+      "dimensions": [
+        {
+          "name": "psu",
+          "description": "Power supply (1 = A, 2 = B)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Whether power supply A / B of the CTS IES-3110 switch is installed (1) or not installed (2), from swhPowerSupply1 / swhPowerSupply2. This is presence only, not a health state; na(0) is dropped."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

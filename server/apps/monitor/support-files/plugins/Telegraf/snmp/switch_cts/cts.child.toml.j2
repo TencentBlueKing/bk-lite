@@ -1,0 +1,124 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_cts"
+        config_type = "cts"
+        brand = "cts"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- CTS IES-3110 硬件信息标量（IES-3110-MIB swhHardwareInfo = 1.3.6.1.4.1.9304.100.3110.1.2）----
+    # 适用于 Connection Technology Systems IES-3110 系列（企业号 9304，产品叶 …9304.100.3110）。均为标量：顶层 field 带实例 .0。
+    # swhCPUTemperature .56 / swhSwitchTemperature .57 / swhPowerTemperature .58：DisplayString 温度读数（摄氏度），
+    # 下方 starlark 解析出数值后按 sensor=cpu/switch/power 拆为 device_temperature（celsius）；无法解析或为空的读数丢弃。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9304.100.3110.1.2.56.0"
+        name = "cpu_temperature"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9304.100.3110.1.2.57.0"
+        name = "switch_temperature"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9304.100.3110.1.2.58.0"
+        name = "power_temperature"
+    # swhPowerSupply1 .24 / swhPowerSupply2 .28：电源 A / B 是否在位，installed(1) / not-installed(2) / na(0)。
+    # 下方 starlark 按 psu=1/2 拆为 device_psu（present：1 在位，2 不在位），na(0) 丢弃。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9304.100.3110.1.2.24.0"
+        name = "psu1"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9304.100.3110.1.2.28.0"
+        name = "psu2"
+# ---- 私有 MIB 无整机 CPU / 内存利用率与风扇对象，不采集。----
+
+# ---- 温度 DisplayString → 数值 ℃，电源在位标量 → 按电源拆分；原始字段从 snmp 中移除。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def _num(raw):
+    s = str(raw).strip()
+    out = ""
+    seen_digit = False
+    seen_dot = False
+    for i in range(len(s)):
+        c = s[i]
+        if c.isdigit():
+            out += c
+            seen_digit = True
+        elif c == "." and seen_digit and not seen_dot:
+            out += c
+            seen_dot = True
+        elif c in "+-" and out == "":
+            out += c
+        elif seen_digit:
+            break
+        elif c == " ":
+            continue
+        else:
+            return None
+    if not seen_digit:
+        return None
+    if out.endswith("."):
+        out = out[:-1]
+    return float(out)
+
+def _child(metric, name):
+    m = Metric(name)
+    for k, v in metric.tags.items():
+        m.tags[k] = v
+    m.time = metric.time
+    return m
+
+def apply(metric):
+    out = [metric]
+    for key, sensor in (("cpu_temperature", "cpu"), ("switch_temperature", "switch"), ("power_temperature", "power")):
+        raw = metric.fields.pop(key, None)
+        if raw == None:
+            continue
+        val = _num(raw)
+        if val == None:
+            continue
+        t = _child(metric, "device_temperature")
+        t.tags["sensor"] = sensor
+        t.fields["celsius"] = val
+        out.append(t)
+    for key, psu in (("psu1", "1"), ("psu2", "2")):
+        raw = metric.fields.pop(key, None)
+        if raw == None:
+            continue
+        raw = int(raw)
+        if raw != 1 and raw != 2:
+            continue
+        p = _child(metric, "device_psu")
+        p.tags["psu"] = psu
+        p.fields["present"] = raw
+        out.append(p)
+    return out
+'''
+    [processors.starlark.tagpass]
+        brand = ["cts"]

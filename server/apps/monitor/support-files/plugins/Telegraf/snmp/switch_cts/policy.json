@@ -1,0 +1,31 @@
+{
+  "object": "Switch",
+  "plugin": "Switch CTS SNMP",
+  "templates": [
+    {
+      "name": "CTS交换机温度过高",
+      "alert_name": "交换机${resource_name} 温度过高",
+      "description": "监控 CTS IES-3110 交换机 CPU / 主板 / 电源温度，当任一读数持续高于阈值时触发告警，提示散热不良或环境过热。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

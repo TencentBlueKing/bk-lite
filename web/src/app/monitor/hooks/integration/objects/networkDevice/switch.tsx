@@ -148,6 +148,7 @@ export const useSwitchConfig = () => {
       'Switch AsterFusion SNMP': 'snmp_asterfusion',
       'Switch ATOP SNMP': 'snmp_atop',
       'Switch Comtrol RocketLinx SNMP': 'snmp_comtrol',
+      'Switch CTS SNMP': 'snmp_cts',
       'Switch WoMaster SNMP': 'snmp_womaster',
       'Switch Murrelektronik SNMP': 'snmp_murrelektronik',
       'Switch InHand Networks SNMP': 'snmp_inhand',

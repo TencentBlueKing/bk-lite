@@ -192,6 +192,14 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_cts",
+      "capabilities": [
+        "uptime",
+        "temperature",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_cumulus",
       "capabilities": [
         "uptime",
