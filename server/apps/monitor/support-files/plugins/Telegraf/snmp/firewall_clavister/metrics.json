@@ -18,6 +18,7 @@
     "device_cpu_usage",
     "device_memory_usage",
     "firewall_active_sessions",
+    "device_temperature_celsius",
     "device_total_incoming_traffic",
     "device_total_outgoing_traffic"
   ],
@@ -100,6 +101,24 @@
         "instance_id"
       ],
       "description": "Number of current connections on the Clavister firewall (CLAVISTER-MIB clvSysConns). A rapid rise can indicate a connection flood or session-table pressure."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='firewall', __$labels__}) by (instance_id, sensor)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "sensor",
+          "description": "Temperature sensor"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Hardware temperature sensors of the Clavister firewall in degrees Celsius (CLAVISTER-MIB clvHWSensorTable; only rows whose clvHWSensorUnit is Celsius, or whose unit is empty and name mentions temperature, are kept)."
     }
   ]
 }
