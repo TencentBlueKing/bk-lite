@@ -900,6 +900,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /alcoma/i, label: 'Alcoma', icon: 'mm-alcoma_alcoma' },
   { match: /\bsiae\b|microelettronica/i, label: 'SIAE Microelettronica', icon: 'mm-siae_siae' },
   { match: /packetlight|packet\s*light|pl-[0-9a-z-]+/i, label: 'PacketLight', icon: 'mm-packetlight_packetlight' },
+  { match: /\beci\b|eci\s*telecom/i, label: 'ECI' },
   { match: /pan\s*dacom|pandacom/i, label: 'Pan Dacom', icon: 'mm-pandacom_pandacom' },
   { match: /tachyon|\btna\s*300|tna30x/i, label: 'Tachyon', icon: 'mm-tachyon_tachyon' },
   { match: /\bxkl\b|dxmos|dqt400|dqm400/i, label: 'XKL', icon: 'mm-xkl_xkl' },
