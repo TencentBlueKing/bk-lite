@@ -1,0 +1,80 @@
+VoiceGateway Grandstream UCM SNMP:
+  name: Grandstream UCM (Telegraf)
+  desc: "SNMP monitoring template for Grandstream UCM IP-PBX (GS-SoftWareUCM-SNMP-MIB). It reports uptime, CPU load average, memory utilization, concurrent calls, and interface traffic (enterprise PEN 12581)."
+monitor_object:
+  VoiceGateway: VoiceGateway
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  VoiceGateway:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart,
+        derived from sysUpTime. Monitoring uptime helps administrators understand
+        device stability and identify unexpected reboots or failures.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5
+        minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifOutOctets on high-speed ports, keeping the rate accurate.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the
+        entire device over the past 5 minutes, measured in bytes per second, summed
+        across all interfaces from the 64-bit ifHCInOctets counter. It helps administrators
+        obtain an overview of incoming traffic for overall monitoring and capacity
+        planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire
+        device over the past 5 minutes, measured in bytes per second, summed across
+        all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
+        assess sending performance for traffic management and optimization.
+    device_cpu_load1:
+      name: CPU Load Average (1 min)
+      desc: 1-minute CPU load average of the IP-PBX, parsed from the load-average
+        text reported by the device. A value persistently above the CPU core count
+        indicates the PBX is overloaded.
+    device_cpu_load5:
+      name: CPU Load Average (5 min)
+      desc: 5-minute CPU load average of the IP-PBX, reported when the device returns
+        three load-average values.
+    device_cpu_load15:
+      name: CPU Load Average (15 min)
+      desc: 15-minute CPU load average of the IP-PBX, reported when the device returns
+        three load-average values.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: CPU utilization of the IP-PBX as a 0-100 percentage, reported only when
+        the device returns percentage text instead of a load average.
+    device_memory_usage:
+      name: Memory Usage
+      desc: Memory utilization of the IP-PBX as a 0-100 percentage, parsed from the
+        memory usage text. Sustained high usage can affect call processing.
+    device_memory_used:
+      name: Memory Used
+      desc: Used memory of the IP-PBX in bytes, reported when the device returns used/total
+        text with size units.
+    device_memory_total:
+      name: Memory Total
+      desc: Total memory of the IP-PBX in bytes, reported when the device returns used/total
+        text with size units.
+    concurrent_calls:
+      name: Concurrent Calls
+      desc: Number of calls currently in progress on the IP-PBX. Sudden drops may
+        indicate trunk or registration problems; values near the licensed limit indicate
+        capacity pressure.
+monitor_object_metric_group:
+  VoiceGateway:
+    Base: Base
+    Traffic: Traffic
+    CPU: CPU
+    Memory: Memory
+    Voice: Voice

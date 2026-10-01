@@ -63,7 +63,8 @@ export const useVoiceGatewayConfig = () => {
       'VoiceGateway Yeastar SNMP': 'snmp_yeastar',
       'VoiceGateway Zenitel SNMP': 'snmp_zenitel',
       'VoiceGateway Sangoma Vega SNMP': 'snmp_sangoma',
-      'VoiceGateway AddPac SNMP': 'snmp_addpac'
+      'VoiceGateway AddPac SNMP': 'snmp_addpac',
+      'VoiceGateway Grandstream UCM SNMP': 'snmp_grandstream_ucm'
     }
   };
 };
