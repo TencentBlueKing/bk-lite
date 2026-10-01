@@ -67,7 +67,8 @@ export const useAccessConfig = () => {
       'Access Icotera SNMP': 'snmp_icotera',
       'Access Nateks SNMP': 'snmp_nateks',
       'Access Harmonic SNMP': 'snmp_harmonic',
-      'Access RAD SNMP': 'snmp_rad'
+      'Access RAD SNMP': 'snmp_rad',
+      'Access Intelbras OLT SNMP': 'snmp_intelbras_olt'
     }
   };
 };
