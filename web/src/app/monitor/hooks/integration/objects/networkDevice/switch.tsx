@@ -188,6 +188,7 @@ export const useSwitchConfig = () => {
       'Switch Maipu SNMP': 'snmp_maipu',
       'Switch Microsens SNMP': 'snmp_microsens',
       'Switch PLANET SNMP': 'snmp_planet',
+      'Switch Quanta SNMP': 'snmp_quanta',
       'Switch Pluribus SNMP': 'snmp_pluribus',
       'Switch RuggedCOM SNMP': 'snmp_ruggedcom',
       'Switch Scalance SNMP': 'snmp_scalance',
