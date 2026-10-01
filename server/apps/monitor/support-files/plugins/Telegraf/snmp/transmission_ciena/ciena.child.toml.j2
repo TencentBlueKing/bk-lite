@@ -51,4 +51,65 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.1271.2.1.5.1.2.1.4.24.1.4"
         name = "used"
-# ---- 温度/光模块光功率/激光偏置电流为 per-row 索引表需行级过滤，telegraf inputs.snmp 不能行级过滤 → N/A。----
+    # ---- CES/SAOS 电源：cienaCesChassisPowerSupplyState（table.field 不带 .0，索引为电源槽位）----
+    # OID 1.3.6.1.4.1.1271.2.1.5.1.2.1.1.1.1.2：online(1)/faulted(2)/offline(3)/uninstalled(4)，下方 starlark 归一。
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1271.2.1.5.1.2.1.1.1.1.2"
+        name = "state"
+    # ---- CES/SAOS 风扇：cienaCesChassisFanStatus（table.field 不带 .0，索引为 风扇托盘.风扇）----
+    # OID 1.3.6.1.4.1.1271.2.1.5.1.2.1.2.1.1.3：ok(1)/pending(2)/rpm-warning(3)/uninstalled(4)/unknown(99)，下方 starlark 归一。
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1271.2.1.5.1.2.1.2.1.1.3"
+        name = "state"
+    # ---- CES/SAOS 模块温度：cienaCesChassisModuleTempHealthCurrMeasurement（table.field 不带 .0，索引为 传感器.槽位）----
+    # OID 1.3.6.1.4.1.1271.2.1.5.1.2.1.4.13.1.4，Unsigned32，单位 ℃ → device_temperature_celsius。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1271.2.1.5.1.2.1.4.13.1.4"
+        name = "celsius"
+# ---- 光模块光功率 / 激光偏置电流未纳入。----
+
+# ---- 电源状态归一：online(1)→1(正常)，faulted(2)/offline(3)→2(异常)，uninstalled(4) 与其它值丢弃。----
+[[processors.starlark]]
+    namepass = ["device_psu"]
+    source = '''
+def apply(metric):
+    state = metric.fields.get("state")
+    if state == 1:
+        metric.fields["state"] = 1
+    elif state == 2 or state == 3:
+        metric.fields["state"] = 2
+    else:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["ciena"]
+
+# ---- 风扇状态归一：ok(1)→1(正常)，rpm-warning(3)/unknown(99)→2(异常)；pending(2，统计未就绪)、uninstalled(4) 与其它值丢弃。----
+[[processors.starlark]]
+    namepass = ["device_fan"]
+    source = '''
+def apply(metric):
+    state = metric.fields.get("state")
+    if state == 1:
+        metric.fields["state"] = 1
+    elif state == 3 or state == 99:
+        metric.fields["state"] = 2
+    else:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["ciena"]
