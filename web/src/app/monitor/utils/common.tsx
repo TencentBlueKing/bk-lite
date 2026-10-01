@@ -853,6 +853,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /polycom|\bpoly\s*(phone|lens)\b/i, label: 'Polycom', icon: 'mm-polycom_polycom' },
   { match: /yeastar/i, label: 'Yeastar', icon: 'mm-yeastar_yeastar' },
   { match: /zenitel|vingtor|stentofon/i, label: 'Zenitel', icon: 'mm-zenitel_zenitel' },
+  { match: /dialogic|img\s*2020/i, label: 'Dialogic', icon: 'mm-voice_gateway_语音网关' },
   { match: /sangoma|vega/i, label: 'Sangoma Vega', icon: 'mm-sangoma_sangoma' },
   { match: /addpac|\bap(?:26[0-9]{2}|mg[0-9]{3,4})\b/i, label: 'AddPac', icon: 'mm-addpac_addpac' },
   { match: /opengear/i, label: 'Opengear', icon: 'mm-opengear_opengear' },

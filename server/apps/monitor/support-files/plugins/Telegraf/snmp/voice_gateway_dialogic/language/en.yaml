@@ -1,0 +1,63 @@
+VoiceGateway Dialogic SNMP:
+  name: VoiceGateway Dialogic SNMP
+  desc: SNMP monitoring template for Dialogic IMG 2020 media gateway. It reports CPU
+    busy percentage, free memory, device temperature, per-port inbound traffic rate,
+    per-port outbound traffic rate, and system uptime (IANA PEN 3028).
+monitor_object:
+  VoiceGateway: VoiceGateway
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  VoiceGateway:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart,
+        derived from sysUpTime. Monitoring uptime helps administrators understand
+        device stability and identify unexpected reboots or failures.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5
+        minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifOutOctets on high-speed ports, keeping the rate accurate.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the
+        entire device over the past 5 minutes, measured in bytes per second, summed
+        across all interfaces from the 64-bit ifHCInOctets counter. It helps administrators
+        obtain an overview of incoming traffic for overall monitoring and capacity
+        planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire
+        device over the past 5 minutes, measured in bytes per second, summed across
+        all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
+        assess sending performance for traffic management and optimization.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: CPU busy percentage of the Dialogic IMG 2020. Sustained high usage indicates
+        media or signaling-plane pressure.
+    device_memory_free:
+      name: Memory Free
+      desc: Free memory of the Dialogic IMG 2020 in bytes. This table has no total-memory
+        object, so utilization is not derived. Persistently decreasing free memory
+        can indicate pressure from media sessions or control services.
+    device_temperature_celsius:
+      name: Device Temperature
+      desc: Temperature of the Dialogic IMG 2020 in degrees Celsius. Persistently
+        high values may indicate cooling problems, high ambient temperature, or excessive
+        device load.
+monitor_object_metric_group:
+  VoiceGateway:
+    Base: Base
+    Traffic: Traffic
+    CPU: CPU
+    Memory: Memory
+    Temperature: Temperature
+    Hardware Status: Hardware Status
