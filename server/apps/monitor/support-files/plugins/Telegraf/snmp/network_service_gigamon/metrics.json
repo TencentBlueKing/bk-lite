@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_gigamon",
   "plugin": "NetworkService Gigamon SNMP",
-  "plugin_desc": "SNMP monitoring template for Gigamon network service device. It reports uptime, CPU utilization, memory utilization, and interface traffic, for GigaVUE HC / TA / G-series (enterprise PEN 26866).",
+  "plugin_desc": "SNMP monitoring template for Gigamon network service device. It reports uptime, CPU utilization, and interface traffic, for GigaVUE HC / TA / G-series (enterprise PEN 26866).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_gigamon'}) by (instance_id)",
   "name": "NetworkService",
@@ -15,7 +15,6 @@
   ],
   "supplementary_indicators": [
     "device_cpu_usage",
-    "device_memory_usage",
     "device_total_incoming_traffic",
     "device_total_outgoing_traffic"
   ],
@@ -36,7 +35,7 @@
     {
       "metric_group": "NetworkService",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "avg(snmp_device_cpu_usage{instance_type='network_service', __$labels__}) by (instance_id)",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -44,20 +43,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Overall CPU utilization of the Gigamon GigaVUE chassis (GIGAMON-SNMP-MIB, reported directly as a percentage). Sustained high CPU means the visibility node is near its processing capacity for traffic forwarding and filtering."
-    },
-    {
-      "metric_group": "NetworkService",
-      "name": "device_memory_usage",
-      "query": "avg(device_memory_usage{instance_type='network_service', __$labels__}) by (instance_id)",
-      "display_name": "Memory Usage",
-      "data_type": "Number",
-      "unit": "percent",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "System memory utilization of the Gigamon GigaVUE chassis (GIGAMON-SNMP-MIB, reported directly as a percentage). Sustained high memory may indicate map/flow-table pressure on the packet broker."
+      "description": "Overall CPU utilization of the Gigamon GigaVUE chassis (GIGAMON-SNMP-MIB cpuUtilization, a text value parsed into a percentage). Sustained high CPU means the visibility node is near its processing capacity for traffic forwarding and filtering."
     },
     {
       "metric_group": "Traffic",
