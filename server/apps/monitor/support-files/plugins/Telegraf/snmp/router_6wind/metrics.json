@@ -22,7 +22,7 @@
     {
       "metric_group": "Router",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='router', __$labels__}) by (instance_id) or (100 - avg(device_cpu_idle{instance_type='router', __$labels__}) by (instance_id)) or (avg(device_cpu_user{instance_type='router', __$labels__}) by (instance_id) + avg(device_cpu_system{instance_type='router', __$labels__}) by (instance_id)) or avg(device_cpu_hr_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_cpu_usage{instance_type='router', __$labels__}) by (instance_id) or avg(device_cpu_hr_usage{instance_type='router', __$labels__}) by (instance_id)",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -35,7 +35,7 @@
     {
       "metric_group": "Router",
       "name": "device_memory_total",
-      "query": "device_memory_total{instance_type='router', __$labels__}*1024 or sum(device_memory_hr_total{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_total{instance_type='router', __$labels__}) by (instance_id) * 1024 or sum(device_memory_hr_total{instance_type='router', __$labels__}) by (instance_id)",
       "display_name": "Total Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -48,7 +48,7 @@
     {
       "metric_group": "Router",
       "name": "device_memory_free",
-      "query": "device_memory_free{instance_type='router', __$labels__}*1024 or sum(device_memory_hr_free{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_free{instance_type='router', __$labels__}) by (instance_id) * 1024 or sum(device_memory_hr_free{instance_type='router', __$labels__}) by (instance_id)",
       "display_name": "Free Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -61,7 +61,7 @@
     {
       "metric_group": "Router",
       "name": "device_memory_used",
-      "query": "(device_memory_total{instance_type='router', __$labels__} - device_memory_free{instance_type='router', __$labels__})*1024 or sum(device_memory_hr_used{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "(max(snmp_device_memory_total{instance_type='router', __$labels__}) by (instance_id) - max(snmp_device_memory_free{instance_type='router', __$labels__}) by (instance_id)) * 1024 or sum(device_memory_hr_used{instance_type='router', __$labels__}) by (instance_id)",
       "display_name": "Used Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -74,7 +74,7 @@
     {
       "metric_group": "Router",
       "name": "device_memory_usage",
-      "query": "100 * (device_memory_total{instance_type='router', __$labels__} - device_memory_free{instance_type='router', __$labels__}) / device_memory_total{instance_type='router', __$labels__} or (100 * sum(device_memory_hr_used{instance_type='router', __$labels__}) by (instance_id) / sum(device_memory_hr_total{instance_type='router', __$labels__}) by (instance_id))",
+      "query": "100 * (max(snmp_device_memory_total{instance_type='router', __$labels__}) by (instance_id) - max(snmp_device_memory_free{instance_type='router', __$labels__}) by (instance_id)) / max(snmp_device_memory_total{instance_type='router', __$labels__}) by (instance_id) or (100 * sum(device_memory_hr_used{instance_type='router', __$labels__}) by (instance_id) / sum(device_memory_hr_total{instance_type='router', __$labels__}) by (instance_id))",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
