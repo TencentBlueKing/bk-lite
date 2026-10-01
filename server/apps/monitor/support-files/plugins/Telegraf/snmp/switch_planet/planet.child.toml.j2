@@ -51,49 +51,93 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
-    # ---- PLANET managed-switch CPU load (PLANET-MIB, 私有企业号 10456, 直接 %, scalar) ----
-    # 待现网核验：整机 CPU 使用率标量 1.3.6.1.4.1.10456.1.999.1.1.1.0（设备直接以 0-100% 上报）。
-    # 标量用 table+field 命名 → device_cpu_usage。
+    # ---- NMS-CHASSIS nmscardTable 1.3.6.1.4.1.10456.3.6.10（PEN 10456，nmschassis=…10456.3.6）：按板卡逐行 walk，table.field 不带 .0 ----
+    # nmscardCPUUtilization .1.11：板卡 CPU 利用率，单位 1%。nmscardDescr .1.3 作 card 标签。
     [[inputs.snmp.table]]
         name = "device_cpu"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.10456.1.999.1.1.1"
+        oid = "1.3.6.1.4.1.10456.3.6.10.1.3"
+        name = "card"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10456.3.6.10.1.11"
         name = "usage"
-    # ---- PLANET 内存 (已用 + 空闲, 字节；无总量 → used/(used+free)) ----
-    # 待现网核验：内存已用 .10456.1.999.1.2.1.0 / 空闲 .10456.1.999.1.2.2.0（bytes）。
+        conversion = "int"
+    # nmscardMEMUtilization .1.12：板卡内存利用率，单位 1%。
     [[inputs.snmp.table]]
         name = "device_memory"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.10456.1.999.1.2.1"
-        name = "used"
+        oid = "1.3.6.1.4.1.10456.3.6.10.1.3"
+        name = "card"
+        is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.10456.1.999.1.2.2"
-        name = "free"
-    # ---- PLANET 温度 (机箱温度, 直接 ℃, scalar) ----
-    # 待现网核验：机箱温度标量 .10456.1.999.1.3.1.0（℃）。
+        oid = "1.3.6.1.4.1.10456.3.6.10.1.12"
+        name = "usage"
+        conversion = "int"
+    # nmscardTemperature .1.13：板卡温度，单位 ℃。
     [[inputs.snmp.table]]
         name = "device_temperature"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.10456.1.999.1.3.1"
+        oid = "1.3.6.1.4.1.10456.3.6.10.1.3"
+        name = "card"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10456.3.6.10.1.13"
         name = "celsius"
-    # ---- PLANET 电源状态表 (.10456.1.999.1.4.1.1.2, 每电源 ok(1)/failed(2)) ----
-    # 待现网核验：原始码 ok=1；下方 enum 归一 1→1(正常),其余→2(异常)。
+        conversion = "int"
+    # ---- NMS-CHASSIS nmsAuxTable 1.3.6.1.4.1.10456.3.6.15：电源 / 风扇辅件，table.field 不带 .0 ----
+    # nmsAuxDescr .1.2（标签）/ nmsAuxClass .1.3：power(1) / fan(2) / nmsAuxState .1.5：ok(1) / failure(2)；下方 starlark 按 Class 拆分。
     [[inputs.snmp.table]]
-        name = "device_psu"
+        name = "planet_aux"
         inherit_tags = ["source"]
         index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.10456.1.999.1.4.1.1.2"
+        oid = "1.3.6.1.4.1.10456.3.6.15.1.2"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10456.3.6.15.1.3"
+        name = "class"
+        conversion = "int"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10456.3.6.15.1.5"
         name = "state"
-# ---- 风扇:PLANET 管理型交换机紧凑机型多为无风扇被动散热设计，未以无需行级过滤的标量形式暴露独立风扇状态 OID → 风扇 N/A。CPU/内存/温度/电源四项干净可采。----
-# ---- 状态归一:电源 ok(1)→1(正常),其余→2(异常)。----
-[[processors.enum]]
-    namepass = ["device_psu"]
-    [[processors.enum.mapping]]
-        field = "state"
-        default = 2
-        [processors.enum.mapping.value_mappings]
-            "1" = 1
+        conversion = "int"
+
+# ---- 辅件拆分：class power(1) → device_psu{psu}，fan(2) → device_fan{fan}；state ok(1)→1(正常)，failure(2)→2(异常)，其它类别或状态值丢弃。----
+[[processors.starlark]]
+    namepass = ["planet_aux"]
+    source = '''
+def apply(metric):
+    cls = metric.fields.get("class")
+    state = metric.fields.get("state")
+    if cls == None or state == None:
+        return None
+    if int(state) not in [1, 2]:
+        return None
+    if int(cls) == 1:
+        name, tag = "device_psu", "psu"
+    elif int(cls) == 2:
+        name, tag = "device_fan", "fan"
+    else:
+        return None
+    m = Metric(name)
+    for k, v in metric.tags.items():
+        if k != "descr":
+            m.tags[k] = v
+    label = metric.tags.get("descr", "")
+    if label == "":
+        label = metric.tags.get("index", "")
+    m.tags[tag] = label
+    m.fields["state"] = int(state)
+    m.time = metric.time
+    return m
+'''
+    [processors.starlark.tagpass]
+        brand = ["planet"]

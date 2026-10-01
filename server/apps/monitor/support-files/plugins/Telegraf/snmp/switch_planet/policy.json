@@ -91,6 +91,21 @@
         }
       ],
       "group_algorithm": "avg"
+    },
+    {
+      "name": "PLANET交换机风扇异常",
+      "alert_name": "交换机${resource_name} 风扇状态异常",
+      "description": "监控 PLANET 管理型交换机的风扇状态，当风扇故障时触发告警，提示需检查散热，避免设备过热。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
     }
   ]
 }
