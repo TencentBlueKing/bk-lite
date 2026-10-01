@@ -76,7 +76,7 @@
     {
       "metric_group": "Access",
       "name": "device_memory_total",
-      "query": "sum(device_memory_total{instance_type='access', __$labels__}) by (instance_id, index) * 1024",
+      "query": "sum(device_memory_total{instance_type='access', __$labels__}) by (instance_id, index)",
       "display_name": "Memory Total",
       "data_type": "Number",
       "unit": "bytes",
@@ -89,12 +89,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Physical memory of each card of the Zhone/DZS access device (ZHONE-CARD-RESOURCES-MIB cardTotalMem, reported in KB and scaled to bytes)."
+      "description": "Physical memory of each card of the Zhone/DZS access device (ZHONE-CARD-RESOURCES-MIB cardTotalMem, reported in KB and converted to bytes at collection)."
     },
     {
       "metric_group": "Access",
       "name": "device_memory_free",
-      "query": "sum(device_memory_free{instance_type='access', __$labels__}) by (instance_id, index) * 1024",
+      "query": "sum(device_memory_free{instance_type='access', __$labels__}) by (instance_id, index)",
       "display_name": "Memory Free",
       "data_type": "Number",
       "unit": "bytes",
@@ -107,7 +107,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Unallocated physical memory of each card of the Zhone/DZS access device (ZHONE-CARD-RESOURCES-MIB cardAvailMem, reported in KB and scaled to bytes)."
+      "description": "Unallocated physical memory of each card of the Zhone/DZS access device (ZHONE-CARD-RESOURCES-MIB cardAvailMem, reported in KB and converted to bytes at collection)."
     },
     {
       "metric_group": "Access",
