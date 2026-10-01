@@ -560,6 +560,8 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       "capabilities": [
         "uptime",
         "temperature",
+        "fan",
+        "psu",
         "traffic"
       ]
     },

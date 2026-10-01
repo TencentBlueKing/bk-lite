@@ -1,6 +1,6 @@
 Switch Netonix SNMP:
   name: Netonix (Telegraf)
-  desc: "SNMP monitoring template for Netonix switch. It reports uptime, temperature, and interface traffic (enterprise PEN 46242)."
+  desc: "SNMP monitoring template for Netonix switch. It reports uptime, temperature sensors, fan speed, voltage sensors, total power consumption, DC/DC input current and efficiency, and interface traffic (enterprise PEN 46242). The MIB has no CPU or memory objects."
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -257,6 +257,18 @@ monitor_object_metric:
         power module operating temperature; abnormally high values may indicate blocked
         airflow, failing fans or excessive ambient heat, which can trigger thermal
         protection or hardware damage if left unaddressed.
+    device_power_used:
+      name: Power Consumption
+      desc: Total power consumed by the Netonix switch in watts, including PoE output
+        (NETONIX-SWITCH-MIB totalPowerConsumption). A sudden rise may indicate a new
+        or faulty PoE load; a drop may indicate PoE devices going offline.
+    device_input_current_amps:
+      name: DC/DC Input Current
+      desc: DC/DC input current of the Netonix switch in amps (NETONIX-SWITCH-MIB dcdcInputCurrent).
+    device_dcdc_efficiency:
+      name: DC/DC Efficiency
+      desc: DC/DC power supply efficiency of the Netonix switch in percent (NETONIX-SWITCH-MIB
+        dcdcEfficiency). A persistent drop may indicate power module degradation.
 monitor_object_metric_group:
   Switch:
     Base: Base
