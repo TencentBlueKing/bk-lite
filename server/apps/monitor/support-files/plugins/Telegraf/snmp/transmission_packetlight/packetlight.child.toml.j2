@@ -32,22 +32,16 @@
         name = "source"
         is_tag = true
 # @bk_include_ifmib_table
-    # ---- SL-MAIN (PEN 4515) slmSysTemperature ----
-    # 1.3.6.1.4.1.4515.1.3.1.43.0 → device_temperature_celsius，单位已是摄氏度，查询侧不缩放。
-    [[inputs.snmp.table]]
-        name = "device_temperature"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.4515.1.3.1.43"
-        name = "celsius"
+    # ---- SL-MAIN (PEN 4515) slmSys 标量：顶层 field 带实例 .0 直接 GET，落 measurement snmp，查询用 snmp_ 前缀 ----
+    # slmSysTemperature 1.3.6.1.4.1.4515.1.3.1.43.0 → device_temperature_celsius，单位已是摄氏度，查询侧不缩放。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.4515.1.3.1.43.0"
+        name = "device_temperature_celsius"
         conversion = "int"
-    # ---- 可选 slmSysOperStatus 1.3.6.1.4.1.4515.1.3.1.7.0 → device_oper_status ----
-    # INTEGER up(1)/down(2)/testing(3)。设备未实现该标量时采集端跳过。
-    [[inputs.snmp.table]]
-        name = "device_oper"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.4515.1.3.1.7"
-        name = "status"
+    # 可选 slmSysOperStatus 1.3.6.1.4.1.4515.1.3.1.7.0 → device_oper_status。
+    # INTEGER up(1)/down(2)/testing(3)。设备未实现该标量时 snmp 行只缺少该字段。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.4515.1.3.1.7.0"
+        name = "device_oper_status"
         conversion = "int"
 # ---- CPU/内存/风扇/电源：SL-MAIN 已确认系统温度与可选运行状态。slmPsuNumber 是可写的电源数量配置（与实际不一致时告警），不是在线电源状态，不得映射为 device_psu_state。无私有 CPU%/内存% 对象，不臆造。光链路/SFP 行表不提升为共享设备健康。----
