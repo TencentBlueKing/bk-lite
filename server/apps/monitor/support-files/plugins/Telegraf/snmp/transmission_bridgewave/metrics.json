@@ -23,7 +23,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(device_temperature_celsius{instance_type='transmission', __$labels__} / 100) by (instance_id)",
+      "query": "max(snmp_device_temperature_celsius{instance_type='transmission', __$labels__} / 100) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -36,7 +36,7 @@
     {
       "metric_group": "Temperature",
       "name": "tx_temperature_celsius",
-      "query": "max(tx_temperature_celsius{instance_type='transmission', __$labels__} / 100) by (instance_id)",
+      "query": "max(snmp_tx_temperature_celsius{instance_type='transmission', __$labels__} / 100) by (instance_id)",
       "display_name": "Transmitter Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -49,7 +49,7 @@
     {
       "metric_group": "Base",
       "name": "rsl",
-      "query": "max(rsl_rsl{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_rsl{instance_type='transmission', __$labels__}) by (instance_id)",
       "display_name": "Receive Signal Level",
       "data_type": "Number",
       "unit": "none",
@@ -62,7 +62,7 @@
     {
       "metric_group": "Base",
       "name": "device_in_voltage",
-      "query": "max(device_in_voltage{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_in_voltage{instance_type='transmission', __$labels__}) by (instance_id)",
       "display_name": "Input Voltage",
       "data_type": "Number",
       "unit": "none",
