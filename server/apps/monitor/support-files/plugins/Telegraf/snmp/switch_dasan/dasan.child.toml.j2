@@ -55,4 +55,32 @@
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.6296.9.1.1.1.16.0"
         name = "device_memory_free"
-# ---- 风扇/电源枚举与温度状态未进本轮最小集。本对象不采集 6296.101 OLT 树。----
+    # ---- 风扇：dsFanTable 1.3.6.1.4.1.6296.9.1.1.2.7（INDEX dsFanNodeIndex, dsFanIndex）----
+    # dsFanstatus 列 ...2.7.1.3，ok(1) / fail(2) / other(3)；列 OID 走表，不带 .0。
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6296.9.1.1.2.7.1.3"
+        name = "state"
+    # ---- 电源：dsPowerTable 1.3.6.1.4.1.6296.9.1.1.2.6（INDEX dsPowerNodeIndex, dsPowerIndex）----
+    # dsPowerstatus 列 ...2.6.1.3，ok(1) / fail(2) / other(3)。
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6296.9.1.1.2.6.1.3"
+        name = "state"
+# ---- 风扇/电源状态归一：ok(1)→1(正常)，fail(2)/other(3) 及其余→2(异常)。----
+# ---- 温度状态（dsTemperatureStatus）不是摄氏度读数，不采集。本对象不采集 6296.101 OLT 树。----
+[[processors.enum]]
+    namepass = ["device_fan", "device_psu"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+    [processors.enum.tagpass]
+        brand = ["dasan"]

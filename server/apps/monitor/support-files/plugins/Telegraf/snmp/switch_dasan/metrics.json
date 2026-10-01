@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_dasan",
   "plugin": "Switch DASAN SNMP",
-  "plugin_desc": "SNMP monitoring template for DASAN switch. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 6296).",
+  "plugin_desc": "SNMP monitoring template for DASAN switch. It reports uptime, CPU utilization, memory utilization, fan status, power supply status, and interface traffic (enterprise PEN 6296).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_dasan'}) by (instance_id)",
   "name": "Switch",
@@ -16,7 +16,9 @@
   "supplementary_indicators": [
     "snmp_uptime",
     "device_cpu_usage",
-    "device_memory_usage"
+    "device_memory_usage",
+    "device_fan_state",
+    "device_psu_state"
   ],
   "metrics": [
     {
@@ -109,6 +111,42 @@
         "instance_id"
       ],
       "description": "This metric reports overall memory utilization of the DASAN ethernet switch, computed as used / total * 100. Vendor INTEGER units cancel in the ratio. High memory usage may indicate leaks, oversized MAC/ARP tables, or insufficient capacity."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "device_fan_state{instance_type='switch', __$labels__}",
+      "display_name": "Fan State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the state of each fan of the DASAN ethernet switch (dsFanstatus, raw ok(1) / fail(2) / other(3)), normalized so that 1 = healthy and 2 = fault. A fault can lead to overheating."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='switch', __$labels__}",
+      "display_name": "PSU State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the state of each power supply of the DASAN ethernet switch (dsPowerstatus, raw ok(1) / fail(2) / other(3)), normalized so that 1 = healthy and 2 = fault. A fault means lost power redundancy or a hardware failure."
     },
     {
       "metric_group": "Base",
