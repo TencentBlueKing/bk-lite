@@ -133,7 +133,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Fan status of the A10 Thunder/AX appliance (A10-AX-MIB axSysFanStatusTable axFanStatus, some hardware models only), normalised so that okFixedHigh/okLowMed/okMedMed/okMedHigh = 1 (normal) and failed/notReady/unknown = 2 (fault)."
+      "description": "Fan status of the A10 Thunder/AX appliance (A10-AX-MIB axSysFanStatusTable axFanStatus, some hardware models only), normalised so that okFixedHigh/okLowMed/okMedMed/okMedHigh = 1 (normal) and failed/notReady = 2 (fault); rows reporting unknown(-1) are dropped and not counted as faults."
     },
     {
       "metric_group": "Hardware Status",
@@ -151,7 +151,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Status of the lower and upper power supplies of the A10 Thunder/AX appliance (A10-AX-MIB axSysLowerPowerSupplyStatus / axSysUpperPowerSupplyStatus scalars), normalised so that on(1) = 1 (normal) and off(0)/unknown(-1) = 2 (fault)."
+      "description": "Status of the lower and upper power supplies of the A10 Thunder/AX appliance (A10-AX-MIB axSysLowerPowerSupplyStatus / axSysUpperPowerSupplyStatus scalars), normalised so that on(1) = 1 (normal) and off(0) = 2 (fault); a supply reporting unknown(-1) is dropped and not counted as a fault."
     }
   ]
 }

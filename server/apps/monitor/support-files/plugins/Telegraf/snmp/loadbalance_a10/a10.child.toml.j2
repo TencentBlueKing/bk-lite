@@ -105,25 +105,26 @@ def apply(metric):
 '''
     [processors.starlark.tagpass]
         brand = ["a10"]
-# ---- 状态归一：电源 on(1)→1(正常)，off(0)/unknown(-1)→2(异常)；风扇 okFixedHigh/okLowMed/okMedMed/okMedHigh(4-7)→1，failed/notReady/unknown→2。----
-[[processors.enum]]
-    namepass = ["device_psu"]
-    [processors.enum.tagpass]
+# ---- 状态归一：unknown(-1) 表示设备无法判定该电源/风扇状态（多为未安装或不支持），整行丢弃，不计入故障；
+# 电源 on(1)→1(正常)，off(0) 及其余→2(异常)；风扇 okFixedHigh/okLowMed/okMedMed/okMedHigh(4-7)→1，failed(0)/notReady(-2) 及其余→2。仅转速的风扇行不受影响。----
+[[processors.starlark]]
+    namepass = ["device_psu", "device_fan"]
+    source = '''
+def apply(metric):
+    if "state" not in metric.fields:
+        return metric
+    raw = int(metric.fields["state"])
+    if raw == -1:
+        return None
+    if metric.name == "device_psu":
+        ok = raw == 1
+    else:
+        ok = raw >= 4 and raw <= 7
+    if ok:
+        metric.fields["state"] = 1
+    else:
+        metric.fields["state"] = 2
+    return metric
+'''
+    [processors.starlark.tagpass]
         brand = ["a10"]
-    [[processors.enum.mapping]]
-        field = "state"
-        default = 2
-        [processors.enum.mapping.value_mappings]
-            "1" = 1
-[[processors.enum]]
-    namepass = ["device_fan"]
-    [processors.enum.tagpass]
-        brand = ["a10"]
-    [[processors.enum.mapping]]
-        field = "state"
-        default = 2
-        [processors.enum.mapping.value_mappings]
-            "4" = 1
-            "5" = 1
-            "6" = 1
-            "7" = 1

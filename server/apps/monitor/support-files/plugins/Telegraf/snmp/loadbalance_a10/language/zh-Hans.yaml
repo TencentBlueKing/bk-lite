@@ -27,10 +27,10 @@ monitor_object_metric:
       desc: 该指标报告 A10 Thunder/AX 各机箱风扇转速（A10-AX-MIB axSysHwFan1Speed/Fan2Speed/Fan3Speed），按风扇分别展示。转速过低或为 0 可能意味着风扇停转或故障。
     device_fan_state:
       name: 风扇状态
-      desc: 该指标报告 A10 Thunder/AX 风扇状态（A10-AX-MIB axFanStatus，仅部分硬件型号提供）。okFixedHigh/okLowMed/okMedMed/okMedHigh 归一为正常；failed、notReady、unknown 归一为异常。
+      desc: 该指标报告 A10 Thunder/AX 风扇状态（A10-AX-MIB axFanStatus，仅部分硬件型号提供）。okFixedHigh/okLowMed/okMedMed/okMedHigh 归一为正常；failed、notReady 归一为异常；unknown(-1) 行丢弃，不计为故障。
     device_psu_state:
       name: 电源状态
-      desc: 该指标报告 A10 Thunder/AX 下/上电源模块状态（A10-AX-MIB axSysLowerPowerSupplyStatus / axSysUpperPowerSupplyStatus）。on(1) 归一为正常；off(0) 与 unknown(-1) 归一为异常。
+      desc: 该指标报告 A10 Thunder/AX 下/上电源模块状态（A10-AX-MIB axSysLowerPowerSupplyStatus / axSysUpperPowerSupplyStatus）。on(1) 归一为正常；off(0) 归一为异常；unknown(-1) 丢弃，不计为故障。
     snmp_uptime:
       name: 系统运行时间
       desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
