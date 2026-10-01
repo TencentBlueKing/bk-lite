@@ -1,0 +1,67 @@
+Wireless Ruckus Unleashed SNMP:
+  name: Ruckus Unleashed (Telegraf)
+  desc: SNMP monitoring template for Ruckus Unleashed wireless networks (RUCKUS-UNLEASHED-SYSTEM-MIB).
+    It reports uptime, CPU and memory utilization, associated/registered/licensed AP counts, authorized
+    client count, and interface traffic (enterprise PEN 25053).
+monitor_object:
+  Wireless: Wireless
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
+        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
+        or failures.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: CPU utilization of the Ruckus Unleashed master AP reported directly as a 0-100 percentage.
+        Sustained high CPU usage can indicate heavy client-association load or control-plane pressure
+        affecting roaming and management responsiveness.
+    device_memory_usage:
+      name: Memory Usage
+      desc: Memory utilization of the Ruckus Unleashed master AP reported directly as a 0-100 percentage.
+        High memory pressure can cause client disconnections or service restarts.
+    wireless_ap_count:
+      name: Associated AP Count
+      desc: Number of access points currently joined to the Unleashed network. A sudden drop can indicate
+        AP connectivity loss or a master AP failover.
+    wireless_registered_ap_count:
+      name: Registered AP Count
+      desc: Number of access points registered in the Unleashed network. Compare with the associated AP
+        count to spot registered APs that are offline.
+    wireless_client_count:
+      name: Client Station Count
+      desc: Number of authorized wireless client devices in the Unleashed network. Rapid growth can correlate
+        with CPU and memory pressure on the master AP.
+    wireless_licensed_ap_count:
+      name: Licensed AP Count
+      desc: Maximum number of access points allowed in the Unleashed network. When associated APs approach
+        this limit, no further APs can join.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured
+        in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in
+        bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifOutOctets on high-speed ports, keeping the rate accurate.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device over the
+        past 5 minutes, measured in bytes per second, summed across all interfaces from the 64-bit ifHCInOctets
+        counter. It helps administrators obtain an overview of incoming traffic for overall monitoring
+        and capacity planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device over the
+        past 5 minutes, measured in bytes per second, summed across all interfaces from the 64-bit ifHCOutOctets
+        counter. It helps administrators assess sending performance for traffic management and optimization.
+monitor_object_metric_group:
+  Wireless:
+    Base: Base
+    Traffic: Traffic
+    Wireless: Wireless
