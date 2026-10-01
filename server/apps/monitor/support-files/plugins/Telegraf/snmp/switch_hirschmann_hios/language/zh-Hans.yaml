@@ -1,6 +1,6 @@
 Switch Hirschmann HiOS SNMP:
   name: Hirschmann HiOS（Telegraf）
-  desc: 面向 Hirschmann HiOS 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、接口流量（HMIT-SYSTEM-MIB，企业号 PEN 248，HiOS 树 248.100）。本轮不采集风扇与电源。
+  desc: 面向 Hirschmann HiOS 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存已用 / 空闲 / 总量与使用率、设备温度、电源状态、接口流量（HM2-DIAGNOSTIC-MIB / HM2-DEVMGMT-MIB / HM2-PWRMGMT-MIB，企业号 PEN 248）。适用于 sysObjectID 以 1.3.6.1.4.1.248.11 开头的 HiOS 设备，Classic（248.14）设备请用 switch_hirschmann。设备上 hm2DiagEnableMeasurement 关闭时 CPU 与内存为空。
 monitor_object:
   Switch: 交换机
 monitor_object_type:

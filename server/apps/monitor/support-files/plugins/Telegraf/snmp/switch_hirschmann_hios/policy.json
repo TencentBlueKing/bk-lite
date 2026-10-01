@@ -5,7 +5,7 @@
     {
       "name": "Hirschmann HiOS交换机CPU使用率过高",
       "alert_name": "交换机${resource_name} CPU 使用率过高",
-      "description": "监控 Hirschmann HiOS 交换机的 CPU 使用率（按各 CPU 核心平均），当持续高于阈值时触发告警，提示可能存在控制平面过载、环网协议震荡或异常流量，避免管理响应变慢或转发受影响。",
+      "description": "监控 Hirschmann HiOS 交换机当前 CPU 使用率（hm2DiagCpuUtilization），当持续高于阈值时触发告警，提示可能存在控制平面过载、环网协议震荡或异常流量。",
       "metric_name": "device_cpu_usage",
       "algorithm": "last_over_time",
       "threshold": [
@@ -25,12 +25,12 @@
           "method": ">"
         }
       ],
-      "group_algorithm": "avg"
+      "group_algorithm": "max"
     },
     {
       "name": "Hirschmann HiOS交换机内存使用率过高",
       "alert_name": "交换机${resource_name} 内存使用率过高",
-      "description": "监控 Hirschmann HiOS 交换机的内存使用率（memUtilization 直采百分比），当持续高于阈值时触发告警，提示可能存在内存泄漏或资源紧张，避免设备稳定性下降。",
+      "description": "监控 Hirschmann HiOS 交换机 RAM 使用率（已分配 /（已分配 + 空闲）），当持续高于阈值时触发告警，提示可能存在内存泄漏或资源紧张。",
       "metric_name": "device_memory_usage",
       "algorithm": "last_over_time",
       "threshold": [
@@ -50,7 +50,47 @@
           "method": ">"
         }
       ],
-      "group_algorithm": "avg"
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Hirschmann HiOS交换机温度过高",
+      "alert_name": "交换机${resource_name} 温度过高",
+      "description": "监控 Hirschmann HiOS 交换机设备温度（hm2DevMgmtTemperature），当高于阈值时触发告警（设备默认温度上限为 70℃），提示散热不良或环境过热。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 65,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 60,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Hirschmann HiOS交换机电源异常",
+      "alert_name": "交换机${resource_name} 电源状态异常",
+      "description": "监控 Hirschmann HiOS 交换机在位电源状态（hm2PSState，归一后 1=正常、2=异常），电源报 defective 时触发告警，提示供电故障或冗余失效。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
     }
   ]
 }
