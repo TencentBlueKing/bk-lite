@@ -24,7 +24,7 @@
     {
       "metric_group": "CPU",
       "name": "cpu_usage_percent",
-      "query": "avg(cpu_usage_percent{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "query": "max(snmp_cpu_usage_percent{instance_type='voice_gateway', __$labels__}) by (instance_id)",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -37,7 +37,7 @@
     {
       "metric_group": "Memory",
       "name": "memory_usage_percent",
-      "query": "avg(memory_usage_percent{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "query": "max(snmp_memory_usage_percent{instance_type='voice_gateway', __$labels__}) by (instance_id)",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -50,7 +50,7 @@
     {
       "metric_group": "Storage",
       "name": "local_storage_usage_percent",
-      "query": "avg(local_storage_usage_percent{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "query": "max(snmp_local_storage_usage_percent{instance_type='voice_gateway', __$labels__}) by (instance_id)",
       "display_name": "Local Storage Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -63,7 +63,7 @@
     {
       "metric_group": "Voice",
       "name": "concurrent_calls",
-      "query": "avg(concurrent_calls{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "query": "max(snmp_concurrent_calls{instance_type='voice_gateway', __$labels__}) by (instance_id)",
       "display_name": "Concurrent Calls",
       "data_type": "Number",
       "unit": "short",
@@ -76,7 +76,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "asterisk_status",
-      "query": "max(asterisk_status{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "query": "max(snmp_asterisk_status{instance_type='voice_gateway', __$labels__}) by (instance_id)",
       "display_name": "Telephony Engine Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -84,7 +84,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Telephony-engine status of the Yeastar P-Series platform (pAsteriskStatus under IANA PEN 22736), normalized so running(1) is 1 = healthy and every other or unknown value is 2 = fault."
+      "description": "Telephony-engine status of the Yeastar P-Series platform (pAsteriskStatus under IANA PEN 22736), normalized at collection time so running (or 1) is 1 = healthy and stopped (or 2) is 2 = fault; other values are dropped."
     },
     {
       "metric_group": "Traffic",

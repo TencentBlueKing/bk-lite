@@ -48,77 +48,72 @@
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
 
-    # ---- Yeastar P-Series 私有健康标量（IANA PEN 22736）----
-    # pCPUUtilization 1.3.6.1.4.1.22736.3.1.8.0：百分比文本，解析为 cpu_usage_percent。
-    [[inputs.snmp.table]]
-        name = "cpu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.22736.3.1.8"
-        name = "usage_percent"
-    # pMemoryUsage 1.3.6.1.4.1.22736.3.1.7.0：百分比文本，解析为 memory_usage_percent。
-    [[inputs.snmp.table]]
-        name = "memory"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.22736.3.1.7"
-        name = "usage_percent"
-    # pLocalStorageUsage 1.3.6.1.4.1.22736.3.1.6.0：百分比文本，解析为 local_storage_usage_percent。
-    [[inputs.snmp.table]]
-        name = "local_storage"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.22736.3.1.6"
-        name = "usage_percent"
-    # pConcurrentCall 1.3.6.1.4.1.22736.3.1.9.0：Integer32 并发通话数。
-    [[inputs.snmp.table]]
-        name = "concurrent"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.22736.3.1.9"
-        name = "calls"
+    # ---- Yeastar P-Series 私有健康标量（IANA PEN 22736，…22736.3.1）----
+    # 以下均为标量：顶层 field 带实例 .0 直接 GET，落 measurement snmp，查询用 snmp_ 前缀。
+    # pCPUUtilization .3.1.8.0 / pMemoryUsage .3.1.7.0 / pLocalStorageUsage .3.1.6.0：百分比文本（如 "2%"），下方 starlark 去 % 转数值，空串或非数字时丢弃该字段。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22736.3.1.8.0"
+        name = "cpu_usage_percent"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22736.3.1.7.0"
+        name = "memory_usage_percent"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22736.3.1.6.0"
+        name = "local_storage_usage_percent"
+    # pConcurrentCall .3.1.9.0：Integer32 并发通话数。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22736.3.1.9.0"
+        name = "concurrent_calls"
         conversion = "int"
-    # pAsteriskStatus 1.3.6.1.4.1.22736.3.1.11.0：running(1)/stopped(2)，下方 enum 归一。
-    [[inputs.snmp.table]]
-        name = "asterisk"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.22736.3.1.11"
-        name = "status"
-        conversion = "int"
+    # pAsteriskStatus .3.1.11.0：文档为字符串 running / stopped，部分固件返回 1 / 2；不做 int 转换，
+    # 由下方 starlark 归一：running 或 1 → 1（正常），stopped 或 2 → 2（异常），其它取值丢弃该字段。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22736.3.1.11.0"
+        name = "asterisk_status"
 # ---- 不扩展 IF-MIB 错误计数、ifOperStatus 或 32 位字节计数器。----
 
 [[processors.starlark]]
-    namepass = ["cpu", "memory", "local_storage"]
+    namepass = ["snmp"]
     source = '''
 def parse_percent(raw):
-    if raw == None:
-        return None
     text = str(raw).strip()
     if text.endswith("%"):
         text = text[:-1].strip()
     if text == "":
         return None
+    dots = 0
+    for i in range(len(text)):
+        c = text[i]
+        if c == ".":
+            dots += 1
+            if dots > 1:
+                return None
+        elif not c.isdigit():
+            return None
+    if text == ".":
+        return None
     return float(text)
 
 def apply(metric):
-    parsed = parse_percent(metric.fields.get("usage_percent"))
-    if parsed == None:
-        return None
-    metric.fields["usage_percent"] = parsed
+    for key in ("cpu_usage_percent", "memory_usage_percent", "local_storage_usage_percent"):
+        raw = metric.fields.get(key)
+        if raw == None:
+            continue
+        parsed = parse_percent(raw)
+        if parsed == None:
+            metric.fields.pop(key)
+        else:
+            metric.fields[key] = parsed
+    status = metric.fields.get("asterisk_status")
+    if status != None:
+        text = str(status).strip().lower()
+        if text == "running" or text == "1":
+            metric.fields["asterisk_status"] = 1
+        elif text == "stopped" or text == "2":
+            metric.fields["asterisk_status"] = 2
+        else:
+            metric.fields.pop("asterisk_status")
     return metric
 '''
     [processors.starlark.tagpass]
         brand = ["yeastar"]
-
-[[processors.enum]]
-    namepass = ["asterisk"]
-    [processors.enum.tagpass]
-        brand = ["yeastar"]
-    [[processors.enum.mapping]]
-        field = "status"
-        dest = "status"
-        default = 2
-        [processors.enum.mapping.value_mappings]
-            "1" = 1
-            1 = 1
