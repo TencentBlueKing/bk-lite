@@ -1,0 +1,143 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_edgerouter"
+        config_type = "edgerouter"
+        brand = "edgerouter"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, telegraf auto-walks ifTable columns: ifInOctets/ifOutOctets/ifInErrors/ifOutErrors/ifInDiscards/ifOutDiscards/ifInUcastPkts/ifOutUcastPkts/ifSpeed/ifAdminStatus/ifOperStatus) ----
+    [[inputs.snmp.table]]
+        name = "interface"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.1"
+        name = "ifIndex"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- CPU usage (HOST-RESOURCES hrProcessorLoad, per-core %) ----
+    # EdgeOS 基于 Linux + net-snmp，hrProcessorLoad 每行为一个核心的 1 分钟平均负载（0~100）。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.25.3.3.1.2"
+        name = "usage"
+    # ---- 内存：UCD-SNMP-MIB memory 标量，顶层 field 带 .0 → measurement snmp，查询用 snmp_ 前缀 ----
+    # memTotalReal 1.3.6.1.4.1.2021.4.5.0 / memAvailReal 1.3.6.1.4.1.2021.4.6.0：Integer32，单位 kB；下方 starlark ×1024 → 字节并计算已用与使用率。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2021.4.5.0"
+        name = "mem_total_kb_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2021.4.6.0"
+        name = "mem_avail_kb_raw"
+    # ---- 机箱健康：UBNT-EdgeMAX-MIB（ubntEdgeMax = 1.3.6.1.4.1.41112.1.5），按型号提供，部分型号（如 ER-X）表为空，此时不产出对应指标 ----
+    # ubntThermTemperature 1.3.6.1.4.1.41112.1.5.4.2.1.3：Integer32，单位千分之一摄氏度，starlark 换算为 ℃。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.41112.1.5.4.2.1.3"
+        name = "milli_raw"
+    # ubntFanRpm 1.3.6.1.4.1.41112.1.5.5.2.1.3：Integer32，转速 RPM。
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.41112.1.5.5.2.1.3"
+        name = "rpm"
+    # ubntPsuStatus 1.3.6.1.4.1.41112.1.5.3.2.1.3：unknown(0) / on(1) / off(2) / standby(3)，starlark 归一为 device_psu_state。
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.41112.1.5.3.2.1.3"
+        name = "status_raw"
+
+# ---- 内存：kB ×1024 → 字节，输出 device_memory_total / free / used 与 usage=(total-free)/total*100；总量非正、空闲为负或超出总量时不输出内存字段。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    total = metric.fields.pop("mem_total_kb_raw", None)
+    free = metric.fields.pop("mem_avail_kb_raw", None)
+    if type(total) not in ["int", "float"] or type(free) not in ["int", "float"]:
+        return metric
+    if total <= 0 or free < 0 or free > total:
+        return metric
+    metric.fields["device_memory_total"] = int(total) * 1024
+    metric.fields["device_memory_free"] = int(free) * 1024
+    metric.fields["device_memory_used"] = (int(total) - int(free)) * 1024
+    metric.fields["device_memory_usage"] = (total - free) * 100.0 / total
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["edgerouter"]
+
+# ---- 机箱健康归一：温度 千分之一℃ ÷1000，仅保留 -40~150 ℃ → device_temperature_celsius；风扇转速 0~100000 → device_fan_rpm；
+# ---- 电源 on(1)→1 正常、off(2)→2 异常、standby(3)→3 备用，unknown(0) 及其它值丢弃 → device_psu_state。无有效字段的行整行丢弃。----
+[[processors.starlark]]
+    namepass = ["device_temperature", "device_fan", "device_psu"]
+    source = '''
+PSU = {1: 1, 2: 2, 3: 3}
+
+def apply(metric):
+    if metric.name == "device_temperature":
+        raw = metric.fields.pop("milli_raw", None)
+        if type(raw) in ["int", "float"] and raw >= -40000 and raw <= 150000:
+            metric.fields["celsius"] = raw / 1000.0
+    elif metric.name == "device_fan":
+        raw = metric.fields.pop("rpm", None)
+        if type(raw) in ["int", "float"] and raw >= 0 and raw <= 100000:
+            metric.fields["rpm"] = raw
+    elif metric.name == "device_psu":
+        raw = metric.fields.pop("status_raw", None)
+        if type(raw) == "int" and raw in PSU:
+            metric.fields["state"] = PSU[raw]
+    if len(metric.fields.keys()) == 0:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["edgerouter"]
