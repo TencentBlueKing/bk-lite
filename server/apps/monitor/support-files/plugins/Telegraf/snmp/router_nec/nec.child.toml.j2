@@ -49,28 +49,65 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
-    # ---- NEC UNIVERGE IX CPU (PRIVATE PEN 119, CPU Utilization 1min, 直接%, scalar) ----
-    # 待现网核验：1.3.6.1.4.1.119.2.3.84.2.5.3.0（1 分钟 CPU 使用率%，NEC community univerge_ix 模板 units='%'）。
+    # ---- NEC UNIVERGE IX 系统 MIB（PICO-SMI picoSystem 1.3.6.1.4.1.119.2.3.84.2）----
+    # CPU/内存/温度均为标量：顶层 field GET 带实例 .0 → measurement snmp → 查询 snmp_ 前缀。
+    # picoSchedRtUtl1Min（.5.3.0）：最近 1 分钟系统利用率%（Gauge）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.119.2.3.84.2.5.3.0"
+        name = "device_cpu_usage"
+    # picoHeapUtil（.6.2.0）：当前堆内存利用率%（Gauge）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.119.2.3.84.2.6.2.0"
+        name = "device_memory_usage"
+    # picoCelsius（.1.1.0）：设备内部温度，摄氏度。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.119.2.3.84.2.1.1.0"
+        name = "device_temperature_celsius"
+    # ---- 风扇：picoFanTable .3（INDEX picoFanIndex），picoFanStatus .3.1.2 normal(1)/failure(2)，picoFanRpm .3.1.3 转速 rpm ----
+    # 风扇/电源表为 optional 对象，仅部分机型（如 IX2310/IX3315）实现；未实现时表为空不产出。
     [[inputs.snmp.table]]
-        name = "device_cpu"
+        name = "device_fan"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.119.2.3.84.2.5.3"
-        name = "usage"
-    # ---- NEC memory (PEN 119, Memory Utilization, 直接%, scalar；item 名为 Utilization，按%处理) ----
-    # 待现网核验：1.3.6.1.4.1.119.2.3.84.2.6.2.0（内存使用率%）。device_memory_usage 直采。
+        oid = "1.3.6.1.4.1.119.2.3.84.2.3.1.2"
+        name = "state"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.119.2.3.84.2.3.1.3"
+        name = "speed"
+    # ---- 电源：picoPowerSupplyTable .4（INDEX picoPowerSupplyIndex），picoPowerSupplyStatus .4.1.3 notInstalled(0)/normal(1)/failure(2) ----
     [[inputs.snmp.table]]
-        name = "device_memory"
+        name = "device_psu"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.119.2.3.84.2.6.2"
-        name = "usage"
-    # ---- NEC temperature (PEN 119, scalar, °C 直采) ----
-    # 待现网核验：1.3.6.1.4.1.119.2.3.84.2.1.1.0（设备温度 ℃，scalar）。
-    [[inputs.snmp.table]]
-        name = "device_temperature"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.119.2.3.84.2.1.1"
-        name = "celsius"
-# ---- 风扇/电源：NEC 经 PEN 119 per-fan/per-psu LLD 暴露状态枚举(.2.3.1.x / .2.4.1.x,行索引,状态码语义未知),inputs.snmp 难按行规范化枚举 → 风扇/电源 N/A。CPU/内存/温度三标量干净可采。----
+        oid = "1.3.6.1.4.1.119.2.3.84.2.4.1.3"
+        name = "state"
+# ---- 风扇状态归一：normal(1)→1(正常)，failure(2) 及其余→2(异常)。----
+[[processors.enum]]
+    namepass = ["device_fan"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+    [processors.enum.tagpass]
+        brand = ["nec"]
+# ---- 电源状态归一：notInstalled(0) 空槽整行丢弃，不计入故障；normal(1)→1(正常)，failure(2) 及其余→2(异常)。----
+[[processors.starlark]]
+    namepass = ["device_psu"]
+    source = '''
+def apply(metric):
+    if "state" not in metric.fields:
+        return None
+    raw = int(metric.fields["state"])
+    if raw == 0:
+        return None
+    if raw == 1:
+        metric.fields["state"] = 1
+    else:
+        metric.fields["state"] = 2
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["nec"]
