@@ -1,0 +1,134 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_hirschmann_hios",
+  "plugin": "Switch Hirschmann HiOS SNMP",
+  "plugin_desc": "SNMP monitoring template for Hirschmann HiOS switch (HM2-DIAGNOSTIC-MIB / HM2-DEVMGMT-MIB / HM2-PWRMGMT-MIB, enterprise PEN 248). It reports uptime, CPU utilization, RAM used/free/total and utilization, device temperature, power supply state, and interface traffic. Applies to HiOS devices whose sysObjectID starts with 1.3.6.1.4.1.248.11; Classic 1.3.6.1.4.1.248.14 devices use switch_hirschmann. CPU and memory are empty if hm2DiagEnableMeasurement is disabled on the device.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='switch', collect_type='snmp_hirschmann_hios'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius",
+    "device_psu_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "max(snmp_device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current CPU utilization of the Hirschmann HiOS switch (HM2-DIAGNOSTIC-MIB hm2DiagCpuUtilization, 0-100 percent). Empty when hm2DiagEnableMeasurement is disabled on the device."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "max(snmp_device_memory_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "RAM utilization of the Hirschmann HiOS switch, computed at collection time as allocated / (allocated + free) * 100 from hm2DiagMemoryRamAllocated and hm2DiagMemoryRamFree. Empty when hm2DiagEnableMeasurement is disabled on the device."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "max(snmp_device_memory_total{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total RAM of the Hirschmann HiOS switch in bytes. The MIB has no total object, so it is computed at collection time as allocated + free (kBytes x 1024)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "max(snmp_device_memory_used{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Allocated RAM of the Hirschmann HiOS switch in bytes (HM2-DIAGNOSTIC-MIB hm2DiagMemoryRamAllocated, kBytes converted to bytes at collection time)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_free",
+      "query": "max(snmp_device_memory_free{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Free RAM of the Hirschmann HiOS switch in bytes (HM2-DIAGNOSTIC-MIB hm2DiagMemoryRamFree, kBytes converted to bytes at collection time)."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(snmp_device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current device temperature of the Hirschmann HiOS switch in degrees Celsius (HM2-DEVMGMT-MIB hm2DevMgmtTemperature)."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "max(device_psu_state{instance_type='switch', __$labels__}) by (instance_id, index)",
+      "display_name": "PSU State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Power supply ID (hm2PSID)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Power supply state of the Hirschmann HiOS switch (HM2-PWRMGMT-MIB hm2PSState, indexed by hm2PSID), normalized so that present = 1 (normal) and defective = 2 (abnormal). notInstalled and unknown slots are dropped."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}
