@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_maipu",
   "plugin": "Switch Maipu SNMP",
-  "plugin_desc": "SNMP monitoring template for Maipu switch (MyPower OS). It reports uptime, CPU utilization, memory utilization, main board and CPU temperature, and interface traffic (enterprise PEN 5651); fan and power supply status are not collected.",
+  "plugin_desc": "SNMP monitoring template for Maipu switch (MyPower OS). It reports uptime, CPU utilization, memory utilization, main board and CPU temperature, and interface traffic (enterprise PEN 5651); fan and power supply status are not collected. CPU utilization is only reported when CPU monitoring is enabled on the device (sysCpuStatus set to spyCpu).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_maipu'}) by (instance_id)",
   "name": "Switch",
