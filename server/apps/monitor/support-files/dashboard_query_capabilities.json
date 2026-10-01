@@ -2532,6 +2532,13 @@
       "template": "rate(sqlserver_performance_value{counter=~\"Batch Requests/sec\", __$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:61f53f4e",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "firewall_active_sessions{__$labels__} or snmp_firewall_active_sessions{__$labels__} or firewall_current_connections{__$labels__} or snmp_firewall_current_connections{__$labels__} or firewall_active_connections{__$labels__} or firewall_tcp_connections{__$labels__} or firewall_pf_states{__$labels__} or snmp_firewall_pf_states{__$labels__}"
+    },
+    {
       "id": "dashboard:v1:6206d346",
       "object_names": [
         "Haproxy"
@@ -4056,13 +4063,6 @@
         "InfluxDB"
       ],
       "template": "sum by (instance_id) (rate(influxdb_httpd_serverError{__$labels__}[__$window__]))"
-    },
-    {
-      "id": "dashboard:v1:a4345e6b",
-      "object_names": [
-        "Firewall"
-      ],
-      "template": "firewall_active_sessions{__$labels__} or snmp_firewall_active_sessions{__$labels__} or firewall_current_connections{__$labels__} or snmp_firewall_current_connections{__$labels__} or firewall_active_connections{__$labels__} or firewall_tcp_connections{__$labels__} or firewall_pf_states{__$labels__}"
     },
     {
       "id": "dashboard:v1:a4719240",

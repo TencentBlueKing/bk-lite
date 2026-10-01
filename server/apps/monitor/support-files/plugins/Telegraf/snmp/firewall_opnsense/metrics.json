@@ -55,7 +55,7 @@
     {
       "metric_group": "Firewall",
       "name": "firewall_pf_states",
-      "query": "firewall_pf_states{instance_type='firewall', __$labels__}",
+      "query": "max(snmp_firewall_pf_states{instance_type='firewall', __$labels__}) by (instance_id)",
       "display_name": "PF State Entries",
       "data_type": "Number",
       "unit": "short",
