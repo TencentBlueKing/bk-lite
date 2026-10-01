@@ -1,0 +1,103 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_ubiquiti_airos"
+        config_type = "ubiquiti_airos"
+        brand = "ubiquiti_airos"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- FROGFOOT-RESOURCES-MIB (PEN 10002) 内存标量：顶层 field 带 .0 直接 GET ----
+    # memTotal 1.3.6.1.4.1.10002.1.1.1.1.1.0 / memFree 1.3.6.1.4.1.10002.1.1.1.1.2.0，Gauge32，单位 KB。
+    # 采集侧由 starlark ×1024 换算为字节，并计算 used = total - free、usage = used / total * 100。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.10002.1.1.1.1.1.0"
+        name = "device_memory_total"
+        conversion = "int"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.10002.1.1.1.1.2.0"
+        name = "device_memory_free"
+        conversion = "int"
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        name = "interface"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.1"
+        name = "ifIndex"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- FROGFOOT-RESOURCES-MIB loadTable 1.3.6.1.4.1.10002.1.1.1.4.2（按行遍历，table.field 不带 .0）----
+    # loadDescr .2 作 load_descr 标签；loadValue .3 为负载均值 ×100（Gauge32），不是使用率百分比，多核时可超过 100。
+    # 行索引 1/2/3 依次对应 1/5/10 分钟平均，CPU 负载查询取 index=2（5 分钟）行。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10002.1.1.1.4.2.1.2"
+        name = "load_descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10002.1.1.1.4.2.1.3"
+        name = "usage"
+        conversion = "int"
+# ---- 温度/风扇/电源：FROGFOOT-RESOURCES-MIB 无对应对象，不臆造。----
+
+# ---- 内存 KB → 字节，计算已用与使用率；total 缺失或为 0 时不产生 used/usage。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    total = metric.fields.get("device_memory_total")
+    free = metric.fields.get("device_memory_free")
+    if total != None:
+        total = int(total) * 1024
+        metric.fields["device_memory_total"] = total
+    if free != None:
+        free = int(free) * 1024
+        metric.fields["device_memory_free"] = free
+    if total != None and free != None and total > 0 and free <= total:
+        used = total - free
+        metric.fields["device_memory_used"] = used
+        metric.fields["device_memory_usage"] = used * 100.0 / total
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["ubiquiti_airos"]
