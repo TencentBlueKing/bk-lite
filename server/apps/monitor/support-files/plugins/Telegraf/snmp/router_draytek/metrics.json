@@ -56,7 +56,7 @@
     {
       "metric_group": "Router",
       "name": "device_memory_usage",
-      "query": "avg(device_memory_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_usage{instance_type='router', __$labels__}) by (instance_id)",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -64,7 +64,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Memory utilisation of the DrayTek Vigor router (DrayTek private OID), reported directly."
+      "description": "Memory utilisation of the DrayTek Vigor router in percent (DrayTek-MIB memoryUsage, scalar 1.3.6.1.4.1.7367.3.7.0), reported directly."
     },
     {
       "metric_group": "Status",
