@@ -1,6 +1,6 @@
 Access Casa Systems SNMP:
   name: Access Casa Systems SNMP
-  desc: "SNMP monitoring template for Casa Systems access device. It reports uptime and interface traffic, for Casa Systems CMTS and broadband access devices (based on standard MIBs)."
+  desc: "SNMP monitoring template for Casa Systems access device. It reports uptime, per-module CPU utilization, memory usage and CPU temperature, and interface traffic, for Casa Systems CMTS and broadband access devices (enterprise PEN 20858)."
 monitor_object:
   Access: Access
 monitor_object_type:
@@ -46,6 +46,10 @@ monitor_object_metric:
       name: Memory Total
       desc: Total physical memory capacity reported by the access device in bytes.
         This metric can be combined with free memory to derive overall memory utilization.
+    device_memory_used:
+      name: Memory Used
+      desc: Physical memory currently in use reported by the access device in bytes.
+        Combined with total memory it gives overall memory utilization.
     device_memory_free:
       name: Memory Free
       desc: Available physical memory currently reported by the access device in bytes.
