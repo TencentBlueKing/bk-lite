@@ -1,0 +1,96 @@
+{
+  "object": "Access",
+  "plugin": "Access Huawei OLT SNMP",
+  "templates": [
+    {
+      "name": "Huawei OLT接入设备CPU使用率过高",
+      "alert_name": "接入设备${resource_name} 主控板CPU使用率过高",
+      "description": "监控华为 SmartAX OLT 主控板 CPU 使用率（取最高板卡），当超过阈值时触发告警，便于及时发现主控板负载过高。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Huawei OLT接入设备内存使用率过高",
+      "alert_name": "接入设备${resource_name} 主控板内存使用率过高",
+      "description": "监控华为 SmartAX OLT 主控板内存使用率（取最高板卡），当超过阈值时触发告警，便于及时发现内存泄漏或表项过大。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Huawei OLT接入设备温度过高",
+      "alert_name": "接入设备${resource_name} 板卡温度过高",
+      "description": "监控华为 SmartAX OLT 板卡温度（取最高值），当超过阈值时触发告警，提示散热故障或机房环境温度过高。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Huawei OLT接入设备电源输入异常",
+      "alert_name": "接入设备${resource_name} 电源输入异常",
+      "description": "监控华为 SmartAX OLT 电源板 AC/DC 输入状态（1=正常，2=故障），输入故障时触发告警。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}
