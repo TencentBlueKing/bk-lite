@@ -38,7 +38,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_cpu_usage{instance_type='firewall', __$labels__}) by (instance_id)",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -316,7 +316,7 @@
       ],
       "name": "device_memory_used",
       "display_name": "内存已用",
-      "query": "sum(device_memory_used{instance_type='firewall', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_used{instance_type='firewall', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Used memory of the Neteye firewall in bytes (nsResMemAllocate)."
@@ -329,7 +329,7 @@
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲",
-      "query": "sum(device_memory_free{instance_type='firewall', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_free{instance_type='firewall', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Free memory of the Neteye firewall in bytes (nsResMemLeft)."
@@ -342,7 +342,7 @@
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "sum(device_memory_used{instance_type='firewall', __$labels__}) by (instance_id) / (sum(device_memory_used{instance_type='firewall', __$labels__}) by (instance_id) + sum(device_memory_free{instance_type='firewall', __$labels__}) by (instance_id)) * 100",
+      "query": "max(snmp_device_memory_used{instance_type='firewall', __$labels__}) by (instance_id) / (max(snmp_device_memory_used{instance_type='firewall', __$labels__}) by (instance_id) + max(snmp_device_memory_free{instance_type='firewall', __$labels__}) by (instance_id)) * 100",
       "unit": "percent",
       "data_type": "Number",
       "description": "Memory utilisation of the Neteye firewall, derived as used/(used+free)."
