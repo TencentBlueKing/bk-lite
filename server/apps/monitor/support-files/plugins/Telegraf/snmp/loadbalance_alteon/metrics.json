@@ -38,7 +38,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_cpu_usage{instance_type='loadbalance', __$labels__}) by (instance_id)",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -316,7 +316,7 @@
       ],
       "name": "device_memory_total",
       "display_name": "内存总量",
-      "query": "device_memory_total{instance_type='loadbalance', __$labels__}",
+      "query": "max(snmp_device_memory_total{instance_type='loadbalance', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Total main memory of the Radware Alteon in bytes (mpMemStatsTotal)."
@@ -329,7 +329,7 @@
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲",
-      "query": "device_memory_free{instance_type='loadbalance', __$labels__}",
+      "query": "max(snmp_device_memory_free{instance_type='loadbalance', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
       "description": "Free main memory of the Radware Alteon in bytes (mpMemStatsFree)."
@@ -342,7 +342,7 @@
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "(sum(device_memory_total{instance_type='loadbalance', __$labels__}) by (instance_id) - sum(device_memory_free{instance_type='loadbalance', __$labels__}) by (instance_id)) / sum(device_memory_total{instance_type='loadbalance', __$labels__}) by (instance_id) * 100",
+      "query": "(max(snmp_device_memory_total{instance_type='loadbalance', __$labels__}) by (instance_id) - max(snmp_device_memory_free{instance_type='loadbalance', __$labels__}) by (instance_id)) / max(snmp_device_memory_total{instance_type='loadbalance', __$labels__}) by (instance_id) * 100",
       "unit": "percent",
       "data_type": "Number",
       "description": "Main memory utilization of the Radware Alteon, derived as (total-free)/total."
