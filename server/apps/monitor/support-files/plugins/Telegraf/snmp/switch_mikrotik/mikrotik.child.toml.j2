@@ -62,28 +62,101 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.25.3.3.1.2"
         name = "usage"
-    # ---- MikroTik system memory (HOST-RESOURCES-MIB hrStorage, main-memory index 65536) ----
-    # 待现网核验：used hrStorageUsed 1.3.6.1.2.1.25.2.3.1.6.65536；total hrStorageSize ...1.5.65536。
-    # ⚠ 原始单位是 allocation units（模版有 MULTIPLIER），inputs.snmp 不能算术缩放 → 采到的是 alloc units；
-    #   利用率 used/total 比值与单位无关(alloc units 抵消)正确；绝对 used/total 是 alloc units(非 bytes)留「待现网核验」。
+    # ---- MikroTik system memory (HOST-RESOURCES-MIB hrStorageTable, walked by column) ----
+    # hrStorageType 1.3.6.1.2.1.25.2.3.1.2 / hrStorageAllocationUnits .4 / hrStorageSize .5 / hrStorageUsed .6；
+    # starlark 只保留 hrStorageType=hrStorageRam（RouterOS 主内存行），size/used × allocation units → 字节。
     [[inputs.snmp.table]]
         name = "device_memory"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.25.2.3.1.6.65536"
-        name = "used"
+        oid = "1.3.6.1.2.1.25.2.3.1.2"
+        name = "storage_type"
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.25.2.3.1.5.65536"
+        oid = "1.3.6.1.2.1.25.2.3.1.4"
+        name = "alloc_units"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.25.2.3.1.5"
         name = "total"
-    # ---- MikroTik board temperature (MIKROTIK-MIB mtxrHlTemperature) ----
-    # 待现网核验：1.3.6.1.4.1.14988.1.1.3.10 → device_temperature_celsius。
-    # ⚠ 原始单位是 0.1℃/单位（模版 MULTIPLIER 0.1），telegraf inputs.snmp 不能缩放 →
-    #   真机采到的是原始值（需 ×0.1 才是摄氏度），留「待现网核验」；mock 直接发摄氏度，验证不受影响。
-    [[inputs.snmp.table]]
-        name = "device_temperature"
-        inherit_tags = ["source"]
-        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.14988.1.1.3.10"
-        name = "celsius"
-# ---- 风扇/电源：MikroTik 以 RPM 上报风扇(非 1=normal 状态)、且电源状态随型号缺失 → 标 N/A 不采（同华为少项）。----
+        oid = "1.3.6.1.2.1.25.2.3.1.6"
+        name = "used"
+    # ---- MikroTik health (MIKROTIK-MIB mtxrHealth 1.3.6.1.4.1.14988.1.1.3)：标量，顶层 field 带 .0 → measurement snmp，查询用 snmp_ 前缀 ----
+    # mtxrHlTemperature .10.0 / mtxrHlProcessorTemperature .11.0：Temperature（DISPLAY-HINT d-1，0.1 ℃）→ ÷10。
+    # mtxrHlVoltage .8.0：Voltage（DISPLAY-HINT d-1，0.1 V）→ ÷10。型号不支持的传感器不返回，对应字段缺省。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.14988.1.1.3.10.0"
+        name = "board_temperature_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.14988.1.1.3.11.0"
+        name = "cpu_temperature_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.14988.1.1.3.8.0"
+        name = "voltage_raw"
+    # mtxrHlPowerSupplyState .15.0 / mtxrHlBackupPowerSupplyState .16.0：BoolValue false(0)/true(1) → device_psu（psu=primary/backup）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.14988.1.1.3.15.0"
+        name = "psu_primary_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.14988.1.1.3.16.0"
+        name = "psu_backup_raw"
+    # mtxrHlFanSpeed1 .17.0 / mtxrHlFanSpeed2 .18.0：Gauge32 RPM → device_fan（fan=1/2）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.14988.1.1.3.17.0"
+        name = "fan1_rpm_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.14988.1.1.3.18.0"
+        name = "fan2_rpm_raw"
+
+# ---- 内存：只保留 RAM 行并换算为字节；其它 hrStorage 行（磁盘等）丢弃。----
+[[processors.starlark]]
+    namepass = ["device_memory"]
+    source = '''
+def apply(metric):
+    storage_type = str(metric.fields.pop("storage_type", ""))
+    units = metric.fields.pop("alloc_units", None)
+    if not (storage_type.endswith("1.3.6.1.2.1.25.2.1.2") or storage_type.endswith("hrStorageRam")):
+        return None
+    total = metric.fields.get("total")
+    used = metric.fields.get("used")
+    if units == None or units <= 0 or total == None or used == None or total <= 0 or used < 0 or used > total:
+        return None
+    metric.fields["total"] = int(total) * int(units)
+    metric.fields["used"] = int(used) * int(units)
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["mikrotik"]
+
+# ---- 健康标量：温度/电压 ÷10；电源 true(1)→1 正常、false(0)→2 异常；风扇 RPM 拆为带 fan 维度的 device_fan。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def child(metric, name, tag_key, tag_value, field, value):
+    m = Metric(name)
+    for k, v in metric.tags.items():
+        m.tags[k] = v
+    m.tags[tag_key] = tag_value
+    m.fields[field] = value
+    m.time = metric.time
+    return m
+
+def apply(metric):
+    out = [metric]
+    for raw_key, key in [("board_temperature_raw", "device_temperature_celsius"), ("cpu_temperature_raw", "device_cpu_temperature_celsius"), ("voltage_raw", "device_voltage_volts")]:
+        raw = metric.fields.pop(raw_key, None)
+        if raw != None:
+            metric.fields[key] = raw / 10.0
+    for raw_key, psu in [("psu_primary_raw", "primary"), ("psu_backup_raw", "backup")]:
+        raw = metric.fields.pop(raw_key, None)
+        if raw == 1:
+            out.append(child(metric, "device_psu", "psu", psu, "state", 1))
+        elif raw == 0:
+            out.append(child(metric, "device_psu", "psu", psu, "state", 2))
+    for raw_key, fan in [("fan1_rpm_raw", "1"), ("fan2_rpm_raw", "2")]:
+        raw = metric.fields.pop(raw_key, None)
+        if raw != None:
+            out.append(child(metric, "device_fan", "fan", fan, "speed", int(raw)))
+    return out
+'''
+    [processors.starlark.tagpass]
+        brand = ["mikrotik"]
