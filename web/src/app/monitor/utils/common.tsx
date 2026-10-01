@@ -821,6 +821,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /mellanox|nvidia|spectrum|onyx|mlnx|\bsn[0-9]{4}\b/i, label: 'Mellanox', icon: 'mm-mellanox_mellanox' },
   { match: /allied|awplus|aw\+|at-/i, label: 'Allied Telesis', icon: 'mm-alliedtelesis_alliedtelesis' },
   { match: /os10|smartfabric|\bz9[0-9]|powerswitch/i, label: 'Dell OS10', icon: 'mm-dellos10_dellos10' },
+  { match: /rackswitch\s*g8052|\bg8052\b/i, label: 'IBM RackSwitch G8052' },
   { match: /cnos|lenovo|thinksystem|\bne[0-9]{4}\b/i, label: 'Lenovo CNOS', icon: 'mm-lenovocnos_lenovocnos' },
   { match: /fortiswitch|fsw|fortinet.*switch/i, label: 'FortiSwitch', icon: 'mm-fortiswitch_fortiswitch' },
   { match: /fiberhome|烽火|\bwri\b/i, label: 'FiberHome', icon: 'mm-fiberhome_fiberhome' },

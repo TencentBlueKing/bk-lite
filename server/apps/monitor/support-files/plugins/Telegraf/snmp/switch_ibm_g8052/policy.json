@@ -1,0 +1,196 @@
+{
+  "object": "Switch",
+  "plugin": "Switch IBM RackSwitch G8052 SNMP",
+  "templates": [
+    {
+      "name": "IBM G8052交换机CPU使用率过高",
+      "alert_name": "交换机${resource_name} CPU 使用率过高",
+      "description": "监控 IBM / Lenovo RackSwitch G8052 交换机管理处理器 5 分钟平均 CPU 使用率，持续高于阈值时触发告警，提示可能存在控制平面过载、协议震荡或异常流量。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "IBM G8052交换机内存使用率过高",
+      "alert_name": "交换机${resource_name} 内存使用率过高",
+      "description": "监控 IBM / Lenovo RackSwitch G8052 交换机内存使用率，持续高于阈值时触发告警，提示可能存在表项膨胀或内存泄漏。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "IBM G8052交换机温度过高",
+      "alert_name": "交换机${resource_name} 温度过高",
+      "description": "监控 IBM / Lenovo RackSwitch G8052 交换机温度传感器读数，持续高于阈值时触发告警，提示可能存在风扇故障、风道受阻或环境温度过高。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 65,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 55,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "IBM G8052交换机电源异常",
+      "alert_name": "交换机${resource_name} 电源异常",
+      "description": "监控 IBM / Lenovo RackSwitch G8052 交换机电源状态，电源处于关闭状态时触发告警，冗余电源失效需及时处理。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "=="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "接口接收错误包过高",
+      "alert_name": "交换机${resource_name} 接口 ${metric_ifDescr} 每秒接收错误包数过高",
+      "description": "监控设备接口接收的错误包数情况，当每秒错误包数超出设定阈值时触发告警，便于发现网络接口隐患。",
+      "metric_name": "interface_ifInErrors",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 10,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "接口发送错误包过高",
+      "alert_name": "交换机${resource_name} 接口 ${metric_ifDescr} 每秒发送错误包数过高",
+      "description": "监控设备接口发送端错误包数，每秒发送错误包数量超出限制时发出告警，及时定位和处理网络发送问题。",
+      "metric_name": "interface_ifOutErrors",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 10,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "接口接收丢包数过高",
+      "alert_name": "交换机${resource_name} 接口 ${metric_ifDescr} 每秒接收丢包数过高",
+      "description": "实时监控设备机接口的丢包情况，当接收丢包速率超过阈值时告警，帮助排查网络接收质量问题并优化链路性能。",
+      "metric_name": "interface_ifInDiscards",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 10,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "接口发送丢包数过高",
+      "alert_name": "交换机${resource_name} 接口 ${metric_ifDescr} 每秒发送丢包数过高",
+      "description": "监测接口发送丢包速率是否异常，当发送丢包数量高于预设阈值时触发告警，为网络发送端问题提供及时反馈。",
+      "metric_name": "interface_ifOutDiscards",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 10,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

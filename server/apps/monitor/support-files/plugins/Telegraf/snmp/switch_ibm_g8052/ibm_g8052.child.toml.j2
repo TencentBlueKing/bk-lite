@@ -1,0 +1,162 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_ibm_g8052"
+        config_type = "ibm_g8052"
+        brand = "ibm_g8052"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- IBM-GbTOR-G8052-MIB（PEN 26543）CPU / 内存：标量，顶层 field 带 .0 → measurement snmp，查询用 snmp_ 前缀 ----
+    # mpCpuStatsUtil5MinutesRev 1.3.6.1.4.1.26543.2.7.7.1.2.2.10.0：MP CPU 5 分钟利用率，Gauge32 百分比。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.26543.2.7.7.1.2.2.10.0"
+        name = "device_cpu_usage"
+        conversion = "int"
+    # totalMemoryStats 1.3.6.1.4.1.26543.2.7.7.1.2.12.1.0 / memoryFreeStats 1.3.6.1.4.1.26543.2.7.7.1.2.12.2.0：Counter64 字节；下方 starlark 计算已用与使用率。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.26543.2.7.7.1.2.12.1.0"
+        name = "device_memory_total"
+        conversion = "int"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.26543.2.7.7.1.2.12.2.0"
+        name = "device_memory_free"
+        conversion = "int"
+    # ---- tor-switch 1.3.6.1.4.1.26543.100.100.14：温度 / 风扇 / 电源均为标量，顶层 field 带 .0，由下方 starlark 拆成带标签的标准指标 ----
+    # hwTemperatureSensor1-3 .11.0 / .12.0 / .13.0：DisplayString，取其中数值（℃）→ device_temperature_celsius{sensor}。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.26543.100.100.14.11.0"
+        name = "temp_sensor1"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.26543.100.100.14.12.0"
+        name = "temp_sensor2"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.26543.100.100.14.13.0"
+        name = "temp_sensor3"
+    # hwFan1-5RPMValue .14.0 - .18.0：DisplayString，取转速数值（RPM）→ device_fan_speed{fan}。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.26543.100.100.14.14.0"
+        name = "fan_rpm1"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.26543.100.100.14.15.0"
+        name = "fan_rpm2"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.26543.100.100.14.16.0"
+        name = "fan_rpm3"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.26543.100.100.14.17.0"
+        name = "fan_rpm4"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.26543.100.100.14.18.0"
+        name = "fan_rpm5"
+    # hwPowerSupply1/2State .20.0 / .21.0：off(0) / on(1) / absent(2) → device_psu_state{psu}，on→1，off→2，absent 丢弃。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.26543.100.100.14.20.0"
+        name = "psu_state1"
+        conversion = "int"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.26543.100.100.14.21.0"
+        name = "psu_state2"
+        conversion = "int"
+
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def parse_number(raw, before=""):
+    text = str(raw)
+    end = len(text)
+    if before != "":
+        pos = text.upper().find(before)
+        if pos >= 0:
+            end = pos
+    numbers = []
+    current = ""
+    for i in range(end):
+        c = text[i]
+        if c.isdigit():
+            current += c
+        elif c == "." and current != "" and current != "-" and "." not in current:
+            current += c
+        elif c == "-" and current == "":
+            current = "-"
+        else:
+            if current != "" and current != "-":
+                numbers.append(current)
+            current = ""
+    if current != "" and current != "-":
+        numbers.append(current)
+    if len(numbers) == 0:
+        return None
+    value = numbers[-1] if end < len(text) else numbers[0]
+    if value.endswith("."):
+        value = value[:-1]
+    return float(value)
+
+def child(metric, name, tag, tag_value, field, value):
+    m = Metric(name)
+    for k, v in metric.tags.items():
+        m.tags[k] = v
+    m.tags[tag] = tag_value
+    m.fields[field] = value
+    m.time = metric.time
+    return m
+
+def apply(metric):
+    out = [metric]
+    cpu = metric.fields.get("device_cpu_usage")
+    if cpu != None and (int(cpu) < 0 or int(cpu) > 100):
+        metric.fields.pop("device_cpu_usage")
+    total = metric.fields.get("device_memory_total")
+    free = metric.fields.get("device_memory_free")
+    if total != None and free != None and int(total) > 0 and int(free) <= int(total):
+        metric.fields["device_memory_used"] = int(total) - int(free)
+        metric.fields["device_memory_usage"] = (int(total) - int(free)) * 100.0 / int(total)
+    for i in range(1, 4):
+        raw = metric.fields.pop("temp_sensor%d" % i, None)
+        if raw != None:
+            value = parse_number(raw)
+            if value != None:
+                out.append(child(metric, "device_temperature", "sensor", "sensor%d" % i, "celsius", value))
+    for i in range(1, 6):
+        raw = metric.fields.pop("fan_rpm%d" % i, None)
+        if raw != None:
+            value = parse_number(raw, "RPM")
+            if value != None and value >= 0:
+                out.append(child(metric, "device_fan", "fan", "fan%d" % i, "speed", int(value)))
+    for i in range(1, 3):
+        raw = metric.fields.pop("psu_state%d" % i, None)
+        if raw != None:
+            state = int(raw)
+            if state == 1:
+                out.append(child(metric, "device_psu", "psu", "psu%d" % i, "state", 1))
+            elif state == 0:
+                out.append(child(metric, "device_psu", "psu", "psu%d" % i, "state", 2))
+    return out
+'''
+    [processors.starlark.tagpass]
+        brand = ["ibm_g8052"]
