@@ -39,7 +39,7 @@
     {
       "metric_group": "Router",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_cpu_usage{instance_type='router', __$labels__}) by (instance_id)",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -47,12 +47,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "CPU utilization (1-minute) of the NEC UNIVERGE IX router (NEC private MIB)."
+      "description": "This metric reports the one-minute system utilization of the NEC UNIVERGE IX router (picoSchedRtUtl1Min scalar) as a 0-100 percentage. Sustained high usage indicates heavy forwarding or control-plane load."
     },
     {
       "metric_group": "Router",
       "name": "device_memory_usage",
-      "query": "avg(device_memory_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_usage{instance_type='router', __$labels__}) by (instance_id)",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -60,7 +60,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Memory utilization of the NEC UNIVERGE IX router (NEC private MIB), reported directly."
+      "description": "This metric reports the current heap memory utilization of the NEC UNIVERGE IX router (picoHeapUtil scalar) as a 0-100 percentage. Sustained high usage may indicate memory pressure or leaks."
     },
     {
       "metric_group": "Status",
@@ -227,7 +227,7 @@
     {
       "metric_group": "Router",
       "name": "device_temperature_celsius",
-      "query": "max(device_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -235,7 +235,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Chassis temperature of the NEC UNIVERGE IX router in Celsius (NEC private MIB, scalar)."
+      "description": "This metric reports the internal temperature of the NEC UNIVERGE IX router in degrees Celsius (picoCelsius scalar). High temperatures can indicate fan failure or airflow obstruction."
     },
     {
       "metric_group": "Traffic",
