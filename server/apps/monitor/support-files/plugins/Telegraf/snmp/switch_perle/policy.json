@@ -1,0 +1,86 @@
+{
+  "object": "Switch",
+  "plugin": "Switch Perle IDS SNMP",
+  "templates": [
+    {
+      "name": "Perle交换机CPU使用率过高",
+      "alert_name": "交换机${resource_name} CPU 使用率过高",
+      "description": "监控 Perle IDS 工业交换机的平均 CPU 使用率，当持续高于阈值时触发告警，提示可能存在环网协议震荡、广播风暴或管理面过载。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Perle交换机温度过高",
+      "alert_name": "交换机${resource_name} 温度过高",
+      "description": "监控 Perle IDS 工业交换机的温度传感器读数，当持续高于阈值时触发告警，提示可能存在散热不良或环境温度过高。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 55,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Perle交换机温度状态异常",
+      "alert_name": "交换机${resource_name} 温度状态异常",
+      "description": "监控 Perle IDS 工业交换机温度传感器状态（归一后 1=正常，>1=异常），当设备判定温度告警或传感器失效时触发告警。",
+      "metric_name": "device_temperature_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Perle交换机电源异常",
+      "alert_name": "交换机${resource_name} 电源状态异常",
+      "description": "监控 Perle IDS 工业交换机电源状态（归一后 1=正常，>1=异常；未安装的电源位不计），当电源告警、关断或失效时触发告警。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

@@ -1,0 +1,153 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_perle",
+  "plugin": "Switch Perle IDS SNMP",
+  "plugin_desc": "SNMP monitoring template for Perle IDS industrial Ethernet switch. It reports uptime, average CPU utilization, free memory, temperature sensors with status, power supply status, and interface traffic (enterprise PEN 1966). Fan status is not collected.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='switch', collect_type='snmp_perle'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_free",
+    "device_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_cpu_usage",
+      "display_name": "CPU 使用率",
+      "query": "max(snmp_device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "unit": "percent",
+      "data_type": "Number",
+      "description": "Average CPU utilization of the Perle IDS switch in percent (PERLE-SYSINFO-MIB perleAverageCPUUtilization DisplayString scalar, numeric value parsed at collection)."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_free",
+      "display_name": "空闲内存",
+      "query": "max(snmp_device_memory_free{instance_type='switch', __$labels__}) by (instance_id)",
+      "unit": "bytes",
+      "data_type": "Number",
+      "description": "Free memory of the Perle IDS switch in bytes (PERLE-SYSINFO-MIB perleMemory DisplayString scalar in KB, parsed and scaled to bytes at collection). The MIB has no total memory object, so utilization is not derived."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Temperature",
+      "dimensions": [
+        {
+          "name": "sensor",
+          "description": "Temperature sensor description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_temperature_celsius",
+      "display_name": "设备温度",
+      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id, sensor)",
+      "unit": "celsius",
+      "data_type": "Number",
+      "description": "Reading of each temperature sensor of the Perle IDS switch in degrees Celsius (PERLE-ENVMON-MIB perleEnvMonTemperatureStatusValue). Sensors reported as notPresent are skipped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "dimensions": [
+        {
+          "name": "sensor",
+          "description": "Temperature sensor description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_temperature_state",
+      "display_name": "温度状态",
+      "query": "max(device_temperature_state{instance_type='switch', __$labels__}) by (instance_id, sensor)",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "data_type": "Enum",
+      "description": "State of each temperature sensor of the Perle IDS switch (PERLE-ENVMON-MIB perleEnvMonTemperatureState), normalised so that normal(1) = 1 and warning/critical/shutdown/notFunctioning = 2; notPresent sensors are skipped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "dimensions": [
+        {
+          "name": "name",
+          "description": "Power supply description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_psu_state",
+      "display_name": "电源状态",
+      "query": "max(device_psu_state{instance_type='switch', __$labels__}) by (instance_id, name)",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "data_type": "Enum",
+      "description": "State of each power supply of the Perle IDS switch (PERLE-ENVMON-MIB perleEnvMonPowerSupplyState), normalised so that normal(1) = 1 and warning/critical/shutdown/notFunctioning = 2; empty (notPresent) power supply positions are skipped."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

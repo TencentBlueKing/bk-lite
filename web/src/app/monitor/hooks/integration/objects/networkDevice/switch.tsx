@@ -177,6 +177,7 @@ export const useSwitchConfig = () => {
       'Switch Hirschmann SNMP': 'snmp_hirschmann',
       'Switch Westermo SNMP': 'snmp_westermo',
       'Switch Moxa SNMP': 'snmp_moxa',
+      'Switch Perle IDS SNMP': 'snmp_perle',
       'Switch GarretCom SNMP': 'snmp_garretcom',
       'Switch Enterasys SNMP': 'snmp_enterasys',
       'Switch Cumulus SNMP': 'snmp_cumulus',

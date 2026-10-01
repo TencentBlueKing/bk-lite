@@ -1,0 +1,115 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_perle"
+        config_type = "perle"
+        brand = "perle"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Perle IDS CPU / 内存（PERLE-SYSINFO-MIB perleSysinfoMIBObjects = 1.3.6.1.4.1.1966.22.44.1）：标量，顶层 field 带 .0 → measurement snmp ----
+    # perleAverageCPUUtilization .24.0：平均 CPU 使用率，DisplayString，下方 starlark 取数值 → %。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1966.22.44.1.24.0"
+        name = "device_cpu_usage"
+    # perleMemory .25.0：空闲内存，DisplayString（KB），下方 starlark 取数值 ×1024 → 字节。MIB 无内存总量，不计算使用率。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1966.22.44.1.25.0"
+        name = "device_memory_free"
+    # ---- 电源状态表（PERLE-ENVMON-MIB perleEnvMonPowerSupplyStatusTable = 1.3.6.1.4.1.1966.22.12.1.1，INDEX perleEnvMonPowerSupplyStatusIndex）----
+    # Descr .1.2 作 name 标签；State .1.3：normal(1) / warning(2) / critical(3) / shutdown(4) / notPresent(5) / notFunctioning(6)。
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1966.22.12.1.1.1.2"
+        name = "name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1966.22.12.1.1.1.3"
+        name = "state"
+    # ---- 温度状态表（perleEnvMonTemperatureStatusTable = 1.3.6.1.4.1.1966.22.12.1.2）----
+    # Descr .1.2 作 sensor 标签；Value .1.3：℃（Gauge32）；State .1.5：同上枚举。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1966.22.12.1.2.1.2"
+        name = "sensor"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1966.22.12.1.2.1.3"
+        name = "celsius"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1966.22.12.1.2.1.5"
+        name = "state"
+# ---- 风扇：ENVMON 无风扇对象 → N/A 不采。----
+# ---- CPU/空闲内存 DisplayString 取首个数值（CPU → %，内存 KB ×1024 → 字节，无法解析则丢弃该字段）；
+#      电源/温度状态：notPresent(5) 的空位整行丢弃，normal(1)→1(正常)，其余→2(异常)。----
+[[processors.starlark]]
+    namepass = ["snmp", "device_psu", "device_temperature"]
+    source = '''
+def num(v):
+    s = str(v).strip()
+    out = ""
+    for c in s.elems():
+        if c.isdigit() or (c == "." and out != "" and "." not in out):
+            out += c
+        elif c == "," and out != "":
+            continue
+        elif out != "":
+            break
+    if out == "" or out == ".":
+        return None
+    return float(out)
+
+def apply(metric):
+    if metric.name == "snmp":
+        cpu = metric.fields.pop("device_cpu_usage", None)
+        if cpu != None:
+            n = num(cpu)
+            if n != None:
+                metric.fields["device_cpu_usage"] = n
+        mem = metric.fields.pop("device_memory_free", None)
+        if mem != None:
+            n = num(mem)
+            if n != None:
+                metric.fields["device_memory_free"] = int(n * 1024)
+        return metric
+    state = metric.fields.get("state")
+    if state != None:
+        state = int(state)
+        if state == 5:
+            return None
+        metric.fields["state"] = 1 if state == 1 else 2
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["perle"]
