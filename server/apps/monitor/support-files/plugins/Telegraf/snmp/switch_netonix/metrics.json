@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_netonix",
   "plugin": "Switch Netonix SNMP",
-  "plugin_desc": "SNMP monitoring template for Netonix switch. It reports uptime, temperature, and interface traffic (enterprise PEN 46242).",
+  "plugin_desc": "SNMP monitoring template for Netonix switch. It reports uptime, temperature sensors, fan speed, voltage sensors, total power consumption, DC/DC input current and efficiency, and interface traffic (enterprise PEN 46242). The MIB has no CPU or memory objects.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_netonix'}) by (instance_id)",
   "name": "Switch",
@@ -15,26 +15,102 @@
   ],
   "supplementary_indicators": [
     "snmp_uptime",
-    "device_temperature_celsius"
+    "device_temperature_celsius",
+    "device_power_used"
   ],
   "metrics": [
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
+      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id, sensor)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
       "dimensions": [
         {
-          "name": "index",
-          "description": "SNMP table row index"
+          "name": "sensor",
+          "description": "Temperature sensor description"
         }
       ],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the chassis temperature in degrees Celsius of the Netonix switch (NETONIX-SWITCH-MIB temp, a dedicated temperature table), aggregated as the maximum across sensors. High temperatures can indicate cooling failure or airflow obstruction and risk thermal shutdown."
+      "description": "This metric reports each temperature sensor of the Netonix switch in degrees Celsius (NETONIX-SWITCH-MIB tempTable temp), labelled by tempDescription. High temperatures can indicate cooling failure or airflow obstruction and risk thermal shutdown."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_speed",
+      "query": "max(device_fan_speed{instance_type='switch', __$labels__}) by (instance_id, index)",
+      "display_name": "Fan Speed",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Fan index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Speed of each fan of the Netonix switch (NETONIX-SWITCH-MIB fanTable fanSpeed), one series per fan. Abnormally low or zero speed may indicate a stalled fan."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_voltage_volts",
+      "query": "max(device_voltage_volts{instance_type='switch', __$labels__}) by (instance_id, sensor)",
+      "display_name": "Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [
+        {
+          "name": "sensor",
+          "description": "Voltage sensor description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Reading of each voltage sensor of the Netonix switch in volts (NETONIX-SWITCH-MIB voltageTable voltage, reported in hundredths of a volt and divided by 100 at collection), labelled by voltageDescription."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_power_used",
+      "query": "max(snmp_device_power_used{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Power Consumption",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total power consumed by the Netonix switch in watts, including PoE output (NETONIX-SWITCH-MIB totalPowerConsumption scalar, reported in tenths of a watt and divided by 10 at collection)."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_input_current_amps",
+      "query": "max(snmp_device_input_current_amps{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "DC/DC Input Current",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "DC/DC input current of the Netonix switch in amps (NETONIX-SWITCH-MIB dcdcInputCurrent scalar, reported in tenths of an amp and divided by 10 at collection)."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_dcdc_efficiency",
+      "query": "max(snmp_device_dcdc_efficiency{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "DC/DC Efficiency",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "DC/DC power supply efficiency of the Netonix switch in percent (NETONIX-SWITCH-MIB dcdcEfficiency scalar)."
     },
     {
       "metric_group": "Traffic",
