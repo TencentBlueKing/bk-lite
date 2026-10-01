@@ -51,6 +51,61 @@
         }
       ],
       "group_algorithm": "avg"
+    },
+    {
+      "name": "Yamaha交换机温度过高",
+      "alert_name": "交换机${resource_name} 温度过高",
+      "description": "监控 Yamaha 交换机机箱内温度，当持续高于阈值时触发告警，提示散热故障或风道堵塞，防止热保护停机。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 50,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Yamaha交换机风扇异常",
+      "alert_name": "交换机${resource_name} 风扇状态异常",
+      "description": "监控 Yamaha 交换机各风扇模块状态（归一后 1=正常，>1=异常），当风扇模块故障时触发告警，防止设备过热。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Yamaha交换机电源异常",
+      "alert_name": "交换机${resource_name} 电源状态异常",
+      "description": "监控 Yamaha 交换机在位电源模块状态（归一后 1=正常，>1=异常），当电源模块掉电时触发告警，提示可能失去电源冗余或供电中断。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

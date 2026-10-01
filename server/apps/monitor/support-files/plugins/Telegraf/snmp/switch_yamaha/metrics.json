@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_yamaha",
   "plugin": "Switch Yamaha SNMP",
-  "plugin_desc": "SNMP monitoring template for Yamaha switch. It reports uptime, CPU utilization, memory utilization, and interface traffic, for SWX-series (enterprise PEN 1182).",
+  "plugin_desc": "SNMP monitoring template for Yamaha switch. It reports uptime, CPU utilization, memory utilization, chassis temperature, fan module status, power module status, and interface traffic, for SWX/SWR/SWP-series (enterprise PEN 1182).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_yamaha'}) by (instance_id)",
   "name": "Switch",
@@ -16,13 +16,16 @@
   "supplementary_indicators": [
     "snmp_uptime",
     "device_cpu_usage",
-    "device_memory_usage"
+    "device_memory_usage",
+    "device_temperature_celsius",
+    "device_fan_state",
+    "device_psu_state"
   ],
   "metrics": [
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -30,12 +33,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the CPU utilization of the ZTE ZXR10 device control plane (ZXR10-MIB zxr10SystemCpuUtility5m, five-minute average), averaged across units and normalized to 0-100. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
+      "description": "This metric reports the one-minute average CPU utilization of the Yamaha switch (yshCpuUtil1min scalar) as a 0-100 percentage. Sustained high CPU usage can indicate control-plane overload, loops, or attack traffic."
     },
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "avg(device_memory_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_usage{instance_type='switch', __$labels__}) by (instance_id)",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -43,7 +46,56 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports overall memory utilization of the ZTE ZXR10 device, read directly as a percent-used value (ZXR10-MIB zxr10SystemMemUsed). High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
+      "description": "This metric reports main memory utilization of the Yamaha switch (yshMemoryUtil scalar) as a 0-100 percentage. High memory usage may indicate leaks or insufficient capacity."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(snmp_device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the in-box temperature of the Yamaha switch in degrees Celsius (yshInboxTemperature scalar). High temperatures can indicate fan failure or airflow obstruction and risk thermal shutdown."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "device_fan_state{instance_type='switch', __$labels__}",
+      "display_name": "Fan State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the state of each fan module of the Yamaha switch (yshFanModuleStatus, raw good(1) / noGood(2)), normalized so that 1 = healthy and 2 = fault."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='switch', __$labels__}",
+      "display_name": "PSU State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the state of each power module of the Yamaha switch (yshPowerModuleStatus, raw up(1) / down(2) / notInstalled(3)), normalized so that 1 = healthy and 2 = fault. Empty slots (notInstalled) are dropped and not counted as faults."
     },
     {
       "metric_group": "Traffic",
