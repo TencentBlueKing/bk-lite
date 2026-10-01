@@ -46,7 +46,7 @@
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
     # ---- Gigamon GigaVUE CPU：GIGAMON-SNMP-MIB cpuUtilization 1.3.6.1.4.1.26866.2.13.0（OCTET STRING，标量，顶层 field 带 .0）----
-    # 值为文本，下方 starlark 取出其中第一个数值，0~100 时输出 device_cpu_usage，解析不出或越界则丢弃。
+    # 值为文本：含 % 时取最后一个 % 前紧挨着的数值；不含 % 时只接受整段为纯数字；0~100 时输出 device_cpu_usage，否则丢弃。
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.26866.2.13.0"
         name = "cpu_utilization_raw"
@@ -57,21 +57,36 @@
 [[processors.starlark]]
     namepass = ["snmp"]
     source = '''
-def _first_number(text):
-    digits = ""
-    seen_dot = False
+def _is_number(text):
+    if text == "" or text == ".":
+        return False
+    dots = 0
     for ch in text.elems():
-        if ch.isdigit():
-            digits += ch
-        elif ch == "." and digits != "" and not seen_dot:
-            digits += ch
-            seen_dot = True
-        elif digits != "":
-            break
-    digits = digits.rstrip(".")
-    if digits == "":
+        if ch == ".":
+            dots += 1
+        elif not ch.isdigit():
+            return False
+    return dots <= 1
+
+def _parse_cpu(text):
+    text = text.strip()
+    pos = text.rfind("%")
+    if pos < 0:
+        if _is_number(text):
+            return float(text)
         return None
-    return float(digits)
+    head = text[:pos].rstrip()
+    start = len(head)
+    for i in range(len(head)):
+        ch = head[len(head) - 1 - i]
+        if ch.isdigit() or ch == ".":
+            start = len(head) - 1 - i
+        else:
+            break
+    value = head[start:]
+    if not _is_number(value):
+        return None
+    return float(value)
 
 def apply(metric):
     raw = metric.fields.pop("cpu_utilization_raw", None)
@@ -80,7 +95,7 @@ def apply(metric):
     if type(raw) in ["int", "float"]:
         value = float(raw)
     else:
-        value = _first_number(str(raw))
+        value = _parse_cpu(str(raw))
     if value != None and value >= 0 and value <= 100:
         metric.fields["device_cpu_usage"] = value
     return metric
