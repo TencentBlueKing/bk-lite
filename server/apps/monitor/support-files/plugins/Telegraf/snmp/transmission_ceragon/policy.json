@@ -1,0 +1,30 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission Ceragon SNMP",
+  "templates": [
+    {
+      "name": "Ceragon传输设备RFU温度过高",
+      "alert_name": "传输设备${resource_name} RFU温度过高",
+      "description": "监控 Ceragon FibeAir 微波传输设备各 RFU 的最高温度，持续高于阈值时提示室外单元散热异常、环境温度过高或硬件过载风险。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ]
+    }
+  ]
+}
