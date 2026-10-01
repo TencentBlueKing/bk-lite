@@ -358,7 +358,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Chassis temperature in degrees Celsius of the Pulse Secure / Ivanti Connect Secure device (PULSESECURE-PSG-MIB iveTemperature, OID 12532.42.0), read directly with no scaling. Only MAG-series blades report a real value; other platforms return 0. High temperatures can indicate cooling failure and risk thermal damage."
+      "description": "Chassis temperature in degrees Celsius of the Pulse Secure / Ivanti Connect Secure device (PULSESECURE-PSG-MIB iveTemperature, OID 12532.42.0), read directly with no scaling. Only MAG-series blades report a real value; other platforms return 0, which is dropped at collection time so no 0 C reading is shown. High temperatures can indicate cooling failure and risk thermal damage."
     },
     {
       "metric_group": "Firewall",
