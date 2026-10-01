@@ -55,7 +55,7 @@
     {
       "metric_group": "Router",
       "name": "device_memory_total",
-      "query": "device_memory_total{instance_type='router', __$labels__}*1024",
+      "query": "max(snmp_device_memory_total{instance_type='router', __$labels__}) by (instance_id) * 1024",
       "display_name": "Total Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -68,7 +68,7 @@
     {
       "metric_group": "Router",
       "name": "device_memory_free",
-      "query": "device_memory_free{instance_type='router', __$labels__}*1024",
+      "query": "max(snmp_device_memory_free{instance_type='router', __$labels__}) by (instance_id) * 1024",
       "display_name": "Free Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -81,7 +81,7 @@
     {
       "metric_group": "Router",
       "name": "device_memory_used",
-      "query": "(device_memory_total{instance_type='router', __$labels__} - device_memory_free{instance_type='router', __$labels__})*1024",
+      "query": "(max(snmp_device_memory_total{instance_type='router', __$labels__}) by (instance_id) - max(snmp_device_memory_free{instance_type='router', __$labels__}) by (instance_id)) * 1024",
       "display_name": "Used Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -94,7 +94,7 @@
     {
       "metric_group": "Router",
       "name": "device_memory_usage",
-      "query": "100 * (device_memory_total{instance_type='router', __$labels__} - device_memory_free{instance_type='router', __$labels__}) / device_memory_total{instance_type='router', __$labels__}",
+      "query": "100 * (max(snmp_device_memory_total{instance_type='router', __$labels__}) by (instance_id) - max(snmp_device_memory_free{instance_type='router', __$labels__}) by (instance_id)) / max(snmp_device_memory_total{instance_type='router', __$labels__}) by (instance_id)",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
