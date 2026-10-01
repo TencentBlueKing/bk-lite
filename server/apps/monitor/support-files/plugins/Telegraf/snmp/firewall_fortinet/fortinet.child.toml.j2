@@ -53,42 +53,29 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
-    # ---- FortiGate CPU utilization (FORTINET-FORTIGATE-MIB fgSysCpuUsage, scalar %) ----
-    # 待现网核验：1.3.6.1.4.1.12356.101.4.1.3.0（已是 0-100%）。table(measurement=device_cpu)+field usage → device_cpu_usage。
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.12356.101.4.1.3"
-        name = "usage"
-    # ---- FortiGate memory (FORTINET-FORTIGATE-MIB, usage % + total KB) ----
-    # 待现网核验：fgSysMemUsage 1.3.6.1.4.1.12356.101.4.1.4.0（已是 0-100%）；fgSysMemCapacity ...4.1.5.0（KB）。
-    [[inputs.snmp.table]]
-        name = "device_memory"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.12356.101.4.1.4"
-        name = "usage"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.12356.101.4.1.5"
-        name = "total"
-    # ---- FortiGate firewall-specific health (sessions / VPN tunnels / HA mode, scalars) ----
-    # 待现网核验：fgSysSesCount 1.3.6.1.4.1.12356.101.4.1.8.0（IPv4 活动会话数）；
-    #            fgSysSesRate1 1.3.6.1.4.1.12356.101.4.1.11.0（过去 1 分钟平均会话建立速率，sessions/s，设备已上报 Gauge，不做 rate()）；
-    #            fgVpnTunnelUpCount 1.3.6.1.4.1.12356.101.12.1.1.0（活动 IPsec 隧道数）；
-    #            fgHaSystemMode 1.3.6.1.4.1.12356.101.13.1.1.0（standalone=1/activeActive=2/activePassive=3）。
-    [[inputs.snmp.table]]
-        name = "firewall"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.12356.101.4.1.8"
-        name = "active_sessions"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.12356.101.4.1.11"
-        name = "session_rate"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.12356.101.12.1.1"
-        name = "vpn_tunnels"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.12356.101.13.1.1"
-        name = "ha_mode"
+    # ---- FORTINET-FORTIGATE-MIB fgSystemInfo 1.3.6.1.4.1.12356.101.4.1：标量，顶层 field 带 .0 → measurement snmp，查询用 snmp_ 前缀 ----
+    # fgSysCpuUsage .3.0 / fgSysMemUsage .4.0：Gauge32 0-100%；fgSysMemCapacity .5.0：Gauge32 kB，查询侧 ×1024 转字节。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.12356.101.4.1.3.0"
+        name = "device_cpu_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.12356.101.4.1.4.0"
+        name = "device_memory_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.12356.101.4.1.5.0"
+        name = "device_memory_total"
+    # ---- 防火墙专项标量（顶层 field 带 .0）----
+    # fgSysSesCount .4.1.8.0：IPv4 活动会话数；fgSysSesRate1 .4.1.11.0：过去 1 分钟平均新建会话速率（sessions/s，设备已算好，不做 rate()）；
+    # fgVpnTunnelUpCount 1.3.6.1.4.1.12356.101.12.1.1.0：活动 IPsec 隧道数；fgHaSystemMode 1.3.6.1.4.1.12356.101.13.1.1.0：standalone(1)/activeActive(2)/activePassive(3)。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.12356.101.4.1.8.0"
+        name = "firewall_active_sessions"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.12356.101.4.1.11.0"
+        name = "firewall_session_rate"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.12356.101.12.1.1.0"
+        name = "firewall_vpn_tunnels"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.12356.101.13.1.1.0"
+        name = "firewall_ha_mode"
