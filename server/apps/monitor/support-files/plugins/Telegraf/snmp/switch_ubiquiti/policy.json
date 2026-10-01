@@ -5,7 +5,7 @@
     {
       "name": "Ubiquiti交换机CPU使用率过高",
       "alert_name": "交换机${resource_name} CPU使用率过高",
-      "description": "监控 Ubiquiti EdgeSwitch 设备整机 CPU 使用率（agentSwitchCpuProcessTotalUtilization 中的 5 秒值），当超过阈值时触发告警，便于及时发现控制平面过载、广播风暴或协议震荡。",
+      "description": "监控 Ubiquiti EdgeSwitch 设备整机 CPU 使用率（agentSwitchCpuProcessTotalUtilization 中的 300 秒值），当超过阈值时触发告警，便于及时发现控制平面过载、广播风暴或协议震荡。",
       "metric_name": "device_cpu_usage",
       "algorithm": "last_over_time",
       "threshold": [

@@ -33,7 +33,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the overall CPU utilization of the Ubiquiti EdgeSwitch (EdgeSwitch-SWITCHING-MIB agentSwitchCpuProcessTotalUtilization, a scalar GET with instance .0). The value is a text such as \"5 Secs ( 12.3%) 60 Secs ( 8.1%) 300 Secs ( 6.0%)\"; the first percentage (5-second window) is taken. Sustained high CPU may indicate control-plane overload, broadcast storms or protocol flapping."
+      "description": "This metric reports the overall CPU utilization of the Ubiquiti EdgeSwitch (EdgeSwitch-SWITCHING-MIB agentSwitchCpuProcessTotalUtilization, a scalar GET with instance .0). The value is a text such as \"5 Secs ( 12.3%) 60 Secs ( 8.1%) 300 Secs ( 6.0%)\"; the last percentage (300-second window) is taken; a bare number without a percent sign is also accepted. Sustained high CPU may indicate control-plane overload, broadcast storms or protocol flapping."
     },
     {
       "metric_group": "Memory",

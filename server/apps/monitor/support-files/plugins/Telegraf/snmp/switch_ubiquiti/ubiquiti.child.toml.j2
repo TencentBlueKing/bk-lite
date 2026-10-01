@@ -63,7 +63,7 @@
         oid = "1.3.6.1.4.1.4413.1.1.1.1.4.1.0"
         name = "device_memory_free"
     # ---- Ubiquiti EdgeSwitch CPU (agentSwitchCpuProcessTotalUtilization …4413.1.1.1.1.4.9.0, 整机聚合标量, 顶层 field 带 .0) ----
-    # DisplayString，形如 "5 Secs ( 12.3%) 60 Secs ( 8.1%) 300 Secs ( 6.0%)"；下方 starlark 取第一个百分数 → device_cpu_usage。
+    # DisplayString，形如 "5 Secs ( 12.3%) 60 Secs ( 8.1%) 300 Secs ( 6.0%)"；下方 starlark 取最后一个百分数（300 秒窗口）→ device_cpu_usage。
     # 不用 agentSwitchCpuProcessTable 逐进程列（无法行级过滤，不能代表整机）。
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.4413.1.1.1.1.4.9.0"
@@ -124,32 +124,43 @@
             "2" = 1
             "4" = 1
 
-# ---- CPU：从 TotalUtilization 文本中取第一个百分数（5 秒窗口），0~100 时输出 device_cpu_usage，解析不出或越界则丢弃。----
+# ---- CPU：从 TotalUtilization 文本中取最后一个百分数（300 秒窗口）；没有百分号时只接受纯数字；0~100 时输出 device_cpu_usage，解析不出或越界则丢弃。----
 [[processors.starlark]]
     namepass = ["snmp"]
     source = '''
-def first_percent(raw):
-    text = str(raw)
-    pos = text.find("%")
-    if pos <= 0:
+def to_number(value):
+    if value == "" or value.count(".") > 1 or value.startswith(".") or value.endswith("."):
         return None
-    start = pos
+    for c in value.elems():
+        if not (c.isdigit() or c == "."):
+            return None
+    return float(value)
+
+def last_percent(raw):
+    text = str(raw).strip()
+    pos = text.rfind("%")
+    if pos < 0:
+        return to_number(text)
+    end = pos
     for i in range(pos):
-        c = text[pos - 1 - i]
-        if c.isdigit() or c == ".":
-            start = pos - 1 - i
+        if text[end - 1] == " ":
+            end = end - 1
         else:
             break
-    value = text[start:pos].strip(".")
-    if value == "" or value.count(".") > 1:
-        return None
-    return float(value)
+    start = end
+    for i in range(end):
+        c = text[end - 1 - i]
+        if c.isdigit() or c == ".":
+            start = end - 1 - i
+        else:
+            break
+    return to_number(text[start:end])
 
 def apply(metric):
     raw = metric.fields.pop("cpu_total_util_raw", None)
     if raw == None:
         return metric
-    cpu = first_percent(raw)
+    cpu = last_percent(raw)
     if cpu != None and cpu >= 0 and cpu <= 100:
         metric.fields["device_cpu_usage"] = cpu
     return metric
