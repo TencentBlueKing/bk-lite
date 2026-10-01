@@ -21,7 +21,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_cpu_usage{instance_type='router', __$labels__}) by (instance_id)",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -39,7 +39,7 @@
       ],
       "name": "device_memory_usage",
       "display_name": "Memory Utilization",
-      "query": "avg(device_memory_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_usage{instance_type='router', __$labels__}) by (instance_id)",
       "unit": "percent",
       "data_type": "Number",
       "description": "Used memory percentage of the VeloCloud Edge router, reported directly as a percentage."
