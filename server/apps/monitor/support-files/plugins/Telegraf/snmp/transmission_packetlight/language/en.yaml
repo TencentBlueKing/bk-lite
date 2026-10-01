@@ -55,7 +55,7 @@ monitor_object_metric:
     device_oper_status:
       name: Operational Status
       desc: Optional PacketLight system operational state from slmSysOperStatus. Values
-        are up, down or testing. Some revisions omit this leaf; missing rows are skipped.
+        are up, down or testing. Some revisions omit this leaf; the field is then simply absent.
     device_fan_state:
       name: Fan Status
       desc: Operational state of each transmission device fan or fan controller. A

@@ -21,7 +21,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(device_temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -29,12 +29,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "PacketLight system temperature in degrees Celsius, read from slmSysTemperature under enterprise PEN 4515. The SNMP scalar is already in whole degrees, so the query does not scale it."
+      "description": "PacketLight system temperature in degrees Celsius, read from slmSysTemperature (scalar 1.3.6.1.4.1.4515.1.3.1.43.0, direct GET) under enterprise PEN 4515. The SNMP scalar is already in whole degrees, so the query does not scale it."
     },
     {
       "metric_group": "Status",
       "name": "device_oper_status",
-      "query": "device_oper_status{instance_type='transmission', __$labels__}",
+      "query": "max(snmp_device_oper_status{instance_type='transmission', __$labels__}) by (instance_id)",
       "display_name": "Operational Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
@@ -42,7 +42,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Optional PacketLight system operational state from slmSysOperStatus under enterprise PEN 4515. Values are up(1), down(2) and testing(3). Some revisions omit this leaf; missing rows are skipped."
+      "description": "Optional PacketLight system operational state from slmSysOperStatus (scalar 1.3.6.1.4.1.4515.1.3.1.7.0, direct GET) under enterprise PEN 4515. Values are up(1), down(2) and testing(3). Some revisions omit this leaf; the field is then simply absent."
     },
     {
       "metric_group": "Traffic",
