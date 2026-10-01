@@ -61,6 +61,7 @@ export const useAccessConfig = () => {
       'Access UTStarcom SNMP': 'snmp_utstarcom',
       'Access Raisecom SNMP': 'snmp_raisecom',
       'Access PacketFront SNMP': 'snmp_packetfront',
+      'Access Furukawa OLT SNMP': 'snmp_furukawa_olt',
       'Access C-Data SNMP': 'snmp_cdata',
       'Access Casa Systems SNMP': 'snmp_casa',
       'Access Topvision SNMP': 'snmp_topvision',
