@@ -1,0 +1,111 @@
+{
+  "object": "Access",
+  "plugin": "Access ZTE OLT SNMP",
+  "templates": [
+    {
+      "name": "ZTE OLT接入设备CPU使用率过高",
+      "alert_name": "接入设备${resource_name} 板卡CPU使用率过高",
+      "description": "监控 ZTE ZXA10 各板卡 CPU 负载（取最高板卡），当超过阈值时触发告警，便于及时发现主控板或业务板负载过高。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "ZTE OLT接入设备内存使用率过高",
+      "alert_name": "接入设备${resource_name} 板卡内存使用率过高",
+      "description": "监控 ZTE ZXA10 各板卡内存使用率（取最高板卡），当超过阈值时触发告警，便于及时发现内存泄漏或表项过大。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "ZTE OLT接入设备温度过高",
+      "alert_name": "接入设备${resource_name} 板卡温度过高",
+      "description": "监控 ZTE ZXA10 板卡温度（取最高值），当超过阈值时触发告警，提示散热故障或机房环境温度过高。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "ZTE OLT接入设备风扇异常",
+      "alert_name": "接入设备${resource_name} 风扇状态异常",
+      "description": "监控 ZTE ZXA10 风扇运行状态（1=正常，2=停转），风扇故障时触发告警，防止设备过热。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "ZTE OLT接入设备电源异常",
+      "alert_name": "接入设备${resource_name} 电源状态异常",
+      "description": "监控 ZTE ZXA10 电源输入电压状态（1=正常，2=过压或欠压），电压异常时触发告警。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}
