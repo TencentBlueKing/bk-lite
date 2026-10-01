@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_maipu",
   "plugin": "Switch Maipu SNMP",
-  "plugin_desc": "SNMP monitoring template for Maipu switch. It reports uptime, CPU utilization, memory utilization, temperature, power supply status, and interface traffic (enterprise PEN 5651).",
+  "plugin_desc": "SNMP monitoring template for Maipu switch (MyPower OS). It reports uptime, CPU utilization, memory utilization, main board and CPU temperature, and interface traffic (enterprise PEN 5651); fan and power supply status are not collected.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_maipu'}) by (instance_id)",
   "name": "Switch",
@@ -29,7 +29,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "CPU utilisation of the Maipu switch (MAIPU-SMI, reported directly as a percentage)."
+      "description": "CPU utilisation of the Maipu switch, averaged across CPUs (MPIOS-MIB cpuUtilTable cpuUtilCurrentUtil, percent). The table is populated only when CPU statistics collection is enabled on the device (sysCpuStatus = spyCpu)."
     },
     {
       "metric_group": "Traffic",
@@ -75,10 +75,10 @@
       ],
       "name": "device_memory_used",
       "display_name": "内存已用",
-      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "sum(snmp_device_memory_used{instance_type='switch', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
-      "description": "Used memory of the Maipu switch in bytes (MAIPU-SMI used memory)."
+      "description": "Allocated system memory of the Maipu switch in bytes (MPIOS-MIB numBytesAlloc scalar)."
     },
     {
       "metric_group": "Memory",
@@ -88,10 +88,23 @@
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲",
-      "query": "sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "sum(snmp_device_memory_free{instance_type='switch', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
-      "description": "Free memory of the Maipu switch in bytes (MAIPU-SMI free memory)."
+      "description": "Free system memory of the Maipu switch in bytes (MPIOS-MIB numBytesFree scalar)."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_total",
+      "display_name": "内存总量",
+      "query": "sum(snmp_device_memory_total{instance_type='switch', __$labels__}) by (instance_id)",
+      "unit": "bytes",
+      "data_type": "Number",
+      "description": "Total system memory of the Maipu switch in bytes (MPIOS-MIB memoryTotalBytes scalar)."
     },
     {
       "metric_group": "Memory",
@@ -101,10 +114,10 @@
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / (sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) + sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) * 100",
+      "query": "(sum(snmp_device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / sum(snmp_device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100) or max(snmp_device_memory_usage{instance_type='switch', __$labels__}) by (instance_id)",
       "unit": "percent",
       "data_type": "Number",
-      "description": "Memory utilisation of the Maipu switch, derived as used/(used+free)."
+      "description": "Memory utilisation of the Maipu switch, derived as numBytesAlloc / memoryTotalBytes * 100, falling back to the allocBytesPercent scalar (MPIOS-MIB)."
     },
     {
       "metric_group": "Temperature",
@@ -113,29 +126,24 @@
         "instance_id"
       ],
       "name": "device_temperature_celsius",
-      "display_name": "设备温度",
-      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "主板温度",
+      "query": "max(snmp_device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
       "unit": "celsius",
       "data_type": "Number",
-      "description": "Chassis temperature of the Maipu switch in degrees Celsius (MAIPU-SMI chassis temperature)."
+      "description": "Main board temperature of the Maipu switch in degrees Celsius (MPIOS-MIB sysMainBoardTemper scalar)."
     },
     {
-      "metric_group": "Hardware Status",
-      "dimensions": [
-        {
-          "name": "index",
-          "description": "SNMP table row index"
-        }
-      ],
+      "metric_group": "Temperature",
+      "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "name": "device_psu_state",
-      "display_name": "电源状态",
-      "query": "device_psu_state{instance_type='switch', __$labels__}",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
-      "data_type": "Enum",
-      "description": "Power-supply state of the Maipu switch, normalised to 1=normal / 2=abnormal."
+      "name": "device_cpu_temperature_celsius",
+      "display_name": "CPU 温度",
+      "query": "max(snmp_device_cpu_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "unit": "celsius",
+      "data_type": "Number",
+      "description": "CPU temperature of the Maipu switch in degrees Celsius (MPIOS-MIB sysCpuTemper scalar)."
     },
     {
       "metric_group": "Base",
