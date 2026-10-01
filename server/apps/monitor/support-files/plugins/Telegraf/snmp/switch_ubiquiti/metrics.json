@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_ubiquiti",
   "plugin": "Switch Ubiquiti SNMP",
-  "plugin_desc": "SNMP monitoring template for Ubiquiti switch. It reports uptime, memory utilization, temperature, fan, power supply status, and interface traffic, for EdgeSwitch (enterprise PEN 4413).",
+  "plugin_desc": "SNMP monitoring template for Ubiquiti switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic, for EdgeSwitch (enterprise PEN 4413).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_ubiquiti'}) by (instance_id)",
   "name": "Switch",
@@ -15,12 +15,26 @@
   ],
   "supplementary_indicators": [
     "snmp_uptime",
+    "device_cpu_usage",
     "device_memory_usage",
     "device_temperature_celsius",
     "device_fan_state",
     "device_psu_state"
   ],
   "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "max(snmp_device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the overall CPU utilization of the Ubiquiti EdgeSwitch (EdgeSwitch-SWITCHING-MIB agentSwitchCpuProcessTotalUtilization, a scalar GET with instance .0). The value is a text such as \"5 Secs ( 12.3%) 60 Secs ( 8.1%) 300 Secs ( 6.0%)\"; the first percentage (5-second window) is taken. Sustained high CPU may indicate control-plane overload, broadcast storms or protocol flapping."
+    },
     {
       "metric_group": "Memory",
       "name": "device_memory_total",

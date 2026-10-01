@@ -788,6 +788,7 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       "collectType": "snmp_ubiquiti",
       "capabilities": [
         "uptime",
+        "cpu",
         "memory",
         "temperature",
         "fan",
