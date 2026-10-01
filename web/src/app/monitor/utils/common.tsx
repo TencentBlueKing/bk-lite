@@ -676,6 +676,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /aruba/i, label: 'Aruba', icon: 'mm-aruba_aruba' },
   { match: /juniper/i, label: 'Juniper', icon: 'mm-juniper_juniper' },
   { match: /extreme/i, label: 'Extreme', icon: 'mm-extreme_extreme' },
+  { match: /avaya\s*ers|baystack|\bers[-\s]?[2-5]\d{3}\b/i, label: 'Avaya ERS' },
   { match: /brocade/i, label: 'Brocade', icon: 'mm-brocade_brocade' },
   { match: /snmp_nokia_router|router nokia|timos|\bsros\b|\b7705\b/i, label: 'Nokia', icon: 'mm-nokia_nokia' },
   { match: /\bnokia\b|omniswitch/i, label: 'Nokia', icon: 'mm-nokia_nokia' },
