@@ -39,7 +39,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='firewall', __$labels__}",
+      "query": "max(snmp_device_cpu_usage{instance_type='firewall', __$labels__}) by (instance_id)",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -52,7 +52,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_memory_usage",
-      "query": "device_memory_usage{instance_type='firewall', __$labels__}",
+      "query": "max(snmp_device_memory_usage{instance_type='firewall', __$labels__}) by (instance_id)",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -65,7 +65,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_memory_total",
-      "query": "device_memory_total{instance_type='firewall', __$labels__}*1024",
+      "query": "max(snmp_device_memory_total{instance_type='firewall', __$labels__}) by (instance_id)*1024",
       "display_name": "Total Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -78,7 +78,7 @@
     {
       "metric_group": "Firewall",
       "name": "firewall_active_sessions",
-      "query": "firewall_active_sessions{instance_type='firewall', __$labels__}",
+      "query": "max(snmp_firewall_active_sessions{instance_type='firewall', __$labels__}) by (instance_id)",
       "display_name": "IPv4 Active Sessions",
       "data_type": "Number",
       "unit": "short",
@@ -91,7 +91,7 @@
     {
       "metric_group": "Firewall",
       "name": "firewall_session_rate",
-      "query": "firewall_session_rate{instance_type='firewall', __$labels__}",
+      "query": "max(snmp_firewall_session_rate{instance_type='firewall', __$labels__}) by (instance_id)",
       "display_name": "Session Setup Rate",
       "data_type": "Number",
       "unit": "cps",
@@ -104,7 +104,7 @@
     {
       "metric_group": "Firewall",
       "name": "firewall_vpn_tunnels",
-      "query": "firewall_vpn_tunnels{instance_type='firewall', __$labels__}",
+      "query": "max(snmp_firewall_vpn_tunnels{instance_type='firewall', __$labels__}) by (instance_id)",
       "display_name": "Active IPsec VPN Tunnels",
       "data_type": "Number",
       "unit": "short",
@@ -117,7 +117,7 @@
     {
       "metric_group": "Firewall",
       "name": "firewall_ha_mode",
-      "query": "firewall_ha_mode{instance_type='firewall', __$labels__}",
+      "query": "max(snmp_firewall_ha_mode{instance_type='firewall', __$labels__}) by (instance_id)",
       "display_name": "HA Mode",
       "data_type": "Enum",
       "unit": "[{\"name\":\"standalone\",\"id\":1,\"color\":\"#b0b0b0\"},{\"name\":\"active-active\",\"id\":2,\"color\":\"#1ac44a\"},{\"name\":\"active-passive\",\"id\":3,\"color\":\"#1ac44a\"}]",
