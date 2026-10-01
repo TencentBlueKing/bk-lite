@@ -1,0 +1,174 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_parks_olt",
+  "plugin": "Access Parks OLT SNMP",
+  "plugin_desc": "SNMP monitoring template for Parks Fiberlink OLT access device. It reports uptime, CPU utilization, memory (total, free, used, utilization), temperature sensors with alarm status, and interface traffic (enterprise PEN 3893). Fan and power supply status are not collected.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='access', collect_type='snmp_parks_olt'}) by (instance_id)",
+  "name": "Access",
+  "icon": "mm-access_接入设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='access'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Access",
+      "name": "device_cpu_usage",
+      "query": "max(snmp_device_cpu_usage{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average CPU utilization of the Parks OLT (pkCpuSystem scalar, reported in tenths of a percent and divided by 10 at collection)."
+    },
+    {
+      "metric_group": "Access",
+      "name": "device_memory_total",
+      "query": "sum(snmp_device_memory_total{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total memory of the Parks OLT (pkMemoryTotal scalar, reported in KB and converted to bytes at collection)."
+    },
+    {
+      "metric_group": "Access",
+      "name": "device_memory_free",
+      "query": "sum(snmp_device_memory_free{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Free memory of the Parks OLT (pkMemoryFree scalar, reported in KB and converted to bytes at collection)."
+    },
+    {
+      "metric_group": "Access",
+      "name": "device_memory_used",
+      "query": "sum(snmp_device_memory_used{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Used memory of the Parks OLT (pkMemoryUsed scalar, reported in KB and converted to bytes at collection)."
+    },
+    {
+      "metric_group": "Access",
+      "name": "device_memory_usage",
+      "query": "sum(snmp_device_memory_used{instance_type='access', __$labels__}) by (instance_id) / sum(snmp_device_memory_total{instance_type='access', __$labels__}) by (instance_id) * 100",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of the Parks OLT, computed as pkMemoryUsed / pkMemoryTotal * 100."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='access', __$labels__}) by (instance_id, sensor)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "sensor",
+          "description": "Temperature sensor location"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Reading of each temperature sensor of the Parks OLT in degrees Celsius (pkTemperatureSensorValue), labelled by sensor location."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_temperature_state",
+      "query": "max(device_temperature_state{instance_type='access', __$labels__}) by (instance_id, sensor)",
+      "display_name": "Temperature Sensor State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "sensor",
+          "description": "Temperature sensor location"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Alarm status of each temperature sensor of the Parks OLT (pkTemperatureSensorStatus), normalised so that normal(1) = 1 and limitexceeded(2) = 2."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='access', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='access', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='access', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}
