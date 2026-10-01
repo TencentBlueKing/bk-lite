@@ -63,6 +63,7 @@ export const useWirelessConfig = () => {
       'Wireless LigoWave SNMP': 'snmp_ligowave',
       'Wireless Radwin SNMP': 'snmp_radwin',
       'Wireless Mimosa SNMP': 'snmp_mimosa',
+      'Wireless Baicells SNMP': 'snmp_baicells',
       'Wireless Airspan SNMP': 'snmp_airspan',
       'Wireless ACKSYS SNMP': 'snmp_acksys',
       'Wireless ProSoft Technology SNMP': 'snmp_prosoft',
