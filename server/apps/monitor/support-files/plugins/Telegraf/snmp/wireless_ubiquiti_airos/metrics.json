@@ -1,0 +1,137 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_ubiquiti_airos",
+  "plugin": "Wireless Ubiquiti airOS SNMP",
+  "plugin_desc": "SNMP monitoring template for Ubiquiti airOS wireless device (airMAX and airOS-based airFiber, FROGFOOT-RESOURCES-MIB, enterprise PEN 10002). It reports uptime, CPU load, memory usage, and interface traffic. Not for EdgeSwitch / UniFi switches.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='wireless', collect_type='snmp_ubiquiti_airos'}) by (instance_id)",
+  "name": "Wireless",
+  "icon": "mm-ubiquiti_ubiquiti",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='wireless'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "max(device_cpu_usage{instance_type='wireless', __$labels__, index='2'}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Processor load of the Ubiquiti airOS device as a percentage, from the 5-minute row (index 2) of FROGFOOT-RESOURCES-MIB loadTable loadValue (1.3.6.1.4.1.10002.1.1.1.4.2.1.3). Sustained high values can indicate heavy wireless traffic, many associated stations or abnormal management-plane load."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "max(snmp_device_memory_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of the Ubiquiti airOS device, computed at collection time as (memTotal - memFree) / memTotal * 100 from FROGFOOT-RESOURCES-MIB memTotal and memFree."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "max(snmp_device_memory_total{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total usable physical memory of the Ubiquiti airOS device in bytes (FROGFOOT-RESOURCES-MIB memTotal 1.3.6.1.4.1.10002.1.1.1.1.1.0, KB converted to bytes at collection time)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "max(snmp_device_memory_used{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Used physical memory of the Ubiquiti airOS device in bytes, computed at collection time as memTotal - memFree."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_free",
+      "query": "max(snmp_device_memory_free{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Available physical memory of the Ubiquiti airOS device in bytes (FROGFOOT-RESOURCES-MIB memFree 1.3.6.1.4.1.10002.1.1.1.1.2.0, KB converted to bytes at collection time)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='wireless', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='wireless', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}
