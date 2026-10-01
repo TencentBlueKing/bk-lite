@@ -1,6 +1,6 @@
 Switch Pica8 SNMP:
   name: Pica8 (Telegraf)
-  desc: "SNMP monitoring template for Pica8 switch. It reports uptime, CPU utilization, and interface traffic, for PicOS white-box switches (enterprise PEN 35098)."
+  desc: "SNMP monitoring template for Pica8 switch. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic, for PicOS white-box switches (enterprise PEN 35098)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

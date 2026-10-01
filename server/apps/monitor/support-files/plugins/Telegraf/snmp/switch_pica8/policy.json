@@ -26,6 +26,56 @@
         }
       ],
       "group_algorithm": "avg"
+    },
+    {
+      "name": "Pica8交换机内存使用率过高",
+      "alert_name": "交换机${resource_name} 内存使用率过高",
+      "description": "监控 Pica8 交换机整机内存使用率，当持续高于阈值时触发告警，提示可能存在内存泄漏或表项过大。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Pica8交换机温度过高",
+      "alert_name": "交换机${resource_name} 温度过高",
+      "description": "监控 Pica8 交换机机箱、CPU 与交换芯片温度中的最高值，当超过阈值时触发告警，提示散热故障或机房环境温度过高。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 65,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 60,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
     }
   ]
 }
