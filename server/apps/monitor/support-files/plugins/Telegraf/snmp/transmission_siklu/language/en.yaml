@@ -1,6 +1,6 @@
 Transmission Siklu SNMP:
   name: Siklu (Telegraf)
-  desc: "SNMP monitoring template for Siklu transmission device. It reports uptime, temperature, and interface traffic (enterprise PEN 31926)."
+  desc: "SNMP monitoring template for Siklu transmission device. It reports uptime, system and RF temperature, input voltage, and interface traffic (enterprise PEN 31926)."
 monitor_object:
   Transmission: Transmission
 monitor_object_type:
@@ -62,6 +62,14 @@ monitor_object_metric:
       desc: Operational state of each transmission device power supply. A non-normal
         state indicates offline power, missing input, over-temperature, hardware fault,
         or alert condition that should be investigated.
+    rf_temperature_celsius:
+      name: RF Temperature
+      desc: Temperature of each RF unit in degrees Celsius. High values indicate RF
+        hardware thermal stress.
+    device_voltage_volts:
+      name: Input Voltage
+      desc: Device input voltage reading in volts. Values outside the rated range
+        may indicate unstable power and hardware risk.
 monitor_object_metric_group:
   Transmission:
     Base: Base
