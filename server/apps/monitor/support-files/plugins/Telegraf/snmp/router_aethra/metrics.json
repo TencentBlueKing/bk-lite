@@ -21,7 +21,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_cpu_usage{instance_type='router', __$labels__}) by (instance_id)",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -29,7 +29,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Average CPU load of the Aethra router over the last 5 minutes (enterprise 7745 cpuLoad5min, reported directly as a percentage)."
+      "description": "Average CPU load of the Aethra router over the last 5 minutes (AETHRA-MIB performanceCpuAvg5min, scalar 1.3.6.1.4.1.7745.5.2.19.2.0, reported directly as a percentage)."
     },
     {
       "metric_group": "Traffic",
@@ -75,10 +75,10 @@
       ],
       "name": "device_memory_total",
       "display_name": "内存总量",
-      "query": "sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id) * 1024",
+      "query": "max(snmp_device_memory_total{instance_type='router', __$labels__}) by (instance_id) * 1024",
       "unit": "bytes",
       "data_type": "Number",
-      "description": "Total main memory of the Aethra router in bytes (enterprise 7745). The raw OID is reported in kBytes and is scaled by 1024 to bytes."
+      "description": "Total dynamic memory of the Aethra router in bytes (AETHRA-MIB performanceDynMemTotal, scalar 1.3.6.1.4.1.7745.5.2.19.5.0). The raw value is reported in kBytes and is scaled by 1024 to bytes."
     },
     {
       "metric_group": "Memory",
@@ -88,10 +88,10 @@
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲",
-      "query": "sum(device_memory_free{instance_type='router', __$labels__}) by (instance_id) * 1024",
+      "query": "max(snmp_device_memory_free{instance_type='router', __$labels__}) by (instance_id) * 1024",
       "unit": "bytes",
       "data_type": "Number",
-      "description": "Free main memory of the Aethra router in bytes (enterprise 7745). The raw OID is reported in kBytes and is scaled by 1024 to bytes."
+      "description": "Free dynamic memory of the Aethra router in bytes (AETHRA-MIB performanceDynMemFree, scalar 1.3.6.1.4.1.7745.5.2.19.6.0). The raw value is reported in kBytes and is scaled by 1024 to bytes."
     },
     {
       "metric_group": "Memory",
@@ -101,10 +101,10 @@
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "(sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id) - sum(device_memory_free{instance_type='router', __$labels__}) by (instance_id)) / sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id) * 100",
+      "query": "(max(snmp_device_memory_total{instance_type='router', __$labels__}) by (instance_id) - max(snmp_device_memory_free{instance_type='router', __$labels__}) by (instance_id)) / max(snmp_device_memory_total{instance_type='router', __$labels__}) by (instance_id) * 100",
       "unit": "percent",
       "data_type": "Number",
-      "description": "Memory utilisation of the Aethra router, derived as (total-free)/total (enterprise 7745)."
+      "description": "Dynamic memory utilisation of the Aethra router, derived as (total-free)/total from performanceDynMemTotal and performanceDynMemFree."
     },
     {
       "metric_group": "Base",
