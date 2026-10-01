@@ -92,7 +92,7 @@
       "query": "max(snmp_device_input_current_amps{instance_type='switch', __$labels__}) by (instance_id)",
       "display_name": "DC/DC Input Current",
       "data_type": "Number",
-      "unit": "none",
+      "unit": "amps",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
