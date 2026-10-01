@@ -22,7 +22,7 @@
     {
       "metric_group": "CPU",
       "name": "cpu_usage_percent",
-      "query": "avg(cpu_usage_percent{instance_type='voice_gateway', __$labels__}) by (instance_id) or (100 - avg(cpu_idle{instance_type='voice_gateway', __$labels__}) by (instance_id)) or (avg(cpu_user{instance_type='voice_gateway', __$labels__}) by (instance_id) + avg(cpu_system{instance_type='voice_gateway', __$labels__}) by (instance_id))",
+      "query": "max(snmp_cpu_usage_percent{instance_type='voice_gateway', __$labels__}) by (instance_id)",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -35,7 +35,7 @@
     {
       "metric_group": "Memory",
       "name": "memory_total",
-      "query": "memory_total{instance_type='voice_gateway', __$labels__}*1024",
+      "query": "max(snmp_memory_total{instance_type='voice_gateway', __$labels__}) by (instance_id)",
       "display_name": "Total Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -43,12 +43,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Total real memory of the Mitel MiVoice 5000 (UCD-SNMP memTotalReal, reported in kB and converted to bytes)."
+      "description": "Total real memory of the Mitel MiVoice 5000 (UCD-SNMP memTotalReal, reported in kB and converted to bytes at collection time)."
     },
     {
       "metric_group": "Memory",
       "name": "memory_free",
-      "query": "memory_free{instance_type='voice_gateway', __$labels__}*1024",
+      "query": "max(snmp_memory_free{instance_type='voice_gateway', __$labels__}) by (instance_id)",
       "display_name": "Free Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -56,12 +56,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Available real memory of the Mitel MiVoice 5000 (UCD-SNMP memAvailReal, reported in kB and converted to bytes)."
+      "description": "Available real memory of the Mitel MiVoice 5000 (UCD-SNMP memAvailReal, reported in kB and converted to bytes at collection time)."
     },
     {
       "metric_group": "Memory",
       "name": "memory_used",
-      "query": "(memory_total{instance_type='voice_gateway', __$labels__} - memory_free{instance_type='voice_gateway', __$labels__})*1024",
+      "query": "max(snmp_memory_used{instance_type='voice_gateway', __$labels__}) by (instance_id)",
       "display_name": "Used Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -69,12 +69,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Used real memory of the Mitel MiVoice 5000, derived as memTotalReal minus memAvailReal and converted from kB to bytes."
+      "description": "Used real memory of the Mitel MiVoice 5000, derived as memTotalReal minus memAvailReal at collection time, in bytes."
     },
     {
       "metric_group": "Memory",
       "name": "memory_usage_percent",
-      "query": "100 * (memory_total{instance_type='voice_gateway', __$labels__} - memory_free{instance_type='voice_gateway', __$labels__}) / memory_total{instance_type='voice_gateway', __$labels__}",
+      "query": "max(snmp_memory_usage_percent{instance_type='voice_gateway', __$labels__}) by (instance_id)",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -87,7 +87,7 @@
     {
       "metric_group": "Memory",
       "name": "memory_total_free",
-      "query": "memory_total_free{instance_type='voice_gateway', __$labels__}*1024",
+      "query": "max(snmp_memory_total_free{instance_type='voice_gateway', __$labels__}) by (instance_id)",
       "display_name": "Total Free Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -95,7 +95,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Optional total free memory of the Mitel MiVoice 5000 (UCD-SNMP memTotalFree, reported in kB and converted to bytes). Collected when the scalar is present."
+      "description": "Optional total free memory of the Mitel MiVoice 5000 (UCD-SNMP memTotalFree, reported in kB and converted to bytes at collection time). Collected when the scalar is present."
     },
     {
       "metric_group": "Traffic",
