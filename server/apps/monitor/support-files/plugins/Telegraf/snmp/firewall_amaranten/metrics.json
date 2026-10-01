@@ -38,7 +38,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_cpu_usage{instance_type='firewall', __$labels__}) by (instance_id)",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -316,7 +316,7 @@
       ],
       "name": "device_memory_usage",
       "display_name": "Memory Usage",
-      "query": "avg(device_memory_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_usage{instance_type='firewall', __$labels__}) by (instance_id)",
       "unit": "percent",
       "data_type": "Number",
       "description": "Memory utilisation of the Amaranten firewall (Foundry/Brocade-compatible private MIB, OID 1.3.6.1.4.1.1991.1.1.2.1.53, snAgGblDynMemUtil), reported directly as a 0-100 percentage with no used/free byte breakdown. High memory pressure can cause the device to drop newly established sessions, so investigate oversized session tables or abnormal traffic promptly."
