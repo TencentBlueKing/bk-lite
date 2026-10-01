@@ -90,7 +90,7 @@
     {
       "metric_group": "Access",
       "name": "device_memory_total",
-      "query": "max(device_memory_total{instance_type='access', __$labels__}) by (instance_id, module) * 1024",
+      "query": "max(device_memory_total{instance_type='access', __$labels__}) by (instance_id, module)",
       "display_name": "Memory Total",
       "data_type": "Number",
       "unit": "bytes",
@@ -108,7 +108,7 @@
     {
       "metric_group": "Access",
       "name": "device_memory_used",
-      "query": "max(device_memory_used{instance_type='access', __$labels__}) by (instance_id, module) * 1024",
+      "query": "max(device_memory_used{instance_type='access', __$labels__}) by (instance_id, module)",
       "display_name": "Memory Used",
       "data_type": "Number",
       "unit": "bytes",
@@ -126,7 +126,7 @@
     {
       "metric_group": "Access",
       "name": "device_memory_free",
-      "query": "max(device_memory_free{instance_type='access', __$labels__}) by (instance_id, module) * 1024",
+      "query": "max(device_memory_free{instance_type='access', __$labels__}) by (instance_id, module)",
       "display_name": "Memory Free",
       "data_type": "Number",
       "unit": "bytes",
