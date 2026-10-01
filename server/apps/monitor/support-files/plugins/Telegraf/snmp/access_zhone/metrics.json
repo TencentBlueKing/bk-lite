@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_zhone",
   "plugin": "Access Zhone DZS SNMP",
-  "plugin_desc": "Baseline SNMP child template for Zhone/DZS GPON access devices under enterprise PEN 6296. The current MIB facts confirm the enterprise root, but no reliable row-filter-free scalar CPU, memory, temperature, fan or power-supply OID was confirmed. This child therefore declares no vendor-specific metric deltas in metrics.json; the shared Access SNMP floor supplies uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic. Supported brands/models — Zhone, DZS and DASAN GPON access devices that expose standard IF-MIB.",
+  "plugin_desc": "SNMP monitoring template for Zhone/DZS access device. It reports per-card CPU utilization and memory (total, free, utilization) from ZHONE-CARD-RESOURCES-MIB cardRuntimeTable, per-port inbound and outbound traffic rate, and system uptime (enterprise PEN 5504). Fan and power supply status are not collected.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='access', collect_type='snmp_zhone'}) by (instance_id)",
   "name": "Access",
@@ -14,7 +14,9 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage"
   ],
   "metrics": [
     {
@@ -52,6 +54,78 @@
         "instance_id"
       ],
       "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Access",
+      "name": "device_cpu_usage",
+      "query": "max(device_cpu_usage{instance_type='access', __$labels__}) by (instance_id, index)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Card shelf.slot index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization of each card of the Zhone/DZS access device in percent (ZHONE-CARD-RESOURCES-MIB cardProcessorUsage), one series per shelf.slot."
+    },
+    {
+      "metric_group": "Access",
+      "name": "device_memory_total",
+      "query": "sum(device_memory_total{instance_type='access', __$labels__}) by (instance_id, index) * 1024",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Card shelf.slot index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Physical memory of each card of the Zhone/DZS access device (ZHONE-CARD-RESOURCES-MIB cardTotalMem, reported in KB and scaled to bytes)."
+    },
+    {
+      "metric_group": "Access",
+      "name": "device_memory_free",
+      "query": "sum(device_memory_free{instance_type='access', __$labels__}) by (instance_id, index) * 1024",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Card shelf.slot index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Unallocated physical memory of each card of the Zhone/DZS access device (ZHONE-CARD-RESOURCES-MIB cardAvailMem, reported in KB and scaled to bytes)."
+    },
+    {
+      "metric_group": "Access",
+      "name": "device_memory_usage",
+      "query": "(sum(device_memory_total{instance_type='access', __$labels__}) by (instance_id, index) - sum(device_memory_free{instance_type='access', __$labels__}) by (instance_id, index)) / sum(device_memory_total{instance_type='access', __$labels__}) by (instance_id, index) * 100",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Card shelf.slot index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of each card of the Zhone/DZS access device, computed as (cardTotalMem - cardAvailMem) / cardTotalMem * 100."
     },
     {
       "metric_group": "Base",
