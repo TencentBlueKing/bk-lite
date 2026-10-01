@@ -1,0 +1,46 @@
+Router Ericsson IPOS SNMP:
+  name: Ericsson IPOS (Telegraf)
+  desc: SNMP monitoring template for Ericsson IPOS routers (Router 6000 / SSR 8000, enterprise PEN 193.218). It reports uptime, CPU utilization, per-module memory, entity temperature, fan and power supply state, and interface traffic. MINI-LINK microwave devices (PEN 193.223) are covered by the transmission Ericsson template instead.
+monitor_object:
+  Router: Router
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Router:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: This metric reports the CPU utilization of the Ericsson IPOS router as a five-minute cumulative average (ERICSSON-ROUTER-CPU-METER-MIB eriRouterCpuMeterFiveMinuteAvg, whole percent 0-100). Sustained high CPU usage may indicate control-plane overload or routing churn.
+    device_memory_used:
+      name: Memory Used
+      desc: This metric reports the memory in use for each memory module of the Ericsson IPOS router (eriRouterMemoryKBytesInUse, KiB converted to bytes at collection).
+    device_memory_free:
+      name: Memory Free
+      desc: This metric reports the free memory for each memory module of the Ericsson IPOS router (eriRouterMemoryFreeKBytes, KiB converted to bytes at collection).
+    device_memory_total:
+      name: Memory Total
+      desc: This metric reports the total memory of each memory module of the Ericsson IPOS router, computed as used + free.
+    device_memory_usage:
+      name: Memory Usage
+      desc: This metric reports the memory utilization of each memory module of the Ericsson IPOS router, computed as used / (used + free) * 100. Sustained high usage may indicate memory leaks or oversized tables.
+    device_temperature_celsius:
+      name: Temperature
+      desc: This metric reports the temperature of each entity sensor of the Ericsson IPOS router in degrees Celsius (ERICSSON-ROUTER-ENVMON-MIB eriRouterEntityTempCurrent; the device clamps readings to 0-100). High temperatures can indicate cooling failure or airflow obstruction.
+    device_fan_state:
+      name: Fan State
+      desc: This metric reports the state of each fan tray of the Ericsson IPOS router (eriRouterFanStatus, raw normal(1) / failed(2) / absent(3) / unknown(4)), normalized so that 1 = healthy and 2 = fault. Absent and unknown rows are dropped and not counted as faults.
+    device_fan_speed:
+      name: Fan Speed
+      desc: This metric reports the speed of each fan unit of the Ericsson IPOS router in RPM (eriRouterFanSpeedCurrent).
+    device_psu_state:
+      name: PSU State
+      desc: This metric reports the state of each power module of the Ericsson IPOS router (eriRouterPowerStatus, raw normal(1) / failed(2) / absent(3) / unknown(4)), normalized so that 1 = healthy and 2 = fault. Absent and unknown rows are dropped and not counted as faults.
+monitor_object_metric_group:
+  Router:
+    Base: Base
+    CPU: CPU
+    Memory: Memory
+    Temperature: Temperature
+    Hardware Status: Hardware Status
