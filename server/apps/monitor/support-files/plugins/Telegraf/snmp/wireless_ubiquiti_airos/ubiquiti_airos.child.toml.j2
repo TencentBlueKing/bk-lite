@@ -64,8 +64,8 @@
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
     # ---- FROGFOOT-RESOURCES-MIB loadTable 1.3.6.1.4.1.10002.1.1.1.4.2（按行遍历，table.field 不带 .0）----
-    # loadDescr .2 作 load_descr 标签；loadValue .3 为处理器负载百分比（Gauge32）。
-    # 行索引 1/2/3 依次对应 1/5/15 分钟平均，CPU 使用率查询取 index=2（5 分钟）行。
+    # loadDescr .2 作 load_descr 标签；loadValue .3 为负载均值 ×100（Gauge32），不是使用率百分比，多核时可超过 100。
+    # 行索引 1/2/3 依次对应 1/5/10 分钟平均，CPU 负载查询取 index=2（5 分钟）行。
     [[inputs.snmp.table]]
         name = "device_cpu"
         inherit_tags = ["source"]

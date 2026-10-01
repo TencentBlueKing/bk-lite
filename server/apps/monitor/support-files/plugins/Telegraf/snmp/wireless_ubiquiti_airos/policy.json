@@ -3,31 +3,6 @@
   "plugin": "Wireless Ubiquiti airOS SNMP",
   "templates": [
     {
-      "name": "Ubiquiti airOS无线设备CPU负载过高",
-      "alert_name": "无线设备${resource_name} CPU 负载过高",
-      "description": "监控 Ubiquiti airOS 无线设备 5 分钟处理器负载百分比（loadTable 5 分钟行），当持续高于阈值时触发告警，提示可能存在无线业务压力、关联终端过多或管理面异常负载。",
-      "metric_name": "device_cpu_usage",
-      "algorithm": "last_over_time",
-      "threshold": [
-        {
-          "level": "critical",
-          "value": 90,
-          "method": ">"
-        },
-        {
-          "level": "error",
-          "value": 80,
-          "method": ">"
-        },
-        {
-          "level": "warning",
-          "value": 70,
-          "method": ">"
-        }
-      ],
-      "group_algorithm": "max"
-    },
-    {
       "name": "Ubiquiti airOS无线设备内存使用率过高",
       "alert_name": "无线设备${resource_name} 内存使用率过高",
       "description": "监控 Ubiquiti airOS 无线设备内存使用率（(memTotal - memFree) / memTotal），当持续高于阈值时触发告警，提示可能存在内存泄漏或资源紧张。",

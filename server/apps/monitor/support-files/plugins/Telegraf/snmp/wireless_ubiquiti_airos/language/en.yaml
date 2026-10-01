@@ -38,9 +38,11 @@ monitor_object_metric:
         all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
         assess sending performance for traffic management and optimization.
     device_cpu_usage:
-      name: CPU Usage
-      desc: Processor load of the airOS device as a percentage, taken from the 5-minute
-        row of the load table. Sustained high load can indicate heavy wireless traffic,
+      name: CPU load (5-min avg)
+      desc: 5-minute CPU load average of the airOS device, taken from the 5-minute row
+        of the load table. The value is the load average x100 (e.g. 150 = load 1.5),
+        not a utilization percentage, and can exceed 100 on multi-core devices or when
+        processes are queued. A sustained rise can indicate heavy wireless traffic,
         many associated stations or abnormal management-plane load.
     device_memory_usage:
       name: Memory Usage

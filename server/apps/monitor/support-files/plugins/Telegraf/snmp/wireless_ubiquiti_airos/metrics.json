@@ -23,14 +23,14 @@
       "metric_group": "CPU",
       "name": "device_cpu_usage",
       "query": "max(device_cpu_usage{instance_type='wireless', __$labels__, index='2'}) by (instance_id)",
-      "display_name": "CPU Usage",
+      "display_name": "CPU load (5-min avg)",
       "data_type": "Number",
-      "unit": "percent",
+      "unit": "none",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Processor load of the Ubiquiti airOS device as a percentage, from the 5-minute row (index 2) of FROGFOOT-RESOURCES-MIB loadTable loadValue (1.3.6.1.4.1.10002.1.1.1.4.2.1.3). Sustained high values can indicate heavy wireless traffic, many associated stations or abnormal management-plane load."
+      "description": "5-minute CPU load average of the Ubiquiti airOS device, from the 5-minute row (index 2) of FROGFOOT-RESOURCES-MIB loadTable loadValue (1.3.6.1.4.1.10002.1.1.1.4.2.1.3). The value is the load average x100 (e.g. 150 = load 1.5), not a utilization percentage, and can exceed 100 on multi-core devices or when processes are queued. A sustained rise can indicate heavy wireless traffic, many associated stations or abnormal management-plane load."
     },
     {
       "metric_group": "Memory",
