@@ -49,20 +49,40 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
-    # ---- Amaranten(安然) CPU (enterprise 1991 snAgGblCpuUtil1SecAvg, 直接%, scalar, Foundry/Brocade 私有树) ----
-    # 权威来源：本地 snmp.yaml snAgGblCpuUtil1SecAvg 1.3.6.1.4.1.1991.1.1.2.1.50.0（CPU 平均使用率%）。
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.1991.1.1.2.1.50"
-        name = "usage"
-    # ---- Amaranten 内存 (snAgGblDynMemUtil, 直接%, scalar；无 used/free 字节, 直接为使用率) ----
-    # 权威来源：本地 snmp.yaml snAgGblDynMemUtil 1.3.6.1.4.1.1991.1.1.2.1.53.0（内存使用率%, 直报）。
-    [[inputs.snmp.table]]
-        name = "device_memory"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.1991.1.1.2.1.53"
-        name = "usage"
+    # ---- Amaranten(安然) CPU (snAgGblCpuUtil1SecAvg, 直接%, 标量) ----
+    # 标量用顶层 field GET，带实例 .0。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1991.1.1.2.1.50.0"
+        name = "device_cpu_usage"
+    # ---- 内存使用率 (标量，均带实例 .0) ----
+    # 优先 snAgSystemDRAMUtil(%)；机型不支持时回退 snAgGblDynMemUtil(%)，由下方 starlark 合并为 device_memory_usage。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1991.1.1.2.12.4.1.0"
+        name = "device_memory_dram_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1991.1.1.2.1.53.0"
+        name = "device_memory_dynmem_usage"
 # ---- 温/风/电/会话：安然 1991(Foundry/Brocade贴牌)私有树 仅声明 CPU/内存利用率, 无温度/风扇/电源/会话 OID → N/A。CPU+内存(直接%)干净可采。----
+
+# ---- 内存使用率合并：DRAM 使用率有效(0~100)时采用，否则回退动态内存使用率；越界值丢弃。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def _pct(v):
+    if v == None or type(v) not in ("int", "float"):
+        return None
+    if v < 0 or v > 100:
+        return None
+    return v
+
+def apply(metric):
+    dram = _pct(metric.fields.pop("device_memory_dram_usage", None))
+    dyn = _pct(metric.fields.pop("device_memory_dynmem_usage", None))
+    if dram != None:
+        metric.fields["device_memory_usage"] = dram
+    elif dyn != None:
+        metric.fields["device_memory_usage"] = dyn
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["amaranten"]
