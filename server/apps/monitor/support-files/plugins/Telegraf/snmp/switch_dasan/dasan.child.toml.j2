@@ -56,31 +56,47 @@
         oid = "1.3.6.1.4.1.6296.9.1.1.1.16.0"
         name = "device_memory_free"
     # ---- 风扇：dsFanTable 1.3.6.1.4.1.6296.9.1.1.2.7（INDEX dsFanNodeIndex, dsFanIndex）----
-    # dsFanstatus 列 ...2.7.1.3，ok(1) / fail(2) / other(3)；列 OID 走表，不带 .0。
+    # dsFanstatus 列 ...2.7.1.3，ok(1) / fail(2) / other(3)；dsFaninstalled 列 ...2.7.1.4，removed(0) / installed(1) / uninstalled(2)。
+    # 列 OID 走表，不带 .0。
     [[inputs.snmp.table]]
         name = "device_fan"
         inherit_tags = ["source"]
         index_as_tag = true
     [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6296.9.1.1.2.7.1.4"
+        name = "installed"
+    [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.6296.9.1.1.2.7.1.3"
         name = "state"
     # ---- 电源：dsPowerTable 1.3.6.1.4.1.6296.9.1.1.2.6（INDEX dsPowerNodeIndex, dsPowerIndex）----
-    # dsPowerstatus 列 ...2.6.1.3，ok(1) / fail(2) / other(3)。
+    # dsPowerstatus 列 ...2.6.1.3，ok(1) / fail(2) / other(3)；dsPowerinstalled 列 ...2.6.1.4，removed(0) / installed(1) / uninstalled(2)。
     [[inputs.snmp.table]]
         name = "device_psu"
         inherit_tags = ["source"]
         index_as_tag = true
     [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6296.9.1.1.2.6.1.4"
+        name = "installed"
+    [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.6296.9.1.1.2.6.1.3"
         name = "state"
-# ---- 风扇/电源状态归一：ok(1)→1(正常)，fail(2)/other(3) 及其余→2(异常)。----
+# ---- 风扇/电源：仅保留 installed(1) 的行，removed(0)/uninstalled(2) 空槽整行丢弃，不计入故障；----
+# ---- 状态 ok(1)→1(正常)，fail(2)/other(3) 及其余→2(异常)。installed 字段用后删除。----
 # ---- 温度状态（dsTemperatureStatus）不是摄氏度读数，不采集。本对象不采集 6296.101 OLT 树。----
-[[processors.enum]]
+[[processors.starlark]]
     namepass = ["device_fan", "device_psu"]
-    [[processors.enum.mapping]]
-        field = "state"
-        default = 2
-        [processors.enum.mapping.value_mappings]
-            "1" = 1
-    [processors.enum.tagpass]
+    source = '''
+def apply(metric):
+    installed = metric.fields.pop("installed", None)
+    if installed != None and int(installed) != 1:
+        return None
+    if "state" not in metric.fields:
+        return None
+    if int(metric.fields["state"]) == 1:
+        metric.fields["state"] = 1
+    else:
+        metric.fields["state"] = 2
+    return metric
+'''
+    [processors.starlark.tagpass]
         brand = ["dasan"]

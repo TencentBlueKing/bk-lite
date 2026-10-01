@@ -128,7 +128,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the state of each fan of the DASAN ethernet switch (dsFanstatus, raw ok(1) / fail(2) / other(3)), normalized so that 1 = healthy and 2 = fault. A fault can lead to overheating."
+      "description": "This metric reports the state of each installed fan of the DASAN ethernet switch (dsFanstatus, raw ok(1) / fail(2) / other(3)), normalized so that 1 = healthy and 2 = fault. Rows whose dsFaninstalled is removed(0) or uninstalled(2) are dropped and not counted as faults. A fault can lead to overheating."
     },
     {
       "metric_group": "Hardware Status",
@@ -146,7 +146,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the state of each power supply of the DASAN ethernet switch (dsPowerstatus, raw ok(1) / fail(2) / other(3)), normalized so that 1 = healthy and 2 = fault. A fault means lost power redundancy or a hardware failure."
+      "description": "This metric reports the state of each installed power supply of the DASAN ethernet switch (dsPowerstatus, raw ok(1) / fail(2) / other(3)), normalized so that 1 = healthy and 2 = fault. Rows whose dsPowerinstalled is removed(0) or uninstalled(2) are dropped and not counted as faults. A fault means lost power redundancy or a hardware failure."
     },
     {
       "metric_group": "Base",
