@@ -1,0 +1,148 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_ericsson_router"
+        config_type = "ericsson_router"
+        brand = "ericsson_router"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # 适用：Ericsson IPOS（Router 6000 / SSR 8000），eriRouterMgmt = 1.3.6.1.4.1.193.218.2。
+    # 不覆盖 MINI-LINK（1.3.6.1.4.1.193.223，见 transmission_ericsson）。
+    # 标量：顶层 field GET 必须带实例 .0；table.field 禁止 .0。
+    # ---- CPU：ERICSSON-ROUTER-CPU-METER-MIB eriRouterCpuMeterFiveMinuteAvg（.2.6.1.3.0），EriRouterPercentage 0..100 ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.193.218.2.6.1.3.0"
+        name = "device_cpu_usage"
+    # ---- 内存：ERICSSON-ROUTER-MEMORY-MIB eriRouterMemoryTable（.2.16.1.2，INDEX eriRouterMemoryIndex）----
+    # eriRouterMemoryModule .2 作 module 标签；FreeKBytes .3 / KBytesInUse .4 单位 KiB，下方 starlark 转字节。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.193.218.2.16.1.2.1.2"
+        name = "module"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.193.218.2.16.1.2.1.3"
+        name = "free"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.193.218.2.16.1.2.1.4"
+        name = "used"
+    # ---- 风扇状态：ERICSSON-ROUTER-ENVMON-MIB eriRouterFanStatusTable（.2.4.1.1）----
+    # eriRouterFanDescr .2 作 descr 标签；eriRouterFanStatus .4 normal(1)/failed(2)/absent(3)/unknown(4)。
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.193.218.2.4.1.1.1.2"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.193.218.2.4.1.1.1.4"
+        name = "state"
+    # ---- 风扇转速：eriRouterFanSpeedTable（.2.4.1.5），eriRouterFanUnitDescr .2 作 descr 标签，eriRouterFanSpeedCurrent .3 单位 RPM ----
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.193.218.2.4.1.5.1.2"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.193.218.2.4.1.5.1.3"
+        name = "speed"
+    # ---- 电源状态：eriRouterPowerStatusTable（.2.4.1.2），eriRouterPowerDescr .2 作 descr 标签，eriRouterPowerStatus .4 同风扇枚举 ----
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.193.218.2.4.1.2.1.2"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.193.218.2.4.1.2.1.4"
+        name = "state"
+    # ---- 温度：eriRouterEntityTempSensorTable（.2.4.1.6），eriRouterEntityTempDescr .2 作 descr 标签，eriRouterEntityTempCurrent .3 摄氏度 ----
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.193.218.2.4.1.6.1.2"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.193.218.2.4.1.6.1.3"
+        name = "celsius"
+
+# ---- 内存 KiB → 字节；total = used + free；usage = used / total * 100。无 used/free 的行丢弃。----
+[[processors.starlark]]
+    namepass = ["device_memory"]
+    source = '''
+def apply(metric):
+    used = metric.fields.get("used")
+    free = metric.fields.get("free")
+    if used == None or free == None:
+        return None
+    used = int(used) * 1024
+    free = int(free) * 1024
+    total = used + free
+    metric.fields["used"] = used
+    metric.fields["free"] = free
+    metric.fields["total"] = total
+    if total > 0:
+        metric.fields["usage"] = used * 100.0 / total
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["ericsson_router"]
+
+# ---- 风扇/电源状态归一：normal(1)→1，failed(2)→2；absent(3) 空槽与 unknown(4) 整行丢弃，不计入故障。只有转速的风扇行原样保留。----
+[[processors.starlark]]
+    namepass = ["device_fan", "device_psu"]
+    source = '''
+def apply(metric):
+    if "state" not in metric.fields:
+        return metric
+    raw = int(metric.fields["state"])
+    if raw == 1:
+        metric.fields["state"] = 1
+    elif raw == 2:
+        metric.fields["state"] = 2
+    else:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["ericsson_router"]
