@@ -85,6 +85,7 @@ export const useRouterConfig = () => {
       'Router Huawei ATN SNMP': 'snmp_huawei_atn',
       'Router Huawei NE SNMP': 'snmp_huawei_ne',
       'Router Vyatta SNMP': 'snmp_vyatta',
+      'Router Ubiquiti EdgeRouter SNMP': 'snmp_edgerouter',
       'Router NetModule SNMP': 'snmp_netmodule',
       'Router MultiTech SNMP': 'snmp_multitech',
       'Router Avici SNMP': 'snmp_avici',
