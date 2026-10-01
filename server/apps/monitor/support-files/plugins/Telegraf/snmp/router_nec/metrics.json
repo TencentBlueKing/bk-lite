@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_nec",
   "plugin": "Router NEC SNMP",
-  "plugin_desc": "SNMP monitoring template for NEC router. It reports uptime, CPU utilization, memory utilization, temperature, fan status and speed, power supply status, and interface traffic, for UNIVERGE IX series (enterprise PEN 119).",
+  "plugin_desc": "SNMP monitoring template for NEC router. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic, for UNIVERGE IX series (enterprise PEN 119).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_nec'}) by (instance_id)",
   "name": "Router",
@@ -19,9 +19,7 @@
     "device_memory_usage",
     "device_total_incoming_traffic",
     "device_total_outgoing_traffic",
-    "device_temperature_celsius",
-    "device_fan_state",
-    "device_psu_state"
+    "device_temperature_celsius"
   ],
   "display_fields": [],
   "metrics": [
@@ -238,60 +236,6 @@
         "instance_id"
       ],
       "description": "This metric reports the internal temperature of the NEC UNIVERGE IX router in degrees Celsius (picoCelsius scalar). High temperatures can indicate fan failure or airflow obstruction."
-    },
-    {
-      "metric_group": "Router",
-      "name": "device_fan_state",
-      "query": "device_fan_state{instance_type='router', __$labels__}",
-      "display_name": "Fan State",
-      "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
-      "dimensions": [
-        {
-          "name": "index",
-          "description": "SNMP table row index"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric reports the state of each fan of the NEC UNIVERGE IX router (picoFanStatus, raw normal(1) / failure(2)), normalized so that 1 = healthy and 2 = fault. Only models that implement the optional fan table report it."
-    },
-    {
-      "metric_group": "Router",
-      "name": "device_fan_speed",
-      "query": "device_fan_speed{instance_type='router', __$labels__}",
-      "display_name": "Fan Speed",
-      "data_type": "Number",
-      "unit": "counts",
-      "dimensions": [
-        {
-          "name": "index",
-          "description": "SNMP table row index"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric reports the speed of each fan of the NEC UNIVERGE IX router in RPM (picoFanRpm). The device reports 0 when the fan speed is below 5294 RPM."
-    },
-    {
-      "metric_group": "Router",
-      "name": "device_psu_state",
-      "query": "device_psu_state{instance_type='router', __$labels__}",
-      "display_name": "PSU State",
-      "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
-      "dimensions": [
-        {
-          "name": "index",
-          "description": "SNMP table row index"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric reports the state of each power supply module of the NEC UNIVERGE IX router (picoPowerSupplyStatus, raw notInstalled(0) / normal(1) / failure(2)), normalized so that 1 = healthy and 2 = fault. Empty slots (notInstalled) are dropped and not counted as faults."
     },
     {
       "metric_group": "Traffic",

@@ -1,6 +1,6 @@
 Router NEC SNMP:
   name: NEC (Telegraf)
-  desc: "SNMP monitoring template for NEC router. It reports uptime, CPU utilization, memory utilization, temperature, fan status and speed, power supply status, and interface traffic, for UNIVERGE IX series (enterprise PEN 119)."
+  desc: "SNMP monitoring template for NEC router. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic, for UNIVERGE IX series (enterprise PEN 119)."
 monitor_object:
   Router: Router
 monitor_object_type:
@@ -19,10 +19,6 @@ monitor_object_metric:
       name: Power Supply Status
       desc: Operational state of each power supply unit (enum). A non-normal state
         indicates a power redundancy or hardware fault and should be remediated promptly.
-    device_fan_speed:
-      name: Fan Speed
-      desc: Speed of each cooling fan in RPM. The device reports 0 when the fan speed
-        is below 5294 RPM.
     device_memory_total:
       name: Total Memory
       desc: This metric reports the total physical memory capacity of the router (UCD-SNMP-MIB

@@ -1,6 +1,6 @@
 Router NEC SNMP:
   name: NEC（Telegraf）
-  desc: 面向 NEC 路由器的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、风扇状态与转速、电源状态、接口流量，适用于 UNIVERGE IX 系列（企业号 PEN 119）。
+  desc: 面向 NEC 路由器的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、接口流量，适用于 UNIVERGE IX 系列（企业号 PEN 119）。
 monitor_object:
   Router: 路由器
 monitor_object_type:
@@ -16,9 +16,6 @@ monitor_object_metric:
     device_psu_state:
       name: 电源状态
       desc: 该指标报告设备电源模块的运行状态（枚举）。非正常状态表示电源冗余或硬件故障；在冗余电源设备上单个故障会移除冗余，需尽快处理。
-    device_fan_speed:
-      name: 风扇转速
-      desc: 该指标报告各散热风扇转速，单位 RPM；转速低于 5294 RPM 时设备上报 0。
     device_memory_total:
       name: 内存总量
       desc: 该指标报告路由器的物理内存总容量（UCD-SNMP-MIB memTotalReal，原始单位 KB，已换算为字节）。
