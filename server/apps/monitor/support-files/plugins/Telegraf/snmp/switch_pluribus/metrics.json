@@ -124,10 +124,10 @@
       ],
       "name": "device_temperature_celsius",
       "display_name": "设备温度",
-      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='switch', __$labels__} / 1000",
       "unit": "celsius",
       "data_type": "Number",
-      "description": "Chassis temperature of the Pluribus Netvisor ONE switch in degrees Celsius (LM-SENSORS-MIB lmTempSensorsValue)."
+      "description": "Chassis temperature of the Pluribus Netvisor ONE switch in degrees Celsius (LM-SENSORS-MIB lmTempSensorsValue 1.3.6.1.4.1.2021.13.16.2.1.3). The sensor reports millidegrees Celsius (for example 42000 means 42 °C), so the query divides the raw value by 1000."
     },
     {
       "metric_group": "Base",
