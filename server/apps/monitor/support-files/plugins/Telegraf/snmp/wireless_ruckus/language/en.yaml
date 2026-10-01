@@ -1,6 +1,6 @@
 Wireless Ruckus SNMP:
   name: Ruckus (Telegraf)
-  desc: "SNMP monitoring template for Ruckus wireless device. It reports uptime, CPU utilization, memory utilization, interface traffic, and wireless clients/radio (enterprise PEN 25053)."
+  desc: "SNMP monitoring template for Ruckus wireless device. It reports uptime, CPU utilization, memory utilization, interface traffic, and associated/registered/licensed AP and client counts via scalar GET (RUCKUS-SYSTEM and ZoneDirector scalars, enterprise PEN 25053)."
 monitor_object:
   Wireless: Wireless
 monitor_object_type:
