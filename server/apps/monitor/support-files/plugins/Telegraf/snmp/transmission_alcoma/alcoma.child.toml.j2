@@ -33,41 +33,71 @@
         name = "source"
         is_tag = true
 # @bk_include_ifmib_table
-    # ---- ALCOMA alMP (PEN 12140) 微波健康标量 ----
-    # alMPTemperature 1.3.6.1.4.1.12140.2.3.9.0 → temperature_celsius
-    # Integer32 摄氏度；-1 表示离线，查询侧跳过。
-    [[inputs.snmp.table]]
-        name = "temperature"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.12140.2.3.9"
-        name = "celsius"
+    # ---- ALCOMA alMP (PEN 12140) 微波健康标量：顶层 field 带实例 .0 直接 GET，落 measurement snmp，查询用 snmp_ 前缀 ----
+    # alMPTemperature 1.3.6.1.4.1.12140.2.3.9.0 → temperature_celsius，INTEGER 摄氏度；offline(-1) 由下方 starlark 丢弃。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.12140.2.3.9.0"
+        name = "temperature_celsius"
         conversion = "int"
-    # alMPRX-Level 1.3.6.1.4.1.12140.2.3.4.0 → rx_level_db
-    # Integer32 dB；-128 表示离线，查询侧跳过。
-    [[inputs.snmp.table]]
-        name = "rx_level"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.12140.2.3.4"
-        name = "db"
+    # alMPRX-Level 1.3.6.1.4.1.12140.2.3.4.0 → rx_level_db，INTEGER dB；offline(-128) 由下方 starlark 丢弃。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.12140.2.3.4.0"
+        name = "rx_level_db"
         conversion = "int"
-    # alMPTX-PWR 1.3.6.1.4.1.12140.2.3.3.0 → tx_power_db
-    # Integer32 dB；-128 表示离线，查询侧跳过。
-    [[inputs.snmp.table]]
-        name = "tx_power"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.12140.2.3.3"
-        name = "db"
+    # alMPTX-PWR 1.3.6.1.4.1.12140.2.3.3.0 → tx_power_db，INTEGER dB；offline(-128) 由下方 starlark 丢弃。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.12140.2.3.3.0"
+        name = "tx_power_db"
         conversion = "int"
-    # 可选 alMPSNR 1.3.6.1.4.1.12140.2.4.2.0 → snr_db
-    # Integer32 dB。部分固件缺省时该表为空。
-    [[inputs.snmp.table]]
-        name = "snr"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.12140.2.4.2"
-        name = "db"
-        conversion = "int"
+    # 可选 alMPSNR 1.3.6.1.4.1.12140.2.4.2.0 → snr_db。DisplayString（不做 int 转换），
+    # 下方 starlark 取文本中的第一个数值；为空或无数字时丢弃该字段。部分固件缺省时字段缺省。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.12140.2.4.2.0"
+        name = "snr_db"
 # ---- CPU/内存/风扇/电源：alMP 无稳定、无需行级过滤的共享健康对象 → N/A，不臆造 CPU%/内存%。----
+
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+OFFLINE = {"temperature_celsius": -1, "rx_level_db": -128, "tx_power_db": -128}
+
+def first_number(raw):
+    text = str(raw)
+    digits = ""
+    sign = ""
+    started = False
+    for i in range(len(text)):
+        c = text[i]
+        if c >= "0" and c <= "9":
+            digits += c
+            started = True
+        elif c == "." and started:
+            if "." in digits:
+                break
+            digits += c
+        elif started:
+            break
+        elif c == "-" or c == "+":
+            sign = c
+        else:
+            sign = ""
+    if digits == "" or digits == ".":
+        return None
+    if digits.endswith("."):
+        digits = digits[:-1]
+    return float(sign + digits)
+
+def apply(metric):
+    for key, offline in OFFLINE.items():
+        if key in metric.fields and int(metric.fields[key]) == offline:
+            metric.fields.pop(key)
+    if "snr_db" in metric.fields:
+        parsed = first_number(metric.fields["snr_db"])
+        if parsed == None:
+            metric.fields.pop("snr_db")
+        else:
+            metric.fields["snr_db"] = parsed
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["alcoma"]
