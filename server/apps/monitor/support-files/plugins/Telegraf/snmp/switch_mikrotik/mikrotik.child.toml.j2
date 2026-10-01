@@ -99,7 +99,7 @@
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.14988.1.1.3.16.0"
         name = "psu_backup_raw"
-    # mtxrHlFanSpeed1 .17.0 / mtxrHlFanSpeed2 .18.0：Gauge32 RPM → device_fan（fan=1/2）。
+    # mtxrHlFanSpeed1 .17.0 / mtxrHlFanSpeed2 .18.0：RPM → device_fan（fan=1/2）；新版 MIB 为 Gauge32，2015 版 MIB 为 DisplayString，非数字时不输出。
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.14988.1.1.3.17.0"
         name = "fan1_rpm_raw"
@@ -111,13 +111,28 @@
 [[processors.starlark]]
     namepass = ["device_memory"]
     source = '''
+def to_num(v):
+    # 只接受整数/浮点或纯数字字符串；空串、非数字一律返回 None，不抛异常
+    t = type(v)
+    if t == "int" or t == "float":
+        return v
+    if t != "string":
+        return None
+    s = v.strip()
+    body = s[1:] if s.startswith("-") else s
+    if body == "" or body.count(".") > 1 or not body.replace(".", "").isdigit() or body.startswith(".") or body.endswith("."):
+        return None
+    if "." in body:
+        return float(s)
+    return int(s)
+
 def apply(metric):
     storage_type = str(metric.fields.pop("storage_type", ""))
-    units = metric.fields.pop("alloc_units", None)
+    units = to_num(metric.fields.pop("alloc_units", None))
     if not (storage_type.endswith("1.3.6.1.2.1.25.2.1.2") or storage_type.endswith("hrStorageRam")):
         return None
-    total = metric.fields.get("total")
-    used = metric.fields.get("used")
+    total = to_num(metric.fields.get("total"))
+    used = to_num(metric.fields.get("used"))
     if units == None or units <= 0 or total == None or used == None or total <= 0 or used < 0 or used > total:
         return None
     metric.fields["total"] = int(total) * int(units)
@@ -140,21 +155,37 @@ def child(metric, name, tag_key, tag_value, field, value):
     m.time = metric.time
     return m
 
+def to_num(v):
+    # 只接受整数/浮点或纯数字字符串；空串、非数字一律返回 None，不抛异常
+    t = type(v)
+    if t == "int" or t == "float":
+        return v
+    if t != "string":
+        return None
+    s = v.strip()
+    body = s[1:] if s.startswith("-") else s
+    if body == "" or body.count(".") > 1 or not body.replace(".", "").isdigit() or body.startswith(".") or body.endswith("."):
+        return None
+    if "." in body:
+        return float(s)
+    return int(s)
+
 def apply(metric):
     out = [metric]
     for raw_key, key in [("board_temperature_raw", "device_temperature_celsius"), ("cpu_temperature_raw", "device_cpu_temperature_celsius"), ("voltage_raw", "device_voltage_volts")]:
-        raw = metric.fields.pop(raw_key, None)
+        raw = to_num(metric.fields.pop(raw_key, None))
         if raw != None:
             metric.fields[key] = raw / 10.0
     for raw_key, psu in [("psu_primary_raw", "primary"), ("psu_backup_raw", "backup")]:
-        raw = metric.fields.pop(raw_key, None)
+        raw = to_num(metric.fields.pop(raw_key, None))
         if raw == 1:
             out.append(child(metric, "device_psu", "psu", psu, "state", 1))
         elif raw == 0:
             out.append(child(metric, "device_psu", "psu", psu, "state", 2))
     for raw_key, fan in [("fan1_rpm_raw", "1"), ("fan2_rpm_raw", "2")]:
-        raw = metric.fields.pop(raw_key, None)
-        if raw != None:
+        # mtxrHlFanSpeed1/2 为 DisplayString，旧版 RouterOS 可能返回空串或非数字，只在是数字时输出
+        raw = to_num(metric.fields.pop(raw_key, None))
+        if raw != None and raw >= 0:
             out.append(child(metric, "device_fan", "fan", fan, "speed", int(raw)))
     return out
 '''
