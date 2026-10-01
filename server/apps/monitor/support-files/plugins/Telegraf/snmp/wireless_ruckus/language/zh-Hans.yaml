@@ -1,6 +1,6 @@
 Wireless Ruckus SNMP:
   name: Ruckus（Telegraf）
-  desc: 面向 Ruckus 无线设备的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、接口流量、无线客户端/射频（企业号 PEN 25053）。
+  desc: 面向 Ruckus 无线设备的 SNMP 监控模板，以标量 GET 采集运行时长、CPU 使用率、内存使用率、接口流量，以及关联/已注册/许可 AP 数与客户端数（RUCKUS-SYSTEM 与 ZoneDirector 标量，企业号 PEN 25053）。
 monitor_object:
   Wireless: 无线设备
 monitor_object_type:

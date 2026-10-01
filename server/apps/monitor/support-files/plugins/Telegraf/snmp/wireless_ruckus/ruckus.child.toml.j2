@@ -33,53 +33,57 @@
         name = "source"
         is_tag = true
 # @bk_include_ifmib_table
-    # ---- RUCKUS-SYSTEM (PEN 25053) CPU / memory, INTEGER 0..100 直采百分比 ----
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.25053.1.1.11.1.1.1.1"
-        name = "usage"
-    [[inputs.snmp.table]]
-        name = "device_memory"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.25053.1.1.11.1.1.1.2"
-        name = "usage"
-    # ---- ZoneDirector 厚采集；勿与 SmartZone/SCG 或 Unleashed 同实例混采 ----
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.25053.1.2.1.1.1.15.13"
-        name = "usage"
-    [[inputs.snmp.table]]
-        name = "device_memory"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.25053.1.2.1.1.1.15.14"
-        name = "usage"
-    [[inputs.snmp.table]]
-        name = "wireless_ap"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.25053.1.2.1.1.1.15.1"
-        name = "count"
-    [[inputs.snmp.table]]
-        name = "wireless_registered_ap"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.25053.1.2.1.1.1.15.15"
-        name = "count"
-    [[inputs.snmp.table]]
-        name = "wireless_client"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.25053.1.2.1.1.1.15.2"
-        name = "count"
-    [[inputs.snmp.table]]
-        name = "wireless_licensed_ap"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.25053.1.2.1.1.1.1.12"
-        name = "count"
+    # ---- 以下均为标量，顶层 field GET 带实例 .0，落入 measurement snmp，查询用 snmp_ 前缀 ----
+    # RUCKUS-SYSTEM (PEN 25053) ruckusSystemCPUUtil / ruckusSystemMemoryUtil：INTEGER 0..100 直采百分比。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25053.1.1.11.1.1.1.1.0"
+        name = "sys_cpu_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25053.1.1.11.1.1.1.2.0"
+        name = "sys_mem_raw"
+    # ---- ZoneDirector（RUCKUS-ZD-SYSTEM-MIB）；勿与 SmartZone/SCG 或 Unleashed 同实例混采 ----
+    # ruckusZDSystemCPUUtil / ruckusZDSystemMemoryUtil（…15.13.0 / …15.14.0）：0..100 百分比。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25053.1.2.1.1.1.15.13.0"
+        name = "zd_cpu_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25053.1.2.1.1.1.15.14.0"
+        name = "zd_mem_raw"
+    # ruckusZDSystemNumAP（…15.1.0）/ NumRegisteredAP（…15.15.0）/ NumSta（…15.2.0）/ LicensedAPs（…1.12.0）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25053.1.2.1.1.1.15.1.0"
+        name = "wireless_ap_count"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25053.1.2.1.1.1.15.15.0"
+        name = "wireless_registered_ap_count"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25053.1.2.1.1.1.15.2.0"
+        name = "wireless_client_count"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25053.1.2.1.1.1.1.12.0"
+        name = "wireless_licensed_ap_count"
+
+# ---- CPU / 内存：ZoneDirector 与 RUCKUS-SYSTEM 两组取值只接受 0~100，优先 ZoneDirector，无效时回退 RUCKUS-SYSTEM，
+# ---- 输出 device_cpu_usage / device_memory_usage；两组都无效则不输出。原始字段不落库。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def pick(metric, keys):
+    found = None
+    for key in keys:
+        value = metric.fields.pop(key, None)
+        if found == None and type(value) in ["int", "float"] and value >= 0 and value <= 100:
+            found = value
+    return found
+
+def apply(metric):
+    cpu = pick(metric, ["zd_cpu_raw", "sys_cpu_raw"])
+    mem = pick(metric, ["zd_mem_raw", "sys_mem_raw"])
+    if cpu != None:
+        metric.fields["device_cpu_usage"] = cpu
+    if mem != None:
+        metric.fields["device_memory_usage"] = mem
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["ruckus"]
