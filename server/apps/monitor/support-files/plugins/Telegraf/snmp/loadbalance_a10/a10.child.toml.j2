@@ -43,3 +43,88 @@
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.22610.2.4.1.2.2.0"
         name = "device_memory_used"
+    # ---- A10 硬件信息（A10-AX-MIB axSysHwInfo = 1.3.6.1.4.1.22610.2.4.1.5）：标量，顶层 field 带 .0 → measurement snmp ----
+    # axSysHwPhySystemTemp .1.0：机箱物理温度 ℃。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22610.2.4.1.5.1.0"
+        name = "device_temperature_celsius"
+    # axSysHwFan1Speed/Fan2Speed/Fan3Speed .2.0/.3.0/.4.0：风扇转速。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22610.2.4.1.5.2.0"
+        name = "fan1_speed"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22610.2.4.1.5.3.0"
+        name = "fan2_speed"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22610.2.4.1.5.4.0"
+        name = "fan3_speed"
+    # axSysLowerPowerSupplyStatus .7.0 / axSysUpperPowerSupplyStatus .8.0：off(0) / on(1) / unknown(-1)。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22610.2.4.1.5.7.0"
+        name = "psu_lower_status"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22610.2.4.1.5.8.0"
+        name = "psu_upper_status"
+    # ---- A10 风扇状态表（axSysFanStatusTable .9，INDEX axFanIndex；仅部分硬件型号提供）----
+    # axFanName .9.1.2 作标签；axFanStatus .9.1.3：failed(0) / okFixedHigh(4) / okLowMed(5) / okMedMed(6) / okMedHigh(7) / notReady(-2) / unknown(-1)。
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.22610.2.4.1.5.9.1.2"
+        name = "name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.22610.2.4.1.5.9.1.3"
+        name = "state"
+# ---- 电源与风扇转速标量拆为独立指标：device_psu（psu=lower/upper 标签，state）与 device_fan（fan=1/2/3 标签，speed）----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def child(metric, name, tag_key, tag_value, field, value):
+    m = Metric(name)
+    for key, v in metric.tags.items():
+        m.tags[key] = v
+    m.tags[tag_key] = tag_value
+    m.fields[field] = int(value)
+    m.time = metric.time
+    return m
+
+def apply(metric):
+    out = [metric]
+    for pos in ["lower", "upper"]:
+        v = metric.fields.pop("psu_" + pos + "_status", None)
+        if v != None:
+            out.append(child(metric, "device_psu", "psu", pos, "state", v))
+    for i in ["1", "2", "3"]:
+        v = metric.fields.pop("fan" + i + "_speed", None)
+        if v != None:
+            out.append(child(metric, "device_fan", "fan", i, "speed", v))
+    return out
+'''
+    [processors.starlark.tagpass]
+        brand = ["a10"]
+# ---- 状态归一：unknown(-1) 表示设备无法判定该电源/风扇状态（多为未安装或不支持），整行丢弃，不计入故障；
+# 电源 on(1)→1(正常)，off(0) 及其余→2(异常)；风扇 okFixedHigh/okLowMed/okMedMed/okMedHigh(4-7)→1，failed(0)/notReady(-2) 及其余→2。仅转速的风扇行不受影响。----
+[[processors.starlark]]
+    namepass = ["device_psu", "device_fan"]
+    source = '''
+def apply(metric):
+    if "state" not in metric.fields:
+        return metric
+    raw = int(metric.fields["state"])
+    if raw == -1:
+        return None
+    if metric.name == "device_psu":
+        ok = raw == 1
+    else:
+        ok = raw >= 4 and raw <= 7
+    if ok:
+        metric.fields["state"] = 1
+    else:
+        metric.fields["state"] = 2
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["a10"]
