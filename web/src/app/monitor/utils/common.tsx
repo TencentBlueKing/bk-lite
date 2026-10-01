@@ -862,6 +862,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /lantronix|\bslc\s*8000\b|\bemg\s*(?:7500|8500)\b/i, label: 'Lantronix SLC', icon: 'mm-lantronix_lantronix' },
   { match: /infoblox/i, label: 'Infoblox', icon: 'mm-infoblox_infoblox' },
   { match: /gigamon|gigavue/i, label: 'Gigamon', icon: 'mm-gigamon_gigamon' },
+  { match: /hikvision|hik-?vision|海康/i, label: 'Hikvision' },
   { match: /bluecat|bcn-|ddi/i, label: 'BlueCat', icon: 'mm-bluecat_bluecat' },
   { match: /meinberg|lantime/i, label: 'Meinberg', icon: 'mm-meinberg_meinberg' },
   { match: /endace/i, label: 'Endace', icon: 'mm-endace_endace' },
