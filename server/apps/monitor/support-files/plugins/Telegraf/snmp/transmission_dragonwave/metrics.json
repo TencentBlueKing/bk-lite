@@ -35,7 +35,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(device_temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -43,7 +43,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Optional Harmony MWR system temperature in degrees Celsius (MWR-ETHERNET-MIB mwrSystemTemperature under PEN 7262). The SNMP scalar is already in whole degrees, so the query does not scale it. Horizon Compact Plus devices omit this object; missing rows are skipped."
+      "description": "Optional Harmony MWR system temperature in degrees Celsius (MWR-ETHERNET-MIB mwrSystemTemperature under PEN 7262, scalar OID 7262.4.5.2.2.3.0 read with a direct GET). The scalar is already in whole degrees, so the query does not scale it. Horizon Compact Plus devices omit this object, in which case no value is reported."
     },
     {
       "metric_group": "Traffic",
