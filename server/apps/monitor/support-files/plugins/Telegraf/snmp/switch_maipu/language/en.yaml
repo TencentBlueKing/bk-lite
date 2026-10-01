@@ -1,6 +1,6 @@
 Switch Maipu SNMP:
   name: Maipu (Telegraf)
-  desc: "SNMP monitoring template for Maipu switch. It reports uptime, CPU utilization, memory utilization, temperature, power supply status, and interface traffic (enterprise PEN 5651)."
+  desc: "SNMP monitoring template for Maipu switch (MyPower OS). It reports uptime, CPU utilization, memory utilization, main board and CPU temperature, and interface traffic (enterprise PEN 5651); fan and power supply status are not collected. CPU utilization is only reported when CPU monitoring is enabled on the device (sysCpuStatus set to spyCpu)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
