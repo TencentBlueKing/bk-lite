@@ -91,7 +91,7 @@
       "name": "device_psu_state",
       "query": "device_psu_state{instance_type='access', __$labels__}",
       "display_name": "Power Input Status",
-      "data_type": "Number",
+      "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [
         {
