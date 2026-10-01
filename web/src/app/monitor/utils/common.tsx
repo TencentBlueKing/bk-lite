@@ -838,6 +838,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /korenix/i, label: 'Korenix', icon: 'mm-korenix_korenix' },
   { match: /microsens/i, label: 'Microsens', icon: 'mm-microsens_microsens' },
   { match: /moxa/i, label: 'Moxa', icon: 'mm-moxa_moxa' },
+  { match: /\bcts\b|connection technology systems|\bies-?3110\b/i, label: 'CTS' },
   { match: /netonix/i, label: 'Netonix', icon: 'mm-netonix_netonix' },
   { match: /planet/i, label: 'PLANET', icon: 'mm-planet_planet' },
   { match: /pluribus|netvisor/i, label: 'Pluribus', icon: 'mm-pluribus_pluribus' },
