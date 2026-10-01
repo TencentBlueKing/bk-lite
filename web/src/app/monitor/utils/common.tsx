@@ -857,6 +857,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /addpac|\bap(?:26[0-9]{2}|mg[0-9]{3,4})\b/i, label: 'AddPac', icon: 'mm-addpac_addpac' },
   { match: /opengear/i, label: 'Opengear', icon: 'mm-opengear_opengear' },
   { match: /avocent|cyclades|\bacs[0-9]{3,4}\b/i, label: 'Avocent ACS', icon: 'mm-avocent_avocent' },
+  { match: /perle\s*ids/i, label: 'Perle IDS', icon: 'mm-perle_perle' },
   { match: /perle|iolan|\bscg[0-9]*\b/i, label: 'Perle IOLAN', icon: 'mm-perle_perle' },
   { match: /raritan|dominion\s*sx|\bsx\s*ii\b/i, label: 'Raritan SX', icon: 'mm-raritan_raritan' },
   { match: /lantronix|\bslc\s*8000\b|\bemg\s*(?:7500|8500)\b/i, label: 'Lantronix SLC', icon: 'mm-lantronix_lantronix' },
