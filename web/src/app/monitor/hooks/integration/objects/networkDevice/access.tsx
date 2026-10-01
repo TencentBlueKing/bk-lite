@@ -64,6 +64,7 @@ export const useAccessConfig = () => {
       'Access C-Data SNMP': 'snmp_cdata',
       'Access Casa Systems SNMP': 'snmp_casa',
       'Access Topvision SNMP': 'snmp_topvision',
+      'Access ZTE OLT SNMP': 'snmp_zte_olt',
       'Access Icotera SNMP': 'snmp_icotera',
       'Access Nateks SNMP': 'snmp_nateks',
       'Access Harmonic SNMP': 'snmp_harmonic',
