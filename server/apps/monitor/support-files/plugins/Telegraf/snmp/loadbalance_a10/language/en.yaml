@@ -1,6 +1,6 @@
 Loadbalance A10 SNMP:
   name: A10 (Telegraf)
-  desc: "SNMP monitoring template for A10 load balancer. It reports uptime, CPU utilization, memory utilization, and interface traffic, for Thunder ADC / AX series (enterprise PEN 22610)."
+  desc: "SNMP monitoring template for A10 load balancer. It reports uptime, CPU utilization, memory utilization, chassis temperature, fan speed and status, power supply status, and interface traffic, for Thunder ADC / AX series (enterprise PEN 22610)."
 monitor_object:
   Loadbalance: Load Balance
 monitor_object_type:
@@ -26,6 +26,26 @@ monitor_object_metric:
       desc: This metric reports the overall memory utilization of the A10 Thunder/AX
         appliance, computed as used/total (100*used/total). Sustained high usage
         may be caused by oversized connection tables or memory pressure.
+    device_temperature_celsius:
+      name: Device Temperature
+      desc: Physical system temperature of the A10 Thunder/AX appliance in degrees
+        Celsius (A10-AX-MIB axSysHwPhySystemTemp). Abnormally high values may indicate
+        fan failure, blocked airflow or excessive ambient heat.
+    device_fan_speed:
+      name: Fan Speed
+      desc: Rotation speed of each chassis fan of the A10 Thunder/AX appliance (A10-AX-MIB
+        axSysHwFan1Speed/Fan2Speed/Fan3Speed), one series per fan.
+        Abnormally low or zero speed may indicate a stalled or failed fan.
+    device_fan_state:
+      name: Fan Status
+      desc: Fan status of the A10 Thunder/AX appliance (A10-AX-MIB axFanStatus, available
+        on some hardware models only). okFixedHigh/okLowMed/okMedMed/okMedHigh are
+        mapped to normal; failed, notReady and unknown are mapped to fault.
+    device_psu_state:
+      name: Power Supply Status
+      desc: Status of the lower and upper power supplies of the A10 Thunder/AX appliance
+        (A10-AX-MIB axSysLowerPowerSupplyStatus / axSysUpperPowerSupplyStatus). on(1)
+        is mapped to normal; off(0) and unknown(-1) are mapped to fault.
     snmp_uptime:
       name: System Uptime
       desc: This metric indicates the uptime of the device since the last restart.
@@ -33,6 +53,8 @@ monitor_object_metric:
         and reliability of the device and identify potential reboot or failure issues.
 monitor_object_metric_group:
   Loadbalance:
+    Temperature: Temperature
+    Hardware Status: Hardware Status
     Base: Base
     Loadbalance: Load Balance
     Packet Loss: Packet Loss

@@ -1,6 +1,6 @@
 Loadbalance A10 SNMP:
   name: A10（Telegraf）
-  desc: 面向 A10 负载均衡设备的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、接口流量，适用于 Thunder ADC / AX 系列（企业号 PEN 22610）。
+  desc: 面向 A10 负载均衡的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、机箱温度、风扇转速与状态、电源状态、接口流量，适用于 Thunder ADC / AX 系列（企业号 PEN 22610）。
 monitor_object:
   Loadbalance: 负载均衡
 monitor_object_type:
@@ -19,11 +19,25 @@ monitor_object_metric:
     device_memory_usage:
       name: 内存使用率
       desc: 该指标报告 A10 Thunder/AX 整体内存使用率，按 已用/总量 计算（100*used/total）。持续偏高可能由连接表过大或内存压力导致。
+    device_temperature_celsius:
+      name: 设备温度
+      desc: 该指标报告 A10 Thunder/AX 的机箱物理温度（A10-AX-MIB axSysHwPhySystemTemp），单位摄氏度。温度异常升高可能由风扇故障、散热不良或环境温度过高导致。
+    device_fan_speed:
+      name: 风扇转速
+      desc: 该指标报告 A10 Thunder/AX 各机箱风扇转速（A10-AX-MIB axSysHwFan1Speed/Fan2Speed/Fan3Speed），按风扇分别展示。转速过低或为 0 可能意味着风扇停转或故障。
+    device_fan_state:
+      name: 风扇状态
+      desc: 该指标报告 A10 Thunder/AX 风扇状态（A10-AX-MIB axFanStatus，仅部分硬件型号提供）。okFixedHigh/okLowMed/okMedMed/okMedHigh 归一为正常；failed、notReady、unknown 归一为异常。
+    device_psu_state:
+      name: 电源状态
+      desc: 该指标报告 A10 Thunder/AX 下/上电源模块状态（A10-AX-MIB axSysLowerPowerSupplyStatus / axSysUpperPowerSupplyStatus）。on(1) 归一为正常；off(0) 与 unknown(-1) 归一为异常。
     snmp_uptime:
       name: 系统运行时间
       desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
 monitor_object_metric_group:
   Loadbalance:
+    Temperature: 温度
+    Hardware Status: 硬件状态
     Base: 基础
     Loadbalance: 负载均衡
     Packet Loss: 数据包丢失
