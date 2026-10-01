@@ -114,6 +114,7 @@ export const useSwitchConfig = () => {
       'Switch Aruba SNMP': 'snmp_aruba',
       'Switch Juniper SNMP': 'snmp_juniper',
       'Switch Extreme SNMP': 'snmp_extreme',
+      'Switch Avaya ERS SNMP': 'snmp_avaya_ers',
       'Switch Brocade SNMP': 'snmp_brocade',
       'Switch Alcatel-Lucent SNMP': 'snmp_alcatel',
       'Switch MikroTik SNMP': 'snmp_mikrotik',
