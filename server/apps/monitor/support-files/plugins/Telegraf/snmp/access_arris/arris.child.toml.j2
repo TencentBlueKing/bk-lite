@@ -87,6 +87,28 @@
         oid = "1.3.6.1.4.1.4998.1.1.10.1.4.18.1.1"
         name = "state"
 
+    # ARRIS Cadant per-card CPU / heap memory from CADANT-CMTS-PROCESS-MIB (INDEX cardId).
+    # cadIdleCpuRecentPercent (cadCpuTable .1.1.1.8) is idle %, converted to usage = 100 - idle below.
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4998.1.1.5.3.1.1.1.8"
+        name = "idle"
+
+    # cadMeHeapSize (.2.1.1.2) / cadMeHeapRemaining (.2.1.1.3), bytes.
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4998.1.1.5.3.2.1.1.2"
+        name = "total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4998.1.1.5.3.2.1.1.3"
+        name = "free"
+
 [[processors.enum]]
     namepass = ["device_card"]
     [[processors.enum.mapping]]
@@ -94,6 +116,8 @@
         default = 2
         [processors.enum.mapping.value_mappings]
             "1" = 1
+    [processors.enum.tagpass]
+        brand = ["arris"]
 
 [[processors.enum]]
     namepass = ["device_disk"]
@@ -102,6 +126,8 @@
         default = 2
         [processors.enum.mapping.value_mappings]
             "1" = 1
+    [processors.enum.tagpass]
+        brand = ["arris"]
 
 [[processors.enum]]
     namepass = ["device_psu"]
@@ -110,3 +136,46 @@
         default = 2
         [processors.enum.mapping.value_mappings]
             "1" = 1
+    [processors.enum.tagpass]
+        brand = ["arris"]
+
+# CPU: idle % -> usage = 100 - idle; rows without idle are dropped.
+[[processors.starlark]]
+    namepass = ["device_cpu"]
+    source = '''
+def apply(metric):
+    idle = metric.fields.get("idle")
+    if idle == None:
+        return None
+    idle = int(idle)
+    if idle < 0 or idle > 100:
+        return None
+    metric.fields.pop("idle")
+    metric.fields["usage"] = 100 - idle
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["arris"]
+
+# Heap memory: used = total - free; usage = used / total * 100; rows with total 0 are dropped.
+[[processors.starlark]]
+    namepass = ["device_memory"]
+    source = '''
+def apply(metric):
+    total = metric.fields.get("total")
+    free = metric.fields.get("free")
+    if total == None or free == None:
+        return None
+    total = int(total)
+    free = int(free)
+    if total <= 0:
+        return None
+    used = total - free
+    metric.fields["total"] = total
+    metric.fields["free"] = free
+    metric.fields["used"] = used
+    metric.fields["usage"] = used * 100.0 / total
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["arris"]
