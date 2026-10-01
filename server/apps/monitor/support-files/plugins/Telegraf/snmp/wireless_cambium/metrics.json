@@ -22,7 +22,7 @@
     {
       "metric_group": "Wireless",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='wireless', __$labels__}) by (instance_id) / 10",
+      "query": "max(snmp_device_cpu_usage{instance_type='wireless', __$labels__}) by (instance_id)",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -35,7 +35,7 @@
     {
       "metric_group": "Wireless",
       "name": "wireless_cambium_sta_count",
-      "query": "max(wireless_cambium_sta_count{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "max(snmp_wireless_cambium_sta_count{instance_type='wireless', __$labels__}) by (instance_id)",
       "display_name": "Connected Station Count",
       "data_type": "Number",
       "unit": "short",
