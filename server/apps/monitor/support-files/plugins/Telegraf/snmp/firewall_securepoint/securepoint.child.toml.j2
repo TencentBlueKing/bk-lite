@@ -1,0 +1,76 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_securepoint"
+        config_type = "securepoint"
+        brand = "securepoint"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- UCD-SNMP-MIB systemStats 1.3.6.1.4.1.2021.11：标量，顶层 field 带 .0 → measurement snmp ----
+    # ssCpuIdle .11.11.0：Integer32 百分比；starlark 输出 device_cpu_usage = 100−idle。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2021.11.11.0"
+        name = "cpu_idle_raw"
+    # ---- UCD-SNMP-MIB memory 1.3.6.1.4.1.2021.4：标量，顶层 field 带 .0 → measurement snmp ----
+    # memTotalReal .4.5.0 / memTotalFree .4.11.0：Integer32 kB；starlark ×1024 输出 device_memory_total / free / used 字节与 device_memory_usage。
+    # memTotalFree 按 UCD 定义可能含 swap，超过 memTotalReal 时整组内存指标丢弃，不输出负值。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2021.4.5.0"
+        name = "mem_total_kb_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2021.4.11.0"
+        name = "mem_free_kb_raw"
+    # ---- Securepoint 私有树 1.3.6.1.4.1.28553.2.1.10.2 nf_conntrack_count：标量，顶层 field 带 .0 ----
+    # 当前连接跟踪条目数，近似活动连接数。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.28553.2.1.10.2.0"
+        name = "firewall_current_connections"
+# ---- 温度/风扇/电源：Securepoint UTM 未公开环境传感器 OID，不采集。----
+
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    idle = metric.fields.pop("cpu_idle_raw", None)
+    if type(idle) in ["int", "float"] and idle >= 0 and idle <= 100:
+        metric.fields["device_cpu_usage"] = 100 - idle
+    total = metric.fields.pop("mem_total_kb_raw", None)
+    free = metric.fields.pop("mem_free_kb_raw", None)
+    if type(total) == "int" and type(free) == "int" and total > 0 and free >= 0 and free <= total:
+        metric.fields["device_memory_total"] = total * 1024
+        metric.fields["device_memory_free"] = free * 1024
+        metric.fields["device_memory_used"] = (total - free) * 1024
+        metric.fields["device_memory_usage"] = (total - free) * 100.0 / total
+    conn = metric.fields.get("firewall_current_connections")
+    if conn != None and (type(conn) not in ["int", "float"] or conn < 0):
+        metric.fields.pop("firewall_current_connections")
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["securepoint"]

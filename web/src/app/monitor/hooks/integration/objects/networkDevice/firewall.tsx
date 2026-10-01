@@ -95,6 +95,7 @@ export const useFirewallConfig = () => {
       'Firewall Clavister SNMP': 'snmp_clavister',
       'Firewall Blockbit SNMP': 'snmp_blockbit',
       'Firewall Barracuda SNMP': 'snmp_barracuda',
+      'Firewall Securepoint SNMP': 'snmp_securepoint',
       'Firewall Zorp SNMP': 'snmp_zorp',
       'Firewall WatchGuard SNMP': 'snmp_watchguard',
       'Firewall pfSense SNMP': 'snmp_pfsense',
