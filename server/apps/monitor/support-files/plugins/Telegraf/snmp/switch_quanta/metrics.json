@@ -43,7 +43,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "CPU utilization of the Quanta switch over the last 5 seconds, parsed from the first percentage of agentSwitchCpuProcessTotalUtilization (scalar 1.3.6.1.4.1.4413.1.1.1.1.4.9.0, DisplayString)."
+      "description": "CPU utilization of the Quanta switch over the last 300 seconds, parsed from the last percentage of agentSwitchCpuProcessTotalUtilization (scalar 1.3.6.1.4.1.4413.1.1.1.1.4.9.0, DisplayString, listing 5 / 60 / 300 second windows); a bare number without a percent sign is also accepted."
     },
     {
       "metric_group": "Memory",
