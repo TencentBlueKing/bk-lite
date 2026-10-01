@@ -1,0 +1,66 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_ceragon"
+        config_type = "ceragon"
+        brand = "ceragon"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- MWRM-RADIO-MIB genEquipRfuStatusTable 1.3.6.1.4.1.2281.10.5.1（INDEX genEquipRfuStatusId，每个 RFU 一行）：table.field 不带 .0 ----
+    # genEquipRfuStatusTemperature .1.4：Integer32 RFU 温度；genEquipRfuStatusPATemp .1.24：Integer32 功放（PA）温度，型号不支持时缺省。
+    # 两者的单位随 genEquipUnitMeasurementSystem 设置，按公制（℃）处理。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2281.10.5.1.1.4"
+        name = "celsius"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2281.10.5.1.1.24"
+        name = "pa_celsius"
+# ---- CPU/内存/风扇/电源：MWRM-RADIO-MIB 不提供整机 CPU、内存、风扇、电源对象，不采集。----
+
+# ---- 温度合理性：非数值或超出 -50~150 的读数视为无效丢弃；两项都无效时整行丢弃。----
+[[processors.starlark]]
+    namepass = ["device_temperature"]
+    source = '''
+def apply(metric):
+    for key in ["celsius", "pa_celsius"]:
+        value = metric.fields.get(key)
+        if value == None:
+            continue
+        if type(value) not in ["int", "float"] or value < -50 or value > 150:
+            metric.fields.pop(key)
+    if "celsius" not in metric.fields and "pa_celsius" not in metric.fields:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["ceragon"]
