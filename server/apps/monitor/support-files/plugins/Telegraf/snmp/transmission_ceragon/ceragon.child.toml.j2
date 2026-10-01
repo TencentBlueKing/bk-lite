@@ -34,7 +34,7 @@
 # @bk_include_ifmib_table
     # ---- MWRM-RADIO-MIB genEquipRfuStatusTable 1.3.6.1.4.1.2281.10.5.1（INDEX genEquipRfuStatusId，每个 RFU 一行）：table.field 不带 .0 ----
     # genEquipRfuStatusTemperature .1.4：Integer32 RFU 温度；genEquipRfuStatusPATemp .1.24：Integer32 功放（PA）温度，型号不支持时缺省。
-    # 两者的单位随 genEquipUnitMeasurementSystem 设置，按公制（℃）处理。
+    # 仅 RFU 温度随 genEquipUnitMeasurementSystem 设置变化（英制时为 ℉），按公制（℃）处理；PA 温度 MIB 明确为 celsius。
     [[inputs.snmp.table]]
         name = "device_temperature"
         inherit_tags = ["source"]
