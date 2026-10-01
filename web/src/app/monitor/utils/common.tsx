@@ -696,6 +696,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /watchguard|fireware/i, label: 'WatchGuard', icon: 'mm-watchguard_watchguard' },
   { match: /pfsense/i, label: 'pfSense', icon: 'mm-pfsense_pfsense' },
   { match: /opnsense/i, label: 'OPNsense', icon: 'mm-opnsense_opnsense' },
+  { match: /ipfire/i, label: 'IPFire' },
   { match: /clavister/i, label: 'Clavister', icon: 'mm-clavister_clavister' },
   { match: /genua/i, label: 'Genua', icon: 'mm-genua_genua' },
   { match: /kerio/i, label: 'Kerio', icon: 'mm-kerio_kerio' },
