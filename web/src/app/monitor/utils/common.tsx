@@ -840,6 +840,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /moxa/i, label: 'Moxa', icon: 'mm-moxa_moxa' },
   { match: /netonix/i, label: 'Netonix', icon: 'mm-netonix_netonix' },
   { match: /planet/i, label: 'PLANET', icon: 'mm-planet_planet' },
+  { match: /quanta|\bqnos\b/i, label: 'Quanta' },
   { match: /pluribus|netvisor/i, label: 'Pluribus', icon: 'mm-pluribus_pluribus' },
   { match: /ruggedcom/i, label: 'Ruggedcom', icon: 'mm-ruggedcom_ruggedcom' },
   { match: /scalance/i, label: 'SCALANCE', icon: 'mm-scalance_scalance' },
