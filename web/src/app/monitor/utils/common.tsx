@@ -855,6 +855,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /zenitel|vingtor|stentofon/i, label: 'Zenitel', icon: 'mm-zenitel_zenitel' },
   { match: /sangoma|vega/i, label: 'Sangoma Vega', icon: 'mm-sangoma_sangoma' },
   { match: /addpac|\bap(?:26[0-9]{2}|mg[0-9]{3,4})\b/i, label: 'AddPac', icon: 'mm-addpac_addpac' },
+  { match: /switchvox/i, label: 'Switchvox' },
   { match: /opengear/i, label: 'Opengear', icon: 'mm-opengear_opengear' },
   { match: /avocent|cyclades|\bacs[0-9]{3,4}\b/i, label: 'Avocent ACS', icon: 'mm-avocent_avocent' },
   { match: /perle|iolan|\bscg[0-9]*\b/i, label: 'Perle IOLAN', icon: 'mm-perle_perle' },
