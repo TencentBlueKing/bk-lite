@@ -91,6 +91,7 @@ export const useNetworkServiceConfig = () => {
       'NetworkService Allot SNMP': 'snmp_allot',
       'NetworkService EfficientIP SNMP': 'snmp_efficientip',
       'NetworkService Nomadix SNMP': 'snmp_nomadix',
+      'NetworkService Dataprobe iBoot-PDU SNMP': 'snmp_dataprobe',
       'NetworkService Socomec iPDU UPS SNMP': 'snmp_socomec',
       'NetworkService Liebert PDU UPS Environmental SNMP': 'snmp_liebert',
       'NetworkService NTI ENVIROMUX SNMP': 'snmp_nti'

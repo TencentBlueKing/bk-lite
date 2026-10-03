@@ -1,0 +1,122 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_dataprobe"
+        config_type = "dataprobe"
+        brand = "dataprobe"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # iBoot-PDU sensors under PEN 1418.6. Do not invent CPU% or memory.
+    # Voltage/current SNMP values divide by 100. temperature 999 means no probe.
+    # deviceTemperatureUnit 0=Fahrenheit 1=Celsius.
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1418.6.1.9.0"
+        name = "temperature_units"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1418.6.6.1.0"
+        name = "voltage_lc1"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1418.6.6.2.0"
+        name = "current_lc1"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1418.6.6.3.0"
+        name = "voltage_lc2"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1418.6.6.4.0"
+        name = "current_lc2"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1418.6.6.5.0"
+        name = "temperature1"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1418.6.6.6.0"
+        name = "temperature2"
+
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    unit = f.pop("temperature_units", None)
+    v1 = f.pop("voltage_lc1", None)
+    c1 = f.pop("current_lc1", None)
+    v2 = f.pop("voltage_lc2", None)
+    c2 = f.pop("current_lc2", None)
+    t1 = f.pop("temperature1", None)
+    t2 = f.pop("temperature2", None)
+    if v1 != None:
+        volts1 = v1 / 100.0
+        if volts1 > 0:
+            if volts1 <= 300:
+                f["pdu_line1_voltage_volts"] = volts1
+                if c1 != None:
+                    amps1 = c1 / 100.0
+                    if amps1 >= 0:
+                        if amps1 <= 100:
+                            f["pdu_line1_current_amps"] = amps1
+    if v2 != None:
+        volts2 = v2 / 100.0
+        if volts2 > 0:
+            if volts2 <= 300:
+                f["pdu_line2_voltage_volts"] = volts2
+                if c2 != None:
+                    amps2 = c2 / 100.0
+                    if amps2 >= 0:
+                        if amps2 <= 100:
+                            f["pdu_line2_current_amps"] = amps2
+    if t1 != None:
+        if t1 != 999:
+            value = t1
+            if unit == 0:
+                value = (value - 32.0) * 5.0 / 9.0
+                if value >= 0:
+                    value = int(value * 10.0 + 0.5) / 10.0
+                else:
+                    value = int(value * 10.0 - 0.5) / 10.0
+            if value >= -40:
+                if value <= 100:
+                    f["env_temperature_celsius"] = value
+    if t2 != None:
+        if t2 != 999:
+            value = t2
+            if unit == 0:
+                value = (value - 32.0) * 5.0 / 9.0
+                if value >= 0:
+                    value = int(value * 10.0 + 0.5) / 10.0
+                else:
+                    value = int(value * 10.0 - 0.5) / 10.0
+            if value >= -40:
+                if value <= 100:
+                    f["env_temperature_2_celsius"] = value
+    if len(f.keys()) == 0:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["dataprobe"]

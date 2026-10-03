@@ -1,0 +1,46 @@
+{
+  "object": "NetworkService",
+  "plugin": "NetworkService Dataprobe iBoot-PDU SNMP",
+  "templates": [
+    {
+      "name": "Dataprobe线缆1电压异常",
+      "alert_name": "网络服务${resource_name} 线缆1电压过低",
+      "description": "监控 Dataprobe iBoot-PDU 线缆1电压，持续低于阈值时触发告警，提示供电中断。",
+      "metric_name": "snmp_pdu_line1_voltage_volts",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Dataprobe环境温度过高",
+      "alert_name": "网络服务${resource_name} 环境温度过高",
+      "description": "监控 Dataprobe iBoot-PDU 温度探头，当持续高于阈值时触发告警，提示机柜过热。",
+      "metric_name": "snmp_env_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 45,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 40,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 35,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}
