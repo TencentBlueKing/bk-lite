@@ -56,6 +56,7 @@ export const useWirelessConfig = () => {
       'Wireless Cambium SNMP': 'snmp_cambium',
       'Wireless Proxim SNMP': 'snmp_proxim',
       'Wireless EnGenius SNMP': 'snmp_engenius',
+      'Wireless Tait SNMP': 'snmp_tait',
       'Wireless Aerohive SNMP': 'snmp_aerohive',
       'Wireless Grandstream SNMP': 'snmp_grandstream',
       'Wireless ASCOM SNMP': 'snmp_ascom',

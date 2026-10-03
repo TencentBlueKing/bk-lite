@@ -749,6 +749,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /apresia/i, label: 'APRESIA', icon: 'mm-apresia_apresia' },
   { match: /intelbras/i, label: 'Intelbras', icon: 'mm-intelbras_intelbras' },
   { match: /nexans/i, label: 'Nexans', icon: 'mm-nexans_nexans' },
+  { match: /\btait\b|\btn9300\b/i, label: 'Tait' },
   { match: /pica8|picos/i, label: 'Pica8', icon: 'mm-pica8_pica8' },
   { match: /snmp_advantech_router|advantech|\beki\b|\bicr\b|conel/i, label: 'Advantech', icon: 'mm-advantech_advantech' },
   { match: /etherwan/i, label: 'EtherWAN', icon: 'mm-etherwan_etherwan' },
