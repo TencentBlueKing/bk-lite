@@ -76,6 +76,7 @@ export const useNetworkServiceConfig = () => {
       'NetworkService Meinberg LANTIME SNMP': 'snmp_meinberg',
       'NetworkService Endace SNMP': 'snmp_endace',
       'NetworkService DEVA Broadcast SNMP': 'snmp_deva',
+      'NetworkService Sensatronics SNMP': 'snmp_sensatronics',
       'NetworkService EndRun SNMP': 'snmp_endrun',
       'NetworkService Spectracom SNMP': 'snmp_spectracom',
       'NetworkService Asentria SiteBoss SNMP': 'snmp_asentria',

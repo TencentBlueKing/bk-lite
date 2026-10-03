@@ -774,6 +774,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /multitech|multiconnect|\brcell\b/i, label: 'MultiTech', icon: 'mm-multitech_multitech' },
   { match: /\bavici\b/i, label: 'Avici', icon: 'mm-avici_avici' },
   { match: /unisphere|\berx\b/i, label: 'Unisphere', icon: 'mm-unisphere_unisphere' },
+  { match: /sensatronics/i, label: 'Sensatronics' },
   { match: /waystream|asr[0-9]+|ftth/i, label: 'Waystream', icon: 'mm-waystream_waystream' },
   { match: /tsntec|8148sc/i, label: 'TsnTec', icon: 'mm-tsntec_tsntec' },
   { match: /6wind|\bvsr\b/i, label: '6WIND VSR', icon: 'mm-6wind_6wind' },
