@@ -86,6 +86,7 @@ export const useNetworkServiceConfig = () => {
       'NetworkService Geist PDU Environmental SNMP': 'snmp_geist',
       'NetworkService Panduit iPDU SNMP': 'snmp_panduit',
       'NetworkService APC UPS PDU Environmental SNMP': 'snmp_apc',
+      'NetworkService CyberPower ePDU2 SNMP': 'snmp_cyberpower',
       'NetworkService Eaton UPS PDU Environmental SNMP': 'snmp_eaton',
       'NetworkService Tripp Lite UPS PDU Environmental SNMP': 'snmp_tripplite',
       'NetworkService Allot SNMP': 'snmp_allot',

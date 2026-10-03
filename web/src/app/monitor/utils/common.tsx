@@ -876,6 +876,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /geist|blackbird|watchdog/i, label: 'Geist', icon: 'mm-geist_geist' },
   { match: /panduit/i, label: 'Panduit', icon: 'mm-panduit_panduit' },
   { match: /apc|schneider\s*electric|powernet/i, label: 'APC', icon: 'mm-apc_apc' },
+  { match: /cyber\s*power/i, label: 'CyberPower' },
   { match: /eaton|powerware|xups/i, label: 'Eaton', icon: 'mm-eaton_eaton' },
   { match: /tripp\s*lite|poweralert|webcardlx|snmpwebcard/i, label: 'Tripp Lite', icon: 'mm-tripplite_tripplite' },
   { match: /allot|netxplorer|netexplorer/i, label: 'Allot', icon: 'mm-allot_allot' },
