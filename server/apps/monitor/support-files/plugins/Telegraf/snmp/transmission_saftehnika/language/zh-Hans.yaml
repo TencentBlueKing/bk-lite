@@ -49,6 +49,18 @@ monitor_object_metric:
     device_psu_state:
       name: 电源状态
       desc: 传输设备各电源模块的运行状态。非正常状态表示电源离线、无输入、过温、硬件故障或告警，需及时排查。
+    device_voltage_volts:
+      name: 电源电压
+      desc: Integra 传输设备的电源电压，原始值单位为毫伏，查询时换算为伏。偏离标称供电电压可能表示供电异常。
+    psu_current_amps:
+      name: 电源电流（A）
+      desc: Integra 传输设备的电源电流，原始值单位为毫安，查询时换算为安。
+    psu_power_watts:
+      name: 电源功耗
+      desc: Integra 传输设备的电源功耗，原始值单位为毫瓦，查询时换算为瓦。功耗突变可能表示射频或硬件故障。
+    board_temperature_celsius:
+      name: 主板温度
+      desc: Integra 传输设备的主板温度，原始值为 ×10 摄氏度，查询时除以 10。与 CPU 温度是不同的传感器。
 monitor_object_metric_group:
   Transmission:
     Base: 基础

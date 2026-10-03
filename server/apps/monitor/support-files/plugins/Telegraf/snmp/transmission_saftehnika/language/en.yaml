@@ -82,6 +82,23 @@ monitor_object_metric:
       desc: Operational state of each transmission device power supply. A non-normal
         state indicates offline power, missing input, over-temperature, hardware fault,
         or alert condition that should be investigated.
+    device_voltage_volts:
+      name: PSU Voltage
+      desc: Power supply voltage of the Integra transmission device in volts, converted
+        from millivolts. Values drifting away from the nominal supply may indicate a
+        power problem.
+    psu_current_amps:
+      name: PSU Current (A)
+      desc: Power supply current of the Integra transmission device in amperes, converted
+        from milliamperes.
+    psu_power_watts:
+      name: PSU Power
+      desc: Power consumption of the Integra transmission device in watts, converted
+        from milliwatts. A sudden change may indicate a radio or hardware fault.
+    board_temperature_celsius:
+      name: Board Temperature
+      desc: Board temperature of the Integra transmission device in degrees Celsius,
+        scaled from tenths of a degree. It is a different sensor from the CPU temperature.
 monitor_object_metric_group:
   Transmission:
     Base: Base

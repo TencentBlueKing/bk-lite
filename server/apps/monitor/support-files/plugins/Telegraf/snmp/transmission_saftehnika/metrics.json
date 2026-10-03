@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_saftehnika",
   "plugin": "Transmission SAF Tehnika SNMP",
-  "plugin_desc": "SAF Tehnika Integra microwave transmission SNMP child template (IANA PEN 7571). Select the Integra-B or Integra-W product branch when deploying so only that branch's system scalars are polled. Integra-B and Integra-W OID trees must not be mixed. Private health objects are CPU usage (100 minus idle tenths of percent), memory usage (100 minus free tenths of percent), and CPU temperature in degrees Celsius after dividing tenths by 10. Interface traffic comes from the shared IF-MIB floor. Fan and power-supply state are not collected. Supported brands/models - SAF Tehnika Integra-B and Integra-W microwave transmission devices.",
+  "plugin_desc": "SAF Tehnika Integra microwave transmission SNMP child template (IANA PEN 7571). Select the Integra-B or Integra-W product branch when deploying so only that branch's system scalars are polled. Integra-B and Integra-W OID trees must not be mixed. Private health objects are CPU usage (100 minus idle tenths of percent), memory usage (100 minus free tenths of percent), CPU temperature in degrees Celsius after dividing tenths by 10, power supply voltage, current and power converted from mV / mA / mW to V / A / W, and board temperature in degrees Celsius after dividing tenths by 10. Interface traffic comes from the shared IF-MIB floor. Fan state is not collected. Supported brands/models - SAF Tehnika Integra-B and Integra-W microwave transmission devices.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_saftehnika'}) by (instance_id)",
   "name": "Transmission",
@@ -15,6 +15,8 @@
   ],
   "supplementary_indicators": [
     "snmp_uptime",
+    "device_voltage_volts",
+    "psu_power_watts",
     "cpu_usage_percent",
     "memory_usage_percent",
     "cpu_temperature_celsius"
@@ -107,6 +109,58 @@
         "instance_id"
       ],
       "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_voltage_volts",
+      "query": "avg(snmp_psu_voltage_mv{instance_type='transmission', __$labels__} > 0) by (instance_id) / 1000",
+      "display_name": "PSU Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Power supply voltage of the SAF Tehnika Integra platform in volts. The device reports sysPSUvoltage ({_sys}.4.5.0) in millivolts, so the query divides by 1000; non-positive readings are ignored."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "psu_current_amps",
+      "query": "avg(snmp_psu_current_ma{instance_type='transmission', __$labels__} > 0) by (instance_id) / 1000",
+      "display_name": "PSU Current (A)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Power supply current of the SAF Tehnika Integra platform in amperes. The device reports sysPSUcurrent ({_sys}.4.6.0) in milliamperes, so the query divides by 1000; non-positive readings are ignored."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "psu_power_watts",
+      "query": "avg(snmp_psu_power_mw{instance_type='transmission', __$labels__} > 0) by (instance_id) / 1000",
+      "display_name": "PSU Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Power consumption of the SAF Tehnika Integra platform in watts. The device reports sysPSUpower ({_sys}.4.7.0) in milliwatts, so the query divides by 1000; non-positive readings are ignored."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "board_temperature_celsius",
+      "query": "avg(snmp_board_temperature{instance_type='transmission', __$labels__} > -600 < 1500) by (instance_id) / 10",
+      "display_name": "Board Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Board temperature of the SAF Tehnika Integra platform in degrees Celsius, from sysBoardTemperature ({_sys}.4.8.0, tenths of a degree, divided by 10). It is a different sensor from the CPU temperature; raw readings outside -600 to 1500 are ignored."
     }
   ]
 }
