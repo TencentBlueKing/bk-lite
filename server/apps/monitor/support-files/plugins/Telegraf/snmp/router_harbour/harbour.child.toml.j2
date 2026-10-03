@@ -51,25 +51,18 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
-    # ---- Harbour Networks(港湾网络) CPU (enterprise 8212 snAgGblCpuUtil1SecAvg, 直接%, scalar, PEN 8212) ----
-    # 权威来源：本地 snmp.yaml snAgGblCpuUtil1SecAvg 1.3.6.1.4.1.8212.1.1.4.1.1.4（CPU 平均使用率%）。
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.8212.1.1.4.1.1.4"
-        name = "usage"
-    # ---- Harbour Networks 内存 (总量 + 空闲, 字节；usage=(总量-空闲)/总量) ----
-    # 权威来源：本地 snmp.yaml 总内存 .8212.1.1.4.1.1.7 / 空闲内存 .8212.1.1.4.1.1.8（bytes）。
-    [[inputs.snmp.table]]
-        name = "device_memory"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.8212.1.1.4.1.1.7"
-        name = "total"
+    # ---- Harbour Networks（港湾网络，PEN 8212）CPU / 内存：标量，顶层 field 带 .0 → measurement snmp，查询用 snmp_ 前缀 ----
+    # snAgGblCpuUtil1SecAvg 1.3.6.1.4.1.8212.1.1.4.1.1.4.0：CPU 平均使用率（%）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.8212.1.1.4.1.1.4.0"
+        name = "device_cpu_usage"
+    # 总内存 1.3.6.1.4.1.8212.1.1.4.1.1.7.0 / 空闲内存 1.3.6.1.4.1.8212.1.1.4.1.1.8.0（查询端 ×1024 换算为字节；usage=(总量-空闲)/总量）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.8212.1.1.4.1.1.7.0"
+        name = "device_memory_total"
         conversion = "int"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.8212.1.1.4.1.1.8"
-        name = "free"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.8212.1.1.4.1.1.8.0"
+        name = "device_memory_free"
         conversion = "int"
 # ---- 温/风/电：港湾网络 8212 私有 MIB 本批仅 CPU/内存 OID, 无温度/风扇/电源 → N/A。CPU+内存(总量/空闲)+HC流量干净可采。----
