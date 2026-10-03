@@ -1,0 +1,127 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_jacarta"
+        config_type = "jacarta"
+        brand = "jacarta"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ISPRO under PEN 19011.1.3.2. Do not collect classic interSeptor 1.3.1.
+    # Do not invent CPU% or memory. Temperature/humidity SNMP values are hundredths.
+    # isConfigTemperatureUnit 1=Celsius 2=Fahrenheit; default treat as Celsius.
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.19011.1.3.2.1.2.16.0"
+        name = "temperature_units"
+    [[inputs.snmp.table]]
+        name = "env_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.19011.1.3.2.1.3.1.1.1.2"
+        name = "sensor"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.19011.1.3.2.1.3.1.1.1.3"
+        name = "celsius"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.19011.1.3.2.1.3.1.1.1.4"
+        name = "alarm"
+    [[inputs.snmp.table]]
+        name = "env_humidity"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.19011.1.3.2.1.3.1.2.1.2"
+        name = "sensor"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.19011.1.3.2.1.3.1.2.1.3"
+        name = "percent"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.19011.1.3.2.1.3.1.2.1.4"
+        name = "alarm"
+
+[[processors.starlark]]
+    namepass = ["snmp", "env_temperature", "env_humidity"]
+    source = '''
+state = {"unit": 1}
+
+def apply(metric):
+    f = metric.fields
+    if metric.name == "snmp":
+        unit = f.pop("temperature_units", None)
+        if unit != None:
+            state["unit"] = unit
+        return metric
+    alarm = f.pop("alarm", None)
+    if alarm == 2:
+        return None
+    if metric.name == "env_temperature":
+        raw = f.pop("celsius", None)
+        if raw == None:
+            return None
+        value = raw / 100.0
+        if state["unit"] == 2:
+            value = (value - 32.0) * 5.0 / 9.0
+            if value >= 0:
+                value = int(value * 100.0 + 0.5) / 100.0
+            else:
+                value = int(value * 100.0 - 0.5) / 100.0
+        if value < -60:
+            return None
+        if value > 150:
+            return None
+        f["celsius"] = value
+    if metric.name == "env_humidity":
+        raw = f.pop("percent", None)
+        if raw == None:
+            return None
+        value = raw / 100.0
+        if value < 0:
+            return None
+        if value > 100:
+            return None
+        f["percent"] = value
+    if alarm == 3:
+        f["status"] = 1
+    if alarm == 4:
+        f["status"] = 2
+    if alarm == 5:
+        f["status"] = 2
+    if alarm == 6:
+        f["status"] = 2
+    if alarm == 7:
+        f["status"] = 2
+    if len(f.keys()) == 0:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["jacarta"]
