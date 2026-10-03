@@ -1,0 +1,98 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_wut",
+  "plugin": "NetworkService Wiesemann Theis Web-Thermo-Hygrometer SNMP",
+  "plugin_desc": "SNMP monitoring template for Wiesemann Theis Web-Thermo-Hygrometer environmental monitors (PEN 5040, wtWebGraphThermoHygro 5040.1.2.42). It reports channel 1 as temperature in Celsius and channel 2 as relative humidity, both scaled from BinaryTempValue tenths, plus uptime and interface traffic. Invalid sentinel 327670 rows are dropped. ASCII temperature strings and other Webio product trees are not collected in this pass.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='network_service', collect_type='snmp_wut'}) by (instance_id)",
+  "name": "NetworkService",
+  "icon": "mm-network_service_网络服务",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='network_service'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "env_temperature_celsius",
+    "env_humidity_percent"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Environment",
+      "name": "env_temperature_celsius",
+      "query": "max(snmp_env_temperature_celsius{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Environment Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Web-Thermo-Hygrometer sensor 1 temperature in degrees Celsius from wtWebGraphThermoHygroBinaryTempValue (1.3.6.1.4.1.5040.1.2.42.1.4.1.1), scaled by /10. Rows with sentinel 327670 are dropped."
+    },
+    {
+      "metric_group": "Environment",
+      "name": "env_humidity_percent",
+      "query": "max(snmp_env_humidity_percent{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Environment Humidity",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Web-Thermo-Hygrometer sensor 2 relative humidity in percent from wtWebGraphThermoHygroBinaryTempValue (1.3.6.1.4.1.5040.1.2.42.1.4.1.1), scaled by /10. Rows with sentinel 327670 are dropped."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of inbound bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of outbound bytes sent over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}
