@@ -83,6 +83,7 @@ export const useNetworkServiceConfig = () => {
       'NetworkService Enlogic PDU SNMP': 'snmp_enlogic',
       'NetworkService Rittal CMC III SNMP': 'snmp_rittal',
       'NetworkService Gude PDU SNMP': 'snmp_gude',
+      'NetworkService PowerDsine PoE SNMP': 'snmp_powerdsine',
       'NetworkService Geist PDU Environmental SNMP': 'snmp_geist',
       'NetworkService Panduit iPDU SNMP': 'snmp_panduit',
       'NetworkService APC UPS PDU Environmental SNMP': 'snmp_apc',
