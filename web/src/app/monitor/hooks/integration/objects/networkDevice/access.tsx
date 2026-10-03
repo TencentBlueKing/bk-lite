@@ -56,6 +56,7 @@ export const useAccessConfig = () => {
       'Access BDCOM SNMP': 'snmp_bdcom',
       'Access V-SOL SNMP': 'snmp_vsolution',
       'Access ARRIS Cadant SNMP': 'snmp_arris',
+      'Access Calix E5 SNMP': 'snmp_calix_e5',
       'Access FiberHome OLT SNMP': 'snmp_fiberhome_olt',
       'Access Zhone DZS SNMP': 'snmp_zhone',
       'Access UTStarcom SNMP': 'snmp_utstarcom',

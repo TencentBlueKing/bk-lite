@@ -798,6 +798,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /zhone|\bdzs\b/i, label: 'Zhone DZS', icon: 'mm-zhone_zhone' },
   { match: /utstarcom|utstar\s*com|\butstar\b/i, label: 'UTStarcom', icon: 'mm-utstarcom_utstarcom' },
   { match: /raisecom|roap|iscom/i, label: 'Raisecom', icon: 'mm-raisecom_raisecom' },
+  { match: /calix|\be5-1\d\d\b/i, label: 'Calix' },
   { match: /packetfront|\bdrg\b/i, label: 'PacketFront', icon: 'mm-packetfront_packetfront' },
   { match: /c-?data|cdatatec/i, label: 'C-Data', icon: 'mm-cdata_cdata' },
   { match: /casa( systems)?/i, label: 'Casa Systems', icon: 'mm-casa_casa' },
