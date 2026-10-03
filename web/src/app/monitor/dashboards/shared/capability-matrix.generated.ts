@@ -1294,6 +1294,16 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_barracuda_cloudgen",
+      "capabilities": [
+        "uptime",
+        "temperature",
+        "fan",
+        "psu",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_blockbit",
       "capabilities": [
         "uptime",
