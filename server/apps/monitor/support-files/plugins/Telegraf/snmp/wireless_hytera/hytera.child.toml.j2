@@ -1,0 +1,116 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_hytera"
+        config_type = "hytera"
+        brand = "hytera"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Hytera 数字中继台实时数据（HYTERA-REPEATER-MIB，PEN 40297，rptDataInfo 1.3.6.1.4.1.40297.1.2.1.2 / rptAlarmInfo 1.3.6.1.4.1.40297.1.2.1.1）----
+    # 标量顶层 field 带 .0，落 measurement snmp，查询用 snmp_ 前缀。
+    # rptVoltage / rptPaTemprature / rptTxFwdPower 为 4 字节 OCTET STRING，内容是小端 IEEE 754 单精度浮点；
+    # 先按小端读成 32 位整数，再由下方 starlark 还原为浮点。RD620 / RD960 等机型上部分对象无效，越界即丢弃。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.40297.1.2.1.2.1.0"
+        name = "voltage_bits"
+        conversion = "hextoint:LittleEndian:uint32"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.40297.1.2.1.2.2.0"
+        name = "pa_temperature_bits"
+        conversion = "hextoint:LittleEndian:uint32"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.40297.1.2.1.2.5.0"
+        name = "tx_forward_power_bits"
+        conversion = "hextoint:LittleEndian:uint32"
+    # rptVoltageAlarm：0 正常 / 1 欠压 / 2 过压 / 3 异常（RD960 不区分欠压过压）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.40297.1.2.1.1.1.0"
+        name = "voltage_alarm_raw"
+    # rptTemperatureAlarm：0 正常 / 1 低温 / 2 高温。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.40297.1.2.1.1.2.0"
+        name = "temperature_alarm_raw"
+# ---- 风扇转速、电池电压：MIB 标注尚未支持，不采集；CPU / 内存使用率：MIB 不提供，不采集。----
+
+# ---- 浮点还原与校验：电压须在 (0, 100] V、PA 温度须在 -60~150 ℃、前向功率须在 0~1000 W，NaN / Inf 与越界值丢弃；
+# 告警 0 → 1（正常），非 0 → 2（异常），不在定义范围内的值丢弃；原始字段不落库。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+FLOATS = [
+    ("voltage_bits", "device_voltage_volts", 0.0, 100.0, False),
+    ("pa_temperature_bits", "pa_temperature_celsius", -60.0, 150.0, True),
+    ("tx_forward_power_bits", "tx_forward_power_watts", 0.0, 1000.0, True),
+]
+ALARMS = [
+    ("voltage_alarm_raw", "voltage_alarm_state", 3),
+    ("temperature_alarm_raw", "temperature_alarm_state", 2),
+]
+
+def f32(bits):
+    if type(bits) != "int" or bits < 0 or bits > 4294967295:
+        return None
+    sign = (bits >> 31) & 1
+    exp = (bits >> 23) & 255
+    frac = bits & 8388607
+    if exp == 255:
+        return None
+    if exp == 0:
+        value = frac / 8388608.0
+        exp = -126
+    else:
+        value = 1.0 + frac / 8388608.0
+        exp = exp - 127
+    if exp > 0:
+        for _ in range(exp):
+            value = value * 2.0
+    elif exp < 0:
+        for _ in range(-exp):
+            value = value / 2.0
+    if sign == 1:
+        value = -value
+    return value
+
+def apply(metric):
+    for src, dst, low, high, low_inclusive in FLOATS:
+        value = f32(metric.fields.pop(src, None))
+        if value == None or value > high:
+            continue
+        if value < low or (value == low and not low_inclusive):
+            continue
+        metric.fields[dst] = int(value * 100 + (0.5 if value >= 0 else -0.5)) / 100.0
+    for src, dst, top in ALARMS:
+        raw = metric.fields.pop(src, None)
+        if type(raw) == "int" and raw >= 0 and raw <= top:
+            metric.fields[dst] = 1 if raw == 0 else 2
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["hytera"]

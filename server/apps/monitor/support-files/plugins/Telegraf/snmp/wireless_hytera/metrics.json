@@ -1,0 +1,137 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_hytera",
+  "plugin": "Wireless Hytera SNMP",
+  "plugin_desc": "SNMP monitoring template for Hytera digital repeaters (HYTERA-REPEATER-MIB, enterprise PEN 40297). It reports uptime, PA temperature, supply voltage, transmitter forward power, voltage and temperature alarm states, and interface traffic.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='wireless', collect_type='snmp_hytera'}) by (instance_id)",
+  "name": "Wireless",
+  "icon": "mm-wireless_无线设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='wireless'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "pa_temperature_celsius",
+    "device_voltage_volts"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "pa_temperature_celsius",
+      "query": "max(snmp_pa_temperature_celsius{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "PA Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Power amplifier temperature of the Hytera repeater in degrees Celsius, from rptPaTemprature (HYTERA-REPEATER-MIB, 1.3.6.1.4.1.40297.1.2.1.2.2.0, 4-byte little-endian IEEE 754 float). The object is invalid on RD960; values outside -60 to 150 are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_voltage_volts",
+      "query": "max(snmp_device_voltage_volts{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "Supply Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Supply voltage of the Hytera repeater in volts, from rptVoltage (1.3.6.1.4.1.40297.1.2.1.2.1.0, 4-byte little-endian IEEE 754 float). The object is invalid on RD620 / RD960; values outside 0 to 100 V are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "voltage_alarm_state",
+      "query": "max(snmp_voltage_alarm_state{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "Voltage Alarm",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Voltage alarm of the Hytera repeater from rptVoltageAlarm (1.3.6.1.4.1.40297.1.2.1.1.1.0): 0 normal maps to 1 (normal); 1 low voltage, 2 high voltage and 3 abnormal map to 2 (abnormal)."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "temperature_alarm_state",
+      "query": "max(snmp_temperature_alarm_state{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "Temperature Alarm",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Temperature alarm of the Hytera repeater from rptTemperatureAlarm (1.3.6.1.4.1.40297.1.2.1.1.2.0): 0 normal maps to 1 (normal); 1 low temperature and 2 high temperature map to 2 (abnormal)."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "tx_forward_power_watts",
+      "query": "max(snmp_tx_forward_power_watts{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "TX Forward Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Transmitter forward power of the Hytera repeater in watts, from rptTxFwdPower (1.3.6.1.4.1.40297.1.2.1.2.5.0, 4-byte little-endian IEEE 754 float). The object is invalid on RD620 / RD960; values outside 0 to 1000 W are dropped."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='wireless', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='wireless', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

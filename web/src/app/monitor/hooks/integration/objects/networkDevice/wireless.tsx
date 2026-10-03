@@ -68,6 +68,7 @@ export const useWirelessConfig = () => {
       'Wireless ProSoft Technology SNMP': 'snmp_prosoft',
       'Wireless Xirrus SNMP': 'snmp_xirrus',
       'Wireless Huawei AC SNMP': 'snmp_huawei_ac',
+      'Wireless Hytera SNMP': 'snmp_hytera',
       'Wireless H3C SNMP': 'snmp_h3c',
       'Wireless Ruckus SNMP': 'snmp_ruckus_wireless',
       'Wireless Aruba SNMP': 'snmp_aruba_wireless',

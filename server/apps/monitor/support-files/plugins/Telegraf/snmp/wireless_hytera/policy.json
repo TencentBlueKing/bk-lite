@@ -1,0 +1,36 @@
+{
+  "object": "Wireless",
+  "plugin": "Wireless Hytera SNMP",
+  "templates": [
+    {
+      "name": "Hytera中继台电压告警",
+      "alert_name": "无线设备${resource_name} 电压告警",
+      "description": "监控 Hytera 中继台电压告警（欠压、过压或异常），出现告警时提示供电电源或电池异常。",
+      "metric_name": "voltage_alarm_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Hytera中继台温度告警",
+      "alert_name": "无线设备${resource_name} 温度告警",
+      "description": "监控 Hytera 中继台温度告警（低温或高温），出现告警时提示散热不良或环境温度异常。",
+      "metric_name": "temperature_alarm_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

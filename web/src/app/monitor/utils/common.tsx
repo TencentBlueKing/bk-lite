@@ -782,6 +782,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /sierra\s*wireless|airlink|\baleos\b/i, label: 'Sierra Wireless', icon: 'mm-sierrawireless_sierrawireless' },
   { match: /netmodule/i, label: 'NetModule', icon: 'mm-netmodule_netmodule' },
   { match: /engenius/i, label: 'EnGenius', icon: 'mm-engenius_engenius' },
+  { match: /hytera/i, label: 'Hytera' },
   { match: /aerohive|hiveap|hiveos/i, label: 'Aerohive', icon: 'mm-aerohive_aerohive' },
   { match: /grandstream|\bgwn\d/i, label: 'Grandstream', icon: 'mm-grandstream_grandstream' },
   { match: /albentia|aerdocsis|wimax/i, label: 'Albentia', icon: 'mm-albentia_albentia' },
