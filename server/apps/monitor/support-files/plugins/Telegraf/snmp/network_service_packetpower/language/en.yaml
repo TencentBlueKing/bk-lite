@@ -1,0 +1,72 @@
+NetworkService Packet Power SNMP:
+  name: Packet Power (Telegraf)
+  desc: SNMP monitoring template for Packet Power EG4 wireless metering gateway. It
+    reports per-node current, voltage, power, temperature and humidity filtered by
+    channelId, plus per-port inbound traffic rate, per-port outbound traffic rate,
+    and system uptime
+monitor_object:
+  NetworkService: NetworkService
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  NetworkService:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart,
+        derived from sysUpTime. Monitoring uptime helps administrators understand
+        device stability and identify unexpected reboots or failures.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of outbound bytes sent over the
+        past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifOutOctets on high-speed ports, keeping the rate accurate.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the
+        entire device over the past 5 minutes, measured in bytes per second, summed
+        across all interfaces from the 64-bit ifHCInOctets counter. It helps administrators
+        obtain an overview of incoming traffic for overall monitoring and capacity
+        planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire
+        device over the past 5 minutes, measured in bytes per second, summed across
+        all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
+        assess sending performance for traffic management and optimization.
+    pdu_current_amps:
+      name: Node Current
+      desc: Per-node current in amperes from EG4 reValue. Only current(20) and optional
+        currenta/b/c(21-23) channelId rows are kept. Empty tables or unmatched channels
+        yield no points.
+    pdu_voltage_volts:
+      name: Node Voltage
+      desc: Per-node voltage in volts from EG4 reValue. Only voltage(30) and optional
+        voltagea/b/c(31-33) channelId rows are kept. Empty tables or unmatched channels
+        yield no points.
+    pdu_power_watts:
+      name: Node Power
+      desc: Per-node active power in watts from EG4 reValue. Only power(10) and optional
+        powera/b/c(11-13) channelId rows are kept. Empty tables or unmatched channels
+        yield no points.
+    env_temperature_celsius:
+      name: Environment Temperature
+      desc: Per-node temperature in degrees Celsius from EG4 reValue. Only temperature(60)
+        channelId rows are kept. Empty tables or unmatched channels yield no points.
+    env_humidity_percent:
+      name: Environment Humidity
+      desc: Per-node relative humidity in percent from EG4 reValue. Only humidity(191)
+        channelId rows are kept. Values outside 0-100 and empty tables yield no points.
+monitor_object_metric_group:
+  NetworkService:
+    Base: Base
+    Traffic: Traffic
+    NetworkService: NetworkService
+    Power: Power
+    Environment: Environment

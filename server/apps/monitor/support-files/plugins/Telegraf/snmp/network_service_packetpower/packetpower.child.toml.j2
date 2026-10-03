@@ -1,0 +1,161 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_packetpower"
+        config_type = "packetpower"
+        brand = "packetpower"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # EG4 readingsTable under PEN 33688.4. INDEX is reNodeId1..4 + channelId.
+    # Keep current(20)/voltage(30)/power(10)/temperature(60)/humidity(191)
+    # and optional per-phase 11-13, 21-23, 31-33. Do not invent CPU% or memory.
+    [[inputs.snmp.table]]
+        name = "eg4_reading"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.33688.4.1.1.12"
+        name = "raw_value"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.33688.4.1.1.13"
+        name = "units"
+
+[[processors.starlark]]
+    namepass = ["eg4_reading"]
+    source = '''
+def hex4(n):
+    n = int(n) & 65535
+    digits = "0123456789ABCDEF"
+    return digits[(n // 4096) % 16] + digits[(n // 256) % 16] + digits[(n // 16) % 16] + digits[n % 16]
+
+def round_tenth(x):
+    scaled = x * 10.0
+    if scaled >= 0:
+        return float(int(scaled + 0.5)) / 10.0
+    return float(int(scaled - 0.5)) / 10.0
+
+def units_ok(kind, units):
+    if units == None:
+        return True
+    u = str(units).strip()
+    if u == "":
+        return True
+    if kind == "current":
+        return u == "A" or u == "a" or u == "Amp" or u == "Amps" or u == "AMP"
+    if kind == "voltage":
+        return u == "V" or u == "v" or u == "Volt" or u == "Volts"
+    if kind == "power":
+        return u == "W" or u == "w" or u == "Watt" or u == "Watts"
+    if kind == "humidity":
+        return u == "%" or u == "RH" or u == "%RH" or u == "Percent"
+    return False
+
+def temp_celsius(raw, units):
+    value = float(raw)
+    if units == None:
+        return value
+    u = str(units).strip()
+    if u == "":
+        return value
+    if u == "C" or u == "c" or u == "DegC" or u == "Celsius" or u == "degC" or u == "°C" or u == "℃" or u == "° C":
+        return value
+    if u == "F" or u == "f" or u == "°F" or u == "℉" or u == "° F" or u == "DegF" or u == "Fahrenheit" or u == "degF":
+        return round_tenth((value - 32.0) * 5.0 / 9.0)
+    return None
+
+def clone_metric(src, name):
+    out = Metric(name)
+    for key, value in src.tags.items():
+        if key != "index":
+            out.tags[key] = value
+    out.time = src.time
+    return out
+
+def apply(metric):
+    f = metric.fields
+    if len(f.keys()) == 0:
+        return None
+    raw = f.pop("raw_value", None)
+    units = f.pop("units", None)
+    if raw == None:
+        return None
+    if raw == -2147483648:
+        return None
+    idx = metric.tags.get("index", "")
+    parts = idx.split(".")
+    if len(parts) < 5:
+        return None
+    channel = int(parts[4])
+    kind = None
+    out = None
+    if channel == 20 or channel == 21 or channel == 22 or channel == 23:
+        kind = "current"
+        out = clone_metric(metric, "pdu_current")
+        out.fields["amps"] = float(raw)
+    elif channel == 30 or channel == 31 or channel == 32 or channel == 33:
+        kind = "voltage"
+        out = clone_metric(metric, "pdu_voltage")
+        out.fields["volts"] = float(raw)
+    elif channel == 10 or channel == 11 or channel == 12 or channel == 13:
+        kind = "power"
+        out = clone_metric(metric, "pdu_power")
+        out.fields["watts"] = float(raw)
+    elif channel == 60:
+        celsius = temp_celsius(raw, units)
+        if celsius == None:
+            return None
+        if celsius < -40 or celsius > 100:
+            return None
+        out = clone_metric(metric, "env_temperature")
+        out.fields["celsius"] = celsius
+        out.tags["node"] = hex4(parts[0]) + "-" + hex4(parts[1]) + "-" + hex4(parts[2]) + "-" + hex4(parts[3])
+        out.tags["channel"] = str(channel)
+        if units != None and str(units).strip() != "":
+            out.tags["units"] = str(units).strip()
+        return out
+    elif channel == 191:
+        kind = "humidity"
+        value = float(raw)
+        if value < 0 or value > 100:
+            return None
+        out = clone_metric(metric, "env_humidity")
+        out.fields["percent"] = value
+    else:
+        return None
+    if not units_ok(kind, units):
+        return None
+    out.tags["node"] = hex4(parts[0]) + "-" + hex4(parts[1]) + "-" + hex4(parts[2]) + "-" + hex4(parts[3])
+    out.tags["channel"] = str(channel)
+    if units != None and str(units).strip() != "":
+        out.tags["units"] = str(units).strip()
+    return out
+'''
+    [processors.starlark.tagpass]
+        brand = ["packetpower"]

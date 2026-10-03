@@ -1,0 +1,52 @@
+NetworkService Packet Power SNMP:
+  name: Packet Power（Telegraf）
+  desc: 面向 Packet Power EG4 无线计量网关的 SNMP 监控模板，可按 channelId 采集节点电流、电压、功率、温度与湿度，并上报每端口入向流量速率、每端口出向流量速率和运行时长。
+monitor_object:
+  NetworkService: 网络服务
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  NetworkService:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64
+        位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内出向发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64
+        位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+    device_total_incoming_traffic:
+      name: 设备接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率（按所有接口的 64 位 ifHCInOctets 汇总），单位为字节每秒。帮助管理员获取整个设备的接收流量情况，支持总体流量监控与容量规划。
+    device_total_outgoing_traffic:
+      name: 设备发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
+    pdu_current_amps:
+      name: 节点电流
+      desc: 来自 EG4 reValue 的节点电流，单位为安培。仅保留 channelId current(20) 及可选 currenta/b/c(21-23)，并用
+        reUnits 校验单位。空表或不匹配通道不产生数据点。
+    pdu_voltage_volts:
+      name: 节点电压
+      desc: 来自 EG4 reValue 的节点电压，单位为伏特。仅保留 channelId voltage(30) 及可选 voltagea/b/c(31-33)，并用
+        reUnits 校验单位。空表或不匹配通道不产生数据点。
+    pdu_power_watts:
+      name: 节点功率
+      desc: 来自 EG4 reValue 的节点有功功率，单位为瓦特。仅保留 channelId power(10) 及可选 powera/b/c(11-13)，并用
+        reUnits 校验单位。空表或不匹配通道不产生数据点。
+    env_temperature_celsius:
+      name: 环境温度
+      desc: 来自 EG4 reValue 的节点温度，单位为摄氏度。仅保留 channelId temperature(60)。空表或不匹配通道不产生数据点。
+    env_humidity_percent:
+      name: 环境湿度
+      desc: 来自 EG4 reValue 的节点相对湿度，单位为百分比。仅保留 channelId humidity(191)。超出 0-100
+        或空表不产生数据点。
+monitor_object_metric_group:
+  NetworkService:
+    Base: 基础
+    Traffic: 流量
+    NetworkService: 网络服务
+    Power: 电力
+    Environment: 环境

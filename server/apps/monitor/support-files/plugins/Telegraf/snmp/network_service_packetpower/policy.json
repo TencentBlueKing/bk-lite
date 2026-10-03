@@ -1,0 +1,31 @@
+{
+  "object": "NetworkService",
+  "plugin": "NetworkService Packet Power SNMP",
+  "templates": [
+    {
+      "name": "Packet Power环境温度过高",
+      "alert_name": "网关 ${resource_name} 节点 ${metric__node} 环境温度过高",
+      "description": "监控 Packet Power EG4 无线计量网关的环境温度，当持续高于阈值时触发告警，提示机柜或节点过热风险。",
+      "metric_name": "env_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 45,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 40,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 35,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

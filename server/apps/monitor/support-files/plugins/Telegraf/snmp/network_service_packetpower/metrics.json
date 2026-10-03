@@ -1,0 +1,185 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_packetpower",
+  "plugin": "NetworkService Packet Power SNMP",
+  "plugin_desc": "Packet Power EG4 wireless gateway SNMP child template for devices under Packet Power PEN 33688. Interface traffic is supplied by the shared NetworkService SNMP IF-MIB floor rather than a plugin-side ifHC expansion. Proven readingsTable increments are reValue filtered by channelId for current, voltage, power, temperature and humidity, with reUnits kept as a unit tag and the four 16-bit node index parts joined as a GUID tag. CPU and memory scalars are not invented. Harmonic and power-factor channel enumerations are not collected. Supported brands/models - EG4 gateways that expose readingsTable and standard IF-MIB.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='network_service', collect_type='snmp_packetpower'}) by (instance_id)",
+  "name": "NetworkService",
+  "icon": "mm-network_service_网络服务",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='network_service'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "pdu_current_amps",
+    "pdu_voltage_volts",
+    "pdu_power_watts",
+    "env_temperature_celsius",
+    "env_humidity_percent"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Power",
+      "name": "pdu_current_amps",
+      "query": "pdu_current_amps{instance_type='network_service', __$labels__}",
+      "display_name": "Node Current",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "node",
+          "description": "Node GUID"
+        },
+        {
+          "name": "channel",
+          "description": "EG4 channelId"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-node current in amperes from EG4 reValue (1.3.6.1.4.1.33688.4.1.1.12) keeping channelId current(20) and optional currenta/b/c(21-23). reUnits is checked when present. Absent, unmatched or invalid rows are dropped."
+    },
+    {
+      "metric_group": "Power",
+      "name": "pdu_voltage_volts",
+      "query": "pdu_voltage_volts{instance_type='network_service', __$labels__}",
+      "display_name": "Node Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [
+        {
+          "name": "node",
+          "description": "Node GUID"
+        },
+        {
+          "name": "channel",
+          "description": "EG4 channelId"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-node voltage in volts from EG4 reValue (1.3.6.1.4.1.33688.4.1.1.12) keeping channelId voltage(30) and optional voltagea/b/c(31-33). reUnits is checked when present. Absent, unmatched or invalid rows are dropped."
+    },
+    {
+      "metric_group": "Power",
+      "name": "pdu_power_watts",
+      "query": "pdu_power_watts{instance_type='network_service', __$labels__}",
+      "display_name": "Node Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [
+        {
+          "name": "node",
+          "description": "Node GUID"
+        },
+        {
+          "name": "channel",
+          "description": "EG4 channelId"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-node active power in watts from EG4 reValue (1.3.6.1.4.1.33688.4.1.1.12) keeping channelId power(10) and optional powera/b/c(11-13). reUnits is checked when present. Absent, unmatched or invalid rows are dropped."
+    },
+    {
+      "metric_group": "Environment",
+      "name": "env_temperature_celsius",
+      "query": "env_temperature_celsius{instance_type='network_service', __$labels__}",
+      "display_name": "Environment Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "node",
+          "description": "Node GUID"
+        },
+        {
+          "name": "channel",
+          "description": "EG4 channelId"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-node temperature in degrees Celsius from EG4 reValue (1.3.6.1.4.1.33688.4.1.1.12) keeping channelId temperature(60). reUnits of C, °C or ℃ are kept; °F/F is converted to Celsius. Values outside -40..100 C, unmatched units or absent rows are dropped."
+    },
+    {
+      "metric_group": "Environment",
+      "name": "env_humidity_percent",
+      "query": "env_humidity_percent{instance_type='network_service', __$labels__}",
+      "display_name": "Environment Humidity",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "node",
+          "description": "Node GUID"
+        },
+        {
+          "name": "channel",
+          "description": "EG4 channelId"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-node relative humidity in percent from EG4 reValue (1.3.6.1.4.1.33688.4.1.1.12) keeping channelId humidity(191). Values outside 0-100 and unmatched rows are dropped."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of inbound bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of outbound bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}
