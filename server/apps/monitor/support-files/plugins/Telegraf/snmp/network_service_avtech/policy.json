@@ -1,0 +1,71 @@
+{
+  "object": "NetworkService",
+  "plugin": "NetworkService AVTECH Room Alert 32E SNMP",
+  "templates": [
+    {
+      "name": "AVTECH环境温度过高",
+      "alert_name": "网络服务${resource_name} 环境温度过高",
+      "description": "监控 AVTECH Room Alert 32E 内部温度，当持续高于阈值时触发告警，提示机房过热或空调异常。",
+      "metric_name": "env_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 40,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 35,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 30,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "AVTECH环境湿度过高",
+      "alert_name": "网络服务${resource_name} 环境湿度过高",
+      "description": "监控 AVTECH Room Alert 32E 内部相对湿度，当持续高于阈值时触发告警，提示机房潮湿风险。",
+      "metric_name": "env_humidity_percent",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "AVTECH电源状态异常",
+      "alert_name": "网络服务${resource_name} 电源状态异常",
+      "description": "监控 AVTECH Room Alert 32E 内部电源来源，归一后 1 为市电正常、2 为电池或其他异常，电源异常时触发告警。",
+      "metric_name": "env_power_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

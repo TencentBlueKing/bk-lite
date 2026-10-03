@@ -871,6 +871,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /asentria|siteboss/i, label: 'Asentria', icon: 'mm-asentria_asentria' },
   { match: /server\s*technology|servertech|sentry3/i, label: 'Server Technology', icon: 'mm-servertech_servertech' },
   { match: /enlogic|en2\.?0/i, label: 'Enlogic', icon: 'mm-enlogic_enlogic' },
+  { match: /avtech|room\s*alert/i, label: 'AVTECH' },
   { match: /rittal|cmc\s*iii/i, label: 'Rittal', icon: 'mm-rittal_rittal' },
   { match: /gude|expert\s*power\s*control/i, label: 'Gude', icon: 'mm-gude_gude' },
   { match: /geist|blackbird|watchdog/i, label: 'Geist', icon: 'mm-geist_geist' },

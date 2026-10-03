@@ -1,0 +1,145 @@
+NetworkService AVTECH Room Alert 32E SNMP:
+  name: AVTECH Room Alert 32E (Telegraf)
+  desc: SNMP monitoring template for AVTECH Room Alert 32E environmental monitor. It
+    reports internal temperature, relative humidity, power state, per-port inbound
+    traffic rate, per-port outbound traffic rate, and system uptime (IANA PEN 20916).
+monitor_object:
+  NetworkService: NetworkService
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  NetworkService:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart,
+        derived from sysUpTime. Monitoring uptime helps administrators understand
+        device stability and identify unexpected reboots or failures.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of outbound bytes sent over the
+        past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifOutOctets on high-speed ports, keeping the rate accurate.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the
+        entire device over the past 5 minutes, measured in bytes per second, summed
+        across all interfaces from the 64-bit ifHCInOctets counter. It helps administrators
+        obtain an overview of incoming traffic for overall monitoring and capacity
+        planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire
+        device over the past 5 minutes, measured in bytes per second, summed across
+        all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
+        assess sending performance for traffic management and optimization.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: Overall CPU utilization of the network-service appliance, reported directly
+        as a percentage. Sustained high CPU means the node is near its processing
+        capacity for traffic forwarding and filtering.
+    device_memory_usage:
+      name: Memory Usage
+      desc: System memory utilization of the network-service appliance, reported directly
+        as a percentage. Sustained high memory may indicate map/flow-table pressure
+        on the device.
+    device_temperature_celsius:
+      name: Temperature
+      desc: Temperature reading of the network-service appliance in degrees Celsius.
+        High values may indicate cooling or ambient-temperature risk.
+    network_service_dns_service_state:
+      name: DNS Service Status
+      desc: Operational state of the DNS service, normalized to 1=healthy and 2=fault.
+    network_service_dhcp_service_state:
+      name: DHCP Service Status
+      desc: Operational state of the DHCP service, normalized to 1=healthy and 2=fault.
+    network_service_ntp_service_state:
+      name: NTP Service Status
+      desc: Operational state of the NTP service, normalized to 1=healthy and 2=fault.
+    network_service_zwp_service_state:
+      name: ZWP Service Status
+      desc: Operational state of the ZWP service, normalized to 1=healthy and 2=fault.
+    network_service_tftp_service_state:
+      name: TFTP Service Status
+      desc: Operational state of the TFTP service, normalized to 1=healthy and 2=fault.
+    network_service_virtual_server_state:
+      name: Virtual Server Status
+      desc: Availability state of the virtual server, normalized to 1=healthy and
+        2=fault.
+    network_service_node_state:
+      name: Node Status
+      desc: Availability state of the service node, normalized to 1=healthy and 2=fault.
+    network_service_pool_state:
+      name: Pool Status
+      desc: Availability state of the service pool, normalized to 1=healthy and 2=fault.
+    network_service_pool_member_state:
+      name: Pool Member Status
+      desc: Availability state of the service pool member, normalized to 1=healthy
+        and 2=fault.
+    network_service_spectracom_sync_state:
+      name: Spectracom Sync Status
+      desc: Spectracom xSync system synchronization state, normalized to 1=healthy
+        and 2=fault.
+    network_service_spectracom_dc_power_state:
+      name: Spectracom DC Power Status
+      desc: Spectracom DC power input state, normalized to 1=healthy and 2=fault.
+    network_service_spectracom_minor_alarm_state:
+      name: Spectracom Minor Alarm Status
+      desc: Spectracom minor alarm state, normalized to 1=healthy and 2=fault.
+    network_service_spectracom_major_alarm_state:
+      name: Spectracom Major Alarm Status
+      desc: Spectracom major alarm state, normalized to 1=healthy and 2=fault.
+    network_service_spectracom_ntp_state:
+      name: Spectracom NTP Status
+      desc: Spectracom NTP current mode, normalized to 1=healthy and 2=fault.
+    network_service_spectracom_ntp_stratum:
+      name: Spectracom NTP Stratum
+      desc: Current Spectracom NTP stratum level.
+    pdu_active_power_watts:
+      name: PDU Active Power
+      desc: PDU total real power in watts from VERTIV-V5 pduTotalRealPower. Empty
+        PDU tables yield no rows. Persistently high values may indicate overload on
+        the PDU feed.
+    pdu_phase_current_amps:
+      name: PDU Phase Current
+      desc: PDU phase current in amperes from VERTIV-V5 pduPhaseCurrent. The SNMP
+        value is hundredths of an amp RMS and is scaled by /100. Empty phase tables
+        yield no rows.
+    pdu_line_current_amps:
+      name: PDU Line Current
+      desc: Optional PDU line current in amperes from VERTIV-V5 pduLineCurrent. The
+        SNMP value is hundredths of an amp RMS and is scaled by /100. Empty line tables
+        yield no rows.
+    pdu_outlet_current_amps:
+      name: PDU Outlet Current
+      desc: PDU outlet current in amperes from VERTIV-V5 pduOutletMeterCurrent. The
+        SNMP value is hundredths of an amp RMS and is scaled by /100. Empty outlet-meter
+        tables yield no rows.
+    env_temperature_celsius:
+      name: Environment Temperature
+      desc: Internal temperature of the Room Alert 32E in degrees Celsius. Four-digit
+        output is divided by 100; a one-digit integer scale is used only when the
+        Fahrenheit leaf disagrees on hundredths and agrees within 1 C. Absent or invalid
+        values are dropped.
+    env_humidity_percent:
+      name: Environment Humidity
+      desc: Internal relative humidity of the Room Alert 32E in percent. The same
+        scale as internal temperature is applied. Absent or invalid values are dropped.
+    env_power_state:
+      name: Power Status
+      desc: Internal power source of the Room Alert 32E, normalized to 1=healthy (AC
+        mains) and 2=fault (battery or other).
+monitor_object_metric_group:
+  NetworkService:
+    Base: Base
+    Traffic: Traffic
+    NetworkService: NetworkService
+    Power: Power
+    Environment: Environment
+    Hardware Status: Hardware Status

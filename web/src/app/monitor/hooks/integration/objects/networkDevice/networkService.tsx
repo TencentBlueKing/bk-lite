@@ -82,6 +82,7 @@ export const useNetworkServiceConfig = () => {
       'NetworkService Server Technology Sentry3 SNMP': 'snmp_servertech',
       'NetworkService Enlogic PDU SNMP': 'snmp_enlogic',
       'NetworkService Rittal CMC III SNMP': 'snmp_rittal',
+      'NetworkService AVTECH Room Alert 32E SNMP': 'snmp_avtech',
       'NetworkService Gude PDU SNMP': 'snmp_gude',
       'NetworkService Geist PDU Environmental SNMP': 'snmp_geist',
       'NetworkService Panduit iPDU SNMP': 'snmp_panduit',

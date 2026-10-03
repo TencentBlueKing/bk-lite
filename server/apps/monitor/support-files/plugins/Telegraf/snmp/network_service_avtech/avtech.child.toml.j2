@@ -1,0 +1,96 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_avtech"
+        config_type = "avtech"
+        brand = "avtech"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ROOMALERT32E-MIB under PEN 20916, tree 20916.1.8. Scalars use top-level field with .0 → measurement snmp.
+    # internal-tempc / internal-humidity default to four-digit output (value ×100). internal-tempf is only used to pick ÷100 vs ÷1.
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.20916.1.8.1.1.2.0"
+        name = "internal_tempc"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.20916.1.8.1.1.1.0"
+        name = "internal_tempf"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.20916.1.8.1.2.1.0"
+        name = "internal_humidity"
+    # internal-power: 1=AC mains, 0=battery. Normalized to 1=healthy, 2=fault. Other values are dropped.
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.20916.1.8.1.3.1.0"
+        name = "internal_power"
+
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def abs_diff(a, b):
+    d = a - b
+    if d < 0:
+        return 0.0 - d
+    return d
+
+def raw_ok(v):
+    if v == None or type(v) not in ["int", "float"]:
+        return False
+    if v == 65535 or v == -1:
+        return False
+    return True
+
+def apply(metric):
+    tempc = metric.fields.pop("internal_tempc", None)
+    tempf = metric.fields.pop("internal_tempf", None)
+    humidity = metric.fields.pop("internal_humidity", None)
+    power = metric.fields.pop("internal_power", None)
+    scale = 100.0
+    if raw_ok(tempc) and raw_ok(tempf):
+        c100 = tempc / 100.0
+        from_f_100 = (tempf / 100.0 - 32.0) * 5.0 / 9.0
+        c1 = tempc * 1.0
+        from_f_1 = (tempf * 1.0 - 32.0) * 5.0 / 9.0
+        if abs_diff(c100, from_f_100) > 1.0 and abs_diff(c1, from_f_1) <= 1.0:
+            scale = 1.0
+    if raw_ok(tempc):
+        celsius = tempc / scale
+        if celsius >= -40.0 and celsius <= 100.0:
+            metric.fields["env_temperature_celsius"] = celsius
+    if raw_ok(humidity):
+        rh = humidity / scale
+        if rh >= 0.0 and rh <= 100.0:
+            metric.fields["env_humidity_percent"] = rh
+    if power == 1:
+        metric.fields["env_power_state"] = 1
+    elif power == 0:
+        metric.fields["env_power_state"] = 2
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["avtech"]
