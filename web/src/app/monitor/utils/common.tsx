@@ -786,6 +786,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /grandstream|\bgwn\d/i, label: 'Grandstream', icon: 'mm-grandstream_grandstream' },
   { match: /albentia|aerdocsis|wimax/i, label: 'Albentia', icon: 'mm-albentia_albentia' },
   { match: /ligowave|ligo\s*wave|infinity/i, label: 'LigoWave', icon: 'mm-ligowave_ligowave' },
+  { match: /rajant|breadcrumb/i, label: 'Rajant' },
   { match: /radwin|winlink/i, label: 'Radwin', icon: 'mm-radwin_radwin' },
   { match: /mimosa|\bbfive\b|\bptmp\b/i, label: 'Mimosa', icon: 'mm-mimosa_mimosa' },
   { match: /phoenix\s*contact|fl\s*switch/i, label: 'Phoenix Contact', icon: 'mm-phoenixcontact_phoenixcontact' },

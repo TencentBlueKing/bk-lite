@@ -1,0 +1,62 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_rajant"
+        config_type = "rajant"
+        brand = "rajant"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Rajant BreadCrumb 系统组（RAJANT-CORPORATION-MIB，PEN 34861，system 1.3.6.1.4.1.34861.1）----
+    # 标量顶层 field 带 .0，落 measurement snmp，查询用 snmp_ 前缀。
+    # systemTemperature：系统温度，Integer32，按摄氏度采集。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.34861.1.2.0"
+        name = "system_temperature_raw"
+    # freeMemory：空闲内存，Gauge32 绝对值（不是百分比）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.34861.1.3.0"
+        name = "free_memory_raw"
+# ---- CPU：system 组只有累计空闲时长 idle（TimeTicks），不是 CPU 使用率，本模板不采；风扇、电源：MIB 无对应对象，不采集。----
+
+# ---- 温度须为 -60~150 的整数；空闲内存须为正整数；无效值丢弃，原始字段不落库。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    temp = metric.fields.pop("system_temperature_raw", None)
+    if type(temp) == "int" and temp >= -60 and temp <= 150:
+        metric.fields["device_temperature_celsius"] = temp
+    free = metric.fields.pop("free_memory_raw", None)
+    if type(free) == "int" and free > 0:
+        metric.fields["device_memory_free"] = free
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["rajant"]
