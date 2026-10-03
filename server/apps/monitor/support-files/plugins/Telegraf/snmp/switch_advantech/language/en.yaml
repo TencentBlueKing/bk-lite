@@ -1,6 +1,6 @@
 Switch Advantech SNMP:
   name: Advantech (Telegraf)
-  desc: "SNMP monitoring template for Advantech switch. It reports uptime, power supply status, and interface traffic, for EKI-5000/5500/5600/5700/7000 (enterprise PEN 10297)."
+  desc: "SNMP monitoring template for Advantech switch. It reports uptime, power supply status (PWR1 / PWR2), temperature LED status, and interface traffic, for EKI-5000/5500/5600/5700/7000 (enterprise PEN 10297)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -257,6 +257,10 @@ monitor_object_metric:
         power module operating temperature; abnormally high values may indicate blocked
         airflow, failing fans or excessive ambient heat, which can trigger thermal
         protection or hardware damage if left unaddressed.
+    device_temperature_state:
+      name: Temperature Status
+      desc: Temperature alarm or LED state of the device, normalized so that 1 is
+        normal and 2 is abnormal. It is a state, not a temperature reading.
 monitor_object_metric_group:
   Switch:
     Base: Base

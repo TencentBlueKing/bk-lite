@@ -56,15 +56,23 @@
     # ---- Advantech EKI redundant-power LED state (ADVANTECH-EKI-PRONEER-MIB ledPWR1Status, scalar, PEN 10297) ----
     # 待现网核验：标量 OID 1.3.6.1.4.1.10297.202.7000.1.1.14.3.0（ledStatus 组）。原始码 0=notSupported / 1=up(电源在位/正常) / 2=down(电源输入丢失)。
     # 下方 processors.enum 归一为 1=正常/2=异常（0 notSupported 与 1 up→正常,2 down→异常）。
-    # 注：另有 ledPWR2Status ...14.4.0(第二路电源),标量无法与 PWR1 同名分行,本插件取 PWR1 主电源；PWR2 略。
+    # 同组还有 ledPWR2Status ...14.4.0（第二路电源）与 ledTempStatus ...14.9.0（温度 LED，0/1/2 枚举，非摄氏度），与 PWR1 同一行一起取回，
+    # 由下方 starlark 拆成 device_psu（psu=1 / 2）与 device_temperature（state）。
     [[inputs.snmp.table]]
         name = "device_psu"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.10297.202.7000.1.1.14.3"
         name = "state"
-# ---- 电源 LED 归一：0=notSupported / 1=up→1(正常)，2=down→2(异常)。共享盘 device_psu_state 约定 1=正常,>1=异常。----
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10297.202.7000.1.1.14.4"
+        name = "pwr2_state"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10297.202.7000.1.1.14.9"
+        name = "temp_led_state"
+# ---- 电源 / 温度 LED 归一：0=notSupported / 1=up(正常)→1(正常)，2=down(异常)→2(异常)。共享盘 device_psu_state 约定 1=正常,>1=异常。----
 [[processors.enum]]
+    order = 1
     namepass = ["device_psu"]
     [[processors.enum.mapping]]
         field = "state"
@@ -72,5 +80,46 @@
         [processors.enum.mapping.value_mappings]
             "0" = 1
             "1" = 1
-# ---- CPU/内存/温度/风扇：N/A 不采。----
-# ---- EKI ProView MIB 无 CPU、无内存、无数值温度对象（仅 ledTempStatus ...14.9.0 为 0/1/2 LED 枚举非摄氏度数值）；EKI 为无风扇工业交换机，无风扇对象。故 CPU/内存/温度/风扇 → N/A。----
+    [[processors.enum.mapping]]
+        field = "pwr2_state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "0" = 1
+            "1" = 1
+    [[processors.enum.mapping]]
+        field = "temp_led_state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "0" = 1
+            "1" = 1
+
+# ---- 拆行：state → device_psu（psu=1），pwr2_state → device_psu（psu=2），temp_led_state → device_temperature（state）。字段缺失则不输出对应行。----
+[[processors.starlark]]
+    order = 2
+    namepass = ["device_psu"]
+    source = '''
+def child(metric, name, tag, tagval, value):
+    m = Metric(name)
+    for k, v in metric.tags.items():
+        m.tags[k] = v
+    if tag != None:
+        m.tags[tag] = tagval
+    m.fields["state"] = value
+    m.time = metric.time
+    return m
+
+def apply(metric):
+    out = []
+    for field, psu in [("state", "1"), ("pwr2_state", "2")]:
+        value = metric.fields.get(field)
+        if type(value) == "int":
+            out.append(child(metric, "device_psu", "psu", psu, value))
+    value = metric.fields.get("temp_led_state")
+    if type(value) == "int":
+        out.append(child(metric, "device_temperature", None, None, value))
+    return out
+'''
+    [processors.starlark.tagpass]
+        brand = ["advantech"]
+# ---- CPU/内存/数值温度/风扇：N/A 不采。----
+# ---- EKI ProView MIB 无 CPU、无内存、无数值温度对象（ledTempStatus 只是 LED 枚举，按状态采为 device_temperature_state）；EKI 为无风扇工业交换机，无风扇对象。----
