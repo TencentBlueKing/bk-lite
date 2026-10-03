@@ -22,7 +22,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(device_temperature_celsius{instance_type='firewall', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_temperature_celsius{instance_type='firewall', __$labels__}) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -35,7 +35,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_disk_usage",
-      "query": "max(device_disk_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_disk_usage{instance_type='firewall', __$labels__}) by (instance_id)",
       "display_name": "Disk Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -97,7 +97,7 @@
     {
       "metric_group": "Temperature",
       "name": "barracuda_cpu_temperature_celsius",
-      "query": "barracuda_cpu_temperature_celsius{instance_type='firewall', __$labels__}",
+      "query": "snmp_barracuda_cpu_temperature_celsius{instance_type='firewall', __$labels__}",
       "display_name": "Barracuda CPU Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -110,7 +110,7 @@
     {
       "metric_group": "Temperature",
       "name": "barracuda_system_temperature_celsius",
-      "query": "barracuda_system_temperature_celsius{instance_type='firewall', __$labels__}",
+      "query": "snmp_barracuda_system_temperature_celsius{instance_type='firewall', __$labels__}",
       "display_name": "Barracuda System Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -123,7 +123,7 @@
     {
       "metric_group": "Storage",
       "name": "barracuda_firmware_storage_usage",
-      "query": "barracuda_firmware_storage_usage{instance_type='firewall', __$labels__}",
+      "query": "snmp_barracuda_firmware_storage_usage{instance_type='firewall', __$labels__}",
       "display_name": "Firmware Storage Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -136,7 +136,7 @@
     {
       "metric_group": "Storage",
       "name": "barracuda_log_storage_usage",
-      "query": "barracuda_log_storage_usage{instance_type='firewall', __$labels__}",
+      "query": "snmp_barracuda_log_storage_usage{instance_type='firewall', __$labels__}",
       "display_name": "Log Storage Usage",
       "data_type": "Number",
       "unit": "percent",
