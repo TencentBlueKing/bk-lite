@@ -1,6 +1,6 @@
 Switch Raisecom SNMP:
   name: 瑞斯康达 Raisecom（Telegraf）
-  desc: 面向 Raisecom ISCOM/Gazelle 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、接口流量（企业号 PEN 8886）。
+  desc: 面向 Raisecom ISCOM/Gazelle 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、电源状态、接口流量（企业号 PEN 8886）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:
@@ -25,9 +25,13 @@ monitor_object_metric:
     device_temperature_celsius:
       name: 机箱温度
       desc: 该指标表示 Raisecom ISCOM/Gazelle 交换机的机箱温度（raisecomTemperatureValue），单位为摄氏度。持续偏高可能意味着散热不良或环境过热。
+    device_psu_state:
+      name: 电源状态
+      desc: 该指标表示 Raisecom ISCOM/Gazelle 交换机的电源状态（raisecomAlarmPowerStatus）。双电源均供电归一为 1=正常；任一路或两路电源掉电归一为 2=异常，表示供电冗余已丢失。
 monitor_object_metric_group:
   Switch:
     CPU: CPU
     Memory: 内存
     Temperature: 温度
     Base: 基础
+    Hardware Status: 硬件状态

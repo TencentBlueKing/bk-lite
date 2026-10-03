@@ -52,4 +52,24 @@
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.8886.1.1.4.2.1.0"
         name = "device_temperature_celsius"
-# ---- 风扇/电源：本轮不采（SYSTEM-MIB 无对应机箱风扇/电源健康标量）。----
+    # ---- 电源：raisecomAlarmPowerStatus 标量（raisecomAlarmPower 1.3.6.1.4.1.8886.1.1.4.7.3），顶层 field GET 必须带实例 .0 ----
+    # dual-power-on(1) / dual-power-off(2) / power1-off(3) / power2-off(4)。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.8886.1.1.4.7.3.6.0"
+        name = "psu_status_raw"
+# ---- 风扇：SYSTEM-MIB 无机箱风扇状态标量，不采。----
+
+# ---- 电源归一：dual-power-on(1) → device_psu_state=1 正常；dual-power-off(2) / power1-off(3) / power2-off(4) → 2 异常；其它取值不输出。原始字段不落库。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    v = metric.fields.pop("psu_status_raw", None)
+    if v == 1:
+        metric.fields["device_psu_state"] = 1
+    elif v == 2 or v == 3 or v == 4:
+        metric.fields["device_psu_state"] = 2
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["raisecom"]

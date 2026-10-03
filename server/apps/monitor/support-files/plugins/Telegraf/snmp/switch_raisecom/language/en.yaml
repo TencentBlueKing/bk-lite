@@ -1,6 +1,6 @@
 Switch Raisecom SNMP:
   name: Raisecom (Telegraf)
-  desc: "SNMP monitoring template for Raisecom ISCOM/Gazelle switches. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic (enterprise PEN 8886)."
+  desc: "SNMP monitoring template for Raisecom ISCOM/Gazelle switches. It reports uptime, CPU utilization, memory utilization, temperature, power supply status, and interface traffic (enterprise PEN 8886)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -39,9 +39,15 @@ monitor_object_metric:
       desc: This metric reports the chassis temperature of the Raisecom ISCOM/Gazelle
         switch (raisecomTemperatureValue) in degrees Celsius. Abnormally high
         temperatures may indicate cooling failure or excessive ambient heat.
+    device_psu_state:
+      name: Power Supply Status
+      desc: This metric reports the power supply status of the Raisecom ISCOM/Gazelle switch
+        (raisecomAlarmPowerStatus). Both supplies powered is normalized to 1=normal; either or both
+        supplies off is normalized to 2=abnormal, which means power redundancy is lost.
 monitor_object_metric_group:
   Switch:
     CPU: CPU
     Memory: Memory
     Temperature: Temperature
     Base: Base
+    Hardware Status: Hardware Status
