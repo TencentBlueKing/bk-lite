@@ -877,6 +877,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /panduit/i, label: 'Panduit', icon: 'mm-panduit_panduit' },
   { match: /apc|schneider\s*electric|powernet/i, label: 'APC', icon: 'mm-apc_apc' },
   { match: /eaton|powerware|xups/i, label: 'Eaton', icon: 'mm-eaton_eaton' },
+  { match: /papouch/i, label: 'Papouch' },
   { match: /tripp\s*lite|poweralert|webcardlx|snmpwebcard/i, label: 'Tripp Lite', icon: 'mm-tripplite_tripplite' },
   { match: /allot|netxplorer|netexplorer/i, label: 'Allot', icon: 'mm-allot_allot' },
   { match: /efficient\s*ip|solidserver/i, label: 'EfficientIP', icon: 'mm-efficientip_efficientip' },
