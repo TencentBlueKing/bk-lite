@@ -49,7 +49,7 @@
     {
       "metric_group": "NetworkService",
       "name": "device_cpu_usage",
-      "query": "100 - avg(device_cpu_idle{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "100 - avg(snmp_device_cpu_idle{instance_type='network_service', __$labels__}) by (instance_id)",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -62,7 +62,7 @@
     {
       "metric_group": "NetworkService",
       "name": "device_memory_usage",
-      "query": "avg((device_memory_total{instance_type='network_service', __$labels__} - device_memory_free{instance_type='network_service', __$labels__}) / clamp_min(device_memory_total{instance_type='network_service', __$labels__}, 1) * 100) by (instance_id)",
+      "query": "avg((snmp_device_memory_total{instance_type='network_service', __$labels__} - snmp_device_memory_free{instance_type='network_service', __$labels__}) / clamp_min(snmp_device_memory_total{instance_type='network_service', __$labels__}, 1) * 100) by (instance_id)",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
