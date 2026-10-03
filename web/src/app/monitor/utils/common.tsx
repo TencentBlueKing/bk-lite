@@ -879,6 +879,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /eaton|powerware|xups/i, label: 'Eaton', icon: 'mm-eaton_eaton' },
   { match: /tripp\s*lite|poweralert|webcardlx|snmpwebcard/i, label: 'Tripp Lite', icon: 'mm-tripplite_tripplite' },
   { match: /allot|netxplorer|netexplorer/i, label: 'Allot', icon: 'mm-allot_allot' },
+  { match: /cordex|alpha\s*technologies/i, label: 'Alpha Technologies' },
   { match: /efficient\s*ip|solidserver/i, label: 'EfficientIP', icon: 'mm-efficientip_efficientip' },
   { match: /nomadix|ag-?2000w/i, label: 'Nomadix', icon: 'mm-nomadix_nomadix' },
   { match: /airspan|air4g|air5g|airharmony|airvelocity/i, label: 'Airspan', icon: 'mm-airspan_airspan' },
