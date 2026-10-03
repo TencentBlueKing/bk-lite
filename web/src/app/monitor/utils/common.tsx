@@ -780,6 +780,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /robustel|\br3000\b|\bmg460\b/i, label: 'Robustel', icon: 'mm-robustel_robustel' },
   { match: /milesight|\bur3[257]\b/i, label: 'Milesight', icon: 'mm-milesight_milesight' },
   { match: /sierra\s*wireless|airlink|\baleos\b/i, label: 'Sierra Wireless', icon: 'mm-sierrawireless_sierrawireless' },
+  { match: /netsure|emerson\s*energy/i, label: 'Emerson NetSure' },
   { match: /netmodule/i, label: 'NetModule', icon: 'mm-netmodule_netmodule' },
   { match: /engenius/i, label: 'EnGenius', icon: 'mm-engenius_engenius' },
   { match: /aerohive|hiveap|hiveos/i, label: 'Aerohive', icon: 'mm-aerohive_aerohive' },

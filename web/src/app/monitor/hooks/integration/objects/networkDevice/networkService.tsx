@@ -89,6 +89,7 @@ export const useNetworkServiceConfig = () => {
       'NetworkService Eaton UPS PDU Environmental SNMP': 'snmp_eaton',
       'NetworkService Tripp Lite UPS PDU Environmental SNMP': 'snmp_tripplite',
       'NetworkService Allot SNMP': 'snmp_allot',
+      'NetworkService Emerson NetSure SNMP': 'snmp_netsure',
       'NetworkService EfficientIP SNMP': 'snmp_efficientip',
       'NetworkService Nomadix SNMP': 'snmp_nomadix',
       'NetworkService Socomec iPDU UPS SNMP': 'snmp_socomec',
