@@ -84,6 +84,7 @@ export const useNetworkServiceConfig = () => {
       'NetworkService Rittal CMC III SNMP': 'snmp_rittal',
       'NetworkService Gude PDU SNMP': 'snmp_gude',
       'NetworkService Geist PDU Environmental SNMP': 'snmp_geist',
+      'NetworkService Synaccess SynLink SNMP': 'snmp_synaccess',
       'NetworkService Panduit iPDU SNMP': 'snmp_panduit',
       'NetworkService APC UPS PDU Environmental SNMP': 'snmp_apc',
       'NetworkService Eaton UPS PDU Environmental SNMP': 'snmp_eaton',
