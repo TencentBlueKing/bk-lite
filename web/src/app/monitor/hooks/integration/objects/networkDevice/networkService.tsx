@@ -74,6 +74,7 @@ export const useNetworkServiceConfig = () => {
       'NetworkService ZDNS SNMP': 'snmp_zdns',
       'NetworkService BlueCat SNMP': 'snmp_bluecat',
       'NetworkService Meinberg LANTIME SNMP': 'snmp_meinberg',
+      'NetworkService IT Watchdogs WeatherGoose SNMP': 'snmp_itwatchdogs',
       'NetworkService Endace SNMP': 'snmp_endace',
       'NetworkService DEVA Broadcast SNMP': 'snmp_deva',
       'NetworkService EndRun SNMP': 'snmp_endrun',
