@@ -58,6 +58,7 @@ export const useWirelessConfig = () => {
       'Wireless EnGenius SNMP': 'snmp_engenius',
       'Wireless Aerohive SNMP': 'snmp_aerohive',
       'Wireless Grandstream SNMP': 'snmp_grandstream',
+      'Wireless Ubiquiti airFiber SNMP': 'snmp_ubiquiti_airfiber',
       'Wireless ASCOM SNMP': 'snmp_ascom',
       'Wireless Albentia SNMP': 'snmp_albentia',
       'Wireless LigoWave SNMP': 'snmp_ligowave',
