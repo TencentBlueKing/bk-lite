@@ -882,6 +882,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /efficient\s*ip|solidserver/i, label: 'EfficientIP', icon: 'mm-efficientip_efficientip' },
   { match: /nomadix|ag-?2000w/i, label: 'Nomadix', icon: 'mm-nomadix_nomadix' },
   { match: /airspan|air4g|air5g|airharmony|airvelocity/i, label: 'Airspan', icon: 'mm-airspan_airspan' },
+  { match: /freewave|zumlink/i, label: 'FreeWave' },
   { match: /acksys|airlink|waveos/i, label: 'ACKSYS', icon: 'mm-acksys_acksys' },
   { match: /\bxirrus\b/i, label: 'Xirrus', icon: 'mm-xirrus_xirrus' },
   { match: /ruckus|zonedirector|\bsmartzone\b/i, label: 'Ruckus', icon: 'mm-ruckus_ruckus' },
