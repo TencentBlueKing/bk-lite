@@ -1,6 +1,6 @@
 Transmission Ceragon SNMP:
   name: Ceragon (Telegraf)
-  desc: "SNMP monitoring template for Ceragon FibeAir microwave transmission device. It reports uptime, RFU and PA temperature, and interface traffic (enterprise PEN 2281)."
+  desc: "SNMP monitoring template for Ceragon FibeAir microwave transmission device. It reports uptime, RFU and PA temperature, IDU temperature and input voltage, and interface traffic (enterprise PEN 2281)."
 monitor_object:
   Transmission: Transmission
 monitor_object_type:
@@ -56,6 +56,14 @@ monitor_object_metric:
       name: PA Temperature
       desc: Highest power amplifier temperature of the RFUs in degrees Celsius. High
         values indicate RF hardware thermal stress.
+    device_idu_temperature_celsius:
+      name: IDU Temperature
+      desc: Indoor unit (IDU) temperature in degrees Celsius. High values may indicate
+        poor equipment-room cooling, blocked airflow, or hardware overload.
+    device_voltage_input:
+      name: Input Voltage
+      desc: Input supply voltage of the device in volts. Abnormal values may indicate
+        power feed problems or an unstable supply.
     device_fan_state:
       name: Fan Status
       desc: Operational state of each transmission device fan or fan controller. A

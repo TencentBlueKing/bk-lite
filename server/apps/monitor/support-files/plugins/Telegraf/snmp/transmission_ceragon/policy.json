@@ -25,6 +25,30 @@
           "method": ">"
         }
       ]
+    },
+    {
+      "name": "Ceragon传输设备IDU温度过高",
+      "alert_name": "传输设备${resource_name} IDU温度过高",
+      "description": "监控 Ceragon FibeAir 微波传输设备室内单元（IDU）温度，持续高于阈值时提示机房散热异常、风道堵塞或设备过载风险。",
+      "metric_name": "device_idu_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 60,
+          "method": ">"
+        }
+      ]
     }
   ]
 }

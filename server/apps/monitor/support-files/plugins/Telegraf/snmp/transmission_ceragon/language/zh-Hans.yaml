@@ -1,6 +1,6 @@
 Transmission Ceragon SNMP:
   name: Ceragon（Telegraf）
-  desc: 面向 Ceragon FibeAir 微波传输设备的 SNMP 监控模板，可采集运行时长、RFU 与功放温度、接口流量（企业号 PEN 2281）。
+  desc: 面向 Ceragon FibeAir 微波传输设备的 SNMP 监控模板，可采集运行时长、RFU 与功放温度、IDU 温度与输入电压、接口流量（企业号 PEN 2281）。
 monitor_object:
   Transmission: 传输设备
 monitor_object_type:
@@ -36,6 +36,12 @@ monitor_object_metric:
     device_temperature_pa_celsius:
       name: 功放温度
       desc: 各 RFU 功率放大器中的最高温度，单位为摄氏度。温度偏高表示射频硬件热压力。
+    device_idu_temperature_celsius:
+      name: IDU 温度
+      desc: 室内单元（IDU）温度，单位为摄氏度。温度偏高可能表示机房散热不良、风道堵塞或设备过载。
+    device_voltage_input:
+      name: 输入电压
+      desc: 设备输入供电电压，单位为伏。数值异常可能表示供电线路故障或电源不稳定。
     device_fan_state:
       name: 风扇状态
       desc: 传输设备各散热风扇或风扇控制器的运行状态。非正常状态表示散热模块异常、离线或通信故障，可能导致设备过热。
