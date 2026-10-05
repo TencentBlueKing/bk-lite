@@ -1,0 +1,147 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_inovonics"
+        config_type = "inovonics"
+        brand = "inovonics"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Model 640 nowPlaying / alarm scalars（顶层 field 带 .0）。设备无此树时 Telegraf 省略该 field。----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.42111.640.3.3.0"
+        name = "m640_rssi"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.42111.640.3.5.0"
+        name = "m640_multipath"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.42111.640.3.6.0"
+        name = "m640_noise"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.42111.640.3.7.0"
+        name = "m640_left_level"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.42111.640.3.8.0"
+        name = "m640_right_level"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.42111.640.6.1.1.0"
+        name = "m640_audio_loss"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.42111.640.6.1.2.0"
+        name = "m640_low_signal"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.42111.640.6.1.3.0"
+        name = "m640_rds_error"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.42111.640.6.1.4.0"
+        name = "m640_pilot_loss"
+    # ---- Model 650 nowPlaying / alarm scalars（顶层 field 带 .0；叶号相对 640 平移一位）。----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.42111.650.3.4.0"
+        name = "m650_rssi"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.42111.650.3.6.0"
+        name = "m650_multipath"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.42111.650.3.7.0"
+        name = "m650_noise"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.42111.650.3.8.0"
+        name = "m650_left_level"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.42111.650.3.9.0"
+        name = "m650_right_level"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.42111.650.6.1.1.0"
+        name = "m650_audio_loss"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.42111.650.6.1.2.0"
+        name = "m650_low_signal"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.42111.650.6.1.3.0"
+        name = "m650_rds_error"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.42111.650.6.1.4.0"
+        name = "m650_pilot_loss"
+# ---- CPU/内存/温度/风扇/电源：本 MIB 无对应对象，不采集。----
+
+# ---- 两棵树合并为与型号无关的最终字段；650 优先；helper 字段全部删除。无缩放。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    def pick(v650, v640):
+        if v650 != None:
+            return v650
+        return v640
+    def in_range(value, lo, hi):
+        if value == None:
+            return None
+        if type(value) not in ["int", "float"]:
+            return None
+        if value < lo or value > hi:
+            return None
+        return value
+    def map_alarm(value):
+        if value == 0:
+            return 1
+        if value == 1:
+            return 2
+        return None
+    rssi = in_range(pick(f.pop("m650_rssi", None), f.pop("m640_rssi", None)), 0, 120)
+    multipath = in_range(pick(f.pop("m650_multipath", None), f.pop("m640_multipath", None)), 0, 100)
+    noise = in_range(pick(f.pop("m650_noise", None), f.pop("m640_noise", None)), 0, 100)
+    left_level = in_range(pick(f.pop("m650_left_level", None), f.pop("m640_left_level", None)), -128, 6)
+    right_level = in_range(pick(f.pop("m650_right_level", None), f.pop("m640_right_level", None)), -128, 6)
+    audio_loss = map_alarm(pick(f.pop("m650_audio_loss", None), f.pop("m640_audio_loss", None)))
+    low_signal = map_alarm(pick(f.pop("m650_low_signal", None), f.pop("m640_low_signal", None)))
+    rds_error = map_alarm(pick(f.pop("m650_rds_error", None), f.pop("m640_rds_error", None)))
+    pilot_loss = map_alarm(pick(f.pop("m650_pilot_loss", None), f.pop("m640_pilot_loss", None)))
+    if rssi != None:
+        f["inovonics_rssi_dbuv"] = rssi
+    if multipath != None:
+        f["inovonics_multipath_percent"] = multipath
+    if noise != None:
+        f["inovonics_noise_percent"] = noise
+    if left_level != None:
+        f["inovonics_left_level_db"] = left_level
+    if right_level != None:
+        f["inovonics_right_level_db"] = right_level
+    if audio_loss != None:
+        f["inovonics_audio_loss_state"] = audio_loss
+    if low_signal != None:
+        f["inovonics_low_signal_state"] = low_signal
+    if rds_error != None:
+        f["inovonics_rds_error_state"] = rds_error
+    if pilot_loss != None:
+        f["inovonics_pilot_loss_state"] = pilot_loss
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["inovonics"]

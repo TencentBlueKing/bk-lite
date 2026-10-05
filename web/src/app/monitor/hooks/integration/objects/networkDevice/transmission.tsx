@@ -82,6 +82,7 @@ export const useTransmissionConfig = () => {
       'Transmission Smartoptics SNMP': 'snmp_smartoptics',
       'Transmission RACOM SNMP': 'snmp_racom',
       'Transmission SIAE Microelettronica SNMP': 'snmp_siae',
+      'Transmission Inovonics SNMP': 'snmp_inovonics',
       'Transmission Ifotec SNMP': 'snmp_ifotec',
       'Transmission ADVA SNMP': 'snmp_adva'
     }
