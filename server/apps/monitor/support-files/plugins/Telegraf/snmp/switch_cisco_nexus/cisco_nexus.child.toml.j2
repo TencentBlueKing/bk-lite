@@ -100,6 +100,8 @@ def apply(metric):
             mapped = 2
         if st == "1" or st == "4" or st == "5" or st == "6" or st == "7" or st == "8" or st == "9" or st == "10" or st == "11" or st == "12":
             mapped = 2
+        if st == 3 or st == "3":
+            mapped = 4
         if mapped == None:
             return None
         f["state"] = mapped
@@ -113,6 +115,8 @@ def apply(metric):
             mapped = 1
         if st == 3 or st == 4 or st == "3" or st == "4":
             mapped = 2
+        if st == 1 or st == "1":
+            mapped = 6
         if mapped == None:
             return None
         f["state"] = mapped
