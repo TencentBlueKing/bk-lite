@@ -150,6 +150,7 @@ export const useSwitchConfig = () => {
       'Switch Comtrol RocketLinx SNMP': 'snmp_comtrol',
       'Switch WoMaster SNMP': 'snmp_womaster',
       'Switch Murrelektronik SNMP': 'snmp_murrelektronik',
+      'Switch Positron SNMP': 'snmp_positron',
       'Switch InHand Networks SNMP': 'snmp_inhand',
       'Switch IP Infusion SNMP': 'snmp_ipinfusion',
       'Switch Omnitron SNMP': 'snmp_omnitron',
