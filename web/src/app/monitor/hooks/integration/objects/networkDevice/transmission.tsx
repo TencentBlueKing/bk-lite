@@ -62,6 +62,7 @@ export const useTransmissionConfig = () => {
       'Transmission MRV SNMP': 'snmp_mrv',
       'Transmission Marconi SNMP': 'snmp_marconi',
       'Transmission Alcoma SNMP': 'snmp_alcoma',
+      'Transmission Montclair SNMP': 'snmp_montclair',
       'Transmission PacketLight SNMP': 'snmp_packetlight',
       'Transmission Pan Dacom SNMP': 'snmp_pandacom',
       'Transmission Tachyon SNMP': 'snmp_tachyon',
