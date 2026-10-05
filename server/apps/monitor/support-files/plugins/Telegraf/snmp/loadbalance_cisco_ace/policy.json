@@ -1,0 +1,106 @@
+{
+  "object": "Loadbalance",
+  "plugin": "Loadbalance Cisco ACE SNMP",
+  "templates": [
+    {
+      "name": "Cisco ACE负载均衡CPU使用率过高",
+      "alert_name": "负载均衡${resource_name} CPU ${metric_index} 使用率过高",
+      "description": "监控 Cisco ACE 主机 CPU（cpmCPUTotal5minRev）使用率，当持续高于阈值时触发告警，提示控制平面或数据平面处理过载。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Cisco ACE负载均衡内存使用率过高",
+      "alert_name": "负载均衡${resource_name} 内存池 ${metric_pool_name} 使用率过高",
+      "description": "监控 Cisco ACE 各内存池使用率，当持续高于阈值时触发告警，提示连接表或转发资源紧张。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Cisco ACE负载均衡NP CPU使用率过高",
+      "alert_name": "负载均衡${resource_name} NP ${metric_index} CPU 使用率过高",
+      "description": "监控 Cisco ACE 网络处理器平均 CPU 使用率，当持续高于阈值时触发告警，提示数据面转发处理过载。",
+      "metric_name": "ace_np_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Cisco ACE负载均衡NP缓冲使用率过高",
+      "alert_name": "负载均衡${resource_name} NP ${metric_index} 缓冲使用率过高",
+      "description": "监控 Cisco ACE 网络处理器缓冲使用率，当持续高于阈值时触发告警，提示报文缓冲资源紧张。",
+      "metric_name": "ace_np_buffer_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}
