@@ -1,0 +1,62 @@
+Wireless Kymata SNMP:
+  name: Kymata（Telegraf）
+  desc: 面向 Kymata 室外 WiFi 射频放大器的 SNMP 监控模板（KYMATA-AMP-MIB，企业号 PEN
+    60429），可采集机内温度、5V 轨电压、射频输出功率、告警状态、射频板电源故障位、每端口入向流量速率、每端口出向流量速率和运行时长。
+monitor_object:
+  Wireless: 无线设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64
+        位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64
+        位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+    device_total_incoming_traffic:
+      name: 设备接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率（按所有接口的 64 位 ifHCInOctets 汇总），单位为字节每秒。帮助管理员获取整个设备的接收流量情况，支持总体流量监控与容量规划。
+    device_total_outgoing_traffic:
+      name: 设备发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 无线设备的整体 CPU 使用率，以 0-100 百分比直接上报。持续偏高可能表示客户端关联负载过高、控制平面压力或射频管理开销过大，会影响漫游与管理响应。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 无线设备的整体内存使用率，以 0-100 百分比直接上报。内存压力过高会导致接入点丢弃客户端关联或重启服务，需及时排查客户端数量或异常负载。
+    device_temperature_celsius:
+      name: 温度
+      desc: 无线设备机箱温度（摄氏度，直采无缩放）。仅带温度传感器的机型返回真实值，无风扇接入点返回 0。温度过高可能表示散热失效或气流不畅，存在过热停机风险。
+    kymata_supply_voltage_volts:
+      name: 5V 轨电压
+      desc: Kymata 室外 WiFi 射频放大器的 5V 轨电压，单位伏特，来自 KYMATA-AMP-MIB
+        voltage5V（OID 1.3.6.1.4.1.60429.1.3.11，毫伏）并在采集端除以 1000。小于等于 0
+        V 或大于 10 V 的值会被丢弃。
+    kymata_rf_output_dbm:
+      name: 射频输出功率（dBm）
+      desc: Kymata 室外 WiFi 射频放大器的射频输出功率，单位 dBm，来自 KYMATA-AMP-MIB
+        rfOut（OID 1.3.6.1.4.1.60429.1.3.12，0.01 dBm）并在采集端除以 100。超出 -60 到
+        40 dBm 范围的值会被丢弃。
+    kymata_alarm_state:
+      name: 放大器告警状态
+      desc: Kymata 室外 WiFi 射频放大器的告警状态，来自 KYMATA-AMP-MIB alarmStatus（OID
+        1.3.6.1.4.1.60429.1.3.1）。无告警(0) 映射为 1（正常）；AP 告警(1)、输出功率过低(2)、射频板电源故障(3)
+        和高温(4) 映射为 2（异常）。其它值丢弃。
+    kymata_pcb_power_state:
+      name: 射频板电源状态
+      desc: Kymata 室外 WiFi 射频放大器的射频板电源故障位，来自 KYMATA-AMP-MIB pcbPowerProblem（OID
+        1.3.6.1.4.1.60429.1.3.16）。absent(0) 映射为 1（正常）；present(1) 映射为 2（异常）。其它值丢弃。
+monitor_object_metric_group:
+  Wireless:
+    Base: 基础
+    Traffic: 流量
+    Wireless: 无线
+    Temperature: 温度
+    Hardware Status: 硬件状态

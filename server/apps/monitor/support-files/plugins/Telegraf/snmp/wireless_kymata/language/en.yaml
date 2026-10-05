@@ -1,0 +1,88 @@
+Wireless Kymata SNMP:
+  name: Kymata (Telegraf)
+  desc: SNMP monitoring template for Kymata outdoor WiFi RF amplifier (KYMATA-AMP-MIB,
+    enterprise PEN 60429). It reports internal temperature, 5 V rail voltage, RF
+    output power, alarm status, RF board power-fault flag, per-port inbound traffic
+    rate, per-port outbound traffic rate, and system uptime.
+monitor_object:
+  Wireless: Wireless
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart,
+        derived from sysUpTime. Monitoring uptime helps administrators understand
+        device stability and identify unexpected reboots or failures.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5
+        minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifOutOctets on high-speed ports, keeping the rate accurate.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the
+        entire device over the past 5 minutes, measured in bytes per second, summed
+        across all interfaces from the 64-bit ifHCInOctets counter. It helps administrators
+        obtain an overview of incoming traffic for overall monitoring and capacity
+        planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire
+        device over the past 5 minutes, measured in bytes per second, summed across
+        all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
+        assess sending performance for traffic management and optimization.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: CPU utilization of the wireless device reported directly as a 0-100 percentage.
+        Sustained high CPU usage can indicate heavy client-association load, control-plane
+        pressure, or RF management overhead affecting roaming and management responsiveness.
+    device_memory_usage:
+      name: Memory Usage
+      desc: Memory utilization of the wireless device reported directly as a 0-100
+        percentage. High memory pressure can cause the access point to drop client
+        associations or restart services, so investigate client counts or abnormal
+        load promptly.
+    device_temperature_celsius:
+      name: Temperature
+      desc: Chassis temperature in degrees Celsius of the wireless device, read directly
+        with no scaling. Only models equipped with a temperature sensor report a real
+        value; fanless access points return 0. High temperatures can indicate cooling
+        failure or poor airflow and risk thermal shutdown.
+    kymata_supply_voltage_volts:
+      name: 5V Rail Voltage
+      desc: 5 V rail voltage of the Kymata outdoor WiFi RF amplifier in volts, from
+        KYMATA-AMP-MIB voltage5V (OID 1.3.6.1.4.1.60429.1.3.11, millivolts) divided
+        by 1000 in the collector. Values less than or equal to 0 V or greater than
+        10 V are dropped.
+    kymata_rf_output_dbm:
+      name: RF Output Power (dBm)
+      desc: RF output power of the Kymata outdoor WiFi RF amplifier in dBm, from
+        KYMATA-AMP-MIB rfOut (OID 1.3.6.1.4.1.60429.1.3.12, units 0.01 dBm) divided
+        by 100 in the collector. Values outside -60 to 40 dBm are dropped.
+    kymata_alarm_state:
+      name: Amplifier Alarm State
+      desc: Alarm state of the Kymata outdoor WiFi RF amplifier from KYMATA-AMP-MIB
+        alarmStatus (OID 1.3.6.1.4.1.60429.1.3.1). noAlarm(0) maps to 1 (normal);
+        apAlarm(1), lowOutputPower(2), pcbPowerFault(3) and highTemperature(4) map
+        to 2 (abnormal). Other values are dropped.
+    kymata_pcb_power_state:
+      name: RF Board Power State
+      desc: RF board power-fault flag of the Kymata outdoor WiFi RF amplifier from
+        KYMATA-AMP-MIB pcbPowerProblem (OID 1.3.6.1.4.1.60429.1.3.16). absent(0) maps
+        to 1 (normal); present(1) maps to 2 (abnormal). Other values are dropped.
+monitor_object_metric_group:
+  Wireless:
+    Base: Base
+    Traffic: Traffic
+    Wireless: Wireless
+    Temperature: Temperature
+    Hardware Status: Hardware Status

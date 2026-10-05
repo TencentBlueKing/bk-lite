@@ -830,6 +830,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /adtran|netvanta|adtran.?aos/i, label: 'Adtran', icon: 'mm-adtran_adtran' },
   { match: /lancom|lcos/i, label: 'LANCOM', icon: 'mm-lancom_lancom' },
   { match: /cumulus/i, label: 'Cumulus Linux', icon: 'mm-cumulus_cumulus' },
+  { match: /kymata/i, label: 'Kymata' },
   { match: /\bdcn\b|digital.?china/i, label: 'DCN', icon: 'mm-dcn_dcn' },
   { match: /edgecore/i, label: 'Edgecore', icon: 'mm-edgecore_edgecore' },
   { match: /enterasys|dragon/i, label: 'Enterasys', icon: 'mm-enterasys_enterasys' },
