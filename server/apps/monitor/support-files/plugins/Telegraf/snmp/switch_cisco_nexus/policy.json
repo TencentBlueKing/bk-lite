@@ -1,0 +1,96 @@
+{
+  "object": "Switch",
+  "plugin": "Switch Cisco Nexus SNMP",
+  "templates": [
+    {
+      "name": "Cisco Nexus交换机CPU使用率过高",
+      "alert_name": "交换机${resource_name} CPU 使用率过高",
+      "description": "监控 Cisco Nexus（NX-OS）CPU 使用率，当持续高于阈值时触发告警，提示控制平面过载、协议震荡或异常流量。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Cisco Nexus交换机内存使用率过高",
+      "alert_name": "交换机${resource_name} 内存使用率过高",
+      "description": "监控 Cisco Nexus（NX-OS）内存使用率，当持续高于阈值时触发告警，提示转发表或控制平面内存压力。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Cisco Nexus交换机风扇异常",
+      "alert_name": "交换机${resource_name} 风扇 ${metric_fan_name} 状态异常",
+      "description": "监控 Cisco Nexus 风扇托盘运行状态，当风扇处于异常（停转或告警）时触发告警，散热故障可能迅速导致过热。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2,
+          "method": "="
+        },
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Cisco Nexus交换机电源异常",
+      "alert_name": "交换机${resource_name} 电源 ${metric_psu_name} 状态异常",
+      "description": "监控 Cisco Nexus 电源模块运行状态，当电源处于异常时触发告警，提示电源冗余缺失或硬件故障。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2,
+          "method": "="
+        },
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

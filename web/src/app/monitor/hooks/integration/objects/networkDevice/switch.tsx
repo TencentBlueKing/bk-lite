@@ -109,6 +109,7 @@ export const useSwitchConfig = () => {
     collectTypes: {
       'Switch SNMP General': 'snmp',
       'Switch Cisco SNMP': 'snmp_cisco',
+      'Switch Cisco Nexus SNMP': 'snmp_cisco_nexus',
       'Switch Huawei SNMP': 'snmp_huawei',
       'Switch FutureMatrix SNMP': 'snmp_futurematrix',
       'Switch Aruba SNMP': 'snmp_aruba',
