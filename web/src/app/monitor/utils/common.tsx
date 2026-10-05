@@ -847,6 +847,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /audiocodes/i, label: 'AudioCodes', icon: 'mm-audiocodes_audiocodes' },
   { match: /ribbon|sonus|genband/i, label: 'Ribbon', icon: 'mm-ribbon_ribbon' },
   { match: /acme\s*packet|acmepacket/i, label: 'Acme Packet', icon: 'mm-acmepacket_acmepacket' },
+  { match: /ignite\s*net|metrolinq/i, label: 'IgniteNet' },
   { match: /patton|smartnode/i, label: 'Patton', icon: 'mm-patton_patton' },
   { match: /innovaphone/i, label: 'Innovaphone', icon: 'mm-innovaphone_innovaphone' },
   { match: /mitel|mivoice|3300\s*icp/i, label: 'Mitel', icon: 'mm-mitel_mitel' },
