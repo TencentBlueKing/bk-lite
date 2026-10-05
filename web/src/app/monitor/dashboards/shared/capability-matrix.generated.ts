@@ -488,6 +488,17 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_linksys",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "temperature",
+        "fan",
+        "psu",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_maipu",
       "capabilities": [
         "uptime",
