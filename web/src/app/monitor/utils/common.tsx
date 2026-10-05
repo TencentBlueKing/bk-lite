@@ -891,6 +891,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /wti|western\s*telematic/i, label: 'WTI', icon: 'mm-wti_wti' },
   { match: /\bnti\b|enviromux/i, label: 'NTI ENVIROMUX', icon: 'mm-nti_nti' },
   { match: /gigamon|gigavue/i, label: 'Gigamon' },
+  { match: /genie\s*atm|genie\s*networks/i, label: 'Genie Networks' },
   { match: /accedian|skylight|metronid/i, label: 'Accedian', icon: 'mm-accedian_accedian' },
   { match: /cradlepoint|netcloud/i, label: 'Cradlepoint' },
   { match: /ciena/i, label: 'Ciena', icon: 'mm-ciena_ciena' },
