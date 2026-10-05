@@ -78,6 +78,7 @@ export const useNetworkServiceConfig = () => {
       'NetworkService DEVA Broadcast SNMP': 'snmp_deva',
       'NetworkService EndRun SNMP': 'snmp_endrun',
       'NetworkService Spectracom SNMP': 'snmp_spectracom',
+      'NetworkService Procera PacketLogic SNMP': 'snmp_procera',
       'NetworkService Asentria SiteBoss SNMP': 'snmp_asentria',
       'NetworkService Server Technology Sentry3 SNMP': 'snmp_servertech',
       'NetworkService Enlogic PDU SNMP': 'snmp_enlogic',

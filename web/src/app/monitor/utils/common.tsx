@@ -874,6 +874,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /rittal|cmc\s*iii/i, label: 'Rittal', icon: 'mm-rittal_rittal' },
   { match: /gude|expert\s*power\s*control/i, label: 'Gude', icon: 'mm-gude_gude' },
   { match: /geist|blackbird|watchdog/i, label: 'Geist', icon: 'mm-geist_geist' },
+  { match: /procera|packetlogic|sandvine/i, label: 'Procera' },
   { match: /panduit/i, label: 'Panduit', icon: 'mm-panduit_panduit' },
   { match: /apc|schneider\s*electric|powernet/i, label: 'APC', icon: 'mm-apc_apc' },
   { match: /eaton|powerware|xups/i, label: 'Eaton', icon: 'mm-eaton_eaton' },
