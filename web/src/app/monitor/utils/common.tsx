@@ -740,6 +740,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /oneaccess/i, label: 'OneAccess', icon: 'mm-oneaccess_oneaccess' },
   { match: /teldat/i, label: 'Teldat', icon: 'mm-teldat_teldat' },
   { match: /firebrick/i, label: 'FireBrick', icon: 'mm-firebrick_firebrick' },
+  { match: /venturi/i, label: 'Venturi Wireless' },
   { match: /teltonika|rutos/i, label: 'Teltonika', icon: 'mm-teltonika_teltonika' },
   { match: /versa|flexvnf|\bvos\b/i, label: 'Versa', icon: 'mm-versa_versa' },
   { match: /viprinet/i, label: 'Viprinet', icon: 'mm-viprinet_viprinet' },
