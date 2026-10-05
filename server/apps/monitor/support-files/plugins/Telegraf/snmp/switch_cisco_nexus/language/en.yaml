@@ -149,16 +149,16 @@ monitor_object_metric:
         protection or hardware damage if left unaddressed.
     device_fan_state:
       name: Fan Status
-      desc: This metric reports the operational state of each cooling fan on the device.
-        A non-normal state (warning, critical, shutdown, or notFunctioning) indicates
-        a cooling fault that can quickly lead to overheating and should be investigated
-        immediately.
+      desc: Operational state of each Cisco Nexus fan tray (CISCO-ENTITY-FRU-CONTROL-MIB
+        cefcFanTrayOperStatus), normalized to 1=normal / 2=abnormal. up(2) maps to
+        1; unknown(1), down(3) and warning(4) map to 2; undefined values are dropped.
+        A value of 2 indicates a cooling fault that can quickly lead to overheating.
     device_psu_state:
       name: Power Supply Status
-      desc: This metric reports the operational state of each power supply unit on
-        the device. A non-normal state signals a power redundancy or hardware fault;
-        on devices with redundant PSUs a single failure may not cause an outage but
-        removes redundancy and must be remediated promptly.
+      desc: Operational state of each Cisco Nexus power supply (CISCO-ENTITY-FRU-CONTROL-MIB
+        cefcFRUPowerOperStatus), normalized to 1=normal / 2=abnormal. on(2) maps to
+        1; offAdmin(3) and failed/environmental-off states map to 2; undefined values
+        are dropped. A value of 2 signals a power redundancy or hardware fault.
     device_fan_speed:
       name: Fan Speed
       desc: This metric reports the fan rotation speed (RPM) of the device, taken
