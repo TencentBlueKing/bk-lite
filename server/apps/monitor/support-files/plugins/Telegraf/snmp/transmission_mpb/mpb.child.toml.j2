@@ -59,23 +59,8 @@
 [[processors.starlark]]
     namepass = ["snmp"]
     source = '''
-def _is_sentinel(value):
-    if value == 65535:
-        return True
-    if value == 65534:
-        return True
-    if value == -1:
-        return True
-    if value == 2147483647:
-        return True
-    if value == -2147483648:
-        return True
-    if value == 4294967295:
-        return True
-    return False
-
 def _temp_c(raw):
-    if raw == None or _is_sentinel(raw):
+    if raw == None:
         return None
     celsius = float(raw) / 10.0
     if celsius < -40 or celsius > 125:
@@ -93,19 +78,21 @@ def apply(metric):
     if ld2 != None:
         metric.fields["mpb_ld2_temperature_celsius"] = ld2
     output_mw = metric.fields.pop("output_power_mw", None)
-    if output_mw != None and not _is_sentinel(output_mw):
+    if output_mw != None:
         if float(output_mw) <= 100000:
             metric.fields["mpb_output_power_mw"] = float(output_mw)
     input_x100 = metric.fields.pop("input_power_x100", None)
-    if input_x100 != None and not _is_sentinel(input_x100):
-        metric.fields["mpb_input_power_mw"] = float(input_x100) / 100.0
+    if input_x100 != None:
+        input_mw = float(input_x100) / 100.0
+        if input_mw >= 0 and input_mw <= 100000:
+            metric.fields["mpb_input_power_mw"] = input_mw
     gain_raw = metric.fields.pop("gain_x10", None)
-    if gain_raw != None and not _is_sentinel(gain_raw):
+    if gain_raw != None:
         gain_db = float(gain_raw) / 10.0
         if gain_db >= -10 and gain_db <= 60:
             metric.fields["mpb_gain_db"] = gain_db
     state_raw = metric.fields.pop("unit_state_raw", None)
-    if state_raw != None and not _is_sentinel(state_raw):
+    if state_raw != None:
         code = int(state_raw)
         if code == 1:
             metric.fields["mpb_unit_state"] = 1
