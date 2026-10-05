@@ -437,6 +437,11 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       "collectType": "snmp_ipinfusion",
       "capabilities": [
         "uptime",
+        "cpu",
+        "memory",
+        "temperature",
+        "fan",
+        "psu",
         "traffic"
       ]
     },

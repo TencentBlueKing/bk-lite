@@ -52,9 +52,165 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
-    # ---- IP Infusion chassis-level PSU 1 temperature (IPI-CMM-CHASSIS-MIB) ----
-    # 待现网核验：cmmSysPSTemperature1 标量直采摄氏度；同命名 PSU 2/3 scalar、fan 子表、
-    # IPMI sensor 子表、模块温度子表均不采（per-row / 多类 sensor 不能合并到 bk-lite 单值指标）。
-    [[inputs.snmp.field]]
-        oid = "1.3.6.1.4.1.36673.100.2.1.0"
-        name = "device_psu_temperature_celsius"
+    # ---- CPU：CMM-CHASSIS-MIB cmmStackCpuTable cmmStackUnitCpuUtilization，UNITS 0.01%，表列禁止 .0 ----
+    # 列 OID 1.3.6.1.4.1.36673.100.1.2.5.1.9，INDEX=cmmStackUnitIndex。starlark ÷100 为百分比。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.36673.100.1.2.5.1.9"
+        name = "usage"
+    # ---- 内存：cmmSysRamTable 总量 MBytes / 已用%（UNITS 已是百分比），表列禁止 .0 ----
+    # total 1.3.6.1.4.1.36673.100.1.2.4.1.1 → starlark ×1048576 为字节；usage .4.1.2 直接为 %。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.36673.100.1.2.4.1.1"
+        name = "total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.36673.100.1.2.4.1.2"
+        name = "usage"
+    # ---- 机箱温度：cmmSysTemperatureTable，UNITS 0.01℃，表列禁止 .0 ----
+    # 名称 .10.1.2 作 tag sensor_name；读数 .10.1.3 starlark ÷100 为 ℃。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.36673.100.1.2.10.1.2"
+        name = "sensor_name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.36673.100.1.2.10.1.3"
+        name = "celsius"
+    # ---- 风扇：cmmFanTable RPM + 状态，INDEX=(unit,tray,fan)，表列禁止 .0 ----
+    # RPM .9.1.2；状态 .9.1.5 running(2)→1，notpresent(1)/faulty(3)/stalled(4)/unknown(5)→2，MIB 未定义值丢弃。
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.36673.100.1.2.9.1.2"
+        name = "speed"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.36673.100.1.2.9.1.5"
+        name = "state"
+    # ---- 电源：cmmSysPowerSupplyTable 状态 + PSU 温度1，表列禁止 .0 ----
+    # 状态 .6.1.2 running(2)→1，notpresent(1)/faulty(3)/unknown(4)→2，MIB 未定义值丢弃。
+    # 温度 .6.1.11 UNITS 0.01℃，starlark ÷100。无有效字段的行丢弃。
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.36673.100.1.2.6.1.2"
+        name = "state"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.36673.100.1.2.6.1.11"
+        name = "temperature_celsius"
+
+# ---- CMM 数值换算与状态归一：-100001/-100002 及超范围值丢弃；换算只在 starlark 做一次。----
+[[processors.starlark]]
+    namepass = ["device_cpu", "device_memory", "device_temperature", "device_fan", "device_psu"]
+    source = '''
+def _num(v):
+    if v == None:
+        return None
+    if type(v) == "int" or type(v) == "float":
+        return float(v)
+    err = catch(lambda: float(v))
+    if err != None:
+        return None
+    return float(v)
+
+def _drop_sentinel(v):
+    n = _num(v)
+    if n == None:
+        return None
+    if n == -100001 or n == -100002:
+        return None
+    return n
+
+def apply(metric):
+    name = metric.name
+    f = metric.fields
+    if name == "device_cpu":
+        raw = _drop_sentinel(f.get("usage"))
+        if raw == None:
+            return None
+        usage = raw / 100.0
+        if usage < 0 or usage > 100:
+            return None
+        f["usage"] = usage
+        return metric
+    if name == "device_memory":
+        total = _drop_sentinel(f.get("total"))
+        usedpct = _drop_sentinel(f.get("usage"))
+        if total != None:
+            f["total"] = int(total * 1048576)
+        else:
+            f.pop("total", None)
+        if usedpct != None:
+            if usedpct < 0 or usedpct > 100:
+                f.pop("usage", None)
+            else:
+                f["usage"] = usedpct
+        else:
+            f.pop("usage", None)
+        if len(f.keys()) == 0:
+            return None
+        return metric
+    if name == "device_temperature":
+        raw = _drop_sentinel(f.get("celsius"))
+        if raw == None:
+            return None
+        celsius = raw / 100.0
+        if celsius < -40 or celsius > 150:
+            return None
+        f["celsius"] = celsius
+        return metric
+    if name == "device_fan":
+        rpm = _drop_sentinel(f.get("speed"))
+        if rpm == None:
+            f.pop("speed", None)
+        elif rpm < 0 or rpm > 50000:
+            f.pop("speed", None)
+        else:
+            f["speed"] = rpm
+        st = _num(f.get("state"))
+        if st == 2:
+            f["state"] = 1
+        elif st == 1 or st == 3 or st == 4 or st == 5:
+            f["state"] = 2
+        else:
+            f.pop("state", None)
+        if len(f.keys()) == 0:
+            return None
+        return metric
+    if name == "device_psu":
+        st = _num(f.get("state"))
+        if st == 2:
+            f["state"] = 1
+        elif st == 1 or st == 3 or st == 4:
+            f["state"] = 2
+        else:
+            f.pop("state", None)
+        raw = _drop_sentinel(f.get("temperature_celsius"))
+        if raw == None:
+            f.pop("temperature_celsius", None)
+        else:
+            temp = raw / 100.0
+            if temp < -40 or temp > 150:
+                f.pop("temperature_celsius", None)
+            else:
+                f["temperature_celsius"] = temp
+        if len(f.keys()) == 0:
+            return None
+        return metric
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["ipinfusion"]

@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_ipinfusion",
   "plugin": "Switch IP Infusion SNMP",
-  "plugin_desc": "SNMP monitoring template for IP Infusion switch. It reports uptime, temperature, and interface traffic (enterprise PEN 36673).",
+  "plugin_desc": "SNMP monitoring template for IP Infusion OcNOS switches (enterprise PEN 36673, CMM-CHASSIS-MIB). Besides interface traffic and uptime, it reports per-unit CPU and memory utilization, chassis temperature sensors, fan speed and state, and power-supply state and temperature.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_ipinfusion'}) by (instance_id)",
   "name": "Switch",
@@ -15,9 +15,141 @@
   ],
   "supplementary_indicators": [
     "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius",
+    "device_fan_speed",
+    "device_fan_state",
+    "device_psu_state",
     "device_psu_temperature_celsius"
   ],
   "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "device_cpu_usage{instance_type='switch', __$labels__}",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Stack unit index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization of each OcNOS stack unit as a 0-100 percentage. CMM-CHASSIS-MIB cmmStackUnitCpuUtilization reports 0.01 percent units and is divided by 100 at collection so stored values, dashboards and alerts are already in percent."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "device_memory_total{instance_type='switch', __$labels__}",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Stack unit index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total RAM of each OcNOS stack unit in bytes. CMM-CHASSIS-MIB cmmSysRamTotalMem reports megabytes and is multiplied by 1048576 at collection so stored values are already in bytes."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "device_memory_usage{instance_type='switch', __$labels__}",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Stack unit index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "RAM utilization of each OcNOS stack unit as a 0-100 percentage from CMM-CHASSIS-MIB cmmSysRamUsedMem (already a percentage in the MIB; values outside 0-100 are dropped)."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "sensor_name",
+          "description": "Temperature sensor name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Chassis temperature of each OcNOS sensor in degrees Celsius. CMM-CHASSIS-MIB cmmSysTemperatureValue reports 0.01 ℃ units and is divided by 100 at collection so stored values, dashboards and alerts are already in ℃."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_speed",
+      "query": "device_fan_speed{instance_type='switch', __$labels__}",
+      "display_name": "Fan Speed",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Fan index (unit.tray.fan)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Fan rotational speed of each OcNOS fan in RPM from CMM-CHASSIS-MIB cmmFanRpm. Negative values, values above 50000 RPM, and the unavailable / not-applicable sentinels are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "device_fan_state{instance_type='switch', __$labels__}",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Fan index (unit.tray.fan)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Operational state of each OcNOS fan from CMM-CHASSIS-MIB cmmFanStatus, normalised to 1=normal (running) / 2=abnormal (notpresent, faulty, stalled, or unknown). Values not defined in the MIB enumeration are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='switch', __$labels__}",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "PSU index (unit.psu)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Operational state of each OcNOS power supply from CMM-CHASSIS-MIB cmmSysPowerSupplyOperStatus, normalised to 1=normal (running) / 2=abnormal (notpresent, faulty, or unknown). Values not defined in the MIB enumeration are dropped."
+    },
     {
       "metric_group": "Temperature",
       "name": "device_psu_temperature_celsius",
@@ -25,11 +157,16 @@
       "display_name": "PSU Temperature",
       "data_type": "Number",
       "unit": "celsius",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "PSU index (unit.psu)"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the chassis-level PSU 1 temperature of the IP Infusion (OcNOS) device, read from IPI-CMM-CHASSIS-MIB cmmSysPSTemperature1 at .1.3.6.1.4.1.36673.100.2.1.0, in degrees Celsius. Abnormally high temperatures may indicate blocked airflow, failing fans, or excessive ambient heat, and can trigger thermal protection or hardware damage if left unaddressed."
+      "description": "Temperature of each OcNOS power supply in degrees Celsius. CMM-CHASSIS-MIB cmmSysPSTemperature1 reports 0.01 ℃ units and is divided by 100 at collection so stored values, dashboards and alerts are already in ℃."
     },
     {
       "metric_group": "Traffic",
