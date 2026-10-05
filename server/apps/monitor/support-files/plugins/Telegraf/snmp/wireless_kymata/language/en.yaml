@@ -52,11 +52,10 @@ monitor_object_metric:
         associations or restart services, so investigate client counts or abnormal
         load promptly.
     device_temperature_celsius:
-      name: Temperature
-      desc: Chassis temperature in degrees Celsius of the wireless device, read directly
-        with no scaling. Only models equipped with a temperature sensor report a real
-        value; fanless access points return 0. High temperatures can indicate cooling
-        failure or poor airflow and risk thermal shutdown.
+      name: Internal Temperature
+      desc: Internal temperature of the Kymata outdoor WiFi RF amplifier in degrees
+        Celsius, from KYMATA-AMP-MIB temperature (OID 1.3.6.1.4.1.60429.1.3.10), with
+        no scaling. Values outside -40 to 125 C are dropped.
     kymata_supply_voltage_volts:
       name: 5V Rail Voltage
       desc: 5 V rail voltage of the Kymata outdoor WiFi RF amplifier in volts, from
