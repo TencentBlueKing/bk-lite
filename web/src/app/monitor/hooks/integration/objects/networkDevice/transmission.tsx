@@ -80,6 +80,7 @@ export const useTransmissionConfig = () => {
       'Transmission Fibrolan SNMP': 'snmp_fibrolan',
       'Transmission Exalt SNMP': 'snmp_exalt',
       'Transmission Smartoptics SNMP': 'snmp_smartoptics',
+      'Transmission Volius SNMP': 'snmp_volius',
       'Transmission RACOM SNMP': 'snmp_racom',
       'Transmission SIAE Microelettronica SNMP': 'snmp_siae',
       'Transmission Ifotec SNMP': 'snmp_ifotec',

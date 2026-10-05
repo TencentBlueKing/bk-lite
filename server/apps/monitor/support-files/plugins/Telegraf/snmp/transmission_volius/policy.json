@@ -1,0 +1,56 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission Volius SNMP",
+  "templates": [
+    {
+      "name": "Volius传输设备温度过高",
+      "alert_name": "传输设备${resource_name} 温度过高",
+      "description": "监控 Volius 光传输设备机箱温度（vlsCaseTemperature，已换算为摄氏度）。持续高于阈值时触发告警，提示散热异常、环境过热或设备过载。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 65,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 55,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Volius传输设备风扇转速过低",
+      "alert_name": "传输设备${resource_name} 风扇转速过低",
+      "description": "监控 Volius 光传输设备风扇转速（vlsFanSpeed，RPM）。转速持续低于阈值时触发告警，提示风扇卡转、停转或散热能力不足。",
+      "metric_name": "volius_fan_speed",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": "<"
+        },
+        {
+          "level": "error",
+          "value": 500,
+          "method": "<"
+        },
+        {
+          "level": "warning",
+          "value": 1000,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

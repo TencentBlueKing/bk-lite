@@ -903,6 +903,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /pan\s*dacom|pandacom/i, label: 'Pan Dacom', icon: 'mm-pandacom_pandacom' },
   { match: /tachyon|\btna\s*300|tna30x/i, label: 'Tachyon', icon: 'mm-tachyon_tachyon' },
   { match: /\bxkl\b|dxmos|dqt400|dqm400/i, label: 'XKL', icon: 'mm-xkl_xkl' },
+  { match: /volius/i, label: 'Volius' },
   { match: /siklu|etherhaul|multihaul/i, label: 'Siklu', icon: 'mm-siklu_siklu' },
   { match: /4rf|aprisa/i, label: '4RF Aprisa', icon: 'mm-4rf_4rf' },
   { match: /viavi|jdsu|acterna/i, label: 'Viavi', icon: 'mm-viavi_viavi' },
