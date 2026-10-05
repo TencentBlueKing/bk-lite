@@ -28,8 +28,93 @@
       "group_algorithm": "avg"
     },
     {
+      "name": "Lenovo CNOS交换机温度过高",
+      "alert_name": "交换机${resource_name} 温度过高",
+      "description": "监控 Lenovo CNOS 交换机温度传感器读数，当温度超过安全阈值时触发告警，提示可能存在风扇故障、散热不良或环境过热，避免触发热保护或硬件损坏。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 50,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Lenovo CNOS交换机风扇异常",
+      "alert_name": "交换机${resource_name} 风扇状态异常",
+      "description": "监控 Lenovo CNOS 交换机散热风扇运行状态（ok=正常，absent/fault=异常）。任何异常状态都表示散热故障，可能迅速导致过热，应立即排查。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Lenovo CNOS交换机风扇转速为0",
+      "alert_name": "交换机${resource_name} 风扇 ${metric__index} 转速为 0",
+      "description": "监控 Lenovo CNOS 交换机各风扇 RPM，当转速为 0 时触发告警，提示风扇停转或故障。",
+      "metric_name": "device_fan_speed",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Lenovo CNOS交换机风扇转速百分比过高",
+      "alert_name": "交换机${resource_name} 风扇 ${metric__index} 转速百分比过高",
+      "description": "监控 Lenovo CNOS 交换机各风扇转速百分比，当持续不低于 95% 时触发告警，提示设备可能因高温而满速散热。",
+      "metric_name": "device_fan_speed_percent",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 95,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Lenovo CNOS交换机电源异常",
+      "alert_name": "交换机${resource_name} 电源状态异常",
+      "description": "监控 Lenovo CNOS 交换机电源模块运行状态。非正常状态表示电源冗余缺失或硬件故障，即使有冗余也应尽快修复。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
       "name": "接口接收错误包过高",
-      "alert_name": "交换机${resource_name} 接口 ${metric_ifDescr} 每秒接收错误包数过高",
+      "alert_name": "交换机${resource_name} 接口 ${metric__ifDescr} 每秒接收错误包数过高",
       "description": "监控设备接口接收的错误包数情况，当每秒错误包数超出设定阈值时触发告警，便于发现网络接口隐患。",
       "metric_name": "interface_ifInErrors",
       "algorithm": "last_over_time",
@@ -54,7 +139,7 @@
     },
     {
       "name": "接口发送错误包过高",
-      "alert_name": "交换机${resource_name} 接口 ${metric_ifDescr} 每秒发送错误包数过高",
+      "alert_name": "交换机${resource_name} 接口 ${metric__ifDescr} 每秒发送错误包数过高",
       "description": "监控设备接口发送端错误包数，每秒发送错误包数量超出限制时发出告警，及时定位和处理网络发送问题。",
       "metric_name": "interface_ifOutErrors",
       "algorithm": "last_over_time",
@@ -79,7 +164,7 @@
     },
     {
       "name": "接口接收丢包数过高",
-      "alert_name": "交换机${resource_name} 接口 ${metric_ifDescr} 每秒接收丢包数过高",
+      "alert_name": "交换机${resource_name} 接口 ${metric__ifDescr} 每秒接收丢包数过高",
       "description": "实时监控设备机接口的丢包情况，当接收丢包速率超过阈值时告警，帮助排查网络接收质量问题并优化链路性能。",
       "metric_name": "interface_ifInDiscards",
       "algorithm": "last_over_time",
@@ -104,7 +189,7 @@
     },
     {
       "name": "接口发送丢包数过高",
-      "alert_name": "交换机${resource_name} 接口 ${metric_ifDescr} 每秒发送丢包数过高",
+      "alert_name": "交换机${resource_name} 接口 ${metric__ifDescr} 每秒发送丢包数过高",
       "description": "监测接口发送丢包速率是否异常，当发送丢包数量高于预设阈值时触发告警，为网络发送端问题提供及时反馈。",
       "metric_name": "interface_ifOutDiscards",
       "algorithm": "last_over_time",

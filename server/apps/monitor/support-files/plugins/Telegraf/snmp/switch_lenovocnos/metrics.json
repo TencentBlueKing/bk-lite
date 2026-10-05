@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_lenovocnos",
   "plugin": "Switch Lenovo CNOS SNMP",
-  "plugin_desc": "SNMP monitoring template for Lenovo CNOS switch. It reports uptime, CPU utilization, temperature, fan, power supply status, and interface traffic, for ThinkSystem / RackSwitch CNOS (enterprise PEN 19046).",
+  "plugin_desc": "SNMP monitoring template for Lenovo CNOS switch. It reports uptime, CPU utilization, temperature, fan state, fan speed (RPM and percent), power supply status, and interface traffic, for ThinkSystem / RackSwitch CNOS (enterprise PEN 19046).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_lenovocnos'}) by (instance_id)",
   "name": "Switch",
@@ -20,6 +20,7 @@
     "device_total_outgoing_traffic",
     "device_temperature_celsius",
     "device_fan_state",
+    "device_fan_speed",
     "device_psu_state"
   ],
   "display_fields": [],
@@ -236,7 +237,43 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Fan state of the Lenovo CNOS switch (lenovoEnvMibFanState; 1=normal, 2=abnormal)."
+      "description": "Fan state of the Lenovo CNOS switch (lenovoEnvMibFanState; ok(0)=normal, absent(1) and fault(2)=abnormal; undefined values dropped)."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_speed",
+      "query": "device_fan_speed{instance_type='switch', __$labels__}",
+      "display_name": "Fan Speed",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Fan index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Fan rotation speed of the Lenovo CNOS switch in RPM (lenovoEnvMibFanSpeedRPM, 0..100000)."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_speed_percent",
+      "query": "device_fan_speed_percent{instance_type='switch', __$labels__}",
+      "display_name": "Fan Speed Percent",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Fan index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Fan rotation speed of the Lenovo CNOS switch as a percentage (lenovoEnvMibFanSpeedPercent, 0..100)."
     },
     {
       "metric_group": "Hardware Status",

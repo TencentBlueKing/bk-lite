@@ -1,6 +1,6 @@
 Switch Lenovo CNOS SNMP:
   name: Lenovo CNOS（Telegraf）
-  desc: 面向 Lenovo CNOS 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、温度、风扇、电源状态、接口流量，适用于 ThinkSystem / RackSwitch CNOS（企业号 PEN 19046）。
+  desc: 面向 Lenovo CNOS 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、温度、风扇状态、风扇转速（RPM 与百分比）、电源状态、接口流量，适用于 ThinkSystem / RackSwitch CNOS（企业号 PEN 19046）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:
@@ -95,6 +95,9 @@ monitor_object_metric:
     device_fan_speed:
       name: 风扇转速
       desc: 该指标表示设备风扇的转速（RPM），取各风扇的最大值。转速异常偏低或为 0 表示风扇卡转或故障、设备面临过热风险；转速异常偏高可能是设备在为高温加速散热。对于仅提供转速、无风扇状态枚举的设备，转速是判断风扇健康的唯一依据。
+    device_fan_speed_percent:
+      name: 风扇转速百分比
+      desc: 该指标表示风扇转速占最大值的百分比（0-100）。百分比持续偏高可能意味着设备在为高温满速散热；在风扇在位时读数为 0 表示停转或故障。
     device_flow_bytes_rate:
       name: 设备 Flow 总流量速率
       desc: 按当前协议指标契约从 Flow 记录估算出的设备总流量速率，用于观察整体带宽压力和容量趋势。
