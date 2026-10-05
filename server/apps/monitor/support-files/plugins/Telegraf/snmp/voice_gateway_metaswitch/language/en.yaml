@@ -1,0 +1,78 @@
+VoiceGateway MetaSwitch SNMP:
+  name: Metaswitch (Telegraf)
+  desc: SNMP monitoring template for Metaswitch MetaView EMS / softswitch
+    nodes. It reports per-node CPU usage and high-water mark, physical memory
+    total / used / usage percent for the current 5-minute period, interface
+    traffic and system uptime (METASWITCH-MIB, arc 1.2.826.0.1.1578918.6).
+monitor_object:
+  VoiceGateway: VoiceGateway
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  VoiceGateway:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart,
+        derived from sysUpTime. Monitoring uptime helps administrators understand
+        device stability and identify unexpected reboots or failures.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5
+        minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifOutOctets on high-speed ports, keeping the rate accurate.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the
+        entire device over the past 5 minutes, measured in bytes per second, summed
+        across all interfaces from the 64-bit ifHCInOctets counter. It helps administrators
+        obtain an overview of incoming traffic for overall monitoring and capacity
+        planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire
+        device over the past 5 minutes, measured in bytes per second, summed across
+        all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
+        assess sending performance for traffic management and optimization.
+    device_temperature_celsius:
+      name: Device Temperature
+      desc: Voice gateway device temperature in degrees Celsius, used to detect cooling
+        problems, blocked airflow, or overheating risk.
+    device_psu_state:
+      name: PSU State
+      desc: Voice gateway power-source state normalized so 1 means healthy and 2 means
+        fault.
+    metaswitch_ems_cpu_usage:
+      name: EMS CPU Usage
+      desc: Total CPU usage of a MetaView EMS node for the current 5-minute summary
+        period (METASWITCH-MIB emsStatsTotCPUUsage, 0-100 percent).
+    metaswitch_ems_cpu_usage_hwm:
+      name: EMS CPU Usage High-Water Mark
+      desc: High-water mark of total CPU usage of a MetaView EMS node
+        (METASWITCH-MIB emsStatsTotCPUUsageHighWaterMark, 0-100 percent).
+    metaswitch_ems_mem_total_mb:
+      name: EMS Physical Memory Total
+      desc: Total physical memory of a MetaView EMS node in megabytes
+        (METASWITCH-MIB emsStatsTotPhysMem).
+    metaswitch_ems_mem_used_mb:
+      name: EMS Physical Memory Used
+      desc: Used physical memory of a MetaView EMS node in megabytes
+        (METASWITCH-MIB emsStatsPhysMemUsage).
+    metaswitch_ems_mem_usage_percent:
+      name: EMS Memory Usage
+      desc: Physical memory usage percent of a MetaView EMS node, derived as used
+        megabytes times 100 divided by total megabytes.
+monitor_object_metric_group:
+  VoiceGateway:
+    Base: Base
+    Traffic: Traffic
+    Temperature: Temperature
+    Hardware Status: Hardware Status
+    CPU: CPU
+    Memory: Memory
