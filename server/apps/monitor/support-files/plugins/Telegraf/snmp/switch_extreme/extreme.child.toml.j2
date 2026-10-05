@@ -77,6 +77,7 @@
     # ---- Extreme fans (EXTREME-SYSTEM-MIB extremeFanStatusTable) ----
     # 待现网核验：风扇状态 extremeFanOperational 1.3.6.1.4.1.1916.1.1.1.9.1.2；descr=风扇号 ...9.1.1。
     # extremeFanOperational 已是 1=true(正常)/2=false(停转)，与统一 1=normal 对齐，无需 remap。
+    # extremeFanSpeed 为 Integer32 RPM，范围 0..100000，由 starlark 过滤。
     [[inputs.snmp.table]]
         name = "device_fan"
         inherit_tags = ["source"]
@@ -87,6 +88,9 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.1916.1.1.1.9.1.2"
         name = "state"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1916.1.1.1.9.1.4"
+        name = "speed"
     # ---- Extreme power supplies (EXTREME-SYSTEM-MIB extremePowerSupplyTable) ----
     # 待现网核验：电源状态 extremePowerSupplyStatus 1.3.6.1.4.1.1916.1.1.1.27.1.2；descr=电源号 ...27.1.1。
     # 枚举 1 notPresent/2 presentOK/3 presentNotOK/4 presentPowerOff → 下方 processors.enum 归一(2→1，其余→2)。
@@ -114,3 +118,26 @@
         [processors.enum.mapping.value_mappings]
             "1" = 1
             "2" = 1
+
+# Fan RPM stays in RPM (no extra scale). Keep readings in 0..100000; drop
+# out-of-range speed. Fan operational is already true(1)/false(2); drop only
+# values the object does not define.
+[[processors.starlark]]
+    namepass = ["device_fan"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    rpm = f.get("speed")
+    if rpm != None:
+        if rpm < 0 or rpm > 100000:
+            f.pop("speed")
+    st = f.get("state")
+    if st != None:
+        if st != 1 and st != 2:
+            f.pop("state")
+    if len(f.keys()) == 0:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["extreme"]
