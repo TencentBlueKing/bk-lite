@@ -61,6 +61,7 @@ export const useWirelessConfig = () => {
       'Wireless ASCOM SNMP': 'snmp_ascom',
       'Wireless Albentia SNMP': 'snmp_albentia',
       'Wireless LigoWave SNMP': 'snmp_ligowave',
+      'Wireless HPE MSM SNMP': 'snmp_hpmsm',
       'Wireless Radwin SNMP': 'snmp_radwin',
       'Wireless Mimosa SNMP': 'snmp_mimosa',
       'Wireless Airspan SNMP': 'snmp_airspan',
