@@ -1,0 +1,99 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_inhand_router"
+        config_type = "inhand_router"
+        brand = "inhand_router"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- 蜂窝调制解调器温度：INHAND-WAN3G-MIB ih3gModemTemperature，标量 GET 必须带 .0 ----
+    # OID 1.3.6.1.4.1.36153.2.6.1.1.7.0，Integer32 −50..100 ℃。超出范围丢弃。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.36153.2.6.1.1.7.0"
+        name = "device_modem_temperature_celsius"
+    # ---- 调制解调器状态：ih3gModemState，标量 GET 必须带 .0 ----
+    # OID 1.3.6.1.4.1.36153.2.6.1.1.2.0。up(2)→1，down(3)→2，unknown(1) 及其它丢弃。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.36153.2.6.1.1.2.0"
+        name = "device_modem_state"
+    # ---- 蜂窝连接状态：ih3gConnectionStatus，标量 GET 必须带 .0；原始字段采集后丢弃 ----
+    # OID 1.3.6.1.4.1.36153.2.6.1.1.5.0。connected(11)→1，2..10→0，unknown(1) 及其它丢弃。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.36153.2.6.1.1.5.0"
+        name = "connection_status"
+    # ---- 蜂窝信号 LED 档位：ih3gSignalLevel，标量 GET 必须带 .0 ----
+    # OID 1.3.6.1.4.1.36153.2.6.1.1.9.0。原始档位，<0 或 >100 丢弃。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.36153.2.6.1.1.9.0"
+        name = "device_cellular_signal_level"
+
+# ---- 标量落在 measurement snmp：温度范围过滤、状态归一，原始 connection_status 不落库。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def _num(v):
+    if v == None:
+        return None
+    if type(v) == "int" or type(v) == "float":
+        return float(v)
+    err = catch(lambda: float(v))
+    if err != None:
+        return None
+    return float(v)
+
+def apply(metric):
+    f = metric.fields
+    temp = _num(f.get("device_modem_temperature_celsius"))
+    if temp == None or temp < -50 or temp > 100:
+        f.pop("device_modem_temperature_celsius", None)
+    else:
+        f["device_modem_temperature_celsius"] = temp
+    st = f.get("device_modem_state")
+    if st == 2 or st == "2":
+        f["device_modem_state"] = 1
+    elif st == 3 or st == "3":
+        f["device_modem_state"] = 2
+    else:
+        f.pop("device_modem_state", None)
+    raw = f.pop("connection_status", None)
+    rawn = _num(raw)
+    if rawn == 11:
+        f["device_cellular_connected"] = 1
+    elif rawn != None and rawn >= 2 and rawn <= 10:
+        f["device_cellular_connected"] = 0
+    sig = _num(f.get("device_cellular_signal_level"))
+    if sig == None or sig < 0 or sig > 100:
+        f.pop("device_cellular_signal_level", None)
+    else:
+        f["device_cellular_signal_level"] = sig
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["inhand_router"]
