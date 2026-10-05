@@ -57,27 +57,9 @@
 [[processors.starlark]]
     namepass = ["wavence_radio"]
     source = '''
-def is_sentinel(v):
-    if v == None:
-        return True
-    n = int(v)
-    if n == 65535:
-        return True
-    if n == 65534:
-        return True
-    if n == -1:
-        return True
-    if n == 2147483647:
-        return True
-    if n == -2147483648:
-        return True
-    if n == 4294967295:
-        return True
-    return False
-
 def scale_tx(metric, src, dst):
     raw = metric.fields.pop(src, None)
-    if raw == None or is_sentinel(raw):
+    if raw == None:
         return
     n = int(raw)
     if n < -1000 or n > 1000:
@@ -86,7 +68,7 @@ def scale_tx(metric, src, dst):
 
 def scale_rx(metric, src, dst):
     raw = metric.fields.pop(src, None)
-    if raw == None or is_sentinel(raw):
+    if raw == None:
         return
     n = int(raw)
     if n < -1000 or n > 0:
