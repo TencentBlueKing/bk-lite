@@ -159,9 +159,6 @@ monitor_object_metric:
     device_flow_top_conversation_bytes_rate:
       name: Top 会话 Flow 流量速率
       desc: 按源地址、目的地址、协议和目的端口聚合的会话流量排行，用于定位主要通信关系。
-    device_psu_temperature_celsius:
-      name: 电源温度
-      desc: 采集 IP Infusion (OcNOS) 设备机箱级 PSU 1 温度传感器读数（IPI-CMM-CHASSIS-MIB cmmSysPSTemperature1），单位摄氏度。用于监测电源模块工作温度，过高温度可能提示散热不良、风扇故障或环境过热，存在触发热保护或硬件损坏风险。
     cern_wrs_cpu_load_1min:
       name: CPU 1分钟负载均值
       desc: CERN White Rabbit 交换机的 1 分钟 Linux CPU 负载均值，来自 WR-SWITCH-MIB
