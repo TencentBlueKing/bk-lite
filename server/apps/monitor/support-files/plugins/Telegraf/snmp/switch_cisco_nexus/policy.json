@@ -54,7 +54,7 @@
     },
     {
       "name": "Cisco Nexus交换机风扇异常",
-      "alert_name": "交换机${resource_name} 风扇 ${metric_fan_name} 状态异常",
+      "alert_name": "交换机${resource_name} 风扇 ${metric__fan_name} 状态异常",
       "description": "监控 Cisco Nexus 风扇托盘运行状态，当风扇处于异常（停转或告警）时触发告警，散热故障可能迅速导致过热。",
       "metric_name": "device_fan_state",
       "algorithm": "last_over_time",
@@ -74,7 +74,7 @@
     },
     {
       "name": "Cisco Nexus交换机电源异常",
-      "alert_name": "交换机${resource_name} 电源 ${metric_psu_name} 状态异常",
+      "alert_name": "交换机${resource_name} 电源 ${metric__psu_name} 状态异常",
       "description": "监控 Cisco Nexus 电源模块运行状态，当电源处于异常时触发告警，提示电源冗余缺失或硬件故障。",
       "metric_name": "device_psu_state",
       "algorithm": "last_over_time",
