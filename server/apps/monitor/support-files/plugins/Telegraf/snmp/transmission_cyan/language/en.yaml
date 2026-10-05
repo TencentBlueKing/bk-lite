@@ -1,0 +1,71 @@
+Transmission Cyan SNMP:
+  name: Cyan (Telegraf)
+  desc: SNMP monitoring template for Cyan BOSS optical transport modules. It reports
+    intake, exhaust and PSU temperatures, module current, dual power-feed state and
+    voltage, uptime and interface traffic (enterprise PEN 28533).
+monitor_object:
+  Transmission: Transmission
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Transmission:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the Cyan BOSS module since the last
+        restart, derived from sysUpTime. Monitoring uptime helps administrators understand
+        device stability and identify unexpected reboots or failures.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5
+        minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifOutOctets on high-speed ports, keeping the rate accurate.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the
+        entire device over the past 5 minutes, measured in bytes per second, summed
+        across all interfaces from the 64-bit ifHCInOctets counter. It helps administrators
+        obtain an overview of incoming traffic for overall monitoring and capacity
+        planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire
+        device over the past 5 minutes, measured in bytes per second, summed across
+        all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
+        assess sending performance for traffic management and optimization.
+    intake_temperature_celsius:
+      name: Intake Air Temperature
+      desc: Intake air temperature of each Cyan BOSS module in degrees Celsius, scaled
+        from milli-Celsius. Readings outside -40 to 125 Celsius are dropped.
+    exhaust_temperature_celsius:
+      name: Exhaust Air Temperature
+      desc: Exhaust air temperature of each Cyan BOSS module in degrees Celsius, scaled
+        from milli-Celsius. Readings outside -40 to 125 Celsius are dropped.
+    psu_temperature_celsius:
+      name: PSU Temperature
+      desc: Power-supply temperature of each Cyan BOSS module in degrees Celsius,
+        scaled from milli-Celsius. Readings outside -40 to 125 Celsius are dropped.
+    device_current_amps:
+      name: Module Current
+      desc: Supply current of each Cyan BOSS module in amperes, scaled from milli-amperes.
+    device_psu_state:
+      name: Power Feed Status
+      desc: Power-feed state of each Cyan BOSS module feed A/B. on maps to normal,
+        off maps to abnormal, and unknown is not emitted.
+    device_voltage_volts:
+      name: Power Feed Voltage
+      desc: Voltage of each Cyan BOSS module feed A/B in volts, scaled from milli-volts.
+        Non-positive values are not emitted.
+monitor_object_metric_group:
+  Transmission:
+    Base: Base
+    Traffic: Traffic
+    Temperature: Temperature
+    Hardware Status: Hardware Status
+    Power: Power
