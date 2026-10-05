@@ -79,15 +79,65 @@
     },
     {
       "name": "Hirschmann交换机电源异常",
-      "alert_name": "交换机${resource_name} 电源状态异常",
+      "alert_name": "交换机${resource_name} 电源 ${metric__index} 状态异常",
       "description": "监控 Hirschmann 工业交换机的电源模块状态，当电源故障或未就绪时触发告警，提示需检查供电冗余，避免单电源失效导致设备宕机。",
       "metric_name": "device_psu_state",
       "algorithm": "last_over_time",
       "threshold": [
         {
           "level": "critical",
-          "value": 1,
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Hirschmann交换机风扇异常",
+      "alert_name": "交换机${resource_name} 风扇 ${metric__index} 状态异常",
+      "description": "监控 Hirschmann 工业交换机各风扇运行状态（1=正常、2=异常）。状态为异常时表示散热故障，应立即排查。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Hirschmann交换机光模块温度过高",
+      "alert_name": "交换机${resource_name} 光模块 ${metric__index} 温度过高",
+      "description": "监控 Hirschmann 工业交换机 SFP 模块温度，当持续高于阈值时触发告警，避免光模块过热损坏。",
+      "metric_name": "device_sfp_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
           "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Hirschmann交换机光模块接收功率异常",
+      "alert_name": "交换机${resource_name} 光模块 ${metric__index} 接收功率状态异常",
+      "description": "监控 Hirschmann 工业交换机 SFP 接收功率状态（ok 为正常，warning/alarm 为异常）。状态为异常时提示链路光功率告警。",
+      "metric_name": "device_sfp_rx_power_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
         }
       ],
       "group_algorithm": "avg"

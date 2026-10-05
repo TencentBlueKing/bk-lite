@@ -78,7 +78,32 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.248.14.1.2.1.3"
         name = "state"
-# ---- 风扇:Hirschmann HMPRIV MIB 未暴露独立风扇状态/转速专用标量 → 风扇 N/A。CPU/内存/温度/电源四项干净可采。----
+    # SFP DDM: hmSfpTemperature (°C), hmSfpTxPowerInt/hmSfpRxPowerInt (0.1 µW),
+    # hmSfpRxPowerState ok(1)/warning(2)/alarm(3). Composite index kept as tag.
+    [[inputs.snmp.table]]
+        name = "device_sfp"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.248.14.1.1.13.1.12"
+        name = "temperature_celsius"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.248.14.1.1.13.1.15"
+        name = "tx_power"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.248.14.1.1.13.1.16"
+        name = "rx_power"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.248.14.1.1.13.1.17"
+        name = "rx_power_state"
+    # Fan state: hmFanState ok(1)/failed(2), per-slot table.
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.248.14.1.3.1.3"
+        name = "state"
 # ---- 状态归一:电源 ok(1)→1(正常),其余(failed/notInstalled/unknown)→2(异常)。----
 [[processors.enum]]
     namepass = ["device_psu"]
@@ -87,3 +112,53 @@
         default = 2
         [processors.enum.mapping.value_mappings]
             "1" = 1
+
+# SFP temp range -40..125 C (drops the -1000 read-error by range). Power is
+# stored in µW after dividing the 0.1 µW integer once. Fan/Rx-power states map
+# every defined code to 1 or 2; undefined values are dropped.
+[[processors.starlark]]
+    namepass = ["device_sfp", "device_fan"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    if metric.name == "device_fan":
+        st = f.get("state")
+        if st == None:
+            return None
+        if st == 1:
+            f["state"] = 1
+        elif st == 2:
+            f["state"] = 2
+        else:
+            return None
+        return metric
+    t = f.get("temperature_celsius")
+    if t != None:
+        if t < -40 or t > 125:
+            f.pop("temperature_celsius")
+    tx = f.get("tx_power")
+    if tx != None:
+        if tx < 0 or tx > 1000000:
+            f.pop("tx_power")
+        else:
+            f["tx_power"] = tx / 10.0
+    rx = f.get("rx_power")
+    if rx != None:
+        if rx < 0 or rx > 1000000:
+            f.pop("rx_power")
+        else:
+            f["rx_power"] = rx / 10.0
+    rs = f.get("rx_power_state")
+    if rs != None:
+        if rs == 1:
+            f["rx_power_state"] = 1
+        elif rs == 2 or rs == 3:
+            f["rx_power_state"] = 2
+        else:
+            f.pop("rx_power_state")
+    if len(f.keys()) == 0:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["hirschmann"]
