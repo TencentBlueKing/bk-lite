@@ -980,6 +980,17 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_cisco_iosxr",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "fan",
+        "psu",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_cisco_router",
       "capabilities": [
         "uptime",
