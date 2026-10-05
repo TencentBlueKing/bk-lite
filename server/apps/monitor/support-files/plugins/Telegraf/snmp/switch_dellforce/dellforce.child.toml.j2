@@ -100,6 +100,46 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.6027.3.10.1.2.3.1.2"
         name = "state"
+    # ---- E-Series RPM CPU%（F10-CHASSIS-MIB chRpmCpuUtil5Min，表列无 .0）----
+    [[inputs.snmp.table]]
+        name = "f10_chassis_cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6027.3.1.1.3.7.1.5"
+        name = "usage"
+    # ---- E-Series RPM Mem%（F10-CHASSIS-MIB chRpmMemUsageUtil，表列无 .0）----
+    [[inputs.snmp.table]]
+        name = "f10_chassis_memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6027.3.1.1.3.7.1.6"
+        name = "usage"
+    # ---- E-Series 板卡温度（F10-CHASSIS-MIB chSysCardUpperTemp，表列无 .0）----
+    [[inputs.snmp.table]]
+        name = "f10_chassis_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6027.3.1.1.2.3.1.8"
+        name = "celsius"
+    # ---- E-Series 风扇托盘状态（F10-CHASSIS-MIB chSysFanTrayOperStatus，表列无 .0）----
+    [[inputs.snmp.table]]
+        name = "f10_chassis_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6027.3.1.1.2.2.1.2"
+        name = "state"
+    # ---- E-Series 电源状态（F10-CHASSIS-MIB chSysPowerSupplyOperStatus，表列无 .0）----
+    [[inputs.snmp.table]]
+        name = "f10_chassis_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6027.3.1.1.2.1.1.2"
+        name = "state"
 
 # ---- 枚举归一：Dell Force10 chSysFanTray/PowerSupplyOperStatus → 统一 1=normal/2=abnormal（偏离1即异常）----
 # 待现网核验：仅作用于本品牌(tagpass brand=dellforce)。up(1)/absent(3 空槽)→1；其余(2 down)→2。
@@ -120,3 +160,53 @@
         [processors.enum.mapping.value_mappings]
             "1" = 1
             "3" = 1
+# ---- E-Series：过滤越界/空槽，风扇/电源 up(1)→1、down(2)→2、其余丢弃；打 chassis_mib 区分系列，再映射到既有指标名。----
+[[processors.starlark]]
+    namepass = ["f10_chassis_cpu", "f10_chassis_memory", "f10_chassis_temperature", "f10_chassis_fan", "f10_chassis_psu"]
+    source = '''
+def apply(metric):
+    metric.tags["chassis_mib"] = "f10_chassis"
+    name = metric.name
+    f = metric.fields
+    if name == "f10_chassis_cpu":
+        usage = f.get("usage")
+        if usage == None or usage < 0 or usage > 100:
+            return None
+        metric.name = "device_cpu"
+        return metric
+    if name == "f10_chassis_memory":
+        usage = f.get("usage")
+        if usage == None or usage < 0 or usage > 100:
+            return None
+        metric.name = "device_memory"
+        return metric
+    if name == "f10_chassis_temperature":
+        celsius = f.get("celsius")
+        if celsius == None or celsius == 0 or celsius < -40 or celsius > 125:
+            return None
+        metric.name = "device_temperature"
+        return metric
+    if name == "f10_chassis_fan":
+        state = f.get("state")
+        if state == 1:
+            f["state"] = 1
+        elif state == 2:
+            f["state"] = 2
+        else:
+            return None
+        metric.name = "device_fan"
+        return metric
+    if name == "f10_chassis_psu":
+        state = f.get("state")
+        if state == 1:
+            f["state"] = 1
+        elif state == 2:
+            f["state"] = 2
+        else:
+            return None
+        metric.name = "device_psu"
+        return metric
+    return None
+'''
+    [processors.starlark.tagpass]
+        brand = ["dellforce"]
