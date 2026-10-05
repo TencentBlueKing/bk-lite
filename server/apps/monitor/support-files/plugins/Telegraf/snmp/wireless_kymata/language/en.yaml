@@ -53,9 +53,9 @@ monitor_object_metric:
         load promptly.
     device_temperature_celsius:
       name: Internal Temperature
-      desc: Internal temperature of the Kymata outdoor WiFi RF amplifier in degrees
-        Celsius, from KYMATA-AMP-MIB temperature (OID 1.3.6.1.4.1.60429.1.3.10), with
-        no scaling. Values outside -40 to 125 C are dropped.
+      desc: Internal amplifier temperature in degrees Celsius (KYMATA-AMP-MIB
+        temperature), read directly with no scaling. Sustained high values may
+        indicate cooling failure or excessive ambient heat.
     kymata_supply_voltage_volts:
       name: 5V Rail Voltage
       desc: 5 V rail voltage of the Kymata outdoor WiFi RF amplifier in volts, from

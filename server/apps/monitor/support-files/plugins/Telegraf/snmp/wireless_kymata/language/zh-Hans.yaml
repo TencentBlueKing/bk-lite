@@ -33,8 +33,7 @@ monitor_object_metric:
       desc: 无线设备的整体内存使用率，以 0-100 百分比直接上报。内存压力过高会导致接入点丢弃客户端关联或重启服务，需及时排查客户端数量或异常负载。
     device_temperature_celsius:
       name: 机内温度
-      desc: Kymata 室外 WiFi 射频放大器的机内温度，单位摄氏度，来自 KYMATA-AMP-MIB temperature（OID
-        1.3.6.1.4.1.60429.1.3.10），直采无缩放。超出 -40 到 125 ℃ 范围的值会被丢弃。
+      desc: 放大器内部温度（KYMATA-AMP-MIB temperature），单位摄氏度，不缩放。持续偏高可能是散热失效或环境温度过高。
     kymata_supply_voltage_volts:
       name: 5V 轨电压
       desc: Kymata 室外 WiFi 射频放大器的 5V 轨电压，单位伏特，来自 KYMATA-AMP-MIB
