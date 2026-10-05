@@ -74,6 +74,7 @@ export const useFirewallConfig = () => {
       'Firewall Hillstone SNMP': 'snmp_hillstone',
       'Firewall Sophos XG SNMP': 'snmp_sophos',
       'Firewall Forcepoint SNMP': 'snmp_forcepoint',
+      'Firewall Fortinet FortiMail SNMP': 'snmp_fortimail',
       'Firewall ScreenOS SNMP': 'snmp_screenos',
       'Firewall Neteye SNMP': 'snmp_neteye',
       'Firewall Bluedon SNMP': 'snmp_bluedon',
