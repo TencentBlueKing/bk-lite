@@ -992,6 +992,16 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_cloudgenix",
+      "capabilities": [
+        "uptime",
+        "temperature",
+        "fan",
+        "psu",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_cradlepoint",
       "capabilities": [
         "uptime",

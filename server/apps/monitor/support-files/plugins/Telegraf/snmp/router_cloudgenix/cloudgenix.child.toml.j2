@@ -1,0 +1,164 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_cloudgenix"
+        config_type = "cloudgenix"
+        brand = "cloudgenix"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- 风扇状态：cgxEnvFanEntry，表列禁止 .0；INDEX cgxEnvFanIndex ----
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.50114.10.3.10.11.1.2"
+        name = "name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.50114.10.3.10.11.1.3"
+        name = "state"
+    # ---- 风扇转速：同表不同 measurement，使字段名拼出 cloudgenix_fan_speed_rpm ----
+    [[inputs.snmp.table]]
+        name = "cloudgenix_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.50114.10.3.10.11.1.2"
+        name = "name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.50114.10.3.10.11.1.4"
+        name = "speed_rpm"
+    # ---- 电源：cgxEnvPsuEntry，表列禁止 .0；INDEX cgxEnvPsuTableIndex ----
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.50114.10.3.10.21.1.2"
+        name = "name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.50114.10.3.10.21.1.3"
+        name = "state"
+    # ---- 温度读数：cgxEnvTempEntry，表列禁止 .0；读数为 millidegree，starlark ÷1000 ----
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.50114.10.3.10.31.1.2"
+        name = "name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.50114.10.3.10.31.1.4"
+        name = "celsius"
+    # ---- 温度状态：同表不同 measurement，使字段名拼出 cloudgenix_temperature_state ----
+    [[inputs.snmp.table]]
+        name = "cloudgenix_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.50114.10.3.10.31.1.2"
+        name = "name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.50114.10.3.10.31.1.3"
+        name = "state"
+    # ---- 电源轨：cgxEnvPowerEntry，表列禁止 .0；电压为 millivolt，starlark ÷1000 ----
+    [[inputs.snmp.table]]
+        name = "cloudgenix_power"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.50114.10.3.10.41.1.2"
+        name = "name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.50114.10.3.10.41.1.3"
+        name = "state"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.50114.10.3.10.41.1.4"
+        name = "voltage_volts"
+# ---- CgxEnvStatus：up(1)→1，其余已定义取值→2；未定义取值丢弃该状态字段。转速 0..100000；温度原值 -40000..125000 后 ÷1000；电压原值 1..100000 后 ÷1000。----
+[[processors.starlark]]
+    namepass = ["device_fan", "cloudgenix_fan", "device_psu", "device_temperature", "cloudgenix_temperature", "cloudgenix_power"]
+    source = '''
+def map_env_status(value):
+    if value == None:
+        return None
+    code = int(value)
+    if code == 1:
+        return 1
+    if code == 2 or code == 3 or code == 4 or code == 6:
+        return 2
+    return None
+
+def apply_status(f):
+    mapped = map_env_status(f.get("state"))
+    if mapped == None:
+        if f.get("state") != None:
+            f.pop("state")
+    else:
+        f["state"] = mapped
+
+def apply(metric):
+    f = metric.fields
+    name = metric.name
+    if name == "device_fan" or name == "device_psu" or name == "cloudgenix_temperature" or name == "cloudgenix_power":
+        apply_status(f)
+    if name == "cloudgenix_fan":
+        speed = f.get("speed_rpm")
+        if speed != None:
+            speed = int(speed)
+            if speed < 0 or speed > 100000:
+                f.pop("speed_rpm")
+    if name == "device_temperature":
+        raw = f.get("celsius")
+        if raw != None:
+            raw = int(raw)
+            if raw < -40000 or raw > 125000:
+                f.pop("celsius")
+            else:
+                f["celsius"] = float(raw) / 1000.0
+    if name == "cloudgenix_power":
+        raw = f.get("voltage_volts")
+        if raw != None:
+            raw = int(raw)
+            if raw < 1 or raw > 100000:
+                f.pop("voltage_volts")
+            else:
+                f["voltage_volts"] = float(raw) / 1000.0
+    if len(f.keys()) == 0:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["cloudgenix"]

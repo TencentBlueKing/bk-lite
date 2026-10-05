@@ -87,6 +87,7 @@ export const useRouterConfig = () => {
       'Router Vyatta SNMP': 'snmp_vyatta',
       'Router NetModule SNMP': 'snmp_netmodule',
       'Router MultiTech SNMP': 'snmp_multitech',
+      'Router CloudGenix SNMP': 'snmp_cloudgenix',
       'Router Avici SNMP': 'snmp_avici',
       'Router Unisphere SNMP': 'snmp_unisphere',
       'Router 6WIND VSR SNMP': 'snmp_6wind',
