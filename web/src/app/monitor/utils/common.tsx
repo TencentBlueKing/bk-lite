@@ -688,6 +688,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /qtech/i, label: 'QTech', icon: 'mm-qtech_qtech' },
   { match: /dellforce|force10|dell.?force/i, label: 'Dell Force10', icon: 'mm-dellforce_dellforce' },
   { match: /hphpn|procurve|hp.?networking/i, label: 'HP ProCurve', icon: 'mm-hphpn_hphpn' },
+  { match: /\bpbi\b/i, label: 'PBI' },
   { match: /fortinet|fortigate/i, label: 'Fortinet', icon: 'mm-fortinet_fortinet' },
   { match: /checkpoint|check.?point/i, label: 'Check Point', icon: 'mm-checkpoint_checkpoint' },
   { match: /stormshield/i, label: 'Stormshield', icon: 'mm-stormshield_stormshield' },
