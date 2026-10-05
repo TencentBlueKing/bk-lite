@@ -906,6 +906,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /siklu|etherhaul|multihaul/i, label: 'Siklu', icon: 'mm-siklu_siklu' },
   { match: /4rf|aprisa/i, label: '4RF Aprisa', icon: 'mm-4rf_4rf' },
   { match: /viavi|jdsu|acterna/i, label: 'Viavi', icon: 'mm-viavi_viavi' },
+  { match: /\bwisi\b|tangram/i, label: 'WISI' },
   { match: /sycamore/i, label: 'Sycamore', icon: 'mm-sycamore_sycamore' },
   { match: /\bredline\b/i, label: 'Redline', icon: 'mm-redline_redline' },
   { match: /dragon\s*wave|dragonwave|airpair/i, label: 'DragonWave', icon: 'mm-dragonwave_dragonwave' },

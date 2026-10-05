@@ -1,0 +1,210 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_wisi",
+  "plugin": "Transmission WISI SNMP",
+  "plugin_desc": "SNMP monitoring template for WISI Tangram HFC/CATV headend chassis. It reports uptime, chassis temperature, fan speed, PSU current/voltage/temperature, and interface traffic (enterprise PEN 7465).",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='transmission', collect_type='snmp_wisi'}) by (instance_id)",
+  "name": "Transmission",
+  "icon": "mm-transmission_传输设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='transmission'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_temperature_celsius",
+    "device_fan_speed",
+    "psu_temperature_celsius",
+    "device_voltage_volts"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='transmission', __$labels__}",
+      "display_name": "Chassis Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "gtTempsTable two-part index {gtModule,gtTemp}"
+        },
+        {
+          "name": "gtTempName",
+          "description": "Temperature sensor name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "WISI Tangram chassis temperature in degrees Celsius from gtTempValue. Values outside -40 to 125 C or sentinel readings are dropped before storage."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_speed",
+      "query": "device_fan_speed{instance_type='transmission', __$labels__}",
+      "display_name": "Fan Speed",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "gtFansTable index {gtFan}"
+        },
+        {
+          "name": "gtFanName",
+          "description": "Fan name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "WISI Tangram fan rotation speed in RPM from gtFanSpeed. Values outside 0 to 15000 RPM or sentinel readings are dropped before storage."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "psu_temperature_celsius",
+      "query": "psu_temperature_celsius{instance_type='transmission', __$labels__}",
+      "display_name": "PSU Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "gtPSUsTable index {gtPSU}"
+        },
+        {
+          "name": "gtPSUName",
+          "description": "Power supply name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "WISI Tangram power-supply temperature in degrees Celsius from gtPSUTemperature. Kept on a distinct series from chassis temperature. Values outside -40 to 125 C are dropped."
+    },
+    {
+      "metric_group": "Power",
+      "name": "psu_current_amps",
+      "query": "psu_current_amps{instance_type='transmission', __$labels__}",
+      "display_name": "PSU Current",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "gtPSUsTable index {gtPSU}"
+        },
+        {
+          "name": "gtPSUName",
+          "description": "Power supply name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "WISI Tangram power-supply current in amperes from gtPSUCurrent. The SNMP value is milliamperes and is divided by 1000 in the collector. Absent PSU rows (both voltages 0) are dropped."
+    },
+    {
+      "metric_group": "Power",
+      "name": "device_voltage_volts",
+      "query": "device_voltage_volts{instance_type='transmission', __$labels__}",
+      "display_name": "PSU Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "gtPSUsTable index {gtPSU}"
+        },
+        {
+          "name": "gtPSUName",
+          "description": "Power supply name"
+        },
+        {
+          "name": "voltage_type",
+          "description": "internal or external voltage"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "WISI Tangram power-supply voltage in volts from gtPSUVoltageInt/gtPSUVoltageExt. The SNMP value is millivolts and is divided by 1000 in the collector. Internal and external readings use a voltage_type tag. Values outside 0 to 16000 mV, non-positive voltages, and absent PSU rows are dropped."
+    },
+    {
+      "metric_group": "Power",
+      "name": "psu_rated_power_watts",
+      "query": "psu_rated_power_watts{instance_type='transmission', __$labels__}",
+      "display_name": "PSU Rated Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "gtPSUsTable index {gtPSU}"
+        },
+        {
+          "name": "gtPSUName",
+          "description": "Power supply name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional WISI Tangram power-supply maximum output rating in watts from gtPSUPower. The SNMP value is milliwatts and is divided by 1000 in the collector."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

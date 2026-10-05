@@ -1,0 +1,74 @@
+Transmission WISI SNMP:
+  name: WISI (Telegraf)
+  desc: "SNMP monitoring template for WISI Tangram transmission device. It reports uptime, chassis temperature, fan speed, PSU current/voltage/temperature, and interface traffic (enterprise PEN 7465)."
+monitor_object:
+  Transmission: Transmission
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Transmission:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart,
+        derived from sysUpTime. Monitoring uptime helps administrators understand
+        device stability and identify unexpected reboots or failures.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5
+        minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifOutOctets on high-speed ports, keeping the rate accurate.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the
+        entire device over the past 5 minutes, measured in bytes per second, summed
+        across all interfaces from the 64-bit ifHCInOctets counter. It helps administrators
+        obtain an overview of incoming traffic for overall monitoring and capacity
+        planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire
+        device over the past 5 minutes, measured in bytes per second, summed across
+        all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
+        assess sending performance for traffic management and optimization.
+    device_temperature_celsius:
+      name: Chassis Temperature
+      desc: WISI Tangram chassis temperature in degrees Celsius. Out-of-range and
+        sentinel readings are dropped by the collector. High values may indicate
+        cooling problems, high ambient temperature or overloaded hardware.
+    device_fan_speed:
+      name: Fan Speed
+      desc: WISI Tangram fan rotation speed in RPM. Out-of-range and sentinel readings
+        are dropped by the collector. Abnormally low or zero RPM indicates a stalled
+        or failed fan.
+    psu_temperature_celsius:
+      name: PSU Temperature
+      desc: WISI Tangram power-supply temperature in degrees Celsius, stored on a
+        distinct series from chassis temperature. High values may indicate PSU cooling
+        problems or overload.
+    psu_current_amps:
+      name: PSU Current
+      desc: WISI Tangram power-supply current in amperes. The SNMP value is milliamperes
+        and is divided by 1000 in the collector. Absent PSU rows omit this metric.
+    device_voltage_volts:
+      name: PSU Voltage
+      desc: WISI Tangram internal or external power-supply voltage in volts. The SNMP
+        value is millivolts and is divided by 1000 in the collector. A voltage_type
+        tag distinguishes internal from external readings.
+    psu_rated_power_watts:
+      name: PSU Rated Power
+      desc: Optional WISI Tangram power-supply maximum output rating in watts. The
+        SNMP value is milliwatts and is divided by 1000 in the collector.
+monitor_object_metric_group:
+  Transmission:
+    Base: Base
+    Traffic: Traffic
+    Temperature: Temperature
+    Hardware Status: Hardware Status
+    Power: Power
