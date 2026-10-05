@@ -537,6 +537,16 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_moxa_edsg",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "psu",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_murrelektronik",
       "capabilities": [
         "uptime",

@@ -110,6 +110,7 @@ export const useSwitchConfig = () => {
       'Switch SNMP General': 'snmp',
       'Switch Cisco SNMP': 'snmp_cisco',
       'Switch Huawei SNMP': 'snmp_huawei',
+      'Switch Moxa EDS-G SNMP': 'snmp_moxa_edsg',
       'Switch FutureMatrix SNMP': 'snmp_futurematrix',
       'Switch Aruba SNMP': 'snmp_aruba',
       'Switch Juniper SNMP': 'snmp_juniper',
