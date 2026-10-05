@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_scalance",
   "plugin": "Switch Scalance SNMP",
-  "plugin_desc": "SNMP monitoring template for Scalance switch. It reports uptime, power supply status, and interface traffic (enterprise PEN 4329). Chassis temperature is N/A.",
+  "plugin_desc": "SNMP monitoring template for Siemens SCALANCE industrial switches (enterprise PEN 4329). It reports uptime, interface traffic, power supply status (AUTOMATION-PS), per-sensor temperature and the device fault-signalling state (SN-MSPS-SCX200-MIB).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_scalance'}) by (instance_id)",
   "name": "Switch",
@@ -15,7 +15,9 @@
   ],
   "supplementary_indicators": [
     "snmp_uptime",
-    "device_psu_state"
+    "device_psu_state",
+    "device_temperature_celsius",
+    "scalance_fault_state"
   ],
   "metrics": [
     {
@@ -66,6 +68,37 @@
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "data_type": "Enum",
       "description": "Power-supply state of the SCALANCE industrial switch from automationPSStatus, normalised so that active(2) maps to 1=normal and inactive(1)/other values map to 2=abnormal."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "sensor_name",
+          "description": "sensor_name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-sensor chassis temperature of the SCALANCE industrial switch in whole degrees Celsius (SN-MSPS-SCX200-MIB snMspsDiagnosticsTemperatureValue). Rows that are not present, have invalid/initial status, or fall outside -40 to 125 C are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "scalance_fault_state",
+      "query": "snmp_scalance_fault_state{instance_type='switch', __$labels__}",
+      "display_name": "Fault Signalling State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Fault LED / signalling-contact state of the SCALANCE industrial switch (SN-MSPS-SCX200-MIB snMspsFaultState). noFault(1) maps to 1=normal and fault(2) maps to 2=abnormal; any other value is dropped."
     },
     {
       "metric_group": "Base",
