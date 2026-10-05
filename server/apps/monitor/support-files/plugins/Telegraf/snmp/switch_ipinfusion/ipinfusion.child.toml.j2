@@ -112,7 +112,7 @@
         oid = "1.3.6.1.4.1.36673.100.1.2.6.1.11"
         name = "temperature_celsius"
 
-# ---- CMM 数值换算与状态归一：-100001/-100002 及超范围值丢弃；换算只在 starlark 做一次。----
+# ---- CMM 数值换算与状态归一：每字段只用量程过滤（下限高于 -100001），换算只做一次。----
 [[processors.starlark]]
     namepass = ["device_cpu", "device_memory", "device_temperature", "device_fan", "device_psu"]
     source = '''
@@ -126,19 +126,11 @@ def _num(v):
         return None
     return float(v)
 
-def _drop_sentinel(v):
-    n = _num(v)
-    if n == None:
-        return None
-    if n == -100001 or n == -100002:
-        return None
-    return n
-
 def apply(metric):
     name = metric.name
     f = metric.fields
     if name == "device_cpu":
-        raw = _drop_sentinel(f.get("usage"))
+        raw = _num(f.get("usage"))
         if raw == None:
             return None
         usage = raw / 100.0
@@ -147,24 +139,21 @@ def apply(metric):
         f["usage"] = usage
         return metric
     if name == "device_memory":
-        total = _drop_sentinel(f.get("total"))
-        usedpct = _drop_sentinel(f.get("usage"))
-        if total != None:
+        total = _num(f.get("total"))
+        usedpct = _num(f.get("usage"))
+        if total != None and total > 0:
             f["total"] = int(total * 1048576)
         else:
             f.pop("total", None)
-        if usedpct != None:
-            if usedpct < 0 or usedpct > 100:
-                f.pop("usage", None)
-            else:
-                f["usage"] = usedpct
+        if usedpct != None and usedpct >= 0 and usedpct <= 100:
+            f["usage"] = usedpct
         else:
             f.pop("usage", None)
         if len(f.keys()) == 0:
             return None
         return metric
     if name == "device_temperature":
-        raw = _drop_sentinel(f.get("celsius"))
+        raw = _num(f.get("celsius"))
         if raw == None:
             return None
         celsius = raw / 100.0
@@ -173,7 +162,7 @@ def apply(metric):
         f["celsius"] = celsius
         return metric
     if name == "device_fan":
-        rpm = _drop_sentinel(f.get("speed"))
+        rpm = _num(f.get("speed"))
         if rpm == None:
             f.pop("speed", None)
         elif rpm < 0 or rpm > 50000:
@@ -198,7 +187,7 @@ def apply(metric):
             f["state"] = 2
         else:
             f.pop("state", None)
-        raw = _drop_sentinel(f.get("temperature_celsius"))
+        raw = _num(f.get("temperature_celsius"))
         if raw == None:
             f.pop("temperature_celsius", None)
         else:
