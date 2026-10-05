@@ -57,6 +57,7 @@ export const useWirelessConfig = () => {
       'Wireless Proxim SNMP': 'snmp_proxim',
       'Wireless EnGenius SNMP': 'snmp_engenius',
       'Wireless Aerohive SNMP': 'snmp_aerohive',
+      'Wireless Extreme WiNG SNMP': 'snmp_symbol_wing',
       'Wireless Grandstream SNMP': 'snmp_grandstream',
       'Wireless ASCOM SNMP': 'snmp_ascom',
       'Wireless Albentia SNMP': 'snmp_albentia',
