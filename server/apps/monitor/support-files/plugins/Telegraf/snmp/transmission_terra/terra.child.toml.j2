@@ -1,0 +1,152 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_terra"
+        config_type = "terra"
+        brand = "terra"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- TERRA sti440 标量（PEN 30631, commStatus / rFinStatus1..4）：顶层 field 带 .0 → measurement snmp ----
+    # cpuLoad .326.3.0：CPU 负载 %。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.30631.1.18.1.326.3.0"
+        name = "device_cpu_usage"
+    # intTemp .326.4.0：机内温度 ℃。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.30631.1.18.1.326.4.0"
+        name = "device_temperature_celsius"
+    # volt .326.5.0：供电电压，Integer32，单位 0.1 V，starlark 中 ÷10 后存为伏特。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.30631.1.18.1.326.5.0"
+        name = "terra_supply_voltage_volts"
+    # inlevel1..4 / insnr1..4：四路调谐器输入电平 dBuV 与信噪比 dB；starlark 拆到 terra_tuner。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.30631.1.18.1.1.3.0"
+        name = "inlevel1"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.30631.1.18.1.1.5.0"
+        name = "insnr1"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.30631.1.18.1.2.3.0"
+        name = "inlevel2"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.30631.1.18.1.2.5.0"
+        name = "insnr2"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.30631.1.18.1.3.3.0"
+        name = "inlevel3"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.30631.1.18.1.3.5.0"
+        name = "insnr3"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.30631.1.18.1.4.3.0"
+        name = "inlevel4"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.30631.1.18.1.4.5.0"
+        name = "insnr4"
+# ---- 风扇/电源：sti440 段无风扇转速与电源状态表 → N/A。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def is_sentinel(v):
+    if v == 65535:
+        return True
+    if v == 65534:
+        return True
+    if v == -1:
+        return True
+    if v == 2147483647:
+        return True
+    if v == -2147483648:
+        return True
+    if v == 4294967295:
+        return True
+    return False
+
+def take_tuner(metric, idx, level_name, snr_name):
+    level = metric.fields.pop(level_name, None)
+    snr = metric.fields.pop(snr_name, None)
+    keep_level = False
+    keep_snr = False
+    if level != None:
+        if is_sentinel(level) or level < 0 or level > 130:
+            level = None
+        else:
+            keep_level = True
+    if snr != None:
+        if is_sentinel(snr) or snr < 0 or snr > 60:
+            snr = None
+        else:
+            keep_snr = True
+    if (not keep_level) and (not keep_snr):
+        return None
+    row = Metric("terra_tuner")
+    for key, value in metric.tags.items():
+        row.tags[key] = value
+    row.tags["tuner"] = idx
+    row.time = metric.time
+    if keep_level:
+        row.fields["level_dbuv"] = level
+    if keep_snr:
+        row.fields["snr_db"] = snr
+    return row
+
+def apply(metric):
+    cpu = metric.fields.get("device_cpu_usage")
+    if cpu != None:
+        if is_sentinel(cpu) or cpu < 0 or cpu > 100:
+            metric.fields.pop("device_cpu_usage")
+    temp = metric.fields.get("device_temperature_celsius")
+    if temp != None:
+        if is_sentinel(temp) or temp < -40 or temp > 125:
+            metric.fields.pop("device_temperature_celsius")
+    raw_volt = metric.fields.get("terra_supply_voltage_volts")
+    if raw_volt != None:
+        if is_sentinel(raw_volt) or raw_volt <= 0 or raw_volt > 600:
+            metric.fields.pop("terra_supply_voltage_volts")
+        else:
+            metric.fields["terra_supply_voltage_volts"] = raw_volt / 10.0
+    out = [metric]
+    t1 = take_tuner(metric, "1", "inlevel1", "insnr1")
+    if t1 != None:
+        out.append(t1)
+    t2 = take_tuner(metric, "2", "inlevel2", "insnr2")
+    if t2 != None:
+        out.append(t2)
+    t3 = take_tuner(metric, "3", "inlevel3", "insnr3")
+    if t3 != None:
+        out.append(t3)
+    t4 = take_tuner(metric, "4", "inlevel4", "insnr4")
+    if t4 != None:
+        out.append(t4)
+    return out
+'''
+    [processors.starlark.tagpass]
+        brand = ["terra"]
