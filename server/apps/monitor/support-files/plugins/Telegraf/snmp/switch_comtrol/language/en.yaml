@@ -173,6 +173,10 @@ monitor_object_metric:
         the device. A non-normal state signals a power redundancy or hardware fault;
         on devices with redundant PSUs a single failure may not cause an outage but
         removes redundancy and must be remediated promptly.
+    device_psu_state_backup:
+      name: PSU Backup State
+      desc: Operational state of the device backup power supply unit, normalized to
+        normal or abnormal.
     device_fan_speed:
       name: Fan Speed
       desc: This metric reports the fan rotation speed (RPM) of the device, taken
