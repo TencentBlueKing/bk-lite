@@ -1,0 +1,51 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission Profline SNMP",
+  "templates": [
+    {
+      "name": "Profline解调器射频输入过载",
+      "alert_name": "传输设备${resource_name} 射频输入过载",
+      "description": "监控 Profline SFD 解调器射频输入电平（sfdMsrRfInSignalStrength）。当电平持续高于 115 dBuV 时触发告警，提示射频输入过载。",
+      "metric_name": "profline_rf_level_dbuv",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 115,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Profline解调器射频电平过低告警",
+      "alert_name": "传输设备${resource_name} 射频电平过低告警",
+      "description": "监控 Profline SFD 解调器射频输入过低告警（sfdMsrAlarmRfInLevelLow，已归一化为 1=正常 / 2=异常）。当设备上报 warning 或 alarm 时触发告警。",
+      "metric_name": "profline_rf_low_alarm_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Profline解调器射频电平过高告警",
+      "alert_name": "传输设备${resource_name} 射频电平过高告警",
+      "description": "监控 Profline SFD 解调器射频输入过高告警（sfdMsrAlarmRfInLevelHigh，已归一化为 1=正常 / 2=异常）。当设备上报 warning 或 alarm 时触发告警。",
+      "metric_name": "profline_rf_high_alarm_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

@@ -74,6 +74,7 @@ export const useTransmissionConfig = () => {
       'Transmission DragonWave SNMP': 'snmp_dragonwave',
       'Transmission Ericsson SNMP': 'snmp_ericsson',
       'Transmission Ekinops SNMP': 'snmp_ekinops',
+      'Transmission Profline SNMP': 'snmp_profline',
       'Transmission Infinera SNMP': 'snmp_infinera',
       'Transmission BridgeWave SNMP': 'snmp_bridgewave',
       'Transmission Huber+Suhner Cubo SNMP': 'snmp_hubersuhner',
