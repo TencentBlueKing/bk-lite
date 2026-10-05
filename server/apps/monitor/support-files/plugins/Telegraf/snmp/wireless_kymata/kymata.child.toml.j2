@@ -53,46 +53,31 @@
 [[processors.starlark]]
     namepass = ["snmp"]
     source = '''
-def _is_sentinel(value):
-    if value == 65535:
-        return True
-    if value == 65534:
-        return True
-    if value == -1:
-        return True
-    if value == 2147483647:
-        return True
-    if value == -2147483648:
-        return True
-    if value == 4294967295:
-        return True
-    return False
-
 def apply(metric):
     temp = metric.fields.pop("device_temperature_celsius", None)
-    if temp != None and not _is_sentinel(temp):
+    if temp != None:
         celsius = float(temp)
         if celsius >= -40 and celsius <= 125:
             metric.fields["device_temperature_celsius"] = celsius
     millivolts = metric.fields.pop("voltage5V", None)
-    if millivolts != None and not _is_sentinel(millivolts):
+    if millivolts != None:
         volts = float(millivolts) / 1000.0
         if volts > 0 and volts <= 10:
             metric.fields["kymata_supply_voltage_volts"] = volts
     raw_rf = metric.fields.pop("rfOut", None)
-    if raw_rf != None and not _is_sentinel(raw_rf):
+    if raw_rf != None:
         dbm = float(raw_rf) / 100.0
         if dbm >= -60 and dbm <= 40:
             metric.fields["kymata_rf_output_dbm"] = dbm
     alarm = metric.fields.pop("alarmStatus", None)
-    if alarm != None and not _is_sentinel(alarm):
+    if alarm != None:
         code = int(alarm)
         if code == 0:
             metric.fields["kymata_alarm_state"] = 1
         elif code >= 1 and code <= 4:
             metric.fields["kymata_alarm_state"] = 2
     pcb = metric.fields.pop("pcbPowerProblem", None)
-    if pcb != None and not _is_sentinel(pcb):
+    if pcb != None:
         flag = int(pcb)
         if flag == 0:
             metric.fields["kymata_pcb_power_state"] = 1
