@@ -1,0 +1,175 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_exalink",
+  "plugin": "Switch ExaLINK Fusion SNMP",
+  "plugin_desc": "SNMP monitoring template for ExaLINK Fusion (Cisco Nexus 3550-F) low-latency switch. It reports uptime, load average (÷100), free memory, temperature sensors, fan RPM, PSU temperature / input power / output power and interface traffic, based on the EXALINK-FUSION-MIB (enterprise PEN 43296). There is no CPU% or memory%.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='switch', collect_type='snmp_exalink'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_load_average",
+    "device_memory_free",
+    "device_temperature_celsius",
+    "device_fan_speed",
+    "psu_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_load_average",
+      "display_name": "负载均值",
+      "query": "max(snmp_device_load_average{instance_type='switch', __$labels__}) by (instance_id)",
+      "unit": "none",
+      "data_type": "Number",
+      "description": "System load average of the ExaLINK Fusion switch (fusionSysInfoLoadAverage). The device reports load ×100; the stored value is already divided by 100."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_free",
+      "display_name": "内存空闲量",
+      "query": "max(snmp_device_memory_free{instance_type='switch', __$labels__}) by (instance_id)",
+      "unit": "bytes",
+      "data_type": "Number",
+      "description": "Available memory of the ExaLINK Fusion switch in bytes (fusionSysInfoAvailMem). There is no total-memory object, so memory percent is not computed. Non-positive readings are dropped."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
+      "display_name": "设备温度",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "sensor_name",
+          "description": "fusionTempSensorName"
+        },
+        {
+          "name": "index",
+          "description": "fusionTempSensorIndex"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Chassis temperature of each ExaLINK Fusion temperature sensor in degrees Celsius (fusionTempSensorValue). Readings outside -40..125 C are dropped. PSU temperature is reported separately as psu_temperature_celsius."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_speed",
+      "query": "device_fan_speed{instance_type='switch', __$labels__}",
+      "display_name": "风扇转速",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "sensor_name",
+          "description": "fusionFanSensorName"
+        },
+        {
+          "name": "index",
+          "description": "fusionFanSensorIndex"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Fan rotation speed in RPM of each ExaLINK Fusion fan sensor (fusionFanSensorValue). Negative values and readings above 30000 RPM are dropped. Zero RPM on a present fan is kept as a real reading."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "psu_temperature_celsius",
+      "query": "psu_temperature_celsius{instance_type='switch', __$labels__}",
+      "display_name": "电源温度",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "fusionPsuIndex"
+        },
+        {
+          "name": "psu_type",
+          "description": "fusionPsuType"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Temperature of each ExaLINK Fusion power supply in degrees Celsius (fusionPsuTemperature). Absent PSU rows (fusionPsuPresent=false) are dropped. Not emitted as device_temperature_celsius so chassis and PSU series stay distinct."
+    },
+    {
+      "metric_group": "Power",
+      "name": "psu_power_in_watts",
+      "query": "psu_power_in_watts{instance_type='switch', __$labels__}",
+      "display_name": "电源输入功率",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "fusionPsuIndex"
+        },
+        {
+          "name": "psu_type",
+          "description": "fusionPsuType"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Input power of each ExaLINK Fusion power supply in watts (fusionPsuPowerIn). Negative values and readings above 5000 W are dropped. Absent PSU rows are dropped."
+    },
+    {
+      "metric_group": "Power",
+      "name": "psu_power_out_watts",
+      "query": "psu_power_out_watts{instance_type='switch', __$labels__}",
+      "display_name": "电源输出功率",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "fusionPsuIndex"
+        },
+        {
+          "name": "psu_type",
+          "description": "fusionPsuType"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Output power of each ExaLINK Fusion power supply in watts (fusionPsuPowerOut). Negative values and readings above 5000 W are dropped. Absent PSU rows are dropped."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

@@ -765,6 +765,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /\bwago\b|852-?1305/i, label: 'WAGO', icon: 'mm-wago_wago' },
   { match: /weidmuller|weidmueller/i, label: 'Weidmuller', icon: 'mm-weidmuller_weidmuller' },
   { match: /asterfusion|asternos/i, label: 'AsterFusion', icon: 'mm-asterfusion_asterfusion' },
+  { match: /exalink|nexus\s*3550/i, label: 'ExaLINK' },
   { match: /\batop\b|nimbl/i, label: 'ATOP', icon: 'mm-atop_atop' },
   { match: /\bcomtrol\b|rocketlinx|pepperl\+fuchs\s+comtrol/i, label: 'Comtrol RocketLinx', icon: 'mm-comtrol_rocketlinx' },
   { match: /womaster/i, label: 'WoMaster', icon: 'mm-womaster_womaster' },

@@ -307,6 +307,16 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_exalink",
+      "capabilities": [
+        "uptime",
+        "memory",
+        "temperature",
+        "fan",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_extreme",
       "capabilities": [
         "uptime",
