@@ -690,6 +690,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /hphpn|procurve|hp.?networking/i, label: 'HP ProCurve', icon: 'mm-hphpn_hphpn' },
   { match: /fortinet|fortigate/i, label: 'Fortinet', icon: 'mm-fortinet_fortinet' },
   { match: /checkpoint|check.?point/i, label: 'Check Point', icon: 'mm-checkpoint_checkpoint' },
+  { match: /\btbs\b|skylone/i, label: 'TBS' },
   { match: /stormshield/i, label: 'Stormshield', icon: 'mm-stormshield_stormshield' },
   { match: /paloalto|palo.?alto|pan.?os/i, label: 'Palo Alto', icon: 'mm-paloalto_paloalto' },
   { match: /sonicwall|sonicos/i, label: 'SonicWall', icon: 'mm-sonicwall_sonicwall' },
