@@ -54,7 +54,7 @@
     },
     {
       "name": "Cisco ESA防火墙温度过高",
-      "alert_name": "防火墙${resource_name} 温度传感器 ${metric_sensor_name} 过高",
+      "alert_name": "防火墙${resource_name} 温度传感器 ${metric__sensor_name} 过高",
       "description": "监控 Cisco ESA 邮件安全网关各温度传感器读数（degreesCelsius），当超过安全阈值时触发告警，提示可能存在散热不良或环境过热。",
       "metric_name": "device_temperature_celsius",
       "algorithm": "last_over_time",
@@ -79,7 +79,7 @@
     },
     {
       "name": "Cisco ESA防火墙电源异常",
-      "alert_name": "防火墙${resource_name} 电源 ${metric_psu_name} 状态异常",
+      "alert_name": "防火墙${resource_name} 电源 ${metric__psu_name} 状态异常",
       "description": "监控 Cisco ESA 邮件安全网关电源模块状态（powerSupplyStatus，归一后 1=正常、2=异常）。任一电源异常即触发告警。",
       "metric_name": "device_psu_state",
       "algorithm": "last_over_time",
