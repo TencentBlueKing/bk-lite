@@ -1,0 +1,108 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_nokia_wavence"
+        config_type = "nokia_wavence"
+        brand = "nokia_wavence"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Wavence analogue measures (PEN 637, opticsIMRadioAnalogueMeasuresEntry, INDEX ifIndex, 0.1 dBm) ----
+    [[inputs.snmp.table]]
+        name = "wavence_radio"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.637.54.1.10.1.1.4.1.2"
+        name = "local_tx_dbm"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.637.54.1.10.1.1.4.1.3"
+        name = "local_rx_dbm"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.637.54.1.10.1.1.4.1.6"
+        name = "remote_tx_dbm"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.637.54.1.10.1.1.4.1.7"
+        name = "remote_rx_dbm"
+
+[[processors.starlark]]
+    namepass = ["wavence_radio"]
+    source = '''
+def is_sentinel(v):
+    if v == None:
+        return True
+    n = int(v)
+    if n == 65535:
+        return True
+    if n == 65534:
+        return True
+    if n == -1:
+        return True
+    if n == 2147483647:
+        return True
+    if n == -2147483648:
+        return True
+    if n == 4294967295:
+        return True
+    return False
+
+def scale_tx(metric, src, dst):
+    raw = metric.fields.pop(src, None)
+    if raw == None or is_sentinel(raw):
+        return
+    n = int(raw)
+    if n < -1000 or n > 1000:
+        return
+    metric.fields[dst] = float(n) / 10.0
+
+def scale_rx(metric, src, dst):
+    raw = metric.fields.pop(src, None)
+    if raw == None or is_sentinel(raw):
+        return
+    n = int(raw)
+    if n < -1000 or n > 0:
+        return
+    metric.fields[dst] = float(n) / 10.0
+
+def apply(metric):
+    scale_tx(metric, "local_tx_dbm", "local_tx_power_dbm")
+    scale_rx(metric, "local_rx_dbm", "local_rx_power_dbm")
+    scale_tx(metric, "remote_tx_dbm", "remote_tx_power_dbm")
+    scale_rx(metric, "remote_rx_dbm", "remote_rx_power_dbm")
+    f = metric.fields
+    if len(f.keys()) == 0:
+        return None
+    metric.name = "wavence"
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["nokia_wavence"]
