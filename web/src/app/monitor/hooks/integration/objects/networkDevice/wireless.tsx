@@ -53,6 +53,7 @@ export const useWirelessConfig = () => {
       default: ['instance_id']
     },
     collectTypes: {
+      'Wireless Alvarion SNMP': 'snmp_alvarion',
       'Wireless Cambium SNMP': 'snmp_cambium',
       'Wireless Proxim SNMP': 'snmp_proxim',
       'Wireless EnGenius SNMP': 'snmp_engenius',
