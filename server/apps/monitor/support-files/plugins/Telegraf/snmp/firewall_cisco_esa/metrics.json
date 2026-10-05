@@ -93,7 +93,7 @@
       "query": "device_psu_state{instance_type='firewall', __$labels__}",
       "display_name": "PSU State",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"shutdown\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notPresent\",\"id\":5,\"color\":\"#d9d9d9\"},{\"name\":\"notFunctioning\",\"id\":6,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [
         {
           "name": "index",
@@ -107,7 +107,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Power-supply state of the Cisco ESA appliance (ASYNCOS-MAIL-MIB powerSupplyStatus): healthy(2) maps to 1, noAC(3)/faulty(4) map to 2, notInstalled(1) maps to 5 (notPresent); other values are dropped."
+      "description": "Power-supply state of the Cisco ESA appliance (ASYNCOS-MAIL-MIB powerSupplyStatus): healthy(2) maps to 1 (normal); notInstalled(1), noAC(3) and faulty(4) map to 2 (abnormal); values not defined in the MIB are dropped."
     },
     {
       "metric_group": "Hardware Status",

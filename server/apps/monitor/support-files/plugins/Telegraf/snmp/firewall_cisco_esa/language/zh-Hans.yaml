@@ -29,8 +29,8 @@ monitor_object_metric:
     device_psu_state:
       name: 电源状态
       desc: 该指标报告 Cisco ESA 设备电源模块状态（ASYNCOS-MAIL-MIB powerSupplyStatus
-        1.3.6.1.4.1.15497.1.1.1.8.1.2）。healthy(2) 映射为 1，noAC(3)/faulty(4) 映射为 2，notInstalled(1)
-        映射为 5（notPresent），其它值丢弃。维度 psu_name 为电源名称。
+        1.3.6.1.4.1.15497.1.1.1.8.1.2），归一为 1=正常 / 2=异常。healthy(2) 映射为 1；notInstalled(1)、noAC(3)、faulty(4)
+        映射为 2；MIB 未定义的值丢弃。维度 psu_name 为电源名称。
     device_temperature_celsius:
       name: 温度
       desc: 该指标报告 Cisco ESA 设备机箱温度（ASYNCOS-MAIL-MIB degreesCelsius 1.3.6.1.4.1.15497.1.1.1.9.1.2），单位摄氏度。超出

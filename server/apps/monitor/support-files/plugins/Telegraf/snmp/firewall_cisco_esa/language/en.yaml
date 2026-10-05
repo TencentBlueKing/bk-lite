@@ -33,9 +33,9 @@ monitor_object_metric:
     device_psu_state:
       name: PSU State
       desc: Power-supply state of the Cisco ESA appliance (ASYNCOS-MAIL-MIB powerSupplyStatus
-        1.3.6.1.4.1.15497.1.1.1.8.1.2). healthy(2) maps to 1, noAC(3)/faulty(4) map
-        to 2, notInstalled(1) maps to 5 (notPresent); other values are dropped. Dimension psu_name is
-        the power-supply name.
+        1.3.6.1.4.1.15497.1.1.1.8.1.2), normalized to 1=normal / 2=abnormal. healthy(2)
+        maps to 1; notInstalled(1), noAC(3) and faulty(4) map to 2; values not defined
+        in the MIB are dropped. Dimension psu_name is the power-supply name.
     device_temperature_celsius:
       name: Temperature
       desc: Chassis temperature of the Cisco ESA appliance in Celsius (ASYNCOS-MAIL-MIB
