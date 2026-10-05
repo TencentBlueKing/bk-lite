@@ -61,39 +61,21 @@
 [[processors.starlark]]
     namepass = ["ignitenet_radio", "ignitenet_radio_status"]
     source = '''
-def is_sentinel(v):
-    if v == None:
-        return True
-    n = int(v)
-    if n == 65535:
-        return True
-    if n == 65534:
-        return True
-    if n == -1:
-        return True
-    if n == 2147483647:
-        return True
-    if n == -2147483648:
-        return True
-    if n == 4294967295:
-        return True
-    return False
-
 def apply(metric):
     if metric.name == "ignitenet_radio":
         enabled = metric.fields.pop("enabled", None)
         if enabled == None or int(enabled) != 1:
             return None
         tx = metric.fields.get("tx_power_dbm")
-        if tx == None or is_sentinel(tx) or int(tx) < -40 or int(tx) > 60:
+        if tx == None or int(tx) < -40 or int(tx) > 60:
             if "tx_power_dbm" in metric.fields:
                 metric.fields.pop("tx_power_dbm")
         rssi_l = metric.fields.get("rssi_local")
-        if rssi_l == None or is_sentinel(rssi_l) or int(rssi_l) < -120 or int(rssi_l) > 120:
+        if rssi_l == None or int(rssi_l) < -120 or int(rssi_l) > 120:
             if "rssi_local" in metric.fields:
                 metric.fields.pop("rssi_local")
         rssi_r = metric.fields.get("rssi_remote")
-        if rssi_r == None or is_sentinel(rssi_r) or int(rssi_r) < -120 or int(rssi_r) > 120:
+        if rssi_r == None or int(rssi_r) < -120 or int(rssi_r) > 120:
             if "rssi_remote" in metric.fields:
                 metric.fields.pop("rssi_remote")
         f = metric.fields
