@@ -162,6 +162,15 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_cern_wrs",
+      "capabilities": [
+        "uptime",
+        "memory",
+        "temperature",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_cisco",
       "capabilities": [
         "uptime",
