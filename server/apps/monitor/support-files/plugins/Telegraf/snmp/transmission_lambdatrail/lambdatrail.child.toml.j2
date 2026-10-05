@@ -1,0 +1,108 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_lambdatrail"
+        config_type = "lambdatrail"
+        brand = "lambdatrail"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # DeltaNet Lambdatrail2-S 机箱环境（PEN 35616，lambdatrail2s …35616.5，lt2sSystem …5.2）
+    # 全部为标量，顶层 field 必须带 .0，落入 measurement snmp。无私有 CPU%/内存% 对象，不臆造。
+    # lt2sTemperature：Integer32 0–80 ℃。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.35616.5.2.1.0"
+        name = "device_temperature_celsius"
+    # lt2sPowerStatus：normal(1) / failed(2) / notPlugged(3)。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.35616.5.2.3.0"
+        name = "device_psu_state"
+    # lt2sPowerFanStatus：failed(1) / on(2) / off(3)，枚举顺序与电源不同。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.35616.5.2.4.0"
+        name = "device_fan_state"
+    # lt2sPowerFanRPM：Integer32 0–20000，单位 RPM；风扇关闭时 0 为真实读数。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.35616.5.2.5.0"
+        name = "device_fan_speed"
+# ---- 范围/哨兵过滤与状态归一：未知与未安装不落值。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def _to_float(raw):
+    if raw == None:
+        return None
+    if type(raw) == "int" or type(raw) == "float":
+        return float(raw)
+    return None
+
+def _is_sentinel(value):
+    n = int(value)
+    if n == 65535 or n == 65534 or n == -1:
+        return True
+    if n == 2147483647 or n == -2147483648:
+        return True
+    if n == 4294967295:
+        return True
+    return False
+
+def apply(metric):
+    f = metric.fields
+    temp = f.pop("device_temperature_celsius", None)
+    temp_val = _to_float(temp)
+    if temp_val != None and not _is_sentinel(temp_val) and temp_val >= 0 and temp_val <= 80:
+        f["device_temperature_celsius"] = temp_val
+
+    psu = f.pop("device_psu_state", None)
+    psu_val = _to_float(psu)
+    if psu_val != None:
+        p = int(psu_val)
+        if p == 1:
+            f["device_psu_state"] = 1
+        elif p == 2:
+            f["device_psu_state"] = 2
+
+    fan = f.pop("device_fan_state", None)
+    fan_val = _to_float(fan)
+    if fan_val != None:
+        fv = int(fan_val)
+        if fv == 2:
+            f["device_fan_state"] = 1
+        elif fv == 3:
+            f["device_fan_state"] = 0
+        elif fv == 1:
+            f["device_fan_state"] = 2
+
+    rpm = f.pop("device_fan_speed", None)
+    rpm_val = _to_float(rpm)
+    if rpm_val != None and not _is_sentinel(rpm_val) and rpm_val >= 0 and rpm_val <= 20000:
+        f["device_fan_speed"] = rpm_val
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["lambdatrail"]

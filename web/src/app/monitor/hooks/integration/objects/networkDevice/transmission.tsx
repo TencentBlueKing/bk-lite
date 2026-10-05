@@ -63,6 +63,7 @@ export const useTransmissionConfig = () => {
       'Transmission Marconi SNMP': 'snmp_marconi',
       'Transmission Alcoma SNMP': 'snmp_alcoma',
       'Transmission PacketLight SNMP': 'snmp_packetlight',
+      'Transmission DeltaNet Lambdatrail SNMP': 'snmp_lambdatrail',
       'Transmission Pan Dacom SNMP': 'snmp_pandacom',
       'Transmission Tachyon SNMP': 'snmp_tachyon',
       'Transmission XKL SNMP': 'snmp_xkl',
