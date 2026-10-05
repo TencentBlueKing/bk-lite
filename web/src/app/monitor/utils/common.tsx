@@ -844,6 +844,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /ruggedcom/i, label: 'Ruggedcom', icon: 'mm-ruggedcom_ruggedcom' },
   { match: /scalance/i, label: 'SCALANCE', icon: 'mm-scalance_scalance' },
   { match: /westermo/i, label: 'Westermo', icon: 'mm-westermo_westermo' },
+  { match: /\bmpb\b|mpbc/i, label: 'MPB Communications' },
   { match: /audiocodes/i, label: 'AudioCodes', icon: 'mm-audiocodes_audiocodes' },
   { match: /ribbon|sonus|genband/i, label: 'Ribbon', icon: 'mm-ribbon_ribbon' },
   { match: /acme\s*packet|acmepacket/i, label: 'Acme Packet', icon: 'mm-acmepacket_acmepacket' },
