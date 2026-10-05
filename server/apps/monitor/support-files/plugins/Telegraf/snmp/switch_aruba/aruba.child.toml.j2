@@ -84,22 +84,24 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.47196.4.1.1.3.11.3.1.1.7"
         name = "celsius"
-    # ---- Aruba CX fans (ARUBAWIRED-SYSTEM MIB) ----
-    # 待现网核验：风扇状态 1.3.6.1.4.1.47196.4.1.1.3.11.5.1.1.10；descr=风扇名 ...1.1.5。
-    # 华为/思科原生 1=normal；⚠ Aruba 原生 4=Ok(正常)、5=Fault → 用下方 processors.enum 归一到 1=normal/2=abnormal。
+    # ---- Aruba CX fans (arubaWiredFanTable, PEN 47196) ----
+    # arubaWiredFanName …11.5.1.1.4；arubaWiredFanRPM …11.5.1.1.8（Integer32 RPM，−1 无回读）；
+    # arubaWiredFanStateEnum …11.5.1.1.10：unknown(1)/empty(2)/uninitialized(3)/ok(4)/fault(5)。
     [[inputs.snmp.table]]
         name = "device_fan"
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.47196.4.1.1.3.11.5.1.1.5"
+        oid = "1.3.6.1.4.1.47196.4.1.1.3.11.5.1.1.4"
         name = "descr"
         is_tag = true
     [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.47196.4.1.1.3.11.5.1.1.8"
+        name = "rpm"
+    [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.47196.4.1.1.3.11.5.1.1.10"
         name = "state"
-    # ---- Aruba CX power supplies (ARUBAWIRED-SYSTEM MIB) ----
-    # 待现网核验：电源状态 1.3.6.1.4.1.47196.4.1.1.3.11.2.1.1.11；descr=电源名 ...1.1.5。
-    # ⚠ Aruba 原生 1=Ok(正常)、2..=Fault* → 用下方 processors.enum 归一到 1=normal/2=abnormal。
+    # ---- Aruba CX power supplies (arubaWiredPowerSupplyTable) ----
+    # arubaWiredPSUProductName …11.2.1.1.5 作 descr；arubaWiredPSUStateEnum …11.2.1.1.11。
     [[inputs.snmp.table]]
         name = "device_psu"
         inherit_tags = ["source"]
@@ -110,22 +112,103 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.47196.4.1.1.3.11.2.1.1.11"
         name = "state"
+    # ---- Aruba CX PSU watts (own prefix, not mixed into device_psu_state) ----
+    # arubaWiredPSUName …11.2.1.1.3；InstantaneousPower …1.7 / MaximumPower …1.8，单位 W。
+    [[inputs.snmp.table]]
+        name = "aruba_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.47196.4.1.1.3.11.2.1.1.3"
+        name = "psu_name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.47196.4.1.1.3.11.2.1.1.7"
+        name = "instantaneous_watts"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.47196.4.1.1.3.11.2.1.1.8"
+        name = "maximum_watts"
+    # ---- Aruba CX CPU 1/5 min averages (arubaWiredSystemInfoTable, own prefix) ----
+    # CpuAvgOneMin …22.1.0.1.1.10 / CpuAvgFiveMin …22.1.0.1.1.11，Unsigned32 0..100。
+    [[inputs.snmp.table]]
+        name = "aruba_cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.47196.4.1.1.3.22.1.0.1.1.10"
+        name = "avg_1min"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.47196.4.1.1.3.22.1.0.1.1.11"
+        name = "avg_5min"
 
-# ---- 枚举归一：把 Aruba 私有 fan/psu 编码映射到统一 1=normal/2=abnormal（偏离1即异常）----
-# 待现网核验：仅作用于本品牌(tagpass brand=aruba)，避免影响其它品牌同名字段。
-# Fan: 4=Ok→1，其余(1 Unknown/2 Empty/3 Uninitialized/5 Fault)→2。PSU: 1=Ok→1，其余(2..6 Fault*)→2。
-[[processors.enum]]
-    [processors.enum.tagpass]
+[[processors.starlark]]
+    namepass = ["device_fan", "device_psu", "aruba_psu", "aruba_cpu"]
+    source = '''
+def as_int(raw):
+    if raw == None:
+        return None
+    if type(raw) == "int":
+        return raw
+    if type(raw) == "float":
+        return int(raw)
+    return int(raw)
+
+def apply(metric):
+    f = metric.fields
+    name = metric.name
+    if name == "device_fan":
+        st = as_int(f.get("state"))
+        if st == None:
+            if "state" in f:
+                f.pop("state")
+        elif st == 4:
+            f["state"] = 1
+        elif st >= 1 and st <= 5:
+            f["state"] = 2
+        else:
+            f.pop("state")
+        rpm = as_int(f.get("rpm"))
+        if rpm == None:
+            if "rpm" in f:
+                f.pop("rpm")
+        elif rpm < 0 or rpm > 100000:
+            f.pop("rpm")
+        else:
+            f["rpm"] = rpm
+    elif name == "device_psu":
+        st = as_int(f.get("state"))
+        if st == None:
+            if "state" in f:
+                f.pop("state")
+        elif st == 1:
+            f["state"] = 1
+        elif st >= 2 and st <= 17:
+            f["state"] = 2
+        else:
+            f.pop("state")
+    elif name == "aruba_psu":
+        for key in ("instantaneous_watts", "maximum_watts"):
+            w = as_int(f.get(key))
+            if w == None:
+                if key in f:
+                    f.pop(key)
+            elif w < 0 or w > 100000:
+                f.pop(key)
+            else:
+                f[key] = w
+    elif name == "aruba_cpu":
+        for key in ("avg_1min", "avg_5min"):
+            v = as_int(f.get(key))
+            if v == None:
+                if key in f:
+                    f.pop(key)
+            elif v < 0 or v > 100:
+                f.pop(key)
+            else:
+                f[key] = v
+    if len(f.keys()) == 0:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
         brand = ["aruba"]
-    [[processors.enum.mapping]]
-        field = "device_fan_state"
-        dest = "device_fan_state"
-        default = 2
-        [processors.enum.mapping.value_mappings]
-            "4" = 1
-    [[processors.enum.mapping]]
-        field = "device_psu_state"
-        dest = "device_psu_state"
-        default = 2
-        [processors.enum.mapping.value_mappings]
-            "1" = 1
