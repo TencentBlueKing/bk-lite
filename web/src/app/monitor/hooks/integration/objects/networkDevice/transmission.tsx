@@ -72,6 +72,7 @@ export const useTransmissionConfig = () => {
       'Transmission Sycamore SNMP': 'snmp_sycamore',
       'Transmission Redline SNMP': 'snmp_redline',
       'Transmission DragonWave SNMP': 'snmp_dragonwave',
+      'Transmission Alpine Optoelectronics SNMP': 'snmp_alpineoe',
       'Transmission Ericsson SNMP': 'snmp_ericsson',
       'Transmission Ekinops SNMP': 'snmp_ekinops',
       'Transmission Infinera SNMP': 'snmp_infinera',
