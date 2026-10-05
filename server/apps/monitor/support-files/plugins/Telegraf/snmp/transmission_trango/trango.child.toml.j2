@@ -1,0 +1,76 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_trango"
+        config_type = "trango"
+        brand = "trango"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # IDU 温度 sysIDUTemp，单位 ℃，标量带 .0
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.5454.1.80.1.19.0"
+        name = "device_temperature_celsius"
+    # ODU 温度 rfODUTemp，标量带 .0
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.5454.1.80.3.13.0"
+        name = "trango_odu_temperature_celsius"
+    # TX 功率 rfPowerInt（0.1 dB），原始辅助字段，处理器内 ÷10
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.5454.1.80.3.4.2.0"
+        name = "tx_power_raw"
+    # RSSI rfRSSIInt，设备原值，不换算
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.5454.1.80.3.14.2.0"
+        name = "trango_rssi"
+
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    if "device_temperature_celsius" in f:
+        v = f["device_temperature_celsius"]
+        if v < -40 or v > 125:
+            f.pop("device_temperature_celsius")
+    if "trango_odu_temperature_celsius" in f:
+        v = f["trango_odu_temperature_celsius"]
+        if v < -40 or v > 125:
+            f.pop("trango_odu_temperature_celsius")
+    raw = f.pop("tx_power_raw", None)
+    if raw != None:
+        if raw >= -300 and raw <= 400:
+            f["trango_tx_power_dbm"] = float(raw) / 10.0
+    if "trango_rssi" in f:
+        v = f["trango_rssi"]
+        if v < -32768 or v > 32767:
+            f.pop("trango_rssi")
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["trango"]

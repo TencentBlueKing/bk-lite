@@ -1,0 +1,152 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_trango",
+  "plugin": "Transmission Trango SNMP",
+  "plugin_desc": "SNMP monitoring template for Trango Systems point-to-point microwave radios (enterprise PEN 5454, TRANGO-PTP-MIB). Besides standard IF-MIB interface traffic and uptime, it reports IDU and ODU temperature, TX power and the raw RSSI reading.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='transmission', collect_type='snmp_trango'}) by (instance_id)",
+  "name": "Transmission",
+  "icon": "mm-transmission_传输设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='transmission'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_temperature_celsius",
+    "trango_odu_temperature_celsius",
+    "trango_tx_power_dbm",
+    "trango_rssi"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Environment",
+      "name": "device_temperature_celsius",
+      "query": "max(snmp_device_temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "IDU Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Indoor unit temperature of the Trango PTP microwave radio in degrees Celsius (TRANGO-PTP-MIB sysIDUTemp)."
+    },
+    {
+      "metric_group": "Environment",
+      "name": "trango_odu_temperature_celsius",
+      "query": "max(snmp_trango_odu_temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "ODU Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Outdoor unit temperature of the Trango PTP microwave radio in degrees Celsius (TRANGO-PTP-MIB rfODUTemp)."
+    },
+    {
+      "metric_group": "Radio",
+      "name": "trango_tx_power_dbm",
+      "query": "max(snmp_trango_tx_power_dbm{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "TX Power (dBm)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Transmit power of the Trango PTP microwave radio in dBm, converted in the collector from TRANGO-PTP-MIB rfPowerInt (0.1 dB units divided by 10)."
+    },
+    {
+      "metric_group": "Radio",
+      "name": "trango_rssi",
+      "query": "max(snmp_trango_rssi{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "RSSI",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Raw RSSI reading of the Trango PTP microwave radio from TRANGO-PTP-MIB rfRSSIInt, stored as reported by the device with no scaling."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_incoming_traffic",
+      "query": "sum(rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, summed from the 64-bit IF-MIB ifHCInOctets counters."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_outgoing_traffic",
+      "query": "sum(rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, summed from the 64-bit IF-MIB ifHCOutOctets counters."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

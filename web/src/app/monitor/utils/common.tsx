@@ -680,6 +680,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /snmp_nokia_router|router nokia|timos|\bsros\b|\b7705\b/i, label: 'Nokia', icon: 'mm-nokia_nokia' },
   { match: /\bnokia\b|omniswitch/i, label: 'Nokia', icon: 'mm-nokia_nokia' },
   { match: /alcatel|sr.?linux|srlinux|timos|\b7750\b|\b7450\b|\b7950\b/i, label: 'Alcatel-Lucent', icon: 'mm-alcatel_alcatel' },
+  { match: /\btrango\b/i, label: 'Trango' },
   { match: /mikrotik/i, label: 'MikroTik', icon: 'mm-mikrotik_mikrotik' },
   { match: /dlink|d-link/i, label: 'D-Link', icon: 'mm-dlink_dlink' },
   { match: /netgear/i, label: 'NETGEAR', icon: 'mm-netgear_netgear' },

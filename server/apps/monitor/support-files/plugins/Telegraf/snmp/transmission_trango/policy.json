@@ -1,0 +1,56 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission Trango SNMP",
+  "templates": [
+    {
+      "name": "Trango微波IDU温度过高",
+      "alert_name": "传输设备${resource_name} IDU 温度过高",
+      "description": "监控 Trango PTP 微波室内单元温度（TRANGO-PTP-MIB sysIDUTemp，单位 ℃），当持续高于阈值时触发告警，提示机房散热或 IDU 过热风险。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Trango微波ODU温度过高",
+      "alert_name": "传输设备${resource_name} ODU 温度过高",
+      "description": "监控 Trango PTP 微波室外单元温度（TRANGO-PTP-MIB rfODUTemp，单位 ℃），当持续高于阈值时触发告警，提示 ODU 过热或通风不良。",
+      "metric_name": "trango_odu_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

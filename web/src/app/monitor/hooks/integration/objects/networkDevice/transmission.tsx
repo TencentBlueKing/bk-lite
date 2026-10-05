@@ -57,6 +57,7 @@ export const useTransmissionConfig = () => {
       default: ['instance_id']
     },
     collectTypes: {
+      'Transmission Trango SNMP': 'snmp_trango',
       'Transmission Ciena SNMP': 'snmp_ciena',
       'Transmission SAF Tehnika SNMP': 'snmp_saftehnika',
       'Transmission MRV SNMP': 'snmp_mrv',
