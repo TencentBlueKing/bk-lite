@@ -75,33 +75,18 @@
 [[processors.starlark]]
     namepass = ["snmp"]
     source = '''
-def is_sentinel(v):
-    if v == 65535:
-        return True
-    if v == 65534:
-        return True
-    if v == -1:
-        return True
-    if v == 2147483647:
-        return True
-    if v == -2147483648:
-        return True
-    if v == 4294967295:
-        return True
-    return False
-
 def take_tuner(metric, idx, level_name, snr_name):
     level = metric.fields.pop(level_name, None)
     snr = metric.fields.pop(snr_name, None)
     keep_level = False
     keep_snr = False
     if level != None:
-        if is_sentinel(level) or level < 0 or level > 130:
+        if level < 0 or level > 130:
             level = None
         else:
             keep_level = True
     if snr != None:
-        if is_sentinel(snr) or snr < 0 or snr > 60:
+        if snr < 0 or snr > 60:
             snr = None
         else:
             keep_snr = True
@@ -121,15 +106,15 @@ def take_tuner(metric, idx, level_name, snr_name):
 def apply(metric):
     cpu = metric.fields.get("device_cpu_usage")
     if cpu != None:
-        if is_sentinel(cpu) or cpu < 0 or cpu > 100:
+        if cpu < 0 or cpu > 100:
             metric.fields.pop("device_cpu_usage")
     temp = metric.fields.get("device_temperature_celsius")
     if temp != None:
-        if is_sentinel(temp) or temp < -40 or temp > 125:
+        if temp < -40 or temp > 125:
             metric.fields.pop("device_temperature_celsius")
     raw_volt = metric.fields.get("terra_supply_voltage_volts")
     if raw_volt != None:
-        if is_sentinel(raw_volt) or raw_volt <= 0 or raw_volt > 600:
+        if raw_volt <= 0 or raw_volt > 600:
             metric.fields.pop("terra_supply_voltage_volts")
         else:
             metric.fields["terra_supply_voltage_volts"] = raw_volt / 10.0
