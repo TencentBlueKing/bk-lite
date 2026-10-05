@@ -65,39 +65,24 @@
 [[processors.starlark]]
     namepass = ["snmp"]
     source = '''
-def _is_sentinel(value):
-    if value == 65535:
-        return True
-    if value == 65534:
-        return True
-    if value == -1:
-        return True
-    if value == 2147483647:
-        return True
-    if value == -2147483648:
-        return True
-    if value == 4294967295:
-        return True
-    return False
-
 def apply(metric):
     extras = []
     mem = metric.fields.pop("device_memory_usage", None)
-    if mem != None and not _is_sentinel(mem):
+    if mem != None:
         usage = float(mem)
         if usage >= 0 and usage <= 100:
             metric.fields["device_memory_usage"] = usage
     total_kb = metric.fields.pop("memory_total_kb", None)
-    if total_kb != None and not _is_sentinel(total_kb):
+    if total_kb != None:
         if float(total_kb) > 0:
             metric.fields["device_memory_total"] = int(total_kb) * 1024
     avg1_raw = metric.fields.pop("cpu_avg1_x100", None)
-    if avg1_raw != None and not _is_sentinel(avg1_raw):
+    if avg1_raw != None:
         avg1 = float(avg1_raw) / 100.0
         if avg1 >= 0:
             metric.fields["cern_wrs_cpu_load_1min"] = avg1
     avg5_raw = metric.fields.pop("cpu_avg5_x100", None)
-    if avg5_raw != None and not _is_sentinel(avg5_raw):
+    if avg5_raw != None:
         avg5 = float(avg5_raw) / 100.0
         if avg5 >= 0:
             metric.fields["cern_wrs_cpu_load_5min"] = avg5
@@ -109,7 +94,7 @@ def apply(metric):
     ]
     for field, sensor in sensors:
         raw = metric.fields.pop(field, None)
-        if raw == None or _is_sentinel(raw):
+        if raw == None:
             continue
         celsius = float(raw)
         if celsius < -40 or celsius > 125:
@@ -122,7 +107,7 @@ def apply(metric):
         row.fields["celsius"] = celsius
         extras.append(row)
     status_raw = metric.fields.pop("main_system_status", None)
-    if status_raw != None and not _is_sentinel(status_raw):
+    if status_raw != None:
         code = int(status_raw)
         if code == 1:
             metric.fields["cern_wrs_system_status"] = 1
