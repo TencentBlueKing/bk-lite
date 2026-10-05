@@ -1,0 +1,47 @@
+VoiceGateway Fortinet FortiVoice SNMP:
+  name: Fortinet FortiVoice (Telegraf)
+  desc: "SNMP monitoring template for Fortinet FortiVoice voice gateways / IP PBX (PEN 12356, tree 1.3.6.1.4.1.12356.115). It reports uptime, CPU utilization, memory utilization, log disk usage, storage disk usage, and IF-MIB 64-bit interface traffic."
+monitor_object:
+  VoiceGateway: VoiceGateway
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  VoiceGateway:
+    snmp_uptime:
+      name: System Uptime
+      desc: Uptime of the FortiVoice gateway since the last restart (IF-MIB sysUpTime).
+    device_cpu_usage:
+      name: CPU Usage
+      desc: Instantaneous CPU utilization of the FortiVoice gateway (FORTINET-FORTIVOICE-MIB
+        fvSysCpuUsage 1.3.6.1.4.1.12356.115.1.6.0, Gauge32 percent). Values outside
+        0-100 are dropped.
+    device_memory_usage:
+      name: Memory Usage
+      desc: Instantaneous memory utilization of the FortiVoice gateway (FORTINET-FORTIVOICE-MIB
+        fvSysMemUsage 1.3.6.1.4.1.12356.115.1.7.0, Gauge32 percent). Values outside
+        0-100 are dropped.
+    device_log_disk_usage:
+      name: Log Disk Usage
+      desc: Log disk utilization of the FortiVoice gateway (FORTINET-FORTIVOICE-MIB
+        fvSysLogDiskUsage 1.3.6.1.4.1.12356.115.1.8.0, Gauge32 percent). Values outside
+        0-100 are dropped.
+    device_storage_disk_usage:
+      name: Storage Disk Usage
+      desc: Storage disk utilization of the FortiVoice gateway (FORTINET-FORTIVOICE-MIB
+        fvSysStorageDiskUsage 1.3.6.1.4.1.12356.115.1.9.0, Gauge32 percent). Values
+        outside 0-100 are dropped.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: Average rate of bytes received over the past 5 minutes from the 64-bit
+        IF-MIB ifHCInOctets counter (ifXTable).
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: Average rate of bytes sent over the past 5 minutes from the 64-bit IF-MIB
+        ifHCOutOctets counter (ifXTable).
+monitor_object_metric_group:
+  VoiceGateway:
+    Base: Base
+    CPU: CPU
+    Memory: Memory
+    Storage: Storage
+    Traffic: Traffic
