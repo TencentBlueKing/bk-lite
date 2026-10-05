@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_apc",
   "plugin": "NetworkService APC UPS PDU Environmental SNMP",
-  "plugin_desc": "APC PowerNet UPS SNMP collection for appliances under APC PEN 318. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template adds PowerNet battery charge percent and output load percent. Shared CPU, memory, fan and power-health scalars are not claimed across APC device families.",
+  "plugin_desc": "APC PowerNet UPS and Automatic Transfer Switch SNMP collection for appliances under APC PEN 318. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template adds PowerNet UPS battery charge percent and output load percent, plus ATS selected source, input/output voltage and current, and output load percent. Shared CPU, memory, fan and power-health scalars are not claimed across APC device families.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_apc'}) by (instance_id)",
   "name": "NetworkService",
@@ -16,7 +16,9 @@
   "supplementary_indicators": [
     "snmp_uptime",
     "network_service_apc_battery_capacity",
-    "network_service_apc_output_load"
+    "network_service_apc_output_load",
+    "network_service_apc_ats_selected_source",
+    "network_service_apc_ats_output_load_percent"
   ],
   "metrics": [
     {
@@ -44,6 +46,109 @@
         "instance_id"
       ],
       "description": "Current PowerNet UPS output load as a percent of rated capacity."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_apc_ats_selected_source",
+      "query": "max(snmp_network_service_apc_ats_selected_source{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "ATS Selected Source",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"A\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"B\",\"id\":2,\"color\":\"#1677ff\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Currently selected ATS input source (atsStatusSelectedSource): 1 = source A, 2 = source B. Any other value is dropped."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_apc_ats_input_voltage_volts",
+      "query": "network_service_apc_ats_input_voltage_volts{instance_type='network_service', __$labels__}",
+      "display_name": "ATS Input Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "ATS input phase index (source.phase)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "ATS input phase voltage in VAC (atsInputVoltage). Values outside 0-300 V and the unsupported sentinel are dropped."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_apc_ats_input_current_amps",
+      "query": "network_service_apc_ats_input_current_amps{instance_type='network_service', __$labels__}",
+      "display_name": "ATS Input Current",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "ATS input phase index (source.phase)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "ATS input phase current in whole amperes (atsInputCurrent). Negative values and the unsupported sentinel are dropped."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_apc_ats_output_voltage_volts",
+      "query": "network_service_apc_ats_output_voltage_volts{instance_type='network_service', __$labels__}",
+      "display_name": "ATS Output Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "ATS output phase index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "ATS output phase voltage in VAC (atsOutputVoltage). Values outside 0-300 V and the unsupported sentinel are dropped."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_apc_ats_output_current_amps",
+      "query": "network_service_apc_ats_output_current_amps{instance_type='network_service', __$labels__}",
+      "display_name": "ATS Output Current",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "ATS output phase index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "ATS output phase current in amperes (atsOutputCurrent). The device reports tenths of an ampere; the stored value is already divided by 10. Negative values and the unsupported sentinel are dropped."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_apc_ats_output_load_percent",
+      "query": "network_service_apc_ats_output_load_percent{instance_type='network_service', __$labels__}",
+      "display_name": "ATS Output Load",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "ATS output phase index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "ATS output phase load as a percent of rated capacity (atsOutputPercentLoad). Values outside 0-100 and the unsupported sentinel are dropped."
     },
     {
       "metric_group": "Traffic",
