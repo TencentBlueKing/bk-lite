@@ -1,0 +1,71 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_ciena_waveserver"
+        config_type = "ciena_waveserver"
+        brand = "ciena_waveserver"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Waveserver 机箱电源运行状态：cwsChassisPsuStateOperationalState（ChassisOperationState）----
+    # 表列 OID 不含 .0。INDEX 为电源编号 + snmpKey，Telegraf index 形如 1.1。
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1271.3.4.6.21.1.3"
+        name = "state"
+    # ---- Waveserver 机箱风扇运行状态：cwsChassisFanStateOperationalState（同一枚举）----
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1271.3.4.6.25.1.3"
+        name = "state"
+# ---- 本树无机箱 CPU / 内存 / 温度对象，不臆造。----
+# ---- 状态归一：normal(1)→1，faulted(2)→2；uninstalled(0) 及其他值丢弃（空槽不是故障）。----
+[[processors.starlark]]
+    namepass = ["device_psu", "device_fan"]
+    source = '''
+def apply(metric):
+    raw = metric.fields.get("state")
+    if raw == None:
+        return None
+    value = int(raw)
+    if value == 1:
+        metric.fields["state"] = 1
+        return metric
+    if value == 2:
+        metric.fields["state"] = 2
+        return metric
+    return None
+'''
+    [processors.starlark.tagpass]
+        brand = ["ciena_waveserver"]
