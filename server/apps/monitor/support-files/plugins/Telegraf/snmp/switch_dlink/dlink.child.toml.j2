@@ -64,4 +64,83 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.171.12.1.1.9.1.4"
         name = "usage"
-# ---- 风扇/电源/温度与 Flash 利用率未进本轮最小集。本对象不采集路由器树。----
+    # ---- DGS-1250 ENTITY-EXT 温度：dEntityExtEnvTempCurrent（℃），tag=dEntityExtEnvTempDescr ----
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.171.11.165.1000.5.1.1.1.1.3"
+        name = "sensor_name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.171.11.165.1000.5.1.1.1.1.4"
+        name = "celsius"
+    # ---- DGS-1250 ENTITY-EXT 风扇：dEntityExtEnvFanStatus ok(1)/fault(2) ----
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.171.11.165.1000.5.1.1.2.1.3"
+        name = "fan_name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.171.11.165.1000.5.1.1.2.1.4"
+        name = "state"
+    # ---- DGS-1250 ENTITY-EXT 电源：dEntityExtEnvPowerStatus inOperation(1)/failed(2)/empty(3) ----
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.171.11.165.1000.5.1.1.3.1.3"
+        name = "psu_name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.171.11.165.1000.5.1.1.3.1.6"
+        name = "state"
+# ---- DGS-1250 温度范围过滤与风扇/电源枚举归一；无该树的设备不产生行。----
+[[processors.starlark]]
+    namepass = ["device_temperature", "device_fan", "device_psu"]
+    source = '''
+def apply(metric):
+    name = metric.name
+    if name == "device_temperature":
+        value = metric.fields.get("celsius")
+        if value == None:
+            return None
+        celsius = float(value)
+        if celsius < -40 or celsius > 125:
+            return None
+        metric.fields["celsius"] = celsius
+        return metric
+    if name == "device_fan":
+        raw = metric.fields.get("state")
+        if raw == None:
+            return None
+        value = int(raw)
+        if value == 1:
+            metric.fields["state"] = 1
+            return metric
+        if value == 2:
+            metric.fields["state"] = 2
+            return metric
+        return None
+    if name == "device_psu":
+        raw = metric.fields.get("state")
+        if raw == None:
+            return None
+        value = int(raw)
+        if value == 1:
+            metric.fields["state"] = 1
+            return metric
+        if value == 2 or value == 3:
+            metric.fields["state"] = 2
+            return metric
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["dlink"]
+
