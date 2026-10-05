@@ -808,6 +808,16 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_voss",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "temperature",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_wago",
       "capabilities": [
         "uptime",
