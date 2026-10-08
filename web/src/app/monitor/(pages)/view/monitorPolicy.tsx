@@ -1,11 +1,13 @@
 'use client';
 import React, { useEffect, useState, useRef } from 'react';
-import { Button, Tag } from 'antd';
+import { Button, Modal, Select, Tag, message } from 'antd';
 import { useRouter } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import { fetchAllMonitorMetrics } from '@/app/monitor/api/fetchMetricCatalogPages';
 import useEventApi from '@/app/monitor/api/event';
+import useIntegrationApi from '@/app/monitor/api/integration';
+import Permission from '@/components/permission';
 import { useTranslation } from '@/utils/i18n';
 import { ColumnItem, Pagination, TableDataItem } from '@/app/monitor/types';
 import { ViewModalProps } from '@/app/monitor/types/view';
@@ -27,7 +29,8 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
 }) => {
   const { isLoading } = useApiClient();
   const { getMonitorMetrics } = useMonitorApi();
-  const { getMonitorPolicy } = useEventApi();
+  const { getMonitorPolicy, patchMonitorPolicy } = useEventApi();
+  const { getPolicyGroupMembership, joinPolicyGroup, leavePolicyGroup, createStandalonePolicy } = useIntegrationApi();
   const { t } = useTranslation();
   const router = useRouter();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -45,6 +48,16 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
     total: 0,
     pageSize: 20
   });
+  const [membership, setMembership] = useState<{
+    state: string | null;
+    group_id: number | null;
+    group_name: string;
+    groups: Array<{ id: number; name: string; is_default?: boolean }>;
+    legacy_policies: Array<{ id: number; name: string; enable: boolean }>;
+    templates: Array<{ id: number; name: string }>;
+  } | null>(null);
+  const [nextGroupId, setNextGroupId] = useState<number | undefined>();
+  const [templateId, setTemplateId] = useState<number | undefined>();
 
   const columns: ColumnItem[] = [
     {
@@ -100,6 +113,17 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
   useEffect(() => {
     if (isLoading) return;
     getBoundPolicies();
+    const instanceId = String(form.instance_id || '').trim();
+    if (!instanceId) {
+      setMembership(null);
+      return;
+    }
+    getPolicyGroupMembership(instanceId)
+      .then((data) => {
+        setMembership(data);
+        setNextGroupId(data?.group_id || data?.groups?.[0]?.id);
+      })
+      .catch(() => setMembership(null));
   }, [isLoading, pagination.current, pagination.pageSize, form.instance_id, monitorObject]);
 
   useEffect(() => {
@@ -182,8 +206,111 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
     }
   };
 
+  const stateLabel =
+    membership?.state === 'member'
+      ? membership.group_name || '在组'
+      : membership?.state === 'declined'
+        ? '不自动入组'
+        : membership?.state === 'skipped'
+          ? '未入组'
+          : '无记录';
+
+  const refreshMembership = () => {
+    const instanceId = String(form.instance_id || '').trim();
+    if (!instanceId) return;
+    getPolicyGroupMembership(instanceId).then((data) => {
+      setMembership(data);
+      setNextGroupId(data?.group_id || data?.groups?.[0]?.id);
+    });
+  };
+
   return (
     <div className={fillContainer ? 'flex h-full min-h-0 w-full flex-col' : 'w-full'}>
+      {!readOnly && membership ? (
+        <div className="mb-3 rounded border border-[var(--color-border-2)] p-3">
+          <div className="mb-2">所属策略组：{stateLabel}</div>
+          {(membership.legacy_policies || []).map((item) => (
+            <div key={item.id} className="mb-1 text-[12px]">
+              {item.name}
+              {item.enable ? ' 仍会和策略组一起告警' : ' 已停用'}
+              {item.enable ? (
+                <Button
+                  type="link"
+                  onClick={async () => {
+                    await patchMonitorPolicy(item.id, { enable: false });
+                    refreshMembership();
+                    getBoundPolicies();
+                  }}
+                >
+                  停用
+                </Button>
+              ) : null}
+            </div>
+          ))}
+          <Permission requiredPermissions={['Edit']} permissionPath="/monitor/event/strategy">
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Select
+                className="min-w-[220px]"
+                value={nextGroupId}
+                options={(membership.groups || []).map((item) => ({
+                  value: item.id,
+                  label: item.is_default ? `${item.name}（默认）` : item.name
+                }))}
+                onChange={setNextGroupId}
+              />
+              <Button
+                type="primary"
+                disabled={!nextGroupId}
+                onClick={async () => {
+                  if (!nextGroupId) return;
+                  await joinPolicyGroup(nextGroupId, [String(form.instance_id)]);
+                  message.success(membership.state === 'member' ? '已更换策略组，原规则未恢复告警会结束' : '已加入策略组');
+                  refreshMembership();
+                }}
+              >
+                {membership.state === 'member' ? '更换' : '加入'}
+              </Button>
+              {membership.state === 'member' ? (
+                <Button
+                  onClick={async () => {
+                    await leavePolicyGroup([String(form.instance_id)]);
+                    message.success('已退出，未恢复告警会结束');
+                    refreshMembership();
+                  }}
+                >
+                  退出
+                </Button>
+              ) : null}
+              <Select
+                className="min-w-[220px]"
+                placeholder="补一条单独规则"
+                value={templateId}
+                options={(membership.templates || []).map((item) => ({ value: item.id, label: item.name }))}
+                onChange={setTemplateId}
+              />
+              <Button
+                disabled={!templateId}
+                onClick={() => {
+                  Modal.confirm({
+                    title: '单独规则会和所属策略组同时告警',
+                    content: '未停用时，这条单独规则和实例所属策略组都会告警。',
+                    onOk: async () => {
+                      if (!templateId) return;
+                      await createStandalonePolicy(String(form.instance_id), templateId);
+                      message.success('已创建单独规则');
+                      setTemplateId(undefined);
+                      getBoundPolicies();
+                      refreshMembership();
+                    }
+                  });
+                }}
+              >
+                保存单独规则
+              </Button>
+            </div>
+          </Permission>
+        </div>
+      ) : null}
       <CustomTable
         scroll={fillContainer ? { x: 890 } : { y: 'calc(100vh - 360px)', x: 890 }}
         columns={columns}
