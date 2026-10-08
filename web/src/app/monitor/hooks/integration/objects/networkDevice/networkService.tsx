@@ -74,6 +74,7 @@ export const useNetworkServiceConfig = () => {
       'NetworkService Gigamon SNMP': 'snmp_gigamon',
       'NetworkService GenieATM SNMP': 'snmp_genieatm',
       'NetworkService Accedian SNMP': 'snmp_accedian',
+      'NetworkService Dahua SNMP': 'snmp_dahua',
       'NetworkService ZDNS SNMP': 'snmp_zdns',
       'NetworkService Jacarta interSeptor Pro SNMP': 'snmp_jacarta',
       'NetworkService BlueCat SNMP': 'snmp_bluecat',

@@ -933,6 +933,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /cordex|alpha\s*technologies/i, label: 'Alpha Technologies' },
   { match: /efficient\s*ip|solidserver/i, label: 'EfficientIP', icon: 'mm-efficientip_efficientip' },
   { match: /nomadix|ag-?2000w/i, label: 'Nomadix', icon: 'mm-nomadix_nomadix' },
+  { match: /dahua|大华/i, label: 'Dahua' },
   { match: /airspan|air4g|air5g|airharmony|airvelocity/i, label: 'Airspan', icon: 'mm-airspan_airspan' },
   { match: /acksys|airlink|waveos/i, label: 'ACKSYS', icon: 'mm-acksys_acksys' },
   { match: /last\s*mile\s*gear|\bctm\b/i, label: 'Last Mile Gear' },
