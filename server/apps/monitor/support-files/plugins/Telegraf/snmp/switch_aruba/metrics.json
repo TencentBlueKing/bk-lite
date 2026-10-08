@@ -112,7 +112,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_rpm",
-      "query": "max(device_fan_rpm{instance_type='switch', __$labels__}) by (instance_id, descr)",
+      "query": "device_fan_rpm{instance_type='switch', __$labels__}",
       "display_name": "Fan Speed (RPM)",
       "data_type": "Number",
       "unit": "counts",
