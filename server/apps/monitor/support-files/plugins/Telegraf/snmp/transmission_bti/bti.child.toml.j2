@@ -1,0 +1,53 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_bti"
+        config_type = "bti"
+        brand = "bti"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- BTI8xx（PEN 30005，bti8xx 1.3.6.1.4.1.30005.1.7）BTI8xx-SYSTEM-MIB systemInfo：标量，顶层 field 带 .0 → measurement snmp，查询用 snmp_ 前缀 ----
+    # systemTemperature 1.3.6.1.4.1.30005.1.7.100.1.2.1.1.1.7.0：Integer32 (0..1000)，主系统温度，单位摄氏度。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.30005.1.7.100.1.2.1.1.1.7.0"
+        name = "temperature_raw"
+
+# ---- 温度：整数且在 MIB 定义范围 0-1000 内才输出 device_temperature_celsius，原始字段不落库。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    v = metric.fields.pop("temperature_raw", None)
+    if type(v) == "int" and v >= 0 and v <= 1000:
+        metric.fields["device_temperature_celsius"] = v
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["bti"]
