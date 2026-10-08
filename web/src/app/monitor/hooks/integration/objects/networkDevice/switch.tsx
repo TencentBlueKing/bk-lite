@@ -112,6 +112,7 @@ export const useSwitchConfig = () => {
       'Switch Cisco Nexus SNMP': 'snmp_cisco_nexus',
       'Switch Huawei SNMP': 'snmp_huawei',
       'Switch FutureMatrix SNMP': 'snmp_futurematrix',
+      'Switch LANCOM SNMP': 'snmp_lancom',
       'Switch Aruba SNMP': 'snmp_aruba',
       'Switch Juniper SNMP': 'snmp_juniper',
       'Switch Extreme SNMP': 'snmp_extreme',
