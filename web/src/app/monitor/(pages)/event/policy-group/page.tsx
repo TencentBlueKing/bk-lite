@@ -74,6 +74,8 @@ const PolicyGroupPage: React.FC = () => {
   const [rule, setRule] = useState<PolicyGroupRule | null>(null);
   const [thresholdValue, setThresholdValue] = useState<number | null>(null);
   const [noticeUsers, setNoticeUsers] = useState<string[]>([]);
+  const [copySource, setCopySource] = useState<PolicyGroupRow | null>(null);
+  const [copyName, setCopyName] = useState('');
 
   const loadGroups = async (id: React.Key) => {
     setLoading(true);
@@ -185,23 +187,8 @@ const PolicyGroupPage: React.FC = () => {
           <Button
             type="link"
             onClick={() => {
-              let name = `${record.name} 副本`;
-              Modal.confirm({
-                title: '复制策略组',
-                content: (
-                  <Input
-                    defaultValue={name}
-                    onChange={(event) => {
-                      name = event.target.value;
-                    }}
-                  />
-                ),
-                onOk: async () => {
-                  await copyPolicyGroup(Number(record.id), name);
-                  message.success('已复制。新组没有成员，也不是默认组');
-                  await loadGroups(objectId);
-                },
-              });
+              setCopySource(record as PolicyGroupRow);
+              setCopyName(`${record.name} 副本`);
             }}
           >
             复制
@@ -371,6 +358,20 @@ const PolicyGroupPage: React.FC = () => {
             </Button>
           </div>
         ))}
+      </Modal>
+      <Modal
+        title="复制策略组"
+        open={Boolean(copySource)}
+        onCancel={() => setCopySource(null)}
+        onOk={async () => {
+          if (!copySource || !copyName.trim()) return;
+          await copyPolicyGroup(copySource.id, copyName.trim());
+          message.success('已复制。新组没有成员，也不是默认组');
+          setCopySource(null);
+          await loadGroups(objectId);
+        }}
+      >
+        <Input value={copyName} onChange={(event) => setCopyName(event.target.value)} />
       </Modal>
       <Modal
         title={rule ? `修改 ${rule.name}` : '修改规则'}
