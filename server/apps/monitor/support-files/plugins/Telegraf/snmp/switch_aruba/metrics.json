@@ -112,15 +112,20 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_rpm",
-      "query": "max(device_fan_rpm{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "max(device_fan_rpm{instance_type='switch', __$labels__}) by (instance_id, descr)",
       "display_name": "Fan Speed (RPM)",
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": [],
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Fan description"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Fan rotation speed in RPM from arubaWiredFanRPM. Values outside 0..100000 (including -1 no-readback) are dropped. A stalled fan reports 0 RPM."
+      "description": "Fan rotation speed in RPM from arubaWiredFanRPM, reported per fan. Values outside 0..100000 (including -1 no-readback) are dropped. A stalled fan reports 0 RPM."
     },
     {
       "metric_group": "Hardware Status",
