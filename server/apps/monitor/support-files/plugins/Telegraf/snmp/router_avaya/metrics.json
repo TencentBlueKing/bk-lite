@@ -74,7 +74,7 @@
         "instance_id"
       ],
       "name": "device_memory_total",
-      "display_name": "内存总量",
+      "display_name": "Total Memory",
       "query": "max(snmp_device_memory_total{instance_type='router', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
@@ -87,7 +87,7 @@
         "instance_id"
       ],
       "name": "device_memory_used",
-      "display_name": "内存已用",
+      "display_name": "Used Memory",
       "query": "max(snmp_device_memory_used{instance_type='router', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
@@ -100,7 +100,7 @@
         "instance_id"
       ],
       "name": "device_memory_free",
-      "display_name": "内存空闲",
+      "display_name": "Free Memory",
       "query": "max(snmp_device_memory_free{instance_type='router', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
@@ -113,7 +113,7 @@
         "instance_id"
       ],
       "name": "device_memory_usage",
-      "display_name": "内存使用率",
+      "display_name": "Memory Usage",
       "query": "max(device_memory_usage{instance_type='router', __$labels__}) by (instance_id)",
       "unit": "percent",
       "data_type": "Number",
