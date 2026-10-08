@@ -888,6 +888,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /deva\s*broadcast|\bdeva\b/i, label: 'DEVA Broadcast', icon: 'mm-deva_deva' },
   { match: /endrun|sonoma|tempus/i, label: 'EndRun', icon: 'mm-endrun_endrun' },
   { match: /spectracom|orolia|securesync|netclock/i, label: 'Spectracom', icon: 'mm-spectracom_spectracom' },
+  { match: /jacarta|interseptor/i, label: 'Jacarta', icon: 'mm-jacarta_jacarta' },
   { match: /asentria|siteboss/i, label: 'Asentria', icon: 'mm-asentria_asentria' },
   { match: /server\s*technology|servertech|sentry3/i, label: 'Server Technology', icon: 'mm-servertech_servertech' },
   { match: /enlogic|en2\.?0/i, label: 'Enlogic', icon: 'mm-enlogic_enlogic' },
