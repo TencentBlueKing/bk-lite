@@ -1,0 +1,40 @@
+NetworkService PowerDsine PoE SNMP:
+  name: PowerDsine PoE（Telegraf）
+  desc: 面向 Microsemi / PowerDsine PoE 中跨供电设备（MICROSEMI-PDSINE-MIB，企业号 PEN 7428）的 SNMP 监控模板，可采集运行时长、电源电压、PoE
+    最大供电功率、内部 / 外部电源状态、机内温度（仅 95xxG 系列）、接口流量。
+monitor_object:
+  NetworkService: 网络服务
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  NetworkService:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    device_temperature_celsius:
+      name: 机内温度
+      desc: 设备机内温度，单位为摄氏度。仅 95xxG 系列提供。
+    device_voltage_volts:
+      name: 电源电压
+      desc: 电源电压，单位为伏。
+    device_psu_state:
+      name: 电源状态
+      desc: 内部 / 外部电源状态，异常表示该路电源故障。
+    poe_max_power_watts:
+      name: PoE 最大供电功率
+      desc: 扣除功率预算限制后，中跨设备可提供的最大 PoE 功率，单位为瓦。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位
+        ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内出向发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32
+        位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+monitor_object_metric_group:
+  NetworkService:
+    Base: 基础
+    Traffic: 流量
+    Power: 电力
+    Temperature: 温度
+    Hardware Status: 硬件状态
