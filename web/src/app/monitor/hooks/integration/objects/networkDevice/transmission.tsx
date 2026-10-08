@@ -94,6 +94,7 @@ export const useTransmissionConfig = () => {
       'Transmission Fibernet XMUX SNMP': 'snmp_fibernet_xmux',
       'Transmission Smartoptics SNMP': 'snmp_smartoptics',
       'Transmission RACOM SNMP': 'snmp_racom',
+      'Transmission TBS SNMP': 'snmp_tbs',
       'Transmission SIAE Microelettronica SNMP': 'snmp_siae',
       'Transmission Inovonics SNMP': 'snmp_inovonics',
       'Transmission Ifotec SNMP': 'snmp_ifotec',
