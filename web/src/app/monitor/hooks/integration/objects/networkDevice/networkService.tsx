@@ -68,6 +68,7 @@ export const useNetworkServiceConfig = () => {
       default: ['instance_id']
     },
     collectTypes: {
+      'NetworkService IONODES SNMP': 'snmp_ionodes',
       'NetworkService Infoblox SNMP': 'snmp_infoblox',
       'NetworkService COMET WebSensor SNMP': 'snmp_comet',
       'NetworkService Gigamon SNMP': 'snmp_gigamon',
