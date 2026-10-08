@@ -91,6 +91,7 @@ export const useTransmissionConfig = () => {
       'Transmission Huber+Suhner Cubo SNMP': 'snmp_hubersuhner',
       'Transmission TERRA SNMP': 'snmp_terra',
       'Transmission Fibrolan SNMP': 'snmp_fibrolan',
+      'Transmission Aviat SNMP': 'snmp_aviat',
       'Transmission Exalt SNMP': 'snmp_exalt',
       'Transmission Fibernet XMUX SNMP': 'snmp_fibernet_xmux',
       'Transmission Smartoptics SNMP': 'snmp_smartoptics',

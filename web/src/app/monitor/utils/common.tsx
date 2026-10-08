@@ -742,6 +742,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /bintec/i, label: 'Bintec', icon: 'mm-bintec_bintec' },
   { match: /cradlepoint|netcloud/i, label: 'Cradlepoint', icon: 'mm-cradlepoint_cradlepoint' },
   { match: /peplink/i, label: 'Peplink', icon: 'mm-peplink_peplink' },
+  { match: /\baviat\b/i, label: 'Aviat Networks' },
   { match: /pepwave/i, label: 'Pepwave', icon: 'mm-pepwave_pepwave' },
   { match: /\bdigi\b|digi.?transport/i, label: 'Digi', icon: 'mm-digi_digi' },
   { match: /oneaccess/i, label: 'OneAccess', icon: 'mm-oneaccess_oneaccess' },
