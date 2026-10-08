@@ -56,8 +56,8 @@ monitor_object_metric:
       desc: Supply current of each Cyan BOSS module in amperes, scaled from milli-amperes.
     device_psu_state:
       name: Power Feed Status
-      desc: Power-feed state of each Cyan BOSS module feed A/B. on maps to normal,
-        off maps to abnormal, and unknown is not emitted.
+      desc: Power-feed state of each Cyan BOSS module feed A/B. on maps to normal;
+        off and unknown are normalized to 2 (abnormal).
     device_voltage_volts:
       name: Power Feed Voltage
       desc: Voltage of each Cyan BOSS module feed A/B in volts, scaled from milli-volts.

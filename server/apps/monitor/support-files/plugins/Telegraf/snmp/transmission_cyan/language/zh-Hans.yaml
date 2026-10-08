@@ -38,7 +38,7 @@ monitor_object_metric:
       desc: Cyan BOSS 模块供电电流，单位为安培，由毫安换算。
     device_psu_state:
       name: 馈电状态
-      desc: Cyan BOSS 模块 A/B 路馈电开关状态，on 归一为正常、off 归一为异常，unknown 不上报。
+      desc: Cyan BOSS 模块 A/B 路馈电开关状态，on 归一为正常，off 和 unknown 归一为 2（异常）。
     device_voltage_volts:
       name: 馈电电压
       desc: Cyan BOSS 模块 A/B 路馈电电压，单位为伏特，由毫伏换算。非正值不上报。
