@@ -147,12 +147,6 @@ monitor_object_metric:
         the device, in degrees Celsius. Abnormally high temperatures may indicate
         fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal
         protection or hardware damage if left unaddressed.
-    device_fan_state:
-      name: Fan Status
-      desc: This metric reports the operational state of each cooling fan on the device.
-        A non-normal state (warning, critical, shutdown, or notFunctioning) indicates
-        a cooling fault that can quickly lead to overheating and should be investigated
-        immediately.
     device_fan_speed:
       name: Fan Speed
       desc: This metric reports the fan rotation speed (RPM) of the device, taken
