@@ -56,11 +56,11 @@ def apply(metric):
     f = metric.fields
     if "device_temperature_celsius" in f:
         v = f["device_temperature_celsius"]
-        if v < -40 or v > 125:
+        if v == None or type(v) not in ["int", "float"] or v < -40 or v > 125:
             f.pop("device_temperature_celsius")
     if "trango_odu_temperature_celsius" in f:
         v = f["trango_odu_temperature_celsius"]
-        if v < -40 or v > 125:
+        if v == None or type(v) not in ["int", "float"] or v < -40 or v > 125:
             f.pop("trango_odu_temperature_celsius")
     raw = f.pop("tx_power_raw", None)
     if raw != None:
@@ -68,7 +68,7 @@ def apply(metric):
             f["trango_tx_power_dbm"] = float(raw) / 10.0
     if "trango_rssi" in f:
         v = f["trango_rssi"]
-        if v < -32768 or v > 32767:
+        if v == None or type(v) not in ["int", "float"] or v < -32768 or v > 32767:
             f.pop("trango_rssi")
     return metric
 '''
