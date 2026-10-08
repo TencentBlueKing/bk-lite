@@ -82,7 +82,7 @@ def apply(metric):
     elif kind == 3:
         if value == 1:
             state = 1
-        elif value == 0 or value == 2:
+        elif value == 0 or value == 2 or value == 3:
             state = 2
         else:
             return None
