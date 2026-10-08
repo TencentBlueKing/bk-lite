@@ -124,7 +124,7 @@
       ],
       "name": "device_temperature_celsius",
       "display_name": "设备温度",
-      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='switch', __$labels__} / 1000",
       "unit": "celsius",
       "data_type": "Number",
       "description": "Chassis temperature of the Pluribus Netvisor ONE switch in degrees Celsius (LM-SENSORS-MIB lmTempSensorsValue)."
