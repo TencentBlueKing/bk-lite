@@ -54,6 +54,7 @@ export const useAccessConfig = () => {
     },
     collectTypes: {
       'Access BDCOM SNMP': 'snmp_bdcom',
+      'Access GWD SNMP': 'snmp_gwd',
       'Access V-SOL SNMP': 'snmp_vsolution',
       'Access ARRIS Cadant SNMP': 'snmp_arris',
       'Access FiberHome OLT SNMP': 'snmp_fiberhome_olt',
