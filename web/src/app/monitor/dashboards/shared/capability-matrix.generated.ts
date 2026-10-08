@@ -1165,6 +1165,13 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_inhand_router",
+      "capabilities": [
+        "uptime",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_juniper_mx",
       "capabilities": [
         "uptime",
