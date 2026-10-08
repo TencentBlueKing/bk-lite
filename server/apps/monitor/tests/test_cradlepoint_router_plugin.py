@@ -1,12 +1,13 @@
 """Contract tests for the Cradlepoint router SNMP plugin.
 
 Cradlepoint NetCloud / COR / E-series / IBR-series cellular (4G/5G) routers
-(IANA PEN 20992). Private scalar OIDs expose CPU utilization, memory
-utilization (both direct percentages) and internal chassis temperature in
-Celsius. Fan/power are not exposed as row-filter-free scalars -> N/A.
+(IANA PEN 20992). Private scalar OIDs expose CPU utilization and memory
+utilization (both direct percentages). CP-SYSTEM-MIB has no chassis temperature
+object, so this plugin does not collect one. Fan/power are not exposed as
+row-filter-free scalars -> N/A.
 
-OID values are pending on-site SNMP walk; only the PEN root, the percent/celsius
-units and the cross-file identity contract are asserted here.
+OID values are pending on-site SNMP walk; only the PEN root, the percent units
+and the cross-file identity contract are asserted here.
 """
 import json
 from pathlib import Path
@@ -121,10 +122,9 @@ def test_cpu_and_memory_usage_percent(metrics):
 
 @pytest.mark.unit
 def test_temperature_metric_is_celsius(metrics, toml_text):
-    by = {m["name"]: m for m in metrics["metrics"]}
-    assert "device_temperature_celsius" in by
-    assert by["device_temperature_celsius"]["unit"] == "celsius"
-    assert 'name = "celsius"' in toml_text
+    names = {m["name"] for m in metrics["metrics"]}
+    assert "device_temperature_celsius" not in names
+    assert 'name = "celsius"' not in toml_text
 
 
 @pytest.mark.unit
