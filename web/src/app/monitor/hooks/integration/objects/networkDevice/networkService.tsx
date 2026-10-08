@@ -86,6 +86,7 @@ export const useNetworkServiceConfig = () => {
       'NetworkService EndRun SNMP': 'snmp_endrun',
       'NetworkService WTI PDU SNMP': 'snmp_wti_pdu',
       'NetworkService Spectracom SNMP': 'snmp_spectracom',
+      'NetworkService Procera PacketLogic SNMP': 'snmp_procera',
       'NetworkService Asentria SiteBoss SNMP': 'snmp_asentria',
       'NetworkService ATEN PE eco PDU SNMP': 'snmp_aten',
       'NetworkService Server Technology Sentry3 SNMP': 'snmp_servertech',
