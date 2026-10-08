@@ -4,7 +4,7 @@ from rest_framework.decorators import action
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.current_team_scope import resolve_current_team_data_scope
 from apps.core.utils.web_utils import WebUtils
-from apps.monitor.models import MonitorInstance, PolicyGroup, PolicyGroupDefault
+from apps.monitor.models import MonitorInstance, PolicyGroup, PolicyGroupDefault, PolicyTemplate
 from apps.monitor.services.policy_group import PolicyGroupService
 
 
@@ -39,6 +39,23 @@ class PolicyGroupViewSet(viewsets.ViewSet):
                 }
             )
         return WebUtils.response_success(data)
+
+    @action(methods=["post"], detail=False)
+    def create(self, request):
+        scope = resolve_current_team_data_scope(request)
+        organization = int(scope.current_team)
+        templates = list(PolicyTemplate.objects.filter(id__in=request.data.get("template_ids") or []).select_related("plugin", "monitor_object"))
+        if not templates:
+            raise BaseAppException("至少选择一条策略模板")
+        monitor_object = templates[0].monitor_object
+        group = PolicyGroupService.create_from_templates(
+            organization=organization,
+            monitor_object=monitor_object,
+            name=request.data.get("name") or "新建策略组",
+            templates=templates,
+            operator=scope.username or "system",
+        )
+        return WebUtils.response_success({"id": group.id, "member_count": 0})
 
     @action(methods=["post"], detail=False)
     def join(self, request):

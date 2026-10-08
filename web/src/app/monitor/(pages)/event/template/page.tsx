@@ -46,7 +46,7 @@ import { resolveTemplateQueryCondition } from '../strategy/detail/formulaExpress
 const MAX_VISIBLE_SELECTED_TEMPLATE_TAGS = 4;
 
 const Template: React.FC = () => {
-  const { isLoading } = useApiClient();
+  const { isLoading, post } = useApiClient();
   const { getMonitorObject } = useMonitorApi();
   const {
     getPolicyTemplate,
@@ -256,7 +256,20 @@ const Template: React.FC = () => {
       message.warning('请先选择策略模版');
       return;
     }
-    setBulkModalVisible(true);
+    const templateIds = selectedTemplates
+      .map((item) => item.id)
+      .filter((item) => item !== undefined && item !== null);
+    void post('/monitor/api/policy_group/create/', {
+      template_ids: templateIds,
+      name: '新建策略组',
+    })
+      .then(() => {
+        message.success('已创建策略组。实例尚未加入');
+        setSelectedTemplateKeys(clearTemplateSelection());
+      })
+      .catch((error: { message?: string }) => {
+        message.error(error?.message || '创建策略组失败');
+      });
   };
 
   const refreshTemplates = () => {
@@ -635,7 +648,7 @@ const Template: React.FC = () => {
                 清空
               </Button>
               <Button type="primary" onClick={handleApply}>
-                应用
+                用于创建策略组
               </Button>
             </div>
           </div>

@@ -244,6 +244,23 @@ def test_auto_join_skips_when_no_template_multiple_orgs_or_legacy_policy():
     assert PolicyGroupService.consider_auto_join(legacy_host, [1]).state == "skipped"
 
 
+def test_standalone_rule_stays_on_strategy_list_and_group_rules_do_not():
+    monitor_object = _object()
+    wmi = _plugin(monitor_object, "WMI")
+    template = _template(monitor_object, wmi, "WMI CPU")
+    group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="主机默认告警",
+        templates=[template],
+    )
+    host = _instance(monitor_object, "web-01", 1)
+    standalone = PolicyGroupService.create_standalone(instance=host, template=template)
+    visible = set(exclude_policy_group_rules(MonitorPolicy.objects.all()).values_list("id", flat=True))
+    assert standalone.id in visible
+    assert group.rules.get().policy_id not in visible
+
+
 def test_update_copy_and_delete_default_do_not_touch_other_groups():
     monitor_object = _object()
     wmi = _plugin(monitor_object, "WMI")

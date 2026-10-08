@@ -320,6 +320,24 @@ class PolicyGroupService:
         return pointer
 
     @staticmethod
+    def create_standalone(*, instance, template, operator="system"):
+        recipe = PolicyService.recipe_fields_from_template(template)
+        return MonitorPolicy.objects.create(
+            monitor_object=instance.monitor_object,
+            name=template.name[:100],
+            organizations=[],
+            source={"type": "instance", "values": [instance.id]},
+            enable=True,
+            notice=True,
+            notice_users=[],
+            handlers=[],
+            source_template=None,
+            created_by=operator,
+            updated_by=operator,
+            **recipe,
+        )
+
+    @staticmethod
     def delete_group(group, operator="system"):
         with transaction.atomic():
             for membership in list(group.memberships.select_for_update()):

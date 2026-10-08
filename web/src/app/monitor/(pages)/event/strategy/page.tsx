@@ -23,7 +23,6 @@ import UserAvatar from '@/components/user-avatar';
 import { findLabelById } from '@/app/monitor/utils/common';
 import { buildMonitorStrategyDetailUrl } from '@/app/monitor/utils/policyRouteUtils';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
-import { PlusOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
 import { useScreenAwareRouter } from '@/console-layout';
 import TreeSelector from '@/app/monitor/components/treeSelector';
@@ -422,15 +421,6 @@ const Strategy: React.FC = () => {
                 onChange={(e) => setSearchText(e.target.value)}
               ></Input>
             </div>
-            <Permission requiredPermissions={['Add']}>
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={() => linkToStrategyDetail('add')}
-              >
-                {t('common.add')}
-              </Button>
-            </Permission>
           </div>
           <div className="min-h-0 min-w-0 flex-1">
             <CustomTable
