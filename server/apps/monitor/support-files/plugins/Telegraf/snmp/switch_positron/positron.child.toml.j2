@@ -126,7 +126,7 @@ def apply(metric):
 '''
     [processors.starlark.tagpass]
         brand = ["positron"]
-# ---- 电源：active(0)/standby(1) → 1（正常）；notPresent(2) 及其余 → 丢弃。保留 index，避免两路电源互相覆盖。----
+# ---- 电源：active(0)/standby(1)/notPresent(2 空槽) → 1（正常）；其余丢弃，不臆造故障值。保留 index，避免两路电源互相覆盖。----
 [[processors.starlark]]
     namepass = ["device_psu"]
     source = '''
@@ -135,7 +135,7 @@ def apply(metric):
     if raw == None:
         return None
     code = int(raw)
-    if code == 0 or code == 1:
+    if code == 0 or code == 1 or code == 2:
         metric.fields["state"] = 1
         return metric
     return None
