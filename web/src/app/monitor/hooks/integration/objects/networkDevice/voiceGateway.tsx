@@ -63,6 +63,7 @@ export const useVoiceGatewayConfig = () => {
       'VoiceGateway Snom SNMP': 'snmp_snom',
       'VoiceGateway Polycom SNMP': 'snmp_polycom',
       'VoiceGateway Yeastar SNMP': 'snmp_yeastar',
+      'VoiceGateway Switchvox SNMP': 'snmp_switchvox',
       'VoiceGateway Zenitel SNMP': 'snmp_zenitel',
       'VoiceGateway Sangoma Vega SNMP': 'snmp_sangoma',
       'VoiceGateway AddPac SNMP': 'snmp_addpac'
