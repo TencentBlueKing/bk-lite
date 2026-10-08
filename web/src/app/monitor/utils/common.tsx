@@ -729,6 +729,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /forcepoint|stonesoft|stonegate|ngfw/i, label: 'Forcepoint', icon: 'mm-forcepoint_forcepoint' },
   { match: /screenos|netscreen|\bssg\b/i, label: 'Juniper ScreenOS', icon: 'mm-screenos_screenos' },
   { match: /barracuda/i, label: 'Barracuda', icon: 'mm-barracuda_barracuda' },
+  { match: /fireeye|trellix/i, label: 'FireEye' },
   { match: /netscaler|citrix/i, label: 'Citrix NetScaler', icon: 'mm-netscaler_netscaler' },
   { match: /\ba10\b|thunder|acos/i, label: 'A10 Thunder', icon: 'mm-a10_a10' },
   { match: /fortiadc|fad\b/i, label: 'FortiADC', icon: 'mm-fortiadc_fortiadc' },

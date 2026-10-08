@@ -1474,6 +1474,16 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_fireeye",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "fan",
+        "psu",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_forcepoint",
       "capabilities": [
         "uptime",
