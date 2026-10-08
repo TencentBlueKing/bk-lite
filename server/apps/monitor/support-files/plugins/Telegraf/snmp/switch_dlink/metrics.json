@@ -148,7 +148,7 @@
       "query": "device_fan_state{instance_type='switch', __$labels__}",
       "display_name": "Fan Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"shutdown\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notPresent\",\"id\":5,\"color\":\"#d9d9d9\"},{\"name\":\"notFunctioning\",\"id\":6,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [
         {
           "name": "fan_name",
@@ -158,7 +158,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the operational state of each DGS-1250 cooling fan (dEntityExtEnvFanStatus). ok(1) is stored as 1, fault(2) as 2; any other code is dropped."
+      "description": "This metric reports the operational state of each DGS-1250 cooling fan. ok is stored as 1 (normal); fault is stored as 2 (abnormal). Any other code is dropped."
     },
     {
       "metric_group": "Hardware Status",
@@ -166,7 +166,7 @@
       "query": "device_psu_state{instance_type='switch', __$labels__}",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"shutdown\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notPresent\",\"id\":5,\"color\":\"#d9d9d9\"},{\"name\":\"notFunctioning\",\"id\":6,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [
         {
           "name": "psu_name",
@@ -176,7 +176,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the operational state of each DGS-1250 power supply (dEntityExtEnvPowerStatus). inOperation(1) and empty(3) are stored as 1; failed(2) is stored as 2; any other code is dropped."
+      "description": "This metric reports the operational state of each DGS-1250 power supply. inOperation and empty are stored as 1 (normal); failed is stored as 2 (abnormal). Any other code is dropped."
     },
     {
       "metric_group": "Base",

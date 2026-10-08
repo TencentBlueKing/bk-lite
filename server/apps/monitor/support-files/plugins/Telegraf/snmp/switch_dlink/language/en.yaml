@@ -49,16 +49,16 @@ monitor_object_metric:
         protection or hardware damage if left unaddressed.
     device_fan_state:
       name: Fan Status
-      desc: This metric reports the operational state of each cooling fan on the device.
-        A non-normal state (warning, critical, shutdown, or notFunctioning) indicates
-        a cooling fault that can quickly lead to overheating and should be investigated
-        immediately.
+      desc: This metric reports the operational state of each DGS-1250 cooling fan.
+        1 means normal (ok). 2 means abnormal (fault). A value of 2 indicates a cooling
+        fault that can quickly lead to overheating and should be investigated immediately.
     device_psu_state:
       name: Power Supply Status
-      desc: This metric reports the operational state of each power supply unit on
-        the device. A non-normal state signals a power redundancy or hardware fault;
-        on devices with redundant PSUs a single failure may not cause an outage but
-        removes redundancy and must be remediated promptly.
+      desc: This metric reports the operational state of each DGS-1250 power supply.
+        1 means normal (inOperation or empty). 2 means abnormal (failed). A value of
+        2 signals a power hardware fault; on devices with redundant PSUs a single
+        failure may not cause an outage but removes redundancy and must be remediated
+        promptly.
 monitor_object_metric_group:
   Switch:
     CPU: CPU
