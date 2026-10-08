@@ -85,24 +85,12 @@
 [[processors.starlark]]
     namepass = ["device_temperature"]
     source = '''
-def is_sentinel(v):
-    n = int(v)
-    if n == 65535 or n == 65534 or n == -1:
-        return True
-    if n == 2147483647 or n == -2147483648:
-        return True
-    if n == 4294967295:
-        return True
-    return False
-
 def apply(metric):
     raw = metric.fields.get("celsius")
     if raw == None:
         return None
-    if is_sentinel(raw):
-        return None
     value = float(raw)
-    if value < -40.0 or value > 125.0:
+    if value < -60.0 or value > 195.0:
         return None
     metric.fields["celsius"] = value
     return metric

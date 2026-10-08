@@ -39,9 +39,9 @@ monitor_object_metric:
         assess sending performance for traffic management and optimization.
     device_temperature_celsius:
       name: Chassis Temperature
-      desc: WISI Tangram chassis temperature in degrees Celsius. Out-of-range and
-        sentinel readings are dropped by the collector. High values may indicate
-        cooling problems, high ambient temperature or overloaded hardware.
+      desc: WISI Tangram chassis temperature in degrees Celsius. Values outside -60
+        to 195 C are dropped by the collector. High values may indicate cooling
+        problems, high ambient temperature or overloaded hardware.
     device_fan_speed:
       name: Fan Speed
       desc: WISI Tangram fan rotation speed in RPM. Out-of-range and sentinel readings

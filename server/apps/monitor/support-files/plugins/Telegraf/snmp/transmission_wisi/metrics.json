@@ -41,7 +41,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "WISI Tangram chassis temperature in degrees Celsius from gtTempValue. Values outside -40 to 125 C or sentinel readings are dropped before storage."
+      "description": "WISI Tangram chassis temperature in degrees Celsius from gtTempValue. Values outside -60 to 195 C are dropped before storage."
     },
     {
       "metric_group": "Hardware Status",
@@ -85,7 +85,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "WISI Tangram power-supply temperature in degrees Celsius from gtPSUTemperature. Kept on a distinct series from chassis temperature. Values outside -40 to 125 C are dropped."
+      "description": "WISI Tangram power-supply temperature in degrees Celsius from gtPSUTemperature. Kept on a distinct series from chassis temperature. Values outside -60 to 195 C are dropped."
     },
     {
       "metric_group": "Power",
