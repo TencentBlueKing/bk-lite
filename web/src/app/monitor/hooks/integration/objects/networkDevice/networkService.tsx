@@ -95,6 +95,7 @@ export const useNetworkServiceConfig = () => {
       'NetworkService Wiesemann Theis Web-Thermo-Hygrometer SNMP': 'snmp_wut',
       'NetworkService APC UPS PDU Environmental SNMP': 'snmp_apc',
       'NetworkService Eaton UPS PDU Environmental SNMP': 'snmp_eaton',
+      'NetworkService Papouch TH2E SNMP': 'snmp_papouch',
       'NetworkService Tripp Lite UPS PDU Environmental SNMP': 'snmp_tripplite',
       'NetworkService HW group Poseidon SNMP': 'snmp_hwg_poseidon',
       'NetworkService Allot SNMP': 'snmp_allot',
