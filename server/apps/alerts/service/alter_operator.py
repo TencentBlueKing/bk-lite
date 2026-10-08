@@ -602,6 +602,7 @@ class AlertOperator(object):
             # 更新告警状态
             alert.status = AlertStatus.RESOLVED
             alert.updated_at = timezone.now()
+            Alert.stamp_closed_at(alert, alert.updated_at)
             alert.save()
 
             from apps.alerts.action.engine import ActionEngine
