@@ -181,6 +181,77 @@ class MonitorPolicy(TimeInfo, MaintainerInfo):
         verbose_name_plural = "监控策略"
 
 
+class PolicyGroup(TimeInfo, MaintainerInfo):
+    ORIGIN_SYSTEM = "system"
+    ORIGIN_CUSTOM = "custom"
+    ORIGIN_CHOICES = ((ORIGIN_SYSTEM, "系统生成"), (ORIGIN_CUSTOM, "自定义"))
+
+    organization = models.IntegerField(db_index=True, verbose_name="所属组织")
+    monitor_object = models.ForeignKey(MonitorObject, on_delete=models.CASCADE, verbose_name="监控对象")
+    name = models.CharField(max_length=100, verbose_name="策略组名称")
+    origin = models.CharField(max_length=20, choices=ORIGIN_CHOICES, default=ORIGIN_CUSTOM, verbose_name="来源")
+
+    class Meta:
+        verbose_name = "监控策略组"
+        verbose_name_plural = "监控策略组"
+
+
+class PolicyGroupRule(TimeInfo, MaintainerInfo):
+    group = models.ForeignKey(PolicyGroup, on_delete=models.CASCADE, related_name="rules", verbose_name="策略组")
+    plugin = models.ForeignKey(MonitorPlugin, on_delete=models.CASCADE, verbose_name="采集插件")
+    source_template = models.ForeignKey(
+        PolicyTemplate,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="group_rules",
+        verbose_name="来源模板",
+    )
+    policy = models.OneToOneField(
+        MonitorPolicy,
+        on_delete=models.CASCADE,
+        related_name="group_rule",
+        verbose_name="对应监控策略",
+    )
+    name = models.CharField(max_length=100, verbose_name="规则名称")
+    push_alert_center = models.BooleanField(default=True, verbose_name="推送告警中心")
+
+    class Meta:
+        verbose_name = "策略组规则"
+        verbose_name_plural = "策略组规则"
+
+
+class PolicyGroupMembership(TimeInfo, MaintainerInfo):
+    STATE_MEMBER = "member"
+    STATE_DECLINED = "declined"
+    STATE_SKIPPED = "skipped"
+    STATE_CHOICES = (
+        (STATE_MEMBER, "在组"),
+        (STATE_DECLINED, "不自动入组"),
+        (STATE_SKIPPED, "未入组"),
+    )
+
+    monitor_instance = models.OneToOneField(
+        "monitor.MonitorInstance",
+        on_delete=models.CASCADE,
+        related_name="policy_group_membership",
+        verbose_name="监控实例",
+    )
+    policy_group = models.ForeignKey(
+        PolicyGroup,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="memberships",
+        verbose_name="所属策略组",
+    )
+    state = models.CharField(max_length=20, choices=STATE_CHOICES, default=STATE_MEMBER, db_index=True, verbose_name="成员状态")
+
+    class Meta:
+        verbose_name = "策略组成员决定"
+        verbose_name_plural = "策略组成员决定"
+
+
 class PolicyOrganization(TimeInfo, MaintainerInfo):
     policy = models.ForeignKey(MonitorPolicy, on_delete=models.CASCADE, verbose_name="监控策略")
     organization = models.IntegerField(verbose_name="组织id")

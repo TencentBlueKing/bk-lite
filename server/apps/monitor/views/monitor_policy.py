@@ -20,7 +20,7 @@ from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.filters.id_filters import filter_positive_int_field
-from apps.monitor.filters.monitor_policy import MonitorPolicyFilter
+from apps.monitor.filters.monitor_policy import MonitorPolicyFilter, exclude_policy_group_rules
 from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorObject, PolicyOrganization, PolicyTemplate
 from apps.monitor.models.monitor_policy import MonitorPolicy
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
@@ -130,6 +130,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         monitor_object_id = self._get_monitor_object_id()
         # 非法非数字 id（如分类名 Network Device）不得落入 ORM，否则 ValueError → 500
         queryset = filter_positive_int_field(queryset, "monitor_object_id", monitor_object_id)
+        queryset = exclude_policy_group_rules(queryset)
 
         scope = self._get_data_scope()
         permission = self._get_effective_permission(monitor_object_id)
