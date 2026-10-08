@@ -116,6 +116,7 @@
     "test:related-alerts": "pnpm exec tsx scripts/related-alerts-validation.ts",
     "test:operation-log-time-filter": "pnpm exec tsx scripts/operation-log-time-filter-test.ts",
     "test:cmdb-attr-type-i18n": "pnpm exec tsx scripts/cmdb-attr-type-i18n-test.ts",
+    "test:cmdb-locale-literals": "pnpm exec tsx scripts/cmdb-locale-literal-test.ts",
     "test:operation-log-detail": "pnpm exec tsx scripts/operation-log-detail-test.ts",
     "test:proxy-request-timeout": "pnpm exec tsx scripts/proxy-request-timeout-test.ts",
     "test:job-execution-stream-gap": "pnpm exec tsx scripts/job-execution-stream-gap-test.ts",

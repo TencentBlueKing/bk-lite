@@ -706,6 +706,17 @@
         "hostAssetSelectionNeedsProxy": "主机模型实例模式需先选择接入点后再选择资产",
         "proxyCloudUnavailable": "当前接入点未绑定云区域，无法筛选主机模型实例",
         "everyMinute": "每",
+        "everyMinuteMin": "执行间隔最小为1分钟",
+        "api_version": "API 版本",
+        "smartxTask": {
+            "source": "认证来源"
+        },
+        "fusioncomputeTask": {
+            "userType": "用户类型"
+        },
+        "azureTask": {
+            "subscriptionId": "订阅 ID"
+        },
         "executeOnce": "执行一次",
         "database": "数据库",
         "port": "端口",
@@ -1088,6 +1099,7 @@
             "invalidPort": "请输入 1–65535 的有效端口"
         },
         "platformApiTask": {
+            "identityPort": "认证服务端口",
             "tenantId": "租户 ID",
             "userDomainName": "用户域名称",
             "projectId": "项目 ID",
@@ -1735,8 +1747,8 @@
         "authHeader": "鉴权头",
         "curlCommand": "上报命令（curl）",
         "copyCommand": "复制命令",
-        "curlHintHost": "把 <CMDB_HOST> 换成 CMDB 后端地址（本地默认 localhost:8011，生产填后端域名或网关）。",
-        "curlHintToken": "把 <token> 换成任务凭证 token，把实例里的 <字段> 占位替换成真实值后即可执行。",
+        "curlHintHost": "把 '<CMDB_HOST>' 换成 CMDB 后端地址（本地默认 localhost:8011，生产填后端域名或网关）。",
+        "curlHintToken": "把 '<token>' 换成任务凭证 token，把实例里的 '<字段>' 占位替换成真实值后即可执行。",
         "curlHintPayload": "这是最小可跑的单条上报；多条数据与关联关系的完整结构见下方「上报示例」。",
         "examplePayload": "示例载荷",
         "exampleInstances": "示例一：仅上报实例（instances）",

@@ -427,6 +427,7 @@ ATTR:
     mac: MAC
     outer_mac: Outer MAC
     operator: Operator
+    operatr: Operator
     comment: Comment
     cpu_core: CPU Core
     out_ip: External IP

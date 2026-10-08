@@ -415,11 +415,15 @@ ATTR:
     inst_name: 实例名
     organization: 组织
     ip_addr: 内网IP
+    host_outerip: 外网IP
     os_type: 操作系统类型
     os_version: 操作系统版本
     os_bit: 操作系统位数
+    cpu: CPU
+    cpu_module: CPU模块
     memory: 内存（GB）
     disk: 磁盘（GB）
+    mac: MAC
     outer_mac: 外网MAC
     comment: 备注
     operatr: 主要维护人
@@ -528,6 +532,8 @@ ATTR:
     ip_addr: IP
     port: 端口
     version: 版本
+    max_connect: 最大连接数
+    max_memory: 最大内存
     order_rule: 排序规则
     ha_mode: 高可用模式
     fill_factor: 填充因子
