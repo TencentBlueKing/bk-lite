@@ -89,6 +89,7 @@ export const useNetworkServiceConfig = () => {
       'NetworkService APC UPS PDU Environmental SNMP': 'snmp_apc',
       'NetworkService Eaton UPS PDU Environmental SNMP': 'snmp_eaton',
       'NetworkService Tripp Lite UPS PDU Environmental SNMP': 'snmp_tripplite',
+      'NetworkService HW group Poseidon SNMP': 'snmp_hwg_poseidon',
       'NetworkService Allot SNMP': 'snmp_allot',
       'NetworkService EfficientIP SNMP': 'snmp_efficientip',
       'NetworkService Nomadix SNMP': 'snmp_nomadix',
