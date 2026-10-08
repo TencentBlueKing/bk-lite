@@ -897,6 +897,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /\baten\b/i, label: 'ATEN' },
   { match: /geist|blackbird|watchdog/i, label: 'Geist', icon: 'mm-geist_geist' },
   { match: /panduit/i, label: 'Panduit', icon: 'mm-panduit_panduit' },
+  { match: /dataprobe|iboot/i, label: 'Dataprobe', icon: 'mm-dataprobe_dataprobe' },
   { match: /apc|schneider\s*electric|powernet/i, label: 'APC', icon: 'mm-apc_apc' },
   { match: /eaton|powerware|xups/i, label: 'Eaton', icon: 'mm-eaton_eaton' },
   { match: /papouch/i, label: 'Papouch' },
