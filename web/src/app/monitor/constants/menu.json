@@ -109,6 +109,12 @@
           "title": "模板",
           "url": "/monitor/event/template",
           "name": "template_list"
+        },
+        {
+          "icon": "mulu",
+          "title": "策略组",
+          "url": "/monitor/event/policy-group",
+          "name": "strategy_list"
         }
       ]
     },
@@ -276,6 +282,12 @@
           "title": "Template",
           "url": "/monitor/event/template",
           "name": "template_list"
+        },
+        {
+          "icon": "mulu",
+          "title": "Policy Group",
+          "url": "/monitor/event/policy-group",
+          "name": "strategy_list"
         }
       ]
     },
