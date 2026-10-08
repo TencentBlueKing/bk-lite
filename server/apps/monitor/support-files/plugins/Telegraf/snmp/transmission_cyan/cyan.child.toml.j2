@@ -116,9 +116,12 @@ def scale_temp(raw):
     return val
 
 def map_feed(raw):
+    # CyanOffOnTc: on(1)→正常, off(0)/unknown(2)→异常；其余未定义值丢弃。
     if raw == 1 or raw == 1.0 or raw == "1":
         return 1
     if raw == 0 or raw == 0.0 or raw == "0":
+        return 2
+    if raw == 2 or raw == 2.0 or raw == "2":
         return 2
     return None
 

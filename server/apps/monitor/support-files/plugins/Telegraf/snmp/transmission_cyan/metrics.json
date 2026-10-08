@@ -83,7 +83,7 @@
       "query": "device_current_amps{instance_type='transmission', __$labels__}",
       "display_name": "Module Current",
       "data_type": "Number",
-      "unit": "amp",
+      "unit": "none",
       "dimensions": [
         {
           "name": "index",
@@ -115,7 +115,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Power-feed state of each Cyan BOSS module feed A/B. on maps to normal, off maps to abnormal, and unknown is not emitted."
+      "description": "Power-feed state of each Cyan BOSS module feed A/B. on maps to normal; off and unknown map to abnormal."
     },
     {
       "metric_group": "Power",
