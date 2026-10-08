@@ -913,6 +913,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /nomadix|ag-?2000w/i, label: 'Nomadix', icon: 'mm-nomadix_nomadix' },
   { match: /airspan|air4g|air5g|airharmony|airvelocity/i, label: 'Airspan', icon: 'mm-airspan_airspan' },
   { match: /acksys|airlink|waveos/i, label: 'ACKSYS', icon: 'mm-acksys_acksys' },
+  { match: /last\s*mile\s*gear|\bctm\b/i, label: 'Last Mile Gear' },
   { match: /\bxirrus\b/i, label: 'Xirrus', icon: 'mm-xirrus_xirrus' },
   { match: /ruckus|zonedirector|\bsmartzone\b/i, label: 'Ruckus', icon: 'mm-ruckus_ruckus' },
   { match: /prosoft|radiolinx|\brlx2?\b|icx35/i, label: 'ProSoft Technology', icon: 'mm-prosoft_prosoft' },

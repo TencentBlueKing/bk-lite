@@ -68,6 +68,7 @@ export const useWirelessConfig = () => {
       'Wireless Mimosa SNMP': 'snmp_mimosa',
       'Wireless Airspan SNMP': 'snmp_airspan',
       'Wireless ACKSYS SNMP': 'snmp_acksys',
+      'Wireless Last Mile Gear CTM SNMP': 'snmp_ctm',
       'Wireless ProSoft Technology SNMP': 'snmp_prosoft',
       'Wireless BATS SNMP': 'snmp_bats',
       'Wireless Xirrus SNMP': 'snmp_xirrus',
