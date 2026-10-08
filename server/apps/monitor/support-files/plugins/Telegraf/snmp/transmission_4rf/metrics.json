@@ -16,7 +16,9 @@
   "supplementary_indicators": [
     "snmp_uptime",
     "device_temperature_celsius",
-    "device_fan_state"
+    "device_fan_state",
+    "device_transmitter_temperature_celsius",
+    "device_power_rail_state"
   ],
   "metrics": [
     {
