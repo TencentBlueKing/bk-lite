@@ -1,9 +1,10 @@
 Transmission SAF Tehnika SNMP:
   name: SAF Tehnika (Telegraf)
-  desc: SNMP monitoring template for SAF Tehnika Integra transmission devices. Select
-    the Integra-B or Integra-W product branch so only that system tree is polled.
-    It reports CPU usage, memory usage, CPU temperature, per-port inbound traffic
-    rate, per-port outbound traffic rate, and system uptime (IANA PEN 7571).
+  desc: SNMP monitoring template for SAF Tehnika transmission devices. Select
+    the Integra-B, Integra-W or MPMUX product branch so only that system tree is
+    polled. It reports CPU usage, memory usage and CPU temperature (Integra-B / Integra-W),
+    IDU / ODU temperatures (MPMUX), per-port inbound traffic rate, per-port outbound
+    traffic rate, and system uptime (IANA PEN 7571).
 monitor_object:
   Transmission: Transmission
 monitor_object_type:
@@ -42,10 +43,10 @@ monitor_object_metric:
         assess sending performance for traffic management and optimization.
     cpu_usage_percent:
       name: CPU Usage
-      desc: CPU utilization of the Integra transmission device as a 0-100 percentage,
-        derived as 100 minus the idle reading in tenths of a percent. Sustained high
-        CPU usage can indicate microwave backhaul traffic pressure, control-plane
-        load or abnormal traffic.
+      desc: CPU utilization of the SAF Tehnika transmission device as a 0-100 percentage.
+        Integra-B / Integra-W derive it as 100 minus the idle reading in tenths of
+        a percent; MPMUX reports it directly. Sustained high CPU usage can indicate
+        microwave backhaul traffic pressure, control-plane load or abnormal traffic.
     memory_usage_percent:
       name: Memory Usage
       desc: Memory utilization of the Integra transmission device as a 0-100 percentage,
@@ -69,9 +70,9 @@ monitor_object_metric:
         pressure or unstable device services.
     device_temperature_celsius:
       name: Temperature
-      desc: CPU or chassis temperature of the transmission device in degrees Celsius.
-        High values may indicate cooling problems, high ambient temperature or overloaded
-        hardware.
+      desc: Temperature of the transmission device in degrees Celsius, one series per
+        sensor. On SAF Tehnika MPMUX the sensors are the IDU and ODU1 / ODU2. High
+        values may indicate cooling problems, direct sunlight or high ambient temperature.
     device_fan_state:
       name: Fan Status
       desc: Operational state of each transmission device fan or fan controller. A
