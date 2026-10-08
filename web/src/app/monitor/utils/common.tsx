@@ -783,6 +783,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /\bavici\b/i, label: 'Avici', icon: 'mm-avici_avici' },
   { match: /hw[\s_-]*group|poseidon/i, label: 'HW group' },
   { match: /unisphere|\berx\b/i, label: 'Unisphere', icon: 'mm-unisphere_unisphere' },
+  { match: /sensatronics/i, label: 'Sensatronics' },
   { match: /waystream|asr[0-9]+|ftth/i, label: 'Waystream', icon: 'mm-waystream_waystream' },
   { match: /tsntec|8148sc/i, label: 'TsnTec', icon: 'mm-tsntec_tsntec' },
   { match: /\bmni\s*proteus\b|microwave\s*networks/i, label: 'Microwave Networks' },

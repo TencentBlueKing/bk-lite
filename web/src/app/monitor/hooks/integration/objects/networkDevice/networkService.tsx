@@ -78,6 +78,7 @@ export const useNetworkServiceConfig = () => {
       'NetworkService Endace SNMP': 'snmp_endace',
       'NetworkService AKCP sensorProbe SNMP': 'snmp_akcp',
       'NetworkService DEVA Broadcast SNMP': 'snmp_deva',
+      'NetworkService Sensatronics SNMP': 'snmp_sensatronics',
       'NetworkService EndRun SNMP': 'snmp_endrun',
       'NetworkService WTI PDU SNMP': 'snmp_wti_pdu',
       'NetworkService Spectracom SNMP': 'snmp_spectracom',
