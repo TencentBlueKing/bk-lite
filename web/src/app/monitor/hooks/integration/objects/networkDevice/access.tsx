@@ -58,6 +58,7 @@ export const useAccessConfig = () => {
       'Access V-SOL SNMP': 'snmp_vsolution',
       'Access ARRIS Cadant SNMP': 'snmp_arris',
       'Access FiberHome OLT SNMP': 'snmp_fiberhome_olt',
+      'Access Huawei OLT SNMP': 'snmp_huawei_olt',
       'Access Zhone DZS SNMP': 'snmp_zhone',
       'Access UTStarcom SNMP': 'snmp_utstarcom',
       'Access Nokia ISAM SNMP': 'snmp_nokia_isam',
