@@ -1,6 +1,6 @@
 # 05 — 修改规则、复制组和管理默认组
 
-Status: ready
+Status: done
 
 Blocked by: 02 — 生成默认组并在两条链路上自动加入
 

@@ -260,3 +260,74 @@ class PolicyGroupService:
     @staticmethod
     def has_reported_baseline(policy, instance_id):
         return PolicyInstanceBaseline.objects.filter(policy_id=policy.id, monitor_instance_id=instance_id).exists()
+
+    @staticmethod
+    def update_rule(rule, *, threshold=None, notice_users=None, operator="system"):
+        policy = rule.policy
+        if threshold is not None:
+            policy.threshold = threshold
+        if notice_users is not None:
+            policy.notice_users = notice_users
+        policy.updated_by = operator
+        policy.save(update_fields=["threshold", "notice_users", "updated_by", "updated_at"])
+        alerts = list(MonitorAlert.objects.filter(policy_id=policy.id, status="new"))
+        PolicyGroupService._close_instance_alerts_for_objects(alerts, operator, "policy_group_rule_changed")
+        return rule
+
+    @staticmethod
+    def copy_group(group, *, name, operator="system"):
+        rules = list(group.rules.select_related("plugin", "source_template", "policy").order_by("id"))
+        templates = [rule.source_template for rule in rules]
+        if any(template is None for template in templates):
+            raise BaseAppException("规则缺少来源模板，无法复制")
+        copied = PolicyGroupService.create_from_templates(
+            organization=group.organization,
+            monitor_object=group.monitor_object,
+            name=name,
+            templates=templates,
+            operator=operator,
+        )
+        for source_rule, target_rule in zip(rules, copied.rules.order_by("id"), strict=True):
+            target_rule.policy.threshold = source_rule.policy.threshold
+            target_rule.policy.notice_users = list(source_rule.policy.notice_users or [])
+            target_rule.policy.save(update_fields=["threshold", "notice_users", "updated_at"])
+        return copied
+
+    @staticmethod
+    def save_rule_as_template(rule, *, operator="system"):
+        policy = rule.policy
+        user = type("User", (), {"username": operator, "domain": "domain.com"})()
+        return PolicyService.create_custom_template(
+            organization=rule.group.organization,
+            monitor_object_id=rule.group.monitor_object_id,
+            plugin_id=rule.plugin_id,
+            name=rule.name,
+            description="",
+            config={"metric_name": "cpu_usage_total", "threshold": policy.threshold},
+            user=user,
+        )
+
+    @staticmethod
+    def set_default(group, operator="system"):
+        pointer, _ = PolicyGroupDefault.objects.get_or_create(
+            organization=group.organization,
+            monitor_object=group.monitor_object,
+            defaults={"policy_group": group, "created_by": operator, "updated_by": operator},
+        )
+        pointer.policy_group = group
+        pointer.updated_by = operator
+        pointer.save(update_fields=["policy_group", "updated_by", "updated_at"])
+        return pointer
+
+    @staticmethod
+    def delete_group(group, operator="system"):
+        with transaction.atomic():
+            for membership in list(group.memberships.select_for_update()):
+                if membership.state == PolicyGroupMembership.STATE_MEMBER:
+                    PolicyGroupService._detach(membership, operator)
+            PolicyGroupDefault.objects.filter(policy_group=group).update(policy_group=None, updated_by=operator)
+            group.delete()
+
+    @staticmethod
+    def _close_instance_alerts_for_objects(alerts, operator, reason):
+        PolicyService._mark_new_alerts_closed(alerts, operator, reason)

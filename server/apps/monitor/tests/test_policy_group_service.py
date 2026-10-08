@@ -244,6 +244,46 @@ def test_auto_join_skips_when_no_template_multiple_orgs_or_legacy_policy():
     assert PolicyGroupService.consider_auto_join(legacy_host, [1]).state == "skipped"
 
 
+def test_update_copy_and_delete_default_do_not_touch_other_groups():
+    monitor_object = _object()
+    wmi = _plugin(monitor_object, "WMI")
+    group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="默认",
+        templates=[_template(monitor_object, wmi, "WMI CPU", threshold=80)],
+    )
+    other = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="另一组",
+        templates=[_template(monitor_object, wmi, "另一条", threshold=70)],
+    )
+    PolicyGroupService.set_default(group)
+    rule = group.rules.get()
+    host = _instance(monitor_object, "web-01", 1)
+    _collect(host, wmi)
+    PolicyGroupService.join(instance=host, group=group)
+    alert = MonitorAlert.objects.create(policy_id=rule.policy_id, monitor_instance_id=host.id, status="new")
+    PolicyGroupService.update_rule(rule, threshold=[{"level": "warning", "value": 95, "method": ">="}])
+    saved = PolicyGroupService.save_rule_as_template(rule)
+    copied = PolicyGroupService.copy_group(group, name="副本")
+
+    rule.policy.refresh_from_db()
+    other.rules.get().policy.refresh_from_db()
+    alert.refresh_from_db()
+    assert rule.policy.threshold[0]["value"] == 95
+    assert other.rules.get().policy.threshold[0]["value"] == 70
+    assert alert.status == "closed"
+    assert saved.template_type == "custom"
+    assert copied.memberships.count() == 0
+    assert copied.rules.get().policy.threshold[0]["value"] == 95
+    PolicyGroupService.delete_group(group)
+    assert PolicyGroupService.ensure_default(organization=1, monitor_object=monitor_object) is None
+    host.policy_group_membership.refresh_from_db()
+    assert host.policy_group_membership.state == "declined"
+
+
 def test_changing_collect_plugin_keeps_membership_and_closes_old_alerts():
     monitor_object = _object()
     wmi = _plugin(monitor_object, "WMI")
