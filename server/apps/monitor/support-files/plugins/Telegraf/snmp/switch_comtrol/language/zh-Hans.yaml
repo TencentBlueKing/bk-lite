@@ -1,6 +1,6 @@
 Switch Comtrol RocketLinx SNMP:
   name: Comtrol RocketLinx（Telegraf）
-  desc: 面向 Comtrol RocketLinx 交换机的 SNMP 监控模板，可采集运行时长、温度、光模块、接口流量（企业号 PEN 2882）。
+  desc: 面向 Comtrol RocketLinx 交换机的 SNMP 监控模板，可采集运行时长、温度、光模块、双路电源 LED 状态、接口流量（企业号 PEN 2882）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:
