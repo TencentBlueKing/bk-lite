@@ -97,7 +97,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "LED status of power input 1 on the Comtrol ES8510 (ledPower1Status). Stored as 1=on (normal) or 2=off / empty / not-present (abnormal). Values outside the MIB range on(1)/off(2) are dropped."
+      "description": "LED status of power input 1 on the Comtrol ES8510 (ledPower1Status). Stored as 1=on (normal) or 2=off (abnormal). Missing, empty or not-present readings and values outside the MIB range on(1)/off(2) are dropped."
     },
     {
       "metric_group": "Hardware Status",
@@ -110,7 +110,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "LED status of power input 2 on the Comtrol ES8510 (ledPower2Status). Stored as 1=on (normal) or 2=off / empty / not-present (abnormal). Values outside the MIB range on(1)/off(2) are dropped."
+      "description": "LED status of power input 2 on the Comtrol ES8510 (ledPower2Status). Stored as 1=on (normal) or 2=off (abnormal). Missing, empty or not-present readings and values outside the MIB range on(1)/off(2) are dropped."
     },
     {
       "metric_group": "Traffic",
