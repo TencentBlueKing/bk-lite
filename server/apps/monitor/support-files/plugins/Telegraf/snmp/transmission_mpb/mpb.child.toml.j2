@@ -79,7 +79,7 @@ def apply(metric):
         metric.fields["mpb_ld2_temperature_celsius"] = ld2
     output_mw = metric.fields.pop("output_power_mw", None)
     if output_mw != None:
-        if float(output_mw) <= 100000:
+        if float(output_mw) >= 0 and float(output_mw) <= 100000:
             metric.fields["mpb_output_power_mw"] = float(output_mw)
     input_x100 = metric.fields.pop("input_power_x100", None)
     if input_x100 != None:
