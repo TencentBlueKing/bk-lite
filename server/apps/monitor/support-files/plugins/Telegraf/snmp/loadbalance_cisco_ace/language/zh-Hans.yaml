@@ -18,23 +18,28 @@ monitor_object_metric:
       desc: 该指标报告设备电源模块的运行状态（枚举）。非正常状态表示电源冗余或硬件故障；在冗余电源设备上单个故障会移除冗余，需尽快处理。
     device_memory_free:
       name: 空闲内存
-      desc: 该指标报告设备当前空闲的物理内存字节数。空闲内存持续偏低可能意味着内存压力上升。
+      desc: Cisco ACE 各内存池的空闲字节数（CISCO-MEMORY-POOL-MIB ciscoMemoryPoolFree，
+        1.3.6.1.4.1.9.9.48.1.1.1.6）。ciscoMemoryPoolValid 不为 true(1) 的池会被丢弃。
     device_cpu_usage:
       name: CPU 使用率
-      desc: 该指标报告 F5 BIG-IP 负载均衡器的整体 CPU 使用率（F5-BIGIP-SYSTEM-MIB sysGlobalHostCpuUsageRatio5s，5
-        秒采样）。持续偏高说明流量处理或 SSL 卸载负载吃紧。
+      desc: Cisco ACE 主机 CPU 使用率（CISCO-PROCESS-MIB cpmCPUTotal5minRev，
+        1.3.6.1.4.1.9.9.109.1.1.1.1.8，Gauge32 0-100，5 分钟平均值），按 CPU 实体维度上报。超出
+        0-100 的值会被丢弃。
     device_memory_total:
       name: 内存总量
       desc: 该指标报告 F5 BIG-IP 的物理内存总容量（F5-BIGIP-SYSTEM-MIB sysStatMemoryTotal），单位为字节。
     device_memory_used:
       name: 已用内存
-      desc: 该指标报告 F5 BIG-IP 当前已使用的内存字节数（F5-BIGIP-SYSTEM-MIB sysStatMemoryUsed）。
+      desc: Cisco ACE 各内存池已用字节数（CISCO-MEMORY-POOL-MIB ciscoMemoryPoolUsed，
+        1.3.6.1.4.1.9.9.48.1.1.1.5）。ciscoMemoryPoolValid 不为 true(1) 的池会被丢弃。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标报告 F5 BIG-IP 整体内存使用率，按 已用/总量 计算（100*used/total）。持续偏高可能由连接表过大或内存泄漏导致。
+      desc: Cisco ACE 各内存池使用率，采集时按 used/(used+free)*100 计算并四舍五入到 0.01%。仅保留
+        ciscoMemoryPoolValid 为 true(1) 且 used+free 大于 0 的池。
     lb_current_connections:
       name: 当前连接数
-      desc: 该指标报告 F5 BIG-IP 当前的客户端活动连接数（F5-BIGIP-SYSTEM-MIB sysStatClientCurConns）。连接数快速攀升可能意味着流量洪泛或连接表压力。
+      desc: Cisco ACE 当前 SLB 连接数（CISCO-SLB-EXT-MIB cslbxStatsCurrConnections，
+        1.3.6.1.4.1.9.9.254.1.1.1.1.3），跨 SLB 实体求和。Gauge32 不可用哨兵值会被丢弃。
     ace_np_cpu_usage:
       name: 网络处理器 CPU 使用率
       desc: Cisco ACE 各网络处理器的平均 CPU 使用率（CISCO-L4L7MODULE-RESOURCE-LIMIT-MIB

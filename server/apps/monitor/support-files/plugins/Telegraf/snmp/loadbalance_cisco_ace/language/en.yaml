@@ -21,31 +21,33 @@ monitor_object_metric:
         indicates a power redundancy or hardware fault and should be remediated promptly.
     device_memory_free:
       name: Memory Free
-      desc: Number of free physical memory bytes currently available on the device.
-        A persistently low value indicates memory pressure.
+      desc: Free bytes in each Cisco ACE memory pool (CISCO-MEMORY-POOL-MIB
+        ciscoMemoryPoolFree, 1.3.6.1.4.1.9.9.48.1.1.1.6). Pools whose ciscoMemoryPoolValid
+        is not true(1) are dropped.
     device_cpu_usage:
       name: CPU Usage
-      desc: This metric reports the overall CPU utilization of the F5 BIG-IP load
-        balancer (F5-BIGIP-SYSTEM-MIB sysGlobalHostCpuUsageRatio5s, 5-second sample).
-        Sustained high usage indicates heavy traffic-processing or SSL-offload load.
+      desc: Host CPU utilization of Cisco ACE (CISCO-PROCESS-MIB cpmCPUTotal5minRev,
+        1.3.6.1.4.1.9.9.109.1.1.1.1.8, Gauge32 0-100, 5-minute average) per CPU entity.
+        Values outside 0-100 are dropped.
     device_memory_total:
       name: Total Memory
       desc: This metric reports the total physical memory capacity of the F5 BIG-IP
         (F5-BIGIP-SYSTEM-MIB sysStatMemoryTotal) in bytes.
     device_memory_used:
       name: Used Memory
-      desc: This metric reports the amount of memory currently used by the F5 BIG-IP
-        (F5-BIGIP-SYSTEM-MIB sysStatMemoryUsed) in bytes.
+      desc: Bytes used in each Cisco ACE memory pool (CISCO-MEMORY-POOL-MIB
+        ciscoMemoryPoolUsed, 1.3.6.1.4.1.9.9.48.1.1.1.5). Pools whose ciscoMemoryPoolValid
+        is not true(1) are dropped.
     device_memory_usage:
       name: Memory Usage
-      desc: This metric reports the overall memory utilization of the F5 BIG-IP, computed
-        as used/total (100*used/total). Sustained high usage may be caused by oversized
-        connection tables or memory leaks.
+      desc: Memory utilization of each Cisco ACE memory pool, computed during collection
+        as used/(used+free)*100 and rounded to 0.01 percent. Only pools with ciscoMemoryPoolValid
+        true(1) and used+free greater than 0 are stored.
     lb_current_connections:
       name: Current Connections
-      desc: This metric reports the number of active client connections currently
-        tracked by the F5 BIG-IP (F5-BIGIP-SYSTEM-MIB sysStatClientCurConns). A rapidly
-        rising count can indicate a traffic flood or connection-table pressure.
+      desc: Current SLB connections on Cisco ACE (CISCO-SLB-EXT-MIB cslbxStatsCurrConnections,
+        1.3.6.1.4.1.9.9.254.1.1.1.1.3), summed across SLB entities. The Gauge32 not-available
+        sentinel is dropped.
     ace_np_cpu_usage:
       name: Network Processor CPU Usage
       desc: Average CPU utilization of each Cisco ACE network processor
