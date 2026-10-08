@@ -198,6 +198,7 @@ app_name:
   patch: Patch Management
   apm: APM
   playground: Playground
+  workflow-orchestration: Workflow Orchestration
 app:
   ops-analysis: Integrate operation and maintenance data, analyze potential risks
     and optimization space from multiple dimensions through dashboards and canvases,
@@ -233,6 +234,8 @@ app:
     distribution and scheduled tasks
   patch: Centrally manage system patches with scanning, installation, and patch library
     maintenance to continuously reduce security risks.
+  workflow-orchestration: Design visual workflows, automate execution, manage human
+    approvals, and track cross-system operations in one place.
 action_type:
   create: Create
   delete: Delete
@@ -278,6 +281,11 @@ tag:
   patch_scan: Patch Scanning
   patch_install: Patch Installation
   patch_library: Patch Library
+  # workflow-orchestration
+  workflow_design: Workflow Design
+  workflow_execution: Workflow Execution
+  automation: Automation
+  approval: Human Approval
 # ops-analysis data-permission tabs. GroupDataRuleViewSet looks up display_name as a root key.
 "目录": Directory
 "仪表盘": Dashboard
