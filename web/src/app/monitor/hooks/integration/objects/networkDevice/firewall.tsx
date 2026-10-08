@@ -86,6 +86,7 @@ export const useFirewallConfig = () => {
       'Firewall Amaranten SNMP': 'snmp_amaranten',
       'Firewall Secworld SNMP': 'snmp_secworld',
       'Firewall Check Point SNMP': 'snmp_checkpoint',
+      'Firewall Cisco WSA SNMP': 'snmp_cisco_wsa',
       'Firewall Stormshield SNMP': 'snmp_stormshield',
       'Firewall Palo Alto SNMP': 'snmp_paloalto',
       'Firewall SonicWall SNMP': 'snmp_sonicwall',
