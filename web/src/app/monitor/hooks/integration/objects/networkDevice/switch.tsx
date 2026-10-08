@@ -159,6 +159,7 @@ export const useSwitchConfig = () => {
       'Switch Omnitron SNMP': 'snmp_omnitron',
       'Switch Ubiquoss SNMP': 'snmp_ubiquoss',
       'Switch Wi-Tek SNMP': 'snmp_witek',
+      'Switch SmartByte SNMP': 'snmp_smartbyte',
       'Switch Nexans SNMP': 'snmp_nexans',
       'Switch Pica8 SNMP': 'snmp_pica8',
       'Switch Advantech SNMP': 'snmp_advantech',
