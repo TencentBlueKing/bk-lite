@@ -946,6 +946,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /accedian|skylight|metronid/i, label: 'Accedian', icon: 'mm-accedian_accedian' },
   { match: /cradlepoint|netcloud/i, label: 'Cradlepoint' },
   { match: /ciena/i, label: 'Ciena', icon: 'mm-ciena_ciena' },
+  { match: /\bcyan\b/i, label: 'Cyan' },
   { match: /saf\s*tehnika|saftehnika|integra-[a-z0-9]+/i, label: 'SAF Tehnika', icon: 'mm-saftehnika_saftehnika' },
   { match: /\bmrv\b|optidriver|in-?reach/i, label: 'MRV', icon: 'mm-mrv_mrv' },
   { match: /marconi/i, label: 'Marconi', icon: 'mm-marconi_marconi' },
