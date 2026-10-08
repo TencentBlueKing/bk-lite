@@ -83,7 +83,7 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
-# ---- ATS：选源仅保留 1/2；电压 0-300；电流≥0；负载 0-100；-1 等哨兵丢弃。输出电流 0.1A 单位在此 ÷10。----
+# ---- ATS：选源仅保留 1/2；电压≥0；电流≥0；负载 0-100；-1 等哨兵丢弃。输出电流 0.1A 单位在此 ÷10。----
 [[processors.starlark]]
     namepass = ["snmp", "network_service_apc_ats_input", "network_service_apc_ats_output"]
     source = '''
@@ -103,7 +103,7 @@ def apply(metric):
         return metric
     if "voltage_volts" in f:
         volts = f["voltage_volts"]
-        if _sentinel(volts) or volts < 0 or volts > 300:
+        if _sentinel(volts) or volts < 0:
             f.pop("voltage_volts")
     if "current_amps" in f:
         amps = f["current_amps"]
