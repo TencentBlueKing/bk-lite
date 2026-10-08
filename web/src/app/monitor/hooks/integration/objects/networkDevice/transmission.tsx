@@ -73,6 +73,7 @@ export const useTransmissionConfig = () => {
       'Transmission Tachyon SNMP': 'snmp_tachyon',
       'Transmission MPB SNMP': 'snmp_mpb',
       'Transmission XKL SNMP': 'snmp_xkl',
+      'Transmission Ciena Waveserver SNMP': 'snmp_ciena_waveserver',
       'Transmission Siklu SNMP': 'snmp_siklu',
       'Transmission Sub10 SNMP': 'snmp_sub10',
       'Transmission 4RF Aprisa SNMP': 'snmp_4rf',
