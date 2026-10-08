@@ -869,6 +869,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /enterasys|dragon/i, label: 'Enterasys', icon: 'mm-enterasys_enterasys' },
   { match: /\bfs\b|fs\.com/i, label: 'FS', icon: 'mm-fs_fs' },
   { match: /garretcom|garrettcom/i, label: 'GarretCom', icon: 'mm-garretcom_garretcom' },
+  { match: /\bgcom\b|greentech|greennet/i, label: 'GCOM' },
   { match: /korenix/i, label: 'Korenix', icon: 'mm-korenix_korenix' },
   { match: /microsens/i, label: 'Microsens', icon: 'mm-microsens_microsens' },
   { match: /moxa/i, label: 'Moxa', icon: 'mm-moxa_moxa' },
