@@ -953,6 +953,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /dragon\s*wave|dragonwave|airpair/i, label: 'DragonWave', icon: 'mm-dragonwave_dragonwave' },
   { match: /ericsson/i, label: 'Ericsson', icon: 'mm-ericsson_ericsson' },
   { match: /ekinops/i, label: 'Ekinops', icon: 'mm-ekinops_ekinops' },
+  { match: /alpine\s*opto|alpineoe/i, label: 'Alpine Optoelectronics' },
   { match: /infinera|coriant|groove/i, label: 'Infinera', icon: 'mm-infinera_infinera' },
   { match: /bridgewave|flexport|fe80/i, label: 'BridgeWave', icon: 'mm-bridgewave_bridgewave' },
   { match: /huber\s*\+?\s*suhner|cubo\s*mini|cube\s*optics/i, label: 'Huber+Suhner Cubo', icon: 'mm-hubersuhner_hubersuhner' },

@@ -1,0 +1,53 @@
+Transmission Alpine Optoelectronics SNMP:
+  name: Alpine Optoelectronics (Telegraf)
+  desc: "SNMP monitoring template for Alpine Optoelectronics TDCM-EDFA optical transmission chassis. It reports uptime, per-fan speed and state, PSU input/output state, output voltage, slot temperature and EDFA temperature, based on the ALPINE-TDCM-EDFA-MIB (enterprise PEN 52326). There is no host CPU% or memory%."
+monitor_object:
+  Transmission: Transmission
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Transmission:
+    snmp_uptime:
+      name: System Uptime
+      desc: Uptime of the Alpine Optoelectronics TDCM-EDFA chassis since the last
+        restart, derived from sysUpTime. Monitoring uptime helps administrators
+        understand chassis stability and identify unexpected reboots or failures.
+    device_fan_speed:
+      name: Fan Speed
+      desc: Rotation speed of each Alpine TDCM-EDFA fan in RPM from alpineTEFanCardTable
+        (Fan1/2/3Speed). Rows are split per fan. Abnormally low RPM on a present fan
+        may indicate a stalled or failed cooling module.
+    device_fan_state:
+      name: Fan Status
+      desc: Operational state of each Alpine TDCM-EDFA fan from alpineTEFanCardTable
+        (Fan1/2/3Status), normalized to normal or abnormal. A non-normal state indicates
+        a cooling-module alarm and may lead to overheating.
+    device_psu_input_state:
+      name: PSU Input State
+      desc: Input state of each Alpine TDCM-EDFA power card (alpineTEPowerCardPowerInStatus),
+        normalized to normal or abnormal. Off or missing input is abnormal.
+    device_psu_output_state:
+      name: PSU Output State
+      desc: Output state of each Alpine TDCM-EDFA power card (alpineTEPowerCardPowerOutStatus),
+        normalized to normal or abnormal. Voltage high or low is abnormal.
+    device_voltage_volts:
+      name: Output Voltage
+      desc: Output voltage of each Alpine TDCM-EDFA power card (alpineTEPowerCardPowerOutVal),
+        parsed from an OCTET STRING into volts. Unparsable or non-positive readings
+        are dropped. Values outside the rated range may indicate unstable power.
+    slot_temperature_celsius:
+      name: Slot Temperature
+      desc: Temperature of each Alpine TDCM-EDFA chassis slot (alpineTEBISlotTemperature)
+        in degrees Celsius, parsed from an OCTET STRING. Abnormally high values may
+        indicate blocked airflow or excessive ambient heat.
+    edfa_temperature_celsius:
+      name: EDFA Temperature
+      desc: Temperature of the Alpine TDCM-EDFA optical amplifier module (gceTemperature)
+        in degrees Celsius, parsed from an OCTET STRING. Abnormally high values may
+        trigger thermal protection or affect optical power stability.
+monitor_object_metric_group:
+  Transmission:
+    Base: Base
+    Temperature: Temperature
+    Hardware Status: Hardware Status
+    Power: Power
