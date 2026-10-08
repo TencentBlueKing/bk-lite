@@ -92,6 +92,7 @@ export const useNetworkServiceConfig = () => {
       'NetworkService Gude PDU SNMP': 'snmp_gude',
       'NetworkService PowerDsine PoE SNMP': 'snmp_powerdsine',
       'NetworkService Geist PDU Environmental SNMP': 'snmp_geist',
+      'NetworkService Synaccess SynLink SNMP': 'snmp_synaccess',
       'NetworkService Panduit iPDU SNMP': 'snmp_panduit',
       'NetworkService Wiesemann Theis Web-Thermo-Hygrometer SNMP': 'snmp_wut',
       'NetworkService APC UPS PDU Environmental SNMP': 'snmp_apc',
