@@ -151,7 +151,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the operational state of each Extreme Networks power supply unit (EXTREME-SYSTEM-MIB extremePowerSupplyStatus), normalized to the unified convention where 1 means normal (presentOK) and any other value indicates an abnormal/fault state. A non-normal state signals a power redundancy or hardware fault and must be remediated promptly."
+      "description": "This metric reports the operational state of each Extreme Networks power supply unit (EXTREME-SYSTEM-MIB extremePowerSupplyStatus), normalized to the unified convention where 1 means normal (notPresent or presentOK) and 2 means abnormal (presentNotOK or presentPowerOff). A non-normal state signals a power redundancy or hardware fault and must be remediated promptly."
     },
     {
       "metric_group": "Traffic",

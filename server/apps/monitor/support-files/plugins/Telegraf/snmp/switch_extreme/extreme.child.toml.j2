@@ -93,7 +93,7 @@
         name = "speed"
     # ---- Extreme power supplies (EXTREME-SYSTEM-MIB extremePowerSupplyTable) ----
     # 待现网核验：电源状态 extremePowerSupplyStatus 1.3.6.1.4.1.1916.1.1.1.27.1.2；descr=电源号 ...27.1.1。
-    # 枚举 1 notPresent/2 presentOK/3 presentNotOK/4 presentPowerOff → starlark 归一(presentOK→1，其余已定义→2，未定义丢弃)。
+    # 枚举 1 notPresent/2 presentOK/3 presentNotOK/4 presentPowerOff → starlark 归一(notPresent/presentOK→1，presentNotOK/presentPowerOff→2，未定义丢弃)。
     [[inputs.snmp.table]]
         name = "device_psu"
         inherit_tags = ["source"]
@@ -106,7 +106,7 @@
         name = "state"
 
 # ---- 枚举归一：Extreme 电源 extremePowerSupplyStatus → 统一 1=normal/2=abnormal ----
-# presentOK(2)→1；notPresent(1)/presentNotOK(3)/presentPowerOff(4)→2；未定义取值丢弃。
+# notPresent(1)/presentOK(2)→1；presentNotOK(3)/presentPowerOff(4)→2；未定义取值丢弃。
 # 风扇 extremeFanOperational 已 1=normal，无需在此处理。
 # Fan RPM stays in RPM (no extra scale). Keep readings in 0..100000; drop
 # out-of-range speed. Fan operational is already true(1)/false(2); drop only
@@ -130,9 +130,9 @@ def apply(metric):
         return metric
     if metric.name == "device_psu":
         st = f.get("state")
-        if st == 2:
+        if st == 1 or st == 2:
             f["state"] = 1
-        elif st == 1 or st == 3 or st == 4:
+        elif st == 3 or st == 4:
             f["state"] = 2
         else:
             f.pop("state", None)
