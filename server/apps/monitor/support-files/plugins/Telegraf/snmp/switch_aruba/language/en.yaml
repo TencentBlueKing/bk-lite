@@ -1,6 +1,6 @@
 Switch Aruba SNMP:
   name: Aruba (Telegraf)
-  desc: "SNMP monitoring template for Aruba switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic, for ArubaOS-CX and ArubaOS-Switch (enterprise PEN 47196)."
+  desc: "SNMP monitoring template for Aruba switch. It reports uptime, CPU utilization, CPU 1/5-minute averages, memory utilization, temperature, fan status and RPM, power-supply status and watts, and interface traffic, for ArubaOS-CX and ArubaOS-Switch (enterprise PEN 47196)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
