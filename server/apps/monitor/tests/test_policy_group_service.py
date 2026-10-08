@@ -1,7 +1,7 @@
 import pytest
 
 from apps.monitor.filters.monitor_policy import exclude_policy_group_rules
-from django_celery_beat.models import CrontabSchedule, PeriodicTask
+from django_celery_beat.models import PeriodicTask
 
 from apps.monitor.models import (
     CollectConfig,
@@ -396,13 +396,7 @@ def test_delete_group_removes_rule_policies_scan_tasks_and_keeps_declined_member
     _collect(host, wmi)
     PolicyGroupService.join(instance=host, group=group)
     policy = group.rules.get().policy
-    schedule = CrontabSchedule.objects.create(minute="*/5", hour="*", day_of_week="*", day_of_month="*", month_of_year="*")
-    PeriodicTask.objects.create(
-        name=f"scan_policy_task_{policy.id}",
-        task="apps.monitor.tasks.monitor_policy.scan_policy_task",
-        args=f"[{policy.id}]",
-        crontab=schedule,
-    )
+    assert PeriodicTask.objects.filter(name=f"scan_policy_task_{policy.id}").exists()
     PolicyInstanceBaseline.objects.create(policy=policy, monitor_instance_id=host.id, metric_instance_id="cpu")
     alert = MonitorAlert.objects.create(policy_id=policy.id, monitor_instance_id=host.id, status="new", alert_type="alert", content="open")
 
@@ -419,3 +413,27 @@ def test_delete_group_removes_rule_policies_scan_tasks_and_keeps_declined_member
     pointer = PolicyGroupDefault.objects.get(organization=1, monitor_object=monitor_object)
     assert pointer.policy_group_id is None
     assert PolicyGroupService.ensure_default(organization=1, monitor_object=monitor_object) is None
+
+
+def test_group_rule_and_standalone_rule_get_a_scan_task():
+    monitor_object = _object()
+    wmi = _plugin(monitor_object, "WMI")
+    template = _template(monitor_object, wmi, "WMI CPU")
+    group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="主机默认告警",
+        templates=[template],
+    )
+    policy = group.rules.get().policy
+    policy.refresh_from_db()
+    assert policy.schedule == {"type": "min", "value": 5}
+    assert PeriodicTask.objects.filter(name=f"scan_policy_task_{policy.id}", enabled=True).exists()
+
+    PeriodicTask.objects.filter(name=f"scan_policy_task_{policy.id}").delete()
+    PolicyGroupService.ensure_scan_task(policy)
+    assert PeriodicTask.objects.filter(name=f"scan_policy_task_{policy.id}").exists()
+
+    host = _instance(monitor_object, "web-01", 1)
+    standalone = PolicyGroupService.create_standalone(instance=host, template=template)
+    assert PeriodicTask.objects.filter(name=f"scan_policy_task_{standalone.id}", enabled=True).exists()

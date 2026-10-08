@@ -123,8 +123,10 @@ class PolicyGroupService:
             created_by=operator,
             updated_by=operator,
             **recipe,
+            schedule=PolicyService._default_duration((template.config or {}).get("schedule")),
         )
         PolicyOrganization.objects.create(policy=policy, organization=group.organization, created_by=operator, updated_by=operator)
+        PolicyGroupService.ensure_scan_task(policy)
         return PolicyGroupRule.objects.create(
             group=group,
             plugin=template.plugin,
@@ -322,7 +324,7 @@ class PolicyGroupService:
     @staticmethod
     def create_standalone(*, instance, template, operator="system"):
         recipe = PolicyService.recipe_fields_from_template(template)
-        return MonitorPolicy.objects.create(
+        policy = MonitorPolicy.objects.create(
             monitor_object=instance.monitor_object,
             name=template.name[:100],
             organizations=[],
@@ -335,7 +337,10 @@ class PolicyGroupService:
             created_by=operator,
             updated_by=operator,
             **recipe,
+            schedule=PolicyService._default_duration((template.config or {}).get("schedule")),
         )
+        PolicyGroupService.ensure_scan_task(policy)
+        return policy
 
     @staticmethod
     def delete_group(group, operator="system"):
@@ -349,6 +354,21 @@ class PolicyGroupService:
                     PolicyGroupService._retire_policy(policy, operator)
             PolicyGroupDefault.objects.filter(policy_group=group).update(policy_group=None, updated_by=operator)
             group.delete()
+
+    @staticmethod
+    def ensure_scan_task(policy):
+        """组内规则和单独规则都是真实策略，没有扫描任务就不会告警。"""
+        from apps.monitor.views.monitor_policy import MonitorPolicyViewSet
+
+        schedule = PolicyService._default_duration(policy.schedule)
+        if policy.schedule != schedule:
+            policy.schedule = schedule
+            policy.save(update_fields=["schedule", "updated_at"])
+        from django_celery_beat.models import PeriodicTask
+
+        if PeriodicTask.objects.filter(name=f"scan_policy_task_{policy.id}").exists():
+            return
+        MonitorPolicyViewSet().update_or_create_task(policy.id, schedule)
 
     @staticmethod
     def _retire_policy(policy, operator):

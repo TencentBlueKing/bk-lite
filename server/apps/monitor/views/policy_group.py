@@ -88,7 +88,11 @@ class PolicyGroupViewSet(viewsets.ViewSet):
         if object_id not in (None, ""):
             pointer = PolicyGroupDefault.objects.filter(organization=organization, monitor_object_id=object_id).first()
             default_id = pointer.policy_group_id if pointer else None
-        data = [_serialize_group(group, default_id) for group in queryset.order_by("id")]
+        data = []
+        for group in queryset.order_by("id"):
+            for rule in group.rules.all():
+                PolicyGroupService.ensure_scan_task(rule.policy)
+            data.append(_serialize_group(group, default_id))
         return WebUtils.response_success(data)
 
     @action(methods=["post"], detail=False, url_path="create_from_templates")
