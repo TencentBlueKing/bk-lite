@@ -25,24 +25,25 @@ monitor_object_metric:
         memTotalReal, reported in KB and converted to bytes).
     device_memory_free:
       name: Free Memory
-      desc: This metric reports the amount of free physical memory in bytes on the
-        router (UCD-SNMP-MIB memAvailReal, reported in KB and converted to bytes).
+      desc: This metric reports free memory in bytes per pool on the Cisco IOS-XR
+        router (CISCO-ENHANCED-MEMPOOL-MIB cempMemPoolHCFree, falling back to cempMemPoolFree).
         Persistently low free memory can indicate rising memory pressure.
     device_memory_used:
       name: Used Memory
-      desc: This metric reports the amount of used physical memory in bytes on the
-        router, derived as total memory minus free memory. It helps gauge absolute
-        memory consumption and pressure.
+      desc: This metric reports used memory in bytes per pool on the Cisco IOS-XR
+        router (CISCO-ENHANCED-MEMPOOL-MIB cempMemPoolHCUsed, falling back to cempMemPoolUsed).
+        It helps gauge absolute memory consumption and pressure.
     device_cpu_usage:
       name: CPU Usage
-      desc: This metric reports the average CPU utilization across the operating entities
-        of the Juniper MX router (JUNIPER-MIB jnxOperatingCPU, aggregated per instance_id).
-        Sustained high usage indicates heavy forwarding or control-plane load.
+      desc: This metric reports the 5-minute CPU utilization of the Cisco IOS-XR
+        router (CISCO-PROCESS-MIB cpmCPUTotal5minRev, 1.3.6.1.4.1.9.9.109.1.1.1.1.8,
+        percent). Sustained high usage indicates heavy forwarding or control-plane
+        load.
     device_memory_usage:
       name: Memory Usage
-      desc: This metric reports the average memory utilization across the operating
-        entities of the Juniper MX router (JUNIPER-MIB jnxOperatingBuffer, reported
-        directly as a percentage). Sustained high usage may be caused by oversized
+      desc: This metric reports per-pool memory utilization of the Cisco IOS-XR router
+        (CISCO-ENHANCED-MEMPOOL-MIB cempMemPoolHCUsed/HCFree, falling back to cempMemPoolUsed/Free;
+        usage = used/(used+free)*100). Sustained high usage may be caused by oversized
         routing tables or memory leaks.
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate (HC)

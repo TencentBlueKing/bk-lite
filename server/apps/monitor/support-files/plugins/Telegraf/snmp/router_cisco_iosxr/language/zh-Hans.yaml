@@ -21,17 +21,19 @@ monitor_object_metric:
       desc: 该指标报告路由器的物理内存总容量（UCD-SNMP-MIB memTotalReal，原始单位 KB，已换算为字节）。
     device_memory_free:
       name: 空闲内存
-      desc: 该指标报告路由器当前空闲的物理内存字节数（UCD-SNMP-MIB memAvailReal，原始单位 KB，已换算为字节）。空闲内存持续偏低可能意味着内存压力上升。
+      desc: 该指标报告 Cisco IOS-XR 路由器各内存池的空闲内存字节数（CISCO-ENHANCED-MEMPOOL-MIB cempMemPoolHCFree，缺失时回退
+        cempMemPoolFree）。空闲内存持续偏低可能意味着内存压力上升。
     device_memory_used:
       name: 已用内存
-      desc: 该指标报告路由器当前已使用的物理内存字节数（由内存总量减去空闲内存计算得到）。用于评估绝对内存消耗与压力。
+      desc: 该指标报告 Cisco IOS-XR 路由器各内存池的已用内存字节数（CISCO-ENHANCED-MEMPOOL-MIB cempMemPoolHCUsed，缺失时回退
+        cempMemPoolUsed）。用于评估绝对内存消耗与压力。
     device_cpu_usage:
       name: CPU 使用率
-      desc: 该指标报告 Juniper MX 路由器各运行实体的 CPU 使用率均值（JUNIPER-MIB jnxOperatingCPU，按 instance_id
-        聚合）。持续偏高说明转发/控制平面负载吃紧。
+      desc: 该指标报告 Cisco IOS-XR 路由器 5 分钟 CPU 使用率（CISCO-PROCESS-MIB cpmCPUTotal5minRev，1.3.6.1.4.1.9.9.109.1.1.1.1.8，百分比）。持续偏高说明转发/控制平面负载吃紧。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标报告 Juniper MX 路由器各运行实体的内存使用率均值（JUNIPER-MIB jnxOperatingBuffer，直接以百分比上报）。持续偏高可能由路由表过大或内存泄漏导致。
+      desc: 该指标报告 Cisco IOS-XR 路由器各内存池使用率（CISCO-ENHANCED-MEMPOOL-MIB cempMemPoolHCUsed/HCFree，缺失时回退
+        cempMemPoolUsed/Free；usage = used/(used+free)*100）。持续偏高可能由路由表过大或内存泄漏导致。
     interface_ifHCInOctets:
       name: 接口接收流量速率(HC)
       desc: 该指标表示过去 5 分钟内接收字节数的平均速率，单位为字节每秒，基于 64 位 ifHCInOctets 计数器，在高速接口上不会回绕。
