@@ -703,6 +703,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /genua/i, label: 'Genua', icon: 'mm-genua_genua' },
   { match: /kerio/i, label: 'Kerio', icon: 'mm-kerio_kerio' },
   { match: /sangfor|深信服/i, label: 'Sangfor', icon: 'mm-sangfor_sangfor' },
+  { match: /metaswitch|metaview/i, label: 'Metaswitch' },
   { match: /topsec|天融信/i, label: 'Topsec', icon: 'mm-topsec_topsec' },
   { match: /zorp/i, label: 'Zorp', icon: 'mm-zorp_zorp' },
   { match: /ecreso|worldcast/i, label: 'Ecreso' },
