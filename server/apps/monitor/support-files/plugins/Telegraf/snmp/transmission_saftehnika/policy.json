@@ -76,6 +76,31 @@
         }
       ],
       "group_algorithm": "avg"
+    },
+    {
+      "name": "SAF Tehnika传输设备温度过高",
+      "alert_name": "传输设备${resource_name} 温度过高",
+      "description": "监控 SAF Tehnika MPMUX 传输设备 IDU / ODU 温度（termIduTemperature、rf1OduTemperature、rf2OduTemperature，摄氏度），任一传感器持续高于阈值时提示散热异常、日晒或环境温度过高。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
     }
   ]
 }

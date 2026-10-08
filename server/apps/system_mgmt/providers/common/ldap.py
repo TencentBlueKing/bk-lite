@@ -62,7 +62,7 @@ def build_connection_config(config: dict[str, Any] | None, *, require_base_dn: b
     if require_base_dn and not base_dn:
         raise ValueError(
             "AD login_auth.base_dn is required but missing; "
-            "configure it on the IntegrationInstance (登录认证 connection template)."
+            "configure it on the IntegrationInstance login_auth connection template."
         )
     return LDAPConnectionConfig(
         connection_url=str(raw.get("connection_url") or ""),

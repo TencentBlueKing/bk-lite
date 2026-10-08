@@ -1,0 +1,81 @@
+{
+  "object": "Firewall",
+  "plugin": "Firewall Cisco WSA SNMP",
+  "templates": [
+    {
+      "name": "Cisco WSA防火墙CPU使用率过高",
+      "alert_name": "防火墙${resource_name} CPU 使用率过高",
+      "description": "监控 Cisco Secure Web Appliance 代理 CPU 使用率，当持续高于阈值时触发告警，提示代理处理负载过高，避免网页过滤与缓存转发性能下降。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Cisco WSA防火墙内存缓冲使用率过高",
+      "alert_name": "防火墙${resource_name} 内存缓冲使用率过高",
+      "description": "监控 Cisco Secure Web Appliance 代理内存缓冲使用率（cacheMemoryBufferUsagePct），当持续高于阈值时触发告警，提示代理缓冲资源紧张。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Cisco WSA防火墙缓存存储使用率过高",
+      "alert_name": "防火墙${resource_name} 缓存存储使用率过高",
+      "description": "监控 Cisco Secure Web Appliance 缓存存储使用率，当持续高于阈值时触发告警，提示缓存盘空间紧张，可能影响缓存命中与日志写入。",
+      "metric_name": "wsa_cache_storage_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

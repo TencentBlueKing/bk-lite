@@ -1,0 +1,50 @@
+NetworkService ATEN PE eco PDU SNMP:
+  name: ATEN PE eco PDU (Telegraf)
+  desc: SNMP monitoring template for ATEN PE / eco PDU intelligent power distribution (ATEN-PE-CFG,
+    enterprise PEN 21317). It reports uptime, environment temperature and humidity, whole-device current,
+    voltage and power, and interface traffic.
+monitor_object:
+  NetworkService: NetworkService
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  NetworkService:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
+        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
+        or failures.
+    env_temperature_celsius:
+      name: Environment Temperature
+      desc: Environment temperature of the ATEN PE / eco PDU in degrees Celsius. High values may indicate
+        cooling or ambient-temperature risk.
+    env_humidity_percent:
+      name: Environment Humidity
+      desc: Environment relative humidity of the ATEN PE / eco PDU in percent. Abnormal humidity may increase
+        insulation or corrosion risk.
+    pdu_device_current_amps:
+      name: Device Current (A)
+      desc: Whole-device current of the ATEN PE / eco PDU in amperes. Sustained high current indicates
+        overload.
+    pdu_device_voltage_volts:
+      name: Device Voltage
+      desc: Whole-device voltage of the ATEN PE / eco PDU in volts.
+    pdu_device_power_watts:
+      name: Device Power
+      desc: Whole-device power of the ATEN PE / eco PDU in watts.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of inbound bytes received over the past 5 minutes,
+        measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit
+        counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of outbound bytes sent over the past 5 minutes, measured
+        in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifOutOctets on high-speed ports, keeping the rate accurate.
+monitor_object_metric_group:
+  NetworkService:
+    Base: Base
+    Traffic: Traffic
+    Power: Power
+    Environment: Environment

@@ -1,0 +1,50 @@
+NetworkService WTI PDU SNMP:
+  name: WTI PDU (Telegraf)
+  desc: SNMP monitoring template for WTI VMR / NPS / RPC / NBB series PDUs (WTI-POWER-MIB, enterprise
+    PEN 2634). It reports uptime, unit temperature, per-branch current, voltage and power, per-outlet
+    current and power, and interface traffic.
+monitor_object:
+  NetworkService: NetworkService
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  NetworkService:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
+        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
+        or failures.
+    pdu_temperature_celsius:
+      name: PDU Temperature
+      desc: Temperature of each power unit in degrees Celsius.
+    pdu_branch_current_amps:
+      name: Branch Current (A)
+      desc: Current drawn on each power branch in amperes.
+    pdu_branch_voltage_volts:
+      name: Branch Voltage
+      desc: Voltage of each power branch in volts.
+    pdu_branch_power_watts:
+      name: Branch Power
+      desc: Power used by each power branch in watts.
+    pdu_outlet_current_amps:
+      name: Outlet Current (A)
+      desc: Current drawn by each outlet in amperes.
+    pdu_outlet_power_watts:
+      name: Outlet Power
+      desc: Power used by each outlet in watts.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured
+        in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of outbound bytes sent over the past 5 minutes, measured
+        in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifOutOctets on high-speed ports, keeping the rate accurate.
+monitor_object_metric_group:
+  NetworkService:
+    Base: Base
+    Traffic: Traffic
+    Power: Power
+    Environment: Environment

@@ -22,7 +22,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_meinberg_ntp_state",
-      "query": "max(network_service_meinberg_ntp_state{instance_type='network_service', __$labels__} or network_service_meinberg_classic_ntp_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_network_service_meinberg_ntp_state{instance_type='network_service', __$labels__} or snmp_network_service_meinberg_classic_ntp_state{instance_type='network_service', __$labels__}) by (instance_id)",
       "display_name": "Meinberg NTP Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -35,7 +35,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_meinberg_ntp_stratum",
-      "query": "max(network_service_meinberg_ntp_stratum{instance_type='network_service', __$labels__} or network_service_meinberg_classic_ntp_stratum{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_network_service_meinberg_ntp_stratum{instance_type='network_service', __$labels__} or snmp_network_service_meinberg_classic_ntp_stratum{instance_type='network_service', __$labels__}) by (instance_id)",
       "display_name": "Meinberg NTP Stratum",
       "data_type": "Number",
       "unit": "none",
@@ -48,7 +48,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_meinberg_temperature",
-      "query": "max(network_service_meinberg_temperature{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_network_service_meinberg_temperature{instance_type='network_service', __$labels__}) by (instance_id)",
       "display_name": "Meinberg Temperature",
       "data_type": "Number",
       "unit": "celsius",

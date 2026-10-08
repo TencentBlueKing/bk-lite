@@ -1,0 +1,36 @@
+Wireless Ubiquiti airFiber SNMP:
+  name: Ubiquiti airFiber（Telegraf）
+  desc: 面向 Ubiquiti airFiber 点对点无线设备（企业号 PEN 41112）的 SNMP 监控模板：采集 airFiber LTU 的 CPU / 内存使用率（UBNT-AFLTU-MIB）与
+    classic airFiber 的射频链温度（UBNT-AirFIBER-MIB），以及运行时长、接口流量；各型号只响应自己的那一组。不适用于 airOS / airMAX、EdgeMAX、EdgeSwitch。
+monitor_object:
+  Wireless: 无线设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 无线设备的整体 CPU 使用率，以 0-100 百分比直接上报。持续偏高可能表示客户端关联负载过高、控制平面压力或射频管理开销过大，会影响漫游与管理响应。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 无线设备的整体内存使用率，以 0-100 百分比直接上报。内存压力过高会导致接入点丢弃客户端关联或重启服务，需及时排查客户端数量或异常负载。
+    device_radio_temperature_celsius:
+      name: 射频链温度
+      desc: 无线设备各射频链的温度，单位为摄氏度。温度持续偏高可能表示室外单元散热不良或环境温度过高。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位
+        ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位
+        ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+monitor_object_metric_group:
+  Wireless:
+    Base: 基础
+    Traffic: 流量
+    Wireless: 无线
+    Temperature: 温度

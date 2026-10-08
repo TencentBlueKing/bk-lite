@@ -1,0 +1,59 @@
+Transmission Montclair SNMP:
+  name: Montclair (Telegraf)
+  desc: "SNMP monitoring template for Montclair Fiber EDFA optical amplifiers. It reports uptime, chassis/radiator/pre-pump temperatures, PSU state, fan state and speed, optional optical power, and interface traffic (enterprise PEN 1385)."
+monitor_object:
+  Transmission: Transmission
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Transmission:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart.
+        By monitoring the uptime, network administrators can understand the stability
+        and reliability of the device and identify potential reboot or failure issues.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: Average rate of bytes received over the past 5 minutes from the 64-bit
+        IF-MIB ifHCInOctets counter, in bytes per second.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: Average rate of bytes sent over the past 5 minutes from the 64-bit IF-MIB
+        ifHCOutOctets counter, in bytes per second.
+    device_temperature_celsius:
+      name: Temperature
+      desc: Chassis internal temperature of the Montclair EDFA (deviceInternalTemperatute),
+        in degrees Celsius. High values may indicate cooling or ambient-temperature risk.
+    radiator_temperature_celsius:
+      name: Radiator Temperature
+      desc: Amplifier radiator temperature of the Montclair EDFA (amplifierRadiatorTemperature),
+        in degrees Celsius.
+    prepump_temperature_celsius:
+      name: Pre-pump Temperature
+      desc: Amplifier pre-pump temperature of the Montclair EDFA. The raw amplifierPrePumpTemperature
+        value is divided by 10 to obtain degrees Celsius.
+    device_psu_state:
+      name: PSU Status
+      desc: Power supply state of the Montclair EDFA, normalized to 1=normal and 2=abnormal.
+        Undefined/not-installed readings are dropped.
+    device_fan_state:
+      name: Fan Status
+      desc: Fan state of the Montclair EDFA, normalized to 1=normal and 2=abnormal.
+        Unknown readings are dropped.
+    device_fan_speed:
+      name: Fan Speed
+      desc: Fan rotation speed of the Montclair EDFA in RPM. Abnormally low or zero
+        RPM indicates a stalled or failed fan.
+    amplifier_input_power_dbm:
+      name: Amplifier Input Power
+      desc: Amplifier input optical power of the Montclair EDFA in dBm (raw value divided by 10).
+    amplifier_output_power_dbm:
+      name: Amplifier Output Power
+      desc: Amplifier output optical power of the Montclair EDFA in dBm (raw value divided by 10).
+monitor_object_metric_group:
+  Transmission:
+    Base: Base
+    Traffic: Traffic
+    Temperature: Temperature
+    Hardware Status: Hardware Status
+    Optical: Optical

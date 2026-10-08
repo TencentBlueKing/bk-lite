@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_gude",
   "plugin": "NetworkService Gude PDU SNMP",
-  "plugin_desc": "Gude PDU SNMP child template for network-service devices under Gude PEN 28507. Interface traffic is supplied by the shared NetworkService SNMP IF-MIB floor rather than a plugin-side ifHC expansion. The primary live metering subtree is GUDEADS-PDU8310-MIB (28507.27), selected by sysObjectID gadsPDU8310 and a responding pdu8310PowerTable. Proven private increments are pdu8310PowerActive as pdu_active_power_watts, pdu8310Current as pdu_channel_current_amps scaled by /1000 from milliamperes to amperes, and optional pdu8310Voltage as pdu_channel_voltage_volts from the same parent table. Old EPC8 devices without metering fall back to epc8PortState as pdu_outlet_power_state (0=off/1=on, state only, no current). CPU and memory scalars are not invented. Other GUDEADS product branches such as 28507.64 are not mix-bound in this child. Supported brands/models - Gude PDU8310 metering devices under PEN 28507.27, with EPC8 port-state fallback under PEN 28507.1, plus standard IF-MIB.",
+  "plugin_desc": "Gude PDU SNMP child template for network-service devices under Gude PEN 28507. Interface traffic is supplied by the shared NetworkService SNMP IF-MIB floor rather than a plugin-side ifHC expansion. Live metering subtrees are GUDEADS-PDU8310-MIB (28507.27, gadsPDU8310 / pdu8310PowerTable) and GUDEADS-EPC8221-MIB (28507.56, gadsEPC8221 / epc8221PowerTable). Proven private increments are PowerActive as pdu_active_power_watts, Current as pdu_channel_current_amps scaled by /1000 from milliamperes to amperes, and Voltage as pdu_channel_voltage_volts from the same parent table on each product branch. Old EPC8 devices without metering fall back to epc8PortState as pdu_outlet_power_state (0=off/1=on, state only, no current). CPU and memory scalars are not invented. Other GUDEADS product branches such as 28507.64 are not mix-bound in this child. Supported brands/models - Gude PDU8310 metering devices under PEN 28507.27, Expert Power Control 8221 under PEN 28507.56, with EPC8 port-state fallback under PEN 28507.1, plus standard IF-MIB.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_gude'}) by (instance_id)",
   "name": "NetworkService",
@@ -40,7 +40,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Per-channel active power in Watts from pdu8310PowerActive (1.3.6.1.4.1.28507.27.1.5.1.2.1.4) with pdu8310PowerIndex (1.3.6.1.4.1.28507.27.1.5.1.2.1.1). The SNMP value is already in Watts."
+      "description": "Per-channel active power in Watts from pdu8310PowerActive (1.3.6.1.4.1.28507.27.1.5.1.2.1.4) with pdu8310PowerIndex, or from epc8221PowerActive (1.3.6.1.4.1.28507.56.1.5.1.2.1.4) with epc8221PowerIndex. The SNMP value is already in Watts."
     },
     {
       "metric_group": "Power",
@@ -62,7 +62,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Per-channel current in amperes from pdu8310Current (1.3.6.1.4.1.28507.27.1.5.1.2.1.5) with pdu8310PowerIndex (1.3.6.1.4.1.28507.27.1.5.1.2.1.1). The SNMP value is milliamperes, so the query divides by 1000."
+      "description": "Per-channel current in amperes from pdu8310Current (1.3.6.1.4.1.28507.27.1.5.1.2.1.5) with pdu8310PowerIndex, or from epc8221Current (1.3.6.1.4.1.28507.56.1.5.1.2.1.5) with epc8221PowerIndex. The SNMP value is milliamperes, so the query divides by 1000."
     },
     {
       "metric_group": "Power",
@@ -84,7 +84,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Per-channel voltage in volts from pdu8310Voltage (1.3.6.1.4.1.28507.27.1.5.1.2.1.6) on the same pdu8310PowerTable parent as pdu8310Current. The SNMP value is already in volts."
+      "description": "Per-channel voltage in volts from pdu8310Voltage (1.3.6.1.4.1.28507.27.1.5.1.2.1.6) on the same pdu8310PowerTable parent as pdu8310Current, or from epc8221Voltage (1.3.6.1.4.1.28507.56.1.5.1.2.1.6) on the same epc8221PowerTable parent as epc8221Current. The SNMP value is already in volts."
     },
     {
       "metric_group": "Power",

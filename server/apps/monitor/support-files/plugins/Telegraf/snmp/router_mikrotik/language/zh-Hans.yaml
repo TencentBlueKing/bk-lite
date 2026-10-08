@@ -1,6 +1,6 @@
 Router MikroTik SNMP:
   name: MikroTik（Telegraf）
-  desc: 面向 MikroTik 路由器的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、接口流量，适用于 RouterOS（企业号 PEN 14988）。
+  desc: 面向 MikroTik 路由器的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、板卡/CPU 温度、风扇转速、电源状态、输入电压、接口流量，适用于 RouterOS（企业号 PEN 14988）。
 monitor_object:
   Router: 路由器
 monitor_object_type:
@@ -143,6 +143,15 @@ monitor_object_metric:
     device_flow_top_conversation_bytes_rate:
       name: Top 会话 Flow 流量速率
       desc: 按源地址、目的地址、协议和目的端口聚合的会话流量排行，用于定位主要通信关系。
+    device_cpu_temperature_celsius:
+      name: CPU 温度
+      desc: 该指标报告设备 CPU 温度读数，单位摄氏度。持续偏高说明散热存在问题，可能引发降频。
+    device_fan_speed:
+      name: 风扇转速
+      desc: 该指标报告设备各风扇的转速（RPM）。转速异常偏低或为 0 表示风扇卡转或故障，设备面临过热风险。
+    device_voltage_volts:
+      name: 输入电压
+      desc: 该指标报告设备输入电压读数，单位伏特。电压偏离额定范围可能意味着供电不稳，存在硬件风险。
 monitor_object_metric_group:
   Router:
     CPU: CPU

@@ -17,6 +17,8 @@ export interface ActiveDirectoryInstanceFormValue {
   host: string;
   port: number;
   use_ssl: boolean;
+  verify_cert: boolean;
+  ca_cert: string;
   bind_dn: string;
   bind_password: string;
   base_dn: string;
@@ -35,6 +37,8 @@ const getDefaultInstance = (name: string): ActiveDirectoryInstanceFormValue => (
   host: '',
   port: 636,
   use_ssl: true,
+  verify_cert: true,
+  ca_cert: '',
   bind_dn: '',
   bind_password: '',
   base_dn: '',
@@ -87,6 +91,8 @@ const mapRawInstance = (item: Record<string, unknown>, index: number): ActiveDir
     host: String(item.host || item.ad_host || ''),
     port: parseInt10(item.port ?? item.ad_port, defaultPort),
     use_ssl: useSsl,
+    verify_cert: parseBoolean(item.verify_cert ?? item.ad_verify_cert, true),
+    ca_cert: String(item.ca_cert || item.ad_ca_cert || '').trim(),
     bind_dn: String(item.bind_dn || item.ad_bind_dn || ''),
     bind_password: String(item.bind_password || item.ad_bind_password || ''),
     base_dn: String(item.base_dn || item.ad_base_dn || ''),
@@ -112,6 +118,8 @@ export const parseActiveDirectoryToolConfig = (kwargs: ToolVariable[] = []): Act
           host: map.get('host') || map.get('ad_host'),
           port: map.get('port') || map.get('ad_port'),
           use_ssl: map.get('use_ssl') ?? map.get('ad_use_ssl') ?? true,
+          verify_cert: map.get('verify_cert') ?? map.get('ad_verify_cert') ?? true,
+          ca_cert: map.get('ca_cert') || map.get('ad_ca_cert') || '',
           bind_dn: map.get('bind_dn') || map.get('ad_bind_dn'),
           bind_password: map.get('bind_password') || map.get('ad_bind_password'),
           base_dn: map.get('base_dn') || map.get('ad_base_dn'),
@@ -203,6 +211,7 @@ const ActiveDirectoryToolEditor = forwardRef<ActiveDirectoryToolEditorHandle, Ac
           host: inst.host.trim(),
           bind_dn: inst.bind_dn.trim(),
           base_dn: inst.base_dn.trim(),
+          ca_cert: inst.ca_cert.trim(),
         }));
         onSave(serializeActiveDirectoryToolConfig(trimmed));
         return true;
@@ -359,6 +368,33 @@ const ActiveDirectoryToolEditor = forwardRef<ActiveDirectoryToolEditorHandle, Ac
                 />
                 <span>{t('tool.activedirectory.useSsl')}</span>
               </div>
+              {selectedInstance.use_ssl ? (
+                <>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={selectedInstance.verify_cert}
+                        onChange={(checked) => handleChange(selectedInstance.id, 'verify_cert', checked)}
+                      />
+                      <span>{t('tool.activedirectory.verifyCert')}</span>
+                    </div>
+                    <div className="mt-1 text-xs text-[var(--color-text-4)]">{t('tool.activedirectory.verifyCertHint')}</div>
+                  </div>
+                  {selectedInstance.verify_cert ? (
+                    <div>
+                      <div className="mb-1 text-sm text-[var(--color-text-2)]">{t('tool.activedirectory.caCert')}</div>
+                      <Input.TextArea
+                        value={selectedInstance.ca_cert}
+                        onChange={(e) => handleChange(selectedInstance.id, 'ca_cert', e.target.value)}
+                        placeholder={t('tool.activedirectory.caCertPlaceholder')}
+                        rows={4}
+                        className="font-mono text-xs"
+                      />
+                      <div className="mt-1 text-xs text-[var(--color-text-4)]">{t('tool.activedirectory.caCertHint')}</div>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
               <div>
                 <div className="mb-1 text-sm text-[var(--color-text-2)]">{t('tool.activedirectory.bindDn')}</div>
                 <Input

@@ -1,0 +1,101 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_hwg_poseidon"
+        config_type = "hwg_poseidon"
+        brand = "hwg_poseidon"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- HW group Poseidon / Poseidon2 环境监控单元（POSEIDON-MIB，PEN 21796，poseidon → sensTable 1.3.6.1.4.1.21796.3.3.3）----
+    # sensTable 按检测到的传感器逐行返回，INDEX sensIndex；table.field 不带 .0。各行单位不同，按 sensUnit 分类，见文末 starlark。
+    [[inputs.snmp.table]]
+        name = "sensor"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    # sensName（.2）：传感器名称，作为 sensor 标签。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.21796.3.3.3.1.2"
+        name = "sensor"
+        is_tag = true
+    # sensState（.4）：invalid(0) / normal(1) / alarmstate(2) / alarm(3)。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.21796.3.3.3.1.4"
+        name = "state_raw"
+    # sensValue（.6）：数值 ×10 的整数。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.21796.3.3.3.1.6"
+        name = "value_raw"
+    # sensUnit（.9）：celsius(0) / fahrenheit(1) / kelvin(2) / percent(3) / volt(4) / miliAmper(5) / noUnit(6) / pulse(7) / switch(8) / dewPoint(9) / ...
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.21796.3.3.3.1.9"
+        name = "unit_raw"
+# ---- CPU / 内存使用率：环境监控单元不提供；STE / STE2 系列（21796.4 树）不在本模板内。----
+
+# ---- 换算与分类：sensState 为 invalid(0) 或缺失的行整行丢弃；数值 ÷10。
+# 温度：celsius 直接用，fahrenheit / kelvin 换算为摄氏度，须在 -60~150 ℃ → temperature_celsius；
+# 湿度：percent，须在 0~100 → humidity_percent；电压：volt，须在 -1000~1000 → voltage_volts；其它单位（电流、脉冲、开关量、露点等）不出数值。
+# 状态：normal → 1，alarmstate / alarm → 2 → state（仅温度 / 湿度 / 电压行输出）。原始字段不落库。----
+[[processors.starlark]]
+    namepass = ["sensor"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    state = f.pop("state_raw", None)
+    raw = f.pop("value_raw", None)
+    unit = f.pop("unit_raw", None)
+    if state != 1 and state != 2 and state != 3:
+        return None
+    if type(raw) != "int" or type(unit) != "int":
+        return None
+    value = raw / 10.0
+    if unit == 0 or unit == 1 or unit == 2:
+        if unit == 1:
+            value = (value - 32) * 5.0 / 9.0
+        elif unit == 2:
+            value = value - 273.15
+        value = int(value * 10 + (0.5 if value >= 0 else -0.5)) / 10.0
+        if value < -60 or value > 150:
+            return None
+        f["temperature_celsius"] = value
+    elif unit == 3:
+        if value < 0 or value > 100:
+            return None
+        f["humidity_percent"] = value
+    elif unit == 4:
+        if value < -1000 or value > 1000:
+            return None
+        f["voltage_volts"] = value
+    else:
+        return None
+    f["state"] = 1 if state == 1 else 2
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["hwg_poseidon"]

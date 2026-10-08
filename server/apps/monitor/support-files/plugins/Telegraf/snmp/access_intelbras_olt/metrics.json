@@ -1,0 +1,126 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_intelbras_olt",
+  "plugin": "Access Intelbras OLT SNMP",
+  "plugin_desc": "Intelbras G16/G08 OLT SNMP collection under enterprise PEN 13464 (G16/G08 chassis tree 1.14). Beyond the shared Access SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it collects chassis-health scalars for CPU utilization, memory utilization, Switch chipset temperature and GPON chipset temperature. ONU, SFP and other large private tables are not collected in this child template.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='access', collect_type='snmp_intelbras_olt'}) by (instance_id)",
+  "name": "Access",
+  "icon": "mm-access_接入设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='access'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_switch_celsius",
+    "device_temperature_gpon_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Access",
+      "name": "device_cpu_usage",
+      "query": "avg(snmp_device_cpu_usage{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Device CPU utilization of the Intelbras G16/G08 OLT chassis, reported directly as a percentage."
+    },
+    {
+      "metric_group": "Access",
+      "name": "device_memory_usage",
+      "query": "avg(snmp_device_memory_usage{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Device memory utilization of the Intelbras G16/G08 OLT chassis, reported directly as a percentage."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_switch_celsius",
+      "query": "max(snmp_device_temperature_switch_celsius{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "Switch Chipset Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Switch chipset temperature of the Intelbras G16/G08 OLT chassis, reported directly in degrees Celsius."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_gpon_celsius",
+      "query": "max(snmp_device_temperature_gpon_celsius{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "GPON Chipset Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "GPON chipset temperature of the Intelbras G16/G08 OLT chassis, reported directly in degrees Celsius."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='access', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='access', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='access', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

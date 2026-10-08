@@ -1,0 +1,151 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_dataprobe",
+  "plugin": "NetworkService Dataprobe iBoot-PDU SNMP",
+  "plugin_desc": "Dataprobe iBoot-PDU SNMP child template for devices under Dataprobe PEN 1418. Interface traffic is supplied by the shared NetworkService SNMP IF-MIB floor rather than a plugin-side ifHC expansion. Proven private increments under 1.3.6.1.4.1.1418.6 are voltageLC1/currentLC1 (and optional LC2) scaled by /100 as snmp_pdu_line*_voltage_volts and snmp_pdu_line*_current_amps, plus temperature1/temperature2 as Celsius after dropping the 999 no-probe sentinel. Fahrenheit unit readings are converted to Celsius. Single-line-cord models omit line 2 when voltageLC2 is 0 or absent. CPU, memory, fan and PSU scalars are not invented. Outlet switch tables are not collected in this pass. Supported brands/models - Dataprobe iBoot-PDU devices that expose the iBoot-PDU-Agent sensor scalars and standard IF-MIB.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='network_service', collect_type='snmp_dataprobe'}) by (instance_id)",
+  "name": "NetworkService",
+  "icon": "mm-network_service_网络服务",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='network_service'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "snmp_pdu_line1_voltage_volts",
+    "snmp_pdu_line1_current_amps",
+    "snmp_env_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Power",
+      "name": "snmp_pdu_line1_voltage_volts",
+      "query": "max(snmp_pdu_line1_voltage_volts{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Line Cord 1 Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Line-cord 1 voltage in volts from voltageLC1 (1.3.6.1.4.1.1418.6.6.1.0). The SNMP value is hundredths of a volt and is scaled by /100. Absent values are not reported."
+    },
+    {
+      "metric_group": "Power",
+      "name": "snmp_pdu_line1_current_amps",
+      "query": "max(snmp_pdu_line1_current_amps{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Line Cord 1 Current",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Line-cord 1 current in amperes from currentLC1 (1.3.6.1.4.1.1418.6.6.2.0). The SNMP value is hundredths of an amp and is scaled by /100. Absent values are not reported."
+    },
+    {
+      "metric_group": "Power",
+      "name": "snmp_pdu_line2_voltage_volts",
+      "query": "max(snmp_pdu_line2_voltage_volts{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Line Cord 2 Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional line-cord 2 voltage in volts from voltageLC2 (1.3.6.1.4.1.1418.6.6.3.0). The SNMP value is hundredths of a volt and is scaled by /100. Line 2 is dropped when the voltage is 0 or absent on single-line-cord models."
+    },
+    {
+      "metric_group": "Power",
+      "name": "snmp_pdu_line2_current_amps",
+      "query": "max(snmp_pdu_line2_current_amps{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Line Cord 2 Current",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional line-cord 2 current in amperes from currentLC2 (1.3.6.1.4.1.1418.6.6.4.0). The SNMP value is hundredths of an amp and is scaled by /100. Line 2 is dropped when voltageLC2 is 0 or absent."
+    },
+    {
+      "metric_group": "Environment",
+      "name": "snmp_env_temperature_celsius",
+      "query": "max(snmp_env_temperature_celsius{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Environment Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Probe 1 temperature in degrees Celsius from temperature1 (1.3.6.1.4.1.1418.6.6.5.0). The 999 no-probe sentinel is dropped. Fahrenheit unit readings are converted to Celsius. Persistently high values may indicate cooling or ambient-temperature risk."
+    },
+    {
+      "metric_group": "Environment",
+      "name": "snmp_env_temperature_2_celsius",
+      "query": "max(snmp_env_temperature_2_celsius{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Environment Temperature 2",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Optional probe 2 temperature in degrees Celsius from temperature2 (1.3.6.1.4.1.1418.6.6.6.0). The 999 no-probe sentinel is dropped. Fahrenheit unit readings are converted to Celsius."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of inbound bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of outbound bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

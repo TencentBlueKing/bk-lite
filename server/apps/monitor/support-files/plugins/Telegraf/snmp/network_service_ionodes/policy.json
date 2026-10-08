@@ -1,0 +1,81 @@
+{
+  "object": "NetworkService",
+  "plugin": "NetworkService IONODES SNMP",
+  "templates": [
+    {
+      "name": "IONODES网络服务CPU使用率过高",
+      "alert_name": "网络服务${resource_name} CPU 使用率过高",
+      "description": "监控 IONODES ION Series 编码器的 CPU 使用率，当持续高于阈值时触发告警，提示编码负载过高或控制平面过载。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "IONODES网络服务内存使用率过高",
+      "alert_name": "网络服务${resource_name} 内存使用率过高",
+      "description": "监控 IONODES ION Series 编码器的内存使用率，当持续高于阈值时触发告警，提示可能存在内存压力。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "IONODES网络服务温度过高",
+      "alert_name": "网络服务${resource_name} 温度过高",
+      "description": "监控 IONODES ION Series 编码器的机箱温度，当持续高于阈值时触发告警，提示可能存在散热异常或环境过热。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

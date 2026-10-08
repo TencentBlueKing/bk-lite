@@ -1,0 +1,116 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_eltek"
+        config_type = "eltek"
+        brand = "eltek"
+        temperature_unit = "{{ temperature_unit | default('celsius', true) }}"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.2.0"
+        name = "sysObjectID"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Eltek SmartPack / WebPower 直流电源系统（ELTEK-DISTRIBUTED-MIB，PEN 12148，eltekDistributedPlantV9 1.3.6.1.4.1.12148.9）----
+    # 电池标量顶层 field 带 .0，落 measurement snmp，查询用 snmp_ 前缀。
+    # batteryVoltage（1.3.6.1.4.1.12148.9.3.2）：电池电压，1/100 V（5400 = 54.00 V）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.12148.9.3.2.0"
+        name = "battery_voltage_raw"
+    # batteryTemp（1.3.6.1.4.1.12148.9.3.4）：启用的电池温度测量中的最高值，摄氏或华氏取决于控制器全局设置，按接入时选择的温度单位换算。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.12148.9.3.4.0"
+        name = "battery_temperature_raw"
+    # rectifierStatusTable（1.3.6.1.4.1.12148.9.5.5.2，INDEX rectifierStatusID）：固定 20 行，table.field 不带 .0；index 标签即整流器行号。
+    [[inputs.snmp.table]]
+        name = "rectifier"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    # rectifierStatusStatus（.2）：notPresent(0) / normal(1) / alarm(2) / notUsed(3) / disabled(4)。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.12148.9.5.5.2.1.2"
+        name = "status"
+    # rectifierStatusOutputCurrent（.3）：输出电流，DeciAmperes（÷10 → A）。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.12148.9.5.5.2.1.3"
+        name = "output_current"
+    # rectifierStatusOutputVoltage（.4）：输出电压，1/100 V。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.12148.9.5.5.2.1.4"
+        name = "output_voltage"
+    # rectifierStatusTemp（.5）：进风温度，摄氏或华氏同上。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.12148.9.5.5.2.1.5"
+        name = "temperature"
+# ---- 电池电流、负载电流：单位随控制器全局设置在 A 与 dA 之间变化且无法从 SNMP 读出，不采集；CPU / 内存使用率：MIB 不提供；eNexus / SP2 的 12148.10 树不在本模板内。----
+
+# ---- 换算与校验：电池电压原始值须为 1~7500（÷100 → V）；温度按 temperature_unit 标签（celsius / fahrenheit）统一为摄氏度，须在 -60~150 ℃；
+# 整流器仅保留 normal(1) / alarm(2) 的行，状态 normal → 1、alarm → 2；输出电压原始值须为 1~65535（÷100 → V），输出电流 0~65535（÷10 → A）。无效值丢弃，原始字段不落库。----
+[[processors.starlark]]
+    namepass = ["snmp", "rectifier"]
+    source = '''
+def to_celsius(raw, unit):
+    if type(raw) != "int":
+        return None
+    value = raw * 1.0
+    if unit == "fahrenheit":
+        value = (value - 32) * 5.0 / 9.0
+    if value < -60 or value > 150:
+        return None
+    return int(value * 10 + (0.5 if value >= 0 else -0.5)) / 10.0
+
+def apply(metric):
+    unit = metric.tags.get("temperature_unit", "celsius")
+    f = metric.fields
+    if metric.name == "snmp":
+        volts = f.pop("battery_voltage_raw", None)
+        if type(volts) == "int" and volts >= 1 and volts <= 7500:
+            f["battery_voltage_volts"] = volts / 100.0
+        temp = to_celsius(f.pop("battery_temperature_raw", None), unit)
+        if temp != None:
+            f["battery_temperature_celsius"] = temp
+        return metric
+    status = f.pop("status", None)
+    if status != 1 and status != 2:
+        return None
+    current = f.pop("output_current", None)
+    volts = f.pop("output_voltage", None)
+    temp = to_celsius(f.pop("temperature", None), unit)
+    f["state"] = status
+    if type(volts) == "int" and volts >= 1 and volts <= 65535:
+        f["output_voltage_volts"] = volts / 100.0
+    if type(current) == "int" and current >= 0 and current <= 65535:
+        f["output_current_amps"] = current / 10.0
+    if temp != None:
+        f["temperature_celsius"] = temp
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["eltek"]

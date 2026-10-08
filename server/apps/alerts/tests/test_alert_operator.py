@@ -349,7 +349,9 @@ def test_resolve_success():
     op = AlertOperator(user="op1")
     result = op.operate("resolve", "A1", {"note": "已处理"})
     assert result["result"] is True
-    assert Alert.objects.get(alert_id="A1").status == AlertStatus.RESOLVED
+    alert = Alert.objects.get(alert_id="A1")
+    assert alert.status == AlertStatus.RESOLVED
+    assert alert.closed_at is not None
 
 
 @pytest.mark.django_db
