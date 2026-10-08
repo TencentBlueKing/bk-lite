@@ -719,6 +719,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /westone|卫士通/i, label: 'Westone', icon: 'mm-westone_westone' },
   { match: /amaranten|安然/i, label: 'Amaranten', icon: 'mm-amaranten_amaranten' },
   { match: /secworld|安世/i, label: 'Secworld', icon: 'mm-secworld_secworld' },
+  { match: /securepoint/i, label: 'Securepoint' },
   { match: /superiority|超数/i, label: 'Superiority', icon: 'mm-superiority_superiority' },
   { match: /westone|卫士通/i, label: 'Westone', icon: 'mm-westone_westone' },
   { match: /harbour|港湾/i, label: 'Harbour Networks', icon: 'mm-harbour_harbour' },
