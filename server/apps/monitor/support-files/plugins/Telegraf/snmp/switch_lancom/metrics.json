@@ -63,7 +63,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Fan module state of the LANCOM LCOS-SX switch (lcsMonitoringFanState). operational(2), powering(4) and present(9) map to 1 (normal); every other defined module state maps to 2 (abnormal)."
+      "description": "Fan module state of the LANCOM LCOS-SX switch (lcsMonitoringFanState). notpresent(1), operational(2), powering(4) and present(9) map to 1 (normal); every other defined module state maps to 2 (abnormal)."
     },
     {
       "metric_group": "Hardware Status",
@@ -99,7 +99,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Power-supply module state of the LANCOM LCOS-SX switch (lcsMonitoringPSUState). operational(2), powering(4) and present(9) map to 1 (normal); every other defined module state maps to 2 (abnormal)."
+      "description": "Power-supply module state of the LANCOM LCOS-SX switch (lcsMonitoringPSUState). notpresent(1), operational(2), powering(4) and present(9) map to 1 (normal); every other defined module state maps to 2 (abnormal)."
     },
     {
       "metric_group": "Traffic",

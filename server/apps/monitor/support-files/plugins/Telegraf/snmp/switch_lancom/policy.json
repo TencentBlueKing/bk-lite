@@ -30,7 +30,7 @@
     {
       "name": "LANCOM交换机风扇异常",
       "alert_name": "交换机${resource_name} 风扇${metric__index}状态异常",
-      "description": "监控 LANCOM LCOS-SX 交换机风扇模块状态，非 operational / powering / present 的已定义状态（含 notpresent / failed / warning 等）视为异常。",
+      "description": "监控 LANCOM LCOS-SX 交换机风扇模块状态，notpresent / operational / powering / present 视为正常（1），其余已定义状态（含 failed / warning 等）视为异常。",
       "metric_name": "device_fan_state",
       "algorithm": "last_over_time",
       "threshold": [
@@ -45,7 +45,7 @@
     {
       "name": "LANCOM交换机电源异常",
       "alert_name": "交换机${resource_name} 电源${metric__index}状态异常",
-      "description": "监控 LANCOM LCOS-SX 交换机电源模块状态，非 operational / powering / present 的已定义状态（含 notpresent / failed / nopower / warning 等）视为异常。",
+      "description": "监控 LANCOM LCOS-SX 交换机电源模块状态，notpresent / operational / powering / present 视为正常（1），其余已定义状态（含 failed / nopower / warning 等）视为异常。",
       "metric_name": "device_psu_state",
       "algorithm": "last_over_time",
       "threshold": [
