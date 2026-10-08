@@ -932,6 +932,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /marconi/i, label: 'Marconi', icon: 'mm-marconi_marconi' },
   { match: /glassway|nscrtv|\bedfa\b|\beydfa\b/i, label: 'Glassway' },
   { match: /alcoma/i, label: 'Alcoma', icon: 'mm-alcoma_alcoma' },
+  { match: /montclair/i, label: 'Montclair' },
   { match: /\bsiae\b|microelettronica/i, label: 'SIAE Microelettronica', icon: 'mm-siae_siae' },
   { match: /packetlight|packet\s*light|pl-[0-9a-z-]+/i, label: 'PacketLight', icon: 'mm-packetlight_packetlight' },
   { match: /pan\s*dacom|pandacom/i, label: 'Pan Dacom', icon: 'mm-pandacom_pandacom' },

@@ -64,6 +64,7 @@ export const useTransmissionConfig = () => {
       'Transmission Nokia Wavence SNMP': 'snmp_nokia_wavence',
       'Transmission Marconi SNMP': 'snmp_marconi',
       'Transmission Alcoma SNMP': 'snmp_alcoma',
+      'Transmission Montclair SNMP': 'snmp_montclair',
       'Transmission PacketLight SNMP': 'snmp_packetlight',
       'Transmission Pan Dacom SNMP': 'snmp_pandacom',
       'Transmission BKTel HFC SNMP': 'snmp_bktel_hfc',
