@@ -211,6 +211,7 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       "collectType": "snmp_comtrol",
       "capabilities": [
         "uptime",
+        "psu",
         "traffic"
       ]
     },
