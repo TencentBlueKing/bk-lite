@@ -244,6 +244,38 @@ def test_auto_join_skips_when_no_template_multiple_orgs_or_legacy_policy():
     assert PolicyGroupService.consider_auto_join(legacy_host, [1]).state == "skipped"
 
 
+def test_access_choice_applies_only_to_instances_without_a_decision():
+    monitor_object = _object()
+    wmi = _plugin(monitor_object, "WMI")
+    default_group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="默认",
+        templates=[_template(monitor_object, wmi, "默认 CPU")],
+    )
+    other = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="核心",
+        templates=[_template(monitor_object, wmi, "核心 CPU")],
+    )
+    existing = _instance(monitor_object, "old", 1)
+    PolicyGroupService.join(instance=existing, group=default_group)
+    fresh = _instance(monitor_object, "new", 1)
+    declined = _instance(monitor_object, "off", 1)
+
+    PolicyGroupService.apply_access_choice(existing, join=True, group_id=other.id)
+    PolicyGroupService.apply_access_choice(fresh, join=True, group_id=other.id)
+    PolicyGroupService.apply_access_choice(declined, join=False)
+
+    existing.policy_group_membership.refresh_from_db()
+    fresh.policy_group_membership.refresh_from_db()
+    declined.policy_group_membership.refresh_from_db()
+    assert existing.policy_group_membership.policy_group_id == default_group.id
+    assert fresh.policy_group_membership.policy_group_id == other.id
+    assert declined.policy_group_membership.state == "declined"
+
+
 def test_join_rejects_instance_outside_group_organization():
     monitor_object = _object()
     wmi = _plugin(monitor_object, "WMI")

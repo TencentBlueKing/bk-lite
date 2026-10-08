@@ -20,6 +20,11 @@ const useIntegrationApi = () => {
   const { get, post, del, put } = useApiClient();
   return useMemo(
     () => ({
+      getPolicyGroups: async (
+        params: { monitor_object_id?: React.Key } = {}
+      ) => {
+        return await get(`/monitor/api/policy_group/`, { params });
+      },
       getInstanceGroupRule: async (
         params: {
           monitor_object_id?: React.Key;

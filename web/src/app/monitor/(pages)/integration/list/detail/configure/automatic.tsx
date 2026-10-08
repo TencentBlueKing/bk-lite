@@ -116,6 +116,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     createCollectDetectTask,
     getCollectDetectTask,
     getMonitorNodeList,
+    getPolicyGroups,
     updateNodeChildConfig
   } = useIntegrationApi();
   const {
@@ -161,6 +162,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const [alertCenterChannels, setAlertCenterChannels] = useState<ChannelItem[]>(
     []
   );
+  const [policyGroups, setPolicyGroups] = useState<
+    Array<{
+      id: number;
+      name: string;
+      is_default?: boolean;
+      rules?: Array<{ name: string; plugin_id: number; plugin_name: string }>;
+    }>
+  >([]);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [collectDetectTasks, setCollectDetectTasks] = useState<
     Record<string, CollectDetectState>
@@ -183,6 +192,26 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     setDataSource(data);
     clearCollectDetectState();
   };
+
+  useEffect(() => {
+    if (isLoading || !objectId) return;
+    let cancelled = false;
+    getPolicyGroups({ monitor_object_id: objectId })
+      .then((data) => {
+        if (cancelled) return;
+        const list = Array.isArray(data) ? data : [];
+        setPolicyGroups(list);
+        const preferred = list.find((item) => item.is_default) || list[0];
+        form.setFieldsValue({
+          policy_group_join: true,
+          policy_group_id: preferred?.id
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [form, getPolicyGroups, isLoading, objectId]);
 
   useEffect(() => {
     if (pluginId) {
@@ -1164,27 +1193,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           mutexErrors.forEach((msg) => message.error(msg));
           return;
         }
-        const templatesToApply = selectedPolicyTemplates(
-          policyTemplates,
-          values[COLLECTION_POLICY_FIELD]
-        );
-        const pushAlertCenter = Boolean(
-          values[COLLECTION_POLICY_ALERT_CENTER_FIELD]
-        );
-        const alertCenterChannelIds = pickAlertCenterChannelIds(
-          alertCenterChannels
-        );
-        if (pushAlertCenter && templatesToApply.length && !alertCenterChannelIds.length) {
-          message.error(
-            t(
-              'monitor.integrations.pushToAlertCenterMissing',
-              '未找到告警中心 NATS 通道，请先在系统管理中配置'
-            )
-          );
-          return;
-        }
         const row = omitCollectionPolicyField(cloneDeep(values));
         delete row.nodes;
+        delete row.policy_group_join;
+        delete row.policy_group_id;
         const params =
           configsInfo?.getParams?.(row, {
             dataSource: tableValidation.data,
@@ -1193,13 +1205,11 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           }) || {};
         params.monitor_object_id = Number(objectId);
         params.monitor_plugin_id = Number(pluginId);
-        addNodesConfig(
-          params,
-          templatesToApply,
-          values[COLLECTION_POLICY_NAME_PREFIX_FIELD],
-          pushAlertCenter,
-          alertCenterChannelIds
-        );
+        params.policy_group = {
+          join: values.policy_group_join !== false,
+          group_id: values.policy_group_id
+        };
+        addNodesConfig(params);
       } catch (error: any) {
         message.error(error?.message || t('common.operationFailed'));
       }
@@ -1360,87 +1370,52 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       </div>
       {formItems}
       <Form.Item
-        name={COLLECTION_POLICY_FIELD}
-        label={
-          <span className="inline-flex items-center">
-            {t('monitor.integrations.monitoringPolicy')}
-            <FieldGuideTip
-              short={t('monitor.integrations.monitoringPolicyDes')}
-              title={t('monitor.integrations.fieldGuideTip')}
-            />
-          </span>
-        }
+        name="policy_group_join"
+        valuePropName="checked"
+        label={t('monitor.integrations.monitoringPolicy', '加入策略组')}
       >
-        <Select
-          mode="multiple"
-          allowClear
-          showSearch
-          optionFilterProp="label"
-          maxTagCount="responsive"
-          loading={policyTemplatesLoading}
-          options={policyTemplateSelectOptions(policyTemplates, {
-            builtin: t('monitor.events.templateTypeBuiltin', '内置'),
-            custom: t('monitor.events.templateTypeCustom', '自定义')
-          })}
-          placeholder={t(
-            'monitor.integrations.monitoringPolicyPlaceholder'
-          )}
-          style={{ width: COLLECTION_POLICY_CONTROL_WIDTH }}
-        />
+        <Switch />
       </Form.Item>
       <Form.Item
         noStyle
         shouldUpdate={(prev, next) =>
-          prev[COLLECTION_POLICY_FIELD] !== next[COLLECTION_POLICY_FIELD]
+          prev.policy_group_id !== next.policy_group_id ||
+          prev.policy_group_join !== next.policy_group_join
         }
       >
         {() => {
-          const selectedKeys = form.getFieldValue(COLLECTION_POLICY_FIELD);
-          const hasSelectedTemplates =
-            Array.isArray(selectedKeys) && selectedKeys.length > 0;
+          const selected = policyGroups.find(
+            (item) => item.id === form.getFieldValue('policy_group_id')
+          );
+          const joining = form.getFieldValue('policy_group_join') !== false;
           return (
             <Form.Item
-              name={COLLECTION_POLICY_NAME_PREFIX_FIELD}
-              label={t('monitor.events.namePrefix', '策略名称前缀')}
-              rules={
-                hasSelectedTemplates
-                  ? [
-                    {
-                      required: true,
-                      message: t(
-                        'monitor.events.namePrefixRequired',
-                        '请输入策略名称前缀'
-                      )
-                    }
-                  ]
-                  : []
-              }
+              name="policy_group_id"
+              label={t('monitor.integrations.monitoringPolicy', '策略组')}
             >
-              <Input
-                placeholder={t(
-                  'monitor.events.namePrefixPlaceholder',
-                  '例如：生产环境-'
-                )}
+              <Select
                 style={{ width: COLLECTION_POLICY_CONTROL_WIDTH }}
+                disabled={!joining}
+                options={policyGroups.map((item) => ({
+                  value: item.id,
+                  label: item.is_default ? `${item.name}（默认）` : item.name
+                }))}
               />
+              {joining && selected ? (
+                <div className="mt-[8px] text-[12px] text-[var(--color-text-3)]">
+                  {(selected.rules || []).map((rule) => (
+                    <div key={`${rule.plugin_id}-${rule.name}`}>
+                      {rule.name}
+                      {String(rule.plugin_id) === String(pluginId)
+                        ? ''
+                        : ` · ${rule.plugin_name} 对本次接入不适用`}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </Form.Item>
           );
         }}
-      </Form.Item>
-      <Form.Item
-        name={COLLECTION_POLICY_ALERT_CENTER_FIELD}
-        valuePropName="checked"
-        label={
-          <span className="inline-flex items-center">
-            {t('monitor.integrations.pushToAlertCenter', '推送告警中心')}
-            <FieldGuideTip
-              short={t('monitor.integrations.pushToAlertCenterDes')}
-              title={t('monitor.integrations.fieldGuideTip')}
-            />
-          </span>
-        }
-      >
-        <Switch />
       </Form.Item>
       <b className="text-[14px] flex mb-[10px] ml-[-10px]">
         {t('monitor.integrations.basicInformation')}

@@ -163,6 +163,18 @@ class PolicyGroupService:
         PolicyService._mark_new_alerts_closed(alerts, operator, "policy_group_member_left")
 
     @staticmethod
+    def apply_access_choice(instance, *, join, group_id=None, operator="system"):
+        """只应由本次新建的实例调用。已有成员决定的实例不在这里处理。"""
+        if PolicyGroupMembership.objects.filter(monitor_instance=instance).exists():
+            return PolicyGroupMembership.objects.get(monitor_instance=instance)
+        if not join:
+            return PolicyGroupService.leave(instance=instance, operator=operator)
+        group = PolicyGroup.objects.filter(id=group_id, monitor_object_id=instance.monitor_object_id).first()
+        if group is None:
+            raise BaseAppException("策略组不存在")
+        return PolicyGroupService.join(instance=instance, group=group, operator=operator)
+
+    @staticmethod
     def ensure_default(*, organization, monitor_object, operator="system"):
         with transaction.atomic():
             pointer = PolicyGroupDefault.objects.select_for_update().filter(organization=organization, monitor_object=monitor_object).first()

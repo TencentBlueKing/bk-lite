@@ -1120,6 +1120,8 @@ class InstanceConfigService:
                 from apps.monitor.services.policy_group import PolicyGroupService
 
                 created_ids = set(created_instance_ids)
+                choice = data.get("policy_group")
+                explicit_choice = isinstance(choice, dict) and "join" in choice
                 for raw in new_instances:
                     instance_id = raw.get("instance_id")
                     if instance_id not in created_ids:
@@ -1127,7 +1129,14 @@ class InstanceConfigService:
                     instance = MonitorInstance.objects.filter(id=instance_id).first()
                     if instance is None:
                         continue
-                    PolicyGroupService.consider_auto_join(instance, raw.get("group_ids") or [])
+                    if explicit_choice:
+                        PolicyGroupService.apply_access_choice(
+                            instance,
+                            join=bool(choice.get("join")),
+                            group_id=choice.get("group_id"),
+                        )
+                    else:
+                        PolicyGroupService.consider_auto_join(instance, raw.get("group_ids") or [])
                 processed_instance_ids = [
                     str(instance["instance_id"]) for instance in new_instances + existing_instances if instance.get("instance_id") not in (None, "")
                 ]
