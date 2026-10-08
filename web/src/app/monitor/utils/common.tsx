@@ -721,6 +721,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /aethra|dolcevita/i, label: 'Aethra', icon: 'mm-aethra_aethra' },
   { match: /relianoid|\bzva\b/i, label: 'RELIANOID', icon: 'mm-relianoid_relianoid' },
   { match: /velocloud|vmware\s*sd-?wan|\bvce\b/i, label: 'VeloCloud', icon: 'mm-velocloud_velocloud' },
+  { match: /profline/i, label: 'Profline' },
   { match: /viptela/i, label: 'Viptela', icon: 'mm-viptela_viptela' },
   { match: /benu|benu\s*networks|\bmeg\d+/i, label: 'Benu Networks', icon: 'mm-benu_benu' },
   { match: /forcepoint|stonesoft|stonegate|ngfw/i, label: 'Forcepoint', icon: 'mm-forcepoint_forcepoint' },
