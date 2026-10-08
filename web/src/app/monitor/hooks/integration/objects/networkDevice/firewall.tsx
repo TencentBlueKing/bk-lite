@@ -71,6 +71,7 @@ export const useFirewallConfig = () => {
       'Firewall SNMP General': 'snmp',
       'Firewall Cisco SNMP': 'snmp_cisco_firewall',
       'Firewall Fortinet SNMP': 'snmp_fortinet',
+      'Firewall Fortinet FortiWeb SNMP': 'snmp_fortiweb',
       'Firewall Hillstone SNMP': 'snmp_hillstone',
       'Firewall Sophos XG SNMP': 'snmp_sophos',
       'Firewall Forcepoint SNMP': 'snmp_forcepoint',
