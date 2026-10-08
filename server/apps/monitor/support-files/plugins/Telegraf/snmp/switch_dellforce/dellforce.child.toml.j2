@@ -160,7 +160,7 @@
         [processors.enum.mapping.value_mappings]
             "1" = 1
             "3" = 1
-# ---- E-Series：过滤越界/空槽，风扇/电源 up(1)→1、down(2)→2、其余丢弃；打 chassis_mib 区分系列，再映射到既有指标名。----
+# ---- E-Series：过滤越界/空槽温度读数，风扇/电源 up(1)/absent(3 空槽)→1、down(2)→2、其余丢弃；打 chassis_mib 区分系列，再映射到既有指标名。----
 [[processors.starlark]]
     namepass = ["f10_chassis_cpu", "f10_chassis_memory", "f10_chassis_temperature", "f10_chassis_fan", "f10_chassis_psu"]
     source = '''
@@ -188,7 +188,7 @@ def apply(metric):
         return metric
     if name == "f10_chassis_fan":
         state = f.get("state")
-        if state == 1:
+        if state == 1 or state == 3:
             f["state"] = 1
         elif state == 2:
             f["state"] = 2
@@ -198,7 +198,7 @@ def apply(metric):
         return metric
     if name == "f10_chassis_psu":
         state = f.get("state")
-        if state == 1:
+        if state == 1 or state == 3:
             f["state"] = 1
         elif state == 2:
             f["state"] = 2
