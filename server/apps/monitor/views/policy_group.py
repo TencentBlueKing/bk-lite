@@ -1,4 +1,4 @@
-from django.db.models import Q
+from django.db.models import Count, Q
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
@@ -35,7 +35,9 @@ def _group_in_scope(scope, group_id):
 
 
 def _serialize_group(group, default_id):
-    member_count = group.memberships.filter(state=PolicyGroupMembership.STATE_MEMBER).count()
+    member_count = getattr(group, "joined_member_count", None)
+    if member_count is None:
+        member_count = group.memberships.filter(state=PolicyGroupMembership.STATE_MEMBER).count()
     rules = []
     for rule in group.rules.select_related("plugin", "policy", "source_template"):
         config = rule.source_template.config if rule.source_template_id else {}
@@ -81,7 +83,11 @@ class PolicyGroupViewSet(viewsets.ViewSet):
             monitor_object = MonitorObject.objects.filter(id=object_id).first()
             if monitor_object is not None:
                 PolicyGroupService.ensure_default(organization=organization, monitor_object=monitor_object, operator=_operator(scope))
-        queryset = PolicyGroup.objects.filter(organization=organization).prefetch_related("rules__plugin", "rules__policy", "rules__source_template")
+        queryset = PolicyGroup.objects.filter(organization=organization).prefetch_related(
+            "rules__plugin", "rules__policy", "rules__source_template"
+        ).annotate(
+            joined_member_count=Count("memberships", filter=Q(memberships__state=PolicyGroupMembership.STATE_MEMBER))
+        )
         if object_id not in (None, ""):
             queryset = queryset.filter(monitor_object_id=object_id)
         default_id = None
