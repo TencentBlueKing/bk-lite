@@ -28,6 +28,31 @@
       "group_algorithm": "avg"
     },
     {
+      "name": "APRESIA交换机内存使用率过高",
+      "alert_name": "交换机${resource_name} 内存使用率过高",
+      "description": "监控 APRESIA 交换机 DRAM 内存使用率（npDramMemoryTable 已用/总量，取最高的 box），当超过阈值时触发告警，便于及时发现内存泄漏或表项过大等问题。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
       "name": "APRESIA交换机温度过高",
       "alert_name": "交换机${resource_name} 温度过高",
       "description": "监控 APRESIA 设备机箱温度（npTemperatureCurrent，单位摄氏度），当超过阈值时触发告警，便于及时发现散热失效或机柜风道堵塞，防止高温损坏设备。",
