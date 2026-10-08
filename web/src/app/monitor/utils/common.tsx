@@ -796,6 +796,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /vsolution|v-?sol|v1600d/i, label: 'V-SOL', icon: 'mm-vsolution_vsolution' },
   { match: /dasan/i, label: 'DASAN', icon: 'mm-dasan_dasan' },
   { match: /telco\s*systems|\bbatm\b|\bbinos\b|t-metro/i, label: 'Telco Systems', icon: 'mm-telco_telco' },
+  { match: /white\s*rabbit/i, label: 'CERN White Rabbit' },
   { match: /zhone|\bdzs\b/i, label: 'Zhone DZS', icon: 'mm-zhone_zhone' },
   { match: /utstarcom|utstar\s*com|\butstar\b/i, label: 'UTStarcom', icon: 'mm-utstarcom_utstarcom' },
   { match: /raisecom|roap|iscom/i, label: 'Raisecom', icon: 'mm-raisecom_raisecom' },
