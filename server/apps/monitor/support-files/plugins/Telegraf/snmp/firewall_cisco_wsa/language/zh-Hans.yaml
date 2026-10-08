@@ -79,19 +79,23 @@ monitor_object_metric:
         VPN 解密流量负载与异常波动。
     device_cpu_usage:
       name: CPU 使用率
-      desc: 该指标报告 FortiGate 防火墙整体 CPU 使用率（FORTINET-FORTIGATE-MIB fgSysCpuUsage）。持续高
-        CPU 可能意味着流量检测负载过重、攻击活动或控制平面瓶颈。
+      desc: Cisco Secure Web Appliance 的代理 CPU 使用率（ASYNCOSWEBSECURITYAPPLIANCE-MIB
+        cacheCpuUsage，1.3.6.1.4.1.15497.1.2.3.1.2.0，Integer32 0-100，约 10 秒窗口）。超出 0-100
+        的值会被丢弃。
     device_memory_usage:
       name: 内存使用率
-      desc: 该指标报告 FortiGate 防火墙整体内存使用率（FORTINET-FORTIGATE-MIB fgSysMemUsage，直接以百分比上报）。内存压力过高时设备可能进入保护模式并丢弃新会话。
+      desc: Cisco Secure Web Appliance 的代理内存缓冲使用率（ASYNCOSWEBSECURITYAPPLIANCE-MIB
+        cacheMemoryBufferUsagePct，1.3.6.1.4.1.15497.1.2.3.1.6.0），即当前占用的代理内存缓冲百分比（0-100）。这是缓冲使用率，不是整机
+        DRAM 已用/总量计算。超出 0-100 的值会被丢弃。
     wsa_cache_storage_usage:
       name: 缓存存储使用率
       desc: Cisco Secure Web Appliance 缓存存储使用百分比（ASYNCOSWEBSECURITYAPPLIANCE-MIB
         cacheUsedStoragePct，Integer32 0-100）。超出 0-100 的值会被丢弃。
     device_memory_total:
       name: 内存总容量
-      desc: 该指标报告 FortiGate 防火墙的物理内存总容量（FORTINET-FORTIGATE-MIB fgSysMemCapacity，原始单位
-        KB，已换算为字节）。
+      desc: Cisco Secure Web Appliance 的系统内存总量，采集时由 ASYNCOSWEBSECURITYAPPLIANCE-MIB
+        cacheMemory（1.3.6.1.4.1.15497.1.2.1.2.0，Integer32，单位 KB）乘以 1024 换算为字节。小于等于
+        0 的值会被丢弃。此为容量读数，不是使用率百分比。
     firewall_active_sessions:
       name: IPv4 活动会话数
       desc: 该指标报告 FortiGate 防火墙当前跟踪的 IPv4 活动会话数（FORTINET-FORTIGATE-MIB fgSysSesCount）。会话数快速上升可能意味着连接洪泛或会话表耗尽风险。
