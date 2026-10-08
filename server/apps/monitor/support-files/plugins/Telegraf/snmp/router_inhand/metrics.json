@@ -45,7 +45,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Cellular modem operational state from INHAND-WAN3G-MIB ih3gModemState, normalised to 1=normal (up) / 2=abnormal (down). unknown is dropped."
+      "description": "Cellular modem operational state from INHAND-WAN3G-MIB ih3gModemState, normalised to 1=normal (up) / 2=abnormal (down or unknown)."
     },
     {
       "metric_group": "Hardware Status",
@@ -53,12 +53,12 @@
       "query": "max(snmp_device_cellular_connected{instance_type='router', __$labels__}) by (instance_id)",
       "display_name": "Cellular Connection",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"已连接\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"未连接\",\"id\":0,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Cellular connection status from INHAND-WAN3G-MIB ih3gConnectionStatus, normalised to 1=connected / 0=not connected (simCardFailure through systemFailed). unknown is dropped."
+      "description": "Cellular connection status from INHAND-WAN3G-MIB ih3gConnectionStatus, normalised to 1=normal (connected) / 2=abnormal (unknown and 2..10)."
     },
     {
       "metric_group": "Hardware Status",

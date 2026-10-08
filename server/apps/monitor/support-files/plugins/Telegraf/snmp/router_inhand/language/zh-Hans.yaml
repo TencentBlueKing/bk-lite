@@ -149,12 +149,12 @@ monitor_object_metric:
         −50..100）。超出该范围的值会被丢弃。
     device_modem_state:
       name: 调制解调器状态
-      desc: 该指标报告蜂窝调制解调器运行状态（INHAND-WAN3G-MIB ih3gModemState），归一为 1=正常（up）/ 2=异常（down）。unknown
-        不采集。
+      desc: 该指标报告蜂窝调制解调器运行状态（INHAND-WAN3G-MIB ih3gModemState），归一为 1=正常（up）/ 2=异常（down
+        或 unknown）。
     device_cellular_connected:
       name: 蜂窝连接状态
-      desc: 该指标报告蜂窝连接状态（INHAND-WAN3G-MIB ih3gConnectionStatus），归一为 1=已连接 / 0=未连接。unknown
-        不采集。
+      desc: 该指标报告蜂窝连接状态（INHAND-WAN3G-MIB ih3gConnectionStatus），归一为 1=正常（已连接）/ 2=异常（unknown
+        及未连接状态）。
     device_cellular_signal_level:
       name: 蜂窝信号档位
       desc: 该指标报告蜂窝信号 LED 档位（INHAND-WAN3G-MIB ih3gSignalLevel），为原始整数指示，不是 dBm 读数。小于

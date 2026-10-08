@@ -39,12 +39,12 @@
         oid = "1.3.6.1.4.1.36153.2.6.1.1.7.0"
         name = "device_modem_temperature_celsius"
     # ---- 调制解调器状态：ih3gModemState，标量 GET 必须带 .0 ----
-    # OID 1.3.6.1.4.1.36153.2.6.1.1.2.0。up(2)→1，down(3)→2，unknown(1) 及其它丢弃。
+    # OID 1.3.6.1.4.1.36153.2.6.1.1.2.0。up(2)→1，down(3)/unknown(1)→2；其余丢弃。
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.36153.2.6.1.1.2.0"
         name = "device_modem_state"
     # ---- 蜂窝连接状态：ih3gConnectionStatus，标量 GET 必须带 .0；原始字段采集后丢弃 ----
-    # OID 1.3.6.1.4.1.36153.2.6.1.1.5.0。connected(11)→1，2..10→0，unknown(1) 及其它丢弃。
+    # OID 1.3.6.1.4.1.36153.2.6.1.1.5.0。connected(11)→1，unknown(1) 与 2..10→2；其余丢弃。
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.36153.2.6.1.1.5.0"
         name = "connection_status"
@@ -78,7 +78,7 @@ def apply(metric):
     st = f.get("device_modem_state")
     if st == 2 or st == "2":
         f["device_modem_state"] = 1
-    elif st == 3 or st == "3":
+    elif st == 1 or st == "1" or st == 3 or st == "3":
         f["device_modem_state"] = 2
     else:
         f.pop("device_modem_state", None)
@@ -86,8 +86,8 @@ def apply(metric):
     rawn = _num(raw)
     if rawn == 11:
         f["device_cellular_connected"] = 1
-    elif rawn != None and rawn >= 2 and rawn <= 10:
-        f["device_cellular_connected"] = 0
+    elif rawn != None and rawn >= 1 and rawn <= 10:
+        f["device_cellular_connected"] = 2
     sig = _num(f.get("device_cellular_signal_level"))
     if sig == None or sig < 0 or sig > 100:
         f.pop("device_cellular_signal_level", None)

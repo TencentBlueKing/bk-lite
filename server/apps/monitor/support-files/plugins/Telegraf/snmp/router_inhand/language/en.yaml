@@ -226,11 +226,11 @@ monitor_object_metric:
     device_modem_state:
       name: Modem Status
       desc: Cellular modem operational state from INHAND-WAN3G-MIB ih3gModemState,
-        normalised to 1=normal (up) / 2=abnormal (down). unknown is dropped.
+        normalised to 1=normal (up) / 2=abnormal (down or unknown).
     device_cellular_connected:
       name: Cellular Connection
       desc: Cellular connection status from INHAND-WAN3G-MIB ih3gConnectionStatus,
-        normalised to 1=connected / 0=not connected. unknown is dropped.
+        normalised to 1=normal (connected) / 2=abnormal (unknown and disconnected states).
     device_cellular_signal_level:
       name: Cellular Signal Level
       desc: Cellular signal LED level from INHAND-WAN3G-MIB ih3gSignalLevel (raw integer

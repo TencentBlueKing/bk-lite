@@ -33,7 +33,7 @@
       "metric_name": "device_cellular_connected",
       "algorithm": "last_over_time",
       "threshold": [
-        { "level": "warning", "value": 0, "method": "=" }
+        { "level": "warning", "value": 2, "method": "=" }
       ],
       "group_algorithm": "avg"
     }
