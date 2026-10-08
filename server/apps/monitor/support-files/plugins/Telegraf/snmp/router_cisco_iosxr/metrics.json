@@ -109,7 +109,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Operational state of each IOS-XR fan tray from CISCO-ENTITY-FRU-CONTROL-MIB cefcFanTrayOperStatus, normalised to 1=normal (up) / 2=abnormal (down or warning). unknown is dropped."
+      "description": "Operational state of each IOS-XR fan tray from CISCO-ENTITY-FRU-CONTROL-MIB cefcFanTrayOperStatus, normalised to 1=normal (up) / 2=abnormal (unknown, down or warning)."
     },
     {
       "metric_group": "Hardware Status",
@@ -127,7 +127,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Operational state of each IOS-XR power supply from CISCO-ENTITY-FRU-CONTROL-MIB cefcFRUPowerOperStatus on ENTITY-MIB powerSupply entities, normalised to 1=normal (on) / 2=abnormal. offAdmin is dropped."
+      "description": "Operational state of each IOS-XR power supply from CISCO-ENTITY-FRU-CONTROL-MIB cefcFRUPowerOperStatus on ENTITY-MIB powerSupply entities, normalised to 1=normal (on) / 2=abnormal (including offAdmin)."
     },
     {
       "metric_group": "Traffic",
