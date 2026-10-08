@@ -765,6 +765,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /kyland|\bsicom\b|\bkien\b/i, label: 'Kyland', icon: 'mm-kyland_kyland' },
   { match: /\beltek\b|smartpack/i, label: 'Eltek' },
   { match: /lantech/i, label: 'Lantech', icon: 'mm-lantech_lantech' },
+  { match: /\bakcp\b|sensorprobe|securityprobe/i, label: 'AKCP' },
   { match: /\bwago\b|852-?1305/i, label: 'WAGO', icon: 'mm-wago_wago' },
   { match: /weidmuller|weidmueller/i, label: 'Weidmuller', icon: 'mm-weidmuller_weidmuller' },
   { match: /loop[\s_-]*telecom|\bam3440\b/i, label: 'Loop Telecom' },
