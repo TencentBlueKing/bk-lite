@@ -900,6 +900,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /panduit/i, label: 'Panduit', icon: 'mm-panduit_panduit' },
   { match: /dataprobe|iboot/i, label: 'Dataprobe', icon: 'mm-dataprobe_dataprobe' },
   { match: /apc|schneider\s*electric|powernet/i, label: 'APC', icon: 'mm-apc_apc' },
+  { match: /cyber\s*power/i, label: 'CyberPower' },
   { match: /eaton|powerware|xups/i, label: 'Eaton', icon: 'mm-eaton_eaton' },
   { match: /papouch/i, label: 'Papouch' },
   { match: /tripp\s*lite|poweralert|webcardlx|snmpwebcard/i, label: 'Tripp Lite', icon: 'mm-tripplite_tripplite' },

@@ -96,6 +96,7 @@ export const useNetworkServiceConfig = () => {
       'NetworkService Panduit iPDU SNMP': 'snmp_panduit',
       'NetworkService Wiesemann Theis Web-Thermo-Hygrometer SNMP': 'snmp_wut',
       'NetworkService APC UPS PDU Environmental SNMP': 'snmp_apc',
+      'NetworkService CyberPower ePDU2 SNMP': 'snmp_cyberpower',
       'NetworkService Eaton UPS PDU Environmental SNMP': 'snmp_eaton',
       'NetworkService Papouch TH2E SNMP': 'snmp_papouch',
       'NetworkService Tripp Lite UPS PDU Environmental SNMP': 'snmp_tripplite',
