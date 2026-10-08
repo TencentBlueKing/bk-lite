@@ -1,0 +1,52 @@
+NetworkService Emerson NetSure SNMP:
+  name: Emerson NetSure (Telegraf)
+  desc: SNMP monitoring template for Emerson NetSure / EES DC power systems (NETSURE-MIB-004-A, enterprise
+    PEN 6302). It reports uptime, power system alarm status, system voltage and current, battery voltage
+    and capacity, temperature, and interface traffic.
+monitor_object:
+  NetworkService: NetworkService
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  NetworkService:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
+        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
+        or failures.
+    system_state:
+      name: Power System Status
+      desc: Highest active alarm level of the power system. Abnormal means a warning or higher alarm is
+        active.
+    system_voltage_volts:
+      name: System Voltage
+      desc: DC system voltage in volts.
+    system_current_amps:
+      name: System Current (A)
+      desc: Total DC system load current in amperes.
+    battery_voltage_volts:
+      name: Battery Voltage
+      desc: Battery voltage in volts.
+    battery_capacity_percent:
+      name: Battery Capacity
+      desc: Remaining battery capacity in percent. A drop indicates the batteries are discharging.
+    env_temperature_celsius:
+      name: Temperature
+      desc: Temperature of each temperature route in degrees Celsius.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of inbound bytes received over the past 5 minutes,
+        measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit
+        counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of outbound bytes sent over the past 5 minutes, measured
+        in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifOutOctets on high-speed ports, keeping the rate accurate.
+monitor_object_metric_group:
+  NetworkService:
+    Base: Base
+    Traffic: Traffic
+    Power: Power
+    Temperature: Temperature
+    Hardware Status: Hardware Status
