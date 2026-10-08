@@ -75,6 +75,7 @@ export const useNetworkServiceConfig = () => {
       'NetworkService ZDNS SNMP': 'snmp_zdns',
       'NetworkService Jacarta interSeptor Pro SNMP': 'snmp_jacarta',
       'NetworkService BlueCat SNMP': 'snmp_bluecat',
+      'NetworkService Raritan PDU SNMP': 'snmp_raritan_pdu',
       'NetworkService Meinberg LANTIME SNMP': 'snmp_meinberg',
       'NetworkService Endace SNMP': 'snmp_endace',
       'NetworkService AKCP sensorProbe SNMP': 'snmp_akcp',
