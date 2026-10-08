@@ -72,6 +72,7 @@ export const useNetworkServiceConfig = () => {
       'NetworkService Infoblox SNMP': 'snmp_infoblox',
       'NetworkService COMET WebSensor SNMP': 'snmp_comet',
       'NetworkService Gigamon SNMP': 'snmp_gigamon',
+      'NetworkService GenieATM SNMP': 'snmp_genieatm',
       'NetworkService Accedian SNMP': 'snmp_accedian',
       'NetworkService ZDNS SNMP': 'snmp_zdns',
       'NetworkService Jacarta interSeptor Pro SNMP': 'snmp_jacarta',
