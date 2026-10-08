@@ -844,6 +844,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /ascom|ip-?dect/i, label: 'Ascom', icon: 'mm-ascom_ascom' },
   { match: /zmtel|greenpacket/i, label: 'Zmtel' },
   { match: /parks/i, label: 'Parks', icon: 'mm-parks_parks' },
+  { match: /\bpbn\b|pacific broadband/i, label: 'PBN' },
   { match: /ubiquiti|ubnt|edgeswitch/i, label: 'Ubiquiti', icon: 'mm-ubiquiti_ubiquiti' },
   { match: /ruijie|reyee|\brg-?nos\b/i, label: 'Ruijie', icon: 'mm-ruijie_ruijie' },
   { match: /\bzte\b|zxr10/i, label: 'ZTE', icon: 'mm-zte_zte' },

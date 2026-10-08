@@ -169,6 +169,7 @@ export const useSwitchConfig = () => {
       'Switch BDCOM SNMP': 'snmp_bdcom',
       'Switch Nokia SNMP': 'snmp_nokia',
       'Switch Parks SNMP': 'snmp_parks',
+      'Switch PBN SNMP': 'snmp_pbn',
       'Switch Ubiquiti SNMP': 'snmp_ubiquiti',
       'Switch Ruijie SNMP': 'snmp_ruijie',
       'Switch ZTE SNMP': 'snmp_zte',
