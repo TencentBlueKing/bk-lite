@@ -789,6 +789,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /ligowave|ligo\s*wave|infinity/i, label: 'LigoWave', icon: 'mm-ligowave_ligowave' },
   { match: /radwin|winlink/i, label: 'Radwin', icon: 'mm-radwin_radwin' },
   { match: /mimosa|\bbfive\b|\bptmp\b/i, label: 'Mimosa', icon: 'mm-mimosa_mimosa' },
+  { match: /\bbats\b|\baats\b/i, label: 'BATS' },
   { match: /phoenix\s*contact|fl\s*switch/i, label: 'Phoenix Contact', icon: 'mm-phoenixcontact_phoenixcontact' },
   { match: /albentia|aerdocsis|wimax/i, label: 'Albentia', icon: 'mm-albentia_albentia' },
   { match: /zdns|zddi|中国互联网研究院/i, label: 'ZDNS', icon: 'mm-zdns_zdns' },
