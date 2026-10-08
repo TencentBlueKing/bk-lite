@@ -74,6 +74,7 @@ export const useTransmissionConfig = () => {
       'Transmission MPB SNMP': 'snmp_mpb',
       'Transmission XKL SNMP': 'snmp_xkl',
       'Transmission Siklu SNMP': 'snmp_siklu',
+      'Transmission Sub10 SNMP': 'snmp_sub10',
       'Transmission 4RF Aprisa SNMP': 'snmp_4rf',
       'Transmission PBI SNMP': 'snmp_pbi',
       'Transmission Viavi SNMP': 'snmp_viavi',
