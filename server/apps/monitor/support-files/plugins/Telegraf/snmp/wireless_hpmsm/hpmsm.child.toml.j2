@@ -104,14 +104,15 @@ def apply(metric):
         avg_val = float(avg_raw)
         if avg_val >= 0:
             f["device_load_average"] = avg_val
+    # RAM 为 Unsigned32 Kb：总量 0<total<4294967295，空闲 0<=free<=total；不以 16 位哨兵丢弃。
     total_kb = f.pop("ram_total_kb", None)
     free_kb = f.pop("ram_free_kb", None)
-    if total_kb != None and not _sentinel(total_kb):
+    if total_kb != None:
         total = int(total_kb)
-        if total > 0:
+        if total > 0 and total < 4294967295:
             total_bytes = total * 1024
             f["device_memory_total"] = total_bytes
-            if free_kb != None and not _sentinel(free_kb):
+            if free_kb != None:
                 free = int(free_kb)
                 if free >= 0 and free <= total:
                     free_bytes = free * 1024
