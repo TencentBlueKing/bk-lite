@@ -75,6 +75,7 @@ export const useTransmissionConfig = () => {
       'Transmission PBI SNMP': 'snmp_pbi',
       'Transmission Viavi SNMP': 'snmp_viavi',
       'Transmission Sycamore SNMP': 'snmp_sycamore',
+      'Transmission Ecreso SNMP': 'snmp_ecreso',
       'Transmission Redline SNMP': 'snmp_redline',
       'Transmission BTI SNMP': 'snmp_bti',
       'Transmission DragonWave SNMP': 'snmp_dragonwave',
