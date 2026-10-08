@@ -4,6 +4,7 @@ from rest_framework import serializers
 from apps.alerts.models.notification_template import NotificationTemplate, NotificationTemplateContent
 from apps.alerts.notification_templates.operation import is_supported_operation_channel
 from apps.alerts.notification_templates.renderer import TemplateValidationError, validate_source
+from apps.alerts.utils.i18n import serializer_message
 from apps.alerts.utils.permission_scope import get_authorized_group_ids, normalize_team_ids
 from apps.core.models.maintainer_info import maintainer_kwargs
 from apps.system_mgmt.models.channel import Channel
@@ -24,7 +25,7 @@ SUBJECT_CHANNEL_TYPES = {"email", "dingtalk_bot", "feishu_bot", "im_notification
 class NotificationTemplateContentSerializer(serializers.ModelSerializer):
     def validate_channel_type(self, value):
         if value not in SUPPORTED_CHANNEL_TYPES:
-            raise serializers.ValidationError("该通知方式暂不支持自定义模板")
+            raise serializers.ValidationError(serializer_message(self, "error.channel_template_unsupported"))
         return value
 
     class Meta:
@@ -51,22 +52,22 @@ class NotificationTemplateSerializer(serializers.ModelSerializer):
         except ValueError as exc:
             raise serializers.ValidationError(str(exc)) from exc
         if len(normalized) > 100:
-            raise serializers.ValidationError("普通模板最多关联 100 个团队")
+            raise serializers.ValidationError(serializer_message(self, "error.template_team_limit"))
         request = self.context.get("request")
         if request and not getattr(request.user, "is_superuser", False):
             authorized = set(get_authorized_group_ids(request))
             if not normalized or not set(normalized).issubset(authorized):
-                raise serializers.ValidationError("team 必须位于当前授权团队范围内")
+                raise serializers.ValidationError(serializer_message(self, "error.team_outside_authorized_scope"))
         elif not normalized:
-            raise serializers.ValidationError("普通模板必须至少关联一个团队")
+            raise serializers.ValidationError(serializer_message(self, "error.template_team_required"))
         return sorted(set(normalized))
 
     def validate_contents(self, value):
         if not value:
-            raise serializers.ValidationError("至少配置一种通知方式")
+            raise serializers.ValidationError(serializer_message(self, "error.template_channel_required"))
         channel_types = [item["channel_type"] for item in value]
         if len(channel_types) != len(set(channel_types)):
-            raise serializers.ValidationError("一种通知方式只能配置一份内容")
+            raise serializers.ValidationError(serializer_message(self, "error.template_channel_unique"))
         return value
 
     def validate(self, attrs):
@@ -81,9 +82,9 @@ class NotificationTemplateSerializer(serializers.ModelSerializer):
             subject = item.get("subject_template", "")
             body = item.get("body_template", "")
             if channel_type in SUBJECT_CHANNEL_TYPES and not subject.strip():
-                errors.append({"channel_type": channel_type, "subject_template": "该通知方式必须配置标题"})
+                errors.append({"channel_type": channel_type, "subject_template": serializer_message(self, "error.channel_subject_required")})
             if not body.strip():
-                errors.append({"channel_type": channel_type, "body_template": "正文不能为空"})
+                errors.append({"channel_type": channel_type, "body_template": serializer_message(self, "error.body_required")})
                 continue
             try:
                 if subject:
@@ -97,20 +98,20 @@ class NotificationTemplateSerializer(serializers.ModelSerializer):
         channel_id = attrs.get("channel_id", getattr(self.instance, "channel_id", None))
         if scope == NotificationTemplate.SCOPE_ALERT_OPERATION:
             if not self.instance or not self.instance.is_alert_operation:
-                raise serializers.ValidationError({"scope": "告警操作通知由系统内置，不允许自行创建"})
+                raise serializers.ValidationError({"scope": serializer_message(self, "error.operation_template_builtin_only")})
             if len(contents or []) != 1:
-                raise serializers.ValidationError({"contents": "告警操作通知只能配置一个渠道"})
+                raise serializers.ValidationError({"contents": serializer_message(self, "error.operation_template_single_channel")})
             if not channel_id:
-                raise serializers.ValidationError({"channel_id": "请选择一个通知渠道"})
+                raise serializers.ValidationError({"channel_id": serializer_message(self, "error.channel_required")})
             channel = Channel.objects.filter(pk=channel_id).first()
             if not channel or not is_supported_operation_channel(channel):
-                raise serializers.ValidationError({"channel_id": "通知渠道不存在或不支持告警模板"})
+                raise serializers.ValidationError({"channel_id": serializer_message(self, "error.channel_missing_or_unsupported")})
             next_team = attrs.get("team", self.instance.team)
             channel_teams = {str(item) for item in (channel.team or [])}
             if not channel_teams.intersection(str(item) for item in next_team or []):
-                raise serializers.ValidationError({"channel_id": "通知渠道不属于当前团队"})
+                raise serializers.ValidationError({"channel_id": serializer_message(self, "error.channel_wrong_team")})
             if contents[0]["channel_type"] != channel.channel_type:
-                raise serializers.ValidationError({"contents": "模板格式与所选通知渠道不一致"})
+                raise serializers.ValidationError({"contents": serializer_message(self, "error.template_channel_mismatch")})
             immutable_fields = {
                 "name": self.instance.name,
                 "description": self.instance.description,
@@ -119,21 +120,23 @@ class NotificationTemplateSerializer(serializers.ModelSerializer):
             }
             for field, current_value in immutable_fields.items():
                 if field in attrs and attrs[field] != current_value:
-                    raise serializers.ValidationError({field: "内置告警操作模板只允许修改渠道和内容"})
+                    raise serializers.ValidationError({field: serializer_message(self, "error.builtin_operation_template_limited")})
         elif channel_id is not None:
-            raise serializers.ValidationError({"channel_id": "普通模板组不绑定具体通知渠道"})
+            raise serializers.ValidationError({"channel_id": serializer_message(self, "error.plain_template_no_channel")})
 
         if self.instance and self.instance.references.exists():
             if scope != self.instance.scope:
-                raise serializers.ValidationError({"scope": "模板正在使用，不能修改适用范围"})
+                raise serializers.ValidationError({"scope": serializer_message(self, "error.template_scope_locked")})
             next_team = attrs.get("team", self.instance.team)
             if next_team != self.instance.team:
-                raise serializers.ValidationError({"team": "模板正在使用，不能修改关联团队"})
+                raise serializers.ValidationError({"team": serializer_message(self, "error.template_team_locked")})
             next_types = {item["channel_type"] for item in contents or []}
             current_types = set(self.instance.contents.values_list("channel_type", flat=True))
             removed_types = sorted(current_types - next_types)
             if removed_types:
-                raise serializers.ValidationError({"contents": f"模板正在使用，不能删除通知方式: {', '.join(removed_types)}"})
+                raise serializers.ValidationError(
+                    {"contents": serializer_message(self, "error.template_channel_removal_locked", types=", ".join(removed_types))}
+                )
 
         name = attrs.get("name", getattr(self.instance, "name", ""))
         team = attrs.get("team", getattr(self.instance, "team", []))
@@ -141,7 +144,7 @@ class NotificationTemplateSerializer(serializers.ModelSerializer):
         if self.instance:
             duplicate = duplicate.exclude(pk=self.instance.pk)
         if duplicate.exists():
-            raise serializers.ValidationError({"name": "当前团队已存在同名模板"})
+            raise serializers.ValidationError({"name": serializer_message(self, "error.template_name_exists")})
         return attrs
 
     @transaction.atomic

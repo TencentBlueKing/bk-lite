@@ -168,8 +168,8 @@ const FieldBindingTable: React.FC<FieldBindingTableProps> = ({
               title={
                 <div>
                   <div>{t('settings.actionParamTriggerEventTip')}</div>
-                  {ACTION_TRIGGER_EVENTS.map(({ value, label }) => (
-                    <div key={value}>{`${label} → ${value}`}</div>
+                  {ACTION_TRIGGER_EVENTS.map(({ value, labelKey }) => (
+                    <div key={value}>{`${t(labelKey)} → ${value}`}</div>
                   ))}
                   <div>{t('settings.actionParamTriggerEventManual')}</div>
                 </div>
