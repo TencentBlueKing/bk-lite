@@ -1209,6 +1209,15 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_netelastic",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_netmodule",
       "capabilities": [
         "uptime",

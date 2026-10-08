@@ -90,6 +90,7 @@ export const useRouterConfig = () => {
       'Router Avici SNMP': 'snmp_avici',
       'Router Unisphere SNMP': 'snmp_unisphere',
       'Router 6WIND VSR SNMP': 'snmp_6wind',
+      'Router NetElastic SNMP': 'snmp_netelastic',
       'Router Robustel SNMP': 'snmp_robustel',
       'Router Milesight SNMP': 'snmp_milesight',
       'Router GE MDS Orbit SNMP': 'snmp_ge_mds',
