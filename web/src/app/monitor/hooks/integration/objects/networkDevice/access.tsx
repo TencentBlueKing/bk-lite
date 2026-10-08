@@ -64,6 +64,7 @@ export const useAccessConfig = () => {
       'Access Nokia ISAM SNMP': 'snmp_nokia_isam',
       'Access Raisecom SNMP': 'snmp_raisecom',
       'Access PacketFront SNMP': 'snmp_packetfront',
+      'Access Furukawa OLT SNMP': 'snmp_furukawa_olt',
       'Access C-Data SNMP': 'snmp_cdata',
       'Access Casa Systems SNMP': 'snmp_casa',
       'Access Loop Telecom SNMP': 'snmp_loop_telecom',

@@ -859,6 +859,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /cnos|lenovo|thinksystem|\bne[0-9]{4}\b/i, label: 'Lenovo CNOS', icon: 'mm-lenovocnos_lenovocnos' },
   { match: /fortiswitch|fsw|fortinet.*switch/i, label: 'FortiSwitch', icon: 'mm-fortiswitch_fortiswitch' },
   { match: /fiberhome|烽火|\bwri\b/i, label: 'FiberHome', icon: 'mm-fiberhome_fiberhome' },
+  { match: /furukawa|\bfelolt/i, label: 'Furukawa' },
   { match: /\bh3c\b|comware|hh3c/i, label: 'H3C', icon: 'mm-h3c_h3c' },
   { match: /hirschmann|belden|\brs[234]0\b|greyhound/i, label: 'Hirschmann', icon: 'mm-hirschmann_hirschmann' },
   { match: /3com|a3com/i, label: '3Com', icon: 'mm-3com_3com' },
