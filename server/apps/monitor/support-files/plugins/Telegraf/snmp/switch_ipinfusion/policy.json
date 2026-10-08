@@ -44,7 +44,7 @@
     {
       "name": "IP Infusion交换机风扇异常",
       "alert_name": "交换机${resource_name} 风扇 ${metric__index} 状态异常",
-      "description": "监控 IP Infusion OcNOS 各风扇运行状态（CMM-CHASSIS-MIB cmmFanTable cmmFanStatus，running=正常，notpresent/faulty/stalled/unknown=异常），当风扇处于异常状态时触发告警，散热故障可能迅速导致过热。",
+      "description": "监控 IP Infusion OcNOS 各风扇运行状态（CMM-CHASSIS-MIB cmmFanTable cmmFanStatus，running 与 notpresent=正常，faulty/stalled/unknown=异常），当风扇处于异常状态时触发告警，散热故障可能迅速导致过热。",
       "metric_name": "device_fan_state",
       "algorithm": "last_over_time",
       "threshold": [
@@ -55,7 +55,7 @@
     {
       "name": "IP Infusion交换机电源异常",
       "alert_name": "交换机${resource_name} 电源 ${metric__index} 状态异常",
-      "description": "监控 IP Infusion OcNOS 各电源模块运行状态（CMM-CHASSIS-MIB cmmSysPowerSupplyTable cmmSysPowerSupplyOperStatus，running=正常，notpresent/faulty/unknown=异常），当电源处于异常状态时触发告警，提示供电冗余缺失或硬件故障。",
+      "description": "监控 IP Infusion OcNOS 各电源模块运行状态（CMM-CHASSIS-MIB cmmSysPowerSupplyTable cmmSysPowerSupplyOperStatus，running 与 notpresent=正常，faulty/unknown=异常），当电源处于异常状态时触发告警，提示供电冗余缺失或硬件故障。",
       "metric_name": "device_psu_state",
       "algorithm": "last_over_time",
       "threshold": [

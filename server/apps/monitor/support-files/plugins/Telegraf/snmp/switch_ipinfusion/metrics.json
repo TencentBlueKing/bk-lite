@@ -130,7 +130,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Operational state of each OcNOS fan from CMM-CHASSIS-MIB cmmFanStatus, normalised to 1=normal (running) / 2=abnormal (notpresent, faulty, stalled, or unknown). Values not defined in the MIB enumeration are dropped."
+      "description": "Operational state of each OcNOS fan from CMM-CHASSIS-MIB cmmFanStatus, normalised to 1=normal (running or notpresent) / 2=abnormal (faulty, stalled, or unknown). Values not defined in the MIB enumeration are dropped."
     },
     {
       "metric_group": "Hardware Status",
@@ -148,7 +148,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Operational state of each OcNOS power supply from CMM-CHASSIS-MIB cmmSysPowerSupplyOperStatus, normalised to 1=normal (running) / 2=abnormal (notpresent, faulty, or unknown). Values not defined in the MIB enumeration are dropped."
+      "description": "Operational state of each OcNOS power supply from CMM-CHASSIS-MIB cmmSysPowerSupplyOperStatus, normalised to 1=normal (running or notpresent) / 2=abnormal (faulty or unknown). Values not defined in the MIB enumeration are dropped."
     },
     {
       "metric_group": "Temperature",
