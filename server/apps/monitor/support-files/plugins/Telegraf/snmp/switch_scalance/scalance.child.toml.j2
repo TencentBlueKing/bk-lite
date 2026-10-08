@@ -95,14 +95,12 @@
     namepass = ["device_temperature"]
     source = '''
 def apply(metric):
-    present = metric.fields.get("present")
+    # 弹出 present，但不以其过滤；status invalid(4)/initial(5) 丢弃；温度按 -40..125 单次范围校验。
     status = metric.fields.get("status")
     if "present" in metric.fields:
         metric.fields.pop("present")
     if "status" in metric.fields:
         metric.fields.pop("status")
-    if present != 1 and present != "1":
-        return None
     if status == 4 or status == "4" or status == 5 or status == "5":
         return None
     raw = metric.fields.get("celsius")
@@ -114,8 +112,6 @@ def apply(metric):
     else:
         return None
     if val < -40 or val > 125:
-        return None
-    if val == 65535 or val == 65534 or val == -1 or val == 2147483647 or val == -2147483648 or val == 4294967295:
         return None
     metric.fields["celsius"] = val
     return metric
