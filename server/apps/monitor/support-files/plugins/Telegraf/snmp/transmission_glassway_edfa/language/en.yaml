@@ -1,0 +1,48 @@
+Transmission Glassway EDFA SNMP:
+  name: Glassway EDFA (Telegraf)
+  desc: SNMP monitoring template for NSCRTV HFC optical amplifiers such as Glassway EDFA / EYDFA (enterprise
+    PEN 17409). It reports uptime, NE and slot internal temperatures, pump laser temperature, DC power
+    supply voltage, and interface traffic.
+monitor_object:
+  Transmission: Transmission
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Transmission:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
+        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
+        or failures.
+    device_temperature_celsius:
+      name: NE Internal Temperature
+      desc: Internal temperature of the network element in degrees Celsius. Persistently high values may
+        indicate poor cooling or high ambient temperature.
+    device_slot_temperature_celsius:
+      name: Slot Temperature
+      desc: Internal temperature of each device slot in degrees Celsius. High values may indicate module
+        cooling problems or overload.
+    device_pump_temperature_celsius:
+      name: Pump Laser Temperature
+      desc: Temperature of each optical amplifier pump laser in degrees Celsius. Drift away from the normal
+        regulated value may indicate a TEC or pump laser problem.
+    device_dc_power_voltage:
+      name: DC Power Supply Voltage
+      desc: Output voltage of each internal DC power supply in volts. Abnormal values may indicate a power
+        supply fault.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured
+        in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in
+        bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifOutOctets on high-speed ports, keeping the rate accurate.
+monitor_object_metric_group:
+  Transmission:
+    Base: Base
+    Traffic: Traffic
+    Temperature: Temperature
+    Hardware Status: Hardware Status

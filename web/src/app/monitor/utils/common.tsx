@@ -905,6 +905,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /saf\s*tehnika|saftehnika|integra-[a-z0-9]+/i, label: 'SAF Tehnika', icon: 'mm-saftehnika_saftehnika' },
   { match: /\bmrv\b|optidriver|in-?reach/i, label: 'MRV', icon: 'mm-mrv_mrv' },
   { match: /marconi/i, label: 'Marconi', icon: 'mm-marconi_marconi' },
+  { match: /glassway|nscrtv|\bedfa\b|\beydfa\b/i, label: 'Glassway' },
   { match: /alcoma/i, label: 'Alcoma', icon: 'mm-alcoma_alcoma' },
   { match: /\bsiae\b|microelettronica/i, label: 'SIAE Microelettronica', icon: 'mm-siae_siae' },
   { match: /packetlight|packet\s*light|pl-[0-9a-z-]+/i, label: 'PacketLight', icon: 'mm-packetlight_packetlight' },
