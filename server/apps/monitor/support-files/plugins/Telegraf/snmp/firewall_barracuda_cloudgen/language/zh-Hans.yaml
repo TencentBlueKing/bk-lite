@@ -1,6 +1,6 @@
 Firewall Barracuda CloudGen SNMP:
   name: Barracuda CloudGen（Telegraf）
-  desc: 面向 Barracuda CloudGen Firewall F 系列硬件（PHION-MIB，企业号 PEN 10704）的 SNMP 监控模板，可采集运行时长、硬件传感器温度、风扇转速、电压、电源状态、接口流量。
+  desc: 面向 Barracuda CloudGen Firewall F 系列硬件（PHION-MIB，企业号 PEN 10704）的 SNMP 监控模板，可采集运行时长、硬件传感器温度、风扇转速、电源状态、接口流量。
 monitor_object:
   Firewall: 防火墙
 monitor_object_type:
@@ -16,9 +16,6 @@ monitor_object_metric:
     device_fan_speed:
       name: 风扇转速
       desc: 各风扇的转速，单位为 RPM。转速骤降或为 0 可能表示风扇故障或堵转。
-    device_voltage_volts:
-      name: 电压
-      desc: 各电压传感器的读数，单位为伏。偏离标称电压可能表示供电异常。
     device_psu_state:
       name: 电源状态
       desc: 各电源模块的状态，统一归一为 1（正常）/ 2（异常）。异常表示电源故障或失去输入。

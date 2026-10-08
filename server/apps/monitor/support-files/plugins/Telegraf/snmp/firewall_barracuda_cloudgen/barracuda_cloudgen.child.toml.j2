@@ -50,12 +50,11 @@
         name = "value"
 # ---- CPU/内存使用率：PHION-MIB 没有整机利用率对象，不采集（boxServices 是服务运行状态，不能当利用率）。----
 
-# ---- 按 sensor_type 拆成四类，sensor 标签保留：
+# ---- 按 sensor_type 拆成三类，sensor 标签保留：
 # ----   temperature(2)：千分之一摄氏度 → device_temperature.celsius（÷1000），须在 -50~150 ℃；
 # ----   fan(1)：转速 RPM → device_fan.speed，须为 0~50000；
-# ----   voltage(0)：毫伏 → device_voltage.volts（÷1000），须为非 0 且绝对值不超过 100 V；
-# ----   psu-status(3)：1 正常 → device_psu.state = 1，0 / 2 异常 → 2，其它值丢弃。
-# ---- unknown(-1)、其它类型和无效读数整行丢弃。----
+# ----   psu-status(3)：1 正常 → device_psu.state = 1，0 / 2 / 3 异常 → 2，其它值丢弃。
+# ---- voltage(0)、unknown(-1)、其它类型和无效读数整行丢弃。----
 [[processors.starlark]]
     namepass = ["hw_sensor"]
     source = '''
@@ -74,11 +73,6 @@ def apply(metric):
             return None
         metric.name = "device_fan"
         metric.fields["speed"] = value
-    elif kind == 0:
-        if value == 0 or value < -100000 or value > 100000:
-            return None
-        metric.name = "device_voltage"
-        metric.fields["volts"] = value / 1000.0
     elif kind == 3:
         if value == 1:
             state = 1

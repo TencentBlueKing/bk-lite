@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_barracuda_cloudgen",
   "plugin": "Firewall Barracuda CloudGen SNMP",
-  "plugin_desc": "SNMP monitoring template for Barracuda CloudGen Firewall F-Series hardware (PHION-MIB, enterprise PEN 10704). It reports uptime, hardware sensor temperatures, fan speed, voltages, power supply status, and interface traffic.",
+  "plugin_desc": "SNMP monitoring template for Barracuda CloudGen Firewall F-Series hardware (PHION-MIB, enterprise PEN 10704). It reports uptime, hardware sensor temperatures, fan speed, power supply status, and interface traffic.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_barracuda_cloudgen'}) by (instance_id)",
   "name": "Firewall",
@@ -58,24 +58,6 @@
     },
     {
       "metric_group": "Hardware Status",
-      "name": "device_voltage_volts",
-      "query": "device_voltage_volts{instance_type='firewall', __$labels__}",
-      "display_name": "Voltage",
-      "data_type": "Number",
-      "unit": "volts",
-      "dimensions": [
-        {
-          "name": "sensor",
-          "description": "Voltage sensor name (hwSensorName)"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "Reading of each voltage sensor of the Barracuda CloudGen Firewall in volts, from hwSensorValue rows whose hwSensorType is voltage(0) (millivolt units, divided by 1000). Zero readings are dropped."
-    },
-    {
-      "metric_group": "Hardware Status",
       "name": "device_psu_state",
       "query": "device_psu_state{instance_type='firewall', __$labels__}",
       "display_name": "Power Supply Status",
@@ -90,7 +72,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Status of each power supply of the Barracuda CloudGen Firewall, from hwSensorValue rows whose hwSensorType is psu-status(3): 1 maps to normal (1), 0 and 2 map to abnormal (2), other values are dropped."
+      "description": "Status of each power supply of the Barracuda CloudGen Firewall, from hwSensorValue rows whose hwSensorType is psu-status(3): 1 maps to normal (1), 0, 2 and 3 map to abnormal (2), other values are dropped."
     },
     {
       "metric_group": "Base",
