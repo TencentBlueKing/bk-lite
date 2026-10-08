@@ -69,6 +69,7 @@ export const useTransmissionConfig = () => {
       'Transmission Pan Dacom SNMP': 'snmp_pandacom',
       'Transmission BKTel HFC SNMP': 'snmp_bktel_hfc',
       'Transmission Tachyon SNMP': 'snmp_tachyon',
+      'Transmission MPB SNMP': 'snmp_mpb',
       'Transmission XKL SNMP': 'snmp_xkl',
       'Transmission Siklu SNMP': 'snmp_siklu',
       'Transmission 4RF Aprisa SNMP': 'snmp_4rf',
