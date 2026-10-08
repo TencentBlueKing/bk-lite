@@ -40,7 +40,7 @@
       "query": "max(snmp_lancom_memory_free_mb{instance_type='switch', __$labels__}) by (instance_id)",
       "display_name": "空闲内存（MB）",
       "data_type": "Number",
-      "unit": "none",
+      "unit": "mebibytes",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
