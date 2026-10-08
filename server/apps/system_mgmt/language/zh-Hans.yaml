@@ -190,6 +190,7 @@ app_name:
   patch: 补丁管理
   apm: APM
   playground: Playground
+  workflow-orchestration: 编排中心
 app:
   ops-analysis: 整合运维数据，通过仪表盘、画布方式多维度分析挖掘潜在风险与优化空间，为决策提供数据支撑，助力提升运维质量与业务连续性。
   playground: 用户可以在这里体验相关能力，包括 AIOps 模型测试、智能体使用等。
@@ -203,6 +204,7 @@ app:
   node: 用于集中管理各个云区域下的节点，为各个节点安装各类探针，以便进行监控数据、配置信息、日志等信息的采集
   job: 快速创建并执行作业，统一管理脚本执行、文件分发和定时任务
   patch: 集中管理系统补丁，支持补丁扫描、安装与补丁库维护，帮助持续降低安全风险。
+  workflow-orchestration: 通过可视化流程设计、自动化执行、人工审批与运行追踪，统一编排跨系统运维任务。
 action_type:
   create: 创建
   delete: 删除
@@ -248,6 +250,11 @@ tag:
   patch_scan: 补丁扫描
   patch_install: 补丁安装
   patch_library: 补丁库
+  # workflow-orchestration
+  workflow_design: 流程设计
+  workflow_execution: 流程执行
+  automation: 自动化
+  approval: 人工审批
 # 运营分析数据权限页签。GroupDataRuleViewSet 用 display_name 当根 key 查找。
 "目录": 目录
 "仪表盘": 仪表盘
