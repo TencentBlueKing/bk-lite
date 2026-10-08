@@ -83,6 +83,7 @@ export const useNetworkServiceConfig = () => {
       'NetworkService WTI PDU SNMP': 'snmp_wti_pdu',
       'NetworkService Spectracom SNMP': 'snmp_spectracom',
       'NetworkService Asentria SiteBoss SNMP': 'snmp_asentria',
+      'NetworkService ATEN PE eco PDU SNMP': 'snmp_aten',
       'NetworkService Server Technology Sentry3 SNMP': 'snmp_servertech',
       'NetworkService HW group STE SNMP': 'snmp_hwg_ste',
       'NetworkService Enlogic PDU SNMP': 'snmp_enlogic',
