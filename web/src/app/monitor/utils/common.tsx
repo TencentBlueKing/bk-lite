@@ -856,6 +856,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /innovaphone/i, label: 'Innovaphone', icon: 'mm-innovaphone_innovaphone' },
   { match: /mitel|mivoice|3300\s*icp/i, label: 'Mitel', icon: 'mm-mitel_mitel' },
   { match: /polycom|\bpoly\s*(phone|lens)\b/i, label: 'Polycom', icon: 'mm-polycom_polycom' },
+  { match: /\bsnom\b/i, label: 'Snom' },
   { match: /yeastar/i, label: 'Yeastar', icon: 'mm-yeastar_yeastar' },
   { match: /zenitel|vingtor|stentofon/i, label: 'Zenitel', icon: 'mm-zenitel_zenitel' },
   { match: /sangoma|vega/i, label: 'Sangoma Vega', icon: 'mm-sangoma_sangoma' },

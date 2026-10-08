@@ -60,6 +60,7 @@ export const useVoiceGatewayConfig = () => {
       'VoiceGateway Patton SNMP': 'snmp_patton',
       'VoiceGateway Innovaphone SNMP': 'snmp_innovaphone',
       'VoiceGateway Mitel SNMP': 'snmp_mitel',
+      'VoiceGateway Snom SNMP': 'snmp_snom',
       'VoiceGateway Polycom SNMP': 'snmp_polycom',
       'VoiceGateway Yeastar SNMP': 'snmp_yeastar',
       'VoiceGateway Zenitel SNMP': 'snmp_zenitel',
