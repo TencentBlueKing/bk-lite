@@ -21,7 +21,7 @@ monitor_object_metric:
       desc: 该指标报告网关当前已登录的 Web 用户数量。跟踪活动会话数有助于容量规划与发现异常连接激增。
     device_temperature_state:
       name: 温度传感器状态
-      desc: 该指标报告设备各硬件温度传感器的状态，已归一化为 1=正常、2=异常。非正常状态表示温度越限或传感器故障，需及时排查。
+      desc: 该指标报告设备机箱级温度健康状态，已归一化为 1=正常、2=异常。非正常状态表示温度越限或传感器故障，需及时排查。
     device_fan_state:
       name: 风扇状态
       desc: 该指标报告设备各风扇传感器的运行状态，已归一化为 1=正常、2=异常。非正常状态表示散热故障，可能迅速导致设备过热。
@@ -85,7 +85,7 @@ monitor_object_metric:
         VPN 解密流量负载与异常波动。
     device_cpu_usage:
       name: CPU 使用率
-      desc: 该指标报告 FortiGate 防火墙整体 CPU 使用率（FORTINET-FORTIGATE-MIB fgSysCpuUsage）。持续高
+      desc: 该指标报告各处理器 CPU 使用率均值（HOST-RESOURCES-MIB hrProcessorLoad）。持续高
         CPU 可能意味着流量检测负载过重、攻击活动或控制平面瓶颈。
     device_memory_usage:
       name: 内存使用率

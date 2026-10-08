@@ -26,7 +26,7 @@ monitor_object_metric:
         session count helps capacity planning and detecting abnormal connection spikes.
     device_temperature_state:
       name: Temperature Sensor Status
-      desc: Status of each hardware temperature sensor, normalized so that 1 is normal
+      desc: Chassis-level temperature health status, normalized so that 1 is normal
         and 2 is abnormal. A non-normal state indicates an out-of-range temperature
         or a sensor fault and should be investigated.
     device_fan_state:
@@ -125,8 +125,8 @@ monitor_object_metric:
         for observing VPN decryption load and anomalous spikes.
     device_cpu_usage:
       name: CPU Usage
-      desc: This metric reports the overall CPU utilization of the FortiGate firewall
-        (FORTINET-FORTIGATE-MIB fgSysCpuUsage). Sustained high CPU usage may indicate
+      desc: This metric reports the average CPU utilization across processors
+        (HOST-RESOURCES-MIB hrProcessorLoad). Sustained high CPU usage may indicate
         heavy traffic inspection load, attack activity or a control-plane bottleneck.
     device_memory_usage:
       name: Memory Usage
