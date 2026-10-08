@@ -1,15 +1,29 @@
 """脚本库视图测试（CRUD + 高危命令拦截 + 批量删除）"""
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
 from apps.job_mgmt.constants import DangerousLevel
 from apps.job_mgmt.models import DangerousRule, Script
+from apps.job_mgmt.serializers.script import ScriptListSerializer
 
 pytestmark = [pytest.mark.unit, pytest.mark.django_db]
 
 URL = "/api/v1/job_mgmt/api/script/"
+
+
+class TestScriptListSerializer:
+    def test_list_includes_created_by_and_team(self):
+        script = Script.objects.create(name="s1", content="echo", script_type="shell", team=[1], created_by="admin")
+        request = SimpleNamespace(user=SimpleNamespace(group_list=[{"id": 1, "name": "Default"}]))
+
+        data = ScriptListSerializer(script, context={"request": request}).data
+
+        assert data["created_by"] == "admin"
+        assert data["team"] == [1]
+        assert data["team_name"] == ["Default"]
 
 
 class TestScriptCrud:

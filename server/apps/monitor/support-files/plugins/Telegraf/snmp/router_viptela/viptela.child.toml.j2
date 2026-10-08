@@ -1,0 +1,133 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_viptela"
+        config_type = "viptela"
+        brand = "viptela"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Cisco SD-WAN 系统状态（CISCO-SDWAN-OPER-SYSTEM-MIB systemStatus = 1.3.6.1.4.1.9.9.1004.1.1）：标量，顶层 field 带 .0 ----
+    # systemStatusCpuUser .14.0 / CpuSystem .15.0 / CpuIdle .16.0：SYNTAX String（如 "2.51"），下方 starlark 转数值。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9.9.1004.1.1.14.0"
+        name = "cpu_user_str"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9.9.1004.1.1.15.0"
+        name = "cpu_system_str"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9.9.1004.1.1.16.0"
+        name = "cpu_idle_str"
+    # systemStatusMemTotal .17.0 / MemUsed .18.0 / MemFree .19.0：Counter64，单位 KiB，下方 starlark ×1024 为字节。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9.9.1004.1.1.17.0"
+        name = "mem_total_kib"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9.9.1004.1.1.18.0"
+        name = "mem_used_kib"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9.9.1004.1.1.19.0"
+        name = "mem_free_kib"
+    # ---- 旧版 Viptela 系统状态（VIPTELA-OPER-SYSTEM systemStatus = 1.3.6.1.4.1.41916.11.1）：同叶号；内存为 ConfdString ----
+    # 仅在上方 Cisco SD-WAN 树无响应时由 starlark 采用。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.41916.11.1.16.0"
+        name = "legacy_cpu_idle_str"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.41916.11.1.17.0"
+        name = "legacy_mem_total_kib"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.41916.11.1.18.0"
+        name = "legacy_mem_used_kib"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.41916.11.1.19.0"
+        name = "legacy_mem_free_kib"
+# ---- 温度/风扇/电源：OPER-SYSTEM 无机箱传感器对象 → N/A 不采。----
+# ---- 换算：CPU 字符串转数值，使用率 = 100 - idle（idle 缺失时用 user + system）；内存 KiB ×1024，使用率 = used / total × 100。原始字段换算后删除。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def _num(v):
+    if v == None:
+        return None
+    if type(v) == "int" or type(v) == "float":
+        return float(v)
+    s = str(v).strip()
+    if s == "" or s.count(".") > 1:
+        return None
+    body = s
+    if body[0] in ("+", "-"):
+        body = body[1:]
+    if body == "" or body == ".":
+        return None
+    for c in body.elems():
+        if c not in "0123456789.":
+            return None
+    return float(s)
+
+def _pick(metric, primary, legacy):
+    a = _num(metric.fields.pop(primary, None))
+    b = None
+    if legacy != None:
+        b = _num(metric.fields.pop(legacy, None))
+    if a != None:
+        return a
+    return b
+
+def apply(metric):
+    idle = _pick(metric, "cpu_idle_str", "legacy_cpu_idle_str")
+    user = _pick(metric, "cpu_user_str", None)
+    system = _pick(metric, "cpu_system_str", None)
+    usage = None
+    if idle != None:
+        usage = 100.0 - idle
+    elif user != None and system != None:
+        usage = user + system
+    if usage != None:
+        if usage < 0.0:
+            usage = 0.0
+        if usage > 100.0:
+            usage = 100.0
+        metric.fields["device_cpu_usage"] = float(int(usage * 100.0 + 0.5)) / 100.0
+    total = _pick(metric, "mem_total_kib", "legacy_mem_total_kib")
+    used = _pick(metric, "mem_used_kib", "legacy_mem_used_kib")
+    free = _pick(metric, "mem_free_kib", "legacy_mem_free_kib")
+    if total != None:
+        metric.fields["device_memory_total"] = int(total) * 1024
+    if free != None:
+        metric.fields["device_memory_free"] = int(free) * 1024
+    if used == None and total != None and free != None:
+        used = total - free
+    if used != None:
+        metric.fields["device_memory_used"] = int(used) * 1024
+    if used != None and total != None and total > 0:
+        metric.fields["device_memory_usage"] = used * 100.0 / total
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["viptela"]

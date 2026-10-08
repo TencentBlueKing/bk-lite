@@ -54,14 +54,18 @@ export const useVoiceGatewayConfig = () => {
     },
     collectTypes: {
       'VoiceGateway AudioCodes SNMP': 'snmp_audiocodes',
+      'VoiceGateway Fortinet FortiVoice SNMP': 'snmp_fortivoice',
       'VoiceGateway Ribbon SNMP': 'snmp_ribbon',
       'VoiceGateway Acme Packet SNMP': 'snmp_acmepacket',
       'VoiceGateway Patton SNMP': 'snmp_patton',
       'VoiceGateway Innovaphone SNMP': 'snmp_innovaphone',
       'VoiceGateway Mitel SNMP': 'snmp_mitel',
+      'VoiceGateway Snom SNMP': 'snmp_snom',
       'VoiceGateway Polycom SNMP': 'snmp_polycom',
       'VoiceGateway Yeastar SNMP': 'snmp_yeastar',
+      'VoiceGateway Switchvox SNMP': 'snmp_switchvox',
       'VoiceGateway Zenitel SNMP': 'snmp_zenitel',
+      'VoiceGateway MetaSwitch SNMP': 'snmp_metaswitch',
       'VoiceGateway Sangoma Vega SNMP': 'snmp_sangoma',
       'VoiceGateway AddPac SNMP': 'snmp_addpac'
     }

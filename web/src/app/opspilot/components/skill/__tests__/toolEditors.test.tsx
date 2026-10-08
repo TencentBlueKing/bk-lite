@@ -239,6 +239,71 @@ describe('Redis 旧单实例配置兼容', () => {
   });
 });
 
+describe('Active Directory LDAPS 证书校验', () => {
+  const adInstance = {
+    id: 'ad-1',
+    name: 'AD Production',
+    host: 'dc.example.com',
+    port: 636,
+    use_ssl: true,
+    bind_dn: 'CN=svc,DC=example,DC=com',
+    bind_password: 'secret',
+    base_dn: 'DC=example,DC=com',
+  };
+
+  it('默认开启证书校验，并保存去掉首尾空白的自定义 CA', () => {
+    const ref = createRef<SaveHandle>();
+    const onSave = vi.fn<(kwargs: ToolVariable[]) => void>();
+    render(
+      <ActiveDirectoryToolEditor
+        ref={ref}
+        initialKwargs={[{
+          key: 'ad_instances',
+          value: JSON.stringify([{ ...adInstance, ca_cert: ' -----BEGIN CERTIFICATE----- ' }]),
+        }]}
+        onSave={onSave}
+      />,
+    );
+
+    expect(screen.getByText('tool.activedirectory.verifyCert')).toBeTruthy();
+    expect(screen.getByPlaceholderText('tool.activedirectory.caCertPlaceholder')).toBeTruthy();
+
+    let saved = false;
+    act(() => { saved = ref.current?.save() ?? false; });
+
+    expect(saved).toBe(true);
+    const instancesValue = onSave.mock.calls[0][0].find(({ key }) => key === 'ad_instances')?.value;
+    const savedInstances = JSON.parse(String(instancesValue)) as Record<string, unknown>[];
+    expect(savedInstances[0]).toMatchObject({
+      verify_cert: true,
+      ca_cert: '-----BEGIN CERTIFICATE-----',
+    });
+  });
+
+  it('关闭校验后测试连接仍提交 verify_cert，并保留已填写的 CA', async () => {
+    render(
+      <ActiveDirectoryToolEditor
+        ref={createRef<SaveHandle>()}
+        initialKwargs={[{
+          key: 'ad_instances',
+          value: JSON.stringify([{ ...adInstance, verify_cert: false, ca_cert: 'PEM-CA' }]),
+        }]}
+        onSave={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByPlaceholderText('tool.activedirectory.caCertPlaceholder')).toBeNull();
+    fireEvent.click(screen.getByText('tool.activedirectory.testConnection'));
+
+    await waitFor(() => expect(skillApiMocks.testAdConnection).toHaveBeenCalledOnce());
+    expect(skillApiMocks.testAdConnection.mock.calls[0][0]).toMatchObject({
+      verify_cert: false,
+      ca_cert: 'PEM-CA',
+      bind_password: 'secret',
+    });
+  });
+});
+
 describe('连接失败反馈', () => {
   it('连接 API 拒绝时只把当前实例标记为失败', async () => {
     skillApiMocks.testRedisConnection.mockRejectedValueOnce(new Error('connection refused'));

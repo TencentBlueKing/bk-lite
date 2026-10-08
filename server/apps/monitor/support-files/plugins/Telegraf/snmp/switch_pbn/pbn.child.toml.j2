@@ -1,0 +1,50 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_pbn"
+        config_type = "pbn"
+        brand = "pbn"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- NMS-PROCESS-MIB（PEN 11606）nmspmCPUTotalTable 1.3.6.1.4.1.11606.10.9.109.1.1.1：CPU 表，逐行 walk ----
+    # nmspmCPUTotal5min .1.5：CPU 5 分钟忙碌百分比，Gauge32；多 CPU 行时查询侧取平均。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.11606.10.9.109.1.1.1.1.5"
+        name = "usage"
+        conversion = "int"
+    # ---- NMS-MEMORY-POOL-MIB 1.3.6.1.4.1.11606.10.9.48：标量，顶层 field 带 .0 → measurement snmp，查询用 snmp_ 前缀 ----
+    # nmsMemoryPoolUtilization .1.0：内存池利用率，直接%。nmsMemoryPoolTotalMemorySize（.2.0）单位未定义，不采集。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.11606.10.9.48.1.0"
+        name = "device_memory_usage"
+        conversion = "int"

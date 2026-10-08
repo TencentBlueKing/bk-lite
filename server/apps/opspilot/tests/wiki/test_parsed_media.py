@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 from types import SimpleNamespace
-from urllib.parse import unquote
+from urllib.parse import parse_qs, unquote, urlparse
 
+from apps.opspilot.services.skill_channel_chat_service import refresh_history_message_media, serialize_skill_session_messages
 from apps.opspilot.services.wiki import parsed_media_service
 
 
@@ -261,3 +263,100 @@ def test_save_page_media_bytes_is_idempotent(monkeypatch):
     assert first == second
     assert first.startswith("wiki/media/3/pages/")
     assert saved[first] == png
+
+
+def _proxy_query(url: str) -> dict:
+    parsed = urlparse(url if "://" in url else "http://local.invalid" + url)
+    return parse_qs(parsed.query)
+
+
+def _page_locator() -> str:
+    return "wiki/media/8/pages/" + ("ab" * 32) + ".jpg"
+
+
+def test_resign_stored_media_urls_refreshes_expired_signature(monkeypatch):
+    _patch_proxy_secret(monkeypatch)
+    monkeypatch.setattr("django.conf.settings.WEB_BASE_URL", "", raising=False)
+    locator = _page_locator()
+    expired = parsed_media_service.build_media_proxy_url(locator, expires_in=-3600)
+    expired_query = _proxy_query(expired)
+    assert not parsed_media_service.verify_media_proxy_request(locator, expired_query["exp"][0], expired_query["sig"][0])
+    stored = json.dumps(
+        [
+            {
+                "type": "TEXT_MESSAGE_CONTENT",
+                "delta": f"流程图\n\n![堡垒机]({expired})\n\n![审批]({expired})",
+            }
+        ],
+        ensure_ascii=False,
+    )
+    refreshed = parsed_media_service.resign_stored_media_urls(stored)
+    events = json.loads(refreshed)
+    delta = events[0]["delta"]
+    assert delta.startswith("流程图\n\n![堡垒机](")
+    assert delta.endswith(")")
+    urls = parsed_media_service._STORED_MEDIA_PROXY_URL_RE.findall(delta)
+    assert len(urls) == 2
+    for url in urls:
+        query = _proxy_query(url)
+        assert unquote(query["locator"][0]) == locator
+        assert query["sig"][0] != expired_query["sig"][0]
+        assert parsed_media_service.verify_media_proxy_request(locator, query["exp"][0], query["sig"][0])
+
+
+def test_resign_stored_media_urls_keeps_unsafe_and_plain_text(monkeypatch):
+    _patch_proxy_secret(monkeypatch)
+    unsafe = "/api/proxy/opspilot/wiki_mgmt/media/?locator=wiki/media/1/pages/not-safe.png&exp=1&sig=dead"
+    assert parsed_media_service.resign_stored_media_urls(unsafe) == unsafe
+    assert parsed_media_service.resign_stored_media_urls("没有图片") == "没有图片"
+    assert parsed_media_service.resign_stored_media_urls("") == ""
+
+
+def test_serialize_skill_session_messages_resigns_expired_media(monkeypatch):
+    _patch_proxy_secret(monkeypatch)
+    monkeypatch.setattr("django.conf.settings.WEB_BASE_URL", "https://chat.example", raising=False)
+    locator = _page_locator()
+    expired = parsed_media_service.build_media_proxy_url(locator, expires_in=-3600)
+    stored = f"![堡垒机]({expired})"
+    message = SimpleNamespace(id=9, role="assistant", content=stored, created_at=None)
+
+    class _Messages:
+        def order_by(self, *_args):
+            return self
+
+        def __getitem__(self, _item):
+            return [message]
+
+    conversation = SimpleNamespace(session_id="sess-1", channel_id=None, messages=_Messages())
+    rows = serialize_skill_session_messages(conversation)
+    content = rows[0]["conversation_content"]
+    url = parsed_media_service._STORED_MEDIA_PROXY_URL_RE.search(content).group(0)
+    assert url.startswith("/api/proxy/opspilot/wiki_mgmt/media/?")
+    assert "chat.example" not in url
+    query = _proxy_query(url)
+    assert parsed_media_service.verify_media_proxy_request(locator, query["exp"][0], query["sig"][0])
+    assert content.startswith("![堡垒机](") and content.endswith(")")
+
+
+def test_refresh_history_rejoins_media_url_split_across_deltas(monkeypatch):
+    _patch_proxy_secret(monkeypatch)
+    monkeypatch.setattr("django.conf.settings.WEB_BASE_URL", "https://chat.example", raising=False)
+    locator = _page_locator()
+    expired = parsed_media_service.build_media_proxy_url(locator, expires_in=-3600)
+    cut = expired.index("%2Fpages")
+    events = [
+        {"type": "TEXT_MESSAGE_CONTENT", "delta": f"前文\n\n![9. 流程图]({expired[:cut]}"},
+        {"type": "TOOL_CALL_START", "toolCallId": "tool-1", "toolCallName": "search"},
+        {"type": "TEXT_MESSAGE_CONTENT", "delta": f"{expired[cut:]})\n尾部"},
+    ]
+    refreshed = refresh_history_message_media(json.dumps(events, ensure_ascii=False))
+    loaded = json.loads(refreshed)
+    assert loaded[1]["toolCallId"] == "tool-1"
+    joined = "".join(item.get("delta", "") for item in loaded if item.get("type") == "TEXT_MESSAGE_CONTENT")
+    assert joined.startswith("前文\n\n![9. 流程图](")
+    assert joined.endswith(")\n尾部")
+    assert "chat.example" not in joined
+    url = parsed_media_service._STORED_MEDIA_PROXY_URL_RE.search(joined).group(0)
+    query = _proxy_query(url)
+    assert unquote(query["locator"][0]) == locator
+    assert parsed_media_service.verify_media_proxy_request(locator, query["exp"][0], query["sig"][0])

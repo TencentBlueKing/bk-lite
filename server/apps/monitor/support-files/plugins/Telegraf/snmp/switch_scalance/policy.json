@@ -16,6 +16,46 @@
         }
       ],
       "group_algorithm": "avg"
+    },
+    {
+      "name": "SCALANCE交换机温度过高",
+      "alert_name": "交换机${resource_name} 传感器 ${metric__sensor_name} 温度过高",
+      "description": "监控 SCALANCE 工业交换机各温度传感器读数，当持续高于阈值时触发告警，提示散热不良、环境过热或传感器告警。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 60,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "SCALANCE交换机故障信号",
+      "alert_name": "交换机${resource_name} 故障信号异常",
+      "description": "监控 SCALANCE 工业交换机故障指示灯/信号触点状态，当处于故障时触发告警。",
+      "metric_name": "scalance_fault_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

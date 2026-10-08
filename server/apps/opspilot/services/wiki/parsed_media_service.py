@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import re
+from urllib.parse import parse_qs, unquote, urlparse
 
 from django.core.files.base import ContentFile
 from django_minio_backend.models import MinioBackend
@@ -26,6 +27,12 @@ _DATA_URI_IMAGE_RE = re.compile(
 # 稳定 locator（可带 ./ 或 / 前缀；不依赖 alt，避免长描述漏改写）
 _MEDIA_LOCATOR_RE = re.compile(
     r"(?:\.?/)?wiki/media/\d+/(?:\d+|pages)/[a-f0-9]{16,}\.[a-z0-9]+",
+    re.IGNORECASE,
+)
+
+# 已入库的同源媒体代理（相对或绝对）。重签时整段替换，避免只改 query 里的 locator。
+_STORED_MEDIA_PROXY_URL_RE = re.compile(
+    r"(?:https?://[^/\s\"'<>]+)?/api/proxy/opspilot/wiki_mgmt/media/\?[^\s\"'<>)\]]+",
     re.IGNORECASE,
 )
 
@@ -208,6 +215,57 @@ def build_media_proxy_url(locator: str, *, expires_in: int = 7 * 24 * 3600) -> s
     if base:
         return f"{base}{path}"
     return path
+
+
+def locator_from_stored_media_url(url: str) -> str | None:
+    """从已入库的媒体代理 URL 取出 locator。不校验 exp/sig，过期链接仍可重签。"""
+    value = (url or "").strip()
+    if not value:
+        return None
+    if value.startswith("/api/proxy/"):
+        value = "http://local.invalid" + value
+    elif "wiki_mgmt/media" in value and "://" not in value:
+        value = "http://local.invalid" + (value if value.startswith("/") else f"/{value}")
+    parsed = urlparse(value)
+    if "wiki_mgmt/media" not in (parsed.path or ""):
+        return None
+    raw = (parse_qs(parsed.query or "").get("locator") or [None])[0]
+    if not raw:
+        return None
+    locator = _normalize_media_locator(unquote(raw))
+    if not _is_safe_media_locator(locator):
+        return None
+    return locator
+
+
+def history_media_proxy_url(locator: str) -> str:
+    """会话历史用的同源相对地址。浏览器从当前站点加载，不带 WEB_BASE_URL。"""
+    url = build_media_proxy_url(locator)
+    marker = "/api/proxy/opspilot/wiki_mgmt/media/"
+    index = url.find(marker)
+    if index >= 0:
+        return url[index:]
+    return url
+
+
+def resign_stored_media_urls(text: str) -> str:
+    """把正文里的媒体代理 URL 换成当前密钥下的新签名。
+
+    会话历史把签名 URL 原样入库。读取时重签，7 天过期或 SECRET_KEY 轮换后仍能展示。
+    公开代理仍拒绝过期 HMAC。无法识别的链接保持原样。
+    """
+    body = text or ""
+    if "wiki_mgmt/media" not in body:
+        return body
+
+    def repl(match: re.Match) -> str:
+        url = match.group(0)
+        locator = locator_from_stored_media_url(url)
+        if not locator:
+            return url
+        return history_media_proxy_url(locator)
+
+    return _STORED_MEDIA_PROXY_URL_RE.sub(repl, body)
 
 
 def verify_media_proxy_request(locator: str, exp: str | int | None, sig: str | None) -> bool:

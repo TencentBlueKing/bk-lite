@@ -1,0 +1,66 @@
+NetworkService Procera PacketLogic SNMP:
+  name: Procera (Telegraf)
+  desc: "SNMP monitoring template for Procera PacketLogic network-service appliance. It reports uptime, CPU load, BMC temperature, fan speed/state, and interface traffic (enterprise PEN 15397)."
+monitor_object:
+  NetworkService: Network Service
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  NetworkService:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart,
+        derived from sysUpTime. Monitoring uptime helps administrators understand
+        device stability and identify unexpected reboots or failures.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5
+        minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifOutOctets on high-speed ports, keeping the rate accurate.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the
+        entire device over the past 5 minutes, measured in bytes per second, summed
+        across all interfaces from the 64-bit ifHCInOctets counter. It helps administrators
+        obtain an overview of incoming traffic for overall monitoring and capacity
+        planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire
+        device over the past 5 minutes, measured in bytes per second, summed across
+        all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
+        assess sending performance for traffic management and optimization.
+    procera_cpu_load:
+      name: CPU Load
+      desc: PacketLogic packet-processing CPU load from PACKETLOGIC-MIB
+        packetprocessingLoadVal (Unsigned32). The MIB does not specify a unit; this
+        is a raw value in the range 0..4294967294. Out-of-range readings are dropped
+        by the collector. Sustained high values indicate the DPI plane is approaching
+        capacity.
+    device_temperature_celsius:
+      name: Temperature
+      desc: BMC temperature in degrees Celsius. Celsius readings are kept as-is;
+        Fahrenheit and Kelvin are converted and rounded to 0.1. Unknown units and
+        out-of-range values are dropped.
+    device_fan_speed:
+      name: Fan Speed
+      desc: BMC fan rotation speed in RPM. Only rows whose unit is rpm are stored.
+        Empty units, out-of-range speeds and sentinel readings are dropped.
+    device_fan_state:
+      name: Fan Status
+      desc: BMC fan status normalized so ok is healthy and cr/nr/critical/non-recoverable/nc
+        are abnormal. Unknown statuses are dropped.
+monitor_object_metric_group:
+  NetworkService:
+    Base: Base
+    Traffic: Traffic
+    CPU: CPU
+    Temperature: Temperature
+    Hardware Status: Hardware Status

@@ -1,6 +1,6 @@
 VoiceGateway AudioCodes SNMP:
   name: AudioCodes (Telegraf)
-  desc: 面向 AudioCodes 语音网关的 SNMP 监控模板，可采集运行时长、接口流量（基于标准 MIB）。
+  desc: 面向 AudioCodes 语音网关的 SNMP 监控模板，可采集运行时长、接口流量、语音面与数据面 CPU / 内存使用率、板卡温度（企业号 PEN 5003）。
 monitor_object:
   VoiceGateway: 语音网关
 monitor_object_type:
@@ -24,9 +24,21 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: 设备发送总流量速率
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
+    device_cpu_usage:
+      name: 语音面 CPU 使用率
+      desc: AudioCodes 语音网关语音（VoIP）处理器 CPU 使用率（AC-SYSTEM-MIB acSysStateVoIpCpuUtilization），单位百分比。
+    device_data_cpu_usage:
+      name: 数据面 CPU 使用率
+      desc: AudioCodes 语音网关数据面处理器 CPU 使用率（acSysStateDataCpuUtilization），单位百分比；无数据面的机型不上报。
+    device_memory_usage:
+      name: 语音面内存使用率
+      desc: AudioCodes 语音网关语音（VoIP）内存使用率（acSysStateVoIpMemoryUtilization），单位百分比。
+    device_data_memory_usage:
+      name: 数据面内存使用率
+      desc: AudioCodes 语音网关数据面内存使用率（acSysStateDataMemoryUtilization），单位百分比；无数据面的机型不上报。
     device_temperature_celsius:
-      name: 设备温度
-      desc: 语音网关设备温度，单位为摄氏度。用于识别散热异常、风道堵塞或过热风险。
+      name: 板卡温度
+      desc: AudioCodes 语音网关板卡温度（acSysStateTemperature），单位摄氏度，厂商建议不超过 60℃。用于识别散热异常或过热风险。
     device_psu_state:
       name: 电源状态
       desc: 语音网关电源状态，归一后 1 表示正常，2 表示异常。
@@ -34,5 +46,7 @@ monitor_object_metric_group:
   VoiceGateway:
     Base: 基础
     Traffic: 流量
+    CPU: CPU
+    Memory: 内存
     Temperature: 温度
     Hardware Status: 硬件状态

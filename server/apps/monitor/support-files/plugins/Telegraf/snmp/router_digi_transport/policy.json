@@ -1,0 +1,56 @@
+{
+  "object": "Router",
+  "plugin": "Router Digi TransPort SNMP",
+  "templates": [
+    {
+      "name": "Digi TransPort路由器CPU使用率过高",
+      "alert_name": "路由器${resource_name} CPU 使用率过高",
+      "description": "监控 Digi TransPort / Sarian 蜂窝路由器的 CPU 使用率，当持续高于阈值时触发告警，提示可能存在转发过载、VPN/蜂窝链路处理压力或异常流量。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Digi TransPort路由器温度过高",
+      "alert_name": "路由器${resource_name} 温度过高",
+      "description": "监控 Digi TransPort / Sarian 蜂窝路由器的内部温度，当持续高于阈值时触发告警，提示可能存在散热不良或机柜/户外环境温度过高。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 65,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 60,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

@@ -70,8 +70,8 @@
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.2021.4.6.0"
         name = "mem_avail_kb"
-    # ---- Pluribus Netvisor ONE temperature (LM-SENSORS-MIB lmTempSensorsValue 1.3.6.1.4.1.2021.13.16.2.1.3, Gauge32, 单位 mC) ----
-    # 表列按行 walk（table.field 不带 .0），原值写入 device_temperature.celsius；查询侧 ÷1000 换算为 ℃。
+    # ---- Pluribus Netvisor ONE temperature (LM-SENSORS-MIB lmTempSensorsValue 1.3.6.1.4.1.2021.13.16.2.1.3, Gauge32, 按 MIB 定义单位为 mC) ----
+    # 表列按行 walk（table.field 不带 .0），原值写入 device_temperature.celsius；查询侧 ÷1000 换算为 ℃，盘侧 max by instance 取最高温传感器。
     [[inputs.snmp.table]]
         name = "device_temperature"
         inherit_tags = ["source"]

@@ -1,0 +1,46 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission Fibernet XMUX SNMP",
+  "templates": [
+    {
+      "name": "Fibernet XMUX温度过高",
+      "alert_name": "传输设备${resource_name} XMUX ${metric__index} ${metric__sensor} 温度过高",
+      "description": "监控 Fibernet XMUX4+ 光复用器的风扇侧与机箱内温度，当持续高于阈值时触发告警，提示散热异常或环境温度过高。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 55,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Fibernet XMUX电源异常",
+      "alert_name": "传输设备${resource_name} XMUX ${metric__index} ${metric__position} 侧电源异常",
+      "description": "监控 Fibernet XMUX4+ 光复用器左右电源状态，电源断电或状态未知时触发告警，提示供电故障或冗余缺失。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

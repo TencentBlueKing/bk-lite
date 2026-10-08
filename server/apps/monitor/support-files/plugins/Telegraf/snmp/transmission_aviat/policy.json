@@ -1,0 +1,31 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission Aviat SNMP",
+  "templates": [
+    {
+      "name": "Aviat微波接收电平过低",
+      "alert_name": "传输设备${resource_name} 射频 ${metric__name} 接收电平过低",
+      "description": "监控 Aviat 微波电台当前接收电平，持续低于链路设计门限时提示衰落、天线对准偏差或对端发射异常。",
+      "metric_name": "aviat_rx_rsl_current_dbm",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": -75,
+          "method": "<"
+        },
+        {
+          "level": "error",
+          "value": -70,
+          "method": "<"
+        },
+        {
+          "level": "warning",
+          "value": -65,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

@@ -175,12 +175,31 @@ def test_enum_processor_normalizes_psu_empty_as_healthy(toml_text):
     assert "1.3.6.1.4.1.278.107.1.1.3.1.4" in toml_text
 
 
+MEMORY_METRICS = (
+    "device_memory_usage",
+    "device_memory_used",
+    "device_memory_total",
+    "device_memory_free",
+)
+MEMORY_OIDS = {
+    "device_memory_total": "1.3.6.1.4.1.278.107.1.1.5.2.1.2",
+    "device_memory_used": "1.3.6.1.4.1.278.107.1.1.5.2.1.3",
+    "device_memory_free": "1.3.6.1.4.1.278.107.1.1.5.2.1.4",
+    "device_memory_usage": "1.3.6.1.4.1.278.107.1.1.5.2.1.3",
+}
+
+
 @pytest.mark.unit
-def test_no_memory_modelled(metrics):
+def test_no_memory_modelled(metrics, toml_text, policy):
     names = {m["name"] for m in metrics["metrics"]}
-    for absent in ("device_memory_usage", "device_memory_used",
-                   "device_memory_total", "device_memory_free"):
-        assert absent not in names, "APRESIA memory is trap-only OCTET STRING -> N/A"
+    for name in MEMORY_METRICS:
+        assert name in names
+    for name, oid in MEMORY_OIDS.items():
+        assert oid in toml_text, f"{name} must keep explicit DRAM OID {oid}"
+    known = names
+    policy_metrics = {t["metric_name"] for t in policy["templates"]}
+    assert policy_metrics <= known
+    assert "device_memory_usage" in policy_metrics
 
 
 @pytest.mark.unit

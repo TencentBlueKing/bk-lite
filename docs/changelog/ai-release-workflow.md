@@ -270,7 +270,7 @@ Release Month: September 2025
 - `node-manager`：模块名为 `节点管理`。
 - `cmdb`：模块名为 `CMDB`、`cmdb`。
 - `alarm`：模块名为 `告警中心`。
-- `job`：模块名为 `作业管理`。
+- `job`：模块名为 `作业管理`、`作业平台`。
 - `ops-analysis`：模块名为 `运营分析`。
 - `opspilot`：模块名为 `OpsPilot`、`OpsPilot 模块`。
 - `mlops`：模块名为 `MLOps`。

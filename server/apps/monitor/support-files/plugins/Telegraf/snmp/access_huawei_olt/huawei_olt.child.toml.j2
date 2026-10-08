@@ -1,0 +1,148 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_huawei_olt"
+        config_type = "huawei_olt"
+        brand = "huawei_olt"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Huawei SmartAX OLT 板卡：HWMUSA-DEV-MIB hwMusaSlotConfExtTable（1.3.6.1.4.1.2011.2.6.7.1.1.2.1，table.field 不带 .0，索引为 框号.槽位号）----
+    # hwMusaBoardSlotDesc .7 → descr；hwMusaBoardCpuRate .5 / hwMusaBoardRamUseRate .6（-1 或 0~100 %，仅主控板支持，-1 表示取不到）；
+    # hwMusaBoardRamTotal/Used/Free .18/.19/.20（Counter64 字节，0 表示取不到）；hwMusaBoardTemperature .10（℃，0x7FFFFFFF 无效）；
+    # hwMusaBoardPowerInputStatus .17 normal(1)/fault(2)/invalid(3，非电源板)。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.2.6.7.1.1.2.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.2.6.7.1.1.2.1.5"
+        name = "usage"
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.2.6.7.1.1.2.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.2.6.7.1.1.2.1.6"
+        name = "usage"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.2.6.7.1.1.2.1.18"
+        name = "total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.2.6.7.1.1.2.1.19"
+        name = "used"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.2.6.7.1.1.2.1.20"
+        name = "free"
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.2.6.7.1.1.2.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.2.6.7.1.1.2.1.10"
+        name = "celsius"
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.2.6.7.1.1.2.1.7"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.2.6.7.1.1.2.1.17"
+        name = "state"
+# ---- ONU / 光模块等大表未纳入。----
+
+# ---- CPU：-1（取不到，非主控板或状态异常）或超出 0~100 时丢弃。----
+[[processors.starlark]]
+    namepass = ["device_cpu"]
+    source = '''
+def apply(metric):
+    usage = metric.fields.get("usage")
+    if type(usage) not in ["int", "float"] or usage < 0 or usage > 100:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["huawei_olt"]
+
+# ---- 内存：usage 为 -1 或超出 0~100 时丢弃整行；容量字段为 0（取不到）时去掉该字段。----
+[[processors.starlark]]
+    namepass = ["device_memory"]
+    source = '''
+def apply(metric):
+    usage = metric.fields.get("usage")
+    if type(usage) not in ["int", "float"] or usage < 0 or usage > 100:
+        return None
+    for key in ["total", "used", "free"]:
+        value = metric.fields.get(key)
+        if value != None and (type(value) not in ["int", "float"] or value <= 0):
+            metric.fields.pop(key)
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["huawei_olt"]
+
+# ---- 温度：0x7FFFFFFF（无效）或超出 -40~150 ℃ 时丢弃。----
+[[processors.starlark]]
+    namepass = ["device_temperature"]
+    source = '''
+def apply(metric):
+    value = metric.fields.get("celsius")
+    if type(value) not in ["int", "float"] or value < -40 or value > 150:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["huawei_olt"]
+
+# ---- 电源输入：normal(1)→1(正常)，fault(2)→2(异常)；invalid(3，非电源板) 与其它值丢弃。----
+[[processors.starlark]]
+    namepass = ["device_psu"]
+    source = '''
+def apply(metric):
+    state = metric.fields.get("state")
+    if state != 1 and state != 2:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["huawei_olt"]

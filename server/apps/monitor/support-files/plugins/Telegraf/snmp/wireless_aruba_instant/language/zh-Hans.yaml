@@ -1,0 +1,33 @@
+Wireless Aruba Instant SNMP:
+  name: Aruba Instant（Telegraf）
+  desc: 面向 HPE Aruba Instant（IAP）集群的 SNMP 监控模板，对 Virtual Controller 采集，可采集运行时长、各 AP 的 CPU 使用率、内存、AP 状态与接口流量（企业号 PEN 14823）。
+monitor_object:
+  Wireless: 无线设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示 Aruba Instant Virtual Controller 自上次启动以来的运行时间（来自 sysUpTime），可用于识别意外重启或 VC 切换。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: Aruba Instant 集群内各 AP 的 CPU 使用率（AI-AP-MIB aiAPCPUUtilization），每个 AP 一条序列。持续偏高可能影响终端接入与漫游。
+    device_memory_total:
+      name: 内存总量
+      desc: 各 AP 的内存总量，单位字节（AI-AP-MIB aiAPTotalMemory）。
+    device_memory_free:
+      name: 内存空闲量
+      desc: 各 AP 的空闲内存，单位字节（AI-AP-MIB aiAPMemoryFree）。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 各 AP 的内存使用率，按 (总量 - 空闲) / 总量 * 100 计算。内存压力过高可能导致终端关联失败。
+    wireless_ap_state:
+      name: AP 状态
+      desc: Virtual Controller 上各 AP 的状态（AI-AP-MIB aiAPStatus），归一为 1=up、2=down。
+monitor_object_metric_group:
+  Wireless:
+    Base: 基础
+    CPU: CPU
+    Memory: 内存
+    Wireless: 无线

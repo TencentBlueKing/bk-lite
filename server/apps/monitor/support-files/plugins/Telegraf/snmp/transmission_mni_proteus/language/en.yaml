@@ -1,0 +1,43 @@
+Transmission MNI Proteus SNMP:
+  name: MNI Proteus (Telegraf)
+  desc: SNMP monitoring template for Microwave Networks Proteus AMT / MX microwave radios (MNI-PROTEUS-AMT-MIB,
+    enterprise PEN 3323). It reports uptime, RFU temperature, transmit power and received signal level
+    per radio, and interface traffic.
+monitor_object:
+  Transmission: Transmission
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Transmission:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
+        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
+        or failures.
+    device_temperature_celsius:
+      name: RFU Temperature
+      desc: Temperature of each radio frequency unit in degrees Celsius. Persistently high values may
+        indicate direct sunlight or cooling problems.
+    radio_tx_power_dbm:
+      name: TX Power (dBm)
+      desc: Actual transmit power of each radio in dBm.
+    radio_rsl_dbm:
+      name: RSL (dBm)
+      desc: Received signal level of each radio in dBm. A sustained drop may indicate fading, misalignment
+        or an obstructed path.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured
+        in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in
+        bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifOutOctets on high-speed ports, keeping the rate accurate.
+monitor_object_metric_group:
+  Transmission:
+    Base: Base
+    Traffic: Traffic
+    Temperature: Temperature
+    Radio: Radio

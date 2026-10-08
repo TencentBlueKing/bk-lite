@@ -54,20 +54,26 @@ export const useAccessConfig = () => {
     },
     collectTypes: {
       'Access BDCOM SNMP': 'snmp_bdcom',
+      'Access GWD SNMP': 'snmp_gwd',
       'Access V-SOL SNMP': 'snmp_vsolution',
       'Access ARRIS Cadant SNMP': 'snmp_arris',
       'Access FiberHome OLT SNMP': 'snmp_fiberhome_olt',
+      'Access Huawei OLT SNMP': 'snmp_huawei_olt',
       'Access Zhone DZS SNMP': 'snmp_zhone',
       'Access UTStarcom SNMP': 'snmp_utstarcom',
+      'Access Nokia ISAM SNMP': 'snmp_nokia_isam',
       'Access Raisecom SNMP': 'snmp_raisecom',
       'Access PacketFront SNMP': 'snmp_packetfront',
+      'Access Furukawa OLT SNMP': 'snmp_furukawa_olt',
       'Access C-Data SNMP': 'snmp_cdata',
       'Access Casa Systems SNMP': 'snmp_casa',
+      'Access Loop Telecom SNMP': 'snmp_loop_telecom',
       'Access Topvision SNMP': 'snmp_topvision',
       'Access Icotera SNMP': 'snmp_icotera',
       'Access Nateks SNMP': 'snmp_nateks',
       'Access Harmonic SNMP': 'snmp_harmonic',
-      'Access RAD SNMP': 'snmp_rad'
+      'Access RAD SNMP': 'snmp_rad',
+      'Access Intelbras OLT SNMP': 'snmp_intelbras_olt'
     }
   };
 };

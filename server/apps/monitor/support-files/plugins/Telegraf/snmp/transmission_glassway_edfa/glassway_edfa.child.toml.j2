@@ -1,0 +1,109 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_glassway_edfa"
+        config_type = "glassway_edfa"
+        brand = "glassway_edfa"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- NSCRTV HFC 网管公共 MIB（PEN 17409，nscrtvHFCemsTree 1.3.6.1.4.1.17409.1）：commonInternalTemperature 1.3.6.1.4.1.17409.1.3.1.13.0 ----
+    # NE 设备内部温度，INTEGER -128..127 摄氏度；顶层 field 带 .0，落 measurement snmp。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.17409.1.3.1.13.0"
+        name = "ne_temperature_raw"
+    # ---- commonDeviceInfoTable 1.3.6.1.4.1.17409.1.3.3.2.2（INDEX commonDeviceSlot）：commonDeviceInternalTemperature .1.12，-128..127 摄氏度 ----
+    # table.field 不带 .0；index 标签即 commonDeviceSlot。
+    [[inputs.snmp.table]]
+        name = "device_slot_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.17409.1.3.3.2.2.1.12"
+        name = "celsius"
+    # ---- 光放大器 MIB oaIdent 1.3.6.1.4.1.17409.1.11：oaPumpTable .4（INDEX oaPumpIndex），oaPumpTemp .4.1.4，单位 0.1 摄氏度 ----
+    [[inputs.snmp.table]]
+        name = "device_pump_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.17409.1.11.4.1.4"
+        name = "celsius"
+    # ---- oaDCPowerTable .7（INDEX oaDCPowerIndex）：oaDCPowerVoltage .7.1.2，单位 0.1 V；oaDCPowerName .7.1.4 作为标签 ----
+    [[inputs.snmp.table]]
+        name = "device_dc_power"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.17409.1.11.7.1.2"
+        name = "voltage"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.17409.1.11.7.1.4"
+        name = "power_name"
+        is_tag = true
+# ---- CPU/内存/风扇/电源状态：上述 MIB 不提供，不采集。----
+
+# ---- NE 内部温度：整数且在 -128~127 内才输出 device_temperature_celsius（查询带 snmp_ 前缀），原始字段不落库。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    value = metric.fields.pop("ne_temperature_raw", None)
+    if type(value) == "int" and value >= -128 and value <= 127:
+        metric.fields["device_temperature_celsius"] = value
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["glassway_edfa"]
+
+# ---- 槽位温度：整数且在 -128~127 内保留，否则整行丢弃。泵浦温度：0.1 ℃ → ℃（÷10），原始值需为 1~1500 的整数（0 视为未提供）。----
+# ---- 直流电源电压：0.1 V → V（÷10），原始值需为 -32768~32767 的整数。字段无效时整行丢弃。----
+[[processors.starlark]]
+    namepass = ["device_slot_temperature", "device_pump_temperature", "device_dc_power"]
+    source = '''
+def apply(metric):
+    if metric.name == "device_slot_temperature":
+        value = metric.fields.get("celsius")
+        if type(value) != "int" or value < -128 or value > 127:
+            return None
+        return metric
+    if metric.name == "device_pump_temperature":
+        value = metric.fields.get("celsius")
+        if type(value) != "int" or value <= 0 or value > 1500:
+            return None
+        metric.fields["celsius"] = value / 10.0
+        return metric
+    value = metric.fields.get("voltage")
+    if type(value) != "int" or value < -32768 or value > 32767:
+        return None
+    metric.fields["voltage"] = value / 10.0
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["glassway_edfa"]

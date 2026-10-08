@@ -43,6 +43,7 @@ app_name:
   patch: Patch Management
   apm: APM
   playground: Playground
+  workflow-orchestration: Workflow Orchestration
 
 # App descriptions (for built-in apps)
 app:
@@ -59,6 +60,7 @@ app:
   ops-console: Unified operations console for managing and monitoring all operational activities
   job: Quickly create and execute jobs, unified management of script execution, file distribution and scheduled tasks
   patch: Centrally manage system patches with scanning, installation, and patch library maintenance to continuously reduce security risks.
+  workflow-orchestration: Design visual workflows, automate execution, manage human approvals, and track cross-system operations in one place.
 
 # Tag translations (for built-in app tags)
 tag:
@@ -114,3 +116,8 @@ tag:
   patch_scan: Patch Scanning
   patch_install: Patch Installation
   patch_library: Patch Library
+  # workflow-orchestration
+  workflow_design: Workflow Design
+  workflow_execution: Workflow Execution
+  automation: Automation
+  approval: Human Approval

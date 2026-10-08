@@ -35,6 +35,12 @@ from apps.opspilot.services.skill_memory_service import (
     snapshot_pending_messages,
 )
 from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
+from apps.opspilot.services.wiki.parsed_media_service import (
+    _STORED_MEDIA_PROXY_URL_RE,
+    history_media_proxy_url,
+    locator_from_stored_media_url,
+    resign_stored_media_urls,
+)
 from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.prompt_utils import merge_skill_params
 from apps.opspilot.utils.skill_execution_params import resolve_request_tools
@@ -968,6 +974,78 @@ def _owned_skill_conversation(*, session_id: str, external_user_id: str) -> Skil
     return conv
 
 
+def _locate_joined_offset(bounds: list[int], offset: int) -> tuple[int, int]:
+    for index in range(len(bounds) - 1, -1, -1):
+        if offset >= bounds[index]:
+            return index, offset - bounds[index]
+    return 0, 0
+
+
+def refresh_history_message_media(content: str) -> str:
+    """重签历史正文里的知识库图片。
+
+    流式落库会把同一条图片 URL 拆进多个 TEXT_MESSAGE_CONTENT。
+    先按事件顺序拼回正文再重签，并把新链接放回原来的文本片段。
+    """
+    text = content or ""
+    if "wiki_mgmt/media" not in text:
+        return text
+    if not text.lstrip().startswith("["):
+        return resign_stored_media_urls(text)
+    try:
+        events = json.loads(text)
+    except json.JSONDecodeError:
+        return resign_stored_media_urls(text)
+    if not isinstance(events, list):
+        return resign_stored_media_urls(text)
+
+    pieces: list[str] = []
+    owners: list[int] = []
+    for index, event in enumerate(events):
+        if not isinstance(event, dict) or event.get("type") != "TEXT_MESSAGE_CONTENT":
+            continue
+        pieces.append(str(event.get("delta") or ""))
+        owners.append(index)
+    if not pieces:
+        return text
+
+    joined = "".join(pieces)
+    matches = list(_STORED_MEDIA_PROXY_URL_RE.finditer(joined))
+    if not matches:
+        return text
+
+    bounds: list[int] = []
+    cursor = 0
+    for piece in pieces:
+        bounds.append(cursor)
+        cursor += len(piece)
+
+    mutable = list(pieces)
+    changed = False
+    for match in reversed(matches):
+        locator = locator_from_stored_media_url(match.group(0))
+        if not locator:
+            continue
+        fresh = history_media_proxy_url(locator)
+        start_index, start_offset = _locate_joined_offset(bounds, match.start())
+        end_index, end_offset = _locate_joined_offset(bounds, match.end())
+        if start_index == end_index:
+            current = mutable[start_index]
+            mutable[start_index] = current[:start_offset] + fresh + current[end_offset:]
+        else:
+            mutable[start_index] = mutable[start_index][:start_offset] + fresh
+            for middle in range(start_index + 1, end_index):
+                mutable[middle] = ""
+            mutable[end_index] = mutable[end_index][end_offset:]
+        changed = True
+    if not changed:
+        return text
+
+    for piece, event_index in zip(mutable, owners):
+        events[event_index]["delta"] = piece
+    return json.dumps(events, ensure_ascii=False)
+
+
 def serialize_skill_session_messages(conv: SkillConversation) -> list[dict]:
     messages = []
     for msg in conv.messages.order_by("created_at", "id")[:ADMIN_MESSAGE_FETCH_MAX]:
@@ -975,7 +1053,7 @@ def serialize_skill_session_messages(conv: SkillConversation) -> list[dict]:
             {
                 "id": msg.id,
                 "conversation_role": msg.role,
-                "conversation_content": msg.content,
+                "conversation_content": refresh_history_message_media(msg.content or ""),
                 "conversation_time": msg.created_at.isoformat() if msg.created_at else None,
                 "session_id": conv.session_id,
                 "channel_type": conv.channel.channel_type if conv.channel_id else "",

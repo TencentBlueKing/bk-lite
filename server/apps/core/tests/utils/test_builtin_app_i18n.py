@@ -23,6 +23,7 @@ def test_zh_translates_screenshot_app_names():
         "node": "节点管理",
         "opspilot": "OpsPilot",
         "mlops": "MLOps",
+        "workflow-orchestration": "编排中心",
     }
     for name, expected in cases.items():
         app = {"is_build_in": True, "name": name, "display_name": name}

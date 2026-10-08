@@ -23,7 +23,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_bluecat_dns_state",
-      "query": "max(network_service_bluecat_dns_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_network_service_bluecat_dns_state{instance_type='network_service', __$labels__}) by (instance_id)",
       "display_name": "BlueCat DNS Status",
       "data_type": "Enum",
       "unit": "none",
@@ -36,7 +36,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_bluecat_dns_query_success",
-      "query": "rate(network_service_bluecat_dns_query_success{instance_type='network_service', __$labels__}[5m])",
+      "query": "rate(snmp_network_service_bluecat_dns_query_success{instance_type='network_service', __$labels__}[5m])",
       "display_name": "BlueCat DNS Successful Queries",
       "data_type": "Number",
       "unit": "cps",
