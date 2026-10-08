@@ -39,9 +39,11 @@ monitor_object_metric:
         assess sending performance for traffic management and optimization.
     procera_cpu_load:
       name: CPU Load
-      desc: PacketLogic packet-processing CPU load from packetprocessingLoadVal.
-        The MIB does not specify a unit. Out-of-range readings are dropped by the
-        collector. Sustained high values indicate the DPI plane is approaching capacity.
+      desc: PacketLogic packet-processing CPU load from PACKETLOGIC-MIB
+        packetprocessingLoadVal (Unsigned32). The MIB does not specify a unit; this
+        is a raw value in the range 0..4294967294. Out-of-range readings are dropped
+        by the collector. Sustained high values indicate the DPI plane is approaching
+        capacity.
     device_temperature_celsius:
       name: Temperature
       desc: BMC temperature in degrees Celsius. Celsius readings are kept as-is;
