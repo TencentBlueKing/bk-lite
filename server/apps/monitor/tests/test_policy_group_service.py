@@ -1,6 +1,8 @@
 import pytest
 
 from apps.monitor.filters.monitor_policy import exclude_policy_group_rules
+from django_celery_beat.models import CrontabSchedule, PeriodicTask
+
 from apps.monitor.models import (
     CollectConfig,
     Metric,
@@ -11,6 +13,7 @@ from apps.monitor.models import (
     MonitorObject,
     MonitorPlugin,
     MonitorPolicy,
+    PolicyGroupDefault,
     PolicyInstanceBaseline,
     PolicyTemplate,
 )
@@ -377,3 +380,42 @@ def test_join_rejects_instance_outside_group_organization():
 
     with pytest.raises(BaseAppException, match="不属于该策略组的组织"):
         PolicyGroupService.join(instance=host, group=group)
+
+
+def test_delete_group_removes_rule_policies_scan_tasks_and_keeps_declined_members():
+    monitor_object = _object()
+    wmi = _plugin(monitor_object, "WMI")
+    group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="主机默认告警",
+        templates=[_template(monitor_object, wmi, "WMI CPU")],
+    )
+    PolicyGroupService.set_default(group)
+    host = _instance(monitor_object, "web-01", 1)
+    _collect(host, wmi)
+    PolicyGroupService.join(instance=host, group=group)
+    policy = group.rules.get().policy
+    schedule = CrontabSchedule.objects.create(minute="*/5", hour="*", day_of_week="*", day_of_month="*", month_of_year="*")
+    PeriodicTask.objects.create(
+        name=f"scan_policy_task_{policy.id}",
+        task="apps.monitor.tasks.monitor_policy.scan_policy_task",
+        args=f"[{policy.id}]",
+        crontab=schedule,
+    )
+    PolicyInstanceBaseline.objects.create(policy=policy, monitor_instance_id=host.id, metric_instance_id="cpu")
+    alert = MonitorAlert.objects.create(policy_id=policy.id, monitor_instance_id=host.id, status="new", alert_type="alert", content="open")
+
+    PolicyGroupService.delete_group(group, operator="editor")
+
+    assert not MonitorPolicy.objects.filter(id=policy.id).exists()
+    assert not PeriodicTask.objects.filter(name=f"scan_policy_task_{policy.id}").exists()
+    assert not PolicyInstanceBaseline.objects.filter(policy_id=policy.id).exists()
+    alert.refresh_from_db()
+    assert alert.status == "closed"
+    host.policy_group_membership.refresh_from_db()
+    assert host.policy_group_membership.state == "declined"
+    assert host.policy_group_membership.policy_group_id is None
+    pointer = PolicyGroupDefault.objects.get(organization=1, monitor_object=monitor_object)
+    assert pointer.policy_group_id is None
+    assert PolicyGroupService.ensure_default(organization=1, monitor_object=monitor_object) is None

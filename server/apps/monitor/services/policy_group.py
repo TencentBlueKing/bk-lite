@@ -340,11 +340,29 @@ class PolicyGroupService:
     @staticmethod
     def delete_group(group, operator="system"):
         with transaction.atomic():
+            policies = [rule.policy for rule in group.rules.select_related("policy")]
             for membership in list(group.memberships.select_for_update()):
                 if membership.state == PolicyGroupMembership.STATE_MEMBER:
                     PolicyGroupService._detach(membership, operator)
+            for policy in policies:
+                if MonitorPolicy.objects.filter(id=policy.id).exists():
+                    PolicyGroupService._retire_policy(policy, operator)
             PolicyGroupDefault.objects.filter(policy_group=group).update(policy_group=None, updated_by=operator)
             group.delete()
+
+    @staticmethod
+    def _retire_policy(policy, operator):
+        """组内规则对应的是一条真实策略，删除时和策略列表删除走同一套清理。"""
+        from django_celery_beat.models import PeriodicTask
+
+        from apps.monitor.services.policy_baseline import PolicyBaselineService
+
+        PolicyBaselineService(policy).clear()
+        alerts = list(MonitorAlert.objects.filter(policy_id=policy.id, status="new"))
+        PolicyService._mark_new_alerts_closed(alerts, operator, "policy_deleted")
+        PeriodicTask.objects.filter(name=f"scan_policy_task_{policy.id}").delete()
+        PolicyOrganization.objects.filter(policy_id=policy.id).delete()
+        policy.delete()
 
     @staticmethod
     def _close_instance_alerts_for_objects(alerts, operator, reason):
