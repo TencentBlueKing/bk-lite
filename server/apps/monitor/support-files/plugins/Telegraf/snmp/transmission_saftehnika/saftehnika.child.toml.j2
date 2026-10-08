@@ -56,6 +56,25 @@
         oid = "{{ _sys }}.4.9"
         name = "free"
         conversion = "int"
+    # 电源与主板温度（system 组 .4.5 ~ .4.8，Integer32 标量）：顶层 field 带 .0，落 measurement snmp，查询用 snmp_ 前缀。
+    # sysPSUvoltage 单位 mV、sysPSUcurrent 单位 mA、sysPSUpower 单位 mW，查询侧换算为 V / A / W，并丢弃 ≤0 的读数。
+    [[inputs.snmp.field]]
+        oid = "{{ _sys }}.4.5.0"
+        name = "psu_voltage_mv"
+        conversion = "int"
+    [[inputs.snmp.field]]
+        oid = "{{ _sys }}.4.6.0"
+        name = "psu_current_ma"
+        conversion = "int"
+    [[inputs.snmp.field]]
+        oid = "{{ _sys }}.4.7.0"
+        name = "psu_power_mw"
+        conversion = "int"
+    # sysBoardTemperature 主板温度 ×10 °C（区别于 .4.2 CPU 温度），查询侧 /10 → board_temperature_celsius
+    [[inputs.snmp.field]]
+        oid = "{{ _sys }}.4.8.0"
+        name = "board_temperature"
+        conversion = "int"
     # CPU 温度 ×10 °C，查询侧 /10 → cpu_temperature_celsius
     [[inputs.snmp.table]]
         name = "cpu_temperature"
@@ -64,4 +83,4 @@
         oid = "{{ _sys }}.4.2"
         name = "celsius"
         conversion = "int"
-# ---- 风扇/电源：无稳定可轮询共享健康对象，N/A 不采。----
+# ---- 风扇：无独立可轮询风扇对象，N/A 不采。----
