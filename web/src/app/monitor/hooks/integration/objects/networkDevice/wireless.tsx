@@ -54,6 +54,7 @@ export const useWirelessConfig = () => {
     },
     collectTypes: {
       'Wireless Cambium SNMP': 'snmp_cambium',
+      'Wireless UHP SNMP': 'snmp_uhp',
       'Wireless Proxim SNMP': 'snmp_proxim',
       'Wireless Kymata SNMP': 'snmp_kymata',
       'Wireless EnGenius SNMP': 'snmp_engenius',
