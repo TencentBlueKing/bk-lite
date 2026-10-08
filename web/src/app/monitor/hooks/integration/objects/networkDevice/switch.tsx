@@ -116,6 +116,7 @@ export const useSwitchConfig = () => {
       'Switch Juniper SNMP': 'snmp_juniper',
       'Switch Extreme SNMP': 'snmp_extreme',
       'Switch Brocade SNMP': 'snmp_brocade',
+      'Switch Extreme VDX SNMP': 'snmp_extreme_vdx',
       'Switch Alcatel-Lucent SNMP': 'snmp_alcatel',
       'Switch MikroTik SNMP': 'snmp_mikrotik',
       'Switch D-Link SNMP': 'snmp_dlink',
