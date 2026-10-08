@@ -178,6 +178,7 @@ def apply(metric):
     vext = metric.fields.pop("voltage_ext_mV", None)
     temp = metric.fields.pop("temperature_celsius", None)
 
+    # 双路电压均为 0 视为空槽，仅抑制两路电压；电流、额定功率、温度仍上报。
     both_zero = False
     if vint != None and vext != None:
         if not is_sentinel(vint) and not is_sentinel(vext):
@@ -191,18 +192,18 @@ def apply(metric):
         emitted = emit_voltage(metric, vext, "external")
         if emitted != None:
             results.append(emitted)
-        if current_raw != None and not is_sentinel(current_raw):
-            milliamp = float(current_raw)
-            if milliamp >= 0.0 and milliamp <= 25000.0:
-                metric.fields["current_amps"] = milliamp / 1000.0
-        if power_raw != None and not is_sentinel(power_raw):
-            milliwatt = float(power_raw)
-            if milliwatt > 0.0:
-                metric.fields["rated_power_watts"] = milliwatt / 1000.0
-        if temp != None and not is_sentinel(temp):
-            celsius = float(temp)
-            if celsius >= -40.0 and celsius <= 125.0:
-                metric.fields["temperature_celsius"] = celsius
+    if current_raw != None and not is_sentinel(current_raw):
+        milliamp = float(current_raw)
+        if milliamp >= 0.0 and milliamp <= 25000.0:
+            metric.fields["current_amps"] = milliamp / 1000.0
+    if power_raw != None and not is_sentinel(power_raw):
+        milliwatt = float(power_raw)
+        if milliwatt > 0.0:
+            metric.fields["rated_power_watts"] = milliwatt / 1000.0
+    if temp != None:
+        celsius = float(temp)
+        if celsius >= -60.0 and celsius <= 195.0:
+            metric.fields["temperature_celsius"] = celsius
 
     f = metric.fields
     if len(f.keys()) > 0:
