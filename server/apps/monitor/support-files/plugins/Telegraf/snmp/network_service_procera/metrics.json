@@ -15,7 +15,7 @@
   ],
   "supplementary_indicators": [
     "snmp_uptime",
-    "device_cpu_usage",
+    "procera_cpu_load",
     "device_temperature_celsius",
     "device_fan_speed",
     "device_fan_state"
@@ -23,16 +23,16 @@
   "metrics": [
     {
       "metric_group": "CPU",
-      "name": "device_cpu_usage",
-      "query": "max(snmp_device_cpu_usage{instance_type='network_service', __$labels__}) by (instance_id)",
+      "name": "procera_cpu_load",
+      "query": "max(snmp_procera_cpu_load{instance_type='network_service', __$labels__}) by (instance_id)",
       "display_name": "CPU Load",
       "data_type": "Number",
-      "unit": "percent",
+      "unit": "none",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "PacketLogic CPU load in percent from the packetprocessingLoadVal scalar. Values outside 0 to 100 or sentinel readings are dropped before storage."
+      "description": "PacketLogic CPU load from the packetprocessingLoadVal scalar. The MIB does not specify a unit. Values outside 0 to 4294967294 are dropped before storage."
     },
     {
       "metric_group": "Temperature",

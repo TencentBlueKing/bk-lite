@@ -6,7 +6,7 @@
       "name": "Procera网络服务CPU使用率过高",
       "alert_name": "网络服务设备${resource_name} CPU 使用率过高",
       "description": "监控 Procera PacketLogic 的 CPU Load，当持续高于阈值时触发告警，提示报文处理平面过载。",
-      "metric_name": "device_cpu_usage",
+      "metric_name": "procera_cpu_load",
       "algorithm": "last_over_time",
       "threshold": [
         {

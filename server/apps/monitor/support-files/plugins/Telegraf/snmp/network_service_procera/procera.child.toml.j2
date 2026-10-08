@@ -35,7 +35,7 @@
     # ---- CPU Load 标量 packetprocessingLoadVal（顶层 field 必须带 .0，写入 measurement snmp）----
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.15397.2.1.8.15.1.0"
-        name = "device_cpu_usage"
+        name = "procera_cpu_load"
     # ---- BMC 温度表 tempSensorTable；单位列仅作换算辅助，不入库、不作 tag ----
     [[inputs.snmp.table]]
         name = "device_temperature"
@@ -74,27 +74,14 @@
 [[processors.starlark]]
     namepass = ["snmp"]
     source = '''
-def is_sentinel(v):
-    n = int(v)
-    if n == 65535 or n == 65534 or n == -1:
-        return True
-    if n == 2147483647 or n == -2147483648:
-        return True
-    if n == 4294967295:
-        return True
-    return False
-
 def apply(metric):
-    raw = metric.fields.get("device_cpu_usage")
+    raw = metric.fields.get("procera_cpu_load")
     if raw != None:
-        if is_sentinel(raw):
-            metric.fields.pop("device_cpu_usage")
+        value = float(raw)
+        if value >= 0.0 and value <= 4294967294.0:
+            metric.fields["procera_cpu_load"] = value
         else:
-            value = float(raw)
-            if value < 0.0 or value > 100.0:
-                metric.fields.pop("device_cpu_usage")
-            else:
-                metric.fields["device_cpu_usage"] = value
+            metric.fields.pop("procera_cpu_load")
     f = metric.fields
     if len(f.keys()) == 0:
         return None

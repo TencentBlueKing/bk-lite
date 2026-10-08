@@ -37,11 +37,11 @@ monitor_object_metric:
         device over the past 5 minutes, measured in bytes per second, summed across
         all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
         assess sending performance for traffic management and optimization.
-    device_cpu_usage:
-      name: CPU Usage
-      desc: PacketLogic packet-processing CPU load reported as a 0-100 percentage.
-        Out-of-range and sentinel readings are dropped by the collector. Sustained
-        high values indicate the DPI plane is approaching capacity.
+    procera_cpu_load:
+      name: CPU Load
+      desc: PacketLogic packet-processing CPU load from packetprocessingLoadVal.
+        The MIB does not specify a unit. Out-of-range readings are dropped by the
+        collector. Sustained high values indicate the DPI plane is approaching capacity.
     device_temperature_celsius:
       name: Temperature
       desc: BMC temperature in degrees Celsius. Celsius readings are kept as-is;
