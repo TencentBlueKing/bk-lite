@@ -107,7 +107,7 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.50114.10.3.10.41.1.4"
         name = "voltage_volts"
-# ---- CgxEnvStatus：up(1)→1，其余已定义取值→2；未定义取值丢弃该状态字段。转速 0..100000；温度原值 -40000..125000 后 ÷1000；电压原值 1..100000 后 ÷1000。----
+# ---- CgxEnvStatus：up(1)/notPresent(6)→1，off(2)/failed(3)/fault(4)→2；未定义取值丢弃该状态字段。转速 0..100000；温度原值 -40000..125000 后 ÷1000；电压原值 0..100000 后 ÷1000。----
 [[processors.starlark]]
     namepass = ["device_fan", "cloudgenix_fan", "device_psu", "device_temperature", "cloudgenix_temperature", "cloudgenix_power"]
     source = '''
@@ -115,9 +115,9 @@ def map_env_status(value):
     if value == None:
         return None
     code = int(value)
-    if code == 1:
+    if code == 1 or code == 6:
         return 1
-    if code == 2 or code == 3 or code == 4 or code == 6:
+    if code == 2 or code == 3 or code == 4:
         return 2
     return None
 
