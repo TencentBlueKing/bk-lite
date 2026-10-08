@@ -70,6 +70,7 @@ export const useFirewallConfig = () => {
     collectTypes: {
       'Firewall SNMP General': 'snmp',
       'Firewall Cisco SNMP': 'snmp_cisco_firewall',
+      'Firewall Cisco ESA SNMP': 'snmp_cisco_esa',
       'Firewall Fortinet SNMP': 'snmp_fortinet',
       'Firewall Fortinet FortiWeb SNMP': 'snmp_fortiweb',
       'Firewall Hillstone SNMP': 'snmp_hillstone',
