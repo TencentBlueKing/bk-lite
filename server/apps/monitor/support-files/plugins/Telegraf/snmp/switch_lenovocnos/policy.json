@@ -55,7 +55,7 @@
     {
       "name": "Lenovo CNOS交换机风扇异常",
       "alert_name": "交换机${resource_name} 风扇状态异常",
-      "description": "监控 Lenovo CNOS 交换机散热风扇运行状态（ok=正常，absent/fault=异常）。任何异常状态都表示散热故障，可能迅速导致过热，应立即排查。",
+      "description": "监控 Lenovo CNOS 交换机散热风扇运行状态（ok/absent=正常，fault=异常）。未安装（absent）归一为 1=正常。异常状态表示散热故障，可能迅速导致过热，应立即排查。",
       "metric_name": "device_fan_state",
       "algorithm": "last_over_time",
       "threshold": [

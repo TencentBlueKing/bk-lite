@@ -81,7 +81,7 @@
         oid = "1.3.6.1.4.1.19046.2.3.11.1.1.1.5"
         name = "state"
 # ---- Lenovo CNOS (PEN 19046): CPU=hrProcessorLoad; temperature=lenovoEnvMibTempSensorTemperature; fan=lenovoEnvMibFanState/FanSpeedRPM/FanSpeedPercent; PSU=lenovoEnvMibPowerSupplyState. Memory N/A. ----
-# ---- Fan state: ok(0)->1, absent(1)/fault(2)->2; undefined dropped. RPM 0..100000; percent 0..100. PSU on(1)->1, other defined->2. ----
+# ---- Fan state: ok(0)/absent(1)->1, fault(2)->2; undefined dropped. RPM 0..100000; percent 0..100. PSU on(1)->1, other defined->2. ----
 [[processors.enum]]
     namepass = ["device_psu"]
     [[processors.enum.mapping]]
@@ -97,9 +97,9 @@ def apply(metric):
     state = f.get("state")
     if state != None:
         s = int(state)
-        if s == 0:
+        if s == 0 or s == 1:
             f["state"] = 1
-        elif s == 1 or s == 2:
+        elif s == 2:
             f["state"] = 2
         else:
             f.pop("state")

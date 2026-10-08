@@ -150,7 +150,7 @@ monitor_object_metric:
     device_fan_state:
       name: Fan Status
       desc: This metric reports the operational state of each cooling fan on the device.
-        A non-normal state (warning, critical, shutdown, or notFunctioning) indicates
+        absent (empty slot) maps to 1 (normal). A non-normal state (fault) indicates
         a cooling fault that can quickly lead to overheating and should be investigated
         immediately.
     device_psu_state:

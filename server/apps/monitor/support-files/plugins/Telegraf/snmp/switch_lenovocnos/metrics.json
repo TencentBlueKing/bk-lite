@@ -237,7 +237,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Fan state of the Lenovo CNOS switch (lenovoEnvMibFanState; ok(0)=normal, absent(1) and fault(2)=abnormal; undefined values dropped)."
+      "description": "Fan state of the Lenovo CNOS switch (lenovoEnvMibFanState; ok(0) and absent(1)=normal, fault(2)=abnormal; undefined values dropped)."
     },
     {
       "metric_group": "Hardware Status",
