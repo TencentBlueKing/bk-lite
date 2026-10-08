@@ -105,6 +105,7 @@ export const useNetworkServiceConfig = () => {
       'NetworkService Allot SNMP': 'snmp_allot',
       'NetworkService Emerson NetSure SNMP': 'snmp_netsure',
       'NetworkService EfficientIP SNMP': 'snmp_efficientip',
+      'NetworkService Alpha Cordex SNMP': 'snmp_alpha_cordex',
       'NetworkService Nomadix SNMP': 'snmp_nomadix',
       'NetworkService Dataprobe iBoot-PDU SNMP': 'snmp_dataprobe',
       'NetworkService Socomec iPDU UPS SNMP': 'snmp_socomec',
