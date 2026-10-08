@@ -824,6 +824,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /c-?data|cdatatec/i, label: 'C-Data', icon: 'mm-cdata_cdata' },
   { match: /casa( systems)?/i, label: 'Casa Systems', icon: 'mm-casa_casa' },
   { match: /topvision|sumavision|数码视讯/i, label: 'Topvision', icon: 'mm-topvision_topvision' },
+  { match: /alvarion|breeze\s*access/i, label: 'Alvarion' },
   { match: /icotera|kjaerulff/i, label: 'Icotera', icon: 'mm-icotera_icotera' },
   { match: /ipinfusion|\bocnos\b/i, label: 'IP Infusion', icon: 'mm-ipinfusion_ipinfusion' },
   { match: /omnitron|iconverter|netoutlook/i, label: 'Omnitron', icon: 'mm-omnitron_omnitron' },
