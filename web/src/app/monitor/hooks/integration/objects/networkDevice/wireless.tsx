@@ -63,6 +63,7 @@ export const useWirelessConfig = () => {
       'Wireless Grandstream SNMP': 'snmp_grandstream',
       'Wireless Ubiquiti airFiber SNMP': 'snmp_ubiquiti_airfiber',
       'Wireless ASCOM SNMP': 'snmp_ascom',
+      'Wireless Zmtel SNMP': 'snmp_zmtel',
       'Wireless Albentia SNMP': 'snmp_albentia',
       'Wireless LigoWave SNMP': 'snmp_ligowave',
       'Wireless Radwin SNMP': 'snmp_radwin',
