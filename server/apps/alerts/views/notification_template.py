@@ -26,6 +26,7 @@ from apps.alerts.notification_templates.events import (
 from apps.alerts.notification_templates.operation import ensure_alert_operation_template
 from apps.alerts.notification_templates.renderer import TemplateValidationError, render_source
 from apps.alerts.serializers.notification_template import NotificationTemplateSerializer
+from apps.alerts.utils.i18n import alerts_message, serializer_message
 from apps.alerts.utils.permission_scope import (
     apply_team_scope_for_request,
     apply_team_scope_with_group_ids,
@@ -132,7 +133,7 @@ class NotificationTemplateTestSendSerializer(serializers.Serializer):
 
     def validate_sample(self, value):
         if len(json.dumps(value, ensure_ascii=False).encode("utf-8")) > 64 * 1024:
-            raise serializers.ValidationError("示例数据不能超过 64KB")
+            raise serializers.ValidationError(serializer_message(self, "error.sample_payload_too_large"))
         return value
 
 
@@ -190,14 +191,14 @@ class NotificationTemplateViewSet(ModelViewSet):
         if "team" not in payload:
             current_team = get_current_team_from_request(request, required=True)
             if not current_team:
-                raise ValidationError({"team": "缺少当前团队"})
+                raise ValidationError({"team": alerts_message(request, "error.team_missing")})
             payload["team"] = [current_team]
         serializer = self.get_serializer(data=payload)
         serializer.is_valid(raise_exception=True)
         try:
             serializer.save()
         except IntegrityError as exc:
-            raise ValidationError({"name": "当前团队已存在同名模板"}) from exc
+            raise ValidationError({"name": alerts_message(request, "error.template_name_exists")}) from exc
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def _locked_queryset(self):
@@ -219,15 +220,15 @@ class NotificationTemplateViewSet(ModelViewSet):
                 .first()
             )
             if not channel:
-                raise ValidationError({"channel_id": "通知渠道不存在或无权使用"})
+                raise ValidationError({"channel_id": alerts_message(request, "error.channel_unusable")})
             return SimpleNamespace(id=channel.id, channel_type=IMNotificationChannel.CHANNEL_TYPE, team=channel.team, name=channel.name)
         channel = apply_team_scope_with_group_ids(Channel.objects.all(), get_query_group_ids(request)).filter(pk=channel_id).first()
         if not channel:
-            raise ValidationError({"channel_id": "通知渠道不存在或无权使用"})
+            raise ValidationError({"channel_id": alerts_message(request, "error.channel_unusable")})
         if channel_type and channel.channel_type != channel_type:
-            raise ValidationError({"channel_id": "通知渠道不存在或无权使用"})
+            raise ValidationError({"channel_id": alerts_message(request, "error.channel_unusable")})
         if channel.channel_type == "nats" and (channel.config or {}).get("source") != "opspilot":
-            raise ValidationError({"channel_id": "仅 OpsPilot 托管的 NATS 渠道支持模板试发"})
+            raise ValidationError({"channel_id": alerts_message(request, "error.template_test_nats_only")})
         return channel
 
     @staticmethod
@@ -241,7 +242,7 @@ class NotificationTemplateViewSet(ModelViewSet):
             .first()
         )
         if not alert:
-            raise ValidationError({"alert_id": "告警不存在或无权用于当前团队的测试发送"})
+            raise ValidationError({"alert_id": alerts_message(request, "error.alert_unusable_for_test")})
         return alert
 
     @staticmethod
@@ -301,11 +302,11 @@ class NotificationTemplateViewSet(ModelViewSet):
         resolved_usernames = {item.get("username") for item in notifier.user_list}
         missing_receivers = [username for username in receivers if username not in resolved_usernames]
         if missing_receivers:
-            raise ValidationError({"receivers": f"接收人不存在：{'、'.join(missing_receivers)}"})
+            raise ValidationError({"receivers": alerts_message(request, "error.receivers_missing", receivers="、".join(missing_receivers))})
         result = notifier.notify()
         if isinstance(result, dict) and result.get("result") is False:
             return Response(
-                {"detail": result.get("message") or "测试发送失败"},
+                {"detail": result.get("message") or alerts_message(request, "error.test_send_failed")},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response({"result": result, "subject": subject, "body": body})
@@ -315,7 +316,7 @@ class NotificationTemplateViewSet(ModelViewSet):
     def update(self, request, *args, **kwargs):
         instance = self._locked_object()
         if (instance.is_builtin and not instance.is_alert_operation) or instance.is_global:
-            raise ValidationError({"detail": "全局模板不可修改，请复制后编辑"})
+            raise ValidationError({"detail": alerts_message(request, "error.global_template_readonly")})
         expected_revision = request.data.get("revision")
         try:
             revision_matches = expected_revision is not None and int(expected_revision) == instance.revision
@@ -323,7 +324,7 @@ class NotificationTemplateViewSet(ModelViewSet):
             revision_matches = False
         if not revision_matches:
             return Response(
-                {"revision": "模板已被其他用户修改，请刷新后重试", "current_revision": instance.revision},
+                {"revision": alerts_message(request, "error.template_revision_conflict"), "current_revision": instance.revision},
                 status=status.HTTP_409_CONFLICT,
             )
         serializer = self.get_serializer(instance, data=request.data, partial=kwargs.pop("partial", False))
@@ -331,7 +332,7 @@ class NotificationTemplateViewSet(ModelViewSet):
         try:
             serializer.save()
         except IntegrityError as exc:
-            raise ValidationError({"name": "当前团队已存在同名模板"}) from exc
+            raise ValidationError({"name": alerts_message(request, "error.template_name_exists")}) from exc
         return Response(serializer.data)
 
     @HasPermission("notification_templates-Edit")
@@ -344,10 +345,13 @@ class NotificationTemplateViewSet(ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         instance = self._locked_object()
         if instance.is_builtin or instance.is_global:
-            raise ValidationError({"detail": "内置或全局模板不可删除"})
+            raise ValidationError({"detail": alerts_message(request, "error.builtin_or_global_template_undeletable")})
         references = list(instance.references.values("source_type", "source_id", "scene", "channel_id", "locator", "is_snapshot")[:100])
         if references:
-            return Response({"detail": "模板正在使用，不能删除", "references": references}, status=status.HTTP_409_CONFLICT)
+            return Response(
+                {"detail": alerts_message(request, "error.template_in_use"), "references": references},
+                status=status.HTTP_409_CONFLICT,
+            )
         instance.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -385,46 +389,46 @@ class NotificationTemplateViewSet(ModelViewSet):
         return Response(
             {
                 "variables": [
-                    {"path": "alert.title", "label": "告警标题"},
-                    {"path": "alert.content", "label": "告警内容"},
-                    {"path": "alert.level", "label": "告警级别"},
-                    {"path": "alert.level_id", "label": "原始级别 ID"},
-                    {"path": "alert.alert_id", "label": "告警 ID"},
-                    {"path": "alert.created_at", "label": "告警时间"},
-                    {"path": "alert.resource_name", "label": "资源名称"},
-                    {"path": "alert.resource_type", "label": "资源类型"},
-                    {"path": "alert.source_name", "label": "告警来源"},
-                    {"path": "alert.item", "label": "监控指标"},
-                    {"path": "notification.scene_name", "label": "通知场景"},
-                    {"path": "notification.receiver_names", "label": "本次接收人"},
-                    {"path": "notification.receivers", "label": "接收人列表（JSON）"},
+                    {"path": "alert.title", "label": alerts_message(request, "catalog.alert_title")},
+                    {"path": "alert.content", "label": alerts_message(request, "catalog.alert_content")},
+                    {"path": "alert.level", "label": alerts_message(request, "catalog.alert_level")},
+                    {"path": "alert.level_id", "label": alerts_message(request, "catalog.alert_level_id")},
+                    {"path": "alert.alert_id", "label": alerts_message(request, "catalog.alert_id")},
+                    {"path": "alert.created_at", "label": alerts_message(request, "catalog.alert_created_at")},
+                    {"path": "alert.resource_name", "label": alerts_message(request, "catalog.alert_resource_name")},
+                    {"path": "alert.resource_type", "label": alerts_message(request, "catalog.alert_resource_type")},
+                    {"path": "alert.source_name", "label": alerts_message(request, "catalog.alert_source_name")},
+                    {"path": "alert.item", "label": alerts_message(request, "catalog.alert_item")},
+                    {"path": "notification.scene_name", "label": alerts_message(request, "catalog.scene_name")},
+                    {"path": "notification.receiver_names", "label": alerts_message(request, "catalog.receiver_names")},
+                    {"path": "notification.receivers", "label": alerts_message(request, "catalog.receivers")},
                     {
                         "path": "notification.action_summary",
-                        "label": "操作说明",
+                        "label": alerts_message(request, "catalog.action_summary"),
                         "scopes": [NotificationTemplate.SCOPE_ALERT_OPERATION],
                     },
                     {
                         "path": "notification.actor_name",
-                        "label": "操作人",
+                        "label": alerts_message(request, "catalog.actor_name"),
                         "scopes": [NotificationTemplate.SCOPE_ALERT_OPERATION],
                     },
                     {
                         "path": "notification.previous_receiver_names",
-                        "label": "原处理人",
+                        "label": alerts_message(request, "catalog.previous_receiver_names"),
                         "scopes": [NotificationTemplate.SCOPE_ALERT_OPERATION],
                     },
                     {
                         "path": "notification.action_time",
-                        "label": "操作时间",
+                        "label": alerts_message(request, "catalog.action_time"),
                         "scopes": [NotificationTemplate.SCOPE_ALERT_OPERATION],
                     },
-                    {"path": "labels.env", "label": "标签（示例）"},
-                    {"path": "dimensions.instance", "label": "维度（示例）"},
-                    {"path": "enrichment.cmdb.owner", "label": "丰富字段（示例）"},
-                    {"path": "events.count", "label": "关联事件数"},
-                    {"path": "events.latest.title", "label": "最近事件标题"},
-                    {"path": "events.latest.value", "label": "最近事件值"},
-                    {"path": "events.latest.tags.alert", "label": "最近事件标签（示例）"},
+                    {"path": "labels.env", "label": alerts_message(request, "catalog.label_example")},
+                    {"path": "dimensions.instance", "label": alerts_message(request, "catalog.dimension_example")},
+                    {"path": "enrichment.cmdb.owner", "label": alerts_message(request, "catalog.enrichment_example")},
+                    {"path": "events.count", "label": alerts_message(request, "catalog.event_count")},
+                    {"path": "events.latest.title", "label": alerts_message(request, "catalog.latest_event_title")},
+                    {"path": "events.latest.value", "label": alerts_message(request, "catalog.latest_event_value")},
+                    {"path": "events.latest.tags.alert", "label": alerts_message(request, "catalog.latest_event_tag_example")},
                 ],
                 "event_block": {
                     "max_rows": MAX_EVENT_ROWS,
@@ -432,17 +436,19 @@ class NotificationTemplateViewSet(ModelViewSet):
                     "default_limit": DEFAULT_LIMIT,
                     "default_order": DEFAULT_ORDER,
                     "orders": [
-                        {"value": "-start_time", "label": "发生时间 倒序"},
-                        {"value": "start_time", "label": "发生时间 正序"},
-                        {"value": "-received_at", "label": "接收时间 倒序"},
-                        {"value": "received_at", "label": "接收时间 正序"},
+                        {"value": "-start_time", "label": alerts_message(request, "catalog.order_start_time_desc")},
+                        {"value": "start_time", "label": alerts_message(request, "catalog.order_start_time_asc")},
+                        {"value": "-received_at", "label": alerts_message(request, "catalog.order_received_at_desc")},
+                        {"value": "received_at", "label": alerts_message(request, "catalog.order_received_at_asc")},
                     ],
                     "limits": [5, 10, 20, 50, "all"],
-                    "fields": [{"path": path, "label": label} for path, label in EVENT_SCALAR_FIELDS.items()],
+                    "fields": [
+                        {"path": path, "label": alerts_message(request, f"catalog.event_field.{path}")} for path in EVENT_SCALAR_FIELDS
+                    ],
                     "json_roots": [
-                        {"root": "tags", "label": "事件标签"},
-                        {"root": "labels", "label": "事件标记"},
-                        {"root": "enrichment", "label": "富化数据"},
+                        {"root": "tags", "label": alerts_message(request, "catalog.root_tags")},
+                        {"root": "labels", "label": alerts_message(request, "catalog.root_labels")},
+                        {"root": "enrichment", "label": alerts_message(request, "catalog.root_enrichment")},
                     ],
                 },
             }
@@ -459,7 +465,7 @@ class NotificationTemplateViewSet(ModelViewSet):
             page = max(int(request.query_params.get("page", 1)), 1)
             page_size = min(max(int(request.query_params.get("page_size", 20)), 1), 100)
         except (TypeError, ValueError):
-            raise ValidationError({"detail": "分页参数必须是正整数"})
+            raise ValidationError({"detail": alerts_message(request, "error.page_params_positive")})
         start = (page - 1) * page_size
         return Response(
             {
@@ -476,10 +482,10 @@ class NotificationTemplateViewSet(ModelViewSet):
     def copy(self, request, pk=None):
         source = self.get_object()
         if source.is_alert_operation:
-            raise ValidationError({"detail": "内置告警操作模板不可复制"})
+            raise ValidationError({"detail": alerts_message(request, "error.builtin_operation_template_uncopyable")})
         current_team = get_current_team_from_request(request, required=True)
         if not current_team:
-            raise ValidationError({"team": "缺少当前团队"})
+            raise ValidationError({"team": alerts_message(request, "error.team_missing")})
         payload = {
             "name": request.data.get("name") or f"{source.name} - 副本",
             "description": source.description,
@@ -492,7 +498,7 @@ class NotificationTemplateViewSet(ModelViewSet):
         try:
             serializer.save()
         except IntegrityError as exc:
-            raise ValidationError({"name": "当前团队已存在同名模板"}) from exc
+            raise ValidationError({"name": alerts_message(request, "error.template_name_exists")}) from exc
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["post"], url_path="test_send")
@@ -505,11 +511,11 @@ class NotificationTemplateViewSet(ModelViewSet):
         request_serializer.is_valid(raise_exception=True)
         channel_id = request_serializer.validated_data["channel_id"]
         if template.is_alert_operation and template.channel_id != channel_id:
-            raise ValidationError({"channel_id": "告警操作通知只能使用已选择的唯一渠道"})
+            raise ValidationError({"channel_id": alerts_message(request, "error.operation_template_selected_channel_only")})
         channel = self._get_test_channel(request, channel_id)
         content = template.contents.filter(channel_type=channel.channel_type).first()
         if not content:
-            raise ValidationError({"channel_id": "模板未配置该渠道类型"})
+            raise ValidationError({"channel_id": alerts_message(request, "error.template_channel_type_missing")})
         alert_id = request_serializer.validated_data.get("alert_id")
         receivers = request_serializer.validated_data.get("receivers") or [request.user.username]
         if alert_id:
@@ -543,18 +549,18 @@ class NotificationTemplateViewSet(ModelViewSet):
         data = request_serializer.validated_data
         channel = self._get_test_channel(request, data["channel_id"], data.get("channel_type"))
         if data["channel_type"] != channel.channel_type:
-            raise ValidationError({"channel_type": "模板格式与所选通知渠道不一致"})
+            raise ValidationError({"channel_type": alerts_message(request, "error.template_channel_mismatch")})
         scope = data["scope"]
         if scope not in {
             NotificationTemplate.SCOPE_SINGLE_ALERT,
             NotificationTemplate.SCOPE_ALERT_OPERATION,
         }:
-            raise ValidationError({"scope": "测试发送仅支持单条告警和告警操作模板"})
+            raise ValidationError({"scope": alerts_message(request, "error.test_send_scope_limited")})
         if scope == NotificationTemplate.SCOPE_ALERT_OPERATION:
             template_id = data.get("template_id")
             template = self.get_queryset().filter(pk=template_id).first() if template_id else None
             if not template or not template.is_alert_operation:
-                raise ValidationError({"template_id": "告警操作通知必须使用当前团队的内置模板"})
+                raise ValidationError({"template_id": alerts_message(request, "error.operation_template_must_be_builtin")})
         alert = self._get_test_alert(request, data["alert_id"])
         receivers = list(dict.fromkeys(data["receivers"]))
         context = self._build_test_context(

@@ -21,6 +21,7 @@ from apps.alerts.constants.constants import AlertStatus, LogAction, LogTargetTyp
 from apps.alerts.models.action import ActionExecution, ActionRule
 from apps.alerts.models.models import Alert
 from apps.alerts.serializers.action import ActionExecutionSerializer, ActionRuleSerializer
+from apps.alerts.utils.i18n import alerts_message
 from apps.alerts.utils.operator_log import record_operator_log
 from apps.alerts.utils.permission_scope import (
     apply_team_scope_for_request,
@@ -220,7 +221,7 @@ class ActionExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         client_key = request.headers.get("Idempotency-Key", "").strip()
         if not client_key or len(client_key) > 128:
             return Response(
-                {"detail": "Idempotency-Key 必填且长度不能超过 128"},
+                {"detail": alerts_message(request, "error.idempotency_key_required")},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -228,7 +229,7 @@ class ActionExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         alert = apply_team_scope_with_group_ids(Alert.objects.all(), authorized_group_ids).filter(alert_id=request.data.get("alert_id")).first()
         rule = ActionRule.objects.filter(id=request.data.get("rule_id")).first()
         if not alert or not rule:
-            return Response({"detail": "alert/rule 不存在或无权访问"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": alerts_message(request, "error.alert_or_rule_inaccessible")}, status=status.HTTP_400_BAD_REQUEST)
 
         authorized_teams = {str(team_id) for team_id in authorized_group_ids}
         alert_teams = {str(team_id) for team_id in (alert.team or [])}
@@ -236,13 +237,13 @@ class ActionExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         rule_out_of_scope = rule_teams and not (rule_teams & authorized_teams)
         rule_incompatible_with_alert = alert_teams and rule_teams and not (alert_teams & rule_teams)
         if rule_out_of_scope or rule_incompatible_with_alert:
-            return Response({"detail": "alert/rule 不存在或无权访问"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": alerts_message(request, "error.alert_or_rule_inaccessible")}, status=status.HTTP_400_BAD_REQUEST)
 
         if not rule.is_active:
-            return Response({"detail": "alert/rule 不存在或无权访问"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": alerts_message(request, "error.alert_or_rule_inaccessible")}, status=status.HTTP_400_BAD_REQUEST)
 
         if alert.status not in AlertStatus.ACTIVATE_STATUS:
-            return Response({"detail": "告警已结束，不能再执行处理动作"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": alerts_message(request, "error.alert_closed_no_action")}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             param_overrides = validate_manual_param_overrides(
@@ -307,7 +308,7 @@ class ActionJobScriptListView(APIView):
     def get(self, request):
         group_id = get_current_team_from_request(request, required=True)
         if not group_id:
-            return Response({"result": False, "message": "缺少团队上下文"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"result": False, "message": alerts_message(request, "error.team_context_missing")}, status=status.HTTP_400_BAD_REQUEST)
 
         data = JobMgmt().list_scripts(group_id=group_id, team=get_authorized_group_ids(request))
         return Response(data)
@@ -320,8 +321,8 @@ class ActionJobScriptDetailView(APIView):
     def get(self, request, script_id):
         group_id = get_current_team_from_request(request, required=True)
         if not group_id:
-            return Response({"result": False, "message": "缺少团队上下文"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"result": False, "message": alerts_message(request, "error.team_context_missing")}, status=status.HTTP_400_BAD_REQUEST)
         data = JobMgmt().get_script(script_id, team=get_authorized_group_ids(request))
         if not data:
-            return Response({"result": False, "message": "脚本不存在或无权访问"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"result": False, "message": alerts_message(request, "error.script_inaccessible")}, status=status.HTTP_404_NOT_FOUND)
         return Response(data)
