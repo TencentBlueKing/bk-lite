@@ -76,7 +76,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "ATS input phase voltage in VAC (atsInputVoltage). Values outside 0-300 V and the unsupported sentinel are dropped."
+      "description": "ATS input phase voltage in VAC (atsInputVoltage). Negative values and the unsupported sentinel are dropped."
     },
     {
       "metric_group": "NetworkService",
@@ -112,7 +112,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "ATS output phase voltage in VAC (atsOutputVoltage). Values outside 0-300 V and the unsupported sentinel are dropped."
+      "description": "ATS output phase voltage in VAC (atsOutputVoltage). Negative values and the unsupported sentinel are dropped."
     },
     {
       "metric_group": "NetworkService",
