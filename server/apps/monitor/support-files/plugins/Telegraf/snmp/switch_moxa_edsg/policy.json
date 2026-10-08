@@ -51,36 +51,6 @@
         }
       ],
       "group_algorithm": "avg"
-    },
-    {
-      "name": "Moxa EDS-G交换机电源1异常",
-      "alert_name": "交换机${resource_name} 电源1状态异常",
-      "description": "监控 Moxa EDS-G 工业交换机电源输入1状态，未接入或非 present 时视为异常（空槽 not-present 亦为异常），提示检查供电冗余。",
-      "metric_name": "device_psu_state",
-      "algorithm": "last_over_time",
-      "threshold": [
-        {
-          "level": "critical",
-          "value": 2,
-          "method": "="
-        }
-      ],
-      "group_algorithm": "avg"
-    },
-    {
-      "name": "Moxa EDS-G交换机电源2异常",
-      "alert_name": "交换机${resource_name} 电源2状态异常",
-      "description": "监控 Moxa EDS-G 工业交换机电源输入2状态，未接入或非 present 时视为异常（空槽 not-present 亦为异常），提示检查供电冗余。",
-      "metric_name": "device_psu_state_backup",
-      "algorithm": "last_over_time",
-      "threshold": [
-        {
-          "level": "critical",
-          "value": 2,
-          "method": "="
-        }
-      ],
-      "group_algorithm": "avg"
     }
   ]
 }

@@ -1,6 +1,6 @@
 Switch Moxa EDS-G SNMP:
   name: Moxa（Telegraf）
-  desc: 面向 Moxa EDS-G508E / EDS-G512E 工业以太网交换机的 SNMP 监控模板（企业号 8691），采集 CPU 使用率、内存使用率、双路电源输入状态以及接口流量与运行时长。
+  desc: 面向 Moxa EDS-G508E / EDS-G512E 工业以太网交换机的 SNMP 监控模板（企业号 8691），采集 CPU 使用率、内存使用率以及接口流量与运行时长。
 monitor_object:
   Switch: 交换机
 monitor_object_type:
@@ -158,9 +158,6 @@ monitor_object_metric:
     device_flow_top_conversation_bytes_rate:
       name: Top 会话 Flow 流量速率
       desc: 按源地址、目的地址、协议和目的端口聚合的会话流量排行，用于定位主要通信关系。
-    device_psu_state_backup:
-      name: 备用电源状态
-      desc: 设备备用电源模块的运行状态，统一归一为正常或异常。
 monitor_object_metric_group:
   Switch:
     Base: 基础

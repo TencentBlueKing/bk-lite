@@ -1,6 +1,6 @@
 Switch Moxa EDS-G SNMP:
   name: Moxa (Telegraf)
-  desc: "SNMP monitoring template for Moxa EDS-G508E / EDS-G512E industrial Ethernet switches (PEN 8691). Reports CPU, memory usage and dual power-input status plus IF-MIB/uptime."
+  desc: "SNMP monitoring template for Moxa EDS-G508E / EDS-G512E industrial Ethernet switches (PEN 8691). Reports CPU, memory usage plus IF-MIB/uptime."
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -250,9 +250,6 @@ monitor_object_metric:
       name: Top Conversation Flow Traffic Rate
       desc: Conversation traffic ranked by source, destination, protocol, and destination
         port, used to locate dominant communication pairs.
-    device_psu_state_backup:
-      name: PSU Backup State
-      desc: Operational state of the device backup power supply unit, normalized to normal or abnormal.
 monitor_object_metric_group:
   Switch:
     Base: Base
