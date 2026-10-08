@@ -77,6 +77,7 @@ export const useTransmissionConfig = () => {
       'Transmission BTI SNMP': 'snmp_bti',
       'Transmission DragonWave SNMP': 'snmp_dragonwave',
       'Transmission Ericsson SNMP': 'snmp_ericsson',
+      'Transmission MNI Proteus SNMP': 'snmp_mni_proteus',
       'Transmission Ekinops SNMP': 'snmp_ekinops',
       'Transmission Infinera SNMP': 'snmp_infinera',
       'Transmission BridgeWave SNMP': 'snmp_bridgewave',

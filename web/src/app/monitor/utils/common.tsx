@@ -779,6 +779,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /unisphere|\berx\b/i, label: 'Unisphere', icon: 'mm-unisphere_unisphere' },
   { match: /waystream|asr[0-9]+|ftth/i, label: 'Waystream', icon: 'mm-waystream_waystream' },
   { match: /tsntec|8148sc/i, label: 'TsnTec', icon: 'mm-tsntec_tsntec' },
+  { match: /\bmni\s*proteus\b|microwave\s*networks/i, label: 'Microwave Networks' },
   { match: /6wind|\bvsr\b/i, label: '6WIND VSR', icon: 'mm-6wind_6wind' },
   { match: /robustel|\br3000\b|\bmg460\b/i, label: 'Robustel', icon: 'mm-robustel_robustel' },
   { match: /milesight|\bur3[257]\b/i, label: 'Milesight', icon: 'mm-milesight_milesight' },
