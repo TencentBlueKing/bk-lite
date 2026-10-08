@@ -1,0 +1,56 @@
+{
+  "object": "Switch",
+  "plugin": "Switch Moxa EDS-G SNMP",
+  "templates": [
+    {
+      "name": "Moxa EDS-G交换机CPU使用率过高",
+      "alert_name": "交换机${resource_name} CPU 使用率过高",
+      "description": "监控 Moxa EDS-G 工业交换机的 CPU 负载，当持续高于阈值时触发告警，提示可能存在环网协议震荡、广播风暴或管理面过载。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 85,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Moxa EDS-G交换机内存使用率过高",
+      "alert_name": "交换机${resource_name} 内存使用率过高",
+      "description": "监控 Moxa EDS-G 工业交换机的内存使用率，当持续高于阈值时触发告警，提示可能存在内存泄漏或资源紧张。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 85,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

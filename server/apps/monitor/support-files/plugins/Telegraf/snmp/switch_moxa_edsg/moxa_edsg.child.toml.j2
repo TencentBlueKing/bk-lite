@@ -1,0 +1,99 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_moxa_edsg"
+        config_type = "moxa_edsg"
+        brand = "moxa_edsg"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- EDS-G508E / EDS-G512E 标量（swMgmt = 1.3.6.1.4.1.8691.7.{69|70}.1），顶层 field 带 .0 ----
+    # 同时读两棵树的辅助字段，starlark 优先采用 G512E（70）应答，否则回退 G508E（69）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.8691.7.69.1.54.0"
+        name = "g508_cpu"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.8691.7.70.1.54.0"
+        name = "g512_cpu"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.8691.7.69.1.58.0"
+        name = "g508_mem_used"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.8691.7.70.1.58.0"
+        name = "g512_mem_used"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.8691.7.69.1.56.0"
+        name = "g508_mem_total"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.8691.7.70.1.56.0"
+        name = "g512_mem_total"
+# ---- 温度/风扇：EDS-G508E / EDS-G512E MIB 无机箱温度与风扇对象 → 不采。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def pick(preferred, fallback):
+    if preferred != None:
+        return preferred
+    return fallback
+
+def keep_pct(raw):
+    if raw == None:
+        return None
+    value = int(raw)
+    if value < 0 or value > 100:
+        return None
+    return value
+
+def mem_pct(used, total):
+    if used == None or total == None:
+        return None
+    used = int(used)
+    total = int(total)
+    if total > 0 and used >= 0 and used <= total:
+        return used * 100.0 / total
+    return None
+
+def apply(metric):
+    cpu = keep_pct(pick(metric.fields.pop("g512_cpu", None), metric.fields.pop("g508_cpu", None)))
+    mem = mem_pct(metric.fields.pop("g512_mem_used", None), metric.fields.pop("g512_mem_total", None))
+    if mem == None:
+        mem = mem_pct(metric.fields.pop("g508_mem_used", None), metric.fields.pop("g508_mem_total", None))
+    else:
+        metric.fields.pop("g508_mem_used", None)
+        metric.fields.pop("g508_mem_total", None)
+    if cpu != None:
+        metric.fields["device_cpu_usage"] = cpu
+    if mem != None:
+        metric.fields["device_memory_usage"] = mem
+    if len(metric.fields.keys()) == 0:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["moxa_edsg"]
