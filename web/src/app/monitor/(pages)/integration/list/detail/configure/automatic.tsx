@@ -15,7 +15,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { useSearchParams, useRouter } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import useIntegrationApi from '@/app/monitor/api/integration';
+import useMonitorApi from '@/app/monitor/api';
 import useEventApi from '@/app/monitor/api/event';
+import { fetchAllMonitorMetrics } from '@/app/monitor/api/fetchMetricCatalogPages';
 import useMonitorUserHabitApi from '@/app/monitor/api/userHabit';
 import FieldGuideTip from '@/components/field-guide-tip';
 import type { PolicyTemplateItem } from '@/app/monitor/(pages)/event/template/templateBulkUtils';
@@ -125,6 +127,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     getSystemChannelList
   } = useEventApi();
   const { getUserHabit, saveUserHabit } = useMonitorUserHabitApi();
+  const { getMonitorMetrics } = useMonitorApi();
+  const getMonitorMetricsRef = useRef(getMonitorMetrics);
+  getMonitorMetricsRef.current = getMonitorMetrics;
   const router = useRouter();
   const { renderTableColumn } = useConfigRenderer();
   const jsonConfig = usePluginFromJson();
@@ -167,9 +172,17 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       id: number;
       name: string;
       is_default?: boolean;
-      rules?: Array<{ name: string; plugin_id: number; plugin_name: string }>;
+      rules?: Array<{
+        name: string;
+        plugin_id: number;
+        plugin_name: string;
+        metric_name?: string;
+      }>;
     }>
   >([]);
+  const [pluginMetricNames, setPluginMetricNames] = useState<string[]>([]);
+  const policyGroupJoin = Form.useWatch('policy_group_join', form);
+  const policyGroupId = Form.useWatch('policy_group_id', form);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [collectDetectTasks, setCollectDetectTasks] = useState<
     Record<string, CollectDetectState>
@@ -199,19 +212,42 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     getPolicyGroups({ monitor_object_id: objectId })
       .then((data) => {
         if (cancelled) return;
-        const list = Array.isArray(data) ? data : [];
-        setPolicyGroups(list);
-        const preferred = list.find((item) => item.is_default) || list[0];
-        form.setFieldsValue({
-          policy_group_join: true,
-          policy_group_id: preferred?.id
-        });
+        setPolicyGroups(Array.isArray(data) ? data : []);
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, [form, getPolicyGroups, isLoading, objectId]);
+  }, [getPolicyGroups, isLoading, objectId]);
+
+  useEffect(() => {
+    if (!policyGroups.length) return;
+    const current = form.getFieldValue('policy_group_id');
+    if (policyGroups.some((item) => item.id === current)) return;
+    const preferred = policyGroups.find((item) => item.is_default) || policyGroups[0];
+    form.setFieldsValue({
+      policy_group_join: form.getFieldValue('policy_group_join') !== false,
+      policy_group_id: preferred.id
+    });
+  }, [form, policyGroups]);
+
+  useEffect(() => {
+    if (isLoading || !pluginId) return;
+    const abortController = new AbortController();
+    fetchAllMonitorMetrics(
+      (...args) => getMonitorMetricsRef.current(...args),
+      { monitor_plugin_id: pluginId, monitor_object_id: objectId },
+      { signal: abortController.signal }
+    )
+      .then((data) => {
+        if (abortController.signal.aborted) return;
+        setPluginMetricNames((data.items || []).map((item) => item.name).filter(Boolean));
+      })
+      .catch(() => {
+        if (!abortController.signal.aborted) setPluginMetricNames([]);
+      });
+    return () => abortController.abort();
+  }, [isLoading, objectId, pluginId]);
 
   useEffect(() => {
     if (pluginId) {
@@ -837,7 +873,16 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         }
       ]
       : [];
-    return [...dataColumns, ...collectDetectStatusColumn, actionColumn];
+    const joining = policyGroupJoin !== false;
+    const selectedGroup = policyGroups.find((item) => item.id === policyGroupId);
+    const policyGroupColumn = {
+      title: t('monitor.integrations.policyGroup', '策略组'),
+      key: 'policy_group',
+      dataIndex: 'policy_group',
+      width: 180,
+      render: () => (joining ? selectedGroup?.name || '--' : t('monitor.integrations.policyGroupNotJoining', '不加入'))
+    };
+    return [...dataColumns, policyGroupColumn, ...collectDetectStatusColumn, actionColumn];
   }, [
     configLoading,
     currentConfig,
@@ -848,7 +893,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     t,
     collectType,
     supportCollectDetect,
-    collectDetectTasks
+    collectDetectTasks,
+    policyGroupJoin,
+    policyGroupId,
+    policyGroups
   ]);
 
   const formItems = useMemo(() => {
@@ -1372,51 +1420,50 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       <Form.Item
         name="policy_group_join"
         valuePropName="checked"
-        label={t('monitor.integrations.monitoringPolicy', '加入策略组')}
+        label={t('monitor.integrations.policyGroupJoin', '加入策略组')}
       >
         <Switch />
       </Form.Item>
       <Form.Item
-        noStyle
-        shouldUpdate={(prev, next) =>
-          prev.policy_group_id !== next.policy_group_id ||
-          prev.policy_group_join !== next.policy_group_join
-        }
+        name="policy_group_id"
+        label={t('monitor.integrations.policyGroup', '策略组')}
       >
-        {() => {
-          const selected = policyGroups.find(
-            (item) => item.id === form.getFieldValue('policy_group_id')
-          );
-          const joining = form.getFieldValue('policy_group_join') !== false;
-          return (
-            <Form.Item
-              name="policy_group_id"
-              label={t('monitor.integrations.monitoringPolicy', '策略组')}
-            >
-              <Select
-                style={{ width: COLLECTION_POLICY_CONTROL_WIDTH }}
-                disabled={!joining}
-                options={policyGroups.map((item) => ({
-                  value: item.id,
-                  label: item.is_default ? `${item.name}（默认）` : item.name
-                }))}
-              />
-              {joining && selected ? (
-                <div className="mt-[8px] text-[12px] text-[var(--color-text-3)]">
-                  {(selected.rules || []).map((rule) => (
-                    <div key={`${rule.plugin_id}-${rule.name}`}>
-                      {rule.name}
-                      {String(rule.plugin_id) === String(pluginId)
-                        ? ''
-                        : ` · ${rule.plugin_name} 对本次接入不适用`}
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-            </Form.Item>
-          );
-        }}
+        <Select
+          style={{ width: COLLECTION_POLICY_CONTROL_WIDTH }}
+          disabled={policyGroupJoin === false}
+          options={policyGroups.map((item) => ({
+            value: item.id,
+            label: item.is_default ? `${item.name}（默认）` : item.name
+          }))}
+        />
       </Form.Item>
+      {policyGroupJoin !== false && policyGroups.some((item) => item.id === policyGroupId) ? (
+        <div className="mb-[10px] text-[12px] text-[var(--color-text-3)]">
+          {(policyGroups.find((item) => item.id === policyGroupId)?.rules || []).map((rule) => {
+            const otherPlugin = String(rule.plugin_id) !== String(pluginId);
+            const missingMetric =
+              !otherPlugin &&
+              Boolean(rule.metric_name) &&
+              pluginMetricNames.length > 0 &&
+              !pluginMetricNames.includes(rule.metric_name || '');
+            const note = otherPlugin
+              ? ` · ${t(
+                  'monitor.integrations.policyGroupNotApplicable',
+                  `${rule.plugin_name} 对本次接入不适用`,
+                  { plugin: rule.plugin_name }
+                )}`
+              : missingMetric
+                ? ` · ${t('monitor.integrations.policyGroupNoData', '这次没有数据')}`
+                : '';
+            return (
+              <div key={`${rule.plugin_id}-${rule.name}`}>
+                {rule.name}
+                {note}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
       <b className="text-[14px] flex mb-[10px] ml-[-10px]">
         {t('monitor.integrations.basicInformation')}
       </b>
