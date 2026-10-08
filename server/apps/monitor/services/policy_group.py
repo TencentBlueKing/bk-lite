@@ -7,10 +7,12 @@ from apps.monitor.models import (
     MonitorInstanceOrganization,
     MonitorPolicy,
     PolicyGroup,
+    PolicyGroupDefault,
     PolicyGroupMembership,
     PolicyGroupRule,
     PolicyInstanceBaseline,
     PolicyOrganization,
+    PolicyTemplate,
 )
 from apps.monitor.services.policy import PolicyService
 
@@ -159,6 +161,75 @@ class PolicyGroupService:
             )
         )
         PolicyService._mark_new_alerts_closed(alerts, operator, "policy_group_member_left")
+
+    @staticmethod
+    def ensure_default(*, organization, monitor_object, operator="system"):
+        with transaction.atomic():
+            pointer = PolicyGroupDefault.objects.select_for_update().filter(organization=organization, monitor_object=monitor_object).first()
+            if pointer:
+                return pointer.policy_group
+            templates = list(
+                PolicyTemplate.objects.filter(
+                    template_type=PolicyTemplate.TYPE_BUILTIN,
+                    monitor_object=monitor_object,
+                ).select_related("plugin")
+            )
+            group = None
+            if templates:
+                group = PolicyGroupService.create_from_templates(
+                    organization=organization,
+                    monitor_object=monitor_object,
+                    name=f"{monitor_object.name}默认告警",
+                    templates=templates,
+                    operator=operator,
+                    origin=PolicyGroup.ORIGIN_SYSTEM,
+                )
+            PolicyGroupDefault.objects.create(
+                organization=organization,
+                monitor_object=monitor_object,
+                policy_group=group,
+                created_by=operator,
+                updated_by=operator,
+            )
+            return group
+
+    @staticmethod
+    def consider_auto_join(instance, organization_ids, operator="system"):
+        if PolicyGroupMembership.objects.filter(monitor_instance=instance).exists():
+            return PolicyGroupMembership.objects.get(monitor_instance=instance)
+        org_ids = []
+        for raw in organization_ids or []:
+            if raw in (None, ""):
+                continue
+            org_ids.append(int(raw))
+        if PolicyGroupService._has_legacy_policy(instance) or len(org_ids) != 1:
+            return PolicyGroupService._mark(instance, PolicyGroupMembership.STATE_SKIPPED, operator)
+        group = PolicyGroupService.ensure_default(organization=org_ids[0], monitor_object=instance.monitor_object, operator=operator)
+        if group is None:
+            return PolicyGroupService._mark(instance, PolicyGroupMembership.STATE_SKIPPED, operator)
+        return PolicyGroupService.join(instance=instance, group=group, operator=operator)
+
+    @staticmethod
+    def _mark(instance, state, operator):
+        membership, _ = PolicyGroupMembership.objects.get_or_create(
+            monitor_instance=instance,
+            defaults={"state": state, "created_by": operator, "updated_by": operator},
+        )
+        if membership.state != state or membership.policy_group_id:
+            membership.state = state
+            membership.policy_group = None
+            membership.updated_by = operator
+            membership.save(update_fields=["state", "policy_group", "updated_by", "updated_at"])
+        return membership
+
+    @staticmethod
+    def _has_legacy_policy(instance):
+        policies = MonitorPolicy.objects.filter(monitor_object=instance.monitor_object, group_rule__isnull=True).only("source")
+        for policy in policies:
+            values = (policy.source or {}).get("values") or []
+            if instance.id in values:
+                return True
+        return False
 
     @staticmethod
     def has_reported_baseline(policy, instance_id):

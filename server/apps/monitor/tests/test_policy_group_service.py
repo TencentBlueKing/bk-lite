@@ -200,6 +200,50 @@ def test_template_sync_does_not_change_group_rules_and_list_hides_them():
     assert legacy.name == "旧策略"
 
 
+def test_auto_join_uses_builtin_templates_once_and_skips_repeat():
+    monitor_object = _object()
+    wmi = _plugin(monitor_object, "WMI")
+    _template(monitor_object, wmi, "WMI CPU")
+    host = _instance(monitor_object, "node-01", 1)
+    _collect(host, wmi)
+
+    membership = PolicyGroupService.consider_auto_join(host, [1])
+    again = PolicyGroupService.consider_auto_join(host, [1])
+
+    assert membership.state == "member"
+    assert again.policy_group_id == membership.policy_group_id
+    assert membership.policy_group.origin == "system"
+    assert membership.policy_group.rules.count() == 1
+    PolicyGroupService.ensure_default(organization=1, monitor_object=monitor_object)
+    assert membership.policy_group.rules.count() == 1
+
+
+def test_auto_join_skips_when_no_template_multiple_orgs_or_legacy_policy():
+    monitor_object = _object()
+    bare = _instance(monitor_object, "bare", 1)
+    skipped = PolicyGroupService.consider_auto_join(bare, [1])
+    assert skipped.state == "skipped"
+    assert skipped.policy_group_id is None
+    PolicyGroupService.ensure_default(organization=1, monitor_object=monitor_object)
+    bare.policy_group_membership.refresh_from_db()
+    assert bare.policy_group_membership.state == "skipped"
+
+    multi = _instance(monitor_object, "multi", 1)
+    MonitorInstanceOrganization.objects.create(monitor_instance=multi, organization=2)
+    assert PolicyGroupService.consider_auto_join(multi, [1, 2]).state == "skipped"
+
+    wmi = _plugin(monitor_object, "WMI")
+    _template(monitor_object, wmi, "WMI CPU")
+    legacy_host = _instance(monitor_object, "legacy", 1)
+    MonitorPolicy.objects.create(
+        monitor_object=monitor_object,
+        name="旧策略",
+        algorithm="avg",
+        source={"type": "instance", "values": [legacy_host.id]},
+    )
+    assert PolicyGroupService.consider_auto_join(legacy_host, [1]).state == "skipped"
+
+
 def test_join_rejects_instance_outside_group_organization():
     monitor_object = _object()
     wmi = _plugin(monitor_object, "WMI")

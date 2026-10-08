@@ -221,6 +221,24 @@ class PolicyGroupRule(TimeInfo, MaintainerInfo):
         verbose_name_plural = "策略组规则"
 
 
+class PolicyGroupDefault(TimeInfo, MaintainerInfo):
+    organization = models.IntegerField(db_index=True, verbose_name="所属组织")
+    monitor_object = models.ForeignKey(MonitorObject, on_delete=models.CASCADE, verbose_name="监控对象")
+    policy_group = models.ForeignKey(
+        PolicyGroup,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="default_pointers",
+        verbose_name="默认策略组",
+    )
+
+    class Meta:
+        verbose_name = "默认策略组"
+        verbose_name_plural = "默认策略组"
+        unique_together = ("organization", "monitor_object")
+
+
 class PolicyGroupMembership(TimeInfo, MaintainerInfo):
     STATE_MEMBER = "member"
     STATE_DECLINED = "declined"
