@@ -62,7 +62,7 @@ def _instance(monitor_object, name, organization):
 
 
 def _collect(instance, plugin):
-    CollectConfig.objects.create(
+    return CollectConfig.objects.create(
         id=f"cfg-{instance.name}-{plugin.name}",
         monitor_instance=instance,
         monitor_plugin=plugin,
@@ -242,6 +242,37 @@ def test_auto_join_skips_when_no_template_multiple_orgs_or_legacy_policy():
         source={"type": "instance", "values": [legacy_host.id]},
     )
     assert PolicyGroupService.consider_auto_join(legacy_host, [1]).state == "skipped"
+
+
+def test_changing_collect_plugin_keeps_membership_and_closes_old_alerts():
+    monitor_object = _object()
+    wmi = _plugin(monitor_object, "WMI")
+    ssh = _plugin(monitor_object, "SSH")
+    group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="主机默认告警",
+        templates=[_template(monitor_object, wmi, "WMI CPU"), _template(monitor_object, ssh, "SSH CPU")],
+    )
+    host = _instance(monitor_object, "web-01", 1)
+    config = _collect(host, wmi)
+    PolicyGroupService.join(instance=host, group=group)
+    wmi_policy = group.rules.get(plugin=wmi).policy
+    alert = MonitorAlert.objects.create(policy_id=wmi_policy.id, monitor_instance_id=host.id, status="new", alert_type="alert")
+
+    config.monitor_plugin = ssh
+    config.save(update_fields=["monitor_plugin"])
+    PolicyGroupService.refresh_collect_coverage(host)
+
+    host.policy_group_membership.refresh_from_db()
+    wmi_policy.refresh_from_db()
+    ssh_policy = group.rules.get(plugin=ssh).policy
+    ssh_policy.refresh_from_db()
+    alert.refresh_from_db()
+    assert host.policy_group_membership.policy_group_id == group.id
+    assert wmi_policy.source["values"] == []
+    assert ssh_policy.source["values"] == [host.id]
+    assert alert.status == "closed"
 
 
 def test_access_choice_applies_only_to_instances_without_a_decision():

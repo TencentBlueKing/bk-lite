@@ -1,8 +1,11 @@
 from rest_framework import viewsets
+from rest_framework.decorators import action
 
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.current_team_scope import resolve_current_team_data_scope
 from apps.core.utils.web_utils import WebUtils
-from apps.monitor.models import PolicyGroup, PolicyGroupDefault
+from apps.monitor.models import MonitorInstance, PolicyGroup, PolicyGroupDefault
+from apps.monitor.services.policy_group import PolicyGroupService
 
 
 class PolicyGroupViewSet(viewsets.ViewSet):
@@ -36,3 +39,22 @@ class PolicyGroupViewSet(viewsets.ViewSet):
                 }
             )
         return WebUtils.response_success(data)
+
+    @action(methods=["post"], detail=False)
+    def join(self, request):
+        scope = resolve_current_team_data_scope(request)
+        group = PolicyGroup.objects.filter(id=request.data.get("group_id"), organization=int(scope.current_team)).first()
+        if group is None:
+            raise BaseAppException("策略组不存在")
+        instance_ids = request.data.get("instance_ids") or []
+        for instance in MonitorInstance.objects.filter(id__in=instance_ids, monitor_object_id=group.monitor_object_id):
+            PolicyGroupService.join(instance=instance, group=group, operator=scope.username or "system")
+        return WebUtils.response_success({"count": len(instance_ids)})
+
+    @action(methods=["post"], detail=False)
+    def leave(self, request):
+        scope = resolve_current_team_data_scope(request)
+        instance_ids = request.data.get("instance_ids") or []
+        for instance in MonitorInstance.objects.filter(id__in=instance_ids):
+            PolicyGroupService.leave(instance=instance, operator=scope.username or "system")
+        return WebUtils.response_success({"count": len(instance_ids)})

@@ -163,6 +163,20 @@ class PolicyGroupService:
         PolicyService._mark_new_alerts_closed(alerts, operator, "policy_group_member_left")
 
     @staticmethod
+    def refresh_collect_coverage(instance, operator="system"):
+        membership = PolicyGroupMembership.objects.filter(monitor_instance=instance, state=PolicyGroupMembership.STATE_MEMBER).select_related("policy_group").first()
+        if membership is None or membership.policy_group_id is None:
+            return membership
+        group = membership.policy_group
+        before = {rule.policy_id: set((rule.policy.source or {}).get("values") or []) for rule in group.rules.select_related("policy")}
+        PolicyGroupService.sync_coverage(group)
+        for rule in group.rules.select_related("policy"):
+            after = set((rule.policy.source or {}).get("values") or [])
+            if instance.id in before.get(rule.policy_id, set()) and instance.id not in after:
+                PolicyGroupService._close_instance_alerts([rule.policy_id], instance.id, operator)
+        return membership
+
+    @staticmethod
     def apply_access_choice(instance, *, join, group_id=None, operator="system"):
         """只应由本次新建的实例调用。已有成员决定的实例不在这里处理。"""
         if PolicyGroupMembership.objects.filter(monitor_instance=instance).exists():

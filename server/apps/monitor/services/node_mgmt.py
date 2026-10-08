@@ -1137,6 +1137,10 @@ class InstanceConfigService:
                         )
                     else:
                         PolicyGroupService.consider_auto_join(instance, raw.get("group_ids") or [])
+                for raw in existing_instances:
+                    instance = MonitorInstance.objects.filter(id=raw.get("instance_id")).first()
+                    if instance is not None:
+                        PolicyGroupService.refresh_collect_coverage(instance)
                 processed_instance_ids = [
                     str(instance["instance_id"]) for instance in new_instances + existing_instances if instance.get("instance_id") not in (None, "")
                 ]
