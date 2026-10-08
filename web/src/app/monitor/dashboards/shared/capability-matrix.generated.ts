@@ -1867,6 +1867,14 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "temperature",
         "traffic"
       ]
+    },
+    {
+      "collectType": "snmp_venturi",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "traffic"
+      ]
     }
   ]
 };
