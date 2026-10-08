@@ -95,7 +95,7 @@
     {
       "name": "D-Link交换机电源异常",
       "alert_name": "交换机${resource_name} 电源 ${metric__psu_name} 状态异常",
-      "description": "监控 D-Link DGS-1250 交换机各电源模块运行状态（dEntityExtEnvPowerStatus，inOperation=1，failed 与 empty 均映射为 2）。值为 2 表示电源故障或空槽。",
+      "description": "监控 D-Link DGS-1250 交换机各电源模块运行状态（dEntityExtEnvPowerStatus，inOperation 与 empty 映射为 1，failed 映射为 2）。值为 2 表示电源故障。",
       "metric_name": "device_psu_state",
       "algorithm": "last_over_time",
       "threshold": [

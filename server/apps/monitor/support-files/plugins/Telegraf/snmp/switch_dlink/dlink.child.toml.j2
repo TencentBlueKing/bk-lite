@@ -132,10 +132,10 @@ def apply(metric):
         if raw == None:
             return None
         value = int(raw)
-        if value == 1:
+        if value == 1 or value == 3:
             metric.fields["state"] = 1
             return metric
-        if value == 2 or value == 3:
+        if value == 2:
             metric.fields["state"] = 2
             return metric
         return None
