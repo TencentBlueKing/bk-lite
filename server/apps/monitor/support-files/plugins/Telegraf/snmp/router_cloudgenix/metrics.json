@@ -85,7 +85,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Operational state of each cooling fan from CGX-ENV-MIB cgxEnvFanStatus, normalized so up(1) is normal and every other defined state is abnormal."
+      "description": "Operational state of each cooling fan from CGX-ENV-MIB cgxEnvFanStatus, normalized so up(1) and a not-installed / notPresent slot are normal; off, failed, fault, and unknown stay abnormal."
     },
     {
       "metric_group": "Hardware Status",
@@ -121,7 +121,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Operational state of each power supply from CGX-ENV-MIB cgxEnvPsuTableStatus, normalized so up(1) is normal and every other defined state is abnormal."
+      "description": "Operational state of each power supply from CGX-ENV-MIB cgxEnvPsuTableStatus, normalized so up(1) and a not-installed / notPresent slot are normal; off, failed, fault, and unknown stay abnormal."
     },
     {
       "metric_group": "Temperature",
@@ -157,7 +157,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Operational state of each temperature sensor from CGX-ENV-MIB cgxEnvTempStatus, normalized so up(1) is normal and every other defined state is abnormal."
+      "description": "Operational state of each temperature sensor from CGX-ENV-MIB cgxEnvTempStatus, normalized so up(1) and a not-installed / notPresent slot are normal; off, failed, fault, and unknown stay abnormal."
     },
     {
       "metric_group": "Hardware Status",
@@ -193,7 +193,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Operational state of each power rail from CGX-ENV-MIB cgxEnvPowerStatus, normalized so up(1) is normal and every other defined state is abnormal."
+      "description": "Operational state of each power rail from CGX-ENV-MIB cgxEnvPowerStatus, normalized so up(1) and a not-installed / notPresent slot are normal; off, failed, fault, and unknown stay abnormal."
     }
   ]
 }

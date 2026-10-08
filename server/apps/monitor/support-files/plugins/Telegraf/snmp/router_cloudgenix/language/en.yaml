@@ -13,12 +13,14 @@ monitor_object_metric:
         high values may indicate fan failure, poor airflow, or high ambient temperature.
     device_fan_state:
       name: Fan Status
-      desc: Operational state of each cooling fan (enum). A non-normal state indicates
-        a cooling fault that can quickly lead to overheating.
+      desc: Operational state of each cooling fan from CGX-ENV-MIB cgxEnvFanStatus.
+        up(1) and a not-installed / notPresent slot are normal; off, failed, fault,
+        and unknown stay abnormal.
     device_psu_state:
       name: Power Supply Status
-      desc: Operational state of each power supply unit (enum). A non-normal state
-        indicates a power redundancy or hardware fault and should be remediated promptly.
+      desc: Operational state of each power supply from CGX-ENV-MIB cgxEnvPsuTableStatus.
+        up(1) and a not-installed / notPresent slot are normal; off, failed, fault,
+        and unknown stay abnormal.
     cloudgenix_fan_speed_rpm:
       name: Fan Speed (RPM)
       desc: Cooling-fan rotational speed from CGX-ENV-MIB cgxEnvFanSpeed, in
@@ -26,8 +28,8 @@ monitor_object_metric:
     cloudgenix_temperature_state:
       name: Temperature Sensor Status
       desc: Operational state of each temperature sensor from CGX-ENV-MIB
-        cgxEnvTempStatus, normalized so up(1) is normal and every other defined
-        state is abnormal.
+        cgxEnvTempStatus. up(1) and a not-installed / notPresent slot are normal;
+        off, failed, fault, and unknown stay abnormal.
     cloudgenix_power_voltage_volts:
       name: Power-Rail Voltage
       desc: Power-rail voltage from CGX-ENV-MIB cgxEnvPowerVoltage. The Integer32
@@ -35,8 +37,8 @@ monitor_object_metric:
     cloudgenix_power_state:
       name: Power-Rail Status
       desc: Operational state of each power rail from CGX-ENV-MIB
-        cgxEnvPowerStatus, normalized so up(1) is normal and every other defined
-        state is abnormal.
+        cgxEnvPowerStatus. up(1) and a not-installed / notPresent slot are normal;
+        off, failed, fault, and unknown stay abnormal.
     device_memory_total:
       name: Total Memory
       desc: This metric reports the total physical memory capacity of the router (UCD-SNMP-MIB
