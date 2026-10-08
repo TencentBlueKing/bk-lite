@@ -62,7 +62,7 @@
     source = '''
 def apply(metric):
     keys = ["rsl_current_dbm", "rsl_mean_dbm", "rsl_max_dbm", "rsl_min_dbm"]
-    sentinels = [65535, 65534, -1, 2147483647, -2147483648, 4294967295]
+    sentinels = [65535, 65534, 2147483647, -2147483648, 4294967295]
     for key in keys:
         raw = metric.fields.get(key)
         if raw == None:
