@@ -259,7 +259,7 @@ const Template: React.FC = () => {
     const templateIds = selectedTemplates
       .map((item) => item.id)
       .filter((item) => item !== undefined && item !== null);
-    void post('/monitor/api/policy_group/create/', {
+    void post('/monitor/api/policy_group/create_from_templates/', {
       template_ids: templateIds,
       name: '新建策略组',
     })

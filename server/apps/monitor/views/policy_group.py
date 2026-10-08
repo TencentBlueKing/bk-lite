@@ -40,8 +40,8 @@ class PolicyGroupViewSet(viewsets.ViewSet):
             )
         return WebUtils.response_success(data)
 
-    @action(methods=["post"], detail=False)
-    def create(self, request):
+    @action(methods=["post"], detail=False, url_path="create_from_templates")
+    def create_from_templates(self, request):
         scope = resolve_current_team_data_scope(request)
         organization = int(scope.current_team)
         templates = list(PolicyTemplate.objects.filter(id__in=request.data.get("template_ids") or []).select_related("plugin", "monitor_object"))
