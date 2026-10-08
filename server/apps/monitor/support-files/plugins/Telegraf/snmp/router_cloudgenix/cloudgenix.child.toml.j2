@@ -152,7 +152,7 @@ def apply(metric):
         raw = f.get("voltage_volts")
         if raw != None:
             raw = int(raw)
-            if raw < 1 or raw > 100000:
+            if raw < 0 or raw > 100000:
                 f.pop("voltage_volts")
             else:
                 f["voltage_volts"] = float(raw) / 1000.0
