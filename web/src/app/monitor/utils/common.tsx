@@ -778,6 +778,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /powerdsine|microsemi\s*poe/i, label: 'PowerDsine' },
   { match: /inhand/i, label: 'InHand Networks', icon: 'mm-inhand_inhand' },
   { match: /wi-?tek|wireless-tek/i, label: 'Wi-Tek', icon: 'mm-witek_witek' },
+  { match: /\bcomet\b|websensor/i, label: 'COMET' },
   { match: /multitech|multiconnect|\brcell\b/i, label: 'MultiTech', icon: 'mm-multitech_multitech' },
   { match: /\bavici\b/i, label: 'Avici', icon: 'mm-avici_avici' },
   { match: /hw[\s_-]*group|poseidon/i, label: 'HW group' },
