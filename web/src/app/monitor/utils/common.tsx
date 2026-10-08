@@ -672,6 +672,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /^(?!.*san_cisco).*cisco/i, label: 'Cisco', icon: 'mm-cisco_思科' },
   { match: /futurematrix/i, label: 'FutureMatrix', icon: 'mm-huawei_华为' },
   { match: /huawei/i, label: 'Huawei', icon: 'mm-huawei_华为' },
+  { match: /snmp_aruba_instant|aruba\s*instant/i, label: 'Aruba Instant', icon: 'mm-aruba_aruba' },
   { match: /snmp_aruba_wireless|wireless\s*aruba|aruba\s*aos/i, label: 'Aruba AOS', icon: 'mm-aruba_aruba' },
   { match: /aruba/i, label: 'Aruba', icon: 'mm-aruba_aruba' },
   { match: /juniper/i, label: 'Juniper', icon: 'mm-juniper_juniper' },
