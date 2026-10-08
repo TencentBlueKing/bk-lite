@@ -1778,6 +1778,16 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_cisco_ace",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "traffic",
+        "session"
+      ]
+    },
+    {
       "collectType": "snmp_f5",
       "capabilities": [
         "uptime",
