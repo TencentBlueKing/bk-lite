@@ -380,7 +380,11 @@ const PolicyGroupPage: React.FC = () => {
         onOk={async () => {
           if (!rule || !ruleGroup) return;
           const nextThreshold = cloneDeep(rule.threshold || []);
-          if (nextThreshold[0]) nextThreshold[0].value = thresholdValue ?? nextThreshold[0].value;
+          if (nextThreshold[0]) {
+            nextThreshold[0].value = thresholdValue ?? nextThreshold[0].value;
+          } else if (thresholdValue !== null) {
+            nextThreshold.push({ level: 'warning', method: '>', value: thresholdValue });
+          }
           await updatePolicyGroupRule({
             group_id: ruleGroup.id,
             rule_id: rule.id,
