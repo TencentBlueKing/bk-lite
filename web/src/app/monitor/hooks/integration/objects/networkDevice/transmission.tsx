@@ -64,6 +64,7 @@ export const useTransmissionConfig = () => {
       'Transmission MRV SNMP': 'snmp_mrv',
       'Transmission Nokia Wavence SNMP': 'snmp_nokia_wavence',
       'Transmission Marconi SNMP': 'snmp_marconi',
+      'Transmission ECI SNMP': 'snmp_eci',
       'Transmission Alcoma SNMP': 'snmp_alcoma',
       'Transmission Montclair SNMP': 'snmp_montclair',
       'Transmission PacketLight SNMP': 'snmp_packetlight',
