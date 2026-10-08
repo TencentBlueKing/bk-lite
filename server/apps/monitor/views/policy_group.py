@@ -247,5 +247,5 @@ class PolicyGroupViewSet(viewsets.ViewSet):
         template = PolicyTemplate.objects.filter(id=request.data.get("template_id"), monitor_object_id=instance.monitor_object_id).first()
         if template is None:
             raise BaseAppException("策略模板不存在")
-        policy = PolicyGroupService.create_standalone(instance=instance, template=template, operator=_operator(scope))
+        policy = PolicyGroupService.create_standalone(instance=instance, template=template, operator=_operator(scope), organization=organization)
         return WebUtils.response_success({"id": policy.id})

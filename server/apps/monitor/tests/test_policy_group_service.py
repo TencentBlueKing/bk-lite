@@ -435,5 +435,6 @@ def test_group_rule_and_standalone_rule_get_a_scan_task():
     assert PeriodicTask.objects.filter(name=f"scan_policy_task_{policy.id}").exists()
 
     host = _instance(monitor_object, "web-01", 1)
-    standalone = PolicyGroupService.create_standalone(instance=host, template=template)
+    standalone = PolicyGroupService.create_standalone(instance=host, template=template, organization=1)
     assert PeriodicTask.objects.filter(name=f"scan_policy_task_{standalone.id}", enabled=True).exists()
+    assert list(standalone.policyorganization_set.values_list("organization", flat=True)) == [1]

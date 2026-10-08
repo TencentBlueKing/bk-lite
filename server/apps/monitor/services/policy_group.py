@@ -322,12 +322,15 @@ class PolicyGroupService:
         return pointer
 
     @staticmethod
-    def create_standalone(*, instance, template, operator="system"):
+    def create_standalone(*, instance, template, operator="system", organization=None):
         recipe = PolicyService.recipe_fields_from_template(template)
+        organizations = [organization] if organization is not None else list(
+            MonitorInstanceOrganization.objects.filter(monitor_instance=instance).values_list("organization", flat=True)
+        )
         policy = MonitorPolicy.objects.create(
             monitor_object=instance.monitor_object,
             name=template.name[:100],
-            organizations=[],
+            organizations=organizations,
             source={"type": "instance", "values": [instance.id]},
             enable=True,
             notice=True,
@@ -339,6 +342,8 @@ class PolicyGroupService:
             **recipe,
             schedule=PolicyService._default_duration((template.config or {}).get("schedule")),
         )
+        for org in organizations:
+            PolicyOrganization.objects.create(policy=policy, organization=org, created_by=operator, updated_by=operator)
         PolicyGroupService.ensure_scan_task(policy)
         return policy
 
