@@ -6,6 +6,7 @@ from django.core import signing
 from rest_framework.exceptions import PermissionDenied
 
 AUTH_SALT = "apps.operation_analysis.nats.get_operation_analysis_module_data.v1"
+DASHBOARD_AUTH_SALT = "apps.operation_analysis.nats.dashboard_proposal.v1"
 DEFAULT_AUTH_MAX_AGE_SECONDS = 120
 MAX_PAGE_SIZE = 500
 
@@ -63,3 +64,26 @@ def verify_module_data_request(token, module, child_module, page, page_size, gro
     if signed_params != expected_params:
         raise PermissionDenied("Operation analysis NATS authentication failed")
     return expected_params
+
+
+def sign_dashboard_request(team_id, action: str) -> str:
+    """签发绑定组织与动作的短时令牌。列表令牌不能拿去准备方案。"""
+
+    return signing.dumps(
+        {"action": str(action), "team_id": _positive_integer(team_id, "team_id")},
+        salt=DASHBOARD_AUTH_SALT,
+    )
+
+
+def verify_dashboard_request(token, team_id, action: str) -> int:
+    """校验令牌、有效期，以及它绑定的组织与动作。"""
+
+    try:
+        verified_team = _positive_integer(team_id, "team_id")
+        max_age = int(os.getenv("OPERATION_ANALYSIS_NATS_AUTH_MAX_AGE", DEFAULT_AUTH_MAX_AGE_SECONDS))
+        signed = signing.loads(token, salt=DASHBOARD_AUTH_SALT, max_age=max_age)
+    except (signing.BadSignature, TypeError, ValueError):
+        raise PermissionDenied("Operation analysis NATS authentication failed") from None
+    if signed != {"action": str(action), "team_id": verified_team}:
+        raise PermissionDenied("Operation analysis NATS authentication failed")
+    return verified_team

@@ -401,21 +401,26 @@ const dashboardTextSections = (stamp: OpsAnalysisDashboardStamp): AiContextSecti
   ];
 };
 
+const isDashboardEditMode = () =>
+  typeof document !== 'undefined'
+  && document.querySelector('[data-dashboard-edit-mode="true"]') !== null;
+
 export function getMessage(): PageContextMessage {
-  if (!isOpsAnalysisDashboardView()) return { title: '' };
+  if (!isOpsAnalysisDashboardView() || isDashboardEditMode()) return { title: '' };
   const title = `${TITLE_PREFIX}${canvasIdFromSearch()}`;
   const currentTime = buildOpsAnalysisCurrentTime(readOpsAnalysisDashboardStamp());
   return currentTime ? { title, currentTime } : { title };
 }
 
 export function getTextContext(): Partial<AiPageContext> {
-  if (!isOpsAnalysisDashboardView()) {
+  if (!isOpsAnalysisDashboardView() || isDashboardEditMode()) {
     return { sections: [], images: [] };
   }
   const stamp = readOpsAnalysisDashboardStamp();
   return {
     url: typeof window === 'undefined' ? '' : window.location.href,
     app: 'ops-analysis',
+    capabilities: ['dashboard-builder'],
     title: stamp.dashboardName || document.title || '运营分析仪表盘',
     sections: dashboardTextSections(stamp),
     images: [],
@@ -425,7 +430,7 @@ export function getTextContext(): Partial<AiPageContext> {
 export async function getContext(
   toolkit: PageContextToolkit,
 ): Promise<Partial<AiPageContext>> {
-  if (!isOpsAnalysisDashboardView()) {
+  if (!isOpsAnalysisDashboardView() || isDashboardEditMode()) {
     return { sections: [], images: [] };
   }
   const stamp = readOpsAnalysisDashboardStamp();

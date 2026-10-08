@@ -256,6 +256,51 @@ def test_operation_analysis_rpc_signature_is_accepted_by_handler(monkeypatch):
     assert result == {"count": 1, "items": []}
 
 
+def test_dashboard_handlers_require_a_token_bound_to_team_and_action(monkeypatch):
+    from apps.operation_analysis.nats.auth import sign_dashboard_request
+
+    seen = {}
+
+    def fake_briefs(team_id):
+        seen["team_id"] = team_id
+        return [{"id": 2}]
+
+    def fake_prepare(proposal, briefs):
+        seen["proposal"] = proposal
+        seen["briefs"] = briefs
+        return {"ok": True}
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.dashboard_proposal_service.list_visible_briefs",
+        fake_briefs,
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.dashboard_proposal_service.prepare_dashboard_proposal",
+        fake_prepare,
+    )
+
+    with pytest.raises(PermissionDenied, match="NATS authentication failed"):
+        nats_module.list_dashboard_datasource_briefs(7)
+    with pytest.raises(PermissionDenied, match="NATS authentication failed"):
+        nats_module.list_dashboard_datasource_briefs("nope", _internal_auth="forged")
+
+    list_token = sign_dashboard_request(7, "list_dashboard_datasource_briefs")
+    with pytest.raises(PermissionDenied, match="NATS authentication failed"):
+        nats_module.list_dashboard_datasource_briefs(8, _internal_auth=list_token)
+    with pytest.raises(PermissionDenied, match="NATS authentication failed"):
+        nats_module.prepare_dashboard_proposal({}, 7, _internal_auth=list_token)
+
+    listed = nats_module.list_dashboard_datasource_briefs(7, _internal_auth=list_token)
+    assert listed == {"briefs": [{"id": 2}]}
+    assert seen["team_id"] == 7
+
+    prepare_token = sign_dashboard_request(7, "prepare_dashboard_proposal")
+    prepared = nats_module.prepare_dashboard_proposal({"schemaVersion": "1.0"}, 7, _internal_auth=prepare_token)
+    assert prepared == {"ok": True}
+    assert seen["briefs"] == [{"id": 2}]
+    assert seen["proposal"] == {"schemaVersion": "1.0"}
+
+
 def test_versioned_handler_rejects_unsigned_request(monkeypatch):
     monkeypatch.setattr(
         nats_module.DictDirectoryService,
@@ -287,11 +332,7 @@ async def test_versioned_request_crosses_real_dispatcher(monkeypatch):
         "get_operation_analysis_module_data",
         lambda **kwargs: {"count": 1, "items": [kwargs["group_id"]]},
     )
-    subject = next(
-        key
-        for key, registration in default_registry.registry.items()
-        if registration["name"] == rpc_call["method_name"]
-    )
+    subject = next(key for key, registration in default_registry.registry.items() if registration["name"] == rpc_call["method_name"])
 
     result = await nats_handler(subject, {"kwargs": rpc_call["kwargs"]})
 

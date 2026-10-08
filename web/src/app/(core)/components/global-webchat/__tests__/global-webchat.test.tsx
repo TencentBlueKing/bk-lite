@@ -137,10 +137,10 @@ describe('GlobalWebChat', () => {
       'script[data-bk-global-webchat]',
     );
 
-    expect(script?.getAttribute('src')).toBe('/webchat/webchat.js?v=20261008-dock8');
+    expect(script?.getAttribute('src')).toBe('/webchat/webchat.js?v=20261008-dashboard');
     expect(
       document.querySelector<HTMLLinkElement>('link[data-bk-global-webchat]')?.getAttribute('href'),
-    ).toBe('/webchat/style.css?v=20261008-dock8');
+    ).toBe('/webchat/style.css?v=20261008-dashboard');
 
     window.WebChat = {
       default: initialize,

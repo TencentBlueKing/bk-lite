@@ -7,6 +7,7 @@ from typing import Any, Sequence
 
 import json_repair
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
@@ -1473,6 +1474,263 @@ def enforce_generate_attachment_file(
     return ToolExecutionPlan(goal=plan.goal or "生成报告附件", steps=steps)
 
 
+DASHBOARD_BUILDER_TOOL_NAMES = frozenset(
+    {
+        "search_data_sources",
+        "prepare_dashboard_proposal",
+        "apply_dashboard_proposal",
+    }
+)
+_DASHBOARD_PAGE_MARKERS = ("以下是用户当前正在查看的页面快照", "<current_page>", "## 仪表盘编辑状态")
+_DASHBOARD_CANCEL_RE = re.compile(r"取消|不要了|算了|不用了")
+_DASHBOARD_CHANGE_RE = re.compile(r"改|换|加上|再加|删除|去掉|调整")
+_DASHBOARD_CONFIRM_EXACT = frozenset({"是", "好", "好的", "行", "可以", "嗯", "对", "确认", "就这样", "没问题", "好的确认"})
+_DASHBOARD_CONFIRM_RE = re.compile(r"确认|就这样|可以了|符合|应用")
+_DASHBOARD_READ_ONLY_RE = re.compile(
+    r"(?:为什么|为何|为啥|原因|怎么会).{0,24}(?:空|没有|异常|不对)|"
+    r"(?:看看|查看|说说|列出).{0,24}(?:当前|现有|这张盘|画布).{0,24}(?:有什么|趋势|内容)|"
+    r"(?:当前|现有|这张盘|画布).{0,24}(?:有什么|趋势如何|是什么)",
+    re.I,
+)
+
+
+def dashboard_user_utterance(user_message: str) -> str:
+    """去掉页面快照。最后一句是确认或取消时，只保留这一句，避免被上文的搭盘要求盖住。"""
+    text = str(user_message or "")
+    cut = len(text)
+    for marker in _DASHBOARD_PAGE_MARKERS:
+        index = text.find(marker)
+        if index >= 0:
+            cut = min(cut, index)
+    text = text[:cut].strip()
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines:
+        return ""
+    last = lines[-1]
+    compact = re.sub(r"[\s，。！？、,.!]+", "", last)
+    if (
+        compact
+        and len(compact) <= 24
+        and (_DASHBOARD_CANCEL_RE.search(compact) or compact in _DASHBOARD_CONFIRM_EXACT or _DASHBOARD_CONFIRM_RE.search(compact))
+    ):
+        return last
+    return text
+
+
+def dashboard_build_query(user_message: str, history: Sequence | None = None) -> str:
+    """确认句不拿来检索，改用上文里用户真正要搭的那句。"""
+    if dashboard_confirmation_intent(user_message) is None:
+        text = dashboard_user_utterance(user_message)
+        if text:
+            return text
+    for message in reversed(list(history or [])):
+        if getattr(message, "type", "") not in {"human", "user"}:
+            continue
+        content = getattr(message, "content", "")
+        if isinstance(content, list):
+            content = " ".join(str(part.get("text") or "") if isinstance(part, dict) else str(part) for part in content)
+        text = dashboard_user_utterance(str(content or ""))
+        if not text or dashboard_confirmation_intent(text) is not None:
+            continue
+        compact = re.sub(r"[\s，。！？、,.!]+", "", text)
+        if len(compact) < 4:
+            continue
+        return text
+    return dashboard_user_utterance(user_message) or "仪表盘"
+
+
+def dashboard_planning_message(user_message: str, history: Sequence | None = None) -> str:
+    """把多轮补充的目标列表还原成可执行的搭盘请求。
+
+    只在当前句本身不是搭盘动作、但明确列出两个以上图表目标，且上一个
+    用户请求确实是新建或追加图表时才继承语境。
+    """
+    current = dashboard_user_utterance(user_message)
+    if not current or dashboard_confirmation_intent(current) is not None:
+        return user_message
+    from apps.operation_analysis.services.dashboard_builder_pipeline import plan_dashboard_requirements
+    from apps.operation_analysis.services.dashboard_proposal_service import classify_dashboard_request
+
+    if classify_dashboard_request(current) != "none" or len(plan_dashboard_requirements(current)) < 2:
+        return user_message
+    skipped_current = False
+    previous_kind = ""
+    for message in reversed(list(history or [])):
+        if getattr(message, "type", "") not in {"human", "user"}:
+            continue
+        content = getattr(message, "content", "")
+        if isinstance(content, list):
+            content = " ".join(str(part.get("text") or "") if isinstance(part, dict) else str(part) for part in content)
+        text = dashboard_user_utterance(str(content or ""))
+        if not skipped_current and text == current:
+            skipped_current = True
+            continue
+        kind = classify_dashboard_request(text)
+        if kind in {"build", "extend"}:
+            previous_kind = kind
+            break
+    if not previous_kind:
+        return user_message
+    prefix = "再增加图表，展示" if previous_kind == "extend" else "创建仪表盘，展示"
+    contextual = f"{prefix}{current}"
+    raw = str(user_message or "")
+    marker_indexes = [raw.find(marker) for marker in _DASHBOARD_PAGE_MARKERS if raw.find(marker) >= 0]
+    if marker_indexes:
+        contextual = f"{contextual}\n\n{raw[min(marker_indexes):]}"
+    return contextual
+
+
+def dashboard_planning_message_for_tools(user_message: str, history: Sequence | None, available_names: Sequence[str]) -> str:
+    """当前请求没有搭盘工具时，不改写规划问题。"""
+    if "apply_dashboard_proposal" not in set(available_names or []):
+        return user_message
+    return dashboard_planning_message(user_message, history)
+
+
+_DASHBOARD_STEP_REPLY_PREFIXES = (
+    "可以按这些数据源",
+    "已生成并校验仪表盘方案",
+    "根据当前检索到的数据源",
+    "已应用到当前编辑中的仪表盘",
+    "这次没有套上画布",
+    "还要先定这些参数",
+    "已把参数写进方案",
+    "没有找到能够可靠回答",
+)
+
+
+def dashboard_final_reply(completed_steps: Sequence, planned_steps: Sequence) -> str:
+    """只有本轮计划真的包含搭盘工具时，才用搭盘步骤结果代替最终总结。"""
+    planned_names = {name for step in planned_steps or [] for name in (getattr(step, "tools", None) or [])}
+    if not planned_names & DASHBOARD_BUILDER_TOOL_NAMES:
+        return ""
+    for step in reversed(list(completed_steps or [])):
+        result = str(getattr(step, "result", "") or "")
+        if result.startswith(_DASHBOARD_STEP_REPLY_PREFIXES):
+            return result
+    return ""
+
+
+def dashboard_confirmation_intent(user_message: str) -> str | None:
+    """复用仪表盘领域层的确认语义，避免规划器和执行层各自解释一套。"""
+    from apps.operation_analysis.services.dashboard_proposal_service import dashboard_confirmation_intent as classify_intent
+
+    return classify_intent(user_message)
+
+
+def missing_planned_dashboard_tools(planned: Sequence[str], invoked: Sequence[str]) -> list[str]:
+    invoked_names = set(invoked or [])
+    return [name for name in (planned or []) if name in DASHBOARD_BUILDER_TOOL_NAMES and name not in invoked_names]
+
+
+def _plan_without_dashboard_tools(plan: ToolExecutionPlan, utterance: str) -> ToolExecutionPlan:
+    """读数、解释时留下其他工具，搭盘三件套不执行。"""
+    blocked = DASHBOARD_BUILDER_TOOL_NAMES
+    steps = []
+    for step in plan.steps or []:
+        tools = [name for name in (step.tools or []) if name not in blocked]
+        if tools:
+            steps.append(ToolExecutionStep(objective=step.objective, tools=tools))
+    return ToolExecutionPlan(goal=plan.goal or utterance or "回答用户", steps=steps)
+
+
+def _dashboard_id_in_message(user_message: str) -> str:
+    from apps.operation_analysis.services.dashboard_proposal_service import dashboard_snapshot_from_message
+
+    snapshot = dashboard_snapshot_from_message(user_message)
+    if isinstance(snapshot, dict) and snapshot.get("dashboardId") not in (None, ""):
+        return str(snapshot["dashboardId"])
+    matched = re.search(r"dashboard_\d+", user_message or "")
+    return matched.group(0) if matched else "current"
+
+
+def rewrite_dashboard_builder_plan(
+    plan: ToolExecutionPlan,
+    available_names: set[str],
+    *,
+    user_message: str = "",
+    runtime_config: RunnableConfig | None = None,
+) -> ToolExecutionPlan:
+    """以规划模型的结构化意图为主，规则只做安全保护和稳定兜底。"""
+    if "apply_dashboard_proposal" not in available_names:
+        return plan
+    intent = dashboard_confirmation_intent(user_message)
+    from apps.operation_analysis.services.dashboard_proposal_service import classify_dashboard_request
+
+    if "无法安全搭盘" in (user_message or ""):
+        return ToolExecutionPlan(goal="编辑状态过长，告诉用户先减少组件，不要调用搭盘工具", steps=[])
+    kind = classify_dashboard_request(user_message)
+    if intent == "cancel" or kind == "cancel":
+        return ToolExecutionPlan(goal="用户取消搭盘", steps=[])
+    if kind == "split":
+        return ToolExecutionPlan(goal="一句话里又删又加，请用户分开说，不要应用", steps=[])
+
+    def executable_steps(start: str) -> list[ToolExecutionStep]:
+        steps = []
+        if start == "search" and "search_data_sources" in available_names:
+            steps.append(ToolExecutionStep(objective="按用户的业务目标检索可上盘数据源", tools=["search_data_sources"]))
+        if start in {"search", "prepare"} and "prepare_dashboard_proposal" in available_names:
+            steps.append(ToolExecutionStep(objective="根据检索结果或当前画布生成并校验方案", tools=["prepare_dashboard_proposal"]))
+        steps.append(
+            ToolExecutionStep(
+                objective="校验通过后直接应用到当前画布",
+                tools=["apply_dashboard_proposal"],
+            )
+        )
+        return steps
+
+    if intent == "apply":
+        logger.debug("event=dashboard_plan_rewritten branch=%s", "apply_ready_proposal")
+        return ToolExecutionPlan(goal="把已准备的仪表盘方案应用到当前画布", steps=executable_steps("apply"))
+
+    if kind == "revise" and "prepare_dashboard_proposal" in available_names:
+        logger.debug("event=dashboard_plan_rewritten branch=%s", "revise")
+        return ToolExecutionPlan(
+            goal="按当前画布修订并直接应用",
+            steps=executable_steps("prepare"),
+        )
+    if kind == "deferred":
+        return ToolExecutionPlan(goal="字段、筛选、单位或阈值还不能自动改，告诉用户到页面上调整，不要应用", steps=[])
+    if kind == "unsupported":
+        return ToolExecutionPlan(goal="分组、刷新、拓扑、导出或仪表盘改名要在页面上手工做，不要调用搭盘工具", steps=[])
+
+    utterance = dashboard_user_utterance(user_message)
+    if kind == "none" and _DASHBOARD_READ_ONLY_RE.search(utterance):
+        logger.debug("event=dashboard_plan_rewritten branch=%s", "read_only")
+        return _plan_without_dashboard_tools(plan, utterance)
+
+    if kind not in {"build", "extend"}:
+        from apps.operation_analysis.services.dashboard_proposal_service import proposal_has_param_gaps
+        from apps.opspilot.metis.llm.tools.ops_analysis_dashboard import dashboard_scope, load_ready_proposal
+
+        team_id, session_id, dashboard_id = dashboard_scope(runtime_config, _dashboard_id_in_message(user_message))
+        stored = load_ready_proposal(team_id, dashboard_id, session_id=session_id)
+        if stored and proposal_has_param_gaps(stored) and "prepare_dashboard_proposal" in available_names:
+            logger.debug("event=dashboard_plan_rewritten branch=%s", "fill_params")
+            return ToolExecutionPlan(
+                goal="补全仪表盘参数并在校验通过后应用",
+                steps=executable_steps("prepare"),
+            )
+
+    planned_dashboard_tools = {tool_name for step in plan.steps or [] for tool_name in step.tools or [] if tool_name in DASHBOARD_BUILDER_TOOL_NAMES}
+    if "search_data_sources" in planned_dashboard_tools:
+        logger.debug("event=dashboard_plan_rewritten branch=%s", "model_build")
+        return ToolExecutionPlan(goal=plan.goal or "搭建并应用仪表盘", steps=executable_steps("search"))
+    if "prepare_dashboard_proposal" in planned_dashboard_tools:
+        logger.debug("event=dashboard_plan_rewritten branch=%s", "model_revise")
+        return ToolExecutionPlan(goal=plan.goal or "修订并应用仪表盘", steps=executable_steps("prepare"))
+    if "apply_dashboard_proposal" in planned_dashboard_tools:
+        return ToolExecutionPlan(goal=plan.goal or "应用已准备的仪表盘", steps=executable_steps("apply"))
+
+    if kind in {"build", "extend"} and "search_data_sources" in available_names:
+        logger.debug("event=dashboard_plan_rewritten branch=%s", "rule_build")
+        return ToolExecutionPlan(
+            goal="检索数据源并直接应用仪表盘" if kind == "build" else "检索数据源并在当前画布追加图表",
+            steps=executable_steps("search"),
+        )
+    return _plan_without_dashboard_tools(plan, utterance)
+
+
 def _looks_like_empty_message_reply(raw_text: str) -> bool:
     text = " ".join((raw_text or "").split())
     if not text:
@@ -1709,6 +1967,7 @@ class ToolExecutionPlanner:
         *,
         user_message: str = "",
         agent_system_prompt: str = "",
+        runtime_config: RunnableConfig | None = None,
     ) -> ToolExecutionPlan:
         if not isinstance(payload, dict):
             raise ToolPlanningError("规划模型未返回 JSON 对象")
@@ -1765,12 +2024,18 @@ class ToolExecutionPlanner:
             available_names,
             skill_packages=skill_packages,
         )
-        return enforce_generate_attachment_file(
+        plan = enforce_generate_attachment_file(
             plan,
             available_names,
             user_message=user_message,
             agent_system_prompt=agent_system_prompt,
             max_steps=self._max_steps,
+        )
+        return rewrite_dashboard_builder_plan(
+            plan,
+            available_names,
+            user_message=user_message,
+            runtime_config=runtime_config,
         )
 
     def _system_prompt(self) -> str:
@@ -1924,6 +2189,7 @@ class ToolExecutionPlanner:
                 packages,
                 user_message=user_message,
                 agent_system_prompt=agent_system_prompt,
+                runtime_config=config,
             )
             log_stage_timing(
                 "planning",

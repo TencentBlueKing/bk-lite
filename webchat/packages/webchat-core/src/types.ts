@@ -46,6 +46,7 @@ export interface PageContextImage {
 export interface PageContext {
   url?: string;
   app?: string;
+  capabilities?: string[];
   title?: string;
   sections?: PageContextSection[];
   images?: PageContextImage[];

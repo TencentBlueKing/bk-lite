@@ -142,6 +142,8 @@ describe('ai-page-context registry', () => {
   it('merges sources and drops low-priority overflow', () => {
     const merged = mergePageContexts([
       {
+        app: 'ops-analysis',
+        capabilities: ['dashboard-builder'],
         sections: [
           { id: 'low', label: '低', content: 'L'.repeat(5000), priority: 1 },
           { id: 'high', label: '高', content: 'H'.repeat(5000), priority: 9 },
@@ -156,7 +158,10 @@ describe('ai-page-context registry', () => {
           { caption: 'g', dataUrl: 'data:7' },
         ],
       },
+      { capabilities: ['dashboard-builder', 'dashboard-export'] },
     ]);
+    expect(merged.app).toBe('ops-analysis');
+    expect(merged.capabilities).toEqual(['dashboard-builder', 'dashboard-export']);
     expect(merged.sections?.some((section) => section.id === 'high')).toBe(true);
     expect(merged.sections?.some((section) => section.id === 'low')).toBe(false);
     expect(merged.images).toHaveLength(6);

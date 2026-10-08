@@ -4,7 +4,7 @@
 # @Author: windyzhao
 import nats_client
 from apps.operation_analysis.constants.constants import PERMISSION_DATASOURCE, PERMISSION_DIRECTORY
-from apps.operation_analysis.nats.auth import verify_module_data_request
+from apps.operation_analysis.nats.auth import verify_dashboard_request, verify_module_data_request
 from apps.operation_analysis.services.directory_service import DictDirectoryService
 
 
@@ -42,3 +42,20 @@ def get_operation_analysis_module_list():
         {"name": PERMISSION_DATASOURCE, "display_name": "数据源", "children": []},
     ]
     return result
+
+
+@nats_client.register
+def list_dashboard_datasource_briefs(team_id, _internal_auth=None):
+    from apps.operation_analysis.services.dashboard_proposal_service import list_visible_briefs
+
+    verified_team = verify_dashboard_request(_internal_auth, team_id, "list_dashboard_datasource_briefs")
+    return {"briefs": list_visible_briefs(verified_team)}
+
+
+@nats_client.register
+def prepare_dashboard_proposal(proposal, team_id, _internal_auth=None):
+    from apps.operation_analysis.services.dashboard_proposal_service import list_visible_briefs
+    from apps.operation_analysis.services.dashboard_proposal_service import prepare_dashboard_proposal as prepare
+
+    verified_team = verify_dashboard_request(_internal_auth, team_id, "prepare_dashboard_proposal")
+    return prepare(proposal or {}, list_visible_briefs(verified_team))

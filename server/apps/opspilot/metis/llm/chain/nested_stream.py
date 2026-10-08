@@ -8,6 +8,7 @@ SSE 仍要等它收尾。这里的桥只往 ``agui_owned_event_queue`` 放事件
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -245,21 +246,37 @@ def publish_owned_custom_event(queue_or_config: Any, name: str, data: Any) -> bo
         queue = owned_event_queue(config)
     if queue is None or not name:
         return False
+    item = {
+        "event": "on_custom_event",
+        "name": name,
+        "data": data,
+        "tags": [],
+        "metadata": {},
+        "parent_ids": [],
+        "_enqueued_at": time.monotonic(),
+    }
     try:
-        queue.put_nowait(
-            {
-                "event": "on_custom_event",
-                "name": name,
-                "data": data,
-                "tags": [],
-                "metadata": {},
-                "parent_ids": [],
-                "_enqueued_at": time.monotonic(),
-            }
-        )
+        _put_owned_event(queue, item)
     except Exception:
         return False
     return True
+
+
+def _put_owned_event(queue: asyncio.Queue, item: dict) -> None:
+    """同步工具跑在线程池里，必须把入队交给队列所属的事件循环。"""
+    loop = getattr(queue, "_loop", None)
+    loop_thread = getattr(loop, "_thread_id", None) if loop is not None else None
+    if loop is not None and loop.is_running() and loop_thread != threading.get_ident():
+
+        def _enqueue() -> None:
+            try:
+                queue.put_nowait(item)
+            except Exception:
+                return
+
+        loop.call_soon_threadsafe(_enqueue)
+        return
+    queue.put_nowait(item)
 
 
 def publish_node_finished(config: dict | None) -> None:

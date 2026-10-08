@@ -7,6 +7,8 @@ export interface AiContextSection {
   label: string;
   content: string;
   priority?: number;
+  /** 放不下时整段丢弃，不从中间截断。 */
+  atomic?: boolean;
 }
 
 /** @deprecated Prefer ChartSnapshot; kept for page_context wire format. */
@@ -15,6 +17,7 @@ export type AiContextImage = ChartSnapshot;
 export interface AiPageContext {
   url?: string;
   app?: string;
+  capabilities?: string[];
   title?: string;
   sections?: AiContextSection[];
   images?: AiContextImage[];

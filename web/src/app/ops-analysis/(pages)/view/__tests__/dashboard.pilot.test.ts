@@ -62,6 +62,8 @@ describe('ops-analysis dashboard.pilot type gate', () => {
     setView('?type=dashboard&id=dash-1');
     document.body.innerHTML = dashboardShell('');
     expect(getMessage().title).toBe('ops-analysis-dashboard:dash-1');
+    expect(getTextContext().app).toBe('ops-analysis');
+    expect(getTextContext().capabilities).toEqual(['dashboard-builder']);
   });
 });
 
@@ -513,6 +515,7 @@ describe('ops-analysis dashboard.pilot text context', () => {
     setView('?type=dashboard&id=dash-empty');
     document.body.innerHTML = dashboardShell('');
     const text = getTextContext();
+    expect((text.sections || []).some((section) => section.id === 'dashboard-identity')).toBe(true);
     expect((text.sections || []).some((section) => section.content.includes('生产总览'))).toBe(true);
     expect(text.images || []).toEqual([]);
     const toolkit: PageContextToolkit = {

@@ -29,6 +29,8 @@ const CJK = /[\u4e00-\u9fff]/;
  */
 const keptCopy = new Map<string, string>([
   ['无数据', '#4340 DEFER：topology registerNode empty caption'],
+  ['仪表盘编辑状态', '搭盘协议标题，后端按这个标记读取编辑快照'],
+  ['仪表盘编辑配置过长，本轮无法安全搭盘。请先减少组件后再描述调整。', '搭盘协议正文，后端按「无法安全搭盘」停止套用'],
 ]);
 
 /** 整文件跳过：Storybook / pilot / 测试夹具。 */

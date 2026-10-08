@@ -538,6 +538,54 @@ class ChatService:
                     extra_config["_multi_instance_options"] = instance_names
             tools.append(tool_params)
 
+        page_context = kwargs.get("page_context")
+        page_app = str(page_context.get("app") or "").strip() if isinstance(page_context, dict) else ""
+        page_capabilities = (
+            {str(item).strip() for item in (page_context.get("capabilities") or []) if isinstance(item, str) and item.strip()}
+            if isinstance(page_context, dict)
+            else set()
+        )
+        if page_app == "ops-analysis" and "dashboard-builder" in page_capabilities:
+            tools.append(
+                {
+                    "name": "ops_analysis_dashboard",
+                    "url": "langchain:ops_analysis_dashboard",
+                    "enable_auth": False,
+                    "auth_token": "",
+                    "extra_tools_prompt": "",
+                }
+            )
+            from apps.operation_analysis.services.dashboard_proposal_service import load_widget_capabilities
+
+            chart_types = "、".join(item["type"] for item in load_widget_capabilities()["widgets"])
+            chat_kwargs["system_message_prompt"] = chat_kwargs.get("system_message_prompt", "") + (
+                "\n\n【运营分析搭盘】用户在运营分析仪表盘页面。查看页也可以检索数据源并直接应用；前端会打开编辑并为最近一次 AI 修改提供撤销。"
+                "根据编辑状态里的组件 id 调整，不要重写未提及的格式配置。"
+                "保留的数据源组件必须原样带回 id、chart、dataSource、字段角色、params 名和 bindings。"
+                "字段角色写回 valueConfig：selected 对应 selectedFields，dimension/value 对应同名 Field，column 对应表格列 key，timeline.time 对应 eventTimeline.timeField。"
+                "检索结果里 fields 的 name 是字段 key，写入 valueConfig 时必须用这个 name，不要写 desc 或中文标题。"
+                "参数值不要写成参数的中文名。主机实例这类动态选项留空，不要把「主机」写进 instance_ids。"
+                "去掉、删除已有组件时不要检索数据源，只调用 prepare_dashboard_proposal，按编辑状态里现有组件出方案。"
+                "只有新搭或再加数据源时，才先调用 search_data_sources，再调用 prepare_dashboard_proposal，校验通过后立即调用 apply_dashboard_proposal。调用工具之前禁止编写方案，禁止编造数据源 id 或字段。"
+                "检索有候选时，必须用这些候选出方案并直接应用。名称里带用户主题的数据源就是可用数据源，"
+                "例如用户要告警时，告警趋势、告警分布、告警数量都可以直接上盘。"
+                "禁止改用只在说明里提到该主题的总览数据源，也禁止说没有可用数据源。"
+                "host_name、ip、display_name 就是主机标识。禁止因为缺「环境」或不能覆盖全部口头需求就说没有数据源、无法生成。"
+                "改标题、说明、布局、图表类型或删除组件时不要检索，按当前画布出方案。"
+                "新搭盘的图表类型、数据源和字段必须根据检索结果自己填好。只有用户要求修改画布上已有组件的字段、筛选、单位、小数或阈值时，才告诉用户到页面上调整。"
+                "分组、刷新周期、拓扑、导出和仪表盘改名要在页面上手工做。"
+                "查看页和编辑页都要按当前画布理解，不要因为还在查看页就忽略已有组件。"
+                "用户在问当前盘上有什么、趋势如何、为什么为空时，直接根据编辑状态回答，不要检索数据源，不要出方案，不要应用。"
+                "用户要修改或去掉已有组件时，先按当前画布准备完整方案，校验通过后直接应用。"
+                "如果 prepare 返回的 data.ok 不是 true，按 data.pending 告诉用户还缺哪个参数或字段，补全后重新 prepare，不要调用 apply_dashboard_proposal。"
+                "校验通过后按这个结构说明已应用的方案：每个组件写图表类型、数据源 id 和 name、字段、用途。图表类型和字段从检索结果里选定，不要写「或」，不要让用户补充维度、图表类型或字段。"
+                "调用 apply_dashboard_proposal 时传入 prepare 返回的 data.proposal，不要再要求用户确认。"
+                "用户明确取消或拒绝应用时，不要调用 apply_dashboard_proposal。"
+                "如果编辑状态写着无法安全搭盘，不要调用任何搭盘工具，直接告诉用户先减少组件。"
+                "场景组件、分组、刷新周期不要放进方案。方案 schemaVersion 必须是 1.0。"
+                f"可用图表类型只有：{chart_types}。"
+            )
+
         for name, builder in builtin_builders.items():
             if name in selected_builtin_kwargs and name not in loaded_tool_names:
                 tools.append(builder(selected_builtin_kwargs[name]))
@@ -545,6 +593,8 @@ class ChatService:
         for i in tool_map.values():
             extra_config.update(i)
         extra_config.update({"execution_id": chat_kwargs["execution_id"]})
+        if kwargs.get("dashboard_session_id"):
+            extra_config["dashboard_session_id"] = str(kwargs["dashboard_session_id"])
         if kwargs.get("attachment_id"):
             extra_config["attachment_id"] = kwargs["attachment_id"]
         if kwargs.get("node_id"):
@@ -728,6 +778,8 @@ class ChatService:
             ChatService._process_tools_and_extra_config(kwargs, chat_kwargs, extra_config)
         elif extra_config:
             extra_config.update({"execution_id": chat_kwargs["execution_id"]})
+            if kwargs.get("dashboard_session_id"):
+                extra_config["dashboard_session_id"] = str(kwargs["dashboard_session_id"])
             if kwargs.get("attachment_id"):
                 extra_config["attachment_id"] = kwargs["attachment_id"]
             if kwargs.get("node_id"):

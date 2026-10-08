@@ -50,6 +50,8 @@ from apps.system_mgmt.models import User as SystemUser
 PAGE_CONTEXT_TEXT_BUDGET = 8000
 PAGE_CONTEXT_MAX_IMAGES = 6
 PAGE_CONTEXT_MAX_IMAGE_CHARS = 500 * 1024
+PAGE_CONTEXT_MAX_CAPABILITIES = 16
+PAGE_CONTEXT_CAPABILITY_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 PAGE_CONTEXT_GUIDE = (
     "以下是用户当前正在查看的页面快照，仅当问题与页面相关时参考。"
     "只回答用户这一轮提出的问题，不要复述历史里已分析过、且本轮未点名的图表。"
@@ -534,6 +536,8 @@ def _sanitize_page_context(page_context) -> dict | None:
         if remaining <= 0:
             break
         if len(content) > remaining:
+            if section.get("id") == "dashboard-edit-state" or section.get("atomic"):
+                continue
             if used == 0:
                 content = content[:remaining]
             else:
@@ -562,11 +566,25 @@ def _sanitize_page_context(page_context) -> dict | None:
             continue
         images.append({"caption": str(item.get("caption") or ""), "dataUrl": data_url})
 
-    if not kept_sections and not images and not (page_context.get("title") or page_context.get("url")):
+    capabilities = []
+    seen_capabilities = set()
+    raw_capabilities = page_context.get("capabilities")
+    if isinstance(raw_capabilities, list):
+        for item in raw_capabilities:
+            capability = str(item or "").strip()
+            if not PAGE_CONTEXT_CAPABILITY_RE.fullmatch(capability) or capability in seen_capabilities:
+                continue
+            capabilities.append(capability)
+            seen_capabilities.add(capability)
+            if len(capabilities) >= PAGE_CONTEXT_MAX_CAPABILITIES:
+                break
+
+    if not kept_sections and not images and not capabilities and not (page_context.get("title") or page_context.get("url")):
         return None
     return {
         "url": str(page_context.get("url") or ""),
         "app": str(page_context.get("app") or ""),
+        "capabilities": capabilities,
         "title": str(page_context.get("title") or ""),
         "sections": kept_sections,
         "images": images,
@@ -582,6 +600,8 @@ def _render_page_context_block(snapshot: dict, question: str = "") -> str:
         lines.append(f"url: {snapshot['url']}")
     if snapshot.get("app"):
         lines.append(f"app: {snapshot['app']}")
+    if snapshot.get("capabilities"):
+        lines.append(f"capabilities: {', '.join(snapshot['capabilities'])}")
     if snapshot.get("title"):
         lines.append(f"title: {snapshot['title']}")
     for section in snapshot.get("sections") or []:
@@ -1287,6 +1307,22 @@ def truncate_chat_history(history: list[dict], window_size: int) -> list[dict]:
     return list(history[-window:])
 
 
+def dashboard_channel_session_id(page_context, session_id) -> str | None:
+    """只在运营分析仪表盘页把方案缓存绑到这条会话。其他页面和 IM 不带这个键。"""
+    if not isinstance(page_context, dict):
+        return None
+    if str(page_context.get("app") or "").strip() != "ops-analysis":
+        return None
+    capabilities = page_context.get("capabilities")
+    if not isinstance(capabilities, list):
+        return None
+    names = {str(item).strip() for item in capabilities if isinstance(item, str)}
+    if "dashboard-builder" not in names:
+        return None
+    text = str(session_id or "").strip()
+    return text or None
+
+
 def execute_skill_channel_im_sync(
     *,
     channel: SkillChannel,
@@ -1335,17 +1371,23 @@ def stream_skill_channel_chat(
 
     user = identity_user or request.user
     params = build_skill_chat_params(skill, persist_text, user)
+    dashboard_session_id = dashboard_channel_session_id(page_context, conversation.session_id)
+    if dashboard_session_id:
+        params["dashboard_session_id"] = dashboard_session_id
     inject_skill_memory_prompt(params, skill, external_user_id, persist_text)
     params["chat_history"] = _history_from_conversation(conversation, skill.conversation_window_size or 10)
     focused_titles = _focused_titles_from_page_context(persist_text, page_context)
     params["chat_history"] = _history_for_focused_charts(params["chat_history"], focused_titles)
-    params["user_message"] = inject_page_context(user_message, page_context, mode="inline")
+    sanitized_page_context = _sanitize_page_context(page_context)
+    if sanitized_page_context:
+        params["page_context"] = sanitized_page_context
+    params["user_message"] = inject_page_context(user_message, sanitized_page_context, mode="inline")
     llm_model = getattr(skill, "llm_model", None)
-    report_context = page_context
+    report_context = sanitized_page_context
     if llm_model is not None and not getattr(llm_model, "is_multimodal", True):
         params["user_message"] = drop_images_from_user_message(params["user_message"])
-        if isinstance(page_context, dict):
-            report_context = {**page_context, "images": []}
+        if isinstance(sanitized_page_context, dict):
+            report_context = {**sanitized_page_context, "images": []}
     params["browser_use_force_task"] = True
     ingest_kwargs: dict[str, Any] = {}
     ingest_report = build_page_context_ingest_report(

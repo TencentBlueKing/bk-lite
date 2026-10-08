@@ -1,6 +1,7 @@
 """DeepAgent 子调用把事件写进本请求队列，不挂父级 astream_events handler。"""
 
 import asyncio
+import threading
 import uuid
 
 import pytest
@@ -232,6 +233,52 @@ def test_publish_owned_custom_event_uses_configurable_queue():
     assert queue.empty()
 
 
+def test_publish_owned_custom_event_from_worker_thread_reaches_running_loop():
+    async def _receive():
+        queue = asyncio.Queue()
+
+        def worker():
+            assert publish_owned_custom_event(queue, "dashboard_config_apply", {"dashboardId": "current"}) is True
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+        event = await asyncio.wait_for(queue.get(), timeout=2)
+        thread.join(timeout=2)
+        assert event["event"] == "on_custom_event"
+        assert event["name"] == "dashboard_config_apply"
+        assert event["data"]["dashboardId"] == "current"
+
+    asyncio.run(_receive())
+
+
+def test_worker_thread_full_queue_does_not_raise_on_the_loop():
+    async def _receive():
+        queue = asyncio.Queue(maxsize=1)
+        queue.put_nowait({"event": "on_custom_event", "name": "user_choice_request"})
+        errors = []
+        loop = asyncio.get_running_loop()
+        previous_handler = loop.get_exception_handler()
+
+        def _capture(_loop, context):
+            errors.append(context)
+
+        loop.set_exception_handler(_capture)
+
+        def worker():
+            assert publish_owned_custom_event(queue, "user_choice_result", {"choice_id": "kept"}) is True
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+        thread.join(timeout=2)
+        await asyncio.sleep(0.05)
+        loop.set_exception_handler(previous_handler)
+        assert errors == []
+        event = queue.get_nowait()
+        assert event["name"] == "user_choice_request"
+
+    asyncio.run(_receive())
+
+
 def test_publish_owned_custom_event_does_not_use_process_global_fallback():
     """空 config 不得回退到其他会话的队列。"""
     queue = asyncio.Queue()
@@ -292,11 +339,14 @@ async def test_overlapping_streams_do_not_cross_session_choice_or_step():
                 step_index,
                 [ToolMessage(content="ok", tool_call_id=tool_call_id, name="alerts_list_alerts")],
             )
-            assert publish_owned_custom_event(
-                config,
-                "user_choice_result",
-                {"choice_id": choice_id, "selected": [choice_id]},
-            ) is True
+            assert (
+                publish_owned_custom_event(
+                    config,
+                    "user_choice_result",
+                    {"choice_id": choice_id, "selected": [choice_id]},
+                )
+                is True
+            )
             return (
                 lookup_planned_tool_step(tool_call_id, ctx),
                 current_planned_step_index(ctx),
