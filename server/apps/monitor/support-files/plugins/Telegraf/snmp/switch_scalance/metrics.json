@@ -85,7 +85,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Per-sensor chassis temperature of the SCALANCE industrial switch in whole degrees Celsius (SN-MSPS-SCX200-MIB snMspsDiagnosticsTemperatureValue). Rows that are not present, have invalid/initial status, or fall outside -40 to 125 C are dropped."
+      "description": "Per-sensor chassis temperature of the SCALANCE industrial switch in whole degrees Celsius (SN-MSPS-SCX200-MIB snMspsDiagnosticsTemperatureValue). Rows with invalid/initial status or values outside -40 to 125 C are dropped."
     },
     {
       "metric_group": "Hardware Status",
