@@ -16,6 +16,7 @@ import pytest
 import yaml
 
 from apps.core.utils.loader import LanguageLoader
+from apps.monitor.tests.snmp_contract_helpers import assert_snmpv3_env_credentials
 
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
@@ -219,6 +220,5 @@ def test_brand_label_present_in_common():
 
 
 @pytest.mark.unit
-def test_passwords_use_template_vars_not_plaintext(toml_text):
-    for field in ("auth_password", "priv_password"):
-        assert f'{field} = "{{{{ {field} }}}}"' in toml_text
+def test_passwords_render_as_sidecar_env_references_without_plaintext(toml_text):
+    assert_snmpv3_env_credentials(toml_text, BRAND_DIR)

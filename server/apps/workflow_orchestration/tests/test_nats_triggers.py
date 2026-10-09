@@ -3,7 +3,8 @@ import pytest
 from apps.workflow_orchestration import nats_api
 from apps.workflow_orchestration.models import Workflow, WorkflowExecution, WorkflowTrigger
 from apps.workflow_orchestration.services.definitions import DefinitionValidationError
-from apps.workflow_orchestration.services.nats_triggers import build_nats_trigger_subject, invoke_nats_trigger
+from apps.workflow_orchestration.services.nats_contracts import build_nats_trigger_subject
+from apps.workflow_orchestration.services.nats_triggers import invoke_nats_trigger
 from apps.workflow_orchestration.services.triggers import TriggerConflict, sync_published_triggers, validate_trigger_configuration
 
 
