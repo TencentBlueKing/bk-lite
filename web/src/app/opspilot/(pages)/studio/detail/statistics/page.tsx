@@ -56,7 +56,7 @@ const ChartComponent: React.FC = () => {
         }
         setConversationsData([...totalData, ...combinedData]);
       })
-      .catch(() => message.error('Failed to fetch conversations data'))
+      .catch(() => message.error(t('studio.statistics.fetchConversationsFailed', '会话统计加载失败')))
       .finally(() => setLoadingConversations(false));
 
     setLoadingActiveUsers(true);
@@ -75,7 +75,7 @@ const ChartComponent: React.FC = () => {
         }
         setActiveUsersData([...totalData, ...combinedData]);
       })
-      .catch(() => message.error('Failed to fetch activeUsers data'))
+      .catch(() => message.error(t('studio.statistics.fetchActiveUsersFailed', '活跃用户统计加载失败')))
       .finally(() => setLoadingActiveUsers(false));
   };
 

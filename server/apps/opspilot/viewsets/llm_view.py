@@ -84,6 +84,7 @@ from apps.opspilot.utils.prompt_utils import merge_skill_params
 from apps.opspilot.utils.skill_execution_params import resolve_request_tools
 from apps.opspilot.utils.skill_package_params import annotate_packages_missing_params, merge_package_params, validate_package_params
 from apps.opspilot.utils.sse_chat import create_error_stream_response, stream_chat
+from apps.opspilot.utils.user_message import user_message
 from apps.opspilot.utils.vendor_model_mixin import VendorModelMixin
 from apps.system_mgmt.utils.network_whitelist_error import build_network_whitelist_error_payload
 from apps.system_mgmt.utils.operation_log_utils import log_operation
@@ -191,13 +192,13 @@ class LLMViewSet(PinMixin, AuthViewSet):
                 message = message.format(validate_msg=validate_msg)
             return JsonResponse({"result": False, "message": message})
         params["enable_conversation_history"] = True
-        params[
-            "skill_prompt"
-        ] = """你是关于专业机器人，请按照以下要求进行回复
-1、请根据用户的问题，从知识库检索关联的知识进行总结回复
-2、请根据用户需求，从工具中选取适当的工具进行执行
-3、回复的语句请保证准确，不要杜撰
-4、请按照要点有条理的梳理答案"""
+        params["skill_prompt"] = (self.loader.get("skill.default_prompt") if self.loader else None) or (
+            "You are a professional assistant. Reply according to these rules:\n"
+            "1. For the user's question, retrieve related knowledge from the knowledge base and summarize the answer.\n"
+            "2. Based on the user's need, choose and run the appropriate tool.\n"
+            "3. Keep the reply accurate. Do not make things up.\n"
+            "4. Organize the answer in clear points."
+        )
         for item in params.get("skill_params", []):
             if item.get("type") == "password":
                 EncryptMixin.encrypt_field("value", item)
@@ -899,7 +900,7 @@ class SkillPackageViewSet(AuthViewSet):
         instance = self.get_object()
         if getattr(instance, "is_build_in", False):
             return Response(
-                {"result": False, "message": "内置技能包不可删除"},
+                {"result": False, "message": user_message(request, "error.builtin_skill_package_not_deletable", "内置技能包不可删除", self.loader)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         storage_path_text = str(getattr(instance, "storage_path", "") or "")
@@ -936,14 +937,36 @@ class SkillPackageViewSet(AuthViewSet):
     def partial_update(self, request, *args, **kwargs):
         return super().partial_update(request, *args, **kwargs)
 
+    def _skill_package_import_message(self, request, exc: ValueError) -> str:
+        """导入失败时按页面语言返回文案。导入器仍抛中文原句，这里只翻译返回给页面的句子。"""
+        text = str(exc)
+        if text == "技能包文件不存在":
+            return user_message(request, "error.skill_package_file_missing", text, self.loader)
+        missing_prefix = "技能包缺少 "
+        if text.startswith(missing_prefix):
+            template = user_message(
+                request,
+                "error.skill_package_missing_file",
+                "技能包缺少 {filename}",
+                self.loader,
+            )
+            return template.format(filename=text[len(missing_prefix) :])
+        return text
+
     @action(methods=["POST"], detail=False)
     @HasPermission("tool_list-Add")
     def import_zip(self, request):
         upload = request.FILES.get("file")
         if not upload:
-            return Response({"result": False, "message": "请上传技能包 ZIP 文件"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"result": False, "message": user_message(request, "error.skill_package_zip_required", "请上传技能包 ZIP 文件", self.loader)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if not upload.name.lower().endswith(".zip"):
-            return Response({"result": False, "message": "技能包必须是 ZIP 文件"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"result": False, "message": user_message(request, "error.skill_package_must_be_zip", "技能包必须是 ZIP 文件", self.loader)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         temp_path = ""
         try:
@@ -984,7 +1007,10 @@ class SkillPackageViewSet(AuthViewSet):
             log_operation(request, "create", "opspilot", f"导入技能包: {package.name}")
             return Response({"result": True, "data": serializer.data})
         except ValueError as exc:
-            return Response({"result": False, "message": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"result": False, "message": self._skill_package_import_message(request, exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         except Exception as exc:
             logger.exception("Import skill package failed")
             return Response({"result": False, "message": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -1049,7 +1075,10 @@ class SkillPackageViewSet(AuthViewSet):
             log_operation(request, "create", "opspilot", f"导入技能包(本地): {package.name}")
             return Response({"result": True, "data": serializer.data})
         except ValueError as exc:
-            return Response({"result": False, "message": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"result": False, "message": self._skill_package_import_message(request, exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         except Exception as exc:
             logger.exception("Import local skill package failed")
             return Response({"result": False, "message": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

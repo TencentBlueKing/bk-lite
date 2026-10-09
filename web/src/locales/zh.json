@@ -69,6 +69,12 @@
     "fetchFailed": "获取列表失败",
     "updateSuccess": "更新成功",
     "updateFailed": "更新失败",
+    "addFailed": "新增失败",
+    "deleteFailed": "删除失败",
+    "deleteSuccess": "删除成功",
+    "all": "全部",
+    "action": "操作",
+    "required": "此项必填",
     "addSuccess": "添加成功",
     "saveSuccess": "保存成功",
     "publishSuccess": "发布成功",
@@ -230,7 +236,8 @@
     "hour": "小时",
     "day": "天",
     "saved": "状态已更新",
-    "copied": "已复制"
+    "copied": "已复制",
+    "other": "其他"
   },
   "userInfo": {
     "basicInfo": "基础信息",
@@ -547,5 +554,13 @@
     "rum_alerting": "事件",
     "rum_integration": "集成",
     "rum_governance": "数据治理"
+  },
+  "webchat": {
+    "inputPlaceholder": "请输入消息..."
+  },
+  "provider": {
+    "vendorAliyun": "阿里云",
+    "vendorZhipu": "智谱",
+    "vendorBaidu": "百度"
   }
 }

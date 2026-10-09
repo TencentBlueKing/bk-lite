@@ -112,7 +112,9 @@ export const useNodeDrop = ({
           data: {
             label: getNodeLabel(type),
             type: type as ChatflowNodeData['type'],
-            config: getDefaultConfig(type),
+            config: getDefaultConfig(type, {
+              defaultIntent: t('chatflow.nodeConfig.defaultIntent', '默认意图'),
+            }),
             description: ''
           },
         };

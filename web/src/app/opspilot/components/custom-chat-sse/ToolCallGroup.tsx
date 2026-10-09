@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
+import { useTranslation } from '@/utils/i18n';
 
 interface ToolCallData {
   id: string;
@@ -71,6 +72,7 @@ const ToolSpinner = () => (
 );
 
 const ToolItem: React.FC<{ tool: ToolCallData }> = ({ tool }) => {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const summary = useMemo(() => extractSummary(tool.args, tool.name), [tool.args, tool.name]);
   const choiceResult = useMemo(
@@ -122,13 +124,13 @@ const ToolItem: React.FC<{ tool: ToolCallData }> = ({ tool }) => {
         <div className="pl-[34px] text-xs">
           {argsFormatted && (
             <div className="mb-2">
-              <div className="mb-1 font-medium text-[var(--color-text-2)]">参数:</div>
+              <div className="mb-1 font-medium text-[var(--color-text-2)]">{t('chat.toolCall.params')}</div>
               <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-words rounded bg-[var(--color-fill-2)] p-2 text-[11px]">{argsFormatted}</pre>
             </div>
           )}
           {tool.result && (
             <div>
-              <div className="mb-1 font-medium text-[var(--color-text-2)]">结果:</div>
+              <div className="mb-1 font-medium text-[var(--color-text-2)]">{t('chat.toolCall.result')}</div>
               <pre className="m-0 max-h-[300px] overflow-x-auto overflow-y-auto whitespace-pre-wrap break-words rounded bg-[var(--color-fill-2)] p-2 text-[11px]">{tool.result}</pre>
             </div>
           )}
@@ -139,6 +141,7 @@ const ToolItem: React.FC<{ tool: ToolCallData }> = ({ tool }) => {
 };
 
 const ToolCallGroup: React.FC<ToolCallGroupProps> = ({ toolCalls, isStreaming }) => {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const finishedCount = toolCalls.filter(t => t.status === 'completed' || t.status === 'error').length;
   const hasError = toolCalls.some(t => t.status === 'error');
@@ -169,18 +172,20 @@ const ToolCallGroup: React.FC<ToolCallGroupProps> = ({ toolCalls, isStreaming })
             <span className="text-xs text-[var(--color-success)]">✓</span>
           )}
         </span>
-        <span>已调用 {totalCount} 个工具</span>
+        <span>{t('chat.toolCall.calledCount', '已调用 {count} 个工具', { count: totalCount })}</span>
         {!shouldAutoExpand && (
           <span className="text-[var(--color-text-4)]">
-            {expanded ? '点击收起' : '点击展开查看详情'}
+            {expanded
+              ? t('chat.toolCall.collapseHint', '点击收起')
+              : t('chat.toolCall.expandHint')}
           </span>
         )}
         {hasRunning && (
-          <span className="text-[var(--color-text-4)]">执行中...</span>
+          <span className="text-[var(--color-text-4)]">{t('chat.toolCall.running')}</span>
         )}
         {awaitingAnalysis && (
           <span className="inline-flex items-center gap-1 text-[var(--color-text-4)]">
-            正在分析工具结果...
+            {t('chat.toolCall.analyzing')}
           </span>
         )}
       </div>

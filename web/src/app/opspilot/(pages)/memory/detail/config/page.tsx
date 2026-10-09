@@ -118,7 +118,7 @@ export default function MemoryConfigPage() {
       if (testRefId) setActiveTab('result');
     } catch (e) {
       console.error(e);
-      message.error('Test failed');
+      message.error(t('memory.testFailed', '测试失败'));
     } finally {
       setTesting(false);
     }
