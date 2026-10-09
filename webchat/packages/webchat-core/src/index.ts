@@ -24,6 +24,7 @@ export {
   normalizeLocale,
   setWebChatLocale,
   translate,
+  webChatCatalogs,
   type Locale,
   type Translate,
   type TranslateValues,

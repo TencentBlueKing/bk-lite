@@ -6,10 +6,12 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import ProviderModelManagement from '@/app/opspilot/components/provider/modelManagement';
 import VendorBasicInfo from '@/app/opspilot/components/provider/vendorBasicInfo';
-import { VENDOR_LABEL_MAP } from '@/app/opspilot/constants/provider';
+import { vendorDisplayName } from '@/app/opspilot/constants/provider';
 import type { ModelVendor } from '@/app/opspilot/types/provider';
+import { useTranslation } from '@/utils/i18n';
 
 const ProviderDetailPage: React.FC = () => {
+  const { t } = useTranslation();
   const router = useRouter();
   const searchParams = useSearchParams();
   const vendorId = Number(searchParams?.get('id') || '0');
@@ -33,7 +35,7 @@ const ProviderDetailPage: React.FC = () => {
   return (
     <div className="w-full rounded-3xl bg-(--color-bg) p-5 shadow-sm lg:p-6">
       <div className="mb-2 flex items-center gap-2 text-xs" style={{ color: 'var(--color-text-3)' }}>
-        <span>供应商</span>
+        <span>{t('provider.vendorLabel', '供应商')}</span>
         <span>/</span>
         <span>{vendor?.name || vendorName}</span>
       </div>
@@ -49,7 +51,7 @@ const ProviderDetailPage: React.FC = () => {
           <span className="text-[16px] font-semibold" style={{ color: 'var(--color-text-1)' }}>{vendor?.name || vendorName}</span>
         </div>
         <span className="text-xs" style={{ color: 'var(--color-text-3)' }}>
-          类型: {vendor ? VENDOR_LABEL_MAP[vendor.vendor_type] : '--'}
+          {t('provider.vendorType')}: {vendor ? vendorDisplayName(vendor.vendor_type, t) : '--'}
         </span>
       </div>
 
@@ -68,12 +70,12 @@ const ProviderDetailPage: React.FC = () => {
         items={[
           {
             key: 'basic',
-            label: '基础信息',
+            label: t('provider.basicInfo'),
             children: <VendorBasicInfo vendorId={vendorId} onUpdated={setVendor} />,
           },
           {
             key: 'models',
-            label: '模型管理',
+            label: t('provider.modelManagement'),
             children: (
               <div className="h-[calc(100vh-300px)]" style={{ minHeight: 520 }}>
                 <ProviderModelManagement vendorId={vendorId} />

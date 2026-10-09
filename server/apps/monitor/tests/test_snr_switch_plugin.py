@@ -6,23 +6,23 @@ cross-vendor design decisions for the SNMP brand-plugin family.
 SNR (НАГ, NAG-MIB, IANA PEN 40418) exposes device health from the sysSlotTable:
 per-slot CPU (sysCpuUsage), memory (sysMemorySize / sysMemoryBusy), a dedicated
 temperature column (sysTemperature) and a fan status column (sysFanStatus).
-This file does not add a PSU-must-exist assertion. The fan raw codes are
-0=Normal / 1=Abnormal (note the inverted polarity vs Eltex's 1=OK). #6062
-maps remaining fan values in starlark: 0->1 (healthy) and everything else ->2
-(fault).
+Unlike Eltex there is NO PSU object in NAG-MIB, so device_psu_state is N/A and
+must not be modelled. The fan raw codes are 0=Normal / 1=Abnormal (note the
+inverted polarity vs Eltex's 1=OK), normalized via starlark so 0->1
+(healthy) and everything else ->2 (fault). Uninstalled fan positions
+(sysFanInserted=0) are dropped and not counted as faults.
 
-  - device_cpu_usage: avg per instance across slots (sysCpuUsage, percent)
-  - device_memory_total/used: bytes; usage = sum(used)/sum(total)*100 (branch3)
-  - device_temperature_celsius: max per instance (group Temperature)
-  - device_fan_state: Enum normalized to 1=healthy/2=fault (group Hardware
-    Status), max per instance; policy alerts on state > 1
+  - device_cpu_usage: sysCpuUsage percent, per-slot (index dimension)
+  - device_memory_total/used: bytes; usage = used/total*100 (per-slot)
+  - device_temperature_celsius: sysTemperature, per-slot
+  - device_fan_state: Enum 1=healthy/2=fault; policy alerts on state > 1
   - interface_ifHCIn/OutOctets: byte-identical Cisco
 
 SNR reuses the shared Switch metric names + existing Temperature / Hardware
 Status groups, so i18n and the shared switch dashboard are already in place. New
 brand `snr` adds a common.tsx match + icon.
 
-OID correctness is intentionally NOT tested here (pending on-site SNMP walk).
+OID correctness is intentionally NOT tested here.
 """
 import json
 from pathlib import Path
@@ -36,7 +36,6 @@ SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
 SNR_DIR = PLUGINS / "snmp" / "switch_snr"
 CISCO_DIR = PLUGINS / "snmp" / "switch_cisco"
-MIKROTIK_DIR = PLUGINS / "snmp" / "switch_mikrotik"
 LANGUAGE_DIR = SERVER_ROOT / "apps" / "monitor" / "language"
 WEB_ROOT = SERVER_ROOT.parents[0] / "web"
 
@@ -53,6 +52,12 @@ SUPPORTED_SCALAR_UNITS = {
 INTERFACE_METRICS = ("interface_ifHCInOctets", "interface_ifHCOutOctets")
 MEMORY_METRICS = ("device_memory_total", "device_memory_used", "device_memory_usage")
 ENUM_METRICS = ("device_fan_state",)
+ABSENT_METRICS = ("device_psu_state",)
+INDEX_DIMENSION = [{"name": "index", "description": "SNMP table row index"}]
+MEMORY_USAGE_QUERY = (
+    "device_memory_used{instance_type='switch', __$labels__} / "
+    "device_memory_total{instance_type='switch', __$labels__} * 100"
+)
 
 
 def _read_json(path):
@@ -67,11 +72,6 @@ def metrics():
 @pytest.fixture(scope="module")
 def cisco_metrics():
     return _read_json(CISCO_DIR / "metrics.json")
-
-
-@pytest.fixture(scope="module")
-def mikrotik_metrics():
-    return _read_json(MIKROTIK_DIR / "metrics.json")
 
 
 @pytest.fixture(scope="module")
@@ -151,23 +151,19 @@ def test_shared_metrics_match_cisco_group_and_unit(metrics, cisco_metrics):
             continue
         if m["metric_group"] != base["metric_group"]:
             drift.append(f'{m["name"]}.group')
-        # Enum units are vendor-normalized and need not match Cisco's native codes.
-        if m.get("data_type") == "Enum" or m["name"] in ENUM_METRICS:
-            continue
-        if m["unit"] != base["unit"]:
+        # fan unit legitimately differs (starlark normalization to 2 values)
+        if m["name"] not in ENUM_METRICS and m["unit"] != base["unit"]:
             drift.append(f'{m["name"]}.unit')
     assert drift == [], f"shared-metric drift vs Cisco: {drift}"
 
 
 @pytest.mark.unit
-def test_cpu_is_per_slot_avg_aggregated_percent(metrics):
+def test_cpu_is_per_slot_percent(metrics):
     cpu = {m["name"]: m for m in metrics["metrics"]}["device_cpu_usage"]
     assert cpu["unit"] == "percent"
     assert cpu["metric_group"] == "CPU"
-    assert cpu["dimensions"] == []
-    q = cpu["query"].replace(" ", "")
-    assert q.startswith("avg(") and "by(instance_id)" in q, \
-        "SNR CPU is per-slot and must be averaged per instance"
+    assert cpu["dimensions"] == INDEX_DIMENSION
+    assert "device_cpu_usage{" in cpu["query"]
 
 
 @pytest.mark.unit
@@ -181,7 +177,7 @@ def test_interface_hc_metrics_match_cisco(metrics, cisco_metrics):
 
 
 # --------------------------------------------------------------------------- #
-# memory: total/used bytes, usage = branch3 (byte-identical mikrotik)
+# memory: total/used bytes, usage = used/total*100
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
 def test_memory_metrics_present(metrics):
@@ -196,28 +192,27 @@ def test_memory_total_and_used_are_bytes(metrics):
     for name in ("device_memory_total", "device_memory_used"):
         assert by[name]["unit"] == "bytes", f"{name} must be bytes"
         assert by[name]["metric_group"] == "Memory"
-        assert by[name]["dimensions"] == []
+        assert by[name]["dimensions"] == INDEX_DIMENSION
 
 
 @pytest.mark.unit
-def test_memory_usage_is_used_over_total_branch3(metrics, mikrotik_metrics):
+def test_memory_usage_is_used_over_total(metrics):
     ext = {m["name"]: m for m in metrics["metrics"]}["device_memory_usage"]
-    ref = {m["name"]: m for m in mikrotik_metrics["metrics"]}["device_memory_usage"]
     assert ext["unit"] == "percent"
-    assert ext["query"] == ref["query"], "memory_usage must match the branch3 used/total formula"
+    assert ext["query"] == MEMORY_USAGE_QUERY
+    assert ext["dimensions"] == INDEX_DIMENSION
 
 
 # --------------------------------------------------------------------------- #
-# Environment: temperature + fan. This file does not add a PSU-must-exist assertion.
+# Environment: temperature + fan, but NO PSU (NAG-MIB has no PSU object)
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
-def test_temperature_is_celsius_max_aggregated(metrics):
+def test_temperature_is_celsius_per_slot(metrics):
     t = {m["name"]: m for m in metrics["metrics"]}["device_temperature_celsius"]
     assert t["unit"] == "celsius"
     assert t["metric_group"] == "Temperature"
-    assert t["dimensions"] == []
-    q = t["query"].replace(" ", "")
-    assert q.startswith("max(") and "by(instance_id)" in q
+    assert t["dimensions"] == INDEX_DIMENSION
+    assert "device_temperature_celsius{" in t["query"]
 
 
 @pytest.mark.unit
@@ -225,16 +220,22 @@ def test_fan_is_normalized_enum(metrics):
     fan = {m["name"]: m for m in metrics["metrics"]}["device_fan_state"]
     assert fan["data_type"] == "Enum"
     assert fan["metric_group"] == "Hardware Status"
-    assert fan["dimensions"] == [], "aggregated fan metric must carry no dimension"
+    assert fan["dimensions"] == INDEX_DIMENSION
     opts = json.loads(fan["unit"])
     ids = sorted(o["id"] for o in opts)
     assert ids == [1, 2], f"fan enum must be normalized to 1=healthy/2=fault, got {ids}"
-    q = fan["query"].replace(" ", "")
-    assert q.startswith("max(") and "by(instance_id)" in q
+    assert "device_fan_state{" in fan["query"]
+
+
+@pytest.mark.unit
+def test_psu_is_not_modelled(metrics):
+    names = {m["name"] for m in metrics["metrics"]}
+    present = [a for a in ABSENT_METRICS if a in names]
+    assert present == [], f"NAG-MIB has no PSU object; must not model: {present}"
 
 
 # --------------------------------------------------------------------------- #
-# telegraf starlark: fan namepass-isolated, raw 0 (normal) → 1, else → 2
+# telegraf starlark: fan namepass-isolated, drop uninstalled, raw 0 → 1, else → 2
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
 def test_toml_has_no_enum_processor_block(toml_text):
@@ -248,6 +249,7 @@ def test_fan_starlark_maps_normal_zero(toml_text):
     assert 'int(metric.fields["state"]) == 0' in toml_text
     assert 'metric.fields["state"] = 1' in toml_text
     assert 'metric.fields["state"] = 2' in toml_text
+    assert "int(inserted) == 0" in toml_text
 
 
 @pytest.mark.unit
@@ -259,13 +261,12 @@ def test_toml_collects_ifhc_counters(toml_text):
 # policy / supplementary / units / dimensions hygiene
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
-def test_policy_covers_cpu_mem_temp_fan(policy):
+def test_policy_covers_cpu_mem_temp_fan_only(policy):
     names = {t["metric_name"] for t in policy["templates"]}
-    required = {
+    assert names == {
         "device_cpu_usage", "device_memory_usage",
         "device_temperature_celsius", "device_fan_state",
-    }
-    assert required <= names, f"SNR policy missing: {required - names}"
+    }, "SNR policy must cover cpu/mem/temp/fan and NOT psu"
 
 
 @pytest.mark.unit
@@ -397,5 +398,5 @@ def test_shared_dashboard_no_brand_special_case():
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
 def test_passwords_use_template_vars_not_plaintext(toml_text):
-    for field in ("auth_password", "priv_password"):
-        assert f'{field} = "{{{{ {field} }}}}"' in toml_text, f"{field} must be templated"
+    assert 'auth_password = "${AUTH_PASSWORD__{{ config_id }}}"' in toml_text
+    assert 'priv_password = "${PRIV_PASSWORD__{{ config_id }}}"' in toml_text

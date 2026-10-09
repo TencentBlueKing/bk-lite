@@ -55,11 +55,11 @@
     {
       "name": "Huawei NE路由器电源异常",
       "alert_name": "路由器${resource_name} 电源状态异常",
-      "description": "监控华为 NetEngine 设备电源模块运行状态。非正常状态表示电源冗余缺失或硬件故障，需尽快修复以恢复冗余。",
+      "description": "监控华为 NetEngine 设备电源模块运行状态（hwEntityPwrState，原值透传：1=供电，2=不供电，3=休眠，4=未知）。仅对不供电(2) 告警；休眠与未知不告警。",
       "metric_name": "device_psu_state",
       "algorithm": "last_over_time",
       "threshold": [
-        {"level": "critical", "value": 1, "method": ">"}
+        {"level": "critical", "value": 2, "method": "="}
       ],
       "group_algorithm": "avg"
     },

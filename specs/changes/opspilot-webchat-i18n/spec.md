@@ -1,6 +1,14 @@
 # OpsPilot Web 与 WebChat 国际英文案一次性修正
 
-Status: draft
+Status: implemented
+
+落地与计划的差异（以当前代码为准）：
+
+- `GlobalWebchat` 用 `getStoredLocale()` 传 `locale`，不用 `useLocale()`。后者在 `LocaleProvider` 外会抛错，全局挂件测试不在该 Provider 里。
+- 无 hook 的模块（`aguiMessageHandler`、`toolCallRenderer`、`downloadUrl`、`duration`、`memoryContent`）走 `web/src/app/opspilot/components/custom-chat-sse/i18n.ts` 的模块级词表；聊天挂载时 `setOpspilotModuleLocale`。`formatDurationMs` 默认仍按中文格式化，调用方传入 `t` 后跟随界面语言。
+- 步骤无目标时的「步骤 {index}」在写入展示状态时翻译，不改后端字段。
+- 技能设置里写入库的默认 Guide、画布「默认意图」、统一卡片的后端标签、Wiki 错误原文匹配、OKF 示例保持原文。
+- 验收扫描是 `tmp/_scan_user_zh.py`：去掉注释、`t()`/`translate()` 兜底、正则和 `labelKey` 同行 label 后，用户向中文为 0。词条文件 `webchat-core/src/i18n.ts` 本身仍含中文。
 
 ## Problem Statement
 

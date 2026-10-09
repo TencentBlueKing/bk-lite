@@ -29,7 +29,11 @@ import type {
   KnowledgePage,
   WikiPageSource,
 } from "@/app/opspilot/types/wiki";
-import { formatPageTypeLabel, formatWikiTagLabel } from "./wikiFormat";
+import {
+  formatPageTypeLabel,
+  formatWikiDirectoryLabel,
+  formatWikiTagLabel,
+} from "./wikiFormat";
 
 const WIKILINK_RE = /\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/g;
 
@@ -166,8 +170,10 @@ const WikiPageReadingPane: React.FC<WikiPageReadingPaneProps> = ({
 
   const breadcrumb = useMemo(() => {
     if (!page?.directory_breadcrumb?.length) return null;
-    return page.directory_breadcrumb.map((item) => item.name).join(" / ");
-  }, [page]);
+    return page.directory_breadcrumb
+      .map((item) => formatWikiDirectoryLabel(t, item))
+      .join(" / ");
+  }, [page, t]);
 
   if (!pageId) {
     return (

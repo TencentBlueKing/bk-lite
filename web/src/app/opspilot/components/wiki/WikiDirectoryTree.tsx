@@ -18,6 +18,7 @@ import {
   wikiPageTreeKey,
 } from "@/app/opspilot/utils/wikiDirectoryTreeOps";
 import { useImeSafeSearchInput } from "@/app/opspilot/utils/imeKeyboard";
+import { formatWikiDirectoryLabel } from "./wikiFormat";
 
 const directoryKey = (id: number) => `directory:${id}`;
 
@@ -163,9 +164,7 @@ const WikiDirectoryTree: React.FC<WikiDirectoryTreeProps> = ({
 
     const toTreeNode = (directory: WikiDirectoryNode): TreeDataNode => {
       const isUnclassified = directory.id === unclassifiedDirectoryId;
-      const label = isUnclassified
-        ? t("wiki.directoryUnclassified")
-        : directory.name;
+      const label = formatWikiDirectoryLabel(t, directory);
       const childDirectories = [...(directory.children || [])].sort(
         compareDirectories,
       );

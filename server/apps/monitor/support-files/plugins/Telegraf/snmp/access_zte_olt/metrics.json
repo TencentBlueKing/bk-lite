@@ -79,7 +79,7 @@
       "query": "device_fan_state{instance_type='access', __$labels__}",
       "display_name": "Fan Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "dimensions": [
         {
           "name": "index",
@@ -89,7 +89,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Fan operational status from ZTE-AN-ENVMON-MIB: OnlineStatus offline keeps a row as 1 (normal, empty slot); OperStatus up=1, down/unknown=2 (abnormal)."
+      "description": "Fan operational status from ZTE-AN-ENVMON-MIB: OnlineStatus offline keeps a row as 1 (normal, empty slot); OperStatus up=1, down=2 (abnormal); OnlineStatus or OperStatus unknown=3 (gray, no alert)."
     },
     {
       "metric_group": "Hardware Status",

@@ -31,7 +31,9 @@ import {useAuth} from '@/context/auth';
 import {CustomChatSSEProps, GuideParseResult} from '@/app/opspilot/types/chat';
 import {useSSEStream} from './hooks/useSSEStream';
 import {useSendMessage} from './hooks/useSendMessage';
-import {initToolCallTooltips} from './toolCallRenderer';
+import {initToolCallTooltips, setToolCallRendererLocale} from './toolCallRenderer';
+import { setOpspilotModuleLocale } from './i18n';
+import { getStoredLocale } from '@/utils/userPreferences';
 import { stripPlannedExecutionDumps } from './plannedExecutionPayload';
 import ContextUsageRing from './ContextUsageRing';
 import type { LlmContextUsage } from './llmContextUsage';
@@ -48,6 +50,7 @@ const normalizeThinkingText = (value?: string) => {
 };
 
 const ThinkingPanel: React.FC<{ thinking?: string; isThinking?: boolean }> = ({ thinking, isThinking }) => {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(Boolean(isThinking));
   const previousThinkingRef = useRef(Boolean(isThinking));
 
@@ -67,7 +70,9 @@ const ThinkingPanel: React.FC<{ thinking?: string; isThinking?: boolean }> = ({ 
     return null;
   }
 
-  const statusText = isThinking ? '思考中...' : '已完成思考';
+  const statusText = isThinking
+    ? t('chat.thinking', '思考中...')
+    : t('chat.thinkingDone', '已完成思考');
 
   return (
     <div className="my-1.5">
@@ -94,7 +99,7 @@ const ThinkingPanel: React.FC<{ thinking?: string; isThinking?: boolean }> = ({ 
           {normalizedThinking ? (
             <div>{normalizedThinking}</div>
           ) : (
-            <div className="text-[var(--color-text-4)]">正在整理思路...</div>
+            <div className="text-[var(--color-text-4)]">{t('chat.organizing', '正在整理思路...')}</div>
           )}
         </div>
       )}
@@ -174,8 +179,11 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     }
   }, [initialMessages]);
 
-  // 初始化工具调用事件处理
+  // 初始化工具调用事件处理；渲染器与协议处理器不在 React 树内，需同步当前语言
   useEffect(() => {
+    const locale = getStoredLocale() === 'en' ? 'en' : 'zh';
+    setToolCallRendererLocale(locale);
+    setOpspilotModuleLocale(locale);
     initToolCallTooltips();
   }, []);
 
@@ -511,7 +519,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             ),
           };
         }));
-        const hideLoading = antMessage.loading(t('chat.choiceSubmitting') || '正在提交选择...', 0);
+        const hideLoading = antMessage.loading(t('chat.choiceSubmitting', '正在提交选择...'), 0);
         try {
           await postUserChoice(token, {
             execution_id: pendingChoice.execution_id,
@@ -946,7 +954,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                   type="button"
                   className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-black/60 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
                   onClick={() => setImageList(imageList.filter(item => item.uid !== file.uid))}
-                  aria-label="删除图片"
+                  aria-label={t('chat.deleteImage', '删除图片')}
                 >
                   ×
                 </button>
@@ -959,7 +967,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           <Input.TextArea
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            placeholder={pendingChoice ? t('chat.replyToPendingChoice', '回复上面的问题...') : (placeholder || t('chat.inputPlaceholder') || '请输入消息...')}
+            placeholder={pendingChoice ? t('chat.replyToPendingChoice', '回复上面的问题...') : (placeholder || t('chat.inputPlaceholder', '请输入消息...'))}
             autoSize={{ minRows: 2, maxRows: 6 }}
             bordered={false}
             className="!p-0 text-[13px] leading-relaxed resize-none bg-transparent placeholder:text-[var(--color-text-4)] focus:shadow-none"
@@ -988,7 +996,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                   if (file) {
                     const isLt5M = file.size / 1024 / 1024 < 5;
                     if (!isLt5M) {
-                      antMessage.error(t('chat.imageTooLarge') || '图片大小不能超过 5MB');
+                      antMessage.error(t('chat.imageTooLarge', '图片大小不能超过 5MB'));
                       continue;
                     }
                     setImageList(prev => [...prev, {
@@ -1012,12 +1020,12 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               beforeUpload={(file) => {
                 const isImage = file.type.startsWith('image/');
                 if (!isImage) {
-                  antMessage.error(t('chat.onlyImageAllowed') || '只能上传图片文件');
+                  antMessage.error(t('chat.onlyImageAllowed', '只能上传图片文件'));
                   return Upload.LIST_IGNORE;
                 }
                 const isLt5M = file.size / 1024 / 1024 < 5;
                 if (!isLt5M) {
-                  antMessage.error(t('chat.imageTooLarge') || '图片大小不能超过 5MB');
+                  antMessage.error(t('chat.imageTooLarge', '图片大小不能超过 5MB'));
                   return Upload.LIST_IGNORE;
                 }
                 setImageList(prev => [...prev, {
@@ -1030,12 +1038,12 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               }}
               showUploadList={false}
             >
-              <Tooltip title={t('chat.uploadImage') || '上传图片'}>
+              <Tooltip title={t('chat.uploadImage', '上传图片')}>
                 <button
                   type="button"
                   disabled={loading}
                   className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--color-text-3)] hover:bg-[var(--color-fill-2)] hover:text-[var(--color-text-1)] transition-colors disabled:opacity-40"
-                  aria-label="上传图片"
+                  aria-label={t('chat.uploadImage', '上传图片')}
                 >
                   <PictureOutlined className="text-sm" />
                 </button>
@@ -1050,11 +1058,11 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               cancelText={t('common.cancel')}
               getPopupContainer={(trigger) => trigger.parentElement || document.body}
             >
-              <Tooltip title={t('chat.clear') || '清空对话'}>
+              <Tooltip title={t('chat.clear', '清除对话')}>
                 <button
                   type="button"
                   className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--color-text-3)] hover:bg-[var(--color-fail)]/10 hover:text-[var(--color-fail)] transition-colors"
-                  aria-label="清空对话"
+                  aria-label={t('chat.clearChat', '清空对话')}
                 >
                   <DeleteOutlined className="text-sm" />
                 </button>
@@ -1070,16 +1078,16 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
           <div className="flex items-center gap-2.5">
             <span className="hidden select-none text-[11px] text-[var(--color-text-4)] sm:inline">
-              Enter 发送 · Shift+Enter 换行
+              {t('chat.enterHint', 'Enter 发送 · Shift+Enter 换行')}
             </span>
 
             {loading && !pendingChoice && !ignoreLoading ? (
-              <Tooltip title={t('chat.clickCancel') || '停止生成'}>
+              <Tooltip title={t('chat.clickCancel', '点击以取消')}>
                 <button
                   type="button"
                   onClick={stopSSEConnection}
                   className="flex h-7 w-7 items-center justify-center rounded-full bg-red-500 text-white shadow-xs hover:bg-red-600 active:scale-95 transition-all cursor-pointer"
-                  aria-label="停止生成"
+                  aria-label={t('chat.stopGenerating', '停止生成')}
                 >
                   <span className="h-2.5 w-2.5 rounded-xs bg-white" />
                 </button>
@@ -1102,7 +1110,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                       ? 'bg-[var(--color-primary)] text-white hover:scale-105 active:scale-95 cursor-pointer'
                       : 'bg-[var(--color-fill-2)] text-[var(--color-text-4)] cursor-not-allowed'
                   }`}
-                  aria-label="发送消息"
+                  aria-label={t('chat.sendMessage', '发送消息')}
                 >
                   <SendOutlined className="text-xs" />
                 </button>
@@ -1237,7 +1245,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                     {isEmptyMessage && isCurrentBotLoading ? (
                       <div className="flex items-center gap-2 py-2 text-[var(--color-text-3)] text-xs">
                         <LoadingOutlined className="text-[var(--color-primary)]" spin />
-                        <span>正在思考与生成回复...</span>
+                        <span>{t('chat.thinkingAndReplying', '正在思考与生成回复...')}</span>
                       </div>
                     ) : (
                       renderContent(msg)

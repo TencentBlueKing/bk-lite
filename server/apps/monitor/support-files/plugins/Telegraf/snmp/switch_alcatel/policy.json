@@ -80,14 +80,14 @@
     {
       "name": "Alcatel-Lucent交换机风扇异常",
       "alert_name": "交换机${resource_name} 风扇状态异常",
-      "description": "监控 Alcatel-Lucent (TiMOS) 设备各散热风扇的运行状态（TmnxDeviceState 已归一化为 1=正常）。任何非正常状态都表示散热故障，可能迅速导致过热，应立即排查处理。",
+      "description": "监控 Alcatel-Lucent (TiMOS) 设备各散热风扇的运行状态（归一后 1=正常，2=异常，3=未知）。仅当风扇状态为 2（异常）时触发告警；未知与空槽不告警。",
       "metric_name": "device_fan_state",
       "algorithm": "last_over_time",
       "threshold": [
         {
           "level": "critical",
-          "value": 1,
-          "method": ">"
+          "value": 2,
+          "method": "="
         }
       ],
       "group_algorithm": "avg"
@@ -95,14 +95,14 @@
     {
       "name": "Alcatel-Lucent交换机电源异常",
       "alert_name": "交换机${resource_name} 电源状态异常",
-      "description": "监控 Alcatel-Lucent (TiMOS) 设备各电源模块的运行状态（TmnxDeviceState 已归一化为 1=正常）。任何非正常状态表示电源冗余缺失或硬件故障，应尽快修复以恢复冗余能力。",
+      "description": "监控 Alcatel-Lucent (TiMOS) 设备各电源模块的运行状态（归一后 1=正常，2=异常，3=未知）。仅当电源状态为 2（异常）时触发告警；未知与空槽 NotEquipped 不告警。",
       "metric_name": "device_psu_state",
       "algorithm": "last_over_time",
       "threshold": [
         {
           "level": "critical",
-          "value": 1,
-          "method": ">"
+          "value": 2,
+          "method": "="
         }
       ],
       "group_algorithm": "avg"
