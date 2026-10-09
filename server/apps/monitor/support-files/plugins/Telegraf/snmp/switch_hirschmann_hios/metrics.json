@@ -102,7 +102,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_psu_state",
-      "query": "max(device_psu_state{instance_type='switch', __$labels__}) by (instance_id, index)",
+      "query": "device_psu_state{instance_type='switch', __$labels__}",
       "display_name": "PSU State",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -115,7 +115,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Power supply state of the Hirschmann HiOS switch (HM2-PWRMGMT-MIB hm2PSState, indexed by hm2PSID), normalized so that present = 1 (normal) and defective = 2 (abnormal). notInstalled and unknown slots are dropped."
+      "description": "Power supply state of the Hirschmann HiOS switch (HM2-PWRMGMT-MIB hm2PSState, indexed by hm2PSID), normalized so that present/notInstalled = 1 (normal) and defective/unknown = 2 (abnormal). Empty slots keep a row."
     },
     {
       "metric_group": "Base",

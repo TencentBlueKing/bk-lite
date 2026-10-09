@@ -84,7 +84,7 @@ def apply(metric):
     [processors.starlark.tagpass]
         brand = ["hirschmann_hios"]
 
-# ---- 电源状态归一：present(1)→1(正常)，defective(2)→2(异常)；notInstalled(3) / unknown(4) 及其它取值整行丢弃。----
+# ---- 电源状态归一：present(1)→1(正常)，defective(2)→2(异常)；notInstalled(3) 空槽→1 保留行；unknown(4)→2 保留行；其它取值整行丢弃。----
 [[processors.starlark]]
     namepass = ["device_psu"]
     source = '''
@@ -96,6 +96,10 @@ def apply(metric):
     if raw == 1:
         metric.fields["state"] = 1
     elif raw == 2:
+        metric.fields["state"] = 2
+    elif raw == 3:
+        metric.fields["state"] = 1
+    elif raw == 4:
         metric.fields["state"] = 2
     else:
         return None
