@@ -1,0 +1,46 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_sub10"
+        config_type = "sub10"
+        brand = "sub10"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Sub10 Systems 毫米波单元状态标量（SUB10SYSTEMS-MIB sub10UnitStatus = 1.3.6.1.4.1.39003.3.1）----
+    # 均为标量：顶层 field 带实例 .0，落 measurement snmp，查询用 snmp_ 前缀。
+    # sub10UnitLclMWUTemperature（sub10UnitLocalStatus .13）：本地单元 MWU 调制解调器温度，Integer32(-100..100)，摄氏度。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.39003.3.1.1.13.0"
+        name = "device_temperature_celsius"
+    # sub10UnitRmtMWUTemperature（sub10UnitRemoteStatus .10）：对端单元 MWU 温度，摄氏度；对端不可达时可能无值。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.39003.3.1.2.10.0"
+        name = "device_remote_temperature_celsius"
+# ---- 私有 MIB 无 CPU / 内存利用率与风扇、电源状态对象，不采集。----

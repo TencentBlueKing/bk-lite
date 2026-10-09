@@ -1,0 +1,56 @@
+{
+  "object": "VoiceGateway",
+  "plugin": "VoiceGateway Switchvox SNMP",
+  "templates": [
+    {
+      "name": "Switchvox CPU使用率过高",
+      "alert_name": "语音网关${resource_name} CPU 使用率过高",
+      "description": "监控 Switchvox IP-PBX 的整机 CPU 使用率（100 − ssCpuIdle），持续高于阈值时触发告警，提示呼叫处理负载过高，可能影响通话质量。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Switchvox内存使用率过高",
+      "alert_name": "语音网关${resource_name} 内存使用率过高",
+      "description": "监控 Switchvox IP-PBX 的内存使用率（已用 / 总量），超过阈值时触发告警，便于及时发现内存压力。设备约每 10 分钟刷新一次内存数据。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_ubiquiti_airfiber",
+  "plugin": "Wireless Ubiquiti airFiber SNMP",
+  "plugin_desc": "SNMP monitoring template for Ubiquiti airFiber point-to-point radios (enterprise PEN 41112): CPU and memory usage of airFiber LTU (UBNT-AFLTU-MIB) and radio chain temperatures of classic airFiber (UBNT-AirFIBER-MIB), plus uptime and interface traffic. Each model answers only its own tree. Not for airOS / airMAX, EdgeMAX or EdgeSwitch devices.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='wireless', collect_type='snmp_ubiquiti_airfiber'}) by (instance_id)",
+  "name": "Wireless",
+  "icon": "mm-wireless_无线设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='wireless'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_radio_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Wireless",
+      "name": "device_cpu_usage",
+      "query": "max(snmp_device_cpu_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization of the airFiber LTU radio in percent, from UBNT-AFLTU-MIB afLTUCpuUsage (1.3.6.1.4.1.41112.1.10.1.3.6.0). Values outside 0-100 are dropped; classic airFiber radios do not report it."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "device_memory_usage",
+      "query": "max(snmp_device_memory_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of the airFiber LTU radio in percent, from UBNT-AFLTU-MIB afLTUMemoryUsage (1.3.6.1.4.1.41112.1.10.1.3.5.0). Values outside 0-100 are dropped; classic airFiber radios do not report it."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_radio_temperature_celsius",
+      "query": "device_radio_temperature_celsius{instance_type='wireless', __$labels__}",
+      "display_name": "Radio Chain Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Status table index (airFiberStatusIndex)"
+        },
+        {
+          "name": "chain",
+          "description": "Radio chain (0 or 1)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "DAC temperature of radio chain 0 and 1 of classic airFiber radios in degrees Celsius, from UBNT-AirFIBER-MIB radio0TempC / radio1TempC (1.3.6.1.4.1.41112.1.3.2.1.8 / .10). Values outside -50 to 150 are dropped; airFiber LTU radios do not report it."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='wireless', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='wireless', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

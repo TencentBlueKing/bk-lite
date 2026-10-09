@@ -10,6 +10,8 @@ from langchain_core.runnables import RunnableConfig
 from ldap3 import ALL, SIMPLE, Connection, Server, Tls
 from ldap3.core.exceptions import LDAPException
 
+from apps.core.logger import opspilot_logger as logger
+from apps.core.logger import safe_log_value
 from apps.opspilot.metis.llm.tools.common.credentials import CredentialItem, CredentialValidationError, NormalizedCredentials, normalize_credentials
 
 AD_INSTANCE_FIELDS = (
@@ -18,10 +20,14 @@ AD_INSTANCE_FIELDS = (
     "host",
     "port",
     "use_ssl",
+    "verify_cert",
+    "ca_cert",
     "bind_dn",
     "bind_password",
     "base_dn",
 )
+
+_AD_LDAPS_VERIFY_DISABLED = "event=ad_ldaps_certificate_verification_disabled instance_id=%s host=%s"
 
 
 def _normalize_bool(value: Any, default: bool = False) -> bool:
@@ -58,6 +64,8 @@ def normalize_ad_instance(instance: dict[str, Any], fallback_name: str = "AD - 1
         "host": _normalize_text(instance.get("host")),
         "port": _normalize_int(instance.get("port"), default_port),
         "use_ssl": use_ssl,
+        "verify_cert": _normalize_bool(instance.get("verify_cert"), default=True),
+        "ca_cert": _normalize_text(instance.get("ca_cert")),
         "bind_dn": _normalize_text(instance.get("bind_dn")),
         "bind_password": _normalize_text(instance.get("bind_password")),
         "base_dn": _normalize_text(instance.get("base_dn")),
@@ -86,6 +94,12 @@ class ActiveDirectoryCredentialAdapter:
     flat_fields = ["host", "bind_dn", "bind_password", "base_dn", "ad_host", "ad_bind_dn", "ad_bind_password", "ad_base_dn"]
 
     def build_from_flat_config(self, configurable: dict[str, Any]) -> dict[str, Any]:
+        verify_cert = configurable.get("verify_cert")
+        if verify_cert is None:
+            verify_cert = configurable.get("ad_verify_cert", True)
+        ca_cert = configurable.get("ca_cert")
+        if ca_cert is None:
+            ca_cert = configurable.get("ad_ca_cert")
         return normalize_ad_instance(
             {
                 "id": configurable.get("id") or "ad-1",
@@ -93,6 +107,8 @@ class ActiveDirectoryCredentialAdapter:
                 "host": configurable.get("host") or configurable.get("ad_host"),
                 "port": configurable.get("port") or configurable.get("ad_port"),
                 "use_ssl": configurable.get("use_ssl") if configurable.get("use_ssl") is not None else configurable.get("ad_use_ssl", True),
+                "verify_cert": verify_cert,
+                "ca_cert": ca_cert,
                 "bind_dn": configurable.get("bind_dn") or configurable.get("ad_bind_dn"),
                 "bind_password": configurable.get("bind_password") or configurable.get("ad_bind_password"),
                 "base_dn": configurable.get("base_dn") or configurable.get("ad_base_dn"),
@@ -160,11 +176,27 @@ def build_ad_normalized_from_runnable(
     return normalize_credentials(configurable, ActiveDirectoryCredentialAdapter())
 
 
+def _build_ad_tls(cfg: dict[str, Any]):
+    """LDAPS 默认校验证书；仅 verify_cert=False 时关闭校验。"""
+    if not cfg.get("use_ssl"):
+        return None
+    verify_cert = _normalize_bool(cfg.get("verify_cert"), default=True)
+    if not verify_cert:
+        logger.warning(
+            _AD_LDAPS_VERIFY_DISABLED,
+            safe_log_value(cfg.get("id")),
+            safe_log_value(cfg.get("host")),
+        )
+        return Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLS_CLIENT)
+    ca_cert = _normalize_text(cfg.get("ca_cert"))
+    if ca_cert:
+        return Tls(validate=ssl.CERT_REQUIRED, version=ssl.PROTOCOL_TLS_CLIENT, ca_certs_data=ca_cert)
+    return Tls(validate=ssl.CERT_REQUIRED, version=ssl.PROTOCOL_TLS_CLIENT)
+
+
 def get_ad_connection_from_item(item: CredentialItem) -> Connection:
     cfg = item["config"]
-    tls = None
-    if cfg.get("use_ssl"):
-        tls = Tls(validate=ssl.CERT_NONE, version=ssl.PROTOCOL_TLS_CLIENT)
+    tls = _build_ad_tls(cfg)
     server = Server(cfg["host"], port=int(cfg["port"]), use_ssl=bool(cfg.get("use_ssl")), get_info=ALL, tls=tls)
     conn = Connection(
         server,

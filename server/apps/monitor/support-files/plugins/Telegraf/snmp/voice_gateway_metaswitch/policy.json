@@ -1,0 +1,56 @@
+{
+  "object": "VoiceGateway",
+  "plugin": "VoiceGateway MetaSwitch SNMP",
+  "templates": [
+    {
+      "name": "MetaSwitch EMS CPU使用率过高",
+      "alert_name": "语音网关${resource_name} 节点 ${metric__node_name} CPU 使用率过高",
+      "description": "监控 MetaView EMS 节点当前 5 分钟汇总周期的总 CPU 使用率（METASWITCH-MIB emsStatsTotCPUUsage），当持续高于阈值时触发告警，提示控制面过载。",
+      "metric_name": "metaswitch_ems_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 85,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "MetaSwitch EMS内存使用率过高",
+      "alert_name": "语音网关${resource_name} 节点 ${metric__node_name} 内存使用率过高",
+      "description": "监控 MetaView EMS 节点物理内存使用率（由 emsStatsPhysMemUsage 与 emsStatsTotPhysMem 换算），当持续高于阈值时触发告警，提示会话或控制面内存压力。",
+      "metric_name": "metaswitch_ems_mem_usage_percent",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 85,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

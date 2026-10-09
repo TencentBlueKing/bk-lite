@@ -1,0 +1,129 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_hpmsm",
+  "plugin": "Wireless HPE MSM SNMP",
+  "plugin_desc": "SNMP monitoring template for HPE MSM / Colubris wireless controller and AP platform. It reports uptime, CPU utilization (now and 5-second), 1-minute load average, memory total/free/usage and temporary storage usage, based on the COLUBRIS-USAGE-INFORMATION-MIB (coUsageInformationGroup, enterprise PEN 8744). There is no chassis temperature, fan or PSU gauge.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='wireless', collect_type='snmp_hpmsm'}) by (instance_id)",
+  "name": "Wireless",
+  "icon": "mm-wireless_无线设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='wireless'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_memory_total",
+    "device_memory_free"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_cpu_usage",
+      "display_name": "CPU 使用率",
+      "query": "max(snmp_device_cpu_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "unit": "percent",
+      "data_type": "Number",
+      "description": "Current CPU utilization of the HPE MSM / Colubris device (coUsInfoCpuUseNow), as a 0-100 percentage. Values outside 0..100 and the 4294967295 sentinel are dropped."
+    },
+    {
+      "metric_group": "CPU",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_cpu_usage_5s",
+      "display_name": "CPU 使用率（5 秒）",
+      "query": "max(snmp_device_cpu_usage_5s{instance_type='wireless', __$labels__}) by (instance_id)",
+      "unit": "percent",
+      "data_type": "Number",
+      "description": "5-second CPU utilization of the HPE MSM / Colubris device (coUsInfoCpuUse5Sec), as a 0-100 percentage. Values outside 0..100 and sentinels are dropped."
+    },
+    {
+      "metric_group": "Base",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_load_average",
+      "display_name": "负载均值",
+      "query": "max(snmp_device_load_average{instance_type='wireless', __$labels__}) by (instance_id)",
+      "unit": "none",
+      "data_type": "Number",
+      "description": "1-minute load average of the HPE MSM / Colubris device (coUsInfoLoadAverage1Min). Negative values and sentinels are dropped."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_total",
+      "display_name": "内存总量",
+      "query": "max(snmp_device_memory_total{instance_type='wireless', __$labels__}) by (instance_id)",
+      "unit": "bytes",
+      "data_type": "Number",
+      "description": "Total RAM of the HPE MSM / Colubris device in bytes (coUsInfoRamTotal, reported in Kb and multiplied by 1024 at collection time). Total 0 or 4294967295 drops all memory metrics."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_free",
+      "display_name": "内存空闲量",
+      "query": "max(snmp_device_memory_free{instance_type='wireless', __$labels__}) by (instance_id)",
+      "unit": "bytes",
+      "data_type": "Number",
+      "description": "Free RAM of the HPE MSM / Colubris device in bytes (coUsInfoRamFree, reported in Kb and multiplied by 1024 at collection time). Raw Kb helper fields are not stored."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_usage",
+      "display_name": "内存使用率",
+      "query": "max(snmp_device_memory_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "unit": "percent",
+      "data_type": "Number",
+      "description": "Memory utilization of the HPE MSM / Colubris device as (total-free)/total×100, rounded to 0.1. Computed only when total > 0 and free ≤ total. Conversion is done once in the collector, not in the query."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_storage_usage",
+      "display_name": "临时存储使用率",
+      "query": "max(snmp_device_storage_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "unit": "percent",
+      "data_type": "Number",
+      "description": "Temporary storage utilization of the HPE MSM / Colubris device (coUsInfoStorageUseTemporary), as a 0-100 percentage. Values outside 0..100 are dropped."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

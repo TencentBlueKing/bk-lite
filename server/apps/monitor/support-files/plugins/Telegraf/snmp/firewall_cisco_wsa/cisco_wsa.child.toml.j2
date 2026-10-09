@@ -1,0 +1,81 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_cisco_wsa"
+        config_type = "cisco_wsa"
+        brand = "cisco_wsa"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.15497.1.2.3.1.2.0"
+        name = "device_cpu_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.15497.1.2.3.1.6.0"
+        name = "device_memory_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.15497.1.2.3.1.4.0"
+        name = "wsa_cache_storage_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.15497.1.2.1.2.0"
+        name = "cache_memory_kb"
+
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    for key in ["device_cpu_usage", "device_memory_usage", "wsa_cache_storage_usage"]:
+        v = f.get(key)
+        if v == None:
+            continue
+        if v < 0 or v > 100:
+            f.pop(key)
+            continue
+        if v == 65535 or v == 65534 or v == -1:
+            f.pop(key)
+            continue
+        if v == 2147483647 or v == -2147483648 or v == 4294967295:
+            f.pop(key)
+    kb = f.pop("cache_memory_kb", None)
+    if kb != None:
+        bad = False
+        if kb <= 0:
+            bad = True
+        if kb == 65535 or kb == 65534 or kb == -1:
+            bad = True
+        if kb == 2147483647 or kb == -2147483648 or kb == 4294967295:
+            bad = True
+        if not bad:
+            f["device_memory_total"] = int(kb) * 1024
+    if len(f.keys()) == 0:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["cisco_wsa"]

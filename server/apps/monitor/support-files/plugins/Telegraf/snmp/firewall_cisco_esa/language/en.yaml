@@ -1,0 +1,62 @@
+Firewall Cisco ESA SNMP:
+  name: Cisco Secure Email Gateway / IronPort ESA (Telegraf)
+  desc: "SNMP monitoring template for Cisco Secure Email Gateway / IronPort ESA appliances (PEN 15497, ASYNCOS-MAIL-MIB). It reports uptime, CPU, memory, disk I/O and work-queue utilization, power-supply state, temperature, fan speed, and IF-MIB 64-bit interface traffic."
+monitor_object:
+  Firewall: Firewall
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Firewall:
+    snmp_uptime:
+      name: System Uptime
+      desc: Uptime of the Cisco ESA appliance since the last restart (IF-MIB sysUpTime).
+    device_cpu_usage:
+      name: CPU Usage
+      desc: CPU utilization of the Cisco ESA appliance (ASYNCOS-MAIL-MIB perCentCPUUtilization
+        1.3.6.1.4.1.15497.1.1.1.2.0, Integer32 percent). Values outside 0-100 are
+        dropped.
+    device_memory_usage:
+      name: Memory Usage
+      desc: Memory utilization of the Cisco ESA appliance (ASYNCOS-MAIL-MIB perCentMemoryUtilization
+        1.3.6.1.4.1.15497.1.1.1.1.0, Integer32 percent). Values outside 0-100 are
+        dropped.
+    esa_disk_io_usage:
+      name: Disk I/O Usage
+      desc: Disk I/O utilization of the Cisco ESA appliance (ASYNCOS-MAIL-MIB perCentDiskIOUtilization
+        1.3.6.1.4.1.15497.1.1.1.3.0, Integer32 percent). Values outside 0-100 are
+        dropped.
+    esa_queue_usage:
+      name: Work Queue Usage
+      desc: Work-queue utilization of the Cisco ESA appliance (ASYNCOS-MAIL-MIB perCentQueueUtilization
+        1.3.6.1.4.1.15497.1.1.1.4.0, Integer32 percent). Values outside 0-100 are
+        dropped.
+    device_psu_state:
+      name: PSU State
+      desc: Power-supply state of the Cisco ESA appliance (ASYNCOS-MAIL-MIB powerSupplyStatus
+        1.3.6.1.4.1.15497.1.1.1.8.1.2), normalized to 1=normal / 2=abnormal. healthy(2)
+        maps to 1; notInstalled(1), noAC(3) and faulty(4) map to 2; values not defined
+        in the MIB are dropped. Dimension psu_name is the power-supply name.
+    device_temperature_celsius:
+      name: Temperature
+      desc: Chassis temperature of the Cisco ESA appliance in Celsius (ASYNCOS-MAIL-MIB
+        degreesCelsius 1.3.6.1.4.1.15497.1.1.1.9.1.2). Values outside -40 to 125 are
+        dropped. Dimension sensor_name is the sensor name.
+    device_fan_speed:
+      name: Fan Speed
+      desc: Fan speed of the Cisco ESA appliance in RPM (ASYNCOS-MAIL-MIB fanRPMs
+        1.3.6.1.4.1.15497.1.1.1.10.1.2). Values below 0, above 30000, or sentinel
+        4294967295 are dropped. Dimension fan_name is the fan name.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: Average rate of bytes received over the past 5 minutes from the 64-bit
+        IF-MIB ifHCInOctets counter (ifXTable).
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: Average rate of bytes sent over the past 5 minutes from the 64-bit IF-MIB
+        ifHCOutOctets counter (ifXTable).
+monitor_object_metric_group:
+  Firewall:
+    Base: Base
+    Firewall: Firewall
+    Hardware Status: Hardware Status
+    Traffic: Traffic

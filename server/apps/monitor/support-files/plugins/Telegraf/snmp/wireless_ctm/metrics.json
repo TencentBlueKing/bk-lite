@@ -1,0 +1,122 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_ctm",
+  "plugin": "Wireless Last Mile Gear CTM SNMP",
+  "plugin_desc": "SNMP monitoring template for Last Mile Gear CTM wireless/sync endpoint. It reports uptime, chassis temperature, dual-feed voltage/state, optional slave-side voltage/state, and interface traffic (enterprise PEN 25868).",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='wireless', collect_type='snmp_ctm'}) by (instance_id)",
+  "name": "Wireless",
+  "icon": "mm-wireless_无线设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='wireless'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_temperature_celsius",
+    "device_psu_state",
+    "device_voltage_volts"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(snmp_device_temperature_celsius{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CTM master chassis temperature in degrees Celsius from the tempC scalar. Values outside -40 to 125 C or sentinel readings are dropped before storage."
+    },
+    {
+      "metric_group": "Power",
+      "name": "device_voltage_volts",
+      "query": "device_voltage_volts{instance_type='wireless', __$labels__}",
+      "display_name": "Supply Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [
+        {
+          "name": "supply",
+          "description": "master_primary / master_secondary / slave_primary / slave_secondary"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CTM power-feed voltage in volts from voltsM1/voltsM2/voltsS1/voltsS2. The SNMP value is tenths of a volt and is divided by 10 in the collector, rounded to 0.1. Values outside 0.1 to 60 V and absent slave feeds are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='wireless', __$labels__}",
+      "display_name": "Power Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "supply",
+          "description": "master_primary / master_secondary / slave_primary / slave_secondary"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CTM power-feed status from pwrP/pwrS/pwrSP/pwrSS, normalized so 1 (OK) is healthy and 0 (Off or Low) is abnormal. Unknown codes and absent/unpopulated slave feeds are dropped."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='wireless', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='wireless', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

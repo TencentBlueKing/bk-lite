@@ -1,0 +1,52 @@
+Transmission ECI SNMP:
+  name: ECI（Telegraf）
+  desc: 面向 ECI 传输设备的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、风扇与电源状态、接口流量，适用于 ECI Telecom / Ribbon Apollo 光传输设备（企业号
+    PEN 5395）。
+monitor_object:
+  Transmission: 传输设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Transmission:
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位
+        ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位
+        ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+    device_total_incoming_traffic:
+      name: 设备接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率（按所有接口的 64 位 ifHCInOctets 汇总），单位为字节每秒。帮助管理员获取整个设备的接收流量情况，支持总体流量监控与容量规划。
+    device_total_outgoing_traffic:
+      name: 设备发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: ECI Apollo 各 CPU 过去 5 分钟的使用率，按 ECI-OPERATING-MIB 的 user + system 计算（两位小数定点值），取最忙的 CPU。持续偏高可能表示控制平面过载。
+    device_memory_total:
+      name: 内存总量
+      desc: ECI Apollo 物理内存总量，单位字节（ECI-OPERATING-MIB totalMemory）。
+    device_memory_used:
+      name: 内存已用量
+      desc: ECI Apollo 已分配内存，单位字节（ECI-OPERATING-MIB allocMemory）。
+    device_memory_usage:
+      name: 内存使用率
+      desc: ECI Apollo 内存使用率，按 allocMemory / totalMemory * 100 计算。持续偏高可能表示内存泄漏或容量不足。
+    device_fan_state:
+      name: 风扇状态
+      desc: ECI Apollo 风扇运行状态：1 表示运行（正常），2 表示停转（异常）。
+    device_psu_state:
+      name: 电源状态
+      desc: ECI Apollo 电源电压状态：1 表示正常，2 表示电压低（异常）。
+monitor_object_metric_group:
+  Transmission:
+    Base: 基础
+    Traffic: 流量
+    CPU: CPU
+    Memory: 内存
+    Hardware Status: 硬件状态

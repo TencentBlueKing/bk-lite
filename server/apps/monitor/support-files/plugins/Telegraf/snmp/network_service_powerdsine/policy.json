@@ -1,0 +1,46 @@
+{
+  "object": "NetworkService",
+  "plugin": "NetworkService PowerDsine PoE SNMP",
+  "templates": [
+    {
+      "name": "PowerDsine PoE中跨电源异常",
+      "alert_name": "网络服务设备${resource_name} ${metric__psu} 电源异常",
+      "description": "监控 PowerDsine PoE 中跨内部 / 外部电源状态，出现故障时提示供电模块损坏或外部电源中断，可能影响下游 PoE 设备供电。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "PowerDsine PoE中跨温度过高",
+      "alert_name": "网络服务设备${resource_name} 机内温度过高",
+      "description": "监控 PowerDsine PoE 中跨机内温度（仅 95xxG 系列），持续高于阈值时提示散热不良、环境温度过高或供电负载过重。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 60,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

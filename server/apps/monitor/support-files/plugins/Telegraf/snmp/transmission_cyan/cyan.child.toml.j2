@@ -1,0 +1,171 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_cyan"
+        config_type = "cyan"
+        brand = "cyan"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # Cyan BOSS module table (enterprise 28533). INDEX is the two-part
+    # cyanBossShelfId + cyanBossBossId, kept as tag index. Raw temperature,
+    # current and voltage are milli-units and are scaled in starlark only.
+    # table.field OIDs must not end in .0.
+    [[inputs.snmp.table]]
+        name = "exhaust_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.28533.5.30.100.1.1.1.14"
+        name = "celsius"
+    [[inputs.snmp.table]]
+        name = "intake_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.28533.5.30.100.1.1.1.21"
+        name = "celsius"
+    [[inputs.snmp.table]]
+        name = "psu_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.28533.5.30.100.1.1.1.43"
+        name = "celsius"
+    [[inputs.snmp.table]]
+        name = "device_current"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.28533.5.30.100.1.1.1.12"
+        name = "amps"
+    [[inputs.snmp.table]]
+        name = "cyan_feed_a"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.28533.5.30.100.1.1.1.44"
+        name = "state"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.28533.5.30.100.1.1.1.45"
+        name = "voltage_milli"
+    [[inputs.snmp.table]]
+        name = "cyan_feed_b"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.28533.5.30.100.1.1.1.46"
+        name = "state"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.28533.5.30.100.1.1.1.47"
+        name = "voltage_milli"
+
+[[processors.starlark]]
+    namepass = ["exhaust_temperature", "intake_temperature", "psu_temperature", "device_current", "cyan_feed_a", "cyan_feed_b"]
+    source = '''
+def is_sentinel(raw):
+    if raw == None:
+        return True
+    if raw == 65535 or raw == 65534 or raw == -1:
+        return True
+    if raw == 2147483647 or raw == -2147483648 or raw == 4294967295:
+        return True
+    return False
+
+def round1(x):
+    if x >= 0:
+        return float(int(x * 10.0 + 0.5)) / 10.0
+    return float(int(x * 10.0 - 0.5)) / 10.0
+
+def round2(x):
+    if x >= 0:
+        return float(int(x * 100.0 + 0.5)) / 100.0
+    return float(int(x * 100.0 - 0.5)) / 100.0
+
+def scale_temp(raw):
+    if is_sentinel(raw):
+        return None
+    val = round1(float(raw) / 1000.0)
+    if val < -40 or val > 125:
+        return None
+    return val
+
+def map_feed(raw):
+    # CyanOffOnTc: on(1)→正常, off(0)/unknown(2)→异常；其余未定义值丢弃。
+    if raw == 1 or raw == 1.0 or raw == "1":
+        return 1
+    if raw == 0 or raw == 0.0 or raw == "0":
+        return 2
+    if raw == 2 or raw == 2.0 or raw == "2":
+        return 2
+    return None
+
+def apply(metric):
+    f = metric.fields
+    name = metric.name
+    if name == "exhaust_temperature" or name == "intake_temperature" or name == "psu_temperature":
+        val = scale_temp(f.get("celsius"))
+        if val == None:
+            return None
+        f["celsius"] = val
+        return metric
+    if name == "device_current":
+        raw = f.get("amps")
+        if is_sentinel(raw):
+            return None
+        val = round2(float(raw) / 1000.0)
+        if val < 0:
+            return None
+        f["amps"] = val
+        return metric
+    mapped = map_feed(f.get("state"))
+    if mapped == None:
+        if "state" in f:
+            f.pop("state")
+    else:
+        f["psu_state"] = mapped
+        if "state" in f:
+            f.pop("state")
+    volt_raw = f.get("voltage_milli")
+    if "voltage_milli" in f:
+        f.pop("voltage_milli")
+    if not is_sentinel(volt_raw):
+        volt = round1(float(volt_raw) / 1000.0)
+        if volt > 0:
+            f["voltage_volts"] = volt
+    if len(f.keys()) == 0:
+        return None
+    if name == "cyan_feed_a":
+        metric.tags["feed"] = "A"
+    else:
+        metric.tags["feed"] = "B"
+    metric.name = "device"
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["cyan"]

@@ -1,6 +1,6 @@
 Transmission Fibrolan SNMP:
   name: Fibrolan (Telegraf)
-  desc: "SNMP monitoring template for Fibrolan transmission device. It reports uptime, CPU utilization, memory utilization, and interface traffic, for Falcon (enterprise PEN 4467)."
+  desc: "SNMP monitoring template for Fibrolan transmission device. It reports uptime, CPU utilization, memory utilization, temperature, power supply and PSU fan status, and interface traffic, for Falcon (enterprise PEN 4467)."
 monitor_object:
   Transmission: Transmission
 monitor_object_type:
@@ -68,14 +68,12 @@ monitor_object_metric:
         hardware.
     device_fan_state:
       name: Fan Status
-      desc: Operational state of each transmission device fan or fan controller. A
-        non-normal state indicates a cooling module fault, offline module, or communication
-        failure and may lead to overheating.
+      desc: Fibrolan Falcon PSU fan status. 1 means ok; 2 means fail or singleFail.
+        Empty (notInstalled) PSU slots do not emit a fan series.
     device_psu_state:
       name: Power Supply Status
-      desc: Operational state of each transmission device power supply. A non-normal
-        state indicates offline power, missing input, over-temperature, hardware fault,
-        or alert condition that should be investigated.
+      desc: Fibrolan Falcon power-supply status. 1 means ok or notInstalled (empty
+        slots keep a series); 2 means fail or unknown.
 monitor_object_metric_group:
   Transmission:
     Base: Base

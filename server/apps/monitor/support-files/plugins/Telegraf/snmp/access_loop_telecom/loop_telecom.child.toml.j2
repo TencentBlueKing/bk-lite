@@ -1,0 +1,145 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_loop_telecom"
+        config_type = "loop_telecom"
+        brand = "loop_telecom"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Loop Telecom AM3440 接入复用器（L-AM3440-A-Private，PEN 823，loop-AM3440-CCPB-A → controller → dualPowerTable 1.3.6.1.4.1.823.34441.1.10）----
+    # dualPowerTable 是 OID 分支而不是 SNMP 表，以下均为标量：顶层 field 带 .0，落 measurement snmp；换算与拆分见文末 starlark。
+    # powerConsumption（.5）：整机（最大）功耗估算值，W。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.823.34441.1.10.5.0"
+        name = "power_consumption_raw"
+    # power1AC / power2AC（.1 / .2）：电源卡是否在位，none(1) / exist(2)。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.823.34441.1.10.1.0"
+        name = "psu1_exist"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.823.34441.1.10.2.0"
+        name = "psu2_exist"
+    # power1Status / power2Status（.3 / .4）：off(1) / dc-100w(2) / dc-150w(3) / fail(4) / ac(5) / none(6) / dc-125v(7)。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.823.34441.1.10.3.0"
+        name = "psu1_status"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.823.34441.1.10.4.0"
+        name = "psu2_status"
+    # fan1Status / fan2Status（.6 / .7）：good(1) / fail-or-not-exist(2)。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.823.34441.1.10.6.0"
+        name = "fan1_status"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.823.34441.1.10.7.0"
+        name = "fan2_status"
+    # c1Temperature / c1RelativeHumidity（.11 / .12）、c2Temperature / c2RelativeHumidity（.13 / .14）：左右两块主控上的温湿度，DisplayString。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.823.34441.1.10.11.0"
+        name = "ctrl1_temperature_text"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.823.34441.1.10.12.0"
+        name = "ctrl1_humidity_text"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.823.34441.1.10.13.0"
+        name = "ctrl2_temperature_text"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.823.34441.1.10.14.0"
+        name = "ctrl2_humidity_text"
+# ---- CPU / 内存使用率：私有 MIB 只有双 CPU 告警开关，没有利用率对象，不采。----
+
+# ---- 换算与拆分：
+# 功耗原始值须为 1~5000 W，落 snmp 的 power_consumption_watts；
+# 温湿度为文本，取开头的数值（允许正负号与小数，后缀如 "C" / "%" 忽略），温度须在 -40~125 ℃、湿度须在 0~100 %，0 视为传感器不在位；
+# 拆成 device_temperature（celsius）/ device_humidity（percent），标签 controller=1 / 2；
+# 电源：在位标志为 none(1) 或状态为 none(6) 时不出点；dc-100w / dc-150w / ac / dc-125v → 1，off / fail → 2，拆成 device_psu（state，标签 psu=1 / 2）；
+# 风扇：good → 1，fail-or-not-exist → 2，拆成 device_fan（state，标签 fan=1 / 2）。原始字段不落库。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+PSU_OK = [2, 3, 5, 7]
+PSU_BAD = [1, 4]
+
+def leading_number(text):
+    if type(text) != "string":
+        return None
+    text = text.strip()
+    digits = ""
+    for i in range(len(text)):
+        c = text[i]
+        if c.isdigit():
+            digits += c
+        elif c == "." and digits != "" and digits != "+" and digits != "-" and "." not in digits:
+            digits += c
+        elif (c == "+" or c == "-") and digits == "":
+            digits += c
+        else:
+            break
+    digits = digits.rstrip(".")
+    if digits == "" or digits == "+" or digits == "-":
+        return None
+    return float(digits)
+
+def child(metric, name, tag, tag_value, field, value):
+    m = Metric(name)
+    for k, v in metric.tags.items():
+        m.tags[k] = v
+    m.tags[tag] = tag_value
+    m.fields[field] = value
+    m.time = metric.time
+    return m
+
+def apply(metric):
+    f = metric.fields
+    out = [metric]
+    watts = f.pop("power_consumption_raw", None)
+    if type(watts) == "int" and watts >= 1 and watts <= 5000:
+        f["power_consumption_watts"] = watts
+    for n in ["1", "2"]:
+        temp = leading_number(f.pop("ctrl" + n + "_temperature_text", None))
+        if temp != None and temp != 0 and temp >= -40 and temp <= 125:
+            out.append(child(metric, "device_temperature", "controller", n, "celsius", temp))
+        hum = leading_number(f.pop("ctrl" + n + "_humidity_text", None))
+        if hum != None and hum > 0 and hum <= 100:
+            out.append(child(metric, "device_humidity", "controller", n, "percent", hum))
+        exist = f.pop("psu" + n + "_exist", None)
+        status = f.pop("psu" + n + "_status", None)
+        if exist != 1:
+            if status in PSU_OK:
+                out.append(child(metric, "device_psu", "psu", n, "state", 1))
+            elif status in PSU_BAD:
+                out.append(child(metric, "device_psu", "psu", n, "state", 2))
+        fan = f.pop("fan" + n + "_status", None)
+        if fan == 1 or fan == 2:
+            out.append(child(metric, "device_fan", "fan", n, "state", fan))
+    return out
+'''
+    [processors.starlark.tagpass]
+        brand = ["loop_telecom"]

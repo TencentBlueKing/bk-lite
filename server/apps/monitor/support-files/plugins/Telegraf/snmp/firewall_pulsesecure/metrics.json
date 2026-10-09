@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_pulsesecure",
   "plugin": "Firewall Pulse Secure SNMP",
-  "plugin_desc": "SNMP monitoring template for Pulse Secure firewall. It reports uptime, CPU utilization, memory utilization, temperature, disk usage, interface traffic, swap usage, and web users, for Pulse/Ivanti Connect Secure, MAG/PSA (enterprise PEN 12532).",
+  "plugin_desc": "SNMP monitoring template for Pulse Secure firewall. It reports uptime, CPU utilization, memory utilization, temperature, disk usage, interface traffic, swap usage, signed-in web users, and concurrent user licenses used, for Pulse/Ivanti Connect Secure, MAG/PSA (enterprise PEN 12532).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_pulsesecure'}) by (instance_id)",
   "name": "Firewall",
@@ -38,7 +38,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_cpu_usage{instance_type='firewall', __$labels__}) by (instance_id)",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -46,7 +46,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "CPU utilization of the Pulse Secure / Ivanti Connect Secure IVE system (PULSESECURE-PSG-MIB iveCpuUtil, OID 12532.10), reported directly as a 0-100 percentage. Sustained high CPU usage can indicate VPN session overload, SSL/TLS processing pressure, or attack activity affecting tunnel setup and management responsiveness."
+      "description": "CPU utilization of the Pulse Secure / Ivanti Connect Secure IVE system (PULSESECURE-PSG-MIB iveCpuUtil, OID 12532.10.0), reported directly as a 0-100 percentage. Sustained high CPU usage can indicate VPN session overload, SSL/TLS processing pressure, or attack activity affecting tunnel setup and management responsiveness."
     },
     {
       "metric_group": "Status",
@@ -316,15 +316,15 @@
       ],
       "name": "device_memory_usage",
       "display_name": "Memory Usage",
-      "query": "avg(device_memory_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_memory_usage{instance_type='firewall', __$labels__}) by (instance_id)",
       "unit": "percent",
       "data_type": "Number",
-      "description": "Memory utilization of the Pulse Secure / Ivanti Connect Secure IVE system (PULSESECURE-PSG-MIB iveMemoryUtil, OID 12532.11), reported directly as a 0-100 percentage. High memory pressure can cause the gateway to refuse new VPN sessions, so investigate session counts or abnormal load promptly."
+      "description": "Memory utilization of the Pulse Secure / Ivanti Connect Secure IVE system (PULSESECURE-PSG-MIB iveMemoryUtil, OID 12532.11.0), reported directly as a 0-100 percentage. High memory pressure can cause the gateway to refuse new VPN sessions, so investigate session counts or abnormal load promptly."
     },
     {
       "metric_group": "Firewall",
       "name": "device_swap_usage",
-      "query": "avg(device_swap_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_swap_usage{instance_type='firewall', __$labels__}) by (instance_id)",
       "display_name": "Swap Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -332,12 +332,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Swap utilization of the Pulse Secure / Ivanti Connect Secure IVE system (PULSESECURE-PSG-MIB iveSwapUtil, OID 12532.24), reported directly as a 0-100 percentage. Sustained swap usage indicates memory exhaustion and degrades VPN session performance."
+      "description": "Swap utilization of the Pulse Secure / Ivanti Connect Secure IVE system (PULSESECURE-PSG-MIB iveSwapUtil, OID 12532.24.0), reported directly as a 0-100 percentage. Sustained swap usage indicates memory exhaustion and degrades VPN session performance."
     },
     {
       "metric_group": "Firewall",
       "name": "device_disk_usage",
-      "query": "avg(device_disk_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_disk_usage{instance_type='firewall', __$labels__}) by (instance_id)",
       "display_name": "Disk Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -345,12 +345,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Disk-space utilization of the Pulse Secure / Ivanti Connect Secure IVE system (PULSESECURE-PSG-MIB diskFullPercent, OID 12532.25), reported directly as a 0-100 percentage. A nearly full disk can prevent logging and configuration changes and may destabilize the gateway."
+      "description": "Disk-space utilization of the Pulse Secure / Ivanti Connect Secure IVE system (PULSESECURE-PSG-MIB diskFullPercent, OID 12532.25.0), reported directly as a 0-100 percentage. A nearly full disk can prevent logging and configuration changes and may destabilize the gateway."
     },
     {
       "metric_group": "Firewall",
       "name": "device_temperature_celsius",
-      "query": "max(device_temperature_celsius{instance_type='firewall', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_temperature_celsius{instance_type='firewall', __$labels__}) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -358,12 +358,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Chassis temperature in degrees Celsius of the Pulse Secure / Ivanti Connect Secure device (PULSESECURE-PSG-MIB iveTemperature, OID 12532.42), read directly with no scaling. Only MAG-series blades report a real value; other platforms return 0. High temperatures can indicate cooling failure and risk thermal damage."
+      "description": "Chassis temperature in degrees Celsius of the Pulse Secure / Ivanti Connect Secure device (PULSESECURE-PSG-MIB iveTemperature, OID 12532.42.0), read directly with no scaling. Only MAG-series blades report a real value; other platforms return 0, which is dropped at collection time so no 0 C reading is shown. High temperatures can indicate cooling failure and risk thermal damage."
     },
     {
       "metric_group": "Firewall",
       "name": "device_web_users",
-      "query": "max(device_web_users{instance_type='firewall', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_web_users{instance_type='firewall', __$labels__}) by (instance_id)",
       "display_name": "Signed-In Web Users",
       "data_type": "Number",
       "unit": "short",
@@ -371,7 +371,20 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Number of currently signed-in web users on the Pulse Secure / Ivanti Connect Secure gateway (PULSESECURE-PSG-MIB signedInWebUsers, OID 12532.2). Tracking the active session count helps capacity planning and detecting abnormal connection spikes."
+      "description": "Number of currently signed-in web users on the Pulse Secure / Ivanti Connect Secure gateway (PULSESECURE-PSG-MIB signedInWebUsers, OID 12532.2.0). Tracking the active session count helps capacity planning and detecting abnormal connection spikes."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_concurrent_users",
+      "query": "max(snmp_device_concurrent_users{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "Concurrent User Licenses Used",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of concurrent user licenses currently used on this Pulse Secure / Ivanti Connect Secure node (PULSESECURE-PSG-MIB iveConcurrentUsers, OID 12532.12.0). Helps track license consumption and capacity."
     }
   ]
 }

@@ -1,0 +1,179 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_raritan_pdu"
+        config_type = "raritan_pdu"
+        brand = "raritan_pdu"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # PDU2 under PEN 13742.6 (PX / PX2 / PX3). Do not mix PDU1 13742.4 or Dominion KX 13742.3.1.
+    # Do not invent CPU% or memory. Do not collect outlet measurement tables.
+    # Inlet INDEX is pduId.inletId.sensorType. Scale value by 10^inletSensorDecimalDigits.
+    # Keep rmsCurrent(1), rmsVoltage(4), activePower(5) only.
+    [[inputs.snmp.table]]
+        name = "pdu_inlet_sensor"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.13742.6.5.2.3.1.4"
+        name = "raw_value"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.13742.6.3.3.4.1.7"
+        name = "decimal_digits"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.13742.6.5.2.3.1.2"
+        name = "is_available"
+    # External INDEX is pduId.sensorID. Scale by 10^externalSensorDecimalDigits.
+    # Keep temperature(10) and humidity(11) only.
+    [[inputs.snmp.table]]
+        name = "env_external_sensor"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.13742.6.5.5.3.1.4"
+        name = "raw_value"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.13742.6.3.6.3.1.2"
+        name = "sensor_type"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.13742.6.3.6.3.1.17"
+        name = "decimal_digits"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.13742.6.5.5.3.1.2"
+        name = "is_available"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.13742.6.5.5.3.1.3"
+        name = "sensor_state"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.13742.6.3.6.3.1.16"
+        name = "sensor_units"
+
+[[processors.starlark]]
+    namepass = ["pdu_inlet_sensor", "env_external_sensor"]
+    source = '''
+def scaled_reading(raw, digits):
+    if raw == None or digits == None:
+        return None
+    if raw == 4294967295 or raw == -2147483648:
+        return None
+    d = int(digits)
+    scales = {0: 1.0, 1: 10.0, 2: 100.0, 3: 1000.0, 4: 10000.0, 5: 100000.0, 6: 1000000.0}
+    factor = scales.get(d)
+    if factor == None:
+        return None
+    return float(raw) / factor
+
+def round_tenth(x):
+    scaled = x * 10.0
+    if scaled >= 0:
+        return float(int(scaled + 0.5)) / 10.0
+    return float(int(scaled - 0.5)) / 10.0
+
+def to_celsius(value, units):
+    if units == None:
+        return None
+    u = int(units)
+    if u == 7:
+        return value
+    if u == 14:
+        return round_tenth((value - 32.0) * 5.0 / 9.0)
+    return None
+
+def clone_metric(src, name):
+    out = Metric(name)
+    for key, value in src.tags.items():
+        out.tags[key] = value
+    out.time = src.time
+    return out
+
+def apply(metric):
+    f = metric.fields
+    if len(f.keys()) == 0:
+        return None
+    raw = f.pop("raw_value", None)
+    digits = f.pop("decimal_digits", None)
+    avail = f.pop("is_available", None)
+    state = f.pop("sensor_state", None)
+    units = f.pop("sensor_units", None)
+    if avail == None or int(avail) != 1:
+        return None
+    if state != None and int(state) == -1:
+        return None
+    value = scaled_reading(raw, digits)
+    if value == None:
+        return None
+    if metric.name == "pdu_inlet_sensor":
+        idx = metric.tags.get("index", "")
+        parts = idx.split(".")
+        if len(parts) < 3:
+            return None
+        stype = int(parts[len(parts) - 1])
+        out = None
+        if stype == 1:
+            out = clone_metric(metric, "pdu_inlet_current")
+            out.fields["amps"] = value
+        elif stype == 4:
+            out = clone_metric(metric, "pdu_inlet_voltage")
+            out.fields["volts"] = value
+        elif stype == 5:
+            out = clone_metric(metric, "pdu_inlet_power")
+            out.fields["watts"] = value
+        else:
+            return None
+        out.tags["index"] = parts[0] + "." + parts[1]
+        return out
+    if metric.name == "env_external_sensor":
+        stype = f.pop("sensor_type", None)
+        if stype == None:
+            return None
+        stype = int(stype)
+        out = None
+        if stype == 10:
+            celsius = to_celsius(value, units)
+            if celsius == None:
+                return None
+            if celsius < -40 or celsius > 100:
+                return None
+            out = clone_metric(metric, "env_temperature")
+            out.fields["celsius"] = celsius
+            out.tags["sensor_type"] = "temperature"
+        elif stype == 11:
+            if value < 0 or value > 100:
+                return None
+            out = clone_metric(metric, "env_humidity")
+            out.fields["percent"] = value
+            out.tags["sensor_type"] = "humidity"
+        else:
+            return None
+        return out
+    return None
+'''
+    [processors.starlark.tagpass]
+        brand = ["raritan_pdu"]
