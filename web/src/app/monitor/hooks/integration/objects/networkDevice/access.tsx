@@ -57,6 +57,7 @@ export const useAccessConfig = () => {
       'Access GWD SNMP': 'snmp_gwd',
       'Access V-SOL SNMP': 'snmp_vsolution',
       'Access ARRIS Cadant SNMP': 'snmp_arris',
+      'Access Calix E5 SNMP': 'snmp_calix_e5',
       'Access FiberHome OLT SNMP': 'snmp_fiberhome_olt',
       'Access Huawei OLT SNMP': 'snmp_huawei_olt',
       'Access Zhone DZS SNMP': 'snmp_zhone',

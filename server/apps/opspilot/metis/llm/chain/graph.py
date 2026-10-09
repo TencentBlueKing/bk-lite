@@ -4,6 +4,7 @@ import os
 import time
 import uuid
 from abc import ABC, abstractmethod
+from contextlib import aclosing
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 
 from ag_ui.core import (
@@ -42,6 +43,7 @@ from apps.opspilot.metis.llm.chain.nested_stream import (
     OWNED_STREAM_CONTEXT_KEY,
     PLANNED_STEP_HOLDER_KEY,
     PLANNED_TOOL_STEPS_KEY,
+    OwnedEventQueue,
     OwnedStreamContext,
     current_planned_step_index,
     lookup_planned_tool_step,
@@ -1596,11 +1598,9 @@ class BasicGraph(ABC):
     ) -> AsyncGenerator[str, None]:
         """使用 agui 协议以 SSE 格式流式输出事件。"""
         encoder = EventEncoder()
-        async for frame in iter_sse_frames_with_idle_keepalive(
-            self._agui_stream_events(request, token_usage_accumulator),
-            encoder,
-        ):
-            yield frame
+        async with aclosing(iter_sse_frames_with_idle_keepalive(self._agui_stream_events(request, token_usage_accumulator), encoder)) as frames:
+            async for frame in frames:
+                yield frame
 
     async def _agui_stream_events(  # noqa: C901
         self,
@@ -1660,7 +1660,7 @@ class BasicGraph(ABC):
             token_usage_accumulator = None
         # 创建浏览器步骤事件队列和回调
         browser_event_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=100)
-        owned_queue: asyncio.Queue = asyncio.Queue()
+        owned_queue = OwnedEventQueue(maxsize=SSE_OUTPUT_QUEUE_MAXSIZE)
         stream_ctx = make_owned_stream_context(owned_queue)
         previous_stream_ctx = getattr(self, "_owned_stream_context", None)
         self._owned_stream_context = stream_ctx
@@ -1688,12 +1688,15 @@ class BasicGraph(ABC):
                 yield frame
 
             compile_started = monotonic_ms()
+            compile_task = asyncio.ensure_future(self.compile_graph(request))
             try:
-                compile_task = asyncio.ensure_future(self.compile_graph(request))
                 async for keepalive in iter_sse_keepalive_until(compile_task, encoder, "compile_graph"):
                     yield keepalive
                 graph = compile_task.result()
             finally:
+                if not compile_task.done():
+                    compile_task.cancel()
+                await asyncio.gather(compile_task, return_exceptions=True)
                 log_stage_timing("compile_graph", elapsed_ms(compile_started), thread_id=thread_id)
             if graph is None:
                 raise RuntimeError("Failed to compile graph: graph is None")
@@ -2150,6 +2153,7 @@ class BasicGraph(ABC):
                 )
             )
         finally:
+            await owned_queue.aclose()
             await interrupt_watch.aclose()
             self._owned_stream_context = previous_stream_ctx
             stop_event.set()
