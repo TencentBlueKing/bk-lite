@@ -1,21 +1,53 @@
-Switch Enterasys SNMP:
-  name: Enterasys（Telegraf）
-  desc: 面向 Enterasys 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、接口流量（企业号 PEN 5624）。
+Router Cisco IOS-XR SNMP:
+  name: Cisco IOS-XR（Telegraf）
+  desc: 面向运行 IOS-XR 的 Cisco 路由器（ASR 9000、NCS、CRS、XRv）的 SNMP 监控模板。除标准 IF-MIB 64 位接口流量外，还采集 CPU 利用率（CISCO-PROCESS-MIB）、内存池（CISCO-ENHANCED-MEMPOOL-MIB，优先 64 位计数）以及电源/风扇托盘运行状态（CISCO-ENTITY-FRU-CONTROL-MIB，名称取自 ENTITY-MIB）。
 monitor_object:
-  Switch: 交换机
+  Router: 路由器
 monitor_object_type:
   Network Device: 网络设备
 monitor_object_metric:
-  Switch:
-    device_voltage_volts:
-      name: 输入电压
-      desc: 该指标报告设备输入电压读数，单位伏特。电压偏离额定范围可能意味着供电不稳，存在硬件风险。
-    device_optical_rx_power:
-      name: 光模块接收功率
-      desc: 该指标报告光模块（SFP/SFP+）接收光功率读数。接收功率过低可能意味着链路衰减、光纤污染或对端发送异常，可能导致丢包或链路中断。
-    device_optical_tx_power:
-      name: 光模块发送功率
-      desc: 该指标报告光模块（SFP/SFP+）发送光功率读数。发送功率异常可能意味着光模块老化或故障。
+  Router:
+    device_temperature_celsius:
+      name: 设备温度
+      desc: 该指标报告设备硬件温度传感器读数，单位摄氏度。温度异常升高可能由风扇故障、散热不良或环境温度过高导致，严重时触发热保护或损坏硬件。
+    device_fan_state:
+      name: 风扇状态
+      desc: 该指标报告设备散热风扇的运行状态（枚举）。非正常状态表示散热故障，可能迅速导致过热，应立即排查。
+      enum:
+        "1": 正常
+        "2": 异常
+        "3": 未知
+    device_psu_state:
+      name: 电源状态
+      desc: 该指标报告设备电源模块的运行状态（枚举）。非正常状态表示电源冗余或硬件故障；在冗余电源设备上单个故障会移除冗余，需尽快处理。
+      enum:
+        "1": 正常
+        "2": 异常
+        "3": 未知
+    device_memory_total:
+      name: 内存总量
+      desc: 该指标报告路由器的物理内存总容量（UCD-SNMP-MIB memTotalReal，原始单位 KB，已换算为字节）。
+    device_memory_free:
+      name: 空闲内存
+      desc: 该指标报告 Cisco IOS-XR 路由器各内存池的空闲内存字节数（CISCO-ENHANCED-MEMPOOL-MIB cempMemPoolHCFree，缺失时回退
+        cempMemPoolFree）。空闲内存持续偏低可能意味着内存压力上升。
+    device_memory_used:
+      name: 已用内存
+      desc: 该指标报告 Cisco IOS-XR 路由器各内存池的已用内存字节数（CISCO-ENHANCED-MEMPOOL-MIB cempMemPoolHCUsed，缺失时回退
+        cempMemPoolUsed）。用于评估绝对内存消耗与压力。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标报告 Cisco IOS-XR 路由器 5 分钟 CPU 使用率（CISCO-PROCESS-MIB cpmCPUTotal5minRev，1.3.6.1.4.1.9.9.109.1.1.1.1.8，百分比）。持续偏高说明转发/控制平面负载吃紧。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 该指标报告 Cisco IOS-XR 路由器各内存池使用率（CISCO-ENHANCED-MEMPOOL-MIB cempMemPoolHCUsed/HCFree，缺失时回退
+        cempMemPoolUsed/Free；usage = used/(used+free)*100）。持续偏高可能由路由表过大或内存泄漏导致。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率(HC)
+      desc: 该指标表示过去 5 分钟内接收字节数的平均速率，单位为字节每秒，基于 64 位 ifHCInOctets 计数器，在高速接口上不会回绕。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率(HC)
+      desc: 该指标表示过去 5 分钟内发送字节数的平均速率，单位为字节每秒，基于 64 位 ifHCOutOctets 计数器，在高速接口上不会回绕。
     snmp_uptime:
       name: 系统运行时间
       desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
@@ -52,49 +84,12 @@ monitor_object_metric:
     interface_ifOutOctets:
       name: 接口发送流量速率
       desc: 该指标计算过去5分钟内发送的字节数的平均速率，单位为字节每秒。监测发送流量对于确保数据传输质量和优化网络性能非常重要。
-    interface_ifHCInOctets:
-      name: 接口接收流量速率
-      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器），单位为字节每秒。64 位计数器可避免
-        32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
-    interface_ifHCOutOctets:
-      name: 接口发送流量速率
-      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器），单位为字节每秒。64 位计数器可避免
-        32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
     device_total_incoming_traffic:
       name: 设备接收总流量速率
       desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率，单位为字节每秒。通过对多个接口的接收字节进行汇总计算，帮助管理员获取整个设备的接收流量情况，从而支持总体流量监控以及容量规划。
     device_total_outgoing_traffic:
       name: 设备发送总流量速率
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
-    device_cpu_usage:
-      name: CPU 使用率
-      desc: 该指标表示设备控制平面的 CPU 使用率（通常为 5 分钟平均值），单位为百分比。CPU 持续偏高可能意味着控制平面过载、路由震荡或异常流量，会导致管理响应变慢或转发延迟。数据来源于各品牌私有
-        SNMP OID，并归一化为 0-100 的百分比。
-    device_memory_usage:
-      name: 内存使用率
-      desc: 该指标表示设备整体内存使用率，按 已用/(已用+空闲)*100 在所有内存池上汇总计算，单位为百分比。内存偏高可能由内存泄漏、路由/MAC/ARP
-        表项过大或容量不足导致，可能引发不稳定或分配失败。
-    device_memory_used:
-      name: 内存已用量
-      desc: 该指标表示设备各内存池当前已使用的字节数。它帮助管理员了解每个内存池（如 Processor、I/O 池）的绝对内存消耗，并定位承压的内存池。
-    device_memory_free:
-      name: 内存空闲量
-      desc: 该指标表示设备各内存池当前空闲可用的字节数。它与已用量一起决定整体内存使用率；空闲量持续偏低说明该内存池存在内存压力。
-    device_memory_total:
-      name: 内存总量
-      desc: 该指标表示设备的内存总容量。它是计算内存使用率的分母（部分厂商按 (总量-空闲)/总量 计算），与空闲量一起反映整体内存压力。
-    device_temperature_celsius:
-      name: 温度
-      desc: 该指标表示设备各硬件温度传感器的读数，单位为摄氏度。温度异常升高可能意味着风扇故障、散热受阻或环境过热，若不处理可能触发热保护或损坏硬件。
-    device_fan_state:
-      name: 风扇状态
-      desc: 该指标表示设备各散热风扇的运行状态。非正常状态（告警、严重、关闭或故障）表示散热故障，可能迅速导致过热，应立即排查。
-    device_psu_state:
-      name: 电源状态
-      desc: 该指标表示设备各电源模块的运行状态。非正常状态表示电源冗余缺失或硬件故障；在具备冗余电源的设备上，单个故障可能不会立即中断业务，但会失去冗余，需尽快修复。
-    device_fan_speed:
-      name: 风扇转速
-      desc: 该指标表示设备风扇的转速（RPM），取各风扇的最大值。转速异常偏低或为 0 表示风扇卡转或故障、设备面临过热风险；转速异常偏高可能是设备在为高温加速散热。对于仅提供转速、无风扇状态枚举的设备，转速是判断风扇健康的唯一依据。
     device_flow_bytes_rate:
       name: 设备 Flow 总流量速率
       desc: 按当前协议指标契约从 Flow 记录估算出的设备总流量速率，用于观察整体带宽压力和容量趋势。
@@ -158,22 +153,20 @@ monitor_object_metric:
     device_flow_top_conversation_bytes_rate:
       name: Top 会话 Flow 流量速率
       desc: 按源地址、目的地址、协议和目的端口聚合的会话流量排行，用于定位主要通信关系。
-    device_psu_temperature_celsius:
-      name: 电源温度
-      desc: 采集 IP Infusion (OcNOS) 设备机箱级 PSU 1 温度传感器读数（IPI-CMM-CHASSIS-MIB cmmSysPSTemperature1），单位摄氏度。用于监测电源模块工作温度，过高温度可能提示散热不良、风扇故障或环境过热，存在触发热保护或硬件损坏风险。
 monitor_object_metric_group:
-  Switch:
-    Base: 基础
-    Packet: 数据包
-    Status: 状态
-    Packet Error: 数据包错误
-    Packet Loss: 数据包丢失
-    Bandwidth: 带宽
-    Traffic: 流量
+  Router:
     CPU: CPU
     Memory: 内存
     Temperature: 温度
     Hardware Status: 硬件状态
+    Packet Loss: 数据包丢失
+    Traffic: 流量
+    Packet Error: 数据包错误
+    Packet: 数据包
+    Base: 基础
+    Bandwidth: 带宽
+    Status: 状态
+    Router: 路由器
     Traffic Overview: 流量总览
     Sampling: 采样率
     Interface Traffic: 接口流量

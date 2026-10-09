@@ -48,7 +48,24 @@ const User: React.FC = () => {
   const [archivedDrawerOpen, setArchivedDrawerOpen] = useState(false);
   const [otpEnabled, setOtpEnabled] = useState(false);
   const { getSystemSettings } = useSecurityApi();
-  React.useEffect(() => { getSystemSettings().then((settings) => setOtpEnabled(settings.enable_otp === '1')).catch(() => setOtpEnabled(false)); }, [getSystemSettings]);
+  React.useEffect(() => {
+    let cancelled = false;
+    getSystemSettings()
+      .then((settings) => {
+        if (!cancelled) {
+          setOtpEnabled(settings.enable_otp === '1');
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setOtpEnabled(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+    // getSystemSettings 每次渲染都是新函数。OTP 开关只在进入页面时读一次。
+  }, []);
 
   const {
     treeData,

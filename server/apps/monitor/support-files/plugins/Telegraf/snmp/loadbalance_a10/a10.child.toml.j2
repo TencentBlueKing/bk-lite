@@ -33,16 +33,22 @@
         is_tag = true
 # @bk_include_ifmib_table
     # ---- A10 Thunder/AX CPU (A10-AX-MIB axSysAverageCpuUsage, scalar %, PEN 22610) ----
-    [[inputs.snmp.field]]
-        oid = "1.3.6.1.4.1.22610.2.4.1.3.3.0"
-        name = "device_cpu_usage"
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.22610.2.4.1.3.3"
+        name = "usage"
     # ---- A10 memory (A10-AX-MIB axSysMemoryTotal/axSysMemoryUsage, KB scalars) ----
-    [[inputs.snmp.field]]
-        oid = "1.3.6.1.4.1.22610.2.4.1.2.1.0"
-        name = "device_memory_total"
-    [[inputs.snmp.field]]
-        oid = "1.3.6.1.4.1.22610.2.4.1.2.2.0"
-        name = "device_memory_used"
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.22610.2.4.1.2.1"
+        name = "total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.22610.2.4.1.2.2"
+        name = "used"
     # ---- A10 硬件信息（A10-AX-MIB axSysHwInfo = 1.3.6.1.4.1.22610.2.4.1.5）：标量用 table 不带 .0 → measurement device_* ----
     # axSysHwPhySystemTemp .1：机箱物理温度 ℃。
     [[inputs.snmp.table]]
