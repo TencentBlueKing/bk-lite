@@ -26,7 +26,8 @@ monitor_object_metric:
         session count helps capacity planning and detecting abnormal connection spikes.
     device_psu_state:
       name: Power Supply Status
-      desc: Power-supply enum: 1=normal (including empty slot), 2=abnormal, 3=Unknown
+      desc: >-
+        Power-supply enum: 1=normal (including empty slot), 2=abnormal, 3=Unknown
         (gray, no alert). Only state 2 raises an alert.
       enum:
         "1": Normal
