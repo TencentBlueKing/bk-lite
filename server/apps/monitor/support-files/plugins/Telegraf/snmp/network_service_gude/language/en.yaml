@@ -1,8 +1,9 @@
 NetworkService Gude PDU SNMP:
   name: Gude PDU (Telegraf)
-  desc: SNMP monitoring template for Gude PDU8310. It reports PDU active power, channel
-    current, channel voltage, EPC8 outlet power state fallback, per-port inbound traffic
-    rate, per-port outbound traffic rate, and system uptime (IANA PEN 28507).
+  desc: SNMP monitoring template for Gude PDU8310 and Expert Power Control 8221. It
+    reports PDU active power, channel current, channel voltage, EPC8 outlet power
+    state fallback, per-port inbound traffic rate, per-port outbound traffic rate,
+    and system uptime (IANA PEN 28507).
 monitor_object:
   NetworkService: NetworkService
 monitor_object_type:
@@ -103,16 +104,19 @@ monitor_object_metric:
       desc: Current Spectracom NTP stratum level.
     pdu_active_power_watts:
       name: PDU Active Power
-      desc: Per-channel active power in Watts from pdu8310PowerActive with pdu8310PowerIndex.
-        The SNMP value is already in Watts.
+      desc: Per-channel active power in Watts from pdu8310PowerActive with pdu8310PowerIndex,
+        or from epc8221PowerActive with epc8221PowerIndex. The SNMP value is already
+        in Watts.
     pdu_channel_current_amps:
       name: PDU Channel Current
-      desc: Per-channel current in amperes from pdu8310Current with pdu8310PowerIndex.
-        The SNMP value is milliamperes, so the query divides by 1000.
+      desc: Per-channel current in amperes from pdu8310Current with pdu8310PowerIndex,
+        or from epc8221Current with epc8221PowerIndex. The SNMP value is milliamperes,
+        so the query divides by 1000.
     pdu_channel_voltage_volts:
       name: PDU Channel Voltage
       desc: Per-channel voltage in volts from pdu8310Voltage on the same pdu8310PowerTable
-        parent as pdu8310Current. The SNMP value is already in volts.
+        parent as pdu8310Current, or from epc8221Voltage on the same epc8221PowerTable
+        parent as epc8221Current. The SNMP value is already in volts.
     pdu_outlet_power_state:
       name: PDU Outlet Power State
       desc: Per-outlet power switch state from epc8PortState with epc8PortIndex and

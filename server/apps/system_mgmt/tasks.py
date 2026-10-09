@@ -319,12 +319,13 @@ def check_password_expiry_and_notify():
         if days_left > reminder_days:
             continue
 
+        name = user.display_name or user.username
         if days_left > 0:
-            subject = "密码即将过期提醒"
-            body = f"<p>尊敬的 {user.display_name or user.username}：</p><p>您的密码将在 <b>{days_left}</b> 天后过期，请尽快修改密码。</p>"
+            subject = system_mgmt_message(user.locale, "email.password_expiring_subject")
+            body = system_mgmt_message(user.locale, "email.password_expiring_body", name=name, days=days_left)
         else:
-            subject = "密码已过期提醒"
-            body = f"<p>尊敬的 {user.display_name or user.username}：</p><p>您的密码已过期，请立即修改密码。</p>"
+            subject = system_mgmt_message(user.locale, "email.password_expired_subject")
+            body = system_mgmt_message(user.locale, "email.password_expired_body", name=name)
 
         result = send_email_to_user(channel_config, body, [user.email], subject)
         if result.get("result"):

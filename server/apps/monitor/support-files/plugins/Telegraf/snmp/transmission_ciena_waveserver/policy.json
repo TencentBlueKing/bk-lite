@@ -1,0 +1,36 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission Ciena Waveserver SNMP",
+  "templates": [
+    {
+      "name": "Ciena Waveserver传输设备电源异常",
+      "alert_name": "传输设备${resource_name} 电源 ${metric__index} 状态异常",
+      "description": "监控 Ciena Waveserver 传输设备各电源模块的运行状态（cwsChassisPsuStateOperationalState，1=正常，2=异常）。空槽 uninstalled 已丢弃，不作为故障；faulted 时触发告警。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Ciena Waveserver传输设备风扇异常",
+      "alert_name": "传输设备${resource_name} 风扇 ${metric__index} 状态异常",
+      "description": "监控 Ciena Waveserver 传输设备各散热风扇的运行状态（cwsChassisFanStateOperationalState，1=正常，2=异常）。空槽 uninstalled 已丢弃，不作为故障；faulted 时触发告警。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

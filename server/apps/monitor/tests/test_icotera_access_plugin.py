@@ -43,7 +43,26 @@ BASE_METRICS = {
     "device_total_incoming_traffic",
     "device_total_outgoing_traffic",
 }
-HEALTH_METRICS = {
+SNMP_FLOOR = {
+    "snmp_uptime",
+    "interface_ifHCInOctets",
+    "interface_ifHCOutOctets",
+}
+COLLECTED_HEALTH_METRICS = {
+    "transceiver_temperature_celsius",
+    "transceiver_voltage_volts",
+    "transceiver_tx_power_mw",
+    "transceiver_rx_power_mw",
+    "transceiver_tx_bias_ma",
+}
+HEALTH_METRIC_OIDS = {
+    "transceiver_temperature_celsius": "1.3.6.1.4.1.29865.11.3.1.3.1.0",
+    "transceiver_tx_power_mw": "1.3.6.1.4.1.29865.11.3.1.3.2.0",
+    "transceiver_rx_power_mw": "1.3.6.1.4.1.29865.11.3.1.3.3.0",
+    "transceiver_voltage_volts": "1.3.6.1.4.1.29865.11.3.1.3.4.0",
+    "transceiver_tx_bias_ma": "1.3.6.1.4.1.29865.11.3.1.3.5.0",
+}
+UNSUPPORTED_HEALTH_METRICS = {
     "device_cpu_usage",
     "device_memory_used",
     "device_memory_free",
@@ -137,9 +156,11 @@ def test_ui_is_pure_snmp_form_with_sidecar_secret_fields(ui):
 @pytest.mark.unit
 def test_metrics_json_embeds_deployed_snmp_floor(metrics):
     names = {metric["name"] for metric in metrics["metrics"]}
-    expected = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
-    assert names == expected
-    assert set(metrics.get("supplementary_indicators", [])) == {"snmp_uptime"}
+    assert SNMP_FLOOR <= names
+    assert names - SNMP_FLOOR == COLLECTED_HEALTH_METRICS
+    supplementary = set(metrics.get("supplementary_indicators", []))
+    assert supplementary <= names
+    assert {"snmp_uptime", "transceiver_temperature_celsius", "transceiver_voltage_volts"} <= supplementary
 
 
 @pytest.mark.unit
@@ -147,22 +168,22 @@ def test_policy_is_empty_and_subset_of_metrics(metrics, policy):
     known = {metric["name"] for metric in metrics["metrics"]}
     policy_metrics = {template["metric_name"] for template in policy["templates"]}
     assert policy_metrics <= known
-    assert policy["templates"] == []
 
 
 @pytest.mark.unit
-def test_no_private_pen_collection_keeps_to_shared_floor(toml_text):
-    # Icotera PEN 29865 has CATV/DDM/duplex leaves that require per-row filtering
-    # beyond telegraf inputs.snmp capabilities, so the TOML must not probe the
-    # private sub-tree in this baseline.
-    assert PEN_ROOT not in toml_text
+def test_no_private_pen_collection_keeps_to_shared_floor(metrics, toml_text):
+    names = {metric["name"] for metric in metrics["metrics"]}
+    assert COLLECTED_HEALTH_METRICS <= names
+    assert PEN_ROOT in toml_text
+    for name, oid in HEALTH_METRIC_OIDS.items():
+        assert oid in toml_text, f"{name} must keep explicit OID {oid}"
+    leaked = sorted(names & UNSUPPORTED_HEALTH_METRICS)
+    assert leaked == []
     assert "[[processors.enum]]" not in toml_text
-    for marker in ("ictIGW1k", "ictIGW4k", "catvModuleAdminStatus",
-                   "transceiverDdmTemperature", "transceiverDdmTxPower",
-                   "transceiverDdmRxPower", "ifDuplexStatus"):
+    for marker in ("ictIGW1k", "ictIGW4k", "catvModuleAdminStatus", "ifDuplexStatus"):
         assert marker not in toml_text, (
             f"Private Icotera leaf {marker!r} requires per-row filtering and "
-            "is intentionally not collected in the baseline child"
+            "is intentionally not collected in the child"
         )
 
 

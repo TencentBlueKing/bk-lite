@@ -1,5 +1,76 @@
 {
   "object": "VoiceGateway",
   "plugin": "VoiceGateway Acme Packet SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Acme Packet语音网关CPU使用率过高",
+      "alert_name": "语音网关${resource_name} CPU 使用率过高",
+      "description": "监控 Acme Packet / Oracle SBC 整机 CPU 使用率，当持续高于阈值时触发告警，提示信令或媒体处理负载过高。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Acme Packet语音网关内存使用率过高",
+      "alert_name": "语音网关${resource_name} 内存使用率过高",
+      "description": "监控 Acme Packet / Oracle SBC 内存使用率，当超过阈值时触发告警，便于及时发现内存压力。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Acme Packet语音网关健康分下降",
+      "alert_name": "语音网关${resource_name} 系统健康分下降",
+      "description": "监控 Acme Packet / Oracle SBC 系统健康分（100 为最健康），当低于阈值时触发告警，提示有受监控的组件或链路降级。",
+      "metric_name": "device_health_score",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "error",
+          "value": 70,
+          "method": "<"
+        },
+        {
+          "level": "warning",
+          "value": 90,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "min"
+    }
+  ]
 }

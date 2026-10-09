@@ -1,0 +1,43 @@
+Switch GCOM SNMP:
+  name: GCOM（Telegraf）
+  desc: 面向 GCOM 以太网交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率与接口流量（企业号 PEN 13464）。
+monitor_object:
+  Switch: 交换机
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Switch:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: GCOM 以太网交换机自上次启动以来的运行时间，来自 SNMPv2-MIB sysUpTime。通过监测运行时间，管理员可以判断设备稳定性并发现意外重启。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: GCOM 交换机各接口过去 5 分钟接收字节的平均速率，单位字节每秒，来自 64 位 IF-MIB ifHCInOctets 计数器（ifXTable）。64
+        位计数器可避免 32 位 ifInOctets 在高速口上回绕。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: GCOM 交换机各接口过去 5 分钟发送字节的平均速率，单位字节每秒，来自 64 位 IF-MIB ifHCOutOctets 计数器（ifXTable）。64
+        位计数器可避免 32 位 ifOutOctets 在高速口上回绕。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: GCOM 以太网交换机的 CPU 使用率（0-100），在 gbnPlatformOAMSystem cpuIdle 读数位于 0-100 时按
+        100 减去空闲百分比计算。持续偏高可能表示控制平面过载。
+    device_memory_usage:
+      name: 内存使用率
+      desc: GCOM 以太网交换机的内存使用率（0-100），在总量为正且空闲读数合法时按 (memorySize - memoryIdle) / memorySize
+        x 100 计算。持续偏高表示设备内存承压。
+    device_memory_used:
+      name: 内存已用量
+      desc: GCOM 以太网交换机已使用内存，单位字节，由 gbnPlatformOAMSystem memorySize 减去 memoryIdle 得到。与空闲量和总量一起反映整机内存占用。
+    device_memory_free:
+      name: 内存空闲量
+      desc: GCOM 以太网交换机空闲内存，单位字节，来自 gbnPlatformOAMSystem memoryIdle。空闲量持续偏低表示内存压力。
+    device_memory_total:
+      name: 内存总量
+      desc: GCOM 以太网交换机内存总量，单位字节，来自 gbnPlatformOAMSystem memorySize。它是计算内存使用率的分母。
+monitor_object_metric_group:
+  Switch:
+    Base: 基础
+    Traffic: 流量
+    CPU: CPU
+    Memory: 内存

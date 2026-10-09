@@ -1,0 +1,81 @@
+{
+  "object": "Firewall",
+  "plugin": "Firewall Fortinet FortiMail SNMP",
+  "templates": [
+    {
+      "name": "FortiMail防火墙CPU使用率过高",
+      "alert_name": "防火墙${resource_name} CPU 使用率过高",
+      "description": "监控 FortiMail 邮件安全网关的瞬时 CPU 使用率（fmlSysCpuUsage），当持续高于阈值时触发告警，提示可能存在邮件处理负载过高，避免扫描与投递受影响。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "FortiMail防火墙内存使用率过高",
+      "alert_name": "防火墙${resource_name} 内存使用率过高",
+      "description": "监控 FortiMail 邮件安全网关的瞬时内存使用率（fmlSysMemUsage），当超过阈值时触发告警，便于及时发现内存压力导致邮件处理性能下降的风险。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "FortiMail防火墙邮件盘使用率过高",
+      "alert_name": "防火墙${resource_name} 邮件盘使用率过高",
+      "description": "监控 FortiMail 邮件安全网关的邮件盘使用率（fmlSysMailDiskUsage），当超过阈值时触发告警，提示邮件队列或存储可能耗尽。",
+      "metric_name": "device_mail_disk_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_bktel_hfc"
+        config_type = "bktel_hfc"
+        brand = "bktel_hfc"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- BKTel HFC862 NECE 模块（PEN 7501，nece 1.3.6.1.4.1.7501.1.2.100）：neceStatesTable 1.3.6.1.4.1.7501.1.2.100.2.1，INDEX neceNESlot（槽位）----
+    # table.field 不带 .0；取值 PerceivedSeverityValue：notification(0) / alarm(2) / warning(3) / clear(5)。
+    # 电源 / 风扇四列只在 2G6 平台有效，其它平台恒为 clear(5)。
+    [[inputs.snmp.table]]
+        name = "nece_states"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    # neceStatesPowerSupplyLeft / Right
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.7501.1.2.100.2.1.1.13"
+        name = "psu_left_raw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.7501.1.2.100.2.1.1.14"
+        name = "psu_right_raw"
+    # neceStatesFanLeft / Right
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.7501.1.2.100.2.1.1.15"
+        name = "fan_left_raw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.7501.1.2.100.2.1.1.16"
+        name = "fan_right_raw"
+
+# ---- 每个槽位拆成左 / 右电源（device_psu_state）与左 / 右风扇（device_fan_state），position 标签区分左右；
+# ---- notification(0) / clear(5) → 1 正常，alarm(2) / warning(3) 及其它取值 → 2 异常；列缺失或非整数则不输出该项。----
+[[processors.starlark]]
+    namepass = ["nece_states"]
+    source = '''
+COLS = [
+    ("psu_left_raw", "device_psu", "left"),
+    ("psu_right_raw", "device_psu", "right"),
+    ("fan_left_raw", "device_fan", "left"),
+    ("fan_right_raw", "device_fan", "right"),
+]
+
+def apply(metric):
+    out = []
+    for field, name, pos in COLS:
+        v = metric.fields.get(field)
+        if type(v) != "int":
+            continue
+        state = 2
+        if v == 0 or v == 5:
+            state = 1
+        m = Metric(name)
+        for k, val in metric.tags.items():
+            m.tags[k] = val
+        m.tags["position"] = pos
+        m.fields["state"] = state
+        m.time = metric.time
+        out.append(m)
+    return out
+'''
+    [processors.starlark.tagpass]
+        brand = ["bktel_hfc"]

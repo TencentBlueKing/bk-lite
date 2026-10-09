@@ -58,60 +58,71 @@
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
     # ---- CPU (UCD-SNMP 1.3.6.1.4.1.2021; private 61269 has no CPU scalars) ----
-    # ssCpuIdle 1.3.6.1.4.1.2021.11.11.0 → usage = 100−idle；缺 idle 时用 ssCpuUser+ssCpuSystem。
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.11.11"
-        name = "idle"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.11.9"
-        name = "user"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.11.10"
-        name = "system"
-    # ---- Memory (UCD-SNMP memTotalReal/memAvailReal, kB; usage=(total-avail)/total) ----
-    [[inputs.snmp.table]]
-        name = "device_memory"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.4.5"
-        name = "total"
+    # ssCpuIdle / ssCpuUser / ssCpuSystem are scalars: top-level fields with instance .0 (direct GET),
+    # landing in measurement snmp; queries use the snmp_ prefix.
+    # The starlark below computes usage = 100 - idle, or user + system when idle is missing.
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2021.11.11.0"
+        name = "device_cpu_idle"
         conversion = "int"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.4.6"
-        name = "free"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2021.11.9.0"
+        name = "device_cpu_user"
         conversion = "int"
-    # ---- Optional load averages (UCD-SNMP laLoad.1/2/3) ----
-    [[inputs.snmp.table]]
-        name = "device"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2021.11.10.0"
+        name = "device_cpu_system"
+        conversion = "int"
+    # ---- Memory (UCD-SNMP memTotalReal .4.5.0 / memAvailReal .4.6.0, scalars in kB) ----
+    # Converted to bytes at collection time; used and usage % are computed by the starlark below.
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2021.4.5.0"
+        name = "device_memory_total"
+        conversion = "int"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2021.4.6.0"
+        name = "device_memory_free"
+        conversion = "int"
+    # ---- Optional load averages (UCD-SNMP laTable laLoad, rows 1/2/3 = 1/5/15 min) ----
+    # laLoad is a table column; 2021.10.1.3.1/.2/.3 are already the full row instances, so they are
+    # read with a direct GET as top-level fields (no extra .0). DisplayString such as "0.12" -> float.
+    [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.2021.10.1.3.1"
-        name = "load1"
+        name = "device_load1"
         conversion = "float"
-    [[inputs.snmp.table.field]]
+    [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.2021.10.1.3.2"
-        name = "load5"
+        name = "device_load5"
         conversion = "float"
-    [[inputs.snmp.table.field]]
+    [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.2021.10.1.3.3"
-        name = "load15"
+        name = "device_load15"
         conversion = "float"
 # ---- 不扩展 IF-MIB 错误计数、ifOperStatus 或 32 位字节计数器。温度/风扇/电源/连接数：私有 61269 与 UCD-SNMP 均无无需行级过滤的标量 → N/A 不采。----
 
 [[processors.starlark]]
-    namepass = ["device_cpu"]
+    namepass = ["snmp"]
     source = '''
 def apply(metric):
-    idle = metric.fields.get("idle")
-    user = metric.fields.get("user")
-    system = metric.fields.get("system")
+    idle = metric.fields.get("device_cpu_idle")
+    user = metric.fields.get("device_cpu_user")
+    system = metric.fields.get("device_cpu_system")
     if idle != None:
-        metric.fields["usage"] = 100 - idle
+        metric.fields["device_cpu_usage"] = 100 - int(idle)
     elif user != None and system != None:
-        metric.fields["usage"] = user + system
+        metric.fields["device_cpu_usage"] = int(user) + int(system)
+    total = metric.fields.get("device_memory_total")
+    free = metric.fields.get("device_memory_free")
+    if total != None:
+        total = int(total) * 1024
+        metric.fields["device_memory_total"] = total
+    if free != None:
+        free = int(free) * 1024
+        metric.fields["device_memory_free"] = free
+    if total != None and free != None and total > 0 and free <= total:
+        used = total - free
+        metric.fields["device_memory_used"] = used
+        metric.fields["device_memory_usage"] = used * 100.0 / total
     return metric
 '''
     [processors.starlark.tagpass]

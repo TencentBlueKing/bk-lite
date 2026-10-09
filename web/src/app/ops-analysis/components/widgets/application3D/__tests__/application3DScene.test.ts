@@ -593,6 +593,33 @@ describe('application3D architecture scene', () => {
     controller.dispose();
   });
 
+  it('sizes each card bitmap to the zoomed-in screen size instead of a fixed 768 canvas', () => {
+    const open = (count: number) => {
+      const node = document.createElement('div');
+      Object.defineProperty(node, 'clientWidth', { configurable: true, value: 1280 });
+      Object.defineProperty(node, 'clientHeight', { configurable: true, value: 720 });
+      document.body.appendChild(node);
+      const controller = createApplication3DScene(node, {
+        interactive: true,
+        translate: (_id, fallback = '') => fallback,
+        onSelect: () => undefined,
+      });
+      controller.reconcile(makeWallItems(count), { playIntro: false });
+      flushFrames();
+      const canvases = Array.from(node.querySelectorAll('canvas.app3d-wall-glass-chrome')) as HTMLCanvasElement[];
+      const width = canvases[0]?.width ?? 0;
+      controller.dispose();
+      node.remove();
+      return { width, canvases: canvases.length };
+    };
+    const few = open(8);
+    const many = open(48);
+    expect(few.canvases).toBe(8);
+    expect(many.canvases).toBe(48);
+    expect(few.width).toBeLessThan(768);
+    expect(many.width).toBeLessThan(few.width);
+  });
+
   it('keeps 0.82 card size past 24 and snaps the camera farther for the actual wall', () => {
     const aspect = 320 / 180;
     const controller = createApplication3DScene(mount, {
@@ -899,6 +926,20 @@ describe('application3D architecture scene', () => {
     expect(captured.camera?.position.z).toBeCloseTo(target.z, 2);
     const settledScale = wallGroup()?.children[0]?.scale.x ?? 0;
     expect(midScale).toBeGreaterThan(settledScale);
+    controller.dispose();
+  });
+
+  it('keeps requesting frames after the wall settles so particles stay in motion', () => {
+    const controller = createApplication3DScene(mount, {
+      interactive: true,
+      translate: (_id, fallback = '') => fallback,
+      onSelect: () => undefined,
+    });
+    controller.reconcile(makeWallItems(4), { playIntro: false });
+    for (let step = 0; step < 40; step += 1) flushFrames(20);
+    expect(captured.raf.length).toBeGreaterThan(0);
+    flushFrames(16);
+    expect(captured.raf.length).toBeGreaterThan(0);
     controller.dispose();
   });
 });

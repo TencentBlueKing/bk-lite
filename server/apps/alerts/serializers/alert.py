@@ -214,7 +214,7 @@ class AlertModelSerializer(AuthSerializer):
         closed_at = getattr(obj, "closed_at", None)
         if closed_at:
             end_at = closed_at
-        elif obj.status in AlertStatus.ACTIVATE_STATUS or obj.status == AlertStatus.RESOLVED:
+        elif obj.status in AlertStatus.ACTIVATE_STATUS:
             end_at = timezone.now()
         else:
             return "--"

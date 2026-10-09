@@ -1,0 +1,71 @@
+{
+  "object": "Switch",
+  "plugin": "Switch Positron SNMP",
+  "templates": [
+    {
+      "name": "Positron交换机CPU使用率过高",
+      "alert_name": "交换机${resource_name} CPU 使用率过高",
+      "description": "监控 Positron GAM 交换机 10 秒 CPU 均值，当持续高于阈值时触发告警，提示可能存在控制平面过载。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Positron交换机温度过高",
+      "alert_name": "交换机${resource_name} 传感器 ${metric__sensor_name} 温度过高",
+      "description": "监控 Positron GAM 交换机各温度传感器读数，当超过阈值时触发告警，提示散热故障或风道堵塞。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 50,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Positron交换机电源异常",
+      "alert_name": "交换机${resource_name} 电源 ${metric__index} 状态异常",
+      "description": "监控 Positron GAM 交换机电源状态，当电源模块异常时触发告警，提示需检查供电冗余。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

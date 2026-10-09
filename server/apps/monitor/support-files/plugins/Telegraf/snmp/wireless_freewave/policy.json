@@ -1,0 +1,31 @@
+{
+  "object": "Wireless",
+  "plugin": "Wireless FreeWave SNMP",
+  "templates": [
+    {
+      "name": "FreeWave电台温度过高",
+      "alert_name": "无线设备${resource_name} 电台 ${metric__index} 温度过高",
+      "description": "监控 FreeWave ZumLink / Plus 电台内部温度，持续高于阈值时提示散热不良、阳光直晒或环境温度过高。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 65,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 55,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

@@ -2,6 +2,7 @@
 
 import {
   forwardRef,
+  memo,
   useCallback,
   useEffect,
   useImperativeHandle,
@@ -10,7 +11,7 @@ import {
   useState,
   type SetStateAction,
 } from "react";
-import { message, Select } from "antd";
+import { message, Modal, Select, Tabs } from "antd";
 import { useTranslation } from "@/utils/i18n";
 import { useScreenApi } from "@/app/ops-analysis/api/screen";
 import { useDirectoryApi } from "@/app/ops-analysis/api";
@@ -27,6 +28,7 @@ import { useOpsAnalysis } from "@/app/ops-analysis/context/common";
 import { useShareOrganizationSeed } from "@/app/ops-analysis/context/shareOrganization";
 import { useCanvasResources } from "@/app/ops-analysis/hooks/useCanvasResources";
 import { useDataSourceManager } from "@/app/ops-analysis/hooks/useDataSource";
+import { areScreenDataConfigPropsEqual } from "./utils/screenDataConfigProps";
 import { useOpsAnalysisQueryState } from "@/app/ops-analysis/hooks/useOpsAnalysisQueryState";
 import {
   collectScreenDataSourceIds,
@@ -40,25 +42,37 @@ import type {
   WidgetConfig,
 } from "@/app/ops-analysis/types/dashBoard";
 import type {
-  ScreenDecorationsConfig,
+  ScreenDecorationPresetId,
+  ScreenDecorationType,
+  ScreenItem,
   ScreenProps,
+  ScreenShapeKind,
+  ScreenTitleFramePresetId,
   ScreenViewSets,
   ScreenViewportConfig,
   ScreenWidgetItem,
 } from "@/app/ops-analysis/types/screen";
 import {
-  AppViewFullscreenExit,
   useAppViewFullscreen,
 } from "@/app/ops-analysis/components/appFullscreen";
 import ViewWorkspace from "../components/viewWorkspace";
 import ScreenCanvas from "./components/screenCanvas";
-import ScreenConfigModal from "./components/screenConfigModal";
+import {
+  ScreenItemContextMenu,
+  buildScreenItemMenu,
+  type ScreenItemMenuKey,
+} from "./components/screenItemMenu";
 import ScreenToolbar from "./components/screenToolbar";
+import { ScreenInspectorPane } from "./components/screenInspectorPane";
+import {
+  ScreenCanvasSettings,
+  ScreenElementPalette,
+  ScreenStyleInspector,
+} from "./components/screenEditorPanels";
 import DashboardSubscriptionModal from "@/app/ops-analysis/components/dashboardSubscriptionModal";
 import {
   addConfiguredScreenWidget,
   buildFiltersFromScreenItems,
-  canViewportContainItems,
   deleteScreenItem,
   getDefaultScreenWidgetAppearance,
   isScreenWidgetChartType,
@@ -69,7 +83,24 @@ import {
   syncScreenFilterBindings,
   updateScreenItemConfig,
 } from "./utils/layoutUtils";
+import {
+  createScreenChromeFromDrag,
+  createScreenClockItem,
+  createScreenDecorationItem,
+  createScreenShapeItem,
+  createScreenTextItem,
+  createScreenTitleFrameItem,
+  isScreenTitleFrameItem,
+  isScreenWidgetItem,
+  placeScreenItemAtPoint,
+  type ScreenChromeDragPayload,
+} from "./utils/screenItems";
 import { createScreenCopyItemHandler } from "./utils/copyScreenItem";
+import {
+  moveScreenItemLayer,
+  moveScreenItemToIndex,
+  type ScreenLayerAction,
+} from "./utils/screenLayer";
 import {
   buildDefaultScreenViewSets,
   normalizeScreenViewSets,
@@ -99,6 +130,56 @@ interface ScreenQuerySnapshot {
   appliedNamespaceId?: number;
 }
 
+const screenWidgetDataKey = (item: ScreenWidgetItem) => {
+  const { appearance: _appearance, ...dataConfig } = item.valueConfig ?? {};
+  return JSON.stringify({
+    id: item.id,
+    title: item.title,
+    chartType: item.chartType,
+    dataConfig,
+  });
+};
+
+const ScreenDataConfig = memo(
+  function ScreenDataConfig({
+    item,
+    dataSourceManager,
+    builtinNamespaceId,
+    filterDefinitions,
+    unifiedFilterValues,
+    onDirtyChange,
+    onConfirm,
+    onClose,
+  }: {
+    item: LayoutItem;
+    dataSourceManager: ReturnType<typeof useDataSourceManager>;
+    builtinNamespaceId?: number;
+    filterDefinitions?: UnifiedFilterDefinition[];
+    unifiedFilterValues?: Record<string, FilterValue>;
+    onDirtyChange?: (dirty: boolean) => void;
+    onConfirm?: (values: WidgetConfig) => void;
+    onClose?: () => void;
+  }) {
+    return (
+      <ViewConfig
+        open
+        variant="panel"
+        item={item}
+        dataSourceManager={dataSourceManager}
+        showChartThemeMode={false}
+        surface="screen"
+        builtinNamespaceId={builtinNamespaceId}
+        filterDefinitions={filterDefinitions}
+        unifiedFilterValues={unifiedFilterValues}
+        onDirtyChange={onDirtyChange}
+        onConfirm={onConfirm}
+        onClose={onClose}
+      />
+    );
+  },
+  areScreenDataConfigPropsEqual,
+);
+
 const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode = false }, ref) => {
   const { t } = useTranslation();
   const { getScreenDetail, saveScreen } = useScreenApi();
@@ -114,13 +195,18 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editMode, setEditMode] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [subscriptionModalVisible, setSubscriptionModalVisible] =
     useState(false);
   const [filterConfigOpen, setFilterConfigOpen] = useState(false);
   const [widgetSelectorOpen, setWidgetSelectorOpen] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const [configItemId, setConfigItemId] = useState<string | null>(null);
+  const [itemMenu, setItemMenu] = useState<{
+    itemId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [inspectorTab, setInspectorTab] = useState<"style" | "data">("style");
+  const [dataFormDirty, setDataFormDirty] = useState(false);
   const [pendingConfigItem, setPendingConfigItem] =
     useState<ComponentSelectorConfigItem | null>(null);
   const [refreshVersion, setRefreshVersion] = useState(0);
@@ -152,31 +238,39 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     useAppViewFullscreen();
 
   const activeViewSets = editMode ? draftViewSets : viewSets;
+  const selectedItem = useMemo(
+    () => activeViewSets.items.find((item) => item.id === selectedItemId) ?? null,
+    [activeViewSets.items, selectedItemId],
+  );
   const currentConfigItem = useMemo(
-    () => draftViewSets.items.find((item) => item.id === configItemId),
-    [configItemId, draftViewSets.items],
-  );
-  const currentViewConfigItem = useMemo<LayoutItem | null>(
     () =>
-      currentConfigItem
-        ? {
-          i: currentConfigItem.id,
-          x: 0,
-          y: 0,
-          w: 1,
-          h: 1,
-          name: currentConfigItem.title || currentConfigItem.chartType,
-          valueConfig: {
-            ...currentConfigItem.valueConfig,
-            chartType: currentConfigItem.chartType,
-            appearance: normalizeScreenWidgetAppearance(
-              currentConfigItem.valueConfig?.appearance,
-            ),
-          },
-        }
-        : null,
-    [currentConfigItem],
+      selectedItem && isScreenWidgetItem(selectedItem) ? selectedItem : null,
+    [selectedItem],
   );
+  const currentConfigItemRef = useRef(currentConfigItem);
+  currentConfigItemRef.current = currentConfigItem;
+  const currentWidgetDataKey = currentConfigItem
+    ? screenWidgetDataKey(currentConfigItem)
+    : "";
+  const currentViewConfigItem = useMemo<LayoutItem | null>(() => {
+    const source = currentConfigItemRef.current;
+    if (!source) return null;
+    return {
+      i: source.id,
+      x: 0,
+      y: 0,
+      w: 1,
+      h: 1,
+      name: source.title || source.chartType,
+      valueConfig: {
+        ...source.valueConfig,
+        chartType: source.chartType,
+        appearance: normalizeScreenWidgetAppearance(
+          source.valueConfig?.appearance,
+        ),
+      },
+    };
+  }, [currentWidgetDataKey]);
   const pendingViewConfigItem = useMemo(
     () =>
       pendingConfigItem
@@ -315,7 +409,6 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       setDraftViewSets(emptyViewSets);
       setEditMode(false);
       setSelectedItemId(null);
-      setConfigItemId(null);
       setPendingConfigItem(null);
       setEditQuerySnapshot(null);
       setRefreshVersion(0);
@@ -348,7 +441,6 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         setDraftViewSets(normalized);
         setEditMode(false);
         setSelectedItemId(null);
-        setConfigItemId(null);
         setPendingConfigItem(null);
         setEditQuerySnapshot(null);
         queryState.resetQueryState({
@@ -364,7 +456,6 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
           setDraftViewSets(fallback);
           setEditMode(false);
           setSelectedItemId(null);
-          setConfigItemId(null);
           setPendingConfigItem(null);
           setEditQuerySnapshot(null);
           queryState.resetQueryState({
@@ -488,7 +579,8 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     (item: ComponentSelectorConfigItem) => {
       setPendingConfigItem(item);
       setWidgetSelectorOpen(false);
-      setConfigItemId(null);
+      setSelectedItemId(null);
+      setInspectorTab("data");
     },
     [],
   );
@@ -500,6 +592,8 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
           rebuildDraftFilters(addConfiguredScreenWidget(current, values)),
         );
         setPendingConfigItem(null);
+        setDataFormDirty(false);
+        setInspectorTab("style");
       } catch (error) {
         console.error("Failed to add screen widget:", error);
         message.error(t("opsAnalysis.screen.unsupportedWidgetType"));
@@ -528,10 +622,53 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         rebuildDraftFilters(deleteScreenItem(current, itemId)),
       );
       setSelectedItemId((current) => (current === itemId ? null : current));
-      setConfigItemId((current) => (current === itemId ? null : current));
+      setItemMenu(null);
     },
     [rebuildDraftFilters],
   );
+
+  const handleReorderItem = useCallback((itemId: string, toIndex: number) => {
+    setDraftViewSets((current) => ({
+      ...current,
+      items: moveScreenItemToIndex(current.items, itemId, toIndex),
+    }));
+  }, []);
+
+  const handleLayerAction = useCallback(
+    (itemId: string, action: ScreenLayerAction) => {
+      setDraftViewSets((current) => ({
+        ...current,
+        items: moveScreenItemLayer(current.items, itemId, action),
+      }));
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!editMode || shareMode) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+      const target = event.target;
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) {
+          return;
+        }
+        if (
+          target.closest(
+            '.ant-select, .ant-input, .ant-input-number, [contenteditable="true"]',
+          )
+        ) {
+          return;
+        }
+      }
+      if (!selectedItemId) return;
+      event.preventDefault();
+      handleDeleteItem(selectedItemId);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [editMode, handleDeleteItem, selectedItemId, shareMode]);
 
   const handleCopyItem = useCallback(
     createScreenCopyItemHandler({
@@ -546,7 +683,8 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
 
   const handleOpenItemConfig = useCallback((itemId: string) => {
     setSelectedItemId(itemId);
-    setConfigItemId(itemId);
+    setPendingConfigItem(null);
+    setInspectorTab("data");
   }, []);
 
   const handleStartEdit = useCallback(() => {
@@ -583,7 +721,6 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     setEditQuerySnapshot(null);
     setEditMode(false);
     setSelectedItemId(null);
-    setConfigItemId(null);
     setPendingConfigItem(null);
     setFilterConfigOpen(false);
   }, [
@@ -615,7 +752,6 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       queryState.setDefinitions(nextDraftViewSets.filters ?? []);
       setEditMode(false);
       setSelectedItemId(null);
-      setConfigItemId(null);
       setPendingConfigItem(null);
       setEditQuerySnapshot(null);
       setFilterConfigOpen(false);
@@ -630,29 +766,156 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
 
   const handleSaveSettings = ({
     viewport,
-    decorations,
   }: {
     viewport: ScreenViewportConfig;
-    decorations: ScreenDecorationsConfig;
   }) => {
-    setDraftViewSets((current) => ({
-      ...updateScreenViewport(current, viewport),
-      decorations: {
-        ...current.decorations,
-        ...decorations,
-      },
-    }));
-    setSettingsOpen(false);
+    setDraftViewSets((current) => updateScreenViewport(current, viewport));
   };
 
-  const canSaveViewport = useCallback(
-    (viewport: ScreenViewportConfig) =>
-      canViewportContainItems(activeViewSets.items, viewport),
-    [activeViewSets.items],
+  const runAfterDataGuard = useCallback(
+    (next: () => void) => {
+      if (!dataFormDirty) {
+        next();
+        return;
+      }
+      Modal.confirm({
+        title: t("opsAnalysis.screen.unsavedDataTitle"),
+        content: t("opsAnalysis.screen.unsavedDataContent"),
+        centered: true,
+        okText: t("common.confirm"),
+        cancelText: t("common.cancel"),
+        onOk: () => {
+          setDataFormDirty(false);
+          setPendingConfigItem(null);
+          next();
+        },
+      });
+    },
+    [dataFormDirty, t],
+  );
+
+  const handleSelectCanvasItem = useCallback(
+    (itemId: string | null) => {
+      runAfterDataGuard(() => {
+        setSelectedItemId(itemId);
+        setPendingConfigItem(null);
+        setInspectorTab("style");
+        if (!itemId || typeof document === "undefined") return;
+        window.requestAnimationFrame(() => {
+          document
+            .querySelector(`[data-screen-item-id="${CSS.escape(itemId)}"]`)
+            ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+        });
+      });
+    },
+    [runAfterDataGuard],
+  );
+
+  const openItemMenu = useCallback(
+    (itemId: string, point: { x: number; y: number }) => {
+      handleSelectCanvasItem(itemId);
+      setItemMenu({ itemId, x: point.x, y: point.y });
+    },
+    [handleSelectCanvasItem],
+  );
+
+  const handleItemMenuAction = useCallback(
+    (key: ScreenItemMenuKey) => {
+      const itemId = itemMenu?.itemId;
+      setItemMenu(null);
+      if (!itemId) return;
+      if (key === "edit") {
+        handleOpenItemConfig(itemId);
+        return;
+      }
+      if (key === "copy") {
+        handleCopyItem(itemId);
+        return;
+      }
+      if (key === "delete") {
+        handleDeleteItem(itemId);
+        return;
+      }
+      handleLayerAction(itemId, key);
+    },
+    [
+      handleCopyItem,
+      handleDeleteItem,
+      handleLayerAction,
+      handleOpenItemConfig,
+      itemMenu?.itemId,
+    ],
+  );
+
+  const itemMenuEntries = useMemo(() => {
+    if (!itemMenu) return [];
+    const target = draftViewSets.items.find((item) => item.id === itemMenu.itemId);
+    if (!target) return [];
+    return buildScreenItemMenu(target, draftViewSets.items, {
+      shareMode,
+      isBuiltIn: Boolean(selectedScreen?.is_build_in),
+    });
+  }, [
+    draftViewSets.items,
+    itemMenu,
+    selectedScreen?.is_build_in,
+    shareMode,
+  ]);
+
+  const handlePatchItem = useCallback((nextItem: ScreenItem) => {
+    setDraftViewSets((current) =>
+      updateScreenItemConfig(current, nextItem.id, nextItem),
+    );
+  }, []);
+
+  const handleAddChromeItem = useCallback(
+    (factory: (items: ScreenItem[]) => ScreenItem) => {
+      runAfterDataGuard(() => {
+        let createdId = "";
+        setDraftViewSets((current) => {
+          const created = factory(current.items);
+          createdId = created.id;
+          return { ...current, items: [...current.items, created] };
+        });
+        setPendingConfigItem(null);
+        setSelectedItemId(createdId);
+        setInspectorTab("style");
+      });
+    },
+    [runAfterDataGuard],
+  );
+
+  const handleDropChrome = useCallback(
+    (payload: ScreenChromeDragPayload, point: { x: number; y: number }) => {
+      runAfterDataGuard(() => {
+        let createdId = "";
+        setDraftViewSets((current) => {
+          const created = placeScreenItemAtPoint(
+            createScreenChromeFromDrag(current.items, payload),
+            point,
+            current.viewport,
+          );
+          if (isScreenTitleFrameItem(created)) {
+            created.content = t(
+              created.preset.startsWith("section")
+                ? "opsAnalysis.screen.defaultSectionTitle"
+                : "opsAnalysis.screen.defaultHeroTitle",
+            );
+          }
+          createdId = created.id;
+          return { ...current, items: [...current.items, created] };
+        });
+        setPendingConfigItem(null);
+        setSelectedItemId(createdId);
+        setInspectorTab("style");
+      });
+    },
+    [runAfterDataGuard, t],
   );
 
   const handleConfirmWidgetConfig = useCallback(
     (values: WidgetConfig) => {
+      const currentConfigItem = currentConfigItemRef.current;
       if (!currentConfigItem) return;
       const nextChartType = isSceneWidgetType(values.sceneWidgetType)
         ? values.sceneWidgetType
@@ -674,7 +937,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
             chartType: nextChartType,
             appearance: resolveScreenWidgetAppearance(
               nextChartType,
-              values.appearance,
+              currentConfigItem.valueConfig?.appearance ?? values.appearance,
             ),
           },
           nextChartType,
@@ -685,10 +948,20 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
           updateScreenItemConfig(current, currentConfigItem.id, nextItem),
         ),
       );
-      setConfigItemId(null);
+      setDataFormDirty(false);
+      message.success(t("opsAnalysis.screen.dataApplied"));
     },
-    [currentConfigItem, rebuildDraftFilters, t],
+    [rebuildDraftFilters, t],
   );
+
+  const handleDataConfigClose = useCallback(() => {
+    setDataFormDirty(false);
+    setPendingConfigItem((current) => {
+      if (!current) return current;
+      setInspectorTab("style");
+      return null;
+    });
+  }, []);
 
   const handleTopologyLayoutChange = useCallback(
     (
@@ -701,7 +974,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       setDraftViewSets((current) => ({
         ...current,
         items: current.items.map((item) =>
-          item.id === itemId
+          item.id === itemId && isScreenWidgetItem(item)
             ? {
               ...item,
               valueConfig: {
@@ -723,7 +996,6 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         fullscreen={isFullscreen}
         editMode={editMode}
         shareMode={shareMode}
-        isBuiltIn={Boolean(selectedScreen?.is_build_in)}
         selectedItemId={selectedItemId}
         refreshVersion={refreshVersion}
         refreshCause={refreshCause}
@@ -734,12 +1006,12 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         filterSearchVersion={queryState.filterSearchVersion}
         namespaceSearchVersion={queryState.namespaceSearchVersion}
         builtinNamespaceId={queryState.appliedNamespaceId}
-        onSelectItem={setSelectedItemId}
+        onSelectItem={handleSelectCanvasItem}
         onMoveItem={handleMoveItem}
         onResizeItem={handleResizeItem}
         onEditItem={handleOpenItemConfig}
-        onCopyItem={handleCopyItem}
-        onDeleteItem={handleDeleteItem}
+        onOpenItemMenu={editMode && !shareMode ? openItemMenu : undefined}
+        onDropChrome={editMode && !shareMode ? handleDropChrome : undefined}
         onTopologyLayoutChange={
           editMode && !shareMode ? handleTopologyLayoutChange : undefined
         }
@@ -749,8 +1021,8 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       activeViewSets,
       dataSourceResolver,
       editMode,
-      handleDeleteItem,
-      handleCopyItem,
+      handleDropChrome,
+      openItemMenu,
       handleOpenItemConfig,
       handleMoveItem,
       handleResizeItem,
@@ -762,13 +1034,47 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       queryState.namespaceSearchVersion,
       refreshVersion,
       refreshCause,
+      handleSelectCanvasItem,
       isFullscreen,
       selectedItemId,
       selectedScreen?.data_id,
-      selectedScreen?.is_build_in,
       shareMode,
     ],
   );
+
+  const showFilterBar = queryState.definitions.length > 0;
+  const editorOpen = editMode && !isFullscreen && !shareMode;
+  const filterBarElement = showFilterBar ? (
+    <UnifiedFilterBar
+      definitions={queryState.definitions}
+      values={queryState.filterValues}
+      onChange={queryState.setFilterValues}
+      onSearch={(values) =>
+        queryState.applyQuery(values, queryState.namespaceDraftId)
+      }
+      onReset={(values) =>
+        queryState.applyQuery(values, queryState.namespaceDraftId)
+      }
+      prefixContent={namespaceSelectorElement}
+    />
+  ) : null;
+  const dataConfigItem = pendingViewConfigItem || currentViewConfigItem;
+  const dataConfigPanel = dataConfigItem ? (
+    <ScreenDataConfig
+      item={dataConfigItem}
+      dataSourceManager={dataSourceManager}
+      builtinNamespaceId={queryState.namespaceDraftId}
+      filterDefinitions={queryState.definitions}
+      unifiedFilterValues={queryState.filterValues}
+      onDirtyChange={setDataFormDirty}
+      onConfirm={
+        pendingViewConfigItem
+          ? handleConfirmNewWidgetConfig
+          : handleConfirmWidgetConfig
+      }
+      onClose={handleDataConfigClose}
+    />
+  ) : null;
 
   return (
     <>
@@ -779,7 +1085,6 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
             : "h-full min-h-0 w-full"
         }
       >
-        <AppViewFullscreenExit visible={isFullscreen} onExit={exitFullscreen} />
         <ViewWorkspace
           selectedItem={selectedScreen}
           loading={loading}
@@ -787,6 +1092,8 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
           emptyDescription={t("opsAnalysis.screen.selectFirst")}
           headerVisible={!isFullscreen}
           filterBarVisible={!isFullscreen}
+          compactHeader
+          flushContent={isFullscreen}
           contentClassName={isFullscreen ? "bg-slate-950" : undefined}
           toolbar={
             <ScreenToolbar
@@ -810,36 +1117,129 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
               onRefresh={handleRefresh}
               frequenceValue={effectiveRefreshInterval}
               onFrequencyChange={handleFrequencyChange}
-              onOpenSettings={() => setSettingsOpen(true)}
+              onOpenSettings={() =>
+                handleSelectCanvasItem(null)
+              }
               onOpenFilterConfig={() => setFilterConfigOpen(true)}
-              onOpenWidgetSelector={() => setWidgetSelectorOpen(true)}
               onPreview={enterFullscreen}
               onEdit={handleStartEdit}
-              onCancel={handleCancelEdit}
-              onSave={handleSave}
+              onCancel={() => runAfterDataGuard(handleCancelEdit)}
+              onSave={() => runAfterDataGuard(() => { void handleSave(); })}
               editExtra={bindCanvasDraftControls(screenDraft)}
             />
           }
-          filterBar={
-            (queryState.definitions.length > 0 ||
-              namespaceSelectorElement ||
-              editMode) && (
-              <UnifiedFilterBar
-                definitions={queryState.definitions}
-                values={queryState.filterValues}
-                onChange={queryState.setFilterValues}
-                onSearch={(values) =>
-                  queryState.applyQuery(values, queryState.namespaceDraftId)
-                }
-                onReset={(values) =>
-                  queryState.applyQuery(values, queryState.namespaceDraftId)
-                }
-                prefixContent={namespaceSelectorElement}
-              />
-            )
-          }
+          filterBar={filterBarElement}
         >
-          {screenCanvas}
+          {editorOpen ? (
+            <div className="relative flex h-full min-h-0 overflow-hidden" data-screen-editor>
+              <ScreenElementPalette
+                selectedItemId={selectedItemId}
+                items={draftViewSets.items}
+                onSelectItem={handleSelectCanvasItem}
+                onAddText={() =>
+                  handleAddChromeItem((items) => createScreenTextItem(items))
+                }
+                onAddClock={() =>
+                  handleAddChromeItem((items) => createScreenClockItem(items))
+                }
+                onAddTitleFrame={(preset: ScreenTitleFramePresetId) =>
+                  handleAddChromeItem((items) =>
+                    createScreenTitleFrameItem(items, {
+                      preset,
+                      content: t(
+                        preset.startsWith("section")
+                          ? "opsAnalysis.screen.defaultSectionTitle"
+                          : "opsAnalysis.screen.defaultHeroTitle",
+                      ),
+                    }),
+                  )
+                }
+                onAddDecoration={(
+                  decorationType: ScreenDecorationType,
+                  preset: ScreenDecorationPresetId,
+                ) =>
+                  handleAddChromeItem((items) =>
+                    createScreenDecorationItem(items, decorationType, preset),
+                  )
+                }
+                onAddShape={(shape: ScreenShapeKind) =>
+                  handleAddChromeItem((items) => createScreenShapeItem(items, shape))
+                }
+                onOpenChartSelector={() => setWidgetSelectorOpen(true)}
+                onOpenItemMenu={openItemMenu}
+                onReorderItem={handleReorderItem}
+              />
+              <div className="min-h-0 min-w-0 flex-1">{screenCanvas}</div>
+              <ScreenInspectorPane label={t("opsAnalysis.screen.inspectorResize")}>
+                {pendingConfigItem ? (
+                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                    <div className="border-b border-(--color-border-1) px-3 py-2 text-sm font-semibold text-(--color-text-1)">
+                      {t("opsAnalysis.screen.dataTab")}
+                    </div>
+                    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                      {dataConfigPanel}
+                    </div>
+                  </div>
+                ) : currentConfigItem ? (
+                  <Tabs
+                    className="flex min-h-0 flex-1 flex-col [&_.ant-tabs-content]:h-full [&_.ant-tabs-content-holder]:min-h-0 [&_.ant-tabs-content-holder]:flex-1 [&_.ant-tabs-content-holder]:overflow-hidden [&_.ant-tabs-nav]:mb-0 [&_.ant-tabs-nav-wrap]:px-3 [&_.ant-tabs-tabpane]:m-0 [&_.ant-tabs-tabpane]:h-full [&_.ant-tabs-tabpane]:min-h-0 [&_.ant-tabs-tabpane]:overflow-hidden"
+                    activeKey={inspectorTab}
+                    onChange={(key) => setInspectorTab(key as "style" | "data")}
+                    items={[
+                      {
+                        key: "style",
+                        label: t("opsAnalysis.screen.styleTab"),
+                        children: selectedItem ? (
+                          <ScreenStyleInspector
+                            item={selectedItem}
+                            viewport={draftViewSets.viewport}
+                            onChange={handlePatchItem}
+                          />
+                        ) : null,
+                      },
+                      {
+                        key: "data",
+                        label: t("opsAnalysis.screen.dataTab"),
+                        children: (
+                          <div className="flex h-full min-h-0 flex-col overflow-hidden">
+                            {dataConfigPanel}
+                          </div>
+                        ),
+                      },
+                    ]}
+                  />
+                ) : selectedItem ? (
+                  <ScreenStyleInspector
+                    item={selectedItem}
+                    viewport={draftViewSets.viewport}
+                    onChange={handlePatchItem}
+                  />
+                ) : (
+                  <>
+                    <div className="border-b border-(--color-border-1) px-3 py-2 text-sm font-semibold text-(--color-text-1)">
+                      {t("opsAnalysis.screen.canvasSettings")}
+                    </div>
+                    <ScreenCanvasSettings
+                      viewport={draftViewSets.viewport}
+                      onChange={(viewport) => handleSaveSettings({ viewport })}
+                    />
+                  </>
+                )}
+              </ScreenInspectorPane>
+              {itemMenu && itemMenuEntries.length > 0 ? (
+                <ScreenItemContextMenu
+                  open
+                  x={itemMenu.x}
+                  y={itemMenu.y}
+                  entries={itemMenuEntries}
+                  onAction={handleItemMenuAction}
+                  onClose={() => setItemMenu(null)}
+                />
+              ) : null}
+            </div>
+          ) : (
+            screenCanvas
+          )}
         </ViewWorkspace>
       </div>
       <ViewSelector
@@ -847,15 +1247,6 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         onCancel={() => setWidgetSelectorOpen(false)}
         onOpenConfig={handleOpenNewWidgetConfig}
         surface="screen"
-      />
-      <ScreenConfigModal
-        open={settingsOpen}
-        viewport={activeViewSets.viewport}
-        decorations={activeViewSets.decorations}
-        saving={saving}
-        canSaveViewport={canSaveViewport}
-        onCancel={() => setSettingsOpen(false)}
-        onSave={handleSaveSettings}
       />
       <UnifiedFilterConfigModal
         open={filterConfigOpen}
@@ -874,7 +1265,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
           setFilterConfigOpen(false);
         }}
         definitions={queryState.definitions}
-        layoutItems={draftViewSets.items.map((item) => ({
+        layoutItems={draftViewSets.items.filter(isScreenWidgetItem).map((item) => ({
           i: item.id,
           x: item.x,
           y: item.y,
@@ -885,34 +1276,6 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         }))}
         dataSources={dataSources}
       />
-      {currentViewConfigItem && (
-        <ViewConfig
-          open={Boolean(configItemId)}
-          item={currentViewConfigItem}
-          dataSourceManager={dataSourceManager}
-          showChartThemeMode={false}
-          surface="screen"
-          builtinNamespaceId={queryState.namespaceDraftId}
-          filterDefinitions={queryState.definitions}
-          unifiedFilterValues={queryState.filterValues}
-          onConfirm={handleConfirmWidgetConfig}
-          onClose={() => setConfigItemId(null)}
-        />
-      )}
-      {pendingViewConfigItem && (
-        <ViewConfig
-          open={Boolean(pendingConfigItem)}
-          item={pendingViewConfigItem}
-          dataSourceManager={dataSourceManager}
-          showChartThemeMode={false}
-          surface="screen"
-          builtinNamespaceId={queryState.namespaceDraftId}
-          filterDefinitions={queryState.definitions}
-          unifiedFilterValues={queryState.filterValues}
-          onConfirm={handleConfirmNewWidgetConfig}
-          onClose={() => setPendingConfigItem(null)}
-        />
-      )}
       {selectedScreen?.data_id != null && (
         <DashboardSubscriptionModal
           open={subscriptionModalVisible}

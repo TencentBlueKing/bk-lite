@@ -1,0 +1,47 @@
+Wireless Ubiquiti airFiber SNMP:
+  name: Ubiquiti airFiber (Telegraf)
+  desc: 'SNMP monitoring template for Ubiquiti airFiber point-to-point radios (enterprise PEN 41112):
+    CPU and memory usage of airFiber LTU (UBNT-AFLTU-MIB) and radio chain temperatures of classic airFiber
+    (UBNT-AirFIBER-MIB), plus uptime and interface traffic. Each model answers only its own tree. Not
+    for airOS / airMAX, EdgeMAX or EdgeSwitch devices.'
+monitor_object:
+  Wireless: Wireless
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
+        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
+        or failures.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: CPU utilization of the wireless device reported directly as a 0-100 percentage. Sustained
+        high CPU usage can indicate heavy client-association load, control-plane pressure, or RF management
+        overhead affecting roaming and management responsiveness.
+    device_memory_usage:
+      name: Memory Usage
+      desc: Memory utilization of the wireless device reported directly as a 0-100 percentage. High memory
+        pressure can cause the access point to drop client associations or restart services, so investigate
+        client counts or abnormal load promptly.
+    device_radio_temperature_celsius:
+      name: Radio Chain Temperature
+      desc: Temperature of each radio chain of the wireless device in degrees Celsius. Persistently high
+        values can indicate cooling problems or high ambient temperature at the outdoor unit.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured
+        in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in
+        bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifOutOctets on high-speed ports, keeping the rate accurate.
+monitor_object_metric_group:
+  Wireless:
+    Base: Base
+    Traffic: Traffic
+    Wireless: Wireless
+    Temperature: Temperature
