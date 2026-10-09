@@ -26,6 +26,20 @@ from apps.monitor.views.node_mgmt import _build_actor_context
 from config.drf.pagination import CustomPageNumberPagination
 
 
+def _ui_template_with_binding(content, plugin, locale, localize_ui_template):
+    from apps.monitor.services.vault_credential.binding import derive_credential_binding, public_credential_binding
+
+    source = content if isinstance(content, dict) else {}
+    binding = public_credential_binding(derive_credential_binding(source, plugin))
+    localized = localize_ui_template(source, locale) if source else {}
+    if not isinstance(localized, dict):
+        localized = {}
+    else:
+        localized = dict(localized)
+    localized["credential_binding"] = binding
+    return localized
+
+
 class MonitorPluginViewSet(viewsets.ModelViewSet):
     queryset = MonitorPlugin._default_manager.all()
     serializer_class = MonitorPluginSerializer
@@ -394,7 +408,7 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
             )
             return WebUtils.response_success(
                 {
-                    "ui_template": localize_ui_template(content, locale),
+                    "ui_template": _ui_template_with_binding(content, plugin, locale, localize_ui_template),
                     "node_selector": plugin.node_selector or {},
                     "support_collect_detect": resolve_support_collect_detect(plugin, fallback=plugin.support_collect_detect),
                 }
@@ -402,7 +416,7 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         except MonitorPluginUITemplate.DoesNotExist:
             return WebUtils.response_success(
                 {
-                    "ui_template": {},
+                    "ui_template": {"credential_binding": {"variants": []}},
                     "node_selector": plugin.node_selector or {},
                     "support_collect_detect": resolve_support_collect_detect(plugin, fallback=plugin.support_collect_detect),
                 }
@@ -440,7 +454,7 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
             enrich_ui_template_from_plugin_files(ui_template.get("ui_template"), plugin),
             plugin,
         )
-        ui_template["ui_template"] = localize_ui_template(content or {}, locale) if content else content
+        ui_template["ui_template"] = _ui_template_with_binding(content or {}, plugin, locale, localize_ui_template)
         ui_template["support_collect_detect"] = resolve_support_collect_detect(plugin, fallback=bool(ui_template.get("support_collect_detect")))
         return WebUtils.response_success(ui_template)
 
@@ -450,10 +464,11 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         """按腾讯云账号密钥动态拉取可用地域（DescribeRegions）。"""
         payload = request.data if isinstance(request.data, dict) else {}
         collect_config_id = payload.get("collect_config_ids") or payload.get("collect_config_id") or payload.get("config_id") or ""
+        vault_credential_id = payload.get("vault_credential_id") or ""
         username = payload.get("username") or payload.get("secret_id") or ""
         password = payload.get("password") or payload.get("ENV_PASSWORD") or payload.get("secret_key") or ""
         cloud_region_id = payload.get("cloud_region_id")
-        actor_context = _build_actor_context(request) if collect_config_id else None
+        actor_context = _build_actor_context(request) if collect_config_id or vault_credential_id else None
         try:
             regions = QCloudRegionService.list_regions(
                 username=username,
@@ -461,6 +476,7 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
                 cloud_region_id=cloud_region_id,
                 collect_config_id=collect_config_id,
                 actor_context=actor_context,
+                vault_credential_id=vault_credential_id,
             )
         except ValidationAppException as exc:
             return WebUtils.response_error(error_message=str(exc), status_code=400)
@@ -474,10 +490,11 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         """按阿里云账号密钥动态拉取可用地域（DescribeRegions）。"""
         payload = request.data if isinstance(request.data, dict) else {}
         collect_config_id = payload.get("collect_config_ids") or payload.get("collect_config_id") or payload.get("config_id") or ""
+        vault_credential_id = payload.get("vault_credential_id") or ""
         username = payload.get("username") or payload.get("access_key") or payload.get("secret_id") or ""
         password = payload.get("password") or payload.get("ENV_PASSWORD") or payload.get("access_secret") or payload.get("secret_key") or ""
         cloud_region_id = payload.get("cloud_region_id")
-        actor_context = _build_actor_context(request) if collect_config_id else None
+        actor_context = _build_actor_context(request) if collect_config_id or vault_credential_id else None
         try:
             regions = AliyunRegionService.list_regions(
                 username=username,
@@ -485,6 +502,7 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
                 cloud_region_id=cloud_region_id,
                 collect_config_id=collect_config_id,
                 actor_context=actor_context,
+                vault_credential_id=vault_credential_id,
             )
         except ValidationAppException as exc:
             return WebUtils.response_error(error_message=str(exc), status_code=400)

@@ -30,6 +30,21 @@ SNMP_TAGS_PATTERN = re.compile(r"^(?P<indent>\s*)\[inputs\.snmp\.tags\]\s*$", re
 SNMP_PLUGIN_ID_TAG_PATTERN = re.compile(r"^\s*plugin_id\s*=", re.M)
 
 
+def _vault_child_config(config_id) -> bool:
+    return CollectConfig.objects.filter(id=config_id).exclude(vault_credential_id="").exists()
+
+
+def _overlay_vault_rendered_content(config_id, original_content, rendered_content):
+    from apps.monitor.services.vault_credential.apply import retain_managed_content
+
+    if not original_content or not rendered_content:
+        return rendered_content
+    original = ConfigFormat.toml_to_dict(original_content)
+    rendered = ConfigFormat.toml_to_dict(rendered_content)
+    retain_managed_content(config_id, original, rendered, only_missing=False)
+    return ConfigFormat.json_to_toml(rendered)
+
+
 class CustomSnmpPluginService:
     @staticmethod
     def get_monitor_object(plugin: MonitorPlugin):
@@ -353,17 +368,29 @@ class CustomSnmpPluginService:
             return
         node_mgmt = NodeMgmt()
         applied_updates = []
+        retry_ids = []
         try:
             for item in update_plan:
-                node_mgmt.update_child_config_content(item["id"], item["rendered_content"])
+                rendered_content = item["rendered_content"]
+                if _vault_child_config(item["id"]):
+                    rendered_content = _overlay_vault_rendered_content(item["id"], item.get("original_content") or "", rendered_content)
+                    swapped = node_mgmt.compare_and_swap_child_config_content_local(
+                        item["id"],
+                        item.get("original_content") or "",
+                        rendered_content,
+                    )
+                    if not swapped:
+                        retry_ids.append(item["id"])
+                        continue
+                    item = {**item, "rendered_content": rendered_content}
+                else:
+                    node_mgmt.update_child_config_content(item["id"], rendered_content)
                 applied_updates.append(item)
             from apps.monitor.models import CollectConfig as CollectConfigModel
             from apps.monitor.services.collect_config_update import plugin_content_fingerprint, stamp_applied
 
             config_ids = [item["id"] for item in update_plan]
-            config_map = {
-                config.id: config for config in CollectConfigModel.objects.filter(id__in=config_ids).select_related("monitor_plugin")
-            }
+            config_map = {config.id: config for config in CollectConfigModel.objects.filter(id__in=config_ids).select_related("monitor_plugin")}
             for item in update_plan:
                 config_obj = config_map.get(item["id"])
                 if config_obj is None:
@@ -387,6 +414,9 @@ class CustomSnmpPluginService:
             rollback_failures = CustomSnmpPluginService._rollback_propagation(node_mgmt, applied_updates)
             rollback_tip = f"；以下实例回滚可能未完成: {', '.join(rollback_failures)}" if rollback_failures else ""
             raise BaseAppException(f"采集模板同步失败: {exc}{rollback_tip}") from exc
+        if retry_ids:
+            return {"retry_config_ids": retry_ids}
+        return None
 
     @staticmethod
     def update_collect_template(plugin: MonitorPlugin, snippet: str):
