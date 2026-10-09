@@ -80,7 +80,7 @@
     {
       "name": "EdgeRouter路由器电源异常",
       "alert_name": "路由器${resource_name} 电源状态异常",
-      "description": "监控 EdgeRouter 各电源模块状态，当电源处于关闭（异常）状态时触发告警，提示供电故障或冗余缺失。",
+      "description": "监控 EdgeRouter 各电源模块状态（归一后 1=正常、2=异常、3=备用、4=未知；备用与未知不告警）。仅取值为 2（关闭）时触发告警，提示供电故障或冗余缺失。",
       "metric_name": "device_psu_state",
       "algorithm": "last_over_time",
       "threshold": [

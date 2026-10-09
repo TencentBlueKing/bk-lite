@@ -86,7 +86,8 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.41112.1.5.5.2.1.3"
         name = "rpm"
-    # ubntPsuStatus 1.3.6.1.4.1.41112.1.5.3.2.1.3：unknown(0) / on(1) / off(2) / standby(3)，starlark 归一为 device_psu_state。
+    # ubntPsuStatus 1.3.6.1.4.1.41112.1.5.3.2.1.3：unknown(0) / on(1) / off(2) / standby(3)。
+    # 归一：on(1)→1 正常、off(2)→2 异常、standby(3)→3 备用（不动）、unknown(0)→4 未知；其它值丢弃。
     [[inputs.snmp.table]]
         name = "device_psu"
         inherit_tags = ["source"]
@@ -116,11 +117,11 @@ def apply(metric):
         brand = ["edgerouter"]
 
 # ---- 机箱健康归一：温度 千分之一℃ ÷1000，仅保留 -40~150 ℃ → device_temperature_celsius；风扇转速 0~100000 → device_fan_rpm；
-# ---- 电源 on(1)→1 正常、off(2)→2 异常、standby(3)→3 备用，unknown(0) 及其它值丢弃 → device_psu_state。无有效字段的行整行丢弃。----
+# ---- 电源 on(1)→1 正常、off(2)→2 异常、standby(3)→3 备用、unknown(0)→4 未知；其它值丢弃 → device_psu_state。无有效字段的行整行丢弃。----
 [[processors.starlark]]
     namepass = ["device_temperature", "device_fan", "device_psu"]
     source = '''
-PSU = {1: 1, 2: 2, 3: 3}
+PSU = {0: 4, 1: 1, 2: 2, 3: 3}
 
 def apply(metric):
     if metric.name == "device_temperature":
