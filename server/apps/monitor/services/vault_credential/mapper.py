@@ -104,13 +104,16 @@ def to_storage_writes(resolved, variant, binding, configs, *, encode=True, inlin
             continue
         scope_ids = child_ids if target.get("scope") == "child" else base_ids
         for config_id in scope_ids:
+            written = value
+            if encode and _dsn_user_uses_urlencode(target):
+                written = quote(str(value), safe="/")
             writes.append(
                 {
                     "config_id": config_id,
                     "kind": target.get("kind") or "content",
                     "path": target.get("path"),
                     "regex": target.get("regex"),
-                    "value": value,
+                    "value": written,
                     "field": target.get("field"),
                 }
             )
@@ -269,15 +272,39 @@ def _regex_rejects(pattern, text):
     return False
 
 
-def _replace_capture(pattern, text, value):
+def _dsn_user_uses_urlencode(target):
+    """新建模板对 URL 型 DSN 用户名使用 Jinja ``| urlencode``（``quote(safe="/")``）。"""
+    if target.get("kind") != "dsn":
+        return False
+    regex = str(target.get("regex") or "")
+    if "://" in regex:
+        return True
+    # SQL Server 模板是 sqlserver://用户名，UI 正则仍是 ADO 的 User Id=
+    return "User Id=" in regex
+
+
+_SQLSERVER_USERINFO = re.compile(r"://([^:]+):")
+
+
+def _capture_match(pattern, text):
+    text = "" if text is None else str(text)
     try:
         compiled = re.compile(pattern or "")
     except re.error as exc:
         raise VaultCredentialError("apply_failed") from exc
     matches = list(compiled.finditer(text))
-    if len(matches) != 1 or matches[0].lastindex is None or matches[0].lastindex < 1:
-        raise VaultCredentialError("apply_failed")
-    start, end = matches[0].span(1)
+    if len(matches) == 1 and matches[0].lastindex is not None and matches[0].lastindex >= 1:
+        return matches[0]
+    if "sqlserver://" in text and "User Id=" in str(pattern or ""):
+        url_matches = list(_SQLSERVER_USERINFO.finditer(text))
+        if len(url_matches) == 1:
+            return url_matches[0]
+    raise VaultCredentialError("apply_failed")
+
+
+def _replace_capture(pattern, text, value):
+    match = _capture_match(pattern, text)
+    start, end = match.span(1)
     return text[:start] + str(value) + text[end:]
 
 
@@ -383,14 +410,7 @@ def _read_target_value(target, config_ids, env_by_config, content_by_config):
 
 
 def _extract_capture(pattern, text):
-    try:
-        compiled = re.compile(pattern or "")
-    except re.error as exc:
-        raise VaultCredentialError("apply_failed") from exc
-    matches = list(compiled.finditer(text))
-    if len(matches) != 1 or matches[0].lastindex is None or matches[0].lastindex < 1:
-        raise VaultCredentialError("apply_failed")
-    return matches[0].group(1)
+    return _capture_match(pattern, text).group(1)
 
 
 def _copy_content(value):
