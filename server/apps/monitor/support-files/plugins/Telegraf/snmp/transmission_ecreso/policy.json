@@ -1,0 +1,86 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission Ecreso SNMP",
+  "templates": [
+    {
+      "name": "Ecreso发射机内部温度过高",
+      "alert_name": "传输设备${resource_name} 内部温度过高",
+      "description": "监控 Ecreso FM 发射机内部温度（maMoCoMeIntTemp），当持续高于阈值时触发告警，提示可能存在散热异常、环境温度过高或发射机过载。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 78,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Ecreso发射机环境温度过高",
+      "alert_name": "传输设备${resource_name} 环境温度过高",
+      "description": "监控 Ecreso FM 发射机环境温度（maMoCoMeAmb），当持续高于阈值时触发告警，提示机房环境或进风异常。",
+      "metric_name": "ecreso_ambient_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 78,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Ecreso发射机风扇告警",
+      "alert_name": "传输设备${resource_name} 风扇 ${metric__index} 告警",
+      "description": "监控 Ecreso FM 发射机各风扇的转速告警状态（maMoFanAlarms，已归一化为 1=正常 / 2=异常）。当风扇上报告警或未定义状态时触发告警。",
+      "metric_name": "ecreso_fan_alarm_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Ecreso发射机电源效率过低",
+      "alert_name": "传输设备${resource_name} 电源效率过低",
+      "description": "监控 Ecreso FM 发射机电源效率（maMoMaEffPsu），当持续低于站点基线时触发告警，提示电源老化或负载异常。",
+      "metric_name": "ecreso_psu_efficiency_percent",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 70,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

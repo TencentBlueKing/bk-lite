@@ -1,6 +1,6 @@
 Access Icotera SNMP:
   name: Icotera（Telegraf）
-  desc: 面向 Icotera 接入设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 29865）。
+  desc: 面向 Icotera 接入设备的 SNMP 监控模板，可采集 i6400 系列光模块 DDM 温度、供电电压、收发光功率与偏置电流，以及每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 29865）。
 monitor_object:
   Access: 接入设备
 monitor_object_type:
@@ -57,6 +57,21 @@ monitor_object_metric:
     device_disk_state:
       name: 磁盘状态
       desc: 接入设备磁盘卷使用级别。正常值归一为 1，minor、major、critical 或未知状态归一为 2，表示磁盘空间需要关注。
+    transceiver_temperature_celsius:
+      name: 光模块温度
+      desc: 光模块温度，单位为摄氏度。温度持续偏高可能表示散热不良或光模块老化。
+    transceiver_voltage_volts:
+      name: 光模块供电电压
+      desc: 光模块供电电压，单位为伏（标称 3.3 V）。
+    transceiver_tx_power_mw:
+      name: 光模块发送光功率（mW）
+      desc: 光模块发送光功率，单位为 mW。
+    transceiver_rx_power_mw:
+      name: 光模块接收光功率（mW）
+      desc: 光模块接收光功率，单位为 mW。接近 0 可能表示光纤故障或无光。
+    transceiver_tx_bias_ma:
+      name: 光模块偏置电流（mA）
+      desc: 激光器偏置电流，单位为 mA。持续升高可能表示激光器老化。
 monitor_object_metric_group:
   Access:
     Base: 基础

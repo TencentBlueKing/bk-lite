@@ -1,0 +1,81 @@
+{
+  "object": "Access",
+  "plugin": "Access Nokia ISAM SNMP",
+  "templates": [
+    {
+      "name": "Nokia ISAM接入设备CPU使用率过高",
+      "alert_name": "接入设备${resource_name} 板卡CPU使用率过高",
+      "description": "监控 Nokia ISAM 各板卡 CPU 负载（取最高板卡），当超过阈值时触发告警，便于及时发现控制板或线卡负载过高。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Nokia ISAM接入设备内存使用率过高",
+      "alert_name": "接入设备${resource_name} 板卡内存使用率过高",
+      "description": "监控 Nokia ISAM 各板卡内存使用率（已用/总量，取最高板卡），当超过阈值时触发告警，便于及时发现内存泄漏或表项过大。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Nokia ISAM接入设备温度过高",
+      "alert_name": "接入设备${resource_name} 板卡温度过高",
+      "description": "监控 Nokia ISAM 板卡温度传感器读数（取最高值），当超过阈值时触发告警，提示散热故障或机房环境温度过高。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

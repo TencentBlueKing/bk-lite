@@ -1,0 +1,46 @@
+NetworkService COMET WebSensor SNMP:
+  name: COMET WebSensor (Telegraf)
+  desc: SNMP monitoring template for COMET SYSTEM WebSensor temperature / humidity transmitters (T3510-MIB,
+    enterprise PEN 22626). It reports uptime, temperature, relative humidity, temperature and humidity
+    alarms, and interface traffic.
+monitor_object:
+  NetworkService: NetworkService
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  NetworkService:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
+        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
+        or failures.
+    env_temperature_celsius:
+      name: Temperature
+      desc: Measured temperature in degrees Celsius.
+    env_humidity_percent:
+      name: Relative Humidity
+      desc: Measured relative humidity in percent.
+    env_temperature_state:
+      name: Temperature Alarm
+      desc: Temperature alarm. Abnormal means the reading is above the high limit or below the low limit
+        configured on the device.
+    env_humidity_state:
+      name: Humidity Alarm
+      desc: Relative humidity alarm. Abnormal means the reading is above the high limit or below the low
+        limit configured on the device.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured
+        in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of outbound bytes sent over the past 5 minutes, measured
+        in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifOutOctets on high-speed ports, keeping the rate accurate.
+monitor_object_metric_group:
+  NetworkService:
+    Base: Base
+    Traffic: Traffic
+    Environment: Environment
+    Hardware Status: Hardware Status

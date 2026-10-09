@@ -1,5 +1,81 @@
 {
   "object": "VoiceGateway",
   "plugin": "VoiceGateway Patton SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Patton语音网关CPU使用率过高",
+      "alert_name": "语音网关${resource_name} CPU 使用率过高",
+      "description": "监控 Patton SmartNode 各 CPU 当前负载，当持续高于阈值时触发告警，提示呼叫处理或控制面负载过高。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Patton语音网关内存使用率过高",
+      "alert_name": "语音网关${resource_name} 内存使用率过高",
+      "description": "监控 Patton SmartNode 各内存池使用率（已分配/(已分配+空闲)），当超过阈值时触发告警，便于及时发现内存压力。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Patton语音网关温度过高",
+      "alert_name": "语音网关${resource_name} 温度过高",
+      "description": "监控 Patton SmartNode 各温度探头读数，当持续高于阈值时触发告警，提示散热或风道异常。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 50,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
 }

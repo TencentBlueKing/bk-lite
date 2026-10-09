@@ -18,7 +18,9 @@ vi.mock('@/context/auth', () => ({
 }));
 
 vi.mock('@/utils/i18n', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, defaultMessage?: string) => defaultMessage ?? key,
+  }),
 }));
 
 vi.mock('../hooks/useSSEStream', () => ({
@@ -34,6 +36,7 @@ vi.mock('../hooks/useSendMessage', () => ({
 
 vi.mock('../toolCallRenderer', () => ({
   initToolCallTooltips: vi.fn(),
+  setToolCallRendererLocale: vi.fn(),
 }));
 
 vi.mock('antd', () => {
@@ -114,6 +117,7 @@ describe('CustomChatSSE 图片预览资源', () => {
   const revokeObjectURL = vi.fn<(url: string) => void>();
 
   beforeEach(() => {
+    HTMLElement.prototype.scrollTo = vi.fn();
     let sequence = 0;
     createObjectURL.mockImplementation(() => `blob:preview-${++sequence}`);
     vi.stubGlobal('URL', {
@@ -152,6 +156,29 @@ describe('CustomChatSSE 图片预览资源', () => {
     await waitFor(() => expect(revokeObjectURL).toHaveBeenCalledWith('blob:preview-1'));
     expect(view.getAllByRole('img')).toHaveLength(1);
     expect(revokeObjectURL).toHaveBeenCalledOnce();
+  });
+
+  it('点击正文图片会打开放大预览', async () => {
+    const view = render(
+      <CustomChatSSE
+        showHeader={false}
+        requirePermission={false}
+        conversationHistoryEnabled={false}
+        mode="display"
+        initialMessages={[{
+          id: '1',
+          role: 'bot',
+          content: '![流程图](https://example.com/flow.png)',
+          createAt: '2026-10-08T00:00:00Z',
+        }]}
+      />,
+    );
+
+    fireEvent.click(view.getByRole('img', { name: '流程图' }));
+
+    await waitFor(() => {
+      expect(view.getByTestId('markdown-preview-open').textContent).toContain('https://example.com/flow.png');
+    });
   });
 
   it('点击发送会释放全部预览并保持图片发送数据', async () => {

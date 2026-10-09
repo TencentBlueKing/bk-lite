@@ -1,0 +1,118 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_hwg_ste"
+        config_type = "hwg_ste"
+        brand = "hwg_ste"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- HW group STE / STE2 以太网温湿度计（PEN 21796，x390(4) → ste(1) / ste2(9)）；Poseidon 的 21796.3.3 树不在本模板内。----
+    # STE：STE-MIB sensTable（1.3.6.1.4.1.21796.4.1.3，INDEX sensIndex），table.field 不带 .0；设备只实现其中一棵树，另一棵遍历为空、不出点。
+    [[inputs.snmp.table]]
+        name = "sensor"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    # sensName（.2）：传感器名称，作为 sensor 标签。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.21796.4.1.3.1.2"
+        name = "sensor"
+        is_tag = true
+    # sensState（.3）：invalid(0) / normal(1) / outofrangelo(2) / outofrangehi(3) / alarmlo(4) / alarmhi(5)。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.21796.4.1.3.1.3"
+        name = "state_raw"
+    # sensValue（.5）：数值 ×10 的整数。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.21796.4.1.3.1.5"
+        name = "value_raw"
+    # sensUnit（.7）：none(0) / celsius(1) / fahrenheit(2) / kelvin(3) / percent(4)（与 Poseidon 的枚举不同）。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.21796.4.1.3.1.7"
+        name = "unit_raw"
+    # STE2：STE2-MIB sensTable（1.3.6.1.4.1.21796.4.9.3，INDEX sensIndex），table.field 不带 .0；设备只实现其中一棵树，另一棵遍历为空、不出点。
+    [[inputs.snmp.table]]
+        name = "sensor"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    # sensName（.2）：传感器名称，作为 sensor 标签。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.21796.4.9.3.1.2"
+        name = "sensor"
+        is_tag = true
+    # sensState（.3）：invalid(0) / normal(1) / outofrangelo(2) / outofrangehi(3) / alarmlo(4) / alarmhi(5)。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.21796.4.9.3.1.3"
+        name = "state_raw"
+    # sensValue（.5）：数值 ×10 的整数。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.21796.4.9.3.1.5"
+        name = "value_raw"
+    # sensUnit（.7）：none(0) / celsius(1) / fahrenheit(2) / kelvin(3) / percent(4)（与 Poseidon 的枚举不同）。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.21796.4.9.3.1.7"
+        name = "unit_raw"
+# ---- CPU / 内存使用率：设备不提供。----
+
+# ---- 换算与分类：sensState 为 invalid(0) 或缺失的行整行丢弃；数值 ÷10。
+# 温度：celsius 直接用，fahrenheit / kelvin 换算为摄氏度，须在 -60~150 ℃ → temperature_celsius；湿度：percent，须在 0~100 → humidity_percent；none 等其它单位不出点。
+# 状态：normal → 1，outofrangelo / outofrangehi / alarmlo / alarmhi → 2 → state。原始字段不落库。----
+[[processors.starlark]]
+    namepass = ["sensor"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    state = f.pop("state_raw", None)
+    raw = f.pop("value_raw", None)
+    unit = f.pop("unit_raw", None)
+    if state not in [1, 2, 3, 4, 5]:
+        return None
+    if type(raw) != "int" or type(unit) != "int":
+        return None
+    value = raw / 10.0
+    if unit == 1 or unit == 2 or unit == 3:
+        if unit == 2:
+            value = (value - 32) * 5.0 / 9.0
+        elif unit == 3:
+            value = value - 273.15
+        value = int(value * 10 + (0.5 if value >= 0 else -0.5)) / 10.0
+        if value < -60 or value > 150:
+            return None
+        f["temperature_celsius"] = value
+    elif unit == 4:
+        if value < 0 or value > 100:
+            return None
+        f["humidity_percent"] = value
+    else:
+        return None
+    f["state"] = 1 if state == 1 else 2
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["hwg_ste"]

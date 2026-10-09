@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_acmepacket",
   "plugin": "VoiceGateway Acme Packet SNMP",
-  "plugin_desc": "SNMP monitoring template for Acme Packet voice gateway. It reports uptime and interface traffic (based on standard MIBs).",
+  "plugin_desc": "SNMP monitoring template for Acme Packet / Oracle SBC voice gateway. It reports uptime, interface traffic, CPU and memory utilization, and the system health score (enterprise PEN 9148).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='voice_gateway', collect_type='snmp_acmepacket'}) by (instance_id)",
   "name": "VoiceGateway",
@@ -14,9 +14,51 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_health_score"
   ],
   "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "max(snmp_device_cpu_usage{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Overall CPU utilization of the Acme Packet / Oracle SBC measured over the last second, in percent (APSYSMGMT-MIB apSysCPUUtil)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "max(snmp_device_memory_usage{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of the Acme Packet / Oracle SBC in percent (APSYSMGMT-MIB apSysMemoryUtil)."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_health_score",
+      "query": "min(snmp_device_health_score{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "Health Score",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "System health score of the Acme Packet / Oracle SBC in percent, where 100 is the healthiest (APSYSMGMT-MIB apSysHealthScore). A drop usually means a monitored component or link is degraded."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",

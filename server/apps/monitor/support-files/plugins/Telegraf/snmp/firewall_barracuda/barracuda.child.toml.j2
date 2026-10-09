@@ -61,6 +61,13 @@
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.20632.3.1.10.6.0"
         name = "barracuda_log_storage_usage"
+    # 风扇转速（RPM，Integer32）：.10.1.0 为 CPU 风扇，.10.2.0 为系统风扇；由下方 starlark 拆成 device_fan（fan 标签）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.20632.3.1.10.1.0"
+        name = "fan_cpu_rpm_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.20632.3.1.10.2.0"
+        name = "fan_system_rpm_raw"
 
 [[processors.starlark]]
     namepass = ["snmp"]
@@ -75,6 +82,31 @@ def apply(metric):
         metric.fields.get("barracuda_log_storage_usage", 0),
     )
     return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["barracuda"]
+
+# ---- 风扇转速：从 snmp 中取出两路原始值，各输出一条 device_fan（fan 标签 = cpu / system，字段 speed，单位 RPM）；
+# ---- 须为 0~50000 的整数，否则不输出；原始字段不落库。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+FANS = [("fan_cpu_rpm_raw", "cpu"), ("fan_system_rpm_raw", "system")]
+
+def apply(metric):
+    out = [metric]
+    for field, fan in FANS:
+        value = metric.fields.pop(field, None)
+        if type(value) != "int" or value < 0 or value > 50000:
+            continue
+        row = Metric("device_fan")
+        for key, tag in metric.tags.items():
+            row.tags[key] = tag
+        row.tags["fan"] = fan
+        row.fields["speed"] = value
+        row.time = metric.time
+        out.append(row)
+    return out
 '''
     [processors.starlark.tagpass]
         brand = ["barracuda"]

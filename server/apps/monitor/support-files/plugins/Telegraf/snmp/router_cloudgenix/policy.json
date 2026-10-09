@@ -1,0 +1,91 @@
+{
+  "object": "Router",
+  "plugin": "Router CloudGenix SNMP",
+  "templates": [
+    {
+      "name": "CloudGenix设备风扇异常",
+      "alert_name": "路由器${resource_name} 风扇 ${metric__name} 状态异常",
+      "description": "监控 CloudGenix ION 各散热风扇的运行状态，当风扇处于非正常状态时触发告警，散热故障可能迅速导致过热，应立即排查处理。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "CloudGenix设备电源异常",
+      "alert_name": "路由器${resource_name} 电源 ${metric__name} 状态异常",
+      "description": "监控 CloudGenix ION 各电源模块的运行状态，当电源处于非正常状态时触发告警，提示电源冗余缺失或硬件故障。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "CloudGenix温度传感器异常",
+      "alert_name": "路由器${resource_name} 温度传感器 ${metric__name} 状态异常",
+      "description": "监控 CloudGenix ION 各温度传感器的运行状态，当传感器处于非正常状态时触发告警，提示可能存在过热、传感器故障或模块缺失。",
+      "metric_name": "cloudgenix_temperature_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "CloudGenix电源轨状态异常",
+      "alert_name": "路由器${resource_name} 电源轨 ${metric__name} 状态异常",
+      "description": "监控 CloudGenix ION 各电源轨的运行状态，当电源轨处于非正常状态时触发告警，提示供电异常。",
+      "metric_name": "cloudgenix_power_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "CloudGenix设备温度过高",
+      "alert_name": "路由器${resource_name} 传感器 ${metric__name} 温度过高",
+      "description": "监控 CloudGenix ION 各温度传感器读数，当温度超过安全阈值时触发告警，提示可能存在风扇故障、散热不良或环境过热。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 78,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

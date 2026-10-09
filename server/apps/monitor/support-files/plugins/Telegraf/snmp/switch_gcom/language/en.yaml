@@ -1,0 +1,55 @@
+Switch GCOM SNMP:
+  name: GCOM (Telegraf)
+  desc: "SNMP monitoring template for GCOM Ethernet switch. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 13464)."
+monitor_object:
+  Switch: Switch
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Switch:
+    snmp_uptime:
+      name: System Uptime
+      desc: Uptime of the GCOM Ethernet switch since the last restart, from SNMPv2-MIB
+        sysUpTime. Monitoring uptime helps administrators judge device stability and
+        spot unexpected reboots.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: Average rate of bytes received on each GCOM switch interface over the past
+        5 minutes, in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter
+        (ifXTable). The 64-bit counter avoids wrap of the 32-bit ifInOctets on high-speed
+        ports.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: Average rate of bytes sent on each GCOM switch interface over the past 5
+        minutes, in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter
+        (ifXTable). The 64-bit counter avoids wrap of the 32-bit ifOutOctets on high-speed
+        ports.
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: CPU utilization of the GCOM Ethernet switch as a 0-100 percentage, computed
+        as 100 minus gbnPlatformOAMSystem cpuIdle when the idle reading is in 0-100.
+        Sustained high CPU usage can indicate control-plane overload.
+    device_memory_usage:
+      name: Memory Utilization
+      desc: Memory utilization of the GCOM Ethernet switch as a 0-100 percentage, computed
+        as (memorySize - memoryIdle) / memorySize x 100 when size is positive and idle
+        is in range. High usage may indicate memory pressure on the device.
+    device_memory_used:
+      name: Memory Used
+      desc: Used memory of the GCOM Ethernet switch in bytes, derived as gbnPlatformOAMSystem
+        memorySize minus memoryIdle. Together with free and total it shows how much
+        of the single system memory pool is occupied.
+    device_memory_free:
+      name: Memory Free
+      desc: Free memory of the GCOM Ethernet switch in bytes, from gbnPlatformOAMSystem
+        memoryIdle. A persistently low free value indicates memory pressure.
+    device_memory_total:
+      name: Memory Total
+      desc: Total memory of the GCOM Ethernet switch in bytes, from gbnPlatformOAMSystem
+        memorySize. It is the denominator for memory utilization.
+monitor_object_metric_group:
+  Switch:
+    Base: Base
+    Traffic: Traffic
+    CPU: CPU
+    Memory: Memory

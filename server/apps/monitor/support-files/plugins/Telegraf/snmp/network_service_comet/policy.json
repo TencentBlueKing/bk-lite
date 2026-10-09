@@ -1,0 +1,61 @@
+{
+  "object": "NetworkService",
+  "plugin": "NetworkService COMET WebSensor SNMP",
+  "templates": [
+    {
+      "name": "COMET温度告警",
+      "alert_name": "网络服务设备${resource_name} 温度告警",
+      "description": "监控 COMET WebSensor 温度告警，读数越过设备上配置的高限或低限时触发，提示机房温度异常。",
+      "metric_name": "env_temperature_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "COMET湿度告警",
+      "alert_name": "网络服务设备${resource_name} 湿度告警",
+      "description": "监控 COMET WebSensor 湿度告警，读数越过设备上配置的高限或低限时触发，提示机房湿度异常。",
+      "metric_name": "env_humidity_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "COMET温度过高",
+      "alert_name": "网络服务设备${resource_name} 温度过高",
+      "description": "监控 COMET WebSensor 温度读数，持续高于阈值提示机房或机柜散热异常。",
+      "metric_name": "env_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 45,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 40,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 35,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

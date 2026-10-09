@@ -1,0 +1,46 @@
+{
+  "object": "NetworkService",
+  "plugin": "NetworkService Eltek SNMP",
+  "templates": [
+    {
+      "name": "Eltek整流器告警",
+      "alert_name": "网络服务设备${resource_name} 整流器 ${metric__index} 告警",
+      "description": "监控 Eltek 直流电源系统各整流器运行状态，整流器进入告警状态时提示整流模块故障、输入异常或过温，可能导致供电冗余下降。",
+      "metric_name": "rectifier_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Eltek电池温度过高",
+      "alert_name": "网络服务设备${resource_name} 电池温度过高",
+      "description": "监控 Eltek 直流电源系统电池温度（启用测量中的最高值），持续高于阈值会加速电池老化，提示机房空调或通风异常。",
+      "metric_name": "battery_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 45,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 40,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 35,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

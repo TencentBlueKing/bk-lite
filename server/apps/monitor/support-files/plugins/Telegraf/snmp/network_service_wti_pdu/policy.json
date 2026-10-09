@@ -1,0 +1,31 @@
+{
+  "object": "NetworkService",
+  "plugin": "NetworkService WTI PDU SNMP",
+  "templates": [
+    {
+      "name": "WTI PDU温度过高",
+      "alert_name": "网络服务设备${resource_name} 单元 ${metric__unit_name} 温度过高",
+      "description": "监控 WTI PDU 各单元温度，持续偏高提示机柜散热异常或负载过高。",
+      "metric_name": "pdu_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 55,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 45,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

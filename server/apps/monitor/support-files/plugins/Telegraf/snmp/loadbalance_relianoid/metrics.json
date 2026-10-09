@@ -35,7 +35,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='loadbalance', __$labels__}) by (instance_id) or (100 - avg(device_cpu_idle{instance_type='loadbalance', __$labels__}) by (instance_id)) or (avg(device_cpu_user{instance_type='loadbalance', __$labels__}) by (instance_id) + avg(device_cpu_system{instance_type='loadbalance', __$labels__}) by (instance_id))",
+      "query": "max(snmp_device_cpu_usage{instance_type='loadbalance', __$labels__}) by (instance_id)",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -43,12 +43,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Overall CPU utilization of the RELIANOID load balancer from UCD-SNMP ssCpuIdle (100 minus idle), falling back to ssCpuUser plus ssCpuSystem when idle is absent."
+      "description": "Overall CPU utilization of the RELIANOID load balancer from UCD-SNMP ssCpuIdle (100 minus idle), falling back to ssCpuUser plus ssCpuSystem when idle is absent; computed at collection time from the .0 scalars."
     },
     {
       "metric_group": "Loadbalance",
       "name": "device_memory_total",
-      "query": "device_memory_total{instance_type='loadbalance', __$labels__}*1024",
+      "query": "max(snmp_device_memory_total{instance_type='loadbalance', __$labels__}) by (instance_id)",
       "display_name": "Total Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -56,12 +56,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Total real memory of the RELIANOID load balancer (UCD-SNMP memTotalReal, reported in kB and converted to bytes)."
+      "description": "Total real memory of the RELIANOID load balancer (UCD-SNMP memTotalReal, reported in kB and converted to bytes at collection time)."
     },
     {
       "metric_group": "Loadbalance",
       "name": "device_memory_free",
-      "query": "device_memory_free{instance_type='loadbalance', __$labels__}*1024",
+      "query": "max(snmp_device_memory_free{instance_type='loadbalance', __$labels__}) by (instance_id)",
       "display_name": "Free Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -69,12 +69,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Free real memory of the RELIANOID load balancer (UCD-SNMP memAvailReal, reported in kB and converted to bytes)."
+      "description": "Free real memory of the RELIANOID load balancer (UCD-SNMP memAvailReal, reported in kB and converted to bytes at collection time)."
     },
     {
       "metric_group": "Loadbalance",
       "name": "device_memory_used",
-      "query": "(device_memory_total{instance_type='loadbalance', __$labels__} - device_memory_free{instance_type='loadbalance', __$labels__})*1024",
+      "query": "max(snmp_device_memory_used{instance_type='loadbalance', __$labels__}) by (instance_id)",
       "display_name": "Used Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -82,12 +82,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Used real memory of the RELIANOID load balancer, derived as memTotalReal minus memAvailReal and converted from kB to bytes."
+      "description": "Used real memory of the RELIANOID load balancer, derived at collection time as memTotalReal minus memAvailReal, in bytes."
     },
     {
       "metric_group": "Loadbalance",
       "name": "device_memory_usage",
-      "query": "100 * (device_memory_total{instance_type='loadbalance', __$labels__} - device_memory_free{instance_type='loadbalance', __$labels__}) / device_memory_total{instance_type='loadbalance', __$labels__}",
+      "query": "max(snmp_device_memory_usage{instance_type='loadbalance', __$labels__}) by (instance_id)",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -95,12 +95,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Real memory utilization of the RELIANOID load balancer, derived as (memTotalReal - memAvailReal) / memTotalReal * 100."
+      "description": "Real memory utilization of the RELIANOID load balancer, computed at collection time as (memTotalReal - memAvailReal) / memTotalReal * 100."
     },
     {
       "metric_group": "Loadbalance",
       "name": "device_load1",
-      "query": "avg(device_load1{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_load1{instance_type='loadbalance', __$labels__}) by (instance_id)",
       "display_name": "Load Average (1m)",
       "data_type": "Number",
       "unit": "none",
@@ -113,7 +113,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_load5",
-      "query": "avg(device_load5{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_load5{instance_type='loadbalance', __$labels__}) by (instance_id)",
       "display_name": "Load Average (5m)",
       "data_type": "Number",
       "unit": "none",
@@ -126,7 +126,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_load15",
-      "query": "avg(device_load15{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "query": "max(snmp_device_load15{instance_type='loadbalance', __$labels__}) by (instance_id)",
       "display_name": "Load Average (15m)",
       "data_type": "Number",
       "unit": "none",

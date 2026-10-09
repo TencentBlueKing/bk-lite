@@ -1,0 +1,96 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_tbs"
+        config_type = "tbs"
+        brand = "tbs"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # CPU 使用率 sysResourceCPU，标量带 .0
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.51009.2.1.0"
+        name = "device_cpu_usage"
+    # 内存使用率 sysResourceMEM，标量带 .0
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.51009.2.2.0"
+        name = "device_memory_usage"
+    # 转发器表 tpEntry，表列无 .0
+    [[inputs.snmp.table]]
+        name = "tbs_transponder"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.51009.6.2.1.2"
+        name = "name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.51009.6.2.1.6"
+        name = "signal_strength"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.51009.6.2.1.7"
+        name = "snr"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.51009.6.2.1.8"
+        name = "bitrate"
+
+[[processors.starlark]]
+    namepass = ["snmp", "tbs_transponder"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    if metric.name == "snmp":
+        if "device_cpu_usage" in f:
+            v = f["device_cpu_usage"]
+            if v < 0 or v > 100:
+                f.pop("device_cpu_usage")
+        if "device_memory_usage" in f:
+            v = f["device_memory_usage"]
+            if v < 0 or v > 100:
+                f.pop("device_memory_usage")
+        return metric
+    if metric.name == "tbs_transponder":
+        if "signal_strength" in f:
+            v = f["signal_strength"]
+            if v < -32768 or v > 32767:
+                f.pop("signal_strength")
+        if "snr" in f:
+            v = f["snr"]
+            if v < -32768 or v > 32767:
+                f.pop("snr")
+        if "bitrate" in f:
+            v = f["bitrate"]
+            if v < 0 or v > 4294967294:
+                f.pop("bitrate")
+        if len(f.keys()) == 0:
+            return None
+        return metric
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["tbs"]

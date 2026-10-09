@@ -1,0 +1,49 @@
+Access Loop Telecom SNMP:
+  name: Loop Telecom (Telegraf)
+  desc: SNMP monitoring template for Loop Telecom AM3440 access multiplexers (L-AM3440-A-Private, enterprise
+    PEN 823). It reports uptime, estimated power consumption, controller temperature and relative humidity,
+    power card and fan status, and interface traffic.
+monitor_object:
+  Access: Access
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Access:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
+        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
+        or failures.
+    power_consumption_watts:
+      name: Power Consumption
+      desc: Estimated total power consumption of the chassis in watts.
+    device_temperature_celsius:
+      name: Controller Temperature
+      desc: Temperature of each controller card in degrees Celsius. Persistently high values may indicate
+        poor cooling or fan failure.
+    device_humidity_percent:
+      name: Controller Relative Humidity
+      desc: Relative humidity measured on each controller card in percent.
+    device_psu_state:
+      name: Power Supply Status
+      desc: Status of each power card. Abnormal means the card is off or has failed.
+    device_fan_state:
+      name: Fan Status
+      desc: Status of each fan. Abnormal means the fan has failed or is not installed.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured
+        in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in
+        bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifOutOctets on high-speed ports, keeping the rate accurate.
+monitor_object_metric_group:
+  Access:
+    Base: Base
+    Traffic: Traffic
+    Power: Power
+    Temperature: Temperature
+    Hardware Status: Hardware Status
