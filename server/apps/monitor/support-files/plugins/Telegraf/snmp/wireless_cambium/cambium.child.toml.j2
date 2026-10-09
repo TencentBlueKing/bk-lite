@@ -61,25 +61,13 @@
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
 
-    # ---- ePMP sysCPUUsage 1.3.6.1.4.1.17713.21.2.1.64.0：标量，顶层 field 带 .0，单位 0.1%（0..1000）----
-    # 下方 starlark ÷10 输出 device_cpu_usage（0~100 %），越界值丢弃。
-    [[inputs.snmp.field]]
-        oid = "1.3.6.1.4.1.17713.21.2.1.64.0"
-        name = "cpu_usage_permille_raw"
-    # ---- cambiumAPNumberOfConnectedSTA 1.3.6.1.4.1.17713.21.1.2.10.0：AP 已连接终端数，标量，SM 上可能缺失 ----
+    # ePMP sysCPUUsage (0.1 percent units, 0..1000) plus optional AP station count.
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.17713.21.2.1.64"
+        name = "usage"
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.17713.21.1.2.10.0"
         name = "wireless_cambium_sta_count"
-
-# ---- sysCPUUsage 以 0.1% 为单位：÷10 得百分比；非数值或超出 0..1000 时丢弃。----
-[[processors.starlark]]
-    namepass = ["snmp"]
-    source = '''
-def apply(metric):
-    raw = metric.fields.pop("cpu_usage_permille_raw", None)
-    if type(raw) in ["int", "float"] and raw >= 0 and raw <= 1000:
-        metric.fields["device_cpu_usage"] = raw / 10.0
-    return metric
-'''
-    [processors.starlark.tagpass]
-        brand = ["cambium"]

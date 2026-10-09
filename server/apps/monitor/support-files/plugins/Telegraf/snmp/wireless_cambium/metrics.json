@@ -22,7 +22,7 @@
     {
       "metric_group": "Wireless",
       "name": "device_cpu_usage",
-      "query": "max(snmp_device_cpu_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "avg(device_cpu_usage{instance_type='wireless', __$labels__}) by (instance_id) / 10",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
