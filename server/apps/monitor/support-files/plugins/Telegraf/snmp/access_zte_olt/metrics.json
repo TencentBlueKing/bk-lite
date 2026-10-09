@@ -89,7 +89,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Fan operational status from ZTE-AN-ENVMON-MIB zxAnEnvFanOperStatus: up is 1 (normal), down is 2 (abnormal). Offline fans are skipped."
+      "description": "Fan operational status from ZTE-AN-ENVMON-MIB: OnlineStatus offline keeps a row as 1 (normal); OperStatus up=1, down=2 (abnormal)."
     },
     {
       "metric_group": "Hardware Status",
@@ -125,7 +125,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Power supply input voltage status from ZTE-AN-ENVMON-MIB zxAnPowerSupplyInVoltageStatus: normal is 1, over- or under-voltage is 2 (abnormal). Supplies reported as off are skipped."
+      "description": "Power supply input voltage status from ZTE-AN-ENVMON-MIB zxAnPowerSupplyInVoltageStatus: normal=1, over-voltage/under-voltage/off=2 (abnormal). Off supplies keep a row."
     },
     {
       "metric_group": "Traffic",
