@@ -127,7 +127,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the fan state of the SNR (NAG) device (NAG-MIB sysFanStatus, raw 0=normal / 1=abnormal), normalized so that 1 = healthy and 2 = fault. Fan positions whose sysFanInserted is not installed (0) are dropped and not counted as faults. A value greater than 1 indicates a fan failure that can lead to overheating."
+      "description": "This metric reports the fan state of the SNR (NAG) device (NAG-MIB sysFanStatus, raw 0=normal / 1=abnormal), normalized so that 1 = healthy and 2 = fault. Fan positions whose sysFanInserted is not installed (0) are reported as 1 (healthy, no alert) and are not dropped. A value greater than 1 indicates a fan failure that can lead to overheating."
     },
     {
       "metric_group": "Traffic",
