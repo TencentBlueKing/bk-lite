@@ -80,13 +80,13 @@
         name = "celsius"
 # ---- 光模块光功率 / 激光偏置电流未纳入。----
 
-# ---- 电源状态归一：online(1)→1(正常)，faulted(2)/offline(3)→2(异常)，uninstalled(4) 与其它值丢弃。----
+# ---- 电源状态归一：online(1)/uninstalled(4 空槽)→1(正常)保留行，faulted(2)/offline(3)→2(异常)；其它值丢弃。----
 [[processors.starlark]]
     namepass = ["device_psu"]
     source = '''
 def apply(metric):
     state = metric.fields.get("state")
-    if state == 1:
+    if state == 1 or state == 4:
         metric.fields["state"] = 1
     elif state == 2 or state == 3:
         metric.fields["state"] = 2
@@ -97,13 +97,13 @@ def apply(metric):
     [processors.starlark.tagpass]
         brand = ["ciena"]
 
-# ---- 风扇状态归一：ok(1)→1(正常)，rpm-warning(3)/unknown(99)→2(异常)；pending(2，统计未就绪)、uninstalled(4) 与其它值丢弃。----
+# ---- 风扇状态归一：ok(1)/uninstalled(4 空槽)→1(正常)保留行，rpm-warning(3)/unknown(99)→2(异常)；pending(2，统计未就绪)与其它值丢弃。----
 [[processors.starlark]]
     namepass = ["device_fan"]
     source = '''
 def apply(metric):
     state = metric.fields.get("state")
-    if state == 1:
+    if state == 1 or state == 4:
         metric.fields["state"] = 1
     elif state == 3 or state == 99:
         metric.fields["state"] = 2

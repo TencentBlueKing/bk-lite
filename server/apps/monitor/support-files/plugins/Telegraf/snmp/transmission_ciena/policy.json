@@ -55,7 +55,7 @@
     {
       "name": "Ciena传输设备风扇异常",
       "alert_name": "传输设备${resource_name} 风扇状态异常",
-      "description": "监控 Ciena CES/SAOS 机箱风扇状态，当风扇转速告警或状态未知时触发告警，提示需检查风扇托盘，避免设备过热。",
+      "description": "监控 Ciena CES/SAOS 机箱风扇状态，当风扇转速告警或状态未知时触发告警；未安装槽位记为正常，不触发告警。",
       "metric_name": "device_fan_state",
       "algorithm": "last_over_time",
       "threshold": [
@@ -70,7 +70,7 @@
     {
       "name": "Ciena传输设备电源异常",
       "alert_name": "传输设备${resource_name} 电源状态异常",
-      "description": "监控 Ciena CES/SAOS 机箱电源模块状态，当电源故障或离线时触发告警，提示需检查供电冗余，避免单电源失效导致设备宕机。",
+      "description": "监控 Ciena CES/SAOS 机箱电源模块状态，当电源故障或运行离线时触发告警；未安装槽位记为正常，不触发告警。",
       "metric_name": "device_psu_state",
       "algorithm": "last_over_time",
       "threshold": [
