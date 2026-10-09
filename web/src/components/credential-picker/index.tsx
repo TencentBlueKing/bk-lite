@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Button, Form, Select, Tooltip } from 'antd';
+import type { SelectProps } from 'antd';
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import Cookies from 'js-cookie';
 import OperateModal from '@/components/operate-modal';
@@ -18,6 +19,20 @@ export type { CredentialItem, CredentialTypeItem, CredentialFieldSchema } from '
 export { renderCredentialFields, CredentialFieldsBlock } from './fields';
 export { CredentialQuickCreateForm } from './quick-create';
 
+/** 可选：在下拉顶部加一项「手动填写」，其余凭据归入一个分组。 */
+export interface CredentialManualOption {
+  value: string;
+  label: React.ReactNode;
+  searchText: string;
+  groupLabel: string;
+  emptyText: string;
+  /** 以下外观项只在传入 manualOption 时生效，不影响其他使用方。 */
+  prefix?: React.ReactNode;
+  selectClassName?: string;
+  /** 设置 width 时下拉不再 flex-1 撑满，刷新按钮紧跟其右。 */
+  selectStyle?: React.CSSProperties;
+}
+
 export interface CredentialPickerChromeProps {
   value?: string;
   options: { label: string; value: string; disabled?: boolean }[];
@@ -31,6 +46,7 @@ export interface CredentialPickerChromeProps {
   placeholder?: string;
   /** 仅预览用：钉住下拉，方便看底栏和选项。 */
   dropdownOpen?: boolean;
+  manualOption?: CredentialManualOption;
 }
 
 export const CredentialPickerChrome: React.FC<CredentialPickerChromeProps> = ({
@@ -45,8 +61,26 @@ export const CredentialPickerChrome: React.FC<CredentialPickerChromeProps> = ({
   onOpenVault,
   placeholder,
   dropdownOpen,
+  manualOption,
 }) => {
   const { t } = useTranslation();
+  const selectOptions: SelectProps['options'] = manualOption
+    ? [
+      { value: manualOption.value, label: manualOption.label, searchText: manualOption.searchText },
+      {
+        label: manualOption.groupLabel,
+        title: manualOption.groupLabel,
+        options: options.length
+          ? options
+          : [{ value: '__credential_empty__', label: manualOption.emptyText, disabled: true }],
+      },
+    ]
+    : options;
+  const valueKnown = (manualOption && value === manualOption.value) || options.some((option) => option.value === value);
+  const fixedWidth = manualOption?.selectStyle?.width !== undefined;
+  const selectClassName = manualOption
+    ? [fixedWidth ? 'min-w-0' : 'min-w-0 flex-1', manualOption.selectClassName].filter(Boolean).join(' ')
+    : 'min-w-0 flex-1';
   const addButton = (
     <Button
       type="link"
@@ -62,16 +96,18 @@ export const CredentialPickerChrome: React.FC<CredentialPickerChromeProps> = ({
   return (
     <div className="flex w-full items-center gap-2">
       <Select
-        className="min-w-0 flex-1"
-        allowClear
+        className={selectClassName}
+        {...(manualOption?.selectStyle ? { style: manualOption.selectStyle } : {})}
+        {...(manualOption?.prefix ? { prefix: manualOption.prefix } : {})}
+        allowClear={!manualOption}
         showSearch
-        optionFilterProp="label"
+        optionFilterProp={manualOption ? 'searchText' : 'label'}
         loading={loading}
-        value={options.some((option) => option.value === value) ? value : undefined}
+        value={valueKnown ? value : undefined}
         {...(dropdownOpen === undefined ? {} : { open: dropdownOpen })}
         getPopupContainer={(node) => node.parentElement || document.body}
         placeholder={placeholder || t('system.credential.selectPlaceholder')}
-        options={options}
+        options={selectOptions}
         onChange={(next) => onChange?.(next)}
         dropdownRender={(menu) => (
           <div>
@@ -116,6 +152,7 @@ export interface CredentialPickerProps {
   sshAuthMethod?: 'password' | 'key';
   value?: string;
   onChange?: (credentialId: string | undefined) => void;
+  manualOption?: CredentialManualOption;
   onNamesResolved?: (credentials: { credential_id: string; name: string }[]) => void;
 }
 
@@ -128,6 +165,7 @@ const CredentialPicker: React.FC<CredentialPickerProps> = ({
   sshAuthMethod,
   value,
   onChange,
+  manualOption,
   onNamesResolved,
 }) => {
   const { t } = useTranslation();
@@ -188,11 +226,13 @@ const CredentialPicker: React.FC<CredentialPickerProps> = ({
     .map((item) => ({
       value: item.credential_id,
       label: item.name,
+      ...(manualOption ? { searchText: item.name } : {}),
     }));
   if (boundOption?.credentialId && !options.some((option) => option.value === boundOption.credentialId)) {
     options.unshift({
       value: boundOption.credentialId,
       label: boundOption.name || boundOption.credentialId,
+      ...(manualOption ? { searchText: boundOption.name || boundOption.credentialId } : {}),
       disabled: Boolean(boundOption.unavailable),
     } as { value: string; label: string; disabled?: boolean });
   }
@@ -242,6 +282,7 @@ const CredentialPicker: React.FC<CredentialPickerProps> = ({
         canAdd={canAdd}
         canView={canView}
         onChange={onChange}
+        manualOption={manualOption}
         onRefresh={() => void load()}
         onAdd={openCreate}
         onOpenVault={() => window.open(buildCredentialVaultUrl(category, type), '_blank')}
