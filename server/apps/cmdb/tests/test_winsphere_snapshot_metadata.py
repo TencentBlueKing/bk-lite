@@ -1,9 +1,16 @@
 from copy import deepcopy
 
+from importlib import import_module
+
 import pytest
+from django.apps import apps
 
 from apps.cmdb.collection.round_metadata import RoundMetadataProtocolError
-from apps.cmdb_enterprise.collect.winsphere import WinsphereSnapshotValidator
+
+if not apps.is_installed("apps.cmdb_enterprise"):
+    pytest.skip("WinSphere 快照验证仅适用于已启用 CMDB 企业扩展的装配", allow_module_level=True)
+
+WinsphereSnapshotValidator = import_module("apps.cmdb_enterprise.collect.winsphere").WinsphereSnapshotValidator
 
 MODEL_ORDER = (
     "winsphere",
