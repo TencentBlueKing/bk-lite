@@ -133,9 +133,9 @@
       "name": "device_psu_state",
       "display_name": "电源状态",
       "query": "device_psu_state{instance_type='switch', __$labels__}",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "data_type": "Enum",
-      "description": "Power-supply state of the Hirschmann switch (hmPSState), normalised to 1=normal / 2=abnormal."
+      "description": "Power-supply state of the Hirschmann switch (hmPSState), normalised to 1=normal or notInstalled (empty slots keep a row), 2=failed (abnormal), 3=unknown (gray, no alert)."
     },
     {
       "metric_group": "Base",

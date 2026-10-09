@@ -10,6 +10,7 @@ import { parseLlmContextUsage, type LlmContextUsage } from '@/app/opspilot/compo
 import Icon from '@/components/icon';
 import { useSkillApi } from '@/app/opspilot/api/skill';
 import { readWebChatEntry } from '@/app/opspilot/(pages)/skill/chat/entry';
+import { useTranslation } from '@/utils/i18n';
 
 interface WebChatChannel {
   id: number;
@@ -36,26 +37,31 @@ interface MountedChatSession {
   initialContextUsage: LlmContextUsage | null;
 }
 
-const CHANNEL_TYPE_TAG: Record<string, { color: string; label: string }> = {
-  platform: { color: 'cyan', label: '平台' },
+const CHANNEL_TYPE_TAG: Record<string, { color: string; label: string; labelKey?: string }> = {
+  platform: { color: 'cyan', label: '平台', labelKey: 'skill.channel.types.platform' },
   web_chat: { color: 'blue', label: 'Web' },
-  embedded_chat: { color: 'purple', label: '嵌入式' },
-  enterprise_wechat: { color: 'green', label: '企微' },
-  enterprise_wechat_aibot: { color: 'green', label: '企微机器人' },
-  dingtalk: { color: 'orange', label: '钉钉' },
-  feishu: { color: 'blue', label: '飞书' },
-  wechat_official: { color: 'green', label: '公众号' },
+  embedded_chat: { color: 'purple', label: '嵌入式', labelKey: 'skill.channel.types.embedded_chat' },
+  enterprise_wechat: { color: 'green', label: '企微', labelKey: 'skill.channel.types.enterprise_wechat' },
+  enterprise_wechat_aibot: { color: 'green', label: '企微机器人', labelKey: 'skill.channel.types.enterprise_wechat_aibot' },
+  dingtalk: { color: 'orange', label: '钉钉', labelKey: 'skill.channel.types.dingtalk' },
+  feishu: { color: 'blue', label: '飞书', labelKey: 'skill.channel.types.feishu' },
+  wechat_official: { color: 'green', label: '公众号', labelKey: 'skill.channel.types.wechat_official' },
 };
 
-const newSessionTitle = () => `新会话 ${new Date().toLocaleString('zh-CN', { hour12: false })}`;
+/** 新会话标题：中文沿用既有格式，仅英文需要可读文案。 */
+const newSessionTitle = (t: (key: string, defaultMessage?: string, values?: Record<string, string | number>) => string) =>
+  t('skill.chat.newSession', '新会话 {time}', { time: new Date().toLocaleString('zh-CN', { hour12: false }) });
 
 /** 与平台悬浮壳一致：渠道名；撞名或与智能体名不同时展示「渠道名（智能体名）」 */
-const mapWebChatChannels = (data: any[]): WebChatChannel[] => {
+const mapWebChatChannels = (
+  data: any[],
+  t: (key: string, defaultMessage?: string, values?: Record<string, string | number>) => string
+): WebChatChannel[] => {
   const prepared = (Array.isArray(data) ? data : []).map((item) => {
     const channelName =
       String(item?.name || item?.app_name || '').trim() ||
       String(item?.skill_name || '').trim() ||
-      `渠道 ${item?.id ?? ''}`;
+      t('skill.chat.channelFallback', '渠道 {id}', { id: String(item?.id ?? '') });
     const skillName = String(item?.skill_name || '').trim() || undefined;
     return { item, channelName, skillName };
   });
@@ -85,6 +91,7 @@ const mapWebChatChannels = (data: any[]): WebChatChannel[] => {
 };
 
 const SkillWebChatPage: React.FC = () => {
+  const { t } = useTranslation();
   const searchParams = useSearchParams();
   const entryToken = searchParams?.get('entry') || '';
   const { fetchWebChatSkillChannels, fetchSkillConversations, fetchSkillSessionMessages, deleteSkillSession } = useSkillApi();
@@ -104,7 +111,7 @@ const SkillWebChatPage: React.FC = () => {
       setAgentLoading(true);
       try {
         const data = await fetchWebChatSkillChannels();
-        const agents = mapWebChatChannels(data);
+        const agents = mapWebChatChannels(data, t);
         setAgentList(agents);
         const requestedChannelId = readWebChatEntry(entryToken);
         const preferred = requestedChannelId
@@ -120,7 +127,7 @@ const SkillWebChatPage: React.FC = () => {
       }
     }
     loadChannels();
-  }, [entryToken]);
+  }, [entryToken, t]);
 
   useEffect(() => {
     async function loadSessions() {
@@ -142,7 +149,7 @@ const SkillWebChatPage: React.FC = () => {
             .filter((item: any) => (item.channel_type || 'web_chat') === 'web_chat')
             .map((item: any) => ({
               id: item.session_id,
-              title: item.title || '新会话',
+              title: item.title || t('skill.chat.sessionNew', '新会话'),
               icon: 'jiqiren3',
               channel_type: 'web_chat',
               persisted: true,
@@ -155,7 +162,7 @@ const SkillWebChatPage: React.FC = () => {
       }
     }
     loadSessions();
-  }, [currentAgent?.id]);
+  }, [currentAgent?.id, t]);
 
   useEffect(() => {
     if (functionList.length > 0) {
@@ -245,7 +252,7 @@ const SkillWebChatPage: React.FC = () => {
     setFunctionList((list) => [
       {
         id: newId,
-        title: newSessionTitle(),
+        title: newSessionTitle(t),
         icon: 'jiqiren3',
         channel_type: 'web_chat',
         persisted: false,
@@ -279,10 +286,12 @@ const SkillWebChatPage: React.FC = () => {
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
     const url = `${baseUrl}/api/proxy/opspilot/skill_channel/${currentAgent.id}/chat/`;
     const preview = message.replace(/\n/g, ' ').slice(0, 50);
+    // 草稿会话标题带时间戳；这里只判断「仍是自动生成的标题」，用前缀而非完整匹配
+    const draftTitlePrefix = t('skill.chat.sessionNew', '新会话');
     setFunctionList((list) => {
       if (list.find((item) => item.id === panelSessionId)) {
         return list.map((item) =>
-          item.id === panelSessionId && (!item.persisted || item.title.startsWith('新会话'))
+          item.id === panelSessionId && (!item.persisted || item.title.startsWith(draftTitlePrefix))
             ? { ...item, title: preview || item.title, persisted: true, channel_type: item.channel_type || 'web_chat' }
             : item.id === panelSessionId
               ? { ...item, persisted: true }
@@ -292,7 +301,7 @@ const SkillWebChatPage: React.FC = () => {
       return [
         {
           id: panelSessionId,
-          title: preview || newSessionTitle(),
+          title: preview || newSessionTitle(t),
           icon: 'jiqiren3',
           channel_type: 'web_chat',
           persisted: true,
@@ -313,7 +322,7 @@ const SkillWebChatPage: React.FC = () => {
 
   const renderChannelTag = (channelType?: string) => {
     const meta = CHANNEL_TYPE_TAG[channelType || 'web_chat'] || { color: 'blue', label: 'Web' };
-    return <Tag color={meta.color}>{meta.label}</Tag>;
+    return <Tag color={meta.color}>{meta.labelKey ? t(meta.labelKey, meta.label) : meta.label}</Tag>;
   };
 
   return (
@@ -330,7 +339,7 @@ const SkillWebChatPage: React.FC = () => {
                     <Icon type={currentAgent?.icon || 'jiqiren3'} className="text-3xl text-[var(--color-primary)] flex-shrink-0" />
                   )}
                   <span className="text-sm font-medium text-[var(--color-text-1)] truncate flex-1">
-                    {agentLoading ? <Skeleton.Input active size="small" style={{ width: 80 }} /> : currentAgent?.name || '暂无可用渠道'}
+                    {agentLoading ? <Skeleton.Input active size="small" style={{ width: 80 }} /> : currentAgent?.name || t('skill.chat.noChannel')}
                   </span>
                   <Icon type="xiala" className="text-[var(--color-text-4)] text-xs flex-shrink-0" />
                 </div>
@@ -343,12 +352,12 @@ const SkillWebChatPage: React.FC = () => {
               </div>
             </div>
             <Button type="primary" className="w-full" icon={<Icon type="tianjia" />} onClick={handleNewChat} disabled={!currentAgent}>
-              开启新对话
+              {t('skill.chat.startNew')}
             </Button>
           </div>
           <div className="flex-1 overflow-y-auto min-h-0">
             <div className="p-2">
-              <div className="text-xs text-[var(--color-text-3)] px-3 py-2">历史对话</div>
+              <div className="text-xs text-[var(--color-text-3)] px-3 py-2">{t('skill.chat.historyTitle')}</div>
               <List
                 dataSource={functionList}
                 loading={functionLoading}
@@ -369,11 +378,11 @@ const SkillWebChatPage: React.FC = () => {
                         {item.title}
                       </div>
                       <Popconfirm
-                        title="删除会话"
-                        description="确定要删除这个会话吗？删除后无法恢复。"
+                        title={t('skill.chat.deleteTitle')}
+                        description={t('skill.chat.deleteContent')}
                         onConfirm={() => handleDeleteSession(item.id)}
-                        okText="删除"
-                        cancelText="取消"
+                        okText={t('common.delete')}
+                        cancelText={t('common.cancel')}
                         okButtonProps={{ danger: true }}
                       >
                         <div
@@ -402,7 +411,7 @@ const SkillWebChatPage: React.FC = () => {
 
       <div className="flex-1 bg-[var(--color-bg)] min-w-0 h-full relative">
         {!currentAgent && !agentLoading ? (
-          <div className="w-full h-full flex items-center justify-center text-[var(--color-text-3)]">当前组织暂无已启用的 Web 对话渠道</div>
+          <div className="w-full h-full flex items-center justify-center text-[var(--color-text-3)]">{t('skill.chat.noWebChannel')}</div>
         ) : (
           mountedChats.map((chat) => (
             <div key={chat.id} className={chat.id === selectedItem ? 'h-full' : 'hidden'}>
@@ -421,7 +430,7 @@ const SkillWebChatPage: React.FC = () => {
           ))
         )}
         {openingSessionId === selectedItem ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-[var(--color-bg)] text-[var(--color-text-4)]">加载中...</div>
+          <div className="absolute inset-0 flex items-center justify-center bg-[var(--color-bg)] text-[var(--color-text-4)]">{t('skill.chat.loading')}</div>
         ) : null}
       </div>
     </div>

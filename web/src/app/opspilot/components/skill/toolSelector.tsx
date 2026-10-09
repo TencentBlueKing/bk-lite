@@ -256,13 +256,13 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
           )}
         </div>
         <Button size="small" type="link" icon={<PlusOutlined />} onClick={openModal} className="px-0 text-xs">
-          添加工具
+          {t('skill.addTool')}
         </Button>
       </div>
-      <p className="mb-2.5 mt-0 text-xs text-[var(--color-text-3)]">扩展智能体的外部 API 和插件调用能力</p>
+      <p className="mb-2.5 mt-0 text-xs text-[var(--color-text-3)]">{t('skill.toolMountHint')}</p>
       {selectedTools.length === 0 ? (
         <div className="py-1 text-xs text-[var(--color-text-4)]">
-          暂未添加工具，可点击右上角「添加工具」进行选择
+          {t('skill.toolEmpty')}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-2 pt-1">
@@ -288,7 +288,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
                     onClick={() => openEditModal(tool)}
                   >
                     <EditOutlined className="text-xs" />
-                    <span className="ml-0.5">配置</span>
+                    <span className="ml-0.5">{t('skill.configureTool')}</span>
                   </Button>
                   <DeleteOutlined
                     className="cursor-pointer p-1 text-xs text-[var(--color-text-4)] transition-colors hover:text-red-500"

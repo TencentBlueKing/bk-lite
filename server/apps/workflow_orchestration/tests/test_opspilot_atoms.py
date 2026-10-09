@@ -133,14 +133,14 @@ def test_designer_catalog_materializes_current_organization_opspilot_options():
         display_name="Alice",
         email="alice@example.com",
         password="x",
-        group_list=[{"id": 7, "name": "Current"}],
+        group_list=[7],
     )
     User.objects.create(
         username="bob",
         display_name="Bob",
         email="bob@example.com",
         password="x",
-        group_list=[{"id": 8, "name": "Other"}],
+        group_list=[8],
     )
 
     catalog = available_atom_catalog(7)

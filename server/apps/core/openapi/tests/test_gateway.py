@@ -339,3 +339,26 @@ def test_me_requires_credential(client):
     resp = client.get(ME_URL)
     assert resp.status_code == 401
     assert resp.json()["code"] == "AUTH_INVALID"
+
+
+@pytest.mark.parametrize("message", ["You do not have access to this organization data", "您无法读取所选租户", "Accès refusé"])
+def test_patch_scope_code_is_independent_of_translated_message(client, monkeypatch, message):
+    """真实业务拒绝的机器码不能依赖翻译文本。"""
+    from apps.patch_mgmt import nats_api
+
+    monkeypatch.setattr(nats_api, "patch_message", lambda *args: message)
+    _, token = create_api_tenant(2)
+    response = client.get(PATCH_URL, {"module": "patch_target", "group_id": 1}, **bearer(token))
+    assert response.status_code == 403
+    assert response.json() == {"result": False, "code": "TEAM_OUT_OF_SCOPE", "message": message}
+
+
+@pytest.mark.parametrize("code", [None, "UNKNOWN_ERROR", "AUTH_INVALID"])
+def test_unrecognized_business_code_does_not_change_http_contract(client, monkeypatch, code):
+    """仅映射约定的组织拒绝码，业务层不能任意指定网关状态。"""
+    _, token = create_api_tenant(1)
+    endpoint = default_registry.find("patch-mgmt", "module-data", "GET")
+    monkeypatch.setattr(endpoint, "func", lambda **kwargs: {"result": False, "code": code, "message": "invalid combination"})
+    response = client.get(PATCH_URL, {"module": "patch_target", "group_id": 1}, **bearer(token))
+    assert response.status_code == 400
+    assert response.json()["code"] == "BUSINESS_REJECTED"

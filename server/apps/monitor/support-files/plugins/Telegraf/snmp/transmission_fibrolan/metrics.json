@@ -78,7 +78,7 @@
       "query": "device_psu_state{instance_type='transmission', __$labels__}",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "dimensions": [
         {
           "name": "index",
@@ -88,7 +88,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Power supply operational status from FIBROLAN-DEVICE-MIB: notInstalled keeps a row as 1 (normal); ok=1, fail/unknown=2 (abnormal)."
+      "description": "Power supply operational status from FIBROLAN-DEVICE-MIB: notInstalled keeps a row as 1 (normal); ok=1, fail=2 (abnormal), unknown=3 (gray, no alert)."
     },
     {
       "metric_group": "Hardware Status",
@@ -96,7 +96,7 @@
       "query": "device_fan_state{instance_type='transmission', __$labels__}",
       "display_name": "PSU Fan Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "dimensions": [
         {
           "name": "index",
@@ -106,7 +106,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Power supply fan status from FIBROLAN-DEVICE-MIB flDevicePsuFanStatus: ok is 1 (normal), fail or singleFail is 2 (abnormal). Supplies without a fan (notApplicable) and unknown readings are skipped."
+      "description": "Power supply fan status from FIBROLAN-DEVICE-MIB flDevicePsuFanStatus: ok is 1 (normal), fail or singleFail is 2 (abnormal), unknown is 3 (gray, no alert). Supplies without a fan (notApplicable) are skipped."
     },
     {
       "metric_group": "Traffic",

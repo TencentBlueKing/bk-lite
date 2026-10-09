@@ -20,7 +20,10 @@ import copy
 import json
 import types
 
+from importlib import import_module
+
 import pytest
+from django.apps import apps
 
 from apps.cmdb.collection.round_metadata import RoundMetadataProtocolError
 from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes, DataCleanupStrategy
@@ -28,7 +31,11 @@ from apps.cmdb.models.change_record import DELETE_INST, ChangeRecord
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 from apps.cmdb.tests.test_pc_reconcile_service import InMemoryGraph
-from apps.cmdb_enterprise.collect.pc import PCCollectionPlugin
+
+enterprise_enabled = apps.is_installed("apps.cmdb_enterprise")
+requires_enterprise = pytest.mark.skipif(not enterprise_enabled, reason="此用例依赖 CMDB 企业 PC 采集或配置扩展")
+if enterprise_enabled:
+    PCCollectionPlugin = import_module("apps.cmdb_enterprise.collect.pc").PCCollectionPlugin
 
 BASE_TS = 1753200000
 
@@ -122,6 +129,7 @@ def _run_plugin(task, vm_doc):
     return plugin.result[PCCollectionPlugin.TASK_FORMAT_DATA_KEY]
 
 
+@requires_enterprise
 def test_round_metadata_failure_stops_before_pc_graph_reconciliation(monkeypatch):
     task = types.SimpleNamespace(
         id=321,
@@ -250,6 +258,7 @@ def _assert_no_secret_leak(*artifacts):
 # ---------------------------------------------------------------- headers 合同
 
 
+@requires_enterprise
 def test_node_params_headers_carry_no_plaintext_secret():
     for os_type in ("windows", "macos"):
         node = NodeParamsFactory.get_node_params(_fake_header_task(os_type))
@@ -297,6 +306,7 @@ def test_executor_stdout_matches_vm_rows_identity(load_fixture, os_type):
 
 
 @pytest.mark.django_db
+@requires_enterprise
 def test_macos_vm_query_writes_pc_software_and_install_on(load_fixture, graph, monkeypatch):
     """PCCollectionPlugin.run 必须经真实 VM 查询封装把 macOS 快照写入图库。"""
     expected = EXPECTED["macos"]
@@ -357,6 +367,7 @@ def test_macos_vm_query_writes_pc_software_and_install_on(load_fixture, graph, m
 
 
 @pytest.mark.django_db
+@requires_enterprise
 def test_windows_pipeline_full_rounds(load_fixture, graph):
     expected = EXPECTED["windows"]
     vm_doc = load_fixture("pc/windows_vm_rows.json")
@@ -420,6 +431,7 @@ def test_windows_pipeline_full_rounds(load_fixture, graph):
 
 
 @pytest.mark.django_db
+@requires_enterprise
 def test_macos_pipeline_add_update_partial_keeps(load_fixture, graph):
     expected = EXPECTED["macos"]
     vm_doc = load_fixture("pc/macos_vm_rows.json")
@@ -461,6 +473,7 @@ def test_macos_pipeline_add_update_partial_keeps(load_fixture, graph):
 
 
 @pytest.mark.django_db
+@requires_enterprise
 def test_failed_collect_rows_produce_no_snapshot_and_no_delete(load_fixture, graph):
     expected = EXPECTED["windows"]
     vm_doc = load_fixture("pc/windows_vm_rows.json")

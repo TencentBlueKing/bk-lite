@@ -1,7 +1,7 @@
 """Contract tests for the D-Link DES/DGS switch SNMP plugin.
 
-Validates Telegraf/snmp_dlink/switch against the Cisco baseline for shared
-CPU/interface fields, and against this plugin's DGS-1250 ENTITY-EXT fan/psu
+Validates vendor CPU scalar output and the imported shared IF-MIB catalog,
+and this plugin's DGS-1250 ENTITY-EXT fan/psu
 contract: stored values are only 1 (ok / inOperation / empty) and 2
 (fault / failed). The two-value enum labels 正常/异常, starlark (not
 processors.enum), policy `= 2`, and named dimensions (not descr).
@@ -13,6 +13,9 @@ import pytest
 import yaml
 
 from apps.core.utils.loader import LanguageLoader
+from apps.monitor.management.services.plugin_migrate import merge_common_ifmib_metrics
+from apps.monitor.tests.snmp_contract_helpers import assert_common_ifmib_counters
+from apps.monitor.tests.snmp_contract_helpers import assert_snmpv3_env_credentials, render_snmp_config
 
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
@@ -122,10 +125,13 @@ def test_shared_device_metrics_match_cisco_group_and_unit(metrics, cisco_metrics
 
 
 @pytest.mark.unit
-def test_cpu_query_byte_identical_to_cisco(metrics, cisco_metrics):
-    ext = {m["name"]: m for m in metrics["metrics"]}["device_cpu_usage"]
-    cis = {m["name"]: m for m in cisco_metrics["metrics"]}["device_cpu_usage"]
-    assert ext["query"] == cis["query"]
+def test_cpu_query_matches_top_level_snmp_scalar(metrics, toml_text):
+    metric = {m["name"]: m for m in metrics["metrics"]}["device_cpu_usage"]
+    assert metric["query"] == "snmp_device_cpu_usage{instance_type='switch', __$labels__}"
+    assert metric["dimensions"] == []
+    _, config = render_snmp_config(toml_text, DLINK_DIR)
+    fields = {field["name"]: field for field in config["inputs"]["snmp"][0]["field"]}
+    assert fields["device_cpu_usage"]["oid"].endswith(".0")
 
 
 @pytest.mark.unit
@@ -144,13 +150,18 @@ def test_fan_psu_enum_unit_byte_identical_to_cisco(metrics):
 # memory: %-direct single series (Huawei shape)
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
-def test_memory_is_direct_percent_raw_series(metrics):
+def test_memory_preserves_stack_rows_and_kib_to_bytes_conversion(metrics):
     by_name = {m["name"]: m for m in metrics["metrics"]}
     usage = by_name["device_memory_usage"]
     assert usage["unit"] == "percent"
     assert usage["query"] == "device_memory_usage{instance_type='switch', __$labels__}"
-    for absent in ("device_memory_used", "device_memory_free", "device_memory_total"):
-        assert absent not in by_name, f"{absent} must not exist on a %-direct vendor"
+    for name in ("device_memory_usage", "device_memory_used", "device_memory_total"):
+        metric = by_name[name]
+        assert [item["name"] for item in metric["dimensions"]] == ["unitID", "index"]
+        if name != "device_memory_usage":
+            assert metric["unit"] == "bytes"
+            assert metric["query"] == f"{name}{{instance_type='switch', __$labels__}} * 1024"
+    assert "device_memory_free" not in by_name
 
 
 # --------------------------------------------------------------------------- #
@@ -204,9 +215,9 @@ def test_alert_names_have_no_dangling_descr(policy):
 # every switch vendor exposes the 64-bit ifHC interface traffic metrics
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
-def test_interface_hc_metrics_present_and_match_cisco(metrics, cisco_metrics):
-    ext = {m["name"]: m for m in metrics["metrics"]}
-    cis = {m["name"]: m for m in cisco_metrics["metrics"]}
+def test_imported_interface_hc_metrics_use_shared_catalog(metrics, cisco_metrics):
+    ext = {m["name"]: m for m in merge_common_ifmib_metrics(metrics)["metrics"]}
+    cis = {m["name"]: m for m in merge_common_ifmib_metrics(cisco_metrics)["metrics"]}
     for name in INTERFACE_METRICS:
         assert name in ext, f"{name} must be declared"
         for field in ("metric_group", "unit", "query", "dimensions"):
@@ -214,8 +225,8 @@ def test_interface_hc_metrics_present_and_match_cisco(metrics, cisco_metrics):
 
 
 @pytest.mark.unit
-def test_toml_collects_ifhc_counters(toml_text):
-    assert "ifHCInOctets" in toml_text and "ifHCOutOctets" in toml_text
+def test_rendered_toml_contains_common_ifmib_counters_and_uptime(toml_text):
+    assert_common_ifmib_counters(toml_text, DLINK_DIR)
 
 
 # --------------------------------------------------------------------------- #
@@ -293,6 +304,5 @@ def test_object_has_bilingual_translation(languages):
 # secrets never inlined as plaintext
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
-def test_passwords_use_template_vars_not_plaintext(toml_text):
-    for field in ("auth_password", "priv_password"):
-        assert f'{field} = "{{{{ {field} }}}}"' in toml_text, f"{field} must be templated"
+def test_passwords_render_as_sidecar_env_references_without_plaintext(toml_text):
+    assert_snmpv3_env_credentials(toml_text, DLINK_DIR)

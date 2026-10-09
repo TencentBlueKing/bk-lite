@@ -1,0 +1,96 @@
+{
+  "object": "Router",
+  "plugin": "Router Ubiquiti EdgeRouter SNMP",
+  "templates": [
+    {
+      "name": "EdgeRouter路由器CPU使用率过高",
+      "alert_name": "路由器${resource_name} CPU 使用率过高",
+      "description": "监控 EdgeRouter 各 CPU 核心的负载，当持续高于阈值时触发告警，提示可能存在控制平面过载或转发压力。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "EdgeRouter路由器内存使用率过高",
+      "alert_name": "路由器${resource_name} 内存使用率过高",
+      "description": "监控 EdgeRouter 路由器整机内存使用率，当持续高于阈值时触发告警，提示可能存在内存泄漏或连接表过大，避免业务进程异常或设备重启。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "EdgeRouter路由器温度过高",
+      "alert_name": "路由器${resource_name} 温度过高",
+      "description": "监控 EdgeRouter 各温度传感器读数，当超过阈值时触发告警，提示可能存在风扇故障、散热不良或环境过热。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 65,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 60,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "EdgeRouter路由器电源异常",
+      "alert_name": "路由器${resource_name} 电源状态异常",
+      "description": "监控 EdgeRouter 各电源模块状态（归一后 1=正常、2=异常、3=备用、4=未知；备用与未知不告警）。仅取值为 2（关闭）时触发告警，提示供电故障或冗余缺失。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

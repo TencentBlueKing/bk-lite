@@ -30,7 +30,7 @@ const KIND_TAG_COLOR: Record<ArchivedGroupKind, string> = {
 };
 
 /** 树表行：叶子不带 children，避免 Ant Design 画出空的展开图标 */
-type ArchivedTableRow = {
+interface ArchivedTableRow {
   id: number;
   name: string;
   parent_id: number;
@@ -38,7 +38,7 @@ type ArchivedTableRow = {
   can_restore?: boolean;
   can_permanently_delete?: boolean;
   children?: ArchivedTableRow[];
-};
+}
 
 function toArchivedTableRows(
   nodes: Array<ArchivedGroupRoot | ArchivedGroupChildNode>,

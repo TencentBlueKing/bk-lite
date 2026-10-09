@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export interface PasswordPolicyConfig {
   min_length?: number;
@@ -56,12 +56,15 @@ export const usePasswordPolicy = ({
   const [policy, setPolicy] = useState<PasswordPolicyConfig | null>(null);
   const [loading, setLoading] = useState(false);
   const [validationStatus, setValidationStatus] = useState<PasswordValidationStatus>({ passed: true });
+  const fetchPolicyRef = useRef(fetchPolicy);
+  fetchPolicyRef.current = fetchPolicy;
 
   useEffect(() => {
     if (!enabled) return;
     let cancelled = false;
     setLoading(true);
-    fetchPolicy()
+    // 调用方每次渲染都会传入新的 fetchPolicy。放进依赖后，setPolicy 触发的渲染会再次请求。
+    fetchPolicyRef.current()
       .then((data) => {
         if (!cancelled) setPolicy(data);
       })
@@ -71,7 +74,7 @@ export const usePasswordPolicy = ({
     return () => {
       cancelled = true;
     };
-  }, [enabled, fetchPolicy]);
+  }, [enabled]);
 
   const validatePassword = useCallback(
     async (password: string): Promise<void> => {

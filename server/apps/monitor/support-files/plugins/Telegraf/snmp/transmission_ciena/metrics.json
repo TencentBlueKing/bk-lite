@@ -76,7 +76,7 @@
       "query": "device_fan_state{instance_type='transmission', __$labels__}",
       "display_name": "Fan Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "dimensions": [
         {
           "name": "index",
@@ -86,7 +86,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Fan state of the Ciena CES/SAOS chassis (cienaCesChassisFanStatus): ok/uninstalled=1 normal (empty slots keep a row), rpm-warning/unknown=2 abnormal; pending (stats not ready) is not reported."
+      "description": "Fan state of the Ciena CES/SAOS chassis (cienaCesChassisFanStatus): ok/uninstalled=1 normal (empty slots keep a row), rpm-warning=2 abnormal, unknown=3 (gray, no alert); pending (stats not ready) is not reported."
     },
     {
       "metric_group": "Hardware Status",

@@ -242,6 +242,8 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "uptime",
         "cpu",
         "memory",
+        "fan",
+        "psu",
         "traffic"
       ]
     },
@@ -341,8 +343,6 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "uptime",
         "cpu",
         "memory",
-        "temperature",
-        "psu",
         "traffic"
       ]
     },
@@ -726,6 +726,9 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "uptime",
         "cpu",
         "memory",
+        "temperature",
+        "fan",
+        "psu",
         "traffic"
       ]
     },
@@ -805,6 +808,15 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "temperature",
         "fan",
         "psu",
+        "traffic"
+      ]
+    },
+    {
+      "collectType": "snmp_quanta",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
         "traffic"
       ]
     },
@@ -904,6 +916,7 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "memory",
         "temperature",
         "fan",
+        "psu",
         "traffic"
       ]
     },
@@ -1161,6 +1174,17 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_cisco_iosxr",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "fan",
+        "psu",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_cisco_router",
       "capabilities": [
         "uptime",
@@ -1215,6 +1239,17 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "uptime",
         "cpu",
         "memory",
+        "traffic"
+      ]
+    },
+    {
+      "collectType": "snmp_edgerouter",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "temperature",
+        "psu",
         "traffic"
       ]
     },
@@ -1760,6 +1795,17 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_mguard",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "temperature",
+        "psu",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_neteye",
       "capabilities": [
         "uptime",
@@ -1944,6 +1990,9 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "uptime",
         "cpu",
         "memory",
+        "temperature",
+        "fan",
+        "psu",
         "traffic"
       ]
     },

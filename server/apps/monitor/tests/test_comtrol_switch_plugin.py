@@ -12,6 +12,7 @@ import pytest
 import yaml
 
 from apps.core.utils.loader import LanguageLoader
+from apps.monitor.tests.snmp_contract_helpers import assert_common_ifmib_counters
 
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
@@ -177,12 +178,8 @@ def test_policy_templates_reference_existing_metrics(metrics, policy):
 
 
 @pytest.mark.unit
-def test_toml_collects_uptime_and_64bit_ifhc_counters(toml_text):
-    assert "1.3.6.1.2.1.1.3.0" in toml_text
-    assert "1.3.6.1.2.1.31.1.1.1.6" in toml_text
-    assert "1.3.6.1.2.1.31.1.1.1.10" in toml_text
-    assert "1.3.6.1.2.1.2.2.1.10" not in toml_text
-    assert "1.3.6.1.2.1.2.2.1.16" not in toml_text
+def test_rendered_toml_contains_common_ifmib_counters_and_uptime(toml_text):
+    assert_common_ifmib_counters(toml_text, BRAND_DIR)
 
 
 @pytest.mark.unit

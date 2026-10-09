@@ -2657,8 +2657,12 @@ class ToolsNodes(
                 await _emit_planned_execution_status("idle", reason="empty_plan")
                 light_system = self._build_lightweight_system_prompt(
                     getattr(graph_request, "system_message_prompt", "") or "",
-                    skills_available=has_skill_packages,
+                    skills_available=has_skill_packages or bool(registered_tools),
                 )
+                tool_names = [str(getattr(tool, "name", "") or "") for tool in registered_tools]
+                tool_names = [name for name in tool_names if name]
+                if tool_names:
+                    light_system = f"{light_system}\n当前可用工具: {', '.join(tool_names)}"
                 if additional_system_prompt:
                     light_system = f"{light_system}\n\n{additional_system_prompt}"
                 return await self._invoke_lightweight_direct_reply(
@@ -3308,7 +3312,7 @@ class ToolsNodes(
                         f"工具执行计划目标：{plan.goal or planning_question}\n"
                         f"已完成步骤及结果：\n{completed_text}\n\n"
                         "配置检查报告与修复对比已通过界面卡片展示。"
-                        "当前没有可用工具，不要继续调用工具；"
+                        "不要继续调用工具；"
                         "请用一两句告知用户查看上方报告与修复建议，不要重复 Markdown 表格或声称数据被截断。"
                     )
                 elif self._should_skip_planned_summary(
