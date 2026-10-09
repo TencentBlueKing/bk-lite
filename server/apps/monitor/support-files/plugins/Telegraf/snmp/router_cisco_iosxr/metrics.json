@@ -99,7 +99,7 @@
       "query": "device_fan_state{instance_type='router', __$labels__}",
       "display_name": "Fan Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "dimensions": [
         {
           "name": "fan_name",
@@ -109,7 +109,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Operational state of each IOS-XR fan tray from CISCO-ENTITY-FRU-CONTROL-MIB cefcFanTrayOperStatus, normalised to 1=normal (up) / 2=abnormal (unknown, down or warning)."
+      "description": "Operational state of each IOS-XR fan tray from CISCO-ENTITY-FRU-CONTROL-MIB cefcFanTrayOperStatus, normalised to 1=normal (up) / 2=abnormal (down or warning) / 3=unknown (unknown). Empty slots and rows without a status are dropped."
     },
     {
       "metric_group": "Hardware Status",
@@ -117,7 +117,7 @@
       "query": "device_psu_state{instance_type='router', __$labels__}",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "dimensions": [
         {
           "name": "psu_name",
@@ -127,7 +127,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Operational state of each IOS-XR power supply from CISCO-ENTITY-FRU-CONTROL-MIB cefcFRUPowerOperStatus on ENTITY-MIB powerSupply entities, normalised to 1=normal (on) / 2=abnormal (including offAdmin)."
+      "description": "Operational state of each IOS-XR power supply from CISCO-ENTITY-FRU-CONTROL-MIB cefcFRUPowerOperStatus on ENTITY-MIB powerSupply entities, normalised to 1=normal (on) / 2=abnormal (offEnvOther, offAdmin, failed and the other defined PowerOperType values except on). PowerOperType has no unknown enumerator; a literal unknown reading maps to 3. Empty slots and non-powerSupply FRUs are dropped."
     },
     {
       "metric_group": "Traffic",

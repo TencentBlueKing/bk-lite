@@ -15,10 +15,18 @@ monitor_object_metric:
       name: Fan Status
       desc: Operational state of each cooling fan (enum). A non-normal state indicates
         a cooling fault that can quickly lead to overheating.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     device_psu_state:
       name: Power Supply Status
       desc: Operational state of each power supply unit (enum). A non-normal state
         indicates a power redundancy or hardware fault and should be remediated promptly.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     device_memory_total:
       name: Total Memory
       desc: This metric reports the total physical memory capacity of the router (UCD-SNMP-MIB

@@ -70,7 +70,8 @@
         oid = "1.3.6.1.4.1.9.9.221.1.1.1.1.20"
         name = "hc_free"
     # ---- 电源：CISCO-ENTITY-FRU-CONTROL-MIB cefcFRUPowerOperStatus + ENTITY-MIB 类别/名称，表列禁止 .0 ----
-    # 仅保留 entPhysicalClass=powerSupply(6) 且有状态的行。on(2)→1；1 与 3..12→2；其余丢弃。
+    # 仅保留 entPhysicalClass=powerSupply(6) 且有状态的行。on(2)→1；PowerOperType 1 与 3..12→2。
+    # PowerOperType 无 unknown 枚举；仅当代理返回字面 unknown 时→3。无状态/空槽丢弃。
     [[inputs.snmp.table]]
         name = "device_psu"
         inherit_tags = ["source"]
@@ -86,7 +87,7 @@
         name = "psu_name"
         is_tag = true
     # ---- 风扇托盘：cefcFanTrayOperStatus + entPhysicalName，表列禁止 .0 ----
-    # up(2)→1；unknown(1)/down(3)/warning(4)→2；其余丢弃。无状态的行丢弃。
+    # up(2)→1；down(3)/warning(4)→2；unknown(1)→3；其余丢弃。无状态的行丢弃。
     [[inputs.snmp.table]]
         name = "device_fan"
         inherit_tags = ["source"]
@@ -159,6 +160,8 @@ def apply(metric):
             f["state"] = 1
         elif st == 1 or st == "1" or st == 3 or st == "3" or st == 4 or st == "4" or st == 5 or st == "5" or st == 6 or st == "6" or st == 7 or st == "7" or st == 8 or st == "8" or st == 9 or st == "9" or st == 10 or st == "10" or st == 11 or st == "11" or st == 12 or st == "12":
             f["state"] = 2
+        elif st == "unknown":
+            f["state"] = 3
         else:
             return None
         return metric
@@ -168,8 +171,10 @@ def apply(metric):
             return None
         if st == 2 or st == "2":
             f["state"] = 1
-        elif st == 1 or st == "1" or st == 3 or st == "3" or st == 4 or st == "4":
+        elif st == 3 or st == "3" or st == 4 or st == "4":
             f["state"] = 2
+        elif st == 1 or st == "1" or st == "unknown":
+            f["state"] = 3
         else:
             return None
         return metric
