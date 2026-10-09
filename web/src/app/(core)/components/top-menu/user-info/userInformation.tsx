@@ -35,6 +35,9 @@ import PasswordModal from './passwordModal';
 import Icon from '@/components/icon';
 import { LOCALE_OPTIONS, ZONEINFO_OPTIONS } from '@/app/(core)/components/user-preferences/options';
 
+/** 抽屉与弹窗默认同层。后打开的抽屉会盖住预先挂载的验证、改邮箱和改密码弹窗。 */
+const USER_INFO_DIALOG_Z_INDEX = 1200;
+
 interface UserInformationProps {
   visible: boolean;
   onClose: () => void;
@@ -541,6 +544,7 @@ const UserInformation: React.FC<UserInformationProps> = ({
       <OperateFormModal
         maskClosable={false}
         centered
+        zIndex={USER_INFO_DIALOG_Z_INDEX}
         title={t('userInfo.verifyIdentity')}
         open={verifyIdentityModalVisible}
         confirmText={t('common.next')}
@@ -580,6 +584,7 @@ const UserInformation: React.FC<UserInformationProps> = ({
       <OperateFormModal
         maskClosable={false}
         centered
+        zIndex={USER_INFO_DIALOG_Z_INDEX}
         title={t('userInfo.changeEmail')}
         open={emailModalVisible}
         confirmText={t('common.confirm')}
@@ -656,6 +661,7 @@ const UserInformation: React.FC<UserInformationProps> = ({
       {/* 修改密码弹窗 */}
       <PasswordModal
         visible={passwordModalVisible}
+        zIndex={USER_INFO_DIALOG_Z_INDEX}
         onCancel={() => setPasswordModalVisible(false)}
         onSuccess={() => {
           setPasswordModalVisible(false);
