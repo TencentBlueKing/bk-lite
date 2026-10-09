@@ -976,6 +976,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /sub10|liberator/i, label: 'Sub10 Systems' },
   { match: /4rf|aprisa/i, label: '4RF Aprisa', icon: 'mm-4rf_4rf' },
   { match: /viavi|jdsu|acterna/i, label: 'Viavi', icon: 'mm-viavi_viavi' },
+  { match: /\bwisi\b|tangram/i, label: 'WISI' },
   { match: /sycamore/i, label: 'Sycamore', icon: 'mm-sycamore_sycamore' },
   { match: /deltanet|lambdatrail/i, label: 'DeltaNet' },
   { match: /\bredline\b/i, label: 'Redline', icon: 'mm-redline_redline' },

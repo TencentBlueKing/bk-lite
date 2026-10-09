@@ -80,6 +80,7 @@ export const useTransmissionConfig = () => {
       'Transmission 4RF Aprisa SNMP': 'snmp_4rf',
       'Transmission PBI SNMP': 'snmp_pbi',
       'Transmission Viavi SNMP': 'snmp_viavi',
+      'Transmission WISI SNMP': 'snmp_wisi',
       'Transmission Sycamore SNMP': 'snmp_sycamore',
       'Transmission Ecreso SNMP': 'snmp_ecreso',
       'Transmission Redline SNMP': 'snmp_redline',
