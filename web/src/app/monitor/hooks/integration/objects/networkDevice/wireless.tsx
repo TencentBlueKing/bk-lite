@@ -71,6 +71,7 @@ export const useWirelessConfig = () => {
       'Wireless Radwin SNMP': 'snmp_radwin',
       'Wireless Mimosa SNMP': 'snmp_mimosa',
       'Wireless Airspan SNMP': 'snmp_airspan',
+      'Wireless FreeWave SNMP': 'snmp_freewave',
       'Wireless ACKSYS SNMP': 'snmp_acksys',
       'Wireless Last Mile Gear CTM SNMP': 'snmp_ctm',
       'Wireless ProSoft Technology SNMP': 'snmp_prosoft',
