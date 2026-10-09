@@ -119,6 +119,7 @@ export const useRouterConfig = () => {
       'Router Advantech SNMP': 'snmp_advantech_router',
       'Router Nokia SNMP': 'snmp_nokia_router',
       'Router FireBrick SNMP': 'snmp_firebrick',
+      'Router Ericsson IPOS SNMP': 'snmp_ericsson_router',
       'Router Flow NetFlow': 'netflow',
       'Router Flow sFlow': 'sflow'
     }
