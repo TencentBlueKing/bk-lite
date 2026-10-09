@@ -149,10 +149,10 @@ class PolicyGroupService:
         membership.save(update_fields=["policy_group", "state", "updated_by", "updated_at"])
         if group:
             PolicyGroupService.sync_coverage(group)
-        PolicyGroupService._close_instance_alerts(policy_ids, instance_id, operator)
+        PolicyGroupService._close_instance_alerts(policy_ids, instance_id, operator, "policy_group_member_left")
 
     @staticmethod
-    def _close_instance_alerts(policy_ids, instance_id, operator):
+    def _close_instance_alerts(policy_ids, instance_id, operator, reason):
         if not policy_ids:
             return
         alerts = list(
@@ -162,7 +162,8 @@ class PolicyGroupService:
                 status="new",
             )
         )
-        PolicyService._mark_new_alerts_closed(alerts, operator, "policy_group_member_left")
+        policies = list(MonitorPolicy.objects.filter(id__in=policy_ids))
+        PolicyGroupService._publish_closed_alerts(alerts, policies, operator, reason)
 
     @staticmethod
     def refresh_collect_coverage(instance, operator="system"):
@@ -175,7 +176,7 @@ class PolicyGroupService:
         for rule in group.rules.select_related("policy"):
             after = set((rule.policy.source or {}).get("values") or [])
             if instance.id in before.get(rule.policy_id, set()) and instance.id not in after:
-                PolicyGroupService._close_instance_alerts([rule.policy_id], instance.id, operator)
+                PolicyGroupService._close_instance_alerts([rule.policy_id], instance.id, operator, "policy_group_member_left")
         return membership
 
     @staticmethod
@@ -273,7 +274,7 @@ class PolicyGroupService:
         policy.updated_by = operator
         policy.save(update_fields=["threshold", "notice_users", "updated_by", "updated_at"])
         alerts = list(MonitorAlert.objects.filter(policy_id=policy.id, status="new"))
-        PolicyGroupService._close_instance_alerts_for_objects(alerts, operator, "policy_group_rule_changed")
+        PolicyGroupService._publish_closed_alerts(alerts, [policy], operator, "policy_group_rule_changed")
         return rule
 
     @staticmethod
@@ -384,11 +385,30 @@ class PolicyGroupService:
 
         PolicyBaselineService(policy).clear()
         alerts = list(MonitorAlert.objects.filter(policy_id=policy.id, status="new"))
-        PolicyService._mark_new_alerts_closed(alerts, operator, "policy_deleted")
+        PolicyGroupService._publish_closed_alerts(alerts, [policy], operator, "policy_deleted")
         PeriodicTask.objects.filter(name=f"scan_policy_task_{policy.id}").delete()
         PolicyOrganization.objects.filter(policy_id=policy.id).delete()
         policy.delete()
 
     @staticmethod
-    def _close_instance_alerts_for_objects(alerts, operator, reason):
+    def _publish_closed_alerts(alerts, policies, operator, reason):
+        if not alerts:
+            return
         PolicyService._mark_new_alerts_closed(alerts, operator, reason)
+        from apps.monitor.services.alert_lifecycle_notify import (
+            NOTIFY_SCOPE_ALL_CONFIGURED,
+            AlertLifecycleNotifier,
+        )
+
+        notifier = AlertLifecycleNotifier(policies_by_id={policy.id: policy for policy in policies if policy is not None})
+        notifier.enqueue_alert_center_deliveries(alerts, "closed", operator=operator, reason=reason)
+        closed = tuple(alerts)
+        transaction.on_commit(
+            lambda: notifier.notify_alerts(
+                closed,
+                action="closed",
+                operator=operator,
+                reason=reason,
+                notify_scope=NOTIFY_SCOPE_ALL_CONFIGURED,
+            )
+        )

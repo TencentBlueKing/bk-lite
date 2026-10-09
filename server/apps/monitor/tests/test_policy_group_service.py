@@ -438,3 +438,32 @@ def test_group_rule_and_standalone_rule_get_a_scan_task():
     standalone = PolicyGroupService.create_standalone(instance=host, template=template, organization=1)
     assert PeriodicTask.objects.filter(name=f"scan_policy_task_{standalone.id}", enabled=True).exists()
     assert list(standalone.policyorganization_set.values_list("organization", flat=True)) == [1]
+
+
+def test_closing_group_alerts_is_queued_for_the_alert_center(mocker, django_capture_on_commit_callbacks):
+    notifier = mocker.Mock()
+    mocker.patch("apps.monitor.services.alert_lifecycle_notify.AlertLifecycleNotifier", return_value=notifier)
+    monitor_object = _object()
+    wmi = _plugin(monitor_object, "WMI")
+    group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="主机默认告警",
+        templates=[_template(monitor_object, wmi, "WMI CPU")],
+    )
+    host = _instance(monitor_object, "web-01", 1)
+    _collect(host, wmi)
+    PolicyGroupService.join(instance=host, group=group)
+    policy = group.rules.get().policy
+    alert = MonitorAlert.objects.create(policy_id=policy.id, monitor_instance_id=host.id, status="new", alert_type="alert", content="open")
+
+    with django_capture_on_commit_callbacks(execute=True):
+        PolicyGroupService.leave(instance=host)
+
+    alert.refresh_from_db()
+    assert alert.status == "closed"
+    notifier.enqueue_alert_center_deliveries.assert_called_once()
+    assert notifier.enqueue_alert_center_deliveries.call_args.args[1] == "closed"
+    assert notifier.enqueue_alert_center_deliveries.call_args.kwargs["reason"] == "policy_group_member_left"
+    notifier.notify_alerts.assert_called_once()
+    assert notifier.notify_alerts.call_args.kwargs["reason"] == "policy_group_member_left"
