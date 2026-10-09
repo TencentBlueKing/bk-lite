@@ -26,6 +26,51 @@
         }
       ],
       "group_algorithm": "avg"
+    },
+    {
+      "name": "MRV传输设备电源异常",
+      "alert_name": "传输设备${resource_name} 电源 ${metric__psu} 异常",
+      "description": "监控 MRV OptiDriver 机箱各电源状态，电源故障（AC / DC 异常）时触发告警，提示供电中断或冗余缺失。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "MRV传输设备风扇异常",
+      "alert_name": "传输设备${resource_name} 风扇 ${metric__fan} 异常",
+      "description": "监控 MRV OptiDriver 机箱各风扇状态，风扇故障时触发告警，提示散热能力下降、可能导致设备过热。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "MRV传输设备机箱供电不足",
+      "alert_name": "传输设备${resource_name} 机箱供电不足",
+      "description": "监控 MRV OptiDriver 机箱总供电是否充足，供电不足时机箱无法正常工作，需检查电源配置与负载。",
+      "metric_name": "device_power_sufficiency_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
     }
   ]
 }

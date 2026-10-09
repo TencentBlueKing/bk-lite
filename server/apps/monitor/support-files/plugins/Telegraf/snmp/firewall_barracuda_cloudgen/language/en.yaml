@@ -1,0 +1,32 @@
+Firewall Barracuda CloudGen SNMP:
+  name: Barracuda CloudGen (Telegraf)
+  desc: SNMP monitoring template for Barracuda CloudGen Firewall F-Series hardware (PHION-MIB, enterprise
+    PEN 10704). It reports uptime, hardware sensor temperatures, fan speed, power supply status,
+    and interface traffic.
+monitor_object:
+  Firewall: Firewall
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Firewall:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart. By monitoring the uptime,
+        network administrators can understand the stability and reliability of the device and identify
+        potential reboot or failure issues.
+    device_temperature_celsius:
+      name: Temperature
+      desc: Temperature of each hardware sensor in degrees Celsius. Persistently high values may indicate
+        poor cooling or high ambient temperature.
+    device_fan_speed:
+      name: Fan Speed
+      desc: Speed of each fan in RPM. A sharp drop or zero speed may indicate a failed or blocked fan.
+    device_psu_state:
+      name: Power Supply Status
+      desc: Status of each power supply, normalized to 1 (normal) or 2 (abnormal). An abnormal state indicates
+        a failed power supply or lost input.
+monitor_object_metric_group:
+  Firewall:
+    Base: Base
+    Temperature: Temperature
+    Hardware Status: Hardware Status

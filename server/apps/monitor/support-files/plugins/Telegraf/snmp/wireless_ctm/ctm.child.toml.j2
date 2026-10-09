@@ -1,0 +1,161 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_ctm"
+        config_type = "ctm"
+        brand = "ctm"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- 机箱温度 / 主从双路电源电压与状态：全部为标量，顶层 field 必须带 .0 ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25868.1.9.0"
+        name = "device_temperature_celsius"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25868.1.10.0"
+        name = "volts_m1"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25868.1.11.0"
+        name = "volts_m2"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25868.1.6.0"
+        name = "pwr_p"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25868.1.7.0"
+        name = "pwr_s"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25868.1.27.0"
+        name = "volts_s1"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25868.1.28.0"
+        name = "volts_s2"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25868.1.23.0"
+        name = "pwr_sp"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25868.1.24.0"
+        name = "pwr_ss"
+    # ---- CPU/内存/风扇：CTM MIB 无主机利用率与风扇表，不采集。----
+
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def is_sentinel(v):
+    n = int(v)
+    if n == 65535 or n == 65534 or n == -1:
+        return True
+    if n == 2147483647 or n == -2147483648:
+        return True
+    if n == 4294967295:
+        return True
+    return False
+
+def round1(x):
+    if x >= 0.0:
+        return float(int(x * 10.0 + 0.5)) / 10.0
+    return float(int(x * 10.0 - 0.5)) / 10.0
+
+def copy_tags(src, dest):
+    for key, value in src.tags.items():
+        dest.tags[key] = value
+    dest.time = src.time
+
+def map_pwr(raw):
+    if raw == None:
+        return None
+    n = int(raw)
+    if n == 1:
+        return 1
+    if n == 0:
+        return 2
+    return None
+
+def emit_supply(metric, results, volts_raw, pwr_raw, supply, slave):
+    volts_zero = False
+    pwr_off = False
+    if volts_raw != None:
+        if not is_sentinel(volts_raw) and float(volts_raw) == 0.0:
+            volts_zero = True
+    if pwr_raw != None and int(pwr_raw) == 0:
+        pwr_off = True
+    if slave:
+        if pwr_off and (volts_raw == None or volts_zero):
+            return
+        if volts_zero and pwr_raw == None:
+            return
+    if volts_raw != None and not is_sentinel(volts_raw):
+        volts = round1(float(volts_raw) / 10.0)
+        if volts >= 0.1 and volts <= 60.0:
+            out = Metric("device_voltage")
+            copy_tags(metric, out)
+            out.tags["supply"] = supply
+            out.fields["volts"] = volts
+            results.append(out)
+    mapped = map_pwr(pwr_raw)
+    if mapped != None:
+        if slave and pwr_off and (volts_raw == None or volts_zero):
+            return
+        out = Metric("device_psu")
+        copy_tags(metric, out)
+        out.tags["supply"] = supply
+        out.fields["state"] = mapped
+        results.append(out)
+
+def apply(metric):
+    results = []
+    temp = metric.fields.get("device_temperature_celsius")
+    if temp != None:
+        if is_sentinel(temp):
+            metric.fields.pop("device_temperature_celsius")
+        else:
+            value = float(temp)
+            if value < -40.0 or value > 125.0:
+                metric.fields.pop("device_temperature_celsius")
+            else:
+                metric.fields["device_temperature_celsius"] = value
+    volts_m1 = metric.fields.pop("volts_m1", None)
+    volts_m2 = metric.fields.pop("volts_m2", None)
+    volts_s1 = metric.fields.pop("volts_s1", None)
+    volts_s2 = metric.fields.pop("volts_s2", None)
+    pwr_p = metric.fields.pop("pwr_p", None)
+    pwr_s = metric.fields.pop("pwr_s", None)
+    pwr_sp = metric.fields.pop("pwr_sp", None)
+    pwr_ss = metric.fields.pop("pwr_ss", None)
+    emit_supply(metric, results, volts_m1, pwr_p, "master_primary", False)
+    emit_supply(metric, results, volts_m2, pwr_s, "master_secondary", False)
+    emit_supply(metric, results, volts_s1, pwr_sp, "slave_primary", True)
+    emit_supply(metric, results, volts_s2, pwr_ss, "slave_secondary", True)
+    f = metric.fields
+    if len(f.keys()) > 0:
+        results.append(metric)
+    if len(results) == 0:
+        return None
+    return results
+'''
+    [processors.starlark.tagpass]
+        brand = ["ctm"]

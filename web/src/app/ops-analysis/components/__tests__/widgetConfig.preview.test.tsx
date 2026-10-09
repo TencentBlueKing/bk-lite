@@ -238,3 +238,90 @@ describe('ViewConfig preview drawer', () => {
     });
   });
 });
+
+describe('ViewConfig screen panel', () => {
+  it('embeds the form without a drawer or preview button', async () => {
+    render(
+      <ViewConfig
+        open
+        variant="panel"
+        item={lineItem()}
+        onClose={() => undefined}
+        dataSourceManager={buildManager(lineDataSource) as never}
+        surface="screen"
+      />,
+    );
+
+    expect(await screen.findByTestId('widget-config-panel')).toBeTruthy();
+    expect(screen.queryByTestId('widget-config-preview-button')).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByText('common.confirm')).toBeTruthy();
+  });
+
+  it('does not reload the data form when only widget appearance changes', async () => {
+    const ensureDataSource = vi.fn(async () => lineDataSource);
+    const manager = {
+      ...buildManager(lineDataSource),
+      ensureDataSource,
+    };
+    const item = lineItem();
+    const view = render(
+      <ViewConfig
+        open
+        variant="panel"
+        item={item}
+        onClose={() => undefined}
+        dataSourceManager={manager as never}
+        surface="screen"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(ensureDataSource).toHaveBeenCalledTimes(1);
+    });
+
+    view.rerender(
+      <ViewConfig
+        open
+        variant="panel"
+        item={{
+          ...item,
+          x: 40,
+          y: 80,
+          valueConfig: {
+            ...item.valueConfig,
+            appearance: { frame: 'bare' },
+          },
+        }}
+        onClose={() => undefined}
+        dataSourceManager={manager as never}
+        surface="screen"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(ensureDataSource).toHaveBeenCalledTimes(1);
+    });
+
+    view.rerender(
+      <ViewConfig
+        open
+        variant="panel"
+        item={{
+          ...item,
+          valueConfig: {
+            ...item.valueConfig,
+            dataSource: 8,
+          },
+        }}
+        onClose={() => undefined}
+        dataSourceManager={manager as never}
+        surface="screen"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(ensureDataSource).toHaveBeenCalledTimes(2);
+    });
+  });
+});

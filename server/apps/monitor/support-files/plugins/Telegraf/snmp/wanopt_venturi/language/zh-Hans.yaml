@@ -1,0 +1,10 @@
+Wanopt Venturi SNMP:
+  name: Venturi Wireless（Telegraf）
+  desc: 面向 Venturi Wireless 优化服务器的 SNMP 监控模板（企业号 PEN 3382，VENTURI-SERVER-STATS-MIB），可采集运行时长、接口流量、整机 CPU 使用率以及 Venturi 缓冲池（VBuf）使用率。
+monitor_object_metric:
+  Wanopt:
+    venturi_vbuf_usage_percent:
+      name: Venturi 缓冲池（VBuf）使用率
+      desc: 该指标报告 Venturi 缓冲池使用率，按 VENTURI-SERVER-STATS-MIB
+        vServerStatsSystemUsedVenturiBuffers 除以 vServerSystemTotalVenturiBuffers
+        得到 0-100 百分比。

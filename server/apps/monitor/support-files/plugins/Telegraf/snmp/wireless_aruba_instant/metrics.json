@@ -1,0 +1,147 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_aruba_instant",
+  "plugin": "Wireless Aruba Instant SNMP",
+  "plugin_desc": "SNMP monitoring template for HPE Aruba Instant (IAP) cluster, collected from the Virtual Controller. It reports uptime, per-AP CPU utilization, per-AP memory, AP status, and interface traffic (enterprise PEN 14823).",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='wireless', collect_type='snmp_aruba_instant'}) by (instance_id)",
+  "name": "Wireless",
+  "icon": "mm-wireless_无线设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='wireless'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "wireless_ap_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the Aruba Instant Virtual Controller since the last restart (sysUpTime). Monitoring uptime helps identify unexpected reboots or VC failover."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "device_cpu_usage{instance_type='wireless', __$labels__}",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "ap_name",
+          "description": "Access point name"
+        },
+        {
+          "name": "index",
+          "description": "Access point MAC address (SNMP table index)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization of each access point in the Aruba Instant cluster (AI-AP-MIB aiAPCPUUtilization), one series per AP. Sustained high CPU on an AP can degrade client service and roaming."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "device_memory_total{instance_type='wireless', __$labels__}",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "ap_name",
+          "description": "Access point name"
+        },
+        {
+          "name": "index",
+          "description": "Access point MAC address (SNMP table index)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total memory of each access point in bytes (AI-AP-MIB aiAPTotalMemory)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_free",
+      "query": "device_memory_free{instance_type='wireless', __$labels__}",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "ap_name",
+          "description": "Access point name"
+        },
+        {
+          "name": "index",
+          "description": "Access point MAC address (SNMP table index)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Free memory of each access point in bytes (AI-AP-MIB aiAPMemoryFree)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "device_memory_usage{instance_type='wireless', __$labels__}",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "ap_name",
+          "description": "Access point name"
+        },
+        {
+          "name": "index",
+          "description": "Access point MAC address (SNMP table index)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of each access point, computed as (total - free) / total * 100 from aiAPTotalMemory and aiAPMemoryFree. High memory pressure can cause client association failures."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "wireless_ap_state",
+      "query": "wireless_ap_state{instance_type='wireless', __$labels__}",
+      "display_name": "AP Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "ap_name",
+          "description": "Access point name"
+        },
+        {
+          "name": "index",
+          "description": "Access point MAC address (SNMP table index)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Status of each access point known to the Virtual Controller (AI-AP-MIB aiAPStatus, raw up(1) / down(2)), normalized so that 1 = up and 2 = down."
+    }
+  ]
+}

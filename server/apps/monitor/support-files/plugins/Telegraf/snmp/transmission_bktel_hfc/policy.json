@@ -1,0 +1,36 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission BKTel HFC SNMP",
+  "templates": [
+    {
+      "name": "BKTel HFC电源异常",
+      "alert_name": "传输设备${resource_name} 槽位 ${metric__index} ${metric__position} 侧电源异常",
+      "description": "监控 BKTel HFC862 NECE 模块左右电源单元的告警状态，出现 alarm / warning 时触发告警，提示电源单元故障或冗余缺失。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "BKTel HFC风扇异常",
+      "alert_name": "传输设备${resource_name} 槽位 ${metric__index} ${metric__position} 侧风扇异常",
+      "description": "监控 BKTel HFC862 NECE 模块左右风扇单元的告警状态，出现 alarm / warning 时触发告警，散热故障可能导致设备过热。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

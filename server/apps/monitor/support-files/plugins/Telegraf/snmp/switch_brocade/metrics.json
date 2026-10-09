@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_brocade",
   "plugin": "Switch Brocade SNMP",
-  "plugin_desc": "SNMP monitoring template for Brocade switch. It reports uptime, CPU utilization, memory utilization/total/free/used, temperature, fan, power supply status, and interface traffic, for ICX/FCX/NetIron, Ruckus ICX, and Foundry/IronWare (enterprise PEN 1991).",
+  "plugin_desc": "SNMP monitoring template for Brocade switch. It reports uptime, CPU utilization, memory utilization/total/free/used, temperature, fan, power supply status, and interface traffic, for ICX/FCX/NetIron, Ruckus ICX, and Foundry/IronWare (enterprise PEN 1991). When FastIron CPU/memory scalars are absent, Fabric OS swCpuUsage/swMemUsage (enterprise PEN 1588) are used as a fallback.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_brocade'}) by (instance_id)",
   "name": "Switch",
@@ -30,7 +30,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the 1-minute average CPU utilization of the Brocade/Foundry/Ruckus ICX device (snAgGblCpuUtil1MinAvg, a scalar GET with instance .0), reported directly as a 0-100 percentage. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
+      "description": "This metric reports the 1-minute average CPU utilization of the Brocade/Foundry/Ruckus ICX device (snAgGblCpuUtil1MinAvg, a scalar GET with instance .0), reported directly as a 0-100 percentage. When that FastIron scalar is absent, Fabric OS swCpuUsage (0-100) is used instead. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
     },
     {
       "metric_group": "Memory",
@@ -43,7 +43,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the system DRAM utilization of the Brocade/Foundry/Ruckus ICX device (snAgSystemDRAMUtil, a scalar GET with instance .0), falling back to snAgGblDynMemUtil when DRAM is absent, reported directly as a 0-100 percentage. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
+      "description": "This metric reports the system DRAM utilization of the Brocade/Foundry/Ruckus ICX device (snAgSystemDRAMUtil, a scalar GET with instance .0), falling back to snAgGblDynMemUtil when DRAM is absent, reported directly as a 0-100 percentage. When FastIron memory scalars are absent, Fabric OS swMemUsage (0-100) is used instead. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
     },
     {
       "metric_group": "Memory",

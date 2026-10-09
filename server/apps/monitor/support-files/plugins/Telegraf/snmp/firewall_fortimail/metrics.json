@@ -1,0 +1,126 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_fortimail",
+  "plugin": "Firewall Fortinet FortiMail SNMP",
+  "plugin_desc": "SNMP monitoring template for Fortinet FortiMail email security gateways (PEN 12356, tree 1.3.6.1.4.1.12356.105). Besides standard IF-MIB 64-bit interface traffic, it collects CPU and memory utilization and log / mail disk usage (all %).",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='firewall', collect_type='snmp_fortimail'}) by (instance_id)",
+  "name": "Firewall",
+  "icon": "mm-firewall_防火墙",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='firewall'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_log_disk_usage",
+    "device_mail_disk_usage"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='firewall', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Uptime of the FortiMail gateway since the last restart (IF-MIB sysUpTime), in seconds."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_cpu_usage",
+      "query": "max(snmp_device_cpu_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Instantaneous CPU utilization of the FortiMail gateway (FORTINET-FORTIMAIL-MIB fmlSysCpuUsage, Gauge32 percent). Values outside 0-100 are dropped."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_memory_usage",
+      "query": "max(snmp_device_memory_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Instantaneous memory utilization of the FortiMail gateway (FORTINET-FORTIMAIL-MIB fmlSysMemUsage, Gauge32 percent). Values outside 0-100 are dropped."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_log_disk_usage",
+      "query": "max(snmp_device_log_disk_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "Log Disk Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Log disk utilization of the FortiMail gateway (FORTINET-FORTIMAIL-MIB fmlSysLogDiskUsage, Gauge32 percent). Values outside 0-100 are dropped."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_mail_disk_usage",
+      "query": "max(snmp_device_mail_disk_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "Mail Disk Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Mail disk utilization of the FortiMail gateway (FORTINET-FORTIMAIL-MIB fmlSysMailDiskUsage, Gauge32 percent). Values outside 0-100 are dropped."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average rate of bytes received over the past 5 minutes from the 64-bit IF-MIB ifHCInOctets counter."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average rate of bytes sent over the past 5 minutes from the 64-bit IF-MIB ifHCOutOctets counter."
+    }
+  ]
+}

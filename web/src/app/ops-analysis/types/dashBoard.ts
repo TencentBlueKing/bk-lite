@@ -173,8 +173,10 @@ export interface ValueConfig {
   appearance?: ScreenWidgetAppearance;
 }
 
+export type ScreenWidgetFrame = 'panel' | 'bare';
+
 export interface ScreenWidgetAppearance {
-  frame?: 'panel' | 'bare';
+  frame?: ScreenWidgetFrame;
 }
 
 export interface ScreenRenderContext {
@@ -249,6 +251,8 @@ export interface ViewConfigProps {
   builtinNamespaceId?: number;
   showChartThemeMode?: boolean;
   surface?: OpsAnalysisWidgetSurface;
+  variant?: 'drawer' | 'panel';
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 export interface ComponentSelectorConfigItem extends DatasourceItem {

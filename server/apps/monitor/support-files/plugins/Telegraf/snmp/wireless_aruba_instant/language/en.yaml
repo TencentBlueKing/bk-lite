@@ -1,0 +1,39 @@
+Wireless Aruba Instant SNMP:
+  name: Aruba Instant (Telegraf)
+  desc: "SNMP monitoring template for HPE Aruba Instant (IAP) cluster, collected from the Virtual Controller. It reports uptime, per-AP CPU utilization, per-AP memory, AP status, and interface traffic (enterprise PEN 14823)."
+monitor_object:
+  Wireless: Wireless
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the Aruba Instant Virtual Controller
+        since the last restart (sysUpTime). Monitoring uptime helps identify unexpected
+        reboots or VC failover.
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: CPU utilization of each access point in the Aruba Instant cluster (AI-AP-MIB
+        aiAPCPUUtilization), one series per AP. Sustained high CPU on an AP can degrade
+        client service and roaming.
+    device_memory_total:
+      name: Memory Total
+      desc: Total memory of each access point in bytes (AI-AP-MIB aiAPTotalMemory).
+    device_memory_free:
+      name: Memory Free
+      desc: Free memory of each access point in bytes (AI-AP-MIB aiAPMemoryFree).
+    device_memory_usage:
+      name: Memory Utilization
+      desc: Memory utilization of each access point, computed as (total - free) / total
+        * 100. High memory pressure can cause client association failures.
+    wireless_ap_state:
+      name: AP Status
+      desc: Status of each access point known to the Virtual Controller (AI-AP-MIB
+        aiAPStatus), normalized to 1 = up and 2 = down.
+monitor_object_metric_group:
+  Wireless:
+    Base: Base
+    CPU: CPU
+    Memory: Memory
+    Wireless: Wireless

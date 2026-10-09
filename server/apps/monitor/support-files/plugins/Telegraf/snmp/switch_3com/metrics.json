@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_3com",
   "plugin": "Switch 3Com SNMP",
-  "plugin_desc": "SNMP monitoring template for 3Com switch. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 43).",
+  "plugin_desc": "SNMP monitoring template for 3Com switch. It reports uptime, CPU utilization, memory utilization, fan status, power-supply status, slot temperature, and interface traffic (enterprise PEN 43, A3COM-HUAWEI-LswDEVM-MIB).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_3com'}) by (instance_id)",
   "name": "Switch",
@@ -15,7 +15,10 @@
   ],
   "supplementary_indicators": [
     "snmp_uptime",
-    "device_cpu_usage"
+    "device_cpu_usage",
+    "device_temperature_celsius",
+    "device_fan_state",
+    "device_psu_state"
   ],
   "metrics": [
     {
@@ -138,6 +141,64 @@
         "instance_id"
       ],
       "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "device_fan_state{instance_type='switch', __$labels__}",
+      "display_name": "Fan State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Fan status of the 3Com switch (A3COM-HUAWEI-LswDEVM-MIB hwDevMFanStatus; active(1) and not-install(3) map to 1=normal; deactive(2) and unsupport(4) map to 2=abnormal)."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='switch', __$labels__}",
+      "display_name": "PSU State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Power-supply status of the 3Com switch (A3COM-HUAWEI-LswDEVM-MIB hwDevMPowerStatus; active(1) and not-install(3) map to 1=normal; deactive(2) and unsupport(4) map to 2=abnormal)."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "frame",
+          "description": "Frame index"
+        },
+        {
+          "name": "slot",
+          "description": "Slot index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Slot temperature of the 3Com switch in Celsius (A3COM-HUAWEI-LswDEVM-MIB hwDevMSlotEnvironmentValue, type temperature)."
     }
   ]
 }

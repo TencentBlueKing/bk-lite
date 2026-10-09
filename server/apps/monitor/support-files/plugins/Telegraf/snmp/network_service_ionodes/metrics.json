@@ -1,0 +1,112 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_ionodes",
+  "plugin": "NetworkService IONODES SNMP",
+  "plugin_desc": "SNMP monitoring template for IONODES ION Series IP video encoders. It reports uptime, CPU utilization, memory utilization, chassis temperature, and interface traffic (enterprise PEN 40748, ionSystem scalars).",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='network_service', collect_type='snmp_ionodes'}) by (instance_id)",
+  "name": "NetworkService",
+  "icon": "mm-network_service_网络服务",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='network_service'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_cpu_usage",
+      "display_name": "CPU Usage",
+      "query": "max(snmp_device_cpu_usage{instance_type='network_service', __$labels__}) by (instance_id)",
+      "unit": "percent",
+      "data_type": "Number",
+      "description": "CPU utilization of the IONODES ION Series encoder as a percentage (ionSysCpuUsage Integer32 0..100). Values outside 0..100 and sentinel readings are dropped."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_usage",
+      "display_name": "Memory Usage",
+      "query": "max(snmp_device_memory_usage{instance_type='network_service', __$labels__}) by (instance_id)",
+      "unit": "percent",
+      "data_type": "Number",
+      "description": "Memory utilization of the IONODES ION Series encoder as a percentage (ionSysMemUsage Integer32 0..100). Values outside 0..100 and sentinel readings are dropped."
+    },
+    {
+      "metric_group": "Temperature",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_temperature_celsius",
+      "display_name": "Temperature",
+      "query": "max(snmp_device_temperature_celsius{instance_type='network_service', __$labels__}) by (instance_id)",
+      "unit": "celsius",
+      "data_type": "Number",
+      "description": "Chassis temperature of the IONODES ION Series encoder in degrees Celsius (ionSysTemperature Integer32). Readings outside -40..125 C and sentinel values are dropped."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

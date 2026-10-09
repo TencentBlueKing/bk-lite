@@ -1,0 +1,318 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_alpineoe"
+        config_type = "alpineoe"
+        brand = "alpineoe"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- 系统风扇表 alpineTEFanCardTable …52326.2.1.5.1（INDEX alpineTEFanCardId）；table.field 不带 .0 ----
+    # .2 FansTotalCnt helper：只输出 1..count 号风扇；.9/.11/.13 转速 RPM；.10/.12/.14 状态 0=Normal 1=Abnormal。
+    [[inputs.snmp.table]]
+        name = "alpine_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.52326.2.1.5.1.2"
+        name = "fans_total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.52326.2.1.5.1.9"
+        name = "fan1_speed"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.52326.2.1.5.1.10"
+        name = "fan1_status"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.52326.2.1.5.1.11"
+        name = "fan2_speed"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.52326.2.1.5.1.12"
+        name = "fan2_status"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.52326.2.1.5.1.13"
+        name = "fan3_speed"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.52326.2.1.5.1.14"
+        name = "fan3_status"
+    # ---- 系统电源表 alpineTEPowerCardTable …52326.2.1.4.1（INDEX alpineTEPowerCardId）----
+    # .8 PowerInStatus 0=On 1=Off；.10 PowerOutStatus 0=Normal 1=VHigh 2=VLow；.9 PowerOutVal OCTET STRING 伏特。
+    [[inputs.snmp.table]]
+        name = "alpine_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.52326.2.1.4.1.8"
+        name = "input_status"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.52326.2.1.4.1.10"
+        name = "output_status"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.52326.2.1.4.1.9"
+        name = "voltage_raw"
+    # ---- 槽位温度 alpineTEBISlotTemperature …52326.2.1.1.1.8（INDEX 槽位，OCTET STRING ℃）----
+    [[inputs.snmp.table]]
+        name = "slot_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.52326.2.1.1.1.8"
+        name = "celsius_raw"
+    # ---- EDFA 温度 gceTemperature …52326.1.1.1.1.8（OCTET STRING ℃）----
+    [[inputs.snmp.table]]
+        name = "edfa_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.52326.1.1.1.1.8"
+        name = "celsius_raw"
+# ---- 无私有 CPU% / 内存利用率，不臆造。----
+
+# ---- 一行三风扇拆成 per-fan 指标（fan=1/2/3 + 卡 index），避免同 tag 覆盖；helper 不落库。----
+[[processors.starlark]]
+    namepass = ["alpine_fan"]
+    source = '''
+def _sentinel(v):
+    if v == None:
+        return True
+    x = int(v)
+    if x == 65535 or x == 65534:
+        return True
+    if x == 2147483647 or x == -2147483648:
+        return True
+    if x == 4294967295:
+        return True
+    return False
+
+def _child(metric, name):
+    m = Metric(name)
+    for k, v in metric.tags.items():
+        m.tags[k] = v
+    m.time = metric.time
+    return m
+
+def apply(metric):
+    f = metric.fields
+    total = f.pop("fans_total", None)
+    max_n = 3
+    if total != None and not _sentinel(total):
+        tn = int(total)
+        if tn < 0:
+            tn = 0
+        if tn < max_n:
+            max_n = tn
+    out = []
+    for n in [1, 2, 3]:
+        sk = "fan" + str(n) + "_speed"
+        tk = "fan" + str(n) + "_status"
+        speed = f.pop(sk, None)
+        status = f.pop(tk, None)
+        if n > max_n:
+            continue
+        row = _child(metric, "device_fan")
+        row.tags["fan"] = str(n)
+        if speed != None and not _sentinel(speed):
+            rpm = float(speed)
+            if rpm >= 0 and rpm <= 30000:
+                row.fields["speed"] = rpm
+        if status != None and not _sentinel(status):
+            st = int(status)
+            if st == 0:
+                row.fields["state"] = 1
+            elif st == 1:
+                row.fields["state"] = 2
+        if len(row.fields.keys()) == 0:
+            continue
+        out.append(row)
+    if len(out) == 0:
+        return None
+    return out
+'''
+    [processors.starlark.tagpass]
+        brand = ["alpineoe"]
+
+# ---- 电源状态归一（未知丢弃）；电压 OCTET 解析浮点，无法解析或 ≤0 丢弃。helper 不落库。----
+[[processors.starlark]]
+    namepass = ["alpine_psu"]
+    source = '''
+def _sentinel(v):
+    if v == None:
+        return True
+    t = type(v)
+    if t != "int" and t != "float":
+        return False
+    x = int(v)
+    if x == 65535 or x == 65534:
+        return True
+    if x == 2147483647 or x == -2147483648:
+        return True
+    if x == 4294967295:
+        return True
+    return False
+
+def _parse_num(raw):
+    if raw == None:
+        return None
+    t = type(raw)
+    if t == "int" or t == "float":
+        return float(raw)
+    s = str(raw).strip()
+    if s == "":
+        return None
+    out = ""
+    seen_digit = False
+    seen_dot = False
+    started = False
+    n = len(s)
+    for i in range(n):
+        c = s[i]
+        if not started:
+            if c == " " or c == "\t":
+                continue
+            if c == "+" or c == "-":
+                out += c
+                started = True
+                continue
+            if c >= "0" and c <= "9":
+                out += c
+                seen_digit = True
+                started = True
+                continue
+            return None
+        if c >= "0" and c <= "9":
+            out += c
+            seen_digit = True
+        elif c == "." and not seen_dot:
+            out += c
+            seen_dot = True
+        else:
+            break
+    if not seen_digit:
+        return None
+    if out.endswith("."):
+        out = out[:-1]
+    return float(out)
+
+def _child(metric, name):
+    m = Metric(name)
+    for k, v in metric.tags.items():
+        m.tags[k] = v
+    m.time = metric.time
+    return m
+
+def apply(metric):
+    f = metric.fields
+    inn = f.pop("input_status", None)
+    outst = f.pop("output_status", None)
+    volt_raw = f.pop("voltage_raw", None)
+    out = []
+    psu = _child(metric, "device_psu")
+    if inn != None and not _sentinel(inn):
+        iv = int(inn)
+        if iv == 0:
+            psu.fields["input_state"] = 1
+        elif iv == 1:
+            psu.fields["input_state"] = 2
+    if outst != None and not _sentinel(outst):
+        ov = int(outst)
+        if ov == 0:
+            psu.fields["output_state"] = 1
+        elif ov == 1 or ov == 2:
+            psu.fields["output_state"] = 2
+    if len(psu.fields.keys()) != 0:
+        out.append(psu)
+    volts = _parse_num(volt_raw)
+    if volts != None and volts > 0:
+        vmetric = _child(metric, "device_voltage")
+        vmetric.fields["volts"] = volts
+        out.append(vmetric)
+    if len(out) == 0:
+        return None
+    return out
+'''
+    [processors.starlark.tagpass]
+        brand = ["alpineoe"]
+
+# ---- 槽位/EDFA 温度：OCTET 解析为 ℃，空串/无法解析/−40..125 外丢弃。----
+[[processors.starlark]]
+    namepass = ["slot_temperature", "edfa_temperature"]
+    source = '''
+def _parse_num(raw):
+    if raw == None:
+        return None
+    t = type(raw)
+    if t == "int" or t == "float":
+        return float(raw)
+    s = str(raw).strip()
+    if s == "":
+        return None
+    out = ""
+    seen_digit = False
+    seen_dot = False
+    started = False
+    n = len(s)
+    for i in range(n):
+        c = s[i]
+        if not started:
+            if c == " " or c == "\t":
+                continue
+            if c == "+" or c == "-":
+                out += c
+                started = True
+                continue
+            if c >= "0" and c <= "9":
+                out += c
+                seen_digit = True
+                started = True
+                continue
+            return None
+        if c >= "0" and c <= "9":
+            out += c
+            seen_digit = True
+        elif c == "." and not seen_dot:
+            out += c
+            seen_dot = True
+        else:
+            break
+    if not seen_digit:
+        return None
+    if out.endswith("."):
+        out = out[:-1]
+    return float(out)
+
+def apply(metric):
+    f = metric.fields
+    raw = f.pop("celsius_raw", None)
+    val = _parse_num(raw)
+    if val == None or val < -40 or val > 125:
+        return None
+    f["celsius"] = float(int(val * 10.0 + 0.5)) / 10.0
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["alpineoe"]

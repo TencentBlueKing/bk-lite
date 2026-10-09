@@ -141,19 +141,42 @@ def test_ui_is_pure_snmp_form_with_sidecar_secret_fields(ui):
     assert "priv_password" not in field_names
 
 
+COLLECTED_VENDOR_METRICS = {
+    "device_cpu_usage",
+    "device_memory_total",
+    "device_memory_usage",
+    "device_temperature_celsius",
+    "device_fan_speed",
+    "device_fan_state",
+    "device_psu_state",
+    "device_psu_temperature_celsius",
+}
+UNCOLLECTED_HEALTH_METRICS = {
+    "device_memory_used",
+    "device_memory_free",
+    "device_fan_rpm",
+    "device_transceiver_temperature_celsius",
+    "device_ipmi_temperature_celsius",
+}
+
+
 @pytest.mark.unit
 def test_metrics_json_declares_only_psu_temperature_vendor_delta(metrics):
     names = {metric["name"] for metric in metrics["metrics"]}
     floor = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
-    assert names - floor == {"device_psu_temperature_celsius"}
+    assert names - floor == COLLECTED_VENDOR_METRICS
     assert floor <= names
-    # Anti-fabricated-health assertions: per-row / heterogeneous sensor
-    # leaves must NOT be promoted as scalar bk-lite metrics.
-    forbidden_vendor_metric_names = (
-        HEALTH_METRICS - {"device_temperature_celsius"}
-    )
-    assert names & forbidden_vendor_metric_names == set()
-    assert set(metrics["supplementary_indicators"]) == {"snmp_uptime", "device_psu_temperature_celsius"}
+    assert names & UNCOLLECTED_HEALTH_METRICS == set()
+    assert set(metrics["supplementary_indicators"]) == {
+        "snmp_uptime",
+        "device_cpu_usage",
+        "device_memory_usage",
+        "device_temperature_celsius",
+        "device_fan_speed",
+        "device_fan_state",
+        "device_psu_state",
+        "device_psu_temperature_celsius",
+    }
 
 
 @pytest.mark.unit
@@ -191,9 +214,8 @@ def test_no_per_row_or_arbitrary_sibling_scalar_collected_in_toml(toml_text):
             f"Baseline TOML should not collect per-row / sibling scalar leaf {forbidden!r}"
         )
     assert "[[processors.enum]]" not in body_lines
-    # Only the single chassis-level PSU 1 scalar is collected
-    assert "1.3.6.1.4.1.36673.100.2.1.0" in body_lines
-    assert "device_psu_temperature_celsius" in body_lines
+    assert "1.3.6.1.4.1.36673.100.2.1.0" not in body_lines
+    assert "1.3.6.1.4.1.36673.100.1.2.6.1.11" in body_lines
 
 
 @pytest.mark.unit

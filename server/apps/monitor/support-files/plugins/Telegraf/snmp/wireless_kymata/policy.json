@@ -1,0 +1,61 @@
+{
+  "object": "Wireless",
+  "plugin": "Wireless Kymata SNMP",
+  "templates": [
+    {
+      "name": "Kymata放大器温度过高",
+      "alert_name": "Kymata放大器${resource_name} 温度过高",
+      "description": "监控 Kymata 室外 WiFi 射频放大器机内温度，当持续高于阈值时触发告警。设备自身的 highTemperature 告警在超过 75℃ 时触发。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Kymata放大器告警",
+      "alert_name": "Kymata放大器${resource_name} 告警状态异常",
+      "description": "监控 Kymata 放大器 alarmStatus，当存在 AP 告警、输出功率过低、射频板电源故障或高温告警时触发。",
+      "metric_name": "kymata_alarm_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Kymata放大器射频板电源故障",
+      "alert_name": "Kymata放大器${resource_name} 射频板电源故障",
+      "description": "监控 Kymata 放大器 pcbPowerProblem，当射频板电源故障位置位时触发严重告警。",
+      "metric_name": "kymata_pcb_power_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}
