@@ -242,6 +242,8 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "uptime",
         "cpu",
         "memory",
+        "fan",
+        "psu",
         "traffic"
       ]
     },
