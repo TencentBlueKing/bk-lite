@@ -6,22 +6,25 @@ cross-vendor design decisions for the SNMP brand-plugin family.
 SNR (НАГ, NAG-MIB, IANA PEN 40418) exposes device health from the sysSlotTable:
 per-slot CPU (sysCpuUsage), memory (sysMemorySize / sysMemoryBusy), a dedicated
 temperature column (sysTemperature) and a fan status column (sysFanStatus).
-Unlike Eltex there is NO PSU object in NAG-MIB, so device_psu_state is N/A and
-must not be modelled. The fan raw codes are 0=Normal / 1=Abnormal (note the
-inverted polarity vs Eltex's 1=OK), normalized via processors.enum so 0->1
-(healthy) and everything else ->2 (fault).
+Power state comes from priPowerSupply (priPowerTable, INDEX priPowerIndex),
+normalized via starlark: 1->1 (healthy), 0/2->2 (fault). The fan raw codes
+are 0=Normal / 1=Abnormal (note the inverted polarity vs Eltex's 1=OK),
+normalized via starlark so 0->1 (healthy) and everything else ->2 (fault).
+Uninstalled fan positions (sysFanInserted=0) are kept and reported as 1
+(healthy, no alert).
 
   - device_cpu_usage: sysCpuUsage percent, per-slot (index dimension)
   - device_memory_total/used: bytes; usage = used/total*100 (per-slot)
   - device_temperature_celsius: sysTemperature, per-slot
   - device_fan_state: Enum 1=healthy/2=fault; policy alerts on state > 1
+  - device_psu_state: Enum 1=healthy/2=fault; policy alerts on state = 2
   - interface_ifHCIn/OutOctets: byte-identical Cisco
 
 SNR reuses the shared Switch metric names + existing Temperature / Hardware
 Status groups, so i18n and the shared switch dashboard are already in place. New
 brand `snr` adds a common.tsx match + icon.
 
-OID correctness is intentionally NOT tested here (pending on-site SNMP walk).
+OID correctness is intentionally NOT tested here.
 """
 import json
 from pathlib import Path
@@ -50,8 +53,8 @@ SUPPORTED_SCALAR_UNITS = {
 }
 INTERFACE_METRICS = ("interface_ifHCInOctets", "interface_ifHCOutOctets")
 MEMORY_METRICS = ("device_memory_total", "device_memory_used", "device_memory_usage")
-ENUM_METRICS = ("device_fan_state",)
-ABSENT_METRICS = ("device_psu_state",)
+ENUM_METRICS = ("device_fan_state", "device_psu_state")
+PSU_SUPPLY_OID = "1.3.6.1.4.1.40418.7.100.1.23.1.3"
 INDEX_DIMENSION = [{"name": "index", "description": "SNMP table row index"}]
 MEMORY_USAGE_QUERY = (
     "device_memory_used{instance_type='switch', __$labels__} / "
@@ -150,7 +153,7 @@ def test_shared_metrics_match_cisco_group_and_unit(metrics, cisco_metrics):
             continue
         if m["metric_group"] != base["metric_group"]:
             drift.append(f'{m["name"]}.group')
-        # fan unit legitimately differs (processors.enum normalization to 2 values)
+        # fan/psu units are vendor-normalized and need not match Cisco native codes
         if m["name"] not in ENUM_METRICS and m["unit"] != base["unit"]:
             drift.append(f'{m["name"]}.unit')
     assert drift == [], f"shared-metric drift vs Cisco: {drift}"
@@ -203,7 +206,7 @@ def test_memory_usage_is_used_over_total(metrics):
 
 
 # --------------------------------------------------------------------------- #
-# Environment: temperature + fan, but NO PSU (NAG-MIB has no PSU object)
+# Environment: temperature + fan + PSU
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
 def test_temperature_is_celsius_per_slot(metrics):
@@ -227,26 +230,51 @@ def test_fan_is_normalized_enum(metrics):
 
 
 @pytest.mark.unit
-def test_psu_is_not_modelled(metrics):
-    names = {m["name"] for m in metrics["metrics"]}
-    present = [a for a in ABSENT_METRICS if a in names]
-    assert present == [], f"NAG-MIB has no PSU object; must not model: {present}"
+def test_psu_is_normalized_enum(metrics):
+    psu = {m["name"]: m for m in metrics["metrics"]}["device_psu_state"]
+    assert psu["data_type"] == "Enum"
+    assert psu["metric_group"] == "Hardware Status"
+    assert psu["dimensions"] == INDEX_DIMENSION
+    opts = json.loads(psu["unit"])
+    ids = sorted(o["id"] for o in opts)
+    assert ids == [1, 2], f"psu enum must be normalized to 1=healthy/2=fault, got {ids}"
+    assert "device_psu_state{" in psu["query"]
+    assert "max(" not in psu["query"]
 
 
 # --------------------------------------------------------------------------- #
-# telegraf enum normalization: single namepass-isolated block, 0->1, default=2
+# telegraf starlark: fan namepass-isolated; uninstalled → 1; raw 0 → 1, else → 2
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
-def test_toml_has_one_enum_processor_block(toml_text):
-    assert toml_text.count("[[processors.enum]]") == 1
+def test_toml_has_no_enum_processor_block(toml_text):
+    assert toml_text.count("[[processors.enum]]") == 0
 
 
 @pytest.mark.unit
-def test_enum_block_namepass_isolated_normal_zero_fault_default(toml_text):
+def test_fan_starlark_maps_normal_zero(toml_text):
     assert 'namepass = ["device_fan"]' in toml_text
-    assert "default = 2" in toml_text
-    # SNR raw 0 = Normal maps to healthy 1 (inverted polarity vs Eltex)
-    assert '"0" = 1' in toml_text
+    assert "[[processors.starlark]]" in toml_text
+    assert 'int(metric.fields["state"]) == 0' in toml_text
+    assert 'metric.fields["state"] = 1' in toml_text
+    assert 'metric.fields["state"] = 2' in toml_text
+    assert "int(inserted) == 0" in toml_text
+    # 未安装位输出 1 并保留行，不丢弃
+    assert 'if inserted != None and int(inserted) == 0:\n        return None' not in toml_text
+    assert 'metric.fields["state"] = 3' not in toml_text
+
+
+@pytest.mark.unit
+def test_psu_starlark_maps_up_one_fault_zero_and_two(toml_text):
+    assert 'name = "device_psu"' in toml_text
+    assert PSU_SUPPLY_OID in toml_text
+    assert f"{PSU_SUPPLY_OID}.0" not in toml_text
+    assert 'namepass = ["device_psu"]' in toml_text
+    start = toml_text.find('namepass = ["device_psu"]')
+    assert start != -1
+    block = toml_text[start:start + 500]
+    assert 'int(metric.fields["state"]) == 1' in block
+    assert 'metric.fields["state"] = 1' in block
+    assert 'metric.fields["state"] = 2' in block
 
 
 @pytest.mark.unit
@@ -258,12 +286,14 @@ def test_toml_collects_ifhc_counters(toml_text):
 # policy / supplementary / units / dimensions hygiene
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
-def test_policy_covers_cpu_mem_temp_fan_only(policy):
+def test_policy_covers_cpu_mem_temp_fan_psu(policy):
     names = {t["metric_name"] for t in policy["templates"]}
-    assert names == {
+    required = {
         "device_cpu_usage", "device_memory_usage",
         "device_temperature_celsius", "device_fan_state",
-    }, "SNR policy must cover cpu/mem/temp/fan and NOT psu"
+        "device_psu_state",
+    }
+    assert required <= names, f"SNR policy missing: {required - names}"
 
 
 @pytest.mark.unit
@@ -272,6 +302,14 @@ def test_fan_policy_threshold_fault_above_one(policy):
     thr = by["device_fan_state"]["threshold"]
     assert any(t["method"] == ">" and t["value"] == 1 for t in thr), \
         "fan alert must fire when normalized state > 1"
+
+
+@pytest.mark.unit
+def test_psu_policy_threshold_equals_two(policy):
+    by = {t["metric_name"]: t for t in policy["templates"]}
+    thr = by["device_psu_state"]["threshold"]
+    assert any(t["method"] == "=" and t["value"] == 2 for t in thr), \
+        "psu alert must fire when normalized state = 2"
 
 
 @pytest.mark.unit
@@ -324,6 +362,19 @@ def test_plugin_has_bilingual_name_and_desc(languages):
         entry = (data.get("monitor_object_plugin") or {}).get(PLUGIN_NAME) or {}
         assert entry.get("name"), f"{lang}: plugin name missing"
         assert entry.get("desc"), f"{lang}: plugin desc missing"
+
+
+@pytest.mark.unit
+def test_psu_language_enum_is_bilingual():
+    expected = {
+        "zh-Hans": {"1": "正常", "2": "异常"},
+        "en": {"1": "Normal", "2": "Abnormal"},
+    }
+    for lang, labels in expected.items():
+        data = yaml.safe_load((SNR_DIR / "language" / f"{lang}.yaml").read_text(encoding="utf-8"))
+        entry = ((data.get("monitor_object_metric") or {}).get(OBJECT_NAME) or {}).get("device_psu_state") or {}
+        assert entry.get("name"), f"{lang}: device_psu_state name missing"
+        assert entry.get("enum") == labels, f"{lang}: device_psu_state enum mismatch"
 
 
 @pytest.mark.unit
