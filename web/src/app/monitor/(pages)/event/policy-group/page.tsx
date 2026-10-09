@@ -277,8 +277,12 @@ const PolicyGroupPage: React.FC = () => {
       width: 280,
       render: (_, record) => (
         <Permission requiredPermissions={['Edit']}>
-          <Button type="link" onClick={() => void setDefaultPolicyGroup(Number(record.id)).then(() => loadGroups(objectId))}>
-            设为默认
+          <Button
+            type="link"
+            disabled={Boolean(record.is_default)}
+            onClick={() => void setDefaultPolicyGroup(Number(record.id)).then(() => loadGroups(objectId))}
+          >
+            默认
           </Button>
           <Button
             type="link"
