@@ -1,0 +1,108 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_papouch"
+        config_type = "papouch"
+        brand = "papouch"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # TH2E under PEN 18248.20. Table columns must not end in .0. INDEX 1=temperature, 2=humidity, 3=dew point (skipped).
+    # inChValue is INTEGER tenths; inChStatus 0=OK 1=not yet 2=high 3=low 4=error; inChUnits 0=C 1=F 2=K 3=%RH.
+    [[inputs.snmp.table]]
+        name = "papouch_sensor"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.18248.20.1.2.1.1.2"
+        name = "in_ch_value"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.18248.20.1.2.1.1.1"
+        name = "in_ch_status"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.18248.20.1.2.1.1.3"
+        name = "in_ch_units"
+    # Optional TME scalar under 18248.1, field with .0. INTEGER tenths of a degree C.
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.18248.1.1.1.0"
+        name = "tme_temperature"
+
+[[processors.starlark]]
+    namepass = ["snmp", "papouch_sensor"]
+    source = '''
+def apply(metric):
+    tme = metric.fields.pop("tme_temperature", None)
+    if tme != None and type(tme) in ["int", "float"]:
+        tme_c = tme / 10.0
+        if tme_c >= -40.0 and tme_c <= 125.0:
+            metric.fields["env_temperature_celsius"] = tme_c
+    raw = metric.fields.pop("in_ch_value", None)
+    status = metric.fields.pop("in_ch_status", None)
+    units = metric.fields.pop("in_ch_units", None)
+    if raw == None:
+        return metric
+    idx = metric.tags.get("index")
+    if idx == "3":
+        return None
+    if status == None or status == 1 or status == 4:
+        return None
+    if type(raw) not in ["int", "float"]:
+        return None
+    if units == None:
+        if idx != "1" and idx != "2":
+            return None
+    eng = raw / 10.0
+    if status == 0:
+        limit_state = 1
+    else:
+        limit_state = 2
+    if units == 3 or idx == "2":
+        if eng < 0.0 or eng > 100.0:
+            return None
+        metric.fields["env_humidity_percent"] = eng
+        metric.fields["env_humidity_limit_state"] = limit_state
+    else:
+        if units == 1:
+            celsius = (eng - 32.0) * 5.0 / 9.0
+        elif units == 2:
+            celsius = eng - 273.15
+        elif units == 0 or units == None:
+            celsius = eng
+        else:
+            return None
+        if celsius < -40.0 or celsius > 125.0:
+            return None
+        metric.fields["env_temperature_celsius"] = celsius
+        metric.fields["env_temperature_limit_state"] = limit_state
+    metric.tags.pop("index", None)
+    metric.name = "snmp"
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["papouch"]

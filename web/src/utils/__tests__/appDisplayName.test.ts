@@ -134,6 +134,12 @@ describe('resolveAppTag', () => {
     expect(resolveAppTag('tag.rum_quality', tEn)).toBe('Quality');
     expect(resolveAppTag('tag.rum_alerting', tEn)).toBe('Events');
     expect(resolveAppTag('tag.rum_governance', tEn)).toBe('Data Governance');
+    expect(resolveAppTag('tag.workflow_design', tZh)).toBe('流程设计');
+    expect(resolveAppTag('tag.workflow_execution', tZh)).toBe('流程执行');
+    expect(resolveAppTag('tag.automation', tZh)).toBe('自动化');
+    expect(resolveAppTag('tag.approval', tZh)).toBe('人工审批');
+    expect(resolveAppTag('tag.workflow_design', tEn)).toBe('Workflow Design');
+    expect(resolveAppTag('tag.approval', tEn)).toBe('Human Approval');
   });
 
   it('keeps unknown custom tags', () => {

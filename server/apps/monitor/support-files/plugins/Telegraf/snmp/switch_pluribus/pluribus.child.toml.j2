@@ -62,21 +62,16 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.25.3.3.1.2"
         name = "usage"
-    # ---- Pluribus Netvisor ONE memory (UCD-SNMP-MIB memTotalReal/memAvailReal, KB → 字节) ----
-    # 待现网核验：内存总量 .2021.4.5.0 (memTotalReal, KB) / 空闲 .2021.4.6.0 (memAvailReal, KB)。
-    [[inputs.snmp.table]]
-        name = "device_memory"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.4.5"
-        name = "total"
-        conversion = "int"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2021.4.6"
-        name = "free"
-        conversion = "int"
-    # ---- Pluribus Netvisor ONE temperature (LM-SENSORS-MIB lmTempSensorsValue, 表 OID, ℃) ----
-    # 待现网核验：lmTempSensorsValue 表 1.3.6.1.4.1.2021.13.16.2.1.3（℃，部分平台 m℃ 需缩放）；盘侧 max by instance 取最高温传感器。
+    # ---- Pluribus Netvisor ONE 内存（UCD-SNMP-MIB memory = 1.3.6.1.4.1.2021.4）：标量，顶层 field 带 .0 → measurement snmp ----
+    # memTotalReal .5.0 / memAvailReal .6.0：Integer32，单位 kB；下方 starlark ×1024 转字节并计算利用率。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2021.4.5.0"
+        name = "mem_total_kb"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2021.4.6.0"
+        name = "mem_avail_kb"
+    # ---- Pluribus Netvisor ONE temperature (LM-SENSORS-MIB lmTempSensorsValue 1.3.6.1.4.1.2021.13.16.2.1.3, Gauge32, 按 MIB 定义单位为 mC) ----
+    # 表列按行 walk（table.field 不带 .0），原值写入 device_temperature.celsius；查询侧 ÷1000 换算为 ℃，盘侧 max by instance 取最高温传感器。
     [[inputs.snmp.table]]
         name = "device_temperature"
         inherit_tags = ["source"]
@@ -85,3 +80,20 @@
         oid = "1.3.6.1.4.1.2021.13.16.2.1.3"
         name = "celsius"
 # ---- 风扇/电源：Pluribus Netvisor ONE 以软件 NOS 运行于白盒交换机硬件，标准 NET-SNMP（HOST-RESOURCES/UCD/LM-SENSORS）未以无需行级过滤的标量形式暴露独立风扇状态与电源状态 OID → 风扇/电源 N/A 不采。CPU/内存/温度/接口四项干净可采。----
+# ---- 内存：kB → 字节，利用率 = (total - avail) / total × 100。原始字段换算后删除。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    total = metric.fields.pop("mem_total_kb", None)
+    avail = metric.fields.pop("mem_avail_kb", None)
+    if total != None:
+        metric.fields["device_memory_total"] = int(total) * 1024
+    if avail != None:
+        metric.fields["device_memory_free"] = int(avail) * 1024
+    if total != None and avail != None and int(total) > 0:
+        metric.fields["device_memory_usage"] = (float(total) - float(avail)) * 100.0 / float(total)
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["pluribus"]

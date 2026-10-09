@@ -73,6 +73,33 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.674.11000.5000.100.4.1.2.1.1.4"
         name = "state"
-# ---- 内存:AlliedWare Plus 无标准 mempool 私有 OID(LibreNMS awplus 无 mempool 块) → 内存 N/A。CPU/温度/风扇/电源四项干净可采。----
+    # ---- 内存：UCD-SNMP-MIB memory 标量（OS10 基于 Linux 的 net-snmp 代理提供），顶层 field 带 .0 → measurement snmp，查询用 snmp_ 前缀 ----
+    # memTotalReal 1.3.6.1.4.1.2021.4.5.0 / memAvailReal 1.3.6.1.4.1.2021.4.6.0：Integer32，单位 kB；下方 starlark ×1024 → 字节并计算已用与使用率。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2021.4.5.0"
+        name = "mem_total_kb_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2021.4.6.0"
+        name = "mem_avail_kb_raw"
 # ---- 状态归一:风扇/电源 good(2)→1(正常),其余(failed/notPowered/null)→2(异常)。----
-# ---- Dell EMC OS10 交换机:CPU=HOST-RESOURCES hrProcessorLoad(.25.3.3.1.2,每核avg);温度=os10CardTemp(.674.11000.5000.100.4.1.1.4.1.5,专用表max);风扇=os10FanOperStatus(.4.1.2.3.1.7);电源=os10PowerSupplyOperStatus(.4.1.2.1.1.4)。fan/psu 原生 1=normal/2=abnormal 恰为本约定,无需 enum。内存:hrStorage 多行(Physical memory 行索引不固定)→N/A。dell-os10.snmprec 实证 cpu30/温37/fan1/psu1。----
+# ---- Dell EMC OS10 交换机:CPU=HOST-RESOURCES hrProcessorLoad(.25.3.3.1.2,每核avg);内存=UCD-SNMP-MIB memTotalReal/memAvailReal(.2021.4.5.0/.4.6.0,kB 标量);温度=os10CardTemp(.674.11000.5000.100.4.1.1.4.1.5,专用表max);风扇=os10FanOperStatus(.4.1.2.3.1.7);电源=os10PowerSupplyOperStatus(.4.1.2.1.1.4)。fan/psu 原生 1=normal/2=abnormal 恰为本约定,无需 enum。----
+
+# ---- 内存：kB ×1024 → 字节，输出 device_memory_total / free / used 与 usage=(total-free)/total*100；总量非正、空闲为负或超出总量时不输出内存字段。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    total = metric.fields.pop("mem_total_kb_raw", None)
+    free = metric.fields.pop("mem_avail_kb_raw", None)
+    if type(total) not in ["int", "float"] or type(free) not in ["int", "float"]:
+        return metric
+    if total <= 0 or free < 0 or free > total:
+        return metric
+    metric.fields["device_memory_total"] = int(total) * 1024
+    metric.fields["device_memory_free"] = int(free) * 1024
+    metric.fields["device_memory_used"] = (int(total) - int(free)) * 1024
+    metric.fields["device_memory_usage"] = (total - free) * 100.0 / total
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["dellos10"]

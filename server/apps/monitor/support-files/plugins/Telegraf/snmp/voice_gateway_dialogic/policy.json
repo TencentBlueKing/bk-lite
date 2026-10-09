@@ -1,0 +1,56 @@
+{
+  "object": "VoiceGateway",
+  "plugin": "VoiceGateway Dialogic SNMP",
+  "templates": [
+    {
+      "name": "Dialogic语音网关CPU使用率过高",
+      "alert_name": "语音网关${resource_name} CPU 使用率过高",
+      "description": "监控 Dialogic IMG 2020 的 CPU Busy 百分比，当持续高于阈值时触发告警，提示控制平面过载，可能影响呼叫处理与管理响应。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Dialogic语音网关温度过高",
+      "alert_name": "语音网关${resource_name} 温度过高",
+      "description": "监控 Dialogic IMG 2020 各位置温度，当持续高于阈值时触发告警，提示散热或风道异常，避免过热影响语音业务。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 50,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

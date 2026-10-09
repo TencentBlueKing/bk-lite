@@ -55,3 +55,34 @@
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.23695.200.1.1.1.3.3.0"
         name = "device_memory_used"
+    # ---- WAN signal: wanName tag + wanSignal dBm; table.field 无 .0 ----
+    [[inputs.snmp.table]]
+        name = "peplink_wan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.23695.2.1.2.1.2"
+        name = "wan_name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.23695.2.1.2.1.5"
+        name = "signal_dbm"
+# ---- WAN signal: keep values in usable radio range (-150..0 dBm); drop out-of-range. ----
+[[processors.starlark]]
+    namepass = ["peplink_wan"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    raw = f.get("signal_dbm")
+    if raw == None:
+        return None
+    v = int(raw)
+    if v < -150 or v > 0:
+        return None
+    f["signal_dbm"] = v
+    if len(f.keys()) == 0:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["peplink"]

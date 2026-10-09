@@ -509,7 +509,9 @@ class UserViewSet(ViewSetUtils):
 
                     email_result = send_local_user_initial_password_email(user, email_password, str(email_channel.id))
                     if not email_result.get("result"):
-                        raise InitialPasswordDeliveryError(email_result.get("message") or "邮件发送失败")
+                        raise InitialPasswordDeliveryError(
+                            email_result.get("message") or loader.get("error.initial_password_email_delivery_failed")
+                        )
 
                 # 记录操作日志
                 log_operation(request, "create", "system-manager", f"新增用户: {kwargs['username']} ({kwargs['lastName']})")

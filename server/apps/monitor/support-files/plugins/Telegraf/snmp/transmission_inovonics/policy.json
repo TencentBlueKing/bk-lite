@@ -1,0 +1,91 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission Inovonics SNMP",
+  "templates": [
+    {
+      "name": "Inovonics监测接收机射频信号过低",
+      "alert_name": "传输设备${resource_name} 射频信号过低",
+      "description": "监控 Inovonics Model 640/650 监测接收机的 RSSI，持续低于站点基线时提示天线、馈线或对端发射异常。",
+      "metric_name": "inovonics_rssi_dbuv",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 30,
+          "method": "<"
+        },
+        {
+          "level": "error",
+          "value": 35,
+          "method": "<"
+        },
+        {
+          "level": "warning",
+          "value": 40,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Inovonics监测接收机音频丢失",
+      "alert_name": "传输设备${resource_name} 音频丢失",
+      "description": "监控 Inovonics 监测接收机音频丢失告警，当 audioLossAlarm 为 on 时提示节目音频中断。",
+      "metric_name": "inovonics_audio_loss_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Inovonics监测接收机低信号告警",
+      "alert_name": "传输设备${resource_name} 低信号告警",
+      "description": "监控 Inovonics 监测接收机低信号告警，当 lowSignalAlarm 为 on 时提示射频电平跌出站点门限。",
+      "metric_name": "inovonics_low_signal_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Inovonics监测接收机RDS错误",
+      "alert_name": "传输设备${resource_name} RDS错误",
+      "description": "监控 Inovonics 监测接收机 RDS 错误告警，当 rdsErrorAlarm 为 on 时提示 RDS 解码异常。",
+      "metric_name": "inovonics_rds_error_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Inovonics监测接收机导频丢失",
+      "alert_name": "传输设备${resource_name} 导频丢失",
+      "description": "监控 Inovonics 监测接收机导频丢失告警，当 pilotLossAlarm 为 on 时提示立体声导频中断。",
+      "metric_name": "inovonics_pilot_loss_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+Wireless Zmtel SNMP:
+  name: Zmtel (Telegraf)
+  desc: "SNMP monitoring template for Zmtel LTE ODU wireless device. It reports uptime, CPU utilization, memory utilization, memory total, and interface traffic (enterprise PEN 38595)."
+monitor_object:
+  Wireless: Wireless
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the Zmtel LTE ODU since the last restart,
+        derived from sysUpTime. Monitoring uptime helps administrators understand
+        outdoor-unit stability and identify unexpected reboots.
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: Current CPU utilization of the Zmtel LTE ODU as a 0-100 percentage (ZMTEL-ODU-MIB
+        cpuUsageCurrent, OID 1.3.6.1.4.1.38595.10.2.2.0). Sustained high CPU usage
+        can indicate control-plane overload on the outdoor unit.
+    device_memory_usage:
+      name: Memory Utilization
+      desc: Current memory utilization of the Zmtel LTE ODU as a 0-100 percentage
+        (ZMTEL-ODU-MIB memUsageCurrent, OID 1.3.6.1.4.1.38595.10.2.6.0). High memory
+        pressure can affect LTE session handling on the outdoor unit.
+    device_memory_total:
+      name: Memory Total
+      desc: Total memory of the Zmtel LTE ODU in bytes (ZMTEL-ODU-MIB memTotal, OID
+        1.3.6.1.4.1.38595.10.2.5.0; the device reports KB, converted to bytes by multiplying
+        by 1024 at collection time).
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5
+        minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifOutOctets on high-speed ports, keeping the rate accurate.
+monitor_object_metric_group:
+  Wireless:
+    Base: Base
+    CPU: CPU
+    Memory: Memory
+    Traffic: Traffic

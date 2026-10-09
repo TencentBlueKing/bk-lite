@@ -147,6 +147,9 @@ error:
   email_sent: Sent
   email_send_failed: Failed to send
   email_recipient_missing_or_unknown: The user has no email address or does not exist
+  password_strength_insufficient: Password does not meet the strength requirements
+  user_sync_scope_unavailable: The current sync scope is no longer available. Select the department again.
+  initial_password_email_delivery_failed: Failed to send the email
   initial_password_email_title: Your BK-Lite account is ready
   initial_password_email_body: '<p>Hello,</p><p>An administrator has created your BK-Lite account. The account details are below:</p><p><strong>Username: </strong>{username}</p><p><strong>Initial password: </strong>{password}</p><p>Sign in with this initial password and change it immediately after your first sign-in.</p><p><strong>Security notice: </strong>Do not forward, screenshot, or keep this email. If you did not expect it, contact an administrator.</p><p>Regards<br>BK-Lite</p>'
   current_team_archived_or_missing: The current organization is archived or does not exist
@@ -195,6 +198,7 @@ app_name:
   patch: Patch Management
   apm: APM
   playground: Playground
+  workflow-orchestration: Workflow Orchestration
 app:
   ops-analysis: Integrate operation and maintenance data, analyze potential risks
     and optimization space from multiple dimensions through dashboards and canvases,
@@ -230,6 +234,8 @@ app:
     distribution and scheduled tasks
   patch: Centrally manage system patches with scanning, installation, and patch library
     maintenance to continuously reduce security risks.
+  workflow-orchestration: Design visual workflows, automate execution, manage human
+    approvals, and track cross-system operations in one place.
 action_type:
   create: Create
   delete: Delete
@@ -258,6 +264,11 @@ export:
   column_app: App
   column_action_type: Action type
   column_summary: Summary
+email:
+  password_expiring_subject: Your password will expire soon
+  password_expiring_body: '<p>Hello {name},</p><p>Your password will expire in <b>{days}</b> day(s). Please change it soon.</p>'
+  password_expired_subject: Your password has expired
+  password_expired_body: '<p>Hello {name},</p><p>Your password has expired. Please change it now.</p>'
 channel:
   opspilot_nats_trigger_description: NATS trigger channel created by an OpsPilot workflow
 tag:
@@ -270,6 +281,11 @@ tag:
   patch_scan: Patch Scanning
   patch_install: Patch Installation
   patch_library: Patch Library
+  # workflow-orchestration
+  workflow_design: Workflow Design
+  workflow_execution: Workflow Execution
+  automation: Automation
+  approval: Human Approval
 # ops-analysis data-permission tabs. GroupDataRuleViewSet looks up display_name as a root key.
 "目录": Directory
 "仪表盘": Dashboard

@@ -1,5 +1,36 @@
 {
   "object": "Switch",
   "plugin": "Switch Comtrol RocketLinx SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Comtrol交换机电源1异常",
+      "alert_name": "交换机${resource_name} 电源1状态异常",
+      "description": "监控 Comtrol ES8510 双路电源 LED 的第 1 路状态（ledPower1Status，归一后 1=亮/正常，2=灭或空槽/异常）。取值为 2 时提示该路供电丢失或电源未安装，双路冗余失效。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Comtrol交换机电源2异常",
+      "alert_name": "交换机${resource_name} 电源2状态异常",
+      "description": "监控 Comtrol ES8510 双路电源 LED 的第 2 路状态（ledPower2Status，归一后 1=亮/正常，2=灭或空槽/异常）。取值为 2 时提示备用供电丢失或该槽位为空，需检查冗余供电。",
+      "metric_name": "device_psu_state_backup",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
 }

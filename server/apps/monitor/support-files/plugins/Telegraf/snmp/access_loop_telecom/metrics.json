@@ -1,0 +1,158 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_loop_telecom",
+  "plugin": "Access Loop Telecom SNMP",
+  "plugin_desc": "SNMP monitoring template for Loop Telecom AM3440 access multiplexers (L-AM3440-A-Private, enterprise PEN 823). It reports uptime, estimated power consumption, controller temperature and relative humidity, power card and fan status, and interface traffic.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='access', collect_type='snmp_loop_telecom'}) by (instance_id)",
+  "name": "Access",
+  "icon": "mm-access_接入设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='access'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "power_consumption_watts",
+    "device_temperature_celsius",
+    "device_psu_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Power",
+      "name": "power_consumption_watts",
+      "query": "max(snmp_power_consumption_watts{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "Power Consumption",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Estimated total (maximum) power consumption of the Loop Telecom AM3440 chassis in watts, from powerConsumption (L-AM3440-A-Private, 1.3.6.1.4.1.823.34441.1.10.5.0). Values outside 1-5000 W are dropped."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='access', __$labels__}",
+      "display_name": "Controller Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "controller",
+          "description": "Controller card (1 = left, 2 = right)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Temperature reported by each AM3440 controller card in degrees Celsius, parsed from the leading number of the c1Temperature / c2Temperature text (1.3.6.1.4.1.823.34441.1.10.11.0 / .13.0). Empty, non-numeric, zero and out-of-range readings are dropped."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_humidity_percent",
+      "query": "device_humidity_percent{instance_type='access', __$labels__}",
+      "display_name": "Controller Relative Humidity",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "controller",
+          "description": "Controller card (1 = left, 2 = right)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Relative humidity reported by each AM3440 controller card in percent, parsed from the leading number of the c1RelativeHumidity / c2RelativeHumidity text (1.3.6.1.4.1.823.34441.1.10.12.0 / .14.0). Empty, non-numeric, zero and out-of-range readings are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='access', __$labels__}",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "psu",
+          "description": "Power card (1 or 2)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Status of each AM3440 power card from power1Status / power2Status (1.3.6.1.4.1.823.34441.1.10.3.0 / .4.0): dc-100w, dc-150w, ac and dc-125v map to 1, off and fail map to 2. Cards reported as not present (power1AC / power2AC none, or status none) are skipped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "device_fan_state{instance_type='access', __$labels__}",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "fan",
+          "description": "Fan (1 or 2)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Status of each AM3440 fan from fan1Status / fan2Status (1.3.6.1.4.1.823.34441.1.10.6.0 / .7.0): good maps to 1 and fail-or-not-exist maps to 2."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='access', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='access', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='access', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

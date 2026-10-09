@@ -1,0 +1,86 @@
+{
+  "object": "Switch",
+  "plugin": "Switch Linksys SNMP",
+  "templates": [
+    {
+      "name": "Linksys交换机CPU使用率过高",
+      "alert_name": "交换机${resource_name} CPU 使用率过高",
+      "description": "监控 Linksys 交换机 5 分钟 CPU 使用率，当持续高于阈值时触发告警，提示可能存在控制平面过载或异常流量，避免管理响应变慢或转发受影响。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Linksys交换机温度过高",
+      "alert_name": "交换机${resource_name} 堆叠单元 ${metric__index} 温度过高",
+      "description": "监控 Linksys 交换机各堆叠单元机箱温度，当持续高于阈值时触发告警，提示可能存在散热不良或环境过热，避免器件过热损坏。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 60,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Linksys交换机风扇异常",
+      "alert_name": "交换机${resource_name} 风扇 ${metric__fan_name} 状态异常",
+      "description": "监控 Linksys 交换机各散热风扇运行状态，当状态为异常（2）时触发告警，散热故障可能迅速导致过热，应立即排查。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Linksys交换机电源异常",
+      "alert_name": "交换机${resource_name} 电源 ${metric__psu_name} 状态异常",
+      "description": "监控 Linksys 交换机各电源模块运行状态，当状态为异常（2）时触发告警，提示电源冗余缺失或硬件故障，应尽快修复。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}
