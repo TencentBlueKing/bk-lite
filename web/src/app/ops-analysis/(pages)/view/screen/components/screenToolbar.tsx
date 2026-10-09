@@ -6,7 +6,6 @@ import {
   EditOutlined,
   FullscreenOutlined,
   MailOutlined,
-  PlusOutlined,
   ReloadOutlined,
   SettingOutlined,
   ShareAltOutlined,
@@ -26,7 +25,6 @@ interface ScreenToolbarProps {
   onOpenSubscription?: () => void;
   onOpenSettings: () => void;
   onOpenFilterConfig: () => void;
-  onOpenWidgetSelector: () => void;
   onPreview: () => void;
   onRefresh: () => void;
   frequenceValue?: number;
@@ -47,7 +45,6 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
   onOpenSubscription,
   onOpenSettings,
   onOpenFilterConfig,
-  onOpenWidgetSelector,
   onPreview,
   onRefresh,
   frequenceValue = 0,
@@ -108,13 +105,6 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
         <PermissionWrapper requiredPermissions={['EditChart']}>
           <div className="flex items-center gap-2">
             {editExtra}
-            <Button
-              type="default"
-              icon={<PlusOutlined />}
-              onClick={onOpenWidgetSelector}
-            >
-              {t('opsAnalysis.screen.widgetShort')}
-            </Button>
             <Button type="default" onClick={onCancel}>
               {t('common.cancel')}
             </Button>

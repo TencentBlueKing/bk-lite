@@ -1533,6 +1533,29 @@ screens:
   other: {}
   view_sets:
     items:
+    - h: 169
+      w: 3839
+      x: 0
+      y: 0
+      id: legacy-title-frame
+      kind: titleFrame
+      preset: hero-5
+      zIndex: 16
+      content: 告警运营大屏
+      textStyle:
+        fontSize: 72
+    - h: 177
+      w: 739
+      x: 2968
+      y: 29
+      id: legacy-clock
+      kind: clock
+      format: YYYY-MM-DD HH:mm:ss
+      zIndex: 17
+      textStyle:
+        color: canvas
+        fontSize: 60
+        fontWeight: 600
     - h: 232
       w: 446
       x: 155
@@ -1945,8 +1968,8 @@ screens:
         type: builtIn
     decorations:
       title: 告警运营大屏
-      showClock: true
-      showTitle: true
+      showClock: false
+      showTitle: false
   refs:
     datasource_keys:
     - 告警快照统计::alert/get_alert_snapshot_statistics
@@ -1966,6 +1989,29 @@ screens:
   other: {}
   view_sets:
     items:
+    - h: 94
+      w: 1911
+      x: 2
+      y: 1
+      id: legacy-title-frame
+      kind: titleFrame
+      preset: hero-6
+      zIndex: 2
+      content: 机柜全景
+      textStyle:
+        fontSize: 40
+    - h: 56
+      w: 360
+      x: 1544
+      y: 19
+      id: legacy-clock
+      kind: clock
+      format: YYYY-MM-DD HH:mm:ss
+      zIndex: 3
+      textStyle:
+        color: canvas
+        fontSize: 25
+        fontWeight: 600
     - h: 1000
       w: 1920
       x: 0
@@ -1989,8 +2035,8 @@ screens:
         type: builtIn
     decorations:
       title: 机柜全景
-      showClock: true
-      showTitle: true
+      showClock: false
+      showTitle: false
   refs:
     datasource_keys: []
     namespace_keys: []
@@ -2000,6 +2046,29 @@ screens:
   other: {}
   view_sets:
     items:
+    - h: 96
+      w: 1919
+      x: 1
+      y: 1
+      id: legacy-title-frame
+      kind: titleFrame
+      preset: hero-6
+      zIndex: 2
+      content: 全景应用墙
+      textStyle:
+        fontSize: 40
+    - h: 56
+      w: 360
+      x: 1528
+      y: 20
+      id: legacy-clock
+      kind: clock
+      format: YYYY-MM-DD HH:mm:ss
+      zIndex: 3
+      textStyle:
+        color: canvas
+        fontSize: 25
+        fontWeight: 600
     - h: 1000
       w: 1920
       x: 0
@@ -2025,8 +2094,8 @@ screens:
         type: builtIn
     decorations:
       title: 全景应用墙
-      showClock: true
-      showTitle: true
+      showClock: false
+      showTitle: false
   refs:
     datasource_keys: []
     namespace_keys: []
