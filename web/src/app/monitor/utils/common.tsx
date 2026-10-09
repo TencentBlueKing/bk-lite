@@ -879,6 +879,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /garretcom|garrettcom/i, label: 'GarretCom', icon: 'mm-garretcom_garretcom' },
   { match: /\bgcom\b|greentech|greennet/i, label: 'GCOM' },
   { match: /korenix/i, label: 'Korenix', icon: 'mm-korenix_korenix' },
+  { match: /positron/i, label: 'Positron' },
   { match: /microsens/i, label: 'Microsens', icon: 'mm-microsens_microsens' },
   { match: /moxa/i, label: 'Moxa', icon: 'mm-moxa_moxa' },
   { match: /netonix/i, label: 'Netonix', icon: 'mm-netonix_netonix' },
