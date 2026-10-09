@@ -41,6 +41,34 @@
         oid = "1.3.6.1.4.1.318.1.1.1.4.2.3.0"
         name = "network_service_apc_output_load"
 
+    # PowerNet ATS (automaticTransferSwitch = 1.3.6.1.4.1.318.1.1.8). Absent on UPS units.
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.318.1.1.8.5.1.2.0"
+        name = "network_service_apc_ats_selected_source"
+    [[inputs.snmp.table]]
+        name = "network_service_apc_ats_input"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.318.1.1.8.5.3.3.1.3"
+        name = "voltage_volts"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.318.1.1.8.5.3.3.1.6"
+        name = "current_amps"
+    [[inputs.snmp.table]]
+        name = "network_service_apc_ats_output"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.318.1.1.8.5.4.3.1.3"
+        name = "voltage_volts"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.318.1.1.8.5.4.3.1.4"
+        name = "current_amps"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.318.1.1.8.5.4.3.1.10"
+        name = "load_percent"
+
     [[inputs.snmp.table]]
         oid = "1.3.6.1.2.1.31.1.1"
         name = "interface"
@@ -55,3 +83,41 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
+# ---- ATS：选源仅保留 1/2；电压≥0；电流≥0；负载 0-100；-1 等哨兵丢弃。输出电流 0.1A 单位在此 ÷10。----
+[[processors.starlark]]
+    namepass = ["snmp", "network_service_apc_ats_input", "network_service_apc_ats_output"]
+    source = '''
+def _sentinel(v):
+    if v == None:
+        return True
+    if v == -1 or v == 65535 or v == 65534 or v == 2147483647 or v == -2147483648 or v == 4294967295:
+        return True
+    return False
+
+def apply(metric):
+    f = metric.fields
+    if metric.name == "snmp":
+        src = f.get("network_service_apc_ats_selected_source")
+        if src != None and src != 1 and src != 2:
+            f.pop("network_service_apc_ats_selected_source")
+        return metric
+    if "voltage_volts" in f:
+        volts = f["voltage_volts"]
+        if _sentinel(volts) or volts < 0:
+            f.pop("voltage_volts")
+    if "current_amps" in f:
+        amps = f["current_amps"]
+        if _sentinel(amps) or amps < 0:
+            f.pop("current_amps")
+        elif metric.name == "network_service_apc_ats_output":
+            f["current_amps"] = float(amps) / 10.0
+    if "load_percent" in f:
+        load_pct = f["load_percent"]
+        if _sentinel(load_pct) or load_pct < 0 or load_pct > 100:
+            f.pop("load_percent")
+    if len(f.keys()) == 0:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["apc"]
