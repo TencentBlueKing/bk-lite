@@ -112,11 +112,13 @@ const mutexValuesEqual = (left: any, right: any) => {
   return false;
 };
 
+// 接入表单控件统一宽度（COMPONENT_GOVERNANCE §4）：单点常量 + style，勿再散落 w-[300px]。
+// Select 的 antd 默认 width:100% 也会盖掉 Tailwind class，必须走 style。
+// 导出给同一表单里的自定义控件（如「凭据」下拉）复用，保持宽度一致。
+export const FORM_WIDGET_WIDTH = 300;
+
 export const useConfigRenderer = () => {
   const { t } = useTranslation();
-  // 接入表单控件统一宽度（COMPONENT_GOVERNANCE §4）：单点常量 + style，勿再散落 w-[300px]。
-  // Select 的 antd 默认 width:100% 也会盖掉 Tailwind class，必须走 style。
-  const FORM_WIDGET_WIDTH = 300;
   const formWidgetWidthStyle = (style?: React.CSSProperties) => ({
     ...(style && typeof style === 'object' ? style : {}),
     width: FORM_WIDGET_WIDTH,
