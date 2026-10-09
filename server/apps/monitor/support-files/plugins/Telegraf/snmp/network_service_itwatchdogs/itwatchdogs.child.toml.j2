@@ -1,0 +1,98 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_itwatchdogs"
+        config_type = "itwatchdogs"
+        brand = "itwatchdogs"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # wxGoos climateTable under PEN 17373.2. Do not collect V3/V4 trees.
+    # Do not invent CPU% or memory. Airflow/Light/Sound are relative 0..100 and are not collected.
+    # climateAvail 0 means the probe is not plugged in; drop the row. climateTempC is Celsius.
+    [[inputs.snmp.table]]
+        name = "env_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.17373.2.2.1.3"
+        name = "sensor"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.17373.2.2.1.4"
+        name = "climate_avail"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.17373.2.2.1.5"
+        name = "celsius"
+    # climateHumidity is integer percent 0-100.
+    [[inputs.snmp.table]]
+        name = "env_humidity"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.17373.2.2.1.3"
+        name = "sensor"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.17373.2.2.1.4"
+        name = "climate_avail"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.17373.2.2.1.6"
+        name = "percent"
+
+[[processors.starlark]]
+    namepass = ["env_temperature", "env_humidity"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    avail = f.pop("climate_avail", None)
+    if avail == 0:
+        return None
+    if metric.name == "env_temperature":
+        temp = f.get("celsius")
+        if temp == None:
+            return None
+        if temp < -40:
+            return None
+        if temp > 123:
+            return None
+    if metric.name == "env_humidity":
+        humid = f.get("percent")
+        if humid == None:
+            return None
+        if humid < 0:
+            return None
+        if humid > 100:
+            return None
+    if len(f.keys()) == 0:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["itwatchdogs"]
