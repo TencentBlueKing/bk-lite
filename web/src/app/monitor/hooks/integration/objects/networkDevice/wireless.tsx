@@ -61,6 +61,7 @@ export const useWirelessConfig = () => {
       'Wireless EnGenius SNMP': 'snmp_engenius',
       'Wireless Tait SNMP': 'snmp_tait',
       'Wireless Aerohive SNMP': 'snmp_aerohive',
+      'Wireless Extreme WiNG SNMP': 'snmp_symbol_wing',
       'Wireless Grandstream SNMP': 'snmp_grandstream',
       'Wireless Ubiquiti airFiber SNMP': 'snmp_ubiquiti_airfiber',
       'Wireless ASCOM SNMP': 'snmp_ascom',

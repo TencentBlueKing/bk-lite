@@ -52,7 +52,11 @@ monitor_object_metric:
         Persistently high values may indicate cooling problems.
     device_fan_state:
       name: Fan Status
-      desc: 'Fan operational status of the ZTE ZXA10 OLT: 1 means up or offline (empty slots keep a series), 2 means down or unknown (abnormal).'
+      desc: 'Fan operational status of the ZTE ZXA10 OLT: 1 means up or offline (empty slots keep a series), 2 means down (abnormal), 3 means unknown (gray, no alert).'
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     device_fan_rpm:
       name: Fan Speed
       desc: Actual fan speed of the ZTE ZXA10 OLT in revolutions per minute.
@@ -60,6 +64,10 @@ monitor_object_metric:
       name: Power Supply Status
       desc: 'Power supply input voltage status of the ZTE ZXA10 OLT: 1 means normal, 2 means over-voltage,
         under-voltage, or off (abnormal).'
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
 monitor_object_metric_group:
   Access:
     Base: Base

@@ -68,12 +68,21 @@ monitor_object_metric:
         hardware.
     device_fan_state:
       name: Fan Status
-      desc: Fibrolan Falcon PSU fan status. 1 means ok; 2 means fail or singleFail.
-        Empty (notInstalled) PSU slots do not emit a fan series.
+      desc: Fibrolan Falcon PSU fan status. 1 means ok; 2 means fail or singleFail;
+        3 means unknown (gray, no alert). Empty (notInstalled) PSU slots do not emit
+        a fan series.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     device_psu_state:
       name: Power Supply Status
       desc: Fibrolan Falcon power-supply status. 1 means ok or notInstalled (empty
-        slots keep a series); 2 means fail or unknown.
+        slots keep a series); 2 means fail (abnormal); 3 means unknown (gray, no alert).
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
 monitor_object_metric_group:
   Transmission:
     Base: Base

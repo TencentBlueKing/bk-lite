@@ -98,6 +98,7 @@ export const useFirewallConfig = () => {
       'Firewall H3C SNMP': 'snmp_h3c_firewall',
       'Firewall Juniper SNMP': 'snmp_juniper_firewall',
       'Firewall Kerio Control SNMP': 'snmp_kerio',
+      'Firewall mGuard SNMP': 'snmp_mguard',
       'Firewall Clavister SNMP': 'snmp_clavister',
       'Firewall Blockbit SNMP': 'snmp_blockbit',
       'Firewall Barracuda SNMP': 'snmp_barracuda',

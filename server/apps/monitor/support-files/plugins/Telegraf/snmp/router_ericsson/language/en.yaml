@@ -30,13 +30,21 @@ monitor_object_metric:
       desc: This metric reports the temperature of each entity sensor of the Ericsson IPOS router in degrees Celsius (ERICSSON-ROUTER-ENVMON-MIB eriRouterEntityTempCurrent; the device clamps readings to 0-100). High temperatures can indicate cooling failure or airflow obstruction.
     device_fan_state:
       name: Fan State
-      desc: This metric reports the state of each fan tray of the Ericsson IPOS router (eriRouterFanStatus, raw normal(1) / failed(2) / absent(3) / unknown(4)), normalized so that normal/absent = 1 (healthy) and failed/unknown = 2 (fault). Empty slots keep a row.
+      desc: This metric reports the state of each fan tray of the Ericsson IPOS router (eriRouterFanStatus, raw normal(1) / failed(2) / absent(3) / unknown(4)), normalized so that normal/absent = 1 (healthy), failed = 2 (fault), unknown = 3 (Unknown, grey, does not alert). Empty slots keep a row. Only value 2 alerts.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     device_fan_speed:
       name: Fan Speed
       desc: This metric reports the speed of each fan unit of the Ericsson IPOS router in RPM (eriRouterFanSpeedCurrent).
     device_psu_state:
       name: PSU State
-      desc: This metric reports the state of each power module of the Ericsson IPOS router (eriRouterPowerStatus, raw normal(1) / failed(2) / absent(3) / unknown(4)), normalized so that normal/absent = 1 (healthy) and failed/unknown = 2 (fault). Empty slots keep a row.
+      desc: This metric reports the state of each power module of the Ericsson IPOS router (eriRouterPowerStatus, raw normal(1) / failed(2) / absent(3) / unknown(4)), normalized so that normal/absent = 1 (healthy), failed = 2 (fault), unknown = 3 (Unknown, grey, does not alert). Empty slots keep a row. Only value 2 alerts.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
 monitor_object_metric_group:
   Router:
     Base: Base

@@ -68,7 +68,7 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.3902.1082.10.10.2.1.6.1.2"
         name = "celsius"
-    # ---- 风扇：zxAnEnvFanTable（索引为 机架.机框.风扇）OperStatus .5 up(1)/down(2)/unknown(3)，OnlineStatus .6 online(1)/offline(2)，ActualSpeed .7（转/分）----
+    # ---- 风扇：zxAnEnvFanTable（索引为 机架.机框.风扇）OperStatus .5 up(1)/down(2)/unknown(3)，OnlineStatus .6 online(1)/offline(2)/unknown(3)，ActualSpeed .7（转/分）----
     [[inputs.snmp.table]]
         name = "device_fan"
         inherit_tags = ["source"]
@@ -134,7 +134,7 @@ def apply(metric):
     [processors.starlark.tagpass]
         brand = ["zte_olt"]
 
-# ---- 风扇：OnlineStatus offline(2 不在位)→1 保留行；OperStatus up(1)→1、down(2)/unknown(3)→2；转速为负时去掉转速。----
+# ---- 风扇：OnlineStatus offline(2 不在位)→1 保留行；OperStatus up(1)→1、down(2)→2；OnlineStatus/OperStatus unknown(3)→3；转速为负时去掉转速。----
 [[processors.starlark]]
     namepass = ["device_fan"]
     source = '''
@@ -143,9 +143,11 @@ def apply(metric):
     state = metric.fields.get("state")
     if online == 2:
         metric.fields["state"] = 1
+    elif online == 3 or state == 3:
+        metric.fields["state"] = 3
     elif state == 1:
         pass
-    elif state == 2 or state == 3:
+    elif state == 2:
         metric.fields["state"] = 2
     else:
         return None

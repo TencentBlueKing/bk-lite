@@ -144,7 +144,7 @@
       "query": "device_fan_state{instance_type='router', __$labels__}",
       "display_name": "Fan State",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "dimensions": [
         {
           "name": "descr",
@@ -154,7 +154,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the state of each fan tray of the Ericsson IPOS router (eriRouterFanStatus, raw normal(1) / failed(2) / absent(3) / unknown(4)), normalized so that normal/absent = 1 (healthy) and failed/unknown = 2 (fault). Empty slots keep a row."
+      "description": "This metric reports the state of each fan tray of the Ericsson IPOS router (eriRouterFanStatus, raw normal(1) / failed(2) / absent(3) / unknown(4)), normalized so that normal/absent = 1 (healthy), failed = 2 (fault), unknown = 3 (grey, does not alert). Empty slots keep a row. Only value 2 alerts."
     },
     {
       "metric_group": "Hardware Status",
@@ -180,7 +180,7 @@
       "query": "device_psu_state{instance_type='router', __$labels__}",
       "display_name": "PSU State",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "dimensions": [
         {
           "name": "descr",
@@ -190,7 +190,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the state of each power module of the Ericsson IPOS router (eriRouterPowerStatus, raw normal(1) / failed(2) / absent(3) / unknown(4)), normalized so that normal/absent = 1 (healthy) and failed/unknown = 2 (fault). Empty slots keep a row."
+      "description": "This metric reports the state of each power module of the Ericsson IPOS router (eriRouterPowerStatus, raw normal(1) / failed(2) / absent(3) / unknown(4)), normalized so that normal/absent = 1 (healthy), failed = 2 (fault), unknown = 3 (grey, does not alert). Empty slots keep a row. Only value 2 alerts."
     }
   ]
 }
