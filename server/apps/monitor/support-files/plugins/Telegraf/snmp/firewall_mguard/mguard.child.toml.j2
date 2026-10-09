@@ -32,23 +32,32 @@
         name = "source"
         is_tag = true
 # @bk_include_ifmib_table
-    # ---- HMPRIV-MGMT-SNMP-MIB hmCpuResources 1.3.6.1.4.1.248.14.2.15.2：标量，顶层 field 带 .0 → measurement snmp ----
-    # hmCpuUtilization .2.1.0：Integer32 0~100 %。
-    [[inputs.snmp.field]]
-        oid = "1.3.6.1.4.1.248.14.2.15.2.1.0"
-        name = "device_cpu_usage"
-    # ---- hmMemoryResources 1.3.6.1.4.1.248.14.2.15.3：标量，顶层 field 带 .0 ----
-    # hmMemoryAllocated .3.1.0 / hmMemoryFree .3.2.0：kBytes；starlark ×1024 输出 device_memory_used / free / total 字节与 device_memory_usage。
-    [[inputs.snmp.field]]
-        oid = "1.3.6.1.4.1.248.14.2.15.3.1.0"
+    # ---- HMPRIV-MGMT-SNMP-MIB hmCpuResources 1.3.6.1.4.1.248.14.2.15.2 ----
+    # hmCpuUtilization：Integer32 0~100 %。table.field 不带 .0，写入 device_cpu.usage。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.248.14.2.15.2.1"
+        name = "usage"
+    # ---- hmMemoryResources 1.3.6.1.4.1.248.14.2.15.3 ----
+    # hmMemoryAllocated / hmMemoryFree：kBytes；starlark ×1024 输出 used / free / total 字节与 usage。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.248.14.2.15.3.1"
         name = "mem_alloc_kb_raw"
-    [[inputs.snmp.field]]
-        oid = "1.3.6.1.4.1.248.14.2.15.3.2.0"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.248.14.2.15.3.2"
         name = "mem_free_kb_raw"
-    # ---- hmTemperature 1.3.6.1.4.1.248.14.2.5.1.0：标量，顶层 field 带 .0，Integer32 ℃（-99~99）----
-    [[inputs.snmp.field]]
-        oid = "1.3.6.1.4.1.248.14.2.5.1.0"
-        name = "device_temperature_celsius"
+    # ---- hmTemperature：Integer32 ℃（-99~99）----
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.248.14.2.5.1"
+        name = "celsius"
     # ---- hmPSTable 1.3.6.1.4.1.248.14.1.2.1：hmPSState .3（table.field 不带 .0），ok(1)/failed(2)/notInstalled(3)/unknown(4) ----
     [[inputs.snmp.table]]
         name = "device_psu"
@@ -60,37 +69,58 @@
 # ---- 风扇：HMPRIV-MGMT-SNMP-MIB 没有可轮询的风扇状态/转速对象，不采集。----
 
 [[processors.starlark]]
-    namepass = ["snmp"]
+    namepass = ["device_cpu"]
     source = '''
 def apply(metric):
-    cpu = metric.fields.get("device_cpu_usage")
-    if cpu != None and (type(cpu) not in ["int", "float"] or cpu < 0 or cpu > 100):
-        metric.fields.pop("device_cpu_usage")
-    used = metric.fields.pop("mem_alloc_kb_raw", None)
-    free = metric.fields.pop("mem_free_kb_raw", None)
-    if type(used) == "int" and type(free) == "int" and used >= 0 and free >= 0 and used + free > 0:
-        metric.fields["device_memory_used"] = used * 1024
-        metric.fields["device_memory_free"] = free * 1024
-        metric.fields["device_memory_total"] = (used + free) * 1024
-        metric.fields["device_memory_usage"] = used * 100.0 / (used + free)
-    temp = metric.fields.get("device_temperature_celsius")
-    if temp != None and (type(temp) not in ["int", "float"] or temp < -99 or temp > 99):
-        metric.fields.pop("device_temperature_celsius")
+    cpu = metric.fields.get("usage")
+    if cpu == None or type(cpu) not in ["int", "float"] or cpu < 0 or cpu > 100:
+        return None
     return metric
 '''
     [processors.starlark.tagpass]
         brand = ["mguard"]
 
-# ---- 电源状态归一：ok(1)→1(正常)，failed(2)/unknown(4)→2(异常)，notInstalled(3) 与其它值丢弃。----
+[[processors.starlark]]
+    namepass = ["device_memory"]
+    source = '''
+def apply(metric):
+    used = metric.fields.pop("mem_alloc_kb_raw", None)
+    free = metric.fields.pop("mem_free_kb_raw", None)
+    if type(used) == "int" and type(free) == "int" and used >= 0 and free >= 0 and used + free > 0:
+        metric.fields["used"] = used * 1024
+        metric.fields["free"] = free * 1024
+        metric.fields["total"] = (used + free) * 1024
+        metric.fields["usage"] = used * 100.0 / (used + free)
+        return metric
+    return None
+'''
+    [processors.starlark.tagpass]
+        brand = ["mguard"]
+
+[[processors.starlark]]
+    namepass = ["device_temperature"]
+    source = '''
+def apply(metric):
+    temp = metric.fields.get("celsius")
+    if temp == None or type(temp) not in ["int", "float"] or temp < -99 or temp > 99:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["mguard"]
+
+# ---- 电源状态归一：ok(1)/notInstalled(3)→1(正常)，failed(2)→2(异常)，unknown(4)→3(未知，不告警)。----
 [[processors.starlark]]
     namepass = ["device_psu"]
     source = '''
 def apply(metric):
     state = metric.fields.get("state")
-    if state == 1:
+    if state == 1 or state == 3:
         metric.fields["state"] = 1
-    elif state == 2 or state == 4:
+    elif state == 2:
         metric.fields["state"] = 2
+    elif state == 4:
+        metric.fields["state"] = 3
     else:
         return None
     return metric
