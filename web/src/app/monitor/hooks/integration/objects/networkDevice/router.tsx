@@ -116,6 +116,7 @@ export const useRouterConfig = () => {
       'Router Yamaha SNMP': 'snmp_yamaha_router',
       'Router Benu SNMP': 'snmp_benu',
       'Router Peplink SNMP': 'snmp_peplink',
+      'Router RACOM RipEX SNMP': 'snmp_racom_ripex',
       'Router Advantech SNMP': 'snmp_advantech_router',
       'Router Nokia SNMP': 'snmp_nokia_router',
       'Router FireBrick SNMP': 'snmp_firebrick',

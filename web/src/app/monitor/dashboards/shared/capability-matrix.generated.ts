@@ -1402,6 +1402,15 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_racom_ripex",
+      "capabilities": [
+        "uptime",
+        "temperature",
+        "psu",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_robustel",
       "capabilities": [
         "uptime",
