@@ -428,6 +428,8 @@ def test_group_rule_and_standalone_rule_get_a_scan_task():
     policy = group.rules.get().policy
     policy.refresh_from_db()
     assert policy.schedule == {"type": "min", "value": 5}
+    assert policy.period == {"type": "min", "value": 5}
+    assert policy.enable_alerts == ["threshold"]
     assert PeriodicTask.objects.filter(name=f"scan_policy_task_{policy.id}", enabled=True).exists()
 
     PeriodicTask.objects.filter(name=f"scan_policy_task_{policy.id}").delete()
@@ -436,6 +438,8 @@ def test_group_rule_and_standalone_rule_get_a_scan_task():
 
     host = _instance(monitor_object, "web-01", 1)
     standalone = PolicyGroupService.create_standalone(instance=host, template=template, organization=1)
+    assert standalone.period == {"type": "min", "value": 5}
+    assert standalone.enable_alerts == ["threshold"]
     assert PeriodicTask.objects.filter(name=f"scan_policy_task_{standalone.id}", enabled=True).exists()
     assert list(standalone.policyorganization_set.values_list("organization", flat=True)) == [1]
 
@@ -508,3 +512,98 @@ def test_closing_group_alerts_is_queued_for_the_alert_center(mocker, django_capt
     assert notifier.enqueue_alert_center_deliveries.call_args.kwargs["reason"] == "policy_group_member_left"
     notifier.notify_alerts.assert_called_once()
     assert notifier.notify_alerts.call_args.kwargs["reason"] == "policy_group_member_left"
+
+
+def test_template_period_and_alert_switches_are_kept_on_the_rule():
+    monitor_object = _object()
+    wmi = _plugin(monitor_object, "WMI")
+    template = _template(monitor_object, wmi, "WMI CPU")
+    template.config = {
+        **template.config,
+        "period": {"type": "hour", "value": 1},
+        "enable_alerts": ["threshold", "no_data"],
+    }
+    template.save(update_fields=["config"])
+
+    group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="主机默认告警",
+        templates=[template],
+    )
+
+    policy = group.rules.get().policy
+    assert policy.period == {"type": "hour", "value": 1}
+    assert policy.enable_alerts == ["threshold", "no_data"]
+
+
+def test_template_sync_keeps_standalone_period_and_alert_switches():
+    monitor_object = _object()
+    wmi = _plugin(monitor_object, "WMI")
+    template = _template(monitor_object, wmi, "WMI CPU", threshold=80)
+    standalone = MonitorPolicy.objects.create(
+        monitor_object=monitor_object,
+        name="旧策略",
+        source_template=template,
+        period={"type": "min", "value": 1},
+        enable_alerts=["no_data"],
+        threshold=[{"level": "warning", "value": 80, "method": ">="}],
+        source={"type": "instance", "values": []},
+    )
+    template.config = {
+        **template.config,
+        "period": {"type": "hour", "value": 2},
+        "enable_alerts": ["threshold"],
+        "threshold": [{"level": "warning", "value": 99, "method": ">="}],
+    }
+    template.save(update_fields=["config"])
+
+    PolicyService.sync_issued_policies_from_template(template, type("User", (), {"username": "tester"})())
+
+    standalone.refresh_from_db()
+    assert standalone.period == {"type": "min", "value": 1}
+    assert standalone.enable_alerts == ["no_data"]
+    assert standalone.threshold == [{"level": "warning", "value": 99, "method": ">="}]
+
+
+def test_repair_fills_only_empty_group_rule_scan_settings():
+    monitor_object = _object()
+    wmi = _plugin(monitor_object, "WMI")
+    ssh = _plugin(monitor_object, "SSH")
+    group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="主机默认告警",
+        templates=[_template(monitor_object, wmi, "WMI CPU"), _template(monitor_object, ssh, "SSH CPU")],
+    )
+    empty_rule, custom_rule = list(group.rules.select_related("policy").order_by("id"))
+    empty_rule.policy.period = {}
+    empty_rule.policy.enable_alerts = []
+    empty_rule.policy.save(update_fields=["period", "enable_alerts", "updated_at"])
+    custom_rule.policy.period = {"type": "hour", "value": 2}
+    custom_rule.policy.enable_alerts = ["no_data"]
+    custom_rule.policy.save(update_fields=["period", "enable_alerts", "updated_at"])
+    host = _instance(monitor_object, "web-01", 1)
+    standalone = MonitorPolicy.objects.create(
+        monitor_object=monitor_object,
+        name="旧策略",
+        period={},
+        enable_alerts=[],
+        source={"type": "instance", "values": [host.id]},
+    )
+
+    assert PolicyGroupService.repair_empty_scan_settings() == 1
+    empty_rule.policy.refresh_from_db()
+    custom_rule.policy.refresh_from_db()
+    standalone.refresh_from_db()
+    assert empty_rule.policy.period == {"type": "min", "value": 5}
+    assert empty_rule.policy.enable_alerts == ["threshold"]
+    assert custom_rule.policy.period == {"type": "hour", "value": 2}
+    assert custom_rule.policy.enable_alerts == ["no_data"]
+    assert standalone.period == {}
+    assert standalone.enable_alerts == []
+
+    repaired_at = empty_rule.policy.updated_at
+    assert PolicyGroupService.repair_empty_scan_settings() == 0
+    empty_rule.policy.refresh_from_db()
+    assert empty_rule.policy.updated_at == repaired_at

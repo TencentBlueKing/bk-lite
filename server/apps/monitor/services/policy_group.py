@@ -474,6 +474,26 @@ class PolicyGroupService:
         MonitorPolicyViewSet().update_or_create_task(policy.id, schedule)
 
     @staticmethod
+    def repair_empty_scan_settings():
+        """补上组规则创建时漏写的检测周期和阈值开关，已有值保持不变。"""
+        default_period = PolicyService._default_duration(None)
+        updated = 0
+        for rule in PolicyGroupRule.objects.select_related("policy").iterator():
+            policy = rule.policy
+            fields = []
+            if not policy.period:
+                policy.period = copy.deepcopy(default_period)
+                fields.append("period")
+            if not policy.enable_alerts:
+                policy.enable_alerts = ["threshold"]
+                fields.append("enable_alerts")
+            if not fields:
+                continue
+            policy.save(update_fields=[*fields, "updated_at"])
+            updated += 1
+        return updated
+
+    @staticmethod
     def _retire_policy(policy, operator):
         """组内规则对应的是一条真实策略，删除时和策略列表删除走同一套清理。"""
         from django_celery_beat.models import PeriodicTask
