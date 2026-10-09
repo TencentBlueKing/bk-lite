@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_hirschmann",
   "plugin": "Switch Hirschmann SNMP",
-  "plugin_desc": "SNMP monitoring template for Hirschmann switch. It reports uptime, CPU utilization, memory utilization, temperature, power supply status, and interface traffic (enterprise PEN 248).",
+  "plugin_desc": "SNMP monitoring template for Hirschmann switch. It reports uptime, CPU utilization, memory utilization, chassis temperature, power supply status, SFP DDM temperature and optical power, fan state, and interface traffic (enterprise PEN 248).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_hirschmann'}) by (instance_id)",
   "name": "Switch",
@@ -136,6 +136,96 @@
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "data_type": "Enum",
       "description": "Power-supply state of the Hirschmann switch (hmPSState), normalised to 1=normal or notInstalled (empty slots keep a row), 2=failed (abnormal), 3=unknown (gray, no alert)."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_sfp_temperature_celsius",
+      "query": "device_sfp_temperature_celsius{instance_type='switch', __$labels__}",
+      "display_name": "SFP Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "SFP module temperature in degrees Celsius (hmSfpTemperature). Readings outside -40..125 are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_sfp_tx_power",
+      "query": "device_sfp_tx_power{instance_type='switch', __$labels__}",
+      "display_name": "SFP TX Power",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "SFP internally measured transmit power in microwatts (hmSfpTxPowerInt, Integer32 in 0.1 µW, divided by 10 once in starlark). Values outside 0..1000000 of the raw integer are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_sfp_rx_power",
+      "query": "device_sfp_rx_power{instance_type='switch', __$labels__}",
+      "display_name": "SFP RX Power",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "SFP internally measured receive power in microwatts (hmSfpRxPowerInt, Integer32 in 0.1 µW, divided by 10 once in starlark). Values outside 0..1000000 of the raw integer are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_sfp_rx_power_state",
+      "query": "device_sfp_rx_power_state{instance_type='switch', __$labels__}",
+      "display_name": "SFP RX Power State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "SFP receive-power state (hmSfpRxPowerState): ok(1) maps to 1, warning(2) and alarm(3) map to 2. alarm(3) is a fault code, not unknown. Values the object does not define are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "device_fan_state{instance_type='switch', __$labels__}",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Operational state of each chassis fan (hmFanState): ok(1) maps to 1, failed(2) maps to 2. The object does not define unknown, so value 3 is not produced."
     },
     {
       "metric_group": "Base",
