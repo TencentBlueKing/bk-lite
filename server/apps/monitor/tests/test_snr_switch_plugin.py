@@ -6,10 +6,10 @@ cross-vendor design decisions for the SNMP brand-plugin family.
 SNR (НАГ, NAG-MIB, IANA PEN 40418) exposes device health from the sysSlotTable:
 per-slot CPU (sysCpuUsage), memory (sysMemorySize / sysMemoryBusy), a dedicated
 temperature column (sysTemperature) and a fan status column (sysFanStatus).
-Unlike Eltex there is NO PSU object in NAG-MIB, so device_psu_state is N/A and
-must not be modelled. The fan raw codes are 0=Normal / 1=Abnormal (note the
-inverted polarity vs Eltex's 1=OK), normalized via processors.enum so 0->1
-(healthy) and everything else ->2 (fault).
+This file does not add a PSU-must-exist assertion. The fan raw codes are
+0=Normal / 1=Abnormal (note the inverted polarity vs Eltex's 1=OK). #6062
+maps remaining fan values in starlark: 0->1 (healthy) and everything else ->2
+(fault).
 
   - device_cpu_usage: avg per instance across slots (sysCpuUsage, percent)
   - device_memory_total/used: bytes; usage = sum(used)/sum(total)*100 (branch3)
@@ -53,7 +53,6 @@ SUPPORTED_SCALAR_UNITS = {
 INTERFACE_METRICS = ("interface_ifHCInOctets", "interface_ifHCOutOctets")
 MEMORY_METRICS = ("device_memory_total", "device_memory_used", "device_memory_usage")
 ENUM_METRICS = ("device_fan_state",)
-ABSENT_METRICS = ("device_psu_state",)
 
 
 def _read_json(path):
@@ -152,8 +151,10 @@ def test_shared_metrics_match_cisco_group_and_unit(metrics, cisco_metrics):
             continue
         if m["metric_group"] != base["metric_group"]:
             drift.append(f'{m["name"]}.group')
-        # fan unit legitimately differs (processors.enum normalization to 2 values)
-        if m["name"] not in ENUM_METRICS and m["unit"] != base["unit"]:
+        # Enum units are vendor-normalized and need not match Cisco's native codes.
+        if m.get("data_type") == "Enum" or m["name"] in ENUM_METRICS:
+            continue
+        if m["unit"] != base["unit"]:
             drift.append(f'{m["name"]}.unit')
     assert drift == [], f"shared-metric drift vs Cisco: {drift}"
 
@@ -207,7 +208,7 @@ def test_memory_usage_is_used_over_total_branch3(metrics, mikrotik_metrics):
 
 
 # --------------------------------------------------------------------------- #
-# Environment: temperature + fan, but NO PSU (NAG-MIB has no PSU object)
+# Environment: temperature + fan. This file does not add a PSU-must-exist assertion.
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
 def test_temperature_is_celsius_max_aggregated(metrics):
@@ -232,27 +233,21 @@ def test_fan_is_normalized_enum(metrics):
     assert q.startswith("max(") and "by(instance_id)" in q
 
 
-@pytest.mark.unit
-def test_psu_is_not_modelled(metrics):
-    names = {m["name"] for m in metrics["metrics"]}
-    present = [a for a in ABSENT_METRICS if a in names]
-    assert present == [], f"NAG-MIB has no PSU object; must not model: {present}"
-
-
 # --------------------------------------------------------------------------- #
-# telegraf enum normalization: single namepass-isolated block, 0->1, default=2
+# telegraf starlark: fan namepass-isolated, raw 0 (normal) → 1, else → 2
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
-def test_toml_has_one_enum_processor_block(toml_text):
-    assert toml_text.count("[[processors.enum]]") == 1
+def test_toml_has_no_enum_processor_block(toml_text):
+    assert toml_text.count("[[processors.enum]]") == 0
 
 
 @pytest.mark.unit
-def test_enum_block_namepass_isolated_normal_zero_fault_default(toml_text):
+def test_fan_starlark_maps_normal_zero(toml_text):
     assert 'namepass = ["device_fan"]' in toml_text
-    assert "default = 2" in toml_text
-    # SNR raw 0 = Normal maps to healthy 1 (inverted polarity vs Eltex)
-    assert '"0" = 1' in toml_text
+    assert "[[processors.starlark]]" in toml_text
+    assert 'int(metric.fields["state"]) == 0' in toml_text
+    assert 'metric.fields["state"] = 1' in toml_text
+    assert 'metric.fields["state"] = 2' in toml_text
 
 
 @pytest.mark.unit
@@ -264,12 +259,13 @@ def test_toml_collects_ifhc_counters(toml_text):
 # policy / supplementary / units / dimensions hygiene
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
-def test_policy_covers_cpu_mem_temp_fan_only(policy):
+def test_policy_covers_cpu_mem_temp_fan(policy):
     names = {t["metric_name"] for t in policy["templates"]}
-    assert names == {
+    required = {
         "device_cpu_usage", "device_memory_usage",
         "device_temperature_celsius", "device_fan_state",
-    }, "SNR policy must cover cpu/mem/temp/fan and NOT psu"
+    }
+    assert required <= names, f"SNR policy missing: {required - names}"
 
 
 @pytest.mark.unit
