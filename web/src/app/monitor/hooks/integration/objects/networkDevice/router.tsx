@@ -87,6 +87,7 @@ export const useRouterConfig = () => {
       'Router Huawei NE SNMP': 'snmp_huawei_ne',
       'Router InHand Networks SNMP': 'snmp_inhand_router',
       'Router Vyatta SNMP': 'snmp_vyatta',
+      'Router Ubiquiti EdgeRouter SNMP': 'snmp_edgerouter',
       'Router NetModule SNMP': 'snmp_netmodule',
       'Router MultiTech SNMP': 'snmp_multitech',
       'Router CloudGenix SNMP': 'snmp_cloudgenix',
