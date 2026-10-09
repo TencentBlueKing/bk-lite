@@ -26,7 +26,7 @@ monitor_object_metric:
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
     device_temperature_celsius:
       name: 温度
-      desc: 传输设备的 CPU 或机箱温度，单位为摄氏度。温度偏高可能表示散热异常、环境温度过高或硬件过载。
+      desc: Groove 设备机框进风/出风温度与各已配置板卡温度（shelfInletTemperature / shelfOutletTemperature / cardTemperature），单位摄氏度。温度偏高可能表示散热异常、环境过热或板卡过载。
     device_fan_state:
       name: 风扇状态
       desc: 传输设备各散热风扇或风扇控制器的运行状态。非正常状态表示散热模块异常、离线或通信故障，可能导致设备过热。

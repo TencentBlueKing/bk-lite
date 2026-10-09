@@ -39,9 +39,10 @@ monitor_object_metric:
         assess sending performance for traffic management and optimization.
     device_temperature_celsius:
       name: Temperature
-      desc: CPU or chassis temperature of the transmission device in degrees Celsius.
-        High values may indicate cooling problems, high ambient temperature or overloaded
-        hardware.
+      desc: Shelf inlet/outlet and per-card temperatures of the Groove device in degrees
+        Celsius (shelfInletTemperature, shelfOutletTemperature, and cardTemperature).
+        High values may indicate cooling problems, high ambient temperature, or a
+        hot card.
     device_fan_state:
       name: Fan Status
       desc: Operational state of each transmission device fan or fan controller. A
