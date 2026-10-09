@@ -624,7 +624,10 @@ class Controller:
         for config_info in configs:
             type_name = config_info.get("type")
             if not type_name:
-                logger.warning(f"配置缺少 type 字段: {config_info}")
+                logger.warning(
+                    "event=collect_config_missing_type instance_id=%s failed_stage=format_configs error_type=missing_type",
+                    config_info.get("instance_id"),
+                )
                 raise BaseAppException("采集配置缺少 type 字段")
 
             templates = templates_by_type.get(type_name)

@@ -2798,6 +2798,37 @@ def monitor_bind_cmdb_id(params):
     )
 
 
+def _credential_id_list(credential_ids):
+    if not isinstance(credential_ids, list) or not credential_ids or len(credential_ids) > 100:
+        return None
+    if any(not isinstance(item, str) or not item for item in credential_ids):
+        return None
+    return credential_ids
+
+
+@nats_client.register
+def monitor_count_credential_refs(credential_ids):
+    ids = _credential_id_list(credential_ids)
+    if ids is None:
+        return {"result": False, "message": "invalid"}
+    rows = (
+        CollectConfig.objects.filter(vault_credential_id__in=ids).values("vault_credential_id").annotate(n=Count("monitor_instance", distinct=True))
+    )
+    counts = {item["vault_credential_id"]: item["n"] for item in rows}
+    return {"result": True, "data": {"counts": {credential_id: int(counts.get(credential_id) or 0) for credential_id in ids}}}
+
+
+@nats_client.register
+def monitor_refresh_credential_refs(credential_ids):
+    ids = _credential_id_list(credential_ids)
+    if ids is None:
+        return {"result": False, "message": "invalid"}
+    from apps.monitor.tasks.vault_credential import refresh_vault_credential_refs
+
+    refresh_vault_credential_refs.delay(ids)
+    return {"result": True, "data": {"accepted": len(ids)}}
+
+
 @nats_client.register
 def monitor_clear_cmdb_id(params):
     """按 expected_cmdb_id 清空监控实例 cmdb_id。签名为 (params)，须整包。"""

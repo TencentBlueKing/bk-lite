@@ -127,8 +127,15 @@ class NodeMgmtView(ViewSet):
 
     @action(methods=["post"], detail=False, url_path="update_instance_collect_config")
     def update_instance_collect_config(self, request):
+        from apps.monitor.services.vault_credential.apply import raise_client, update_instance_collect_config
+        from apps.monitor.services.vault_credential.errors import VaultCredentialError
+
         actor_context = _build_actor_context(request)
-        InstanceConfigService.update_instance_config(request.data.get("child"), request.data.get("base"), actor_context)
+        payload = request.data if isinstance(request.data, dict) else {}
+        try:
+            update_instance_collect_config(payload.get("child"), payload.get("base"), payload.get("credential"), actor_context)
+        except VaultCredentialError as exc:
+            raise_client(exc)
         return WebUtils.response_success()
 
     @action(methods=["post"], detail=False, url_path="update_collect_template_configs")

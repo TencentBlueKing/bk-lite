@@ -655,8 +655,8 @@ class NatsService:
         if content:
             child_config.content = content
 
-        if env_config:
-            # 智能合并并加密：只对变化的密码字段加密
+        if env_config is not None:
+            # 空字典表示清空。缺省 None 保持原 env，手填调用仍传 None 或完整字典。
             merged_env_config = self._merge_and_encrypt_env_config(child_config.env_config, env_config)
             child_config.env_config = merged_env_config
 
@@ -689,8 +689,7 @@ class NatsService:
         if content:
             config.config_template = content
 
-        if env_config:
-            # 智能合并并加密：只对变化的密码字段加密
+        if env_config is not None:
             merged_env_config = self._merge_and_encrypt_env_config(config.env_config, env_config)
             config.env_config = merged_env_config
 

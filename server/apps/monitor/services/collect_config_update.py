@@ -10,6 +10,7 @@ import hashlib
 from collections import defaultdict
 from urllib.parse import urlparse
 
+from django.db import transaction
 from django.db.models import F, Q
 
 from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
@@ -69,6 +70,18 @@ def stamp_applied(
         pack_version = getattr(plugin, "pack_version", None) if plugin is not None else None
     if pack_version is not None:
         config.applied_pack_version = pack_version or ""
+
+
+def _retain_vault_template_content(config_obj, original, rendered):
+    if not config_obj.vault_credential_id or config_obj.file_type != "toml" or not original or not rendered:
+        return rendered
+    from apps.monitor.services.vault_credential.apply import retain_managed_content
+    from apps.monitor.utils.config_format import ConfigFormat
+
+    original_dict = ConfigFormat.toml_to_dict(original)
+    rendered_dict = ConfigFormat.toml_to_dict(rendered)
+    retain_managed_content(config_obj.id, original_dict, rendered_dict, only_missing=True)
+    return ConfigFormat.json_to_toml(rendered_dict)
 
 
 def _truthy(value) -> bool:
@@ -478,6 +491,8 @@ class CollectConfigUpdateService:
             )
         except Exception as exc:
             raise BaseAppException("采集配置重渲染失败") from exc
+        if config_obj.vault_credential_id:
+            rendered = _retain_vault_template_content(config_obj, original, rendered)
         try:
             CollectConfigUpdateService._write_content(node_mgmt, config_obj, rendered)
         except Exception as exc:
@@ -489,6 +504,8 @@ class CollectConfigUpdateService:
                     config_obj.id,
                 )
             raise BaseAppException("采集配置写入失败，已尝试回滚") from exc
+        if config_obj.vault_credential_id:
+            return
         stamp_applied(config_obj, plugin_fp=plugin_fp, rendered_content=rendered, hand_edited=False)
         config_obj.save(
             update_fields=[
@@ -599,12 +616,16 @@ class CollectConfigUpdateService:
             instance_updated = False
             instance_edited = False
             instance_failed = False
-            for config_obj in instance_configs:
+            vault_rows = [config_obj for config_obj in instance_configs if config_obj.vault_credential_id]
+            plain_rows = [config_obj for config_obj in instance_configs if not config_obj.vault_credential_id]
+
+            def _rerender_row(config_obj):
+                nonlocal instance_updated, instance_edited, instance_failed
                 if not discard_hand_edited and not is_config_stale(config_obj, plugin):
-                    continue
+                    return
                 if is_config_hand_edited(config_obj) and not discard_hand_edited:
                     instance_edited = True
-                    continue
+                    return
                 try:
                     CollectConfigUpdateService._rerender_one(
                         node_mgmt,
@@ -616,7 +637,6 @@ class CollectConfigUpdateService:
                 except HandEditedCollectConfigError:
                     # 内容漂移等运行时手改检测：按跳过处理，勿计入失败回滚文案。
                     instance_edited = True
-                    continue
                 except Exception as exc:
                     instance_failed = True
                     logger.warning(
@@ -632,6 +652,20 @@ class CollectConfigUpdateService:
                             "error_type": type(exc).__name__,
                         }
                     )
+
+            if vault_rows:
+                with transaction.atomic():
+                    from apps.monitor.services.vault_credential.apply import lock_config_group
+
+                    locked = lock_config_group(instance_id, plugin.id) or []
+                    locked_by_id = {row.id: row for row in locked}
+                    for config_obj in vault_rows:
+                        current = locked_by_id.get(config_obj.id)
+                        if current is None or not current.vault_credential_id:
+                            continue
+                        _rerender_row(current)
+            for config_obj in plain_rows:
+                _rerender_row(config_obj)
             if instance_failed:
                 # 同实例部分配置写入失败：不记入 updated，避免前端显示「已升级」
                 continue

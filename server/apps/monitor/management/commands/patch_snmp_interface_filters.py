@@ -432,6 +432,21 @@ def _fetch_complete_child_configs(node_mgmt, config_ids, *, continue_on_missing:
     return child_configs, missing_ids
 
 
+def _is_vault_collect_config(config_id) -> bool:
+    from apps.monitor.models import CollectConfig
+
+    return CollectConfig.objects.filter(id=config_id).exclude(vault_credential_id="").exists()
+
+
+def _retain_vault_ifmib_content(config_id, original, updated):
+    if not _is_vault_collect_config(config_id):
+        return updated
+    from apps.monitor.services.vault_credential.apply import retain_managed_content
+
+    retain_managed_content(config_id, original, updated, only_missing=False)
+    return updated
+
+
 def _build_pending_updates(child_configs, *, overwrite_default: bool, write_patch, continue_on_item_error: bool = False):
     pending_updates: list[tuple[str, str, str]] = []
     failed_config_ids: list[str] = []
@@ -465,6 +480,10 @@ def _build_pending_updates(child_configs, *, overwrite_default: bool, write_patc
                 continue
             raise CommandError("Invalid child config filter structure / 子配置过滤结构无效: " f"config_id={config_id}: {exc}") from exc
         if not changed:
+            continue
+        original_dict = ConfigFormat.toml_to_dict(raw_content)
+        content = _retain_vault_ifmib_content(config_id, original_dict, content)
+        if content == original_dict:
             continue
         try:
             updated_content = ConfigFormat.json_to_toml(content)
@@ -504,6 +523,9 @@ def _apply_pending_updates(node_mgmt, pending_updates, *, compare_and_swap=None)
                 attempted.append((config_id, original_content, updated_content))
                 raise
             if not updated:
+                if _is_vault_collect_config(config_id):
+                    logger.warning("event=snmp_ifmib_vault_cas_skipped config_id=%s", config_id)
+                    continue
                 raise CommandError("Concurrent child config change / 子配置发生并发修改: " f"config_id={config_id}")
             attempted.append((config_id, original_content, updated_content))
     except Exception as exc:

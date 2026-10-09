@@ -335,6 +335,12 @@ class InstanceConfigService:
         if not config_objs:
             return result
 
+        if any(config_obj.vault_credential_id for config_obj in config_objs):
+            from apps.monitor.services.vault_credential.apply import _read_config_payload, public_config_content
+
+            projected = _read_config_payload([config_obj.id for config_obj in config_objs], actor_context)
+            return public_config_content(config_objs, projected, actor_context)
+
         for config_obj in config_objs:
             content_key = "content" if config_obj.is_child else "config_template"
             if config_obj.is_child:
@@ -369,6 +375,10 @@ class InstanceConfigService:
                 result["child"] = config
             else:
                 result["base"] = config
+        if result:
+            from apps.monitor.services.vault_credential.apply import inline_credential_payload
+
+            result["credential"] = inline_credential_payload()
         return result
 
     @staticmethod
@@ -1110,6 +1120,19 @@ class InstanceConfigService:
                 logger.error(f"实例识别失败: {e}")
                 raise BaseAppException(f"实例识别失败：{e}")
 
+        from apps.monitor.services.vault_credential.apply import (
+            finalize_onboarding_credential,
+            prepare_onboarding_credential,
+            purge_reused_vault_rows,
+            raise_client,
+        )
+        from apps.monitor.services.vault_credential.errors import VaultCredentialError
+
+        try:
+            onboarding_plan = prepare_onboarding_credential(data, plugin, actor_context)
+        except VaultCredentialError as exc:
+            raise_client(exc)
+
         # ============ 使用单一外层事务包裹所有操作 ============
         processed_instance_ids = []
         created_instance_ids = []
@@ -1158,6 +1181,10 @@ class InstanceConfigService:
                     for instance in new_instances + existing_instances
                 ]
                 sanitized_data["monitor_plugin_id"] = monitor_plugin_id
+                onboarding_ids = [
+                    str(instance["instance_id"]) for instance in sanitized_data["instances"] if instance.get("instance_id") not in (None, "")
+                ]
+                purge_reused_vault_rows(onboarding_ids, plugin, onboarding_plan)
                 Controller(sanitized_data).controller()
                 InstanceConfigService._validate_expected_collect_configs(
                     sanitized_data["instances"],
@@ -1169,6 +1196,12 @@ class InstanceConfigService:
                 processed_instance_ids = [
                     str(instance["instance_id"]) for instance in new_instances + existing_instances if instance.get("instance_id") not in (None, "")
                 ]
+                finalize_onboarding_credential(
+                    processed_instance_ids,
+                    getattr(plugin, "id", None),
+                    onboarding_plan,
+                    actor_context,
+                )
 
                 # ✅ 所有操作成功，事务自动提交
 
