@@ -28,6 +28,10 @@ monitor_object_metric:
       name: Power Supply Status
       desc: Power-supply enum: 1=normal (including empty slot), 2=abnormal, 3=Unknown
         (gray, no alert). Only state 2 raises an alert.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     firewall_pf_states:
       name: PF State Table Entries
       desc: This metric reports the current number of entries in the pfSense firewall
