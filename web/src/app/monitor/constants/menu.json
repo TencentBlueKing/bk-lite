@@ -93,7 +93,13 @@
         },
         {
           "icon": "mulu",
-          "title": "策略",
+          "title": "策略组",
+          "url": "/monitor/event/policy-group",
+          "name": "strategy_list"
+        },
+        {
+          "icon": "mulu",
+          "title": "单策略",
           "url": "/monitor/event/strategy",
           "name": "strategy_list",
           "children": [
@@ -106,15 +112,9 @@
         },
         {
           "icon": "zichan-quanbushebei",
-          "title": "模板",
+          "title": "策略模板",
           "url": "/monitor/event/template",
           "name": "template_list"
-        },
-        {
-          "icon": "mulu",
-          "title": "策略组",
-          "url": "/monitor/event/policy-group",
-          "name": "strategy_list"
         }
       ]
     },
@@ -266,7 +266,13 @@
         },
         {
           "icon": "mulu",
-          "title": "Strategy",
+          "title": "Policy Group",
+          "url": "/monitor/event/policy-group",
+          "name": "strategy_list"
+        },
+        {
+          "icon": "mulu",
+          "title": "Standalone Strategy",
           "url": "/monitor/event/strategy",
           "name": "strategy_list",
           "children": [
@@ -279,15 +285,9 @@
         },
         {
           "icon": "zichan-quanbushebei",
-          "title": "Template",
+          "title": "Strategy Template",
           "url": "/monitor/event/template",
           "name": "template_list"
-        },
-        {
-          "icon": "mulu",
-          "title": "Policy Group",
-          "url": "/monitor/event/policy-group",
-          "name": "strategy_list"
         }
       ]
     },
