@@ -19,8 +19,12 @@ monitor_object_metric:
         poor cooling, or high ambient temperature.
     device_psu_state:
       name: Power Supply Status
-      desc: Operational state of each transmission device power supply. A non-normal state indicates offline
-        power, missing input, over-temperature, hardware fault, or alert condition that should be investigated.
+      desc: Left and right power-supply status of each Fibernet XMUX4+ unit. 1 means
+        powerOn (normal), 2 means powerOff (abnormal), 3 means unknown (gray, no alert).
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     interface_ifHCInOctets:
       name: Interface Incoming Traffic Rate
       desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured

@@ -15,7 +15,11 @@ monitor_object_metric:
       desc: 设备温度，单位为摄氏度。温度持续偏高可能表示机箱温升、散热不良或环境温度过高。
     device_psu_state:
       name: 电源状态
-      desc: 传输设备各电源模块的运行状态。非正常状态表示电源离线、无输入、过温、硬件故障或告警，需及时排查。
+      desc: Fibernet XMUX4+ 左右电源状态：1 表示通电（正常），2 表示断电（异常），3 表示未知（灰，不告警）。
+      enum:
+        "1": 正常
+        "2": 异常
+        "3": 未知
     interface_ifHCInOctets:
       name: 接口接收流量速率
       desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位

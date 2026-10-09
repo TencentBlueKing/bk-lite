@@ -97,7 +97,7 @@ def apply(metric):
     [processors.starlark.tagpass]
         brand = ["ciena"]
 
-# ---- 风扇状态归一：ok(1)/uninstalled(4 空槽)→1(正常)保留行，rpm-warning(3)/unknown(99)→2(异常)；pending(2，统计未就绪)与其它值丢弃。----
+# ---- 风扇状态归一：ok(1)/uninstalled(4 空槽)→1(正常)保留行，rpm-warning(3)→2(异常)，unknown(99)→3(未知)；pending(2，统计未就绪)与其它值丢弃。----
 [[processors.starlark]]
     namepass = ["device_fan"]
     source = '''
@@ -105,8 +105,10 @@ def apply(metric):
     state = metric.fields.get("state")
     if state == 1 or state == 4:
         metric.fields["state"] = 1
-    elif state == 3 or state == 99:
+    elif state == 3:
         metric.fields["state"] = 2
+    elif state == 99:
+        metric.fields["state"] = 3
     else:
         return None
     return metric

@@ -30,6 +30,7 @@ import {
   type ExecutionParams,
 } from '@/app/job/utils/execution-record';
 import Password from '@/components/password';
+import ParamTipText from '@/app/job/components/param-tip-text';
 
 type ContentSource = 'template' | 'manual';
 type TemplateType = 'scriptLibrary' | 'playbook';
@@ -631,33 +632,56 @@ const QuickExecPage = () => {
                   <div className="text-sm font-medium mb-2 text-[var(--color-text-2)]">
                     {t('job.execParams')}
                   </div>
-                  {templateParams.map((param) => (
-                    <Form.Item
-                      key={param.name}
-                      label={param.name}
-                      name={`param_${param.name}`}
-                      initialValue={param.default || undefined}
-                      tooltip={param.description || undefined}
-                      rules={[{ required: !!param.is_required, message: t('job.paramValueRequired', undefined, { name: param.name }) }]}
-                    >
-                      {param.is_encrypted ? (
-                        <Password
-                          placeholder={param.description || param.name}
-                          clickToEdit={!!param.default}
-                          onReset={() =>
-                            setEditedTemplateParams((prev) => ({
-                              ...prev,
-                              [param.name]: true,
-                            }))
-                          }
-                        />
-                      ) : (
-                        <Input
-                          placeholder={param.description || param.name}
-                        />
-                      )}
-                    </Form.Item>
-                  ))}
+                  {templateParams.map((param) => {
+                    const isEnum = param.type === 'enum' && (param.options?.length || 0) > 0;
+                    return (
+                      <Form.Item
+                        key={param.name}
+                        label={param.name}
+                        name={`param_${param.name}`}
+                        initialValue={param.default || undefined}
+                        rules={[
+                          {
+                            required: !!param.is_required,
+                            message: t('job.paramValueRequired', undefined, { name: param.name }),
+                          },
+                        ]}
+                        tooltip={
+                          param.description
+                            ? {
+                              title: <ParamTipText text={param.description} />,
+                              // 稍延长隐藏，便于移入 tip 内点击链接
+                              mouseLeaveDelay: 0.3,
+                            }
+                            : undefined
+                        }
+                      >
+                        {isEnum ? (
+                          <Select
+                            allowClear={!param.is_required}
+                            placeholder={param.name}
+                            options={(param.options || []).map((opt) => ({
+                              label: opt,
+                              value: opt,
+                            }))}
+                          />
+                        ) : param.is_encrypted ? (
+                          <Password
+                            placeholder={param.name}
+                            clickToEdit={!!param.default}
+                            onReset={() =>
+                              setEditedTemplateParams((prev) => ({
+                                ...prev,
+                                [param.name]: true,
+                              }))
+                            }
+                          />
+                        ) : (
+                          <Input placeholder={param.name} />
+                        )}
+                      </Form.Item>
+                    );
+                  })}
                 </>
               )}
             </>
