@@ -20,7 +20,7 @@ export { CredentialQuickCreateForm } from './quick-create';
 
 export interface CredentialPickerChromeProps {
   value?: string;
-  options: { label: string; value: string }[];
+  options: { label: string; value: string; disabled?: boolean }[];
   loading?: boolean;
   canAdd: boolean;
   canView: boolean;
@@ -98,9 +98,20 @@ export const CredentialPickerChrome: React.FC<CredentialPickerChromeProps> = ({
   );
 };
 
+export interface CredentialBoundOption {
+  credentialId: string;
+  name: string;
+  unavailable?: boolean;
+}
+
 export interface CredentialPickerProps {
   category?: string;
   type?: string;
+  /** 多个内置类型按 category + type 分别请求后合并。快捷创建默认第一个。 */
+  types?: string[];
+  /** 限定 SNMP 版本。2 接受 v2/v2c，3 只接受 v3。 */
+  snmpVersion?: 2 | 3;
+  boundOption?: CredentialBoundOption;
   /** 限定 SSH 使用方支持的认证方式，同时约束快捷创建。 */
   sshAuthMethod?: 'password' | 'key';
   value?: string;
@@ -108,7 +119,17 @@ export interface CredentialPickerProps {
   onNamesResolved?: (credentials: { credential_id: string; name: string }[]) => void;
 }
 
-const CredentialPicker: React.FC<CredentialPickerProps> = ({ category, type, sshAuthMethod, value, onChange, onNamesResolved }) => {
+const CredentialPicker: React.FC<CredentialPickerProps> = ({
+  category,
+  type,
+  types: typeList,
+  snmpVersion,
+  boundOption,
+  sshAuthMethod,
+  value,
+  onChange,
+  onNamesResolved,
+}) => {
   const { t } = useTranslation();
   const [permissions, setPermissions] = useState<string[]>([]);
   const canAdd = permissions.includes('Add');
@@ -126,16 +147,25 @@ const CredentialPicker: React.FC<CredentialPickerProps> = ({ category, type, ssh
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const lockedType = Boolean(type);
+  const requestedTypes = typeList?.length ? typeList : (type ? [type] : []);
+  const primaryType = requestedTypes[0] || type;
+  const lockedType = Boolean(primaryType);
   const lockedCategory = Boolean(category) || lockedType;
-  const typeMismatch = Boolean(category && type && !types.some((item) => item.key === type && item.categories.includes(category)));
+  const typeMismatch = Boolean(category && primaryType && !types.some((item) => item.key === primaryType && item.categories.includes(category)));
 
   const load = async () => {
     setLoading(true);
     setPermissions([]);
     try {
-      const [nextItems, nextTypes, nextPermissions] = await Promise.all([
-        listSelectableCredentials({ category, type }),
+      const itemGroups = await Promise.all(
+        (requestedTypes.length ? requestedTypes : [undefined]).map((itemType) =>
+          listSelectableCredentials({ category, type: itemType })
+        )
+      );
+      const merged = new Map<string, CredentialItem>();
+      itemGroups.flat().forEach((item) => merged.set(item.credential_id, item));
+      const nextItems = Array.from(merged.values());
+      const [nextTypes, nextPermissions] = await Promise.all([
         listSelectableTypes(category ? { category } : undefined),
         getCredentialPermissions(),
       ]);
@@ -150,18 +180,28 @@ const CredentialPicker: React.FC<CredentialPickerProps> = ({ category, type, ssh
 
   useEffect(() => {
     void load();
-  }, [category, type]);
+  }, [category, type, typeList?.join('|'), snmpVersion]);
 
-  const options = items.filter((item) => !sshAuthMethod || item.type !== 'ssh' || item.fields.auth_method === sshAuthMethod).map((item) => ({
-    value: item.credential_id,
-    label: item.name,
-  }));
+  const options = items
+    .filter((item) => !sshAuthMethod || item.type !== 'ssh' || item.fields.auth_method === sshAuthMethod)
+    .filter((item) => matchesSnmpVersion(item, snmpVersion))
+    .map((item) => ({
+      value: item.credential_id,
+      label: item.name,
+    }));
+  if (boundOption?.credentialId && !options.some((option) => option.value === boundOption.credentialId)) {
+    options.unshift({
+      value: boundOption.credentialId,
+      label: boundOption.name || boundOption.credentialId,
+      disabled: Boolean(boundOption.unavailable),
+    } as { value: string; label: string; disabled?: boolean });
+  }
 
   const openCreate = () => {
     const nextCategory = inferredCategory(types, category, type);
     const nextType = typeMismatch
       ? undefined
-      : type || types.find((item) => !nextCategory || item.categories.includes(nextCategory))?.key;
+      : primaryType || types.find((item) => !nextCategory || item.categories.includes(nextCategory))?.key;
     form.resetFields();
     form.setFieldsValue({
       category: nextCategory,
@@ -233,5 +273,12 @@ const CredentialPicker: React.FC<CredentialPickerProps> = ({ category, type, ssh
     </>
   );
 };
+
+function matchesSnmpVersion(item: CredentialItem, snmpVersion?: 2 | 3) {
+  if (!snmpVersion || item.type !== 'snmp') return true;
+  const version = String(item.fields?.version || '');
+  if (snmpVersion === 2) return version === 'v2' || version === 'v2c';
+  return version === 'v3';
+}
 
 export default CredentialPicker;

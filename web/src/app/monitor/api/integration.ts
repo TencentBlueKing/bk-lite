@@ -407,6 +407,7 @@ const useIntegrationApi = () => {
         collect_config_id?: string;
         collect_config_ids?: string[];
         cloud_region_id?: number | string;
+        vault_credential_id?: string;
       }) => {
         return await post('/monitor/api/monitor_plugin/qcloud_regions/', data, {
           suppressErrorNotification: true,
@@ -418,6 +419,7 @@ const useIntegrationApi = () => {
         collect_config_id?: string;
         collect_config_ids?: string[];
         cloud_region_id?: number | string;
+        vault_credential_id?: string;
       }) => {
         return await post('/monitor/api/monitor_plugin/aliyun_regions/', data, {
           suppressErrorNotification: true,
