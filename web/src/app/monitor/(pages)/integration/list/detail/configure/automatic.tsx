@@ -761,7 +761,17 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (selectedNode?.operating_system && !instance.operating_system) {
       instance.operating_system = selectedNode.operating_system;
     }
-    return applyScriptCollectSubmit(instance, instance.collect_type);
+    const detectInstance = applyScriptCollectSubmit(instance, instance.collect_type);
+    const credentialSource = formValues.credential_source === 'vault' ? 'vault' : 'inline';
+    detectInstance.credential_source = credentialSource;
+    detectInstance.vault_credential_id = credentialSource === 'vault' ? (formValues.vault_credential_id || '') : '';
+    detectInstance.vault_variant = credentialSource === 'vault' ? (formValues.vault_variant || '') : '';
+    Object.keys(detectInstance).forEach((key) => {
+      if (key.startsWith('__credential_')) {
+        delete detectInstance[key];
+      }
+    });
+    return detectInstance;
   };
 
   const ensureCollectFormValid = async () => {

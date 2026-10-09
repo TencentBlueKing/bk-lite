@@ -23,6 +23,11 @@ import useIntegrationApi from '@/app/monitor/api/integration';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import { normalizePasswordFields } from '@/components/password/normalizePasswordWhitespace';
+import {
+  CredentialAccessField,
+  matchCredentialVariant,
+  syncErrorLabel,
+} from '@/app/monitor/components/integration/CredentialAccessField';
 
 /**
  * 兜底：把 formFields 中非必填且用户未填的字段补齐。
@@ -332,6 +337,31 @@ export const usePluginFromJson = () => {
         },
       };
 
+      const credentialVariants = config.credential_binding?.variants || [];
+      const renderMaybeCredentialField = (fieldConfig: any) => {
+        if (!credentialVariants.length) {
+          return renderFormField(
+            fieldConfig,
+            extra.mode,
+            extra.externalOptions,
+            effectiveOptionControls
+          );
+        }
+        return (
+          <CredentialAccessField
+            key={`credential-${fieldConfig?.name}`}
+            field={fieldConfig}
+            variants={credentialVariants}
+            wasVault={false}
+            renderField={(nextField) => renderFormField(
+              nextField,
+              extra.mode,
+              extra.externalOptions,
+              effectiveOptionControls
+            )}
+          />
+        );
+      };
       const renderConfigFields = (fields: any[]) => {
         const nodes: ReactNode[] = [];
         const scriptCollect = isScriptCollectConfig(config);
@@ -350,14 +380,7 @@ export const usePluginFromJson = () => {
           if (scriptCollect && fieldConfig?.name === 'timeout') {
             continue;
           }
-          nodes.push(
-            renderFormField(
-              fieldConfig,
-              extra.mode,
-              extra.externalOptions,
-              effectiveOptionControls
-            )
-          );
+          nodes.push(renderMaybeCredentialField(fieldConfig));
         }
         return nodes;
       };
@@ -396,12 +419,7 @@ export const usePluginFromJson = () => {
                 )}
                 <div className="space-y-1">
                   {(sectionMap.get(section) || []).map((fieldConfig: any) =>
-                    renderFormField(
-                      fieldConfig,
-                      extra.mode,
-                      extra.externalOptions,
-                      effectiveOptionControls
-                    )
+                    renderMaybeCredentialField(fieldConfig)
                   )}
                 </div>
               </section>
@@ -494,7 +512,7 @@ export const usePluginFromJson = () => {
                 acc[field.name] = field.default_value;
               }
               return acc;
-            }, {}) || {},
+            }, credentialVariants.length ? { credential_source: 'inline' } : {}) || {},
           getParams: (row: any, tableConfig: any) => {
             const normalizedRow = normalizePasswordFields(
               row,
@@ -568,6 +586,20 @@ export const usePluginFromJson = () => {
                 formValues.script_os = inferScriptOs(formValues.interpreter);
               }
             }
+            const savedCredential = apiData?.credential;
+            if (savedCredential?.source === 'vault' || savedCredential?.vault_credential_id) {
+              formValues.credential_source = 'vault';
+              formValues.vault_credential_id = savedCredential.vault_credential_id;
+              formValues.vault_variant = savedCredential.variant || '';
+              formValues.__credential_bound_id = savedCredential.vault_credential_id;
+              formValues.__credential_was_vault = true;
+              formValues.__credential_name = savedCredential.name || '';
+              formValues.__credential_usable = savedCredential.usable;
+              formValues.__credential_sync_error = savedCredential.sync_error || '';
+              formValues.__credential_synced_at = savedCredential.synced_at || '';
+            } else if (credentialVariants.length) {
+              formValues.credential_source = 'inline';
+            }
             if (config.instance_type === 'web') {
               const requestUrl = apiData?.child?.content?.config?.urls?.[0];
               if (requestUrl) {
@@ -616,9 +648,33 @@ export const usePluginFromJson = () => {
               { ...formData },
               config.collect_type
             );
+            const savedCredential = configForm?.credential;
+            const wasVault = Boolean(savedCredential?.source === 'vault' || savedCredential?.vault_credential_id || filledFormData.__credential_was_vault);
+            const credentialSource = filledFormData.credential_source === 'vault' ? 'vault' : 'inline';
+            const activeVariant = matchCredentialVariant(credentialVariants, filledFormData);
+            const managedNames = new Set(activeVariant?.managed_fields || []);
+            if (
+              credentialSource === 'vault' &&
+              wasVault &&
+              String(filledFormData.vault_credential_id || '') === String(savedCredential?.vault_credential_id || '') &&
+              savedCredential?.usable === false
+            ) {
+              throw new Error('当前组织不可使用已绑定的凭据，请另选凭据或改回手填并重新填写');
+            }
+            if (
+              credentialSource === 'vault' &&
+              wasVault &&
+              String(filledFormData.vault_credential_id || '') === String(savedCredential?.vault_credential_id || '') &&
+              ['disabled', 'not_found', 'forbidden'].includes(String(savedCredential?.sync_error || ''))
+            ) {
+              throw new Error(`凭据同步失败：${syncErrorLabel(String(savedCredential.sync_error), 'zh')}，请重新选择或检查凭据状态`);
+            }
             formFields?.forEach((field: any) => {
               const { name, transform_on_edit, editable } = field;
               const formValue = filledFormData[name];
+              if (managedNames.has(name) && (credentialSource === 'vault' || (credentialSource === 'inline' && wasVault))) {
+                return;
+              }
               // 跳过不可编辑的字段（只用于回显，不应写入）
               if (editable === false) {
                 return;
@@ -825,13 +881,14 @@ export const usePluginFromJson = () => {
               childConfig.insecure_skip_verify =
                 filledFormData.insecure_skip_verify === true ||
                 filledFormData.insecure_skip_verify === 'true';
+              const keepManagedOffForm = credentialSource === 'vault' || (credentialSource === 'inline' && wasVault);
               if (filledFormData.auth_type === 'basic') {
                 delete result.child.content.config.bearer_token;
                 delete result.child.content.config.headers.Authorization;
                 delete result.child.content.config.headers.authorization;
                 delete childEnvConfig[bearerEnvKey];
                 result.child.content.config.password = `\${${passwordEnvKey}}`;
-                if (filledFormData.ENV_PASSWORD !== undefined) {
+                if (!keepManagedOffForm && filledFormData.ENV_PASSWORD !== undefined) {
                   childEnvConfig[passwordEnvKey] = filledFormData.ENV_PASSWORD;
                 }
               } else if (filledFormData.auth_type === 'bearer') {
@@ -839,7 +896,7 @@ export const usePluginFromJson = () => {
                 delete result.child.content.config.password;
                 result.child.content.config.headers.Authorization = `Bearer \${${bearerEnvKey}}`;
                 delete childEnvConfig[passwordEnvKey];
-                if (filledFormData.ENV_BEARER_TOKEN !== undefined) {
+                if (!keepManagedOffForm && filledFormData.ENV_BEARER_TOKEN !== undefined) {
                   childEnvConfig[bearerEnvKey] = filledFormData.ENV_BEARER_TOKEN;
                 }
               } else {
@@ -871,6 +928,22 @@ export const usePluginFromJson = () => {
               filledFormData,
               config.collect_type
             );
+            const inlineFields: Record<string, unknown> = {};
+            if (credentialSource === 'inline' && wasVault) {
+              managedNames.forEach((name) => {
+                if (filledFormData[name] !== undefined) {
+                  inlineFields[name] = filledFormData[name];
+                }
+              });
+            }
+            result.credential = {
+              source: credentialSource,
+              vault_credential_id: credentialSource === 'vault'
+                ? (filledFormData.vault_credential_id || '')
+                : (wasVault ? (savedCredential?.vault_credential_id || '') : ''),
+              variant: activeVariant?.key || filledFormData.vault_variant || savedCredential?.variant || '',
+              inline_fields: inlineFields,
+            };
             return result;
           }
         };
