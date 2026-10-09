@@ -52,6 +52,22 @@ SCRIPT_REQUIRED_RENDER_VARS = ("plugin_id", "instance_id", "instance_type", "con
 _LINUX_ROOT_RUN_AS_UID = re.compile(r"^(?:0+|uid\s*[:=]\s*0+)$")
 
 
+def _secret_values(variant, values):
+    secrets = []
+    for target in (variant or {}).get("_targets") or []:
+        field = str(target.get("field") or "")
+        lowered = field.lower()
+        secret_field = bool(target.get("encrypted")) or any(
+            token in lowered for token in ("password", "token", "community", "secret", "passphrase", "private_key")
+        )
+        if not secret_field:
+            continue
+        value = (values or {}).get(field)
+        if value not in (None, ""):
+            secrets.append(value)
+    return secrets
+
+
 class CollectDetectService:
     @classmethod
     def create_task(cls, payload: dict, user, organization: int):
@@ -462,7 +478,7 @@ class CollectDetectService:
         except ValueError as exc:
             raise ValidationAppException(str(exc)) from exc
         names = set(managed_field_names(binding))
-        secrets = list(values.values())
+        secrets = _secret_values(variant, values)
         return {
             "public_instance": cls._strip_vault_values(instance, names, secrets),
             "managed_names": names,
@@ -473,7 +489,7 @@ class CollectDetectService:
 
     @classmethod
     def _fill_vault_detect_instance(cls, plugin, instance, vault):
-        from apps.monitor.services.vault_credential.binding import binding_for_plugin, managed_field_names
+        from apps.monitor.services.vault_credential.binding import binding_for_plugin
         from apps.monitor.services.vault_credential.mapper import form_values_for_credential
         from apps.monitor.services.vault_credential.resolver import resolve_for_actor
 
@@ -489,8 +505,7 @@ class CollectDetectService:
         filled.update(values)
         if plugin.collect_type == "web":
             filled = normalize_website_request_config(filled)
-        names = set(managed_field_names(binding))
-        return filled, [values.get(name) for name in names]
+        return filled, _secret_values(variant, values)
 
     @staticmethod
     def _strip_vault_values(value, names, secrets):

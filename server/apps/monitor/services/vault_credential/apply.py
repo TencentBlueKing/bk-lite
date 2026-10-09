@@ -13,7 +13,7 @@ from apps.rpc.system_mgmt import SystemMgmt
 
 from .binding import binding_for_plugin, get_path, managed_field_names, managed_storage_targets, select_variant, set_path
 from .errors import CLEARED_SYNC_ERRORS, VaultCredentialError, client_code
-from .mapper import apply_storage_writes, stored_values_for_variant, strip_managed_values, to_create_fields, to_storage_writes
+from .mapper import apply_storage_writes, stored_writes_for_variant, strip_managed_values, to_create_fields, to_storage_writes
 from .resolver import describe_for_actor, resolve_for_actor
 
 _ALLOWED_TRIGGERS = {"refresh", "reconcile"}
@@ -142,22 +142,28 @@ def apply_vault_credential(credential_id, instance_id, monitor_plugin_id, *, tri
                 _set_rows(locked, vault_sync_error="apply_failed")
                 return "failed"
             plugin = locked[0].monitor_plugin
-            binding = binding_for_plugin(plugin)
-            variant = next((item for item in binding.get("variants") or [] if item.get("key") == variant_key), None)
-            if variant is None:
-                _set_rows(locked, vault_sync_error="apply_failed")
-                return "failed"
-            versions = _versions_for([credential_id])
-            remote_version = versions.get(credential_id)
-            if remote_version is None:
-                if _already_cleared_not_found(locked, binding):
+            stage = "read"
+            try:
+                binding = binding_for_plugin(plugin)
+                variant = next((item for item in binding.get("variants") or [] if item.get("key") == variant_key), None)
+                if variant is None:
+                    _set_rows(locked, vault_sync_error="apply_failed")
+                    return "failed"
+                stage = "versions"
+                versions = _versions_for([credential_id])
+                remote_version = versions.get(credential_id)
+                if remote_version is None:
+                    stage = "purge"
+                    if _already_cleared_not_found(locked, binding):
+                        return "skipped"
+                    purge_managed_secrets(locked, binding, locked, node_mgmt=local_node_mgmt())
+                    _set_rows(locked, vault_sync_error="not_found")
+                    return "success"
+                applied = min(int(row.vault_applied_version or 0) for row in locked)
+                if int(remote_version) <= applied:
                     return "skipped"
-                purge_managed_secrets(locked, binding, locked, node_mgmt=local_node_mgmt())
-                _set_rows(locked, vault_sync_error="not_found")
-                return "success"
-            applied = min(int(row.vault_applied_version or 0) for row in locked)
-            if int(remote_version) <= applied:
-                return "skipped"
+            except Exception as exc:
+                raise _ApplyWriteError(stage, exc) from exc
             try:
                 resolved = resolve_for_actor(
                     actor,
@@ -166,7 +172,10 @@ def apply_vault_credential(credential_id, instance_id, monitor_plugin_id, *, tri
                     form_values=_snmp_form_values(variant),
                 )
             except VaultCredentialError as exc:
-                return _persist_resolve_failure(locked, binding, exc.code, remote_version)
+                try:
+                    return _persist_resolve_failure(locked, binding, exc.code, remote_version)
+                except Exception as purge_exc:
+                    raise _ApplyWriteError("purge", purge_exc) from purge_exc
             try:
                 _apply_resolved_values(locked, binding, variant, resolved)
             except Exception as exc:
@@ -271,7 +280,7 @@ def prepare_base_content_for_write(config_obj, content, env_config):
     return rendered, env_config
 
 
-def write_config_group(configs, writes, node_mgmt):
+def write_config_group(configs, writes, node_mgmt, *, replace_env=False):
     rendered = writes.get("rendered") or {}
     envs = writes.get("env") or {}
     for row in configs or []:
@@ -281,9 +290,9 @@ def write_config_group(configs, writes, node_mgmt):
         content = rendered.get(config_id)
         env_config = envs.get(config_id)
         if row.is_child:
-            node_mgmt.update_child_config_content(row.id, content, env_config)
+            node_mgmt.update_child_config_content(row.id, content, env_config, replace_env=replace_env)
         else:
-            node_mgmt.update_config_content(row.id, content, env_config)
+            node_mgmt.update_config_content(row.id, content, env_config, replace_env=replace_env)
 
 
 def prepare_onboarding_credential(data, plugin, actor_context):
@@ -383,12 +392,16 @@ def finalize_onboarding_credential(instance_ids, plugin_id, plan, actor_context)
             )
         return
     for group in grouped.values():
-        clear_vault_binding(group)
+        bound = [row for row in group if row.vault_credential_id]
+        if bound:
+            clear_vault_binding(bound)
 
 
 def update_instance_collect_config(child_info, base_info, credential, actor_context):
     from apps.monitor.services.node_mgmt import InstanceConfigService
 
+    if credential is not None and not isinstance(credential, dict):
+        raise ValidationAppException()
     child_info = _drop_client_vault_keys(child_info)
     base_info = _drop_client_vault_keys(base_info)
     config_ids = []
@@ -541,18 +554,31 @@ def _write_unified_edit(locked, child_info, base_info, credential, actor_context
     source = str(credential.get("source") or "")
     stored_id = next((row.vault_credential_id for row in locked if row.vault_credential_id), "")
     requested_id = str(credential.get("vault_credential_id") or "")
+    clear_only = False
+    reuse_name = ""
     if source == "inline":
-        variant = _select_edit_variant(binding, submitted_values, credential.get("variant") or next(iter(by_id.values())).vault_variant)
-        _require_inline_fields(variant, credential.get("inline_fields") or {})
-        values = dict(credential.get("inline_fields") or {})
-        resolved = None
-        reuse = False
+        variant = _select_edit_variant(
+            binding,
+            submitted_values,
+            credential.get("variant") or next(iter(by_id.values())).vault_variant,
+            allow_unmatched=True,
+        )
+        if variant is None:
+            clear_only = True
+            values = {}
+            resolved = None
+            reuse = False
+        else:
+            _require_inline_fields(variant, credential.get("inline_fields") or {})
+            values = dict(credential.get("inline_fields") or {})
+            resolved = None
+            reuse = False
     else:
         if not requested_id:
             raise ValidationAppException()
         variant = _select_edit_variant(binding, submitted_values, credential.get("variant"))
         if stored_id and requested_id == stored_id:
-            values, resolved, reuse = _values_for_same_credential(locked, binding, variant, requested_id, actor_context, raw)
+            values, resolved, reuse, reuse_name = _values_for_same_credential(locked, binding, variant, requested_id, actor_context, raw)
         else:
             resolved = resolve_for_actor(stored_actor(actor_context), requested_id, variant, form_values=submitted_values)
             values = None
@@ -569,8 +595,12 @@ def _write_unified_edit(locked, child_info, base_info, credential, actor_context
             pass
     targets = [target for target in managed_storage_targets(binding, locked) if str(target.get("config_id")) in env_by_config]
     env_by_config, content_by_config = strip_managed_values(env_by_config, content_by_config, targets)
-    if source == "inline" or reuse:
-        writes = to_storage_writes(None, variant, binding, locked, encode=source == "inline", inline_values=values)
+    if clear_only:
+        writes = []
+    elif reuse:
+        writes = stored_writes_for_variant(variant, raw["env"], raw["content"], locked)
+    elif source == "inline":
+        writes = to_storage_writes(None, variant, binding, locked, encode=True, inline_values=values)
     else:
         writes = to_storage_writes(resolved, variant, binding, locked, encode=True)
     writes = [item for item in writes if str(item.get("config_id")) in env_by_config]
@@ -586,13 +616,13 @@ def _write_unified_edit(locked, child_info, base_info, credential, actor_context
             text, env_config = prepare_base_content_for_write(row, content, env_config)
         rendered[str(config_id)] = text
         final_env[str(config_id)] = env_config
-    write_config_group(list(by_id.values()), {"rendered": rendered, "env": final_env}, local_node_mgmt())
+    write_config_group(list(by_id.values()), {"rendered": rendered, "env": final_env}, local_node_mgmt(), replace_env=True)
     for config_id, text in rendered.items():
         CollectConfigUpdateService.mark_hand_edited(by_id[config_id], text)
-    if source == "inline":
+    if source == "inline" or clear_only:
         clear_vault_binding(locked)
         return
-    name = resolved.name if resolved is not None else _describe_name(actor_context, requested_id, variant)
+    name = resolved.name if resolved is not None else reuse_name
     stamp_vault_binding(
         locked,
         credential_id=requested_id,
@@ -605,8 +635,10 @@ def _write_unified_edit(locked, child_info, base_info, credential, actor_context
 
 
 def _values_for_same_credential(locked, binding, variant, credential_id, actor_context, raw):
+    del binding, raw
     sync_error = next((row.vault_sync_error for row in locked if row.vault_sync_error), "")
     described = describe_for_actor(stored_actor(actor_context), credential_id, variant)
+    # 默认 0 表示尚未成功下发。secret_version 从 1 起，与 0 不相等就要解析，0 不是哨兵。
     applied = min(int(row.vault_applied_version or 0) for row in locked)
     if sync_error in CLEARED_SYNC_ERRORS or int(described.version or 0) != applied:
         resolved = resolve_for_actor(
@@ -615,14 +647,8 @@ def _values_for_same_credential(locked, binding, variant, credential_id, actor_c
             variant,
             form_values=_snmp_form_values(variant),
         )
-        return None, resolved, False
-    values = stored_values_for_variant(variant, raw["env"], raw["content"], locked)
-    return values, None, True
-
-
-def _describe_name(actor_context, credential_id, variant):
-    described = describe_for_actor(stored_actor(actor_context), credential_id, variant)
-    return described.name
+        return None, resolved, False, resolved.name or ""
+    return None, None, True, described.name or ""
 
 
 def _select_onboarding_variant(binding, submitted, variant_key):
@@ -632,7 +658,7 @@ def _select_onboarding_variant(binding, submitted, variant_key):
     return chosen
 
 
-def _select_edit_variant(binding, submitted, requested_key):
+def _select_edit_variant(binding, submitted, requested_key, *, allow_unmatched=False):
     variants = list((binding or {}).get("variants") or [])
     fields = (binding or {}).get("_fields") or {}
     discriminant = False
@@ -648,9 +674,9 @@ def _select_edit_variant(binding, submitted, requested_key):
         chosen = next((variant for variant in variants if variant.get("key") == requested_key), None)
     else:
         chosen = select_variant(binding, submitted, requested_key)
-    if chosen is None:
-        raise ValidationAppException()
-    if requested_key not in (None, "") and chosen.get("key") != requested_key:
+    if chosen is None or (requested_key not in (None, "") and chosen.get("key") != requested_key):
+        if allow_unmatched:
+            return None
         raise ValidationAppException()
     return chosen
 
@@ -658,10 +684,32 @@ def _select_edit_variant(binding, submitted, requested_key):
 def _require_inline_fields(variant, inline_fields):
     inline_fields = inline_fields or {}
     for target in (variant or {}).get("_targets") or []:
-        if not target.get("required"):
+        if not _inline_target_required(variant, target, inline_fields):
             continue
         if inline_fields.get(target.get("field")) in (None, ""):
             raise VaultCredentialError("inline_secret_required")
+
+
+def _inline_target_required(variant, target, inline_fields):
+    profile = (variant or {}).get("_profile")
+    field = str(target.get("field") or "")
+    if profile == "ssh":
+        auth = str(inline_fields.get("auth_type") or "password")
+        if field == "ENV_PASSWORD":
+            return auth == "password"
+        if field == "private_key_content":
+            return auth == "private_key"
+        if field == "private_key_passphrase":
+            return False
+        return bool(target.get("required"))
+    if profile == "snmp_v3":
+        level = str(inline_fields.get("sec_level") or "")
+        if field in {"ENV_AUTH_PASSWORD", "auth_password"}:
+            return level in {"authNoPriv", "authPriv"}
+        if field in {"ENV_PRIV_PASSWORD", "priv_password"}:
+            return level == "authPriv"
+        return bool(target.get("required"))
+    return bool(target.get("required"))
 
 
 def _submitted_form_values(binding, submitted, by_id):
@@ -744,6 +792,8 @@ def _group_has_managed_secrets(rows, binding):
     targets = managed_storage_targets(binding, rows)
     for target in targets:
         config_id = str(target.get("config_id") or "")
+        if target.get("kind") == "dsn":
+            continue
         if target.get("kind") == "env":
             value = (raw["env"].get(config_id) or {}).get(target.get("env_key"))
             if value not in (None, ""):
@@ -796,17 +846,17 @@ def _apply_resolved_values(rows, binding, variant, resolved):
             else:
                 rendered, env_config = prepare_base_content_for_write(row, new_content or {}, env_config)
             if row.is_child:
-                node_mgmt.update_child_config_content(row.id, rendered, env_config)
+                node_mgmt.update_child_config_content(row.id, rendered, env_config, replace_env=True)
             else:
-                node_mgmt.update_config_content(row.id, rendered, env_config)
+                node_mgmt.update_config_content(row.id, rendered, env_config, replace_env=True)
             if not was_hand_edited:
                 row.applied_rendered_sha256 = sha256_text(rendered)
                 row.save(update_fields=["applied_rendered_sha256", "updated_at"])
             continue
         if row.is_child:
-            node_mgmt.update_child_config_content(row.id, original, env_config)
+            node_mgmt.update_child_config_content(row.id, original, env_config, replace_env=True)
         else:
-            node_mgmt.update_config_content(row.id, original, env_config)
+            node_mgmt.update_config_content(row.id, original, env_config, replace_env=True)
 
 
 def _set_rows(rows, **updates):
@@ -901,9 +951,9 @@ def _write_node_maps(configs, envs, contents, serialized, node_mgmt, *, file_typ
             rendered = serialized.get(config_id) or ""
         env_config = envs.get(config_id) or {}
         if row.is_child:
-            node_mgmt.update_child_config_content(row.id, rendered, env_config)
+            node_mgmt.update_child_config_content(row.id, rendered, env_config, replace_env=True)
         else:
-            node_mgmt.update_config_content(row.id, rendered, env_config)
+            node_mgmt.update_config_content(row.id, rendered, env_config, replace_env=True)
 
 
 def _mask_vault_content(content, *, is_base):

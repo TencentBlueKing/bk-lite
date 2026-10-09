@@ -650,8 +650,13 @@ export const usePluginFromJson = () => {
             );
             const savedCredential = configForm?.credential;
             const wasVault = Boolean(savedCredential?.source === 'vault' || savedCredential?.vault_credential_id || filledFormData.__credential_was_vault);
-            const credentialSource = filledFormData.credential_source === 'vault' ? 'vault' : 'inline';
             const activeVariant = matchCredentialVariant(credentialVariants, filledFormData);
+            const clearCredential = wasVault && !activeVariant;
+            const credentialSource = clearCredential
+              ? 'inline'
+              : filledFormData.credential_source === 'vault'
+                ? 'vault'
+                : 'inline';
             const managedNames = new Set(activeVariant?.managed_fields || []);
             if (
               credentialSource === 'vault' &&
@@ -941,7 +946,9 @@ export const usePluginFromJson = () => {
               vault_credential_id: credentialSource === 'vault'
                 ? (filledFormData.vault_credential_id || '')
                 : (wasVault ? (savedCredential?.vault_credential_id || '') : ''),
-              variant: activeVariant?.key || filledFormData.vault_variant || savedCredential?.variant || '',
+              variant: clearCredential
+                ? ''
+                : (activeVariant?.key || filledFormData.vault_variant || savedCredential?.variant || ''),
               inline_fields: inlineFields,
             };
             return result;

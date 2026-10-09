@@ -66,6 +66,15 @@ export function syncErrorLabel(code: string, locale: string) {
   return locale.startsWith('en') ? pair[1] : pair[0];
 }
 
+export function formatCredentialError(message: string, locale: string) {
+  const text = String(message || '');
+  const matched = text.match(/credential_([a-z0-9_]+)/);
+  if (!matched) return text;
+  const label = syncErrorLabel(matched[1], locale);
+  if (label === matched[1]) return text;
+  return label;
+}
+
 export function CredentialAccessField({
   field,
   variants,

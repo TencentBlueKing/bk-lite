@@ -22,6 +22,7 @@ import {
 import { getSnmpInterfaceFilterModePatch } from '@/app/monitor/hooks/integration/snmpInterfaceFilterMode';
 import { getIfmibSnapshotEnabled } from '../list/detail/configure/ifmibDeploymentState';
 import { normalizePasswordFields } from '@/components/password/normalizePasswordWhitespace';
+import { formatCredentialError } from '@/app/monitor/components/integration/CredentialAccessField';
 
 interface PluginFormField {
   name?: string;
@@ -253,7 +254,7 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
       onSuccess();
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : '';
-      message.error(errorMessage || t('common.operationFailed'));
+      message.error(formatCredentialError(errorMessage, 'zh') || t('common.operationFailed'));
     } finally {
       setConfirmLoading(false);
     }
