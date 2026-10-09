@@ -80,7 +80,7 @@
     {
       "name": "ZTE OLT接入设备风扇异常",
       "alert_name": "接入设备${resource_name} 风扇状态异常",
-      "description": "监控 ZTE ZXA10 风扇运行状态（1=正常或不在位，2=停转）；不在位风扇记为正常，停转时触发告警。",
+      "description": "监控 ZTE ZXA10 风扇运行状态（1=正常或不在位，2=停转或 unknown）；不在位风扇记为正常，停转或 unknown 时触发告警。",
       "metric_name": "device_fan_state",
       "algorithm": "last_over_time",
       "threshold": [

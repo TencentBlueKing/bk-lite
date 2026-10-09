@@ -89,7 +89,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Fan operational status from ZTE-AN-ENVMON-MIB: OnlineStatus offline keeps a row as 1 (normal); OperStatus up=1, down=2 (abnormal)."
+      "description": "Fan operational status from ZTE-AN-ENVMON-MIB: OnlineStatus offline keeps a row as 1 (normal, empty slot); OperStatus up=1, down/unknown=2 (abnormal)."
     },
     {
       "metric_group": "Hardware Status",

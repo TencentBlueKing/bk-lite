@@ -134,7 +134,7 @@ def apply(metric):
     [processors.starlark.tagpass]
         brand = ["zte_olt"]
 
-# ---- 风扇：OnlineStatus offline(2 不在位)→1 保留行；OperStatus up(1)→1、down(2)→2，unknown 等丢弃；转速为负时去掉转速。----
+# ---- 风扇：OnlineStatus offline(2 不在位)→1 保留行；OperStatus up(1)→1、down(2)/unknown(3)→2；转速为负时去掉转速。----
 [[processors.starlark]]
     namepass = ["device_fan"]
     source = '''
@@ -143,7 +143,11 @@ def apply(metric):
     state = metric.fields.get("state")
     if online == 2:
         metric.fields["state"] = 1
-    elif state != 1 and state != 2:
+    elif state == 1:
+        pass
+    elif state == 2 or state == 3:
+        metric.fields["state"] = 2
+    else:
         return None
     rpm = metric.fields.get("rpm")
     if rpm != None and (type(rpm) not in ["int", "float"] or rpm < 0):

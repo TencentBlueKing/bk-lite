@@ -39,7 +39,7 @@ monitor_object_metric:
       desc: ZTE ZXA10 OLT 板卡温度的最高值，单位摄氏度（ZTE-AN-ENVMON-MIB zxAnCardTemp）。温度持续升高可能表示散热异常。
     device_fan_state:
       name: 风扇状态
-      desc: ZTE ZXA10 OLT 风扇运行状态：1 表示正常或不在位（空槽保留序列），2 表示停转（异常）。
+      desc: ZTE ZXA10 OLT 风扇运行状态：1 表示正常或不在位（空槽保留序列），2 表示停转或 unknown（异常）。
     device_fan_rpm:
       name: 风扇转速
       desc: ZTE ZXA10 OLT 风扇实际转速，单位转/分。
