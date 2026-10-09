@@ -19,18 +19,13 @@ export type { CredentialItem, CredentialTypeItem, CredentialFieldSchema } from '
 export { renderCredentialFields, CredentialFieldsBlock } from './fields';
 export { CredentialQuickCreateForm } from './quick-create';
 
-/** 可选：在下拉顶部加一项「手动填写」，其余凭据归入一个分组。 */
+/** 可选，仅监控接入使用：在下拉顶部加一项「手动填写」，其余凭据归入一个分组。 */
 export interface CredentialManualOption {
   value: string;
   label: React.ReactNode;
   searchText: string;
   groupLabel: string;
   emptyText: string;
-  /** 以下外观项只在传入 manualOption 时生效，不影响其他使用方。 */
-  prefix?: React.ReactNode;
-  selectClassName?: string;
-  /** 设置 width 时下拉不再 flex-1 撑满，刷新按钮紧跟其右。 */
-  selectStyle?: React.CSSProperties;
 }
 
 export interface CredentialPickerChromeProps {
@@ -77,10 +72,6 @@ export const CredentialPickerChrome: React.FC<CredentialPickerChromeProps> = ({
     ]
     : options;
   const valueKnown = (manualOption && value === manualOption.value) || options.some((option) => option.value === value);
-  const fixedWidth = manualOption?.selectStyle?.width !== undefined;
-  const selectClassName = manualOption
-    ? [fixedWidth ? 'min-w-0' : 'min-w-0 flex-1', manualOption.selectClassName].filter(Boolean).join(' ')
-    : 'min-w-0 flex-1';
   const addButton = (
     <Button
       type="link"
@@ -96,9 +87,7 @@ export const CredentialPickerChrome: React.FC<CredentialPickerChromeProps> = ({
   return (
     <div className="flex w-full items-center gap-2">
       <Select
-        className={selectClassName}
-        {...(manualOption?.selectStyle ? { style: manualOption.selectStyle } : {})}
-        {...(manualOption?.prefix ? { prefix: manualOption.prefix } : {})}
+        className="min-w-0 flex-1"
         allowClear={!manualOption}
         showSearch
         optionFilterProp={manualOption ? 'searchText' : 'label'}

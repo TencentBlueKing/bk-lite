@@ -61,7 +61,18 @@ const CollectPage = () => {
           const data = await updateSnmpCollectTemplate(pluginId, { content });
           setContent(data.content || '');
           setInitialContent(data.content || '');
-          message.success(t('monitor.integrations.collectSaveSuccess'));
+          const retryIds = Array.isArray(data.retry_config_ids)
+            ? data.retry_config_ids.map((item) => String(item)).filter(Boolean)
+            : [];
+          if (retryIds.length) {
+            message.warning(
+              t('monitor.integrations.collectSaveRetry', '', {
+                ids: retryIds.join('、'),
+              })
+            );
+          } else {
+            message.success(t('monitor.integrations.collectSaveSuccess'));
+          }
         } catch (error: any) {
           message.error(error?.message || t('common.operationFailed'));
         } finally {

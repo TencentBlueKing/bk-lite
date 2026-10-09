@@ -153,10 +153,12 @@ def apply_vault_credential(credential_id, instance_id, monitor_plugin_id, *, tri
                 versions = _versions_for([credential_id])
                 remote_version = versions.get(credential_id)
                 if remote_version is None:
-                    stage = "purge"
+                    stage = "read"
                     if _already_cleared_not_found(locked, binding):
                         return "skipped"
+                    stage = "purge"
                     purge_managed_secrets(locked, binding, locked, node_mgmt=local_node_mgmt())
+                    stage = "status"
                     _set_rows(locked, vault_sync_error="not_found")
                     return "success"
                 applied = min(int(row.vault_applied_version or 0) for row in locked)
@@ -172,10 +174,7 @@ def apply_vault_credential(credential_id, instance_id, monitor_plugin_id, *, tri
                     form_values=_snmp_form_values(variant),
                 )
             except VaultCredentialError as exc:
-                try:
-                    return _persist_resolve_failure(locked, binding, exc.code, remote_version)
-                except Exception as purge_exc:
-                    raise _ApplyWriteError("purge", purge_exc) from purge_exc
+                return _persist_resolve_failure(locked, binding, exc.code, remote_version)
             try:
                 _apply_resolved_values(locked, binding, variant, resolved)
             except Exception as exc:
@@ -557,10 +556,15 @@ def _write_unified_edit(locked, child_info, base_info, credential, actor_context
     clear_only = False
     reuse_name = ""
     if source == "inline":
+        # 显式空 variant 表示当前分支不再使用凭据，不能回退到已保存的分支。
+        if "variant" in credential:
+            requested_key = str(credential.get("variant") or "")
+        else:
+            requested_key = str(next(iter(by_id.values())).vault_variant or "")
         variant = _select_edit_variant(
             binding,
             submitted_values,
-            credential.get("variant") or next(iter(by_id.values())).vault_variant,
+            requested_key,
             allow_unmatched=True,
         )
         if variant is None:
@@ -806,16 +810,22 @@ def _group_has_managed_secrets(rows, binding):
 
 
 def _persist_resolve_failure(rows, binding, code, remote_version):
-    if code in {"forbidden", "disabled"}:
-        purge_managed_secrets(rows, binding, rows, node_mgmt=local_node_mgmt())
-        _set_rows(rows, vault_sync_error=code, vault_applied_version=int(remote_version))
-        return "success"
-    if code in {"type_mismatch", "incomplete"}:
-        stored = code
-    else:
-        stored = "apply_failed"
-    _set_rows(rows, vault_sync_error=stored)
-    return "failed"
+    stage = "status"
+    try:
+        if code in {"forbidden", "disabled"}:
+            stage = "purge"
+            purge_managed_secrets(rows, binding, rows, node_mgmt=local_node_mgmt())
+            stage = "status"
+            _set_rows(rows, vault_sync_error=code, vault_applied_version=int(remote_version))
+            return "success"
+        if code in {"type_mismatch", "incomplete"}:
+            stored = code
+        else:
+            stored = "apply_failed"
+        _set_rows(rows, vault_sync_error=stored)
+        return "failed"
+    except Exception as exc:
+        raise _ApplyWriteError(stage, exc) from exc
 
 
 def _persist_apply_failed(credential_id, instance_id, monitor_plugin_id):

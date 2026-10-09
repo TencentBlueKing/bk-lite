@@ -10,6 +10,7 @@ import React, {
   useEffect,
   forwardRef,
 } from 'react';
+import { useIntl } from 'react-intl';
 import { useTranslation } from '@/utils/i18n';
 import OperateModal from '@/components/operate-modal';
 import useApiClient from '@/utils/request';
@@ -43,6 +44,7 @@ interface PluginConfig {
 const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
   const [form] = Form.useForm();
   const { t } = useTranslation();
+  const locale = useIntl().locale || 'zh';
   const { post } = useApiClient();
   const jsonConfig = usePluginFromJson();
   const formRef = useRef(null);
@@ -254,7 +256,7 @@ const UpdateConfig = forwardRef<ModalRef, ModalProps>(({ onSuccess }, ref) => {
       onSuccess();
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : '';
-      message.error(formatCredentialError(errorMessage, 'zh') || t('common.operationFailed'));
+      message.error(formatCredentialError(errorMessage, locale) || t('common.operationFailed'));
     } finally {
       setConfirmLoading(false);
     }

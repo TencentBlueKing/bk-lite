@@ -31,6 +31,9 @@ const SYNC_ERROR_LABELS: Record<string, [string, string]> = {
   version_mismatch: ['版本不匹配', 'Version mismatch'],
   username_invalid: ['用户名无效', 'Invalid username'],
   apply_failed: ['下发失败', 'Apply failed'],
+  credential_required: ['请选择凭据', 'Credential required'],
+  inline_secret_required: ['请重新填写凭据', 'Re-enter the credential'],
+  managed_key_in_instances: ['实例中不能填写受管字段', 'Managed fields are not allowed on instances'],
 };
 
 export function matchCredentialVariant(
@@ -146,9 +149,19 @@ function CredentialSourceSwitch({
   const snmpVersion = variant.snmp_version_field ? (Number(variant.key) as 2 | 3) : undefined;
 
   useEffect(() => {
-    if (form.getFieldValue('vault_variant') !== variant.key) {
-      form.setFieldValue('vault_variant', variant.key);
+    const previous = form.getFieldValue('vault_variant');
+    if (previous === variant.key) {
+      return;
     }
+    if (previous) {
+      form.setFieldsValue({
+        vault_credential_id: undefined,
+        credential_source: 'inline',
+        vault_variant: variant.key,
+      });
+      return;
+    }
+    form.setFieldValue('vault_variant', variant.key);
   }, [form, variant.key]);
 
   const keepingOriginal = wasVault && source === 'vault' && boundId !== '' && String(credentialId || '') === boundId;
@@ -244,13 +257,17 @@ function CredentialSourceSwitch({
 
 const MANUAL_OPTION_VALUE = '__credential_manual__';
 
-// 只作用于「凭据」这一个下拉：浅主题色底 + 主题色浅边框，hover/聚焦用主题色；
-// 校验失败（status-error）时不覆盖边框，保留 antd 的红框。颜色均为主题变量，暗色模式自动跟随。
+// 外观留在监控接入：浅主题色底 + 主题色浅边框，hover/聚焦用主题色；
+// 校验失败（status-error）时不覆盖边框，保留 antd 的红框。宽度仍走 FORM_WIDGET_WIDTH。
 const CREDENTIAL_SELECT_CLASS = [
+  '[&_.ant-select]:!w-[var(--credential-select-width)]',
+  '[&_.ant-select]:!max-w-[var(--credential-select-width)]',
+  '[&_.ant-select]:!flex-none',
   '[&_.ant-select-selector]:!bg-[var(--color-primary-bg-active)]',
-  '[&:not(.ant-select-status-error)_.ant-select-selector]:!border-[color:color-mix(in_srgb,var(--color-primary)_45%,transparent)]',
-  '[&:not(.ant-select-status-error):not(.ant-select-disabled):hover_.ant-select-selector]:!border-[color:var(--color-primary)]',
-  '[&.ant-select-focused:not(.ant-select-status-error)_.ant-select-selector]:!border-[color:var(--color-primary)]',
+  '[&_.ant-select-selector]:!ps-[30px]',
+  '[&_.ant-select:not(.ant-select-status-error)_.ant-select-selector]:!border-[color:color-mix(in_srgb,var(--color-primary)_45%,transparent)]',
+  '[&_.ant-select:not(.ant-select-status-error):not(.ant-select-disabled):hover_.ant-select-selector]:!border-[color:var(--color-primary)]',
+  '[&_.ant-select.ant-select-focused:not(.ant-select-status-error)_.ant-select-selector]:!border-[color:var(--color-primary)]',
 ].join(' ');
 
 /**
@@ -276,27 +293,30 @@ function CredentialSourceSelect({
     : MANUAL_OPTION_VALUE;
 
   return (
-    <CredentialPicker
-      {...pickerProps}
-      value={selected}
-      manualOption={{
-        value: MANUAL_OPTION_VALUE,
-        label: manualLabel,
-        searchText: manualLabel,
-        groupLabel: t('monitor.integrations.credentialSaved', '已有凭据'),
-        emptyText: t('monitor.integrations.credentialEmpty', '暂无凭据'),
-        prefix: <KeyOutlined className="text-[var(--color-primary)]" />,
-        selectClassName: CREDENTIAL_SELECT_CLASS,
-        selectStyle: { width: FORM_WIDGET_WIDTH },
-      }}
-      onChange={(next) => {
-        if (!next || next === MANUAL_OPTION_VALUE) {
-          onChange?.('inline');
-          return;
-        }
-        form.setFieldValue('vault_credential_id', next);
-        onChange?.('vault');
-      }}
-    />
+    <div
+      className={`relative w-full ${CREDENTIAL_SELECT_CLASS}`}
+      style={{ '--credential-select-width': `${FORM_WIDGET_WIDTH}px` } as React.CSSProperties}
+    >
+      <CredentialPicker
+        {...pickerProps}
+        value={selected}
+        manualOption={{
+          value: MANUAL_OPTION_VALUE,
+          label: manualLabel,
+          searchText: manualLabel,
+          groupLabel: t('monitor.integrations.credentialSaved', '已有凭据'),
+          emptyText: t('monitor.integrations.credentialEmpty', '暂无凭据'),
+        }}
+        onChange={(next) => {
+          if (!next || next === MANUAL_OPTION_VALUE) {
+            onChange?.('inline');
+            return;
+          }
+          form.setFieldValue('vault_credential_id', next);
+          onChange?.('vault');
+        }}
+      />
+      <KeyOutlined className="pointer-events-none absolute left-[11px] top-1/2 z-10 -translate-y-1/2 text-[14px] text-[var(--color-primary)]" />
+    </div>
   );
 }
