@@ -88,10 +88,11 @@ monitor_object_metric:
       desc: 该指标表示设备各硬件温度传感器的读数，单位为摄氏度。温度异常升高可能意味着风扇故障、散热受阻或环境过热，若不处理可能触发热保护或损坏硬件。
     device_fan_state:
       name: 风扇状态
-      desc: Hirschmann 交换机风扇状态（hmFanState）：1 表示正常，2 表示故障（异常）。对象未定义 unknown，不产出 3。仅取值为 2 时告警。
+      desc: Hirschmann 交换机风扇状态（hmFanState）：1 表示正常，2 表示故障（异常），3 表示未知（灰，不告警，MIB 未定义值）。仅取值为 2 时告警。
       enum:
         "1": 正常
         "2": 异常
+        "3": 未知
     device_psu_state:
       name: 电源状态
       desc: Hirschmann 交换机电源模块状态：1 表示正常或未安装（空槽保留序列），2 表示故障（异常），3 表示未知（灰，不告警）。

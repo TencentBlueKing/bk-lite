@@ -215,7 +215,7 @@
       "query": "device_fan_state{instance_type='switch', __$labels__}",
       "display_name": "Fan Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "dimensions": [
         {
           "name": "index",
@@ -225,7 +225,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Operational state of each chassis fan (hmFanState): ok(1) maps to 1, failed(2) maps to 2. The object does not define unknown, so value 3 is not produced."
+      "description": "Operational state of each chassis fan (hmFanState): ok(1) maps to 1, failed(2) maps to 2. MIB-undefined values map to 3 (unknown, gray, no alert)."
     },
     {
       "metric_group": "Base",

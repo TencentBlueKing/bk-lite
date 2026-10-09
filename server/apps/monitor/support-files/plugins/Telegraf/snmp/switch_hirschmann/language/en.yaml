@@ -150,11 +150,12 @@ monitor_object_metric:
     device_fan_state:
       name: Fan Status
       desc: Fan state of the Hirschmann switch (hmFanState). 1 means ok; 2 means
-        failed (abnormal). The object does not define unknown, so value 3 is not
-        produced. Only value 2 alerts.
+        failed (abnormal); 3 means unknown (gray, no alert) for MIB-undefined
+        values. Only value 2 alerts.
       enum:
         "1": Normal
         "2": Abnormal
+        "3": Unknown
     device_psu_state:
       name: Power Supply Status
       desc: Power-supply state of the Hirschmann switch. 1 means ok or notInstalled
