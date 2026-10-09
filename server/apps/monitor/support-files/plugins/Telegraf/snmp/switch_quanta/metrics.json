@@ -35,7 +35,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "max(snmp_device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "device_cpu_usage{instance_type='switch', __$labels__}",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -48,7 +48,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "max(snmp_device_memory_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "device_memory_usage{instance_type='switch', __$labels__}",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -61,7 +61,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_used",
-      "query": "max(snmp_device_memory_used{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "device_memory_used{instance_type='switch', __$labels__}",
       "display_name": "Memory Used",
       "data_type": "Number",
       "unit": "bytes",
@@ -74,7 +74,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_free",
-      "query": "max(snmp_device_memory_free{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "device_memory_free{instance_type='switch', __$labels__}",
       "display_name": "Memory Free",
       "data_type": "Number",
       "unit": "bytes",
@@ -87,7 +87,7 @@
     {
       "metric_group": "Memory",
       "name": "device_memory_total",
-      "query": "max(snmp_device_memory_total{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "device_memory_total{instance_type='switch', __$labels__}",
       "display_name": "Memory Total",
       "data_type": "Number",
       "unit": "bytes",
