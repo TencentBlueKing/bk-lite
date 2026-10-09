@@ -560,7 +560,7 @@ def _write_unified_edit(locked, child_info, base_info, credential, actor_context
         if "variant" in credential:
             requested_key = str(credential.get("variant") or "")
         else:
-            requested_key = str(next(iter(by_id.values())).vault_variant or "")
+            requested_key = str(next((row.vault_variant for row in locked if row.vault_variant), "") or "")
         variant = _select_edit_variant(
             binding,
             submitted_values,

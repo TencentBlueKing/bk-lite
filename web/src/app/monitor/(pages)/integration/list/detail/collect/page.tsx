@@ -66,9 +66,11 @@ const CollectPage = () => {
             : [];
           if (retryIds.length) {
             message.warning(
-              t('monitor.integrations.collectSaveRetry', '', {
-                ids: retryIds.join('、'),
-              })
+              t(
+                'monitor.integrations.collectSaveRetry',
+                '采集片段已保存。以下配置正文已变化，未同步，需要重试：{ids}',
+                { ids: retryIds.join('、') }
+              )
             );
           } else {
             message.success(t('monitor.integrations.collectSaveSuccess'));
