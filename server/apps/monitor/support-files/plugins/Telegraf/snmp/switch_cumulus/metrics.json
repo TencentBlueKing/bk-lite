@@ -80,10 +80,10 @@
       ],
       "name": "device_memory_total",
       "display_name": "内存总量",
-      "query": "max(snmp_device_memory_total{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
-      "description": "Total physical memory of the Cumulus Linux switch in bytes (UCD-SNMP-MIB memTotalReal, scalar 1.3.6.1.4.1.2021.4.5.0, reported in kB and multiplied by 1024 at collection)."
+      "description": "Total physical memory of the Cumulus Linux switch in bytes (UCD-SNMP-MIB memTotalReal)."
     },
     {
       "metric_group": "Memory",
@@ -93,10 +93,10 @@
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲",
-      "query": "max(snmp_device_memory_free{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
-      "description": "Free physical memory of the Cumulus Linux switch in bytes (UCD-SNMP-MIB memAvailReal, scalar 1.3.6.1.4.1.2021.4.6.0, reported in kB and multiplied by 1024 at collection)."
+      "description": "Free physical memory of the Cumulus Linux switch in bytes (UCD-SNMP-MIB memAvailReal)."
     },
     {
       "metric_group": "Memory",
@@ -106,7 +106,7 @@
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "(max(snmp_device_memory_total{instance_type='switch', __$labels__}) by (instance_id) - max(snmp_device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) / max(snmp_device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100",
+      "query": "(sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) - sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) / sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100",
       "unit": "percent",
       "data_type": "Number",
       "description": "Memory utilisation of the Cumulus Linux switch, derived as (total-free)/total."
@@ -124,10 +124,10 @@
       ],
       "name": "device_temperature_celsius",
       "display_name": "设备温度",
-      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
+      "query": "device_temperature_celsius{instance_type='switch', __$labels__} / 1000",
       "unit": "celsius",
       "data_type": "Number",
-      "description": "Chassis temperature of the Cumulus Linux switch in degrees Celsius (LM-SENSORS-MIB lmTempSensorsValue)."
+      "description": "Chassis temperature of the Cumulus Linux switch in degrees Celsius (LM-SENSORS-MIB lmTempSensorsValue 1.3.6.1.4.1.2021.13.16.2.1.3). The sensor reports millidegrees Celsius (for example 42000 means 42 °C), so the query divides the raw value by 1000."
     },
     {
       "metric_group": "Base",

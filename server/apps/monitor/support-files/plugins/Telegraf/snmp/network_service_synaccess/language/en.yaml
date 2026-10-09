@@ -1,0 +1,47 @@
+NetworkService Synaccess SynLink SNMP:
+  name: Synaccess SynLink (Telegraf)
+  desc: SNMP monitoring template for Synaccess SynLink / netBooter DU intelligent power distribution (SYNLINK-MIB,
+    enterprise PEN 21728). It reports uptime, environment temperature and humidity, inlet current and
+    voltage, and interface traffic.
+monitor_object:
+  NetworkService: NetworkService
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  NetworkService:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
+        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
+        or failures.
+    env_temperature_celsius:
+      name: Environment Temperature
+      desc: Environment temperature of the Synaccess SynLink / netBooter DU in degrees Celsius. High values
+        may indicate cooling or ambient-temperature risk.
+    env_humidity_percent:
+      name: Environment Humidity
+      desc: Environment relative humidity of the Synaccess SynLink / netBooter DU in percent. Abnormal
+        humidity may increase insulation or corrosion risk.
+    pdu_inlet_current_amps:
+      name: Inlet Current (A)
+      desc: Inlet RMS current of the Synaccess SynLink / netBooter DU in amperes. Sustained high current
+        indicates overload.
+    pdu_inlet_voltage_volts:
+      name: Inlet Voltage
+      desc: Inlet RMS voltage of the Synaccess SynLink / netBooter DU in volts.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of inbound bytes received over the past 5 minutes,
+        measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit
+        counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of outbound bytes sent over the past 5 minutes, measured
+        in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifOutOctets on high-speed ports, keeping the rate accurate.
+monitor_object_metric_group:
+  NetworkService:
+    Base: Base
+    Traffic: Traffic
+    Power: Power
+    Environment: Environment

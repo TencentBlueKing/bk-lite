@@ -1,0 +1,229 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_gwd",
+  "plugin": "Access GWD SNMP",
+  "plugin_desc": "SNMP monitoring template for GWD (GWTT) EPON OLT / ONU devices (enterprise PEN 10072). It reports uptime, per-board CPU, memory and temperature, device temperature, power supply status and temperature, fan status and speed, and interface traffic.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='access', collect_type='snmp_gwd'}) by (instance_id)",
+  "name": "Access",
+  "icon": "mm-access_接入设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='access'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_board_cpu_usage",
+    "device_board_memory_usage",
+    "device_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Access",
+      "name": "device_board_cpu_usage",
+      "query": "device_board_cpu_usage{instance_type='access', __$labels__}",
+      "display_name": "Board CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Board index (deviceIndex.boardIndex)"
+        },
+        {
+          "name": "board",
+          "description": "Board description (boardDescription)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization of each GWD EPON board in percent, from GW-EPON-MIB boardCpuUsage (1.3.6.1.4.1.10072.2.20.1.1.2.1.1.19). Values outside 0-100 are dropped."
+    },
+    {
+      "metric_group": "Access",
+      "name": "device_board_memory_usage",
+      "query": "device_board_memory_usage{instance_type='access', __$labels__}",
+      "display_name": "Board Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Board index (deviceIndex.boardIndex)"
+        },
+        {
+          "name": "board",
+          "description": "Board description (boardDescription)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of each GWD EPON board in percent, from GW-EPON-MIB boardMemoryUsage (1.3.6.1.4.1.10072.2.20.1.1.2.1.1.20). Values outside 0-100 are dropped."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_board_temperature_celsius",
+      "query": "device_board_temperature_celsius{instance_type='access', __$labels__}",
+      "display_name": "Board Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Board index (deviceIndex.boardIndex)"
+        },
+        {
+          "name": "board",
+          "description": "Board description (boardDescription)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Temperature of each GWD EPON board in degrees Celsius, from GW-EPON-MIB boardTemperature (1.3.6.1.4.1.10072.2.20.1.1.2.1.1.10). Values outside -50 to 150 are dropped."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='access', __$labels__}",
+      "display_name": "Device Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Device index (temperatureDeviceIndex)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Device temperature in degrees Celsius per temperatureDeviceIndex, from GW-EPON-DEV-MIB devTemperature (1.3.6.1.4.1.10072.2.15.1.6.1.1.2). Values outside -50 to 150 are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='access', __$labels__}",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Power supply index (powerIndex)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Run status of each power supply from GW-EPON-DEV-MIB powerRunStatus (1.3.6.1.4.1.10072.2.15.1.5.1.1.2). powerOn(3) is normal (1) and powerOff(2) is abnormal (2); empty(1) slots are not reported."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_psu_temperature_celsius",
+      "query": "device_psu_temperature_celsius{instance_type='access', __$labels__}",
+      "display_name": "Power Supply Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Power supply index (powerIndex)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Temperature of each power supply in degrees Celsius, from GW-EPON-DEV-MIB powerTemperature (1.3.6.1.4.1.10072.2.15.1.5.1.1.3, 1-100)."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "device_fan_state{instance_type='access', __$labels__}",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Fan index (devFanDeviceIndex.devFanIndex)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Alarm status of each fan from GW-EPON-DEV-MIB devFanAlarmStatus (1.3.6.1.4.1.10072.2.15.1.4.1.1.3). CLEAR(5) is normal (1) and ALARM(1) is abnormal (2)."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_rpm",
+      "query": "device_fan_rpm{instance_type='access', __$labels__}",
+      "display_name": "Fan Speed",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Fan index (devFanDeviceIndex.devFanIndex)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Rotation speed of each fan in revolutions per minute, from GW-EPON-DEV-MIB devFanRev (1.3.6.1.4.1.10072.2.15.1.4.1.1.5)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='access', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='access', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='access', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

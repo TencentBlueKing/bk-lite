@@ -1,0 +1,66 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_fortiweb"
+        config_type = "fortiweb"
+        brand = "fortiweb"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.12356.107.2.1.5.0"
+        name = "device_cpu_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.12356.107.2.1.7.0"
+        name = "device_memory_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.12356.107.2.1.8.0"
+        name = "device_memory_total_mb"
+
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    cpu = f.get("device_cpu_usage")
+    if cpu != None:
+        if cpu < 0 or cpu > 100:
+            f.pop("device_cpu_usage")
+    mem = f.get("device_memory_usage")
+    if mem != None:
+        if mem < 0 or mem > 100:
+            f.pop("device_memory_usage")
+    cap = f.get("device_memory_total_mb")
+    if f.get("device_memory_total_mb") != None:
+        f.pop("device_memory_total_mb")
+    if cap != None and cap > 0 and cap != 4294967295:
+        f["device_memory_total"] = cap * 1024 * 1024
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["fortiweb"]

@@ -1,0 +1,81 @@
+{
+  "object": "Access",
+  "plugin": "Access Furukawa OLT SNMP",
+  "templates": [
+    {
+      "name": "Furukawa OLT接入设备CPU使用率过高",
+      "alert_name": "接入设备${resource_name} CPU使用率过高",
+      "description": "监控 Furukawa OLT 3516 的 CPU 负载，当超过阈值时触发告警，便于及时发现控制面过载。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Furukawa OLT接入设备内存使用率过高",
+      "alert_name": "接入设备${resource_name} 内存使用率过高",
+      "description": "监控 Furukawa OLT 3516 的内存使用率，当超过阈值时触发告警，便于及时发现内存泄漏或表项过大。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Furukawa OLT接入设备温度过高",
+      "alert_name": "接入设备${resource_name} 温度过高",
+      "description": "监控 Furukawa OLT 3516 机箱温度，当超过阈值时触发告警，提示散热故障或机房环境温度过高。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 65,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 60,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

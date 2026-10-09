@@ -1,0 +1,56 @@
+{
+  "object": "NetworkService",
+  "plugin": "NetworkService Wiesemann Theis Web-Thermo-Hygrometer SNMP",
+  "templates": [
+    {
+      "name": "Wiesemann Theis环境温度过高",
+      "alert_name": "网络服务${resource_name} 环境温度过高",
+      "description": "监控 Wiesemann Theis Web-Thermo-Hygrometer 通道 1 温度，当持续高于阈值时触发告警，提示环境过热。",
+      "metric_name": "env_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 40,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 35,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 30,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Wiesemann Theis环境湿度过高",
+      "alert_name": "网络服务${resource_name} 环境湿度过高",
+      "description": "监控 Wiesemann Theis Web-Thermo-Hygrometer 通道 2 相对湿度，当持续高于阈值时触发告警，提示环境潮湿风险。",
+      "metric_name": "env_humidity_percent",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

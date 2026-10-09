@@ -1,0 +1,31 @@
+{
+  "object": "NetworkService",
+  "plugin": "NetworkService Raritan PDU SNMP",
+  "templates": [
+    {
+      "name": "Raritan PDU环境温度过高",
+      "alert_name": "PDU ${resource_name} 传感器 ${metric__index} 环境温度过高",
+      "description": "监控 Raritan PX 机架 PDU 外置温度传感器，当持续高于阈值时触发告警，提示机柜散热或环境过热风险。",
+      "metric_name": "env_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 45,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 40,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 35,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

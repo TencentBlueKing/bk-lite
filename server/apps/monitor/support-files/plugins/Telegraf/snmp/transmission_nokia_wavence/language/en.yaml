@@ -1,0 +1,97 @@
+Transmission Nokia Wavence SNMP:
+  name: Nokia Wavence (Telegraf)
+  desc: SNMP monitoring template for Nokia (Alcatel-Lucent) Wavence microwave radios
+    (enterprise PEN 637). Besides standard IF-MIB interface traffic and uptime, it
+    reports local and remote transmit power and main-receiver input level per radio
+    interface.
+monitor_object:
+  Transmission: Transmission
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Transmission:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart,
+        derived from sysUpTime. Monitoring uptime helps administrators understand
+        device stability and identify unexpected reboots or failures.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5
+        minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifOutOctets on high-speed ports, keeping the rate accurate.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the
+        entire device over the past 5 minutes, measured in bytes per second, summed
+        across all interfaces from the 64-bit ifHCInOctets counter. It helps administrators
+        obtain an overview of incoming traffic for overall monitoring and capacity
+        planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire
+        device over the past 5 minutes, measured in bytes per second, summed across
+        all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
+        assess sending performance for traffic management and optimization.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: CPU utilization of the transmission device reported directly as a 0-100
+        percentage. Sustained high CPU usage can indicate wireless backhaul traffic
+        pressure, control-plane load or abnormal traffic.
+    device_memory_usage:
+      name: Memory Usage
+      desc: Memory utilization of the transmission device reported directly as a 0-100
+        percentage. Sustained high memory usage may indicate control-plane resource
+        pressure or unstable device services.
+    device_temperature_celsius:
+      name: Temperature
+      desc: CPU or chassis temperature of the transmission device in degrees Celsius.
+        High values may indicate cooling problems, high ambient temperature or overloaded
+        hardware.
+    device_fan_state:
+      name: Fan Status
+      desc: Operational state of each transmission device fan or fan controller. A
+        non-normal state indicates a cooling module fault, offline module, or communication
+        failure and may lead to overheating.
+    device_psu_state:
+      name: Power Supply Status
+      desc: Operational state of each transmission device power supply. A non-normal
+        state indicates offline power, missing input, over-temperature, hardware fault,
+        or alert condition that should be investigated.
+
+    wavence_local_tx_power_dbm:
+      name: Local Transmit Power (dBm)
+      desc: Local radio transmit power in dBm from OPTICSIM-RADIO-TRS-COMMON-MIB
+        analogueMeasuresLocalTxPower (1.3.6.1.4.1.637.54.1.10.1.1.4.1.2). The Integer32
+        is in 0.1 dBm units (range -1000..1000) and is divided by 10 in the collector.
+    wavence_local_rx_power_dbm:
+      name: Local Receive Power (dBm)
+      desc: Local main-receiver input level in dBm from OPTICSIM-RADIO-TRS-COMMON-MIB
+        analogueMeasuresLocalRxMainPower (1.3.6.1.4.1.637.54.1.10.1.1.4.1.3). The Integer32
+        is in 0.1 dBm units (range -1000..0) and is divided by 10 in the collector.
+    wavence_remote_tx_power_dbm:
+      name: Remote Transmit Power (dBm)
+      desc: Remote radio transmit power in dBm from OPTICSIM-RADIO-TRS-COMMON-MIB
+        analogueMeasuresRemoteTxPower (1.3.6.1.4.1.637.54.1.10.1.1.4.1.6). The Integer32
+        is in 0.1 dBm units (range -1000..1000) and is divided by 10 in the collector.
+    wavence_remote_rx_power_dbm:
+      name: Remote Receive Power (dBm)
+      desc: Remote main-receiver input level in dBm from OPTICSIM-RADIO-TRS-COMMON-MIB
+        analogueMeasuresRemoteRxMainPower (1.3.6.1.4.1.637.54.1.10.1.1.4.1.7). The Integer32
+        is in 0.1 dBm units (range -1000..0) and is divided by 10 in the collector.
+monitor_object_metric_group:
+  Transmission:
+    Base: Base
+    Traffic: Traffic
+    CPU: CPU
+    Memory: Memory
+    Temperature: Temperature
+    Hardware Status: Hardware Status
+    Radio: Radio

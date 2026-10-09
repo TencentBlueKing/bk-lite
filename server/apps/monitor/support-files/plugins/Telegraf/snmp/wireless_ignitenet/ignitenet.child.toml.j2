@@ -1,0 +1,102 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_ignitenet"
+        config_type = "ignitenet"
+        brand = "ignitenet"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- MetroLinq radio (PEN 47307, mlRadioInfoEntry): enabled / TxPower dBm / local+remote RSSI ----
+    [[inputs.snmp.table]]
+        name = "ignitenet_radio"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.47307.1.4.2.1.2"
+        name = "enabled"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.47307.1.4.2.1.7"
+        name = "tx_power_dbm"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.47307.1.4.2.1.10"
+        name = "rssi_local"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.47307.1.4.2.1.11"
+        name = "rssi_remote"
+    # ---- MetroLinq failover (mlRadioStatusFailoverStatus): off(0)=正常, on(1)=已切到 5 GHz ----
+    [[inputs.snmp.table]]
+        name = "ignitenet_radio_status"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.47307.1.4.3.1.2"
+        name = "failover_state"
+
+[[processors.starlark]]
+    namepass = ["ignitenet_radio", "ignitenet_radio_status"]
+    source = '''
+def apply(metric):
+    if metric.name == "ignitenet_radio":
+        enabled = metric.fields.pop("enabled", None)
+        if enabled == None or int(enabled) != 1:
+            return None
+        tx = metric.fields.get("tx_power_dbm")
+        if tx == None or int(tx) < -40 or int(tx) > 60:
+            if "tx_power_dbm" in metric.fields:
+                metric.fields.pop("tx_power_dbm")
+        rssi_l = metric.fields.get("rssi_local")
+        if rssi_l == None or int(rssi_l) < -120 or int(rssi_l) > 120:
+            if "rssi_local" in metric.fields:
+                metric.fields.pop("rssi_local")
+        rssi_r = metric.fields.get("rssi_remote")
+        if rssi_r == None or int(rssi_r) < -120 or int(rssi_r) > 120:
+            if "rssi_remote" in metric.fields:
+                metric.fields.pop("rssi_remote")
+        f = metric.fields
+        if len(f.keys()) == 0:
+            return None
+        return metric
+    if metric.name == "ignitenet_radio_status":
+        raw = metric.fields.get("failover_state")
+        if raw == None:
+            return None
+        n = int(raw)
+        if n == 0:
+            metric.fields["failover_state"] = 1
+            metric.name = "ignitenet_radio"
+            return metric
+        if n == 1:
+            metric.fields["failover_state"] = 2
+            metric.name = "ignitenet_radio"
+            return metric
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["ignitenet"]

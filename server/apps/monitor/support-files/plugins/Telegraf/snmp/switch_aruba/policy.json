@@ -54,7 +54,7 @@
     },
     {
       "name": "Aruba交换机温度过高",
-      "alert_name": "交换机${resource_name} 传感器 ${metric_descr} 温度过高",
+      "alert_name": "交换机${resource_name} 传感器 ${metric__descr} 温度过高",
       "description": "监控 Aruba 设备各硬件温度传感器读数，当温度超过安全阈值时触发告警，提示可能存在风扇故障、散热不良或环境过热，避免触发热保护或硬件损坏。",
       "metric_name": "device_temperature_celsius",
       "algorithm": "last_over_time",
@@ -79,30 +79,65 @@
     },
     {
       "name": "Aruba交换机风扇异常",
-      "alert_name": "交换机${resource_name} 风扇 ${metric_descr} 状态异常",
-      "description": "监控 Aruba 设备各散热风扇的运行状态（已归一化为 1=正常）。任何非正常状态都表示散热故障，可能迅速导致过热，应立即排查处理。",
+      "alert_name": "交换机${resource_name} 风扇 ${metric__descr} 状态异常",
+      "description": "监控 Aruba 设备各散热风扇的运行状态（归一化为 1=正常、2=异常）。取值为 2 时表示散热故障，可能迅速导致过热，应立即排查处理。",
       "metric_name": "device_fan_state",
       "algorithm": "last_over_time",
       "threshold": [
         {
           "level": "critical",
-          "value": 1,
-          "method": ">"
+          "value": 2,
+          "method": "="
         }
       ],
       "group_algorithm": "avg"
     },
     {
       "name": "Aruba交换机电源异常",
-      "alert_name": "交换机${resource_name} 电源 ${metric_descr} 状态异常",
-      "description": "监控 Aruba 设备各电源模块的运行状态（已归一化为 1=正常）。任何非正常状态表示电源冗余缺失或硬件故障，应尽快修复以恢复冗余能力。",
+      "alert_name": "交换机${resource_name} 电源 ${metric__descr} 状态异常",
+      "description": "监控 Aruba 设备各电源模块的运行状态（归一化为 1=正常、2=异常）。取值为 2 时表示电源冗余缺失或硬件故障，应尽快修复以恢复冗余能力。",
       "metric_name": "device_psu_state",
       "algorithm": "last_over_time",
       "threshold": [
         {
           "level": "critical",
-          "value": 1,
-          "method": ">"
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Aruba交换机风扇转速为0",
+      "alert_name": "交换机${resource_name} 风扇转速为 0",
+      "description": "监控 Aruba CX 风扇转速（arubaWiredFanRPM）。在已丢弃无回读取值后，转速为 0 表示风扇停转，存在过热风险。",
+      "metric_name": "device_fan_rpm",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Aruba交换机CPU五分钟均值过高",
+      "alert_name": "交换机${resource_name} CPU 五分钟均值过高",
+      "description": "监控 Aruba CX 各模块五分钟 CPU 利用率均值（arubaWiredSystemInfoCpuAvgFiveMin）。持续偏高提示控制平面过载。",
+      "metric_name": "aruba_cpu_avg_5min",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 85,
+          "method": ">="
         }
       ],
       "group_algorithm": "avg"

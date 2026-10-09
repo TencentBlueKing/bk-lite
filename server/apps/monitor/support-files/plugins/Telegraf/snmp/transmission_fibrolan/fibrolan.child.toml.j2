@@ -58,4 +58,67 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.4467.1000.10.1.120.1.4"
         name = "usage_percent"
-# ---- 温度/风扇/电源：FIBROLAN-DEVICE 本轮仅确认 CPU/DRAM/可选 NV 使用率；无私有温度/风扇/电源状态标量 → N/A 不采。----
+    # ---- FIBROLAN-DEVICE 温度：flDeviceTemperature 1.3.6.1.4.1.4467.1000.10.1.13.0（FlTemperature Integer32 -128..127，单位 ℃）标量，顶层 field 带 .0 → measurement snmp，查询用 snmp_ 前缀 ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.4467.1000.10.1.13.0"
+        name = "temperature_raw"
+    # ---- FIBROLAN-DEVICE 电源：flDevicePsuStatusTable 1.3.6.1.4.1.4467.1000.10.1.100.1（索引 flDevicePsuIndex 1..3，table.field 不带 .0）----
+    # flDevicePsuInstalled .2 unknown(1)/installed(2)/notInstalled(3)；flDevicePsuStatus .3 unknown(1)/ok(2)/fail(3)；
+    # flDevicePsuFanStatus .4 unknown(1)/notApplicable(2)/ok(3)/fail(4)/singleFail(5)。下方 starlark 归一并拆出 device_fan。
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4467.1000.10.1.100.1.2"
+        name = "installed_raw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4467.1000.10.1.100.1.3"
+        name = "state_raw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4467.1000.10.1.100.1.4"
+        name = "fan_raw"
+
+# ---- 温度：-40~125 ℃ 时输出 device_temperature_celsius，越界或非数值丢弃该字段。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    temp = metric.fields.pop("temperature_raw", None)
+    if type(temp) in ["int", "float"] and temp >= -40 and temp <= 125:
+        metric.fields["device_temperature_celsius"] = temp
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["fibrolan"]
+
+# ---- 电源 / 电源风扇：notInstalled(3) 空槽→1 保留行；电源 ok(2)→1、fail(3)/unknown(1)→2；
+# ---- 电源风扇 ok(3)→1、fail(4)/singleFail(5)→2，输出为同索引的 device_fan；空槽不拆风扇，unknown/notApplicable 不输出。----
+[[processors.starlark]]
+    namepass = ["device_psu"]
+    source = '''
+def apply(metric):
+    installed = metric.fields.pop("installed_raw", None)
+    status = metric.fields.pop("state_raw", None)
+    fan = metric.fields.pop("fan_raw", None)
+    out = []
+    if installed == 3:
+        metric.fields["state"] = 1
+        out.append(metric)
+    elif status == 2:
+        metric.fields["state"] = 1
+        out.append(metric)
+    elif status == 1 or status == 3:
+        metric.fields["state"] = 2
+        out.append(metric)
+    if installed != 3 and (fan == 3 or fan == 4 or fan == 5):
+        fan_metric = Metric("device_fan")
+        for k, v in metric.tags.items():
+            fan_metric.tags[k] = v
+        fan_metric.fields["state"] = 1 if fan == 3 else 2
+        fan_metric.time = metric.time
+        out.append(fan_metric)
+    return out
+'''
+    [processors.starlark.tagpass]
+        brand = ["fibrolan"]

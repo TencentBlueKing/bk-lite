@@ -1,0 +1,175 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_alpineoe",
+  "plugin": "Transmission Alpine Optoelectronics SNMP",
+  "plugin_desc": "SNMP monitoring template for Alpine Optoelectronics TDCM-EDFA optical transmission chassis. It reports uptime, per-fan speed and state, PSU input/output state, output voltage, slot temperature and EDFA temperature, based on the ALPINE-TDCM-EDFA-MIB (enterprise PEN 52326). There is no host CPU% or memory%.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='transmission', collect_type='snmp_alpineoe'}) by (instance_id)",
+  "name": "Transmission",
+  "icon": "mm-transmission_传输设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='transmission'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_fan_speed",
+    "device_fan_state",
+    "device_psu_input_state",
+    "device_psu_output_state",
+    "device_voltage_volts",
+    "slot_temperature_celsius",
+    "edfa_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_speed",
+      "query": "device_fan_speed{instance_type='transmission', __$labels__}",
+      "display_name": "风扇转速",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "alpineTEFanCardId"
+        },
+        {
+          "name": "fan",
+          "description": "Fan number (1/2/3)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Fan rotation speed in RPM of each Alpine TDCM-EDFA system fan (alpineTEFanCardFan1/2/3Speed). Fans numbered above FansTotalCnt are dropped. Negative values and readings above 30000 RPM are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "device_fan_state{instance_type='transmission', __$labels__}",
+      "display_name": "风扇状态",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "alpineTEFanCardId"
+        },
+        {
+          "name": "fan",
+          "description": "Fan number (1/2/3)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Operational state of each Alpine TDCM-EDFA system fan (alpineTEFanCardFan1/2/3Status), normalised to 1=normal / 2=abnormal. Unknown codes are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_input_state",
+      "query": "device_psu_input_state{instance_type='transmission', __$labels__}",
+      "display_name": "电源输入状态",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "alpineTEPowerCardId"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "PSU input state of the Alpine TDCM-EDFA power card (alpineTEPowerCardPowerInStatus): On→1 (normal), Off→2 (abnormal). Other codes are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_output_state",
+      "query": "device_psu_output_state{instance_type='transmission', __$labels__}",
+      "display_name": "电源输出状态",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "alpineTEPowerCardId"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "PSU output state of the Alpine TDCM-EDFA power card (alpineTEPowerCardPowerOutStatus): Normal→1, Voltage High/Low→2 (abnormal). Other codes are dropped."
+    },
+    {
+      "metric_group": "Power",
+      "name": "device_voltage_volts",
+      "query": "device_voltage_volts{instance_type='transmission', __$labels__}",
+      "display_name": "电源输出电压",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "alpineTEPowerCardId"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "PSU output voltage of the Alpine TDCM-EDFA power card in volts (alpineTEPowerCardPowerOutVal OCTET STRING). Unparsable or non-positive values are dropped."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "slot_temperature_celsius",
+      "query": "slot_temperature_celsius{instance_type='transmission', __$labels__}",
+      "display_name": "槽位温度",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "slot index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Slot temperature of the Alpine TDCM-EDFA chassis in degrees Celsius (alpineTEBISlotTemperature). The device reports an OCTET STRING; unparsable values and readings outside -40..125 C are dropped."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "edfa_temperature_celsius",
+      "query": "edfa_temperature_celsius{instance_type='transmission', __$labels__}",
+      "display_name": "EDFA 温度",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "EDFA index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "EDFA module temperature in degrees Celsius (gceTemperature). The device reports an OCTET STRING; unparsable values and readings outside -40..125 C are dropped. Kept distinct from slot_temperature_celsius so the two tables never share a series."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

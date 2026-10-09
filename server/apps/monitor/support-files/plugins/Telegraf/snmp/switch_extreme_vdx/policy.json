@@ -1,0 +1,56 @@
+{
+  "object": "Switch",
+  "plugin": "Switch Extreme VDX SNMP",
+  "templates": [
+    {
+      "name": "Extreme VDX交换机CPU使用率过高",
+      "alert_name": "交换机${resource_name} 槽位 ${metric__slot} CPU 使用率过高",
+      "description": "监控 Extreme VDX / SLX 交换机各槽位（模块）5 分钟平均 CPU 利用率。当持续高于阈值时触发告警，提示控制平面过载、路由震荡或异常流量，避免管理响应变慢或转发受影响。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 85,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Extreme VDX交换机内存使用率过高",
+      "alert_name": "交换机${resource_name} 槽位 ${metric__slot} 内存使用率过高",
+      "description": "监控 Extreme VDX / SLX 交换机各槽位内存利用率。当持续高于阈值时触发告警，便于及时发现内存泄漏、表项过大或容量不足，防止设备不稳定或分配失败。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 85,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_kymata"
+        config_type = "kymata"
+        brand = "kymata"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # KYMATA-AMP-MIB hardwareData 标量（企业号 PEN 60429）：field 带 .0，落入 measurement snmp。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.60429.1.3.10.0"
+        name = "device_temperature_celsius"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.60429.1.3.11.0"
+        name = "voltage5V"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.60429.1.3.12.0"
+        name = "rfOut"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.60429.1.3.1.0"
+        name = "alarmStatus"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.60429.1.3.16.0"
+        name = "pcbPowerProblem"
+
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    temp = metric.fields.pop("device_temperature_celsius", None)
+    if temp != None:
+        celsius = float(temp)
+        if celsius >= -40 and celsius <= 125:
+            metric.fields["device_temperature_celsius"] = celsius
+    millivolts = metric.fields.pop("voltage5V", None)
+    if millivolts != None:
+        volts = float(millivolts) / 1000.0
+        if volts > 0 and volts <= 10:
+            metric.fields["kymata_supply_voltage_volts"] = volts
+    raw_rf = metric.fields.pop("rfOut", None)
+    if raw_rf != None:
+        dbm = float(raw_rf) / 100.0
+        if dbm >= -60 and dbm <= 40:
+            metric.fields["kymata_rf_output_dbm"] = dbm
+    alarm = metric.fields.pop("alarmStatus", None)
+    if alarm != None:
+        code = int(alarm)
+        if code == 0:
+            metric.fields["kymata_alarm_state"] = 1
+        elif code >= 1 and code <= 4:
+            metric.fields["kymata_alarm_state"] = 2
+    pcb = metric.fields.pop("pcbPowerProblem", None)
+    if pcb != None:
+        flag = int(pcb)
+        if flag == 0:
+            metric.fields["kymata_pcb_power_state"] = 1
+        elif flag == 1:
+            metric.fields["kymata_pcb_power_state"] = 2
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["kymata"]

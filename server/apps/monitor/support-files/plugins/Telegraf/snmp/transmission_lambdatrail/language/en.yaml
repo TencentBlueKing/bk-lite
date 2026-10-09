@@ -1,0 +1,56 @@
+Transmission DeltaNet Lambdatrail SNMP:
+  name: DeltaNet Lambdatrail (Telegraf)
+  desc: SNMP monitoring template for DeltaNet Lambdatrail2-S optical transmission
+    devices. It reports chassis ambient temperature, power-supply state, PSU fan
+    state and speed, interface traffic, and system uptime (enterprise PEN 35616,
+    lambdatrail2s 1.3.6.1.4.1.35616.5).
+monitor_object:
+  Transmission: Transmission
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Transmission:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the DeltaNet Lambdatrail2-S since
+        the last restart, derived from sysUpTime. Monitoring uptime helps administrators
+        understand device stability and identify unexpected reboots.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5
+        minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifOutOctets on high-speed ports, keeping the rate accurate.
+    device_temperature_celsius:
+      name: Temperature
+      desc: Chassis ambient temperature of the DeltaNet Lambdatrail2-S in degrees
+        Celsius, from lt2sTemperature (1.3.6.1.4.1.35616.5.2.1.0, Integer32 0-80).
+        Values outside 0-80 and sentinel readings are dropped.
+    device_psu_state:
+      name: Power Supply Status
+      desc: Power supply status of the DeltaNet Lambdatrail2-S from lt2sPowerStatus
+        (1.3.6.1.4.1.35616.5.2.3.0). Mapped as normal(1)->1, failed(2)->2; notPlugged(3)
+        and other codes are dropped.
+    device_fan_state:
+      name: Fan Status
+      desc: PSU fan status of the DeltaNet Lambdatrail2-S from lt2sPowerFanStatus
+        (1.3.6.1.4.1.35616.5.2.4.0). Mapped as on(2)->1 (running), off(3)->0 (stopped,
+        a configured state), failed(1)->2 (fault); other codes are dropped.
+    device_fan_speed:
+      name: Fan Speed
+      desc: PSU fan rotation speed of the DeltaNet Lambdatrail2-S in RPM, from
+        lt2sPowerFanRPM (1.3.6.1.4.1.35616.5.2.5.0, Integer32 0-20000). 0 is a real
+        reading when the fan is off. Values outside 0-20000 and sentinel readings
+        are dropped.
+monitor_object_metric_group:
+  Transmission:
+    Base: Base
+    Traffic: Traffic
+    Temperature: Temperature
+    Hardware Status: Hardware Status

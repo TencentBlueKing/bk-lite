@@ -1,0 +1,87 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_avaya_ers"
+        config_type = "avaya_ers"
+        brand = "avaya_ers"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- S5-CHASSIS-MIB s5ChasUtilTable 1.3.6.1.4.1.45.1.6.3.8.1（INDEX GrpIndx/Indx/SubIndx，堆叠每单元一行），table.field 不带 .0 ----
+    # s5ChasUtilCPUUsageLast1Minute .1.5：Gauge32 0-100，最近 1 分钟 CPU 忙碌百分比 → device_cpu_usage{index}。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.45.1.6.3.8.1.1.5"
+        name = "usage"
+    # s5ChasUtilMemoryTotalMB .1.12 / s5ChasUtilMemoryAvailableMB .1.13：Gauge32，单位 MB；下方 starlark 换算为字节并计算使用率 → device_memory_*{index}。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.45.1.6.3.8.1.1.12"
+        name = "total_mb"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.45.1.6.3.8.1.1.13"
+        name = "available_mb"
+    # ---- S5-CHASSIS-MIB s5ChasTmpSnrTable 1.3.6.1.4.1.45.1.6.3.7.1（INDEX GrpIndx/Indx/SubIndx），table.field 不带 .0 ----
+    # s5ChasTmpSnrTmpValue .1.5：Integer32，单位 0.5 ℃（121 表示 60.5 ℃）；下方 starlark ÷2 → device_temperature_celsius{index}。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.45.1.6.3.7.1.1.5"
+        name = "half_celsius"
+# ---- 风扇/电源：S5-CHASSIS-MIB 的风扇为 LED 位图、RPSU 表为类型/配置信息，均非健康状态值，不采集。----
+
+[[processors.starlark]]
+    namepass = ["device_memory", "device_temperature"]
+    source = '''
+def apply(metric):
+    if metric.name == "device_temperature":
+        raw = metric.fields.pop("half_celsius", None)
+        if raw == None:
+            return None
+        metric.fields["celsius"] = raw / 2.0
+        return metric
+    total = metric.fields.pop("total_mb", None)
+    avail = metric.fields.pop("available_mb", None)
+    if total == None or avail == None or total <= 0 or avail < 0 or avail > total:
+        return None
+    metric.fields["total"] = int(total) * 1048576
+    metric.fields["free"] = int(avail) * 1048576
+    metric.fields["used"] = (int(total) - int(avail)) * 1048576
+    metric.fields["usage"] = (total - avail) * 100.0 / total
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["avaya_ers"]

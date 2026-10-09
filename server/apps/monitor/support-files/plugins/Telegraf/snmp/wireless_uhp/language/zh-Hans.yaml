@@ -1,0 +1,34 @@
+Wireless UHP SNMP:
+  name: UHP（Telegraf）
+  desc: 面向 UHP VSAT 终端的 SNMP 监控模板，可采集运行时长、CPU 使用率、机箱温度、接口流量（企业号 PEN 8000）。内存利用率本模板不采集。
+monitor_object:
+  Wireless: 无线设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标报告 UHP VSAT 终端的 CPU 使用率（cpuLoad，1.3.6.1.4.1.8000.22.8.2.0，Gauge32
+        百分比，顶层 field+.0）。持续偏高说明处理过载或异常负载。
+    device_temperature_celsius:
+      name: 温度
+      desc: 该指标报告 UHP VSAT 终端的机箱温度（temperature，1.3.6.1.4.1.8000.22.8.1.0，Integer32
+        ℃，无倍率，顶层 field+.0）。温度过高可能表示散热不良或环境过热。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64
+        位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64
+        位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+monitor_object_metric_group:
+  Wireless:
+    Base: 基础
+    CPU: CPU
+    Temperature: 温度
+    Traffic: 流量

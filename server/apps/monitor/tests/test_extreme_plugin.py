@@ -121,7 +121,9 @@ def test_shared_device_metrics_match_cisco_group_and_unit(metrics, cisco_metrics
             continue
         if m["metric_group"] != base["metric_group"]:
             drift.append(f'{m["name"]}.group {m["metric_group"]}!={base["metric_group"]}')
-        if m["unit"] != base["unit"]:
+        # fan/psu are normalized to 1=healthy (including notPresent) / 2=fault,
+        # so their Enum unit is not byte-identical to Cisco's 6-state unit.
+        if m["unit"] != base["unit"] and m["name"] not in ("device_fan_state", "device_psu_state"):
             drift.append(f'{m["name"]}.unit drift')
     assert drift == [], f"device_* drift vs Cisco: {drift}"
 
@@ -134,15 +136,16 @@ def test_cpu_query_byte_identical_to_cisco(metrics, cisco_metrics):
 
 
 @pytest.mark.unit
-def test_fan_psu_enum_unit_byte_identical_to_cisco(metrics, cisco_metrics):
+def test_fan_psu_enum_unit_byte_identical_to_cisco(metrics):
     ext = {m["name"]: m for m in metrics["metrics"]}
-    cis = {m["name"]: m for m in cisco_metrics["metrics"]}
     for name in ("device_fan_state", "device_psu_state"):
         assert ext[name]["data_type"] == "Enum"
-        assert ext[name]["unit"] == cis[name]["unit"], f"{name} enum unit drift vs Cisco"
         states = json.loads(ext[name]["unit"])
-        normal = [s for s in states if s["name"] == "normal"]
-        assert normal and normal[0]["id"] == 1, f"{name} normal must be id=1"
+        ids = sorted(s["id"] for s in states)
+        assert ids == [1, 2], (
+            f"{name} must be 1=healthy (including not-installed/notPresent) "
+            f"/ 2=fault (off/unknown), got {ids}"
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -172,12 +175,14 @@ def test_memory_usage_is_computed_percent(metrics):
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
 def test_psu_normalized_via_brand_scoped_enum_processor(toml_text):
-    """extremePowerSupplyStatus (presentOK=2) is not 1=normal natively, so the
-    toml must remap it to 1 with a brand-scoped enum processor."""
-    assert "[[processors.enum]]" in toml_text
+    """extremePowerSupplyStatus is remapped in brand-scoped starlark:
+    notPresent(1)/presentOK(2)→1; presentNotOK(3)/presentPowerOff(4)→2."""
+    assert "[[processors.starlark]]" in toml_text
     assert f'brand = ["{BRAND}"]' in toml_text  # tagpass guards other brands
-    assert 'field = "device_psu_state"' in toml_text
-    assert '"2" = 1' in toml_text  # presentOK -> normal
+    assert "st == 1 or st == 2" in toml_text
+    assert 'f["state"] = 1' in toml_text
+    assert "st == 3 or st == 4" in toml_text
+    assert 'f["state"] = 2' in toml_text
 
 
 @pytest.mark.unit
@@ -187,7 +192,9 @@ def test_fan_psu_policy_thresholds_use_gt_one(policy):
         assert name in by_metric, f"policy missing {name}"
         methods = {th["method"] for th in by_metric[name]["threshold"]}
         values = {th["value"] for th in by_metric[name]["threshold"]}
-        assert methods == {">"} and values == {1}, f"{name} must alert on >1"
+        assert methods == {"="} and values == {2}, (
+            f"{name} must alert on abnormal=2 (notPresent/healthy stay 1)"
+        )
 
 
 # --------------------------------------------------------------------------- #

@@ -50,3 +50,83 @@
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.14823.2.2.1.1.3.2.0"
         name = "wireless_station_count"
+    # ---- WLSX-SYSTEMEXT 风扇/电源表，table.field 无 .0；INDEX 在现网控制器上从 0 起 ----
+    [[inputs.snmp.table]]
+        name = "aruba_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.14823.2.2.1.2.1.17.1.2"
+        name = "state"
+    [[inputs.snmp.table]]
+        name = "aruba_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.14823.2.2.1.2.1.18.1.2"
+        name = "state"
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def parse_leading_number(raw):
+    if raw == None:
+        return None
+    t = type(raw)
+    if t == "int":
+        return float(raw)
+    if t == "float":
+        return raw
+    text = str(raw).strip()
+    digits = ""
+    sign = ""
+    started = False
+    seen_dot = False
+    n = len(text)
+    for i in range(n):
+        c = text[i:i+1]
+        if (c == "-" or c == "+") and not started and digits == "":
+            sign = c
+        elif c >= "0" and c <= "9":
+            digits += c
+            started = True
+        elif c == "." and started and not seen_dot:
+            digits += c
+            seen_dot = True
+        elif started:
+            break
+        elif c == " " or c == "\t":
+            continue
+        else:
+            break
+    if digits == "" or digits == ".":
+        return None
+    return float(sign + digits)
+
+def apply(metric):
+    raw = metric.fields.get("device_temperature_celsius")
+    if raw == None:
+        return metric
+    val = parse_leading_number(raw)
+    if val == None or val < -40 or val > 125:
+        metric.fields.pop("device_temperature_celsius")
+        return metric
+    metric.fields["device_temperature_celsius"] = val
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["aruba_aos"]
+[[processors.starlark]]
+    namepass = ["aruba_fan", "aruba_psu"]
+    source = '''
+def apply(metric):
+    raw = metric.fields.get("state")
+    if raw == 1 or raw == "1":
+        metric.fields["state"] = 1
+        return metric
+    if raw == 2 or raw == "2":
+        metric.fields["state"] = 2
+        return metric
+    return None
+'''
+    [processors.starlark.tagpass]
+        brand = ["aruba_aos"]

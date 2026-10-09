@@ -220,10 +220,12 @@ class UserSyncSourceViewSet(MaintainerViewSet):
             if not source:
                 logger.warning(f"User sync preview source not found: source_id={source_id}, payload={request.data}")
                 return JsonResponse({"result": False, "message": "User sync source not found"}, status=404)
-            serializer = UserSyncSourceSerializer(instance=source, data=request.data, partial=True)
+            serializer = UserSyncSourceSerializer(
+                instance=source, data=request.data, partial=True, context={"request": request}
+            )
         else:
             source = None
-            serializer = UserSyncSourceSerializer(data=request.data)
+            serializer = UserSyncSourceSerializer(data=request.data, context={"request": request})
 
         if not serializer.is_valid():
             logger.warning(f"User sync preview payload invalid: payload={request.data}, errors={serializer.errors}")
