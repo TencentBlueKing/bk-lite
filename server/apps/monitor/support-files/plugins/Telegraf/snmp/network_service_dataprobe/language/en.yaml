@@ -1,0 +1,60 @@
+NetworkService Dataprobe iBoot-PDU SNMP:
+  name: Dataprobe iBoot-PDU (Telegraf)
+  desc: SNMP monitoring template for Dataprobe iBoot-PDU power device. It reports
+    line-cord voltage and current, environment temperature, per-port inbound traffic
+    rate, per-port outbound traffic rate, and system uptime (IANA PEN 1418).
+monitor_object:
+  NetworkService: NetworkService
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  NetworkService:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart,
+        derived from sysUpTime. Monitoring uptime helps administrators understand
+        device stability and identify unexpected reboots or failures.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5
+        minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifOutOctets on high-speed ports, keeping the rate accurate.
+    snmp_pdu_line1_voltage_volts:
+      name: Line Cord 1 Voltage
+      desc: Line-cord 1 voltage in volts from voltageLC1. The SNMP value is hundredths
+        of a volt and is scaled by /100. Absent values are not reported.
+    snmp_pdu_line1_current_amps:
+      name: Line Cord 1 Current
+      desc: Line-cord 1 current in amperes from currentLC1. The SNMP value is hundredths
+        of an amp and is scaled by /100. Absent values are not reported.
+    snmp_pdu_line2_voltage_volts:
+      name: Line Cord 2 Voltage
+      desc: Optional line-cord 2 voltage in volts from voltageLC2. Line 2 is dropped
+        when the voltage is 0 or absent on single-line-cord models.
+    snmp_pdu_line2_current_amps:
+      name: Line Cord 2 Current
+      desc: Optional line-cord 2 current in amperes from currentLC2. Line 2 is dropped
+        when voltageLC2 is 0 or absent.
+    snmp_env_temperature_celsius:
+      name: Environment Temperature
+      desc: Probe 1 temperature in degrees Celsius from temperature1. The 999 no-probe
+        sentinel is dropped. Fahrenheit unit readings are converted to Celsius.
+    snmp_env_temperature_2_celsius:
+      name: Environment Temperature 2
+      desc: Optional probe 2 temperature in degrees Celsius from temperature2. The
+        999 no-probe sentinel is dropped. Fahrenheit unit readings are converted to
+        Celsius.
+monitor_object_metric_group:
+  NetworkService:
+    Base: Base
+    Traffic: Traffic
+    NetworkService: NetworkService
+    Power: Power
+    Environment: Environment

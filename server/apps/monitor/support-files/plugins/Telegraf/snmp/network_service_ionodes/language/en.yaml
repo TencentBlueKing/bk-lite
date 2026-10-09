@@ -1,0 +1,41 @@
+NetworkService IONODES SNMP:
+  name: IONODES (Telegraf)
+  desc: "SNMP monitoring template for IONODES ION Series IP video encoders. It reports uptime, CPU utilization, memory utilization, chassis temperature, and interface traffic (enterprise PEN 40748)."
+monitor_object:
+  NetworkService: NetworkService
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  NetworkService:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart.
+        By monitoring the uptime, network administrators can understand the stability
+        and reliability of the device and identify potential reboot or failure issues.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: Average rate of bytes received over the past 5 minutes from the 64-bit
+        IF-MIB ifHCInOctets counter, in bytes per second.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: Average rate of bytes sent over the past 5 minutes from the 64-bit IF-MIB
+        ifHCOutOctets counter, in bytes per second.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: CPU utilization of the IONODES ION Series encoder (ionSysCpuUsage, 0-100%).
+        Sustained high CPU indicates encoder or control-plane overload.
+    device_memory_usage:
+      name: Memory Usage
+      desc: Memory utilization of the IONODES ION Series encoder (ionSysMemUsage, 0-100%).
+        Sustained high memory indicates memory pressure on the appliance.
+    device_temperature_celsius:
+      name: Temperature
+      desc: Chassis temperature of the IONODES ION Series encoder (ionSysTemperature),
+        in degrees Celsius. High values may indicate cooling or ambient-temperature risk.
+monitor_object_metric_group:
+  NetworkService:
+    Base: Base
+    Traffic: Traffic
+    CPU: CPU
+    Memory: Memory
+    Temperature: Temperature

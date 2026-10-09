@@ -1,0 +1,39 @@
+NetworkService Synaccess SynLink SNMP:
+  name: Synaccess SynLink（Telegraf）
+  desc: 面向 Synaccess SynLink / netBooter DU 智能配电（SYNLINK-MIB，企业号 PEN 21728）的 SNMP 监控模板，可采集运行时长、环境温度与湿度、进线电流
+    / 电压，以及接口流量。
+monitor_object:
+  NetworkService: 网络服务
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  NetworkService:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    env_temperature_celsius:
+      name: 环境温度
+      desc: Synaccess SynLink / netBooter DU 环境温度，单位为摄氏度。温度过高可能表示机房散热或环境温度风险。
+    env_humidity_percent:
+      name: 环境湿度
+      desc: Synaccess SynLink / netBooter DU 环境相对湿度，单位为百分比。湿度异常可能影响设备绝缘与腐蚀风险。
+    pdu_inlet_current_amps:
+      name: 进线电流（A）
+      desc: Synaccess SynLink / netBooter DU 进线电流，单位为安。持续偏高提示负载过重。
+    pdu_inlet_voltage_volts:
+      name: 进线电压
+      desc: Synaccess SynLink / netBooter DU 进线电压，单位为伏。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位
+        ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内出向发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32
+        位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+monitor_object_metric_group:
+  NetworkService:
+    Base: 基础
+    Traffic: 流量
+    Power: 电力
+    Environment: 环境

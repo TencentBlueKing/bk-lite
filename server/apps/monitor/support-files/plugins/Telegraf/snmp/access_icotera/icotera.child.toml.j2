@@ -33,6 +33,28 @@
         name = "source"
         is_tag = true
 
+    # ---- i6400 系列光模块 DDM（ICOTERA-I6400-SERIES，PEN 29865，ictTransceiver 1.3.6.1.4.1.29865.11.3.1.3）：标量顶层 field 带 .0，落 measurement snmp，查询用 snmp_ 前缀。----
+    # 未插带 DDM 的光模块时这些对象可能不存在，GET 失败即无点。换算与校验见文末 starlark。
+    # 温度：1/256 ℃（有符号）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.29865.11.3.1.3.1.0"
+        name = "ddm_temperature_raw"
+    # 发送 / 接收光功率：1/10000 mW。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.29865.11.3.1.3.2.0"
+        name = "ddm_tx_power_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.29865.11.3.1.3.3.0"
+        name = "ddm_rx_power_raw"
+    # 供电电压：1/10000 V。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.29865.11.3.1.3.4.0"
+        name = "ddm_voltage_raw"
+    # 激光偏置电流：1/500 mA。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.29865.11.3.1.3.5.0"
+        name = "ddm_tx_bias_raw"
+
     [[inputs.snmp.table]]
         oid = "1.3.6.1.2.1.31.1.1"
         name = "interface"
@@ -47,3 +69,26 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
+
+# ---- 光模块 DDM 换算：温度 ÷256（原始值须在 -32768~32767，即 -128~128 ℃）；电压 ÷10000（原始值须为 1~65535，0 视为无模块）；
+# 光功率 ÷10000 得 mW、偏置电流 ÷500 得 mA（原始值须为 0~65535）。无效值丢弃，原始字段不落库。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+DDM = [
+    ("ddm_temperature_raw", "transceiver_temperature_celsius", -32768, 32767, 256.0),
+    ("ddm_voltage_raw", "transceiver_voltage_volts", 1, 65535, 10000.0),
+    ("ddm_tx_power_raw", "transceiver_tx_power_mw", 0, 65535, 10000.0),
+    ("ddm_rx_power_raw", "transceiver_rx_power_mw", 0, 65535, 10000.0),
+    ("ddm_tx_bias_raw", "transceiver_tx_bias_ma", 0, 65535, 500.0),
+]
+
+def apply(metric):
+    for src, dst, low, high, div in DDM:
+        value = metric.fields.pop(src, None)
+        if type(value) == "int" and value >= low and value <= high:
+            metric.fields[dst] = value / div
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["icotera"]

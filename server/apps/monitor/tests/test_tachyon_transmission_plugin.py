@@ -43,6 +43,8 @@ EXPECTED_METRICS = {
     "device_cpu_usage",
     "device_memory_usage",
     "device_temperature_celsius",
+    "radio_temperature_celsius",
+    "radio_modem_temperature_celsius",
 }
 ABSENT_METRICS = (
     "snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets",

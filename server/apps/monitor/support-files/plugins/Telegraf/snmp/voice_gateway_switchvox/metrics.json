@@ -1,0 +1,176 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_switchvox",
+  "plugin": "VoiceGateway Switchvox SNMP",
+  "plugin_desc": "SNMP monitoring template for Sangoma Switchvox IP-PBX (enterprise PEN 22736). It reports uptime, CPU utilization and load, memory and swap usage, current calls, and interface traffic.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='voice_gateway', collect_type='snmp_switchvox'}) by (instance_id)",
+  "name": "VoiceGateway",
+  "icon": "mm-voice_gateway_语音网关",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='voice_gateway'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "max(snmp_device_cpu_usage{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization of the Switchvox appliance, calculated as 100 minus UCD-SNMP ssCpuIdle (1.3.6.1.4.1.2021.11.11.0)."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_load1",
+      "query": "max(snmp_device_cpu_load1{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "System Load",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "System load average reported by Switchvox (load, 1.3.6.1.4.1.22736.10.3.3.1); the first number in the reported value is used. This is a load average, not a utilization percentage."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "max(snmp_device_memory_usage{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of the Switchvox appliance, calculated as memory used / memory total x 100 (1.3.6.1.4.1.22736.10.3.1.1 / .3.1.2). The device refreshes these values about every 10 minutes."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "max(snmp_device_memory_used{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory used on the Switchvox appliance (1.3.6.1.4.1.22736.10.3.1.1, reported in KB and converted to bytes)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "max(snmp_device_memory_total{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total memory of the Switchvox appliance (1.3.6.1.4.1.22736.10.3.1.2, reported in KB and converted to bytes)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_swap_used",
+      "query": "max(snmp_device_swap_used{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "Swap Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Swap space in use on the Switchvox appliance (1.3.6.1.4.1.22736.10.3.1.3, reported in KB and converted to bytes)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_swap_total",
+      "query": "max(snmp_device_swap_total{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "Swap Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total swap space of the Switchvox appliance (1.3.6.1.4.1.22736.10.3.1.4, reported in KB and converted to bytes)."
+    },
+    {
+      "metric_group": "Voice",
+      "name": "concurrent_calls",
+      "query": "max(snmp_concurrent_calls{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "Concurrent Calls",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total number of current calls on the Switchvox PBX (1.3.6.1.4.1.22736.10.5.1)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='voice_gateway', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='voice_gateway', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='voice_gateway', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

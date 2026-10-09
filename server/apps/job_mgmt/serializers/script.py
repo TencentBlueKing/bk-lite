@@ -36,7 +36,9 @@ class ScriptListSerializer(TeamSerializer):
             "script_type",
             "script_type_display",
             "timeout",
+            "team",
             "team_name",
+            "created_by",
             "is_built_in",
             "updated_at",
         ]

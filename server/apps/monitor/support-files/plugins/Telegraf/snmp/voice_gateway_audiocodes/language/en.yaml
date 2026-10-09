@@ -1,6 +1,6 @@
 VoiceGateway AudioCodes SNMP:
   name: VoiceGateway AudioCodes SNMP
-  desc: SNMP monitoring template for AudioCodes voice gateway. It reports uptime and interface traffic (based on standard MIBs).
+  desc: SNMP monitoring template for AudioCodes voice gateway. It reports uptime, interface traffic, voice and data CPU and memory utilization, and board temperature (enterprise PEN 5003).
 monitor_object:
   VoiceGateway: VoiceGateway
 monitor_object_type:
@@ -37,10 +37,21 @@ monitor_object_metric:
         device over the past 5 minutes, measured in bytes per second, summed across
         all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
         assess sending performance for traffic management and optimization.
+    device_cpu_usage:
+      name: Voice CPU Usage
+      desc: Voice (VoIP) processor utilization of the AudioCodes gateway in percent (AC-SYSTEM-MIB acSysStateVoIpCpuUtilization).
+    device_data_cpu_usage:
+      name: Data CPU Usage
+      desc: Data processor utilization of the AudioCodes gateway in percent (acSysStateDataCpuUtilization). Models without a data plane do not report it.
+    device_memory_usage:
+      name: Voice Memory Usage
+      desc: Voice (VoIP) memory utilization of the AudioCodes gateway in percent (acSysStateVoIpMemoryUtilization).
+    device_data_memory_usage:
+      name: Data Memory Usage
+      desc: Data memory utilization of the AudioCodes gateway in percent (acSysStateDataMemoryUtilization). Models without a data plane do not report it.
     device_temperature_celsius:
-      name: Device Temperature
-      desc: Voice gateway device temperature in degrees Celsius, used to detect cooling
-        problems, blocked airflow, or overheating risk.
+      name: Board Temperature
+      desc: Board temperature of the AudioCodes gateway in degrees Celsius (acSysStateTemperature). The vendor recommends keeping it below 60 degrees.
     device_psu_state:
       name: PSU State
       desc: Voice gateway power-source state normalized so 1 means healthy and 2 means
@@ -49,5 +60,7 @@ monitor_object_metric_group:
   VoiceGateway:
     Base: Base
     Traffic: Traffic
+    CPU: CPU
+    Memory: Memory
     Temperature: Temperature
     Hardware Status: Hardware Status

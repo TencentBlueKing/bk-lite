@@ -35,7 +35,12 @@ TEMP_OID = "1.3.6.1.4.1.14817.7.3.1.2.51.8"
 FAN1_OID = "1.3.6.1.4.1.14817.7.3.1.2.21.1"
 FAN2_OID = "1.3.6.1.4.1.14817.7.3.1.2.21.2"
 
-EXPECTED_METRICS = {"device_temperature_celsius", "device_fan_state"}
+EXPECTED_METRICS = {
+    "device_temperature_celsius",
+    "device_fan_state",
+    "device_transmitter_temperature_celsius",
+    "device_power_rail_state",
+}
 ABSENT_METRICS = (
     "snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets",
     "device_total_incoming_traffic", "device_total_outgoing_traffic",

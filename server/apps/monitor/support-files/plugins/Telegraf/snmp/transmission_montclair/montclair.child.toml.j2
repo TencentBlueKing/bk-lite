@@ -1,0 +1,169 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_montclair"
+        config_type = "montclair"
+        brand = "montclair"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # deviceStatus / amplifierDynamic scalars (PEN 1385). Helper fields are popped in starlark.
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1385.12.2.0"
+        name = "device_temperature_celsius"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1385.12.4.0"
+        name = "psu1_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1385.12.5.0"
+        name = "psu2_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1385.12.7.0"
+        name = "fan_status_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1385.12.9.0"
+        name = "fan1_speed_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1385.12.10.0"
+        name = "fan2_speed_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1385.12.11.0"
+        name = "fan3_speed_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1385.77.7.2.16.0"
+        name = "radiator_temperature_celsius"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1385.77.7.2.17.0"
+        name = "prepump_temperature_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1385.77.7.2.5.0"
+        name = "optical_in_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1385.77.7.2.11.0"
+        name = "optical_out_raw"
+# Filter ranges/sentinels, map Enum 1=normal/2=abnormal (drop unknown/undef), scale pre-pump and optical /10.
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def is_sentinel(v):
+    if v == 65535 or v == 65534 or v == -1 or v == 2147483647 or v == -2147483648 or v == 4294967295:
+        return True
+    return False
+
+def round1(x):
+    y = x * 10.0
+    if y >= 0:
+        return float(int(y + 0.5)) / 10.0
+    return float(int(y - 0.5)) / 10.0
+
+def copy_tags(dst, src):
+    for key, value in src.tags.items():
+        dst.tags[key] = value
+    dst.time = src.time
+
+def apply(metric):
+    f = metric.fields
+    extras = []
+
+    v = f.get("device_temperature_celsius")
+    if v != None:
+        if is_sentinel(v) or v < -40 or v > 125:
+            f.pop("device_temperature_celsius")
+
+    v = f.get("radiator_temperature_celsius")
+    if v != None:
+        if is_sentinel(v) or v < -40 or v > 125:
+            f.pop("radiator_temperature_celsius")
+
+    v = f.pop("prepump_temperature_raw", None)
+    if v != None:
+        if not is_sentinel(v):
+            scaled = round1(float(v) / 10.0)
+            if scaled >= -40 and scaled <= 125:
+                f["prepump_temperature_celsius"] = scaled
+
+    v = f.pop("optical_in_raw", None)
+    if v != None:
+        if not is_sentinel(v):
+            scaled = round1(float(v) / 10.0)
+            if scaled >= -60 and scaled <= 40:
+                f["amplifier_input_power_dbm"] = scaled
+
+    v = f.pop("optical_out_raw", None)
+    if v != None:
+        if not is_sentinel(v):
+            scaled = round1(float(v) / 10.0)
+            if scaled >= -60 and scaled <= 40:
+                f["amplifier_output_power_dbm"] = scaled
+
+    v = f.pop("fan_status_raw", None)
+    if v == 7:
+        f["device_fan_state"] = 1
+    elif v == 5 or v == 3:
+        f["device_fan_state"] = 2
+
+    p1 = f.pop("psu1_raw", None)
+    if p1 == 7 or p1 == 3:
+        m = Metric("device_psu")
+        copy_tags(m, metric)
+        m.tags["psu"] = "1"
+        if p1 == 7:
+            m.fields["state"] = 1
+        else:
+            m.fields["state"] = 2
+        extras.append(m)
+
+    p2 = f.pop("psu2_raw", None)
+    if p2 == 7 or p2 == 3:
+        m = Metric("device_psu")
+        copy_tags(m, metric)
+        m.tags["psu"] = "2"
+        if p2 == 7:
+            m.fields["state"] = 1
+        else:
+            m.fields["state"] = 2
+        extras.append(m)
+
+    for pair in [["1", "fan1_speed_raw"], ["2", "fan2_speed_raw"], ["3", "fan3_speed_raw"]]:
+        v = f.pop(pair[1], None)
+        if v == None:
+            continue
+        if is_sentinel(v) or v < 0 or v > 30000:
+            continue
+        m = Metric("device_fan")
+        copy_tags(m, metric)
+        m.tags["fan"] = pair[0]
+        m.fields["speed"] = int(v)
+        extras.append(m)
+
+    if len(extras) == 0:
+        return metric
+    return [metric] + extras
+'''
+    [processors.starlark.tagpass]
+        brand = ["montclair"]

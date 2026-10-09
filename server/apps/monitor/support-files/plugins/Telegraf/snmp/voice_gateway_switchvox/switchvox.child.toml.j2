@@ -1,0 +1,147 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_switchvox"
+        config_type = "switchvox"
+        brand = "switchvox"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Switchvox 私有树（PEN 22736，1.3.6.1.4.1.22736.10）：标量，顶层 field → measurement snmp，查询用 snmp_ 前缀 ----
+    # 厂商公布的对象 OID 本身即可 GET（如 GET 1.3.6.1.4.1.22736.10.8.3 直接返回值）；每个对象同时按标准标量写法（带 .0）与厂商写法各 GET 一次，
+    # 代理没有的那一个返回 noSuchInstance、telegraf 不产出字段；下方 starlark 取到哪个用哪个，原始字段不落库。
+    # Hardware Status：memory used 1.3.6.1.4.1.22736.10.3.1.1 / memory total 1.3.6.1.4.1.22736.10.3.1.2，单位 KB，设备约每 10 分钟刷新一次。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22736.10.3.1.1.0"
+        name = "mem_used_kb_dot0_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22736.10.3.1.1"
+        name = "mem_used_kb_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22736.10.3.1.2.0"
+        name = "mem_total_kb_dot0_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22736.10.3.1.2"
+        name = "mem_total_kb_raw"
+    # swap used 1.3.6.1.4.1.22736.10.3.1.3 / swap total 1.3.6.1.4.1.22736.10.3.1.4，单位 KB。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22736.10.3.1.3.0"
+        name = "swap_used_kb_dot0_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22736.10.3.1.3"
+        name = "swap_used_kb_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22736.10.3.1.4.0"
+        name = "swap_total_kb_dot0_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22736.10.3.1.4"
+        name = "swap_total_kb_raw"
+    # load 1.3.6.1.4.1.22736.10.3.3.1：系统负载均值，非 CPU 百分比。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22736.10.3.3.1.0"
+        name = "load_dot0_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22736.10.3.3.1"
+        name = "load_raw"
+    # Current Calls：total current calls 1.3.6.1.4.1.22736.10.5.1。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22736.10.5.1.0"
+        name = "calls_dot0_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22736.10.5.1"
+        name = "calls_raw"
+    # ---- CPU：UCD-SNMP ssCpuIdle 1.3.6.1.4.1.2021.11.11.0（厂商文档说明设备同时提供 ucdavis 树，实时值）→ device_cpu_usage = 100 − idle ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2021.11.11.0"
+        name = "cpu_idle_raw"
+
+# ---- 内存 / swap：KB → 字节，输出 device_memory_used / device_memory_total / device_memory_usage（used/total×100）与 device_swap_used / device_swap_total；
+# ---- CPU：idle 在 0-100 时输出 device_cpu_usage = 100 − idle；负载取字符串中的第一个数字 → device_cpu_load1；当前呼叫数 → concurrent_calls。
+# ---- 只接受非负整数（或纯数字字符串），负值、非数字一律丢弃。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def take(metric, name):
+    a = metric.fields.pop(name + "_dot0_raw", None)
+    b = metric.fields.pop(name + "_raw", None)
+    if a != None:
+        return a
+    return b
+
+def nonneg(v):
+    if type(v) == "int":
+        if v >= 0:
+            return v
+        return None
+    if type(v) == "string":
+        s = v.strip()
+        if s != "" and s.isdigit():
+            return int(s)
+    return None
+
+def first_number(text):
+    cur = ""
+    for c in (text + " ").elems():
+        if c.isdigit() or (c == "." and cur != "" and "." not in cur):
+            cur += c
+        elif cur != "":
+            break
+    if cur == "" or cur.endswith("."):
+        return None
+    return float(cur)
+
+def apply(metric):
+    used = nonneg(take(metric, "mem_used_kb"))
+    total = nonneg(take(metric, "mem_total_kb"))
+    swap_used = nonneg(take(metric, "swap_used_kb"))
+    swap_total = nonneg(take(metric, "swap_total_kb"))
+    load_raw = take(metric, "load")
+    calls = nonneg(take(metric, "calls"))
+    idle = nonneg(metric.fields.pop("cpu_idle_raw", None))
+    if used != None:
+        metric.fields["device_memory_used"] = used * 1024
+    if total != None and total > 0:
+        metric.fields["device_memory_total"] = total * 1024
+        if used != None and used <= total:
+            metric.fields["device_memory_usage"] = used * 100.0 / total
+    if swap_used != None:
+        metric.fields["device_swap_used"] = swap_used * 1024
+    if swap_total != None:
+        metric.fields["device_swap_total"] = swap_total * 1024
+    if idle != None and idle <= 100:
+        metric.fields["device_cpu_usage"] = 100 - idle
+    if load_raw != None:
+        v = first_number(str(load_raw))
+        if v != None:
+            metric.fields["device_cpu_load1"] = v
+    if calls != None:
+        metric.fields["concurrent_calls"] = calls
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["switchvox"]

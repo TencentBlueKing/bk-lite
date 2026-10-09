@@ -1,0 +1,56 @@
+{
+  "object": "NetworkService",
+  "plugin": "NetworkService ATEN PE eco PDU SNMP",
+  "templates": [
+    {
+      "name": "ATEN环境温度过高",
+      "alert_name": "网络服务设备${resource_name} 环境温度过高",
+      "description": "监控 ATEN PE / eco PDU 环境温度，持续高于阈值提示机房空调或通风异常，可能影响配电设备与负载散热。",
+      "metric_name": "env_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 45,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 40,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 35,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "ATEN整机电流过高",
+      "alert_name": "网络服务设备${resource_name} 整机电流过高",
+      "description": "监控 ATEN PE / eco PDU 整机电流，持续高于阈值提示负载过重或支路异常，可能导致过载保护。",
+      "metric_name": "pdu_device_current_amps",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 32,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 24,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 16,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

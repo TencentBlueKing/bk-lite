@@ -1,0 +1,181 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_coriant_groove"
+        config_type = "coriant_groove"
+        brand = "coriant_groove"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Coriant/Infinera Groove（CORIANT-GROOVE-MIB，PEN 42229，groove = …42229.1.2）----
+    # systemPowerConsumptionCurrent（ne.system .2.2.2.0）：整机当前功耗，CoriantTypesPower 为 OCTET STRING（单位 W），标量顶层 field 带 .0，下方 starlark 解析为浮点。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.42229.1.2.2.2.2.0"
+        name = "device_power_watts"
+    # ---- 机框表 shelfTable …1.2.3.1.1（INDEX shelfId）----
+    # shelfInletTemperature .3 / shelfOutletTemperature .4：CoriantTypesTemperature 为 OCTET STRING（摄氏度），starlark 解析。
+    [[inputs.snmp.table]]
+        name = "groove_shelf"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.42229.1.2.3.1.1.1.3"
+        name = "inlet"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.42229.1.2.3.1.1.1.4"
+        name = "outlet"
+    # ---- 板卡表 cardTable …1.2.3.3.1（INDEX shelfId, slotId；仅列出已配置板卡，空槽位不产生行）----
+    # cardRequiredType .1：fan(11) / psu(12) / 其余为业务、控制或光层板卡；cardEquipmentName .2 作 card 标签；
+    # cardOperStatus .4：up(1) / down(2)；cardFanSpeedRate .7：风扇转速百分比 0..100（仅 FAN 板卡）；
+    # cardTemperature .9：OCTET STRING（摄氏度），starlark 解析。
+    [[inputs.snmp.table]]
+        name = "groove_card"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.42229.1.2.3.3.1.1.2"
+        name = "card"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.42229.1.2.3.3.1.1.1"
+        name = "type"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.42229.1.2.3.3.1.1.4"
+        name = "oper"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.42229.1.2.3.3.1.1.7"
+        name = "fan_speed"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.42229.1.2.3.3.1.1.9"
+        name = "temp"
+# ---- 整机功耗：OCTET STRING 解析为浮点 W，非数字（空串/N/A）时丢弃该字段。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def _num(v):
+    if v == None:
+        return None
+    s = str(v).strip()
+    if s == "" or s.count(".") > 1:
+        return None
+    for i, ch in enumerate(s.elems()):
+        if ch in "0123456789.":
+            continue
+        if ch in "+-" and i == 0:
+            continue
+        return None
+    if s in ("+", "-", ".", "+.", "-."):
+        return None
+    return float(s)
+
+def apply(metric):
+    if "device_power_watts" in metric.fields:
+        v = _num(metric.fields["device_power_watts"])
+        if v == None:
+            metric.fields.pop("device_power_watts")
+        else:
+            metric.fields["device_power_watts"] = v
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["coriant_groove"]
+# ---- 机框/板卡拆分：
+# 机框行 → device_temperature（sensor = shelf-<id>-inlet / shelf-<id>-outlet，celsius）；
+# 板卡行 → device_card（state：up(1)→1、down(2) 及其余→2）、device_temperature（sensor = card-<shelf>.<slot>，有有效温度时）、
+# FAN 板卡另出 device_fan（state 同上、speed 百分比），PSU 板卡另出 device_psu（state 同上）。温度非数字时不产出。----
+[[processors.starlark]]
+    namepass = ["groove_shelf", "groove_card"]
+    source = '''
+def _num(v):
+    if v == None:
+        return None
+    s = str(v).strip()
+    if s == "" or s.count(".") > 1:
+        return None
+    for i, ch in enumerate(s.elems()):
+        if ch in "0123456789.":
+            continue
+        if ch in "+-" and i == 0:
+            continue
+        return None
+    if s in ("+", "-", ".", "+.", "-."):
+        return None
+    return float(s)
+
+def _new(metric, name):
+    m = Metric(name)
+    for k, v in metric.tags.items():
+        m.tags[k] = v
+    m.time = metric.time
+    return m
+
+def _state(v):
+    if v != None and int(v) == 1:
+        return 1
+    return 2
+
+def apply(metric):
+    out = []
+    idx = metric.tags.get("index", "")
+    if metric.name == "groove_shelf":
+        for key, label in (("inlet", "inlet"), ("outlet", "outlet")):
+            v = _num(metric.fields.get(key))
+            if v != None:
+                t = _new(metric, "device_temperature")
+                t.tags["sensor"] = "shelf-" + idx + "-" + label
+                t.fields["celsius"] = v
+                out.append(t)
+        return out
+    if "type" not in metric.fields and "oper" not in metric.fields:
+        return None
+    ctype = int(metric.fields.get("type", 0))
+    state = _state(metric.fields.get("oper"))
+    c = _new(metric, "device_card")
+    c.fields["state"] = state
+    out.append(c)
+    v = _num(metric.fields.get("temp"))
+    if v != None:
+        t = _new(metric, "device_temperature")
+        t.tags["sensor"] = "card-" + idx
+        t.fields["celsius"] = v
+        out.append(t)
+    if ctype == 11:
+        f = _new(metric, "device_fan")
+        f.fields["state"] = state
+        if "fan_speed" in metric.fields:
+            f.fields["speed"] = int(metric.fields["fan_speed"])
+        out.append(f)
+    elif ctype == 12:
+        p = _new(metric, "device_psu")
+        p.fields["state"] = state
+        out.append(p)
+    return out
+'''
+    [processors.starlark.tagpass]
+        brand = ["coriant_groove"]

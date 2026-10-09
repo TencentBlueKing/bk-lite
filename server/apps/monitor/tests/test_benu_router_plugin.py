@@ -126,7 +126,12 @@ def test_metrics_is_vendor_delta_child(metrics):
     names = {metric["name"] for metric in metrics["metrics"]}
     floor = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
     assert floor <= names
-    assert names - floor == EXPECTED_METRICS | {"device_psu_powered", "device_psu_present"}
+    assert names - floor == EXPECTED_METRICS | {
+        "device_psu_powered",
+        "device_psu_present",
+        "benu_fan_speed_percent",
+        "benu_fan_fault_count",
+    }
     assert all(name not in names - floor for name in ABSENT_METRICS)
     assert set(metrics["supplementary_indicators"]) - {"snmp_uptime"} == EXPECTED_METRICS
 

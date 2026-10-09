@@ -212,7 +212,7 @@ def test_get_duration_closed_uses_first_event_to_close_time():
     assert AlertModelSerializer.get_duration(obj) == "2h 3m "
 
 
-def test_get_duration_resolved_keeps_ticking_until_close():
+def test_get_duration_resolved_uses_closed_at():
     from datetime import datetime, timedelta
     from datetime import timezone as dt_timezone
 
@@ -223,14 +223,30 @@ def test_get_duration_resolved_keeps_ticking_until_close():
         status="resolved",
         last_event_time=first_event_time + timedelta(minutes=1),
         updated_at=first_event_time + timedelta(minutes=5, seconds=12),
+        closed_at=first_event_time + timedelta(minutes=5, seconds=12),
+    )
+    assert AlertModelSerializer.get_duration(obj) == "5m 12s"
+
+
+def test_get_duration_resolved_without_closed_at_is_placeholder():
+    from datetime import datetime, timedelta
+    from datetime import timezone as dt_timezone
+
+    first_event_time = datetime(2026, 8, 28, 10, 0, 0, tzinfo=dt_timezone.utc)
+    obj = SimpleNamespace(
+        created_at=first_event_time,
+        first_event_time=first_event_time,
+        status="resolved",
+        last_event_time=first_event_time,
+        updated_at=first_event_time,
         closed_at=None,
     )
     with pytest.MonkeyPatch.context() as monkeypatch:
         monkeypatch.setattr(
             "apps.alerts.serializers.alert.timezone.now",
-            lambda: first_event_time + timedelta(minutes=5, seconds=12),
+            lambda: first_event_time + timedelta(hours=2),
         )
-        assert AlertModelSerializer.get_duration(obj) == "5m 12s"
+        assert AlertModelSerializer.get_duration(obj) == "--"
 
 
 def test_get_duration_closed_without_closed_at_is_placeholder():

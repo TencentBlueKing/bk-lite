@@ -1,0 +1,42 @@
+VoiceGateway Snom SNMP:
+  name: Snom（Telegraf）
+  desc: 面向 Snom SIP 桌面 / DECT 话机（私有树 1.3.6.1.2.1.7526，仅支持 GET）的 SNMP 监控模板，可采集运行时长、CPU 负载均值、空闲内存、SIP 注册数、固件版本、接口流量。
+monitor_object:
+  VoiceGateway: 语音网关
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  VoiceGateway:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    device_cpu_load1:
+      name: CPU 负载均值（1 分钟）
+      desc: 话机 1 分钟 CPU 负载均值，由设备上报的负载均值文本解析。持续高于 CPU 核数说明话机过载。
+    device_cpu_load5:
+      name: CPU 负载均值（5 分钟）
+      desc: 话机 5 分钟 CPU 负载均值，设备返回三个负载值时上报。
+    device_cpu_load15:
+      name: CPU 负载均值（15 分钟）
+      desc: 话机 15 分钟 CPU 负载均值，设备返回三个负载值时上报。
+    device_memory_free:
+      name: 内存空闲
+      desc: 话机上报的空闲内存原值，厂商未注明单位。数值持续下降可能表示内存泄漏。
+    sip_registration_count:
+      name: SIP 注册数
+      desc: 话机当前的 SIP 注册数。为 0 表示话机无法注册到呼叫服务器，不能拨打或接听电话。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位
+        ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位
+        ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+monitor_object_metric_group:
+  VoiceGateway:
+    Base: 基础
+    Traffic: 流量
+    CPU: CPU
+    Memory: 内存
+    Voice: 语音

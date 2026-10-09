@@ -1,0 +1,126 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_hpmsm"
+        config_type = "hpmsm"
+        brand = "hpmsm"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Colubris 利用率标量（coUsageInformationGroup = 1.3.6.1.4.1.8744.5.21.1.1），顶层 field 带 .0 → measurement snmp ----
+    # coUsInfoCpuUseNow .5.0 Unsigned32 %；coUsInfoCpuUse5Sec .6.0 可选。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.8744.5.21.1.1.5.0"
+        name = "device_cpu_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.8744.5.21.1.1.6.0"
+        name = "device_cpu_usage_5s"
+    # coUsInfoLoadAverage1Min .2.0 可选。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.8744.5.21.1.1.2.0"
+        name = "avg_1min_raw"
+    # coUsInfoRamTotal / RamFree .9.0 / .10.0 Unsigned32 Kb；下方换算为字节并计算使用率。helper 不落库。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.8744.5.21.1.1.9.0"
+        name = "ram_total_kb"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.8744.5.21.1.1.10.0"
+        name = "ram_free_kb"
+    # coUsInfoStorageUseTemporary .14.0 Unsigned32 % 可选。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.8744.5.21.1.1.14.0"
+        name = "device_storage_usage"
+# ---- 无机箱温度/风扇/电源对象，不臆造。----
+
+# ---- CPU 0..100；内存 Kb×1024 为字节并计算使用率（仅 starlark 换算）；哨兵与越界丢弃。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def _sentinel(v):
+    if v == None:
+        return True
+    x = int(v)
+    if x == 65535 or x == 65534:
+        return True
+    if x == 2147483647 or x == -2147483648:
+        return True
+    if x == 4294967295:
+        return True
+    return False
+
+def _percent(v):
+    if v == None or _sentinel(v):
+        return None
+    val = float(v)
+    if val < 0 or val > 100:
+        return None
+    return val
+
+def apply(metric):
+    f = metric.fields
+    cpu = _percent(f.get("device_cpu_usage"))
+    if cpu == None:
+        f.pop("device_cpu_usage", None)
+    else:
+        f["device_cpu_usage"] = cpu
+    cpu5 = _percent(f.get("device_cpu_usage_5s"))
+    if cpu5 == None:
+        f.pop("device_cpu_usage_5s", None)
+    else:
+        f["device_cpu_usage_5s"] = cpu5
+    stor = _percent(f.get("device_storage_usage"))
+    if stor == None:
+        f.pop("device_storage_usage", None)
+    else:
+        f["device_storage_usage"] = stor
+    avg_raw = f.pop("avg_1min_raw", None)
+    if avg_raw != None and not _sentinel(avg_raw):
+        avg_val = float(avg_raw)
+        if avg_val >= 0:
+            f["device_load_average"] = avg_val
+    # RAM 为 Unsigned32 Kb：总量 0<total<4294967295，空闲 0<=free<=total；不以 16 位哨兵丢弃。
+    total_kb = f.pop("ram_total_kb", None)
+    free_kb = f.pop("ram_free_kb", None)
+    if total_kb != None:
+        total = int(total_kb)
+        if total > 0 and total < 4294967295:
+            total_bytes = total * 1024
+            f["device_memory_total"] = total_bytes
+            if free_kb != None:
+                free = int(free_kb)
+                if free >= 0 and free <= total:
+                    free_bytes = free * 1024
+                    f["device_memory_free"] = free_bytes
+                    used = total_bytes - free_bytes
+                    usage = float(used) / float(total_bytes) * 100.0
+                    f["device_memory_usage"] = float(int(usage * 10.0 + 0.5)) / 10.0
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["hpmsm"]

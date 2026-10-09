@@ -1,0 +1,60 @@
+VoiceGateway Switchvox SNMP:
+  name: Switchvox (Telegraf)
+  desc: SNMP monitoring template for Sangoma Switchvox IP-PBX (enterprise PEN 22736). It reports uptime,
+    CPU utilization and load, memory and swap usage, current calls, and interface traffic.
+monitor_object:
+  VoiceGateway: VoiceGateway
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  VoiceGateway:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
+        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
+        or failures.
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: CPU utilization of the PBX as a percentage (100 minus CPU idle). Sustained high values indicate
+        call-processing overload and can degrade call quality.
+    device_cpu_load1:
+      name: System Load
+      desc: System load average reported by the PBX. A value persistently above the CPU core count indicates
+        the system is overloaded.
+    device_memory_usage:
+      name: Memory Usage
+      desc: Memory utilization of the PBX as a percentage of total memory. Sustained high values indicate
+        memory pressure.
+    device_memory_used:
+      name: Memory Used
+      desc: Memory currently in use on the PBX, in bytes.
+    device_memory_total:
+      name: Memory Total
+      desc: Total memory of the PBX, in bytes.
+    device_swap_used:
+      name: Swap Used
+      desc: Swap space currently in use, in bytes. Growing swap usage indicates the system is short of
+        physical memory.
+    device_swap_total:
+      name: Swap Total
+      desc: Total swap space of the PBX, in bytes.
+    concurrent_calls:
+      name: Concurrent Calls
+      desc: Number of calls currently in progress on the PBX. Use it to track call load and capacity.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured
+        in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in
+        bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifOutOctets on high-speed ports, keeping the rate accurate.
+monitor_object_metric_group:
+  VoiceGateway:
+    Base: Base
+    Traffic: Traffic
+    CPU: CPU
+    Memory: Memory
+    Voice: Voice

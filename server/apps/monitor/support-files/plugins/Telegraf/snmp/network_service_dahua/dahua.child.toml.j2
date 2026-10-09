@@ -1,0 +1,51 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_dahua"
+        config_type = "dahua"
+        brand = "dahua"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- DAHUA-SNMP-MIB device 1.3.6.1.4.1.1004849.2（PEN 1004849）：标量，顶层 field 带 .0 → measurement snmp，查询用 snmp_ 前缀 ----
+    # systemInfo.cpuUsage .2.1.3.0：INTEGER，CPU 使用率百分比 → device_cpu_usage。本 MIB 修订未发布内存对象。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1004849.2.1.3.0"
+        name = "device_cpu_usage"
+
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    cpu = metric.fields.get("device_cpu_usage")
+    if cpu != None and (type(cpu) not in ["int", "float"] or cpu < 0 or cpu > 100):
+        metric.fields.pop("device_cpu_usage")
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["dahua"]

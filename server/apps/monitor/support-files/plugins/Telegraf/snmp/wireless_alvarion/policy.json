@@ -1,0 +1,31 @@
+{
+  "object": "Wireless",
+  "plugin": "Wireless Alvarion SNMP",
+  "templates": [
+    {
+      "name": "Alvarion终端平均接收信噪比过低",
+      "alert_name": "无线设备${resource_name} 平均接收信噪比过低",
+      "description": "监控 Alvarion BreezeACCESS VL 终端（SU/RB）平均接收信噪比，持续低于门限时提示链路噪声偏高或接收质量下降。",
+      "metric_name": "alvarion_avg_receive_snr_db",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 10,
+          "method": "<"
+        },
+        {
+          "level": "error",
+          "value": 12,
+          "method": "<"
+        },
+        {
+          "level": "warning",
+          "value": 15,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

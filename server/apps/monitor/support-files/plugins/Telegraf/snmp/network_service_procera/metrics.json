@@ -1,0 +1,153 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_procera",
+  "plugin": "NetworkService Procera PacketLogic SNMP",
+  "plugin_desc": "SNMP monitoring template for Procera PacketLogic DPI appliance. It reports uptime, CPU load, BMC temperature, fan speed/state, and interface traffic (enterprise PEN 15397).",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='network_service', collect_type='snmp_procera'}) by (instance_id)",
+  "name": "NetworkService",
+  "icon": "mm-network_service_网络服务",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='network_service'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "procera_cpu_load",
+    "device_temperature_celsius",
+    "device_fan_speed",
+    "device_fan_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "procera_cpu_load",
+      "query": "max(snmp_procera_cpu_load{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "CPU Load",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "PacketLogic CPU load from the packetprocessingLoadVal scalar. The MIB does not specify a unit. Values outside 0 to 4294967294 are dropped before storage."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='network_service', __$labels__}",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "tempSensorTable index"
+        },
+        {
+          "name": "sensor_name",
+          "description": "Temperature sensor id"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "BMC temperature in degrees Celsius from tempSensorReading. Celsius readings are kept as-is; Fahrenheit and Kelvin are converted and rounded to 0.1. Unknown or empty units, sentinels, and values outside -40 to 125 C are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_speed",
+      "query": "device_fan_speed{instance_type='network_service', __$labels__}",
+      "display_name": "Fan Speed",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "fanSensorTable index"
+        },
+        {
+          "name": "fanSensorId",
+          "description": "Fan sensor id"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "BMC fan rotation speed in RPM from fanSensorSpeed. Only rows whose unit is rpm are stored. Speeds above 30000, sentinels, and empty units are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "device_fan_state{instance_type='network_service', __$labels__}",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "fanSensorTable index"
+        },
+        {
+          "name": "fanSensorId",
+          "description": "Fan sensor id"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "BMC fan status from fanSensorStatus, normalized so ok is healthy (1) and cr/nr/critical/non-recoverable/nc are abnormal (2). Unknown statuses such as ns/na/empty are dropped."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of inbound bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of outbound bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

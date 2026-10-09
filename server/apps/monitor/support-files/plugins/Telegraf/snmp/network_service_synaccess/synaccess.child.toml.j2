@@ -1,0 +1,107 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_synaccess"
+        config_type = "synaccess"
+        brand = "synaccess"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.2.0"
+        name = "sysObjectID"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Synaccess SynLink / netBooter DU（SYNLINK-MIB，PEN 21728，synlink 1.3.6.1.4.1.21728.4）----
+    # 传感器表与进线表：table.field 不带 .0。MIB 写明 ℃ / % / A / V，不做额外倍率换算。
+    # 私有 CPU%/Mem% 与 outlet 开关表不在本模板内。
+    [[inputs.snmp.table]]
+        name = "env_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    # sensorName（1.3.6.1.4.1.21728.4.7.1.1.7）：传感器名称，作为 sensor 标签。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.21728.4.7.1.1.7"
+        name = "sensor"
+        is_tag = true
+    # sensorTemp（1.3.6.1.4.1.21728.4.7.1.1.3）：Integer32 ℃（已含 offset）。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.21728.4.7.1.1.3"
+        name = "celsius"
+    [[inputs.snmp.table]]
+        name = "env_humidity"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.21728.4.7.1.1.7"
+        name = "sensor"
+        is_tag = true
+    # sensorHumidity（…4.7.1.1.4）：Integer32 %RH。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.21728.4.7.1.1.4"
+        name = "percent"
+    [[inputs.snmp.table]]
+        name = "pdu_inlet"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    # inletCurrentRms（1.3.6.1.4.1.21728.4.2.1.1.17）：Integer32 A。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.21728.4.2.1.1.17"
+        name = "current_amps"
+    # inletVoltageRms（…4.2.1.1.19）：Integer32 V。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.21728.4.2.1.1.19"
+        name = "voltage_volts"
+# ---- 缺席行丢弃；温度须为 -40~100 的整数；湿度须为 0~100 的整数；进线电流须为 0~100 的整数、电压须为 0~300 的整数。原始缺席字段不落库。----
+[[processors.starlark]]
+    namepass = ["env_temperature", "env_humidity", "pdu_inlet"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    if metric.name == "env_temperature":
+        value = f.get("celsius")
+        if type(value) != "int" or value < -40 or value > 100:
+            return None
+        return metric
+    if metric.name == "env_humidity":
+        value = f.get("percent")
+        if type(value) != "int" or value < 0 or value > 100:
+            return None
+        return metric
+    current = f.get("current_amps")
+    volts = f.get("voltage_volts")
+    if type(current) != "int" or current < 0 or current > 100:
+        f.pop("current_amps", None)
+    if type(volts) != "int" or volts < 0 or volts > 300:
+        f.pop("voltage_volts", None)
+    if len(f.keys()) == 0:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["synaccess"]
