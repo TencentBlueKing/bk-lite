@@ -26,8 +26,8 @@ monitor_object_metric:
         session count helps capacity planning and detecting abnormal connection spikes.
     device_psu_state:
       name: Power Supply Status
-      desc: Operational state of each power supply unit (enum). A non-normal state
-        indicates a power redundancy or hardware fault and should be remediated promptly.
+      desc: Power-supply enum: 1=normal (including empty slot), 2=abnormal, 3=Unknown
+        (gray, no alert). Only state 2 raises an alert.
     firewall_pf_states:
       name: PF State Table Entries
       desc: This metric reports the current number of entries in the pfSense firewall

@@ -21,7 +21,7 @@ monitor_object_metric:
       desc: 该指标报告网关当前已登录的 Web 用户数量。跟踪活动会话数有助于容量规划与发现异常连接激增。
     device_psu_state:
       name: 电源状态
-      desc: 该指标报告设备电源模块的运行状态（枚举）。非正常状态表示电源冗余或硬件故障；在冗余电源设备上单个故障会移除冗余，需尽快处理。
+      desc: 该指标报告设备电源模块的运行状态（枚举）：1=正常（含空槽），2=异常，3=未知（灰，不告警）。仅状态=2 触发告警。
     firewall_pf_states:
       name: pf 状态表条目数
       desc: 该指标报告 pfSense 防火墙 pf 状态表中的当前条目数（BEGEMOT-PF-MIB pfStateTableCount），约等于活动连接数。条目数快速攀升可能意味着连接洪泛或状态表逼近上限。
