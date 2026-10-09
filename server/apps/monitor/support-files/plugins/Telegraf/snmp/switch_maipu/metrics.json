@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_maipu",
   "plugin": "Switch Maipu SNMP",
-  "plugin_desc": "SNMP monitoring template for Maipu switch (MyPower OS). It reports uptime, CPU utilization, memory utilization, main board and CPU temperature, and interface traffic (enterprise PEN 5651); fan and power supply status are not collected. CPU utilization is only reported when CPU monitoring is enabled on the device (sysCpuStatus set to spyCpu).",
+  "plugin_desc": "SNMP monitoring template for Maipu switch (MyPower OS). It reports uptime, CPU utilization, memory utilization, main board and CPU temperature, power supply status, and interface traffic (enterprise PEN 5651); fan status is not collected. CPU utilization is only reported when CPU monitoring is enabled on the device (sysCpuStatus set to spyCpu).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_maipu'}) by (instance_id)",
   "name": "Switch",
@@ -144,6 +144,24 @@
       "unit": "celsius",
       "data_type": "Number",
       "description": "CPU temperature of the Maipu switch in degrees Celsius (MPIOS-MIB sysCpuTemper scalar)."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_psu_state",
+      "display_name": "电源状态",
+      "query": "device_psu_state{instance_type='switch', __$labels__}",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "data_type": "Enum",
+      "description": "Power-supply state of the Maipu switch, normalised to 1=normal / 2=abnormal."
     },
     {
       "metric_group": "Base",
