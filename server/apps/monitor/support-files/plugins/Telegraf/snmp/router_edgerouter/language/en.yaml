@@ -11,14 +11,6 @@ monitor_object_metric:
       name: Device Temperature
       desc: Device hardware temperature sensor reading in degrees Celsius. Abnormally
         high values may indicate fan failure, poor airflow, or high ambient temperature.
-    device_fan_state:
-      name: Fan Status
-      desc: Operational state of each cooling fan (enum). A non-normal state indicates
-        a cooling fault that can quickly lead to overheating.
-      enum:
-        "1": Normal
-        "2": Abnormal
-        "3": Unknown
     device_psu_state:
       name: Power Supply Status
       desc: Status of each EdgeRouter power supply (ubntPsuStatus), normalized to 1
