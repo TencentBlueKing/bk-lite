@@ -39,7 +39,7 @@
     {
       "metric_group": "Router",
       "name": "device_cpu_usage",
-      "query": "max(snmp_device_cpu_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "avg(device_cpu_usage{instance_type='router', __$labels__}) by (instance_id)",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -52,7 +52,7 @@
     {
       "metric_group": "Router",
       "name": "device_memory_usage",
-      "query": "max(snmp_device_memory_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "avg(device_memory_usage{instance_type='router', __$labels__}) by (instance_id)",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -227,7 +227,7 @@
     {
       "metric_group": "Router",
       "name": "device_temperature_celsius",
-      "query": "max(snmp_device_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "max(device_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
