@@ -30,13 +30,13 @@ monitor_object_metric:
       desc: 该指标表示 Ericsson IPOS 路由器各实体温度传感器读数（ERICSSON-ROUTER-ENVMON-MIB eriRouterEntityTempCurrent），单位摄氏度，设备将读数限定在 0–100。温度异常升高可能由风扇故障或散热不良导致。
     device_fan_state:
       name: 风扇状态
-      desc: 该指标表示 Ericsson IPOS 路由器各风扇托盘状态（eriRouterFanStatus 原始 normal(1)/failed(2)/absent(3)/unknown(4)），归一为 1=正常、2=异常；absent 与 unknown 行丢弃，不计入故障。
+      desc: 该指标表示 Ericsson IPOS 路由器各风扇托盘状态（eriRouterFanStatus 原始 normal(1)/failed(2)/absent(3)/unknown(4)），归一为 1=正常、2=异常；absent 空槽记正常并保留行，unknown 记异常并保留行。
     device_fan_speed:
       name: 风扇转速
       desc: 该指标表示 Ericsson IPOS 路由器各风扇单元转速（eriRouterFanSpeedCurrent），单位 RPM。
     device_psu_state:
       name: 电源状态
-      desc: 该指标表示 Ericsson IPOS 路由器各电源模块状态（eriRouterPowerStatus 原始 normal(1)/failed(2)/absent(3)/unknown(4)），归一为 1=正常、2=异常；absent 与 unknown 行丢弃，不计入故障。
+      desc: 该指标表示 Ericsson IPOS 路由器各电源模块状态（eriRouterPowerStatus 原始 normal(1)/failed(2)/absent(3)/unknown(4)），归一为 1=正常、2=异常；absent 空槽记正常并保留行，unknown 记异常并保留行。
 monitor_object_metric_group:
   Router:
     Base: 基础

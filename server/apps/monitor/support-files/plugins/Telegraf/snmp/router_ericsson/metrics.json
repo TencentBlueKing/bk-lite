@@ -154,7 +154,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the state of each fan tray of the Ericsson IPOS router (eriRouterFanStatus, raw normal(1) / failed(2) / absent(3) / unknown(4)), normalized so that 1 = healthy and 2 = fault. Absent and unknown rows are dropped and not counted as faults."
+      "description": "This metric reports the state of each fan tray of the Ericsson IPOS router (eriRouterFanStatus, raw normal(1) / failed(2) / absent(3) / unknown(4)), normalized so that normal/absent = 1 (healthy) and failed/unknown = 2 (fault). Empty slots keep a row."
     },
     {
       "metric_group": "Hardware Status",
@@ -190,7 +190,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the state of each power module of the Ericsson IPOS router (eriRouterPowerStatus, raw normal(1) / failed(2) / absent(3) / unknown(4)), normalized so that 1 = healthy and 2 = fault. Absent and unknown rows are dropped and not counted as faults."
+      "description": "This metric reports the state of each power module of the Ericsson IPOS router (eriRouterPowerStatus, raw normal(1) / failed(2) / absent(3) / unknown(4)), normalized so that normal/absent = 1 (healthy) and failed/unknown = 2 (fault). Empty slots keep a row."
     }
   ]
 }
