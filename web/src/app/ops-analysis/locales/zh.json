@@ -449,6 +449,8 @@
       "viewport": "画布尺寸",
       "itemCount": "组件数",
       "canvasSettings": "画布设置",
+      "undo": "撤销(Ctrl+Z)",
+      "redo": "恢复(Ctrl+Y)",
       "inspectorResize": "调整右侧栏宽度",
       "fullscreenPreview": "全屏预览",
       "resolutionPreset": "分辨率预设",

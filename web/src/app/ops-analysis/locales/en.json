@@ -449,6 +449,8 @@
       "viewport": "Canvas Size",
       "itemCount": "Items",
       "canvasSettings": "Canvas Settings",
+      "undo": "Undo(Ctrl+Z)",
+      "redo": "Redo(Ctrl+Y)",
       "inspectorResize": "Resize the right sidebar",
       "fullscreenPreview": "Fullscreen Preview",
       "resolutionPreset": "Resolution Preset",

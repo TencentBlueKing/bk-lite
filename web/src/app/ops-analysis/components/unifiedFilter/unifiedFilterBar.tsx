@@ -339,6 +339,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
       theme={popupTheme}
     >
       <div
+        data-ops-analysis-filter-bar=""
         className={
           isEmbedded
             ? `border-b border-(--color-border-2) bg-transparent px-4 py-3 ${containerClassName ?? ''}`

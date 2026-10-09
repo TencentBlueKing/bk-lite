@@ -95,7 +95,26 @@ import {
   placeScreenItemAtPoint,
   type ScreenChromeDragPayload,
 } from "./utils/screenItems";
-import { createScreenCopyItemHandler } from "./utils/copyScreenItem";
+import { copyScreenChromeItem } from "./utils/copyScreenItem";
+import { copyScreenWidget } from "@/app/ops-analysis/utils/widgetCopy";
+import {
+  closeScreenFieldEdit,
+  commitScreenEdit,
+  confirmScreenHistory,
+  createScreenEditSession,
+  requestScreenHistory,
+  screenHistoryShortcut,
+  screenInspectorAfterReplace,
+  screenItemFieldKey,
+  type ScreenGeometryField,
+  screenViewportFieldKey,
+  screenViewSetsAfterResizeStop,
+  syncScreenEditInspector,
+  type ScreenEditDocument,
+  type ScreenEditInspector,
+  type ScreenEditSession,
+  type ScreenHistoryAction,
+} from "./utils/screenEditHistory";
 import {
   moveScreenItemLayer,
   moveScreenItemToIndex,
@@ -195,6 +214,9 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editMode, setEditMode] = useState(false);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const [historyNavEpoch, setHistoryNavEpoch] = useState(0);
   const [subscriptionModalVisible, setSubscriptionModalVisible] =
     useState(false);
   const [filterConfigOpen, setFilterConfigOpen] = useState(false);
@@ -224,6 +246,25 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   );
   const draftViewSetsRef = useRef(draftViewSets);
   draftViewSetsRef.current = draftViewSets;
+  const filtersRef = useRef(queryState.definitions);
+  filtersRef.current = queryState.definitions;
+  const sessionRef = useRef<ScreenEditSession | null>(null);
+  const inspectorRef = useRef<ScreenEditInspector>({
+    selectedItemId: null,
+    inspectorTab: "style",
+    dataConfigOpen: false,
+  });
+  const pendingResizeRef = useRef<{
+    itemId: string;
+    before: ScreenViewSets;
+    size: { w: number; h: number };
+  } | null>(null);
+  const historyCommitRef = useRef<(document: ScreenEditDocument) => void>(() => {});
+  inspectorRef.current = {
+    selectedItemId,
+    inspectorTab,
+    dataConfigOpen: inspectorTab === "data" || pendingConfigItem != null,
+  };
   const setDraftViewSets = useCallback((updater: SetStateAction<ScreenViewSets>) => {
     const next =
       typeof updater === "function"
@@ -368,11 +409,11 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       restoreDraftRefreshInterval(payload, setSavedRefreshInterval);
       const normalized = normalizeScreenViewSets(payload.view_sets);
       const loadedDefinitions = normalized.filters ?? [];
-
-      setDraftViewSets({
-        ...normalized,
+      historyCommitRef.current({
+        viewSets: { ...normalized, filters: loadedDefinitions },
         filters: loadedDefinitions,
       });
+      filtersRef.current = loadedDefinitions;
       queryState.resetQueryState({
         definitions: loadedDefinitions,
         organizationId: shareOrganizationSeed,
@@ -401,6 +442,10 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   }));
 
   useEffect(() => {
+    sessionRef.current = null;
+    pendingResizeRef.current = null;
+    setCanUndo(false);
+    setCanRedo(false);
     const screenId = selectedScreen?.data_id;
     if (!screenId) {
       const emptyViewSets = buildDefaultScreenViewSets();
@@ -515,22 +560,133 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     queryState.setNamespaceDraftId,
   ]);
 
-  const rebuildDraftFilters = useCallback(
-    (nextViewSets: ScreenViewSets) => {
-      const nextDefinitions = buildFiltersFromScreenItems({
-        viewSets: nextViewSets,
-        previousDefinitions: queryState.definitions,
-        dataSources,
-      });
-      queryState.setDefinitions(nextDefinitions);
-      return syncScreenFilterBindings(
-        nextViewSets,
-        nextDefinitions,
-        dataSources,
-      );
-    },
-    [dataSources, queryState.definitions, queryState.setDefinitions],
-  );
+  const projectDocument = useCallback((viewSets: ScreenViewSets): ScreenEditDocument => {
+    const filters = buildFiltersFromScreenItems({
+      viewSets,
+      previousDefinitions: filtersRef.current,
+      dataSources,
+    });
+    return {
+      filters,
+      viewSets: syncScreenFilterBindings(viewSets, filters, dataSources),
+    };
+  }, [dataSources]);
+
+  const rememberSession = useCallback((next: ScreenEditSession) => {
+    sessionRef.current = next;
+    setDraftViewSets(next.document.viewSets);
+    if (JSON.stringify(next.document.filters) !== JSON.stringify(filtersRef.current)) {
+      filtersRef.current = next.document.filters;
+      queryState.setDefinitions(next.document.filters);
+    }
+    setCanUndo(next.canUndo);
+    setCanRedo(next.canRedo);
+  }, [queryState.setDefinitions, setDraftViewSets]);
+
+  const publishNavigation = useCallback((next: ScreenEditSession) => {
+    rememberSession(next);
+    setSelectedItemId(next.inspector.selectedItemId);
+    setInspectorTab(next.inspector.inspectorTab);
+    if (!next.inspector.dataConfigOpen) {
+      setPendingConfigItem(null);
+    }
+    setHistoryNavEpoch((epoch) => epoch + 1);
+  }, [rememberSession]);
+
+  const syncedSession = useCallback(() => syncScreenEditInspector(
+    sessionRef.current ?? createScreenEditSession(
+      {
+        viewSets: draftViewSetsRef.current,
+        filters: filtersRef.current,
+      },
+      inspectorRef.current,
+    ),
+    inspectorRef.current,
+  ), []);
+
+  const endFieldEdit = useCallback(() => {
+    if (!sessionRef.current) return;
+    sessionRef.current = closeScreenFieldEdit(sessionRef.current);
+  }, []);
+
+  const commitDocument = useCallback((
+    document: ScreenEditDocument,
+    meta: { itemId?: string; fieldKey?: string | null } = {},
+  ) => {
+    pendingResizeRef.current = null;
+    rememberSession(commitScreenEdit(syncedSession(), {
+      document,
+      itemId: meta.itemId,
+      fieldKey: meta.fieldKey ?? undefined,
+    }));
+  }, [rememberSession, syncedSession]);
+
+  historyCommitRef.current = (document) => {
+    pendingResizeRef.current = null;
+    const committed = commitScreenEdit(syncedSession(), { document });
+    publishNavigation(syncScreenEditInspector(
+      committed,
+      screenInspectorAfterReplace(committed.inspector, committed.document),
+    ));
+  };
+
+  const resetScreenHistory = useCallback((document?: ScreenEditDocument) => {
+    pendingResizeRef.current = null;
+    sessionRef.current = document
+      ? createScreenEditSession(document, {
+        selectedItemId: null,
+        inspectorTab: "style",
+        dataConfigOpen: false,
+      })
+      : null;
+    setCanUndo(false);
+    setCanRedo(false);
+  }, []);
+
+  const runAfterDataGuard = useCallback((
+    next: () => void,
+    onCancel?: () => void,
+  ) => {
+    if (!dataFormDirty) {
+      next();
+      return;
+    }
+    Modal.confirm({
+      title: t("opsAnalysis.screen.unsavedDataTitle"),
+      content: t("opsAnalysis.screen.unsavedDataContent"),
+      centered: true,
+      okText: t("common.confirm"),
+      cancelText: t("common.cancel"),
+      onOk: () => {
+        setDataFormDirty(false);
+        setPendingConfigItem(null);
+        next();
+      },
+      onCancel,
+    });
+  }, [dataFormDirty, t]);
+
+  const runScreenHistory = useCallback((action: ScreenHistoryAction) => {
+    const current = sessionRef.current;
+    if (!current) return;
+    const synced = syncScreenEditInspector(current, inspectorRef.current);
+    const request = requestScreenHistory(synced, action, dataFormDirty);
+    if ('applied' in request) {
+      if (request.applied) publishNavigation(request.session);
+      return;
+    }
+    runAfterDataGuard(() => {
+      const latest = sessionRef.current;
+      if (!latest) return;
+      publishNavigation(confirmScreenHistory(
+        syncScreenEditInspector(latest, {
+          ...inspectorRef.current,
+          dataConfigOpen: false,
+        }),
+        action,
+      ));
+    });
+  }, [dataFormDirty, publishNavigation, runAfterDataGuard]);
 
   const dataSourceResolver = useCallback(
     (dataSource?: string | number) =>
@@ -588,60 +744,104 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   const handleConfirmNewWidgetConfig = useCallback(
     (values: WidgetConfig) => {
       try {
-        setDraftViewSets((current) =>
-          rebuildDraftFilters(addConfiguredScreenWidget(current, values)),
-        );
+        const nextViewSets = addConfiguredScreenWidget(draftViewSetsRef.current, values);
+        const created = nextViewSets.items[nextViewSets.items.length - 1];
+        commitDocument(projectDocument(nextViewSets), { itemId: created?.id });
         setPendingConfigItem(null);
         setDataFormDirty(false);
+        setSelectedItemId(created?.id ?? null);
         setInspectorTab("style");
       } catch (error) {
         console.error("Failed to add screen widget:", error);
         message.error(t("opsAnalysis.screen.unsupportedWidgetType"));
       }
     },
-    [rebuildDraftFilters, t],
+    [commitDocument, projectDocument, t],
   );
 
   const handleMoveItem = useCallback(
     (itemId: string, position: { x: number; y: number }) => {
-      setDraftViewSets((current) => moveScreenItem(current, itemId, position));
+      const armed = pendingResizeRef.current;
+      if (armed?.itemId === itemId) {
+        pendingResizeRef.current = null;
+        commitDocument({
+          viewSets: screenViewSetsAfterResizeStop(
+            armed.before,
+            itemId,
+            armed.size,
+            position,
+          ),
+          filters: filtersRef.current,
+        }, { itemId });
+        return;
+      }
+      if (armed) {
+        pendingResizeRef.current = null;
+        commitDocument({
+          viewSets: resizeScreenItem(armed.before, armed.itemId, armed.size),
+          filters: filtersRef.current,
+        }, { itemId: armed.itemId });
+      }
+      commitDocument({
+        viewSets: moveScreenItem(draftViewSetsRef.current, itemId, position),
+        filters: filtersRef.current,
+      }, { itemId });
     },
-    [],
+    [commitDocument],
   );
 
   const handleResizeItem = useCallback(
     (itemId: string, size: { w: number; h: number }) => {
-      setDraftViewSets((current) => resizeScreenItem(current, itemId, size));
+      const before = draftViewSetsRef.current;
+      pendingResizeRef.current = { itemId, before, size };
+      queueMicrotask(() => {
+        const armed = pendingResizeRef.current;
+        if (!armed || armed.itemId !== itemId || armed.before !== before) return;
+        pendingResizeRef.current = null;
+        commitDocument({
+          viewSets: resizeScreenItem(before, itemId, size),
+          filters: filtersRef.current,
+        }, { itemId });
+      });
     },
-    [],
+    [commitDocument],
   );
 
   const handleDeleteItem = useCallback(
     (itemId: string) => {
-      setDraftViewSets((current) =>
-        rebuildDraftFilters(deleteScreenItem(current, itemId)),
+      commitDocument(
+        projectDocument(deleteScreenItem(draftViewSetsRef.current, itemId)),
+        { itemId },
       );
       setSelectedItemId((current) => (current === itemId ? null : current));
       setItemMenu(null);
     },
-    [rebuildDraftFilters],
+    [commitDocument, projectDocument],
   );
 
   const handleReorderItem = useCallback((itemId: string, toIndex: number) => {
-    setDraftViewSets((current) => ({
-      ...current,
-      items: moveScreenItemToIndex(current.items, itemId, toIndex),
-    }));
-  }, []);
+    const current = draftViewSetsRef.current;
+    commitDocument({
+      viewSets: {
+        ...current,
+        items: moveScreenItemToIndex(current.items, itemId, toIndex),
+      },
+      filters: filtersRef.current,
+    }, { itemId });
+  }, [commitDocument]);
 
   const handleLayerAction = useCallback(
     (itemId: string, action: ScreenLayerAction) => {
-      setDraftViewSets((current) => ({
-        ...current,
-        items: moveScreenItemLayer(current.items, itemId, action),
-      }));
+      const current = draftViewSetsRef.current;
+      commitDocument({
+        viewSets: {
+          ...current,
+          items: moveScreenItemLayer(current.items, itemId, action),
+        },
+        filters: filtersRef.current,
+      }, { itemId });
     },
-    [],
+    [commitDocument],
   );
 
   useEffect(() => {
@@ -670,16 +870,30 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [editMode, handleDeleteItem, selectedItemId, shareMode]);
 
-  const handleCopyItem = useCallback(
-    createScreenCopyItemHandler({
-      getDraftViewSets: () => draftViewSetsRef.current,
-      setDraftViewSets,
-      setSelectedItemId,
-      rebuildFilters: rebuildDraftFilters,
-      t,
-    }),
-    [rebuildDraftFilters, t],
-  );
+  useEffect(() => {
+    if (!editMode || shareMode) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const action = screenHistoryShortcut(event, true);
+      if (!action) return;
+      event.preventDefault();
+      runScreenHistory(action);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [editMode, runScreenHistory, shareMode]);
+
+  const handleCopyItem = useCallback((itemId: string) => {
+    const current = draftViewSetsRef.current;
+    const copied = copyScreenWidget(current, itemId, { t })
+      ?? copyScreenChromeItem(current, itemId);
+    if (!copied) return;
+    commitDocument(projectDocument(copied.viewSets), {
+      itemId: copied.selectedItemId,
+    });
+    setSelectedItemId(copied.selectedItemId);
+    setPendingConfigItem(null);
+    setInspectorTab("style");
+  }, [commitDocument, projectDocument, t]);
 
   const handleOpenItemConfig = useCallback((itemId: string) => {
     setSelectedItemId(itemId);
@@ -689,6 +903,10 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
 
   const handleStartEdit = useCallback(() => {
     setDraftViewSets(viewSets);
+    resetScreenHistory({
+      viewSets: { ...viewSets, filters: queryState.definitions },
+      filters: queryState.definitions,
+    });
     setEditQuerySnapshot({
       definitions: queryState.definitions,
       filterValues: queryState.filterValues,
@@ -705,10 +923,12 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     queryState.filterValues,
     queryState.namespaceDraftId,
     viewSets,
+    resetScreenHistory,
   ]);
 
   const handleCancelEdit = useCallback(() => {
     setDraftViewSets(savedViewSets);
+    resetScreenHistory();
     queryState.resetQueryState(
       editQuerySnapshot ?? {
         definitions: savedViewSets.filters ?? [],
@@ -729,6 +949,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     queryState.appliedNamespaceId,
     queryState.resetQueryState,
     savedViewSets,
+    resetScreenHistory,
   ]);
 
   const handleSave = async () => {
@@ -755,6 +976,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       setPendingConfigItem(null);
       setEditQuerySnapshot(null);
       setFilterConfigOpen(false);
+      resetScreenHistory();
       message.success(t("opsAnalysis.screen.saveSuccess"));
     } catch (error) {
       console.error("Failed to save screen:", error);
@@ -769,30 +991,14 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   }: {
     viewport: ScreenViewportConfig;
   }) => {
-    setDraftViewSets((current) => updateScreenViewport(current, viewport));
+    const current = draftViewSetsRef.current;
+    commitDocument({
+      viewSets: updateScreenViewport(current, viewport),
+      filters: filtersRef.current,
+    }, {
+      fieldKey: screenViewportFieldKey(current.viewport, viewport),
+    });
   };
-
-  const runAfterDataGuard = useCallback(
-    (next: () => void) => {
-      if (!dataFormDirty) {
-        next();
-        return;
-      }
-      Modal.confirm({
-        title: t("opsAnalysis.screen.unsavedDataTitle"),
-        content: t("opsAnalysis.screen.unsavedDataContent"),
-        centered: true,
-        okText: t("common.confirm"),
-        cancelText: t("common.cancel"),
-        onOk: () => {
-          setDataFormDirty(false);
-          setPendingConfigItem(null);
-          next();
-        },
-      });
-    },
-    [dataFormDirty, t],
-  );
 
   const handleSelectCanvasItem = useCallback(
     (itemId: string | null) => {
@@ -862,55 +1068,64 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     shareMode,
   ]);
 
-  const handlePatchItem = useCallback((nextItem: ScreenItem) => {
-    setDraftViewSets((current) =>
-      updateScreenItemConfig(current, nextItem.id, nextItem),
-    );
-  }, []);
+  const handlePatchItem = useCallback((
+    nextItem: ScreenItem,
+    editedKey?: ScreenGeometryField,
+  ) => {
+    const current = draftViewSetsRef.current;
+    const previous = current.items.find((item) => item.id === nextItem.id);
+    commitDocument({
+      viewSets: updateScreenItemConfig(current, nextItem.id, nextItem),
+      filters: filtersRef.current,
+    }, {
+      itemId: nextItem.id,
+      fieldKey: previous ? screenItemFieldKey(previous, nextItem, editedKey) : null,
+    });
+  }, [commitDocument]);
 
   const handleAddChromeItem = useCallback(
     (factory: (items: ScreenItem[]) => ScreenItem) => {
       runAfterDataGuard(() => {
-        let createdId = "";
-        setDraftViewSets((current) => {
-          const created = factory(current.items);
-          createdId = created.id;
-          return { ...current, items: [...current.items, created] };
-        });
+        const current = draftViewSetsRef.current;
+        const created = factory(current.items);
+        commitDocument({
+          viewSets: { ...current, items: [...current.items, created] },
+          filters: filtersRef.current,
+        }, { itemId: created.id });
         setPendingConfigItem(null);
-        setSelectedItemId(createdId);
+        setSelectedItemId(created.id);
         setInspectorTab("style");
       });
     },
-    [runAfterDataGuard],
+    [commitDocument, runAfterDataGuard],
   );
 
   const handleDropChrome = useCallback(
     (payload: ScreenChromeDragPayload, point: { x: number; y: number }) => {
       runAfterDataGuard(() => {
-        let createdId = "";
-        setDraftViewSets((current) => {
-          const created = placeScreenItemAtPoint(
-            createScreenChromeFromDrag(current.items, payload),
-            point,
-            current.viewport,
+        const current = draftViewSetsRef.current;
+        const created = placeScreenItemAtPoint(
+          createScreenChromeFromDrag(current.items, payload),
+          point,
+          current.viewport,
+        );
+        if (isScreenTitleFrameItem(created)) {
+          created.content = t(
+            created.preset.startsWith("section")
+              ? "opsAnalysis.screen.defaultSectionTitle"
+              : "opsAnalysis.screen.defaultHeroTitle",
           );
-          if (isScreenTitleFrameItem(created)) {
-            created.content = t(
-              created.preset.startsWith("section")
-                ? "opsAnalysis.screen.defaultSectionTitle"
-                : "opsAnalysis.screen.defaultHeroTitle",
-            );
-          }
-          createdId = created.id;
-          return { ...current, items: [...current.items, created] };
-        });
+        }
+        commitDocument({
+          viewSets: { ...current, items: [...current.items, created] },
+          filters: filtersRef.current,
+        }, { itemId: created.id });
         setPendingConfigItem(null);
-        setSelectedItemId(createdId);
+        setSelectedItemId(created.id);
         setInspectorTab("style");
       });
     },
-    [runAfterDataGuard, t],
+    [commitDocument, runAfterDataGuard, t],
   );
 
   const handleConfirmWidgetConfig = useCallback(
@@ -943,15 +1158,14 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
           nextChartType,
         ),
       };
-      setDraftViewSets((current) =>
-        rebuildDraftFilters(
-          updateScreenItemConfig(current, currentConfigItem.id, nextItem),
-        ),
+      commitDocument(
+        projectDocument(updateScreenItemConfig(draftViewSetsRef.current, currentConfigItem.id, nextItem)),
+        { itemId: currentConfigItem.id },
       );
       setDataFormDirty(false);
       message.success(t("opsAnalysis.screen.dataApplied"));
     },
-    [rebuildDraftFilters, t],
+    [commitDocument, projectDocument, t],
   );
 
   const handleDataConfigClose = useCallback(() => {
@@ -971,22 +1185,26 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       >,
     ) => {
       if (!editMode || shareMode) return;
-      setDraftViewSets((current) => ({
-        ...current,
-        items: current.items.map((item) =>
-          item.id === itemId && isScreenWidgetItem(item)
-            ? {
-              ...item,
-              valueConfig: {
-                ...item.valueConfig,
-                networkStatusTopology: nextTopology,
-              },
-            }
-            : item,
-        ),
-      }));
+      const current = draftViewSetsRef.current;
+      commitDocument({
+        viewSets: {
+          ...current,
+          items: current.items.map((item) =>
+            item.id === itemId && isScreenWidgetItem(item)
+              ? {
+                ...item,
+                valueConfig: {
+                  ...item.valueConfig,
+                  networkStatusTopology: nextTopology,
+                },
+              }
+              : item,
+          ),
+        },
+        filters: filtersRef.current,
+      }, { itemId });
     },
-    [editMode, shareMode],
+    [commitDocument, editMode, shareMode],
   );
 
   const screenCanvas = useMemo(
@@ -1061,6 +1279,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   const dataConfigItem = pendingViewConfigItem || currentViewConfigItem;
   const dataConfigPanel = dataConfigItem ? (
     <ScreenDataConfig
+      key={historyNavEpoch}
       item={dataConfigItem}
       dataSourceManager={dataSourceManager}
       builtinNamespaceId={queryState.namespaceDraftId}
@@ -1125,7 +1344,21 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
               onEdit={handleStartEdit}
               onCancel={() => runAfterDataGuard(handleCancelEdit)}
               onSave={() => runAfterDataGuard(() => { void handleSave(); })}
-              editExtra={bindCanvasDraftControls(screenDraft)}
+              canUndo={canUndo}
+              canRedo={canRedo}
+              onUndo={() => runScreenHistory("undo")}
+              onRedo={() => runScreenHistory("redo")}
+              editExtra={bindCanvasDraftControls({
+                ...screenDraft,
+                restoreFrame: (checkpointId) => new Promise<void>((resolve, reject) => {
+                  runAfterDataGuard(
+                    () => {
+                      void screenDraft.restoreFrame(checkpointId).then(resolve, reject);
+                    },
+                    () => reject(new Error("screen-history-confirm-cancelled")),
+                  );
+                }),
+              })}
             />
           }
           filterBar={filterBarElement}
@@ -1170,7 +1403,19 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
                 onReorderItem={handleReorderItem}
               />
               <div className="min-h-0 min-w-0 flex-1">{screenCanvas}</div>
-              <ScreenInspectorPane label={t("opsAnalysis.screen.inspectorResize")}>
+              <ScreenInspectorPane
+                label={t("opsAnalysis.screen.inspectorResize")}
+                onBlur={(event) => {
+                  const currentTarget = event.target instanceof Element ? event.target : null;
+                  const field = currentTarget?.closest("input, textarea");
+                  if (!field) return;
+                  const nextTarget = event.relatedTarget instanceof Element ? event.relatedTarget : null;
+                  if (nextTarget && (nextTarget === field || field.contains(nextTarget))) return;
+                  if (sessionRef.current) {
+                    sessionRef.current = closeScreenFieldEdit(sessionRef.current);
+                  }
+                }}
+              >
                 {pendingConfigItem ? (
                   <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                     <div className="border-b border-(--color-border-1) px-3 py-2 text-sm font-semibold text-(--color-text-1)">
@@ -1194,6 +1439,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
                             item={selectedItem}
                             viewport={draftViewSets.viewport}
                             onChange={handlePatchItem}
+                            onFieldEditEnd={endFieldEdit}
                           />
                         ) : null,
                       },
@@ -1213,6 +1459,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
                     item={selectedItem}
                     viewport={draftViewSets.viewport}
                     onChange={handlePatchItem}
+                    onFieldEditEnd={endFieldEdit}
                   />
                 ) : (
                   <>
@@ -1222,6 +1469,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
                     <ScreenCanvasSettings
                       viewport={draftViewSets.viewport}
                       onChange={(viewport) => handleSaveSettings({ viewport })}
+                      onFieldEditEnd={endFieldEdit}
                     />
                   </>
                 )}
@@ -1254,14 +1502,13 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         onConfirm={(definitions) => {
           const nextViewSets = syncScreenFilterBindings(
             {
-              ...draftViewSets,
+              ...draftViewSetsRef.current,
               filters: definitions,
             },
             definitions,
             dataSources,
           );
-          setDraftViewSets(nextViewSets);
-          queryState.applyFilterConfigConfirm(definitions);
+          commitDocument({ viewSets: nextViewSets, filters: definitions });
           setFilterConfigOpen(false);
         }}
         definitions={queryState.definitions}
