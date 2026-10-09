@@ -1,0 +1,56 @@
+{
+  "object": "Wireless",
+  "plugin": "Wireless Ruckus Unleashed SNMP",
+  "templates": [
+    {
+      "name": "Ruckus Unleashed无线设备CPU使用率过高",
+      "alert_name": "无线设备${resource_name} CPU使用率过高",
+      "description": "监控 Ruckus Unleashed 主 AP 的 CPU 使用率，当持续高于阈值时触发告警，提示终端接入负载过高或控制面压力影响漫游与管理响应。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Ruckus Unleashed无线设备内存使用率过高",
+      "alert_name": "无线设备${resource_name} 内存使用率过高",
+      "description": "监控 Ruckus Unleashed 主 AP 的内存使用率，当持续高于阈值时触发告警，提示可能出现终端掉线或服务重启。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

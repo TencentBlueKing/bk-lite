@@ -1130,6 +1130,40 @@ def test_serializer_rejects_root_outside_real_department_forest(ready_integratio
 
 
 @pytest.mark.django_db
+def test_serializer_rejects_unavailable_scope_in_request_locale(ready_integration_instance):
+    payload = CapabilityExecutionResult.success_result(
+        "ok",
+        payload={
+            "items": [
+                {"id": "dept-a", "name": "Dept A", "parent_id": None, "children": []},
+            ],
+        },
+    )
+    request = SimpleNamespace(user=SimpleNamespace(locale="en"))
+    serializer = UserSyncSourceSerializer(
+        data={
+            "name": "source-all-en",
+            "integration_instance": ready_integration_instance.id,
+            "root_group_name": "All Root",
+            "business_config": {
+                "root_department_id": "__all__",
+                "department_id_type": "department_id",
+            },
+            "field_mapping": {"username": "user_id"},
+            "schedule_config": {"mode": "disabled"},
+        },
+        context={"request": request},
+    )
+
+    with patch("apps.system_mgmt.providers.runtime.RuntimeApplicationService.execute", return_value=payload):
+        assert serializer.is_valid() is False
+
+    message = str(serializer.errors)
+    assert "no longer available" in message
+    assert "当前同步范围" not in message
+
+
+@pytest.mark.django_db
 def test_serializer_rejects_stale_root_department_selection(ready_integration_instance):
     payload = CapabilityExecutionResult.success_result(
         "ok",

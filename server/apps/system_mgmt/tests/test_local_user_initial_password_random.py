@@ -33,7 +33,7 @@ def _admin_user(**overrides):
     return types.SimpleNamespace(**defaults)
 
 
-def _create_local_user(username, email=None):
+def _create_local_user(username, email=None, admin_locale="en"):
     role = Role.objects.create(name=f"operator-{username}", app="")
     group = Group.objects.create(name=f"group-{username}")
     factory = APIRequestFactory()
@@ -52,7 +52,7 @@ def _create_local_user(username, email=None):
         "rules": [],
     }
     request = factory.post("/system_mgmt/api/user/create_user/", payload, format="json")
-    force_authenticate(request, user=_admin_user())
+    force_authenticate(request, user=_admin_user(locale=admin_locale))
     return view(request)
 
 
@@ -123,6 +123,27 @@ def test_create_user_mode_random_rolls_back_when_email_delivery_fails():
     payload = json.loads(response.content)
     assert "smtp" in payload["message"]
     assert not User.objects.filter(username="random-mode-fail").exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("admin_locale", "expected"),
+    [("en", "Failed to send the email"), ("zh-Hans", "邮件发送失败")],
+)
+def test_create_user_email_failure_without_message_follows_admin_locale(admin_locale, expected):
+    channel = _make_email_channel()
+    _set_mode("random", email_channel_id=channel.id)
+
+    with patch("apps.system_mgmt.viewset.user_viewset.secrets.token_urlsafe", return_value="RandomFail1-token"), patch(
+        "apps.system_mgmt.services.password_init_email.send_local_user_initial_password_email",
+        return_value={"result": False},
+    ):
+        username = "mail-fail-en" if admin_locale == "en" else "mail-fail-zh"
+        response = _create_local_user(username, admin_locale=admin_locale)
+
+    assert response.status_code == 400
+    payload = json.loads(response.content)
+    assert expected in payload["message"]
 
 
 @pytest.mark.django_db

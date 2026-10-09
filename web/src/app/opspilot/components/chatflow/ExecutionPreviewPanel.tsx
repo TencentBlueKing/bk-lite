@@ -358,7 +358,7 @@ const ExecutionPreviewPanel: React.FC<ExecutionPreviewPanelProps> = ({
                       <div className="truncate text-sm font-semibold text-(--color-text-1)">{item.node_name}</div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-(--color-text-3)">{formatDurationMs(item.duration_ms)}</span>
+                      <span className="text-xs text-(--color-text-3)">{formatDurationMs(item.duration_ms, t)}</span>
                       {isExpanded ? <DownOutlined className="text-xs text-(--color-text-3)" /> : <RightOutlined className="text-xs text-(--color-text-3)" />}
                     </div>
                   </button>
@@ -374,7 +374,7 @@ const ExecutionPreviewPanel: React.FC<ExecutionPreviewPanelProps> = ({
                           <div className="mt-1 text-[11px] text-(--color-text-3)">ID: {item.node_id}</div>
                         </div>
                         <div className="text-right text-[11px] text-(--color-text-3)">
-                          <div>{formatDurationMs(item.duration_ms)}</div>
+                          <div>{formatDurationMs(item.duration_ms, t)}</div>
                         </div>
                       </div>
 

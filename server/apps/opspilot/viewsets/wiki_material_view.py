@@ -17,6 +17,7 @@ from apps.opspilot.services.wiki.material_service import load_parsed_markdown
 from apps.opspilot.services.wiki.material_source_service import MaterialSourceError, source_metadata
 from apps.opspilot.services.wiki.parsed_media_service import _bare_media_locator_spans, rewrite_media_urls_for_display, sign_media_locators
 from apps.opspilot.services.wiki.update_service import handle_material_deletion, preview_material_deletion, preview_material_update, propose_update
+from apps.opspilot.utils.user_message import build_conflict_message, user_message
 from apps.opspilot.viewsets.wiki_team_scope import WikiTeamScopeMixin
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
@@ -324,7 +325,7 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
                 {
                     "result": False,
                     "code": "material_build_in_progress",
-                    "message": "资料正在构建中，请勿重复提交",
+                    "message": user_message(request, "error.material_build_in_progress", "资料正在构建中，请勿重复提交", self.loader),
                     "retryable": True,
                 },
                 status=409,
@@ -341,7 +342,7 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
                     {
                         "result": False,
                         "code": error.code,
-                        "message": error.message,
+                        "message": build_conflict_message(request, error.message, self.loader),
                         "details": error.details,
                         "retryable": error.status_code >= 500,
                     },
@@ -352,7 +353,7 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
                     {
                         "result": False,
                         "code": "task_dispatch_failed",
-                        "message": "知识构建任务投递失败，请稍后重试",
+                        "message": user_message(request, "error.material_build_dispatch_failed", "知识构建任务投递失败，请稍后重试", self.loader),
                         "retryable": True,
                     },
                     status=503,
@@ -375,7 +376,7 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
                     {
                         "result": False,
                         "code": "material_build_in_progress",
-                        "message": "资料正在构建中，请勿重复提交",
+                        "message": user_message(request, "error.material_build_in_progress", "资料正在构建中，请勿重复提交", self.loader),
                         "retryable": True,
                     },
                     status=409,
@@ -418,7 +419,7 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
                 {
                     "result": False,
                     "code": error.code,
-                    "message": error.message,
+                    "message": build_conflict_message(request, error.message, self.loader),
                     "details": error.details,
                 },
                 status=error.status_code,
@@ -428,7 +429,7 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
                 {
                     "result": False,
                     "code": "task_dispatch_failed",
-                    "message": "知识构建任务投递失败，请稍后重试",
+                    "message": user_message(request, "error.material_build_dispatch_failed", "知识构建任务投递失败，请稍后重试", self.loader),
                     "retryable": True,
                 },
                 status=503,
@@ -454,7 +455,10 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
         material = self.get_object()
         kb = material.knowledge_base
         if not kb.embed_provider_id:
-            return JsonResponse({"result": False, "message": "知识库未配置向量模型,无法重建索引"}, status=400)
+            return JsonResponse(
+                {"result": False, "message": user_message(request, "error.no_embedding_model", "知识库未配置向量模型,无法重建索引", self.loader)},
+                status=400,
+            )
 
         evidences = (
             PageEvidence.objects.filter(material=material, page__status="active").select_related("page", "page__current_version").order_by("page_id")
@@ -640,11 +644,17 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
         material = self.get_object()
         file_field = material.file
         if not file_field or not file_field.name:
-            return JsonResponse({"result": False, "message": "该资料没有可下载的原始文件"}, status=404)
+            return JsonResponse(
+                {"result": False, "message": user_message(request, "error.material_no_source_file", "该资料没有可下载的原始文件", self.loader)},
+                status=404,
+            )
         try:
             fileobj = file_field.storage.open(file_field.name, "rb")
         except FileNotFoundError:
-            return JsonResponse({"result": False, "message": "原始文件不存在"}, status=404)
+            return JsonResponse(
+                {"result": False, "message": user_message(request, "error.material_source_file_missing", "原始文件不存在", self.loader)},
+                status=404,
+            )
         except Exception as exc:
             logger.warning(
                 "wiki material download open failed material=%s error_type=%s failed_stage=%s",
@@ -652,7 +662,10 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
                 type(exc).__name__,
                 "storage_open",
             )
-            return JsonResponse({"result": False, "message": "对象存储不可用，请稍后重试"}, status=503)
+            return JsonResponse(
+                {"result": False, "message": user_message(request, "error.object_storage_unavailable", "对象存储不可用，请稍后重试", self.loader)},
+                status=503,
+            )
 
         filename = file_field.name.rsplit("/", 1)[-1] or "download"
         content_type = _material_download_content_type(filename)

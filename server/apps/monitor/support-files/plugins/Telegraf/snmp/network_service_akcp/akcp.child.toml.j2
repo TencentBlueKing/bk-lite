@@ -1,0 +1,131 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_akcp"
+        config_type = "akcp"
+        brand = "akcp"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- AKCP sensorProbe / securityProbe 环境监控（SPAGENT-MIB，PEN 3854，sensorProbe → spSensor → sensorProbeDetail）----
+    # 温度表 sensorProbeTempTable（1.3.6.1.4.1.3854.1.2.2.1.16，INDEX sensorProbeTempIndex）与湿度表 sensorProbeHumidityTable（1.3.6.1.4.1.3854.1.2.2.1.17，INDEX sensorProbeHumidityIndex）：table.field 不带 .0。
+    [[inputs.snmp.table]]
+        name = "env_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    # sensorProbeTempDescription（.1）：传感器描述，作为 sensor 标签。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3854.1.2.2.1.16.1.1"
+        name = "sensor"
+        is_tag = true
+    # sensorProbeTempDegree（.3）：整数度数，单位见 .12。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3854.1.2.2.1.16.1.3"
+        name = "degree_raw"
+    # sensorProbeTempStatus（.4）：noStatus(1) / normal(2) / highWarning(3) / highCritical(4) / lowWarning(5) / lowCritical(6) / sensorError(7)。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3854.1.2.2.1.16.1.4"
+        name = "status_raw"
+    # sensorProbeTempOnline（.5）：online(1) / offline(2)。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3854.1.2.2.1.16.1.5"
+        name = "online_raw"
+    # sensorProbeTempDegreeType（.12）：fahr(0) / celsius(1)。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3854.1.2.2.1.16.1.12"
+        name = "degree_type_raw"
+    # sensorProbeTempDegreeRaw（.14）：仅 sensorProbe 提供的高分辨率读数（×10）。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3854.1.2.2.1.16.1.14"
+        name = "degree_fine_raw"
+    [[inputs.snmp.table]]
+        name = "env_humidity"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    # sensorProbeHumidityDescription（.1）：传感器描述，作为 sensor 标签。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3854.1.2.2.1.17.1.1"
+        name = "sensor"
+        is_tag = true
+    # sensorProbeHumidityPercent（.3）：相对湿度 %。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3854.1.2.2.1.17.1.3"
+        name = "percent_raw"
+    # sensorProbeHumidityStatus（.4）：同温度表状态枚举。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3854.1.2.2.1.17.1.4"
+        name = "status_raw"
+    # sensorProbeHumidityOnline（.5）：online(1) / offline(2)。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3854.1.2.2.1.17.1.5"
+        name = "online_raw"
+# ---- CPU / 内存使用率：环境监控设备不提供；湿度表的 A/D 原始值（.13，0~1023）不是湿度，不采。----
+
+# ---- 换算：offline(2) 的行整行丢弃；
+# 温度：高分辨率读数 ÷10 与整数读数相差不超过 1 度时用高分辨率值，否则用整数读数；degree_type 为 fahr(0) 时换算为摄氏度，须在 -60~150 ℃ → celsius；
+# 湿度：须在 0~100 % → percent；
+# 状态：normal(2) → 1，highWarning / highCritical / lowWarning / lowCritical / sensorError → 2，noStatus 不出状态 → state。
+# 读数无效时整行不出点（状态也不出）；原始字段不落库。----
+[[processors.starlark]]
+    namepass = ["env_temperature", "env_humidity"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    online = f.pop("online_raw", None)
+    status = f.pop("status_raw", None)
+    if online == 2:
+        return None
+    if metric.name == "env_temperature":
+        degree = f.pop("degree_raw", None)
+        fine = f.pop("degree_fine_raw", None)
+        unit = f.pop("degree_type_raw", None)
+        if type(degree) != "int":
+            return None
+        value = degree * 1.0
+        if type(fine) == "int" and abs(fine / 10.0 - degree) <= 1:
+            value = fine / 10.0
+        if unit == 0:
+            value = (value - 32) * 5.0 / 9.0
+        value = int(value * 10 + (0.5 if value >= 0 else -0.5)) / 10.0
+        if value < -60 or value > 150:
+            return None
+        f["celsius"] = value
+    else:
+        pct = f.pop("percent_raw", None)
+        if type(pct) != "int" or pct < 0 or pct > 100:
+            return None
+        f["percent"] = pct
+    if status == 2:
+        f["state"] = 1
+    elif status in [3, 4, 5, 6, 7]:
+        f["state"] = 2
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["akcp"]

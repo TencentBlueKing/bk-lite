@@ -6,7 +6,7 @@ import { ChatState, isPlatformMode } from '@webchat/core';
 import { createFloatingButtonChatCallbacks } from './floatingButtonCallbacks';
 import { ConversationSkeleton } from './components/ConversationSkeleton';
 import { WC } from './chrome';
-import { useTranslator } from './useTranslator';
+import { useTranslator, WebChatLocaleProvider } from './useTranslator';
 
 const Chat = React.lazy(async () => {
   const mod = await import('./Chat');
@@ -36,7 +36,7 @@ export interface FloatingButtonProps extends ChatProps {
   manageAgentsUrl?: string;
 }
 
-export const FloatingButton = React.memo(React.forwardRef<HTMLDivElement, FloatingButtonProps>((props, _ref) => {
+const FloatingButtonInner = React.memo(React.forwardRef<HTMLDivElement, FloatingButtonProps>((props, _ref) => {
   const {
     buttonText,
     buttonIcon = (
@@ -259,4 +259,10 @@ export const FloatingButton = React.memo(React.forwardRef<HTMLDivElement, Floati
   );
 }));
 
-FloatingButton.displayName = 'FloatingButton';
+FloatingButtonInner.displayName = 'FloatingButton';
+
+export const FloatingButton = React.forwardRef<HTMLDivElement, FloatingButtonProps>((props, ref) => (
+  <WebChatLocaleProvider locale={props.locale}>
+    <FloatingButtonInner {...props} ref={ref} />
+  </WebChatLocaleProvider>
+));

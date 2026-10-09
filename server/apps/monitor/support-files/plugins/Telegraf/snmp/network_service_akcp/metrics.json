@@ -1,0 +1,160 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_akcp",
+  "plugin": "NetworkService AKCP sensorProbe SNMP",
+  "plugin_desc": "SNMP monitoring template for AKCP sensorProbe / securityProbe environment monitors (SPAGENT-MIB, enterprise PEN 3854). It reports uptime, temperature and relative humidity sensor readings, sensor status, and interface traffic.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='network_service', collect_type='snmp_akcp'}) by (instance_id)",
+  "name": "NetworkService",
+  "icon": "mm-network_service_网络服务",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='network_service'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "env_temperature_celsius",
+    "env_humidity_percent"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Environment",
+      "name": "env_temperature_celsius",
+      "query": "env_temperature_celsius{instance_type='network_service', __$labels__}",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Sensor port index"
+        },
+        {
+          "name": "sensor",
+          "description": "Sensor description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Reading of each online AKCP temperature sensor in degrees Celsius, from sensorProbeTempDegree (SPAGENT-MIB, 1.3.6.1.4.1.3854.1.2.2.1.16.1.3). The higher-resolution sensorProbeTempDegreeRaw (1.3.6.1.4.1.3854.1.2.2.1.16.1.14, divided by 10) is used when it agrees with the integer reading, and Fahrenheit readings (sensorProbeTempDegreeType 1.3.6.1.4.1.3854.1.2.2.1.16.1.12) are converted. Offline sensors are skipped."
+    },
+    {
+      "metric_group": "Environment",
+      "name": "env_humidity_percent",
+      "query": "env_humidity_percent{instance_type='network_service', __$labels__}",
+      "display_name": "Relative Humidity",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Sensor port index"
+        },
+        {
+          "name": "sensor",
+          "description": "Sensor description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Reading of each online AKCP humidity sensor in percent, from sensorProbeHumidityPercent (1.3.6.1.4.1.3854.1.2.2.1.17.1.3). Offline sensors and values outside 0-100 are skipped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "env_temperature_state",
+      "query": "env_temperature_state{instance_type='network_service', __$labels__}",
+      "display_name": "Temperature Sensor Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Sensor port index"
+        },
+        {
+          "name": "sensor",
+          "description": "Sensor description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Status of each temperature sensor from sensorProbeTempStatus (1.3.6.1.4.1.3854.1.2.2.1.16.1.4): normal maps to 1; high / low warning, high / low critical and sensorError map to 2. noStatus produces no value."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "env_humidity_state",
+      "query": "env_humidity_state{instance_type='network_service', __$labels__}",
+      "display_name": "Humidity Sensor Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Sensor port index"
+        },
+        {
+          "name": "sensor",
+          "description": "Sensor description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Status of each humidity sensor from sensorProbeHumidityStatus (1.3.6.1.4.1.3854.1.2.2.1.17.1.4): normal maps to 1; high / low warning, high / low critical and sensorError map to 2. noStatus produces no value."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of inbound bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of outbound bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

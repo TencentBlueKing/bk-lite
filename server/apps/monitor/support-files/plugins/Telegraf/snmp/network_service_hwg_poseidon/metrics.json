@@ -1,0 +1,161 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_hwg_poseidon",
+  "plugin": "NetworkService HW group Poseidon SNMP",
+  "plugin_desc": "SNMP monitoring template for HW group Poseidon / Poseidon2 environment monitoring units (POSEIDON-MIB, enterprise PEN 21796). It reports uptime, temperature, relative humidity and voltage sensor readings, sensor alarm state, and interface traffic.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='network_service', collect_type='snmp_hwg_poseidon'}) by (instance_id)",
+  "name": "NetworkService",
+  "icon": "mm-network_service_网络服务",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='network_service'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "sensor_temperature_celsius",
+    "sensor_humidity_percent",
+    "sensor_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Environment",
+      "name": "sensor_temperature_celsius",
+      "query": "sensor_temperature_celsius{instance_type='network_service', __$labels__}",
+      "display_name": "Sensor Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Sensor row (sensIndex)"
+        },
+        {
+          "name": "sensor",
+          "description": "Sensor name (sensName)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Reading of each temperature sensor attached to the HW group Poseidon unit in degrees Celsius, from sensValue (POSEIDON-MIB, 1.3.6.1.4.1.21796.3.3.3.1.6, value x10, divided by 10) on rows whose sensUnit (1.3.6.1.4.1.21796.3.3.3.1.9) is celsius, fahrenheit or kelvin; Fahrenheit and Kelvin readings are converted."
+    },
+    {
+      "metric_group": "Environment",
+      "name": "sensor_humidity_percent",
+      "query": "sensor_humidity_percent{instance_type='network_service', __$labels__}",
+      "display_name": "Sensor Relative Humidity",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Sensor row (sensIndex)"
+        },
+        {
+          "name": "sensor",
+          "description": "Sensor name (sensName)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Reading of each relative humidity sensor in percent, from sensValue (1.3.6.1.4.1.21796.3.3.3.1.6, divided by 10) on rows whose sensUnit is percent."
+    },
+    {
+      "metric_group": "Power",
+      "name": "sensor_voltage_volts",
+      "query": "sensor_voltage_volts{instance_type='network_service', __$labels__}",
+      "display_name": "Sensor Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Sensor row (sensIndex)"
+        },
+        {
+          "name": "sensor",
+          "description": "Sensor name (sensName)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Reading of each voltage sensor in volts, from sensValue (1.3.6.1.4.1.21796.3.3.3.1.6, divided by 10) on rows whose sensUnit is volt."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "sensor_state",
+      "query": "sensor_state{instance_type='network_service', __$labels__}",
+      "display_name": "Sensor Alarm State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Sensor row (sensIndex)"
+        },
+        {
+          "name": "sensor",
+          "description": "Sensor name (sensName)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Alarm state of each temperature, humidity or voltage sensor from sensState (1.3.6.1.4.1.21796.3.3.3.1.4): normal maps to 1, alarmstate and alarm map to 2 (the reading is outside the limits configured on the unit). Rows reporting invalid are skipped."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of inbound bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of outbound bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

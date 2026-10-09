@@ -10,6 +10,8 @@ import {
   type PlatformApplication,
   type PlatformContract,
   type PlatformSession,
+  readPlatformWebchatWidth,
+  resolvePlatformWebchatWidthUrl,
   unwrapPlatformPayload,
   type Message,
 } from '@webchat/core';
@@ -31,7 +33,7 @@ function requestHeaders(init: PlatformRequestInit): HeadersInit {
   return headers;
 }
 
-async function fetchPlatformJson(
+async function fetchPlatformBody(
   url: string,
   init: PlatformRequestInit,
   extra?: RequestInit
@@ -55,15 +57,55 @@ async function fetchPlatformJson(
   if (!contentType.includes('application/json')) {
     return null;
   }
-  return unwrapPlatformPayload(await response.json());
+  return response.json();
+}
+
+async function fetchPlatformJson(
+  url: string,
+  init: PlatformRequestInit,
+  extra?: RequestInit
+): Promise<unknown> {
+  return unwrapPlatformPayload(await fetchPlatformBody(url, init, extra));
+}
+
+export interface PlatformLaunch {
+  applications: PlatformApplication[];
+  webchatWidth: number;
+}
+
+export async function fetchPlatformLaunch(
+  contract: PlatformContract,
+  init: PlatformRequestInit
+): Promise<PlatformLaunch> {
+  const body = await fetchPlatformBody(contract.applicationsUrl, init);
+  return {
+    applications: mapPlatformApplications(asRecordList(unwrapPlatformPayload(body))),
+    webchatWidth: readPlatformWebchatWidth(body),
+  };
 }
 
 export async function fetchPlatformApplications(
   contract: PlatformContract,
   init: PlatformRequestInit
 ): Promise<PlatformApplication[]> {
-  const payload = await fetchPlatformJson(contract.applicationsUrl, init);
-  return mapPlatformApplications(asRecordList(payload));
+  const launch = await fetchPlatformLaunch(contract, init);
+  return launch.applications;
+}
+
+export async function savePlatformWebchatWidth(
+  contract: PlatformContract,
+  width: number,
+  init: PlatformRequestInit
+): Promise<void> {
+  const url = resolvePlatformWebchatWidthUrl(contract);
+  if (!url) {
+    return;
+  }
+  await fetchPlatformJson(url, init, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ width }),
+  });
 }
 
 export async function fetchPlatformSessions(

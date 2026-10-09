@@ -1,0 +1,117 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_nokia_isam"
+        config_type = "nokia_isam"
+        brand = "nokia_isam"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Nokia ISAM 板卡 CPU：ASAM-SYSTEM-MIB systemMonitor cpuLoadTable（table.field 不带 .0，索引为 slotId）----
+    # cpuLoadAverage 1.3.6.1.4.1.637.61.1.9.29.1.1.4：Gauge，0~100 %，为监测窗口（最长 180 秒）内的平均值。
+    # operateStatus 1.3.6.1.4.1.637.61.1.9.29.1.1.5：proceeding(3) 表示监测进行中；其它状态下平均值不是当前值，下方 starlark 丢弃。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.637.61.1.9.29.1.1.4"
+        name = "usage"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.637.61.1.9.29.1.1.5"
+        name = "operate_status"
+    # ---- Nokia ISAM 板卡内存：ASAM-SYSTEM-MIB systemMonitor memUsageTable（table.field 不带 .0，索引为 slotId）----
+    # totalMemSize .29.2.1.1 / memAbsoluteUsage .29.2.1.2：Gauge，单位 Mbyte；下方 starlark 换算为字节并计算使用率。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.637.61.1.9.29.2.1.1"
+        name = "total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.637.61.1.9.29.2.1.2"
+        name = "used"
+    # ---- Nokia ISAM 板卡温度：ASAM-EQUIP-MIB eqptBoardThermalSensorTable（table.field 不带 .0，索引为 槽位.传感器）----
+    # eqptBoardThermalSensorActualTemperature 1.3.6.1.4.1.637.61.1.23.10.1.2：INTEGER，℃，范围 -40~150。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.637.61.1.23.10.1.2"
+        name = "celsius"
+# ---- 风扇只有 eqptFanMode 运行模式枚举，不是状态，不采集。----
+
+# ---- CPU：operateStatus 为 proceeding(3)（或设备不返回该列）且 0~100 时保留 usage，否则丢弃整行；operate_status 不落库。----
+[[processors.starlark]]
+    namepass = ["device_cpu"]
+    source = '''
+def apply(metric):
+    status = metric.fields.pop("operate_status", None)
+    usage = metric.fields.get("usage")
+    if status != None and status != 3:
+        return None
+    if type(usage) not in ["int", "float"] or usage < 0 or usage > 100:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["nokia_isam"]
+
+# ---- 内存：Mbyte → 字节（×1048576），输出 total / used / usage；总量 <= 0 或已用大于总量时丢弃整行。----
+[[processors.starlark]]
+    namepass = ["device_memory"]
+    source = '''
+def apply(metric):
+    total = metric.fields.get("total")
+    used = metric.fields.get("used")
+    if type(total) not in ["int", "float"] or type(used) not in ["int", "float"]:
+        return None
+    if total <= 0 or used < 0 or used > total:
+        return None
+    metric.fields["total"] = int(total) * 1048576
+    metric.fields["used"] = int(used) * 1048576
+    metric.fields["usage"] = used * 100.0 / total
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["nokia_isam"]
+
+# ---- 温度：超出 -40~150 ℃ 的读数丢弃。----
+[[processors.starlark]]
+    namepass = ["device_temperature"]
+    source = '''
+def apply(metric):
+    value = metric.fields.get("celsius")
+    if type(value) not in ["int", "float"] or value < -40 or value > 150:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["nokia_isam"]

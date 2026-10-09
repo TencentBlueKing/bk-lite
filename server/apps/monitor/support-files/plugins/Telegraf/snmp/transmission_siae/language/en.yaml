@@ -1,6 +1,6 @@
 Transmission SIAE Microelettronica SNMP:
   name: SIAE Microelettronica (Telegraf)
-  desc: "SNMP monitoring template for SIAE Microelettronica transmission device. It reports uptime, temperature, and interface traffic (enterprise PEN 3373)."
+  desc: "SNMP monitoring template for SIAE Microelettronica transmission device. It reports uptime, temperature, power supply status, and interface traffic (enterprise PEN 3373)."
 monitor_object:
   Transmission: Transmission
 monitor_object_type:

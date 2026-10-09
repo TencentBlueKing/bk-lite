@@ -587,7 +587,7 @@ class ChatService:
         """
         show_think = False
         title_map = doc_map = {}
-        extra_config = {"show_think": show_think}
+        extra_config = {"show_think": show_think, "user_timezone": str(kwargs.get("user_timezone") or "").strip()}
 
         user_message, image_data = history_service.process_user_message_and_images(kwargs["user_message"])
         if image_data:

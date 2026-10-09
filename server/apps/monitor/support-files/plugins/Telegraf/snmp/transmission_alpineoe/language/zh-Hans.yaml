@@ -1,0 +1,39 @@
+Transmission Alpine Optoelectronics SNMP:
+  name: Alpine Optoelectronics（Telegraf）
+  desc: 面向 Alpine Optoelectronics TDCM-EDFA 光传输机框的 SNMP 监控模板，可采集运行时长、各风扇转速与状态、电源输入/输出状态、输出电压、槽位温度与 EDFA 温度，按 ALPINE-TDCM-EDFA-MIB 采集（企业号 PEN 52326）。无主机 CPU% 或内存使用率。
+monitor_object:
+  Transmission: 传输设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Transmission:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示 Alpine Optoelectronics TDCM-EDFA 机框自上次启动以来的运行时间（来自 sysUpTime）。通过监测运行时间，管理员可以了解机框稳定性，识别意外重启或故障。
+    device_fan_speed:
+      name: 风扇转速
+      desc: 该指标表示 Alpine TDCM-EDFA 各风扇转速（alpineTEFanCardTable 的 Fan1/2/3Speed），单位 RPM，按风扇分行。在位风扇转速过低可能意味着冷却模块卡滞或故障。
+    device_fan_state:
+      name: 风扇状态
+      desc: 该指标表示 Alpine TDCM-EDFA 各风扇运行状态（alpineTEFanCardTable 的 Fan1/2/3Status），统一归一为正常或异常。非正常状态表示散热模块告警，可能导致设备过热。
+    device_psu_input_state:
+      name: 电源输入状态
+      desc: 该指标表示 Alpine TDCM-EDFA 各电源卡的输入状态（alpineTEPowerCardPowerInStatus），统一归一为正常或异常。输入关闭或无输入视为异常。
+    device_psu_output_state:
+      name: 电源输出状态
+      desc: 该指标表示 Alpine TDCM-EDFA 各电源卡的输出状态（alpineTEPowerCardPowerOutStatus），统一归一为正常或异常。输出过压或欠压视为异常。
+    device_voltage_volts:
+      name: 输出电压
+      desc: 该指标表示 Alpine TDCM-EDFA 各电源卡的输出电压（alpineTEPowerCardPowerOutVal，OCTET STRING 解析为伏特）。无法解析或非正值将被丢弃。电压偏离额定范围可能意味着供电不稳。
+    slot_temperature_celsius:
+      name: 槽位温度
+      desc: 该指标表示 Alpine TDCM-EDFA 机框各槽位温度（alpineTEBISlotTemperature，OCTET STRING 解析为摄氏度）。温度异常升高可能意味着散热受阻或环境过热。
+    edfa_temperature_celsius:
+      name: EDFA 温度
+      desc: 该指标表示 Alpine TDCM-EDFA 光放大模块温度（gceTemperature，OCTET STRING 解析为摄氏度）。温度异常升高可能触发热保护或影响光功率稳定性。
+monitor_object_metric_group:
+  Transmission:
+    Base: 基础
+    Temperature: 温度
+    Hardware Status: 硬件状态
+    Power: 电源

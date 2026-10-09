@@ -71,6 +71,40 @@
         oid = "1.3.6.1.4.1.4249.2.5.8.2.1.4"
         name = "state"
 
+    # 光模块 DDM 表（NATEKS-MIB stats(9) sfpDDMTable 1.3.6.1.4.1.4249.2.5.9.2.1，INDEX sfpDDMId）：table.field 不带 .0；未插光模块或不支持 DDM 时表可为空，不出点。
+    [[inputs.snmp.table]]
+        name = "transceiver"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    # sfpDDMIfIndex（.11）：对应 IF-MIB 接口索引，作为标签便于对照接口。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4249.2.5.9.2.1.11"
+        name = "ifIndex"
+        is_tag = true
+    # sfpDDMPresence（.10）：present(1) / absent(2)，仅用于过滤，不落库。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4249.2.5.9.2.1.10"
+        name = "presence"
+    # sfpDDMTemperature（.2）：IntegerMillis，1/1000 ℃。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4249.2.5.9.2.1.2"
+        name = "temperature_raw"
+    # sfpDDMSupplyVoltage（.3）：标注为 IntegerMillis（1/1000 V），对象说明的量程却是 0~6.5535 V（即 1/10000 V），两种刻度都按合理量程识别。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4249.2.5.9.2.1.3"
+        name = "voltage_raw"
+    # sfpDDMTxBiasCurrent（.4）：IntegerWithDecimal，1/10 mA。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4249.2.5.9.2.1.4"
+        name = "tx_bias_raw"
+    # sfpDDMTxOutputdBm（.6）/ sfpDDMRxInputdBm（.8）：IntegerWithDecimal，1/10 dBm。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4249.2.5.9.2.1.6"
+        name = "tx_power_raw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4249.2.5.9.2.1.8"
+        name = "rx_power_raw"
+
 [[processors.enum]]
     namepass = ["device_psu"]
     [[processors.enum.mapping]]
@@ -78,3 +112,37 @@
         default = 2
         [processors.enum.mapping.value_mappings]
             "1" = 1
+
+# ---- 光模块 DDM 换算：presence 为 absent(2) 的行整行丢弃；温度 ÷1000（原始值须在 -128000~128000）；
+# 供电电压原始值 1~6600 按 1/1000 V、6601~65535 按 1/10000 V 换算（0 视为无模块）；偏置电流 ÷10 得 mA（原始值须为 0~1310）；
+# 收发光功率 ÷10 得 dBm（原始值须在 -400~82）。无效值丢弃，原始字段不落库；行内无有效值时不出点。----
+[[processors.starlark]]
+    namepass = ["transceiver"]
+    source = '''
+DDM = [
+    ("temperature_raw", "temperature_celsius", -128000, 128000, 1000.0),
+    ("tx_bias_raw", "tx_bias_ma", 0, 1310, 10.0),
+    ("tx_power_raw", "tx_power_dbm", -400, 82, 10.0),
+    ("rx_power_raw", "rx_power_dbm", -400, 82, 10.0),
+]
+
+def apply(metric):
+    f = metric.fields
+    presence = f.pop("presence", None)
+    if presence == 2:
+        return None
+    for src, dst, low, high, div in DDM:
+        value = f.pop(src, None)
+        if type(value) == "int" and value >= low and value <= high:
+            f[dst] = value / div
+    volts = f.pop("voltage_raw", None)
+    if type(volts) == "int" and volts >= 1 and volts <= 6600:
+        f["voltage_volts"] = volts / 1000.0
+    elif type(volts) == "int" and volts > 6600 and volts <= 65535:
+        f["voltage_volts"] = volts / 10000.0
+    if len(f.keys()) == 0:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["nateks"]

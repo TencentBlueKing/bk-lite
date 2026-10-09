@@ -6,6 +6,7 @@ from apps.core.utils.serializers import TeamSerializer
 from apps.job_mgmt.models import Script
 from apps.job_mgmt.services.param_crypto import ParamCrypto
 from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
+from apps.job_mgmt.services.script_param_definitions import normalize_script_param_definitions
 from apps.job_mgmt.utils.i18n import serializer_message
 
 
@@ -36,7 +37,9 @@ class ScriptListSerializer(TeamSerializer):
             "script_type",
             "script_type_display",
             "timeout",
+            "team",
             "team_name",
+            "created_by",
             "is_built_in",
             "updated_at",
         ]
@@ -99,8 +102,10 @@ class ScriptCreateSerializer(serializers.ModelSerializer):
         return normalize_script_line_endings(value, script_type)
 
     def validate_params(self, value):
-        """加密参数定义中的默认值"""
+        """规范化参数定义后加密默认值"""
         if value:
+            request = self.context.get("request")
+            normalize_script_param_definitions(value, request=request)
             ParamCrypto.encrypt_param_defaults(value)
         return value
 
@@ -140,8 +145,10 @@ class ScriptUpdateSerializer(serializers.ModelSerializer):
         return normalize_script_line_endings(value, script_type or "")
 
     def validate_params(self, value):
-        """加密默认值；脱敏占位符沿用 instance 中原密文，避免二次保存把掩码写进库。"""
+        """规范化参数定义；脱敏占位符沿用原密文后再加密新明文。"""
         if value:
+            request = self.context.get("request")
+            normalize_script_param_definitions(value, request=request)
             existing = self.instance.params if self.instance is not None else None
             ParamCrypto.prepare_param_defaults_for_save(value, existing_params=existing)
         return value

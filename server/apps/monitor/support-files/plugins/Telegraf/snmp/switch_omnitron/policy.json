@@ -26,6 +26,61 @@
         }
       ],
       "group_algorithm": "avg"
+    },
+    {
+      "name": "Omnitron交换机温度过高",
+      "alert_name": "交换机${resource_name} 温度过高",
+      "description": "监控 Omnitron 机箱各模块的环境温度与 CPU 温度，持续高于阈值时触发告警，提示可能存在风扇故障、散热不良或环境温度过高。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 50,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Omnitron交换机风扇异常",
+      "alert_name": "交换机${resource_name} 风扇异常",
+      "description": "监控 Omnitron 机箱各模块风扇状态，风扇已安装但未供电时触发告警，可能导致设备过热。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "=="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Omnitron交换机电源异常",
+      "alert_name": "交换机${resource_name} 电源异常",
+      "description": "监控 Omnitron 机箱各模块电源状态，电源已安装但未供电时触发告警，冗余电源失效需及时处理。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "=="
+        }
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

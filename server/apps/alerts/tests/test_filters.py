@@ -11,6 +11,11 @@ from apps.alerts.filters.incident import IncidentModelFilter
 from apps.alerts.models.models import Alert, Incident
 
 
+def test_closed_status_includes_resolved():
+    assert AlertStatus.RESOLVED in AlertStatus.CLOSED_STATUS
+    assert AlertStatus.RESOLVED not in AlertStatus.ACTIVATE_STATUS
+
+
 @pytest.mark.django_db
 def test_alert_filter_level_multi():
     Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp")
@@ -71,6 +76,21 @@ def test_alert_filter_activate_excludes_closed():
     result = AlertModelFilter().filter_activate(qs, "activate", "true")
     assert "A1" in set(result.values_list("alert_id", flat=True))
     assert "A2" not in set(result.values_list("alert_id", flat=True))
+
+
+@pytest.mark.django_db
+def test_alert_filter_activate_excludes_resolved():
+    Alert.objects.create(alert_id="A-active", level="0", title="t", content="c", fingerprint="fp-a", status=AlertStatus.PENDING)
+    Alert.objects.create(
+        alert_id="A-resolved",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp-r",
+        status=AlertStatus.RESOLVED,
+    )
+    result = AlertModelFilter().filter_activate(Alert.objects.all(), "activate", "1")
+    assert set(result.values_list("alert_id", flat=True)) == {"A-active"}
 
 
 @pytest.mark.django_db

@@ -38,10 +38,10 @@ monitor_object_metric:
       desc: BridgeWave 发射机温度，单位为摄氏度。SNMP 标量以百分之一摄氏度上报，查询侧除以 100。温度偏高可能表示射频硬件热压力。
     rsl:
       name: 接收信号电平
-      desc: BridgeWave 接收信号电平，单位为 dBm。SNMP 标量为 dBm 整数，不对温度规则做除以 100。数值更负表示微波路径更弱。
+      desc: BridgeWave 接收信号电平，单位为 dBm。SNMP 标量以百分之一 dBm 上报，查询侧除以 100。数值更负表示微波路径更弱。
     device_in_voltage:
       name: 输入电压
-      desc: 可选的 BridgeWave 射频输入电压，按 SNMP 原始整数上报。仅温度对象已确认百分之一换算，因此该值不做除以 100，也不作为共享电源健康指标。
+      desc: 可选的 BridgeWave 射频输入电压，单位为伏。SNMP 标量以百分之一伏上报，查询侧除以 100；不作为共享电源健康指标。
     device_fan_state:
       name: 风扇状态
       desc: 传输设备各散热风扇或风扇控制器的运行状态。非正常状态表示散热模块异常、离线或通信故障，可能导致设备过热。

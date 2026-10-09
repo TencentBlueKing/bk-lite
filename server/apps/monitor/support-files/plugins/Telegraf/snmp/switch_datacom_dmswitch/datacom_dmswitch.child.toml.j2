@@ -1,0 +1,66 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_datacom_dmswitch"
+        config_type = "datacom_dmswitch"
+        brand = "datacom_dmswitch"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- DMswitch-MIB switchMgt（1.3.6.1.4.1.3709.3.5.201.1.1）----
+    # swCpuUsage（.10.0）：最近 1 分钟 CPU 使用率，单位为百分之一的百分点，下方 starlark ÷100 → device_cpu_usage（0-100）。
+    # swMemUsage（.11.0）：内存使用率百分比，直接写入 device_memory_usage。顶层 field GET 带实例 .0 → 查询 snmp_ 前缀。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.3709.3.5.201.1.1.10.0"
+        name = "cpu_usage_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.3709.3.5.201.1.1.11.0"
+        name = "device_memory_usage"
+    # ---- 温度：switchInfoTable（switchMgt 2，INDEX swUnitIndex）swTemperature 列 ...201.1.1.2.1.12，按堆叠单元一行 ----
+    # 列 OID 走表，不带 .0。swPowerStatus（...2.1.6）是供电方式枚举，不是健康状态，不采集；DMswitch-MIB 无风扇对象。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3709.3.5.201.1.1.2.1.12"
+        name = "celsius"
+
+# ---- CPU 单位换算：百分之一百分点 ÷100 → device_cpu_usage；原始字段换算后删除。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    cpu = metric.fields.pop("cpu_usage_raw", None)
+    if cpu != None:
+        metric.fields["device_cpu_usage"] = float(cpu) / 100.0
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["datacom_dmswitch"]

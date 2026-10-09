@@ -20,6 +20,7 @@ import type {
   WikiExistingStructureDirectory,
 } from "@/app/opspilot/types/wiki";
 import { useTranslation } from "@/utils/i18n";
+import { formatWikiDirectoryLabel } from "./wikiFormat";
 import { HandledRequestError } from "@/utils/request";
 
 const REPREVIEW_ERROR_CODES = new Set([
@@ -80,9 +81,9 @@ const WikiDirectoryImpactDrawer = ({
         .filter((directory) => directory.origin !== "system")
         .map((directory) => ({
           value: directory.id,
-          label: directory.name,
+          label: formatWikiDirectoryLabel(t, directory),
         })),
-    [activeDirectories],
+    [activeDirectories, t],
   );
   const targetOptions = useMemo(
     () =>
@@ -90,9 +91,9 @@ const WikiDirectoryImpactDrawer = ({
         .filter((directory) => directory.id !== sourceId)
         .map((directory) => ({
           value: directory.id,
-          label: directory.name,
+          label: formatWikiDirectoryLabel(t, directory),
         })),
-    [activeDirectories, sourceId],
+    [activeDirectories, sourceId, t],
   );
   const source = activeDirectories.find(
     (directory) => directory.id === sourceId,

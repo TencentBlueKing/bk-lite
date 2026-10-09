@@ -1,0 +1,113 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_netsure"
+        config_type = "netsure"
+        brand = "netsure"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.2.0"
+        name = "sysObjectID"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Emerson NetSure / EES 直流电源系统（NETSURE-MIB-004-A，PEN 6302，powerMIB 1.3.6.1.4.1.6302.2.1 → system(2) 1.3.6.1.4.1.6302.2.1.2）----
+    # 以下均为标量：顶层 field 带 .0，落 measurement snmp，查询用 snmp_ 前缀。数值类对象以 2147483647 表示无效。
+    # systemStatus（.1）：整套电源的最高告警级别，unknown(1) / normal(2) / warning(3) / minor(4) / major(5) / critical(6) / unmanaged(7) / restricted(8) / testing(9) / disabled(10)。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.6302.2.1.2.1.0"
+        name = "system_status_raw"
+    # systemVoltage（.2）：系统电压，mV，带正负号。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.6302.2.1.2.2.0"
+        name = "system_voltage_raw"
+    # systemCurrent（.3）：系统电流，mA，带正负号。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.6302.2.1.2.3.0"
+        name = "system_current_raw"
+    # psBatteryVoltage（psBattery(5).1）：电池电压，mV，带正负号。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.6302.2.1.2.5.1.0"
+        name = "battery_voltage_raw"
+    # psBatteryCapacity（psBattery(5).3）：电池剩余容量，%。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.6302.2.1.2.5.3.0"
+        name = "battery_capacity_raw"
+    # psTemperature1 / psTemperature2（psTemperature(7).1 / .2）：第一 / 第二路温度，0.001 ℃。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.6302.2.1.2.7.1.0"
+        name = "temperature1_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.6302.2.1.2.7.2.0"
+        name = "temperature2_raw"
+# ---- CPU / 内存使用率：MIB 不提供；整流器、电池组明细表本模板不采。----
+
+# ---- 换算：2147483647 一律视为无效丢弃；电压 ÷1000 → V（绝对值须在 0~1000 V 且不为 0，保留正负号）；电流 ÷1000 → A（绝对值须在 0~100000 A）；
+# 电池容量须在 0~100 %；温度 ÷1000 → ℃，须在 -60~150 ℃，拆成 env_temperature（celsius，标签 probe=1 / 2）；
+# 系统状态：normal → 1，warning / minor / major / critical → 2，其余（unknown、unmanaged、testing、disabled 等）不出点。原始字段不落库。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+INVALID = 2147483647
+
+def valid(v):
+    return type(v) == "int" and v != INVALID
+
+def apply(metric):
+    f = metric.fields
+    out = [metric]
+    status = f.pop("system_status_raw", None)
+    if status == 2:
+        f["system_state"] = 1
+    elif status in [3, 4, 5, 6]:
+        f["system_state"] = 2
+    for src, dst in [("system_voltage_raw", "system_voltage_volts"), ("battery_voltage_raw", "battery_voltage_volts")]:
+        v = f.pop(src, None)
+        if valid(v) and v != 0 and abs(v) <= 1000000:
+            f[dst] = v / 1000.0
+    cur = f.pop("system_current_raw", None)
+    if valid(cur) and abs(cur) <= 100000000:
+        f["system_current_amps"] = cur / 1000.0
+    cap = f.pop("battery_capacity_raw", None)
+    if valid(cap) and cap >= 0 and cap <= 100:
+        f["battery_capacity_percent"] = cap
+    for n in ["1", "2"]:
+        t = f.pop("temperature" + n + "_raw", None)
+        if valid(t) and t >= -60000 and t <= 150000:
+            m = Metric("env_temperature")
+            for k, v in metric.tags.items():
+                m.tags[k] = v
+            m.tags["probe"] = n
+            m.fields["celsius"] = t / 1000.0
+            m.time = metric.time
+            out.append(m)
+    return out
+'''
+    [processors.starlark.tagpass]
+        brand = ["netsure"]

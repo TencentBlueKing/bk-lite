@@ -3,6 +3,8 @@
 import { useMemo } from "react";
 import { TreeSelect } from "antd";
 import type { WikiDirectoryNode } from "@/app/opspilot/types/wiki";
+import { useTranslation } from "@/utils/i18n";
+import { formatWikiDirectoryLabel } from "./wikiFormat";
 
 interface DirectoryTreeSelectNode {
   title: string;
@@ -29,12 +31,14 @@ const toTreeSelectData = (
   directories: WikiDirectoryNode[],
   excludedDirectoryIds: Set<number>,
   acceptsPagesOnly: boolean,
+  labelOf: (directory: WikiDirectoryNode) => string,
   ancestors: string[] = [],
 ): DirectoryTreeSelectNode[] =>
   directories.map((directory) => {
-    const path = [...ancestors, directory.name];
+    const label = labelOf(directory);
+    const path = [...ancestors, label];
     return {
-      title: directory.name,
+      title: label,
       value: directory.id,
       key: directory.id,
       disabled:
@@ -46,6 +50,7 @@ const toTreeSelectData = (
         directory.children || [],
         excludedDirectoryIds,
         acceptsPagesOnly,
+        labelOf,
         path,
       ),
     };
@@ -62,13 +67,20 @@ const WikiDirectorySelect = ({
   acceptsPagesOnly = true,
   onChange,
 }: WikiDirectorySelectProps) => {
+  const { t } = useTranslation();
   const excludedIds = useMemo(
     () => new Set(excludedDirectoryIds),
     [excludedDirectoryIds],
   );
   const treeData = useMemo(
-    () => toTreeSelectData(directories, excludedIds, acceptsPagesOnly),
-    [acceptsPagesOnly, directories, excludedIds],
+    () =>
+      toTreeSelectData(
+        directories,
+        excludedIds,
+        acceptsPagesOnly,
+        (directory) => formatWikiDirectoryLabel(t, directory),
+      ),
+    [acceptsPagesOnly, directories, excludedIds, t],
   );
 
   return (

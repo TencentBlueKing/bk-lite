@@ -69,6 +69,12 @@
     "fetchFailed": "Failed to fetch list",
     "updateSuccess": "Updated successfully",
     "updateFailed": "Failed to update",
+    "addFailed": "Failed to add",
+    "deleteFailed": "Failed to delete",
+    "deleteSuccess": "Deleted successfully",
+    "all": "All",
+    "action": "Actions",
+    "required": "This field is required",
     "addSuccess": "Added successfully",
     "saveSuccess": "save successfully",
     "publishSuccess": "publish successfully",
@@ -230,7 +236,13 @@
     "hour": "hour",
     "day": "Day(s)",
     "saved": "Status updated",
-    "copied": "Copied"
+    "copied": "Copied",
+    "other": "Other",
+    "category": "Category",
+    "source": "Source",
+    "enabledStatus": "Status",
+    "disabled": "Disabled",
+    "enabled": "Enabled"
   },
   "userInfo": {
     "basicInfo": "Basic Information",
@@ -547,5 +559,13 @@
     "rum_alerting": "Events",
     "rum_integration": "Integration",
     "rum_governance": "Data Governance"
+  },
+  "webchat": {
+    "inputPlaceholder": "Type a message..."
+  },
+  "provider": {
+    "vendorAliyun": "Alibaba Cloud",
+    "vendorZhipu": "Zhipu",
+    "vendorBaidu": "Baidu"
   }
 }
