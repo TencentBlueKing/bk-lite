@@ -103,7 +103,7 @@
         name = "state"
     # ---- Aruba CX power supplies (arubaWiredPowerSupplyTable) ----
     # arubaWiredPSUProductName …11.2.1.1.5 作 descr；arubaWiredPSUStateEnum …11.2.1.1.11。
-    # 归一：ok(1)/faultAbsent(2)/empty(12)→1（空槽）；unknown(8)→3；init(11)/fault* 及其余→2。
+    # 归一：ok(1)/empty(12)→1；unknown(8)→3；faultAbsent(2)/init(11)/fault* 及其余→2。
     [[inputs.snmp.table]]
         name = "device_psu"
         inherit_tags = ["source"]
@@ -184,11 +184,11 @@ def apply(metric):
         if st == None:
             if "state" in f:
                 f.pop("state")
-        elif st == 1 or st == 2 or st == 12:
+        elif st == 1 or st == 12:
             f["state"] = 1
         elif st == 8:
             f["state"] = 3
-        elif st >= 3 and st <= 17:
+        elif st >= 2 and st <= 17:
             f["state"] = 2
         else:
             f.pop("state")

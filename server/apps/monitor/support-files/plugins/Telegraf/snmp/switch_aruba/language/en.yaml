@@ -159,9 +159,8 @@ monitor_object_metric:
     device_psu_state:
       name: Power Supply Status
       desc: Operational state of each Aruba power supply, normalized to 1 = normal,
-        2 = fault, 3 = Unknown (grey, does not alert). ok and empty slots (faultAbsent/empty)
-        map to 1; unknown maps to 3; init and remaining fault codes map to 2. Only
-        value 2 alerts.
+        2 = fault, 3 = Unknown (grey, does not alert). ok/empty map to 1; unknown maps
+        to 3; faultAbsent, init and remaining fault codes map to 2. Only value 2 alerts.
       enum:
         "1": Normal
         "2": Abnormal
