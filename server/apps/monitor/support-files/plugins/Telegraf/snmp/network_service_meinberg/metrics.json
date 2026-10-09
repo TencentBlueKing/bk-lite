@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_meinberg",
   "plugin": "NetworkService Meinberg LANTIME SNMP",
-  "plugin_desc": "SNMP monitoring template for Meinberg LANTIME network service device. It reports uptime, temperature, and interface traffic (enterprise PEN 5597).",
+  "plugin_desc": "SNMP monitoring template for Meinberg LANTIME network service device. It reports uptime, NTP state and stratum, temperature, power supply and fan status, and interface traffic (enterprise PEN 5597).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_meinberg'}) by (instance_id)",
   "name": "NetworkService",
@@ -22,7 +22,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_meinberg_ntp_state",
-      "query": "max(network_service_meinberg_ntp_state{instance_type='network_service', __$labels__} or network_service_meinberg_classic_ntp_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_network_service_meinberg_ntp_state{instance_type='network_service', __$labels__} or snmp_network_service_meinberg_classic_ntp_state{instance_type='network_service', __$labels__}) by (instance_id)",
       "display_name": "Meinberg NTP Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
@@ -35,7 +35,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_meinberg_ntp_stratum",
-      "query": "max(network_service_meinberg_ntp_stratum{instance_type='network_service', __$labels__} or network_service_meinberg_classic_ntp_stratum{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_network_service_meinberg_ntp_stratum{instance_type='network_service', __$labels__} or snmp_network_service_meinberg_classic_ntp_stratum{instance_type='network_service', __$labels__}) by (instance_id)",
       "display_name": "Meinberg NTP Stratum",
       "data_type": "Number",
       "unit": "none",
@@ -48,7 +48,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_meinberg_temperature",
-      "query": "max(network_service_meinberg_temperature{instance_type='network_service', __$labels__}) by (instance_id)",
+      "query": "max(snmp_network_service_meinberg_temperature{instance_type='network_service', __$labels__}) by (instance_id)",
       "display_name": "Meinberg Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -57,6 +57,42 @@
         "instance_id"
       ],
       "description": "LANTIME NG internal temperature in degrees Celsius."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='network_service', __$labels__}",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Status of each LANTIME NG power supply (MBG-SNMP-LTNG-MIB mbgLtNgSysPsStatus, 1.3.6.1.4.1.5597.30.0.5.0.2.1.2), normalized at collection: up = 1 (healthy), down = 2 (fault); notAvailable rows are dropped."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "device_fan_state",
+      "query": "device_fan_state{instance_type='network_service', __$labels__}",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"healthy\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"fault\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Status of each LANTIME NG fan, normalized at collection from mbgLtNgSysFanError (1.3.6.1.4.1.5597.30.0.5.1.2.1.3): yes = 2 (fault), no = 1 (healthy); when the error field is notAvailable, mbgLtNgSysFanStatus (…1.2.1.2) is used instead (on = 1, off = 2). Rows with neither value are dropped."
     },
     {
       "metric_group": "Traffic",

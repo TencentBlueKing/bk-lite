@@ -388,9 +388,10 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
               columns={displayColumnTableColumns}
               dataSource={displayColumns}
               pagination={false}
-              scroll={
-                displayColumns.length > 8 ? { y: 320 } : undefined
-              }
+              scroll={{
+                x: 582,
+                ...(displayColumns.length > 8 ? { y: 320 } : {}),
+              }}
               size="small"
               rowDraggable
               onRowDragEnd={(targetTableData) =>
@@ -439,7 +440,10 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
               columns={filterFieldColumns}
               dataSource={filterFields}
               pagination={false}
-              scroll={filterFields.length > 8 ? { y: 320 } : undefined}
+              scroll={{
+                x: 500,
+                ...(filterFields.length > 8 ? { y: 320 } : {}),
+              }}
             />
           ) : (
             <CompactEmptyState description={t('dashboard.noFilterFields')} />

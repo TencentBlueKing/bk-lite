@@ -33,31 +33,25 @@
         name = "source"
         is_tag = true
 # @bk_include_ifmib_table
-    # FD-SYSTEM sysBaseInfo / chassisInfo scalars (PEN 34592).
-    # sysCpuUtilization Integer32 0-100. chassisTemperature Unsigned32 as reported.
-    # powerStatusBit: bit0 PSU A, bit1 PSU B (1=on). fanStatusBit: bits fan1-4.
+    # FD-SYSTEM sysBaseInfo / chassisInfo (PEN 34592): all four objects are scalars,
+    # so they are top-level fields with instance .0 (direct GET), landing in measurement snmp;
+    # queries use the snmp_ prefix.
+    # sysCpuUtilization .1.1.8.0 Integer32 0-100. chassisTemperature .1.3.4.0 Unsigned32 as reported.
+    # powerStatusBit .1.3.5.0: bit0 PSU A, bit1 PSU B (1=on). fanStatusBit .1.3.6.0: bits fan1-4 (1=on).
     # No stable private memory-utilization scalar; do not invent mem%.
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.34592.1.3.1.1.8"
-        name = "usage"
-    [[inputs.snmp.table]]
-        name = "device_temperature"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.34592.1.3.1.3.4"
-        name = "celsius"
-    [[inputs.snmp.table]]
-        name = "psu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.34592.1.3.1.3.5"
-        name = "status"
-    [[inputs.snmp.table]]
-        name = "fan"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.34592.1.3.1.3.6"
-        name = "status_bitmap"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.34592.1.3.1.1.8.0"
+        name = "device_cpu_usage"
+        conversion = "int"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.34592.1.3.1.3.4.0"
+        name = "device_temperature_celsius"
+        conversion = "int"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.34592.1.3.1.3.5.0"
+        name = "psu_status"
+        conversion = "int"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.34592.1.3.1.3.6.0"
+        name = "fan_status_bitmap"
+        conversion = "int"

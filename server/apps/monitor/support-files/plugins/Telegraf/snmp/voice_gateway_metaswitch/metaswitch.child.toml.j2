@@ -1,0 +1,121 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_metaswitch"
+        config_type = "metaswitch"
+        brand = "metaswitch"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # MetaView EMS 统计表 emsStatsEntry，表列无 .0
+    [[inputs.snmp.table]]
+        name = "metaswitch_ems"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.2.826.0.1.1578918.6.217.1.4"
+        name = "cpu_usage"
+    [[inputs.snmp.table.field]]
+        oid = "1.2.826.0.1.1578918.6.217.1.5"
+        name = "cpu_usage_hwm"
+    [[inputs.snmp.table.field]]
+        oid = "1.2.826.0.1.1578918.6.217.1.10"
+        name = "mem_total_mb"
+    [[inputs.snmp.table.field]]
+        oid = "1.2.826.0.1.1578918.6.217.1.11"
+        name = "mem_used_mb"
+
+[[processors.starlark]]
+    namepass = ["metaswitch_ems"]
+    source = '''
+PRINTABLE = " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+
+def _atoi(text):
+    err = catch(lambda: int(text))
+    if err != None:
+        return None
+    return int(text)
+
+def _chr(code):
+    if code < 32 or code > 126:
+        return None
+    return PRINTABLE[code - 32]
+
+def apply(metric):
+    idx = metric.tags.get("index")
+    if idx == None:
+        return None
+    parts = idx.split(".")
+    n = len(parts)
+    if n < 3:
+        return None
+    if parts[n - 1] != "1":
+        return None
+    name_len = _atoi(parts[1])
+    if name_len == None or name_len < 1 or n != name_len + 3:
+        return None
+    chars = []
+    i = 0
+    for i in range(name_len):
+        code = _atoi(parts[2 + i])
+        if code == None:
+            return None
+        ch = _chr(code)
+        if ch == None:
+            return None
+        chars.append(ch)
+    metric.tags["ems_index"] = parts[0]
+    metric.tags["node_name"] = "".join(chars)
+    metric.tags.pop("index")
+    f = metric.fields
+    if "cpu_usage" in f:
+        v = f["cpu_usage"]
+        if v < 0 or v > 100:
+            f.pop("cpu_usage")
+    if "cpu_usage_hwm" in f:
+        v = f["cpu_usage_hwm"]
+        if v < 0 or v > 100:
+            f.pop("cpu_usage_hwm")
+    if "mem_total_mb" in f:
+        v = f["mem_total_mb"]
+        if v < 0 or v > 4294967294:
+            f.pop("mem_total_mb")
+    if "mem_used_mb" in f:
+        v = f["mem_used_mb"]
+        if v < 0 or v > 4294967294:
+            f.pop("mem_used_mb")
+    total = f.get("mem_total_mb")
+    used = f.get("mem_used_mb")
+    if total != None and used != None and total > 0 and used >= 0 and used <= total:
+        f["mem_usage_percent"] = float(used) * 100.0 / float(total)
+    if len(f.keys()) == 0:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["metaswitch"]

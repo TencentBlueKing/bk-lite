@@ -1,6 +1,6 @@
 VoiceGateway Patton SNMP:
   name: Patton (Telegraf)
-  desc: SNMP monitoring template for Patton voice gateway. It reports uptime and interface traffic (based on standard MIBs).
+  desc: SNMP monitoring template for Patton SmartNode voice gateway. It reports uptime, interface traffic, per-CPU workload, memory pool usage and temperature probes (enterprise PEN 1768).
 monitor_object:
   VoiceGateway: VoiceGateway
 monitor_object_type:
@@ -37,10 +37,24 @@ monitor_object_metric:
         device over the past 5 minutes, measured in bytes per second, summed across
         all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
         assess sending performance for traffic management and optimization.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: Current workload of each CPU of the Patton SmartNode in percent (SMARTNODE-MIB cpuWorkloadCurrent).
+    device_memory_total:
+      name: Memory Pool Total
+      desc: Total size of each memory pool of the Patton SmartNode in bytes (memTotalBytes; allocated + free when the device does not report it).
+    device_memory_used:
+      name: Memory Pool Allocated
+      desc: Allocated bytes of each memory pool of the Patton SmartNode (memAllocatedBytes).
+    device_memory_free:
+      name: Memory Pool Free
+      desc: Free bytes of each memory pool of the Patton SmartNode (memFreeBytes).
+    device_memory_usage:
+      name: Memory Pool Usage
+      desc: Utilization of each memory pool of the Patton SmartNode, computed at collection as allocated / (allocated + free) * 100. Empty pools are dropped.
     device_temperature_celsius:
-      name: Device Temperature
-      desc: Voice gateway device temperature in degrees Celsius, used to detect cooling
-        problems, blocked airflow, or overheating risk.
+      name: Temperature
+      desc: Current temperature of each temperature probe of the Patton SmartNode in degrees Celsius (SMARTNODE-MIB currentDegreesCelsius).
     device_psu_state:
       name: PSU State
       desc: Voice gateway power-source state normalized so 1 means healthy and 2 means
@@ -49,5 +63,7 @@ monitor_object_metric_group:
   VoiceGateway:
     Base: Base
     Traffic: Traffic
+    CPU: CPU
+    Memory: Memory
     Temperature: Temperature
     Hardware Status: Hardware Status

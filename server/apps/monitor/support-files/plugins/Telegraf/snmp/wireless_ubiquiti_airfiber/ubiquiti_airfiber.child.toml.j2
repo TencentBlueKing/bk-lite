@@ -1,0 +1,91 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_ubiquiti_airfiber"
+        config_type = "ubiquiti_airfiber"
+        brand = "ubiquiti_airfiber"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Ubiquiti airFiber LTU（UBNT-AFLTU-MIB afLTUStatus 1.3.6.1.4.1.41112.1.10.1.3）：顶层 field 带 .0，落 measurement snmp ----
+    # afLTUMemoryUsage .5.0 / afLTUCpuUsage .6.0：Integer32 %。classic airFiber 不响应这两项时自然缺省。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.41112.1.10.1.3.5.0"
+        name = "memory_usage_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.41112.1.10.1.3.6.0"
+        name = "cpu_usage_raw"
+    # ---- classic airFiber（UBNT-AirFIBER-MIB airFiberStatus 1.3.6.1.4.1.41112.1.3.2，INDEX airFiberStatusIndex）：table.field 不带 .0 ----
+    # radio0TempC .1.8 / radio1TempC .1.10：射频链 DAC 温度（摄氏度）。LTU 不响应该表时自然缺省。
+    [[inputs.snmp.table]]
+        name = "airfiber_status"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.41112.1.3.2.1.8"
+        name = "radio0_temp"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.41112.1.3.2.1.10"
+        name = "radio1_temp"
+# ---- 风扇/电源：上述 MIB 不提供，不采集。----
+
+# ---- LTU CPU / 内存：整数且在 0~100 内才输出 device_cpu_usage / device_memory_usage（查询带 snmp_ 前缀），原始字段不落库。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    for raw, name in [("cpu_usage_raw", "device_cpu_usage"), ("memory_usage_raw", "device_memory_usage")]:
+        value = metric.fields.pop(raw, None)
+        if type(value) == "int" and value >= 0 and value <= 100:
+            metric.fields[name] = value
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["ubiquiti_airfiber"]
+
+# ---- classic 射频温度：每行拆成 device_radio_temperature_celsius（chain=0 / 1），整数且在 -50~150 内才输出。----
+[[processors.starlark]]
+    namepass = ["airfiber_status"]
+    source = '''
+def apply(metric):
+    out = []
+    for field, chain in [("radio0_temp", "0"), ("radio1_temp", "1")]:
+        value = metric.fields.get(field)
+        if type(value) == "int" and value >= -50 and value <= 150:
+            m = Metric("device_radio_temperature")
+            for k, v in metric.tags.items():
+                m.tags[k] = v
+            m.tags["chain"] = chain
+            m.fields["celsius"] = value
+            m.time = metric.time
+            out.append(m)
+    return out
+'''
+    [processors.starlark.tagpass]
+        brand = ["ubiquiti_airfiber"]

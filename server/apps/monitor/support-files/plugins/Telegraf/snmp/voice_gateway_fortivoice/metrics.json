@@ -1,0 +1,126 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_fortivoice",
+  "plugin": "VoiceGateway Fortinet FortiVoice SNMP",
+  "plugin_desc": "SNMP monitoring template for Fortinet FortiVoice voice gateways / IP PBX (PEN 12356, tree 1.3.6.1.4.1.12356.115). Besides standard IF-MIB 64-bit interface traffic, it collects CPU and memory utilization and log / storage disk usage (all %).",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='voice_gateway', collect_type='snmp_fortivoice'}) by (instance_id)",
+  "name": "VoiceGateway",
+  "icon": "mm-voice_gateway_语音网关",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='voice_gateway'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_log_disk_usage",
+    "device_storage_disk_usage"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='voice_gateway', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Uptime of the FortiVoice gateway since the last restart (IF-MIB sysUpTime), in seconds."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "max(snmp_device_cpu_usage{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Instantaneous CPU utilization of the FortiVoice gateway (FORTINET-FORTIVOICE-MIB fvSysCpuUsage, Gauge32 percent). Values outside 0-100 are dropped."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "max(snmp_device_memory_usage{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Instantaneous memory utilization of the FortiVoice gateway (FORTINET-FORTIVOICE-MIB fvSysMemUsage, Gauge32 percent). Values outside 0-100 are dropped."
+    },
+    {
+      "metric_group": "Storage",
+      "name": "device_log_disk_usage",
+      "query": "max(snmp_device_log_disk_usage{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "Log Disk Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Log disk utilization of the FortiVoice gateway (FORTINET-FORTIVOICE-MIB fvSysLogDiskUsage, Gauge32 percent). Values outside 0-100 are dropped."
+    },
+    {
+      "metric_group": "Storage",
+      "name": "device_storage_disk_usage",
+      "query": "max(snmp_device_storage_disk_usage{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "Storage Disk Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Storage disk utilization of the FortiVoice gateway (FORTINET-FORTIVOICE-MIB fvSysStorageDiskUsage, Gauge32 percent). Values outside 0-100 are dropped."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='voice_gateway', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average rate of bytes received over the past 5 minutes from the 64-bit IF-MIB ifHCInOctets counter."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='voice_gateway', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average rate of bytes sent over the past 5 minutes from the 64-bit IF-MIB ifHCOutOctets counter."
+    }
+  ]
+}

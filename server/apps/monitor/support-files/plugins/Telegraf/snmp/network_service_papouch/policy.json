@@ -1,0 +1,86 @@
+{
+  "object": "NetworkService",
+  "plugin": "NetworkService Papouch TH2E SNMP",
+  "templates": [
+    {
+      "name": "Papouch环境温度过高",
+      "alert_name": "网络服务${resource_name} 环境温度过高",
+      "description": "监控 Papouch TH2E/TME 温度，当持续高于阈值时触发告警，提示环境过热。",
+      "metric_name": "env_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 40,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 35,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 30,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Papouch环境湿度过高",
+      "alert_name": "网络服务${resource_name} 环境湿度过高",
+      "description": "监控 Papouch TH2E 相对湿度，当持续高于阈值时触发告警，提示环境潮湿风险。",
+      "metric_name": "env_humidity_percent",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Papouch温度通道超限",
+      "alert_name": "网络服务${resource_name} 温度通道超限",
+      "description": "监控 Papouch TH2E 温度通道限值状态，归一后 1 为限内正常、2 为超上限或低于下限，超限时触发告警。",
+      "metric_name": "env_temperature_limit_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Papouch湿度通道超限",
+      "alert_name": "网络服务${resource_name} 湿度通道超限",
+      "description": "监控 Papouch TH2E 湿度通道限值状态，归一后 1 为限内正常、2 为超上限或低于下限，超限时触发告警。",
+      "metric_name": "env_humidity_limit_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

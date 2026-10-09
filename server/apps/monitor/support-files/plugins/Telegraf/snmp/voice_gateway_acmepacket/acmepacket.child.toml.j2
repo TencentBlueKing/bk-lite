@@ -47,3 +47,18 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
+
+    # ---- Acme Packet / Oracle SBC 系统管理标量（APSYSMGMT-MIB apSysMgmtMIBGeneralObjects = 1.3.6.1.4.1.9148.3.2.1.1）----
+    # 顶层 field 带实例 .0（measurement snmp → 查询 snmp_ 前缀）；三者均为 SysMgmtPercentage（0..100）。
+    # apSysCPUUtil .1：最近 1 秒整机 CPU 使用率。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9148.3.2.1.1.1.0"
+        name = "device_cpu_usage"
+    # apSysMemoryUtil .2：内存使用率。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9148.3.2.1.1.2.0"
+        name = "device_memory_usage"
+    # apSysHealthScore .3：系统健康分，100 为最健康。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.9148.3.2.1.1.3.0"
+        name = "device_health_score"

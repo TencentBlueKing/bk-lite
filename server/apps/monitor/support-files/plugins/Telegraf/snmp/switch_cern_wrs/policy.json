@@ -1,0 +1,71 @@
+{
+  "object": "Switch",
+  "plugin": "Switch CERN White Rabbit SNMP",
+  "templates": [
+    {
+      "name": "CERN White Rabbit交换机内存使用率过高",
+      "alert_name": "CERN White Rabbit交换机${resource_name} 内存使用率过高",
+      "description": "监控 CERN White Rabbit 交换机内存使用率，当持续高于阈值时触发告警，提示可能存在内存压力或容量不足。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "CERN White Rabbit交换机温度过高",
+      "alert_name": "CERN White Rabbit交换机${resource_name} 传感器 ${metric__sensor_name} 温度过高",
+      "description": "监控 CERN White Rabbit 交换机 FPGA / PLL / 电源传感器温度，当持续高于阈值时触发告警。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "CERN White Rabbit交换机系统状态异常",
+      "alert_name": "CERN White Rabbit交换机${resource_name} 系统状态异常",
+      "description": "监控 CERN White Rabbit 交换机主系统状态，当处于 error 或 warning 时触发告警。",
+      "metric_name": "cern_wrs_system_status",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 VoiceGateway Acme Packet SNMP:
   name: Acme Packet (Telegraf)
-  desc: SNMP monitoring template for Acme Packet voice gateway. It reports uptime and interface traffic (based on standard MIBs).
+  desc: SNMP monitoring template for Acme Packet / Oracle SBC voice gateway. It reports uptime, interface traffic, CPU and memory utilization, and the system health score (enterprise PEN 9148).
 monitor_object:
   VoiceGateway: VoiceGateway
 monitor_object_type:
@@ -37,6 +37,15 @@ monitor_object_metric:
         device over the past 5 minutes, measured in bytes per second, summed across
         all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
         assess sending performance for traffic management and optimization.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: Overall CPU utilization of the Acme Packet / Oracle SBC measured over the last second, in percent (APSYSMGMT-MIB apSysCPUUtil).
+    device_memory_usage:
+      name: Memory Usage
+      desc: Memory utilization of the Acme Packet / Oracle SBC in percent (APSYSMGMT-MIB apSysMemoryUtil).
+    device_health_score:
+      name: Health Score
+      desc: System health score of the Acme Packet / Oracle SBC in percent, where 100 is the healthiest (APSYSMGMT-MIB apSysHealthScore). A drop usually means a monitored component or link is degraded.
     device_temperature_celsius:
       name: Device Temperature
       desc: Voice gateway device temperature in degrees Celsius, used to detect cooling
@@ -49,5 +58,7 @@ monitor_object_metric_group:
   VoiceGateway:
     Base: Base
     Traffic: Traffic
+    CPU: CPU
+    Memory: Memory
     Temperature: Temperature
     Hardware Status: Hardware Status

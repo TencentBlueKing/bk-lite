@@ -1,0 +1,51 @@
+Access GWD SNMP:
+  name: GWD EPON（Telegraf）
+  desc: 面向 GWD（GWTT）EPON OLT / ONU 设备（企业号 PEN 10072）的 SNMP 监控模板，可采集运行时长、各板卡 CPU / 内存 / 温度、设备温度、电源状态与温度、风扇状态与转速、接口流量。
+monitor_object:
+  Access: 接入设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Access:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    device_board_cpu_usage:
+      name: 板卡 CPU 使用率
+      desc: 各板卡的 CPU 使用率（百分比）。持续偏高表示该板卡控制面或管理面压力大。
+    device_board_memory_usage:
+      name: 板卡内存使用率
+      desc: 各板卡的内存使用率（百分比）。持续偏高可能表示内存紧张或进程异常。
+    device_board_temperature_celsius:
+      name: 板卡温度
+      desc: 各板卡的温度，单位为摄氏度。温度持续偏高可能表示散热不良或环境温度过高。
+    device_temperature_celsius:
+      name: 设备温度
+      desc: 接入设备温度，单位为摄氏度。温度持续偏高可能表示散热不良、环境温度过高或设备负载过高。
+    device_psu_state:
+      name: 电源状态
+      desc: 接入设备电源状态。正常归一为 1，异常归一为 2，提示可能存在供电输入或电源模块故障。
+    device_psu_temperature_celsius:
+      name: 电源温度
+      desc: 各电源模块的温度，单位为摄氏度。温度偏高可能表示电源过载或散热不良。
+    device_fan_state:
+      name: 风扇状态
+      desc: 接入设备风扇运行状态。正常值归一为 1，异常或未知状态归一为 2，表示散热能力可能下降。
+    device_fan_rpm:
+      name: 风扇转速
+      desc: 接入设备风扇转速，单位为转每分钟。转速持续偏低或为 0 可能表示风扇停转或散热故障。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位
+        ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位
+        ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+monitor_object_metric_group:
+  Access:
+    Base: 基础
+    Traffic: 流量
+    Access: 接入设备
+    Temperature: 温度
+    Hardware Status: 硬件状态

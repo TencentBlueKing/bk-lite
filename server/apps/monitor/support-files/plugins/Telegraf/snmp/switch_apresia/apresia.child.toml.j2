@@ -103,6 +103,22 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.278.107.1.1.3.1.4"
         name = "state"
+    # ---- APRESIA DRAM 内存 (APRESIA-NP-HW npDramMemoryTable, AEOS-NP2100 1.13.01 起，每 box 一行) ----
+    # npDramMemoryTotalSize / UsedSize / FreeSize 1.3.6.1.4.1.278.107.1.1.5.2.1.{2,3,4}，Gauge32，单位 KB，约 1 分钟刷新。
+    # 索引 npDramMemoryUnitIndex(...5.2.1.1) 为 box ID（table.field 不带 .0）；下方 starlark 换算字节并计算使用率。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.278.107.1.1.5.2.1.2"
+        name = "total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.278.107.1.1.5.2.1.3"
+        name = "used"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.278.107.1.1.5.2.1.4"
+        name = "free"
 # ---- 风扇状态归一：normal(1)→1(正常)，abnormal(2)→2(异常)，default=2。----
 [[processors.enum]]
     namepass = ["device_fan"]
@@ -123,4 +139,27 @@
             "1" = 1
             "2" = 2
             "3" = 1
-# ---- 内存：APRESIA-NP-HW 私有树仅 npMemoryUtilizationFailureStatusCode(...1.1.5.1.1, OCTET STRING)，且仅在 trap 绑定时有效，非可轮询 gauge → 内存 N/A 不采。----
+# ---- 内存：KB → 字节（×1024），usage = used/total*100；总量 <= 0、负值或已用大于总量时丢弃整行。----
+# ---- npMemoryUtilizationFailureStatusCode(...1.1.5.1.1) 仅在 trap 绑定时有效，不采。----
+[[processors.starlark]]
+    namepass = ["device_memory"]
+    source = '''
+def apply(metric):
+    total = metric.fields.get("total")
+    used = metric.fields.get("used")
+    free = metric.fields.get("free")
+    if type(total) not in ["int", "float"] or type(used) not in ["int", "float"]:
+        return None
+    if total <= 0 or used < 0 or used > total:
+        return None
+    metric.fields["total"] = int(total) * 1024
+    metric.fields["used"] = int(used) * 1024
+    if type(free) in ["int", "float"] and free >= 0 and free <= total:
+        metric.fields["free"] = int(free) * 1024
+    else:
+        metric.fields.pop("free", None)
+    metric.fields["usage"] = used * 100.0 / total
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["apresia"]

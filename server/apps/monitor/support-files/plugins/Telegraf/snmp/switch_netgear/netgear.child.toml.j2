@@ -112,7 +112,7 @@ def parse_number(text):
         return None
     dots = 0
     digits = 0
-    while i < len(text):
+    for i in range(i, len(text)):
         c = text[i]
         if c >= "0" and c <= "9":
             digits += 1
@@ -122,7 +122,6 @@ def parse_number(text):
                 return None
         else:
             return None
-        i += 1
     if digits == 0:
         return None
     return float(text)

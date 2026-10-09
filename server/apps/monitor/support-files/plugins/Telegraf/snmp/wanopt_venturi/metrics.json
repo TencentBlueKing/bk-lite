@@ -1,0 +1,63 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_venturi",
+  "plugin": "Wanopt Venturi SNMP",
+  "plugin_desc": "SNMP monitoring template for Venturi Wireless optimisation servers (enterprise PEN 3382, VENTURI-SERVER-STATS-MIB). Besides standard IF-MIB interface traffic and uptime, it reports overall CPU utilisation and Venturi buffer (VBuf) pool usage.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='wanopt', collect_type='snmp_venturi'}) by (instance_id)",
+  "name": "Wanopt",
+  "icon": "mm-wanopt_WAN优化",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='wanopt'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='wanopt', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the Venturi Wireless optimisation server since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "snmp_device_cpu_usage{instance_type='wanopt', __$labels__}",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Overall CPU utilisation of the Venturi Wireless optimisation server (VENTURI-SERVER-STATS-MIB vServerCpuUtilization) as a 0-100 percentage."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "venturi_vbuf_usage_percent",
+      "query": "snmp_venturi_vbuf_usage_percent{instance_type='wanopt', __$labels__}",
+      "display_name": "Venturi Buffer (VBuf) Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Venturi buffer pool usage as a 0-100 percentage, derived from VENTURI-SERVER-STATS-MIB vServerStatsSystemUsedVenturiBuffers / vServerSystemTotalVenturiBuffers."
+    }
+  ]
+}
