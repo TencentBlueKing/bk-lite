@@ -1,0 +1,193 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_cisco_esa",
+  "plugin": "Firewall Cisco ESA SNMP",
+  "plugin_desc": "SNMP monitoring template for Cisco Secure Email Gateway / IronPort ESA appliances (PEN 15497, ASYNCOS-MAIL-MIB). Besides standard IF-MIB 64-bit interface traffic, it collects CPU, memory, disk I/O and work-queue utilization (%) and, on physical appliances, power-supply state, temperature sensors and fan speed.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='firewall', collect_type='snmp_cisco_esa'}) by (instance_id)",
+  "name": "Firewall",
+  "icon": "mm-firewall_防火墙",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='firewall'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius",
+    "device_fan_speed",
+    "device_psu_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='firewall', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Uptime of the Cisco ESA appliance since the last restart (IF-MIB sysUpTime), in seconds."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_cpu_usage",
+      "query": "max(snmp_device_cpu_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization of the Cisco ESA appliance (ASYNCOS-MAIL-MIB perCentCPUUtilization, Integer32 percent). Values outside 0-100 are dropped."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_memory_usage",
+      "query": "max(snmp_device_memory_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of the Cisco ESA appliance (ASYNCOS-MAIL-MIB perCentMemoryUtilization, Integer32 percent). Values outside 0-100 are dropped."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "esa_disk_io_usage",
+      "query": "max(snmp_esa_disk_io_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "Disk I/O Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Disk I/O utilization of the Cisco ESA appliance (ASYNCOS-MAIL-MIB perCentDiskIOUtilization, Integer32 percent). Values outside 0-100 are dropped."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "esa_queue_usage",
+      "query": "max(snmp_esa_queue_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "Work Queue Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Work-queue utilization of the Cisco ESA appliance (ASYNCOS-MAIL-MIB perCentQueueUtilization, Integer32 percent). Values outside 0-100 are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='firewall', __$labels__}",
+      "display_name": "PSU State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        },
+        {
+          "name": "psu_name",
+          "description": "Power supply name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Power-supply state of the Cisco ESA appliance (ASYNCOS-MAIL-MIB powerSupplyStatus): healthy(2) maps to 1 (normal); notInstalled(1), noAC(3) and faulty(4) map to 2 (abnormal); values not defined in the MIB are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='firewall', __$labels__}",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        },
+        {
+          "name": "sensor_name",
+          "description": "Temperature sensor name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Chassis temperature of the Cisco ESA appliance in Celsius (ASYNCOS-MAIL-MIB degreesCelsius). Values outside -40 to 125 are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_speed",
+      "query": "device_fan_speed{instance_type='firewall', __$labels__}",
+      "display_name": "Fan Speed",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        },
+        {
+          "name": "fan_name",
+          "description": "Fan name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Fan speed of the Cisco ESA appliance in RPM (ASYNCOS-MAIL-MIB fanRPMs). Values below 0, above 30000, or sentinel 4294967295 are dropped."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average rate of bytes received over the past 5 minutes from the 64-bit IF-MIB ifHCInOctets counter."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average rate of bytes sent over the past 5 minutes from the 64-bit IF-MIB ifHCOutOctets counter."
+    }
+  ]
+}

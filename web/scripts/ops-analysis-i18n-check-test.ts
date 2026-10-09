@@ -29,6 +29,19 @@ const CJK = /[\u4e00-\u9fff]/;
  */
 const keptCopy = new Map<string, string>([
   ['无数据', '#4340 DEFER：topology registerNode empty caption'],
+  // 时钟预设的存储 id 与画面字面量，规格要求原样展示，不随界面语言改写。
+  ['YYYY年M月D日', 'screen clock format id'],
+  ['M月D日 HH:mm', 'screen clock format id'],
+  ['年', 'screen clock glyph'],
+  ['月', 'screen clock glyph'],
+  ['日', 'screen clock glyph'],
+  ['一', 'screen clock glyph'],
+  ['二', 'screen clock glyph'],
+  ['三', 'screen clock glyph'],
+  ['四', 'screen clock glyph'],
+  ['五', 'screen clock glyph'],
+  ['六', 'screen clock glyph'],
+  ['星期', 'screen clock glyph'],
 ]);
 
 /** 整文件跳过：Storybook / pilot / 测试夹具。 */

@@ -33,6 +33,12 @@ monitor_object_metric:
     device_temperature_celsius:
       name: 温度
       desc: 传输设备的 CPU 或机箱温度，单位为摄氏度。温度偏高可能表示散热异常、环境温度过高或硬件过载。
+    radio_temperature_celsius:
+      name: 射频温度
+      desc: Tachyon TNA 300 系列传输设备各射频模块温度，来自 wirelessRadioTemperature（1.3.6.1.4.1.57344.1.2.2.1.11），单位为摄氏度，无缩放。温度偏高可能表示射频散热异常或环境温度过高。
+    radio_modem_temperature_celsius:
+      name: 射频调制温度
+      desc: Tachyon TNA 300 系列传输设备各射频调制模块温度，来自 wirelessRadioModemTemperature（1.3.6.1.4.1.57344.1.2.2.1.10），单位为摄氏度，无缩放。温度偏高可能表示射频调制模块热压力。
     device_fan_state:
       name: 风扇状态
       desc: 传输设备各散热风扇或风扇控制器的运行状态。非正常状态表示散热模块异常、离线或通信故障，可能导致设备过热。

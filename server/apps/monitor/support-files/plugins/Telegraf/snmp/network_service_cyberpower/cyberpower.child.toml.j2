@@ -1,0 +1,90 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_cyberpower"
+        config_type = "cyberpower"
+        brand = "cyberpower"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.2.0"
+        name = "sysObjectID"
+        is_tag = true
+    # envirTemperatureCelsius（1.3.6.1.4.1.3808.1.1.4.2.6.0）：INTEGER，1/10 ℃ → ÷10。无探头时 GET 可能失败，容忍缺席。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.3808.1.1.4.2.6.0"
+        name = "env_temperature_raw"
+    # envirHumidity（1.3.6.1.4.1.3808.1.1.4.3.1.0）：INTEGER %RH。无探头时 GET 可能失败，容忍缺席。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.3808.1.1.4.3.1.0"
+        name = "env_humidity_percent"
+# @bk_include_ifmib_table
+    # ---- CyberPower ePDU2 机架 PDU（CPS-MIB，PEN 3808，ePDU2 1.3.6.1.4.1.3808.1.1.6）----
+    # 本模板只采集 PDU / 环境；UPS 子树（…3808.1.1.1）与 outlet 计量表、私有 CPU%/Mem% 不在本模板内。
+    # 不要用 envirTemperature（℉）当主温。
+    [[inputs.snmp.table]]
+        name = "pdu_device"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    # ePDU2DeviceStatusCurrentLoad（1.3.6.1.4.1.3808.1.1.6.3.4.1.5）：Gauge，十分之一安培 → ÷10。table.field 不带 .0。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3808.1.1.6.3.4.1.5"
+        name = "current_raw"
+    # ePDU2DeviceStatusPowerLoad（…6.3.4.1.18）：Gauge，瓦。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3808.1.1.6.3.4.1.18"
+        name = "power_raw"
+# ---- 换算：电流原始值 ÷10 → A（负值丢弃）；功率为 W；环境温度原始值 ÷10 → ℃（仅 -40~100）；湿度为 0~100 的整数。缺席或越界丢弃该字段，原始字段不落库；环境探头缺席时仍保留 uptime。----
+[[processors.starlark]]
+    namepass = ["snmp", "pdu_device"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    if metric.name == "snmp":
+        raw = f.pop("env_temperature_raw", None)
+        if type(raw) == "int":
+            celsius = raw / 10.0
+            if celsius >= -40 and celsius <= 100:
+                f["env_temperature_celsius"] = celsius
+        hum = f.get("env_humidity_percent")
+        if type(hum) != "int" or hum < 0 or hum > 100:
+            f.pop("env_humidity_percent", None)
+        return metric
+    current = f.pop("current_raw", None)
+    watts = f.pop("power_raw", None)
+    if type(current) == "int" and current >= 0:
+        f["current_amps"] = current / 10.0
+    if type(watts) == "int" and watts >= 0:
+        f["power_watts"] = watts
+    if len(f.keys()) == 0:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["cyberpower"]

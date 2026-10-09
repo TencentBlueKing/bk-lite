@@ -1,0 +1,152 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_cisco_ace"
+        config_type = "cisco_ace"
+        brand = "cisco_ace"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.109.1.1.1.1.8"
+        name = "usage"
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.48.1.1.1.2"
+        name = "pool_name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.48.1.1.1.4"
+        name = "valid"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.48.1.1.1.5"
+        name = "used"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.48.1.1.1.6"
+        name = "free"
+    [[inputs.snmp.table]]
+        name = "ace_np"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.480.1.1.7.1.1"
+        name = "cpu_usage"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.480.1.1.6.1.3"
+        name = "buffer_raw"
+    [[inputs.snmp.table]]
+        name = "lb"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.254.1.1.1.1.3"
+        name = "current_connections"
+
+[[processors.starlark]]
+    namepass = ["device_cpu", "device_memory", "ace_np", "lb"]
+    source = '''
+def apply(metric):
+    name = metric.name
+    f = metric.fields
+    if name == "device_cpu":
+        v = f.get("usage")
+        if v == None:
+            return None
+        if v < 0 or v > 100:
+            return None
+        if v == 65535 or v == 65534 or v == -1:
+            return None
+        if v == 2147483647 or v == -2147483648 or v == 4294967295:
+            return None
+        return metric
+    if name == "device_memory":
+        valid = f.pop("valid", None)
+        if valid != 1 and valid != "1":
+            return None
+        used = f.get("used")
+        free = f.get("free")
+        if used == None or free == None:
+            return None
+        if used < 0 or free < 0:
+            return None
+        if used == 4294967295 or free == 4294967295:
+            return None
+        if used == 2147483647 or free == 2147483647:
+            return None
+        total = used + free
+        if total > 0:
+            f["usage"] = int((used * 10000.0) / total + 0.5) / 100.0
+        if len(f.keys()) == 0:
+            return None
+        return metric
+    if name == "ace_np":
+        cpu = f.get("cpu_usage")
+        if cpu != None:
+            drop_cpu = False
+            if cpu < 0 or cpu > 100:
+                drop_cpu = True
+            if cpu == 65535 or cpu == 65534 or cpu == -1:
+                drop_cpu = True
+            if cpu == 2147483647 or cpu == -2147483648 or cpu == 4294967295:
+                drop_cpu = True
+            if drop_cpu:
+                f.pop("cpu_usage")
+        raw = f.pop("buffer_raw", None)
+        if raw != None:
+            drop_buf = False
+            if raw < 0 or raw > 10000:
+                drop_buf = True
+            if raw == 65535 or raw == 65534 or raw == -1:
+                drop_buf = True
+            if raw == 2147483647 or raw == -2147483648 or raw == 4294967295:
+                drop_buf = True
+            if not drop_buf:
+                f["buffer_usage"] = raw / 100.0
+        if len(f.keys()) == 0:
+            return None
+        return metric
+    if name == "lb":
+        v = f.get("current_connections")
+        if v == None:
+            return None
+        if v < 0:
+            return None
+        if v == 4294967295 or v == 2147483647 or v == -1:
+            return None
+        return metric
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["cisco_ace"]

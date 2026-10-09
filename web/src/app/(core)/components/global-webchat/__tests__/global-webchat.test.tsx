@@ -62,7 +62,7 @@ vi.mock('@/context/userInfo', () => ({
 
 vi.mock('@/utils/i18n', () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, defaultMessage?: string) => defaultMessage ?? key,
   }),
 }));
 
@@ -95,6 +95,7 @@ afterEach(() => {
     loading: false,
   };
   pathname = '/cmdb';
+  window.localStorage.removeItem('locale');
   vi.clearAllMocks();
 });
 
@@ -136,10 +137,10 @@ describe('GlobalWebChat', () => {
       'script[data-bk-global-webchat]',
     );
 
-    expect(script?.getAttribute('src')).toBe('/webchat/webchat.js?v=20260922-1');
+    expect(script?.getAttribute('src')).toBe('/webchat/webchat.js?v=20261008-dock8');
     expect(
       document.querySelector<HTMLLinkElement>('link[data-bk-global-webchat]')?.getAttribute('href'),
-    ).toBe('/webchat/style.css?v=20260922-1');
+    ).toBe('/webchat/style.css?v=20261008-dock8');
 
     window.WebChat = {
       default: initialize,
@@ -162,12 +163,64 @@ describe('GlobalWebChat', () => {
           storageKey: 'webchat:platform:alice:7',
         }),
         collectContext: expect.any(Function),
+        placeholder: '请输入消息...',
+        locale: expect.any(String),
       }),
       null,
     );
 
     rerender(<GlobalWebChat />);
     expect(initialize).toHaveBeenCalledOnce();
+  });
+
+  it('passes the stored site locale through to WebChat', () => {
+    authState = {
+      token: 'user-token',
+      isAuthenticated: true,
+      isCheckingAuth: false,
+    };
+    clientState = {
+      clientData: [{ name: 'opspilot' }],
+      loading: false,
+    };
+    const initialize = vi.fn(() => {
+      const root = document.createElement('div');
+      root.id = 'webchat-root';
+      document.body.appendChild(root);
+    });
+    const { rerender } = render(<GlobalWebChat />);
+    window.WebChat = { default: initialize };
+    document
+      .querySelector<HTMLLinkElement>('link[data-bk-global-webchat]')
+      ?.dispatchEvent(new Event('load'));
+    document
+      .querySelector<HTMLScriptElement>('script[data-bk-global-webchat]')
+      ?.dispatchEvent(new Event('load'));
+
+    // webchat 是独立打包的通用包，拿不到 web 的 React Context，只能靠 config 传语言
+    window.localStorage.setItem('locale', 'zh-Hans');
+    rerender(<GlobalWebChat />);
+    document
+      .querySelector<HTMLLinkElement>('link[data-bk-global-webchat]')
+      ?.dispatchEvent(new Event('load'));
+    document
+      .querySelector<HTMLScriptElement>('script[data-bk-global-webchat]')
+      ?.dispatchEvent(new Event('load'));
+
+    const withChinese = initialize.mock.calls.at(-1)?.[0] as { locale?: string };
+    expect(withChinese.locale).toBe('zh');
+
+    window.localStorage.setItem('locale', 'en');
+    rerender(<GlobalWebChat />);
+    document
+      .querySelector<HTMLLinkElement>('link[data-bk-global-webchat]')
+      ?.dispatchEvent(new Event('load'));
+    document
+      .querySelector<HTMLScriptElement>('script[data-bk-global-webchat]')
+      ?.dispatchEvent(new Event('load'));
+
+    const withEnglish = initialize.mock.calls.at(-1)?.[0] as { locale?: string };
+    expect(withEnglish.locale).toBe('en');
   });
 
   it('removes the floating entry when authorization disappears', () => {

@@ -1,0 +1,146 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_sensatronics"
+        config_type = "sensatronics"
+        brand = "sensatronics"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Sensatronics EM1 / E4 环境监控（SENSATRONICS-EM1，PEN 16174，productEM1 1.3.6.1.4.1.16174.1.1.3）----
+    # sensorInfo 下固定四组（group1~4，1.3.6.1.4.1.16174.1.1.3.3.N）叶子，不是 SNMP 表，以下均为标量：顶层 field 带 .0，落 measurement snmp；拆分见文末 starlark。
+    # unitMode（1.3.6.1.4.1.16174.1.1.3.2.3.1）：探头数据单位，C / F / K / R。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.16174.1.1.3.2.3.1.0"
+        name = "unit_mode"
+    # 每组：groupNTempName（.2）/ groupNTempDataInt（.4，整数度）/ groupNHumidName（.5）/ groupNHumidDataInt（.7，整数 %RH）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.16174.1.1.3.3.1.2.0"
+        name = "g1_temp_name"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.16174.1.1.3.3.1.4.0"
+        name = "g1_temp_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.16174.1.1.3.3.1.5.0"
+        name = "g1_humid_name"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.16174.1.1.3.3.1.7.0"
+        name = "g1_humid_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.16174.1.1.3.3.2.2.0"
+        name = "g2_temp_name"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.16174.1.1.3.3.2.4.0"
+        name = "g2_temp_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.16174.1.1.3.3.2.5.0"
+        name = "g2_humid_name"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.16174.1.1.3.3.2.7.0"
+        name = "g2_humid_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.16174.1.1.3.3.3.2.0"
+        name = "g3_temp_name"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.16174.1.1.3.3.3.4.0"
+        name = "g3_temp_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.16174.1.1.3.3.3.5.0"
+        name = "g3_humid_name"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.16174.1.1.3.3.3.7.0"
+        name = "g3_humid_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.16174.1.1.3.3.4.2.0"
+        name = "g4_temp_name"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.16174.1.1.3.3.4.4.0"
+        name = "g4_temp_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.16174.1.1.3.3.4.5.0"
+        name = "g4_humid_name"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.16174.1.1.3.3.4.7.0"
+        name = "g4_humid_raw"
+# ---- CPU / 内存使用率：设备不提供；湿敏（Wet）探头不是温湿度，不采；字符串读数（DataStr）不作为数值采集。----
+
+# ---- 拆分与换算：每组拆成 env_temperature（celsius）/ env_humidity（percent），标签 group=1~4、sensor=探头名称（为空时不带），原始字段不落库；
+# 温度按 unit_mode 换算为摄氏度（F / K / R），须在 -60~150 ℃，原始值为 0 且探头名称为空时视为未接探头；湿度须在 1~100（0 视为未接探头）。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def to_celsius(raw, mode):
+    if type(raw) != "int":
+        return None
+    value = raw * 1.0
+    if mode == "F":
+        value = (value - 32) * 5.0 / 9.0
+    elif mode == "K":
+        value = value - 273.15
+    elif mode == "R":
+        value = (value - 491.67) * 5.0 / 9.0
+    value = int(value * 10 + (0.5 if value >= 0 else -0.5)) / 10.0
+    if value < -60 or value > 150:
+        return None
+    return value
+
+def child(metric, name, group, sensor, field, value):
+    m = Metric(name)
+    for k, v in metric.tags.items():
+        m.tags[k] = v
+    m.tags["group"] = group
+    if type(sensor) == "string" and sensor.strip() != "":
+        m.tags["sensor"] = sensor.strip()
+    m.fields[field] = value
+    m.time = metric.time
+    return m
+
+def apply(metric):
+    f = metric.fields
+    mode = f.pop("unit_mode", "C")
+    if type(mode) != "string":
+        mode = "C"
+    mode = mode.strip().upper()
+    out = [metric]
+    for g in ["1", "2", "3", "4"]:
+        tname = f.pop("g" + g + "_temp_name", None)
+        hname = f.pop("g" + g + "_humid_name", None)
+        traw = f.pop("g" + g + "_temp_raw", None)
+        temp = to_celsius(traw, mode)
+        if traw == 0 and (type(tname) != "string" or tname.strip() == ""):
+            temp = None
+        hum = f.pop("g" + g + "_humid_raw", None)
+        if temp != None:
+            out.append(child(metric, "env_temperature", g, tname, "celsius", temp))
+        if type(hum) == "int" and hum >= 1 and hum <= 100:
+            out.append(child(metric, "env_humidity", g, hname, "percent", hum))
+    return out
+'''
+    [processors.starlark.tagpass]
+        brand = ["sensatronics"]

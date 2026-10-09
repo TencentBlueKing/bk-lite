@@ -79,6 +79,14 @@
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.1991.1.1.1.1.18.0"
         name = "device_temperature_celsius"
+    # ---- Fabric OS FC 回退标量（swCpuUsage / swMemUsage, Integer32 0-100%, 顶层 field 必须带 .0）----
+    # 仅当 1991 的 device_cpu_usage / device_memory_usage 缺失时采用；辅助字段采集后丢弃。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1588.2.1.1.1.26.1.0"
+        name = "fos_cpu_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1588.2.1.1.1.26.6.0"
+        name = "fos_mem_usage"
     # ---- 风扇 (snChasFanTable)：描述 ...3.1.1.2 作 tag；状态 snChasFanOperStatus ...3.1.1.3 ----
     # 原始码 1 other / 2 normal / 3 failure → 下方 processors.enum 归一(2→1，其余→2)。
     [[inputs.snmp.table]]
@@ -105,6 +113,7 @@
         name = "state"
 
 # ---- 机箱温度原始值单位为 0.5℃，×0.5 换算为摄氏度。----
+# ---- Fabric OS 辅助字段：1991 值优先；仅在其缺失且 FOS 值位于 0-100 时回填；辅助字段始终丢弃。----
 [[processors.starlark]]
     namepass = ["snmp"]
     source = '''
@@ -112,6 +121,14 @@ def apply(metric):
     raw = metric.fields.get("device_temperature_celsius")
     if raw != None:
         metric.fields["device_temperature_celsius"] = float(raw) * 0.5
+    fos_cpu = metric.fields.pop("fos_cpu_usage", None)
+    fos_mem = metric.fields.pop("fos_mem_usage", None)
+    if metric.fields.get("device_cpu_usage") == None and fos_cpu != None:
+        if fos_cpu >= 0 and fos_cpu <= 100:
+            metric.fields["device_cpu_usage"] = fos_cpu
+    if metric.fields.get("device_memory_usage") == None and fos_mem != None:
+        if fos_mem >= 0 and fos_mem <= 100:
+            metric.fields["device_memory_usage"] = fos_mem
     return metric
 '''
     [processors.starlark.tagpass]

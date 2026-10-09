@@ -1,0 +1,38 @@
+Transmission Glassway EDFA SNMP:
+  name: Glassway EDFA（Telegraf）
+  desc: 面向 NSCRTV HFC 光放大器（如 Glassway EDFA / EYDFA，企业号 PEN 17409）的 SNMP 监控模板，可采集运行时长、网元与槽位内部温度、泵浦激光器温度、直流电源电压、接口流量。
+monitor_object:
+  Transmission: 传输设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Transmission:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    device_temperature_celsius:
+      name: 网元内部温度
+      desc: 网元设备内部温度，单位为摄氏度。温度持续偏高可能表示散热不良或环境温度过高。
+    device_slot_temperature_celsius:
+      name: 槽位温度
+      desc: 各设备槽位的内部温度，单位为摄氏度。温度偏高可能表示模块散热异常或过载。
+    device_pump_temperature_celsius:
+      name: 泵浦激光器温度
+      desc: 光放大器各泵浦激光器的温度，单位为摄氏度。偏离正常温控值可能表示 TEC 或泵浦激光器异常。
+    device_dc_power_voltage:
+      name: 直流电源电压
+      desc: 各内部直流电源的输出电压，单位为伏。数值异常可能表示电源故障。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位
+        ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位
+        ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+monitor_object_metric_group:
+  Transmission:
+    Base: 基础
+    Traffic: 流量
+    Temperature: 温度
+    Hardware Status: 硬件状态

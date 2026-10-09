@@ -7,7 +7,8 @@ from apps.core.logger import safe_log_value
 from apps.core.utils.exempt import api_exempt
 from apps.core.utils.team_utils import get_current_team
 from apps.opspilot.enum import SkillChannelChoices
-from apps.opspilot.models import SkillChannel
+from apps.opspilot.memory.identity import resolve_system_user_uuid
+from apps.opspilot.models import SkillChannel, UserWebchatPreference
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, CallerIdentityError, capture_caller_identity, mark_api_secret_identity
 from apps.opspilot.services.session_context_usage import summarize_skill_session_usage
 from apps.opspilot.services.skill_channel_chat_service import (
@@ -58,13 +59,41 @@ def _serialize_saas_skill_channels(qs):
 
 
 def list_platform_skill_channels(request):
-    """当前用户有权限的已启用平台渠道列表（供悬浮壳等消费）。"""
+    """当前用户有权限的已启用平台渠道列表（供悬浮壳等消费）。
+
+    webchat_width 为当前用户保存的悬浮栏宽度；没有记录时返回默认值，不写库。
+    """
     if not getattr(request, "user", None) or not request.user.is_authenticated:
         return JsonResponse({"result": False, "message": "未登录"}, status=401)
     current_team = request.COOKIES.get("current_team") or get_current_team(request) or "0"
     group_list = getattr(request.user, "group_list", None) or []
     qs = platform_channels_for_team(current_team, group_list)
-    return JsonResponse({"result": True, "data": _serialize_saas_skill_channels(qs)})
+    user_id = resolve_system_user_uuid(request.user, assign_if_missing=False)
+    return JsonResponse(
+        {
+            "result": True,
+            "data": _serialize_saas_skill_channels(qs),
+            "webchat_width": UserWebchatPreference.width_for_user_id(user_id),
+        }
+    )
+
+
+def save_platform_webchat_width(request):
+    """保存当前用户的悬浮对话栏宽度。"""
+    if request.method != "POST":
+        return JsonResponse({"result": False, "message": "method not allowed"}, status=405)
+    if not getattr(request, "user", None) or not request.user.is_authenticated:
+        return JsonResponse({"result": False, "message": "未登录"}, status=401)
+    user_id = resolve_system_user_uuid(request.user, assign_if_missing=True)
+    if not user_id:
+        return JsonResponse({"result": False, "message": "用户标识缺失"}, status=400)
+    payload, error = parse_json_body(request)
+    if error:
+        return JsonResponse({"result": False, "message": error}, status=400)
+    if "width" not in payload:
+        return JsonResponse({"result": False, "message": "width 必填"}, status=400)
+    width = UserWebchatPreference.save_width_for_user_id(user_id, payload.get("width"))
+    return JsonResponse({"result": True, "webchat_width": width})
 
 
 def list_web_chat_skill_channels(request):

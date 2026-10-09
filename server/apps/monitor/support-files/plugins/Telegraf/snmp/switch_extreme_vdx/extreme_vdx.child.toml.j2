@@ -1,0 +1,144 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_extreme_vdx"
+        config_type = "extreme_vdx"
+        brand = "extreme_vdx"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- 每槽 CPU：BROCADE-MODULE-CPU-UTIL-MIB bcsiModuleCpuUtil100thPercent，INDEX slot+interval，0.01% ----
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1588.3.1.12.1.1.1.3"
+        name = "usage"
+    # ---- 每槽内存：BROCADE-MODULE-MEM-UTIL-MIB total/available KB + util 0.01% ----
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1588.3.1.13.1.1.1.2"
+        name = "total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1588.3.1.13.1.1.1.3"
+        name = "free"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1588.3.1.13.1.1.1.4"
+        name = "usage"
+
+[[processors.starlark]]
+    namepass = ["device_cpu", "device_memory"]
+    source = '''
+def is_sentinel(v):
+    if v == None:
+        return True
+    n = int(v)
+    if n == 65535:
+        return True
+    if n == 65534:
+        return True
+    if n == -1:
+        return True
+    if n == 2147483647:
+        return True
+    if n == -2147483648:
+        return True
+    if n == 4294967295:
+        return True
+    return False
+
+def apply(metric):
+    if metric.name == "device_cpu":
+        idx = metric.tags.get("index") or ""
+        parts = idx.split(".")
+        if len(parts) < 2:
+            return None
+        slot = parts[0]
+        interval = parts[1]
+        if interval != "300":
+            return None
+        metric.tags["slot"] = slot
+        if "index" in metric.tags:
+            metric.tags.pop("index")
+        raw = metric.fields.get("usage")
+        if raw == None or is_sentinel(raw):
+            return None
+        scaled = float(raw) / 100.0
+        if scaled < 0 or scaled > 100:
+            return None
+        metric.fields["usage"] = scaled
+        return metric
+    if metric.name == "device_memory":
+        idx = metric.tags.get("index") or ""
+        if idx == "":
+            return None
+        metric.tags["slot"] = idx
+        if "index" in metric.tags:
+            metric.tags.pop("index")
+        total_raw = metric.fields.get("total")
+        total_bytes = None
+        if total_raw == None or is_sentinel(total_raw) or int(total_raw) <= 0:
+            if "total" in metric.fields:
+                metric.fields.pop("total")
+        else:
+            total_bytes = int(total_raw) * 1024
+            metric.fields["total"] = total_bytes
+        free_raw = metric.fields.get("free")
+        if free_raw == None or is_sentinel(free_raw) or int(free_raw) < 0:
+            if "free" in metric.fields:
+                metric.fields.pop("free")
+        else:
+            free_bytes = int(free_raw) * 1024
+            if total_bytes == None or free_bytes > total_bytes:
+                if "free" in metric.fields:
+                    metric.fields.pop("free")
+            else:
+                metric.fields["free"] = free_bytes
+        usage_raw = metric.fields.get("usage")
+        if usage_raw == None or is_sentinel(usage_raw):
+            if "usage" in metric.fields:
+                metric.fields.pop("usage")
+        else:
+            scaled = float(usage_raw) / 100.0
+            if scaled < 0 or scaled > 100:
+                if "usage" in metric.fields:
+                    metric.fields.pop("usage")
+            else:
+                metric.fields["usage"] = scaled
+        f = metric.fields
+        if len(f.keys()) == 0:
+            return None
+        return metric
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["extreme_vdx"]

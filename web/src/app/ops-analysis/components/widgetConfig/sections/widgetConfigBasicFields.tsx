@@ -1,6 +1,5 @@
 import React from 'react';
-import { Form, Input, Segmented, Select } from 'antd';
-import { canConfigureScreenWidgetFrame } from '@/app/ops-analysis/(pages)/view/screen/utils/layoutUtils';
+import { Form, Input, Select } from 'antd';
 import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
 import { ConfigSectionTitle } from '../configTitles';
 
@@ -14,7 +13,6 @@ interface WidgetConfigBasicFieldsProps {
 
 export const WidgetConfigBasicFields: React.FC<WidgetConfigBasicFieldsProps> = ({
   t,
-  chartType,
   showChartThemeMode,
   isNetworkStatusTopology,
   surface,
@@ -32,12 +30,14 @@ export const WidgetConfigBasicFields: React.FC<WidgetConfigBasicFieldsProps> = (
       <Input placeholder={t('dashboard.inputName')} />
     </Form.Item>
 
-    <Form.Item label={t('dataSource.describe')} name="description">
-      <Input.TextArea
-        placeholder={t('common.inputMsg')}
-        autoSize={{ minRows: 2, maxRows: 3 }}
-      />
-    </Form.Item>
+    {surface === 'screen' ? null : (
+      <Form.Item label={t('dataSource.describe')} name="description">
+        <Input.TextArea
+          placeholder={t('common.inputMsg')}
+          autoSize={{ minRows: 2, maxRows: 3 }}
+        />
+      </Form.Item>
+    )}
 
     {showChartThemeMode && !isNetworkStatusTopology && (
       <Form.Item
@@ -58,29 +58,6 @@ export const WidgetConfigBasicFields: React.FC<WidgetConfigBasicFieldsProps> = (
             {
               label: t('dashboard.chartThemeModeScreenLight'),
               value: 'screen-light',
-            },
-          ]}
-        />
-      </Form.Item>
-    )}
-
-    {surface === 'screen' && canConfigureScreenWidgetFrame(chartType) && (
-      <Form.Item
-        label={t('opsAnalysis.screen.widgetAppearance')}
-        name={['appearance', 'frame']}
-        initialValue="panel"
-      >
-        <Segmented
-          block
-          className="w-60 max-w-full"
-          options={[
-            {
-              label: t('opsAnalysis.screen.widgetFramePanel'),
-              value: 'panel',
-            },
-            {
-              label: t('opsAnalysis.screen.widgetFrameBare'),
-              value: 'bare',
             },
           ]}
         />

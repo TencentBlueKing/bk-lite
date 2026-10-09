@@ -1,0 +1,112 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_aruba_instant"
+        config_type = "aruba_instant"
+        brand = "aruba_instant"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- AI-AP-MIB aiAccessPointTable 1.3.6.1.4.1.14823.2.3.3.1.2.1（INDEX aiAPMACAddress）----
+    # 仅在 Virtual Controller 激活的节点上有行，请对 VC 地址建实例。列 OID 走表，不带 .0；index 为 AP MAC（点分十进制）。
+    # 单表一次走表，aiAPName 只取一次；下方 starlark 拆为 device_cpu / device_memory / wireless_ap 三个测量，指标名不变。
+    # aiAPName ...1.2.1.1.2 作 ap_name 标签；aiAPCPUUtilization ...1.2.1.1.7 为 CPU 百分比 → device_cpu_usage。
+    # aiAPTotalMemory ...1.2.1.1.10 / aiAPMemoryFree ...1.2.1.1.8，单位字节 → device_memory_total / free，并计算 used 与 usage。
+    # aiAPStatus ...1.2.1.1.11：up(1) / down(2) → wireless_ap_state。
+    [[inputs.snmp.table]]
+        name = "aruba_instant_ap"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.14823.2.3.3.1.2.1.1.2"
+        name = "ap_name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.14823.2.3.3.1.2.1.1.7"
+        name = "cpu_usage"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.14823.2.3.3.1.2.1.1.10"
+        name = "memory_total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.14823.2.3.3.1.2.1.1.8"
+        name = "memory_free"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.14823.2.3.3.1.2.1.1.11"
+        name = "status"
+
+# ---- 按 AP 拆分测量：device_cpu.usage、device_memory.total/free/used/usage（used = total - free，usage = used / total × 100，total 缺失或为 0 时不计算）、wireless_ap.state。----
+[[processors.starlark]]
+    namepass = ["aruba_instant_ap"]
+    source = '''
+def child(metric, name):
+    m = Metric(name)
+    for key, value in metric.tags.items():
+        m.tags[key] = value
+    m.time = metric.time
+    return m
+
+def apply(metric):
+    out = []
+    f = metric.fields
+    if f.get("cpu_usage") != None:
+        cpu = child(metric, "device_cpu")
+        cpu.fields["usage"] = f["cpu_usage"]
+        out.append(cpu)
+    total = f.get("memory_total")
+    free = f.get("memory_free")
+    if total != None or free != None:
+        mem = child(metric, "device_memory")
+        if total != None:
+            mem.fields["total"] = total
+        if free != None:
+            mem.fields["free"] = free
+        if total != None and free != None and int(total) > 0:
+            used = int(total) - int(free)
+            mem.fields["used"] = used
+            mem.fields["usage"] = used * 100.0 / int(total)
+        out.append(mem)
+    if f.get("status") != None:
+        ap = child(metric, "wireless_ap")
+        ap.fields["state"] = f["status"]
+        out.append(ap)
+    return out
+'''
+    [processors.starlark.tagpass]
+        brand = ["aruba_instant"]
+
+# ---- AP 状态归一：up(1)→1(正常)，down(2) 及其余→2(异常)。----
+[[processors.enum]]
+    namepass = ["wireless_ap"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+    [processors.enum.tagpass]
+        brand = ["aruba_instant"]

@@ -27,9 +27,22 @@ BASE_METRICS = (
     "device_total_incoming_traffic",
     "device_total_outgoing_traffic",
 )
-UNSUPPORTED_HEALTH_METRICS = (
+SNMP_FLOOR = {
+    "snmp_uptime",
+    "interface_ifHCInOctets",
+    "interface_ifHCOutOctets",
+}
+COLLECTED_HEALTH_METRICS = {
     "device_cpu_usage",
     "device_memory_usage",
+    "device_health_score",
+}
+HEALTH_METRIC_OIDS = {
+    "device_cpu_usage": "1.3.6.1.4.1.9148.3.2.1.1.1.0",
+    "device_memory_usage": "1.3.6.1.4.1.9148.3.2.1.1.2.0",
+    "device_health_score": "1.3.6.1.4.1.9148.3.2.1.1.3.0",
+}
+UNSUPPORTED_HEALTH_METRICS = (
     "device_memory_used",
     "device_memory_free",
     "device_temperature_celsius",
@@ -124,19 +137,27 @@ def test_snmpv3_passwords_use_runtime_env_placeholders(toml_text):
 @pytest.mark.unit
 def test_private_health_oids_are_not_guessed(metrics, policy, toml_text):
     names = {m["name"] for m in metrics["metrics"]}
+    assert COLLECTED_HEALTH_METRICS <= names
+    assert "1.3.6.1.4.1.9148" in toml_text
+    for name, oid in HEALTH_METRIC_OIDS.items():
+        assert oid in toml_text, f"{name} must keep explicit OID {oid}"
     for absent in UNSUPPORTED_HEALTH_METRICS:
         assert absent not in names
         assert absent not in toml_text
-    assert "1.3.6.1.4.1.9148" not in toml_text
-    assert policy["templates"] == []
+    known = {m["name"] for m in metrics["metrics"]}
+    policy_metrics = {t["metric_name"] for t in policy["templates"]}
+    assert policy_metrics <= known
+    assert policy_metrics == COLLECTED_HEALTH_METRICS
 
 
 @pytest.mark.unit
 def test_metrics_json_embeds_deployed_snmp_floor(metrics):
     names = {metric["name"] for metric in metrics["metrics"]}
-    expected = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
-    assert names == expected
-    assert set(metrics.get("supplementary_indicators", [])) == {"snmp_uptime"}
+    assert SNMP_FLOOR <= names
+    assert names - SNMP_FLOOR == COLLECTED_HEALTH_METRICS
+    supplementary = set(metrics.get("supplementary_indicators", []))
+    assert supplementary <= names
+    assert {"snmp_uptime"} | COLLECTED_HEALTH_METRICS <= supplementary
 
 
 @pytest.mark.unit

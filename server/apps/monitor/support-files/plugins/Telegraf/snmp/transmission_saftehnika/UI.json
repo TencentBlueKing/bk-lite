@@ -351,8 +351,8 @@
       "required": true,
       "editable": true,
       "default_value": "integra-b",
-      "description": "选择 Integra-B 或 Integra-W。两套系统树不得混采，否则会轮询对端不存在的 OID。",
-      "description_en": "Select Integra-B or Integra-W. The two system trees must not be mixed, otherwise missing OIDs are polled.",
+      "description": "选择 Integra-B、Integra-W 或 MPMUX。三套系统树不得混采，否则会轮询对端不存在的 OID。",
+      "description_en": "Select Integra-B, Integra-W or MPMUX. The three system trees must not be mixed, otherwise missing OIDs are polled.",
       "options": [
         {
           "label": "Integra-B",
@@ -363,6 +363,11 @@
           "label": "Integra-W",
           "value": "integra-w",
           "label_en": "Integra-W"
+        },
+        {
+          "label": "MPMUX",
+          "value": "mpmux",
+          "label_en": "MPMUX"
         }
       ],
       "widget_props": {

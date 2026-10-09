@@ -60,48 +60,50 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
-    # ---- CPU：sysMonitorCPUUsage 标量，DisplayString 百分比文本，解析为 device_cpu_usage / cpu_usage_percent ----
-    # OID 1.3.6.1.4.1.841.1.1.3.9.1.0。starlark 去掉 % 后转为 0-100 数值。
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.841.1.1.3.9.1"
-        name = "usage"
-    # ---- 内存：sysMonitorRAMUsage 标量，DisplayString 百分比文本，解析为 device_memory_usage / memory_usage_percent ----
-    # OID 1.3.6.1.4.1.841.1.1.3.9.2.0。
-    [[inputs.snmp.table]]
-        name = "device_memory"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.841.1.1.3.9.2"
-        name = "usage"
-    # ---- 可选温度：currentUnitTemp（temperature 1.3.6.1.4.1.841.1.1.3.8.1.0，Integer32 ℃）。设备无响应时该字段缺省，不伪造。----
-    [[inputs.snmp.table]]
-        name = "device_temperature"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.841.1.1.3.8.1"
-        name = "celsius"
+    # ---- PROXIM-MIB 设备健康标量（PEN 841，deviceMon …841.1.1.3）：顶层 field 带实例 .0 直接 GET，落 measurement snmp，查询用 snmp_ 前缀 ----
+    # sysMonitorCPUUsage .3.9.1.0 / sysMonitorRAMUsage .3.9.2.0：DisplayString 百分比文本，下方 starlark 去 % 转 0-100 数值，空串或非数字时丢弃该字段。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.841.1.1.3.9.1.0"
+        name = "device_cpu_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.841.1.1.3.9.2.0"
+        name = "device_memory_usage"
+    # currentUnitTemp .3.8.1.0：Integer32 整 ℃，可选；设备无响应时该字段缺省，不伪造。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.841.1.1.3.8.1.0"
+        name = "device_temperature_celsius"
+        conversion = "int"
 
 [[processors.starlark]]
-    namepass = ["device_cpu", "device_memory"]
+    namepass = ["snmp"]
     source = '''
 def parse_percent(raw):
-    if raw == None:
-        return None
     text = str(raw).strip()
     if text.endswith("%"):
         text = text[:-1].strip()
-    if text == "":
+    if text == "" or text == ".":
         return None
+    dots = 0
+    for i in range(len(text)):
+        c = text[i]
+        if c == ".":
+            dots += 1
+            if dots > 1:
+                return None
+        elif not c.isdigit():
+            return None
     return float(text)
 
 def apply(metric):
-    parsed = parse_percent(metric.fields.get("usage"))
-    if parsed == None:
-        return None
-    metric.fields["usage"] = parsed
+    for key in ("device_cpu_usage", "device_memory_usage"):
+        raw = metric.fields.get(key)
+        if raw == None:
+            continue
+        parsed = parse_percent(raw)
+        if parsed == None:
+            metric.fields.pop(key)
+        else:
+            metric.fields[key] = parsed
     return metric
 '''
     [processors.starlark.tagpass]

@@ -1,0 +1,51 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_digi_transport"
+        config_type = "digi_transport"
+        brand = "digi_transport"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Digi TransPort / Sarian 系统状态（SARIAN-MONITOR-MIB sarianSystem = 1.3.6.1.4.1.16378.10000.3）：标量，顶层 field 带 .0 → measurement snmp ----
+    # cpuUtil .1.0：当前 CPU 使用率（Integer32 0..100 %）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.16378.10000.3.1.0"
+        name = "device_cpu_usage"
+    # temperature .11.0：设备内部温度 ℃。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.16378.10000.3.11.0"
+        name = "device_temperature_celsius"
+    # processorTemperature .12.0 / modemTemperature .13.0：处理器 / 蜂窝模块温度 ℃（无对应部件的机型不返回）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.16378.10000.3.12.0"
+        name = "device_processor_temperature_celsius"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.16378.10000.3.13.0"
+        name = "device_modem_temperature_celsius"
+# ---- 内存：msgsFree / bufsFree 为空闲报文 / 缓冲区个数，不是 RAM 容量或利用率 → 内存 N/A 不采。风扇/电源：MIB 无状态对象 → N/A 不采。----
