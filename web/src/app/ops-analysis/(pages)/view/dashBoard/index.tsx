@@ -89,11 +89,13 @@ import {
 } from '@/app/ops-analysis/api/canvasDraft';
 import { bindCanvasDraftControls } from '@/app/ops-analysis/components/canvasDraftControls';
 import {
+  applyChangedDefaultsIfStillOnPrevious,
   applySelectedOrganizationToFilterValues,
   fillMissingOrganizationFilterValues,
   isOrganizationFilterDefinition,
   normalizeStoredFilterState,
   buildFilterConfigConfirmSnapshot,
+  recomputeTimeRangeValuesFromDefaults,
   resolveCanvasOrganizationId,
 } from '@/app/ops-analysis/utils/unifiedFilterState';
 import { useShareOrganization } from '@/app/ops-analysis/context/shareOrganization';
@@ -465,9 +467,27 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       );
     }, [namespaceOptions, namespaceDraftId, t]);
 
+    const dashboardLoadSeqRef = useRef(0);
+    const loadCanvasNamespacesRef = useRef(loadCanvasNamespaces);
+    const syncDashboardCanvasResourcesRef = useRef(syncDashboardCanvasResources);
+    const selectedDashboardRef = useRef(selectedDashboard);
+    loadCanvasNamespacesRef.current = loadCanvasNamespaces;
+    syncDashboardCanvasResourcesRef.current = syncDashboardCanvasResources;
+    selectedDashboardRef.current = selectedDashboard;
+    const dashboardId = selectedDashboard?.data_id;
+
     useEffect(() => {
+      const requestId = dashboardLoadSeqRef.current + 1;
+      dashboardLoadSeqRef.current = requestId;
+      const isCurrentLoad = () => dashboardLoadSeqRef.current === requestId;
+
       const loadDashboardData = async () => {
-        if (!selectedDashboard) {
+        if (!isCurrentLoad()) {
+          return;
+        }
+        const dashboard = selectedDashboardRef.current;
+        if (!dashboard || dashboard.data_id !== dashboardId) {
+          setLoading(false);
           setCollapsedGroupsLayoutReadyId(null);
           setLayout([]);
           setOriginalLayout([]);
@@ -483,8 +503,11 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         try {
           setLoading(true);
           const dashboardData = await getDashboardDetailRef.current(
-            selectedDashboard.data_id,
+            dashboard.data_id,
           );
+          if (!isCurrentLoad()) {
+            return;
+          }
           const nextLayout = deserializeDashboardGridStackLayout(
             dashboardData.view_sets,
           ).map((item) => {
@@ -509,7 +532,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                       valueConfig.dataSourceParams,
                     );
                     logStringParamMigrationWarnings(migratedParams.warnings, {
-                      canvasId: selectedDashboard.data_id,
+                      canvasId: dashboard.data_id,
                     });
                     return { dataSourceParams: migratedParams.params };
                   })()
@@ -517,17 +540,20 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
               },
             };
           });
-          await syncDashboardCanvasResources(nextLayout);
+          await syncDashboardCanvasResourcesRef.current(nextLayout);
+          if (!isCurrentLoad()) {
+            return;
+          }
           if (nextLayout.length) {
             setLayout(nextLayout);
             setOriginalLayout([...nextLayout]);
           } else {
             setLayout([]);
             setOriginalLayout([]);
-            void loadCanvasNamespaces([]);
+            void loadCanvasNamespacesRef.current([]);
           }
 
-          setCollapsedGroupsLayoutReadyId(selectedDashboard.data_id);
+          setCollapsedGroupsLayoutReadyId(dashboard.data_id);
 
           const savedOtherConfig = dashboardData.other || {};
           setOtherConfig(savedOtherConfig);
@@ -542,7 +568,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             normalizeStoredFilterState(
               rawFilters,
               renderMode ? (renderFilterValues ?? {}) : {},
-              { canvasId: selectedDashboard.data_id },
+              { canvasId: dashboard.data_id },
             );
 
           const initialValues = fillMissingOrganizationFilterValues(
@@ -560,8 +586,11 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           setAppliedFilterValues(initialValues);
           setOriginalDefinitions([...loadedDefinitions]);
         } catch (error) {
+          if (!isCurrentLoad()) {
+            return;
+          }
           console.error('加载仪表盘数据失败:', error);
-          setCollapsedGroupsLayoutReadyId(selectedDashboard.data_id);
+          setCollapsedGroupsLayoutReadyId(dashboard.data_id);
           setLayout([]);
           setOriginalLayout([]);
           setOtherConfig({});
@@ -575,7 +604,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             emittedRenderSignalRef.current = true;
             emitDashboardRenderSignal({
               type: 'report-failed',
-              dashboardId: String(selectedDashboard.data_id),
+              dashboardId: String(dashboard.data_id),
               widgets: [],
               error:
                 error instanceof Error
@@ -584,14 +613,19 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             });
           }
         } finally {
-          setLoading(false);
+          if (isCurrentLoad()) {
+            setLoading(false);
+          }
         }
       };
-      loadDashboardData();
+      void loadDashboardData();
+      return () => {
+        if (dashboardLoadSeqRef.current === requestId) {
+          dashboardLoadSeqRef.current += 1;
+        }
+      };
     }, [
-      selectedDashboard?.data_id,
-      loadCanvasNamespaces,
-      syncDashboardCanvasResources,
+      dashboardId,
       renderMode,
       renderFilterValues,
     ]);
@@ -1068,6 +1102,24 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           view_sets: serializeDashboardGridStackLayout(layout),
         };
         await saveDashboard(selectedDashboard.data_id, saveData);
+        const previousDefinitions = originalDefinitions;
+        const nextDraft = applyChangedDefaultsIfStillOnPrevious(
+          previousDefinitions,
+          definitions,
+          filterValues,
+        );
+        const nextApplied = applyChangedDefaultsIfStillOnPrevious(
+          previousDefinitions,
+          definitions,
+          appliedFilterValues,
+        );
+        if (nextDraft.updatedIds.length > 0) {
+          setFilterValues(nextDraft.values);
+        }
+        if (nextApplied.updatedIds.length > 0) {
+          applyQueryState(definitions, nextApplied.values, appliedNamespaceId);
+          setFilterSearchVersion((prev) => prev + 1);
+        }
         setOriginalLayout([...layout]);
         setOriginalOtherConfig({ ...otherConfig });
         setOriginalDefinitions([...definitions]);
@@ -1116,9 +1168,12 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     }, [enterFullscreen, exitFullscreen, isEditMode, isFullscreen]);
 
     const handleCancelEdit = () => {
-      const revertedFilterValues = syncFilterValuesWithDefinitions(
+      const revertedFilterValues = recomputeTimeRangeValuesFromDefaults(
         originalDefinitions,
-        appliedFilterValues,
+        syncFilterValuesWithDefinitions(
+          originalDefinitions,
+          appliedFilterValues,
+        ),
       );
 
       setLayout([...originalLayout]);

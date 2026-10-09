@@ -25,7 +25,6 @@ dashboards:
   other:
     timeSelector:
       selectValue: 10080
-      rangePickerVaule: null
   view_sets:
   - h: 3
     w: 2
@@ -998,7 +997,6 @@ dashboards:
   other:
     timeSelector:
       selectValue: 10080
-      rangePickerVaule: null
   view_sets:
   - h: 3
     w: 4

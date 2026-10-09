@@ -17,7 +17,6 @@ dashboards:
   other:
     timeSelector:
       selectValue: 10080
-      rangePickerVaule: null
   view_sets:
   - {h: 3, w: 4, x: 0, y: 0, i: mon-stat-r01, name: 监控对象总数, moved: false, static: false, description: '系统已定义的全部监控对象', valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [monitor_object_total], thresholdColors: [{color: '#366ce4', value: '70'}, {color: '#366ce4', value: '30'}, {color: '#366ce4', value: '0'}]}}
   - {h: 3, w: 4, x: 4, y: 0, i: mon-stat-r02, name: 可见监控对象数, moved: false, static: false, description: '当前用户可见的监控对象', valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [monitor_object_visible], thresholdColors: [{color: '#366ce4', value: '70'}, {color: '#366ce4', value: '30'}, {color: '#366ce4', value: '0'}]}}
