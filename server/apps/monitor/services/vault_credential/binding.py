@@ -432,12 +432,14 @@ def _object_category(plugin):
 def _target_from_field(field):
     transform = field.get("transform_on_edit") or {}
     origin = str(transform.get("origin_path") or "")
-    regex = ((transform.get("to_form") or {}) if isinstance(transform.get("to_form"), dict) else {}).get("regex")
+    to_form = transform.get("to_form") if isinstance(transform.get("to_form"), dict) else {}
+    regex = to_form.get("regex")
     target = {
         "field": field.get("name"),
         "encrypted": bool(field.get("encrypted")),
         "required": bool(field.get("required")),
         "regex": regex or None,
+        "url_encode": bool(transform.get("url_encode")),
         "scope": "base" if origin.startswith("base.") else "child",
     }
     if ".env_config." in origin:
