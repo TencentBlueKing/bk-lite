@@ -260,7 +260,7 @@ const PolicyGroupPage: React.FC = () => {
       ),
     },
     {
-      title: '已加入实例',
+      title: '实例',
       dataIndex: 'member_count',
       key: 'member_count',
       width: 120,
