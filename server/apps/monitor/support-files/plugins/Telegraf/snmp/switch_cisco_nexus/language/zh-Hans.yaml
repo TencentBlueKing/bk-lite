@@ -89,7 +89,7 @@ monitor_object_metric:
     device_fan_state:
       name: 风扇状态
       desc: 该指标报告 Cisco Nexus 风扇托盘运行状态（CISCO-ENTITY-FRU-CONTROL-MIB cefcFanTrayOperStatus），归一为
-        1=正常 / 2=异常。up(2) 映射为 1；unknown(1)、down(3)、warning(4) 映射为 2；未定义值丢弃。取值为
+        1=正常 / 2=异常 / 3=未知。up(2) 映射为 1；down(3)、warning(4) 映射为 2；unknown(1) 映射为 3（灰、不告警）；未定义值丢弃。取值为
         2 表示散热故障，可能迅速导致过热。
     device_psu_state:
       name: 电源状态

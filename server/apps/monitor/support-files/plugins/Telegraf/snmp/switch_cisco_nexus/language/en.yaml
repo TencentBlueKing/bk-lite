@@ -150,9 +150,10 @@ monitor_object_metric:
     device_fan_state:
       name: Fan Status
       desc: Operational state of each Cisco Nexus fan tray (CISCO-ENTITY-FRU-CONTROL-MIB
-        cefcFanTrayOperStatus), normalized to 1=normal / 2=abnormal. up(2) maps to
-        1; unknown(1), down(3) and warning(4) map to 2; undefined values are dropped.
-        A value of 2 indicates a cooling fault that can quickly lead to overheating.
+        cefcFanTrayOperStatus), normalized to 1=normal / 2=abnormal / 3=Unknown. up(2)
+        maps to 1; down(3) and warning(4) map to 2; unknown(1) maps to 3 (gray, no
+        alert); undefined values are dropped. A value of 2 indicates a cooling fault
+        that can quickly lead to overheating.
     device_psu_state:
       name: Power Supply Status
       desc: Operational state of each Cisco Nexus power supply (CISCO-ENTITY-FRU-CONTROL-MIB
