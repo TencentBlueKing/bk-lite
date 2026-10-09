@@ -31,8 +31,8 @@ monitor_object_metric:
       name: 空闲内存
       desc: Dialogic IMG 2020 当前空闲内存，单位为字节。该表没有总量对象，因此不推导内存使用率；空闲内存持续降低可能表示媒体会话或控制服务存在内存压力。
     device_temperature_celsius:
-      name: 设备温度
-      desc: Dialogic IMG 2020 温度读数，单位摄氏度。温度持续升高可能表示散热异常、环境温度过高或设备负载过高。
+      name: 位置温度
+      desc: Dialogic IMG 2020 各位置温度读数，单位摄氏度（按 location 分系列，不是整机最高值）。某位置温度持续升高可能表示散热异常、环境过热或设备负载过高。
 monitor_object_metric_group:
   VoiceGateway:
     Base: 基础

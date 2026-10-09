@@ -50,7 +50,7 @@
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
       "query": "device_temperature_celsius{instance_type='voice_gateway', __$labels__}",
-      "display_name": "Device Temperature",
+      "display_name": "Location Temperature",
       "data_type": "Number",
       "unit": "celsius",
       "dimensions": [
@@ -62,7 +62,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Highest temperature reading of the Dialogic IMG 2020 in degrees Celsius."
+      "description": "Per-location temperature of the Dialogic IMG 2020 in degrees Celsius (one series per temperature location; not a device-wide max)."
     },
     {
       "metric_group": "Traffic",

@@ -49,10 +49,10 @@ monitor_object_metric:
         object, so utilization is not derived. Persistently decreasing free memory
         can indicate pressure from media sessions or control services.
     device_temperature_celsius:
-      name: Device Temperature
-      desc: Temperature of the Dialogic IMG 2020 in degrees Celsius. Persistently
-        high values may indicate cooling problems, high ambient temperature, or excessive
-        device load.
+      name: Location Temperature
+      desc: Per-location temperature of the Dialogic IMG 2020 in degrees Celsius (one
+        series per location tag). Persistently high values at a location may indicate
+        cooling problems, high ambient temperature, or excessive device load.
 monitor_object_metric_group:
   VoiceGateway:
     Base: Base
