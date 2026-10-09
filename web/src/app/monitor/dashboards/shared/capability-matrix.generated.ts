@@ -464,6 +464,17 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_hirschmann_hios",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "temperature",
+        "psu",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_hphpn",
       "capabilities": [
         "uptime",
