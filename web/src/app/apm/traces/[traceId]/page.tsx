@@ -1,9 +1,9 @@
 import { redirectWithQuery } from '@/app/apm/lib/redirect-with-query';
 
-type PageProps = {
+interface PageProps {
   params: Promise<{ traceId: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
-};
+}
 
 export default async function ApmTraceDetailLegacyRedirectPage({
   params,
