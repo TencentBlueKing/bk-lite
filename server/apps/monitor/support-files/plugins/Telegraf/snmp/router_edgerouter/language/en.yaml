@@ -15,6 +15,10 @@ monitor_object_metric:
       name: Fan Status
       desc: Operational state of each cooling fan (enum). A non-normal state indicates
         a cooling fault that can quickly lead to overheating.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     device_psu_state:
       name: Power Supply Status
       desc: Status of each EdgeRouter power supply (ubntPsuStatus), normalized to 1
