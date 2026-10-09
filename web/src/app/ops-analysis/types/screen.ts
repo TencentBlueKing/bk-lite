@@ -28,7 +28,8 @@ export type ScreenDisplayAdapter = ScreenFitAdapter | 'contain';
 
 export type ScreenBackgroundConfig =
   | { type: 'color'; color: string }
-  | { type: 'preset'; key: string };
+  | { type: 'preset'; key: string }
+  | { type: 'image'; src: string };
 
 export interface ScreenViewportConfig {
   width: number;
@@ -55,12 +56,14 @@ export type ScreenClockFormatId =
   | 'dddd HH:mm:ss';
 
 export type ScreenTextColorToken = 'canvas' | 'muted' | 'accent';
+/** 主题三档，或用户选定后不再跟随主题的 #RRGGBB。 */
+export type ScreenTextColor = ScreenTextColorToken | string;
 export type ScreenTextAlign = 'left' | 'center' | 'right';
 
 export interface ScreenTextStyleConfig {
   fontSize?: number;
   fontWeight?: number;
-  color?: ScreenTextColorToken;
+  color?: ScreenTextColor;
   align?: ScreenTextAlign;
 }
 

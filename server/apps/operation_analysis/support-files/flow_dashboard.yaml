@@ -22,7 +22,6 @@ dashboards:
   other:
     timeSelector:
       selectValue: 360
-      rangePickerVaule: null
   view_sets:
   - id: group-overview
     itemType: group
@@ -631,7 +630,6 @@ dashboards:
     type: timeRange
     defaultValue:
       selectValue: 360
-      rangePickerVaule: null
     order: 1
     enabled: true
 topologies: []

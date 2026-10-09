@@ -164,6 +164,27 @@ def test_normalize_screen_keeps_adapter_background_and_chrome_items():
     assert out["items"] == items
 
 
+def test_normalize_screen_keeps_custom_image_background_through_yaml_rewrite():
+    src = "data:image/png;base64,iVBORw0KGgo="
+    payload = {
+        "viewport": {
+            "width": 1920,
+            "height": 1080,
+            "background": {"type": "image", "src": src},
+        },
+        "items": [],
+        "decorations": {},
+    }
+    stored = vs.normalize_canvas_view_sets_for_storage(payload, ObjectType.SCREEN)
+    assert stored["viewport"]["background"] == {"type": "image", "src": src}
+
+    exported = vs.rewrite_canvas_view_sets_refs_for_yaml(stored, ObjectType.SCREEN, {})
+    assert exported["viewport"]["background"] == {"type": "image", "src": src}
+
+    imported = vs.rewrite_canvas_view_sets_refs_for_storage(exported, ObjectType.SCREEN, {})
+    assert imported["viewport"]["background"] == {"type": "image", "src": src}
+
+
 def test_validate_screen_allows_chrome_items_without_chart_type():
     from apps.operation_analysis.services.canvas_draft.validation import validate_projectable
 

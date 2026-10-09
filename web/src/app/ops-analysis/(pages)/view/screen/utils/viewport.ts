@@ -20,7 +20,10 @@ import {
   LEGACY_CLOCK_ID,
   LEGACY_TITLE_FRAME_ID,
 } from './screenItems';
-import { defaultWallpaperKeyForTheme } from './screenBackground';
+import {
+  defaultWallpaperKeyForTheme,
+  isScreenImageBackgroundSrc,
+} from './screenBackground';
 
 export interface ScreenViewportPreset {
   key: string;
@@ -50,7 +53,13 @@ const cloneBackground = (
   if (background.type === 'color') {
     return { type: 'color', color: background.color };
   }
-  return { type: 'preset', key: background.key };
+  if (background.type === 'image' && isScreenImageBackgroundSrc(background.src)) {
+    return { type: 'image', src: background.src };
+  }
+  if (background.type === 'preset' && background.key) {
+    return { type: 'preset', key: background.key };
+  }
+  return undefined;
 };
 
 const cloneViewport = (
@@ -159,6 +168,9 @@ const resolveBackground = (
     const source = value as Record<string, unknown>;
     if (source.type === 'color' && typeof source.color === 'string' && source.color.trim()) {
       return { type: 'color', color: source.color };
+    }
+    if (source.type === 'image' && isScreenImageBackgroundSrc(source.src)) {
+      return { type: 'image', src: source.src };
     }
     if (
       (source.type === 'preset' || source.type === 'builtIn') &&

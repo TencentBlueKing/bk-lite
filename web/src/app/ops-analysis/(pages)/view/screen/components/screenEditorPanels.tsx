@@ -12,6 +12,7 @@ import {
   Switch,
   Tag,
   Tooltip,
+  Upload,
 } from 'antd';
 import {
   AppstoreOutlined,
@@ -33,6 +34,7 @@ import {
   QuestionCircleOutlined,
   RightOutlined,
   SwapOutlined,
+  UploadOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { SCREEN_LAYER_DRAG_MIME } from '../utils/screenLayer';
@@ -45,7 +47,7 @@ import type {
   ScreenShapeKind,
   ScreenShapeStyle,
   ScreenTextAlign,
-  ScreenTextColorToken,
+  ScreenThemeId,
   ScreenTextStyleConfig,
   ScreenTitleFramePresetId,
   ScreenViewportConfig,
@@ -64,7 +66,10 @@ import {
 import {
   SCREEN_WALLPAPER_PRESETS,
   defaultWallpaperKeyForTheme,
+  SCREEN_BACKGROUND_IMAGE_MIME_TYPES,
+  isScreenImageBackgroundSrc,
   resolveScreenCanvasBackgroundStyle,
+  screenBackgroundImageRejection,
 } from '../utils/screenBackground';
 import { buildScreenElementList } from '../utils/screenElementList';
 import {
@@ -93,6 +98,7 @@ import { resolveScreenWidgetAppearance } from '../utils/layoutUtils';
 import {
   DecorationSkin,
   ScreenChromeSkinStyles,
+  isScreenTextHexColor,
   screenChromeTextStyle,
   titleFrameThumbSrc,
 } from './screenChromeSkins';
@@ -511,7 +517,7 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
             <div className="flex h-full items-center justify-center">
               <span
                 className="font-semibold leading-none tabular-nums tracking-[0.14em] text-(--screen-title-color)"
-                style={{ fontSize: 16, textShadow: '0 0 12px var(--screen-chrome-glow)' }}
+                style={{ fontSize: 16 }}
               >
                 12:00:00
               </span>
@@ -815,14 +821,27 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
 
 type TextStyleFieldKey = 'fontSize' | 'fontWeight' | 'color' | 'align';
 
+const textColorSwatch = (
+  color: ScreenTextStyleConfig['color'],
+  theme: ScreenThemeId,
+) => {
+  if (isScreenTextHexColor(color)) return color;
+  const variables = getScreenTheme(theme).variables;
+  if (color === 'muted') return String(variables['--screen-clock-color']);
+  if (color === 'accent') return String(variables['--screen-chrome-accent']);
+  return String(variables['--screen-title-color']);
+};
+
 const TextStyleFields: React.FC<{
   value?: ScreenTextStyleConfig;
+  theme?: ScreenThemeId;
   onChange: (next: ScreenTextStyleConfig) => void;
   fields?: TextStyleFieldKey[];
   minFontSize?: number;
   maxFontSize?: number;
 }> = ({
   value,
+  theme = 'screen-dark',
   onChange,
   fields = ['fontSize', 'fontWeight', 'color', 'align'],
   minFontSize = 12,
@@ -885,44 +904,17 @@ const TextStyleFields: React.FC<{
       ) : null}
 
       {show('color') ? (
-        <div className="space-y-1.5">
-          <div className="text-xs text-(--color-text-2)">{t('opsAnalysis.screen.textColor')}</div>
-          <Segmented
-            block
-            size="small"
-            value={style.color ?? 'canvas'}
-            onChange={(color) =>
-              onChange({ ...style, color: color as ScreenTextColorToken })
-            }
-            options={[
-              {
-                label: (
-                  <span className="flex items-center justify-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full border border-black/25 bg-[#f4fbff] shadow-xs" />
-                    <span>{t('opsAnalysis.screen.colorCanvas')}</span>
-                  </span>
-                ),
-                value: 'canvas',
-              },
-              {
-                label: (
-                  <span className="flex items-center justify-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full border border-black/15 bg-[#bae6fd]" />
-                    <span>{t('opsAnalysis.screen.colorMuted')}</span>
-                  </span>
-                ),
-                value: 'muted',
-              },
-              {
-                label: (
-                  <span className="flex items-center justify-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-[#00e5ff] shadow-xs" />
-                    <span>{t('opsAnalysis.screen.colorAccent')}</span>
-                  </span>
-                ),
-                value: 'accent',
-              },
-            ]}
+        <div className="flex items-center justify-between text-xs text-(--color-text-2)">
+          <span>{t('opsAnalysis.screen.textColor')}</span>
+          <ColorPicker
+            disabledAlpha
+            showText
+            value={textColorSwatch(style.color, resolveScreenThemeId(theme))}
+            onChangeComplete={(color) => {
+              const hex = `#${color.toHexString().replace('#', '').slice(0, 6)}`;
+              if (!isScreenTextHexColor(hex)) return;
+              onChange({ ...style, color: hex });
+            }}
           />
         </div>
       ) : null}
@@ -979,9 +971,72 @@ export const ScreenCanvasSettings: React.FC<ScreenCanvasSettingsProps> = ({
     )?.key || 'custom';
 
   const wallpapers = SCREEN_WALLPAPER_PRESETS.filter((item) => item.theme === theme);
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
+  const backgroundModeRef = useRef<'preset' | 'color' | 'image'>('preset');
+  const [imageError, setImageError] = useState<'type' | 'size' | null>(null);
+  const [backgroundMode, setBackgroundMode] = useState<'preset' | 'color' | 'image'>(
+    viewport.background?.type === 'image'
+      ? 'image'
+      : viewport.background?.type === 'color'
+        ? 'color'
+        : 'preset',
+  );
+  backgroundModeRef.current = backgroundMode;
+
+  const selectBackgroundMode = (mode: 'preset' | 'color' | 'image') => {
+    backgroundModeRef.current = mode;
+    setBackgroundMode(mode);
+  };
+
+  const backgroundType = viewport.background?.type;
+  useEffect(() => {
+    const mode =
+      backgroundType === 'image' ? 'image' : backgroundType === 'color' ? 'color' : 'preset';
+    backgroundModeRef.current = mode;
+    setBackgroundMode(mode);
+  }, [backgroundType]);
 
   const applyViewport = (next: ScreenViewportConfig) => {
     onChange(next);
+  };
+
+  const resetToThemePreset = () => {
+    setImageError(null);
+    selectBackgroundMode('preset');
+    applyViewport({
+      ...viewportRef.current,
+      background: {
+        type: 'preset',
+        key: defaultWallpaperKeyForTheme(theme),
+      },
+    });
+  };
+
+  const acceptBackgroundImage = (file: File) => {
+    const rejection = screenBackgroundImageRejection(file);
+    if (rejection) {
+      setImageError(rejection);
+      return;
+    }
+    const reader = new FileReader();
+    const fail = () => setImageError('type');
+    reader.onload = () => {
+      if (backgroundModeRef.current !== 'image') return;
+      const result = reader.result;
+      if (!isScreenImageBackgroundSrc(result)) {
+        fail();
+        return;
+      }
+      setImageError(null);
+      applyViewport({
+        ...viewportRef.current,
+        background: { type: 'image', src: result },
+      });
+    };
+    reader.onerror = fail;
+    reader.onabort = fail;
+    reader.readAsDataURL(file);
   };
 
   const commitSize = () => {
@@ -1039,11 +1094,13 @@ export const ScreenCanvasSettings: React.FC<ScreenCanvasSettingsProps> = ({
           }))}
           onChange={(nextTheme) => {
             const themeId = resolveScreenThemeId(nextTheme);
-            const keepColor = viewport.background?.type === 'color';
+            const keepBackground =
+              viewport.background?.type === 'color' ||
+              viewport.background?.type === 'image';
             applyViewport({
               ...viewport,
               theme: themeId,
-              background: keepColor
+              background: keepBackground
                 ? viewport.background
                 : { type: 'preset', key: defaultWallpaperKeyForTheme(themeId) },
             });
@@ -1146,30 +1203,74 @@ export const ScreenCanvasSettings: React.FC<ScreenCanvasSettingsProps> = ({
       >
         <Segmented
           block
-          value={viewport.background?.type === 'color' ? 'color' : 'preset'}
+          value={backgroundMode}
           options={[
             { label: t('opsAnalysis.screen.backgroundTypePreset'), value: 'preset' },
             { label: t('opsAnalysis.screen.backgroundTypeColor'), value: 'color' },
+            { label: t('opsAnalysis.screen.backgroundTypeImage'), value: 'image' },
           ]}
           onChange={(mode) => {
+            setImageError(null);
+            if (mode === 'image') {
+              selectBackgroundMode('image');
+              return;
+            }
             if (mode === 'color') {
+              selectBackgroundMode('color');
               applyViewport({
-                ...viewport,
+                ...viewportRef.current,
                 background: { type: 'color', color: '#071422' },
               });
-            } else {
-              applyViewport({
-                ...viewport,
-                background: {
-                  type: 'preset',
-                  key: defaultWallpaperKeyForTheme(theme),
-                },
-              });
+              return;
             }
+            resetToThemePreset();
           }}
         />
 
-        {viewport.background?.type === 'color' ? (
+        {backgroundMode === 'image' ? (
+          <div className="space-y-2 pt-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="shrink-0 text-xs text-(--color-text-2)">
+                {t('opsAnalysis.screen.backgroundTypeImage')}
+              </span>
+              <div className="flex min-w-0 items-center gap-2">
+                {viewport.background?.type === 'image' ? (
+                  <img
+                    alt=""
+                    src={viewport.background.src}
+                    className="h-9 w-14 shrink-0 rounded border border-(--color-border-1) object-cover"
+                  />
+                ) : null}
+                <Upload
+                  accept={SCREEN_BACKGROUND_IMAGE_MIME_TYPES.join(',')}
+                  showUploadList={false}
+                  beforeUpload={(file) => {
+                    acceptBackgroundImage(file);
+                    return false;
+                  }}
+                >
+                  <Button size="small" icon={<UploadOutlined />}>
+                    {t('opsAnalysis.screen.backgroundImageUpload')}
+                  </Button>
+                </Upload>
+                {viewport.background?.type === 'image' ? (
+                  <Button size="small" type="link" onClick={resetToThemePreset}>
+                    {t('opsAnalysis.screen.backgroundImageClear')}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+            {imageError ? (
+              <div className="text-xs text-(--color-error)">
+                {t(
+                  imageError === 'size'
+                    ? 'opsAnalysis.screen.backgroundImageTooLarge'
+                    : 'opsAnalysis.screen.backgroundImageBadType',
+                )}
+              </div>
+            ) : null}
+          </div>
+        ) : viewport.background?.type === 'color' ? (
           <div className="flex items-center justify-between pt-1">
             <span className="text-xs text-(--color-text-2)">
               {t('opsAnalysis.screen.customColor')}
@@ -1547,6 +1648,7 @@ export const ScreenStyleInspector: React.FC<ScreenStyleInspectorProps> = ({
           >
             <TextStyleFields
               value={item.textStyle}
+              theme={viewport.theme}
               onChange={(textStyle) => onChange({ ...item, textStyle })}
             />
           </InspectorSection>
@@ -1626,6 +1728,7 @@ export const ScreenStyleInspector: React.FC<ScreenStyleInspectorProps> = ({
           >
             <TextStyleFields
               value={item.textStyle}
+              theme={viewport.theme}
               minFontSize={14}
               maxFontSize={64}
               onChange={(textStyle) => onChange({ ...item, textStyle })}
@@ -1674,6 +1777,7 @@ export const ScreenStyleInspector: React.FC<ScreenStyleInspectorProps> = ({
           >
             <TextStyleFields
               value={item.textStyle}
+              theme={viewport.theme}
               fields={['fontSize', 'color']}
               minFontSize={12}
               maxFontSize={48}

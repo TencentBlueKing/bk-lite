@@ -1,5 +1,36 @@
 import type { CSSProperties } from 'react';
-import type { ScreenThemeId } from '@/app/ops-analysis/types/screen';
+import type {
+  ScreenBackgroundConfig,
+  ScreenThemeId,
+} from '@/app/ops-analysis/types/screen';
+
+export const SCREEN_BACKGROUND_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+
+export const SCREEN_BACKGROUND_IMAGE_MIME_TYPES = [
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+] as const;
+
+const IMAGE_SRC_PATTERN = new RegExp(
+  `^data:image/(${SCREEN_BACKGROUND_IMAGE_MIME_TYPES.map((type) => type.slice('image/'.length)).join('|')});base64,[A-Za-z0-9+/]+={0,2}$`,
+);
+
+export const isScreenImageBackgroundSrc = (value: unknown): value is string =>
+  typeof value === 'string' && IMAGE_SRC_PATTERN.test(value);
+
+export const screenBackgroundImageRejection = (file: {
+  type: string;
+  size: number;
+}): 'type' | 'size' | null => {
+  if (!(SCREEN_BACKGROUND_IMAGE_MIME_TYPES as readonly string[]).includes(file.type)) {
+    return 'type';
+  }
+  if (file.size > SCREEN_BACKGROUND_IMAGE_MAX_BYTES) {
+    return 'size';
+  }
+  return null;
+};
 
 export interface ScreenWallpaperPreset {
   key: string;
@@ -63,9 +94,17 @@ export const defaultWallpaperKeyForTheme = (theme?: ScreenThemeId) =>
   theme === 'screen-light' ? 'light-mist' : 'dark-glow';
 
 export const resolveScreenCanvasBackgroundStyle = (
-  background?: { type: 'color'; color: string } | { type: 'preset'; key: string },
+  background?: ScreenBackgroundConfig,
   theme?: ScreenThemeId,
 ): CSSProperties => {
+  if (background?.type === 'image' && isScreenImageBackgroundSrc(background.src)) {
+    return {
+      backgroundImage: `url("${background.src}")`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
+    };
+  }
   if (background?.type === 'color' && background.color) {
     return { background: background.color };
   }
