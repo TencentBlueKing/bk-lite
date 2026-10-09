@@ -440,6 +440,47 @@ def test_group_rule_and_standalone_rule_get_a_scan_task():
     assert list(standalone.policyorganization_set.values_list("organization", flat=True)) == [1]
 
 
+def test_copy_keeps_the_current_rule_after_the_template_is_gone():
+    monitor_object = _object()
+    wmi = _plugin(monitor_object, "WMI")
+    template = _template(monitor_object, wmi, "WMI CPU", threshold=80)
+    group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="主机默认告警",
+        templates=[template],
+    )
+    PolicyGroupService.set_default(group)
+    policy = group.rules.get().policy
+    metric_id = PolicyGroupService.metric_id_for_policy(policy)
+    assert PolicyGroupService.metric_names_for_policies([policy])[metric_id] == "cpu_usage_total"
+
+    policy.algorithm = "max"
+    policy.schedule = {"type": "min", "value": 15}
+    policy.notice_users = ["alice"]
+    policy.threshold = [{"level": "warning", "value": 95, "method": ">="}]
+    policy.save()
+    template.config = {**template.config, "metric_name": "mem_used", "threshold": [{"level": "warning", "value": 1, "method": ">="}]}
+    template.save(update_fields=["config"])
+    template.delete()
+
+    copied = PolicyGroupService.copy_group(group, name="副本")
+    cloned = copied.rules.get().policy
+    pointer = PolicyGroupDefault.objects.get(organization=1, monitor_object=monitor_object)
+
+    assert copied.memberships.count() == 0
+    assert pointer.policy_group_id == group.id
+    assert cloned.threshold[0]["value"] == 95
+    assert cloned.algorithm == "max"
+    assert cloned.schedule == {"type": "min", "value": 15}
+    assert cloned.notice_users == ["alice"]
+    assert cloned.query_condition["metric_id"] == metric_id
+    assert cloned.source == {"type": "instance", "values": []}
+    assert cloned.source_template_id is None
+    assert PolicyGroupService.metric_names_for_policies([cloned])[metric_id] == "cpu_usage_total"
+    assert PeriodicTask.objects.filter(name=f"scan_policy_task_{cloned.id}").exists()
+
+
 def test_closing_group_alerts_is_queued_for_the_alert_center(mocker, django_capture_on_commit_callbacks):
     notifier = mocker.Mock()
     mocker.patch("apps.monitor.services.alert_lifecycle_notify.AlertLifecycleNotifier", return_value=notifier)

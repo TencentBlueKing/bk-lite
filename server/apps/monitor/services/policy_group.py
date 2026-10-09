@@ -1,8 +1,11 @@
+import copy
+
 from django.db import transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.models import (
     CollectConfig,
+    Metric,
     MonitorAlert,
     MonitorInstanceOrganization,
     MonitorPolicy,
@@ -13,6 +16,44 @@ from apps.monitor.models import (
     PolicyInstanceBaseline,
     PolicyOrganization,
     PolicyTemplate,
+)
+
+_POLICY_CLONE_FIELDS = (
+    "alert_name",
+    "collect_type",
+    "query_condition",
+    "schedule",
+    "period",
+    "group_algorithm",
+    "algorithm",
+    "group_by",
+    "threshold",
+    "trigger_count",
+    "recovery_condition",
+    "metric_unit",
+    "calculation_unit",
+    "threshold_unit",
+    "compare_mode",
+    "compare_value_kind",
+    "compare_offset_hours",
+    "compare_offset_days",
+    "compare_baseline_weeks",
+    "count_predicate",
+    "forecast_target",
+    "forecast_target_unit",
+    "forecast_lookback",
+    "recovery_threshold",
+    "no_data_period",
+    "no_data_level",
+    "no_data_alert_name",
+    "no_data_recovery_period",
+    "notice",
+    "notice_type",
+    "notice_type_ids",
+    "notice_users",
+    "handlers",
+    "enable",
+    "enable_alerts",
 )
 from apps.monitor.services.policy import PolicyService
 
@@ -278,23 +319,79 @@ class PolicyGroupService:
         return rule
 
     @staticmethod
+    def metric_id_for_policy(policy):
+        query = policy.query_condition if isinstance(policy.query_condition, dict) else {}
+        if query.get("type") == "formula":
+            for item in query.get("queries") or []:
+                if isinstance(item, dict) and item.get("metric_id"):
+                    return item["metric_id"]
+            return None
+        return query.get("metric_id") or None
+
+    @staticmethod
+    def metric_names_for_policies(policies):
+        ids = []
+        for policy in policies:
+            metric_id = PolicyGroupService.metric_id_for_policy(policy)
+            if metric_id:
+                ids.append(metric_id)
+        if not ids:
+            return {}
+        return {row["id"]: row["name"] for row in Metric.objects.filter(id__in=ids).values("id", "name")}
+
+    @staticmethod
     def copy_group(group, *, name, operator="system"):
+        """按当前组内策略整份复制。模板后来的修改，以及模板是否还在，都不参与这次复制。"""
         rules = list(group.rules.select_related("plugin", "source_template", "policy").order_by("id"))
-        templates = [rule.source_template for rule in rules]
-        if any(template is None for template in templates):
-            raise BaseAppException("规则缺少来源模板，无法复制")
-        copied = PolicyGroupService.create_from_templates(
-            organization=group.organization,
+        with transaction.atomic():
+            copied = PolicyGroup.objects.create(
+                organization=group.organization,
+                monitor_object=group.monitor_object,
+                name=name,
+                origin=PolicyGroup.ORIGIN_CUSTOM,
+                created_by=operator,
+                updated_by=operator,
+            )
+            for rule in rules:
+                policy = PolicyGroupService._clone_policy(copied, rule.policy, operator)
+                PolicyGroupRule.objects.create(
+                    group=copied,
+                    plugin=rule.plugin,
+                    source_template=rule.source_template,
+                    policy=policy,
+                    name=rule.name,
+                    push_alert_center=rule.push_alert_center,
+                    created_by=operator,
+                    updated_by=operator,
+                )
+            return copied
+
+    @staticmethod
+    def _clone_policy(group, source_policy, operator):
+        fields = {}
+        for field in _POLICY_CLONE_FIELDS:
+            value = getattr(source_policy, field)
+            if isinstance(value, (dict, list)):
+                value = copy.deepcopy(value)
+            fields[field] = value
+        policy = MonitorPolicy.objects.create(
             monitor_object=group.monitor_object,
-            name=name,
-            templates=templates,
-            operator=operator,
+            name=(source_policy.name or "")[:100],
+            organizations=[group.organization],
+            source={"type": "instance", "values": []},
+            source_template=None,
+            created_by=operator,
+            updated_by=operator,
+            **fields,
         )
-        for source_rule, target_rule in zip(rules, copied.rules.order_by("id"), strict=True):
-            target_rule.policy.threshold = source_rule.policy.threshold
-            target_rule.policy.notice_users = list(source_rule.policy.notice_users or [])
-            target_rule.policy.save(update_fields=["threshold", "notice_users", "updated_at"])
-        return copied
+        PolicyOrganization.objects.create(
+            policy=policy,
+            organization=group.organization,
+            created_by=operator,
+            updated_by=operator,
+        )
+        PolicyGroupService.ensure_scan_task(policy)
+        return policy
 
     @staticmethod
     def save_rule_as_template(rule, *, operator="system"):

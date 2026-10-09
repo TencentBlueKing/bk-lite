@@ -34,20 +34,23 @@ def _group_in_scope(scope, group_id):
     return group
 
 
-def _serialize_group(group, default_id):
+def _serialize_group(group, default_id, metric_names=None):
     member_count = getattr(group, "joined_member_count", None)
     if member_count is None:
         member_count = group.memberships.filter(state=PolicyGroupMembership.STATE_MEMBER).count()
     rules = []
-    for rule in group.rules.select_related("plugin", "policy", "source_template"):
-        config = rule.source_template.config if rule.source_template_id else {}
+    for rule in group.rules.select_related("plugin", "policy"):
+        metric_id = PolicyGroupService.metric_id_for_policy(rule.policy)
+        metric_name = ""
+        if metric_id and metric_names is not None:
+            metric_name = metric_names.get(metric_id) or ""
         rules.append(
             {
                 "id": rule.id,
                 "name": rule.name,
                 "plugin_id": rule.plugin_id,
                 "plugin_name": rule.plugin.name,
-                "metric_name": (config or {}).get("metric_name") or "",
+                "metric_name": metric_name,
                 "threshold": rule.policy.threshold,
                 "notice_users": rule.policy.notice_users or [],
                 "policy_id": rule.policy_id,
@@ -84,7 +87,7 @@ class PolicyGroupViewSet(viewsets.ViewSet):
             if monitor_object is not None:
                 PolicyGroupService.ensure_default(organization=organization, monitor_object=monitor_object, operator=_operator(scope))
         queryset = PolicyGroup.objects.filter(organization=organization).prefetch_related(
-            "rules__plugin", "rules__policy", "rules__source_template"
+            "rules__plugin", "rules__policy"
         ).annotate(
             joined_member_count=Count("memberships", filter=Q(memberships__state=PolicyGroupMembership.STATE_MEMBER))
         )
@@ -94,11 +97,14 @@ class PolicyGroupViewSet(viewsets.ViewSet):
         if object_id not in (None, ""):
             pointer = PolicyGroupDefault.objects.filter(organization=organization, monitor_object_id=object_id).first()
             default_id = pointer.policy_group_id if pointer else None
+        groups = list(queryset.order_by("id"))
+        policies = [rule.policy for group in groups for rule in group.rules.all()]
+        metric_names = PolicyGroupService.metric_names_for_policies(policies)
         data = []
-        for group in queryset.order_by("id"):
+        for group in groups:
             for rule in group.rules.all():
                 PolicyGroupService.ensure_scan_task(rule.policy)
-            data.append(_serialize_group(group, default_id))
+            data.append(_serialize_group(group, default_id, metric_names))
         return WebUtils.response_success(data)
 
     @action(methods=["post"], detail=False, url_path="create_from_templates")
