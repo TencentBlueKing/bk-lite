@@ -262,7 +262,7 @@ def test_builtin_alert_cmdb_datasource_contracts_are_complete():
         "alert/get_alert_level_trend": "告警等级趋势",
         "cmdb/get_cmdb_statistics": "CMDB 覆盖概览",
         "get_model_inst_statistics": "CMDB 模型实例明细",
-        "cmdb/get_cmdb_model_instance_top": "CMDB 模型实例排行",
+        "cmdb/get_cmdb_model_instance_top": "CMDB 实例排行（按模型/分类）",
         "cmdb/get_classification_model_instance_counts": "分类下模型实例数",
         "cmdb/get_region_resource_overview": "地区分类实例数",
         "cmdb/get_cmdb_collect_statistics": "CMDB 采集任务状态",
@@ -782,7 +782,8 @@ def test_init_builtin_canvases_does_not_rebind_another_active_key_with_same_name
 
 @pytest.mark.django_db
 @pytest.mark.integration
-def test_init_builtin_canvases_removes_retired_builtin_topology_only():
+@pytest.mark.parametrize("with_extension", [False, True])
+def test_init_builtin_canvases_removes_retired_builtin_topology_only(settings, tmp_path, with_extension):
     from apps.system_mgmt.models.user import Group
 
     Group.objects.get_or_create(name="Default")
@@ -807,10 +808,25 @@ def test_init_builtin_canvases_removes_retired_builtin_topology_only():
         updated_by="system",
     )
 
+    # 测试显式控制完整清单，不能把扩展仍声明的对象视为已退役。
+    settings.OPERATION_ANALYSIS_BUILTIN_CANVAS_FILES = []
+    if with_extension:
+        extension_yaml = tmp_path / "active_topology.yaml"
+        extension_yaml.write_text(
+            yaml.safe_dump(
+                {
+                    "meta": {"schema_version": "1.1.0"},
+                    "topologies": [{"key": retired.build_in_key, "name": retired.name, "view_sets": {}}],
+                }
+            ),
+            encoding="utf-8",
+        )
+        settings.OPERATION_ANALYSIS_BUILTIN_CANVAS_FILES = [str(extension_yaml)]
+
     call_command("init_builtin_canvases")
 
-    assert not Topology.objects.filter(pk=retired.pk).exists()
-    assert not Topology.objects.filter(build_in_key="topology::运营健康拓扑_内置").exists()
+    assert Topology.objects.filter(pk=retired.pk).exists() is with_extension
+    assert Topology.objects.filter(build_in_key="topology::运营健康拓扑_内置").exists() is with_extension
     assert Topology.objects.filter(pk=custom.pk, is_build_in=False).exists()
     assert Topology.objects.filter(pk=unknown_legacy_builtin.pk, is_build_in=True).exists()
 
@@ -1361,7 +1377,9 @@ def test_merge_builtin_datasource_definitions_rejects_drift():
 
 @pytest.mark.django_db
 @pytest.mark.integration
-def test_init_builtin_canvases_overwrites_and_prunes_only_builtin_datasources():
+def test_init_builtin_canvases_overwrites_and_prunes_only_builtin_datasources(settings):
+    settings.OPERATION_ANALYSIS_BUILTIN_CANVAS_FILES = []
+
     from apps.system_mgmt.models.user import Group
 
     Group.objects.get_or_create(name="Default")
