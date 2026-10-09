@@ -273,17 +273,8 @@ def _regex_rejects(pattern, text):
 
 
 def _dsn_user_uses_urlencode(target):
-    """新建模板对 URL 型 DSN 用户名使用 Jinja ``| urlencode``（``quote(safe="/")``）。"""
-    if target.get("kind") != "dsn":
-        return False
-    regex = str(target.get("regex") or "")
-    if "://" in regex:
-        return True
-    # SQL Server 模板是 sqlserver://用户名，UI 正则仍是 ADO 的 User Id=
-    return "User Id=" in regex
-
-
-_SQLSERVER_USERINFO = re.compile(r"://([^:]+):")
+    """是否按新建模板的 ``| urlencode`` 写回用户名，只看字段上的 ``url_encode``。"""
+    return target.get("kind") == "dsn" and bool(target.get("url_encode"))
 
 
 def _capture_match(pattern, text):
@@ -293,13 +284,12 @@ def _capture_match(pattern, text):
     except re.error as exc:
         raise VaultCredentialError("apply_failed") from exc
     matches = list(compiled.finditer(text))
-    if len(matches) == 1 and matches[0].lastindex is not None and matches[0].lastindex >= 1:
-        return matches[0]
-    if "sqlserver://" in text and "User Id=" in str(pattern or ""):
-        url_matches = list(_SQLSERVER_USERINFO.finditer(text))
-        if len(url_matches) == 1:
-            return url_matches[0]
-    raise VaultCredentialError("apply_failed")
+    if len(matches) != 1 or matches[0].lastindex is None or matches[0].lastindex < 1:
+        raise VaultCredentialError("apply_failed")
+    captured = matches[0].group(1) or ""
+    if "://" in str(pattern or "") and "@" in captured:
+        raise VaultCredentialError("apply_failed")
+    return matches[0]
 
 
 def _replace_capture(pattern, text, value):
