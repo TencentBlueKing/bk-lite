@@ -70,6 +70,7 @@ export const useWirelessConfig = () => {
       'Wireless LigoWave SNMP': 'snmp_ligowave',
       'Wireless HPE MSM SNMP': 'snmp_hpmsm',
       'Wireless Radwin SNMP': 'snmp_radwin',
+      'Wireless Ubiquiti airOS SNMP': 'snmp_ubiquiti_airos',
       'Wireless Mimosa SNMP': 'snmp_mimosa',
       'Wireless Airspan SNMP': 'snmp_airspan',
       'Wireless FreeWave SNMP': 'snmp_freewave',
