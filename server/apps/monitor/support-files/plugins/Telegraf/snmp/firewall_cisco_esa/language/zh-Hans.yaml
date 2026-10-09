@@ -1,0 +1,53 @@
+Firewall Cisco ESA SNMP:
+  name: Cisco Secure Email Gateway / IronPort ESA（Telegraf）
+  desc: 面向 Cisco Secure Email Gateway / IronPort ESA 设备的 SNMP 监控模板（企业号 PEN 15497，ASYNCOS-MAIL-MIB），可采集运行时长、CPU、内存、磁盘 IO 与工作队列使用率、电源状态、温度、风扇转速以及 IF-MIB 64 位接口流量。
+monitor_object:
+  Firewall: 防火墙
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Firewall:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示 Cisco ESA 设备自上次启动以来的运行时间（IF-MIB sysUpTime）。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标报告 Cisco ESA 设备 CPU 使用率（ASYNCOS-MAIL-MIB perCentCPUUtilization
+        1.3.6.1.4.1.15497.1.1.1.2.0，Integer32 百分比）。超出 0～100 的值会被丢弃。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 该指标报告 Cisco ESA 设备内存使用率（ASYNCOS-MAIL-MIB perCentMemoryUtilization
+        1.3.6.1.4.1.15497.1.1.1.1.0，Integer32 百分比）。超出 0～100 的值会被丢弃。
+    esa_disk_io_usage:
+      name: 磁盘 IO 使用率
+      desc: 该指标报告 Cisco ESA 设备磁盘 IO 使用率（ASYNCOS-MAIL-MIB perCentDiskIOUtilization
+        1.3.6.1.4.1.15497.1.1.1.3.0，Integer32 百分比）。超出 0～100 的值会被丢弃。
+    esa_queue_usage:
+      name: 工作队列使用率
+      desc: 该指标报告 Cisco ESA 设备工作队列使用率（ASYNCOS-MAIL-MIB perCentQueueUtilization
+        1.3.6.1.4.1.15497.1.1.1.4.0，Integer32 百分比）。超出 0～100 的值会被丢弃。
+    device_psu_state:
+      name: 电源状态
+      desc: 该指标报告 Cisco ESA 设备电源模块状态（ASYNCOS-MAIL-MIB powerSupplyStatus
+        1.3.6.1.4.1.15497.1.1.1.8.1.2），归一为 1=正常 / 2=异常。healthy(2) 映射为 1；notInstalled(1)、noAC(3)、faulty(4)
+        映射为 2；MIB 未定义的值丢弃。维度 psu_name 为电源名称。
+    device_temperature_celsius:
+      name: 温度
+      desc: 该指标报告 Cisco ESA 设备机箱温度（ASYNCOS-MAIL-MIB degreesCelsius 1.3.6.1.4.1.15497.1.1.1.9.1.2），单位摄氏度。超出
+        -40～125 的值会被丢弃。维度 sensor_name 为传感器名称。
+    device_fan_speed:
+      name: 风扇转速
+      desc: 该指标报告 Cisco ESA 设备风扇转速（ASYNCOS-MAIL-MIB fanRPMs 1.3.6.1.4.1.15497.1.1.1.10.1.2），单位
+        RPM。小于 0、大于 30000 或哨兵 4294967295 的值会被丢弃。维度 fan_name 为风扇名称。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 该指标表示过去 5 分钟内接收字节的平均速率，来自 64 位 IF-MIB ifHCInOctets 计数器（ifXTable）。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标表示过去 5 分钟内发送字节的平均速率，来自 64 位 IF-MIB ifHCOutOctets 计数器（ifXTable）。
+monitor_object_metric_group:
+  Firewall:
+    Base: 基础
+    Firewall: 防火墙
+    Hardware Status: 硬件状态
+    Traffic: 流量

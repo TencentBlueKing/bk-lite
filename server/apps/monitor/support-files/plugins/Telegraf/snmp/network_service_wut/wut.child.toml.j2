@@ -1,0 +1,77 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_wut"
+        config_type = "wut"
+        brand = "wut"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # WebGraph-Thermo-Hygrometer under PEN 5040, tree 5040.1.2.42. Table columns must not end in .0.
+    # wtWebGraphThermoHygroBinaryTempValue is INTEGER in tenths; index 1=temperature C, 2=humidity %RH.
+    # Sentinel 327670 means invalid and the row is dropped.
+    [[inputs.snmp.table]]
+        name = "wut_sensor"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5040.1.2.42.1.4.1.1"
+        name = "binary_temp_value"
+
+[[processors.starlark]]
+    namepass = ["snmp", "wut_sensor"]
+    source = '''
+INVALID = 327670
+
+def apply(metric):
+    raw = metric.fields.pop("binary_temp_value", None)
+    if raw == None:
+        return metric
+    if type(raw) not in ["int", "float"]:
+        return None
+    if raw == INVALID:
+        return None
+    idx = metric.tags.get("index")
+    value = raw / 10.0
+    if idx == "1":
+        if value < -50.0 or value > 125.0:
+            return None
+        metric.fields["env_temperature_celsius"] = value
+    elif idx == "2":
+        if value < 0.0 or value > 100.0:
+            return None
+        metric.fields["env_humidity_percent"] = value
+    else:
+        return None
+    metric.tags.pop("index", None)
+    metric.name = "snmp"
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["wut"]

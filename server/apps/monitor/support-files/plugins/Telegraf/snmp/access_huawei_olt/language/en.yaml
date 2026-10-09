@@ -1,0 +1,65 @@
+Access Huawei OLT SNMP:
+  name: Access Huawei OLT SNMP
+  desc: SNMP monitoring template for Huawei OLT access device. It reports uptime, control board CPU and
+    memory utilization, board temperature, power input status, and interface traffic, for Huawei SmartAX
+    MA5600T / MA5800 series (HWMUSA-DEV-MIB).
+monitor_object:
+  Access: Access
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Access:
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured
+        in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in
+        bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifOutOctets on high-speed ports, keeping the rate accurate.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device over the
+        past 5 minutes, measured in bytes per second, summed across all interfaces from the 64-bit ifHCInOctets
+        counter. It helps administrators obtain an overview of incoming traffic for overall monitoring
+        and capacity planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device over the
+        past 5 minutes, measured in bytes per second, summed across all interfaces from the 64-bit ifHCOutOctets
+        counter. It helps administrators assess sending performance for traffic management and optimization.
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
+        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
+        or failures.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: Control board CPU usage of the Huawei SmartAX OLT (HWMUSA-DEV-MIB hwMusaBoardCpuRate), shown
+        as the busiest board. Sustained high load indicates control-plane pressure.
+    device_memory_total:
+      name: Memory Total
+      desc: Total RAM of the Huawei SmartAX control boards in bytes (hwMusaBoardRamTotal).
+    device_memory_used:
+      name: Memory Used
+      desc: Used RAM of the Huawei SmartAX control boards in bytes (hwMusaBoardRamUsed).
+    device_memory_usage:
+      name: Memory Usage
+      desc: Control board RAM usage of the Huawei SmartAX OLT (hwMusaBoardRamUseRate), shown as the highest
+        board. Sustained high memory can indicate leaks or oversized service tables.
+    device_temperature_celsius:
+      name: Board Temperature
+      desc: Highest board temperature of the Huawei SmartAX OLT in degrees Celsius (hwMusaBoardTemperature).
+        Persistently high values may indicate cooling problems.
+    device_psu_state:
+      name: Power Input Status
+      desc: 'AC/DC input status of the Huawei SmartAX power boards: 1 means normal, 2 means fault (abnormal).'
+monitor_object_metric_group:
+  Access:
+    Base: Base
+    Traffic: Traffic
+    Access: Access
+    Temperature: Temperature
+    Hardware Status: Hardware Status

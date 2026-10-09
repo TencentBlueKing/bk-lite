@@ -1,6 +1,6 @@
 Firewall Pulse Secure SNMP:
   name: Pulse Secure（Telegraf）
-  desc: 面向 Pulse Secure 防火墙的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、磁盘使用率、接口流量、Swap使用率、Web用户数，适用于 Pulse/Ivanti Connect Secure、MAG/PSA（企业号 PEN 12532）。
+  desc: 面向 Pulse Secure 防火墙的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、磁盘使用率、接口流量、Swap使用率、Web用户数、并发用户许可占用数，适用于 Pulse/Ivanti Connect Secure、MAG/PSA（企业号 PEN 12532）。
 monitor_object:
   Firewall: 防火墙
 monitor_object_type:
@@ -19,6 +19,9 @@ monitor_object_metric:
     device_web_users:
       name: 已登录 Web 用户数
       desc: 该指标报告网关当前已登录的 Web 用户数量。跟踪活动会话数有助于容量规划与发现异常连接激增。
+    device_concurrent_users:
+      name: 并发用户许可占用数
+      desc: 该指标报告本网关节点当前已占用的并发用户许可数量，用于跟踪许可消耗与容量规划。
     device_psu_state:
       name: 电源状态
       desc: 该指标报告设备电源模块的运行状态（枚举）。非正常状态表示电源冗余或硬件故障；在冗余电源设备上单个故障会移除冗余，需尽快处理。

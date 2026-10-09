@@ -1,0 +1,138 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_profline",
+  "plugin": "Transmission Profline SNMP",
+  "plugin_desc": "SNMP monitoring template for Profline FM demodulators (enterprise PEN 21222, PROFLINE-SFD-MIB). Besides standard IF-MIB interface traffic and uptime, it reports RF input signal strength, left / right audio levels and the RF input low / high level alarm states.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='transmission', collect_type='snmp_profline'}) by (instance_id)",
+  "name": "Transmission",
+  "icon": "mm-transmission_传输设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='transmission'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "profline_rf_level_dbuv",
+    "profline_rf_low_alarm_state",
+    "profline_rf_high_alarm_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Environment",
+      "name": "profline_rf_level_dbuv",
+      "query": "snmp_profline_rf_level_dbuv{instance_type='transmission', __$labels__}",
+      "display_name": "RF Input Level (dBuV)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Profline SFD RF input signal strength in dBuV, read from PROFLINE-SFD-MIB sfdMsrRfInSignalStrength (1.3.6.1.4.1.21222.1.4.1.3.3.2.0). Values outside 0 to 150 are dropped. Values above 115 indicate overload."
+    },
+    {
+      "metric_group": "Environment",
+      "name": "profline_audio_left_level_dbfs",
+      "query": "snmp_profline_audio_left_level_dbfs{instance_type='transmission', __$labels__}",
+      "display_name": "Audio Left Level (dBFS)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Profline SFD left audio level in dBFS, read from PROFLINE-SFD-MIB sfdMsrAudioLeftLevel (1.3.6.1.4.1.21222.1.4.1.3.5.1.0). Values outside -120 to 0 are dropped."
+    },
+    {
+      "metric_group": "Environment",
+      "name": "profline_audio_right_level_dbfs",
+      "query": "snmp_profline_audio_right_level_dbfs{instance_type='transmission', __$labels__}",
+      "display_name": "Audio Right Level (dBFS)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Profline SFD right audio level in dBFS, read from PROFLINE-SFD-MIB sfdMsrAudioRightLevel (1.3.6.1.4.1.21222.1.4.1.3.5.2.0). Values outside -120 to 0 are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "profline_rf_low_alarm_state",
+      "query": "snmp_profline_rf_low_alarm_state{instance_type='transmission', __$labels__}",
+      "display_name": "RF Input Low Alarm",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Profline SFD RF input low-level alarm from PROFLINE-SFD-MIB sfdMsrAlarmRfInLevelLow (AlarmStatus noProblem(1), warning(3), alarm(5)). noProblem maps to 1 (normal); warning and alarm map to 2 (abnormal). Values not defined in the MIB are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "profline_rf_high_alarm_state",
+      "query": "snmp_profline_rf_high_alarm_state{instance_type='transmission', __$labels__}",
+      "display_name": "RF Input High Alarm",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Profline SFD RF input high-level alarm from PROFLINE-SFD-MIB sfdMsrAlarmRfInLevelHigh (AlarmStatus noProblem(1), warning(3), alarm(5)). noProblem maps to 1 (normal); warning and alarm map to 2 (abnormal). Values not defined in the MIB are dropped."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

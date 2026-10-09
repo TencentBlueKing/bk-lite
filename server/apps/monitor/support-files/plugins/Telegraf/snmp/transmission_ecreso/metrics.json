@@ -1,0 +1,210 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_ecreso",
+  "plugin": "Transmission Ecreso SNMP",
+  "plugin_desc": "SNMP monitoring template for WorldCast Systems Ecreso FM transmitters (enterprise PEN 6404, ECRESO-FM-TRANS-MIB). Besides standard IF-MIB interface traffic and uptime, it reports ambient, heatsink, PSU and internal temperatures, power-supply efficiency, per-fan speed and alarm state, and driver forward / reflected power.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='transmission', collect_type='snmp_ecreso'}) by (instance_id)",
+  "name": "Transmission",
+  "icon": "mm-transmission_传输设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='transmission'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_temperature_celsius",
+    "ecreso_fan_alarm_state",
+    "ecreso_psu_efficiency_percent"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "ecreso_ambient_temperature_celsius",
+      "query": "snmp_ecreso_ambient_temperature_celsius{instance_type='transmission', __$labels__}",
+      "display_name": "Ambient Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Ecreso FM transmitter ambient temperature in degrees Celsius, read from ECRESO-FM-TRANS-MIB maMoCoMeAmb (1.3.6.1.4.1.6404.3.1.2.11.1.3.1.1.0). Values outside -125 to 125 are dropped."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "ecreso_heatsink_temperature_celsius",
+      "query": "snmp_ecreso_heatsink_temperature_celsius{instance_type='transmission', __$labels__}",
+      "display_name": "Heatsink Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Ecreso FM transmitter heatsink 1 temperature in degrees Celsius, read from ECRESO-FM-TRANS-MIB maMoCoMeHeat1 (1.3.6.1.4.1.6404.3.1.2.11.1.3.1.7.0). Values outside -125 to 125 are dropped."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "ecreso_psu_temperature_celsius",
+      "query": "snmp_ecreso_psu_temperature_celsius{instance_type='transmission', __$labels__}",
+      "display_name": "PSU Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Ecreso FM transmitter power-supply temperature in degrees Celsius, read from ECRESO-FM-TRANS-MIB maMoCoMePsuTemp (1.3.6.1.4.1.6404.3.1.2.11.1.3.1.9.0). Values outside -125 to 125 are dropped."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "snmp_device_temperature_celsius{instance_type='transmission', __$labels__}",
+      "display_name": "Internal Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Ecreso FM transmitter internal temperature in degrees Celsius, read from ECRESO-FM-TRANS-MIB maMoCoMeIntTemp (1.3.6.1.4.1.6404.3.1.2.11.1.3.1.10.0). Values outside 0 to 999 are dropped."
+    },
+    {
+      "metric_group": "Power",
+      "name": "ecreso_psu_efficiency_percent",
+      "query": "snmp_ecreso_psu_efficiency_percent{instance_type='transmission', __$labels__}",
+      "display_name": "PSU Efficiency",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Ecreso FM transmitter power-supply efficiency in percent, read from ECRESO-FM-TRANS-MIB maMoMaEffPsu (1.3.6.1.4.1.6404.3.1.2.11.1.1.3.0). Values outside 0 to 100 are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "ecreso_fan_speed_rpm",
+      "query": "ecreso_fan_speed_rpm{instance_type='transmission', __$labels__}",
+      "display_name": "Fan Speed (RPM)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Ecreso FM transmitter fan speed in RPM, read from ECRESO-FM-TRANS-MIB maMoFanSpeed (1.3.6.1.4.1.6404.3.1.2.11.1.5.1.2). Values outside 0 to 99999 are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "ecreso_fan_alarm_state",
+      "query": "ecreso_fan_alarm_state{instance_type='transmission', __$labels__}",
+      "display_name": "Fan Alarm State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Ecreso FM transmitter fan speed alarm state from ECRESO-FM-TRANS-MIB maMoFanAlarms (undefined(0), on(1), off(2)). off maps to 1 (normal); on and undefined map to 2 (abnormal). Values not defined in the MIB are dropped."
+    },
+    {
+      "metric_group": "Power",
+      "name": "ecreso_driver_forward_power_watts",
+      "query": "ecreso_driver_forward_power_watts{instance_type='transmission', __$labels__}",
+      "display_name": "Driver Forward Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Ecreso FM transmitter driver forward power in watts, read from ECRESO-FM-TRANS-MIB maDrForwardPower (1.3.6.1.4.1.6404.3.1.2.11.2.1.1.5). Values outside 0 to 99999 are dropped."
+    },
+    {
+      "metric_group": "Power",
+      "name": "ecreso_driver_reflected_power_watts",
+      "query": "ecreso_driver_reflected_power_watts{instance_type='transmission', __$labels__}",
+      "display_name": "Driver Reflected Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Ecreso FM transmitter driver reflected power in watts, read from ECRESO-FM-TRANS-MIB maDrReflectedPower (1.3.6.1.4.1.6404.3.1.2.11.2.1.1.6). Values outside 0 to 99999 are dropped."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

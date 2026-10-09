@@ -1,0 +1,120 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_cern_wrs"
+        config_type = "cern_wrs"
+        brand = "cern_wrs"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # WR-SWITCH-MIB 标量（企业号 PEN 96，wrSwitchMIB 1.3.6.1.4.1.96.100）：field 带 .0，落入 measurement snmp。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.96.100.7.1.4.3.0"
+        name = "device_memory_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.96.100.7.1.4.1.0"
+        name = "memory_total_kb"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.96.100.7.1.5.1.0"
+        name = "cpu_avg1_x100"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.96.100.7.1.5.2.0"
+        name = "cpu_avg5_x100"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.96.100.7.1.3.1.0"
+        name = "temp_fpga"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.96.100.7.1.3.2.0"
+        name = "temp_pll"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.96.100.7.1.3.3.0"
+        name = "temp_psl"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.96.100.7.1.3.4.0"
+        name = "temp_psr"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.96.100.6.1.1.0"
+        name = "main_system_status"
+
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    extras = []
+    mem = metric.fields.pop("device_memory_usage", None)
+    if mem != None:
+        usage = float(mem)
+        if usage >= 0 and usage <= 100:
+            metric.fields["device_memory_usage"] = usage
+    total_kb = metric.fields.pop("memory_total_kb", None)
+    if total_kb != None:
+        if float(total_kb) > 0:
+            metric.fields["device_memory_total"] = int(total_kb) * 1024
+    avg1_raw = metric.fields.pop("cpu_avg1_x100", None)
+    if avg1_raw != None:
+        avg1 = float(avg1_raw) / 100.0
+        if avg1 >= 0:
+            metric.fields["cern_wrs_cpu_load_1min"] = avg1
+    avg5_raw = metric.fields.pop("cpu_avg5_x100", None)
+    if avg5_raw != None:
+        avg5 = float(avg5_raw) / 100.0
+        if avg5 >= 0:
+            metric.fields["cern_wrs_cpu_load_5min"] = avg5
+    sensors = [
+        ("temp_fpga", "fpga"),
+        ("temp_pll", "pll"),
+        ("temp_psl", "psl"),
+        ("temp_psr", "psr"),
+    ]
+    for field, sensor in sensors:
+        raw = metric.fields.pop(field, None)
+        if raw == None:
+            continue
+        celsius = float(raw)
+        if celsius < -40 or celsius > 125:
+            continue
+        row = Metric("device_temperature")
+        for key, value in metric.tags.items():
+            row.tags[key] = value
+        row.tags["sensor_name"] = sensor
+        row.time = metric.time
+        row.fields["celsius"] = celsius
+        extras.append(row)
+    status_raw = metric.fields.pop("main_system_status", None)
+    if status_raw != None:
+        code = int(status_raw)
+        if code == 1:
+            metric.fields["cern_wrs_system_status"] = 1
+        elif code >= 0 and code <= 5:
+            metric.fields["cern_wrs_system_status"] = 2
+    extras.append(metric)
+    return extras
+'''
+    [processors.starlark.tagpass]
+        brand = ["cern_wrs"]

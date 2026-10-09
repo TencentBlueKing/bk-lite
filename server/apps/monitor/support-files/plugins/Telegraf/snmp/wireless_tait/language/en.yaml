@@ -1,0 +1,39 @@
+Wireless Tait SNMP:
+  name: Tait (Telegraf)
+  desc: SNMP monitoring template for Tait TN9300 network nodes of DMR / P25 trunked radio systems (TAIT-TN9300-MIB,
+    enterprise PEN 3570). It reports uptime, CPU utilization, memory utilization, and interface traffic.
+monitor_object:
+  Wireless: Wireless
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
+        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
+        or failures.
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: Total CPU load of the network node processes as a percentage. Sustained high values may indicate
+        call-processing pressure or abnormal processes.
+    device_memory_usage:
+      name: Memory Utilization
+      desc: Physical memory used by the network node processes as a percentage. Sustained high values
+        may indicate memory pressure or a leak.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured
+        in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in
+        bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifOutOctets on high-speed ports, keeping the rate accurate.
+monitor_object_metric_group:
+  Wireless:
+    Base: Base
+    Traffic: Traffic
+    CPU: CPU
+    Memory: Memory

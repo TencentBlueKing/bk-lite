@@ -1,0 +1,31 @@
+{
+  "object": "NetworkService",
+  "plugin": "NetworkService Alpha Cordex SNMP",
+  "templates": [
+    {
+      "name": "Alpha Cordex电池温度过高",
+      "alert_name": "电源 ${resource_name} 电池温度过高",
+      "description": "监控 Cordex HP 直流电源的电池温度，当持续高于阈值时触发告警，提示电池过热或机柜散热异常。",
+      "metric_name": "battery_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 45,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 40,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 35,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

@@ -1,0 +1,110 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_snom"
+        config_type = "snom"
+        brand = "snom"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Snom 话机私有树 mib-2.7526（1.3.6.1.2.1.7526.2），代理只支持 GET，不支持 walk ----
+    # 厂商公布的对象 OID 本身即可 GET（如 1.3.6.1.2.1.7526.2.4 直接返回固件串）；每个对象同时按标准标量写法（带 .0）与厂商写法各 GET 一次，
+    # 不存在的那一个代理返回 noSuchInstance、telegraf 不产出字段；下方 starlark 取到哪个用哪个，原始字段不落库。
+    # Firmware & U-Boot Version 1.3.6.1.2.1.7526.2.4：字符串 → firmware 标签。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.7526.2.4.0"
+        name = "firmware"
+        is_tag = true
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.7526.2.4"
+        name = "firmware"
+        is_tag = true
+    # Registrations 1.3.6.1.2.1.7526.2.5：Integer，话机当前注册数（降到 0 表示话机无法注册）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.7526.2.5.0"
+        name = "registrations_dot0_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.7526.2.5"
+        name = "registrations_raw"
+    # Memfree 1.3.6.1.2.1.7526.2.7：Integer，空闲内存（厂商未注明单位，按原值上报）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.7526.2.7.0"
+        name = "memfree_dot0_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.7526.2.7"
+        name = "memfree_raw"
+    # CPU load average 1.3.6.1.2.1.7526.2.9：字符串，1 / 5 / 15 分钟负载均值（V8.2.6 以上固件），非百分比。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.7526.2.9.0"
+        name = "loadavg_dot0_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.7526.2.9"
+        name = "loadavg_raw"
+
+# ---- 注册数 / 空闲内存：非负整数才输出 sip_registration_count / device_memory_free；
+# ---- 负载均值：从字符串中按顺序取数字（逗号或空格分隔），依次输出 device_cpu_load1 / load5 / load15，无数字则不输出。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def take(metric, keys):
+    found = None
+    for key in keys:
+        value = metric.fields.pop(key, None)
+        if found == None and value != None:
+            found = value
+    return found
+
+def numbers(text):
+    out = []
+    cur = ""
+    for c in (text + " ").elems():
+        if c.isdigit() or (c == "." and cur != "" and "." not in cur):
+            cur += c
+        else:
+            if cur != "" and not cur.endswith("."):
+                out.append(float(cur))
+            cur = ""
+    return out
+
+def apply(metric):
+    reg = take(metric, ["registrations_dot0_raw", "registrations_raw"])
+    mem = take(metric, ["memfree_dot0_raw", "memfree_raw"])
+    loadavg = take(metric, ["loadavg_dot0_raw", "loadavg_raw"])
+    if type(reg) == "int" and reg >= 0:
+        metric.fields["sip_registration_count"] = reg
+    if type(mem) == "int" and mem >= 0:
+        metric.fields["device_memory_free"] = mem
+    if loadavg != None:
+        vals = numbers(str(loadavg))
+        for key, idx in [("device_cpu_load1", 0), ("device_cpu_load5", 1), ("device_cpu_load15", 2)]:
+            if idx < len(vals):
+                metric.fields[key] = vals[idx]
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["snom"]
