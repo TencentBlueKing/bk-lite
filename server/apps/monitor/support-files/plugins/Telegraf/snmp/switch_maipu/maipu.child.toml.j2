@@ -60,29 +60,39 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.5651.3.20.1.1.3.5.1.10"
         name = "usage"
-    # ---- Maipu 内存（MPIOS-MIB sysMemory = 1.3.6.1.4.1.5651.3.20.1.1.1）：标量，顶层 field 带 .0 → measurement snmp ----
-    # memoryTotalBytes .8.0 / numBytesAlloc .5.0 / numBytesFree .1.0：字节；allocBytesPercent .9.0：已分配占比 %。
-    [[inputs.snmp.field]]
-        oid = "1.3.6.1.4.1.5651.3.20.1.1.1.8.0"
-        name = "device_memory_total"
+    # ---- Maipu 内存（MPIOS-MIB sysMemory = 1.3.6.1.4.1.5651.3.20.1.1.1）：标量，table 不带 .0 → measurement device_memory ----
+    # memoryTotalBytes .8 / numBytesAlloc .5 / numBytesFree .1：字节；allocBytesPercent .9：已分配占比 %。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5651.3.20.1.1.1.8"
+        name = "total"
         conversion = "int"
-    [[inputs.snmp.field]]
-        oid = "1.3.6.1.4.1.5651.3.20.1.1.1.5.0"
-        name = "device_memory_used"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5651.3.20.1.1.1.5"
+        name = "used"
         conversion = "int"
-    [[inputs.snmp.field]]
-        oid = "1.3.6.1.4.1.5651.3.20.1.1.1.1.0"
-        name = "device_memory_free"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5651.3.20.1.1.1.1"
+        name = "free"
         conversion = "int"
-    [[inputs.snmp.field]]
-        oid = "1.3.6.1.4.1.5651.3.20.1.1.1.9.0"
-        name = "device_memory_usage"
-    # ---- Maipu 温度（MPIOS-MIB sysTemperature = 1.3.6.1.4.1.5651.3.20.1.1.4）：标量，顶层 field 带 .0，℃ ----
-    # sysMainBoardTemper .3.0：主板温度；sysCpuTemper .1.0：CPU 温度。
-    [[inputs.snmp.field]]
-        oid = "1.3.6.1.4.1.5651.3.20.1.1.4.3.0"
-        name = "device_temperature_celsius"
-    [[inputs.snmp.field]]
-        oid = "1.3.6.1.4.1.5651.3.20.1.1.4.1.0"
-        name = "device_cpu_temperature_celsius"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5651.3.20.1.1.1.9"
+        name = "usage"
+    # ---- Maipu 温度（MPIOS-MIB sysTemperature = 1.3.6.1.4.1.5651.3.20.1.1.4）：标量，table 不带 .0，℃ ----
+    # sysMainBoardTemper .3：主板温度 → device_temperature_celsius。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5651.3.20.1.1.4.3"
+        name = "celsius"
+    # sysCpuTemper .1：CPU 温度 → device_cpu_temperature_celsius。
+    [[inputs.snmp.table]]
+        name = "device_cpu_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5651.3.20.1.1.4.1"
+        name = "celsius"
 # ---- 风扇/电源：MPIOS-MIB 无风扇与电源状态对象（紧凑机型多为无风扇被动散热）→ N/A 不采。----
