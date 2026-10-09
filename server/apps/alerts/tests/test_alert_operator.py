@@ -583,7 +583,19 @@ def test_format_assignment_notify_data_builds_from_notify_channels(_mt, _mc):
 
     nats = next(p for p in result if p["channel_type"] == "nats")
     assert nats["channel_id"] == 9
-    assert nats["content"] == {"message": "正文", "team": 2, "user_ids": ["admin", "op1"]}
+    from datetime import datetime
+    from uuid import UUID
+
+    content = nats["content"]
+    prefix, event_id = content["event_id"].split(":", 1)
+    assert prefix == "alert-notification"
+    assert UUID(event_id).version == 4
+    assert datetime.fromisoformat(content["occurred_at"]).tzinfo is not None
+    assert content == {
+        "message": "正文", "team": 2, "user_ids": ["admin", "op1"],
+        "event_id": content["event_id"], "occurred_at": content["occurred_at"],
+        "producer": "alerts", "object_id": "A-AN", "scene": "assignment",
+    }
     assert nats["object_id"] == "A-AN"
     email = next(p for p in result if p["channel_type"] == "email")
     assert email["channel_id"] == 3
@@ -644,7 +656,19 @@ def test_assign_auto_dispatch_notifies_via_notify_channels(mock_enqueue, _mt, _m
     assert len(params) == 1
     nats = next((p for p in params if p["channel_type"] == "nats"), None)
     assert nats is not None, "expected nats channel in enqueued params"
-    assert nats["content"] == {"message": "正文", "team": 1, "user_ids": ["op1"]}
+    from datetime import datetime
+    from uuid import UUID
+
+    content = nats["content"]
+    prefix, event_id = content["event_id"].split(":", 1)
+    assert prefix == "alert-notification"
+    assert UUID(event_id).version == 4
+    assert datetime.fromisoformat(content["occurred_at"]).tzinfo is not None
+    assert content == {
+        "message": "正文", "team": 1, "user_ids": ["op1"],
+        "event_id": content["event_id"], "occurred_at": content["occurred_at"],
+        "producer": "alerts", "object_id": "A1", "scene": "assignment",
+    }
     assert all(p["channel_type"] != "email" for p in params)
 
 
