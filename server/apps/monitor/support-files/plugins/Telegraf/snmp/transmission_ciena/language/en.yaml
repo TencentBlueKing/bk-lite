@@ -60,11 +60,20 @@ monitor_object_metric:
     device_fan_state:
       name: Fan Status
       desc: Fan state of the Ciena CES/SAOS chassis. 1 means ok or uninstalled (empty
-        slots keep a series); 2 means rpm-warning or unknown.
+        slots keep a series); 2 means rpm-warning (abnormal); 3 means unknown (gray,
+        no alert).
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     device_psu_state:
       name: Power Supply Status
       desc: Power-supply state of the Ciena CES/SAOS chassis. 1 means online or uninstalled
         (empty slots keep a series); 2 means faulted or operationally offline.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
 monitor_object_metric_group:
   Transmission:
     Base: Base

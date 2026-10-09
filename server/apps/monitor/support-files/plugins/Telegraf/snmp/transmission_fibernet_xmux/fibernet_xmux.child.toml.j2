@@ -55,7 +55,7 @@
         name = "psu_right_raw"
 
 # ---- 每个 XMUX 行拆成：温度 device_temperature_celsius（sensor=fan / interior，字符串中解析出的第一个数字，解析失败不输出）
-# ---- 与左 / 右电源 device_psu_state（position=left / right，powerOn(1) → 1 正常，powerOff(0) / unknown(8) → 2 异常，其它取值不输出）。----
+# ---- 与左 / 右电源 device_psu_state（position=left / right，powerOn(1) → 1 正常，powerOff(0) → 2 异常，unknown(8) → 3 未知，其它取值不输出）。----
 [[processors.starlark]]
     namepass = ["xmux"]
     source = '''
@@ -103,8 +103,10 @@ def apply(metric):
         state = None
         if v == 1:
             state = 1
-        elif v == 0 or v == 8:
+        elif v == 0:
             state = 2
+        elif v == 8:
+            state = 3
         if state != None:
             out.append(child(metric, "device_psu", "position", pos, "state", state))
     return out
