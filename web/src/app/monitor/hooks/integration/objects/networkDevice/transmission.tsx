@@ -91,6 +91,7 @@ export const useTransmissionConfig = () => {
       'Transmission Ekinops SNMP': 'snmp_ekinops',
       'Transmission Profline SNMP': 'snmp_profline',
       'Transmission Infinera SNMP': 'snmp_infinera',
+      'Transmission Coriant Groove SNMP': 'snmp_coriant_groove',
       'Transmission BridgeWave SNMP': 'snmp_bridgewave',
       'Transmission FiberRoad SNMP': 'snmp_fiberroad',
       'Transmission Huber+Suhner Cubo SNMP': 'snmp_hubersuhner',
