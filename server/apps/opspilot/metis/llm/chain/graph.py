@@ -43,6 +43,7 @@ from apps.opspilot.metis.llm.chain.nested_stream import (
     OWNED_STREAM_CONTEXT_KEY,
     PLANNED_STEP_HOLDER_KEY,
     PLANNED_TOOL_STEPS_KEY,
+    OwnedEventQueue,
     OwnedStreamContext,
     current_planned_step_index,
     lookup_planned_tool_step,
@@ -1659,7 +1660,7 @@ class BasicGraph(ABC):
             token_usage_accumulator = None
         # 创建浏览器步骤事件队列和回调
         browser_event_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=100)
-        owned_queue: asyncio.Queue = asyncio.Queue()
+        owned_queue = OwnedEventQueue(maxsize=SSE_OUTPUT_QUEUE_MAXSIZE)
         stream_ctx = make_owned_stream_context(owned_queue)
         previous_stream_ctx = getattr(self, "_owned_stream_context", None)
         self._owned_stream_context = stream_ctx
@@ -2152,6 +2153,7 @@ class BasicGraph(ABC):
                 )
             )
         finally:
+            await owned_queue.aclose()
             await interrupt_watch.aclose()
             self._owned_stream_context = previous_stream_ctx
             stop_event.set()
