@@ -10,7 +10,7 @@ Unlike Eltex there is NO PSU object in NAG-MIB, so device_psu_state is N/A and
 must not be modelled. The fan raw codes are 0=Normal / 1=Abnormal (note the
 inverted polarity vs Eltex's 1=OK), normalized via starlark so 0->1
 (healthy) and everything else ->2 (fault). Uninstalled fan positions
-(sysFanInserted=0) are dropped and not counted as faults.
+(sysFanInserted=0) are kept and reported as 1 (healthy, no alert).
 
   - device_cpu_usage: sysCpuUsage percent, per-slot (index dimension)
   - device_memory_total/used: bytes; usage = used/total*100 (per-slot)
@@ -235,7 +235,7 @@ def test_psu_is_not_modelled(metrics):
 
 
 # --------------------------------------------------------------------------- #
-# telegraf starlark: fan namepass-isolated, drop uninstalled, raw 0 → 1, else → 2
+# telegraf starlark: fan namepass-isolated; uninstalled → 1; raw 0 → 1, else → 2
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
 def test_toml_has_no_enum_processor_block(toml_text):
@@ -250,6 +250,9 @@ def test_fan_starlark_maps_normal_zero(toml_text):
     assert 'metric.fields["state"] = 1' in toml_text
     assert 'metric.fields["state"] = 2' in toml_text
     assert "int(inserted) == 0" in toml_text
+    # 未安装位输出 1 并保留行，不丢弃
+    assert 'if inserted != None and int(inserted) == 0:\n        return None' not in toml_text
+    assert 'metric.fields["state"] = 3' not in toml_text
 
 
 @pytest.mark.unit
