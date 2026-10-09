@@ -80,14 +80,14 @@
     {
       "name": "Hirschmann交换机电源异常",
       "alert_name": "交换机${resource_name} 电源状态异常",
-      "description": "监控 Hirschmann 工业交换机的电源模块状态，当电源故障或未就绪时触发告警，提示需检查供电冗余，避免单电源失效导致设备宕机。",
+      "description": "监控 Hirschmann 工业交换机的电源模块状态（1=正常，2=异常，3=未知），仅电源故障（=2）时触发告警，未知不告警。",
       "metric_name": "device_psu_state",
       "algorithm": "last_over_time",
       "threshold": [
         {
           "level": "critical",
-          "value": 1,
-          "method": ">"
+          "value": 2,
+          "method": "="
         }
       ],
       "group_algorithm": "avg"
