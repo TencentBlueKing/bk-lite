@@ -648,7 +648,7 @@ const Template: React.FC = () => {
                 清空
               </Button>
               <Button type="primary" onClick={handleApply}>
-                用于创建策略组
+                创建策略组
               </Button>
             </div>
           </div>
