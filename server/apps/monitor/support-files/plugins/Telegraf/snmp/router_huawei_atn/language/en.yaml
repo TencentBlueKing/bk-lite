@@ -84,7 +84,7 @@ monitor_object_metric:
     device_psu_state:
       name: Power Supply Status
       desc: Operational state of each Huawei ATN power supply (hwEntityPwrState). On-wire
-        values are passed through: supply(1), notSupply(2), sleep(3), and unknown(4).
+        values are kept as-is (supply(1), notSupply(2), sleep(3), and unknown(4)).
         4=Unknown (gray, no alert). sleep(3) is a valid redundant-PSU energy-saving
         state, not a fault. Only value 2 alerts.
       enum:
