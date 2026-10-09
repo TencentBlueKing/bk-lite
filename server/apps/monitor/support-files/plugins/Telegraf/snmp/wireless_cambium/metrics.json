@@ -35,7 +35,7 @@
     {
       "metric_group": "Wireless",
       "name": "wireless_cambium_sta_count",
-      "query": "max(wireless_cambium_sta_count{instance_type='wireless', __$labels__}) by (instance_id)",
+      "query": "max(snmp_wireless_cambium_sta_count{instance_type='wireless', __$labels__}) by (instance_id)",
       "display_name": "Connected Station Count",
       "data_type": "Number",
       "unit": "short",
