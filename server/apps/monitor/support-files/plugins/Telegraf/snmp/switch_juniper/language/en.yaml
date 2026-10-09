@@ -168,12 +168,20 @@ monitor_object_metric:
         to 1=normal / 2=abnormal / 3=Unknown. running(2), ready(3), runningAtFullSpeed(5)
         and standby(7) map to 1; reset(4) and down(6) map to 2; unknown(1) maps to
         3 (gray, no alert). Only value 2 alerts.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     device_psu_state:
       name: Power Supply Status
       desc: Operational state of each Juniper power supply (jnxOperatingState), normalized
         to 1=normal / 2=abnormal / 3=Unknown. running(2), ready(3), runningAtFullSpeed(5)
         and standby(7) map to 1; reset(4) and down(6) map to 2; unknown(1) maps to
         3 (gray, no alert). Only value 2 alerts.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     device_fan_speed:
       name: Fan Speed
       desc: This metric reports the fan rotation speed (RPM) of the device, taken

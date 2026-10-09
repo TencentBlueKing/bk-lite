@@ -99,10 +99,18 @@ monitor_object_metric:
       name: 风扇状态
       desc: 该指标表示 Juniper 各散热风扇运行状态（jnxOperatingState），归一为 1=正常 / 2=异常 / 3=未知。running(2)/ready(3)/runningAtFullSpeed(5)/standby(7)
         映射为 1；reset(4)/down(6) 映射为 2；unknown(1) 映射为 3（灰、不告警）。仅 2 告警。
+      enum:
+        "1": 正常
+        "2": 异常
+        "3": 未知
     device_psu_state:
       name: 电源状态
       desc: 该指标表示 Juniper 各电源模块运行状态（jnxOperatingState），归一为 1=正常 / 2=异常 / 3=未知。running(2)/ready(3)/runningAtFullSpeed(5)/standby(7)
         映射为 1；reset(4)/down(6) 映射为 2；unknown(1) 映射为 3（灰、不告警）。仅 2 告警。
+      enum:
+        "1": 正常
+        "2": 异常
+        "3": 未知
     device_fan_speed:
       name: 风扇转速
       desc: 该指标表示设备风扇的转速（RPM），取各风扇的最大值。转速异常偏低或为 0 表示风扇卡转或故障、设备面临过热风险；转速异常偏高可能是设备在为高温加速散热。对于仅提供转速、无风扇状态枚举的设备，转速是判断风扇健康的唯一依据。
