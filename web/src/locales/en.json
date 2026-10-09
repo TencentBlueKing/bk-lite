@@ -94,6 +94,8 @@
     "deleteConfirm": "Are you sure you want to delete?",
     "linkFailed": "Failed to link",
     "loadFailed": "Failed to load",
+    "previousPage": "Previous",
+    "nextPage": "Next",
     "unlinkFailed": "Failed to unlink",
     "selectMsg": "Please select the ",
     "inputMsg": "Please input the ",

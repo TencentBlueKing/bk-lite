@@ -101,7 +101,7 @@ const CollectTaskTreeSelect: React.FC<CollectTaskTreeSelectProps> = ({
       treeData={treeData}
       value={value == null || value === '' ? undefined : String(value)}
       onChange={(nextValue) => onChange?.(nextValue ? String(nextValue) : undefined)}
-      placeholder={placeholder || t('pleaseSelect')}
+      placeholder={placeholder || t('common.selectTip')}
       disabled={disabled}
       loading={false}
       allowClear

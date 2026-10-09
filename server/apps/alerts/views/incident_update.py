@@ -7,8 +7,9 @@ from rest_framework.response import Response
 
 from apps.alerts.constants.constants import IncidentUpdateType, LogAction, LogTargetType
 from apps.alerts.models.models import Incident, IncidentUpdate
-from apps.alerts.utils.operator_log import record_operator_log
 from apps.alerts.serializers.incident_update import IncidentUpdateSerializer
+from apps.alerts.utils.i18n import alerts_message
+from apps.alerts.utils.operator_log import record_operator_log
 from apps.alerts.utils.permission_scope import filter_incident_queryset_for_request
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.web_utils import WebUtils
@@ -73,7 +74,7 @@ class IncidentUpdateViewSet(ModelViewSet):
             return WebUtils.response_error(error_message="事故不存在或无权限访问")
 
         if not self._check_collaborator_permission(incident):
-            return Response({"detail": "只有负责人或协作者可以发布更新"}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": alerts_message(request, "error.incident_update_author_or_collaborator")}, status=status.HTTP_403_FORBIDDEN)
 
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -87,7 +88,7 @@ class IncidentUpdateViewSet(ModelViewSet):
                 parent_update = IncidentUpdate.objects.get(id=parent_id, incident=incident, parent__isnull=True)
                 save_kwargs["parent"] = parent_update
             except IncidentUpdate.DoesNotExist:
-                return Response({"detail": "回复的目标更新不存在"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"detail": alerts_message(request, "error.incident_update_target_missing")}, status=status.HTTP_400_BAD_REQUEST)
 
         serializer.save(**save_kwargs)
 
@@ -112,7 +113,7 @@ class IncidentUpdateViewSet(ModelViewSet):
 
         instance = self.get_object()
         if instance.author != request.user.username:
-            return Response({"detail": "只有作者可以编辑更新"}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": alerts_message(request, "error.incident_update_author_edit")}, status=status.HTTP_403_FORBIDDEN)
 
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -128,7 +129,7 @@ class IncidentUpdateViewSet(ModelViewSet):
 
         instance = self.get_object()
         if instance.author != request.user.username:
-            return Response({"detail": "只有作者可以删除更新"}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": alerts_message(request, "error.incident_update_author_delete")}, status=status.HTTP_403_FORBIDDEN)
 
         record_operator_log(
             action=LogAction.DELETE,
@@ -152,7 +153,7 @@ class IncidentUpdateViewSet(ModelViewSet):
 
         username = request.user.username
         if username not in (incident.operator or []):
-            return Response({"detail": "只有负责人可以标记关键信息"}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": alerts_message(request, "error.incident_update_owner_pin")}, status=status.HTTP_403_FORBIDDEN)
 
         instance = self.get_object()
         instance.is_key_info = not instance.is_key_info

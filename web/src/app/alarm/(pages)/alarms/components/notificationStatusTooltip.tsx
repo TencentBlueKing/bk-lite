@@ -27,9 +27,10 @@ const NotificationStatusTooltip: React.FC<NotificationStatusTooltipProps> = ({
   const notifiedState = useNotifiedStateMap();
   const statusKey = status || 'not_notified';
   const visibleRecords = records.slice(0, 5);
-  const summary = t('alarms.notificationSummary')
-    .replace('{{total}}', String(total))
-    .replace('{{shown}}', String(visibleRecords.length));
+  const summary = t('alarms.notificationSummary', undefined, {
+    total,
+    shown: visibleRecords.length,
+  });
 
   const tooltipContent = (
     <div className="w-[400px] max-h-[320px] overflow-y-auto pr-1 text-xs">

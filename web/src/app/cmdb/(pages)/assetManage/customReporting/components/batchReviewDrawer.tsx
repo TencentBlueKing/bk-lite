@@ -179,7 +179,7 @@ export default function BatchReviewDrawer({
           </pre>
         </Descriptions.Item>
         {review.status === 'pending' ? (
-          <Descriptions.Item label={t('action')}>
+          <Descriptions.Item label={t('Model.action')}>
             <Space>
               <Button
                 type="primary"
