@@ -21,6 +21,7 @@ interface PasswordModalProps {
     pwd_set_max_length?: string;
   }>;
   resetPasswordAction?: (payload: { password: unknown }) => Promise<unknown>;
+  zIndex?: number;
 }
 
 const PasswordModal: React.FC<PasswordModalProps> = ({
@@ -29,6 +30,7 @@ const PasswordModal: React.FC<PasswordModalProps> = ({
   onSuccess,
   fetchPolicyAction,
   resetPasswordAction,
+  zIndex,
 }) => {
   const { t } = useTranslation();
   const { get, post } = useApiClient();
@@ -91,6 +93,7 @@ const PasswordModal: React.FC<PasswordModalProps> = ({
       policyLoading={rulesLoading}
       requiredCharTypes={requiredCharTypes}
       title={t('userInfo.changePassword')}
+      zIndex={zIndex}
     />
   );
 };

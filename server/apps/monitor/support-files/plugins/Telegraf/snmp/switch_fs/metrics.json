@@ -118,7 +118,7 @@
       "query": "device_fan_state{instance_type='switch', __$labels__}",
       "display_name": "Fan State",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "dimensions": [
         {
           "name": "index",
@@ -128,7 +128,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the fan state of the FS.com switch (FS-SYSTEM-MIB fsSystemFanStatus), normalized via telegraf processors.enum so that 1 = healthy (not-present / ready / normal) and 2 = fault (no-power / abnormal / unknown). Aggregated as the maximum across fans so any faulty fan surfaces. A value greater than 1 indicates a fan failure that can lead to overheating."
+      "description": "This metric reports the fan state of the FS.com switch (FS-SYSTEM-MIB fsSystemFanStatus, 1.3.6.1.4.1.52642.1.1.10.2.1.1.43.1.4), normalized so that 1 = healthy (noexist / existreadypower / normal), 2 = fault (existnopower / powerbutabnormal), 3 = unknown (unknow, grey, does not alert). Only value 2 alerts."
     },
     {
       "metric_group": "Hardware Status",
@@ -136,7 +136,7 @@
       "query": "device_psu_state{instance_type='switch', __$labels__}",
       "display_name": "PSU State",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "dimensions": [
         {
           "name": "index",
@@ -146,7 +146,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the power-supply state of the FS.com switch (FS-SYSTEM-MIB fsSystemElectricalInformationStatus), normalized via telegraf processors.enum so that 1 = healthy (not-present / ready / normal) and 2 = fault (no-power / abnormal / unknown). Aggregated as the maximum across supplies so any failed PSU surfaces. A value greater than 1 indicates a power-supply problem."
+      "description": "This metric reports the power-supply state of the FS.com switch (FS-SYSTEM-MIB fsSystemElectricalInformationStatus, 1.3.6.1.4.1.52642.1.1.10.2.1.1.41.1.3), normalized so that 1 = healthy (noexist / existreadypower / normal), 2 = fault (existnopower / powerbutabnormal), 3 = unknown (unknow, grey, does not alert). Only value 2 alerts."
     },
     {
       "metric_group": "Traffic",
