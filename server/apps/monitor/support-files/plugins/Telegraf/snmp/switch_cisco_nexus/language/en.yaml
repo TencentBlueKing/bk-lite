@@ -154,12 +154,19 @@ monitor_object_metric:
         maps to 1; down(3) and warning(4) map to 2; unknown(1) maps to 3 (gray, no
         alert); undefined values are dropped. A value of 2 indicates a cooling fault
         that can quickly lead to overheating.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     device_psu_state:
       name: Power Supply Status
       desc: Operational state of each Cisco Nexus power supply (CISCO-ENTITY-FRU-CONTROL-MIB
         cefcFRUPowerOperStatus), normalized to 1=normal / 2=abnormal. on(2) maps to
         1; offAdmin(3) and failed/environmental-off states map to 2; undefined values
         are dropped. A value of 2 signals a power redundancy or hardware fault.
+      enum:
+        "1": Normal
+        "2": Abnormal
     device_fan_speed:
       name: Fan Speed
       desc: This metric reports the fan rotation speed (RPM) of the device, taken
