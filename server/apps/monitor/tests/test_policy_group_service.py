@@ -131,6 +131,12 @@ def test_join_covers_only_the_matching_plugin_and_one_group():
     by_plugin = {rule.plugin.name: rule.policy.source["values"] for rule in group.rules.select_related("policy", "plugin")}
     assert by_plugin["WMI"] == [host.id]
     assert by_plugin["SSH"] == []
+    dispatch = {
+        rule.plugin.name: PeriodicTask.objects.get(name=f"scan_policy_task_{rule.policy_id}").enabled
+        for rule in group.rules.select_related("policy", "plugin")
+    }
+    assert dispatch["WMI"] is True
+    assert dispatch["SSH"] is False
     assert MonitorPolicy.objects.filter(group_rule__group=group).count() == 2
 
 
@@ -152,6 +158,7 @@ def test_leave_closes_open_alerts_and_blocks_auto_rejoin_state():
     PolicyGroupService.leave(instance=host)
 
     host.policy_group_membership.refresh_from_db()
+    assert PeriodicTask.objects.get(name=f"scan_policy_task_{policy.id}").enabled is False
     alert.refresh_from_db()
     policy.refresh_from_db()
     assert host.policy_group_membership.state == "declined"
@@ -430,7 +437,7 @@ def test_group_rule_and_standalone_rule_get_a_scan_task():
     assert policy.schedule == {"type": "min", "value": 5}
     assert policy.period == {"type": "min", "value": 5}
     assert policy.enable_alerts == ["threshold"]
-    assert PeriodicTask.objects.filter(name=f"scan_policy_task_{policy.id}", enabled=True).exists()
+    assert PeriodicTask.objects.filter(name=f"scan_policy_task_{policy.id}", enabled=False).exists()
 
     PeriodicTask.objects.filter(name=f"scan_policy_task_{policy.id}").delete()
     PolicyGroupService.ensure_scan_task(policy)
@@ -607,3 +614,34 @@ def test_repair_fills_only_empty_group_rule_scan_settings():
     assert PolicyGroupService.repair_empty_scan_settings() == 0
     empty_rule.policy.refresh_from_db()
     assert empty_rule.policy.updated_at == repaired_at
+
+
+def test_matching_instance_resumes_scan_from_now_and_disabled_policy_stays_off():
+    monitor_object = _object()
+    wmi = _plugin(monitor_object, "WMI")
+    group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="主机默认告警",
+        templates=[_template(monitor_object, wmi, "WMI CPU")],
+    )
+    policy = group.rules.get().policy
+    task_name = f"scan_policy_task_{policy.id}"
+    assert PeriodicTask.objects.get(name=task_name).enabled is False
+
+    host = _instance(monitor_object, "web-01", 1)
+    _collect(host, wmi)
+    PolicyGroupService.join(instance=host, group=group)
+    policy.refresh_from_db()
+    assert PeriodicTask.objects.get(name=task_name).enabled is True
+    started = policy.last_run_time
+    assert started is not None
+
+    PolicyGroupService.sync_coverage(group)
+    policy.refresh_from_db()
+    assert policy.last_run_time == started
+
+    policy.enable = False
+    policy.save(update_fields=["enable"])
+    PolicyGroupService.sync_coverage(group)
+    assert PeriodicTask.objects.get(name=task_name).enabled is False

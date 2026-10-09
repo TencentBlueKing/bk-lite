@@ -28,6 +28,7 @@ from apps.monitor.services.alert_lifecycle_events import record_lifecycle_events
 from apps.monitor.services.alert_lifecycle_notify import NOTIFY_SCOPE_ALERT_CENTER_ONLY, NOTIFY_SCOPE_ALL_CONFIGURED, AlertLifecycleNotifier
 from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.monitor.services.policy import PolicyService
+from apps.monitor.tasks.utils.policy_methods import source_has_dispatch_targets
 from apps.monitor.services.policy_baseline import PolicyBaselineService
 from apps.monitor.services.policy_bulk import build_bulk_policy_payloads, normalize_stored_metric_unit
 from apps.monitor.services.policy_dry_run import PolicyDryRunService
@@ -502,8 +503,10 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
             self.close_alerts(policy, alerts_to_close, "system", "policy_disabled")
         elif not old_enable and new_enable:
             MonitorPolicy.objects.filter(id=policy_id).update(last_run_time=datetime.now(timezone.utc))
-        # 停用策略不再由 Beat 派发；仅靠 scan_policy_task 内部早退仍会每个周期投递一次任务。
-        PeriodicTask.objects.filter(name=f"scan_policy_task_{policy_id}").update(enabled=bool(new_enable))
+        # 停用策略不再由 Beat 派发。范围为空的策略同样不派发，等覆盖恢复后再打开。
+        policy = MonitorPolicy.objects.filter(id=policy_id).only("source").first()
+        dispatch = bool(new_enable) and (policy is None or source_has_dispatch_targets(policy.source))
+        PeriodicTask.objects.filter(name=f"scan_policy_task_{policy_id}").update(enabled=dispatch)
 
     def format_crontab(self, schedule):
         """

@@ -44,6 +44,19 @@ class TestScanPolicyTask:
         assert out["success"] is True and out["message"] == "策略未启用"
         scan.assert_not_called()
 
+    def test_empty_instance_source_skips_before_scan(self, mocker):
+        watermark = datetime.now(timezone.utc) - timedelta(hours=2)
+        policy = _make_policy(
+            source={"type": "instance", "values": []},
+            last_run_time=watermark,
+        )
+        scan = mocker.patch("apps.monitor.tasks.monitor_policy.MonitorPolicyScan")
+        out = scan_policy_task(policy.id)
+        assert out["success"] is True and out["message"] == "没有可扫描实例"
+        scan.assert_not_called()
+        policy.refresh_from_db()
+        assert policy.last_run_time == watermark
+
     def test_first_run_records_watermark(self, mocker):
         policy = _make_policy(last_run_time=None)
         scan = mocker.patch("apps.monitor.tasks.monitor_policy.MonitorPolicyScan")

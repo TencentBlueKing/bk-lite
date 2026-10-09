@@ -1,6 +1,7 @@
 import copy
 
 from django.db import transaction
+from django.utils import timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.models import (
@@ -56,6 +57,7 @@ _POLICY_CLONE_FIELDS = (
     "enable_alerts",
 )
 from apps.monitor.services.policy import PolicyService
+from apps.monitor.tasks.utils.policy_methods import source_has_dispatch_targets
 
 
 class PolicyGroupService:
@@ -132,6 +134,7 @@ class PolicyGroupService:
             group.memberships.filter(state=PolicyGroupMembership.STATE_MEMBER).values_list("monitor_instance_id", flat=True)
         )
         for rule in group.rules.select_related("policy", "plugin"):
+            previously_covered = bool((rule.policy.source or {}).get("values"))
             if member_ids:
                 covered = list(
                     CollectConfig.objects.filter(
@@ -146,6 +149,7 @@ class PolicyGroupService:
                 covered = []
             rule.policy.source = {"type": "instance", "values": covered}
             rule.policy.save(update_fields=["source", "updated_at"])
+            PolicyGroupService._apply_scan_dispatch(rule.policy, previously_covered=previously_covered)
 
     @staticmethod
     def _create_rule(group, template, operator):
@@ -472,6 +476,21 @@ class PolicyGroupService:
         if PeriodicTask.objects.filter(name=f"scan_policy_task_{policy.id}").exists():
             return
         MonitorPolicyViewSet().update_or_create_task(policy.id, schedule)
+        if not source_has_dispatch_targets(policy.source):
+            PeriodicTask.objects.filter(name=f"scan_policy_task_{policy.id}").update(enabled=False)
+
+    @staticmethod
+    def _apply_scan_dispatch(policy, *, previously_covered):
+        """没有可扫描实例时停掉 Beat 派发。覆盖从空变为有实例时，从当前时间开始扫。"""
+        from django_celery_beat.models import PeriodicTask
+
+        task_name = f"scan_policy_task_{policy.id}"
+        if not policy.enable or not source_has_dispatch_targets(policy.source):
+            PeriodicTask.objects.filter(name=task_name).update(enabled=False)
+            return
+        if not previously_covered:
+            MonitorPolicy.objects.filter(id=policy.id).update(last_run_time=timezone.now())
+        PeriodicTask.objects.filter(name=task_name).update(enabled=True)
 
     @staticmethod
     def repair_empty_scan_settings():
