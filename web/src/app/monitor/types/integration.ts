@@ -245,6 +245,7 @@ export interface SnmpCollectTemplateDoc {
   type: string;
   config_type: string;
   file_type: string;
+  retry_config_ids?: Array<string | number>;
 }
 
 export interface ConfigItem {

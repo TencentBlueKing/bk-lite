@@ -9,6 +9,7 @@ import {
   LoadingOutlined,
   UploadOutlined
 } from '@ant-design/icons';
+import { useIntl } from 'react-intl';
 import { useTranslation } from '@/utils/i18n';
 import { formatCredentialError } from '@/app/monitor/components/integration/CredentialAccessField';
 import CompactEmptyState from '@/components/compact-empty-state';
@@ -205,6 +206,7 @@ interface TableValidationResult {
 const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const [form] = Form.useForm();
   const { t } = useTranslation();
+  const locale = useIntl().locale || 'zh';
   const searchParams = useSearchParams();
   const { get, post, patch, isLoading } = useApiClient();
   const {
@@ -1832,7 +1834,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         }
         addNodesConfig(params);
       } catch (error: any) {
-        message.error(formatCredentialError(error?.message || '', 'zh') || t('common.operationFailed'));
+        message.error(formatCredentialError(error?.message || '', locale) || t('common.operationFailed'));
       }
     });
   };
@@ -1959,7 +1961,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         );
         return;
       }
-      message.error(formatCredentialError(errorText, 'zh') || t('common.operationFailed'));
+      message.error(formatCredentialError(errorText, locale) || t('common.operationFailed'));
     } finally {
       saveInFlightRef.current = false;
       setConfirmLoading(false);
