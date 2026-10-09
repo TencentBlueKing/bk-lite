@@ -1,6 +1,6 @@
 import React from 'react';
 import '@ant-design/v5-patch-for-react-19';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   ScreenCanvasSettings,
@@ -94,6 +94,131 @@ describe('ScreenCanvasSettings', () => {
     // Recommended colors should not exist
     expect(screen.queryByText('opsAnalysis.screen.recommendedColors')).toBeNull();
   });
+
+  it('stores an uploaded image and drops it when cleared or switched to a color', async () => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <ScreenCanvasSettings viewport={defaultViewport} onChange={onChange} />,
+    );
+
+    fireEvent.click(screen.getByText('opsAnalysis.screen.backgroundTypeImage'));
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(['png-bytes'], 'wall.png', { type: 'image/png' });
+    fireEvent.change(input, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(onChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          background: {
+            type: 'image',
+            src: expect.stringMatching(/^data:image\/png;base64,/),
+          },
+        }),
+      );
+    });
+
+    const uploaded = onChange.mock.calls.at(-1)?.[0] as ScreenViewportConfig;
+    onChange.mockClear();
+    cleanup();
+    render(<ScreenCanvasSettings viewport={uploaded} onChange={onChange} />);
+    fireEvent.click(screen.getByText('opsAnalysis.screen.backgroundImageClear'));
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        background: { type: 'preset', key: 'dark-glow' },
+      }),
+    );
+
+    onChange.mockClear();
+    cleanup();
+    render(<ScreenCanvasSettings viewport={uploaded} onChange={onChange} />);
+    fireEvent.click(screen.getByText('opsAnalysis.screen.backgroundTypeColor'));
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        background: { type: 'color', color: '#071422' },
+      }),
+    );
+    const colorBackground = onChange.mock.calls.at(-1)?.[0].background;
+    expect(colorBackground).not.toHaveProperty('src');
+  });
+
+  it('drops a custom image when switching back to a wallpaper', () => {
+    const onChange = vi.fn();
+    render(
+      <ScreenCanvasSettings
+        viewport={{
+          ...defaultViewport,
+          background: {
+            type: 'image',
+            src: 'data:image/png;base64,iVBORw0KGgo=',
+          },
+        }}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('opsAnalysis.screen.backgroundTypePreset'));
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        background: { type: 'preset', key: 'dark-glow' },
+      }),
+    );
+    expect(onChange.mock.calls.at(-1)?.[0].background).not.toHaveProperty('src');
+  });
+
+  it('keeps a custom image when the theme changes', () => {
+    const onChange = vi.fn();
+    const background = {
+      type: 'image' as const,
+      src: 'data:image/png;base64,iVBORw0KGgo=',
+    };
+    render(
+      <ScreenCanvasSettings
+        viewport={{ ...defaultViewport, background }}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('opsAnalysis.screen.themeLight'));
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        theme: 'screen-light',
+        background,
+      }),
+    );
+  });
+
+  it('does not store an unsupported background image', () => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <ScreenCanvasSettings viewport={defaultViewport} onChange={onChange} />,
+    );
+    fireEvent.click(screen.getByText('opsAnalysis.screen.backgroundTypeImage'));
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, {
+      target: {
+        files: [new File(['gif'], 'wall.gif', { type: 'image/gif' })],
+      },
+    });
+    expect(screen.getByText('opsAnalysis.screen.backgroundImageBadType')).toBeTruthy();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('does not store an oversized background image', () => {
+    const onChange = vi.fn();
+    const { container } = render(
+      <ScreenCanvasSettings viewport={defaultViewport} onChange={onChange} />,
+    );
+    fireEvent.click(screen.getByText('opsAnalysis.screen.backgroundTypeImage'));
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const oversized = new File([new Uint8Array(2 * 1024 * 1024 + 1)], 'wall.png', {
+      type: 'image/png',
+    });
+    fireEvent.change(input, { target: { files: [oversized] } });
+    expect(screen.getByText('opsAnalysis.screen.backgroundImageTooLarge')).toBeTruthy();
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });
 
 describe('ScreenStyleInspector for Widgets', () => {
@@ -157,6 +282,44 @@ describe('ScreenStyleInspector for Widgets', () => {
 });
 
 describe('ScreenStyleInspector for Display Elements', () => {
+  it('keeps the image uploader open when a solid color background is copied', () => {
+    const onChange = vi.fn();
+    const colorViewport: ScreenViewportConfig = {
+      ...defaultViewport,
+      background: { type: 'color', color: '#112233' },
+    };
+    const { rerender } = render(
+      <ScreenCanvasSettings viewport={colorViewport} onChange={onChange} />,
+    );
+
+    fireEvent.click(screen.getByText('opsAnalysis.screen.backgroundTypeImage'));
+    expect(screen.getByText('opsAnalysis.screen.backgroundImageUpload')).toBeTruthy();
+
+    rerender(
+      <ScreenCanvasSettings
+        viewport={{ ...colorViewport, width: 1280, background: { type: 'color', color: '#112233' } }}
+        onChange={onChange}
+      />,
+    );
+    expect(screen.getByText('opsAnalysis.screen.backgroundImageUpload')).toBeTruthy();
+  });
+
+  it('lets a clock color be chosen instead of the three theme presets', () => {
+    const clock = createScreenClockItem([], {
+      textStyle: { fontSize: 20, color: 'accent' },
+    });
+    const onChange = vi.fn();
+    const { container } = render(
+      <ScreenStyleInspector item={clock} viewport={defaultViewport} onChange={onChange} />,
+    );
+
+    expect(screen.queryByText('opsAnalysis.screen.colorCanvas')).toBeNull();
+    expect(screen.queryByText('opsAnalysis.screen.colorMuted')).toBeNull();
+    expect(screen.queryByText('opsAnalysis.screen.colorAccent')).toBeNull();
+    expect(screen.getByText('opsAnalysis.screen.textColor')).toBeTruthy();
+    expect(container.querySelector('.ant-color-picker-trigger')).toBeTruthy();
+  });
+
   it('renders title frame inspector with text input and change preset trigger', () => {
     const titleItem = createScreenTitleFrameItem([], {
       preset: 'hero-5',
