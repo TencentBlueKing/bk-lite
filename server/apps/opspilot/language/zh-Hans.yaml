@@ -305,7 +305,7 @@ tools:
       search_data_sources:
         description: 按显式的数据需求检索有权限且契约完整的运营分析数据源。列举数据源前必须调用，只能使用返回的候选。询问画布上已显示的数字，或只删除、改行列时不要调用。
       prepare_dashboard_proposal:
-        description: 用检索候选校验并补全仪表盘方案。通过后页面直接套上画布，不要再请用户确认。删除或改行列时基于当前布局修改后调用，不要重新检索。
+        description: 用检索候选校验并补全仪表盘方案。schemaVersion 必须为 1.0，组件放在 layout[].valueConfig，dataSource 只能填检索返回的数字 id。禁止 title、panels、chart_type、data_source_id。通过后页面直接套上画布，不要再请用户确认。删除或改行列时基于当前布局修改后调用，不要重新检索。
   attachment_file:
     name: 工作流附件文件
     description: |

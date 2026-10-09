@@ -1215,11 +1215,11 @@ toolkits:
         description: 结构化数据需求列表，每项至少包含 text，可包含 purpose、domain、metric、dimension、analysisType、chartType。
         required: true
   - name: prepare_dashboard_proposal
-    description: 用检索候选校验并补全仪表盘方案。通过后页面直接套上画布，不要再请用户确认。删除或改行列时基于当前布局修改后调用，不要重新检索。
+    description: 用检索候选校验并补全仪表盘方案。schemaVersion 必须为 1.0，组件放在 layout[].valueConfig，dataSource 只能填检索返回的数字 id，字段放在 selectedFields。禁止 title、panels、chart_type、data_source_id。通过后页面直接套上画布，不要再请用户确认。删除或改行列时基于当前布局修改后调用，不要重新检索。
     parameters:
       proposal:
         type: object
-        description: DashboardProposal 1.0 对象。
+        description: schemaVersion 为 1.0 的对象。组件在 layout，每项用 valueConfig.chartType 与 valueConfig.dataSource（检索返回的数字 id），字段放在 valueConfig.selectedFields。禁止 title、panels、chart_type、data_source_id。
         required: true
       dashboard_id:
         type: string

@@ -102,6 +102,23 @@ def test_prepare_returns_page_action_without_dispatching_or_caching(monkeypatch)
     }
 
 
+def test_prepare_schema_failure_tells_the_model_the_proposal_shape(monkeypatch):
+    from apps.operation_analysis.tools.dashboard import prepare_dashboard_proposal
+
+    rejected = {"ok": False, "reason": "schema", "pending": []}
+    monkeypatch.setattr("apps.operation_analysis.tools.dashboard._run_dashboard_rpc", lambda method, **kwargs: rejected)
+    result = prepare_dashboard_proposal.func({"title": "概览", "panels": []}, "current", _config())
+
+    assert result["success"] is True
+    assert result["data"] == rejected
+    assert "pageAction" not in result["data"]
+    hint = result["_next_step_hint"]
+    assert "layout" in hint
+    assert "selectedFields" in hint
+    assert "panels" in hint
+    assert "data_source_id" in hint
+
+
 def test_prepare_does_not_emit_page_action_when_validation_is_pending(monkeypatch):
     from apps.operation_analysis.tools.dashboard import prepare_dashboard_proposal
 
@@ -134,7 +151,10 @@ def test_tool_metadata_and_translations_are_registered():
         "prepare_dashboard_proposal",
     }
     assert toolkit["tools"][0]["parameters"]
-    assert toolkit["tools"][1]["parameters"]
+    proposal = toolkit["tools"][1]
+    assert "layout" in proposal["description"]
+    assert "data_source_id" in proposal["description"]
+    assert "selectedFields" in proposal["parameters"]["proposal"]["description"]
 
     for language in ("zh-Hans.yaml", "en.yaml"):
         payload = yaml.safe_load((opspilot / "language" / language).read_text(encoding="utf-8"))
@@ -145,6 +165,7 @@ def test_tool_metadata_and_translations_are_registered():
             "search_data_sources",
             "prepare_dashboard_proposal",
         }
+        assert "layout" in translated["tools"]["prepare_dashboard_proposal"]["description"]
 
 
 def test_dashboard_rpc_can_run_inside_a_live_event_loop(monkeypatch):

@@ -89,7 +89,17 @@ import {
 } from '@/app/ops-analysis/api/canvasDraft';
 import { bindCanvasDraftControls } from '@/app/ops-analysis/components/canvasDraftControls';
 import { useAiPageContext } from '@/components/ai-page-context';
-import { buildDashboardEditStateSection } from '@/app/ops-analysis/utils/dashboardEditContext';
+import { registerToolResultHandler } from '@/components/ai-tool-results/registry';
+import {
+  applyDashboardProposal,
+  proposalTargetsDashboard,
+} from '@/app/ops-analysis/utils/applyDashboardProposal';
+import { buildDashboardEditStateSection, dashboardEditStateAllowsApply } from '@/app/ops-analysis/utils/dashboardEditContext';
+import {
+  claimToolCall,
+  DASHBOARD_APPLY_TOOL,
+  readDashboardApplyAction,
+} from '@/app/ops-analysis/utils/dashboardToolResult';
 import {
   cloneDashboardUndoEntry,
   recordDashboardEdit,
@@ -833,6 +843,103 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setUndoStack((stack) => recordDashboardEdit(stack, snapshot).undo);
       setRedoStack([]);
     };
+
+    const applyProposalRef = useRef({
+      isEditMode,
+      shareMode,
+      layout,
+      definitions,
+      filterValues,
+      otherConfig,
+      savedRefreshInterval,
+      selectedDashboardId: selectedDashboard?.data_id,
+      dashboardName: selectedDashboard?.name,
+      selectedOrganizationId,
+      appliedNamespaceId,
+      appliedFilterDefinitions,
+      appliedFilterValues,
+      namespaceDraftId,
+    });
+    applyProposalRef.current = {
+      isEditMode,
+      shareMode,
+      layout,
+      definitions,
+      filterValues,
+      otherConfig,
+      savedRefreshInterval,
+      selectedDashboardId: selectedDashboard?.data_id,
+      dashboardName: selectedDashboard?.name,
+      selectedOrganizationId,
+      appliedNamespaceId,
+      appliedFilterDefinitions,
+      appliedFilterValues,
+      namespaceDraftId,
+    };
+    const appliedToolCallsRef = useRef(new Set<string>());
+
+    useEffect(() => {
+      return registerToolResultHandler(DASHBOARD_APPLY_TOOL, (result) => {
+        if (!claimToolCall(appliedToolCallsRef.current, result.toolCallId)) return;
+        const current = applyProposalRef.current;
+        if (current.shareMode) return;
+        const action = readDashboardApplyAction(result.content);
+        if (!action || !proposalTargetsDashboard(action.dashboardId, current.selectedDashboardId)) return;
+        if (!dashboardEditStateAllowsApply({
+          dashboardId: current.selectedDashboardId,
+          name: current.dashboardName,
+          layout: current.layout,
+          filters: current.definitions,
+          filterValues: current.filterValues,
+          otherConfig: current.otherConfig,
+          refreshInterval: current.savedRefreshInterval,
+        })) {
+          message.warning(t('dashboard.editStateTooLarge'));
+          return;
+        }
+        const applied = applyDashboardProposal({
+          layout: current.layout,
+          filters: current.definitions,
+          filterValues: current.filterValues,
+          proposal: action.proposal,
+          allocateId: (preferred, used) => (preferred && !used.has(preferred) ? preferred : uuidv4()),
+        });
+        if (!applied.ok) return;
+        if (!current.isEditMode) {
+          setIsEditMode(true);
+          current.isEditMode = true;
+        }
+        const mergedFilters = buildFiltersFromLayout(applied.layout, applied.filters);
+        const nextValues = fillMissingOrganizationFilterValues(
+          mergedFilters,
+          syncFilterValuesWithDefinitions(mergedFilters, applied.filterValues),
+          current.selectedOrganizationId,
+        );
+        const syncedLayout = syncLayoutFilterBindings(applied.layout, mergedFilters);
+        recordUndoRef.current();
+        setLayout(syncedLayout);
+        syncFilterStateAfterLayoutChange(mergedFilters, nextValues, nextValues);
+        message.success(t('dashboard.aiApplySuccess'));
+        void syncDashboardCanvasResources(syncedLayout).then((canvasDataSources) => {
+          const latest = applyProposalRef.current;
+          if (!latest.isEditMode || latest.shareMode || latest.appliedNamespaceId !== undefined) return;
+          const nextNamespaceId = resolveLayoutNamespaceId(syncedLayout, canvasDataSources);
+          if (nextNamespaceId === undefined) return;
+          setNamespaceDraftId(nextNamespaceId);
+          applyQueryState(mergedFilters, nextValues, nextNamespaceId);
+          setNamespaceSearchVersion((version) => version + 1);
+        }).catch(() => undefined);
+      });
+    }, [
+      applyQueryState,
+      buildFiltersFromLayout,
+      resolveLayoutNamespaceId,
+      syncDashboardCanvasResources,
+      syncFilterStateAfterLayoutChange,
+      syncFilterValuesWithDefinitions,
+      syncLayoutFilterBindings,
+      t,
+    ]);
 
     useAiPageContext(() => {
       if (shareMode) return { sections: [] };

@@ -310,7 +310,7 @@ tools:
       search_data_sources:
         description: Search authorized, contract-complete data sources from explicit requirements. Call this before naming any data source, and use only returned candidates. Do not call it to read numbers already on the canvas, or to only delete or rearrange widgets.
       prepare_dashboard_proposal:
-        description: Validate a proposal built from search candidates. When it passes, the page applies it to the canvas without another confirmation. Delete or rearrange by editing the current layout, without searching again.
+        description: Validate a proposal built from search candidates. schemaVersion must be 1.0, widgets belong in layout[].valueConfig, and dataSource must be a numeric id returned by search. Do not use title, panels, chart_type, or data_source_id. When it passes, the page applies it to the canvas without another confirmation. Delete or rearrange by editing the current layout, without searching again.
   attachment_file:
     name: Workflow Attachment File
     description: |

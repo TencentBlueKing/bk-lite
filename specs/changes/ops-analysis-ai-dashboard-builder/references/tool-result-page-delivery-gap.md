@@ -21,7 +21,7 @@
 }
 ```
 
-页面已经具备方案转换、编辑态和撤销。`readDashboardApplyAction` 只认工具名 `prepare_dashboard_proposal` 的原始结果，并且动作名必须是 `dashboard_config_apply`。这次没有改 WebChat、全局对话和页面上下文协议，所以工具结果还到不了编辑页，画布不会因为聊天文字改变。
+页面已经具备方案转换、编辑态和撤销。编辑页订阅 `prepare_dashboard_proposal` 的原始结果，`readDashboardApplyAction` 确认动作名是 `dashboard_config_apply` 且目标是当前仪表盘后，写入编辑态。保存仍由页面上的「保存」完成。WebChat 只转交已完成的工具名、调用 ID 和原始结果，不解释业务字段。
 
 ## 交接边界
 

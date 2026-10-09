@@ -15,6 +15,14 @@ from apps.rpc.base import AppClient, RpcClient
 
 CONSTRUCTOR_PARAMS = []
 _CALLER_IDENTITY_KEY = "caller_identity"
+_PROPOSAL_SCHEMA_HINT = (
+    'proposal 必须是 schemaVersion 为 "1.0" 的对象。'
+    "组件放在 layout，每项用 valueConfig.chartType 和 valueConfig.dataSource；"
+    "dataSource 只能填 search_data_sources 返回的数字 id；"
+    "需要的字段放在 valueConfig.selectedFields。"
+    "禁止使用 title、panels、chart_type、data_source_id。"
+    "按这个结构改完再调用一次，不要原样重试。"
+)
 
 
 def _team_id(config: RunnableConfig | None) -> int | None:
@@ -97,8 +105,13 @@ def prepare_dashboard_proposal(
 ) -> dict:
     """校验并补全运营分析仪表盘方案，返回可由页面直接应用的结构化结果。
 
-    proposal 必须由调用方显式传入。校验通过时返回 pageAction，页面据此套到画布。
-    校验未通过时不产生页面动作。工具不缓存方案，不读取聊天或页面状态。
+    proposal 必须由调用方显式传入，且 schemaVersion 固定为 "1.0"。
+    组件放在 layout，不要用 panels。每项使用 valueConfig.chartType 与 valueConfig.dataSource。
+    dataSource 只能填 search_data_sources 返回的数字 id。需要的字段放在 valueConfig.selectedFields。
+    禁止使用 title、panels、chart_type、data_source_id。
+    校验通过时返回 pageAction，页面据此套到画布。校验未通过时不产生页面动作。
+    返回 reason=schema 时按 _next_step_hint 改结构后再调用一次，不要原样重试。
+    工具不缓存方案，不读取聊天或页面状态。
     """
 
     team_id = _team_id(config)
@@ -130,7 +143,10 @@ def prepare_dashboard_proposal(
                 },
             },
         }
-    return _ok(result)
+    payload = _ok(result)
+    if result.get("reason") == "schema":
+        payload["_next_step_hint"] = _PROPOSAL_SCHEMA_HINT
+    return payload
 
 
 __all__ = [
