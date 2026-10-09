@@ -42,12 +42,20 @@ monitor_object_metric:
         on some hardware models only). 1=normal (okFixedHigh/okLowMed/okMedMed/okMedHigh),
         2=abnormal (failed, notReady(-2)), 3=Unknown (unknown(-1), grey, no alert).
         Missing table rows are not emitted.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     device_psu_state:
       name: Power Supply Status
       desc: Status of the lower and upper power supplies of the A10 Thunder/AX appliance
         (A10-AX-MIB axSysLowerPowerSupplyStatus / axSysUpperPowerSupplyStatus). 1=normal
         (on), 2=abnormal (off), 3=Unknown (unknown(-1), grey, no alert).
         A missing scalar is not emitted.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     snmp_uptime:
       name: System Uptime
       desc: This metric indicates the uptime of the device since the last restart.
