@@ -95,7 +95,7 @@ monitor_object_metric:
         "3": 未知
     device_psu_state:
       name: 电源状态
-      desc: 该指标表示 Aruba 交换机各电源模块状态，归一为 1=正常、2=异常、3=未知（灰、不告警）。ok 与空槽 empty 记 1，unknown 记 3，其余故障码记 2。仅取值为 2 时告警。
+      desc: 该指标表示 Aruba 交换机各电源模块状态，归一为 1=正常、2=异常、3=未知（灰、不告警）。ok 与空槽（faultAbsent/empty）记 1，unknown 记 3，init 与其余故障码记 2。仅取值为 2 时告警。
       enum:
         "1": 正常
         "2": 异常

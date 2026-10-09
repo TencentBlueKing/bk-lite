@@ -107,7 +107,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the operational state of each Aruba power supply unit (arubaWiredPSUStateEnum), normalized to 1 = normal (ok/empty), 2 = fault, 3 = unknown (grey, does not alert). Only value 2 is treated as a power-supply fault."
+      "description": "This metric reports the operational state of each Aruba power supply unit (arubaWiredPSUStateEnum), normalized to 1 = normal (ok / empty-slot faultAbsent and empty), 2 = fault, 3 = unknown (grey, does not alert). Empty slots map to 1 and do not alert. Only value 2 is treated as a power-supply fault."
     },
     {
       "metric_group": "Hardware Status",
