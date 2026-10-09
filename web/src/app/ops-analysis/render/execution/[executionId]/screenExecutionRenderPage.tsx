@@ -15,6 +15,7 @@ import {
 import type { DashboardExecutionRenderInput } from '@/app/ops-analysis/types/dashboardSubscription';
 import type { FilterValue } from '@/app/ops-analysis/types/dashBoard';
 import { collectScreenDataSourceIds, collectWidgetManifestDataSourceIds } from '@/app/ops-analysis/utils/canvasResources';
+import { isScreenWidgetItem } from '@/app/ops-analysis/(pages)/view/screen/utils/screenItems';
 import { prepareScreenPrintLayout } from '@/app/ops-analysis/utils/prepareDashboardPrintLayout';
 
 interface ScreenExecutionRenderPageContentProps {
@@ -77,7 +78,10 @@ export const ScreenExecutionRenderPageContent = ({
   }, [renderInput]);
 
   const widgetIds = useMemo(
-    () => (viewSets?.items || []).map((item) => String(item.id)),
+    () =>
+      (viewSets?.items || [])
+        .filter(isScreenWidgetItem)
+        .map((item) => String(item.id)),
     [viewSets],
   );
 
@@ -206,6 +210,7 @@ export const ScreenExecutionRenderPageContent = ({
       <ScreenCanvas
         viewSets={viewSets}
         fullscreen
+        forceContain
         refreshVersion={0}
         screenId={
           renderInput.render_snapshot.resource_id ??
