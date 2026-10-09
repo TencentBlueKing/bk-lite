@@ -255,6 +255,16 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_datacom_dmswitch",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "temperature",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_dcn",
       "capabilities": [
         "uptime",

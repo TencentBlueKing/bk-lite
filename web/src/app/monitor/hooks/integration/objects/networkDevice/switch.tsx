@@ -131,6 +131,7 @@ export const useSwitchConfig = () => {
       'Switch Dell Force10 SNMP': 'snmp_dellforce',
       'Switch HP ProCurve SNMP': 'snmp_hphpn',
       'Switch Datacom SNMP': 'snmp_datacom',
+      'Switch Datacom DmSwitch SNMP': 'snmp_datacom_dmswitch',
       'Switch Eltex SNMP': 'snmp_eltex',
       'Switch SNR SNMP': 'snmp_snr',
       'Switch Netonix SNMP': 'snmp_netonix',
