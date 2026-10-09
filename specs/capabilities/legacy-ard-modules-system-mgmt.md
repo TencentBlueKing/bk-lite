@@ -42,17 +42,21 @@ DRF Router 注册 13 个路由组：`group`/`user`/`role`/`channel`/`group_data_
 
 > 证据来源：server/apps/system_mgmt/nats/users.py:20-38、41-119、156-181　|　同步基线：d2769559　|　【已实现】
 
-### 4.2 凭据仓库跨模块契约【已实现 / 监控引用计数待对接】
+### 4.2 凭据仓库跨模块契约【已实现 / 监控引用与改密通知已接线】
 
 - 系统管理拥有类型目录与实例仓库。其它模块只保存 `credential_id`，不存口令。消费可见性为归属向下共享：`group_id ∈ {current_team} ∪ 活动祖先`。台账列表/创建/编辑归属为编辑者授权组织，不按当前节点裁子孙。
-- 已注册 NATS（RPC 封装 `server/apps/rpc/system_mgmt.py`）：`list_credentials`（无密文分页列表，不附引用计数）、`create_credential`、`resolve_credential`（明文只走这条，页面与 picker 不调用）。`list` 与 `resolve` 都不需 `credential-View`，也不新增「使用」权限；`resolve` 由调用方先做业务鉴权，仓库只做已登录、当前组织在授权内、消费范围、未停用、服务端解密；`create` 需 `credential-Add`。HTTP `credential/selectable/` 与 `credential_type/selectable/` 同样不占 View；台账 CRUD 与 `assignable_groups` / `usable_groups` 仍要 View/Add/Edit/Delete。带 `type` 时必须同时带 `category`。
-- 引用次数不建账本。契约由系统管理规定，消费方在本模块 NATS 实现同名载荷。方法名：`cmdb_count_credential_refs`、`monitor_count_credential_refs`（共用 namespace，必须前缀）。系统管理用 `RpcClient().run` **直接请求这两个方法名**（`server/apps/system_mgmt/services/credential_ref_count.py`），不经 `apps/rpc/cmdb.py`、`apps/rpc/monitor.py`，也不经 `apps/rpc/system_mgmt.py`。入参 `{ "credential_ids": [..] }`，上限 100；出参 `{ "result": true, "data": { "counts": { "<id>": n } } }`，入参中的 ID 都要有键，无引用为 `0`。系统管理在列表、删除、改组织时只定向问这两家。列表：成功且 `count > 0` 的模块按模块加总画芯片；至少一家成功且合计 0 显示「0」；两家都失败或未接线显示「—」。删除/改组织：只在任一家确认 `count > 0` 时拦截；超时、无订阅者、`result: false` 或合计 0 则放行。作业等后置，同一载荷另加方法即可。
-- 页面要引用仓库凭据时，把 `CredentialPicker`（`web/src/components/credential-picker`）嵌进业务原表单的 `Form.Item`，字段值为 `credential_id`；组件自己向系统管理拉可选列表，调用方只传 `category` / `type` 与表单值。不要自绘下拉或复用 `CredentialPickerChrome`。明文仍只走 `resolve_credential`。
-- 系统管理不负责消费方任务表加列、执行或测试连接调用 `resolve_credential`，也不规定消费方如何从任务表算出 `counts`。
+- `Credential.secret_version` 为正整数，默认 1。只有 `fields` 密文变化、`group_id` 变化、停用、启用才加 1；只改名称不加。停用/启用走 `set_disabled`，与更新同一套加版本。加版本后在事务提交时通知已注册的消费方；通知失败记 WARNING，不回滚保存。
+- 已注册 NATS（RPC 封装 `server/apps/rpc/system_mgmt.py`）：`list_credentials`（无密文分页列表，不附引用计数）、`create_credential`、`resolve_credential`（明文只走这条，页面与 picker 不调用）、`describe_credential`（同一用户/组织/消费范围，不解密，不停用拒绝）、`get_credential_versions`（无 actor，只返回版本）。`list` 与 `resolve` 都不需 `credential-View`，也不新增「使用」权限；`resolve` 由调用方先做业务鉴权，仓库只做已登录、当前组织在授权内、消费范围、未停用、服务端解密；`create` 需 `credential-Add`。HTTP `credential/selectable/` 与 `credential_type/selectable/` 同样不占 View；台账 CRUD 与 `assignable_groups` / `usable_groups` 仍要 View/Add/Edit/Delete。带 `type` 时必须同时带 `category`。
+- `describe_credential` 成功体为 `{credential_id, type, name, disabled, secret_version}`。当前组织已归档时返回 `{"result": false, "message": "team_archived"}`。`resolve_credential` 的失败 message 保持原样，归档组织仍走既有本地化文案，不改成 `team_archived`。
+- `get_credential_versions` 入参为凭据 ID 列表，最多 100；空列表、非字符串或超过 100 返回 `{"result": false, "message": "invalid"}`。成功体 `data.versions` 的键覆盖每个入参 ID，已删除为 `null`。
+- 改密通知方法表（`credential_refresh.py` 的 `CREDENTIAL_REFRESH_NATS_METHODS`）：目前只注册监控 `monitor_refresh_credential_refs`。载荷 `credential_ids`，超时 5 秒。失败日志模板 `event=credential_refresh_notify_failed module=%s failed_stage=rpc error_type=%s id_count=%s`。CMDB 改密联动不在本契约内。
+- 引用次数不建账本。契约由系统管理规定，消费方在本模块 NATS 实现同名载荷。方法名：`cmdb_count_credential_refs`、`monitor_count_credential_refs`（共用 namespace，必须前缀）。系统管理用 `RpcClient().run` **直接请求这两个方法名**（`server/apps/system_mgmt/services/credential_ref_count.py`），不经 `apps/rpc/cmdb.py`、`apps/rpc/monitor.py`，也不经 `apps/rpc/system_mgmt.py`。入参 `{ "credential_ids": [..] }`，上限 100；出参 `{ "result": true, "data": { "counts": { "<id>": n } } }`，入参中的 ID 都要有键，无引用为 `0`。监控侧按采集配置上的非空 `vault_credential_id`、对 `monitor_instance` 去重计数。系统管理在列表、删除、改组织时只定向问这两家。列表：成功且 `count > 0` 的模块按模块加总画芯片；至少一家成功且合计 0 显示「0」；两家都失败或未接线显示「—」。删除/改组织：只在任一家确认 `count > 0` 时拦截；超时、无订阅者、`result: false` 或合计 0 则放行。作业等后置，同一载荷另加方法即可。
+- 页面要引用仓库凭据时，把 `CredentialPicker`（`web/src/components/credential-picker`）嵌进业务原表单的 `Form.Item`，字段值为 `credential_id`；组件自己向系统管理拉可选列表，调用方只传 `category` / `type` 与表单值。监控接入可再传可选 `types`、`snmpVersion`、`boundOption`。不要自绘下拉或复用 `CredentialPickerChrome`。明文仍只走 `resolve_credential`。
+- 系统管理不负责消费方如何把解析结果写入节点，也不规定消费方如何从任务表算出 `counts`。监控接入的落 ID、解析与重下发在监控模块。
 
 产品口径见 `docs/design/product-decisions/system-mgmt-credential-vault.md`，交付标识见 [[legacy-fuctionlist-07-系统管理-功能清单#12. 跨模块凭据仓库]]。
 
-> 证据来源：server/apps/system_mgmt/nats/credentials.py:59-138、server/apps/rpc/system_mgmt.py:94-116、server/apps/system_mgmt/services/credential_ref_count.py:24-35、server/apps/system_mgmt/models/credential.py:7-32　|　【已实现：列表/创建/解析/询问/拦截】【待对接：监控 handler】
+> 证据来源：server/apps/system_mgmt/nats/credentials.py、server/apps/rpc/system_mgmt.py、server/apps/system_mgmt/services/credential_ref_count.py、server/apps/system_mgmt/services/credential_refresh.py、server/apps/system_mgmt/models/credential.py、server/apps/monitor/nats/monitor.py　|　【已实现：列表/创建/解析/描述/版本/询问/拦截/监控引用计数/监控改密通知】
 
 ## 5. 通知渠道【已实现/已存在】
 `models/channel.py` 的 `ChannelChoices` 定义 7 类渠道：`email`（邮件）、`enterprise_wechat`（企微）、`enterprise_wechat_bot`（企微机器人）、`nats`（NATS 消息）、`feishu_bot`（飞书机器人）、`dingtalk_bot`（钉钉机器人）、`custom_webhook`（自定义 Webhook）。发送实现见 `utils/channel_utils.py`；BK 用户对接 `utils/bk_user_utils.py`。

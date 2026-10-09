@@ -27,6 +27,8 @@
 ## 3. 接口【已实现/已存在】
 REST 路由组：`node`/`cloud_region`/`sidecar_env`/`collector`/`controller`/`configuration`/`child_config`/`installer`/`package`；`open_api`（sidecar 可访问，`OpenSidecarViewSet`）。
 
+子配置与监控凭据【已实现】：仅当同 id 的监控 `CollectConfig.vault_credential_id` 非空时，子配置序列化把受管 `env_config` 键的值改成 `***`；PATCH 时这些键缺省或值为 `***` 则保留节点原值，不删键。查不到监控行，或 `vault_credential_id` 为空时，`env_config` 读写与原来一致，不遮蔽手填 env。正文里的秘密不在本接口解析。空 `env_config` 对象表示清空环境变量；`null` 仍表示不改 env。
+
 节点跨模块同步【已实现】：节点管理可将已纳管节点显式推送至 CMDB 或监控系统；详情页可按所选目标补推。推送会携带节点、云区域、组织归属及已有对端关联标识，并在节点侧记录各目标的结果；两个对端均已建立关联时会补齐双方关联标识。该能力以 [[legacy-ard-modules-cmdb.md#4. 依赖与通信【已实现/已存在】]] 和 [[legacy-ard-modules-monitor.md#3. 接口【已实现/已存在】]] 的接收契约为准。
 
 > 证据来源：server/apps/node_mgmt/models/sidecar.py:50-52，server/apps/node_mgmt/services/module_push.py:129-193,370-400　|　同步基线：d2769559　|　【已实现】
