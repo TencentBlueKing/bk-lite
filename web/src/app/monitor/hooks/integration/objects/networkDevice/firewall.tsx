@@ -86,6 +86,7 @@ export const useFirewallConfig = () => {
       'Firewall Westone SNMP': 'snmp_westone',
       'Firewall Amaranten SNMP': 'snmp_amaranten',
       'Firewall Secworld SNMP': 'snmp_secworld',
+      'Firewall Barracuda CloudGen SNMP': 'snmp_barracuda_cloudgen',
       'Firewall Check Point SNMP': 'snmp_checkpoint',
       'Firewall Cisco WSA SNMP': 'snmp_cisco_wsa',
       'Firewall Stormshield SNMP': 'snmp_stormshield',
