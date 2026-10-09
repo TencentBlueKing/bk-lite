@@ -1,6 +1,6 @@
-Switch Enterasys SNMP:
-  name: Enterasys (Telegraf)
-  desc: "SNMP monitoring template for Enterasys switch. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 5624)."
+Switch Quanta SNMP:
+  name: Quanta (Telegraf)
+  desc: "SNMP monitoring template for Quanta (QuantaMesh / QNOS) switches running the Broadcom FastPath stack. It reports uptime, CPU utilization, memory, and interface traffic (enterprise PEN 4413)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
