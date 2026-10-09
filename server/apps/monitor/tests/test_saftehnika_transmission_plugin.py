@@ -15,6 +15,7 @@ import pytest
 import yaml
 
 from apps.core.utils.loader import LanguageLoader
+from apps.monitor.tests.snmp_contract_helpers import assert_common_ifmib_counters
 
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
@@ -184,12 +185,8 @@ def test_no_private_pen_oid_used(toml_text):
 
 
 @pytest.mark.unit
-def test_toml_collects_64bit_ifx_table_and_uptime(toml_text):
-    assert "1.3.6.1.2.1.1.3.0" in toml_text
-    assert "1.3.6.1.2.1.31.1.1" in toml_text
-    assert "1.3.6.1.2.1.31.1.1.1.1" in toml_text
-    assert "1.3.6.1.2.1.31.1.1.1.6" in toml_text
-    assert "1.3.6.1.2.1.31.1.1.1.10" in toml_text
+def test_rendered_toml_contains_common_ifmib_counters_and_uptime(toml_text):
+    assert_common_ifmib_counters(toml_text, BRAND_DIR)
 
 
 @pytest.mark.unit
