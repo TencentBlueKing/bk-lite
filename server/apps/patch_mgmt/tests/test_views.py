@@ -12,6 +12,8 @@ import sys
 import pytest
 from rest_framework import status
 
+from apps.monitor.models import MonitorPlugin  # noqa: F401  INSTALL_APPS 需含 monitor（node_mgmt.urls → collector_release）
+from apps.node_mgmt.models import Node  # noqa: F401  列表 URL 加载依赖 node_mgmt
 from apps.patch_mgmt.constants import ComplianceStatus, GovernanceTaskStatus, GovernanceTaskType, OSType, PatchSourceType
 from apps.patch_mgmt.models import (
     BaselineRequirement,
