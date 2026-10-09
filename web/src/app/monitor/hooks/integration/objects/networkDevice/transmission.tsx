@@ -68,6 +68,7 @@ export const useTransmissionConfig = () => {
       'Transmission Alcoma SNMP': 'snmp_alcoma',
       'Transmission Montclair SNMP': 'snmp_montclair',
       'Transmission PacketLight SNMP': 'snmp_packetlight',
+      'Transmission DeltaNet Lambdatrail SNMP': 'snmp_lambdatrail',
       'Transmission Pan Dacom SNMP': 'snmp_pandacom',
       'Transmission BKTel HFC SNMP': 'snmp_bktel_hfc',
       'Transmission Tachyon SNMP': 'snmp_tachyon',
