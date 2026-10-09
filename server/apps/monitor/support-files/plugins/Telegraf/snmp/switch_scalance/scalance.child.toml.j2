@@ -51,38 +51,88 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
-    # ---- SCALANCE 机箱温度 (Siemens AUTOMATION-SMI, 私有企业号 4329, 直接 ℃, scalar) ----
-    # 待现网核验：机箱温度标量 1.3.6.1.4.1.4329.6.3.3.1.1.0（℃）。
-    # 标量用 table+field 命名 → device_temperature_celsius。
-    [[inputs.snmp.table]]
-        name = "device_temperature"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.4329.6.3.3.1.1"
-        name = "celsius"
-    # ---- SCALANCE 双路电源线状态 (AUTOMATION-SMI powerSupply, 每路 ok(1)/failure(2)) ----
-    # 待现网核验：电源线1 .4329.6.3.4.1.1.1.0 / 电源线2 .4329.6.3.4.1.1.2.0（原始码 ok=1）。
-    # 下方 enum 归一 1→1(正常),其余→2(异常)。
+    # ---- SCALANCE 电源状态 (AUTOMATION-PS automationPSStatus 表列，无 .0) ----
+    # 原始码 inactive(1)/active(2)；下方 enum 将 active(2)→1(正常)，其余→2(异常)。
     [[inputs.snmp.table]]
         name = "device_psu"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.4329.6.3.4.1.1.1"
+        oid = "1.3.6.1.4.1.4329.6.3.5.1.1.1.2"
         name = "state"
+    # ---- SN-MSPS 温度表（snMspsDiagnosticsTemperatureTable，表列无 .0）----
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.4329.6.3.4.1.1.2"
-        name = "state_backup"
-# ---- CPU/内存/风扇：SCALANCE X 工业以太网交换机基于网管桥 ASIC，私有 MIB 未以无需行级过滤的标量形式暴露 CPU/内存负载,且多为无风扇导热被动散热设计 → CPU/内存/风扇 N/A 不采。仅温度/电源线/接口干净可采。----
-# ---- 状态归一：电源线 ok(1)→1(正常),其余→2(异常)。----
+        oid = "1.3.6.1.4.1.4329.20.1.1.1.1.79.7.1.7"
+        name = "sensor_name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4329.20.1.1.1.1.79.7.1.4"
+        name = "present"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4329.20.1.1.1.1.79.7.1.10"
+        name = "status"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4329.20.1.1.1.1.79.7.1.16"
+        name = "celsius"
+    # ---- SN-MSPS 故障信号标量 snMspsFaultState，顶层 field 带 .0 ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.4329.20.1.1.1.1.28.1.0"
+        name = "scalance_fault_state"
+# ---- CPU/内存/风扇：无私有 CPU/内存标量；多为无风扇被动散热 → 均 N/A。温度与故障信号见 SN-MSPS。----
+# ---- 状态归一：automationPSStatus active(2)→1(正常)，inactive(1)及其余→2(异常)。----
 [[processors.enum]]
     namepass = ["device_psu"]
     [[processors.enum.mapping]]
         field = "state"
         default = 2
         [processors.enum.mapping.value_mappings]
-            "1" = 1
-    [[processors.enum.mapping]]
-        field = "state_backup"
-        default = 2
-        [processors.enum.mapping.value_mappings]
-            "1" = 1
+            "2" = 1
+[[processors.starlark]]
+    namepass = ["device_temperature"]
+    source = '''
+def apply(metric):
+    # 弹出 present，但不以其过滤；status invalid(4)/initial(5) 丢弃；温度按 -40..125 单次范围校验。
+    status = metric.fields.get("status")
+    if "present" in metric.fields:
+        metric.fields.pop("present")
+    if "status" in metric.fields:
+        metric.fields.pop("status")
+    if status == 4 or status == "4" or status == 5 or status == "5":
+        return None
+    raw = metric.fields.get("celsius")
+    if raw == None:
+        return None
+    t = type(raw)
+    if t == "int" or t == "float":
+        val = float(raw)
+    else:
+        return None
+    if val < -40 or val > 125:
+        return None
+    metric.fields["celsius"] = val
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["scalance"]
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    raw = metric.fields.get("scalance_fault_state")
+    if raw == None:
+        return metric
+    if raw == 1 or raw == "1":
+        metric.fields["scalance_fault_state"] = 1
+        return metric
+    if raw == 2 or raw == "2":
+        metric.fields["scalance_fault_state"] = 2
+        return metric
+    metric.fields.pop("scalance_fault_state")
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["scalance"]

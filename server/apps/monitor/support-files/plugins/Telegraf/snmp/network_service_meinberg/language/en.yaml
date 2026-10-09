@@ -1,8 +1,6 @@
 NetworkService Meinberg LANTIME SNMP:
   name: Meinberg LANTIME (Telegraf)
-  desc: SNMP monitoring template for Meinberg LANTIME network service device. It reports NTP
-    status, NTP stratum, internal temperature, per-port inbound traffic rate, per-port
-    outbound traffic rate, and system uptime
+  desc: "SNMP monitoring template for Meinberg LANTIME network service device. It reports uptime, NTP state and stratum, temperature, power supply and fan status, and interface traffic (enterprise PEN 5597)."
 monitor_object:
   NetworkService: NetworkService
 monitor_object_type:
@@ -110,6 +108,14 @@ monitor_object_metric:
     network_service_meinberg_temperature:
       name: Meinberg Temperature
       desc: LANTIME NG internal temperature in degrees Celsius.
+    device_psu_state:
+      name: Power Supply Status
+      desc: Status of each power supply, normalized to 1=healthy and 2=fault. A fault removes power redundancy
+        and should be remediated promptly.
+    device_fan_state:
+      name: Fan Status
+      desc: Status of each cooling fan, normalized to 1=healthy and 2=fault. A faulty or stopped fan can quickly
+        lead to overheating.
 monitor_object_metric_group:
   NetworkService:
     Base: Base

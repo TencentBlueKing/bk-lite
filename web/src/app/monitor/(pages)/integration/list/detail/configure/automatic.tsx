@@ -1,10 +1,11 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Form, Button, Input, message, Spin, Dropdown, Modal, Tag, Select, Switch } from 'antd';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { Form, Button, Input, message, Spin, Dropdown, Modal, Radio, Tag, Select, Switch, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   DownOutlined,
+  ExclamationCircleFilled,
   LoadingOutlined,
   UploadOutlined
 } from '@ant-design/icons';
@@ -49,7 +50,7 @@ import {
 import { useUserInfoContext } from '@/context/userInfo';
 import Permission from '@/components/permission';
 import { cloneDeep } from 'lodash';
-import { usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
+import { fillOptionalFormFields, usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFromJson';
 import { useConfigRenderer } from '@/app/monitor/hooks/integration/useConfigRenderer';
 import { cloudRegionProviderFromPlugin, useCloudRegionOptions } from '@/app/monitor/hooks/integration/useQcloudRegionOptions';
 import {
@@ -85,13 +86,103 @@ import {
   countAccessAssets,
   mergeImportedAssetRows
 } from './automaticAssetCount';
+import ScriptTrialRunArea, {
+  scriptTrialBlocksMetricActions
+} from './scriptTrialRunArea';
+import { applyScriptCollectSubmit, syncScriptRunAsForOs } from './scriptCollectForm';
+import { scriptTimeoutFromInterval, SCRIPT_DETECT_TIMEOUT_MARGIN_SECONDS } from './scriptCollectTimeout';
+import { hydrateScriptCollectFormValues } from './scriptCollectHydrate';
+import {
+  collectReservedTagViolations,
+  excludeSelfMonitorMetrics,
+  catalogMetricRefLabel,
+  findDuplicateDisplayNames,
+  listPluginCatalogMetrics,
+  persistScriptMetrics,
+  planScriptMetricHardSyncDeletes,
+  SCRIPT_METRIC_PERSIST_MODE_ADD,
+  SCRIPT_METRIC_PERSIST_MODE_OVERWRITE,
+  ScriptMetricPersistMode,
+  CatalogMetricRef
+} from './scriptMetricPersist';
+import {
+  buildScriptMetricEditCarry,
+  SCRIPT_METRIC_DRAFT_QUERY,
+  writeScriptMetricEditCarry
+} from './scriptMetricEditCarry';
+import { BusinessMetricItem } from './scriptMetricsParser';
 const { confirm } = Modal;
 
+const OVERWRITE_NAME_PREVIEW = 8;
+
+type ScriptMetricWriteMode = ScriptMetricPersistMode;
+
+interface PendingScriptMetricWrite {
+  params: Record<string, any>;
+  templatesToApply: PolicyTemplateItem[];
+  namePrefix?: string;
+  pushAlertCenter: boolean;
+  alertCenterChannelIds: Array<string | number>;
+  staleDeletes: CatalogMetricRef[];
+}
+
+const ScriptMetricOverwriteContent = ({
+  names,
+  summary,
+  cancelHint,
+  expandLabel,
+  collapseLabel
+}: {
+  names: string[];
+  summary: string;
+  cancelHint: string;
+  expandLabel: string;
+  collapseLabel: string;
+}) => {
+  const [expanded, setExpanded] = useState(false);
+  const hiddenCount = names.length - OVERWRITE_NAME_PREVIEW;
+  const visible =
+    expanded || hiddenCount <= 0
+      ? names
+      : names.slice(0, OVERWRITE_NAME_PREVIEW);
+  return (
+    <div>
+      <p className="mb-2">{summary}</p>
+      <ul className="mb-2 max-h-40 list-disc overflow-auto pl-5">
+        {visible.map((name, index) => (
+          <li key={`${name}-${index}`} className="break-all">
+            {name}
+          </li>
+        ))}
+      </ul>
+      {hiddenCount > 0 ? (
+        <Button
+          type="link"
+          className="h-auto px-0"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            setExpanded((open) => !open);
+          }}
+        >
+          {expanded ? collapseLabel : expandLabel}
+        </Button>
+      ) : null}
+      <p className="mb-0 mt-2 text-[var(--color-text-3)]">{cancelHint}</p>
+    </div>
+  );
+};
+
 interface CollectDetectState {
-  status: 'pending' | 'running' | 'success' | 'failed';
+  status: 'pending' | 'running' | 'success' | 'failed' | 'warning' | 'stopped';
+  warning_type?: 'no_permission' | 'rate_limit';
   fingerprint?: string;
   result?: Record<string, any>;
   error_message?: string;
+  started_at?: string | null;
+  finished_at?: string | null;
+  debug_timeout?: number;
+  wait_stopped?: boolean;
 }
 
 interface IntegrationTableColumnConfig {
@@ -111,12 +202,13 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const [form] = Form.useForm();
   const { t } = useTranslation();
   const searchParams = useSearchParams();
-  const { isLoading } = useApiClient();
+  const { get, post, patch, isLoading } = useApiClient();
   const {
     createCollectDetectTask,
     getCollectDetectTask,
     getMonitorNodeList,
-    updateNodeChildConfig
+    updateNodeChildConfig,
+    getPluginChildConfig
   } = useIntegrationApi();
   const {
     getPolicyTemplate,
@@ -146,11 +238,16 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   );
   const [nodeList, setNodeList] = useState<TableDataItem[]>([]);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
+  const saveInFlightRef = useRef(false);
   const [nodesLoading, setNodesLoading] = useState<boolean>(false);
   const [initTableItems, setInitTableItems] =
     useState<IntegrationMonitoredObject>({});
   const [isTableInitialized, setIsTableInitialized] = useState<boolean>(false);
   const hasInitializedFormRef = useRef(false);
+  const [storedScriptForm, setStoredScriptForm] = useState<
+    Record<string, any> | undefined
+  >(undefined);
+  const [scriptValuesApplied, setScriptValuesApplied] = useState(false);
   const [currentConfig, setCurrentConfig] = useState<any>(null);
   const [configLoading, setConfigLoading] = useState<boolean>(false);
   const [policyTemplates, setPolicyTemplates] = useState<PolicyTemplateItem[]>(
@@ -162,6 +259,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     []
   );
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [activeTrialRowKey, setActiveTrialRowKey] = useState<string>('');
   const [collectDetectTasks, setCollectDetectTasks] = useState<
     Record<string, CollectDetectState>
   >({});
@@ -182,6 +280,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const onTableDataChange = (data: IntegrationMonitoredObject[]) => {
     setDataSource(data);
     clearCollectDetectState();
+    if (data.length > 0 && (!activeTrialRowKey || !data.some((r) => r.key === activeTrialRowKey))) {
+      setActiveTrialRowKey(data[0].key as string);
+    }
   };
 
   useEffect(() => {
@@ -379,6 +480,168 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   }, [configsInfo]);
 
   const supportCollectDetect = !!currentConfig?.support_collect_detect;
+  const templateType = searchParams.get('template_type') || '';
+  const isScriptTemplate =
+    templateType === 'script' ||
+    collectType === 'script' ||
+    currentConfig?.collect_type === 'script';
+
+  useEffect(() => {
+    if (!pluginId || configLoading) return;
+    if (!isScriptTemplate) {
+      setStoredScriptForm((prev) => (prev === undefined ? {} : prev));
+      return;
+    }
+    let cancelled = false;
+    getPluginChildConfig({ monitor_plugin_id: pluginId })
+      .then((content) => {
+        if (cancelled) return;
+        setStoredScriptForm(
+          hydrateScriptCollectFormValues(
+            currentConfig?.form_fields,
+            content,
+            currentConfig?.collect_type || 'script'
+          )
+        );
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setStoredScriptForm({});
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    pluginId,
+    isScriptTemplate,
+    configLoading,
+    currentConfig,
+    getPluginChildConfig
+  ]);
+
+  const activeRecord = useMemo(() => {
+    return (
+      dataSource.find((row) => row.key === activeTrialRowKey) ||
+      dataSource[0]
+    );
+  }, [dataSource, activeTrialRowKey]);
+
+  const activeTrialTask = useMemo(() => {
+    if (!activeRecord?.key) return undefined;
+    return collectDetectTasks[activeRecord.key as string];
+  }, [activeRecord, collectDetectTasks]);
+
+  const scriptTrialFailed =
+    isScriptTemplate && scriptTrialBlocksMetricActions(activeTrialTask);
+
+  const activeTrialInstanceName = useMemo(() => {
+    if (!activeRecord) return undefined;
+    const named =
+      activeRecord.instance_name ||
+      activeRecord.ip ||
+      activeRecord.host ||
+      activeRecord.instance_id;
+    if (named) return String(named);
+    if (dataSource.length < 2) return undefined;
+    const index = dataSource.findIndex((row) => row.key === activeRecord.key);
+    if (index < 0) return undefined;
+    return t('monitor.integrations.trialRunBoundInstance', '实例 {index}', {
+      index: index + 1
+    });
+  }, [activeRecord, dataSource, t]);
+
+  const isAnyTrialRunning = useMemo(() => {
+    return Object.values(collectDetectTasks).some(
+      (t) => t?.status === 'pending' || t?.status === 'running'
+    );
+  }, [collectDetectTasks]);
+
+  const [trialMetricsByRow, setTrialMetricsByRow] = useState<
+    Record<string, BusinessMetricItem[]>
+  >({});
+  const [scriptDebugHasBusinessMetrics, setScriptDebugHasBusinessMetrics] =
+    useState(false);
+  const [scriptCatalogBlocking, setScriptCatalogBlocking] = useState(false);
+  const [scriptCatalogError, setScriptCatalogError] = useState(false);
+  const [scriptWriteMode, setScriptWriteMode] =
+    useState<ScriptMetricWriteMode>(SCRIPT_METRIC_PERSIST_MODE_ADD);
+  const [scriptWriteChoice, setScriptWriteChoice] =
+    useState<PendingScriptMetricWrite | null>(null);
+  const [duplicateDisplayNameWarning, setDuplicateDisplayNameWarning] =
+    useState<string[]>([]);
+
+  const handleSelectedScriptMetricsChange = useCallback(
+    (metrics: BusinessMetricItem[]) => {
+      const rowKey = (activeRecord?.key as string) || 'default';
+      setTrialMetricsByRow((prev) => ({
+        ...prev,
+        [rowKey]: metrics
+      }));
+    },
+    [activeRecord?.key]
+  );
+
+  const handleBusinessMetricsAvailableChange = useCallback(
+    (available: boolean) => {
+      setScriptDebugHasBusinessMetrics(available);
+    },
+    []
+  );
+
+  const selectedScriptMetrics = useMemo(() => {
+    const map = new Map<string, BusinessMetricItem>();
+    Object.values(trialMetricsByRow).forEach((items) => {
+      items.forEach((item) => {
+        if (!map.has(item.name)) {
+          map.set(item.name, item);
+        }
+      });
+    });
+    return Array.from(map.values());
+  }, [trialMetricsByRow]);
+
+  const reservedScriptTagKeys = useMemo(
+    () => collectReservedTagViolations(selectedScriptMetrics),
+    [selectedScriptMetrics]
+  );
+  const hasReservedScriptTagError = reservedScriptTagKeys.length > 0;
+  const hasReservedScriptError = hasReservedScriptTagError;
+  const reservedTagRenameText = t(
+    'monitor.integrations.reservedTagRename',
+    '保留字段，请换名'
+  );
+  const reservedMetricIdText = t(
+    'monitor.integrations.reservedMetricId',
+    '指标 ID 与保留字段冲突，请更换'
+  );
+  const goEditSelectFirstText = t(
+    'monitor.integrations.goEditMetricsSelectFirst',
+    '请先勾选指标'
+  );
+  const showSelectMetricsFirst =
+    isScriptTemplate &&
+    scriptDebugHasBusinessMetrics &&
+    !hasReservedScriptError &&
+    !selectedScriptMetrics.length;
+
+  const persistSelectedScriptMetrics = async (
+    targetPluginId: string | number,
+    targetObjectId: string | number,
+    metricsToPersist: BusinessMetricItem[],
+    staleDeletes: CatalogMetricRef[] = [],
+    mode: ScriptMetricPersistMode = SCRIPT_METRIC_PERSIST_MODE_ADD
+  ) => {
+    await persistScriptMetrics({
+      pluginId: targetPluginId,
+      objectId: targetObjectId,
+      metrics: excludeSelfMonitorMetrics(metricsToPersist),
+      staleDeletes,
+      mode,
+      client: { get, post, patch, t }
+    });
+  };
+
   const [formSnapshot, setFormSnapshot] = useState<Record<string, any>>({});
   const tableDependencyFields = useMemo(
     () => collectDependencyFieldNames(currentConfig?.table_columns),
@@ -457,7 +720,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
 
   const buildDetectInstance = (record: IntegrationMonitoredObject) => {
     const formValues = omitCollectionPolicyField(
-      cloneDeep(form.getFieldsValue())
+      cloneDeep(form.getFieldsValue(true))
     );
     delete formValues.nodes;
     const rowValues = Object.keys(record)
@@ -471,11 +734,17 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         acc[key] = record[key];
         return acc;
       }, {} as Record<string, any>);
-    const instance: Record<string, any> = {
-      ...formValues,
-      ...rowValues,
-      instance_type: configsInfo?.instance_type
-    };
+    const instance: Record<string, any> = fillOptionalFormFields(
+      {
+        ...formValues,
+        ...rowValues,
+        instance_type: configsInfo?.instance_type || formValues.instance_type,
+        collect_type: configsInfo?.collect_type || formValues.collect_type,
+        monitor_plugin_id: Number(pluginId) || formValues.monitor_plugin_id,
+        plugin_id: formValues.plugin_id || pluginId
+      },
+      currentConfig?.form_fields
+    );
     if (!instance.instance_id) {
       instance.instance_id =
         record.instance_id ||
@@ -484,7 +753,28 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         formValues.instance_name ||
         (record.key as string);
     }
-    return instance;
+    const nodeId = getRowNodeId(record);
+    const selectedNode = nodeList.find(
+      (node) =>
+        String(node.id) === String(nodeId) || String(node.value) === String(nodeId)
+    );
+    if (selectedNode?.operating_system && !instance.operating_system) {
+      instance.operating_system = selectedNode.operating_system;
+    }
+    return applyScriptCollectSubmit(instance, instance.collect_type);
+  };
+
+  const ensureCollectFormValid = async () => {
+    try {
+      await form.validateFields();
+      return true;
+    } catch (error: any) {
+      const first = error?.errorFields?.[0]?.errors?.[0];
+      if (first) {
+        message.error(String(first));
+      }
+      return false;
+    }
   };
 
   const buildCollectDetectFingerprint = (record: IntegrationMonitoredObject) =>
@@ -512,6 +802,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         <CheckCircleOutlined className="text-[#52c41a]" />
       ) : presentation.tone === 'error' ? (
         <CloseCircleOutlined className="text-[#ff4d4f]" />
+      ) : presentation.tone === 'warning' ? (
+        <ExclamationCircleFilled className="text-[#faad14]" />
       ) : (
         <LoadingOutlined className="text-[#1677ff]" />
       );
@@ -532,7 +824,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
                     ? 'success'
                     : presentation.tone === 'error'
                       ? 'error'
-                      : 'processing'
+                      : presentation.tone === 'warning'
+                        ? 'warning'
+                        : 'processing'
                 }
                 className="mt-[6px]"
               >
@@ -599,7 +893,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     taskId: React.Key,
     fingerprint: string,
     mode: CollectDetectMode,
-    retryCount = 0
+    retryCount = 0,
+    maxRetries = 60,
+    debugTimeout?: number
   ) => {
     try {
       const task = (await getCollectDetectTask(taskId)) as CollectDetectState;
@@ -611,15 +907,23 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       ) {
         return;
       }
-      updateCollectDetectState(rowKey, { ...task, fingerprint });
-      if (['pending', 'running'].includes(task.status) && retryCount < 60) {
+      updateCollectDetectState(rowKey, {
+        ...task,
+        fingerprint,
+        started_at: (task as any).started_at,
+        finished_at: (task as any).finished_at,
+        debug_timeout: debugTimeout
+      });
+      if (['pending', 'running'].includes(task.status) && retryCount < maxRetries) {
         collectDetectTimersRef.current[rowKey] = setTimeout(() => {
           pollCollectDetectTask(
             rowKey,
             taskId,
             fingerprint,
             mode,
-            retryCount + 1
+            retryCount + 1,
+            maxRetries,
+            debugTimeout
           );
         }, 2000);
         return;
@@ -645,38 +949,147 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     }
   };
 
+  const stopCollectDetectWait = (rowKey: string) => {
+    if (collectDetectTimersRef.current[rowKey]) {
+      clearTimeout(collectDetectTimersRef.current[rowKey]);
+      delete collectDetectTimersRef.current[rowKey];
+    }
+    delete activeCollectDetectFingerprintRef.current[rowKey];
+    setCollectDetectTasks((prev) => {
+      const current = prev[rowKey];
+      if (!current) {
+        return prev;
+      }
+      return {
+        ...prev,
+        [rowKey]: {
+          ...current,
+          status: 'stopped',
+          wait_stopped: true
+        }
+      };
+    });
+  };
+
+  const cancelInFlightCollectDetectExcept = (keepKey: string) => {
+    Object.keys(collectDetectTimersRef.current).forEach((key) => {
+      if (key === keepKey) return;
+      clearTimeout(collectDetectTimersRef.current[key]);
+      delete collectDetectTimersRef.current[key];
+    });
+    Object.keys(activeCollectDetectFingerprintRef.current).forEach((key) => {
+      if (key !== keepKey) {
+        delete activeCollectDetectFingerprintRef.current[key];
+      }
+    });
+    setCollectDetectTasks((prev) => {
+      const runningKeys = Object.keys(prev).filter((key) => {
+        if (key === keepKey) return false;
+        const status = prev[key]?.status;
+        return status === 'pending' || status === 'running';
+      });
+      if (!runningKeys.length) return prev;
+      const next = { ...prev };
+      runningKeys.forEach((key) => {
+        delete next[key];
+      });
+      return next;
+    });
+  };
+
   const handleCollectDetect = async (
     record: IntegrationMonitoredObject,
     mode: CollectDetectMode = 'single'
   ) => {
+    if (isScriptTemplate && mode === 'batch') {
+      return;
+    }
     const rowKey = record.key as string;
+    setActiveTrialRowKey(rowKey);
     const nodeId = getRowNodeId(record);
     if (!nodeId) {
       message.warning(t('monitor.integrations.collectDetectNodeRequired'));
       return;
     }
+    if (mode !== 'batch' && !(await ensureCollectFormValid())) {
+      return;
+    }
     const fingerprint = buildCollectDetectFingerprint(record);
+    if (isScriptTemplate) {
+      cancelInFlightCollectDetectExcept(rowKey);
+    }
     activeCollectDetectFingerprintRef.current[rowKey] = fingerprint;
-    updateCollectDetectState(rowKey, { status: 'running', fingerprint });
+    const debugTimeout = isScriptTemplate
+      ? scriptTimeoutFromInterval(form.getFieldValue('interval'))
+      : 60;
+    const maxRetries = isScriptTemplate
+      ? Math.max(
+        1,
+        Math.ceil(
+          ((debugTimeout + SCRIPT_DETECT_TIMEOUT_MARGIN_SECONDS) * 1000) / 2000
+        ) + 2
+      )
+      : 60;
+    updateCollectDetectState(rowKey, {
+      status: 'running',
+      fingerprint,
+      debug_timeout: debugTimeout
+    });
     try {
       const data = (await createCollectDetectTask({
         monitor_plugin_id: Number(pluginId),
         monitor_object_id: Number(objectId),
         node_id: nodeId,
         instance_key: record.instance_id || record.instance_name || rowKey,
-        instance: buildDetectInstance(record)
+        instance: buildDetectInstance(record),
+        ...(isScriptTemplate ? {} : { timeout: debugTimeout })
       })) as { task_id: React.Key };
-      pollCollectDetectTask(rowKey, data.task_id, fingerprint, mode);
-    } catch (error: any) {
-      updateCollectDetectState(rowKey, {
-        status: 'failed',
+      pollCollectDetectTask(
+        rowKey,
+        data.task_id,
         fingerprint,
-        error_message: error?.message || t('common.operationFailed')
+        mode,
+        0,
+        maxRetries,
+        debugTimeout
+      );
+    } catch (error: any) {
+      const status = error?.response?.status;
+      const respMsg = error?.response?.data?.message || error?.message || '';
+      let warningType: 'no_permission' | 'rate_limit' | undefined;
+      if (
+        status === 429 ||
+        respMsg.includes('频繁') ||
+        respMsg.includes('throttle') ||
+        respMsg.includes('Throttled')
+      ) {
+        warningType = 'rate_limit';
+      } else if (
+        status === 403 ||
+        respMsg.includes('无权') ||
+        respMsg.includes('权限') ||
+        respMsg.includes('permission') ||
+        respMsg.includes('Unauthorized')
+      ) {
+        warningType = 'no_permission';
+      }
+      updateCollectDetectState(rowKey, {
+        status: warningType ? 'warning' : 'failed',
+        fingerprint,
+        warning_type: warningType,
+        error_message: warningType === 'rate_limit'
+          ? t('monitor.integrations.trialRunRateLimit', '调试过于频繁，请稍后重试')
+          : warningType === 'no_permission'
+            ? t('monitor.integrations.trialRunNoPermission', '当前账号无权调试该对象/节点')
+            : respMsg || t('common.operationFailed')
       });
     }
   };
 
   const handleBatchCollectDetect = async () => {
+    if (isScriptTemplate) {
+      return;
+    }
     const selectedRows = getRowsForBatchCollectDetect(
       dataSource,
       selectedRowKeys
@@ -684,6 +1097,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     const runnableRows = selectedRows.filter((row) => getRowNodeId(row));
     if (!runnableRows.length) {
       message.warning(t('monitor.integrations.collectDetectNodeRequired'));
+      return;
+    }
+    if (!(await ensureCollectFormValid())) {
       return;
     }
     message.info(
@@ -699,17 +1115,42 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const renderCollectDetectStatus = (record: IntegrationMonitoredObject) => {
     const task = collectDetectTasks[record.key as string];
     if (!task || task.fingerprint !== buildCollectDetectFingerprint(record)) {
-      return <Tag>{t('monitor.integrations.collectDetectUntested')}</Tag>;
+      return (
+        <Tag>
+          {isScriptTemplate
+            ? t('monitor.integrations.scriptCollectUntested', '未调试')
+            : t('monitor.integrations.collectDetectUntested')}
+        </Tag>
+      );
     }
     const clickableClassName = 'cursor-pointer';
+    if (task.status === 'warning') {
+      return (
+        <Tag
+          color="warning"
+          className={clickableClassName}
+          onClick={() => {
+            setActiveTrialRowKey(record.key as string);
+            if (!isScriptTemplate) showCollectDetectResult(task);
+          }}
+        >
+          {t('monitor.integrations.trialRunWarning', '警告')}
+        </Tag>
+      );
+    }
     if (['pending', 'running'].includes(task.status)) {
       return (
         <Tag
           color="processing"
           className={clickableClassName}
-          onClick={() => showCollectDetectResult(task)}
+          onClick={() => {
+            setActiveTrialRowKey(record.key as string);
+            if (!isScriptTemplate) showCollectDetectResult(task);
+          }}
         >
-          {t('monitor.integrations.collectDetectRunning')}
+          {isScriptTemplate
+            ? t('monitor.integrations.scriptCollectRunning', '调试中')
+            : t('monitor.integrations.collectDetectRunning')}
         </Tag>
       );
     }
@@ -717,7 +1158,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       <Tag
         color="success"
         className={clickableClassName}
-        onClick={() => showCollectDetectResult(task)}
+        onClick={() => {
+          setActiveTrialRowKey(record.key as string);
+          if (!isScriptTemplate) showCollectDetectResult(task);
+        }}
       >
         {t('monitor.integrations.collectDetectSuccess')}
       </Tag>
@@ -725,7 +1169,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       <Tag
         color="error"
         className={clickableClassName}
-        onClick={() => showCollectDetectResult(task)}
+        onClick={() => {
+          setActiveTrialRowKey(record.key as string);
+          if (!isScriptTemplate) showCollectDetectResult(task);
+        }}
       >
         {t('monitor.integrations.collectDetectFailed')}
       </Tag>
@@ -764,9 +1211,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
                   : ''
               )}
               className="mr-[10px]"
-              onClick={() => handleCollectDetect(record)}
+              onClick={() => {
+                setActiveTrialRowKey(record.key as string);
+                handleCollectDetect(record);
+              }}
             >
-              {t('monitor.integrations.collectDetect')}
+              {isScriptTemplate
+                ? t('monitor.integrations.trialRun', '调试')
+                : t('monitor.integrations.collectDetect')}
             </Button>
           )}
           <Button
@@ -799,7 +1251,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     const collectDetectStatusColumn = supportCollectDetect
       ? [
         {
-          title: t('monitor.integrations.collectDetectStatus'),
+          title: isScriptTemplate
+            ? t('monitor.integrations.scriptCollectStatus', '调试状态')
+            : t('monitor.integrations.collectDetectStatus'),
           key: 'collect_detect_status',
           dataIndex: 'collect_detect_status',
           width: 140,
@@ -819,12 +1273,31 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     t,
     collectType,
     supportCollectDetect,
-    collectDetectTasks
+    collectDetectTasks,
+    isScriptTemplate
   ]);
 
-  const formItems = useMemo(() => {
-    return formConfig?.formItems || null;
-  }, [formConfig]);
+  const pluginFormCacheKey = [
+    pluginId,
+    currentConfig?.collect_type || '',
+    JSON.stringify(currentConfig?.form_fields ?? null),
+    nodeList.map((node) => node.id || node.value).join(',')
+  ].join('|');
+  const cachedPluginFormRef = useRef<{ key: string; items: React.ReactNode }>({
+    key: '',
+    items: null
+  });
+  if (!pluginId) {
+    cachedPluginFormRef.current = { key: '', items: null };
+  } else if (cachedPluginFormRef.current.key !== pluginFormCacheKey) {
+    cachedPluginFormRef.current = {
+      key: formConfig?.formItems ? pluginFormCacheKey : '',
+      items: formConfig?.formItems || null
+    };
+  }
+  const formItems = cachedPluginFormRef.current.items;
+  const visibleFormItems =
+    !isScriptTemplate || scriptValuesApplied ? formItems : null;
 
   useEffect(() => {
     if (isLoading) return;
@@ -833,6 +1306,8 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
 
   useEffect(() => {
     hasInitializedFormRef.current = false;
+    setStoredScriptForm(undefined);
+    setScriptValuesApplied(false);
   }, [pluginId]);
 
   useEffect(() => {
@@ -860,11 +1335,31 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (configLoading) return;
     const defaults = formConfig?.defaultForm;
     if (!defaults) return;
+    if (isScriptTemplate && storedScriptForm === undefined) return;
     if (!hasInitializedFormRef.current) {
-      const initialValues = applyIfmibDeploymentState(defaults, enableIfmibFromUrl);
+      const initialValues = applyIfmibDeploymentState(
+        {
+          ...defaults,
+          ...(storedScriptForm || {})
+        },
+        enableIfmibFromUrl
+      );
       form.setFieldsValue(initialValues);
       trackSnmpFilterMutexLastChanged({}, form.getFieldsValue(true), form);
       hasInitializedFormRef.current = true;
+      if (isScriptTemplate) {
+        setScriptValuesApplied(true);
+      }
+    } else if (isScriptTemplate && storedScriptForm) {
+      if (!scriptValuesApplied) {
+        form.setFieldsValue(storedScriptForm);
+        setScriptValuesApplied(true);
+      } else if (storedScriptForm.script) {
+        const currentScript = form.getFieldValue('script');
+        if (currentScript === undefined || currentScript === null || currentScript === '') {
+          form.setFieldValue('script', storedScriptForm.script);
+        }
+      }
     }
     // UI 字段可能在首次初始化后才挂载；其自身 default_value=true 会覆盖前一次
     // 空表单初始化。因此只在 IF-MIB 字段真实可用时，以 URL 中当前下发流程状态回填。
@@ -875,6 +1370,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     setFormSnapshot((prev) => {
       const next = {
         ...defaults,
+        ...(storedScriptForm || {}),
         ...prev,
         ...form.getFieldsValue(true)
       };
@@ -887,7 +1383,15 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       return unchanged ? prev : next;
     });
     // 刻意依赖 defaultFormKey 而非 defaultForm 对象引用。
-  }, [configLoading, defaultFormKey, enableIfmibFromUrl, form]);
+  }, [
+    configLoading,
+    defaultFormKey,
+    enableIfmibFromUrl,
+    form,
+    isScriptTemplate,
+    scriptValuesApplied,
+    storedScriptForm
+  ]);
 
   const handleAdd = (key: string) => {
     const index = dataSource.findIndex((item) => item.key === key);
@@ -989,7 +1493,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   };
 
   const batchMenuItems: MenuProps['items'] = [
-    ...(supportCollectDetect
+    ...(supportCollectDetect && !isScriptTemplate
       ? [
         {
           key: 'batchCollectDetect',
@@ -1137,7 +1641,29 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   };
 
   const handleSave = () => {
-    if (policyTemplatesLoading) {
+    if (
+      policyTemplatesLoading ||
+      confirmLoading ||
+      saveInFlightRef.current ||
+      scriptWriteChoice
+    ) {
+      return;
+    }
+    if (isScriptTemplate && scriptCatalogBlocking) {
+      return;
+    }
+    if (isScriptTemplate && hasReservedScriptError) {
+      return;
+    }
+    if (isScriptTemplate && scriptTrialBlocksMetricActions(activeTrialTask)) {
+      return;
+    }
+    if (
+      isScriptTemplate &&
+      scriptDebugHasBusinessMetrics &&
+      !selectedScriptMetrics.length
+    ) {
+      message.warning(goEditSelectFirstText);
       return;
     }
     const normalizedForm = normalizePasswordFields(
@@ -1157,7 +1683,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (!tableValidation.data) {
       return;
     }
-    form.validateFields().then((values) => {
+    form.validateFields().then(async (values) => {
       try {
         const mutexErrors = getSnmpFilterMutexConflicts(values, t);
         if (mutexErrors.length) {
@@ -1193,12 +1719,43 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           }) || {};
         params.monitor_object_id = Number(objectId);
         params.monitor_plugin_id = Number(pluginId);
+        if (
+          isScriptTemplate &&
+          scriptDebugHasBusinessMetrics &&
+          selectedScriptMetrics.length > 0
+        ) {
+          const persistable = excludeSelfMonitorMetrics(selectedScriptMetrics);
+          const existing = await listPluginCatalogMetrics({
+            pluginId,
+            objectId,
+            client: { get }
+          });
+          const staleDeletes = planScriptMetricHardSyncDeletes(
+            existing,
+            persistable
+          );
+          setDuplicateDisplayNameWarning(
+            findDuplicateDisplayNames(persistable, existing)
+          );
+          setScriptWriteMode(SCRIPT_METRIC_PERSIST_MODE_ADD);
+          setScriptWriteChoice({
+            params,
+            templatesToApply,
+            namePrefix: values[COLLECTION_POLICY_NAME_PREFIX_FIELD],
+            pushAlertCenter,
+            alertCenterChannelIds,
+            staleDeletes
+          });
+          return;
+        }
         addNodesConfig(
           params,
           templatesToApply,
           values[COLLECTION_POLICY_NAME_PREFIX_FIELD],
           pushAlertCenter,
-          alertCenterChannelIds
+          alertCenterChannelIds,
+          [],
+          SCRIPT_METRIC_PERSIST_MODE_ADD
         );
       } catch (error: any) {
         message.error(error?.message || t('common.operationFailed'));
@@ -1211,11 +1768,49 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     templatesToApply: PolicyTemplateItem[] = [],
     namePrefix?: string,
     pushAlertCenter = false,
-    alertCenterChannelIds: Array<string | number> = []
+    alertCenterChannelIds: Array<string | number> = [],
+    staleDeletes: CatalogMetricRef[] = [],
+    persistMode: ScriptMetricPersistMode = SCRIPT_METRIC_PERSIST_MODE_ADD
   ) => {
+    if (saveInFlightRef.current) {
+      return;
+    }
+    saveInFlightRef.current = true;
     try {
       setConfirmLoading(true);
       const collectResult = await updateNodeChildConfig(params);
+      let didPersistMetrics = false;
+      if (
+        isScriptTemplate &&
+        scriptDebugHasBusinessMetrics &&
+        selectedScriptMetrics.length > 0
+      ) {
+        await persistSelectedScriptMetrics(
+          pluginId,
+          objectId,
+          excludeSelfMonitorMetrics(selectedScriptMetrics),
+          staleDeletes,
+          persistMode
+        );
+        didPersistMetrics = true;
+      }
+      const goIntegrationList = () => {
+        const nextSearch = new URLSearchParams({
+          objId: objectId
+        });
+        router.push(`/monitor/integration/list?${nextSearch.toString()}`);
+      };
+      const goPersistedMetrics = () => {
+        const payload = buildScriptMetricEditCarry(selectedScriptMetrics);
+        if (payload.metrics.length) {
+          writeScriptMetricEditCarry(objectId, pluginId, payload);
+        }
+        const metricSearch = new URLSearchParams(searchParams.toString());
+        metricSearch.set(SCRIPT_METRIC_DRAFT_QUERY, '1');
+        router.push(
+          `/monitor/integration/list/detail/metric?${metricSearch.toString()}`
+        );
+      };
       if (templatesToApply.length) {
         const policyPayload = buildCollectionPolicyApplyPayload({
           monitorObjectId: objectId,
@@ -1253,20 +1848,46 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
             );
           }
         }
+      } else if (didPersistMetrics) {
+        message.success(
+          t('monitor.integrations.scriptMetricsPersistSuccess', '指标已保存')
+        );
       } else {
         message.success(t('common.addSuccess'));
       }
-      const nextSearch = new URLSearchParams({
-        objId: objectId
-      });
-      router.push(`/monitor/integration/list?${nextSearch.toString()}`);
+      if (didPersistMetrics) {
+        goPersistedMetrics();
+      } else {
+        goIntegrationList();
+      }
     } catch (error: any) {
-      message.error(
+      const errorText =
         error?.response?.data?.message ||
-          error?.message ||
-          t('common.operationFailed')
-      );
+        error?.message ||
+        t('common.operationFailed');
+      if (
+        typeof errorText === 'string' &&
+        (errorText.includes(reservedTagRenameText) ||
+          errorText.includes(reservedMetricIdText))
+      ) {
+        return;
+      }
+      if (
+        isScriptTemplate &&
+        typeof errorText === 'string' &&
+        errorText.includes('已存在采集配置')
+      ) {
+        message.warning(
+          t(
+            'monitor.integrations.scriptCollectConfigExistsUpdating',
+            '该实例已有脚本采集配置，将更新现有配置'
+          )
+        );
+        return;
+      }
+      message.error(errorText);
     } finally {
+      saveInFlightRef.current = false;
       setConfirmLoading(false);
     }
   };
@@ -1329,6 +1950,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         ) {
           setFormSnapshot(nextValues);
         }
+        if (Object.prototype.hasOwnProperty.call(changed, 'script_os')) {
+          syncScriptRunAsForOs(form, String(changed.script_os ?? ''));
+        }
         if (
           Object.prototype.hasOwnProperty.call(
             changed,
@@ -1358,7 +1982,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         </b>
         <GuideEntryButton />
       </div>
-      {formItems}
+      {visibleFormItems}
       <Form.Item
         name={COLLECTION_POLICY_FIELD}
         label={
@@ -1548,19 +2172,94 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           rowSelection={rowSelection}
         />
       </Form.Item>
+      {isScriptTemplate && (
+        <ScriptTrialRunArea
+          task={activeTrialTask}
+          spinning={['pending', 'running'].includes(activeTrialTask?.status || '')}
+          onTrialRun={() => {
+            const target =
+              dataSource.find((row) => row.key === activeTrialRowKey) ||
+              dataSource[0];
+            if (target) {
+              setActiveTrialRowKey(target.key as string);
+              handleCollectDetect(target);
+            }
+          }}
+          onStopWaiting={() => {
+            const rowKey = (activeRecord?.key || activeTrialRowKey) as string;
+            if (rowKey) {
+              stopCollectDetectWait(rowKey);
+            }
+          }}
+          timeoutSeconds={
+            activeTrialTask?.debug_timeout ??
+            scriptTimeoutFromInterval(form.getFieldValue('interval'))
+          }
+          nodeSelected={Boolean(getRowNodeId(activeRecord || {}))}
+          instanceName={activeTrialInstanceName}
+          pluginId={pluginId}
+          objectId={objectId}
+          onSelectedMetricsChange={handleSelectedScriptMetricsChange}
+          onBusinessMetricsAvailableChange={handleBusinessMetricsAvailableChange}
+          onCatalogBlockingChange={setScriptCatalogBlocking}
+          onCatalogErrorChange={setScriptCatalogError}
+        />
+      )}
       <Form.Item>
-        <Permission requiredPermissions={['Add']}>
-          <Button
-            type="primary"
-            loading={confirmLoading}
-            onClick={handleSave}
-          >
-            {t('common.confirm')}
-          </Button>
-        </Permission>
+        <div className="flex flex-wrap items-center gap-3">
+          <Permission requiredPermissions={['Add']}>
+            <Tooltip
+              title={
+                scriptCatalogError
+                  ? t(
+                    'monitor.integrations.scriptCatalogLoadFailed',
+                    '指标目录加载失败，暂无法确认写入'
+                  )
+                  : undefined
+              }
+            >
+              <span className="inline-block">
+                <Button
+                  type="primary"
+                  loading={confirmLoading}
+                  disabled={
+                    confirmLoading ||
+                    isAnyTrialRunning ||
+                    hasReservedScriptError ||
+                    scriptTrialFailed ||
+                    scriptCatalogBlocking
+                  }
+                  onClick={handleSave}
+                >
+                  {t('common.confirm')}
+                </Button>
+              </span>
+            </Tooltip>
+          </Permission>
+          {hasReservedScriptTagError && (
+            <span
+              className="text-[13px] text-[var(--color-fail)]"
+              role="alert"
+            >
+              {reservedTagRenameText}
+            </span>
+          )}
+          {showSelectMetricsFirst && (
+            <span
+              className="text-[13px] text-[var(--color-fail)]"
+              role="alert"
+            >
+              {goEditSelectFirstText}
+            </span>
+          )}
+        </div>
       </Form.Item>
     </Form>
   );
+
+  const scriptWriteDeleteNames = (scriptWriteChoice?.staleDeletes || [])
+    .map((item) => catalogMetricRefLabel(item))
+    .filter(Boolean);
 
   return (
     <Spin spinning={configLoading || nodesLoading || policyTemplatesLoading}>
@@ -1572,6 +2271,121 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           {configSection}
         </PluginGuidePanel>
       </div>
+      <Modal
+        title={t('monitor.integrations.scriptMetricsWriteTitle', '确认写入指标')}
+        open={Boolean(scriptWriteChoice)}
+        width={560}
+        centered
+        destroyOnHidden
+        maskClosable={!confirmLoading}
+        confirmLoading={confirmLoading}
+        okText={t('common.confirm')}
+        cancelText={t('common.cancel')}
+        onCancel={() => {
+          if (confirmLoading) return;
+          setScriptWriteChoice(null);
+        }}
+        onOk={() => {
+          const choice = scriptWriteChoice;
+          if (!choice || confirmLoading || saveInFlightRef.current) return;
+          const staleDeletes =
+            scriptWriteMode === SCRIPT_METRIC_PERSIST_MODE_OVERWRITE
+              ? choice.staleDeletes
+              : [];
+          setScriptWriteChoice(null);
+          void addNodesConfig(
+            choice.params,
+            choice.templatesToApply,
+            choice.namePrefix,
+            choice.pushAlertCenter,
+            choice.alertCenterChannelIds,
+            staleDeletes,
+            scriptWriteMode
+          );
+        }}
+      >
+        <Radio.Group
+          className="flex w-full flex-col gap-3"
+          value={scriptWriteMode}
+          onChange={(event) =>
+            setScriptWriteMode(event.target.value as ScriptMetricWriteMode)
+          }
+        >
+          <Radio value={SCRIPT_METRIC_PERSIST_MODE_ADD} className="whitespace-normal">
+            {t(
+              'monitor.integrations.scriptMetricsWriteAppend',
+              '仅新增：写入本次勾选指标，不删除目录中的旧指标'
+            )}
+          </Radio>
+          <Radio
+            value={SCRIPT_METRIC_PERSIST_MODE_OVERWRITE}
+            className="whitespace-normal"
+          >
+            {t(
+              'monitor.integrations.scriptMetricsWriteOverwrite',
+              '覆盖：写入本次勾选，并删除本次选择中未出现的旧指标'
+            )}
+          </Radio>
+        </Radio.Group>
+        {duplicateDisplayNameWarning.length > 0 ? (
+          <p className="mb-0 mt-3 text-[13px] text-[var(--color-warning)]">
+            {t(
+              'monitor.integrations.duplicateDisplayName',
+              '展示名称与已有指标重复'
+            )}
+            ：{duplicateDisplayNameWarning.join('、')}
+          </p>
+        ) : null}
+        {scriptWriteMode === SCRIPT_METRIC_PERSIST_MODE_OVERWRITE ? (
+          <div className="mt-3">
+            {scriptWriteDeleteNames.length > 0 ? (
+              <ScriptMetricOverwriteContent
+                names={scriptWriteDeleteNames}
+                summary={t(
+                  'monitor.integrations.scriptMetricsHardSyncHint',
+                  '将删除本插件目录中、本次选择里没有的旧指标，共 {count} 个。',
+                  { count: scriptWriteDeleteNames.length }
+                )}
+                cancelHint={t(
+                  'monitor.integrations.scriptMetricsHardSyncCancel',
+                  '取消则中止本次确认。'
+                )}
+                expandLabel={t(
+                  'monitor.integrations.scriptMetricsHardSyncMore',
+                  '展开全部（共 {count} 个）',
+                  { count: scriptWriteDeleteNames.length }
+                )}
+                collapseLabel={t(
+                  'monitor.integrations.scriptMetricsHardSyncCollapse',
+                  '收起'
+                )}
+              />
+            ) : (
+              <div className="space-y-2 text-[13px] text-[var(--color-text-3)]">
+                <p className="mb-0">
+                  {t(
+                    'monitor.integrations.scriptMetricsWriteOverwriteEmpty',
+                    '没有需要删除的旧指标。'
+                  )}
+                </p>
+                <p className="mb-0">
+                  {t(
+                    'monitor.integrations.scriptMetricsHardSyncCancel',
+                    '取消则中止本次确认。'
+                  )}
+                </p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="mb-0 mt-3 text-[13px] text-[var(--color-text-3)]">
+            {t(
+              'monitor.integrations.scriptMetricsHardSyncCancel',
+              '取消则中止本次确认。'
+            )}
+          </p>
+        )}
+      </Modal>
       <BatchEditModal
         ref={batchEditModalRef}
         onSuccess={handleBatchEditSuccess}

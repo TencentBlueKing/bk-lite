@@ -1,0 +1,128 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_hikvision"
+        config_type = "hikvision"
+        brand = "hikvision"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- HIK-DEVICE-MIB devicemib 1.3.6.1.4.1.39165.1（PEN 39165）：标量，顶层 field 带 .0；值为 OCTET STRING，由下方 starlark 解析 → measurement snmp，查询用 snmp_ 前缀 ----
+    # cpuPercent .7.0：如 "12 PERCENT" → device_cpu_usage。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.39165.1.7.0"
+        name = "cpu_percent_text"
+    # diskPercent .9.0：如 "95 PERCENT" → device_disk_usage。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.39165.1.9.0"
+        name = "disk_percent_text"
+    # memSize .10.0：如 "256 MB" → device_memory_total（字节）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.39165.1.10.0"
+        name = "mem_size_text"
+    # memUsed .11.0：如 "96 PERCENT"（百分比）或带容量单位的绝对值 → device_memory_usage / device_memory_used / device_memory_free。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.39165.1.11.0"
+        name = "mem_used_text"
+
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+UNIT_BYTES = {"B": 1, "KB": 1024, "MB": 1048576, "GB": 1073741824, "TB": 1099511627776}
+
+def parse(raw):
+    text = str(raw).strip()
+    number = ""
+    rest = ""
+    for i in range(len(text)):
+        c = text[i]
+        if c.isdigit() or (c == "." and number != "" and "." not in number):
+            number += c
+        else:
+            rest = text[i:]
+            break
+    if number == "" or number.endswith("."):
+        return None, ""
+    return float(number), rest.strip().upper()
+
+def percent(raw):
+    value, unit = parse(raw)
+    if value == None or unit not in ["PERCENT", "%"]:
+        return None
+    if value < 0 or value > 100:
+        return None
+    return value
+
+def size_bytes(raw):
+    value, unit = parse(raw)
+    if value == None or unit not in UNIT_BYTES:
+        return None
+    return int(value * UNIT_BYTES[unit])
+
+def apply(metric):
+    cpu = metric.fields.pop("cpu_percent_text", None)
+    disk = metric.fields.pop("disk_percent_text", None)
+    mem_size = metric.fields.pop("mem_size_text", None)
+    mem_used = metric.fields.pop("mem_used_text", None)
+    if cpu != None:
+        value = percent(cpu)
+        if value != None:
+            metric.fields["device_cpu_usage"] = value
+    if disk != None:
+        value = percent(disk)
+        if value != None:
+            metric.fields["device_disk_usage"] = value
+    total = None
+    if mem_size != None:
+        total = size_bytes(mem_size)
+        if total != None and total <= 0:
+            total = None
+    if total != None:
+        metric.fields["device_memory_total"] = total
+    if mem_used != None:
+        usage = percent(mem_used)
+        used = None
+        if usage != None:
+            if total != None:
+                used = int(total * usage / 100.0)
+        else:
+            used = size_bytes(mem_used)
+            if used != None and total != None and used <= total:
+                usage = used * 100.0 / total
+            elif used != None and total != None:
+                used = None
+        if usage != None:
+            metric.fields["device_memory_usage"] = usage
+        if used != None:
+            metric.fields["device_memory_used"] = used
+            if total != None:
+                metric.fields["device_memory_free"] = total - used
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["hikvision"]

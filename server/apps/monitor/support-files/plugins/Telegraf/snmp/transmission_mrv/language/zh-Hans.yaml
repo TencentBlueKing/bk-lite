@@ -1,6 +1,6 @@
 Transmission MRV SNMP:
   name: MRV（Telegraf）
-  desc: 面向 MRV OptiDriver 传输设备的 SNMP 监控模板,可采集 机箱温度、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 629）。
+  desc: 面向 MRV OptiDriver 传输设备的 SNMP 监控模板,可采集 机箱温度、电源与风扇状态、机箱供电充足度、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 629）。
 monitor_object:
   Transmission: 传输设备
 monitor_object_type:
@@ -42,6 +42,9 @@ monitor_object_metric:
     device_psu_state:
       name: 电源状态
       desc: 传输设备各电源模块的运行状态。非正常状态表示电源离线、无输入、过温、硬件故障或告警，需及时排查。
+    device_power_sufficiency_state:
+      name: 机箱供电充足度
+      desc: 机箱总供电是否充足。异常表示已安装电源无法支撑机箱负载，设备可能无法正常工作。
 monitor_object_metric_group:
   Transmission:
     Base: 基础

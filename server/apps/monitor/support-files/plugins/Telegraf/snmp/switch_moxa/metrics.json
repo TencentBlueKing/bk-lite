@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_moxa",
   "plugin": "Switch Moxa SNMP",
-  "plugin_desc": "Moxa 工业以太网交换机专用 SNMP 采集模板（MOXA-MIB，企业号 8691）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Moxa 私有 OID 的设备健康指标：机箱温度（℃）以及双路电源输入状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。Moxa 工业交换机多为无风扇被动散热设计且私有 MIB 未以无需行级过滤的标量形式暴露 CPU/内存负载，故 CPU/内存/风扇为 N/A。适用品牌型号——Moxa 工业网管交换机（EDS / IKS / ICS / SDS 系列，企业号 8691）。",
+  "plugin_desc": "SNMP monitoring template for Moxa EDS industrial switch. It reports uptime, CPU utilization, memory utilization, power input status, and interface traffic, based on the EDS-408A MIB (enterprise PEN 8691).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_moxa'}) by (instance_id)",
   "name": "Switch",
@@ -15,9 +15,36 @@
   ],
   "supplementary_indicators": [
     "snmp_uptime",
-    "device_temperature_celsius"
+    "device_cpu_usage",
+    "device_memory_usage"
   ],
   "metrics": [
+    {
+      "metric_group": "CPU",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_cpu_usage",
+      "display_name": "CPU 使用率",
+      "query": "max(snmp_device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "unit": "percent",
+      "data_type": "Number",
+      "description": "CPU load of the Moxa EDS industrial switch over the past 5 seconds in percent (MOXA-EDS408A-MIB cpuLoading5s scalar)."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_usage",
+      "display_name": "内存使用率",
+      "query": "max(snmp_device_memory_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "unit": "percent",
+      "data_type": "Number",
+      "description": "Memory utilization of the Moxa EDS industrial switch in percent (MOXA-EDS408A-MIB memoryUsage scalar)."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
@@ -55,19 +82,6 @@
       "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
     },
     {
-      "metric_group": "Temperature",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "name": "device_temperature_celsius",
-      "display_name": "设备温度",
-      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
-      "unit": "celsius",
-      "data_type": "Number",
-      "description": "Chassis temperature of the Moxa industrial switch in degrees Celsius (MOXA-MIB private OID)."
-    },
-    {
       "metric_group": "Hardware Status",
       "dimensions": [],
       "instance_id_keys": [
@@ -78,7 +92,7 @@
       "query": "max(device_psu_state{instance_type='switch', __$labels__}) by (instance_id)",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "data_type": "Enum",
-      "description": "Power-input state of the Moxa industrial switch (dual redundant power inputs), normalised to 1=normal / 2=abnormal."
+      "description": "State of power input 1 of the Moxa EDS industrial switch (MOXA-EDS408A-MIB power1InputStatus), normalised to 1=present / 2=not present."
     },
     {
       "metric_group": "Power",
@@ -91,7 +105,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the operational state of the device's backup power supply unit, normalized to 1 (normal) or 2 (abnormal)."
+      "description": "State of power input 2 of the Moxa EDS industrial switch (MOXA-EDS408A-MIB power2InputStatus), normalised to 1=present / 2=not present."
     },
     {
       "metric_group": "Base",

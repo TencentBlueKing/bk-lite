@@ -1,6 +1,6 @@
 Transmission Alcoma SNMP:
   name: Alcoma（Telegraf）
-  desc: 面向 Alcoma 传输设备的 SNMP 监控模板,可采集 温度、接收电平、发射功率、可选信噪比、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 12140）。
+  desc: 面向 Alcoma 传输设备的 SNMP 监控模板，可采集运行时长、温度、接口流量，适用于 微波与无线传输设备（企业号 PEN 12140）。
 monitor_object:
   Transmission: 传输设备
 monitor_object_type:

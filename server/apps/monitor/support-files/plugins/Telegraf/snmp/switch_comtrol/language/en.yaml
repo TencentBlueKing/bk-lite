@@ -1,9 +1,6 @@
 Switch Comtrol RocketLinx SNMP:
   name: Comtrol RocketLinx (Telegraf)
-  desc: SNMP monitoring template for Comtrol RocketLinx switch. It reports SFP DDM
-    temperature, SFP transmit power, SFP receive power, per-port inbound traffic
-    rate, per-port outbound traffic rate, and system uptime (IANA PEN 2882). Chassis
-    CPU and memory utilization are not collected.
+  desc: "SNMP monitoring template for Comtrol RocketLinx switch. It reports uptime, temperature, optical modules, dual power-supply LED status, and interface traffic (enterprise PEN 2882)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -176,6 +173,10 @@ monitor_object_metric:
         the device. A non-normal state signals a power redundancy or hardware fault;
         on devices with redundant PSUs a single failure may not cause an outage but
         removes redundancy and must be remediated promptly.
+    device_psu_state_backup:
+      name: PSU Backup State
+      desc: Operational state of the device backup power supply unit, normalized to
+        normal or abnormal.
     device_fan_speed:
       name: Fan Speed
       desc: This metric reports the fan rotation speed (RPM) of the device, taken

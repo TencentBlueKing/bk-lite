@@ -1,7 +1,6 @@
 Firewall Barracuda SNMP:
   name: Barracuda (Telegraf)
-  desc: SNMP monitoring template for Barracuda firewall. It reports per-port inbound
-    traffic rate, per-port outbound traffic rate, and system uptime (IANA PEN 20632).
+  desc: "SNMP monitoring template for Barracuda firewall. It reports uptime, temperature, fan speed, disk usage, and interface traffic (enterprise PEN 20632)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:
@@ -332,6 +331,9 @@ monitor_object_metric:
     barracuda_log_storage_usage:
       name: Log Storage Usage
       desc: Log storage utilization of the Barracuda firewall.
+    device_fan_speed:
+      name: Fan Speed
+      desc: Speed of the CPU fan and the system fan in RPM. A sharp drop or zero speed may indicate a failed or blocked fan.
 monitor_object_metric_group:
   Firewall:
     Packet: Packet

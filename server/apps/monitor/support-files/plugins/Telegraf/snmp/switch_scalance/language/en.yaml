@@ -1,7 +1,6 @@
 Switch Scalance SNMP:
   name: Scalance (Telegraf)
-  desc: SNMP monitoring template for Scalance switch. It reports per-port inbound
-    traffic rate, per-port outbound traffic rate, and system uptime
+  desc: "SNMP monitoring template for Siemens SCALANCE industrial switches (enterprise PEN 4329). It reports uptime, interface traffic, power supply status (AUTOMATION-PS), per-sensor temperature and the device fault-signalling state (SN-MSPS-SCX200-MIB)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -261,6 +260,11 @@ monitor_object_metric:
     device_psu_state_backup:
       name: PSU Backup State
       desc: Operational state of the device backup power supply unit, normalized to normal or abnormal.
+    scalance_fault_state:
+      name: Fault Signalling State
+      desc: Fault LED / signalling-contact state of the SCALANCE industrial switch
+        (SN-MSPS-SCX200-MIB snMspsFaultState). noFault(1) maps to 1=normal and
+        fault(2) maps to 2=abnormal; any other value is dropped.
 monitor_object_metric_group:
   Switch:
     Base: Base

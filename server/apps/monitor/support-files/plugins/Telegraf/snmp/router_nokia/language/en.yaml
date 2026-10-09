@@ -1,8 +1,6 @@
 Router Nokia SNMP:
   name: Nokia (Telegraf)
-  desc: SNMP monitoring template for Nokia TiMOS/SROS routers (7750 SR, 7705 SAR
-    and related SR OS). It reports CPU utilization, memory used/available and
-    derived utilization, and chassis temperature.
+  desc: "SNMP monitoring template for Nokia router. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic (enterprise PEN 6527)."
 monitor_object:
   Router: Router
 monitor_object_type:

@@ -23,7 +23,7 @@ import {
 } from '@webchat/core';
 import { AGUIHandler, AGUIEvent, type CustomProtocolEvent } from './agui';
 import type { ChatProps } from './chatProps';
-import { createAGUIEventHandler, shouldShowTypingPlaceholder } from './aguiEventHandler';
+import { createAGUIEventHandler, shouldShowAnalyzingIndicator, shouldShowTypingPlaceholder } from './aguiEventHandler';
 import { parseLegacyMessage } from './legacyMessage';
 import { useMessageHandlers } from './hooks/useMessageHandlers';
 import { ConfirmDialog } from './components/ConfirmDialog';
@@ -50,6 +50,7 @@ import {
   toError,
 } from './streamLifecycle';
 import { WC } from './chrome';
+import { useTranslator, WebChatLocaleProvider } from './useTranslator';
 
 export type { ChatProps };
 
@@ -65,13 +66,14 @@ const MAX_IMAGE_SIZE =
     : 0) || 4 * 1024 * 1024;
 
 const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
+  const t = useTranslator();
   const {
     sseUrl,
     customData,
     // theme = 'light',
     title = 'Chat',
     subtitle,
-    placeholder = 'Type a message...',
+    placeholder,
     enableStorage = true,
     storageKey = 'webchat_session',
     storageScope,
@@ -383,18 +385,27 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
 
   const reportImageBudgetViolation = useCallback((violation: ImageBudgetViolation) => {
     if (violation.reason === 'count') {
-      reportImageError(new Error(`每条消息最多选择 ${violation.limit} 张图片，本批次未添加。`));
+      reportImageError(
+        new Error(t('image.limitPerMessage', '每条消息最多选择 {count} 张图片，本批次未添加。', { count: violation.limit }))
+      );
       return;
     }
     if (violation.reason === 'bytes') {
       const limitMB = violation.limit / (1024 * 1024);
-      reportImageError(new Error(`每条消息的图片总大小不能超过 ${limitMB}MB，本批次未添加。`));
+      reportImageError(
+        new Error(t('image.totalSizeLimit', '每条消息的图片总大小不能超过 {count}MB，本批次未添加。', { count: limitMB }))
+      );
       return;
     }
     const limitMP = Math.round((violation.limit / 1_000_000) * 10) / 10;
-    const scope = violation.reason === 'image-pixels' ? '单张图片' : '每条消息的图片总计';
-    reportImageError(new Error(`${scope}不能超过 ${limitMP} 百万像素，本批次未添加。`));
-  }, [reportImageError]);
+    const scope =
+      violation.reason === 'image-pixels'
+        ? t('image.pixelsScopeSingle', '单张图片')
+        : t('image.pixelsScopeTotal', '每条消息的图片总计');
+    reportImageError(
+      new Error(t('image.pixelsLimit', '{scope}不能超过 {count} 百万像素，本批次未添加。', { scope, count: limitMP }))
+    );
+  }, [reportImageError, t]);
 
   const queueImageFiles = useCallback((files: readonly File[]) => {
     if (files.length === 0) return;
@@ -469,7 +480,9 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
       if (!file.type.startsWith('image/')) continue;
       if (file.size > MAX_IMAGE_SIZE) {
         const limitMB = MAX_IMAGE_SIZE / (1024 * 1024);
-        reportImageError(new Error(`图片"${file.name}"超过 ${limitMB}MB 大小限制，已跳过。`));
+        reportImageError(
+          new Error(t('image.fileTooLarge', '图片"{name}"超过 {count}MB 大小限制，已跳过。', { name: file.name, count: limitMB }))
+        );
         continue;
       }
 
@@ -479,7 +492,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
 
     // Reset input
     e.target.value = '';
-  }, [queueImageFiles, reportImageError]);
+  }, [queueImageFiles, reportImageError, t]);
 
   // Remove uploaded image
   const handleRemoveImage = useCallback((index: number) => {
@@ -499,7 +512,9 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
         if (file) {
           if (file.size > MAX_IMAGE_SIZE) {
             const limitMB = MAX_IMAGE_SIZE / (1024 * 1024);
-            reportImageError(new Error(`粘贴的图片超过 ${limitMB}MB 大小限制，已跳过。`));
+            reportImageError(
+              new Error(t('image.pastedTooLarge', '粘贴的图片超过 {count}MB 大小限制，已跳过。', { count: limitMB }))
+            );
             continue;
           }
           imageFiles.push(file);
@@ -511,7 +526,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
       e.preventDefault(); // 阻止默认粘贴行为
       queueImageFiles(imageFiles);
     }
-  }, [queueImageFiles, reportImageError]);
+  }, [queueImageFiles, reportImageError, t]);
 
   // Send message
   const handleSendMessage = useCallback(async (value: string) => {
@@ -768,7 +783,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
         >
         <div>
           <div className="text-[13px] font-medium tracking-wide">{title}</div>
-          <div className="mt-0.5 text-xs" style={{ color: WC.muted }}>{subtitle || '随时为你提供帮助'}</div>
+          <div className="mt-0.5 text-xs" style={{ color: WC.muted }}>{subtitle || t('chat.floatingSubtitle', '随时为你提供帮助')}</div>
         </div>
         <div className="flex items-center gap-1">
           {showFullscreenButton && (
@@ -776,7 +791,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
               onClick={toggleFullscreen}
               className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-[var(--color-fill-2,#f4f5f8)]"
               style={{ color: WC.muted }}
-              title={panelFullscreen ? '退出全屏' : '全屏'}
+              title={panelFullscreen ? t('chat.exitFullscreen', '退出全屏') : t('chat.fullscreen', '全屏')}
             >
               {panelFullscreen ? (
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -793,7 +808,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
             onClick={onClose}
             className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-[var(--color-fill-2,#f4f5f8)]"
             style={{ color: WC.muted }}
-            title="关闭对话"
+            title={t('chat.closeConversation', '关闭对话')}
           >
             ✕
           </button>
@@ -813,7 +828,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
         ) : messages.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <p className="text-sm" style={{ color: WC.muted }}>
-              发一条消息开始对话
+              {t('chat.emptyStart', '发一条消息开始对话')}
             </p>
           </div>
         ) : (() => {
@@ -860,8 +875,20 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
               className={`text-xs font-medium ${isThinking ? 'webchat-thinking-shimmer' : ''}`}
               style={isThinking ? undefined : { color: WC.muted }}
             >
-              {isThinking ? '思考中' : '正在回复'}
+              {isThinking ? t('chat.thinking', '思考中') : t('chat.replying', '正在回复')}
             </span>
+            <span className="webchat-thinking-dots" aria-hidden>
+              <span />
+              <span />
+              <span />
+            </span>
+          </div>
+        )}
+
+        {/* Tools done, model still analyzing: otherwise the turn looks frozen */}
+        {shouldShowAnalyzingIndicator(isLoading, isThinking, messages) && (
+          <div className="flex w-full items-center gap-1.5" role="status" aria-live="polite">
+            <span className="text-xs font-medium webchat-thinking-shimmer">{t('chat.analyzingToolResult', '正在分析工具结果')}</span>
             <span className="webchat-thinking-dots" aria-hidden>
               <span />
               <span />
@@ -906,9 +933,9 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
                     className="h-16 w-16 rounded-md border border-[var(--color-border-1,#e8eaf0)] object-cover"
                   />
                 ) : (
-                  <div role="status" aria-label={`${img.name} 已添加（安全占位，不在浏览器预览）`}>
+                  <div role="status" aria-label={t('image.addedPlaceholder', '{name} 已添加（安全占位，不在浏览器预览）', { name: img.name })}>
                     <p className="max-w-[10rem] rounded-md px-2 py-1 text-xs text-[var(--color-text-3,#86909c)]">
-                      {img.name} 已添加（安全占位，不在浏览器预览）
+                      {t('image.addedPlaceholder', '{name} 已添加（安全占位，不在浏览器预览）', { name: img.name })}
                     </p>
                   </div>
                 )}
@@ -946,7 +973,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
                       onClick={() => setShowClearConfirm(true)}
                       className="flex h-7 w-7 items-center justify-center rounded"
                       style={{ color: WC.muted }}
-                      title="清除对话"
+                      title={t('chat.clearConversation', '清除对话')}
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6"/>
@@ -999,10 +1026,10 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
       {/* Clear Confirmation Dialog */}
       <ConfirmDialog
         isOpen={showClearConfirm}
-        title="你即将清除当前对话，清除后将无法恢复，是否继续清除?"
-        message="删除后，聊天记录不可恢复，对话内的文件也将被彻底删除。"
-        confirmText="清除对话"
-        cancelText="取消"
+        title={t('sessions.clearConfirmTitle', '你即将清除当前对话，清除后将无法恢复，是否继续清除?')}
+        message={t('sessions.clearConfirmBody', '删除后，聊天记录不可恢复，对话内的文件也将被彻底删除。')}
+        confirmText={t('sessions.clearConfirmAction', '清除对话')}
+        cancelText={t('common.cancel', '取消')}
         onConfirm={handleClear}
         onCancel={() => setShowClearConfirm(false)}
       />
@@ -1012,7 +1039,14 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
 
 ChatInner.displayName = 'Chat';
 
-export const Chat = React.memo(ChatInner);
+const ChatWithLocale = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => (
+  <WebChatLocaleProvider locale={props.locale}>
+    <ChatInner {...props} ref={ref} />
+  </WebChatLocaleProvider>
+));
+ChatWithLocale.displayName = 'Chat';
+
+export const Chat = React.memo(ChatWithLocale);
 Chat.displayName = 'Chat';
 
 export default Chat;

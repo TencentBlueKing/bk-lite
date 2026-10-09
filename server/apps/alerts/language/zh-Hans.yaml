@@ -81,7 +81,7 @@ error:
   incident_update_owner_pin: "只有负责人可以标记关键信息"
   sample_payload_too_large: "示例数据不能超过 64KB"
   channel_unusable: "通知渠道不存在或无权使用"
-  template_test_nats_only: "仅 OpsPilot 托管的 NATS 渠道支持模板试发"
+  template_test_nats_only: "仅平台托管的 NATS 渠道支持模板试发"
   alert_unusable_for_test: "告警不存在或无权用于当前团队的测试发送"
   receivers_missing: "接收人不存在：{receivers}"
   test_send_failed: "测试发送失败"

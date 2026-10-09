@@ -51,6 +51,46 @@
         }
       ],
       "group_algorithm": "avg"
+    },
+    {
+      "name": "BlueCoat ProxySG温度过高",
+      "alert_name": "WAN优化${resource_name} 传感器 ${metric__sensor_name} 温度过高",
+      "description": "监控 Blue Coat / Symantec Edge SWG / Broadcom ProxySG 硬件温度传感器读数，当持续高于阈值时触发告警，提示散热不良或环境过热。",
+      "metric_name": "bluecoat_sensor_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 78,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "BlueCoat ProxySG硬件传感器异常",
+      "alert_name": "WAN优化${resource_name} 传感器 ${metric__sensor_name} 状态异常",
+      "description": "监控 Blue Coat / Symantec Edge SWG / Broadcom ProxySG 硬件传感器健康状态，当传感器编码为异常时触发告警。",
+      "metric_name": "bluecoat_sensor_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

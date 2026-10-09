@@ -152,12 +152,18 @@ export interface TargetFormData {
 // Script types
 export type ScriptType = 'shell' | 'bat' | 'python' | 'powershell';
 
+export type ScriptParamType = 'text' | 'enum';
+
 export interface ScriptParam {
   name: string;
   description?: string;
   default?: string;
   is_encrypted?: boolean;
   is_required?: boolean;
+  /** 缺省视为 text，兼容存量脚本 */
+  type?: ScriptParamType;
+  /** type=enum 时的单选选项 */
+  options?: string[];
 }
 
 export interface Script {

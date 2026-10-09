@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { ToolCall } from '../contentChunks';
 import { WC } from '../chrome';
+import { useTranslator } from '../useTranslator';
 
 export type { ToolCall };
 
@@ -99,6 +100,7 @@ const Chevron: React.FC<{ expanded: boolean }> = ({ expanded }) => (
 );
 
 const ToolCallRow: React.FC<{ tool: ToolCall }> = ({ tool }) => {
+  const t = useTranslator();
   const [expanded, setExpanded] = useState(false);
   const running = tool.status === 'running';
   const argsFormatted = formatToolCallJson(tool.args, { hideEmptyObject: true });
@@ -121,7 +123,7 @@ const ToolCallRow: React.FC<{ tool: ToolCall }> = ({ tool }) => {
         style={{ color: WC.muted, cursor: canExpand ? 'pointer' : 'default' }}
       >
         {running ? <Spinner /> : <Check />}
-        <span className="text-xs">{running ? '正在使用' : '已使用'}</span>
+        <span className="text-xs">{running ? t('tool.running', '正在使用') : t('tool.used', '已使用')}</span>
         <span
           className="min-w-0 truncate font-mono text-[11px] leading-4"
           style={{ color: running ? WC.botText : WC.inkSoft }}
@@ -143,10 +145,10 @@ const ToolCallRow: React.FC<{ tool: ToolCall }> = ({ tool }) => {
         <div className={`webchat-fold ${expanded ? 'is-open' : ''}`}>
           <div className="webchat-fold-inner">
             {argsFormatted ? (
-              <ToolCallDetailBlock label="参数" value={argsFormatted} />
+              <ToolCallDetailBlock label={t('tool.params', '参数')} value={argsFormatted} />
             ) : null}
             {resultFormatted ? (
-              <ToolCallDetailBlock label="结果" value={resultFormatted} />
+              <ToolCallDetailBlock label={t('tool.result', '结果')} value={resultFormatted} />
             ) : null}
           </div>
         </div>

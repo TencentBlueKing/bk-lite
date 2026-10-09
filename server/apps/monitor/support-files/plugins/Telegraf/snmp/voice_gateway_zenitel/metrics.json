@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_zenitel",
   "plugin": "VoiceGateway Zenitel SNMP",
-  "plugin_desc": "Zenitel Vingtor-Stentofon Exigo and Turbine voice devices SNMP child template. In addition to the shared VoiceGateway SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it collects VS-DEVICE-MIB temperature sensors and power-source status from the Zenitel enterprise tree. Fan speed is exposed as RPM and voltage as mV, so they are not promoted into shared fan-state or PSU-voltage health metrics in this pass.",
+  "plugin_desc": "SNMP monitoring template for Zenitel voice gateway. It reports uptime, temperature, power supply status, and interface traffic (enterprise PEN 26122).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='voice_gateway', collect_type='snmp_zenitel'}) by (instance_id)",
   "name": "VoiceGateway",
@@ -43,7 +43,7 @@
       "query": "device_psu_state{instance_type='voice_gateway', __$labels__}",
       "display_name": "PSU State",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "dimensions": [
         {
           "name": "index",
@@ -53,7 +53,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports Zenitel power-source status from VS-DEVICE-MIB powerStatus, normalized so connected(3) is 1 = healthy and every other or unknown value is 2 = fault. It is aggregated as the maximum across power sources so any abnormal source is visible."
+      "description": "This metric reports Zenitel power-source status from VS-DEVICE-MIB powerStatus, normalized so connected(3) is 1 = healthy, notConnected(2) is 2 = fault, and unknown(1) is 3 (gray, no alert)."
     },
     {
       "metric_group": "Traffic",

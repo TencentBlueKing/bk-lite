@@ -1,4 +1,4 @@
-import dayjs from 'dayjs';
+import dayjs, { type Dayjs } from 'dayjs';
 
 import type { TimeRangeValue } from '@/app/ops-analysis/types/dashBoard';
 
@@ -55,5 +55,31 @@ export const normalizeTimeRangeFilterValue = (
     ...(typeof candidate.selectValue === 'number'
       ? { selectValue: candidate.selectValue }
       : {}),
+  };
+};
+
+export interface UnifiedFilterTimeSelectorDefault {
+  selectValue: number;
+  rangePickerVaule: [Dayjs, Dayjs] | null;
+}
+
+/** 配置弹窗与筛选栏共用：先归一化，selectValue>0 即相对时间，不要求已有 start/end。 */
+export const getUnifiedFilterTimeSelectorDefaultValue = (
+  value: unknown,
+  referenceTime?: string | Date | number,
+): UnifiedFilterTimeSelectorDefault => {
+  const normalized = normalizeTimeRangeFilterValue(value, referenceTime);
+  if (!normalized?.start || !normalized?.end) {
+    return { selectValue: 15, rangePickerVaule: null };
+  }
+
+  const selectValue = normalized.selectValue ?? 0;
+  if (selectValue > 0) {
+    return { selectValue, rangePickerVaule: null };
+  }
+
+  return {
+    selectValue: 0,
+    rangePickerVaule: [dayjs(normalized.start), dayjs(normalized.end)],
   };
 };

@@ -1,6 +1,8 @@
 """DeepAgent middleware and lightweight-path assembly helpers extracted from node.py."""
+
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -8,9 +10,18 @@ from langchain_core.messages import AIMessage, ToolMessage
 
 from apps.opspilot.metis.llm.agent.tool_execution_planner import is_pod_restart_reason_query
 from apps.opspilot.metis.llm.chain.entity import HIDE_PLANNED_STEP_TEXT_KEY
+from apps.opspilot.metis.llm.common.tool_failure import is_tool_result_failure
 
 # HITL/选择卡会进工具目录，但不算业务工具：无业务工具的寒暄仍走轻量直答。
 _LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES = frozenset({"request_user_choice"})
+
+# 步间摘要上限；正文 + 结构化关键字段共享，优先保住关键字段。
+_STEP_SUMMARY_MAX_CHARS = 1200
+
+# 只有这些工具的结果会产出后续步要复用的结构化字段，避免把无关工具的 id 当成 instance_id。
+_MONITOR_OBJECT_TOOLS = frozenset({"monitor_list_objects"})
+_MONITOR_INSTANCE_TOOLS = frozenset({"monitor_list_object_instances"})
+_MONITOR_METRIC_TOOLS = frozenset({"monitor_list_object_metrics"})
 
 
 class DeepAgentAssemblyMixin:
@@ -161,15 +172,21 @@ class DeepAgentAssemblyMixin:
 
     @classmethod
     def _summarize_planned_step_messages(cls, messages) -> str:
-        """步间摘要：调查草稿改留工具结果，避免后续步把整份报告再贴一遍。"""
+        """步间摘要：调查草稿改留工具结果，避免后续步把整份报告再贴一遍。
+
+        正文是模型自己的话，常常不含后续步要用的结构化 ID（如 monitor instance_id）。
+        因此无论正文是否被采信，都额外把本步工具结果里的关键字段补进摘要尾部，
+        避免「上一步查到了 ID，下一步却拿不到」而被迫空参重试。
+        """
         ai_text = ""
         for message in reversed(list(messages or [])):
             if isinstance(message, AIMessage) and not getattr(message, "tool_calls", None):
                 ai_text = str(getattr(message, "content", "") or "").strip()
                 if ai_text:
                     break
+        carry_over = cls._step_structured_carry_over(messages)
         if ai_text and not cls._looks_like_evidence_note(ai_text) and not cls._looks_like_step_investigation_dump(ai_text):
-            return ai_text[:1200]
+            return cls._join_step_summary(ai_text[:1200], carry_over)
         tool_bits: list[str] = []
         for message in messages or []:
             if not isinstance(message, ToolMessage):
@@ -181,6 +198,97 @@ class DeepAgentAssemblyMixin:
         if ai_text:
             return ai_text[:200]
         return "步骤已完成"
+
+    @classmethod
+    def _join_step_summary(cls, summary: str, carry_over: str) -> str:
+        """摘要正文 + 结构化关键字段，总长受控且不重复拼接。"""
+        body = (summary or "").strip()
+        if not carry_over:
+            return body
+        if not body:
+            return carry_over
+        return f"{body}\n{carry_over}"[:_STEP_SUMMARY_MAX_CHARS]
+
+    @classmethod
+    def _step_structured_carry_over(cls, messages) -> str:
+        """从本步工具结果里提取后续步要用的结构化关键字段。
+
+        监控查全部主机时 step 3 要用上一步查到的 instance_id 查时序；
+        模型正文通常只写「已获取 1 个主机实例」，不含 ID，必须显式带过去。
+        """
+        facts: list[str] = []
+        seen: set[str] = set()
+        for message in messages or []:
+            if not isinstance(message, ToolMessage):
+                continue
+            if is_tool_result_failure(getattr(message, "content", None), str(getattr(message, "status", "") or "")):
+                continue
+            for fact in cls._tool_result_structured_facts(str(getattr(message, "name", "") or ""), getattr(message, "content", None)):
+                if fact in seen:
+                    continue
+                seen.add(fact)
+                facts.append(fact)
+        if not facts:
+            return ""
+        return "【本步已取得的结构化结果，后续步骤直接引用】\n" + "\n".join(facts)
+
+    @classmethod
+    def _tool_result_structured_facts(cls, tool_name: str, content) -> list[str]:
+        """按工具类型提关键字段：只有列实例/列对象/列指标的结果会产出 ID 与 metric。"""
+        payload = cls._parse_tool_result_payload(content)
+        if payload is None:
+            return []
+        facts: list[str] = []
+        for row in cls._rows_of(payload):
+            if not isinstance(row, dict):
+                continue
+            # 列对象类型返回的对象 id 可能正是后续要用的 monitor_obj_id。
+            if tool_name in _MONITOR_OBJECT_TOOLS:
+                obj_id = str(row.get("id") or "").strip()
+                obj_name = str(row.get("name") or "").strip()
+                if obj_id and obj_id not in ("0", "None"):
+                    facts.append(f"monitor_obj_id={obj_id}" + (f"（{obj_name}）" if obj_name else ""))
+                continue
+            # 只有列实例的结果里 id 才是 instance_id；列指标时 id 无意义。
+            if tool_name in _MONITOR_INSTANCE_TOOLS:
+                instance_id = str(row.get("instance_id") or row.get("id") or "").strip()
+                label = str(row.get("name") or row.get("ip") or "").strip()
+                if instance_id and instance_id not in ("0", "None"):
+                    facts.append(f"instance_id={instance_id}" + (f"（{label}）" if label else ""))
+                continue
+            if tool_name in _MONITOR_METRIC_TOOLS:
+                metric = str(row.get("name") or "").strip()
+                if metric:
+                    facts.append(f"metric={metric}")
+        return facts
+
+    @staticmethod
+    def _rows_of(payload) -> list:
+        """工具结果里的记录行；监控 list_* 返回 data 为行列表。"""
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            for key in ("items", "results", "instances", "list"):
+                value = data.get(key)
+                if isinstance(value, list):
+                    return value
+        return []
+
+    @staticmethod
+    def _parse_tool_result_payload(content):
+        if isinstance(content, dict):
+            return content
+        if not isinstance(content, str):
+            return None
+        text = content.strip()
+        if not text or text[0] not in "{[":
+            return None
+        try:
+            parsed = json.loads(text)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return None
+        return parsed if isinstance(parsed, dict) else None
 
     @classmethod
     def _planned_step_already_answered(cls, messages) -> bool:
@@ -370,7 +478,7 @@ class DeepAgentAssemblyMixin:
         mode = cls._planned_report_mode(user_message=user_message, agent_system_prompt=agent_system_prompt)
         if mode == "restart_reason":
             return (
-                "现在向用户给出最终答案。当前没有可用工具，不要继续调用工具。"
+                "现在向用户给出最终答案。不要继续调用工具。"
                 "按助手约定写一份重启原因报告：时间基准、对象与结论、证据、原因、建议与待确认；没有的章节可省略。"
                 "禁止写「# RCA 报告」或告警复盘的事件概述、异常对象清单。"
                 "标题之前不要写定位说明或步骤结果。"
@@ -379,7 +487,7 @@ class DeepAgentAssemblyMixin:
             )
         if mode == "alert_rca":
             return (
-                "现在向用户给出最终答案。当前没有可用工具，不要继续调用工具。"
+                "现在向用户给出最终答案。不要继续调用工具。"
                 "必须以「# RCA 报告」作为第一行，再按"
                 "「事件概述、异常对象清单、根因分析、修复建议、待确认项」只写一份完整 Markdown 报告，"
                 "异常对象清单表必须保留；标题之前不要写定位说明或步骤结果。"
@@ -391,7 +499,7 @@ class DeepAgentAssemblyMixin:
                 "禁止再贴互相矛盾的名单；累计 restart_count 不要写成时间窗次数。"
             )
         return (
-            "现在向用户给出最终答案。当前没有可用工具，不要继续调用工具。"
+            "现在向用户给出最终答案。不要继续调用工具。"
             "按系统提示写最终答案，不要套「# RCA 报告」告警复盘模板。"
             "不要写事件描述、涉及对象清单、链路分析、调查结论；不要重复粘贴多份同类章节。"
             "禁止改成「日志获取完成」「关键证据确认」要点列表。"
@@ -428,11 +536,16 @@ class DeepAgentAssemblyMixin:
             "每个 obj_id 只调用一次，禁止猜测/递增 ID，禁止截断主机名按台循环。"
             "空列表且用户未确认对象类型时，必须 request_user_choice 让用户选择类型，不要当成查无此实例。"
             "用户已声明主机/Pod/中间件时不要再问类型，直接用对应对象 id。"
-            "查未关闭/未分派/某台还在告时用 alerts_*，不要用 monitor_list_active_alerts，也不要为此问对象类型。"
+            "查未关闭/未分派工单用 alerts_*；查某台主机是否还在告时，"
+            "若本步可见 monitor_list_active_alerts，须同时查监控策略活跃告警（可用主机名/IP），"
+            "禁止只拿告警中心空结果下「无告警」结论，也不要为此先问对象类型。"
             "monitor_query_metric_data 的 metric 必须来自本步 monitor_list_object_metrics 返回的 name；"
             "用户问 CPU/内存/磁盘时先 list_object_metrics(keyword=用户词) 筛选再查，禁止猜测 cpu.util，列表非空不要让用户手填指标名。"
             "monitor_query_metric_data 的 instance_ids 必须用 list_object_instances 返回的 instance_id，禁止用 name 或 IP 代替。"
             "monitor_query_metric_data 返回空矩阵/无时序是有效结论，禁止改 instance_ids、IP、dimensions、时间窗或 metric 重试。"
+            "问「最近 N 分钟哪些主机使用率高/Top N」时用 monitor_get_host_resource_top_by_time，"
+            "窗口传 lookback_minutes，返回自带 rank；返回的 host_count/台数即全量台数，"
+            "不要用 monitor_get_host_resource_snapshot 的 host_count 反推纳管总数。"
             "日志工具对同一 Pod 只调用一次；返回截断、压缩、空日志或没有 previous 都是有效证据，禁止降低 lines 重试。"
             "resolve_k8s_target_from_alert 对同一参数只调用一次；返回 resolved=false、"
             "lookup_exhausted 或 namespace 为空时不要重试，直接结束本步。"
@@ -466,9 +579,13 @@ class DeepAgentAssemblyMixin:
         from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
         from apps.opspilot.metis.llm.middleware.context_window import ContextWindowMiddleware
         from apps.opspilot.metis.llm.middleware.token_usage import TokenUsageTrackingMiddleware
+        from apps.opspilot.metis.llm.middleware.tool_runtime import ToolTimeoutMiddleware
 
         isolated_llm = self.get_llm_client(graph_request, disable_stream=True, isolated=True)
-        legacy_middleware = [ContextWindowMiddleware(graph_request=graph_request, isolated_llm=isolated_llm)]
+        legacy_middleware = [
+            ToolTimeoutMiddleware(),
+            ContextWindowMiddleware(graph_request=graph_request, isolated_llm=isolated_llm),
+        ]
         if isinstance(token_usage_accumulator, TokenUsageAccumulator):
             legacy_middleware.append(TokenUsageTrackingMiddleware(token_usage_accumulator))
         return legacy_middleware
@@ -518,6 +635,7 @@ class DeepAgentAssemblyMixin:
             SkillExecutionGuardMiddleware,
             ToolExceptionAsResultMiddleware,
             ToolResultCompactionMiddleware,
+            ToolTimeoutMiddleware,
             ToolVisibilityMiddleware,
         )
 
@@ -542,6 +660,7 @@ class DeepAgentAssemblyMixin:
         runtime_middleware = [
             visibility_middleware,
             skill_guard,
+            ToolTimeoutMiddleware(),
             ToolExceptionAsResultMiddleware(),
             ToolResultCompactionMiddleware(max_tool_chars=max_tool_chars, max_ai_chars=max_ai_chars),
             ContextWindowMiddleware(graph_request=graph_request, isolated_llm=isolated_llm),

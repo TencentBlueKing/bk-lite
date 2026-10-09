@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_pandacom",
   "plugin": "Transmission Pan Dacom SNMP",
-  "plugin_desc": "Pan Dacom optical transmission SNMP child template for devices under enterprise PEN 3652. Interface traffic is supplied by the shared Transmission SNMP IF-MIB floor. Proven private health scalars are NMS board temperature in degrees Celsius (nmATemperature) and chassis PSU1/PSU2 status (nmPSU1Status/nmPSU2Status, native notInstalled/fail/temperatureWarning/pass). Optional fan_status (nmFanState) and psu3_status (nmPSU3Status, including notAvailable) are collected when present. CPU and memory percentages are not collected because no stable private scalar was confirmed. Supported brands/models — Pan Dacom CWDM and optical transmission chassis that expose these scalars and standard IF-MIB.",
+  "plugin_desc": "SNMP monitoring template for Pan Dacom transmission device. It reports uptime, temperature, fan, and interface traffic, for CWDM optical transmission chassis (enterprise PEN 3652).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_pandacom'}) by (instance_id)",
   "name": "Transmission",

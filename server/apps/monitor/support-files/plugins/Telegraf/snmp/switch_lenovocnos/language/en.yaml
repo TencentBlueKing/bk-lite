@@ -1,7 +1,6 @@
 Switch Lenovo CNOS SNMP:
   name: Lenovo CNOS (Telegraf)
-  desc: SNMP monitoring template for Lenovo CNOS switch. It reports system uptime,
-    CPU utilization, interface speed, and other key metrics
+  desc: "SNMP monitoring template for Lenovo CNOS switch. It reports uptime, CPU utilization, temperature, fan state, fan speed (RPM and percent), power supply status, and interface traffic, for ThinkSystem / RackSwitch CNOS (enterprise PEN 19046)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -151,7 +150,7 @@ monitor_object_metric:
     device_fan_state:
       name: Fan Status
       desc: This metric reports the operational state of each cooling fan on the device.
-        A non-normal state (warning, critical, shutdown, or notFunctioning) indicates
+        absent (empty slot) maps to 1 (normal). A non-normal state (fault) indicates
         a cooling fault that can quickly lead to overheating and should be investigated
         immediately.
     device_psu_state:
@@ -167,6 +166,11 @@ monitor_object_metric:
         or failed fan and a risk of overheating; abnormally high RPM may indicate
         the device is compensating for high temperature. For devices that expose only
         fan speed without a fan-state enum, speed is the only signal of fan health.
+    device_fan_speed_percent:
+      name: Fan Speed Percent
+      desc: Fan rotation speed as a percentage of the maximum (0-100). A persistently
+        high percentage can indicate the device is compensating for high temperature;
+        a value of 0 together with a running fan is a stall or fault.
     device_flow_bytes_rate:
       name: Device Flow Traffic Rate
       desc: Total device traffic rate estimated from Flow records according to the

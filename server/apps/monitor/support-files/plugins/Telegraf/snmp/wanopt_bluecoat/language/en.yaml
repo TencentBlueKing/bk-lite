@@ -1,9 +1,6 @@
 Wanopt BlueCoat SNMP:
   name: Blue Coat / Symantec Edge SWG / Broadcom ProxySG (Telegraf)
-  desc: SNMP monitoring template for Blue Coat / Symantec Edge SWG / Broadcom
-    ProxySG appliances. It reports per-core CPU busy percent averaged to a
-    device headline, memory pressure, available memory in bytes, and the
-    system-plus-cache used-memory split (IANA PEN 3417).
+  desc: "SNMP monitoring template for Blue Coat / Symantec Edge SWG / Broadcom ProxySG appliances (enterprise PEN 3417). It reports uptime, per-core CPU utilization, memory utilization and usage breakdown, interface traffic, and hardware sensor readings (temperature, voltage, fan speed) with their health state."
 monitor_object:
   Wanopt: WAN Optimization
 monitor_object_type:
@@ -50,8 +47,37 @@ monitor_object_metric:
         percentage of available memory (BLUECOAT-SG-PROXY-MIB
         sgProxyMemoryPressure). Sustained high usage can degrade caching and
         SSL inspection performance.
+    bluecoat_sensor_celsius:
+      name: Hardware Sensor Temperature
+      desc: Temperature reading of a ProxySG hardware sensor in degrees
+        Celsius (BLUECOAT-SG-SENSOR-MIB deviceSensorValue multiplied by
+        10^deviceSensorScale when deviceSensorUnits is celsius). Values
+        outside -40 to 125 C are dropped from this field; the sensor
+        state is kept when present.
+    bluecoat_sensor_volts:
+      name: Hardware Sensor Voltage
+      desc: Voltage reading of a ProxySG hardware sensor in volts
+        (BLUECOAT-SG-SENSOR-MIB deviceSensorValue multiplied by
+        10^deviceSensorScale when deviceSensorUnits is volts). Out-of-range
+        values are dropped from this field; the sensor state is kept
+        when present.
+    bluecoat_sensor_rpm:
+      name: Hardware Sensor Fan Speed (RPM)
+      desc: Fan speed of a ProxySG hardware sensor in RPM
+        (BLUECOAT-SG-SENSOR-MIB deviceSensorValue multiplied by
+        10^deviceSensorScale when deviceSensorUnits is rpm). Out-of-range
+        values are dropped from this field; the sensor state is kept
+        when present.
+    bluecoat_sensor_state:
+      name: Hardware Sensor State
+      desc: Health state of a ProxySG hardware sensor.
+        deviceSensorStatus ok(1) maps state from deviceSensorCode
+        (ok(1)=1=normal; codes 2-15=2=abnormal). unavailable(2),
+        nonoperational(3) and notInstalled(4) map to 2=abnormal.
+        Values outside those MIB enumerations emit no state.
 monitor_object_metric_group:
   Wanopt:
     Base: Base
     CPU: CPU
     Memory: Memory
+    Hardware Status: Hardware Status

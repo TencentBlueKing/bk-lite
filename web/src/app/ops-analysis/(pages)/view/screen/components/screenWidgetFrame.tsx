@@ -1,31 +1,20 @@
 'use client';
 
 import React from 'react';
-import { useTranslation } from '@/utils/i18n';
-import MoreActionsDropdown from '@/components/more-actions-dropdown';
-import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 import type { ScreenWidgetItem } from '@/app/ops-analysis/types/screen';
-import { normalizeScreenWidgetAppearance } from '../utils/layoutUtils';
-import {
-  resolveAnalysisCanvasInteraction,
-  shouldShowAnalysisWidgetCopyAction,
-} from '@/app/ops-analysis/utils/widgetCopy';
+import type { ScreenWidgetFrame } from '@/app/ops-analysis/types/dashBoard';
+import { resolveScreenWidgetAppearance } from '../utils/layoutUtils';
 
 interface ScreenWidgetFrameOptions {
   selected?: boolean;
   editMode?: boolean;
-  frame?: 'panel' | 'bare';
+  frame?: ScreenWidgetFrame;
 }
 
 interface ScreenWidgetFrameProps extends ScreenWidgetFrameOptions {
   item: ScreenWidgetItem;
   screenDensity?: number;
   screenUiScale?: number;
-  shareMode?: boolean;
-  isBuiltIn?: boolean;
-  onConfigure?: () => void;
-  onCopy?: () => void;
-  onDelete?: () => void;
   children: React.ReactNode;
 }
 
@@ -62,46 +51,14 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
   editMode = false,
   screenDensity = 1,
   screenUiScale = 1,
-  shareMode = false,
-  isBuiltIn = false,
-  onConfigure,
-  onCopy,
-  onDelete,
   children,
 }) => {
-  const { t } = useTranslation();
-  const frame = normalizeScreenWidgetAppearance(item.valueConfig?.appearance).frame;
+  const appearance = resolveScreenWidgetAppearance(
+    item.chartType,
+    item.valueConfig?.appearance,
+  );
+  const frame = appearance.frame;
   const isBare = frame === 'bare';
-  const showCopy = shouldShowAnalysisWidgetCopyAction({
-    interaction: resolveAnalysisCanvasInteraction({
-      editMode,
-      shareMode,
-      isBuiltIn,
-    }),
-    sceneWidgetType: item.valueConfig?.sceneWidgetType,
-    chartType: item.chartType,
-  });
-  const copyMenuItem: MoreActionsDropdownItem | null = showCopy
-    ? {
-      key: 'copy',
-      label: t('common.copy'),
-      onClick: () => onCopy?.(),
-    }
-    : null;
-  const menuItems: MoreActionsDropdownItem[] = [
-    {
-      key: 'configure',
-      label: t('common.edit'),
-      onClick: () => onConfigure?.(),
-    },
-    ...(copyMenuItem ? [copyMenuItem] : []),
-    {
-      key: 'delete',
-      danger: true,
-      label: t('common.delete'),
-      onClick: () => onDelete?.(),
-    },
-  ];
 
   return (
     <section
@@ -116,15 +73,14 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
       } as React.CSSProperties}
     >
       {!isBare && (
-        <React.Fragment key="decoration">
-          <div className="screen-widget-frame__corners" aria-hidden="true" />
-          <header className="screen-widget-frame__header screen-widget-frame__drag-handle">
-            <span className="screen-widget-frame__title">
-              {item.title || item.chartType}
-            </span>
-            <span className="screen-widget-frame__signal" aria-hidden="true" />
-          </header>
-        </React.Fragment>
+        <header
+          key="header"
+          className="screen-widget-frame__header screen-widget-frame__drag-handle"
+        >
+          <span className="screen-widget-frame__title">
+            {item.title || item.chartType}
+          </span>
+        </header>
       )}
       {isBare && editMode && (
         <div
@@ -132,19 +88,6 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
           className="screen-widget-frame__drag-surface screen-widget-frame__drag-handle"
           aria-hidden="true"
         />
-      )}
-      {editMode && (
-        <div key="actions" className="screen-widget-frame__actions">
-          <MoreActionsDropdown
-            items={menuItems}
-            ariaLabel={t('common.more')}
-            trigger={['hover']}
-            labelAlign="start"
-            stopPropagation
-            overlayClassName="screen-widget-frame-actions-menu"
-            buttonClassName="screen-widget-frame__action"
-          />
-        </div>
       )}
       <div key="body" className="screen-widget-frame__body">{children}</div>
     </section>

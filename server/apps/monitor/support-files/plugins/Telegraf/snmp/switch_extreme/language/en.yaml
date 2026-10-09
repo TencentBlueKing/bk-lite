@@ -1,8 +1,6 @@
 Switch Extreme SNMP:
   name: Extreme (Telegraf)
-  desc: SNMP monitoring template for Extreme switch. It reports CPU utilization, enclosure
-    temperature, memory utilization, fan and power-supply status, per-port inbound
-    traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Extreme switch. It reports uptime, CPU utilization, memory utilization, temperature, fan operational state and RPM, power supply status, and interface traffic, for ExtremeXOS (enterprise PEN 1916)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -159,7 +157,8 @@ monitor_object_metric:
     device_psu_state:
       name: Power Supply Status
       desc: This metric reports the operational state of each power supply unit on
-        the device. A non-normal state signals a power redundancy or hardware fault;
+        the device. notPresent (empty slot) maps to 1 (normal). A non-normal state
+        (presentNotOK or presentPowerOff) signals a power redundancy or hardware fault;
         on devices with redundant PSUs a single failure may not cause an outage but
         removes redundancy and must be remediated promptly.
     device_fan_speed:

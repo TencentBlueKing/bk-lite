@@ -23,7 +23,7 @@ from apps.alerts.notification_templates.events import (
     MAX_EVENT_ROWS,
     inspect_event_usage,
 )
-from apps.alerts.notification_templates.operation import ensure_alert_operation_template
+from apps.alerts.notification_templates.operation import ensure_alert_operation_template, is_managed_nats_channel
 from apps.alerts.notification_templates.renderer import TemplateValidationError, render_source
 from apps.alerts.serializers.notification_template import NotificationTemplateSerializer
 from apps.alerts.utils.i18n import alerts_message, serializer_message
@@ -227,7 +227,7 @@ class NotificationTemplateViewSet(ModelViewSet):
             raise ValidationError({"channel_id": alerts_message(request, "error.channel_unusable")})
         if channel_type and channel.channel_type != channel_type:
             raise ValidationError({"channel_id": alerts_message(request, "error.channel_unusable")})
-        if channel.channel_type == "nats" and (channel.config or {}).get("source") != "opspilot":
+        if channel.channel_type == "nats" and not is_managed_nats_channel(channel):
             raise ValidationError({"channel_id": alerts_message(request, "error.template_test_nats_only")})
         return channel
 
@@ -442,9 +442,7 @@ class NotificationTemplateViewSet(ModelViewSet):
                         {"value": "received_at", "label": alerts_message(request, "catalog.order_received_at_asc")},
                     ],
                     "limits": [5, 10, 20, 50, "all"],
-                    "fields": [
-                        {"path": path, "label": alerts_message(request, f"catalog.event_field.{path}")} for path in EVENT_SCALAR_FIELDS
-                    ],
+                    "fields": [{"path": path, "label": alerts_message(request, f"catalog.event_field.{path}")} for path in EVENT_SCALAR_FIELDS],
                     "json_roots": [
                         {"root": "tags", "label": alerts_message(request, "catalog.root_tags")},
                         {"root": "labels", "label": alerts_message(request, "catalog.root_labels")},

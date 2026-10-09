@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_packetfront",
   "plugin": "Access PacketFront SNMP",
-  "plugin_desc": "PacketFront access-device SNMP collection under enterprise PEN 9303. Beyond the shared Access SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it walks chassis environment tables for sensor temperature (hundredths of a degree Celsius, scaled by /100), fan RPM, and optional board voltage (millivolts, scaled by /1000 to volts). CPU and memory are not collected because no private CPU or memory leaves were confirmed. HOST-RESOURCES and DRG config or product leaves are not bound as health metrics. Optical transceiver readings are not used as the health set. Supported brands/models - PacketFront access devices that expose the PEN 9303 environment tables and standard IF-MIB.",
+  "plugin_desc": "SNMP monitoring template for PacketFront access device. It reports uptime, temperature, interface traffic, and voltage (enterprise PEN 9303).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='access', collect_type='snmp_packetfront'}) by (instance_id)",
   "name": "Access",

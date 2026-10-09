@@ -114,6 +114,42 @@ def test_search_paginates_when_page_size_set(monkeypatch):
     assert body["data"]["items"][0]["id"] in {keep.id, other.id}
 
 
+def test_search_filters_collector_status_before_pagination(monkeypatch):
+    region, keep, other = _region_and_nodes()
+    Collector.objects.create(
+        id="telegraf_linux",
+        name="Telegraf",
+        service_type="exec",
+        node_operating_system="linux",
+        executable_path="/bin/telegraf",
+        execute_parameters="",
+        created_by="tester",
+        updated_by="tester",
+    )
+    keep.status = {"collectors": [{"collector_id": "telegraf_linux", "status": 2}]}
+    keep.save(update_fields=["status"])
+    other.status = {"collectors": [{"collector_id": "telegraf_linux", "status": 0}]}
+    other.save(update_fields=["status"])
+    monkeypatch.setattr(node_view, "get_node_permission", lambda request: {})
+    monkeypatch.setattr(
+        node_view,
+        "get_catalog_node_queryset",
+        lambda request, permission=None: Node.objects.filter(id__in=[keep.id, other.id]),
+    )
+    monkeypatch.setattr(node_view.NodeService, "process_node_data", staticmethod(lambda data: data))
+    request = factory.post(
+        "/node/search/?page=1&page_size=1",
+        {"filters": {"collector_status": [{"lookup_expr": "in", "value": ["2"]}]}},
+        format="json",
+    )
+    _auth(request)
+    resp = node_view.NodeViewSet.as_view({"post": "search"})(request)
+    resp.render()
+    body = json.loads(resp.content)
+    assert body["data"]["count"] == 1
+    assert body["data"]["items"][0]["id"] == keep.id
+
+
 def test_update_node_renames_replaces_orgs_and_syncs(monkeypatch):
     _, node, _ = _region_and_nodes()
     delay = MagicMock()

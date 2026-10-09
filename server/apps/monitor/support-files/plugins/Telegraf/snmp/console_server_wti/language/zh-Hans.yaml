@@ -1,6 +1,6 @@
 ConsoleServer WTI SNMP:
   name: WTI 控制台服务器（Telegraf）
-  desc: 面向 WTI 控制台服务器的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 WTI 控制台服务器的 SNMP 监控模板，可采集运行时长、温度、电源状态、环境单元各支路电流 / 电压 / 功率、接口流量（企业号 PEN 2634）。
 monitor_object:
   ConsoleServer: 控制台服务器
 monitor_object_type:
@@ -42,6 +42,15 @@ monitor_object_metric:
     wti_input_power_4_state:
       name: WTI 输入电源 4 状态
       desc: WTI 输入电源 4 的状态，统一归一为正常或异常。
+    wti_branch_current_amps:
+      name: 支路电流（A）
+      desc: 环境单元各供电支路的电流，单位为安。
+    wti_branch_voltage_volts:
+      name: 支路电压
+      desc: 环境单元各供电支路的电压，单位为伏。
+    wti_branch_power_watts:
+      name: 支路功率
+      desc: 环境单元各供电支路消耗的功率，单位为瓦。
 monitor_object_metric_group:
   ConsoleServer:
     Base: 基础

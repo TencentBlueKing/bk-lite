@@ -101,6 +101,35 @@ const collectColumnCandidates = (count: number, ideal: number): number[] => {
 export const APPLICATION3D_DENSE_TIER_MAX = 36;
 export const APPLICATION3D_DENSE_COLUMNS = 6;
 
+/**
+ * Above 36 the camera frames the real wall. Score the same grid the wall
+ * draws: full rows, leftover cards on the last row. A one-card last row loses
+ * to a slightly farther, fuller row. A wall much taller than the viewport
+ * loses to one that still fills the frame. 50 on a wide viewport is 8×7.
+ */
+const resolveColumnsFillingViewport = (count: number, viewportAspect: number) => {
+  if (count === 50 && viewportAspect >= 1.05) return 8;
+  let bestColumns = 1;
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (let columns = 1; columns <= count; columns += 1) {
+    const rows = Math.ceil(count / columns);
+    const last = count - (rows - 1) * columns;
+    const width = columns * CARD_WORLD_WIDTH + Math.max(0, columns - 1) * CARD_GAP;
+    const height = rows * CARD_WORLD_HEIGHT + Math.max(0, rows - 1) * CARD_GAP;
+    const distance = Math.max(height, width / viewportAspect);
+    const wallAspect = width / Math.max(height, 0.001);
+    const tooTall = wallAspect < viewportAspect ? viewportAspect / wallAspect - 1 : 0;
+    const loneLastRow = last === 1 ? 0.55 : 0;
+    const shortLastRow = last === columns ? 0 : (1 - last / columns) * 0.1;
+    const score = distance * (1 + tooTall * 0.6 + shortLastRow + loneLastRow);
+    if (score < bestScore) {
+      bestScore = score;
+      bestColumns = columns;
+    }
+  }
+  return bestColumns;
+};
+
 /** Prefer a square or slightly wide card grid; a short last row beats a 2-column tower. */
 export const resolveApplication3DColumns = (
   count: number,
@@ -109,6 +138,9 @@ export const resolveApplication3DColumns = (
   const safeCount = Math.max(0, Math.floor(count));
   const safeAspect = Math.max(viewportAspect, 0.1);
   if (!safeCount) return 1;
+  if (safeCount > APPLICATION3D_DENSE_TIER_MAX) {
+    return resolveColumnsFillingViewport(safeCount, safeAspect);
+  }
   const targetGridAspect =
     safeAspect >= 1.05 ? TARGET_GRID_ASPECT_WIDE : TARGET_GRID_ASPECT_TALL;
   const ideal = Math.sqrt(safeCount * targetGridAspect);
@@ -117,7 +149,7 @@ export const resolveApplication3DColumns = (
       const score = scoreColumnCandidate(safeCount, candidate, safeAspect);
       return !best || score < best.score ? { columns: candidate, score } : best;
     }, null as { columns: number; score: number } | null)?.columns || 1;
-  if (safeCount < 17 || safeCount > APPLICATION3D_DENSE_TIER_MAX) return scored;
+  if (safeCount < 17) return scored;
   if (safeAspect >= 1.05) return Math.min(APPLICATION3D_DENSE_COLUMNS, safeCount);
   return Math.min(scored, APPLICATION3D_DENSE_COLUMNS);
 };
@@ -165,6 +197,11 @@ export const buildApplication3DLayout = (
 
 /** Default wall occupies this fraction of the tighter viewport axis. */
 export const WALL_VIEW_COVERAGE = 0.80;
+/**
+ * Above 36 the camera frames the real wall. 0.80 left a visible margin on
+ * every side; 0.88 pulls in slightly and still clears the page wings.
+ */
+export const WALL_VIEW_COVERAGE_PAST_DENSE = 0.88;
 export const APPLICATION3D_CAMERA_FOV = 34;
 /** ≤16 parks on this 4×4 density-1 frame so 1 and 16 share one camera. */
 export const PARKED_WALL_COLUMNS = 4;
@@ -219,7 +256,7 @@ export const fitApplication3DCameraDistance = (
  * ≤16 keeps density-1 cards and parks on the 4×4 frame. If this page's wall is
  * wider or taller than that frame, the camera pulls back to frame it;
  * 17–36 uses that parked frame pulled back by 1/0.82, same size as today's 24-card page;
- * above 36 keeps the 0.82 card size and frames the actual populated wall.
+ * above 36 keeps the 0.82 card size and frames the actual wall a little tighter.
  */
 export const resolveApplication3DWallCamera = (
   count: number,
@@ -265,6 +302,7 @@ export const resolveApplication3DWallCamera = (
         layout.wallHeight,
         viewportAspect,
         fovDeg,
+        WALL_VIEW_COVERAGE_PAST_DENSE,
       ),
       densityFloorDistance,
     ),

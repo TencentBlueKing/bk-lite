@@ -1,8 +1,6 @@
 Transmission 4RF Aprisa SNMP:
   name: 4RF Aprisa (Telegraf)
-  desc: SNMP monitoring template for 4RF Aprisa transmission device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime (IANA
-    PEN 14817).
+  desc: "SNMP monitoring template for 4RF Aprisa transmission device. It reports uptime, receiver and transmitter temperature, fan, power rail alarm status, and interface traffic (enterprise PEN 14817)."
 monitor_object:
   Transmission: Transmission
 monitor_object_type:
@@ -67,6 +65,12 @@ monitor_object_metric:
     device_fan_fan1_state:
       name: Fan 1 State
       desc: Operational state of device fan 1, normalized to normal or abnormal.
+    device_transmitter_temperature_celsius:
+      name: Transmitter Temperature
+      desc: Transmitter temperature of the 4RF AprisaXE in degrees Celsius. Persistently high values may indicate poor cooling, high ambient temperature or power amplifier stress.
+    device_power_rail_state:
+      name: Power Rail Alarm Status
+      desc: Alarm status of each transmitter and receiver power rail, normalized to normal (no alarm) or abnormal (any alarm level).
 monitor_object_metric_group:
   Transmission:
     Base: Base

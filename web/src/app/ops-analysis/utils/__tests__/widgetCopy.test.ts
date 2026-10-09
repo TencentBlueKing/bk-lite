@@ -86,6 +86,21 @@ describe('cloneAnalysisWidget', () => {
       ).title,
     ).toBe('副本');
   });
+
+  it('uses the translator for the copy suffix when one is provided', () => {
+    const t = (id: string, fallback?: string, values?: Record<string, string>) => {
+      if (id === 'dashboard.copySuffix') {
+        return `${values?.name} copy`;
+      }
+      return fallback || id;
+    };
+    expect(
+      cloneAnalysisWidget(
+        { id: 'named', title: 'CPU', valueConfig: { chartType: 'line' } },
+        { createId: () => 'named-copy', t },
+      ).title,
+    ).toBe('CPU copy');
+  });
 });
 
 describe('shouldShowAnalysisWidgetCopyAction', () => {

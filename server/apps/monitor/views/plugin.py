@@ -21,6 +21,7 @@ from apps.monitor.services.plugin_guide import PluginGuideService
 from apps.monitor.services.qcloud_regions import QCloudRegionService
 from apps.monitor.services.template_access_guide import TemplateAccessGuideService
 from apps.monitor.utils.pagination import parse_page_params
+from apps.monitor.utils.plugin_source import is_built_in_plugin, is_custom_plugin_template
 from apps.monitor.views.node_mgmt import _build_actor_context
 from config.drf.pagination import CustomPageNumberPagination
 
@@ -146,7 +147,7 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
             if plugin.id in db_ids:
                 continue
             plugin_key = f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{plugin.name}"
-            if plugin.template_type in {"api", "pull"}:
+            if plugin.template_type in {"api", "pull", "script"}:
                 display_name = plugin.display_name or plugin.name
                 display_description = lan.get(f"{plugin_key}.desc") or plugin.description or plugin.name
             else:
@@ -167,7 +168,7 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
     def _enrich_plugin_results(self, results, lan, parent_obj_by_id: dict):
         """补齐 display_* / is_custom / parent_object_display_name(原地修改)。"""
         for result in results:
-            if result.get("template_type") in {"api", "pull"}:
+            if result.get("template_type") in {"api", "pull", "script"}:
                 result["display_name"] = result.get("display_name") or result["name"]
                 result["display_description"] = (
                     lan.get(f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{result['name']}.desc") or result["description"] or result["name"]
@@ -176,7 +177,11 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
                 plugin_key = f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{result['name']}"
                 result["display_name"] = lan.get(f"{plugin_key}.name") or result.get("display_name") or result["name"]
                 result["display_description"] = lan.get(f"{plugin_key}.desc") or result["description"] or result["name"]
-            result["is_custom"] = result.get("template_type") in {"api", "pull", "snmp"}
+            result["is_custom"] = is_custom_plugin_template(result.get("template_type"))
+            result["is_built_in"] = is_built_in_plugin(
+                result.get("template_type"),
+                result.get("is_pre"),
+            )
 
             parent_id = result.get("parent_monitor_object")
             parent_obj = parent_obj_by_id.get(parent_id) if parent_id is not None else None
@@ -201,7 +206,7 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
 
     def _keyword_field_values(self, plugin, lan):
         plugin_key = f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{plugin.name}"
-        if plugin.template_type in {"api", "pull"}:
+        if plugin.template_type in {"api", "pull", "script"}:
             display_name = plugin.display_name or plugin.name
             display_description = lan.get(f"{plugin_key}.desc") or plugin.description or plugin.name
         else:
@@ -300,7 +305,7 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         plugin = self.get_object()
         self._ensure_modifiable(plugin)
-        if plugin.template_type in {"api", "pull", "snmp"}:
+        if is_custom_plugin_template(plugin.template_type):
             try:
                 plugin.delete()
             except ProgrammingError as exc:

@@ -1,7 +1,6 @@
 Switch Netgear SNMP:
   name: Netgear (Telegraf)
-  desc: SNMP monitoring template for Netgear switch. It reports CPU utilization, memory
-    utilization, per-port inbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Netgear switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic (enterprise PEN 4526)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -114,17 +113,17 @@ monitor_object_metric:
         more effective traffic management and optimization.
     device_cpu_usage:
       name: CPU Utilization
-      desc: This metric reports the CPU utilization of the device control plane (typically
-        the 5-minute average), as a percentage. Sustained high CPU usage can indicate
-        control-plane overload, routing instability, or attack traffic, and may lead
-        to slow management response or packet processing delays. Sourced from vendor-specific
-        SNMP OIDs and normalized to a 0-100 percentage.
+      desc: This metric reports the CPU utilization of the Netgear (FASTPATH) control
+        plane as a 0-100 percentage, parsed from the agentSwitchCpuProcessTotalUtilization
+        DisplayString (60-second window, falling back to 5-second). Parse failures
+        skip the sample instead of reporting 0. Sustained high CPU usage can indicate
+        control-plane overload, routing instability, or attack traffic.
     device_memory_usage:
       name: Memory Utilization
-      desc: This metric reports overall memory utilization of the device, computed
-        as used / (used + free) * 100 across all memory pools. High memory usage may
-        indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity,
-        and can cause instability or failed allocations.
+      desc: This metric reports overall memory utilization of the Netgear (FASTPATH)
+        device, computed as (total - free) / total * 100 from the KByte memory scalars.
+        High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables,
+        or insufficient capacity, and can cause instability or failed allocations.
     device_memory_used:
       name: Memory Used
       desc: This metric reports the number of bytes currently in use for each memory
@@ -133,15 +132,16 @@ monitor_object_metric:
         pool is under pressure.
     device_memory_free:
       name: Memory Free
-      desc: This metric reports the number of free bytes available in each memory
-        pool of the device. Together with the used bytes it determines overall memory
-        utilization; a persistently low free value indicates memory pressure on that
-        pool.
+      desc: This metric reports the number of free bytes in Netgear (FASTPATH) system
+        memory (agentSwitchCpuProcessMemFree, reported in KBytes and scaled to bytes).
+        Together with the total size it determines overall memory utilization; a persistently
+        low free value indicates memory pressure.
     device_memory_total:
       name: Memory Total
-      desc: This metric reports the total memory capacity of the device. It is the
-        denominator for memory utilization (some vendors compute (total - free) /
-        total) and, together with free memory, reflects overall memory pressure.
+      desc: This metric reports the total size in bytes of Netgear (FASTPATH) system
+        memory (agentSwitchCpuProcessMemAvailable, reported in KBytes and scaled to
+        bytes). It is the denominator for memory utilization computed as (total -
+        free) / total.
     device_temperature_celsius:
       name: Temperature
       desc: This metric reports the temperature reading of each hardware sensor on

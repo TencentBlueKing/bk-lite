@@ -58,8 +58,8 @@ const RelatedTopology = ({ instUuid, chartThemeMode }: RelatedTopologyProps) => 
   }, [load]);
 
   const graph = useMemo(
-    () => (payload ? buildRelatedTopologyGraph(payload) : null),
-    [payload],
+    () => (payload ? buildRelatedTopologyGraph(payload, t) : null),
+    [payload, t],
   );
 
   if (loading) {

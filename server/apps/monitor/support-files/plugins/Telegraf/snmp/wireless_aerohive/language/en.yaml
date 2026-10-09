@@ -1,7 +1,6 @@
 Wireless Aerohive SNMP:
   name: Aerohive (Telegraf)
-  desc: SNMP monitoring template for Aerohive wireless device. It reports system uptime,
-    CPU utilization, memory utilization, and other key metrics (IANA PEN 26928).
+  desc: "SNMP monitoring template for Aerohive wireless device. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic, for HiveAP (enterprise PEN 26928)."
 monitor_object:
   Wireless: Wireless
 monitor_object_type:

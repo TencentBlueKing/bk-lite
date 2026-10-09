@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_extreme",
   "plugin": "Switch Extreme SNMP",
-  "plugin_desc": "Extreme Networks-specific SNMP collection for switches (EXOS, PEN 1916). In addition to standard IF-MIB interface metrics, it collects device health from EXTREME-SOFTWARE-MONITOR-MIB and EXTREME-SYSTEM-MIB: CPU utilization and enclosure temperature as scalar GET fields (extremeCpuMonitorTotalUtilization / extremeCurrentTemperature), system memory total/free as a table, and fan and power-supply status tables. Memory utilization is computed from total and free; fan/psu states are normalized to the unified 1=normal convention. Supported brands/models — Extreme Networks ExtremeXOS (EXOS) switches (X440/X460/X670/X690, etc.).",
+  "plugin_desc": "SNMP monitoring template for Extreme switch. It reports uptime, CPU utilization, memory utilization, temperature, fan operational state and RPM, power supply status, and interface traffic, for ExtremeXOS (enterprise PEN 1916).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_extreme'}) by (instance_id)",
   "name": "Switch",
@@ -105,7 +105,7 @@
       "query": "device_fan_state{instance_type='switch', __$labels__}",
       "display_name": "Fan Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"shutdown\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notPresent\",\"id\":5,\"color\":\"#d9d9d9\"},{\"name\":\"notFunctioning\",\"id\":6,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [
         {
           "name": "descr",
@@ -115,7 +115,25 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the operational state of each Extreme Networks cooling fan (EXTREME-SYSTEM-MIB extremeFanOperational), where 1 means normal (operational) and any other value indicates the fan is not running. A non-normal state indicates a cooling fault that can quickly lead to overheating and should be investigated immediately."
+      "description": "This metric reports the operational state of each Extreme Networks cooling fan (extremeFanOperational TruthValue), where 1 means normal (true/operational) and 2 means abnormal (false/not running). Values the object does not define are dropped. A value of 2 indicates a cooling fault that can quickly lead to overheating and should be investigated immediately."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_speed",
+      "query": "device_fan_speed{instance_type='switch', __$labels__}",
+      "display_name": "Fan Speed",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Fan description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the rotation speed of each Extreme Networks cooling fan (extremeFanSpeed) in RPM. Stored values are already in RPM with no extra scale. Readings outside 0..100000 are dropped."
     },
     {
       "metric_group": "Hardware Status",
@@ -123,7 +141,7 @@
       "query": "device_psu_state{instance_type='switch', __$labels__}",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"shutdown\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notPresent\",\"id\":5,\"color\":\"#d9d9d9\"},{\"name\":\"notFunctioning\",\"id\":6,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [
         {
           "name": "descr",
@@ -133,7 +151,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the operational state of each Extreme Networks power supply unit (EXTREME-SYSTEM-MIB extremePowerSupplyStatus), normalized to the unified convention where 1 means normal (presentOK) and any other value indicates an abnormal/fault state. A non-normal state signals a power redundancy or hardware fault and must be remediated promptly."
+      "description": "This metric reports the operational state of each Extreme Networks power supply unit (EXTREME-SYSTEM-MIB extremePowerSupplyStatus), normalized to the unified convention where 1 means normal (notPresent or presentOK) and 2 means abnormal (presentNotOK or presentPowerOff). A non-normal state signals a power redundancy or hardware fault and must be remediated promptly."
     },
     {
       "metric_group": "Traffic",

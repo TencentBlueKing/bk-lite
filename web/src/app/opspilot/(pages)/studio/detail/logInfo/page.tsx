@@ -420,7 +420,6 @@ const StudioLogsPage: React.FC = () => {
       <Timeline
         items={nodes.map((node, idx) => {
           const browserSteps = getBrowserSteps(node.output);
-          const executionLabel = t('studio.logs.executionProcess');
           const executionPanelKey = `${node.id}-execution-process`;
           const isExecutionExpanded = expandedExecutionNodes.includes(executionPanelKey);
           const isFailed = node.status === 'failed';
@@ -464,7 +463,7 @@ const StudioLogsPage: React.FC = () => {
                             </div>
                             <div className="min-w-0 flex-1">
                               <div className="text-(--color-text-1) text-sm font-semibold">
-                                {executionLabel.replace('{{count}}', String(browserSteps.length))}
+                                {t('studio.logs.executionProcess', '执行过程（{count} 个步骤）', { count: browserSteps.length })}
                               </div>
                             </div>
                             <RightOutlined
@@ -691,7 +690,7 @@ const StudioLogsPage: React.FC = () => {
       title: t('studio.logs.table.executionDuration'),
       dataIndex: 'execution_duration',
       key: 'execution_duration',
-      render: (duration) => formatDurationMs(duration),
+      render: (duration) => formatDurationMs(duration, t),
     },
     {
       title: t('common.actions'),

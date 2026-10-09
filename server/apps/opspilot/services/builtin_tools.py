@@ -27,6 +27,9 @@ BUILTIN_ALERTS_TOOL_NAME = "alerts"
 BUILTIN_LOG_TOOL_ID = -9
 BUILTIN_LOG_TOOL_NAME = "log"
 
+BUILTIN_ACTIVEDIRECTORY_TOOL_ID = -10
+BUILTIN_ACTIVEDIRECTORY_TOOL_NAME = "activedirectory"
+
 IDENTITY_ONLY_BUILTIN_TOOLS = {
     BUILTIN_MONITOR_TOOL_ID: BUILTIN_MONITOR_TOOL_NAME,
     BUILTIN_CMDB_TOOL_ID: BUILTIN_CMDB_TOOL_NAME,
@@ -370,4 +373,42 @@ def build_builtin_mssql_runtime_tool(tool_kwargs):
         "enable_auth": False,
         "auth_token": "",
         "extra_tools_prompt": get_mssql_instances_prompt(tool_kwargs),
+    }
+
+
+def build_builtin_activedirectory_tool(loader: LanguageLoader):
+    from apps.opspilot.metis.llm.tools.activedirectory import CONSTRUCTOR_PARAMS as ad_constructor_params
+    from apps.opspilot.metis.llm.tools.activedirectory import __all__ as ad_exports
+
+    description = loader.get(f"tools.{BUILTIN_ACTIVEDIRECTORY_TOOL_NAME}.description") or "Active Directory built-in tool"
+    return {
+        "id": BUILTIN_ACTIVEDIRECTORY_TOOL_ID,
+        "name": BUILTIN_ACTIVEDIRECTORY_TOOL_NAME,
+        "display_name": _get_display_name(loader, BUILTIN_ACTIVEDIRECTORY_TOOL_NAME, "Active Directory"),
+        "description": description,
+        "description_tr": description,
+        "icon": "gongjuji",
+        "team": [],
+        "tags": [],
+        "params": {
+            "name": BUILTIN_ACTIVEDIRECTORY_TOOL_NAME,
+            "url": f"langchain:{BUILTIN_ACTIVEDIRECTORY_TOOL_NAME}",
+            "kwargs": _build_kwargs_from_params(ad_constructor_params),
+            "enable_auth": False,
+            "auth_token": "",
+        },
+        "is_build_in": True,
+        "tools": _build_sub_tools(BUILTIN_ACTIVEDIRECTORY_TOOL_NAME, ad_exports, loader),
+    }
+
+
+def build_builtin_activedirectory_runtime_tool(tool_kwargs):
+    from apps.opspilot.metis.llm.tools.activedirectory.connection import get_ad_instances_prompt
+
+    return {
+        "name": BUILTIN_ACTIVEDIRECTORY_TOOL_NAME,
+        "url": f"langchain:{BUILTIN_ACTIVEDIRECTORY_TOOL_NAME}",
+        "enable_auth": False,
+        "auth_token": "",
+        "extra_tools_prompt": get_ad_instances_prompt(tool_kwargs),
     }

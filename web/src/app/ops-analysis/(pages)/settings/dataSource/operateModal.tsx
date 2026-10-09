@@ -527,6 +527,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
 
       const hydrated = buildHydratedDatasourceFormState(row, {
         selectedGroupId: selectedGroup?.id,
+        t,
       });
       form.setFieldsValue(hydrated.formValues);
       setParams(hydrated.params);
@@ -568,6 +569,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
     getTagList,
     getDataSourceDetail,
     clearPreviewState,
+    t,
   ]);
 
   useEffect(() => {
@@ -659,7 +661,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
             max_series: 20,
           },
         });
-        setParams(createPrometheusDefaultParams());
+        setParams(createPrometheusDefaultParams(t));
       } else if (sourceType !== SOURCE_TYPE_NATS) {
         form.setFieldValue("chart_type", [TABLE_CHART_TYPE]);
         setParams([]);
@@ -971,7 +973,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           max_series: 20,
         },
       });
-      setParams(createPrometheusDefaultParams());
+      setParams(createPrometheusDefaultParams(t));
     }
     if (
       nextSourceType !== SOURCE_TYPE_NATS &&

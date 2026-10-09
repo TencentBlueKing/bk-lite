@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_bluecoat",
   "plugin": "Wanopt BlueCoat SNMP",
-  "plugin_desc": "Blue Coat / Symantec Edge SWG / Broadcom ProxySG SNMP collection (BLUECOAT-SG-PROXY-MIB, IANA PEN 3417). Device identity is the sysObjectID prefix 1.3.6.1.4.1.3417.1.1 (ProxySG device family). Collects memory pressure as a 0-100 percent (sgProxyMemoryPressure), available memory in bytes (sgProxyMemAvailable), optional used-memory split of system process plus object cache (sgProxyMemSysUsage + sgProxyMemCacheUsage), and per-core CPU busy percent (sgProxyCpuCoreBusyPerCent) averaged to a device headline. Optional identity tags are sgProxySoftware, sgProxyVersion, and sgProxySerialNumber. Interface traffic comes from the built-in IF-MIB table. This plugin does not poll the deprecated sgProxyCpuBusyPerCent scalar and does not walk HTTP client, server, or median statistic tables.",
+  "plugin_desc": "SNMP monitoring template for Blue Coat / Symantec Edge SWG / Broadcom ProxySG appliances (enterprise PEN 3417). It reports uptime, per-core CPU utilization, memory utilization and usage breakdown, interface traffic, and hardware sensor readings (temperature, voltage, fan speed) with their health state.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wanopt', collect_type='snmp_bluecoat'}) by (instance_id)",
   "name": "Wanopt",
@@ -18,7 +18,11 @@
     "device_cpu_usage",
     "device_memory_usage",
     "device_total_incoming_traffic",
-    "device_total_outgoing_traffic"
+    "device_total_outgoing_traffic",
+    "bluecoat_sensor_celsius",
+    "bluecoat_sensor_volts",
+    "bluecoat_sensor_rpm",
+    "bluecoat_sensor_state"
   ],
   "metrics": [
     {
@@ -124,6 +128,94 @@
         "instance_id"
       ],
       "description": "Proxy memory pressure of the ProxySG appliance as a 0-100 percentage of available memory (BLUECOAT-SG-PROXY-MIB sgProxyMemoryPressure). Sustained high usage can degrade caching and SSL inspection performance."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "bluecoat_sensor_celsius",
+      "query": "bluecoat_sensor_celsius{instance_type='wanopt', __$labels__}",
+      "display_name": "Hardware Sensor Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "sensor_name",
+          "description": "deviceSensorName"
+        },
+        {
+          "name": "index",
+          "description": "deviceSensorIndex"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Temperature reading of a ProxySG hardware sensor in degrees Celsius (BLUECOAT-SG-SENSOR-MIB deviceSensorValue scaled by 10^deviceSensorScale when deviceSensorUnits is celsius). Values outside -40 to 125 C are dropped from this field; the sensor state is kept when present."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "bluecoat_sensor_volts",
+      "query": "bluecoat_sensor_volts{instance_type='wanopt', __$labels__}",
+      "display_name": "Hardware Sensor Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [
+        {
+          "name": "sensor_name",
+          "description": "deviceSensorName"
+        },
+        {
+          "name": "index",
+          "description": "deviceSensorIndex"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Voltage reading of a ProxySG hardware sensor in volts (BLUECOAT-SG-SENSOR-MIB deviceSensorValue scaled by 10^deviceSensorScale when deviceSensorUnits is volts). Non-positive values and values above 500 V are dropped from this field; the sensor state is kept when present."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "bluecoat_sensor_rpm",
+      "query": "bluecoat_sensor_rpm{instance_type='wanopt', __$labels__}",
+      "display_name": "Hardware Sensor Fan Speed (RPM)",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "sensor_name",
+          "description": "deviceSensorName"
+        },
+        {
+          "name": "index",
+          "description": "deviceSensorIndex"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Fan speed of a ProxySG hardware sensor in RPM (BLUECOAT-SG-SENSOR-MIB deviceSensorValue scaled by 10^deviceSensorScale when deviceSensorUnits is rpm). Values outside 0 to 50000 RPM are dropped from this field; the sensor state is kept when present."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "bluecoat_sensor_state",
+      "query": "bluecoat_sensor_state{instance_type='wanopt', __$labels__}",
+      "display_name": "Hardware Sensor State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "sensor_name",
+          "description": "deviceSensorName"
+        },
+        {
+          "name": "index",
+          "description": "deviceSensorIndex"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Health state of a ProxySG hardware sensor. deviceSensorStatus ok(1) maps state from deviceSensorCode: ok(1) to 1=normal and codes 2-15 (unknown, notInstalled, voltage, noPower, temperature, fan) to 2=abnormal. deviceSensorStatus unavailable(2), nonoperational(3) and notInstalled(4) map to 2=abnormal. Values outside those MIB enumerations emit no state."
     }
   ]
 }

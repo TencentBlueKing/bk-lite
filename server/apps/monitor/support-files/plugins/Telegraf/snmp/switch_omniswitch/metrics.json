@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_omniswitch",
   "plugin": "Switch Alcatel OmniSwitch SNMP",
-  "plugin_desc": "Alcatel-Lucent Enterprise OmniSwitch AOS6 SNMP collection (ALCATEL-IND1-HEALTH-MIB, IANA PEN 6486.800). Device-level CPU and memory are healthDeviceInfo scalars collected as top-level inputs.snmp.field with instance .0: healthDeviceCpuLatest maps to device_cpu_usage (INTEGER 0..100, latest sample period) and healthDeviceMemoryLatest maps to device_memory_usage (already a percent). Chassis temperature is a 0..100 percent rather than Celsius, so it is not mapped; fan and power-supply need entity-type row filtering that telegraf inputs.snmp cannot do, so those are N/A. Standard IF-MIB interface metrics are kept. This plugin covers AOS6 6486.800 device scalars only, not AOS7 6486.801 healthModule tables. Distinct from Switch Alcatel-Lucent SNMP, which covers Nokia/ALU 7750 SR service routers.",
+  "plugin_desc": "SNMP monitoring template for Alcatel OmniSwitch switch. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 6486).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_omniswitch'}) by (instance_id)",
   "name": "Switch",

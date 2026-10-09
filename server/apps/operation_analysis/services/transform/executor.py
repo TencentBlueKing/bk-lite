@@ -10,6 +10,7 @@ import requests
 
 from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.services.transform.errors import TransformError
+from apps.operation_analysis.services.user_messages import oa_message
 
 DEFAULT_TIMEOUT_SECONDS = 8
 MAX_ROWS = 10_000
@@ -44,14 +45,26 @@ class TransformExecutor:
         request_id: str | None = None,
     ) -> list[dict[str, Any]]:
         if not self.base_url:
-            raise TransformError("转换服务不可用", code="transform_runner_unavailable", status_code=503)
+            raise TransformError(
+                oa_message("messages.transform_runner_unavailable", "转换服务不可用"),
+                code="transform_runner_unavailable",
+                status_code=503,
+            )
         if not self.token:
-            raise TransformError("转换服务未配置服务间认证", code="transform_runner_misconfigured", status_code=503)
+            raise TransformError(
+                oa_message("messages.transform_runner_auth_missing", "转换服务未配置服务间认证"),
+                code="transform_runner_misconfigured",
+                status_code=503,
+            )
 
         if not isinstance(rows, list):
-            raise TransformError("rows 必须为数组", code="rows_invalid", status_code=400)
+            raise TransformError(oa_message("messages.transform_rows_must_be_array", "rows 必须为数组"), code="rows_invalid", status_code=400)
         if len(rows) > MAX_ROWS:
-            raise TransformError(f"输入超过 {MAX_ROWS} 行", code="rows_too_many", status_code=400)
+            raise TransformError(
+                oa_message("messages.transform_rows_too_many", "输入超过 {limit} 行", limit=MAX_ROWS),
+                code="rows_too_many",
+                status_code=400,
+            )
 
         payload = {
             "request_id": request_id or str(uuid.uuid4()),
@@ -82,7 +95,7 @@ class TransformExecutor:
                 payload["org_id"],
                 len(rows),
             )
-            raise TransformError("转换执行超时", code="transform_timeout", status_code=504) from exc
+            raise TransformError(oa_message("messages.transform_timeout", "转换执行超时"), code="transform_timeout", status_code=504) from exc
         except requests.RequestException as exc:
             logger.warning(
                 "[TransformExecutor] unavailable request_id=%s org_id=%s err=%s",
@@ -90,7 +103,11 @@ class TransformExecutor:
                 payload["org_id"],
                 type(exc).__name__,
             )
-            raise TransformError("转换服务不可用", code="transform_runner_unavailable", status_code=503) from exc
+            raise TransformError(
+                oa_message("messages.transform_runner_unavailable", "转换服务不可用"),
+                code="transform_runner_unavailable",
+                status_code=503,
+            ) from exc
 
         body: dict[str, Any]
         try:
@@ -100,7 +117,7 @@ class TransformExecutor:
 
         if response.status_code >= 400 or body.get("result") is False:
             code = body.get("code") or "transform_failed"
-            message = body.get("message") or "转换失败"
+            message = body.get("message") or oa_message("messages.transform_failed", "转换失败")
             status_code = response.status_code if response.status_code >= 400 else 400
             if status_code == 429:
                 code = body.get("code") or "transform_capacity_exceeded"
@@ -116,7 +133,7 @@ class TransformExecutor:
 
         rows_out = body.get("rows")
         if not isinstance(rows_out, list):
-            raise TransformError("转换结果无效", code="transform_return_invalid", status_code=502)
+            raise TransformError(oa_message("messages.transform_result_invalid", "转换结果无效"), code="transform_return_invalid", status_code=502)
         logger.info(
             "[TransformExecutor] ok request_id=%s org_id=%s input_rows=%s output_rows=%s elapsed_ms=%s",
             payload["request_id"],

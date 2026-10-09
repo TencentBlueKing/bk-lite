@@ -12,8 +12,11 @@ import {
   isPlatformMode,
   lastSessionStorageKey,
   mergePlatformCurrentApp,
+  PLATFORM_DOCK_CHAT_MIN_WIDTH,
   PLATFORM_DOCK_CHAT_WIDTH,
   PLATFORM_HISTORY_RAIL_DOCK,
+  clampPlatformDockChatWidth,
+  nextPlatformDockChatWidth,
   platformDockInsetWidth,
   clampFabPosition,
   DEFAULT_FAB_POSITION,
@@ -42,12 +45,14 @@ import {
 import type { ChatProps } from './chatProps';
 import { WC } from './chrome';
 import { ConversationSkeleton } from './components/ConversationSkeleton';
+import { useTranslator, WebChatLocaleProvider } from './useTranslator';
 import {
   deletePlatformSession,
-  fetchPlatformApplications,
+  fetchPlatformLaunch,
   fetchPlatformMessages,
   fetchPlatformSessions,
   interruptPlatformChat,
+  savePlatformWebchatWidth,
 } from './platform/api';
 
 const Chat = React.lazy(async () => {
@@ -122,6 +127,7 @@ const HistoryRail: React.FC<{
   onConfirmDelete,
   onCancelDelete,
 }) => {
+  const t = useTranslator();
   const [tip, setTip] = useState<{ text: string; top: number; left: number } | null>(null);
 
   const hideTip = useCallback(() => setTip(null), []);
@@ -148,24 +154,24 @@ const HistoryRail: React.FC<{
         background: WC.historyRail,
         borderRight: `1px solid ${WC.botBorder}`,
       }}
-      aria-label="历史会话"
+      aria-label={t('sessions.accessibleName', '历史会话')}
     >
       <div className="flex-shrink-0 px-3 py-2.5 text-xs" style={{ color: WC.muted }}>
-        历史对话
+        {t('sessions.title', '历史对话')}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2" onScroll={hideTip}>
         {loading ? (
           <p className="px-2 py-2 text-xs" style={{ color: WC.muted }}>
-            加载中…
+            {t('sessions.loading', '加载中…')}
           </p>
         ) : items.length === 0 ? (
           <p className="px-2 py-2 text-xs" style={{ color: WC.muted }}>
-            暂无会话
+            {t('sessions.empty', '暂无会话')}
           </p>
         ) : (
           items.map((session) => {
             const active = session.id === sessionId;
-            const time = formatSessionTime(session.updatedAt);
+            const time = formatSessionTime(session.updatedAt, Date.now(), t);
             const confirming = confirmingDeleteId === session.id;
             const deleting = deletingId === session.id;
             return (
@@ -207,7 +213,7 @@ const HistoryRail: React.FC<{
                         className="border-none bg-transparent p-0 text-[11px]"
                         style={{ color: WC.fail }}
                       >
-                        {deleting ? '删除中' : '删除'}
+                        {deleting ? t('sessions.deleting', '删除中') : t('sessions.delete', '删除')}
                       </button>
                       <button
                         type="button"
@@ -216,14 +222,14 @@ const HistoryRail: React.FC<{
                         className="border-none bg-transparent p-0 text-[11px]"
                         style={{ color: WC.muted }}
                       >
-                        取消
+                        {t('common.cancel', '取消')}
                       </button>
                     </div>
                   ) : (
                     <button
                       type="button"
-                      title="删除会话"
-                      aria-label="删除会话"
+                      title={t('sessions.deleteConfirmTitle', '删除会话')}
+                      aria-label={t('sessions.deleteConfirmTitle', '删除会话')}
                       onClick={() => onRequestDelete(session.id)}
                       className="mt-0.5 flex h-6 w-6 flex-shrink-0 cursor-pointer items-center justify-center rounded border-none opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
                       style={{ color: WC.dim, background: 'transparent' }}
@@ -306,6 +312,7 @@ const FabLauncher = React.forwardRef<
     storageKey: string;
   }
 >(({ onOpen, storage, storageKey }, ref) => {
+  const t = useTranslator();
   const webpSrc = webchatAssetUrl('fab-whaledou.webp');
   const pngSrc = webchatAssetUrl('fab-whaledou.png');
   const [position, setPosition] = useState(() =>
@@ -423,8 +430,8 @@ const FabLauncher = React.forwardRef<
     >
       <button
         type="button"
-        title="打开对话，按住可拖动"
-        aria-label="打开对话"
+        title={t('chat.floatingDragHint', '打开对话，按住可拖动')}
+        aria-label={t('chat.openConversation', '打开对话')}
         onClick={onClick}
         onPointerDown={onPointerDown}
         onMouseDown={onMouseDown}
@@ -440,7 +447,7 @@ const FabLauncher = React.forwardRef<
 });
 FabLauncher.displayName = 'FabLauncher';
 
-export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, PlatformChatProps>((props, ref) => {
+const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformChatProps>((props, ref) => {
   const {
     platform,
     userId = 'anonymous',
@@ -458,6 +465,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
     ...chatProps
   } = props;
 
+  const t = useTranslator();
   const requestInit = useMemo(
     () => ({
       apiKey,
@@ -491,8 +499,15 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [draftTitle, setDraftTitle] = useState('新会话');
+  const [draftTitle, setDraftTitle] = useState<string>('');
+  const [chatWidth, setChatWidth] = useState(PLATFORM_DOCK_CHAT_WIDTH);
+  const [resizing, setResizing] = useState(false);
   const chatStateRef = useRef<ChatState>('idle');
+  const chatWidthRef = useRef(chatWidth);
+  chatWidthRef.current = chatWidth;
+  const historyOpenRef = useRef(historyOpen);
+  historyOpenRef.current = historyOpen;
+  const resizingRef = useRef(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const loadedSessionIdRef = useRef<string | null>(null);
   const appsLoadGenerationRef = useRef(0);
@@ -513,11 +528,16 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
         setLoading(true);
       }
       try {
-        const nextApps = await fetchPlatformApplications(platform, requestInit);
+        const launch = await fetchPlatformLaunch(platform, requestInit);
         if (generation !== appsLoadGenerationRef.current) return;
-        setApps(nextApps);
+        setApps(launch.applications);
+        if (!resizingRef.current) {
+          setChatWidth(
+            clampPlatformDockChatWidth(launch.webchatWidth, window.innerWidth, historyOpenRef.current)
+          );
+        }
         const stored = readLastSelection(storage, storageKey);
-        setCurrentApp((prev) => mergePlatformCurrentApp(nextApps, prev, stored));
+        setCurrentApp((prev) => mergePlatformCurrentApp(launch.applications, prev, stored));
         setForbidden(false);
       } catch (error) {
         if (generation !== appsLoadGenerationRef.current) return;
@@ -683,7 +703,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
     if (!currentAppId) return;
     const nextSessionId = createPlatformSessionId();
     loadedSessionIdRef.current = nextSessionId;
-    setDraftTitle('新会话');
+    setDraftTitle('');
     setSessionId(nextSessionId);
     setMessages([]);
     setSessionUsage(null);
@@ -697,7 +717,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
     setCurrentApp(app);
     setSessions([]);
     loadedSessionIdRef.current = null;
-    setDraftTitle('新会话');
+    setDraftTitle('');
     setSessionId(null);
     setMessages([]);
     setSessionUsage(null);
@@ -708,7 +728,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
     setConfirmingDeleteId(null);
     if (id === sessionId) return;
     loadedSessionIdRef.current = null;
-    setDraftTitle('新会话');
+    setDraftTitle('');
     setSessionId(id);
     setMessages([]);
     setSessionUsage(null);
@@ -746,7 +766,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
       }
       const nextSessionId = createPlatformSessionId();
       loadedSessionIdRef.current = nextSessionId;
-      setDraftTitle('新会话');
+      setDraftTitle('');
       setSessionId(nextSessionId);
       setMessages([]);
       setSessionUsage(null);
@@ -841,24 +861,72 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   const emptyApps = !loading && apps.length === 0;
 
   useEffect(() => {
+    setChatWidth((current) => clampPlatformDockChatWidth(current, window.innerWidth, historyOpen));
+  }, [historyOpen]);
+
+  const onResizePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (isFullscreen || event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const startX = event.clientX;
+      const startWidth = chatWidthRef.current;
+      resizingRef.current = true;
+      setResizing(true);
+      const previousCursor = document.body.style.cursor;
+      document.body.style.cursor = 'col-resize';
+      const move = (ev: PointerEvent) => {
+        setChatWidth(
+          nextPlatformDockChatWidth(startWidth, ev.clientX - startX, window.innerWidth, historyOpenRef.current)
+        );
+      };
+      const stop = (ev: PointerEvent) => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', stop);
+        window.removeEventListener('pointercancel', stop);
+        document.body.style.cursor = previousCursor;
+        resizingRef.current = false;
+        setResizing(false);
+        const next = nextPlatformDockChatWidth(
+          startWidth,
+          ev.clientX - startX,
+          window.innerWidth,
+          historyOpenRef.current
+        );
+        setChatWidth(next);
+        void savePlatformWebchatWidth(platform, next, requestInit).catch(() => undefined);
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', stop);
+      window.addEventListener('pointercancel', stop);
+    },
+    [isFullscreen, platform, requestInit]
+  );
+
+  useEffect(() => {
     const width = platformDockInsetWidth({
       visible: showLauncher && !forbidden && hasOpened && !collapsed,
       fullscreen: isFullscreen,
       historyOpen,
+      chatWidth,
     });
     document.documentElement.style.setProperty(WEBCHAT_DOCK_INSET_VAR, `${width}px`);
     return () => {
       document.documentElement.style.setProperty(WEBCHAT_DOCK_INSET_VAR, '0px');
     };
-  }, [showLauncher, forbidden, hasOpened, collapsed, isFullscreen, historyOpen]);
+  }, [showLauncher, forbidden, hasOpened, collapsed, isFullscreen, historyOpen, chatWidth]);
 
   if (forbidden || !showLauncher) {
     return null;
   }
 
-  const headerTitle = emptyApps ? '会话' : currentApp?.name || '平台助手';
+  const headerTitle = emptyApps
+    ? t('chat.headerTitle', '会话')
+    : currentApp?.name || t('chat.defaultAssistantName', '平台助手');
   const listItems: PlatformSession[] =
-    isDraftSession && sessionId ? [{ id: sessionId, title: draftTitle || '新会话' }, ...sessions] : sessions;
+    isDraftSession && sessionId
+      ? [{ id: sessionId, title: draftTitle || t('session.new', '新会话') }, ...sessions]
+      : sessions;
 
   return (
     <>
@@ -876,20 +944,34 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
           className={
             isFullscreen
               ? 'fixed inset-0 z-[2000] flex h-full w-full flex-col overflow-hidden font-sans'
-              : 'fixed bottom-0 right-0 top-0 z-[1200] flex flex-col overflow-hidden font-sans transition-[width] duration-200 ease-out'
+              : `fixed bottom-0 right-0 top-0 z-[1200] flex flex-col overflow-hidden font-sans${
+                  resizing ? '' : ' transition-[width] duration-200 ease-out'
+                }`
           }
           style={{
             width: isFullscreen
               ? undefined
               : historyOpen
-                ? PLATFORM_DOCK_CHAT_WIDTH + PLATFORM_HISTORY_RAIL_DOCK
-                : PLATFORM_DOCK_CHAT_WIDTH,
+                ? chatWidth + PLATFORM_HISTORY_RAIL_DOCK
+                : chatWidth,
             background: WC.white,
             borderLeft: isFullscreen ? undefined : `1px solid ${WC.dockEdge}`,
             display: collapsed ? 'none' : undefined,
           }}
           aria-hidden={collapsed}
         >
+      {!isFullscreen ? (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t('chat.resizeDock', '拖拽调整宽度')}
+          aria-valuemin={PLATFORM_DOCK_CHAT_MIN_WIDTH}
+          aria-valuenow={chatWidth}
+          title={t('chat.resizeDock', '拖拽调整宽度')}
+          className="absolute bottom-0 left-0 top-0 z-30 w-3 cursor-col-resize touch-none"
+          onPointerDown={onResizePointerDown}
+        />
+      ) : null}
       <div ref={menuRef} className="relative flex-shrink-0">
         <div
           className="flex h-12 items-center gap-1.5 pl-4 pr-2"
@@ -900,11 +982,11 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
           }}
         >
           {emptyApps ? (
-            <div className="min-w-0 flex-1 truncate text-sm font-medium">会话</div>
+            <div className="min-w-0 flex-1 truncate text-sm font-medium">{t('chat.headerTitle', '会话')}</div>
           ) : (
             <button
               type="button"
-              title="切换智能体"
+              title={t('chat.switchAgent', '切换智能体')}
               onClick={() => setAppMenuOpen((open) => !open)}
               className="flex min-w-0 flex-1 items-center gap-1 border-none bg-transparent p-0 text-left text-sm font-medium"
               style={{ color: WC.headerInk }}
@@ -926,13 +1008,13 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
           )}
           {!emptyApps && (
             <>
-              <QuietIcon title="新对话" onClick={handleNewChat}>
+              <QuietIcon title={t('chat.newConversation', '新对话')} onClick={handleNewChat}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M12 5v14M5 12h14" />
                 </svg>
               </QuietIcon>
               <QuietIcon
-                title={historyOpen ? '收起历史' : '历史会话'}
+                title={historyOpen ? t('chat.collapseHistory', '收起历史') : t('chat.historySessions', '历史会话')}
                 onClick={handleToggleSessions}
                 active={historyOpen}
               >
@@ -946,7 +1028,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
           )}
           {showFullscreenButton && !emptyApps && (
             <QuietIcon
-              title={isFullscreen ? '退出全屏' : '全屏'}
+              title={isFullscreen ? t('chat.exitFullscreen', '退出全屏') : t('chat.fullscreen', '全屏')}
               onClick={handleToggleFullscreen}
               active={isFullscreen}
             >
@@ -961,7 +1043,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
               )}
             </QuietIcon>
           )}
-          <QuietIcon title="关闭" onClick={handleClose}>
+          <QuietIcon title={t('chat.close', '关闭')} onClick={handleClose}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="3" y="4" width="18" height="16" rx="2" />
               <path d="M15 4v16" />
@@ -1002,10 +1084,10 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
           style={{ background: WC.stage, color: WC.muted }}
         >
           <p className="text-sm font-medium" style={{ color: WC.botText }}>
-            还没有可对话的智能体
+            {t('agents.emptyTitle', '还没有可对话的智能体')}
           </p>
           <p className="mt-2 text-xs leading-[18px]">
-            请先发布智能体，并在详情中开通「平台」渠道。开通后即可在这里对话。
+            {t('agents.emptyHint', '请先发布智能体，并在详情中开通「平台」渠道。开通后即可在这里对话。')}
           </p>
           {manageAgentsUrl ? (
             <a
@@ -1013,7 +1095,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
               className="mt-4 inline-flex h-8 cursor-pointer items-center justify-center rounded-md px-3 text-sm font-medium no-underline hover:opacity-90"
               style={{ background: WC.indigo, color: WC.onPrimary }}
             >
-              前往智能体列表
+              {t('agents.manageCta', '前往智能体列表')}
             </a>
           ) : null}
         </div>
@@ -1046,6 +1128,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
                 <Chat
                   key={currentApp.id}
                   {...chatProps}
+                  locale={props.locale}
                   sseUrl={chatUrl}
                   showHeader={false}
                   conversationHistoryEnabled={currentApp.enableConversationHistory !== false}
@@ -1063,7 +1146,7 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
                   onMessageReceived={handleMessageReceived}
                   onClose={handleClose}
                   onStreamingStop={handleStreamingStop}
-                  placeholder="请输入消息..."
+                  placeholder={t('chat.inputPlaceholder', '请输入消息...')}
                 />
               </React.Suspense>
             ) : (
@@ -1080,7 +1163,13 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   );
 }));
 
-PlatformChat.displayName = 'PlatformChat';
+PlatformChatInner.displayName = 'PlatformChat';
+
+export const PlatformChat = React.forwardRef<HTMLDivElement, PlatformChatProps>((props, ref) => (
+  <WebChatLocaleProvider locale={props.locale}>
+    <PlatformChatInner {...props} ref={ref} />
+  </WebChatLocaleProvider>
+));
 
 export function shouldRenderPlatformChat(props: Pick<PlatformChatProps, 'platform' | 'sseUrl'>): boolean {
   return isPlatformMode(props);

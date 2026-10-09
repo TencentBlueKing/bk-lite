@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { isSilentCustomEvent } from '@webchat/core';
 import type { CustomProtocolEvent } from '../agui';
 import { WC } from '../chrome';
+import { useTranslator } from '../useTranslator';
 
 interface HitlSubmitContext {
   apiKey?: string;
@@ -82,6 +83,7 @@ export const HitlPanels: React.FC<HitlPanelsProps> = ({
   headers,
   onResolved,
 }) => {
+  const t = useTranslator();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -104,7 +106,7 @@ export const HitlPanels: React.FC<HitlPanelsProps> = ({
       }
       onResolved();
     } catch {
-      setError('提交失败，请重试');
+      setError(t('hitl.submitFailed', '提交失败，请重试'));
     } finally {
       setBusy(false);
     }
@@ -117,7 +119,7 @@ export const HitlPanels: React.FC<HitlPanelsProps> = ({
         className="mt-2.5 rounded-[10px] p-2.5 text-sm"
         style={{ background: WC.white, border: `1px solid ${WC.botBorder}`, color: WC.botText }}
       >
-        <div className="mb-1 text-[13px] font-semibold">需要审批</div>
+        <div className="mb-1 text-[13px] font-semibold">{t('hitl.title', '需要审批')}</div>
         <div className="mb-2 text-xs" style={{ color: WC.muted }}>
           {value.tool_name}
         </div>
@@ -137,7 +139,7 @@ export const HitlPanels: React.FC<HitlPanelsProps> = ({
               })
             }
           >
-            通过
+            {t('hitl.approve', '通过')}
           </button>
           <button
             type="button"
@@ -153,7 +155,7 @@ export const HitlPanels: React.FC<HitlPanelsProps> = ({
               })
             }
           >
-            拒绝
+            {t('hitl.reject', '拒绝')}
           </button>
         </div>
       </div>
@@ -168,7 +170,7 @@ export const HitlPanels: React.FC<HitlPanelsProps> = ({
         className="mt-2.5 rounded-[10px] p-2.5 text-sm"
         style={{ background: WC.white, border: `1px solid ${WC.botBorder}`, color: WC.botText }}
       >
-        <div className="text-[13px] font-semibold">{value.title || '请选择'}</div>
+        <div className="text-[13px] font-semibold">{value.title || t('hitl.pleaseSelect', '请选择')}</div>
         {value.description && (
           <p className="mt-1 text-xs" style={{ color: WC.muted }}>
             {value.description}

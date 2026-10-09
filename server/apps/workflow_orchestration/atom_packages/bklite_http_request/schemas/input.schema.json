@@ -1,0 +1,61 @@
+{
+  "type": "object",
+  "properties": {
+    "method": {
+      "type": "string",
+      "title": "请求方法",
+      "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"],
+      "default": "GET",
+      "x-binding": "literal-only"
+    },
+    "url": {
+      "type": "string",
+      "title": "URL",
+      "maxLength": 2000,
+      "x-placeholder": "输入URL"
+    },
+    "query": {
+      "type": "object",
+      "title": "查询参数",
+      "maxProperties": 50,
+      "additionalProperties": {"jsonEditorAllowed": true}
+    },
+    "headers": {
+      "type": "object",
+      "title": "请求头",
+      "maxProperties": 20,
+      "additionalProperties": {"type": "string", "maxLength": 4000}
+    },
+    "body": {
+      "title": "JSON 请求体"
+    },
+    "timeout": {
+      "type": "integer",
+      "title": "超时（秒）",
+      "minimum": 1,
+      "maximum": 60,
+      "default": 30,
+      "x-binding": "literal-only"
+    },
+    "response_format": {
+      "type": "string",
+      "title": "响应格式",
+      "description": "自动识别、强制 JSON 或按文本读取",
+      "enum": ["AUTO", "JSON", "TEXT"],
+      "default": "AUTO",
+      "x-binding": "literal-only"
+    },
+    "success_status_codes": {
+      "type": "array",
+      "title": "额外成功状态码",
+      "description": "默认 200-299 成功；可补充 404、409 等业务可处理状态码",
+      "maxItems": 20,
+      "uniqueItems": true,
+      "items": {"type": "integer", "minimum": 100, "maximum": 599},
+      "default": [],
+      "x-binding": "literal-only"
+    }
+  },
+  "required": ["method", "url"],
+  "additionalProperties": false
+}

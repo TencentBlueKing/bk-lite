@@ -10,7 +10,9 @@ from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
 from apps.core.utils.crypto.password_crypto import PasswordCrypto
 from apps.operation_analysis.constants.constants import SECRET_KEY
+from apps.operation_analysis.constants.nats_namespace import resolve_nats_namespace
 from apps.operation_analysis.services.credential_write_policy import validate_credential_write_key
+from apps.operation_analysis.services.user_messages import oa_message
 
 
 class NamespacePasswordDecryptionError(ValueError):
@@ -19,7 +21,12 @@ class NamespacePasswordDecryptionError(ValueError):
 
 class NameSpace(MaintainerInfo, TimeInfo):
     name = models.CharField(max_length=128, verbose_name="命名空间名称", unique=True)
-    namespace = models.CharField(max_length=64, verbose_name="NATS命名空间", default="bklite", help_text="NATS服务端的命名空间,用于消息主题前缀")
+    namespace = models.CharField(
+        max_length=64,
+        verbose_name="NATS命名空间",
+        default=resolve_nats_namespace,
+        help_text="NATS服务端的命名空间,用于消息主题前缀",
+    )
     account = models.CharField(max_length=64, verbose_name="账号")
     password = models.CharField(max_length=128, verbose_name="密码")
     domain = models.CharField(max_length=255, verbose_name="域名")
@@ -62,7 +69,7 @@ class NameSpace(MaintainerInfo, TimeInfo):
             crypto = PasswordCrypto(SECRET_KEY)
             return crypto.decrypt(self.password)
         except Exception as exc:
-            raise NamespacePasswordDecryptionError("命名空间密码解密失败，请重新录入密码") from exc
+            raise NamespacePasswordDecryptionError(oa_message("messages.namespace_password_decrypt_failed", "命名空间密码解密失败，请重新录入密码")) from exc
 
     def set_password(self, raw_password):
         """

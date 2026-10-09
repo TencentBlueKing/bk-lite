@@ -1,0 +1,89 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_cisco_wsa",
+  "plugin": "Firewall Cisco WSA SNMP",
+  "plugin_desc": "SNMP monitoring template for Cisco Secure Web Appliance / IronPort WSA (PEN 15497, ASYNCOSWEBSECURITYAPPLIANCE-MIB). Besides standard IF-MIB 64-bit interface traffic, it collects proxy CPU utilization, proxy memory-buffer usage, cache storage usage (%) and total system memory.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='firewall', collect_type='snmp_cisco_wsa'}) by (instance_id)",
+  "name": "Firewall",
+  "icon": "mm-firewall_防火墙",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='firewall'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "wsa_cache_storage_usage"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='firewall', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_cpu_usage",
+      "query": "max(snmp_device_cpu_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Proxy CPU utilization of Cisco Secure Web Appliance (ASYNCOSWEBSECURITYAPPLIANCE-MIB cacheCpuUsage, Integer32 0-100, roughly 10-second window). Values outside 0-100 are dropped."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_memory_usage",
+      "query": "max(snmp_device_memory_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "Memory Buffer Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Proxy memory-buffer usage of Cisco Secure Web Appliance (ASYNCOSWEBSECURITYAPPLIANCE-MIB cacheMemoryBufferUsagePct): the percentage of proxy memory buffers currently in use (0-100). This is buffer utilization, not a used/total DRAM calculation. Values outside 0-100 are dropped."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_memory_total",
+      "query": "max(snmp_device_memory_total{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "Total Memory",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total system memory of Cisco Secure Web Appliance in bytes, converted in collection from ASYNCOSWEBSECURITYAPPLIANCE-MIB cacheMemory (Integer32, kilobytes) by multiplying by 1024. Values of 0 or below are dropped. This is a capacity reading, not a utilization percentage."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "wsa_cache_storage_usage",
+      "query": "max(snmp_wsa_cache_storage_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "Cache Storage Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Percentage of caching storage in use on Cisco Secure Web Appliance (ASYNCOSWEBSECURITYAPPLIANCE-MIB cacheUsedStoragePct, Integer32 0-100). Values outside 0-100 are dropped."
+    }
+  ]
+}

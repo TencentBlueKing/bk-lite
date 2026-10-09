@@ -1,6 +1,6 @@
 Switch SNR SNMP:
   name: SNR（Telegraf）
-  desc: 面向 SNR 交换机的 SNMP 监控模板,可采集 CPU 使用率、内存使用率、每端口入向流量速率等主要指标（企业号 PEN 40418）。
+  desc: 面向 SNR 交换机的 SNMP 监控模板，可采集运行时长、CPU 使用率、内存使用率、温度、风扇、电源、接口流量（企业号 PEN 40418）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:
@@ -91,7 +91,10 @@ monitor_object_metric:
       desc: 该指标表示设备各散热风扇的运行状态。非正常状态（告警、严重、关闭或故障）表示散热故障，可能迅速导致过热，应立即排查。
     device_psu_state:
       name: 电源状态
-      desc: 该指标表示设备各电源模块的运行状态。非正常状态表示电源冗余缺失或硬件故障；在具备冗余电源的设备上，单个故障可能不会立即中断业务，但会失去冗余，需尽快修复。
+      desc: 该指标表示 SNR 交换机各电源状态（priPowerSupply），归一为 1=正常（up）、2=异常（shutdown/unknown）。仅取值为 2 时告警。
+      enum:
+        "1": 正常
+        "2": 异常
     device_fan_speed:
       name: 风扇转速
       desc: 该指标表示设备风扇的转速（RPM），取各风扇的最大值。转速异常偏低或为 0 表示风扇卡转或故障、设备面临过热风险；转速异常偏高可能是设备在为高温加速散热。对于仅提供转速、无风扇状态枚举的设备，转速是判断风扇健康的唯一依据。

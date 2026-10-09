@@ -1,0 +1,112 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_zmtel",
+  "plugin": "Wireless Zmtel SNMP",
+  "plugin_desc": "SNMP monitoring template for Zmtel LTE ODU wireless device. It reports uptime, CPU utilization, memory utilization, memory total, and interface traffic (enterprise PEN 38595).",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='wireless', collect_type='snmp_zmtel'}) by (instance_id)",
+  "name": "Wireless",
+  "icon": "mm-wireless_无线设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='wireless'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_memory_total"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "max(snmp_device_cpu_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization of the Zmtel LTE ODU as a 0-100 percentage (ZMTEL-ODU-MIB cpuUsageCurrent scalar). Sustained high CPU usage can indicate control-plane overload on the outdoor unit."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "max(snmp_device_memory_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of the Zmtel LTE ODU as a 0-100 percentage (ZMTEL-ODU-MIB memUsageCurrent scalar). High memory pressure can affect LTE session handling on the outdoor unit."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "max(snmp_device_memory_total{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total memory of the Zmtel LTE ODU in bytes (ZMTEL-ODU-MIB memTotal scalar, reported in KB and converted to bytes at collection time)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='wireless', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='wireless', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the Zmtel LTE ODU since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots."
+    }
+  ]
+}

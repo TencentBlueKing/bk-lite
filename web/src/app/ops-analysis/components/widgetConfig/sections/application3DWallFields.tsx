@@ -1,25 +1,35 @@
 'use client';
 
 import React from 'react';
-import { Form, InputNumber, Select, Switch } from 'antd';
+import { Form, InputNumber, Select, Space, Switch } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import {
   APPLICATION3D_PAGE_EFFECTS,
   APPLICATION3D_WALL_DWELL_MAX,
   APPLICATION3D_WALL_DWELL_MIN,
   APPLICATION3D_WALL_PAGE_SIZE_DEFAULT,
-  APPLICATION3D_WALL_PAGE_SIZE_MAX,
   APPLICATION3D_WALL_PAGE_SIZE_MIN,
   type Application3DPageEffect,
 } from '@/app/ops-analysis/utils/application3DWallConfig';
 import { ConfigSectionTitle } from '../configTitles';
 import { ChartRoleLabel } from './chartRoleLabel';
 
-const EFFECT_LABEL_KEYS: Record<Application3DPageEffect, [string, string]> = {
-  slide: ['dashboard.application3DEffectSlide', '横向滑入'],
-  fade: ['dashboard.application3DEffectFade', '淡入淡出'],
-  flip: ['dashboard.application3DEffectFlip', '卡片翻转'],
-  cut: ['dashboard.application3DEffectCut', '直接切换'],
+const effectLabel = (
+  effect: Application3DPageEffect,
+  t: (id: string) => string,
+) => {
+  switch (effect) {
+    case 'slide':
+      return t('dashboard.application3DEffectSlide');
+    case 'fade':
+      return t('dashboard.application3DEffectFade');
+    case 'flip':
+      return t('dashboard.application3DEffectFlip');
+    case 'cut':
+      return t('dashboard.application3DEffectCut');
+    default:
+      return effect;
+  }
 };
 
 interface PageSizeInputControlProps {
@@ -28,6 +38,18 @@ interface PageSizeInputControlProps {
   onChange?: (value: number) => void;
   disabled?: boolean;
 }
+
+const NumberWithUnit = ({
+  unit,
+  ...props
+}: React.ComponentProps<typeof InputNumber> & { unit: string }) => (
+  <Space.Compact>
+    <InputNumber {...props} />
+    <span className="inline-flex items-center rounded-r-md border border-l-0 border-(--color-border) bg-(--color-fill-1) px-2 text-sm text-(--color-text-2)">
+      {unit}
+    </span>
+  </Space.Compact>
+);
 
 const PageSizeInputControl: React.FC<PageSizeInputControlProps> = ({
   id,
@@ -46,9 +68,8 @@ const PageSizeInputControl: React.FC<PageSizeInputControlProps> = ({
 
   return (
     <div id={id} className="flex flex-wrap items-center gap-2">
-      <InputNumber
+      <NumberWithUnit
         min={APPLICATION3D_WALL_PAGE_SIZE_MIN}
-        max={APPLICATION3D_WALL_PAGE_SIZE_MAX}
         precision={0}
         disabled={disabled}
         value={value ?? APPLICATION3D_WALL_PAGE_SIZE_DEFAULT}
@@ -58,7 +79,7 @@ const PageSizeInputControl: React.FC<PageSizeInputControlProps> = ({
           }
         }}
         className="w-32"
-        addonAfter={t('dashboard.application3DCountUnit', '个')}
+        unit={t('dashboard.application3DCountUnit', '个')}
       />
       <div className="flex items-center gap-1.5">
         {presets.map((preset) => {
@@ -97,7 +118,7 @@ export const Application3DWallFields = () => {
 
   const effectOptions = APPLICATION3D_PAGE_EFFECTS.map((effect) => ({
     value: effect,
-    label: t(EFFECT_LABEL_KEYS[effect][0], EFFECT_LABEL_KEYS[effect][1]),
+    label: effectLabel(effect, t),
   }));
 
   return (
@@ -106,7 +127,7 @@ export const Application3DWallFields = () => {
         {t('dashboard.application3DWallSection', '应用墙')}
       </ConfigSectionTitle>
 
-      {/* 1. 每页应用数（保留 Tooltip：解释 1~16 大卡与 17~36 标准取景的镜头自适应规则） */}
+      {/* 1. 每页应用数（保留 Tooltip：解释 1~16 大卡、17~36 标准取景，以及超过 36 的镜头拉远） */}
       <Form.Item
         name={['application3DWall', 'pageSize']}
         label={
@@ -114,7 +135,7 @@ export const Application3DWallFields = () => {
             text={t('dashboard.application3DPageSize', '每页应用数')}
             tip={t(
               'dashboard.application3DPageSizeTip',
-              '支持 1～36（默认 24）。1～16 为近景大卡聚焦，17～36 为标准/高密展示',
+              '不小于 1 的整数（默认 24）。1～16 为近景大卡聚焦，17～36 为标准/高密展示，超过 36 镜头拉远以放入更多卡片',
             )}
           />
         }
@@ -187,12 +208,12 @@ export const Application3DWallFields = () => {
               label={t('dashboard.application3DDwell', '每页停留')}
               className="!mb-0"
             >
-              <InputNumber
+              <NumberWithUnit
                 min={APPLICATION3D_WALL_DWELL_MIN}
                 max={APPLICATION3D_WALL_DWELL_MAX}
                 precision={0}
                 className="w-32"
-                addonAfter={t('dashboard.application3DDwellUnit', '秒')}
+                unit={t('dashboard.application3DDwellUnit', '秒')}
               />
             </Form.Item>
           </div>

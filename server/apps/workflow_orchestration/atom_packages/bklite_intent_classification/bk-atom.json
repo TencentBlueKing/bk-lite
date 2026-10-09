@@ -1,0 +1,21 @@
+{
+  "key": "bklite_intent_classification",
+  "name": "意图分类",
+  "category": "智能体",
+  "description": "使用当前组织可用的 OpsPilot 模型将输入归类到预定义意图",
+  "source_type": "PLATFORM",
+  "driver": "WORKER",
+  "trusted_context": true,
+  "handler": "apps.workflow_orchestration.atom_packages.bklite_intent_classification.runtime.handler:execute",
+  "input_schema": "schemas/input.schema.json",
+  "output_schema": "schemas/output.schema.json",
+  "ui_schema": "schemas/ui.schema.json",
+  "timeout_seconds": 900,
+  "retry_count": 0,
+  "retry_delay_seconds": 5,
+  "idempotent": false,
+  "safety_level": "READ_ONLY",
+  "resource_scope": "ORGANIZATION",
+  "required_permissions": [],
+  "error_types": []
+}

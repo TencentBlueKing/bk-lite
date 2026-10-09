@@ -11,12 +11,13 @@ const settingsTab = read('src/app/opspilot/components/wiki/SettingsTab.tsx');
 const zh = JSON.parse(read('src/app/opspilot/locales/zh.json'));
 const en = JSON.parse(read('src/app/opspilot/locales/en.json'));
 
-// 1. SectionKey 不再含 generation
+// 1. 设置页只剩基础信息与危险区，用途 / generation 已下线
 assert.match(
   settingsTab,
-  /type SectionKey = 'basic' \| 'purpose' \| 'danger';/
+  /type SectionKey = ["']basic["'] \| ["']danger["'];/,
 );
-assert.doesNotMatch(settingsTab, /generation:\s*'wiki\./);
+assert.doesNotMatch(settingsTab, /["']purpose["']/);
+assert.doesNotMatch(settingsTab, /generation:\s*['"]wiki\./);
 
 // 2. 危险区域使用灰色线(border-border-1),不再用红色 border-fail
 assert.match(settingsTab, /border-\[var\(--color-border-1\)\]/);
@@ -63,10 +64,14 @@ assert.doesNotMatch(settingsTab, /import\s+\{[^}]*\bEmpty\b[^}]*\}\s+from\s+'ant
 assert.doesNotMatch(settingsTab, /import\s+\{[^}]*\bAlert\b[^}]*\}\s+from\s+'antd'/);
 assert.doesNotMatch(settingsTab, /import\s+\{[^}]*\bTag\b[^}]*\}\s+from\s+'antd'/);
 
-// 6. 仍保留基础 Tab + 危险 Tab
-assert.match(settingsTab, /key:\s*'basic'/);
-assert.match(settingsTab, /key:\s*'purpose'/);
-assert.match(settingsTab, /key:\s*'danger'/);
+// 6. 只保留基础 Tab + 危险 Tab
+assert.match(settingsTab, /key:\s*["']basic["']/);
+assert.match(settingsTab, /key:\s*["']danger["']/);
+assert.doesNotMatch(settingsTab, /key:\s*["']purpose["']/);
+assert.ok(!zh.wiki.helpPurposeDesc, 'zh.json: helpPurposeDesc 应下线');
+assert.ok(!en.wiki.helpPurposeDesc, 'en.json: helpPurposeDesc 应下线');
+assert.ok(!zh.wiki.helpPurposeTip, 'zh.json: helpPurposeTip 应下线');
+assert.ok(!en.wiki.helpPurposeTip, 'en.json: helpPurposeTip 应下线');
 
 // 7. 危险 Tab 标签仍标红(Warning 图标 + color-fail class)
 assert.match(settingsTab, /text-\[var\(--color-fail\)\][^<]*<WarningOutlined/);

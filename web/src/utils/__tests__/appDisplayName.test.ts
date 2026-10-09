@@ -42,6 +42,12 @@ describe('resolveAppDisplayName', () => {
     expect(resolveAppDisplayName({ name: 'opspilot', display_name: 'OpsPilot', is_build_in: true }, tZh)).toBe('OpsPilot');
     expect(resolveAppDisplayName({ name: 'mlops', display_name: 'MLOps', is_build_in: true }, tZh)).toBe('MLOps');
     expect(resolveAppDisplayName({ name: 'apm', display_name: 'APM', is_build_in: true }, tZh)).toBe('APM');
+    expect(
+      resolveAppDisplayName(
+        { name: 'workflow-orchestration', display_name: 'Workflow Orchestration', is_build_in: true },
+        tZh,
+      ),
+    ).toBe('编排中心');
   });
 
   it('keeps custom app display names', () => {
@@ -128,6 +134,12 @@ describe('resolveAppTag', () => {
     expect(resolveAppTag('tag.rum_quality', tEn)).toBe('Quality');
     expect(resolveAppTag('tag.rum_alerting', tEn)).toBe('Events');
     expect(resolveAppTag('tag.rum_governance', tEn)).toBe('Data Governance');
+    expect(resolveAppTag('tag.workflow_design', tZh)).toBe('流程设计');
+    expect(resolveAppTag('tag.workflow_execution', tZh)).toBe('流程执行');
+    expect(resolveAppTag('tag.automation', tZh)).toBe('自动化');
+    expect(resolveAppTag('tag.approval', tZh)).toBe('人工审批');
+    expect(resolveAppTag('tag.workflow_design', tEn)).toBe('Workflow Design');
+    expect(resolveAppTag('tag.approval', tEn)).toBe('Human Approval');
   });
 
   it('keeps unknown custom tags', () => {

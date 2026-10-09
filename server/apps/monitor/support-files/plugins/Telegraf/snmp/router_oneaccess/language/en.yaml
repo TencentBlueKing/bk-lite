@@ -1,9 +1,6 @@
 Router OneAccess SNMP:
   name: OneAccess (Telegraf)
-  desc: SNMP monitoring template for OneAccess enterprise CPE / SD-WAN routers. It
-    reports CPU percent (oacSysCpuUsed), memory percent (oacSysMemoryUsed), memory
-    total/free/allocated bytes, and an optional per-core CPU table. Interface traffic
-    uses the built-in IF-MIB catalog; this plugin does not declare ifHC*.
+  desc: "SNMP monitoring template for OneAccess router. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 13191)."
 monitor_object:
   Router: Router
 monitor_object_type:

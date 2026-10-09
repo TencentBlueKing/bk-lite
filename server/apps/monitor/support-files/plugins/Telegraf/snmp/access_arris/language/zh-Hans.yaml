@@ -1,6 +1,6 @@
 Access ARRIS Cadant SNMP:
   name: ARRIS Cadant（Telegraf）
-  desc: 面向 ARRIS Cadant 接入设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 4998）。
+  desc: 面向 ARRIS Cadant 接入设备的 SNMP 监控模板，可采集运行时长、各板卡 CPU 与堆内存、温度、电源状态、磁盘使用率、接口流量、板卡状态（企业号 PEN 4998）。
 monitor_object:
   Access: 接入设备
 monitor_object_type:
@@ -26,16 +26,19 @@ monitor_object_metric:
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
     device_cpu_usage:
       name: CPU 使用率
-      desc: 接入设备的整机 CPU 使用率（设备私有标量直接上报的百分比）。持续偏高说明 OLT 控制平面或管理平面负载过高。
+      desc: ARRIS Cadant CMTS 各板卡 CPU 使用率，采集时按 100 - cadIdleCpuRecentPercent（最近一个统计周期的空闲百分比）换算。持续偏高说明线卡或控制平面负载过高。
     device_memory_total:
-      name: 内存总量
-      desc: 接入设备上报的物理内存总容量，单位为字节。该指标可与空闲内存一起推导整体内存使用率。
+      name: 堆内存总量
+      desc: 各板卡动态堆内存总量（cadMeHeapSize），单位字节。
     device_memory_free:
-      name: 空闲内存
-      desc: 接入设备当前可用的物理内存容量，单位为字节。空闲内存持续降低可能表示控制服务或业务表项造成内存压力。
+      name: 堆内存空闲量
+      desc: 各板卡尚未分配的动态堆内存（cadMeHeapRemaining），单位字节。空闲量持续降低可能表示板卡存在内存压力。
+    device_memory_used:
+      name: 堆内存已用量
+      desc: 各板卡已分配的动态堆内存，按 总量 - 空闲 计算，单位字节。
     device_memory_usage:
-      name: 内存使用率
-      desc: 接入设备的系统内存使用率（设备私有标量直接上报的百分比）。持续偏高可能表示转发表、ONU 管理表或控制服务存在内存压力。
+      name: 堆内存使用率
+      desc: 各板卡动态堆内存使用率，按 (总量 - 空闲) / 总量 * 100 计算。持续偏高可能表示内存泄漏或业务表项过大。
     device_temperature_celsius:
       name: 系统温度
       desc: 接入设备系统温度读数，单位摄氏度。温度持续升高可能表示散热异常、环境温度过高或设备负载过高。

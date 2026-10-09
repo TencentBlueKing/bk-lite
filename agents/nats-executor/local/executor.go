@@ -378,19 +378,28 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	defer cancel()
 
 	var cmd *exec.Cmd
-	switch shell {
-	case "bat", "cmd":
-		cmd = exec.CommandContext(ctx, "cmd", "/c", wrapCmdCommand(req.Command))
-	case "powershell":
-		cmd = exec.CommandContext(ctx, "powershell", "-Command", wrapPowerShellCommand(req.Command))
-	case "pwsh":
-		cmd = exec.CommandContext(ctx, "pwsh", "-Command", wrapPowerShellCommand(req.Command))
-	case "bash":
-		cmd = exec.CommandContext(ctx, "bash", "-c", req.Command)
-	case "sh":
-		cmd = exec.CommandContext(ctx, "sh", "-c", req.Command)
-	default:
-		cmd = exec.CommandContext(ctx, shell, "-c", req.Command)
+	launch, prepareErr := prepareWindowsLocalScript(shell, req.Command, runtime.GOOS)
+	if prepareErr != nil {
+		return invalidExecuteResponse(instanceId, prepareErr.Error())
+	}
+	if launch != nil {
+		defer launch.Cleanup()
+		cmd = exec.CommandContext(ctx, launch.Name, launch.Args...)
+	} else {
+		switch shell {
+		case "bat", "cmd":
+			cmd = exec.CommandContext(ctx, "cmd", "/c", wrapCmdCommand(req.Command))
+		case "powershell":
+			cmd = exec.CommandContext(ctx, "powershell", "-Command", wrapPowerShellCommand(req.Command))
+		case "pwsh":
+			cmd = exec.CommandContext(ctx, "pwsh", "-Command", wrapPowerShellCommand(req.Command))
+		case "bash":
+			cmd = exec.CommandContext(ctx, "bash", "-c", req.Command)
+		case "sh":
+			cmd = exec.CommandContext(ctx, "sh", "-c", req.Command)
+		default:
+			cmd = exec.CommandContext(ctx, shell, "-c", req.Command)
+		}
 	}
 
 	if len(req.Env) > 0 {

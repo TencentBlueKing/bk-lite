@@ -60,6 +60,23 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
-    # ---- 设备私有健康指标 → N/A ----
-    # AudioCodes 私有 MIB 的健康指标多为 per-row 索引表(带行级 skip_values),telegraf inputs.snmp 不支持行级过滤,
-    # 故本基线插件仅采集 IF-MIB 接口流量(ifHCInOctets/ifHCOutOctets)与运行时长(uptime),其余健康为 N/A,不伪造。
+    # ---- AudioCodes 板级状态标量（AC-SYSTEM-MIB acSysState = 1.3.6.1.4.1.5003.9.10.10.2.5）----
+    # 顶层 field 带实例 .0（measurement snmp → 查询 snmp_ 前缀）；设备未实现的对象（如无数据面的机型）不产出该字段。
+    # acSysStateTemperature .1：板卡温度，摄氏度（0..100）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.5003.9.10.10.2.5.1.0"
+        name = "device_temperature_celsius"
+    # acSysStateVoIpCpuUtilization .10 / acSysStateVoIpMemoryUtilization .11：语音面 CPU / 内存使用率（%），作为主 CPU / 内存指标。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.5003.9.10.10.2.5.10.0"
+        name = "device_cpu_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.5003.9.10.10.2.5.11.0"
+        name = "device_memory_usage"
+    # acSysStateDataCpuUtilization .8 / acSysStateDataMemoryUtilization .9：数据面 CPU / 内存使用率（%）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.5003.9.10.10.2.5.8.0"
+        name = "device_data_cpu_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.5003.9.10.10.2.5.9.0"
+        name = "device_data_memory_usage"

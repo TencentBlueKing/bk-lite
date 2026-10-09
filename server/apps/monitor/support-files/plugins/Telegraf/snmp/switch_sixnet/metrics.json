@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_sixnet",
   "plugin": "Switch Sixnet SNMP",
-  "plugin_desc": "Sixnet SLX industrial Ethernet switch SNMP collection (IANA PEN 20540). Interface traffic is supplied by the shared Switch SNMP IF-MIB floor. Proven private device-health objects are P1/P2 power-input status and OK alarm-relay status (off/on/unknown). Optional serial number and firmware revision are collected as instance tags when the device returns them. CPU and memory utilization are not collected because no private CPU or memory utilization scalar is published. Supported brands/models — Sixnet SLX/SL SlimLine industrial Ethernet switches.",
+  "plugin_desc": "SNMP monitoring template for Sixnet switch. It reports uptime and interface traffic, for SLX/SL SlimLine (enterprise PEN 20540).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_sixnet'}) by (instance_id)",
   "name": "Switch",
@@ -26,12 +26,12 @@
       "query": "max(psu1_status{instance_type='switch', __$labels__}) by (instance_id)",
       "display_name": "PSU1 Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"off\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"on\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"unknown\",\"id\":2,\"color\":\"#8c8c8c\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Operational state of Sixnet P1 power input. Native codes are off (0), on (1), and unknown (2). A value other than 1 means the primary power input is lost or the state cannot be determined."
+      "description": "Operational state of Sixnet P1 power input, normalised so on=1 (normal), off=2 (abnormal), unknown=3 (gray, no alert)."
     },
     {
       "metric_group": "Hardware Status",
@@ -39,12 +39,12 @@
       "query": "max(psu2_status{instance_type='switch', __$labels__}) by (instance_id)",
       "display_name": "PSU2 Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"off\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"on\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"unknown\",\"id\":2,\"color\":\"#8c8c8c\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Operational state of Sixnet P2 power input. Native codes are off (0), on (1), and unknown (2). A value other than 1 means the redundant power input is lost or the state cannot be determined."
+      "description": "Operational state of Sixnet P2 power input, normalised so on=1 (normal), off=2 (abnormal), unknown=3 (gray, no alert)."
     },
     {
       "metric_group": "Hardware Status",

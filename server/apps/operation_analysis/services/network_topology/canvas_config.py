@@ -25,6 +25,8 @@ from typing import Any
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 
+from apps.operation_analysis.services.user_messages import oa_message
+
 # Use a single alias to keep the call sites uniform. We want callers
 # (serializer and model) to be able to catch the same exception the
 # tests are asserting on.
@@ -128,14 +130,14 @@ def _validate_single_node(
     """Validate one node entry. Returns ``(node_or_none, errors)``."""
     errors: list[str] = []
     if not isinstance(raw_node, dict):
-        errors.append(f"节点 #{index} 必须是对象")
+        errors.append(oa_message("messages.nt_node_must_be_object", "节点 #{index} 必须是对象", index=index))
         return None, errors
     node_id = raw_node.get("id")
     if not node_id or not isinstance(node_id, str):
-        errors.append(f"节点 #{index} 缺少 id 字段")
+        errors.append(oa_message("messages.nt_node_missing_id", "节点 #{index} 缺少 id 字段", index=index))
         return None, errors
     if node_id in seen_node_ids:
-        errors.append(f"节点 id {node_id!r} 重复")
+        errors.append(oa_message("messages.nt_node_id_duplicate", "节点 id {node_id} 重复", node_id=repr(node_id)))
         return None, errors
     seen_node_ids.add(node_id)
 
@@ -143,38 +145,74 @@ def _validate_single_node(
     # WeOps / 蓝鲸 CMDB 实例身份是数字 bk_inst_id，不是 BK-Lite inst_uuid。
     bk_inst_id = parse_weops_inst_id(raw_node.get("bk_inst_id"))
     if not bk_obj_id or bk_inst_id is None:
-        errors.append(f"节点 {node_id} 缺少 bk_obj_id 或 bk_inst_id")
+        errors.append(oa_message("messages.nt_node_missing_identity", "节点 {node_id} 缺少 bk_obj_id 或 bk_inst_id", node_id=node_id))
         return None, errors
     raw_node["bk_inst_id"] = bk_inst_id
     asset_key = (bk_obj_id, bk_inst_id)
     if asset_key in seen_asset_keys:
-        errors.append(f"节点 {node_id} 与画布中已有节点 ({bk_obj_id}, {bk_inst_id}) 重复")
+        errors.append(
+            oa_message(
+                "messages.nt_node_identity_duplicate",
+                "节点 {node_id} 与画布中已有节点 ({bk_obj_id}, {bk_inst_id}) 重复",
+                node_id=node_id,
+                bk_obj_id=bk_obj_id,
+                bk_inst_id=bk_inst_id,
+            )
+        )
         return None, errors
     seen_asset_keys.add(asset_key)
 
     metrics = raw_node.get("metrics") or []
     if not isinstance(metrics, list):
-        errors.append(f"节点 {node_id} 的 metrics 必须是数组")
+        errors.append(oa_message("messages.nt_node_metrics_array", "节点 {node_id} 的 metrics 必须是数组", node_id=node_id))
     for m_index, metric in enumerate(metrics):
         if not isinstance(metric, dict):
-            errors.append(f"节点 {node_id} 指标 #{m_index} 必须是对象")
+            errors.append(oa_message("messages.nt_node_metric_object", "节点 {node_id} 指标 #{m_index} 必须是对象", node_id=node_id, m_index=m_index))
             continue
         if not metric.get("metric_field"):
-            errors.append(f"节点 {node_id} 指标 #{m_index} 缺少 metric_field")
+            errors.append(oa_message("messages.nt_node_metric_field", "节点 {node_id} 指标 #{m_index} 缺少 metric_field", node_id=node_id, m_index=m_index))
         if not metric.get("result_table_id"):
-            errors.append(f"节点 {node_id} 指标 #{m_index} 缺少 result_table_id")
+            errors.append(
+                oa_message("messages.nt_node_metric_table", "节点 {node_id} 指标 #{m_index} 缺少 result_table_id", node_id=node_id, m_index=m_index)
+            )
         thresholds = metric.get("thresholds") or []
         if not isinstance(thresholds, list):
-            errors.append(f"节点 {node_id} 指标 #{m_index} 的 thresholds 必须是数组")
+            errors.append(
+                oa_message("messages.nt_node_thresholds_array", "节点 {node_id} 指标 #{m_index} 的 thresholds 必须是数组", node_id=node_id, m_index=m_index)
+            )
             continue
         for t_index, threshold in enumerate(thresholds):
             if not isinstance(threshold, dict):
-                errors.append(f"节点 {node_id} 指标 #{m_index} 阈值 #{t_index} 必须是对象")
+                errors.append(
+                    oa_message(
+                        "messages.nt_threshold_object",
+                        "节点 {node_id} 指标 #{m_index} 阈值 #{t_index} 必须是对象",
+                        node_id=node_id,
+                        m_index=m_index,
+                        t_index=t_index,
+                    )
+                )
                 continue
             if "value" not in threshold:
-                errors.append(f"节点 {node_id} 指标 #{m_index} 阈值 #{t_index} 缺少 value")
+                errors.append(
+                    oa_message(
+                        "messages.nt_threshold_value",
+                        "节点 {node_id} 指标 #{m_index} 阈值 #{t_index} 缺少 value",
+                        node_id=node_id,
+                        m_index=m_index,
+                        t_index=t_index,
+                    )
+                )
             if not threshold.get("color"):
-                errors.append(f"节点 {node_id} 指标 #{m_index} 阈值 #{t_index} 缺少 color")
+                errors.append(
+                    oa_message(
+                        "messages.nt_threshold_color",
+                        "节点 {node_id} 指标 #{m_index} 阈值 #{t_index} 缺少 color",
+                        node_id=node_id,
+                        m_index=m_index,
+                        t_index=t_index,
+                    )
+                )
     return raw_node, errors
 
 
@@ -187,55 +225,89 @@ def _validate_single_link(
     """Validate one link entry. Returns error strings (empty = OK)."""
     errors: list[str] = []
     if not isinstance(raw_link, dict):
-        errors.append(f"连线 #{index} 必须是对象")
+        errors.append(oa_message("messages.nt_link_object", "连线 #{index} 必须是对象", index=index))
         return errors
     link_id = raw_link.get("id") or f"link-{index}"
     if link_id in seen_link_ids:
-        errors.append(f"连线 id {link_id!r} 重复")
+        errors.append(oa_message("messages.nt_link_id_duplicate", "连线 id {link_id} 重复", link_id=repr(link_id)))
         return errors
     seen_link_ids.add(link_id)
     source_node_id = raw_link.get("source_node_id")
     target_node_id = raw_link.get("target_node_id")
     if source_node_id not in node_ids:
-        errors.append(f"连线 {link_id} 的 source_node_id {source_node_id!r} 不在画布中")
+        errors.append(
+            oa_message(
+                "messages.nt_link_source_missing",
+                "连线 {link_id} 的 source_node_id {source_node_id} 不在画布中",
+                link_id=link_id,
+                source_node_id=repr(source_node_id),
+            )
+        )
     if target_node_id not in node_ids:
-        errors.append(f"连线 {link_id} 的 target_node_id {target_node_id!r} 不在画布中")
+        errors.append(
+            oa_message(
+                "messages.nt_link_target_missing",
+                "连线 {link_id} 的 target_node_id {target_node_id} 不在画布中",
+                link_id=link_id,
+                target_node_id=repr(target_node_id),
+            )
+        )
     for field in ("source_port_id", "target_port_id"):
         if raw_link.get(field) is not None and not isinstance(raw_link.get(field), str):
-            errors.append(f"连线 {link_id} 的 {field} 必须是字符串")
+            errors.append(oa_message("messages.nt_link_field_string", "连线 {link_id} 的 {field} 必须是字符串", link_id=link_id, field=field))
     interface_metrics = raw_link.get("interface_metrics") or []
     if not isinstance(interface_metrics, list):
-        errors.append(f"连线 {link_id} 的 interface_metrics 必须是数组")
+        errors.append(oa_message("messages.nt_link_metrics_array", "连线 {link_id} 的 interface_metrics 必须是数组", link_id=link_id))
     else:
         for metric_index, metric_field in enumerate(interface_metrics):
             if metric_field not in INTERFACE_METRIC_FIELDS:
-                errors.append(f"连线 {link_id} 接口指标 #{metric_index} 不支持: {metric_field}")
+                errors.append(
+                    oa_message(
+                        "messages.nt_link_metric_unsupported",
+                        "连线 {link_id} 接口指标 #{metric_index} 不支持: {metric_field}",
+                        link_id=link_id,
+                        metric_index=metric_index,
+                        metric_field=metric_field,
+                    )
+                )
     port_pairs = raw_link.get("port_pairs") or []
     if not isinstance(port_pairs, list):
-        errors.append(f"连线 {link_id} 的 port_pairs 必须是数组")
+        errors.append(oa_message("messages.nt_link_ports_array", "连线 {link_id} 的 port_pairs 必须是数组", link_id=link_id))
         return errors
     if not raw_link.get("is_draft") and len(port_pairs) == 0:
-        errors.append(f"连线 {link_id} 至少需要 1 对端口")
+        errors.append(oa_message("messages.nt_link_ports_required", "连线 {link_id} 至少需要 1 对端口", link_id=link_id))
     for pair_index, pair in enumerate(port_pairs):
         if not isinstance(pair, dict):
-            errors.append(f"连线 {link_id} 端口对 #{pair_index} 必须是对象")
+            errors.append(oa_message("messages.nt_link_pair_object", "连线 {link_id} 端口对 #{pair_index} 必须是对象", link_id=link_id, pair_index=pair_index))
             continue
         source_iface = pair.get("source_interface")
         target_iface = pair.get("target_interface")
         if not isinstance(source_iface, dict):
-            errors.append(f"连线 {link_id} 端口对 #{pair_index} 缺少源接口 bk_inst_id")
+            errors.append(
+                oa_message("messages.nt_link_pair_source", "连线 {link_id} 端口对 #{pair_index} 缺少源接口 bk_inst_id", link_id=link_id, pair_index=pair_index)
+            )
         else:
             source_id = parse_weops_inst_id(source_iface.get("bk_inst_id"))
             if source_id is None:
-                errors.append(f"连线 {link_id} 端口对 #{pair_index} 缺少源接口 bk_inst_id")
+                errors.append(
+                    oa_message(
+                        "messages.nt_link_pair_source", "连线 {link_id} 端口对 #{pair_index} 缺少源接口 bk_inst_id", link_id=link_id, pair_index=pair_index
+                    )
+                )
             else:
                 source_iface["bk_inst_id"] = source_id
         if not isinstance(target_iface, dict):
-            errors.append(f"连线 {link_id} 端口对 #{pair_index} 缺少目标接口 bk_inst_id")
+            errors.append(
+                oa_message("messages.nt_link_pair_target", "连线 {link_id} 端口对 #{pair_index} 缺少目标接口 bk_inst_id", link_id=link_id, pair_index=pair_index)
+            )
         else:
             target_id = parse_weops_inst_id(target_iface.get("bk_inst_id"))
             if target_id is None:
-                errors.append(f"连线 {link_id} 端口对 #{pair_index} 缺少目标接口 bk_inst_id")
+                errors.append(
+                    oa_message(
+                        "messages.nt_link_pair_target", "连线 {link_id} 端口对 #{pair_index} 缺少目标接口 bk_inst_id", link_id=link_id, pair_index=pair_index
+                    )
+                )
             else:
                 target_iface["bk_inst_id"] = target_id
     return errors
@@ -251,14 +323,14 @@ def _validate_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
     if payload is None:
         payload = {}
     if not isinstance(payload, dict):
-        raise ValidationError({"view_sets": ["view_sets 必须是 JSON 对象"]})
+        raise ValidationError({"view_sets": [oa_message("messages.view_sets_json_object", "view_sets 必须是 JSON 对象")]})
 
     raw_nodes = payload.get("nodes") or []
     raw_links = payload.get("links") or []
     if not isinstance(raw_nodes, list):
-        raise ValidationError({"view_sets": ["nodes 必须是数组"]})
+        raise ValidationError({"view_sets": [oa_message("messages.nodes_must_be_array", "nodes 必须是数组")]})
     if not isinstance(raw_links, list):
-        raise ValidationError({"view_sets": ["links 必须是数组"]})
+        raise ValidationError({"view_sets": [oa_message("messages.links_must_be_array", "links 必须是数组")]})
     nodes = copy.deepcopy(raw_nodes)
     links = copy.deepcopy(raw_links)
 

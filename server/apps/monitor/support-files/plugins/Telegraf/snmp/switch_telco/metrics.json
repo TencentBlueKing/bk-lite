@@ -1,0 +1,48 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_telco",
+  "plugin": "Switch Telco SNMP",
+  "plugin_desc": "SNMP monitoring template for Telco Systems / BATM BiNOS ethernet switch. It reports uptime, CPU utilization, and interface traffic (enterprise PEN 738).",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='switch', collect_type='snmp_telco'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "snmp_device_cpu_usage{instance_type='switch', __$labels__}",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the CPU utilization of the Telco Systems / BATM BiNOS ethernet switch (monCpuUtilization) as a 0-100 percentage. Sustained high CPU usage can indicate control-plane overload, forwarding instability, or attack traffic."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

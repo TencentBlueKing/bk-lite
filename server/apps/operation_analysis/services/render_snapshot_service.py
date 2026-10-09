@@ -1,16 +1,9 @@
 from django.db import transaction
 
-from apps.operation_analysis.models.subscription_models import (
-    DashboardReportExecution,
-    DashboardReportRenderSnapshot,
-)
-from apps.operation_analysis.services.canvas_report.registry import (
-    get_canvas_report_adapter,
-)
-from apps.operation_analysis.services.canvas_report.types import (
-    DEFAULT_RENDER_SCHEMA_VERSION,
-    RESOURCE_TYPE_DASHBOARD,
-)
+from apps.operation_analysis.models.subscription_models import DashboardReportExecution, DashboardReportRenderSnapshot
+from apps.operation_analysis.services.canvas_report.registry import get_canvas_report_adapter
+from apps.operation_analysis.services.canvas_report.types import DEFAULT_RENDER_SCHEMA_VERSION, RESOURCE_TYPE_DASHBOARD
+from apps.operation_analysis.services.user_messages import oa_message
 
 
 class DashboardReportRenderSnapshotService:
@@ -25,13 +18,9 @@ class DashboardReportRenderSnapshotService:
             pass
 
         resource_type = execution.resource_type or RESOURCE_TYPE_DASHBOARD
-        resource_id = (
-            execution.resource_id
-            if execution.resource_id is not None
-            else execution.dashboard_id
-        )
+        resource_id = execution.resource_id if execution.resource_id is not None else execution.dashboard_id
         if resource_id is None:
-            raise ValueError("画布资源不存在")
+            raise ValueError(oa_message("messages.canvas_resource_missing", "画布资源不存在"))
 
         adapter = get_canvas_report_adapter(resource_type)
         resource = adapter.load_resource(resource_id)

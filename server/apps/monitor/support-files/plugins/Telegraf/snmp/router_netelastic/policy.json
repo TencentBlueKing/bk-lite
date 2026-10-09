@@ -1,0 +1,56 @@
+{
+  "object": "Router",
+  "plugin": "Router NetElastic SNMP",
+  "templates": [
+    {
+      "name": "NetElastic路由器CPU使用率过高",
+      "alert_name": "路由器${resource_name} CPU 使用率过高",
+      "description": "监控 NetElastic FlexBNG 宽带接入网关的 CPU 使用率，当持续高于阈值时触发告警，提示可能存在控制平面过载、会话处理压力或异常流量。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "NetElastic路由器内存使用率过高",
+      "alert_name": "路由器${resource_name} 内存使用率过高",
+      "description": "监控 NetElastic FlexBNG 宽带接入网关的内存使用率，当持续高于阈值时触发告警，提示可能存在内存泄漏或会话表资源紧张。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

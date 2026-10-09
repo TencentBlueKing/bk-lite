@@ -70,7 +70,9 @@ const WikiPageEditorDrawer: React.FC<WikiPageEditorDrawerProps> = ({
     String(watchedTitle ?? "").trim() !== page.title.trim();
   const pageTypeSelectOptions = useMemo(() => {
     const values = new Set<string>(
-      Object.keys(PAGE_TYPE_LABEL).filter((key) => key !== "other"),
+      Object.keys(PAGE_TYPE_LABEL).filter(
+        (key) => !["other", "source"].includes(key),
+      ),
     );
     typeOptions.forEach((option) => {
       if (option.value) values.add(option.value);

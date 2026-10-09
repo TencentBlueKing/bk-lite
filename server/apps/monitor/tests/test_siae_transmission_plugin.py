@@ -39,7 +39,15 @@ UNSUPPORTED_HEALTH_METRICS = (
     "transmission_link_status",
     "wireless_signal_strength",
     "device_fan_state",
+)
+COLLECTED_HEALTH_METRICS = {
+    "device_temperature_celsius",
     "device_psu_state",
+}
+PSU_OIDS = (
+    "1.3.6.1.4.1.3373.1103.89.2.1.3",
+    "1.3.6.1.4.1.3373.1103.89.2.1.4",
+    "1.3.6.1.4.1.3373.1103.89.2.1.5",
 )
 BASE_METRICS = {
     "snmp_uptime",
@@ -130,16 +138,16 @@ def test_ui_is_pure_snmp_form(ui):
 
 
 @pytest.mark.unit
-def test_metrics_json_declares_only_temperature_delta(metrics):
+def test_metrics_json_declares_health_delta_with_sensor_identity(metrics):
     assert set(metrics["supplementary_indicators"]) == {"snmp_uptime", "device_temperature_celsius"}
     names = {m["name"] for m in metrics["metrics"]}
     floor = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
-    assert names - floor == {"device_temperature_celsius"}
+    assert names - floor == COLLECTED_HEALTH_METRICS
     metric = next(item for item in metrics["metrics"] if item["name"] == "device_temperature_celsius")
     assert metric["metric_group"] == "Temperature"
     assert metric["unit"] == "celsius"
     assert metric["data_type"] == "Number"
-    assert metric["dimensions"] == []
+    assert [item["name"] for item in metric["dimensions"]] == ["sensor_label"]
 
 
 @pytest.mark.unit
@@ -150,8 +158,11 @@ def test_metrics_json_keeps_snmp_floor_in_brand_template(metrics):
 
 
 @pytest.mark.unit
-def test_no_unsupported_health_metrics_without_exact_oid_source(metrics):
+def test_no_unsupported_health_metrics_without_exact_oid_source(metrics, toml_text):
     names = {m["name"] for m in metrics["metrics"]}
+    assert COLLECTED_HEALTH_METRICS <= names
+    for oid in PSU_OIDS:
+        assert oid in toml_text, f"device_psu_state must keep explicit OID {oid}"
     for absent in UNSUPPORTED_HEALTH_METRICS:
         assert absent not in names, f"{absent} needs verified SIAE Microelettronica OID source -> N/A"
 
@@ -213,7 +224,10 @@ def test_policy_templates_reference_existing_metrics(metrics, policy):
 @pytest.mark.unit
 def test_policy_has_temperature_template(policy):
     templates = policy["templates"]
-    assert [item["metric_name"] for item in templates] == ["device_temperature_celsius"]
+    assert [item["metric_name"] for item in templates] == [
+        "device_temperature_celsius",
+        "device_psu_state",
+    ]
 
 
 @pytest.mark.unit

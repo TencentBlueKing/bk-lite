@@ -49,30 +49,25 @@
         name = "ifHCOutOctets"
 
     # Raisecom ROAP/ROS health from RAISECOM-SYSTEM/FAN/POWER monitor MIBs.
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-        index_as_tag = true
-    [[inputs.snmp.table.field]]
+    # CPU：raisecomTotalCPUUtilization oneMin，整实例 GET，禁止再拼 .0。
+    # 列 OID …8886.1.1.1.3.1.2.1.2，INDEX raisecomTotalCPUPeriod，oneMin(3)。
+    # SYNTAX INTEGER (0..10000) UNITS percent；若值 >100 则按百分之一缩放（/100）。
+    [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.8886.1.1.1.3.1.2.1.2.3"
-        name = "usage"
-
-    [[inputs.snmp.table]]
-        name = "device_memory"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.8886.1.2.1"
-        name = "total"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.8886.1.2.2"
-        name = "free"
-
-    [[inputs.snmp.table]]
-        name = "device_temperature"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.8886.1.4.2.1"
-        name = "celsius"
+        name = "device_cpu_usage"
+    # 内存：raisecomMemoryTotal / raisecomMemoryAvailable 标量，顶层 field GET 必须带实例 .0。
+    # UNITS Byte；利用率按 (total-free)/total 计算。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.8886.1.1.3.2.1.0"
+        name = "device_memory_total"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.8886.1.1.3.2.2.0"
+        name = "device_memory_free"
+    # 机箱温度：raisecomTemperatureValue 标量，顶层 field GET 必须带实例 .0。
+    # UNITS Celsius，直接摄氏度。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.8886.1.1.4.2.1.0"
+        name = "device_temperature_celsius"
 
     [[inputs.snmp.table]]
         name = "device_fan"
@@ -106,3 +101,16 @@
         [processors.enum.mapping.value_mappings]
             "2" = 1
             "3" = 1
+
+# CPU oneMin 原始值可能是 0-100 或 0-10000（百分之一）；仅当值 >100 时 /100。
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    cpu = metric.fields.get("device_cpu_usage")
+    if cpu != None and cpu > 100:
+        metric.fields["device_cpu_usage"] = cpu / 100.0
+    return metric
+'''
+    [processors.starlark.tagpass]
+        collect_type = ["snmp_raisecom"]

@@ -1,7 +1,4 @@
-import { APPLICATION3D_DENSE_TIER_MAX } from '@/app/ops-analysis/components/widgets/application3D/application3DLayout';
-
 export const APPLICATION3D_WALL_PAGE_SIZE_MIN = 1;
-export const APPLICATION3D_WALL_PAGE_SIZE_MAX = APPLICATION3D_DENSE_TIER_MAX;
 export const APPLICATION3D_WALL_PAGE_SIZE_DEFAULT = 24;
 export const APPLICATION3D_WALL_DWELL_MIN = 5;
 export const APPLICATION3D_WALL_DWELL_MAX = 60;
@@ -36,14 +33,14 @@ export const resolveApplication3DWallConfig = (
   pageSize: clampInt(
     raw?.pageSize,
     APPLICATION3D_WALL_PAGE_SIZE_MIN,
-    APPLICATION3D_WALL_PAGE_SIZE_MAX,
+    Number.POSITIVE_INFINITY,
     APPLICATION3D_WALL_PAGE_SIZE_DEFAULT,
   ),
   alarmPagesEnabled: raw?.alarmPagesEnabled === true,
   alarmPageSize: clampInt(
     raw?.alarmPageSize,
     APPLICATION3D_WALL_PAGE_SIZE_MIN,
-    APPLICATION3D_WALL_PAGE_SIZE_MAX,
+    Number.POSITIVE_INFINITY,
     APPLICATION3D_WALL_PAGE_SIZE_DEFAULT,
   ),
   autoPageEnabled: raw?.autoPageEnabled === true,

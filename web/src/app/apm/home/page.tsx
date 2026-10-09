@@ -73,6 +73,21 @@ const HEALTH_LINK: Record<ApmTopologyHealth, string> = {
   unknown: '/apm/services',
 };
 
+const HEALTH_LABEL_KEYS: Record<ApmTopologyHealth, string> = {
+  healthy: 'apm.health.healthy',
+  warning: 'apm.health.warning',
+  critical: 'apm.health.critical',
+  unknown: 'apm.health.unknown',
+};
+
+function healthBucketLabel(
+  key: ApmTopologyHealth,
+  fallback: string,
+  t: (id: string, defaultMessage?: string) => string,
+) {
+  return t(HEALTH_LABEL_KEYS[key], fallback);
+}
+
 interface KpiCardConfig {
   key: string;
   label: string;
@@ -218,6 +233,7 @@ function FailedSection({ onRetry }: { onRetry: () => void }) {
 }
 
 function HealthLegendRow({ bucket, total }: { bucket: ApmDashboardHealthBucket; total: number }) {
+  const { t } = useTranslation();
   const pct = formatPercentage(total > 0 ? (bucket.count / total) * 100 : 0, 0);
   return (
     <Link
@@ -228,7 +244,7 @@ function HealthLegendRow({ bucket, total }: { bucket: ApmDashboardHealthBucket; 
         className="h-2 w-2 shrink-0 rounded-sm"
         style={{ background: HEALTH_DONUT_COLORS[bucket.key] }}
       />
-      <span className="flex-1 font-medium text-[var(--color-text-1)]">{bucket.label}</span>
+      <span className="flex-1 font-medium text-[var(--color-text-1)]">{healthBucketLabel(bucket.key, bucket.label, t)}</span>
       <span className="font-semibold tabular-nums text-[var(--color-text-1)]">{bucket.count}</span>
       <span className="min-w-9 text-right tabular-nums text-[var(--color-text-4)]">({pct})</span>
     </Link>
@@ -462,7 +478,7 @@ export default function ApmHomePage() {
                         data={healthData.buckets
                           .filter((bucket) => bucket.count > 0)
                           .map((bucket) => ({
-                            label: bucket.label,
+                            label: healthBucketLabel(bucket.key, bucket.label, t),
                             count: bucket.count,
                             color: HEALTH_DONUT_COLORS[bucket.key],
                           }))}

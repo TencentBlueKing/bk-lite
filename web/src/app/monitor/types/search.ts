@@ -1,5 +1,9 @@
 import React from 'react';
 import { MetricItem, ObjectItem, ChartData } from './index';
+import type {
+  SearchChartView,
+  SearchTableKind
+} from '@/app/monitor/(pages)/search/searchChartPresentation';
 
 export interface InstanceItem {
   instance_id: string;
@@ -63,11 +67,13 @@ export interface QueryGroup {
   object: React.Key;
   plugin: React.Key | null;
   instanceIds: string[];
-  metric: React.Key | null;
+  metric: React.Key | React.Key[] | null;
   legacyMetricName?: string | null;
   aggregation: string;
   conditions: ConditionItem[];
   collapsed: boolean;
+  viewMode?: SearchChartView;
+  tableKind?: SearchTableKind | null;
 }
 
 export interface SearchPayload {
@@ -83,6 +89,13 @@ export interface QueryPanelRef {
   getSearchPayload: () => SearchPayload | null;
   canSearch: () => boolean;
   getActiveGroup: () => QueryGroup;
+  updateGroupPresentation: (
+    groupId: string,
+    presentation: {
+      viewMode: SearchChartView;
+      tableKind: SearchTableKind | null;
+    }
+  ) => void;
 }
 
 export interface QueryPanelProps {
@@ -90,6 +103,7 @@ export interface QueryPanelProps {
 }
 
 export interface ChartItem {
+  cardId?: string;
   groupId: string;
   groupName: string;
   metric: MetricItem | null;
@@ -113,10 +127,12 @@ export interface QueryGroupData {
   object: React.Key;
   plugin?: React.Key | null;
   instance_ids: string[];
-  metric: React.Key | null;
+  metric: React.Key | React.Key[] | null;
   legacy_metric_name?: string | null;
   aggregation: string;
   conditions: ConditionItemData[];
+  view_mode?: SearchChartView | 'table';
+  table_kind?: SearchTableKind | null;
 }
 
 export interface SaveConditionParams {

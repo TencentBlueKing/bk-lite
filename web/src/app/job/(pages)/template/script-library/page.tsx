@@ -9,12 +9,14 @@ import {
   Form,
   Input,
   Switch,
-  Table,
   Upload,
   Modal,
+  Radio,
+  Select,
 } from 'antd';
 import {
   PlusOutlined,
+  MinusOutlined,
   DeleteOutlined,
   CheckOutlined,
   CloseOutlined,
@@ -27,7 +29,7 @@ import ImportFileModalShell from '@/components/import-file-modal-shell';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import useJobApi from '@/app/job/api';
-import { Script, ScriptFormData, ScriptParam, ScriptType } from '@/app/job/types';
+import { Script, ScriptFormData, ScriptParam, ScriptParamType, ScriptType } from '@/app/job/types';
 import { ColumnItem } from '@/types';
 import GroupTreeSelect from '@/components/group-tree-select';
 import SearchCombination from '@/components/search-combination';
@@ -50,6 +52,57 @@ const SCRIPT_TYPE_OPTIONS: { value: ScriptType; label: string }[] = [
   { value: 'bat', label: 'Bat' },
   { value: 'powershell', label: 'PowerShell' },
 ];
+
+interface EnumOptionsEditorProps {
+  value?: string[];
+  onChange?: (value: string[]) => void;
+  placeholder?: string;
+}
+
+/** Form 受控组件：枚举选项加减行编辑 */
+const EnumOptionsEditor: React.FC<EnumOptionsEditorProps> = ({
+  value,
+  onChange,
+  placeholder,
+}) => {
+  const options = value && value.length > 0 ? value : [''];
+
+  const update = (next: string[]) => {
+    onChange?.(next);
+  };
+
+  return (
+    <ul className="m-0 p-0 list-none">
+      {options.map((option, index) => (
+        <li key={`enum-opt-${index}`} className="mb-2 flex items-center">
+          <Input
+            className="mr-[10px] flex-1"
+            value={option}
+            placeholder={placeholder}
+            onChange={(e) => {
+              const next = options.map((item, i) => (i === index ? e.target.value : item));
+              update(next);
+            }}
+          />
+          <PlusOutlined
+            className="mr-[10px] cursor-pointer text-[var(--color-primary)]"
+            onClick={() => {
+              const next = [...options];
+              next.splice(index + 1, 0, '');
+              update(next);
+            }}
+          />
+          {options.length > 1 && (
+            <MinusOutlined
+              className="cursor-pointer text-[var(--color-primary)]"
+              onClick={() => update(options.filter((_, i) => i !== index))}
+            />
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+};
 
 const ScriptLibraryPage = () => {
   const { t } = useTranslation();
@@ -100,6 +153,10 @@ const ScriptLibraryPage = () => {
   const [params, setParams] = useState<ScriptParam[]>([]);
   const [paramFormVisible, setParamFormVisible] = useState(false);
   const [editingParamIndex, setEditingParamIndex] = useState<number | null>(null);
+  const paramTypeWatch = Form.useWatch('type', paramForm) as ScriptParamType | undefined;
+  const enumOptionsWatch = Form.useWatch('options', paramForm) as string[] | undefined;
+  const isEnumParam = (paramTypeWatch || 'text') === 'enum';
+  const enumOptions = enumOptionsWatch && enumOptionsWatch.length > 0 ? enumOptionsWatch : [''];
 
   const fetchData = useCallback(
     async (fetchParams: { filters?: SearchFilters; current?: number; pageSize?: number } = {}) => {
@@ -381,14 +438,34 @@ const ScriptLibraryPage = () => {
   const openAddParamForm = () => {
     setEditingParamIndex(null);
     paramForm.resetFields();
-    paramForm.setFieldsValue({ is_encrypted: false, is_required: false });
+    paramForm.setFieldsValue({
+      type: 'text',
+      is_encrypted: false,
+      is_required: false,
+      default: undefined,
+      description: undefined,
+      options: [''],
+    });
     setParamFormVisible(true);
   };
 
   const openEditParamForm = (index: number) => {
     setEditingParamIndex(index);
+    const current = params[index];
+    const type: ScriptParamType = current.type === 'enum' ? 'enum' : 'text';
+    const initialOptions =
+      type === 'enum' && current.options && current.options.length > 0
+        ? [...current.options]
+        : [''];
     paramForm.resetFields();
-    paramForm.setFieldsValue(params[index]);
+    paramForm.setFieldsValue({
+      ...current,
+      type,
+      // 空默认用 undefined，避免 Select allowClear 把 '' 当成有值而显示清空图标
+      default: current.default || undefined,
+      is_encrypted: type === 'enum' ? false : !!current.is_encrypted,
+      options: initialOptions,
+    });
     setParamFormVisible(true);
   };
 
@@ -398,15 +475,33 @@ const ScriptLibraryPage = () => {
     setParamFormVisible(false);
   };
 
+  const handleParamTypeChange = (type: ScriptParamType) => {
+    if (type === 'enum') {
+      const currentOptions = paramForm.getFieldValue('options') as string[] | undefined;
+      const nextOptions = currentOptions && currentOptions.length > 0 ? currentOptions : [''];
+      paramForm.setFieldsValue({ is_encrypted: false, options: nextOptions });
+      const currentDefault = paramForm.getFieldValue('default');
+      if (currentDefault && !nextOptions.map((item) => item.trim()).includes(currentDefault)) {
+        paramForm.setFieldsValue({ default: undefined });
+      }
+    }
+  };
+
   const handleParamSubmit = async () => {
     try {
       const values = await paramForm.validateFields();
+      const type: ScriptParamType = values.type === 'enum' ? 'enum' : 'text';
+      const cleanedOptions = (values.options as string[] | undefined || [])
+        .map((item) => item.trim())
+        .filter(Boolean);
       const param: ScriptParam = {
         name: values.name,
         description: values.description || '',
         default: values.default || '',
-        is_encrypted: values.is_encrypted || false,
+        is_encrypted: type === 'enum' ? false : values.is_encrypted || false,
         is_required: values.is_required || false,
+        type,
+        ...(type === 'enum' ? { options: cleanedOptions } : {}),
       };
       if (editingParamIndex !== null) {
         const updated = [...params];
@@ -425,22 +520,33 @@ const ScriptLibraryPage = () => {
     setParams(params.filter((_, i) => i !== index));
   };
 
+  // name / default / description 不写 render，交给 CustomTable 的 EllipsisWithTooltip
   const paramColumns = [
     {
       title: t('job.paramName'),
       dataIndex: 'name',
       key: 'name',
+      width: 120,
+    },
+    {
+      title: t('job.paramType'),
+      dataIndex: 'type',
+      key: 'type',
+      width: 72,
+      render: (val: ScriptParamType | undefined) =>
+        val === 'enum' ? t('job.paramTypeEnum') : t('job.paramTypeText'),
     },
     {
       title: t('job.defaultValue'),
       dataIndex: 'default',
       key: 'default',
-      render: (val: string) => val || '-',
+      width: 100,
     },
     {
       title: t('job.isRequired'),
       dataIndex: 'is_required',
       key: 'is_required',
+      width: 88,
       render: (val: boolean) =>
         val ? <CheckOutlined className="text-green-500" /> : <CloseOutlined className="text-gray-400" />,
     },
@@ -448,6 +554,7 @@ const ScriptLibraryPage = () => {
       title: t('job.isEncrypted'),
       dataIndex: 'is_encrypted',
       key: 'is_encrypted',
+      width: 88,
       render: (val: boolean) =>
         val ? <CheckOutlined className="text-green-500" /> : <CloseOutlined className="text-gray-400" />,
     },
@@ -455,12 +562,12 @@ const ScriptLibraryPage = () => {
       title: t('job.paramDescription'),
       dataIndex: 'description',
       key: 'description',
-      render: (val: string) => val || '-',
     },
     {
       title: t('job.operation'),
       key: 'action',
       width: 100,
+      fixed: 'right' as const,
       render: (_: unknown, __: ScriptParam, index: number) => (
         <div className="flex items-center gap-3">
           <a
@@ -713,12 +820,13 @@ const ScriptLibraryPage = () => {
             </span>
           </div>
           {params.length > 0 && (
-            <Table
+            <CustomTable
               columns={isViewMode ? paramColumns.filter((c) => c.key !== 'action') : paramColumns}
               dataSource={params}
               rowKey={(_, index) => String(index)}
               pagination={false}
               size="small"
+              scroll={{ x: 720 }}
             />
           )}
 
@@ -742,7 +850,20 @@ const ScriptLibraryPage = () => {
               <div className="mb-3 text-sm font-medium text-[var(--color-text-1)]">
                 {editingParamIndex !== null ? t('job.editParam') : t('job.addParamTitle')}
               </div>
-              <Form form={paramForm} layout="vertical" colon={false}>
+              <Form
+                form={paramForm}
+                layout="vertical"
+                colon={false}
+                onValuesChange={(changed, all) => {
+                  if (!('options' in changed) || !all.default) {
+                    return;
+                  }
+                  const nextOptions = (changed.options as string[] | undefined) || [];
+                  if (!nextOptions.includes(all.default)) {
+                    paramForm.setFieldsValue({ default: undefined });
+                  }
+                }}
+              >
                 <Form.Item
                   name="name"
                   label={t('job.paramName')}
@@ -751,17 +872,85 @@ const ScriptLibraryPage = () => {
                   <Input placeholder={t('job.paramNamePlaceholder')} />
                 </Form.Item>
 
+                <Form.Item
+                  name="type"
+                  label={t('job.paramType')}
+                  initialValue="text"
+                  rules={[{ required: true, message: t('job.paramTypePlaceholder') }]}
+                >
+                  <Radio.Group
+                    options={[
+                      { label: t('job.paramTypeText'), value: 'text' },
+                      { label: t('job.paramTypeEnum'), value: 'enum' },
+                    ]}
+                    onChange={(e) => handleParamTypeChange(e.target.value)}
+                  />
+                </Form.Item>
+
                 <div className="flex gap-12">
                   <Form.Item name="is_required" label={t('job.isRequired')} valuePropName="checked">
                     <Switch />
                   </Form.Item>
-                  <Form.Item name="is_encrypted" label={t('job.isEncrypted')} valuePropName="checked">
-                    <Switch />
-                  </Form.Item>
+                  {!isEnumParam && (
+                    <Form.Item name="is_encrypted" label={t('job.isEncrypted')} valuePropName="checked">
+                      <Switch />
+                    </Form.Item>
+                  )}
                 </div>
 
-                <Form.Item name="default" label={t('job.defaultValue')}>
-                  <Input placeholder={t('job.defaultValuePlaceholder')} />
+                {isEnumParam && (
+                  <Form.Item
+                    name="options"
+                    label={t('job.paramOptions')}
+                    required
+                    rules={[
+                      {
+                        validator: async (_, value: string[] | undefined) => {
+                          const cleaned = (value || []).map((item) => item.trim()).filter(Boolean);
+                          if (cleaned.length === 0) {
+                            return Promise.reject(new Error(t('job.paramEnumOptionsRequired')));
+                          }
+                        },
+                      },
+                    ]}
+                  >
+                    <EnumOptionsEditor placeholder={t('job.paramOptionPlaceholder')} />
+                  </Form.Item>
+                )}
+
+                <Form.Item
+                  name="default"
+                  label={t('job.defaultValue')}
+                  rules={
+                    isEnumParam
+                      ? [
+                        {
+                          validator: async (_, value: string | undefined) => {
+                            if (!value) {
+                              return;
+                            }
+                            const cleaned = enumOptions.map((item) => item.trim()).filter(Boolean);
+                            if (!cleaned.includes(value)) {
+                              return Promise.reject(new Error(t('job.paramEnumDefaultInvalid')));
+                            }
+                          },
+                        },
+                      ]
+                      : undefined
+                  }
+                >
+                  {isEnumParam ? (
+                    <Select
+                      allowClear
+                      placeholder={t('job.defaultValuePlaceholder')}
+                      options={enumOptions
+                        .map((item) => item.trim())
+                        .filter(Boolean)
+                        .map((item) => ({ label: item, value: item }))}
+                    />
+                  ) : (
+                    <Input placeholder={t('job.defaultValuePlaceholder')} />
+                  )}
                 </Form.Item>
 
                 <Form.Item name="description" label={t('job.paramDescription')}>

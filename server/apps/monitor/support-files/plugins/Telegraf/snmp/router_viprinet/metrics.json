@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_viprinet",
   "plugin": "Router Viprinet SNMP",
-  "plugin_desc": "Viprinet 多 WAN 绑定/SD-WAN 路由器专用 SNMP 采集模板（VIPRINET-MIB，企业号 35424）。除标准 IF-MIB 64 位 HC 接口流量外，采集 vpnRouterHealth 健康树：内存仅上报已用量（KB，换算为字节，MIB 无总量/空闲/使用率）、系统温度（℃，另采集 CPU 温度）、电源失败标志（归一为 1=正常/2=异常）、风扇状态表（及转速），以及 CPU 负载均值（OCTET STRING，解析为无量纲负载，不是百分比）。适用品牌型号——Viprinet 多 WAN 绑定路由器（Multichannel VPN Router 系列，企业号 35424）。",
+  "plugin_desc": "SNMP monitoring template for Viprinet router. It reports uptime, CPU utilization, memory used, temperature, fan, power supply status, and interface traffic (enterprise PEN 35424).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_viprinet'}) by (instance_id)",
   "name": "Router",
@@ -96,10 +96,10 @@
       ],
       "name": "device_temperature_celsius",
       "display_name": "设备温度",
-      "query": "max(device_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "device_temperature_celsius{instance_type='router', __$labels__}",
       "unit": "celsius",
       "data_type": "Number",
-      "description": "Chassis temperature of the Viprinet router in degrees Celsius. System temperature is the primary reading; CPU temperature is collected as a second sensor. The dashboard takes the maximum per instance."
+      "description": "Chassis temperature of the Viprinet router in degrees Celsius. System temperature is the primary reading; CPU temperature is collected as a second sensor. One series per sensor."
     },
     {
       "metric_group": "Hardware Status",
@@ -117,7 +117,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "max(device_fan_state{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "device_fan_state{instance_type='router', __$labels__}",
       "display_name": "Fan Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",

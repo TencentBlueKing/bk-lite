@@ -1,6 +1,6 @@
 Switch Netonix SNMP:
   name: Netonix（Telegraf）
-  desc: 面向 Netonix 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Netonix 交换机的 SNMP 监控模板，可采集运行时长、温度传感器、风扇转速、电压传感器、整机功耗、DC/DC 输入电流与效率、接口流量（企业号 PEN 46242）；MIB 无 CPU/内存对象。
 monitor_object:
   Switch: 交换机
 monitor_object_type:
@@ -161,6 +161,15 @@ monitor_object_metric:
     device_psu_temperature_celsius:
       name: 电源温度
       desc: 采集 IP Infusion (OcNOS) 设备机箱级 PSU 1 温度传感器读数（IPI-CMM-CHASSIS-MIB cmmSysPSTemperature1），单位摄氏度。用于监测电源模块工作温度，过高温度可能提示散热不良、风扇故障或环境过热，存在触发热保护或硬件损坏风险。
+    device_power_used:
+      name: 整机功耗
+      desc: Netonix 交换机整机功耗（含 PoE 输出，NETONIX-SWITCH-MIB totalPowerConsumption），单位瓦。突增可能意味着新增或异常 PoE 负载，骤降可能意味着 PoE 设备离线。
+    device_input_current_amps:
+      name: DC/DC 输入电流
+      desc: Netonix 交换机 DC/DC 输入电流（NETONIX-SWITCH-MIB dcdcInputCurrent），单位安培。
+    device_dcdc_efficiency:
+      name: DC/DC 效率
+      desc: Netonix 交换机 DC/DC 电源转换效率（NETONIX-SWITCH-MIB dcdcEfficiency），单位百分比。持续下降可能意味着电源模块老化。
 monitor_object_metric_group:
   Switch:
     Base: 基础

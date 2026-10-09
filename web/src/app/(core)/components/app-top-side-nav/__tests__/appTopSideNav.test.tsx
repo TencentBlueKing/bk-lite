@@ -113,6 +113,34 @@ describe('AppTopSideNav', () => {
     expect(screen.getByRole('link', { name: '知识库' }).className).not.toContain('nav-button-bg-active');
   });
 
+  it('highlights the first-layer group when the leaf is a sibling of the group url', () => {
+    // RUM「事件」defaults to /rum/alert-events but「策略」lives at /rum/monitors.
+    const rumMenus: MenuItem[] = [
+      menu({
+        title: '体验',
+        url: '/rum/sessions',
+        name: 'sessions',
+        children: [
+          menu({ title: '会话', url: '/rum/sessions', name: 'sessions' }),
+          menu({ title: '视图与性能', url: '/rum/views', name: 'views' }),
+        ],
+      }),
+      menu({
+        title: '事件',
+        url: '/rum/alert-events',
+        name: 'monitors',
+        children: [
+          menu({ title: '告警', url: '/rum/alert-events', name: 'alert_events' }),
+          menu({ title: '策略', url: '/rum/monitors', name: 'monitors' }),
+        ],
+      }),
+    ];
+    currentPath = '/rum/monitors';
+    render(<AppTopSideNav menus={rumMenus} pathname={currentPath} />);
+    expect(screen.getByRole('link', { name: '事件' }).className).toContain('nav-button-bg-active');
+    expect(screen.getByRole('link', { name: '体验' }).className).not.toContain('nav-button-bg-active');
+  });
+
   it('links container menus to the first leaf instead of a redirect stub', () => {
     render(<AppTopSideNav menus={menus} pathname="/job/execution/quick-exec" />);
     expect(screen.getByRole('link', { name: '作业执行' }).getAttribute('href')).toBe(

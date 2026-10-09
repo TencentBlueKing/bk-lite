@@ -28,7 +28,7 @@ from apps.core.openapi.token_scope import allows_internal
 
 _executor = None
 
-# 现有 nats_api 以自由文本 message 表达组织越权（无结构化 code），网关据此
+# 部分 nats_api 仍以自由文本 message 表达组织越权，网关据此
 # 映射到冻结清单定义的 TEAM_OUT_OF_SCOPE(403)。暴露函数改用结构化错误码后，
 # 本表可随之退役（见 m1-notes 软错误映射）。
 _TEAM_SCOPE_MARKERS = ("无权访问该组织", "无权限访问该组织", "组织数据", "out of scope")
@@ -147,7 +147,7 @@ def dispatch(identity: CallerIdentity, endpoint: Endpoint, payload: dict):
     # 不能与普通业务拒绝混为 400。
     if isinstance(result, dict) and result.get("result") is False:
         message = str(result.get("message", "rejected"))
-        if any(marker in message for marker in _TEAM_SCOPE_MARKERS):
+        if result.get("code") == ErrorCode.TEAM_OUT_OF_SCOPE or any(marker in message for marker in _TEAM_SCOPE_MARKERS):
             return fail(ErrorCode.TEAM_OUT_OF_SCOPE, message)
         return fail(ErrorCode.BUSINESS_REJECTED, message)
     return ok(result)

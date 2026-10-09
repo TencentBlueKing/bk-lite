@@ -220,6 +220,14 @@
         "confirmFinishRestartTitle": "Confirm to finish restarting?",
         "nodes": "nodes",
         "controllerUpgradeable": "Controller Upgradeable",
+        "nodeActive": "Agent Status",
+        "collectorStatus": "Component Status",
+        "collectorName": "Component",
+        "selectedNodeCount": "{count} selected",
+        "exportSelected": "Selected",
+        "exportCurrentPage": "Current Page",
+        "exportAll": "All",
+        "exportEmpty": "No nodes to export",
         "waitingManual": "Waiting for Manual Operation",
         "installLog": "Installation Log",
         "confirmFinishContent2": "are being installed. Ending the installation will stop all installation processes. Successfully installed nodes will not be affected.",
@@ -700,6 +708,7 @@
     "batchbindSuccess": "Bound successfully",
     "successfulDownloaded": "Download successful !",
     "configuration": "Configuration",
-    "successfullyModified": "Modified successfully!"
+    "successfullyModified": "Modified successfully!",
+    "formatError": "Invalid format"
   }
 }

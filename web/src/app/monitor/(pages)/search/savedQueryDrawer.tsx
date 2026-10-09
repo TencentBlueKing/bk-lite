@@ -21,28 +21,35 @@ import {
   SavedQueryDrawerProps
 } from '@/app/monitor/types/search';
 import CustomTable from '@/components/custom-table';
-import { generateSearchId, normalizeMonitorEntityId } from './searchQueryLogic';
+import {
+  generateSearchId,
+  normalizeMonitorEntityId,
+  readSavedMetricSelection
+} from './searchQueryLogic';
+import { readSavedChartPresentation } from './searchChartPresentation';
 
 export const transformToFrontendFormat = (groups: QueryGroupData[]): QueryGroup[] => {
-  return groups.map((group) => ({
-    id: generateSearchId(),
-    name: group.name,
-    object: normalizeMonitorEntityId(group.object) ?? '',
-    plugin: normalizeMonitorEntityId(group.plugin),
-    instanceIds: group.instance_ids,
-    metric:
-      group.metric && /^\d+$/.test(String(group.metric))
-        ? normalizeMonitorEntityId(group.metric)
-        : null,
-    legacyMetricName:
-      group.legacy_metric_name ||
-      (group.metric && !/^\d+$/.test(String(group.metric))
-        ? String(group.metric)
-        : null),
-    aggregation: group.aggregation,
-    conditions: group.conditions,
-    collapsed: false
-  }));
+  return groups.map((group) => {
+    const presentation = readSavedChartPresentation(group);
+    const savedMetric = readSavedMetricSelection(
+      group.metric,
+      group.legacy_metric_name
+    );
+    return {
+      id: generateSearchId(),
+      name: group.name,
+      object: normalizeMonitorEntityId(group.object) ?? '',
+      plugin: normalizeMonitorEntityId(group.plugin),
+      instanceIds: group.instance_ids,
+      metric: savedMetric.metric,
+      legacyMetricName: savedMetric.legacyMetricName,
+      aggregation: group.aggregation,
+      conditions: group.conditions,
+      collapsed: false,
+      viewMode: presentation.view,
+      tableKind: presentation.tableKind
+    };
+  });
 };
 
 const SavedQueryDrawer = forwardRef<SavedQueryDrawerRef, SavedQueryDrawerProps>(

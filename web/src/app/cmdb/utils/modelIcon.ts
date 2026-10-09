@@ -25,15 +25,21 @@ const normalizeSvgIconList = (data: string[]) =>
     };
   });
 
-const standardIconList = normalizeSvgIconList(
-  require.context('../../../../public/assets/icons', false, /\.svg$/).keys()
-);
-
-const realisticIconList = normalizeSvgIconList(
-  require
-    .context('../../../../public/assets/icons-realistic', false, /\.svg$/)
-    .keys()
-);
+// 目录参数必须是字面量，Turbopack 才会在编译期收进 SVG。
+// typeof require.context 会被编成不存在的运行时属性，目录变成空列表，图标全部落到默认图。
+let standardIconList: ReturnType<typeof normalizeSvgIconList> = [];
+let realisticIconList: ReturnType<typeof normalizeSvgIconList> = [];
+try {
+  standardIconList = normalizeSvgIconList(
+    require.context('../../../../public/assets/icons', false, /\.svg$/).keys()
+  );
+  realisticIconList = normalizeSvgIconList(
+    require.context('../../../../public/assets/icons-realistic', false, /\.svg$/).keys()
+  );
+} catch {
+  standardIconList = [];
+  realisticIconList = [];
+}
 
 export const iconList = createModelIconOptions(
   standardIconList,

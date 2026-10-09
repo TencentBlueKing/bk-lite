@@ -14,6 +14,7 @@ from apps.monitor.utils.dimension import parse_instance_id
 
 SUPPORTED_METRIC_TYPES = ("cpu", "memory", "disk")
 DEFAULT_INTERVAL_SECONDS = 300
+DEFAULT_RANGE_STEP = "5m"
 
 
 @dataclass(frozen=True)
@@ -239,3 +240,87 @@ class HostResourceTopService:
         candidates = self._query(normalized_type, max_lookback)
         normalized = normalize_metric_candidates(candidates, host_meta, now=self.now)
         return build_ranked_rows(normalized, host_meta)
+
+
+WINDOW_AGGREGATIONS = ("max", "avg")
+DEFAULT_WINDOW_TOP_LIMIT = 10
+MAX_HOST_RESOURCE_TOP_LIMIT = 200
+
+
+def validate_window_aggregation(aggregation: str) -> str:
+    """Normalize the window aggregation label; default keeps max (worst case)."""
+    normalized = str(aggregation or "").strip().lower()
+    if not normalized:
+        return "max"
+    if normalized not in WINDOW_AGGREGATIONS:
+        raise ValueError("aggregation 仅支持 max、avg")
+    return normalized
+
+
+def resolve_window_step(window_seconds: int) -> str:
+    """Pick a query_range step that never skips a sample inside the window.
+
+    采集间隔默认 300s；窗口很短时用 5m step 会整窗取不到点，误判为「无数据」。
+    """
+    if window_seconds <= 0:
+        return DEFAULT_RANGE_STEP
+    if window_seconds <= 600:
+        return "1m"
+    if window_seconds <= 3600:
+        return "5m"
+    return "15m"
+
+
+def build_window_ranked_rows(
+    window_series: dict[str, list[list[float]]],
+    host_meta: dict[str, dict[str, Any]],
+    *,
+    metric_type: str,
+    aggregation: str = "max",
+    limit: int = DEFAULT_WINDOW_TOP_LIMIT,
+) -> list[dict[str, Any]]:
+    """Rank authorized hosts by their value inside the queried window.
+
+    `window_series` 来自 fold_host_range_series，每台主机一条已折叠曲线。
+    """
+    if not window_series:
+        return []
+    id_by_display = _instance_id_by_display(host_meta)
+    ranked: list[tuple[str, float, float]] = []
+    for name, points in window_series.items():
+        values = [float(point[1]) for point in points if isinstance(point, (list, tuple)) and len(point) >= 2]
+        if not values:
+            continue
+        ranked.append((name, max(values), round(sum(values) / len(values), 2)))
+    if not ranked:
+        return []
+    key_index = 1 if aggregation == "max" else 2
+    ordered = sorted(ranked, key=lambda item: (-item[key_index], item[0]))[:limit]
+    rows = []
+    for rank, (name, peak, mean) in enumerate(ordered, start=1):
+        instance_id = id_by_display.get(name) or ""
+        meta = host_meta.get(instance_id, {})
+        rows.append(
+            {
+                "rank": rank,
+                "display_name": name,
+                "usage_percent": peak if aggregation == "max" else mean,
+                "peak_percent": peak,
+                "avg_percent": mean,
+                "instance_id": instance_id,
+                "host_name": meta.get("host_name") or None,
+                "ip": meta.get("ip") or None,
+                "metric_type": metric_type,
+            }
+        )
+    return rows
+
+
+def _instance_id_by_display(host_meta: dict[str, dict[str, Any]]) -> dict[str, str]:
+    """反向索引 display_name → instance_id；host_meta 同时按 id 和首段登记。"""
+    mapping: dict[str, str] = {}
+    for key, meta in host_meta.items():
+        instance_id = str(meta.get("storage_id") or key)
+        display = host_display_name(meta, instance_id)
+        mapping.setdefault(display, instance_id)
+    return mapping

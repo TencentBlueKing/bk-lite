@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_checkpoint",
   "plugin": "Firewall Check Point SNMP",
-  "plugin_desc": "Check Point-specific SNMP collection template for Quantum NGFW (Gaia) firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects CHECKPOINT-MIB private OIDs for device health (CPU utilization, real memory total/free/used/usage) and firewall-specific VPN throughput (encrypted and decrypted packets per second). Supported brands/models — Check Point Security Gateways (GAiA OS).",
+  "plugin_desc": "SNMP monitoring template for Check Point firewall. It reports uptime, CPU utilization, memory total/free/used/utilization, active connections, temperature sensor reading and status, fan sensor status, power supply status, and interface traffic, for Check Point Security Gateways (enterprise PEN 2620).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_checkpoint'}) by (instance_id)",
   "name": "Firewall",
@@ -17,6 +17,7 @@
     "snmp_uptime",
     "device_cpu_usage",
     "device_memory_usage",
+    "firewall_active_sessions",
     "device_total_incoming_traffic",
     "device_total_outgoing_traffic"
   ],
@@ -37,7 +38,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='firewall', __$labels__}",
+      "query": "snmp_device_cpu_usage{instance_type='firewall', __$labels__}",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -45,12 +46,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the overall CPU utilization of the Check Point firewall (CHECKPOINT-MIB procUsage). Sustained high CPU usage may indicate heavy traffic inspection load, policy complexity or an attack."
+      "description": "This metric reports the overall CPU utilization of the Check Point Security Gateway (procUsage, a scalar GET with instance .0), reported directly as a 0-100 percentage. Sustained high CPU usage may indicate heavy inspection load, complex policies, or an attack."
     },
     {
       "metric_group": "Firewall",
       "name": "device_memory_total",
-      "query": "device_memory_total{instance_type='firewall', __$labels__}",
+      "query": "snmp_device_memory_total{instance_type='firewall', __$labels__}",
       "display_name": "Total Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -58,12 +59,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the total real memory of the Check Point firewall (CHECKPOINT-MIB memTotalReal64, in bytes)."
+      "description": "This metric reports the total real memory of the Check Point Security Gateway in bytes (memTotalReal64, a scalar GET with instance .0)."
     },
     {
       "metric_group": "Firewall",
       "name": "device_memory_free",
-      "query": "device_memory_free{instance_type='firewall', __$labels__}",
+      "query": "snmp_device_memory_free{instance_type='firewall', __$labels__}",
       "display_name": "Free Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -71,12 +72,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the free real memory of the Check Point firewall (CHECKPOINT-MIB memFreeReal64, in bytes)."
+      "description": "This metric reports the free real memory of the Check Point Security Gateway in bytes (memFreeReal64, a scalar GET with instance .0)."
     },
     {
       "metric_group": "Firewall",
       "name": "device_memory_used",
-      "query": "device_memory_total{instance_type='firewall', __$labels__} - device_memory_free{instance_type='firewall', __$labels__}",
+      "query": "snmp_device_memory_total{instance_type='firewall', __$labels__} - snmp_device_memory_free{instance_type='firewall', __$labels__}",
       "display_name": "Used Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -89,7 +90,7 @@
     {
       "metric_group": "Firewall",
       "name": "device_memory_usage",
-      "query": "100 * (device_memory_total{instance_type='firewall', __$labels__} - device_memory_free{instance_type='firewall', __$labels__}) / device_memory_total{instance_type='firewall', __$labels__}",
+      "query": "100 * (snmp_device_memory_total{instance_type='firewall', __$labels__} - snmp_device_memory_free{instance_type='firewall', __$labels__}) / snmp_device_memory_total{instance_type='firewall', __$labels__}",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -101,29 +102,100 @@
     },
     {
       "metric_group": "Firewall",
-      "name": "firewall_vpn_encrypted_pps",
-      "query": "firewall_vpn_encrypted_pps{instance_type='firewall', __$labels__}",
-      "display_name": "VPN Encrypted Packets Rate",
+      "name": "firewall_active_sessions",
+      "query": "snmp_firewall_active_sessions{instance_type='firewall', __$labels__}",
+      "display_name": "Active Sessions",
       "data_type": "Number",
-      "unit": "cps",
+      "unit": "short",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the rate of VPN packets encrypted per second by the Check Point firewall (CHECKPOINT-MIB fwEncPacketsPerSec). It reflects outbound IPsec/VPN throughput."
+      "description": "This metric reports the number of connections currently tracked by the Check Point firewall (fwNumConn, a scalar GET with instance .0). A rapid rise can indicate a connection flood or connection-table pressure."
     },
     {
-      "metric_group": "Firewall",
-      "name": "firewall_vpn_decrypted_pps",
-      "query": "firewall_vpn_decrypted_pps{instance_type='firewall', __$labels__}",
-      "display_name": "VPN Decrypted Packets Rate",
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='firewall', __$labels__}",
+      "display_name": "Temperature",
       "data_type": "Number",
-      "unit": "cps",
-      "dimensions": [],
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "sensor",
+          "description": "Sensor name"
+        },
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the rate of VPN packets decrypted per second by the Check Point firewall (CHECKPOINT-MIB fwDecPacketsPerSec). It reflects inbound IPsec/VPN throughput."
+      "description": "This metric reports the reading of each Check Point hardware temperature sensor (tempertureSensorValue). The device reports the value as text; it is parsed to a number in degrees Celsius at collection time, and unparsable readings are dropped. High temperatures risk thermal protection or hardware damage."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_temperature_state",
+      "query": "device_temperature_state{instance_type='firewall', __$labels__}",
+      "display_name": "Temperature Sensor Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "sensor",
+          "description": "Sensor name"
+        },
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the status of each Check Point temperature sensor (tempertureSensorStatus), normalized so that 0 (normal) maps to 1 and any other value (abnormal/unknown) maps to 2."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "device_fan_state{instance_type='firewall', __$labels__}",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "sensor",
+          "description": "Sensor name"
+        },
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the status of each Check Point fan sensor (fanSpeedSensorStatus), normalized so that 0 (normal) maps to 1 and any other value (abnormal/unknown) maps to 2. A non-normal state indicates a cooling fault."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='firewall', __$labels__}",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the status of each Check Point power supply (powerSupplyStatus). The device reports the status as text; OK/Up/Normal is normalized to 1 and anything else to 2. A non-normal state signals a power redundancy or hardware fault."
     },
     {
       "metric_group": "Status",

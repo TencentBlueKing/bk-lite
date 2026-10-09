@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_ubiquiti",
   "plugin": "Switch Ubiquiti SNMP",
-  "plugin_desc": "Ubiquiti EdgeSwitch-specific SNMP collection (EdgeSwitch-SWITCHING-MIB + EdgeSwitch-BOXSERVICES-PRIVATE-MIB, IANA PEN 4413, Broadcom FASTPATH). In addition to standard IF-MIB interface metrics, it collects EdgeSwitch private OIDs for device health: system memory scalars (agentSwitchCpuProcessMemAvailable / agentSwitchCpuProcessMemFree, KB, top-level GET with instance .0), chassis temperature (boxServicesTempSensorTemperature table), fan state (boxServicesFanItemState table) and power-supply state (boxServicesPowSupplyItemState table). Fan and PSU raw codes share the same enum and are normalized via telegraf processors.enum to 1=healthy / 2=fault. Memory utilization is computed from (total-free)/total. CPU is exposed only as a per-process table (agentSwitchCpuProcessTable) with no aggregate device-CPU scalar, which telegraf inputs.snmp cannot reduce, so CPU is not collected (N/A). Applies to EdgeSwitch/UniFi-Switch (the wired switch line); airOS/UniFi wireless APs are a different object and out of scope. Supported brands/models — Ubiquiti EdgeSwitch (ES series).",
+  "plugin_desc": "SNMP monitoring template for Ubiquiti switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic, for EdgeSwitch (enterprise PEN 4413).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_ubiquiti'}) by (instance_id)",
   "name": "Switch",
@@ -15,12 +15,26 @@
   ],
   "supplementary_indicators": [
     "snmp_uptime",
+    "device_cpu_usage",
     "device_memory_usage",
     "device_temperature_celsius",
     "device_fan_state",
     "device_psu_state"
   ],
   "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "max(snmp_device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the overall CPU utilization of the Ubiquiti EdgeSwitch (EdgeSwitch-SWITCHING-MIB agentSwitchCpuProcessTotalUtilization, a scalar GET with instance .0). The value is a text such as \"5 Secs ( 12.3%) 60 Secs ( 8.1%) 300 Secs ( 6.0%)\"; the last percentage (300-second window) is taken; a bare number without a percent sign is also accepted. Sustained high CPU may indicate control-plane overload, broadcast storms or protocol flapping."
+    },
     {
       "metric_group": "Memory",
       "name": "device_memory_total",

@@ -28,18 +28,18 @@ export const buildChartRoleFields = (
   radarArrayRequired: boolean,
 ): ChartRoleField[] => {
   const requiredMessage = t('dashboard.chartRoleFieldsRequired');
-  if (chartType === 'line' || chartType === 'bar' || chartType === 'pie') {
-    const tipSuffix = chartType === 'line' ? 'Line' : chartType === 'bar' ? 'Bar' : 'Pie';
+  // 折线/柱状先不开放字段映射：多系列元组无法选出列名，且一选就会打断自动识别。
+  if (chartType === 'pie') {
     return [
       {
         name: 'dimensionField',
         label: t('dashboard.dimensionField'),
-        tip: t(`dashboard.dimensionFieldTip${tipSuffix}`),
+        tip: t('dashboard.dimensionFieldTipPie'),
       },
       {
         name: 'valueField',
         label: t('dashboard.valueField'),
-        tip: t(`dashboard.valueFieldTip${tipSuffix}`),
+        tip: t('dashboard.valueFieldTipPie'),
       },
     ];
   }

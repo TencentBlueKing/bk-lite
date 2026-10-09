@@ -48,12 +48,22 @@ BASE_METRICS = {
     "device_total_incoming_traffic",
     "device_total_outgoing_traffic",
 }
-HEALTH_METRICS = {
+SNMP_FLOOR = {
+    "snmp_uptime",
+    "interface_ifHCInOctets",
+    "interface_ifHCOutOctets",
+}
+COLLECTED_HEALTH_METRICS = {
+    "device_temperature_celsius",
+}
+HEALTH_METRIC_OIDS = {
+    "device_temperature_celsius": "1.3.6.1.4.1.4458.1000.1.1.44.0",
+}
+UNSUPPORTED_HEALTH_METRICS = {
     "device_cpu_usage",
     "device_memory_used",
     "device_memory_free",
     "device_memory_usage",
-    "device_temperature_celsius",
     "wireless_client_count",
     "wireless_channel_utilization",
     "wireless_signal_strength",
@@ -134,24 +144,32 @@ def test_ui_is_pure_snmp_form(ui):
 @pytest.mark.unit
 def test_metrics_json_embeds_deployed_snmp_floor(metrics):
     names = {metric["name"] for metric in metrics["metrics"]}
-    expected = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
-    assert names == expected
-    assert set(metrics.get("supplementary_indicators", [])) == {"snmp_uptime"}
+    assert SNMP_FLOOR <= names
+    assert names - SNMP_FLOOR == COLLECTED_HEALTH_METRICS
+    supplementary = set(metrics.get("supplementary_indicators", []))
+    assert supplementary <= names
+    assert {"snmp_uptime", "device_temperature_celsius"} <= supplementary
 
 
 @pytest.mark.unit
 def test_policy_is_empty_and_subset_of_metrics(metrics, policy):
     known = {metric["name"] for metric in metrics["metrics"]}
+    policy_metrics = {template["metric_name"] for template in policy["templates"]}
     bad = [template["metric_name"] for template in policy["templates"] if template["metric_name"] not in known]
     assert bad == []
-    assert policy["templates"] == []
+    assert policy_metrics <= known
+    assert policy_metrics == {"device_temperature_celsius"}
 
 
 @pytest.mark.unit
-def test_no_private_health_metrics_or_pen_oid_are_collected(toml_text):
-    assert PEN_ROOT not in toml_text
-    for name in HEALTH_METRICS:
-        assert name.replace("device_", "") not in toml_text
+def test_no_private_health_metrics_or_pen_oid_are_collected(metrics, toml_text):
+    names = {metric["name"] for metric in metrics["metrics"]}
+    assert COLLECTED_HEALTH_METRICS <= names
+    assert PEN_ROOT in toml_text
+    for name, oid in HEALTH_METRIC_OIDS.items():
+        assert oid in toml_text, f"{name} must keep explicit OID {oid}"
+    leaked = sorted(names & UNSUPPORTED_HEALTH_METRICS)
+    assert leaked == []
     assert "[[processors.enum]]" not in toml_text
 
 

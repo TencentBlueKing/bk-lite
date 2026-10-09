@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_aruba_wireless",
   "plugin": "Wireless Aruba SNMP",
-  "plugin_desc": "Aruba AOS wireless controller SNMP collection under Aruba PEN 14823. It collects WLSX-SYSTEMEXT CPU utilization (wlsxSysExtCpuUsedPercent), memory utilization (wlsxSysExtMemoryUsedPercent), and internal temperature (wlsxSysExtInternalTemparature, MIB spelling), plus WLSX-SWITCH controller AP count (wlsxSwitchTotalNumAccessPoints) and associated station count (wlsxSwitchTotalNumStationsAssociated). Interface traffic comes from the built-in IF-MIB table. This plugin is for AOS controllers only; it does not share discovery or OIDs with ArubaOS-CX switch_aruba (enterprise 47196) and does not collect Instant/IAP objects.",
+  "plugin_desc": "SNMP monitoring template for Aruba AOS (ArubaOS) mobility controllers (enterprise PEN 14823). It reports uptime, CPU utilization, memory utilization, controller temperature, fan and power-supply state, interface traffic, and AP / station counts.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_aruba_wireless'}) by (instance_id)",
   "name": "Wireless",
@@ -19,7 +19,9 @@
     "device_memory_usage",
     "device_temperature_celsius",
     "wireless_ap_count",
-    "wireless_station_count"
+    "wireless_station_count",
+    "aruba_fan_state",
+    "aruba_psu_state"
   ],
   "metrics": [
     {
@@ -99,6 +101,42 @@
         "instance_id"
       ],
       "description": "Number of wireless stations currently associated through this Aruba AOS wireless controller (WLSX-SWITCH-MIB wlsxSwitchTotalNumStationsAssociated). Rapid growth can correlate with CPU and memory pressure on the controller."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "aruba_fan_state",
+      "query": "aruba_fan_state{instance_type='wireless', __$labels__}",
+      "display_name": "Fan State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "sysExtFanIndex"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Fan operational state of the Aruba AOS mobility controller (WLSX-SYSTEMEXT-MIB sysExtFanStatus, ArubaActiveState). active(1) maps to 1=normal and inactive(2) maps to 2=abnormal; any other value is dropped. Indexed by sysExtFanIndex (controllers may start at 0)."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "aruba_psu_state",
+      "query": "aruba_psu_state{instance_type='wireless', __$labels__}",
+      "display_name": "Power Supply State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "sysExtPowerSupplyIndex"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Power-supply operational state of the Aruba AOS mobility controller (WLSX-SYSTEMEXT-MIB sysExtPowerSupplyStatus, ArubaActiveState). active(1) maps to 1=normal and inactive(2) maps to 2=abnormal; any other value is dropped. Indexed by sysExtPowerSupplyIndex."
     }
   ]
 }

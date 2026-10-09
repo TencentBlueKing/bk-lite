@@ -1,6 +1,6 @@
 Firewall Barracuda SNMP:
   name: Barracuda（Telegraf）
-  desc: 面向 Barracuda 防火墙的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 20632）。
+  desc: 面向 Barracuda 防火墙的 SNMP 监控模板，可采集运行时长、温度、风扇转速、磁盘使用率、接口流量（企业号 PEN 20632）。
 monitor_object:
   Firewall: 防火墙
 monitor_object_type:
@@ -222,6 +222,9 @@ monitor_object_metric:
     barracuda_log_storage_usage:
       name: 日志存储使用率
       desc: Barracuda 防火墙的日志存储使用率。
+    device_fan_speed:
+      name: 风扇转速
+      desc: CPU 风扇与系统风扇的转速，单位为 RPM。转速骤降或为 0 可能表示风扇故障或堵转。
 monitor_object_metric_group:
   Firewall:
     Packet: 数据包

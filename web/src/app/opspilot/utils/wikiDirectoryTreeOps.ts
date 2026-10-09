@@ -32,6 +32,29 @@ export const isTopLevelDirectory = (
   directoryId: number,
 ): boolean => roots.some((node) => node.id === directoryId);
 
+export const isMaterialsRootDirectory = (
+  directory: Pick<WikiDirectoryNode, "key" | "accepts_pages">,
+): boolean =>
+  directory.accepts_pages === false || directory.key === "schema_source";
+
+export const wikiPageTreeKey = (id: number) => `page:${id}`;
+
+export const wikiMaterialTreeKey = (id: number) => `material:${id}`;
+
+export const parseWikiTreeSelection = (
+  key: string,
+): { kind: "page" | "material"; id: number } | null => {
+  if (key.startsWith("page:")) {
+    const id = Number(key.slice("page:".length));
+    return Number.isInteger(id) && id > 0 ? { kind: "page", id } : null;
+  }
+  if (key.startsWith("material:")) {
+    const id = Number(key.slice("material:".length));
+    return Number.isInteger(id) && id > 0 ? { kind: "material", id } : null;
+  }
+  return null;
+};
+
 export const canDeleteKnowledgeDirectory = (
   roots: WikiDirectoryNode[],
   directory: WikiDirectoryNode,
@@ -41,7 +64,8 @@ export const canDeleteKnowledgeDirectory = (
   if (unclassifiedDirectoryId != null && directory.id === unclassifiedDirectoryId) {
     return false;
   }
-  return !isTopLevelDirectory(roots, directory.id);
+  if (isMaterialsRootDirectory(directory)) return false;
+  return true;
 };
 
 export const pageIdsInDirectories = (

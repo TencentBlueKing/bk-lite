@@ -228,6 +228,12 @@ class HostCollectMetrics(CollectBase):
             return f"{result_data.get('mem_locator', '')}-{self_device}"
         elif data["model_id"] == "gpu" and self_device:
             return f"{result_data.get('gpu_name', '')}-{self_device}"
+        elif data["model_id"] == "storage_controller" and self_device:
+            sc_id = str(result_data.get("sc_id") or "").strip()
+            return f"{sc_id}-{self_device}" if sc_id else ""
+        elif data["model_id"] == "psu" and self_device:
+            psu_name = str(result_data.get("psu_name") or "").strip()
+            return f"{psu_name}-{self_device}" if psu_name else ""
         # 多资产任务的 self.inst_name 只代表任务中的首个实例；每条硬件指标
         # 必须优先使用自身携带的 self_device。仅在旧指标缺少归属信息时兼容回退。
         return self.inst_name or ""

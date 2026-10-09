@@ -1,7 +1,6 @@
 Switch Dell Force10 SNMP:
   name: Dell Force10 (Telegraf)
-  desc: SNMP monitoring template for Dell switch. It reports CPU utilization, memory
-    utilization, per-port inbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Dell Force10 E-Series and S-Series switches. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic, for Dell Networking / Force10 (enterprise PEN 6027)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -114,17 +113,18 @@ monitor_object_metric:
         more effective traffic management and optimization.
     device_cpu_usage:
       name: CPU Utilization
-      desc: This metric reports the CPU utilization of the device control plane (typically
-        the 5-minute average), as a percentage. Sustained high CPU usage can indicate
-        control-plane overload, routing instability, or attack traffic, and may lead
-        to slow management response or packet processing delays. Sourced from vendor-specific
-        SNMP OIDs and normalized to a 0-100 percentage.
+      desc: This metric reports the CPU utilization of Dell Force10 E-Series and
+        S-Series switches (typically the 5-minute average), as a percentage. Sustained
+        high CPU usage can indicate control-plane overload, routing instability, or
+        attack traffic, and may lead to slow management response or packet processing
+        delays. Sourced from vendor-specific SNMP OIDs and normalized to a 0-100
+        percentage.
     device_memory_usage:
       name: Memory Utilization
-      desc: This metric reports overall memory utilization of the device, computed
-        as used / (used + free) * 100 across all memory pools. High memory usage may
-        indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity,
-        and can cause instability or failed allocations.
+      desc: This metric reports overall memory utilization of Dell Force10 E-Series
+        and S-Series switches, computed as used / (used + free) * 100 across all memory
+        pools. High memory usage may indicate memory leaks, oversized routing/MAC/ARP
+        tables, or insufficient capacity, and can cause instability or failed allocations.
     device_memory_used:
       name: Memory Used
       desc: This metric reports the number of bytes currently in use for each memory
@@ -145,21 +145,23 @@ monitor_object_metric:
     device_temperature_celsius:
       name: Temperature
       desc: This metric reports the temperature reading of each hardware sensor on
-        the device, in degrees Celsius. Abnormally high temperatures may indicate
-        fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal
-        protection or hardware damage if left unaddressed.
+        Dell Force10 E-Series and S-Series switches, in degrees Celsius. Abnormally
+        high temperatures may indicate fan failure, blocked airflow, or excessive
+        ambient heat, and can trigger thermal protection or hardware damage if left
+        unaddressed.
     device_fan_state:
       name: Fan Status
-      desc: This metric reports the operational state of each cooling fan on the device.
-        A non-normal state (warning, critical, shutdown, or notFunctioning) indicates
-        a cooling fault that can quickly lead to overheating and should be investigated
-        immediately.
+      desc: This metric reports the operational state of each cooling fan on Dell
+        Force10 E-Series and S-Series switches. A non-normal state (warning, critical,
+        shutdown, or notFunctioning) indicates a cooling fault that can quickly lead
+        to overheating and should be investigated immediately.
     device_psu_state:
       name: Power Supply Status
       desc: This metric reports the operational state of each power supply unit on
-        the device. A non-normal state signals a power redundancy or hardware fault;
-        on devices with redundant PSUs a single failure may not cause an outage but
-        removes redundancy and must be remediated promptly.
+        Dell Force10 E-Series and S-Series switches. A non-normal state signals a
+        power redundancy or hardware fault; on devices with redundant PSUs a single
+        failure may not cause an outage but removes redundancy and must be remediated
+        promptly.
     device_fan_speed:
       name: Fan Speed
       desc: This metric reports the fan rotation speed (RPM) of the device, taken

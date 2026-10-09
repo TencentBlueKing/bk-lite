@@ -3,6 +3,20 @@
   "plugin": "Access ARRIS Cadant SNMP",
   "templates": [
     {
+      "metric_name": "device_cpu_usage",
+      "alert_name": "Card CPU usage high",
+      "algorithm": "Threshold",
+      "threshold": 85,
+      "level": "warning"
+    },
+    {
+      "metric_name": "device_memory_usage",
+      "alert_name": "Card heap memory usage high",
+      "algorithm": "Threshold",
+      "threshold": 85,
+      "level": "warning"
+    },
+    {
       "metric_name": "device_temperature_celsius",
       "alert_name": "Fan ambient temperature high",
       "algorithm": "Threshold",

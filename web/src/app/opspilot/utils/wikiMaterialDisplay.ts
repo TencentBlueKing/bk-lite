@@ -33,3 +33,15 @@ export function pickWikiMaterialBodyMarkdown(
   if (parsed) return parsedMarkdown || "";
   return (aiSummary || "").trim() ? aiSummary || "" : "";
 }
+
+/** 知识树「来源」只展示资料原文，不回退 AI 摘要。 */
+export function pickWikiMaterialSourceBody(
+  parsedMarkdown: string | undefined | null,
+  original: string | undefined | null,
+  textContent: string | undefined | null,
+): string {
+  const parsed = (parsedMarkdown || "").trim();
+  if (parsed) return parsedMarkdown || "";
+  const fallback = (original || textContent || "").trim();
+  return fallback;
+}

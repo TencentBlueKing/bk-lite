@@ -169,7 +169,7 @@ class ApprovalToolsMixin:
                 "display_hint": "text" if question_type == "text" else "auto",
             }
 
-            published = publish_owned_custom_event(config, "user_choice_request", choice_request_data)
+            published = await publish_owned_custom_event(config, "user_choice_request", choice_request_data)
             if not published:
                 try:
                     await adispatch_custom_event("user_choice_request", choice_request_data, config=config)
@@ -226,7 +226,7 @@ class ApprovalToolsMixin:
                 "selected": selected,
                 "source": source,
             }
-            if not publish_owned_custom_event(config, "user_choice_result", result_payload):
+            if not await publish_owned_custom_event(config, "user_choice_result", result_payload):
                 try:
                     await adispatch_custom_event("user_choice_result", result_payload, config=config)
                 except Exception:

@@ -1052,6 +1052,7 @@
         "instanceName": "实例名",
         "manageIp": "管理IP",
         "objectType": "对象类型",
+        "selectedAssetCount": "已选 {count} 项",
         "selectDeviceModels": "设备模型",
         "selectDeviceModelsPlaceholder": "请选择模型",
         "duplicateManageIp": "同一任务中管理 IP 不能重复：{ip}",
@@ -2006,6 +2007,8 @@
     "delete": "删除记录",
     "download": "下载文件",
     "download_errors": "下载错误报告",
+    "view_errors": "查看错误报告",
+    "errorsEmpty": "错误报告里没有可展示的内容",
     "deleteConfirm": "删除记录及文件？已导入的实例不会撤销。",
     "status": {
       "queued": "排队中",

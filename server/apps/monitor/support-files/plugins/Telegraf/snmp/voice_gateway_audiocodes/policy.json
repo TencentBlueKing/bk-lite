@@ -1,5 +1,81 @@
 {
   "object": "VoiceGateway",
   "plugin": "VoiceGateway AudioCodes SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "AudioCodes语音网关CPU使用率过高",
+      "alert_name": "语音网关${resource_name} CPU 使用率过高",
+      "description": "监控 AudioCodes 语音网关语音面 CPU 使用率，当持续高于阈值时触发告警，提示呼叫处理负载过高。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "AudioCodes语音网关内存使用率过高",
+      "alert_name": "语音网关${resource_name} 内存使用率过高",
+      "description": "监控 AudioCodes 语音网关语音面内存使用率，当超过阈值时触发告警，便于及时发现内存压力。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "AudioCodes语音网关温度过高",
+      "alert_name": "语音网关${resource_name} 板卡温度过高",
+      "description": "监控 AudioCodes 语音网关板卡温度（厂商建议不超过 60℃），当持续高于阈值时触发告警，提示散热或风道异常。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 55,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 50,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
 }

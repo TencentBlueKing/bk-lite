@@ -35,6 +35,7 @@ EXPECTED_MONITOR_NATS_HANDLER_NAMES = frozenset(
         "get_host_metric_range",
         "get_host_resource_snapshot",
         "get_host_resource_top",
+        "get_host_resource_top_by_time",
         "get_zombie_host_report",
         "get_monitor_instance_list",
         "get_monitor_statistics",

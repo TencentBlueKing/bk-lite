@@ -1,7 +1,6 @@
 Firewall Pulse Secure SNMP:
   name: Pulse Secure (Telegraf)
-  desc: SNMP monitoring template for Pulse Secure firewall. It reports system uptime,
-    CPU utilization, interface speed, and other key metrics (IANA PEN 12532).
+  desc: "SNMP monitoring template for Pulse Secure firewall. It reports uptime, CPU utilization, memory utilization, temperature, disk usage, interface traffic, swap usage, signed-in web users, and concurrent user licenses used, for Pulse/Ivanti Connect Secure, MAG/PSA (enterprise PEN 12532)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:
@@ -25,6 +24,9 @@ monitor_object_metric:
       name: Signed-In Web Users
       desc: Number of currently signed-in web users on the gateway. Tracking the active
         session count helps capacity planning and detecting abnormal connection spikes.
+    device_concurrent_users:
+      name: Concurrent User Licenses Used
+      desc: Number of concurrent user licenses currently used on this gateway node. Tracking it helps license and capacity planning.
     device_psu_state:
       name: Power Supply Status
       desc: Operational state of each power supply unit (enum). A non-normal state

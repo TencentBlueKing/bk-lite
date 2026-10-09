@@ -1,0 +1,81 @@
+{
+  "object": "Switch",
+  "plugin": "Switch ExaLINK Fusion SNMP",
+  "templates": [
+    {
+      "name": "ExaLINK交换机温度过高",
+      "alert_name": "交换机${resource_name} 传感器${metric__sensor_name} 温度过高",
+      "description": "监控 ExaLINK Fusion 交换机各机箱温度传感器，当持续高于阈值时触发告警，提示散热不良或环境过热。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 65,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 60,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "ExaLINK交换机风扇转速过低",
+      "alert_name": "交换机${resource_name} 风扇${metric__sensor_name} 转速过低",
+      "description": "监控 ExaLINK Fusion 交换机各风扇转速，当持续低于阈值时触发告警，提示风扇卡转或故障、设备面临过热风险。",
+      "metric_name": "device_fan_speed",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 500,
+          "method": "<"
+        },
+        {
+          "level": "error",
+          "value": 800,
+          "method": "<"
+        },
+        {
+          "level": "warning",
+          "value": 1000,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "min"
+    },
+    {
+      "name": "ExaLINK交换机电源温度过高",
+      "alert_name": "交换机${resource_name} 电源${metric__index} 温度过高",
+      "description": "监控 ExaLINK Fusion 交换机各电源模块温度，当持续高于阈值时触发告警，提示电源散热不良。",
+      "metric_name": "psu_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

@@ -20,6 +20,7 @@ import {
   type RequestErrorPresentation,
 } from '@/utils/requestErrorPresentation';
 import { showRequestErrorToast } from '@/utils/requestErrorToast';
+import { getStoredLocale } from '@/utils/userPreferences';
 import {
   getProxyTimeoutHeaderValue,
   PROXY_TIMEOUT_HEADER,
@@ -44,6 +45,8 @@ const setToken = (token: string | null) => {
 export interface RequestConfig extends AxiosRequestConfig {
   /** The caller renders a persistent inline error with recovery controls. */
   suppressErrorNotification?: boolean;
+  /** When responseType is blob, return { data, headers } instead of the raw Blob. */
+  blobMeta?: boolean;
 }
 
 /** Normalized request error that callers may map to a local error state. */
@@ -95,6 +98,9 @@ apiClient.interceptors.request.use(
     }
 
     config.headers.Authorization = `Bearer ${tokenRef.current}`;
+    if (typeof window !== 'undefined') {
+      config.headers.set('X-BK-Locale', getStoredLocale());
+    }
     const proxyTimeoutHeaderValue = getProxyTimeoutHeaderValue(config.timeout);
     if (proxyTimeoutHeaderValue) {
       config.headers.set(PROXY_TIMEOUT_HEADER, proxyTimeoutHeaderValue);
@@ -213,6 +219,9 @@ const useApiClient = () => {
       try {
         const response = await apiClient.post<T>(url, data, config);
         if (config?.responseType === "blob") {
+          if (config.blobMeta) {
+            return { data: response.data, headers: response.headers } as T;
+          }
           return response.data;
         }
         return handleResponse(response);

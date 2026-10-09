@@ -1,8 +1,6 @@
 Transmission DragonWave SNMP:
   name: DragonWave (Telegraf)
-  desc: SNMP monitoring template for DragonWave transmission device. It reports radio
-    temperature, optional MWR system temperature, per-port inbound traffic rate, per-port
-    outbound traffic rate, and system uptime (IANA PEN 7262).
+  desc: "SNMP monitoring template for DragonWave transmission device. It reports uptime, temperature, and interface traffic, for Horizon Compact Plus and Harmony MWR (enterprise PEN 7262)."
 monitor_object:
   Transmission: Transmission
 monitor_object_type:

@@ -38,6 +38,7 @@ from apps.operation_analysis.schemas.import_export_schema import (
     detect_db_id_references,
     validate_date_range_params,
 )
+from apps.operation_analysis.services.user_messages import oa_message
 
 
 class PrecheckService:
@@ -75,7 +76,12 @@ class PrecheckService:
             errors.append(
                 {
                     "code": ImportExportErrorCode.YAML_TOO_LARGE,
-                    "message": f"YAML大小 {content_size} 字节，超过 {YAML_MAX_SIZE_BYTES} 字节限制",
+                    "message": oa_message(
+                        "messages.yaml_too_large",
+                        "YAML大小 {content_size} 字节，超过 {limit} 字节限制",
+                        content_size=content_size,
+                        limit=YAML_MAX_SIZE_BYTES,
+                    ),
                 }
             )
         return errors
@@ -90,7 +96,7 @@ class PrecheckService:
                 errors.append(
                     {
                         "code": ImportExportErrorCode.YAML_PARSE_ERROR,
-                        "message": "YAML内容必须是对象结构",
+                        "message": oa_message("messages.yaml_must_be_object", "YAML内容必须是对象结构"),
                     }
                 )
                 return None, errors
@@ -99,7 +105,7 @@ class PrecheckService:
             errors.append(
                 {
                     "code": ImportExportErrorCode.YAML_PARSE_ERROR,
-                    "message": f"YAML语法错误: {str(e)}",
+                    "message": oa_message("messages.yaml_syntax_error", "YAML语法错误: {detail}", detail=str(e)),
                 }
             )
             return None, errors
@@ -115,21 +121,21 @@ class PrecheckService:
 
             # 常见错误类型的友好提示
             if error_type == "dict_type":
-                friendly_msg = f"字段 '{loc}' 应为对象(dict)类型"
+                friendly_msg = oa_message("messages.field_must_be_dict", "字段 '{loc}' 应为对象(dict)类型", loc=loc)
             elif error_type == "list_type":
-                friendly_msg = f"字段 '{loc}' 应为列表(list)类型"
+                friendly_msg = oa_message("messages.field_must_be_list", "字段 '{loc}' 应为列表(list)类型", loc=loc)
             elif error_type == "string_type":
-                friendly_msg = f"字段 '{loc}' 应为字符串类型"
+                friendly_msg = oa_message("messages.field_must_be_string", "字段 '{loc}' 应为字符串类型", loc=loc)
             elif error_type == "int_type":
-                friendly_msg = f"字段 '{loc}' 应为整数类型"
+                friendly_msg = oa_message("messages.field_must_be_int", "字段 '{loc}' 应为整数类型", loc=loc)
             elif error_type == "bool_type":
-                friendly_msg = f"字段 '{loc}' 应为布尔类型"
+                friendly_msg = oa_message("messages.field_must_be_bool", "字段 '{loc}' 应为布尔类型", loc=loc)
             elif error_type == "missing":
-                friendly_msg = f"缺少必填字段 '{loc}'"
+                friendly_msg = oa_message("messages.field_required", "缺少必填字段 '{loc}'", loc=loc)
             elif "value_error" in error_type:
-                friendly_msg = f"字段 '{loc}' 值无效: {msg}"
+                friendly_msg = oa_message("messages.field_invalid", "字段 '{loc}' 值无效: {detail}", loc=loc, detail=msg)
             else:
-                friendly_msg = f"字段 '{loc}' 校验失败: {msg}"
+                friendly_msg = oa_message("messages.field_validation_failed", "字段 '{loc}' 校验失败: {detail}", loc=loc, detail=msg)
 
             error_messages.append(friendly_msg)
 
@@ -146,7 +152,11 @@ class PrecheckService:
             errors.append(
                 {
                     "code": ImportExportErrorCode.YAML_SCHEMA_INVALID,
-                    "message": f"YAML结构校验失败: {PrecheckService._format_pydantic_error(e)}",
+                    "message": oa_message(
+                        "messages.yaml_schema_failed",
+                        "YAML结构校验失败: {detail}",
+                        detail=PrecheckService._format_pydantic_error(e),
+                    ),
                 }
             )
             return None, errors
@@ -168,7 +178,12 @@ class PrecheckService:
             errors.append(
                 {
                     "code": ImportExportErrorCode.IMPORT_OBJECT_LIMIT_EXCEEDED,
-                    "message": f"对象总数 {counts['total']} 超过 {IMPORT_OBJECT_LIMIT} 限制",
+                    "message": oa_message(
+                        "messages.object_count_exceeded",
+                        "对象总数 {total} 超过 {limit} 限制",
+                        total=counts["total"],
+                        limit=IMPORT_OBJECT_LIMIT,
+                    ),
                 }
             )
         return errors
@@ -187,7 +202,13 @@ class PrecheckService:
                 errors.append(
                     {
                         "code": ImportExportErrorCode.YAML_OBJECT_COUNTS_MISMATCH,
-                        "message": f"meta.object_counts.{section_name} = {declared}，但实际对象数为 {actual}",
+                        "message": oa_message(
+                            "messages.object_count_mismatch",
+                            "meta.object_counts.{section} = {declared}，但实际对象数为 {actual}",
+                            section=section_name,
+                            declared=declared,
+                            actual=actual,
+                        ),
                         "object_type": object_type,
                     }
                 )
@@ -201,7 +222,7 @@ class PrecheckService:
             return [
                 {
                     "code": ImportExportErrorCode.YAML_EMPTY_IMPORT,
-                    "message": "YAML中没有可导入对象",
+                    "message": oa_message("messages.yaml_no_objects", "YAML中没有可导入对象"),
                 }
             ]
         return []
@@ -215,7 +236,12 @@ class PrecheckService:
             errors.append(
                 {
                     "code": ImportExportErrorCode.YAML_ID_REFERENCE_FORBIDDEN,
-                    "message": f"检测到非法DB ID引用: {v['path']} = {v['value']}",
+                    "message": oa_message(
+                        "messages.illegal_db_id",
+                        "检测到非法DB ID引用: {path} = {value}",
+                        path=v["path"],
+                        value=v["value"],
+                    ),
                     "details": v,
                 }
             )
@@ -233,7 +259,12 @@ class PrecheckService:
                     warnings.append(
                         {
                             "code": ImportExportWarningCode.SECRET_PLACEHOLDER,
-                            "message": f"命名空间 '{ns.name}' 的 {field} 字段需要补充",
+                            "message": oa_message(
+                                "messages.namespace_field_required",
+                                "命名空间 '{name}' 的 {field} 字段需要补充",
+                                name=ns.name,
+                                field=field,
+                            ),
                             "object_key": ns.key,
                             "field": field,
                         }
@@ -244,7 +275,11 @@ class PrecheckService:
                 warnings.append(
                     {
                         "code": ImportExportWarningCode.SECRET_PLACEHOLDER,
-                        "message": f"网络拓扑 '{network_topology.name}' 的 token 字段需要补充",
+                        "message": oa_message(
+                            "messages.network_topology_token_required",
+                            "网络拓扑 '{name}' 的 token 字段需要补充",
+                            name=network_topology.name,
+                        ),
                         "object_key": network_topology.key,
                         "field": "token",
                     }
@@ -271,7 +306,12 @@ class PrecheckService:
                     warnings.append(
                         {
                             "code": ImportExportWarningCode.SECRET_PLACEHOLDER,
-                            "message": f"数据源 '{datasource.name}' 的 {field_path} 字段需要补充",
+                            "message": oa_message(
+                                "messages.datasource_field_required",
+                                "数据源 '{name}' 的 {field_path} 字段需要补充",
+                                name=datasource.name,
+                                field_path=field_path,
+                            ),
                             "object_key": datasource.key,
                             "field": field_path,
                         }
@@ -293,7 +333,7 @@ class PrecheckService:
             warnings.extend(
                 collect_migration_warnings_for_document(
                     object_key=datasource.key,
-                    object_name=f"数据源 '{datasource.name}'",
+                    object_name=oa_message("messages.datasource_named", "数据源 '{name}'", name=datasource.name),
                     params=getattr(datasource, "params", None),
                 )
             )
@@ -333,7 +373,11 @@ class PrecheckService:
             warnings.append(
                 {
                     "code": ImportExportWarningCode.EXCEL_NEEDS_UPLOAD,
-                    "message": f"Excel 数据源 '{datasource.name}' 需重新上传原文件后方可运行",
+                    "message": oa_message(
+                        "messages.excel_reupload",
+                        "Excel 数据源 '{name}' 需重新上传原文件后方可运行",
+                        name=datasource.name,
+                    ),
                     "object_key": datasource.key,
                     "field": "query_config.imported_items",
                 }
@@ -356,7 +400,12 @@ class PrecheckService:
                     errors.append(
                         {
                             "code": ImportExportErrorCode.IMPORT_DEPENDENCY_MISSING,
-                            "message": f"数据源 '{ds.name}' 依赖的命名空间 '{ns_key}' 未在YAML中声明",
+                            "message": oa_message(
+                                "messages.datasource_namespace_missing",
+                                "数据源 '{name}' 依赖的命名空间 '{namespace}' 未在YAML中声明",
+                                name=ds.name,
+                                namespace=ns_key,
+                            ),
                             "object_key": ds.key,
                             "missing_dependency": ns_key,
                         }
@@ -379,7 +428,13 @@ class PrecheckService:
                         errors.append(
                             {
                                 "code": ImportExportErrorCode.IMPORT_DEPENDENCY_MISSING,
-                                "message": f"{obj_type.value} '{canvas.name}' 依赖的数据源 '{ds_key}' 未在YAML中声明",
+                                "message": oa_message(
+                                    "messages.canvas_datasource_missing",
+                                    "{object_type} '{name}' 依赖的数据源 '{datasource}' 未在YAML中声明",
+                                    object_type=obj_type.value,
+                                    name=canvas.name,
+                                    datasource=ds_key,
+                                ),
                                 "object_key": canvas.key,
                                 "missing_dependency": ds_key,
                             }
@@ -390,7 +445,13 @@ class PrecheckService:
                         errors.append(
                             {
                                 "code": ImportExportErrorCode.IMPORT_DEPENDENCY_MISSING,
-                                "message": f"{obj_type.value} '{canvas.name}' 依赖的命名空间 '{ns_key}' 未在YAML中声明",
+                                "message": oa_message(
+                                    "messages.canvas_namespace_missing",
+                                    "{object_type} '{name}' 依赖的命名空间 '{namespace}' 未在YAML中声明",
+                                    object_type=obj_type.value,
+                                    name=canvas.name,
+                                    namespace=ns_key,
+                                ),
                                 "object_key": canvas.key,
                                 "missing_dependency": ns_key,
                             }
@@ -405,7 +466,7 @@ class PrecheckService:
         return [
             {
                 "code": ImportExportErrorCode.YAML_SCHEMA_INVALID,
-                "message": LEGACY_RAW_MONITOR_QUERY_ERROR,
+                "message": oa_message("messages.import_legacy_raw_monitor", LEGACY_RAW_MONITOR_QUERY_ERROR),
                 "object_key": item.key,
                 "object_type": ObjectType.DATASOURCE.value,
             }
@@ -586,7 +647,7 @@ class PrecheckService:
             all_errors.append(
                 {
                     "code": ImportExportErrorCode.IMPORT_TARGET_DIRECTORY_REQUIRED,
-                    "message": "YAML包含画布对象，必须指定目标目录",
+                    "message": oa_message("messages.canvas_directory_required", "YAML包含画布对象，必须指定目标目录"),
                 }
             )
 

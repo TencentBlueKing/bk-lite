@@ -589,7 +589,7 @@ export const buildWidgetSubmitConfig = ({
     applyValueFormatFields(result, values);
   }
 
-  if (chartType === 'line' || chartType === 'bar' || chartType === 'pie') {
+  if (chartType === 'pie') {
     const dimensionField = trimOptionalField(values.dimensionField);
     const valueField = trimOptionalField(values.valueField);
     if (Boolean(dimensionField) !== Boolean(valueField) && !forPreview) {

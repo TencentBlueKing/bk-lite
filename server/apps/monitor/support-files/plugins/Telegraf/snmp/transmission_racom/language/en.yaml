@@ -1,9 +1,6 @@
 Transmission RACOM SNMP:
   name: RACOM (Telegraf)
-  desc: SNMP monitoring template for RACOM RAy3 transmission device. It reports CPU
-    utilization, memory utilization, modem temperature, optional radio temperature,
-    optional supply voltage, optional received signal strength, and system uptime
-    (IANA PEN 33555).
+  desc: "SNMP monitoring template for RACOM transmission device. It reports uptime, CPU utilization, memory utilization, temperature, interface traffic, and voltage, for RAy3 (enterprise PEN 33555)."
 monitor_object:
   Transmission: Transmission
 monitor_object_type:

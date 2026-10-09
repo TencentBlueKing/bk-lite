@@ -148,7 +148,7 @@ def create_rebuild_record(kb, operator=""):
         knowledge_base=kb,
         trigger="rebuild",
         operator=operator,
-        inputs={"schema_len": len(kb.schema_md or "")},
+        inputs={"introduction_len": len(kb.introduction or "")},
         stage="queued",
         status="running",
     )
@@ -158,7 +158,7 @@ def _mark_rebuild_generating(build, kb, operator):
     build.operator = operator or build.operator
     build.inputs = {
         **(build.inputs or {}),
-        "schema_len": len(kb.schema_md or ""),
+        "introduction_len": len(kb.introduction or ""),
         "source_trace": {"materials": []},
     }
     build.stage = "generating"

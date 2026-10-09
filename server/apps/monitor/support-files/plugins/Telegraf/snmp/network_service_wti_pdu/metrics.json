@@ -1,0 +1,217 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_wti_pdu",
+  "plugin": "NetworkService WTI PDU SNMP",
+  "plugin_desc": "SNMP monitoring template for WTI VMR / NPS / RPC / NBB series PDUs (WTI-POWER-MIB, enterprise PEN 2634). It reports uptime, unit temperature, per-branch current, voltage and power, per-outlet current and power, and interface traffic.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='network_service', collect_type='snmp_wti_pdu'}) by (instance_id)",
+  "name": "NetworkService",
+  "icon": "mm-network_service_网络服务",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='network_service'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "pdu_temperature_celsius",
+    "pdu_branch_current_amps",
+    "pdu_branch_power_watts"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Environment",
+      "name": "pdu_temperature_celsius",
+      "query": "pdu_temperature_celsius{instance_type='network_service', __$labels__}",
+      "display_name": "PDU Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Environment unit (environmentUnitIndex 0-3)"
+        },
+        {
+          "name": "unit_name",
+          "description": "Environment unit name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Temperature of each WTI power unit in degrees Celsius, from environmentUnitTemperature (WTI-POWER-MIB, 1.3.6.1.4.1.2634.3.200.10.1.3). Zero and out-of-range readings are dropped."
+    },
+    {
+      "metric_group": "Power",
+      "name": "pdu_branch_current_amps",
+      "query": "pdu_branch_current_amps{instance_type='network_service', __$labels__}",
+      "display_name": "Branch Current (A)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Environment unit (environmentUnitIndex 0-3)"
+        },
+        {
+          "name": "unit_name",
+          "description": "Environment unit name"
+        },
+        {
+          "name": "branch",
+          "description": "Power branch (A, B, C or D)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current drawn on each power branch (A-D) of each WTI power unit in amperes, from environmentUnitCurrentA-D (1.3.6.1.4.1.2634.3.200.10.1.4 / .7 / .10 / .13, tenths of amps, divided by 10)."
+    },
+    {
+      "metric_group": "Power",
+      "name": "pdu_branch_voltage_volts",
+      "query": "pdu_branch_voltage_volts{instance_type='network_service', __$labels__}",
+      "display_name": "Branch Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Environment unit (environmentUnitIndex 0-3)"
+        },
+        {
+          "name": "unit_name",
+          "description": "Environment unit name"
+        },
+        {
+          "name": "branch",
+          "description": "Power branch (A, B, C or D)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Voltage of each power branch in volts, from environmentUnitVoltageA-D (1.3.6.1.4.1.2634.3.200.10.1.5 / .8 / .11 / .14). Branches reporting 0 V are treated as not present and skipped."
+    },
+    {
+      "metric_group": "Power",
+      "name": "pdu_branch_power_watts",
+      "query": "pdu_branch_power_watts{instance_type='network_service', __$labels__}",
+      "display_name": "Branch Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Environment unit (environmentUnitIndex 0-3)"
+        },
+        {
+          "name": "unit_name",
+          "description": "Environment unit name"
+        },
+        {
+          "name": "branch",
+          "description": "Power branch (A, B, C or D)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Power used by each power branch in watts, from environmentUnitPowerA-D (1.3.6.1.4.1.2634.3.200.10.1.6 / .9 / .12 / .15)."
+    },
+    {
+      "metric_group": "Power",
+      "name": "pdu_outlet_current_amps",
+      "query": "pdu_outlet_current_amps{instance_type='network_service', __$labels__}",
+      "display_name": "Outlet Current (A)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Outlet index (plugIndex)"
+        },
+        {
+          "name": "outlet",
+          "description": "Outlet name (plugName)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current drawn by each outlet in amperes, from plugCurrent (1.3.6.1.4.1.2634.3.100.200.1.7, tenths of amps, divided by 10). Only models with outlet metering report it."
+    },
+    {
+      "metric_group": "Power",
+      "name": "pdu_outlet_power_watts",
+      "query": "pdu_outlet_power_watts{instance_type='network_service', __$labels__}",
+      "display_name": "Outlet Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Outlet index (plugIndex)"
+        },
+        {
+          "name": "outlet",
+          "description": "Outlet name (plugName)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Power used by each outlet in watts, from plugPower (1.3.6.1.4.1.2634.3.100.200.1.8). Only models with outlet metering report it."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of inbound bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of outbound bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

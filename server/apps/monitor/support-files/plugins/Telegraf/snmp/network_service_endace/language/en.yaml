@@ -1,8 +1,6 @@
 NetworkService Endace SNMP:
   name: Endace (Telegraf)
-  desc: SNMP monitoring template for Endace network visibility appliance. It reports
-    system uptime, CPU utilization, CPU load, per-mount disk free percent, RAID
-    status, per-port inbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Endace network service device. It reports uptime, CPU utilization, and interface traffic, for EndaceProbe (enterprise PEN 18418)."
 monitor_object:
   NetworkService: NetworkService
 monitor_object_type:

@@ -1,6 +1,6 @@
 Firewall Kerio Control SNMP:
   name: Kerio Control（Telegraf）
-  desc: 面向 Kerio Control 防火墙的 SNMP 监控模板,可采集 运行时长、接口速率、入向错误包等主要指标。
+  desc: 面向 Kerio Control 防火墙的 SNMP 监控模板，可采集运行时长、会话/连接数、接口流量，适用于 Kerio Control UTM（企业号 PEN 17028）。
 monitor_object:
   Firewall: 防火墙
 monitor_object_type:

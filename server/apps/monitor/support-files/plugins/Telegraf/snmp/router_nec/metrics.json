@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_nec",
   "plugin": "Router NEC SNMP",
-  "plugin_desc": "NEC UNIVERGE IX-series router SNMP collection (NEC private enterprise MIB, IANA PEN 119). Beyond standard IF-MIB interface metrics, it collects NEC private scalar OIDs for device health: 1-minute CPU utilization, memory utilization, and chassis temperature — all reported directly. Fan and power-supply states are exposed only as per-unit LLD status rows with vendor-specific codes that the SNMP input cannot normalize, so those are N/A. Supported brands/models — NEC UNIVERGE IX series routers (IX2000/IX3000 and other UNIVERGE IX platforms; enterprise 119).",
+  "plugin_desc": "SNMP monitoring template for NEC router. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic, for UNIVERGE IX series (enterprise PEN 119).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_nec'}) by (instance_id)",
   "name": "Router",
@@ -47,7 +47,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "CPU utilization (1-minute) of the NEC UNIVERGE IX router (NEC private MIB)."
+      "description": "This metric reports the one-minute system utilization of the NEC UNIVERGE IX router (picoSchedRtUtl1Min scalar) as a 0-100 percentage. Sustained high usage indicates heavy forwarding or control-plane load."
     },
     {
       "metric_group": "Router",
@@ -60,7 +60,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Memory utilization of the NEC UNIVERGE IX router (NEC private MIB), reported directly."
+      "description": "This metric reports the current heap memory utilization of the NEC UNIVERGE IX router (picoHeapUtil scalar) as a 0-100 percentage. Sustained high usage may indicate memory pressure or leaks."
     },
     {
       "metric_group": "Status",
@@ -235,7 +235,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Chassis temperature of the NEC UNIVERGE IX router in Celsius (NEC private MIB, scalar)."
+      "description": "This metric reports the internal temperature of the NEC UNIVERGE IX router in degrees Celsius (picoCelsius scalar). High temperatures can indicate fan failure or airflow obstruction."
     },
     {
       "metric_group": "Traffic",

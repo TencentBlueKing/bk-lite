@@ -9,6 +9,7 @@ import { ImagePreview } from './ImagePreview';
 import { ToolCallDisplay, type ToolCall } from './ToolCallDisplay';
 import { ThinkingPanel } from './ThinkingPanel';
 import { WC } from '../chrome';
+import { useTranslator } from '../useTranslator';
 
 const markdownPlugins = {
   remarkPlugins: [remarkGfm],
@@ -67,6 +68,7 @@ const CodeBlock = ({ inline, className, children, style, ...props }: CodeBlockPr
 
 export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
   ({ message, isLastBotMessage, fillWidth, onRegenerate, onCopy, onDelete }) => {
+    const t = useTranslator();
     const isBot = message.sender === 'bot';
     const [showActions, setShowActions] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -116,10 +118,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
                   <div
                     key={`img-${index}`}
                     role="status"
-                    aria-label="图片已发送（格式未在浏览器解码预览）"
+                    aria-label={t('image.sentNotPreviewable', '图片已发送（格式未在浏览器解码预览）')}
                   >
                     <p className="rounded-md px-2 py-1 text-xs text-[var(--color-text-3,#86909c)]">
-                      图片已发送（格式未在浏览器解码预览）
+                      {t('image.sentNotPreviewable', '图片已发送（格式未在浏览器解码预览）')}
                     </p>
                   </div>
                 );
@@ -259,10 +261,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         </div>
         <ConfirmDialog
           isOpen={showDeleteConfirm}
-          title="是否删除该条消息？"
-          message="删除后，聊天记录不可恢复，对话内的文件也将被彻底删除。"
-          confirmText="删除"
-          cancelText="取消"
+          title={t('message.deleteConfirmTitle', '是否删除该条消息？')}
+          message={t('message.deleteConfirmBody', '删除后，聊天记录不可恢复，对话内的文件也将被彻底删除。')}
+          confirmText={t('message.delete', '删除')}
+          cancelText={t('common.cancel', '取消')}
           onConfirm={handleDelete}
           onCancel={() => setShowDeleteConfirm(false)}
         />

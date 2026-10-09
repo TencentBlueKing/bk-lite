@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from apps.log.constants.victoriametrics import VictoriaLogsConstants
+from apps.log.utils.locale_text import serializer_text
 
 
 class QueryTimeWindowSerializer(serializers.Serializer):
@@ -95,5 +96,5 @@ class LogTopStatsSerializer(QueryTimeWindowSerializer):
     def validate(self, attrs):
         attrs = super().validate(attrs)
         if attrs["attr"] in self.NON_AGGREGATABLE_META_FIELDS:
-            raise serializers.ValidationError({"attr": "该字段不支持 TopN 统计"})
+            raise serializers.ValidationError({"attr": serializer_text(self, "error.topn_unsupported")})
         return attrs

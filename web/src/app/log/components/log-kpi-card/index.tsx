@@ -5,6 +5,7 @@ import ChartSurface from '@/components/chart-surface';
 import useChartColors, {
   type ChartColors,
 } from '@/hooks/useChartColors';
+import { useTranslation } from '@/utils/i18n';
 
 const trimTrailingZeros = (value: string) =>
   value.replace(/\.0+$|(?<=\.\d*[1-9])0+$/g, '');
@@ -188,6 +189,7 @@ const LogKpiCard: React.FC<LogKpiCardProps> = ({
   config,
   calculateMetric
 }) => {
+  const { t } = useTranslation();
   const colors = useChartColors();
   const [valueFontSize, setValueFontSize] = useState(36);
   const accentColor = resolveAccentColor(config?.color, colors);
@@ -287,7 +289,7 @@ const LogKpiCard: React.FC<LogKpiCardProps> = ({
             onFontSizeChange={setValueFontSize}
           />
           <div className="mt-[10px] flex flex-wrap items-center gap-1 text-xs">
-            <span style={{ color: colors.textTertiary }}>较上一周期</span>
+            <span style={{ color: colors.textTertiary }}>{t('log.analysis.comparedWithPrevious', '较上一周期')}</span>
             {metricResult.changePercent !== null ? (
               <span
                 className="font-medium"

@@ -75,8 +75,8 @@ const CustomTooltip: React.FC<CustomToolTipProps> = ({
           item.value != null && Number.isFinite(Number(item.value))
       )
       .sort((a, b) => {
-      return Number(b.value) - Number(a.value);
-    });
+        return Number(b.value) - Number(a.value);
+      });
 
     if (!sortedPayload.length && !isNoDataSnapshot) {
       return null;

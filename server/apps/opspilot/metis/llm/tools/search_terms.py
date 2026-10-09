@@ -46,6 +46,23 @@ _PEEL_DROP = ("拒绝", "太慢")
 
 _ASCII_TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{1,}")
 _CJK_RUN = re.compile(r"[\u4e00-\u9fff]+")
+# 只剥整段页面块；导语里的「<current_page>」字样不能当地标。
+_CURRENT_PAGE_RE = re.compile(r"(?im)^<current_page>\s*$[\s\S]*?</current_page>")
+_FOCUSED_QUESTION_RE = re.compile(r"本轮用户问题是「([^」]+)」")
+# skill_channel 注入的 page_context 导语/约束，切词时必须丢掉，否则会污染检索词。
+_PAGE_CONTEXT_NOISE_MARKERS = (
+    "以下是用户当前正在查看的页面快照",
+    "只根据本轮",
+    "时间范围、横轴起止与 KPI",
+    "若缺少查询对象",
+    "禁止沿用对话历史",
+    "禁止回答、复述或续写历史",
+    "截图上可能没有标题",
+    "问使用率或容量时优先用 KPI",
+    "问 Top 或排行时按图表列出",
+    "用户本轮在询问凭据或密钥",
+    "图表说明:",
+)
 
 
 def _gateway_refusal(text: str) -> bool:
@@ -110,9 +127,31 @@ def _synonyms(text: str) -> list[str]:
     return extra
 
 
+def user_question_for_search(text: str) -> str:
+    """从可能含 page_context 的拼装消息里抽出真正问句，避免页面文案污染词表。"""
+    body = str(text or "").strip()
+    if not body:
+        return ""
+    focused = _FOCUSED_QUESTION_RE.search(body)
+    if focused and focused.group(1).strip():
+        return focused.group(1).strip()
+    body = _CURRENT_PAGE_RE.sub(" ", body)
+    paragraphs = re.split(r"\n\s*\n", body)
+    kept: list[str] = []
+    for para in paragraphs:
+        chunk = para.strip()
+        if not chunk:
+            continue
+        if any(marker in chunk for marker in _PAGE_CONTEXT_NOISE_MARKERS):
+            continue
+        kept.append(chunk)
+    cleaned = "\n".join(kept).strip()
+    return cleaned or str(text or "").strip()
+
+
 def build_search_terms(user_message: str) -> list[str]:
     """问句原词 + 固定同义词。没有可用原词时返回空列表。"""
-    text = str(user_message or "").strip()
+    text = user_question_for_search(user_message)
     if not text:
         return []
     ascii_terms = _ASCII_TOKEN.findall(text)
@@ -138,10 +177,13 @@ def user_message_from_config(config: Any) -> str:
     if isinstance(config, dict):
         configurable = config.get("configurable") or {}
     graph_request = configurable.get("graph_request")
-    messages = [
+    candidates = [
         getattr(graph_request, "graph_user_message", "") if graph_request is not None else "",
         getattr(graph_request, "user_message", "") if graph_request is not None else "",
         configurable.get("graph_user_message") or "",
         configurable.get("user_message") or "",
     ]
-    return " ".join(message for message in messages if isinstance(message, str) and message.strip())
+    for message in candidates:
+        if isinstance(message, str) and message.strip():
+            return user_question_for_search(message)
+    return ""

@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_fiberhome_olt",
   "plugin": "Access FiberHome OLT SNMP",
-  "plugin_desc": "FiberHome OLT access-device SNMP collection under enterprise PEN 5875 (GEPON-OLT-COMMON-MIB). Beyond the shared Access SNMP floor for MIB-II uptime and IF-MIB interface traffic, it collects board CPU utilization (cardCpuUtil) and board memory utilization (cardMemUtil) from cardInfoTable. Both leaves are precision-100 integers, so dividing the raw value by 100 yields the percentage. This child binds only the cardInfoTable tree and does not also bind the older manager-card tree; some OLT series do not expose these columns, and the metrics appear only when the device answers this path. PON, ONU and optical service tables are not promoted to shared device-health metrics. Supported brands/models — FiberHome OLT and GPON access devices.",
+  "plugin_desc": "SNMP monitoring template for FiberHome OLT access device. It reports uptime, CPU utilization, memory utilization, and interface traffic, for FiberHome OLT and GPON access devices (enterprise PEN 5875).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='access', collect_type='snmp_fiberhome_olt'}) by (instance_id)",
   "name": "Access",

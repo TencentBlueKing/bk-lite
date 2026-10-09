@@ -1,6 +1,6 @@
 Switch Korenix SNMP:
   name: Korenix（Telegraf）
-  desc: 面向 Korenix JetNet 工业以太网交换机的 SNMP 监控模板，可采集运行时长、接口流量、双路电源 LED 状态以及 SFP DDM 温度、发送光功率与接收光功率（企业号 PEN 24062）。私有 MIB 无整机 CPU/内存使用率，故不采集。
+  desc: 面向 Korenix 交换机的 SNMP 监控模板，可采集运行时长、温度、光模块、接口流量（企业号 PEN 24062）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:

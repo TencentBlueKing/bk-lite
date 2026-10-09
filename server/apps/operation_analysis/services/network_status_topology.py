@@ -4,6 +4,7 @@ from rest_framework.exceptions import ValidationError
 
 from apps.cmdb.constants.constants import NETWORK_STATUS_TOPOLOGY_DEFAULT_NODES, NETWORK_STATUS_TOPOLOGY_MAX_NODES
 from apps.operation_analysis.common.get_nats_source_data import build_nats_user_info
+from apps.operation_analysis.services.user_messages import oa_message
 from apps.rpc.cmdb import CMDB
 
 
@@ -21,14 +22,16 @@ class NetworkStatusTopologyService:
     ) -> dict[str, Any]:
         limit = int(node_limit or NETWORK_STATUS_TOPOLOGY_DEFAULT_NODES)
         if limit < 1 or limit > NETWORK_STATUS_TOPOLOGY_MAX_NODES:
-            raise ValidationError({"node_limit": f"node_limit 必须在 1 到 {NETWORK_STATUS_TOPOLOGY_MAX_NODES} 之间"})
+            raise ValidationError(
+                {"node_limit": oa_message("messages.nst_node_limit", "node_limit 必须在 1 到 {limit} 之间", limit=NETWORK_STATUS_TOPOLOGY_MAX_NODES)}
+            )
         unique = [str(value) for value in inst_uuids if str(value).strip()]
         if not unique or len(unique) > limit:
-            raise ValidationError({"inst_uuids": cls.CLOSED_SET_ERROR})
+            raise ValidationError({"inst_uuids": oa_message("messages.nst_closed_set", cls.CLOSED_SET_ERROR)})
 
         if depth is not None:
             if int(depth) != 1 or len(unique) != 1:
-                raise ValidationError({"depth": "一跳展开只接受单个 inst_uuid"})
+                raise ValidationError({"depth": oa_message("messages.nst_one_hop_single", "一跳展开只接受单个 inst_uuid")})
             topology = cls._get_cmdb_one_hop(request, unique[0], limit)
             return {
                 "center_id": unique[0],
@@ -53,7 +56,7 @@ class NetworkStatusTopologyService:
             user_info=build_nats_user_info(request),
         )
         if not isinstance(result, dict) or result.get("result") is not True:
-            raise ValidationError({"inst_uuids": cls.CLOSED_SET_ERROR})
+            raise ValidationError({"inst_uuids": oa_message("messages.nst_closed_set", cls.CLOSED_SET_ERROR)})
         data = result.get("data") if isinstance(result.get("data"), dict) else {}
         return {
             "nodes": data.get("nodes") or [],
@@ -70,7 +73,7 @@ class NetworkStatusTopologyService:
             user_info=build_nats_user_info(request),
         )
         if not isinstance(result, dict) or result.get("result") is not True:
-            raise ValidationError({"inst_uuids": cls.ONE_HOP_ERROR})
+            raise ValidationError({"inst_uuids": oa_message("messages.nst_one_hop", cls.ONE_HOP_ERROR)})
         data = result.get("data") if isinstance(result.get("data"), dict) else {}
         return {
             "nodes": data.get("nodes") or [],

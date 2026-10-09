@@ -1,6 +1,6 @@
 Switch Red Lion SNMP:
   name: Red Lion（Telegraf）
-  desc: 面向 Red Lion 交换机的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 28381）。
+  desc: 面向 Red Lion 交换机的 SNMP 监控模板，可采集运行时长、电源状态、接口流量，适用于 N-Tron 工业以太网交换机（企业号 PEN 28381）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:

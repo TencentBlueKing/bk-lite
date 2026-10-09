@@ -1,9 +1,6 @@
 Switch Arista SNMP:
   name: Arista (Telegraf)
-  desc: SNMP monitoring template for Arista EOS switches. Device health comes
-    from HOST-RESOURCES, ENTITY-SENSOR-MIB and ENTITY-STATE-MIB; optical DDM
-    uses ENTITY-SENSOR descr matching; interface traffic uses the built-in
-    IF-MIB floor.
+  desc: "SNMP monitoring template for Arista switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, optical modules, and interface traffic, for EOS data-center switches (based on standard MIBs)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -157,16 +154,22 @@ monitor_object_metric:
         protection or hardware damage if left unaddressed.
     device_fan_state:
       name: Fan Status
-      desc: This metric reports the operational state of each cooling fan on the device.
-        A non-normal state (warning, critical, shutdown, or notFunctioning) indicates
-        a cooling fault that can quickly lead to overheating and should be investigated
-        immediately.
+      desc: Operational state of each Arista EOS cooling fan (entStateOper), normalized
+        to 1=normal / 2=abnormal / 3=Unknown. enabled(3) maps to 1; disabled(2) and
+        testing(4) map to 2; unknown(1) maps to 3 (gray, no alert). Only value 2 alerts.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     device_psu_state:
       name: Power Supply Status
-      desc: This metric reports the operational state of each power supply unit on
-        the device. A non-normal state signals a power redundancy or hardware fault;
-        on devices with redundant PSUs a single failure may not cause an outage but
-        removes redundancy and must be remediated promptly.
+      desc: Operational state of each Arista EOS power supply (entStateOper), normalized
+        to 1=normal / 2=abnormal / 3=Unknown. enabled(3) maps to 1; disabled(2) and
+        testing(4) map to 2; unknown(1) maps to 3 (gray, no alert). Only value 2 alerts.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     device_fan_speed:
       name: Fan Speed
       desc: This metric reports the fan rotation speed (RPM) of the device, taken

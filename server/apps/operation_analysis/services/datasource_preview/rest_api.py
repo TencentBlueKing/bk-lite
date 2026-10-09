@@ -7,6 +7,7 @@ from apps.operation_analysis.services.datasource_preview.base import BaseConnect
 from apps.operation_analysis.services.datasource_preview.schema import infer_fields
 from apps.operation_analysis.services.transform.errors import TransformError
 from apps.operation_analysis.services.transform.executor import get_transform_executor
+from apps.operation_analysis.services.user_messages import oa_message
 
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 RESPONSE_CHUNK_BYTES = 64 * 1024
@@ -20,7 +21,9 @@ def read_limited_json(response) -> Any:
     except (TypeError, ValueError):
         declared_length = 0
     if declared_length > MAX_RESPONSE_BYTES:
-        raise ConnectorError("REST API 响应体过大", code="rest_response_too_large", status_code=400)
+        raise ConnectorError(
+            oa_message("messages.preview_rest_response_too_large", "REST API 响应体过大"), code="rest_response_too_large", status_code=400
+        )
 
     content = bytearray()
     for chunk in response.iter_content(chunk_size=RESPONSE_CHUNK_BYTES):
@@ -28,7 +31,9 @@ def read_limited_json(response) -> Any:
             continue
         content.extend(chunk)
         if len(content) > MAX_RESPONSE_BYTES:
-            raise ConnectorError("REST API 响应体过大", code="rest_response_too_large", status_code=400)
+            raise ConnectorError(
+                oa_message("messages.preview_rest_response_too_large", "REST API 响应体过大"), code="rest_response_too_large", status_code=400
+            )
     return json.loads(content)
 
 
@@ -41,7 +46,11 @@ def extract_response_path(payload: Any, response_path: str | None) -> Any:
         if isinstance(current, dict) and part in current:
             current = current[part]
             continue
-        raise ConnectorError(f"响应路径不存在: {response_path}", code="rest_response_path_missing", status_code=400)
+        raise ConnectorError(
+            oa_message("messages.preview_rest_path_missing", "响应路径不存在: {path}", path=response_path),
+            code="rest_response_path_missing",
+            status_code=400,
+        )
     return current
 
 
@@ -53,7 +62,11 @@ def normalize_rest_items(payload: Any) -> tuple[list[dict[str, Any]], int]:
         items = payload["items"]
         count = int(payload.get("count") or len(items))
     else:
-        raise ConnectorError("REST API 响应必须是对象数组或包含 items 数组的对象", code="rest_response_not_list", status_code=400)
+        raise ConnectorError(
+            oa_message("messages.preview_rest_response_shape", "REST API 响应必须是对象数组或包含 items 数组的对象"),
+            code="rest_response_not_list",
+            status_code=400,
+        )
 
     normalized = []
     for item in items:
@@ -92,10 +105,14 @@ def maybe_apply_transform(
         return items
     language = (config.get("language") or "python").lower()
     if language != "python":
-        raise ConnectorError("仅支持 Python 转换", code="transform_language_unsupported", status_code=400)
+        raise ConnectorError(
+            oa_message("messages.preview_transform_python_only", "仅支持 Python 转换"), code="transform_language_unsupported", status_code=400
+        )
     script = config.get("script")
     if not isinstance(script, str) or not script.strip():
-        raise ConnectorError("已启用转换但脚本为空", code="transform_script_required", status_code=400)
+        raise ConnectorError(
+            oa_message("messages.preview_transform_script_required", "已启用转换但脚本为空"), code="transform_script_required", status_code=400
+        )
 
     executor = transform_executor or get_transform_executor()
     try:
@@ -115,11 +132,13 @@ class RestApiConnectorExecutor(BaseConnectorExecutor):
         """测连只验证可达与鉴权，不要求响应体可预览为 JSON 行集。"""
         url = connection_config.get("url")
         if not url:
-            raise ConnectorError("REST API URL 不能为空", code="rest_url_required", status_code=400)
+            raise ConnectorError(oa_message("messages.preview_rest_url_required", "REST API URL 不能为空"), code="rest_url_required", status_code=400)
 
         method = str(connection_config.get("method") or "GET").upper()
         if method not in {"GET", "POST"}:
-            raise ConnectorError("REST API 测连仅支持 GET/POST", code="rest_method_not_supported", status_code=400)
+            raise ConnectorError(
+                oa_message("messages.preview_rest_test_method", "REST API 测连仅支持 GET/POST"), code="rest_method_not_supported", status_code=400
+            )
 
         timeout = min(int(connection_config.get("timeout") or 10), 30)
         headers = connection_config.get("headers") if isinstance(connection_config.get("headers"), dict) else {}
@@ -140,13 +159,13 @@ class RestApiConnectorExecutor(BaseConnectorExecutor):
             raise
         except (SSRFError, SafeRequestsError) as exc:
             raise ConnectorError(
-                f"REST API 请求不安全或被拒绝: {exc}",
+                oa_message("messages.preview_rest_request_blocked", "REST API 请求不安全或被拒绝: {detail}", detail=exc),
                 code="rest_request_blocked",
                 status_code=400,
             ) from exc
         except Exception as exc:
             raise ConnectorError(
-                f"REST API 请求失败: {exc}",
+                oa_message("messages.preview_rest_request_failed", "REST API 请求失败: {detail}", detail=exc),
                 code="rest_request_failed",
                 status_code=502,
             ) from exc
@@ -162,11 +181,13 @@ class RestApiConnectorExecutor(BaseConnectorExecutor):
     ) -> PreviewResult:
         url = connection_config.get("url")
         if not url:
-            raise ConnectorError("REST API URL 不能为空", code="rest_url_required", status_code=400)
+            raise ConnectorError(oa_message("messages.preview_rest_url_required", "REST API URL 不能为空"), code="rest_url_required", status_code=400)
 
         method = str(connection_config.get("method") or "GET").upper()
         if method not in {"GET", "POST"}:
-            raise ConnectorError("REST API 预览仅支持 GET/POST", code="rest_method_not_supported", status_code=400)
+            raise ConnectorError(
+                oa_message("messages.preview_rest_preview_method", "REST API 预览仅支持 GET/POST"), code="rest_method_not_supported", status_code=400
+            )
 
         timeout = min(int(connection_config.get("timeout") or 10), 30)
         headers = connection_config.get("headers") if isinstance(connection_config.get("headers"), dict) else {}
@@ -191,15 +212,23 @@ class RestApiConnectorExecutor(BaseConnectorExecutor):
         except ConnectorError:
             raise
         except (SSRFError, SafeRequestsError) as exc:
-            raise ConnectorError(f"REST API 请求不安全或被拒绝: {exc}", code="rest_request_blocked", status_code=400) from exc
+            raise ConnectorError(
+                oa_message("messages.preview_rest_request_blocked", "REST API 请求不安全或被拒绝: {detail}", detail=exc),
+                code="rest_request_blocked",
+                status_code=400,
+            ) from exc
         except Exception as exc:
-            raise ConnectorError(f"REST API 请求失败: {exc}", code="rest_request_failed", status_code=502)
+            raise ConnectorError(
+                oa_message("messages.preview_rest_request_failed", "REST API 请求失败: {detail}", detail=exc),
+                code="rest_request_failed",
+                status_code=502,
+            )
 
         selected = extract_response_path(payload, query_config.get("response_path"))
         items, count = normalize_rest_items(selected)
         if len(items) > MAX_TRANSFORM_ROWS:
             raise ConnectorError(
-                f"REST 行数超过 {MAX_TRANSFORM_ROWS}，拒绝执行",
+                oa_message("messages.preview_rest_rows_too_many", "REST 行数超过 {limit}，拒绝执行", limit=MAX_TRANSFORM_ROWS),
                 code="rest_rows_too_many",
                 status_code=400,
             )

@@ -9,12 +9,9 @@ import {
   Select,
   Spin,
   Tabs,
-  Tooltip,
   message,
 } from "antd";
 import {
-  AimOutlined,
-  EditOutlined,
   InfoCircleOutlined,
   LoadingOutlined,
   WarningOutlined,
@@ -23,7 +20,6 @@ import { useRouter } from "next/navigation";
 import { useIntl } from "react-intl";
 import { useTranslation } from "@/utils/i18n";
 import GroupTreeSelect from "@/components/group-tree-select";
-import MarkdownRenderer from "@/components/markdown";
 import { useWikiApi } from "@/app/opspilot/api/wiki";
 import { LlmModel } from "@/app/opspilot/types/skill";
 import { Model } from "@/app/opspilot/types/provider";
@@ -33,7 +29,7 @@ import {
   renderModelOptionLabel,
 } from "@/app/opspilot/utils/modelOption";
 
-type SectionKey = "basic" | "purpose" | "danger";
+type SectionKey = "basic" | "danger";
 
 interface TitleAliasFormValue {
   canonical?: string;
@@ -42,7 +38,6 @@ interface TitleAliasFormValue {
 
 const HELP_KEY = {
   basic: "wiki.helpBasicDesc",
-  purpose: "wiki.helpPurposeDesc",
   danger: "wiki.helpDangerDesc",
 } as const;
 
@@ -125,7 +120,7 @@ const normalizeTitleAliasesForSave = (rows: TitleAliasFormValue[] = []) => {
   }));
 };
 
-// 设置工作区:基础信息 / 用途与结构说明(Markdown 生成知识目录) / 危险区。
+// 设置工作区:基础信息 / 危险区。简介必填，用途与结构已下线。
 const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { t } = useTranslation();
   const intl = useIntl();
@@ -150,9 +145,6 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const [rebuildConfirmOpen, setRebuildConfirmOpen] = useState(false);
   const [hasRunningBuild, setHasRunningBuild] = useState(false);
   const [active, setActive] = useState<SectionKey>("basic");
-  const [purposeEditing, setPurposeEditing] = useState(false);
-  const [purposePreview, setPurposePreview] = useState("");
-  const [schemaPreview, setSchemaPreview] = useState("");
   // 保存原始 KB:PUT 为全量更新,被移除的设置字段需回填原值,避免被重置
   const kbRef = useRef<WikiKnowledgeBase | null>(null);
 
@@ -174,9 +166,6 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         fetchEmbedProviders().catch(() => []),
       ]);
       kbRef.current = kb;
-      setPurposePreview(kb.purpose_md || "");
-      setSchemaPreview(kb.schema_md || "");
-      setPurposeEditing(false);
       setLlmModels(models || []);
       setEmbedProviders(embeds || []);
       await refreshRunningBuildState();
@@ -187,8 +176,6 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         embed_provider: kb.embed_provider,
         vision_model: kb.vision_model,
         team: kb.team,
-        purpose_md: kb.purpose_md,
-        schema_md: kb.schema_md,
         title_aliases: normalizeTitleAliasesForForm(
           kb.generation_rules?.title_aliases ??
             kb.generation_rules?.titleAliases ??
@@ -214,14 +201,6 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     return () => window.clearInterval(timer);
   }, [hasRunningBuild, refreshRunningBuildState]);
 
-  const handleCancelPurposeEdit = () => {
-    form.setFieldsValue({
-      purpose_md: purposePreview,
-      schema_md: schemaPreview,
-    });
-    setPurposeEditing(false);
-  };
-
   const handleSave = async () => {
     const v = await form.validateFields();
     setSaving(true);
@@ -233,10 +212,6 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       const prev = kbRef.current;
       const generationRules = { ...(prev?.generation_rules ?? {}) };
       const titleAliases = normalizeTitleAliasesForSave(v.title_aliases);
-      const purposeMd =
-        typeof v.purpose_md === "string" ? v.purpose_md : purposePreview;
-      const schemaMd =
-        typeof v.schema_md === "string" ? v.schema_md : schemaPreview;
       delete generationRules.title_aliases;
       delete generationRules.titleAliases;
       delete generationRules.aliases;
@@ -250,8 +225,6 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         embed_provider: v.embed_provider ?? null,
         vision_model: v.vision_model,
         team: v.team,
-        purpose_md: purposeMd,
-        schema_md: schemaMd,
         generation_language: userLang,
         // 以下字段已从设置页移除,PUT 全量更新时回填原值避免被清空
         generation_rules: generationRules,
@@ -259,9 +232,6 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         risk_rules: prev?.risk_rules ?? {},
       });
       message.success(t("wiki.saveSuccess"));
-      setPurposePreview(purposeMd);
-      setSchemaPreview(schemaMd);
-      setPurposeEditing(false);
     } finally {
       setSaving(false);
     }
@@ -375,8 +345,15 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           className="md:col-span-2"
           label={t("wiki.introduction")}
           name="introduction"
+          rules={[
+            {
+              required: true,
+              whitespace: true,
+              message: t("wiki.introductionRequired"),
+            },
+          ]}
         >
-          <Input.TextArea rows={3} />
+          <Input.TextArea rows={4} />
         </Form.Item>
         <Form.Item
           className="md:col-span-2"
@@ -394,83 +371,6 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           />
         </Form.Item>
       </div>
-    </div>
-  );
-
-  const renderMarkdownCard = (title: string, content: string) => (
-    <div className="flex min-h-0 min-w-0 flex-col">
-      <div className="mb-2 shrink-0 text-sm font-medium text-[var(--color-text-1)]">
-        {title}
-      </div>
-      <div className="h-[min(520px,calc(100vh-280px))] min-h-[280px] overflow-y-auto rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-4 py-3">
-        {content ? (
-          <div className="max-w-full overflow-x-auto text-sm">
-            <MarkdownRenderer content={content} />
-          </div>
-        ) : (
-          <span className="text-[var(--color-text-4)]">--</span>
-        )}
-      </div>
-    </div>
-  );
-
-  const purposePane = (
-    <div>
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <p className="mb-0 mt-0 text-[13px] leading-6 text-[var(--color-text-3)]">
-          {t(HELP_KEY.purpose)}
-        </p>
-        {purposeEditing ? (
-          <div className="flex shrink-0 items-center gap-2">
-            <Button size="small" onClick={handleCancelPurposeEdit}>
-              {t("common.cancel")}
-            </Button>
-            <Button
-              type="primary"
-              size="small"
-              loading={saving}
-              onClick={handleSave}
-            >
-              {t("common.save")}
-            </Button>
-          </div>
-        ) : (
-          <Tooltip title={t("common.edit")}>
-            <Button
-              type="default"
-              size="small"
-              icon={<EditOutlined />}
-              aria-label={t("common.edit")}
-              onClick={() => setPurposeEditing(true)}
-            >
-              {t("common.edit")}
-            </Button>
-          </Tooltip>
-        )}
-      </div>
-      {purposeEditing ? (
-        <div className="grid grid-cols-1 gap-x-6 lg:grid-cols-2">
-          <Form.Item label={t("wiki.purpose")} name="purpose_md">
-            <Input.TextArea
-              className="!h-[min(520px,calc(100vh-280px))] min-h-[280px] overflow-y-auto"
-              autoSize={false}
-              rows={16}
-            />
-          </Form.Item>
-          <Form.Item label={t("wiki.schema")} name="schema_md">
-            <Input.TextArea
-              className="!h-[min(520px,calc(100vh-280px))] min-h-[280px] overflow-y-auto"
-              autoSize={false}
-              rows={16}
-            />
-          </Form.Item>
-        </div>
-      ) : (
-        <div className="grid min-h-0 grid-cols-1 gap-6 lg:grid-cols-2">
-          {renderMarkdownCard(t("wiki.purpose"), purposePreview)}
-          {renderMarkdownCard(t("wiki.schema"), schemaPreview)}
-        </div>
-      )}
     </div>
   );
 
@@ -578,17 +478,6 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
               children: basicPane,
             },
             {
-              key: "purpose",
-              label: (
-                <span>
-                  <AimOutlined className="mr-1.5" />
-                  {t("wiki.settingsPurposeSchema")}
-                </span>
-              ),
-              forceRender: true,
-              children: purposePane,
-            },
-            {
               key: "danger",
               label: (
                 <span className="text-[var(--color-fail)]">
@@ -601,7 +490,7 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             },
           ]}
         />
-        {active !== "danger" && !(active === "purpose" && purposeEditing) && (
+        {active !== "danger" && (
           <div className="flex items-center gap-2 pt-2">
             <Button type="primary" loading={saving} onClick={handleSave}>
               {t("common.save")}

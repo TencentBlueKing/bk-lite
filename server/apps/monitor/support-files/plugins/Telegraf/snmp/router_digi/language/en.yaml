@@ -1,8 +1,6 @@
 Router Digi SNMP:
   name: Digi (Telegraf)
-  desc: SNMP monitoring template for Digi Connect/ConnectPort routers (DIGI-DEVICE-INFO).
-    It reports CPU utilization, memory total/free/used in bytes with derived usage,
-    and built-in IF-MIB interface traffic. Chassis temperature is not exposed.
+  desc: "SNMP monitoring template for Digi router. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 332)."
 monitor_object:
   Router: Router
 monitor_object_type:

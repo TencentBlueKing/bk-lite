@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_opengear",
   "plugin": "ConsoleServer Opengear SNMP",
-  "plugin_desc": "Opengear 控制台服务器专用 SNMP 采集模板。采集标准 IF-MIB 接口流量(64 位 ifHCInOctets/ifHCOutOctets,自动展开各接口)与设备运行时长(uptime),作为该控制台服务器对象的基础监控能力。Opengear 私有健康指标多为 per-row 索引表(行级过滤),telegraf 采集端暂不支持,后续按官方 MIB 补充。适用品牌型号——Opengear 控制台服务器系列。",
+  "plugin_desc": "SNMP monitoring template for Opengear console server. It reports uptime, CPU utilization, memory, and interface traffic (based on standard MIBs and UCD-SNMP-MIB).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='console_server', collect_type='snmp_opengear'}) by (instance_id)",
   "name": "ConsoleServer",
@@ -14,6 +14,8 @@
     "instance_id"
   ],
   "supplementary_indicators": [
+    "device_cpu_usage",
+    "device_memory_usage",
     "device_total_incoming_traffic",
     "device_total_outgoing_traffic"
   ],
@@ -30,6 +32,58 @@
         "instance_id"
       ],
       "description": "This metric indicates the uptime of the wireless device since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "max(snmp_device_cpu_usage{instance_type='console_server', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization of the Opengear console server over the last minute, computed as 100 - ssCpuIdle (UCD-SNMP-MIB); falls back to ssCpuUser + ssCpuSystem when idle is not reported."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "max(snmp_device_memory_total{instance_type='console_server', __$labels__}) by (instance_id)",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total physical memory of the Opengear console server in bytes (UCD-SNMP-MIB memTotalReal, kB × 1024)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_free",
+      "query": "max(snmp_device_memory_free{instance_type='console_server', __$labels__}) by (instance_id)",
+      "display_name": "Memory Available",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Available physical memory of the Opengear console server in bytes (UCD-SNMP-MIB memAvailReal, kB × 1024)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "max(snmp_device_memory_usage{instance_type='console_server', __$labels__}) by (instance_id)",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of the Opengear console server, computed as (memTotalReal - memAvailReal) / memTotalReal × 100."
     },
     {
       "metric_group": "Traffic",

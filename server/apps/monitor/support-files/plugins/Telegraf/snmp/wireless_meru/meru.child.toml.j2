@@ -1,0 +1,102 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_meru"
+        config_type = "meru"
+        brand = "meru"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- CPU 标量（mwSystemResource，顶层 field 带 .0）----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.15983.1.1.3.1.14.1.0"
+        name = "cpu_user"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.15983.1.1.3.1.14.2.0"
+        name = "cpu_system"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.15983.1.1.3.1.14.3.0"
+        name = "cpu_idle"
+    # ---- 内存标量（Unsigned32 KB，顶层 field 带 .0）----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.15983.1.1.3.1.14.4.0"
+        name = "memory_total_kb"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.15983.1.1.3.1.14.5.0"
+        name = "memory_used_kb"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.15983.1.1.3.1.14.6.0"
+        name = "memory_free_kb"
+# ---- 温度/风扇/电源：资源组无环境传感器，不采。----
+# ---- CPU：优先 100−idle；否则 User+System。内存 KB×1024 转字节，利用率 used/total×100。原始辅助字段不入库。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    idle = f.pop("cpu_idle", None)
+    user = f.pop("cpu_user", None)
+    system = f.pop("cpu_system", None)
+    total_kb = f.pop("memory_total_kb", None)
+    used_kb = f.pop("memory_used_kb", None)
+    free_kb = f.pop("memory_free_kb", None)
+    cpu = None
+    if idle != None and idle >= 0 and idle <= 100:
+        cpu = 100 - idle
+    elif user != None and system != None and user >= 0 and user <= 100 and system >= 0 and system <= 100:
+        summed = user + system
+        if summed <= 100:
+            cpu = summed
+    if cpu != None and cpu >= 0 and cpu <= 100:
+        f["device_cpu_usage"] = cpu
+    sentinels = [65535, 65534, -1, 2147483647, -2147483648, 4294967295]
+    if total_kb != None and used_kb != None and total_kb > 0 and used_kb >= 0 and used_kb <= total_kb:
+        drop_mem = False
+        for s in sentinels:
+            if total_kb == s or used_kb == s:
+                drop_mem = True
+        if not drop_mem:
+            total = int(total_kb) * 1024
+            used = int(used_kb) * 1024
+            f["device_memory_total"] = total
+            f["device_memory_used"] = used
+            if free_kb != None and free_kb >= 0 and free_kb <= total_kb:
+                skip_free = False
+                for s in sentinels:
+                    if free_kb == s:
+                        skip_free = True
+                if not skip_free:
+                    f["device_memory_free"] = int(free_kb) * 1024
+            else:
+                f["device_memory_free"] = total - used
+            f["device_memory_usage"] = int(used * 1000.0 / total + 0.5) / 10.0
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["meru"]

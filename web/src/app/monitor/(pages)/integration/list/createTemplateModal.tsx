@@ -2,14 +2,20 @@
 
 import React, {
   forwardRef,
+  useEffect,
   useImperativeHandle,
   useMemo,
   useState
 } from 'react';
-import { Button, Form, Input, Radio, Select, Alert } from 'antd';
+import { Button, Form, Input, Radio, Select, Alert, message } from 'antd';
 import OperateModal from '@/components/operate-modal';
 import { ModalRef, ObjectItem } from '@/app/monitor/types';
 import { useTranslation } from '@/utils/i18n';
+
+const OS_MONITOR_OBJECT_TYPE = 'OS';
+
+const isOsMonitorObjectType = (type: unknown) =>
+  String(type || '').trim().toUpperCase() === OS_MONITOR_OBJECT_TYPE;
 
 interface CreateTemplateModalProps {
   objects: ObjectItem[];
@@ -33,6 +39,8 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
     >(undefined);
     const templateType = Form.useWatch('template_type', form);
 
+    const isScriptTemplate = templateType === 'script';
+
     const objectTypeOptions = useMemo(() => {
       const typeMap = new Map<string, string>();
 
@@ -44,22 +52,61 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
 
       return Array.from(typeMap.entries()).map(([value, label]) => ({
         value,
-        label
+        label,
+        disabled: isScriptTemplate && !isOsMonitorObjectType(value)
       }));
-    }, [objects]);
+    }, [objects, isScriptTemplate]);
 
     const monitorObjectOptions = useMemo(
       () =>
         objects
-          .filter(
-            (item) => !selectedObjectType || item.type === selectedObjectType
-          )
+          .filter((item) => {
+            if (isScriptTemplate) {
+              return isOsMonitorObjectType(item.type);
+            }
+            return !selectedObjectType || item.type === selectedObjectType;
+          })
           .map((item) => ({
             value: item.id,
             label: item.display_name || item.name
           })),
-      [objects, selectedObjectType]
+      [objects, selectedObjectType, isScriptTemplate]
     );
+
+    const lockScriptMonitorObject = () => {
+      if (mode !== 'add') {
+        return false;
+      }
+      let clearedObject = false;
+      const currentType = form.getFieldValue('monitor_object_type');
+      if (!isOsMonitorObjectType(currentType)) {
+        form.setFieldValue('monitor_object_type', OS_MONITOR_OBJECT_TYPE);
+        setSelectedObjectType(OS_MONITOR_OBJECT_TYPE);
+      }
+      const currentObject = form.getFieldValue('monitor_object');
+      const objectOk = objects.some(
+        (item) => item.id === currentObject && isOsMonitorObjectType(item.type)
+      );
+      if (currentObject && !objectOk) {
+        form.setFieldValue('monitor_object', undefined);
+        clearedObject = true;
+      }
+      return clearedObject;
+    };
+
+    useEffect(() => {
+      if (!visible || !isScriptTemplate) {
+        return;
+      }
+      const clearedObject = lockScriptMonitorObject();
+      void form
+        .validateFields(
+          clearedObject
+            ? ['monitor_object_type', 'monitor_object']
+            : ['monitor_object_type']
+        )
+        .catch(() => undefined);
+    }, [visible, isScriptTemplate, mode, objects, form]);
 
     useImperativeHandle(ref, () => ({
       showModal: ({ form: initialForm = {}, type }) => {
@@ -86,7 +133,9 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
               ? 'pull'
               : initialForm?.template_type === 'snmp'
                 ? 'snmp'
-                : 'api'
+                : initialForm?.template_type === 'script'
+                  ? 'script'
+                  : 'api'
         });
       }
     }));
@@ -97,6 +146,9 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
     };
 
     const handleSubmit = async () => {
+      if (loading) {
+        return;
+      }
       const values = await form.validateFields();
       setLoading(true);
       try {
@@ -113,6 +165,10 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
           templateId
         );
         setVisible(false);
+      } catch (error: any) {
+        message.error(
+          error?.message || t('common.operationFailed')
+        );
       } finally {
         setLoading(false);
       }
@@ -130,6 +186,7 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
               className="mr-[10px]"
               type="primary"
               loading={loading}
+              disabled={loading}
               onClick={handleSubmit}
             >
               {t('common.confirm')}
@@ -140,11 +197,80 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
           </div>
         }
       >
-        <Form form={form} layout="vertical">
+        <Form
+          form={form}
+          layout="vertical"
+          onValuesChange={(changed) => {
+            if (changed.template_type !== 'script') {
+              return;
+            }
+            const clearedObject = lockScriptMonitorObject();
+            void form
+              .validateFields(
+                clearedObject
+                  ? ['monitor_object_type', 'monitor_object']
+                  : ['monitor_object_type']
+              )
+              .catch(() => undefined);
+          }}
+        >
+          <Form.Item
+            label={t('monitor.integrations.templateType')}
+            name="template_type"
+          >
+            <Radio.Group>
+              <Radio value="api">API</Radio>
+              <Radio value="pull">PULL</Radio>
+              <Radio value="snmp">SNMP</Radio>
+              <Radio value="script">{t('monitor.integrations.script')}</Radio>
+            </Radio.Group>
+          </Form.Item>
+          {templateType === 'pull' && (
+            <Alert
+              message={t('monitor.integrations.pullTemplateHint')}
+              type="warning"
+              showIcon
+              className="mb-[16px]"
+            />
+          )}
+          {templateType === 'snmp' && (
+            <Alert
+              message={t('monitor.integrations.snmpTemplateHint')}
+              type="info"
+              showIcon
+              className="mb-[16px]"
+            />
+          )}
+          {isScriptTemplate && (
+            <Alert
+              message={t('monitor.integrations.scriptTemplateHint')}
+              type="info"
+              showIcon
+              className="mb-[16px]"
+            />
+          )}
           <Form.Item
             label={t('monitor.integrations.monitorObjectType')}
             name="monitor_object_type"
-            rules={[{ required: true, message: t('common.required') }]}
+            dependencies={['template_type']}
+            rules={[
+              { required: true, message: t('common.required') },
+              {
+                validator: async (_, value) => {
+                  if (
+                    form.getFieldValue('template_type') === 'script' &&
+                    !isOsMonitorObjectType(value)
+                  ) {
+                    throw new Error(
+                      t(
+                        'monitor.integrations.scriptTemplateOsOnly',
+                        '仅操作系统可创建脚本采集模板'
+                      )
+                    );
+                  }
+                }
+              }
+            ]}
           >
             <Select
               disabled={mode === 'edit'}
@@ -178,32 +304,6 @@ const CreateTemplateModal = forwardRef<ModalRef, CreateTemplateModalProps>(
           >
             <Input disabled={mode === 'edit'} />
           </Form.Item>
-          <Form.Item
-            label={t('monitor.integrations.templateType')}
-            name="template_type"
-          >
-            <Radio.Group>
-              <Radio value="api">API</Radio>
-              <Radio value="pull">PULL</Radio>
-              <Radio value="snmp">SNMP</Radio>
-            </Radio.Group>
-          </Form.Item>
-          {templateType === 'pull' && (
-            <Alert
-              message={t('monitor.integrations.pullTemplateHint')}
-              type="warning"
-              showIcon
-              className="mb-[16px]"
-            />
-          )}
-          {templateType === 'snmp' && (
-            <Alert
-              message={t('monitor.integrations.snmpTemplateHint')}
-              type="info"
-              showIcon
-              className="mb-[16px]"
-            />
-          )}
           <Form.Item
             label={t('monitor.integrations.templateDescription')}
             name="description"

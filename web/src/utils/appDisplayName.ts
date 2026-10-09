@@ -25,6 +25,7 @@ const BUILTIN_APP_IDS = new Set([
   'patch',
   'apm',
   'playground',
+  'workflow-orchestration',
 ]);
 
 const isBuiltinApp = (app: AppDisplaySource): app is AppDisplaySource & { name: string } =>

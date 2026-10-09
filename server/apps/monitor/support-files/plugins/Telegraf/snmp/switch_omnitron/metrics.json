@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_omnitron",
   "plugin": "Switch Omnitron SNMP",
-  "plugin_desc": "Omnitron iConverter SNMP collection (OMNITRON-EXT-MIB, IANA PEN 7342). Interface traffic is supplied by the shared Switch SNMP IF-MIB floor. Per-module health comes from ostModuleStatusTable, indexed by ostModuleIndex (CCSS chassis and slot). CPU utilization (ostSnmpCpuUtilization) is Unsigned32 milli-percent and is divided by 1000 to a 0-100 percentage. RAM used (ostSnmpRamUsed) is kbytes where 1 indicates 1000 bytes and is published as memory used bytes. Flash used (ostSnmpFlashUsed) is optional and uses the same kbytes-to-bytes scale. The table does not expose RAM total or free, so memory utilization percent is not derived. Temperature, fan and power-supply sensors are not published in this table and are not collected. Supported brands/models — Omnitron iConverter management modules and industrial Ethernet media converters.",
+  "plugin_desc": "SNMP monitoring template for Omnitron switches. It reports uptime, CPU utilization, memory used, flash used, module temperature, fan status and speed, power supply status, and interface traffic, for iConverter and ION/IONMM (enterprise PEN 7342).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_omnitron'}) by (instance_id)",
   "name": "Switch",
@@ -16,7 +16,8 @@
   "supplementary_indicators": [
     "snmp_uptime",
     "device_cpu_usage",
-    "device_memory_used"
+    "device_memory_used",
+    "device_temperature_celsius"
   ],
   "metrics": [
     {
@@ -72,6 +73,94 @@
         "instance_id"
       ],
       "description": "Per-module flash memory currently used on the Omnitron iConverter management module (OMNITRON-EXT-MIB ostSnmpFlashUsed, optional). The device reports kbytes where 1 indicates 1000 bytes; the query multiplies by 1000 so this metric is in bytes. Dimension index is ostModuleIndex (CCSS). Some modules omit this column."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Module index (chassis.slot)"
+        },
+        {
+          "name": "sensor",
+          "description": "Sensor (module / cpu)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-module temperature of the Omnitron chassis in degrees Celsius: sensor=module is the module internal ambient temperature (OMNITRON-MIB ostEnvironmentalTemperature), sensor=cpu is the CPU ambient temperature (cpuTemperature). A reading of 0 means the module cannot report temperature and is skipped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "device_fan_state{instance_type='switch', __$labels__}",
+      "display_name": "Fan State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Module index (chassis.slot)"
+        },
+        {
+          "name": "fan",
+          "description": "Fan (fan1-fan3)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-module fan status (OMNITRON-MIB ostEnvironmentalFan1-3Status), normalized so installedPowered(3) = 1 and installedNotPowered(2) = 2; fans reported as notApplicable or notInstalled are skipped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_speed",
+      "query": "device_fan_speed{instance_type='switch', __$labels__}",
+      "display_name": "Fan Speed",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Module index (chassis.slot)"
+        },
+        {
+          "name": "fan",
+          "description": "Fan (fan1-fan3)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-module fan speed in RPM (OMNITRON-MIB ostEnvironmentalFan1-3Speed), reported only for installed fans."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='switch', __$labels__}",
+      "display_name": "PSU State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "Module index (chassis.slot)"
+        },
+        {
+          "name": "psu",
+          "description": "Power supply (ps1 / ps2)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Per-module power supply status (OMNITRON-MIB ostEnvironmentalPs1Status / Ps2Status), normalized so installedPowered(3) = 1 and installedNotPowered(2) = 2; supplies reported as notApplicable or notInstalled are skipped."
     },
     {
       "metric_group": "Base",

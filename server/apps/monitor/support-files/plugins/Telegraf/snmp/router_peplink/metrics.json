@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_peplink",
   "plugin": "Router Peplink SNMP",
-  "plugin_desc": "Peplink and Pepwave Balance, MAX and Edge router SNMP collection (enterprise PEN 23695). Collects device CPU utilization as a 0-100 percent (deviceCpuLoad) and memory used/total in kilobytes converted to bytes (deviceMemoryUsage and deviceTotalMemory). Pepwave devices share the same enterprise tree. Interface traffic is supplied by the shared Router SNMP IF-MIB floor.",
+  "plugin_desc": "SNMP monitoring template for Peplink router. It reports uptime, CPU utilization, memory utilization, WAN/cellular signal strength in dBm, and interface traffic (enterprise PEN 23695).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_peplink'}) by (instance_id)",
   "name": "Router",
@@ -16,7 +16,8 @@
   "supplementary_indicators": [
     "snmp_uptime",
     "device_cpu_usage",
-    "device_memory_usage"
+    "device_memory_usage",
+    "peplink_wan_signal_dbm"
   ],
   "metrics": [
     {
@@ -83,6 +84,28 @@
         "instance_id"
       ],
       "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    },
+    {
+      "metric_group": "WAN",
+      "name": "peplink_wan_signal_dbm",
+      "query": "peplink_wan_signal_dbm{instance_type='router', __$labels__}",
+      "display_name": "WAN Signal Strength (dBm)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "wan_name",
+          "description": "WAN name"
+        },
+        {
+          "name": "index",
+          "description": "WAN index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "WAN or cellular received signal strength of the Peplink or Pepwave router (wanSignal) in dBm. Values outside the usable radio range (-150..0 dBm) are dropped."
     }
   ]
 }

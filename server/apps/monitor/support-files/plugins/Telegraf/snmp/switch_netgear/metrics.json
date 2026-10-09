@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_netgear",
   "plugin": "Switch Netgear SNMP",
-  "plugin_desc": "Netgear (FASTPATH)-specific SNMP collection for switches. In addition to standard IF-MIB interface metrics, it collects Netgear FASTPATH-BOXSERVICES private OIDs for device health: CPU utilization, system memory (total/free), temperature sensors, fan and power-supply status. Memory utilization is computed as (total - free) / total; fan and power-supply states are natively 1=normal. Supported brands/models — NETGEAR smart / managed switches (GS/M series, etc.).",
+  "plugin_desc": "SNMP monitoring template for Netgear switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic (enterprise PEN 4526).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_netgear'}) by (instance_id)",
   "name": "Switch",
@@ -22,7 +22,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='switch', __$labels__}",
+      "query": "snmp_device_cpu_usage{instance_type='switch', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -30,12 +30,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the CPU utilization of the Netgear (FASTPATH) device control plane, normalized to a 0-100 percentage. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
+      "description": "This metric reports the CPU utilization of the Netgear (FASTPATH) device control plane as a 0-100 percentage. The SNMP object is a DisplayString (5/60/300 Secs text); Telegraf parses the 60-second (or 5-second) window and skips the sample when parsing fails instead of reporting 0. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
     },
     {
       "metric_group": "Memory",
       "name": "device_memory_free",
-      "query": "device_memory_free{instance_type='switch', __$labels__}",
+      "query": "snmp_device_memory_free{instance_type='switch', __$labels__} * 1024",
       "display_name": "Memory Free",
       "data_type": "Number",
       "unit": "bytes",
@@ -43,12 +43,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the number of free bytes available in the Netgear (FASTPATH) system memory. Together with the total size it determines overall memory utilization; a persistently low free value indicates memory pressure."
+      "description": "This metric reports the number of free bytes in the Netgear (FASTPATH) system memory (agentSwitchCpuProcessMemFree, a scalar GET with instance .0, reported in KBytes and scaled to bytes). Together with the total size it determines overall memory utilization; a persistently low free value indicates memory pressure."
     },
     {
       "metric_group": "Memory",
       "name": "device_memory_total",
-      "query": "device_memory_total{instance_type='switch', __$labels__}",
+      "query": "snmp_device_memory_total{instance_type='switch', __$labels__} * 1024",
       "display_name": "Memory Total",
       "data_type": "Number",
       "unit": "bytes",
@@ -56,12 +56,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the total size in bytes of the Netgear (FASTPATH) system memory. Together with the free bytes it determines overall memory utilization."
+      "description": "This metric reports the total size in bytes of the Netgear (FASTPATH) system memory (agentSwitchCpuProcessMemAvailable, a scalar GET with instance .0, reported in KBytes and scaled to bytes). Together with the free bytes it determines overall memory utilization."
     },
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "(sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) - sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) / sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100",
+      "query": "(sum(snmp_device_memory_total{instance_type='switch', __$labels__}) by (instance_id) - sum(snmp_device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) / sum(snmp_device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -105,7 +105,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the operational state of each Netgear (FASTPATH) cooling fan (boxServicesFanItemState), where 1 means operational/normal and any other value indicates an abnormal/fault state. A non-normal state indicates a cooling fault that can quickly lead to overheating and should be investigated immediately."
+      "description": "This metric reports the operational state of each Netgear (FASTPATH) cooling fan (boxServicesFanItemState). Native code 2 (operational) is remapped to 1 (normal); any other native code including 1 (notpresent) is remapped to 2 (abnormal). A non-normal state indicates a cooling fault that can quickly lead to overheating and should be investigated immediately."
     },
     {
       "metric_group": "Hardware Status",
@@ -123,7 +123,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the operational state of each Netgear (FASTPATH) power supply unit (boxServicesPowSupplyItemState), where 1 means operational/normal and any other value indicates an abnormal/fault state. A non-normal state signals a power redundancy or hardware fault and must be remediated promptly."
+      "description": "This metric reports the operational state of each Netgear (FASTPATH) power supply unit (boxServicesPowSupplyItemState). Native code 2 (operational) is remapped to 1 (normal); any other native code including 1 (notpresent) is remapped to 2 (abnormal). A non-normal state signals a power redundancy or hardware fault and must be remediated promptly."
     },
     {
       "metric_group": "Traffic",

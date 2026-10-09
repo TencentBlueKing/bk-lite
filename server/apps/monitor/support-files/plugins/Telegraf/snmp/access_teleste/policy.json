@@ -1,0 +1,20 @@
+{
+  "object": "Access",
+  "plugin": "Access Teleste SNMP",
+  "templates": [
+    {
+      "metric_name": "device_temperature_celsius",
+      "alert_name": "Module temperature high",
+      "algorithm": "Threshold",
+      "threshold": 70,
+      "level": "warning"
+    },
+    {
+      "metric_name": "device_fan_state",
+      "alert_name": "Fan failure",
+      "algorithm": "Threshold",
+      "threshold": 1,
+      "level": "warning"
+    }
+  ]
+}

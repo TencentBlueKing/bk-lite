@@ -372,6 +372,40 @@ class InstanceConfigService:
         return result
 
     @staticmethod
+    def get_plugin_child_config_content(monitor_plugin_id, actor_context=None):
+        """读取插件最近一条已授权 child CollectConfig，供脚本接入页回填正文。"""
+        try:
+            plugin_pk = int(monitor_plugin_id)
+        except (TypeError, ValueError):
+            return {}
+        rows = list(
+            CollectConfig.objects.filter(
+                monitor_plugin_id=plugin_pk,
+                is_child=True,
+                collect_type="script",
+            ).order_by(
+                "-updated_at", "-id"
+            )[:20]
+        )
+        if not rows:
+            return {}
+        for row in rows:
+            try:
+                content = InstanceConfigService.get_config_content([row.id], actor_context)
+            except UnauthorizedException:
+                continue
+            except BaseAppException:
+                logger.warning(
+                    "event=script_collect_config_refill_failed plugin_id=%s config_id=%s error_type=BaseAppException failed_stage=get_config_content",
+                    plugin_pk,
+                    row.id,
+                )
+                continue
+            if content.get("child"):
+                return content
+        return {}
+
+    @staticmethod
     def get_instance_configs(collect_instance_id, actor_context=None, monitor_plugin_id=None, collector=None, collect_type=None):
         """获取实例配置"""
 
@@ -568,7 +602,8 @@ class InstanceConfigService:
             tuple: (new_instances, existing_instances, reclaimable_ids)
 
         Raises:
-            BaseAppException: 当配置已存在时抛出异常
+            BaseAppException: 当非脚本采集配置已存在时抛出异常。
+                脚本采集（collect_type=script）已有配置时复用实例，由 Controller 更新而非拒绝。
         """
         # 格式化实例ID：优先使用 Host adapter 已计算好的 storage_instance_key，否则沿用旧逻辑
         for instance in instances:
@@ -614,14 +649,20 @@ class InstanceConfigService:
         # 提取将要创建的 config_type 列表
         config_types_to_create = {config.get("type") for config in configs if config.get("type")}
 
-        # 检查已存在的配置（避免重复创建相同采集配置）
+        # 检查已存在的配置（避免重复创建相同采集配置）。
+        # 脚本采集同一实例+script 走更新而非拒绝，由 Controller 复用已有 CollectConfig。
+        allow_script_upsert = str(collect_type or "").casefold() == "script"
         if config_types_to_create:
-            existing_configs = CollectConfig.objects.filter(
+            existing_qs = CollectConfig.objects.filter(
                 monitor_instance_id__in=instance_ids,
-                collector=collector,
                 collect_type=collect_type,
                 config_type__in=config_types_to_create,
-            ).values_list("monitor_instance_id", "config_type")
+            )
+            if not allow_script_upsert:
+                existing_qs = existing_qs.filter(collector=collector)
+            else:
+                existing_qs = existing_qs.select_for_update()
+            existing_configs = existing_qs.values_list("monitor_instance_id", "config_type")
 
             # 构建已存在配置的映射: {instance_id: set(config_types)}
             config_map = {}
@@ -638,6 +679,14 @@ class InstanceConfigService:
                 if instance_id in config_map:
                     conflicting_types = config_map[instance_id] & config_types_to_create
                     if conflicting_types:
+                        if allow_script_upsert:
+                            logger.debug(
+                                "event=script_collect_config_reuse instance_id=%s collect_type=%s config_types=%s",
+                                instance_id,
+                                collect_type,
+                                ",".join(sorted(conflicting_types)),
+                            )
+                            continue
                         raise BaseAppException(
                             f"实例 '{inst.get('instance_name', instance_id)}' 已存在采集配置，无法重复创建。"
                             f"采集器={collector}, 采集类型={collect_type}, "
@@ -1226,6 +1275,10 @@ class InstanceConfigService:
 
             # 表单把 disk_*_fstypes 写在 content.config；Telegraf inputs.* 不认，必须挪回 starlark。
             child_info["content"] = sync_disk_fstype_filters_on_writeback(child_info.get("content"))
+            if str(config_obj.collect_type or "").casefold() == "script":
+                from apps.monitor.services.custom_script_plugin import prepare_script_child_content_for_save
+
+                child_info["content"] = prepare_script_child_content_for_save(child_info.get("content") or {})
             content = ConfigFormat.json_to_toml(child_info["content"]) if child_info else None
             if ifmib_capable and content is not None:
                 from apps.monitor.utils.snmp_interface_template import (

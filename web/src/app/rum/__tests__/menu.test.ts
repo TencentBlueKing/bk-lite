@@ -83,6 +83,13 @@ describe('RUM 顶栏信息架构', () => {
     expect(findMatchedMenuPath(asMenus('zh'), '/rum/sessions/abc')?.[0].title).toBe('体验');
   });
 
+  it('策略页高亮事件组，发布页高亮质量组', () => {
+    expect(findMatchedMenuPath(asMenus('zh'), '/rum/monitors')?.[0].title).toBe('事件');
+    expect(findMatchedMenuPath(asMenus('zh'), '/rum/monitors')?.[1].title).toBe('策略');
+    expect(findMatchedMenuPath(asMenus('zh'), '/rum/releases')?.[0].title).toBe('质量');
+    expect(findMatchedMenuPath(asMenus('zh'), '/rum/views')?.[0].title).toBe('体验');
+  });
+
   it('RUM 根路径仍落到应用列表', () => {
     expect(readFileSync(join(rumRoot, 'page.tsx'), 'utf8')).toMatch(/redirect\('\/rum\/applications'\)/);
   });

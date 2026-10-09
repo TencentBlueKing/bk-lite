@@ -81,7 +81,7 @@ error:
   incident_update_owner_pin: "Only the owner can mark key information"
   sample_payload_too_large: "Sample data cannot exceed 64KB"
   channel_unusable: "Notification channel does not exist or you cannot use it"
-  template_test_nats_only: "Only OpsPilot-managed NATS channels support template test sends"
+  template_test_nats_only: "Only platform-managed NATS channels support template test sends"
   alert_unusable_for_test: "Alert does not exist or cannot be used for a test send in the current team"
   receivers_missing: "Receivers do not exist: {receivers}"
   test_send_failed: "Test send failed"

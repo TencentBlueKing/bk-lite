@@ -1117,6 +1117,8 @@
         "timeout": "Timeout (seconds)",
         "opspilotManaged": "OpsPilot-managed",
         "opspilotManagedTip": "Auto-created by OpsPilot workflow; cannot be edited or deleted",
+        "workflowManaged": "Orchestration-managed",
+        "workflowManagedTip": "Auto-created by Workflow Orchestration; cannot be edited or deleted",
         "sign_secret": "Sign Secret",
         "sub_type": "Type",
         "request_method": "HTTP Method",

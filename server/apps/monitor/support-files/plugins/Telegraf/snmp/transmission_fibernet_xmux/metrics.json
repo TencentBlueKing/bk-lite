@@ -1,0 +1,116 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_fibernet_xmux",
+  "plugin": "Transmission Fibernet XMUX SNMP",
+  "plugin_desc": "SNMP monitoring template for Fibernet XMUX4+ optical multiplexers (enterprise PEN 29003). It reports uptime, fan-side and interior temperatures, left/right power supply status, and interface traffic.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='transmission', collect_type='snmp_fibernet_xmux'}) by (instance_id)",
+  "name": "Transmission",
+  "icon": "mm-transmission_传输设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='transmission'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_temperature_celsius",
+    "device_psu_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='transmission', __$labels__}",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "XMUX table index (muxTableIndex)"
+        },
+        {
+          "name": "sensor",
+          "description": "Temperature sensor: fan or interior"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Fan-side and interior temperatures of each Fibernet XMUX4+ unit (XMUX4-PLUS muxFanTemp / muxInteriorTemp, 1.3.6.1.4.1.29003.2.44.1.1.9.1.4 / .5). The device reports them as text; the first number in the text is used as degrees Celsius, and unparsable values are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='transmission', __$labels__}",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "XMUX table index (muxTableIndex)"
+        },
+        {
+          "name": "position",
+          "description": "Power supply position: left or right"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Status of the left and right power supplies of each Fibernet XMUX4+ unit (muxLeftPower / muxRightPower, 1.3.6.1.4.1.29003.2.44.1.1.9.1.9 / .10). powerOn(1) is normal (1); powerOff(0) is abnormal (2); unknown(8) is 3 (gray, no alert)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

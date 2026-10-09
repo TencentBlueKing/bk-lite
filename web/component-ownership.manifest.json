@@ -81,14 +81,15 @@
       "monitor",
       "ops-analysis",
       "opspilot",
-      "patch-manager"
+      "patch-manager",
+      "workflow-orchestration"
     ],
     "stories": [
       "data-display-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 7 apps",
+    "reason": "consumed transitively by 8 apps",
     "activeStories": [
       "data-display-family.stories.tsx"
     ]
@@ -586,7 +587,8 @@
       "ops-analysis",
       "opspilot",
       "patch-manager",
-      "system-manager"
+      "system-manager",
+      "workflow-orchestration"
     ],
     "transitiveApps": [
       "alarm",
@@ -599,12 +601,14 @@
       "ops-analysis",
       "opspilot",
       "patch-manager",
-      "system-manager"
+      "system-manager",
+      "workflow-orchestration"
     ],
     "stories": [
       "charts-family.stories.tsx",
       "custom-table.stories.tsx",
       "data-display-family.stories.tsx",
+      "dual-selector.stories.tsx",
       "integrations-family.stories.tsx",
       "layout-family.stories.tsx",
       "monitor-family.stories.tsx",
@@ -612,10 +616,11 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 11 apps",
+    "reason": "consumed transitively by 12 apps",
     "activeStories": [
       "charts-family.stories.tsx",
       "data-display-family.stories.tsx",
+      "dual-selector.stories.tsx",
       "integrations-family.stories.tsx",
       "layout-family.stories.tsx",
       "monitor-family.stories.tsx",
@@ -731,6 +736,26 @@
     ]
   },
   {
+    "component": "dual-selector",
+    "directApps": [
+      "patch-manager",
+      "workflow-orchestration"
+    ],
+    "transitiveApps": [
+      "patch-manager",
+      "workflow-orchestration"
+    ],
+    "stories": [
+      "dual-selector.stories.tsx"
+    ],
+    "reverseAppImports": [],
+    "classification": "shared-cross-app",
+    "reason": "consumed transitively by 2 apps",
+    "activeStories": [
+      "dual-selector.stories.tsx"
+    ]
+  },
+  {
     "component": "dynamic-form",
     "directApps": [
       "opspilot",
@@ -792,7 +817,8 @@
       "ops-analysis",
       "opspilot",
       "patch-manager",
-      "system-manager"
+      "system-manager",
+      "workflow-orchestration"
     ],
     "transitiveApps": [
       "alarm",
@@ -806,13 +832,15 @@
       "ops-analysis",
       "opspilot",
       "patch-manager",
-      "system-manager"
+      "system-manager",
+      "workflow-orchestration"
     ],
     "stories": [
       "charts-family.stories.tsx",
       "content-family.stories.tsx",
       "custom-table.stories.tsx",
       "data-display-family.stories.tsx",
+      "dual-selector.stories.tsx",
       "ellipsis-with-tooltip.stories.tsx",
       "integration-auth.fixtures.ts",
       "integrations-family.stories.tsx",
@@ -828,11 +856,12 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 12 apps",
+    "reason": "consumed transitively by 13 apps",
     "activeStories": [
       "charts-family.stories.tsx",
       "content-family.stories.tsx",
       "data-display-family.stories.tsx",
+      "dual-selector.stories.tsx",
       "integrations-family.stories.tsx",
       "layout-family.stories.tsx",
       "monitor-family.stories.tsx",
@@ -849,13 +878,15 @@
       "mlops",
       "node-manager",
       "opspilot",
-      "system-manager"
+      "system-manager",
+      "workflow-orchestration"
     ],
     "transitiveApps": [
       "mlops",
       "node-manager",
       "opspilot",
-      "system-manager"
+      "system-manager",
+      "workflow-orchestration"
     ],
     "stories": [
       "data-display-family.stories.tsx",
@@ -863,7 +894,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 4 apps",
+    "reason": "consumed transitively by 5 apps",
     "activeStories": [
       "data-display-family.stories.tsx",
       "design-compare/opspilot-page-effects.tsx",
@@ -920,11 +951,13 @@
     "component": "filter-toolbar",
     "directApps": [
       "apm",
-      "patch-manager"
+      "patch-manager",
+      "workflow-orchestration"
     ],
     "transitiveApps": [
       "apm",
-      "patch-manager"
+      "patch-manager",
+      "workflow-orchestration"
     ],
     "stories": [
       "apm-design-contract.stories.tsx",
@@ -934,7 +967,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 2 apps",
+    "reason": "consumed transitively by 3 apps",
     "activeStories": [
       "apm-design-contract.stories.tsx",
       "events-family.stories.tsx",
@@ -1146,7 +1179,8 @@
       "ops-analysis",
       "ops-console",
       "opspilot",
-      "system-manager"
+      "system-manager",
+      "workflow-orchestration"
     ],
     "transitiveApps": [
       "(core)",
@@ -1162,7 +1196,8 @@
       "ops-console",
       "opspilot",
       "patch-manager",
-      "system-manager"
+      "system-manager",
+      "workflow-orchestration"
     ],
     "stories": [
       "alarm-family.stories.tsx",
@@ -1216,7 +1251,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 14 apps",
+    "reason": "consumed transitively by 15 apps",
     "activeStories": [
       "alarm-family.stories.tsx",
       "alarm-integration-guides-family.stories.tsx",
@@ -1617,21 +1652,23 @@
       "log",
       "monitor",
       "node-manager",
-      "patch-manager"
+      "patch-manager",
+      "workflow-orchestration"
     ],
     "transitiveApps": [
       "alarm",
       "log",
       "monitor",
       "node-manager",
-      "patch-manager"
+      "patch-manager",
+      "workflow-orchestration"
     ],
     "stories": [
       "feedback-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 5 apps",
+    "reason": "consumed transitively by 6 apps",
     "activeStories": [
       "feedback-family.stories.tsx"
     ]
@@ -1724,13 +1761,15 @@
       "ops-console",
       "opspilot",
       "patch-manager",
-      "system-manager"
+      "system-manager",
+      "workflow-orchestration"
     ],
     "stories": [
       "charts-family.stories.tsx",
       "credential-picker.stories.tsx",
       "custom-table.stories.tsx",
       "data-display-family.stories.tsx",
+      "dual-selector.stories.tsx",
       "feedback-family.stories.tsx",
       "forms-upload-family.stories.tsx",
       "integrations-family.stories.tsx",
@@ -1744,11 +1783,12 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 13 apps",
+    "reason": "consumed transitively by 14 apps",
     "activeStories": [
       "charts-family.stories.tsx",
       "credential-picker.stories.tsx",
       "data-display-family.stories.tsx",
+      "dual-selector.stories.tsx",
       "feedback-family.stories.tsx",
       "forms-upload-family.stories.tsx",
       "integrations-family.stories.tsx",
@@ -2004,7 +2044,8 @@
       "ops-analysis",
       "opspilot",
       "patch-manager",
-      "system-manager"
+      "system-manager",
+      "workflow-orchestration"
     ],
     "transitiveApps": [
       "alarm",
@@ -2017,7 +2058,8 @@
       "ops-analysis",
       "opspilot",
       "patch-manager",
-      "system-manager"
+      "system-manager",
+      "workflow-orchestration"
     ],
     "stories": [
       "data-display-family.stories.tsx",
@@ -2027,7 +2069,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 11 apps",
+    "reason": "consumed transitively by 12 apps",
     "activeStories": [
       "data-display-family.stories.tsx",
       "design-compare/opspilot-page-effects.tsx",
@@ -2065,7 +2107,8 @@
       "node-manager",
       "ops-analysis",
       "opspilot",
-      "system-manager"
+      "system-manager",
+      "workflow-orchestration"
     ],
     "transitiveApps": [
       "(root)",
@@ -2077,7 +2120,8 @@
       "node-manager",
       "ops-analysis",
       "opspilot",
-      "system-manager"
+      "system-manager",
+      "workflow-orchestration"
     ],
     "stories": [
       "layout-family.stories.tsx",
@@ -2085,7 +2129,7 @@
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 10 apps"
+    "reason": "consumed transitively by 11 apps"
   },
   {
     "component": "refresh-icon-button",
@@ -2510,8 +2554,8 @@
       "spin.stories.tsx"
     ],
     "reverseAppImports": [],
-    "classification": "app-local",
-    "reason": "consumed by only (root)",
+    "classification": "shared-primitive",
+    "reason": "primitive allowlist: 根壳全屏加载反馈原语，无业务域语义",
     "activeStories": [
       "feedback-family.stories.tsx",
       "wiki-overview-full.stories.tsx"
@@ -2667,20 +2711,22 @@
       "alarm",
       "apm",
       "opspilot",
-      "patch-manager"
+      "patch-manager",
+      "workflow-orchestration"
     ],
     "transitiveApps": [
       "alarm",
       "apm",
       "opspilot",
-      "patch-manager"
+      "patch-manager",
+      "workflow-orchestration"
     ],
     "stories": [
       "data-display-family.stories.tsx"
     ],
     "reverseAppImports": [],
     "classification": "shared-cross-app",
-    "reason": "consumed transitively by 4 apps",
+    "reason": "consumed transitively by 5 apps",
     "activeStories": [
       "data-display-family.stories.tsx"
     ]

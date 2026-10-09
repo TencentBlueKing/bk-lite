@@ -50,6 +50,7 @@ from apps.operation_analysis.serializers.network_topology_serializers import (
 from apps.operation_analysis.services.network_topology import canvas_config
 from apps.operation_analysis.services.network_topology.runtime import NetworkTopologyRuntimeService
 from apps.operation_analysis.services.network_topology.weops_adapter import WeOpsTopologyAdapter, WeOpsTopologyAdapterError
+from apps.operation_analysis.services.user_messages import oa_message
 from apps.operation_analysis.views.view import (
     BuiltinVisibleMixin,
     _copy_canvas_response,
@@ -129,14 +130,14 @@ class NetworkTopologyViewSet(BuiltinVisibleMixin, AuthViewSet):
 
         current_team = self._validate_current_team_permission(request)
         if current_team not in (obj.groups or []):
-            raise PermissionDenied("无权访问该团队数据")
+            raise PermissionDenied(oa_message("messages.team_access_denied", "无权访问该团队数据"))
         if not self.get_has_permission(
             request.user,
             obj,
             current_team,
             is_check=not self._is_instance_write(request),
         ):
-            raise PermissionDenied("无权访问当前网络拓扑")
+            raise PermissionDenied(oa_message("messages.nt_access_denied", "无权访问当前网络拓扑"))
 
     # ------------------------------------------------------------------ #
     # Helpers                                                              #
@@ -270,7 +271,7 @@ class NetworkTopologyViewSet(BuiltinVisibleMixin, AuthViewSet):
         references it)."""
         topology = self.get_object()
         if not node_id:
-            raise DRFValidationError({"node_id": ["缺少 node_id 路径参数"]})
+            raise DRFValidationError({"node_id": [oa_message("messages.nt_node_id_required", "缺少 node_id 路径参数")]})
         updated = canvas_config.cascade_remove_node(topology, node_id)
         return Response(updated)
 
@@ -297,7 +298,7 @@ class NetworkTopologyViewSet(BuiltinVisibleMixin, AuthViewSet):
         """Run ``fn`` against the canvas' WeOps adapter and translate errors."""
         topology = self.get_object() if canvas_id is not None else None
         if topology is None:
-            raise DRFValidationError({"id": ["缺少画布 id"]})
+            raise DRFValidationError({"id": [oa_message("messages.nt_canvas_id_required", "缺少画布 id")]})
         adapter = _adapter_for(topology)
         try:
             return Response(fn(adapter, *args, **kwargs))
@@ -339,7 +340,7 @@ class NetworkTopologyViewSet(BuiltinVisibleMixin, AuthViewSet):
         """
         ref = self._decode_node_ref(node_ref)
         if not isinstance(ref, dict):
-            raise DRFValidationError({"node_ref": ["node_ref 解析失败"]})
+            raise DRFValidationError({"node_ref": [oa_message("messages.nt_node_ref_parse_failed", "node_ref 解析失败")]})
         return self._run_weops_call(pk, lambda adapter: adapter.list_interfaces(ref))
 
     @action(
@@ -351,7 +352,7 @@ class NetworkTopologyViewSet(BuiltinVisibleMixin, AuthViewSet):
         """Proxy: list the metrics a WeOps node exposes."""
         ref = self._decode_node_ref(node_ref)
         if not isinstance(ref, dict):
-            raise DRFValidationError({"node_ref": ["node_ref 解析失败"]})
+            raise DRFValidationError({"node_ref": [oa_message("messages.nt_node_ref_parse_failed", "node_ref 解析失败")]})
         return self._run_weops_call(pk, lambda adapter: adapter.list_metrics(ref))
 
     @action(detail=True, methods=["post"], url_path=r"weops/dimension_values")
@@ -371,9 +372,9 @@ class NetworkTopologyViewSet(BuiltinVisibleMixin, AuthViewSet):
         metric_ref = payload.get("metric_ref") or {}
         dimension_keys = payload.get("dimension_keys") or []
         if not isinstance(node_ref, dict) or not node_ref:
-            raise DRFValidationError({"node_ref": ["node_ref 必填"]})
+            raise DRFValidationError({"node_ref": [oa_message("messages.nt_node_ref_required", "node_ref 必填")]})
         if not isinstance(metric_ref, dict) or not metric_ref:
-            raise DRFValidationError({"metric_ref": ["metric_ref 必填"]})
+            raise DRFValidationError({"metric_ref": [oa_message("messages.nt_metric_ref_required", "metric_ref 必填")]})
         return self._run_weops_call(
             pk,
             lambda adapter: adapter.list_dimension_values(node_ref, metric_ref, dimension_keys),
@@ -389,7 +390,7 @@ class NetworkTopologyViewSet(BuiltinVisibleMixin, AuthViewSet):
         payload = request.data or {}
         items = payload.get("items") or []
         if not isinstance(items, list):
-            raise DRFValidationError({"items": ["items 必须是数组"]})
+            raise DRFValidationError({"items": [oa_message("messages.items_must_be_array", "items 必须是数组")]})
         return self._run_weops_call(pk, lambda adapter: adapter.batch_metric_values(items))
 
     @action(detail=True, methods=["post"], url_path=r"weops/link_runtime")
@@ -400,9 +401,9 @@ class NetworkTopologyViewSet(BuiltinVisibleMixin, AuthViewSet):
         link_payload = payload.get("link") or {}
         nodes_payload = payload.get("nodes")
         if not isinstance(link_payload, dict) or not link_payload:
-            raise DRFValidationError({"link": ["link 必须是对象"]})
+            raise DRFValidationError({"link": [oa_message("messages.link_must_be_object", "link 必须是对象")]})
         if nodes_payload is not None and not isinstance(nodes_payload, list):
-            raise DRFValidationError({"nodes": ["nodes 必须是数组"]})
+            raise DRFValidationError({"nodes": [oa_message("messages.nodes_must_be_array", "nodes 必须是数组")]})
         adapter = _adapter_for(topology)
         try:
             response = NetworkTopologyRuntimeService.build_link_runtime_preview(

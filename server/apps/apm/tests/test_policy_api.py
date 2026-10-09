@@ -398,7 +398,7 @@ def test_policy_rejects_removed_legacy_notification_fields(apm_api_client):
     response = apm_api_client.post("/api/v1/apm/policies/", payload, format="json")
 
     assert response.status_code == 400
-    assert response.data["notice"] == "APM 策略不支持该字段。"
+    assert response.data["notice"] == "APM policies do not support this field."
 
 
 def test_policy_notification_channel_is_revalidated_in_current_scope(apm_api_client, mocker):
@@ -462,7 +462,7 @@ def test_policy_rejects_system_user_outside_current_organization(apm_api_client,
     response = apm_api_client.post("/api/v1/apm/policies/", payload, format="json")
 
     assert response.status_code == 400
-    assert "当前组织不可用" in response.data["notification_targets"]
+    assert "unavailable in the current organization" in response.data["notification_targets"]
 
 
 def test_policy_validates_system_users_by_recipient_ids(apm_api_client, mocker):

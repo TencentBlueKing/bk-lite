@@ -103,3 +103,36 @@ display_category:
   security:
     name: 安全与审计
     description: 系统审计、文件完整性、安全事件监控
+error:
+  extractor_name_required: 名称不能为空
+  extractor_instance_locked: 编辑时不能更换采集实例
+  extractor_type_locked: 编辑时不能更换采集类型
+  must_be_list: 必须是一个列表
+  list_items_must_be_int: 列表中的元素必须是整数
+  log_group_rule_object: 日志分组规则必须是对象（object）格式
+  organization_required: 至少需要一个组织
+  search_condition_object: 搜索条件配置必须是字典格式
+  search_condition_query_required: 搜索条件配置中必须包含query字段
+  search_condition_groups_required: 搜索条件配置中必须包含log_groups字段
+  log_groups_must_be_list: log_groups必须是列表格式
+  log_groups_missing: "以下日志分组不存在: {names}"
+  handler_invalid: 处理人标识无效
+  handler_required: 至少指定一名处理人
+  policy_name_exists: 当前范围下策略名称已存在
+  topn_unsupported: 该字段不支持 TopN 统计
+  type_extractor_unsupported: 仅 syslog 与 snmp_trap 支持类型级提取器
+  collect_type_missing: 采集类型不存在
+  instance_rule_limit: "单个采集实例最多 {count} 条规则"
+  instance_name_duplicate: 实例内名称或顺序重复
+  type_rule_limit: "单个采集类型最多 {count} 条规则"
+  type_name_duplicate: 类型内名称或顺序重复
+  scope_name_duplicate: 作用域内名称重复
+  rule_ids_unique: 必须提交无重复的完整规则 ID 列表
+  instance_rule_ids_exact: 必须提交当前实例全部且仅全部规则 ID
+  type_rule_ids_exact: 必须提交当前采集类型全部且仅全部规则 ID
+  event_object_required: 必须是日志事件对象
+  rule_out_of_scope: 规则不属于当前作用域
+  collect_instance_required: 采集实例必填
+  scope_exclusive: 必须且只能提供采集实例或采集类型之一
+  generation_published: 当前 generation 已发布
+  channel_query_failed: 通知通道查询失败

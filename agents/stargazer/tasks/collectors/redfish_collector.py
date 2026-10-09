@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import ssl
 import time
 from typing import Any
 from urllib.parse import urlparse, urlsplit
@@ -40,6 +41,8 @@ MAX_DRIVES = 32
 MAX_NETWORK_ADAPTERS = 8
 MAX_NETWORK_PORTS = 16
 PSU_DELIVERING_MIN_WATTS = 20.0
+# 部分 BMC（如 H3C HDM）仅提供 TLS_RSA_WITH_AES_256_GCM_SHA384；OpenSSL 3 默认 SECLEVEL 不含该套件。
+_TLS_CIPHERS = ("DEFAULT:@SECLEVEL=0", "DEFAULT:@SECLEVEL=1", "DEFAULT")
 
 
 def now_ms() -> int:
@@ -77,15 +80,20 @@ def member_name(*candidates: Any) -> str:
     return ""
 
 
+def _normalize_health_token(raw: Any) -> str:
+    text = str(raw).strip().lower()
+    return text.rstrip("!.,;:")
+
+
 def health_code(status: Any, *, prefer_rollup: bool = False) -> int | None:
     if not isinstance(status, dict):
         return None
-    raw = status.get("HealthRollup") if prefer_rollup else None
-    if raw in (None, ""):
-        raw = status.get("Health")
+    primary = status.get("HealthRollup") if prefer_rollup else status.get("Health")
+    fallback = status.get("Health") if prefer_rollup else status.get("HealthRollup")
+    raw = primary if primary not in (None, "") else fallback
     if raw in (None, ""):
         return None
-    return HEALTH_CODES.get(str(raw).strip().lower(), 0)
+    return HEALTH_CODES.get(_normalize_health_token(raw), 0)
 
 
 def power_state_code(value: Any) -> int | None:
@@ -113,6 +121,23 @@ def as_bool(value: Any, default: bool = True) -> bool:
     if isinstance(value, bool):
         return value
     return str(value).strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _tls_verify(verify_tls: bool):
+    """构造 httpx verify：保留校验证书开关，只放宽套件以完成握手。"""
+    if verify_tls:
+        ctx = ssl.create_default_context()
+    else:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+    for cipher in _TLS_CIPHERS:
+        try:
+            ctx.set_ciphers(cipher)
+            break
+        except ssl.SSLError:
+            continue
+    return ctx
 
 
 def odata_id(node: Any) -> str:
@@ -218,7 +243,7 @@ class RedfishCollector(BaseCollector):
             timeout=httpx.Timeout(self.timeout, connect=min(5.0, self.timeout)),
             transport=self._transport,
             trust_env=False,
-            verify=self.verify_tls,
+            verify=_tls_verify(self.verify_tls),
         )
 
     def _resource_url(self, resource_link: Any, *, allowed_parts: tuple[str, ...] = ()) -> str:
@@ -492,8 +517,18 @@ class RedfishCollector(BaseCollector):
                 ports = await self._adapter_ports(client, adapter, remaining_ports)
                 remaining_ports -= len(ports)
                 nic_rows.append((adapter, ports))
-            return nic_rows
+            if self._nic_rows_usable(nic_rows):
+                return nic_rows
         return await self._ethernet_interface_fallback(client, system)
+
+    @staticmethod
+    def _nic_rows_usable(nic_rows: list[tuple[dict[str, Any], list[dict[str, Any]]]]) -> bool:
+        for adapter, ports in nic_rows:
+            if health_code(adapter.get("Status")) is not None:
+                return True
+            if ports:
+                return True
+        return False
 
     async def _ethernet_interface_fallback(
         self,
@@ -607,12 +642,14 @@ class RedfishCollector(BaseCollector):
                 continue
             dims = [("name", name)]
             input_watts = as_float(supply.get("PowerInputWatts"))
-            is_delivering = 1 if input_watts is not None and input_watts > PSU_DELIVERING_MIN_WATTS else 0
+            output_watts = as_float(supply.get("PowerOutputWatts"))
+            delivering_watts = input_watts if input_watts is not None else output_watts
+            is_delivering = 1 if delivering_watts is not None and delivering_watts > PSU_DELIVERING_MIN_WATTS else 0
             psu_count += 1
             delivering += is_delivering
             put_metric(current, "redfish_psu_health", health_code(supply.get("Status")), dims)
             put_metric(current, "redfish_psu_input_watts", input_watts, dims)
-            put_metric(current, "redfish_psu_output_watts", as_float(supply.get("PowerOutputWatts")), dims)
+            put_metric(current, "redfish_psu_output_watts", output_watts, dims)
             put_metric(current, "redfish_psu_capacity_watts", as_float(supply.get("PowerCapacityWatts")), dims)
             put_metric(current, "redfish_psu_input_voltage", as_float(supply.get("LineInputVoltage")), dims)
             put_metric(current, "redfish_psu_delivering", is_delivering, dims)

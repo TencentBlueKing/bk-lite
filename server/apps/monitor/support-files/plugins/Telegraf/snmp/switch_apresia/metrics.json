@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_apresia",
   "plugin": "Switch APRESIA SNMP",
-  "plugin_desc": "APRESIA managed switch-specific SNMP collection for the APRESIA NP series (AEOS-NP platform, e.g. ApresiaNP3000/NP4000/NP7000, IANA PEN 278). In addition to standard IF-MIB interface metrics, it collects APRESIA-NP-HW private OIDs for device health — control-plane CPU utilization (npCpuUtilizationValue, the master device CPU usage as a 0-100 percentage), chassis temperature in degrees Celsius (npTemperatureCurrent, read directly with no scaling), per-fan status (npFanStatus) and per-power-supply status (npPowerStatus). The CPU utilization table carries three fixed rows for the same master CPU averaged over the past 5 seconds, 1 minute and 5 minutes; since telegraf inputs.snmp cannot filter rows, the metric is aggregated with max() per device to surface a representative reading. Fan and power-supply raw codes are normalized via telegraf processors.enum to 1=healthy / 2=fault (power-supply empty(3) means a slot is unpopulated and is treated as healthy), and the worst component is taken per device. The APRESIA-NP-HW private tree only exposes memory through npMemoryUtilizationFailureStatusCode, which is an OCTET STRING valid only when bound to a trap and not a pollable gauge, so memory utilization is not collected (N/A). Supported brands/models — APRESIA NP series (ApresiaNP2000/NP2100/NP2500/NP3000/NP4000/NP5000/NP7000) running the AEOS-NP firmware.",
+  "plugin_desc": "SNMP monitoring template for APRESIA switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic (enterprise PEN 278).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_apresia'}) by (instance_id)",
   "name": "Switch",
@@ -16,6 +16,7 @@
   "supplementary_indicators": [
     "snmp_uptime",
     "device_cpu_usage",
+    "device_memory_usage",
     "device_temperature_celsius",
     "device_psu_state"
   ],
@@ -37,6 +38,58 @@
         "instance_id"
       ],
       "description": "This metric reports the CPU utilization of the APRESIA device control plane (APRESIA-NP-HW npCpuUtilizationValue, the master device CPU), expressed as a percentage from 0 to 100. The npCpuUtilizationTable carries three fixed rows for the same master CPU averaged over the past 5 seconds, 1 minute and 5 minutes; because telegraf inputs.snmp cannot select a single row, the metric is aggregated with max() per device to surface a representative reading. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "max(device_memory_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the DRAM utilization of the APRESIA switch (APRESIA-NP-HW npDramMemoryTable, available since AEOS-NP2100 1.13.01), computed per box as used/total*100 and shown as the highest box. The device refreshes the values about once a minute. High memory usage may indicate memory leaks or oversized tables."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the total DRAM capacity of the APRESIA switch in bytes (npDramMemoryTotalSize, reported in KB per box and scaled to bytes), summed across boxes."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the DRAM in use on the APRESIA switch in bytes (npDramMemoryUsedSize, reported in KB per box and scaled to bytes), summed across boxes."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_free",
+      "query": "sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the free DRAM of the APRESIA switch in bytes (npDramMemoryFreeSize, reported in KB per box and scaled to bytes), summed across boxes."
     },
     {
       "metric_group": "Temperature",

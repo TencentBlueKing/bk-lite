@@ -1,0 +1,188 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_cisco_esa"
+        config_type = "cisco_esa"
+        brand = "cisco_esa"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # Cisco ESA 标量（ASYNCOS-MAIL-MIB asyncOSMailObjects，PEN 15497）：顶层 field 带 .0 → measurement snmp
+    # perCentMemoryUtilization 1.3.6.1.4.1.15497.1.1.1.1.0：内存%
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.15497.1.1.1.1.0"
+        name = "device_memory_usage"
+    # perCentCPUUtilization …1.1.1.2.0：CPU%
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.15497.1.1.1.2.0"
+        name = "device_cpu_usage"
+    # perCentDiskIOUtilization …1.1.1.3.0：磁盘 IO%
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.15497.1.1.1.3.0"
+        name = "esa_disk_io_usage"
+    # perCentQueueUtilization …1.1.1.4.0：工作队列%
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.15497.1.1.1.4.0"
+        name = "esa_queue_usage"
+    # 电源表 powerSupplyTable …1.1.1.8.1，表列禁止 .0
+    # powerSupplyName .4 → tag psu_name；powerSupplyStatus .2：healthy(2)→1，notInstalled(1)/noAC(3)/faulty(4)→2，MIB 未定义值丢弃
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.15497.1.1.1.8.1.4"
+        name = "psu_name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.15497.1.1.1.8.1.2"
+        name = "state"
+    # 温度表 …1.1.1.9.1：temperatureName .3 → tag sensor_name；degreesCelsius .2
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.15497.1.1.1.9.1.3"
+        name = "sensor_name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.15497.1.1.1.9.1.2"
+        name = "celsius"
+    # 风扇表 …1.1.1.10.1：fanName .3 → tag fan_name；fanRPMs .2
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.15497.1.1.1.10.1.3"
+        name = "fan_name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.15497.1.1.1.10.1.2"
+        name = "speed"
+# 百分比越界与哨兵丢弃，不写占位 0
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    keys = ["device_cpu_usage", "device_memory_usage", "esa_disk_io_usage", "esa_queue_usage"]
+    for key in keys:
+        v = f.get(key)
+        if v == None:
+            continue
+        bad = False
+        if v < 0:
+            bad = True
+        if v > 100:
+            bad = True
+        if v == 65535:
+            bad = True
+        if v == 65534:
+            bad = True
+        if v == 2147483647:
+            bad = True
+        if v == -2147483648:
+            bad = True
+        if v == 4294967295:
+            bad = True
+        if bad:
+            f.pop(key)
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["cisco_esa"]
+# 电源：healthy(2)→1，notInstalled(1)/noAC(3)/faulty(4)→2，MIB 未定义值丢弃
+[[processors.starlark]]
+    namepass = ["device_psu"]
+    source = '''
+def apply(metric):
+    raw = metric.fields.get("state")
+    if raw == None:
+        return None
+    if raw == 2:
+        metric.fields["state"] = 1
+        return metric
+    if raw == 1:
+        metric.fields["state"] = 2
+        return metric
+    if raw == 3:
+        metric.fields["state"] = 2
+        return metric
+    if raw == 4:
+        metric.fields["state"] = 2
+        return metric
+    return None
+'''
+    [processors.starlark.tagpass]
+        brand = ["cisco_esa"]
+# 温度：仅保留 -40..125 ℃，哨兵与越界整行丢弃
+[[processors.starlark]]
+    namepass = ["device_temperature"]
+    source = '''
+def apply(metric):
+    v = metric.fields.get("celsius")
+    if v == None:
+        return None
+    if v < -40:
+        return None
+    if v > 125:
+        return None
+    if v == 65535:
+        return None
+    if v == 65534:
+        return None
+    if v == 2147483647:
+        return None
+    if v == -2147483648:
+        return None
+    if v == 4294967295:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["cisco_esa"]
+# 风扇转速：<0、>30000 或哨兵整行丢弃
+[[processors.starlark]]
+    namepass = ["device_fan"]
+    source = '''
+def apply(metric):
+    v = metric.fields.get("speed")
+    if v == None:
+        return None
+    if v < 0:
+        return None
+    if v > 30000:
+        return None
+    if v == 4294967295:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["cisco_esa"]

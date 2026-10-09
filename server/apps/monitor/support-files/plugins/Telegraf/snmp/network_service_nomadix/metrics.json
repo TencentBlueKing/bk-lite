@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_nomadix",
   "plugin": "NetworkService Nomadix SNMP",
-  "plugin_desc": "Nomadix hospitality and MDU network-gateway SNMP collection for devices under Nomadix PEN 3309. Interface traffic is supplied by the shared NetworkService SNMP IF-MIB floor. This child walks the current-subscriber table (aaaSubCurrTable) and aggregates the row count as active_subscribers, and optionally walks the current DAT session table (datSessionTable) as active_dat_sessions. CPU, memory and temperature are not collected because no stable private scalar leaves are confirmed. AAA and billing configuration tables are not treated as health. Supported brands/models — Nomadix AG-series hospitality and MDU network gateways that expose PEN 3309 current-subscriber objects and standard IF-MIB.",
+  "plugin_desc": "SNMP monitoring template for Nomadix network service device. It reports uptime, sessions/connections, and interface traffic (enterprise PEN 3309).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='network_service', collect_type='snmp_nomadix'}) by (instance_id)",
   "name": "NetworkService",

@@ -1,6 +1,16 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, type ReactNode } from 'react';
 import { Collapse, Form } from 'antd';
-import { useConfigRenderer } from './useConfigRenderer';
+import { FormFieldOptionControls, useConfigRenderer } from './useConfigRenderer';
+import {
+  applyScriptCollectSubmit,
+  inferScriptOs,
+  isScriptCollectConfig,
+  normalizeScriptCollectFormFields,
+  omitPersistedScriptTimeout,
+  omitPersistedWindowsRunAs,
+  ScriptIntervalField
+} from '@/app/monitor/(pages)/integration/list/detail/configure/scriptCollectForm';
+import { hydrateScriptCollectFormValues } from '@/app/monitor/(pages)/integration/list/detail/configure/scriptCollectHydrate';
 import { DataMapper } from './useDataMapper';
 import {
   buildWebsiteRequestUrl,
@@ -201,7 +211,10 @@ export const usePluginFromJson = () => {
             }
             : data;
         if (resolvedConfig && Array.isArray(resolvedConfig.form_fields)) {
-          resolvedConfig.form_fields = resolvedConfig.form_fields.map((field: any) =>
+          const normalizedFields = isScriptCollectConfig(resolvedConfig)
+            ? normalizeScriptCollectFormFields(resolvedConfig.form_fields)
+            : resolvedConfig.form_fields;
+          resolvedConfig.form_fields = normalizedFields.map((field: any) =>
             attachPluginOwnedFieldHelp(field, resolvedConfig)
           );
         }
@@ -240,15 +253,7 @@ export const usePluginFromJson = () => {
         onTableDataChange?: (data: any[]) => void;
         form?: any;
         externalOptions?: Record<string, any[]>;
-        optionControls?: Record<
-          string,
-          {
-            loading?: boolean;
-            onRefresh?: () => void;
-            refreshTip?: string;
-            multiple?: boolean;
-          }
-        >;
+        optionControls?: FormFieldOptionControls;
       }
     ) => {
       // 如果当前没有配置或 pluginId 不匹配，返回空配置
@@ -306,17 +311,61 @@ export const usePluginFromJson = () => {
         ? t('monitor.integrations.advancedFilterConfigurationHint')
         : (advancedPanel.hint || t('monitor.integrations.advancedConfigurationHint'));
 
-      const renderAdvancedFieldGroups = (fields: any[]) => {
-        const hasSections = fields.some((field) => field.section);
-        if (!hasSections) {
-          return fields.map((fieldConfig: any) =>
+      const isWindows = Boolean(
+        extra.optionControls?.run_as?.isWindows ||
+        (() => {
+          const nodes = extra.externalOptions?.node_ids_option || [];
+          const selectedNodeIds = (extra.dataSource || []).flatMap((row: any) =>
+            Array.isArray(row.node_ids) ? row.node_ids : (row.node_ids ? [row.node_ids] : [])
+          );
+          return selectedNodeIds.some((id: any) => {
+            const node = nodes.find((n: any) => String(n.id) === String(id) || String(n.value) === String(id));
+            return String(node?.operating_system || '').toLowerCase() === 'windows';
+          });
+        })()
+      );
+      const effectiveOptionControls: FormFieldOptionControls = {
+        ...extra.optionControls,
+        run_as: {
+          ...extra.optionControls?.run_as,
+          isWindows,
+        },
+      };
+
+      const renderConfigFields = (fields: any[]) => {
+        const nodes: ReactNode[] = [];
+        const scriptCollect = isScriptCollectConfig(config);
+        for (let index = 0; index < fields.length; index += 1) {
+          const fieldConfig = fields[index];
+          if (scriptCollect && fieldConfig?.name === 'interval') {
+            nodes.push(
+              <ScriptIntervalField
+                key="script-interval"
+                intervalField={fieldConfig}
+                mode={extra.mode}
+              />
+            );
+            continue;
+          }
+          if (scriptCollect && fieldConfig?.name === 'timeout') {
+            continue;
+          }
+          nodes.push(
             renderFormField(
               fieldConfig,
               extra.mode,
               extra.externalOptions,
-              extra.optionControls
+              effectiveOptionControls
             )
           );
+        }
+        return nodes;
+      };
+
+      const renderAdvancedFieldGroups = (fields: any[]) => {
+        const hasSections = fields.some((field) => field.section);
+        if (!hasSections) {
+          return renderConfigFields(fields);
         }
 
         const sectionMap = new Map<string, any[]>();
@@ -351,7 +400,7 @@ export const usePluginFromJson = () => {
                       fieldConfig,
                       extra.mode,
                       extra.externalOptions,
-                      extra.optionControls
+                      effectiveOptionControls
                     )
                   )}
                 </div>
@@ -363,14 +412,7 @@ export const usePluginFromJson = () => {
 
       const formItems = (
         <>
-          {basicFields.map((fieldConfig: any) =>
-            renderFormField(
-              fieldConfig,
-              extra.mode,
-              extra.externalOptions,
-              extra.optionControls
-            )
-          )}
+          {renderConfigFields(basicFields)}
           {advancedFields.length > 0 && (() => {
             // Ant Design：函数子节点的 Form.Item 必须带 truthy 的 shouldUpdate/dependencies，
             // 否则子节点不会渲染。网站拨测等非 IF-MIB 面板不能写 shouldUpdate={false}。
@@ -465,7 +507,10 @@ export const usePluginFromJson = () => {
                   includeReadOnly: true
                 }).values
             );
-            const filledRow = fillOptionalFormFields(normalizedRow, formFields);
+            const filledRow = applyScriptCollectSubmit(
+              fillOptionalFormFields(normalizedRow, formFields),
+              config.collect_type
+            );
             return DataMapper.transformAutoRequest(
               filledRow,
               normalizedDataSource,
@@ -514,6 +559,15 @@ export const usePluginFromJson = () => {
             if (config.instance_type === 'minio') {
               Object.assign(formValues, getMinioEditCompatibilityValues(apiData));
             }
+            if (isScriptCollectConfig(config)) {
+              Object.assign(
+                formValues,
+                hydrateScriptCollectFormValues(formFields, apiData, config.collect_type)
+              );
+              if (!formValues.script_os) {
+                formValues.script_os = inferScriptOs(formValues.interpreter);
+              }
+            }
             if (config.instance_type === 'web') {
               const requestUrl = apiData?.child?.content?.config?.urls?.[0];
               if (requestUrl) {
@@ -558,7 +612,10 @@ export const usePluginFromJson = () => {
             }
             // 把非必填字段未填的补成空串,避免后端 Jinja2 模板 {{ 字段名 }} 抛
             // UndefinedError；后端 child.toml.j2 用 {% if 字段 %}{% endif %} 跳过空串
-            const filledFormData = { ...formData };
+            const filledFormData = applyScriptCollectSubmit(
+              { ...formData },
+              config.collect_type
+            );
             formFields?.forEach((field: any) => {
               const { name, transform_on_edit, editable } = field;
               const formValue = filledFormData[name];
@@ -808,6 +865,12 @@ export const usePluginFromJson = () => {
                 }
               );
             }
+            omitPersistedWindowsRunAs(result, filledFormData);
+            omitPersistedScriptTimeout(
+              result,
+              filledFormData,
+              config.collect_type
+            );
             return result;
           }
         };

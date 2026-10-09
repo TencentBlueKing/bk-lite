@@ -1,6 +1,6 @@
 Transmission 4RF Aprisa SNMP:
   name: 4RF Aprisa（Telegraf）
-  desc: 面向 4RF Aprisa 传输设备的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 14817）。
+  desc: 面向 4RF Aprisa 传输设备的 SNMP 监控模板，可采集运行时长、接收机与发射机温度、风扇、电源轨告警状态、接口流量（企业号 PEN 14817）。
 monitor_object:
   Transmission: 传输设备
 monitor_object_type:
@@ -42,6 +42,12 @@ monitor_object_metric:
     device_fan_fan1_state:
       name: 风扇 1 状态
       desc: 设备风扇 1 的运行状态，统一归一为正常或异常。
+    device_transmitter_temperature_celsius:
+      name: 发射机温度
+      desc: 4RF AprisaXE 发射机温度，单位为摄氏度。温度持续偏高可能表示散热不良、环境温度过高或功放负载异常。
+    device_power_rail_state:
+      name: 电源轨告警状态
+      desc: 发射机与接收机各路电源的告警状态，无告警为正常，任一级别告警为异常。
 monitor_object_metric_group:
   Transmission:
     Base: 基础

@@ -35,6 +35,7 @@ import { buildHostCloudQueryList } from '@/app/cmdb/utils/cloudRegion';
 import {
   DEFAULT_INST_PAGE_SIZE,
   mergeInstSelection,
+  resolveSelectedAssetTableScroll,
   resolveInstFetchModelId,
   resolveInstPaginationChange,
   restoreInstDrawerSelection,
@@ -48,9 +49,10 @@ import {
 } from '@/app/cmdb/constants/professCollection';
 import {
   NETWORK_COLLECTION_ASSET_MODELS,
+  DEFAULT_NETWORK_ASSET_TAB,
   findDuplicateNetworkAssetIp,
-  mergeNetworkAssetSearchPages,
   mergeVisibleNetworkAssetSelection,
+  selectedKeysForNetworkAssetTab,
 } from '../utils/networkAssetSelection';
 
 // 需要IP选择的任务类型
@@ -113,6 +115,7 @@ import {
   Alert,
   Switch,
   message,
+  Tabs,
 } from 'antd';
 
 export type CollectionTargetSource = 'ip' | 'asset' | 'host';
@@ -198,6 +201,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const modelApi = useModelApi();
     const form = Form.useFormInstance();
     const fieldRef = useRef<FieldModalRef>(null);
+    const ignoreNetworkAssetSelectRef = useRef(false);
     const userList = useCmdbUserList();
     const { selectedGroup } = useUserInfoContext();
     const [instOptLoading, setOptLoading] = useState(false);
@@ -211,9 +215,9 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const [accessPointLoading, setAccessPointLoading] = useState(false);
     const [instVisible, setInstVisible] = useState(false);
     const [relateType, setRelateType] = useState('');
-    const [assetModelIds, setAssetModelIds] = useState<string[]>([
-      ...NETWORK_COLLECTION_ASSET_MODELS,
-    ]);
+    const [assetTabModelId, setAssetTabModelId] = useState<string>(
+      DEFAULT_NETWORK_ASSET_TAB
+    );
     const [selectedRows, setSelectedRows] = useState<any[]>([]);
     const [selectedKeys, setSelectedKeys] = useState<React.Key[]>([]);
     const [displaySelectedKeys, setDisplaySelectedKeys] = useState<React.Key[]>(
@@ -338,6 +342,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       setInstData([]);
       setInstVisible(false);
       form.setFieldValue('assetInst', []);
+      setAssetTabModelId(DEFAULT_NETWORK_ASSET_TAB);
       resetInstPagination();
     };
 
@@ -439,60 +444,17 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
         }
 
         const res = await instanceApi.searchInstances(params);
-        setInstData(res.insts || []);
+        setInstData(
+          (res.insts || []).map((item: TableItem) => ({
+            ...item,
+            model_id: item.model_id || fetchModelId,
+          }))
+        );
         setInstPagination({
           current: page,
           pageSize,
           total: res.count || 0,
         });
-      } catch (error) {
-        console.error('Failed to fetch instances:', error);
-      } finally {
-        setInstLoading(false);
-      }
-    };
-
-    const fetchNetworkInstData = async (
-      modelIds: string[],
-      page = 1,
-      pageSize = 10
-    ) => {
-      if (!modelIds.length) {
-        setInstData([]);
-        setInstPagination((prev) => ({
-          ...prev,
-          current: 1,
-          total: 0,
-        }));
-        return;
-      }
-
-      try {
-        setInstLoading(true);
-        const pages = await Promise.all(
-          modelIds.map(async (searchModelId) => {
-            const res = await instanceApi.searchInstances({
-              model_id: searchModelId,
-              page,
-              page_size: pageSize,
-            });
-            return {
-              insts: (res.insts || []).map((item: TableItem) => ({
-                ...item,
-                model_id: item.model_id || searchModelId,
-              })),
-              count: res.count || 0,
-            };
-          })
-        );
-        const merged = mergeNetworkAssetSearchPages(pages);
-        setInstData(merged.insts);
-        setInstPagination((prev) => ({
-          ...prev,
-          current: page,
-          pageSize,
-          total: merged.count,
-        }));
       } catch (error) {
         console.error('Failed to fetch instances:', error);
       } finally {
@@ -513,12 +475,20 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       }
       setInstVisible(true);
       if (isNetworkCollectionAssetTask) {
-        fetchNetworkInstData(assetModelIds);
+        fetchInstData(assetTabModelId, 1, instPagination.pageSize);
         return;
       }
       if (isCommonSelectInstTask) {
         fetchInstData(selectionModelId, 1, instPagination.pageSize);
       }
+    };
+
+    const handleNetworkAssetTabChange = (key: string) => {
+      ignoreNetworkAssetSelectRef.current = true;
+      setAssetTabModelId(key);
+      fetchInstData(key, 1, instPagination.pageSize).finally(() => {
+        ignoreNetworkAssetSelectRef.current = false;
+      });
     };
 
     const handleCollectionTypeChange = (nextType: CollectionTargetSource) => {
@@ -550,7 +520,10 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       selectedRowKeys: React.Key[],
       checkedRows: TableItem[]
     ) => {
-      if (isHostDiscovery) {
+      if (isHostDiscovery || isNetworkCollectionAssetTask) {
+        if (isNetworkCollectionAssetTask && ignoreNetworkAssetSelectRef.current) {
+          return;
+        }
         const merged = mergeVisibleNetworkAssetSelection({
           previouslySelected: selectedRows,
           visibleInstUuids: instData.map((row) => row.inst_uuid),
@@ -591,13 +564,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     };
 
     const handleDrawerConfirm = () => {
-      const nextSelected = isNetworkCollectionAssetTask
-        ? mergeVisibleNetworkAssetSelection({
-          previouslySelected: selectedData,
-          visibleInstUuids: instData.map((item) => item.inst_uuid),
-          checkedRows: selectedRows,
-        })
-        : selectedRows.map((item) => item);
+      const nextSelected = selectedRows.map((item) => item);
       if (isHostDiscovery && nextSelected.length > MAX_HOST_DISCOVERY_TARGETS) {
         message.error(t('Collection.hostDiscoveryLimit'));
         return;
@@ -1154,6 +1121,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                         className="mt-4"
                         size="middle"
                         rowKey="inst_uuid"
+                        scroll={resolveSelectedAssetTableScroll(selectedData.length)}
                         rowSelection={{
                           selectedRowKeys: displaySelectedKeys,
                           onChange: (selectedRowKeys) => {
@@ -1329,7 +1297,18 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
               ? t('Collection.chooseAsset')
               : `选择${dropdownItems.items.find((item) => item.key === relateType)?.label || '资产'}`
           }
-          width={620}
+          extra={
+            isNetworkCollectionAssetTask ? (
+              <span className="text-sm text-[var(--color-text-2)]">
+                {t(
+                  'Collection.selectedAssetCount',
+                  '已选 {count} 项',
+                  { count: selectedRows.length }
+                )}
+              </span>
+            ) : null
+          }
+          width={720}
           open={instVisible}
           maskClosable={false}
           styles={{
@@ -1337,6 +1316,8 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden',
+              height: '100%',
+              minHeight: 0,
             },
           }}
           onClose={() => guardClose(selectedRows.length > 0, handleDrawerClose)}
@@ -1358,47 +1339,38 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
           }
         >
           {isNetworkCollectionAssetTask ? (
-            <div className="mb-4 shrink-0">
-              <div className="mb-2 text-sm">
-                {t('Collection.selectDeviceModels')}
-              </div>
-              <Select
-                mode="multiple"
-                className="w-full"
-                allowClear
-                placeholder={t('Collection.selectDeviceModelsPlaceholder')}
-                value={assetModelIds}
-                options={dropdownItems.items.map((item) => ({
-                  label: item.label,
-                  value: item.key,
-                }))}
-                onChange={(ids: string[]) => {
-                  setAssetModelIds(ids);
-                  fetchNetworkInstData(ids, 1, instPagination.pageSize);
-                }}
-              />
-            </div>
+            <Tabs
+              size="small"
+              className="mb-3 shrink-0"
+              activeKey={assetTabModelId}
+              onChange={handleNetworkAssetTabChange}
+              items={NETWORK_COLLECTION_ASSET_MODELS.map((modelKey) => ({
+                key: modelKey,
+                label:
+                  dropdownItems.items.find((item) => item.key === modelKey)
+                    ?.label || modelKey,
+              }))}
+            />
           ) : null}
-          <div className="min-h-0 h-full flex-1 overflow-hidden">
+          <div className="min-h-0 flex-1 overflow-hidden">
             <CustomTable
               columns={instColumns}
               dataSource={instData}
               size="middle"
               loading={instLoading}
               rowKey="inst_uuid"
-              scroll={{ y: 'calc(100vh - 280px)' }}
               pagination={{
                 ...instPagination,
                 onChange: (page, pageSize) => {
-                  if (isNetworkCollectionAssetTask) {
-                    fetchNetworkInstData(assetModelIds, page, pageSize);
-                    return;
-                  }
                   const next = resolveInstPaginationChange({
                     currentPageSize: instPagination.pageSize,
                     nextPage: page,
                     nextPageSize: pageSize,
                   });
+                  if (isNetworkCollectionAssetTask) {
+                    fetchInstData(assetTabModelId, next.page, next.pageSize);
+                    return;
+                  }
                   fetchInstData(
                     isHostDiscovery
                       ? selectionModelId
@@ -1415,7 +1387,9 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
               }}
               rowSelection={{
                 type: 'checkbox',
-                selectedRowKeys: selectedKeys,
+                selectedRowKeys: isNetworkCollectionAssetTask
+                  ? selectedKeysForNetworkAssetTab(selectedRows, assetTabModelId)
+                  : selectedKeys,
                 preserveSelectedRowKeys: true,
                 onChange: handleRowSelect,
                 getCheckboxProps: (record: any) => ({

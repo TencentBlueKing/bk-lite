@@ -1,0 +1,94 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_mni_proteus"
+        config_type = "mni_proteus"
+        brand = "mni_proteus"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Microwave Networks Proteus 微波性能基表（MNI-PROTEUS-AMT-MIB，PEN 3323）：mnPrPerfBaseTable 1.3.6.1.4.1.3323.13.1.4.1，INDEX mnInterfaceIndex ----
+    # table.field 不带 .0。mnInterfaceIndex 是射频索引（1~64）与支路索引（rltt 形式，≥1000）的并集，支路行由下方 starlark 丢弃，index 标签即射频索引。
+    [[inputs.snmp.table]]
+        name = "mni_radio"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    # mnPrPerfBaseRFUTemp（.20）：RFU 温度，整数摄氏度。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3323.13.1.4.1.1.20"
+        name = "rfu_temperature"
+    # mnPrPerfBaseTxPower（.2）：实际发射功率 dBm；-100 未知、-101 发射机故障、-102 静默。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3323.13.1.4.1.1.2"
+        name = "tx_power"
+    # mnPrPerfBaseRSL（.3）：接收信号电平 dBm；-99 表示未接 RFU。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3323.13.1.4.1.1.3"
+        name = "rsl"
+# ---- CPU/内存使用率、风扇：该 MIB 不提供，不采集；mnPrRadStatPSVoltage 是 24V / 48V 档位枚举，不是电压读数，不采集。----
+
+# ---- 拆分与校验：仅保留射频行（index 1~64）；RFU 温度须在 -60~150 ℃；发射功率须在 -99~30 dBm（-100/-101/-102 为状态码，丢弃）；
+# RSL 须在 -100~0 dBm 且不为 -99（未接 RFU）。无效值不出点，原始行不落库。----
+[[processors.starlark]]
+    namepass = ["mni_radio"]
+    source = '''
+DIGITS = "0123456789"
+
+def child(metric, name, field, value):
+    out = Metric(name)
+    for k, v in metric.tags.items():
+        out.tags[k] = v
+    out.fields[field] = value
+    out.time = metric.time
+    return out
+
+def apply(metric):
+    idx = metric.tags.get("index", "")
+    if idx == "" or len(idx) > 4:
+        return None
+    for ch in idx.elems():
+        if ch not in DIGITS:
+            return None
+    if int(idx) < 1 or int(idx) > 64:
+        return None
+    f = metric.fields
+    result = []
+    temp = f.get("rfu_temperature")
+    if type(temp) == "int" and temp >= -60 and temp <= 150:
+        result.append(child(metric, "device_temperature", "celsius", temp))
+    tx = f.get("tx_power")
+    if type(tx) == "int" and tx >= -99 and tx <= 30:
+        result.append(child(metric, "radio_tx_power", "dbm", tx))
+    rsl = f.get("rsl")
+    if type(rsl) == "int" and rsl >= -100 and rsl <= 0 and rsl != -99:
+        result.append(child(metric, "radio_rsl", "dbm", rsl))
+    return result
+'''
+    [processors.starlark.tagpass]
+        brand = ["mni_proteus"]

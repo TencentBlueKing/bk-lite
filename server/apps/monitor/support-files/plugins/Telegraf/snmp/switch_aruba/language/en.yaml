@@ -1,7 +1,6 @@
 Switch Aruba SNMP:
   name: Aruba (Telegraf)
-  desc: SNMP monitoring template for Aruba switch. It reports CPU utilization, memory
-    utilization, per-port inbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Aruba switch. It reports uptime, CPU utilization, CPU 1/5-minute averages, memory utilization, temperature, fan status and RPM, power-supply status and watts, and interface traffic, for ArubaOS-CX and ArubaOS-Switch (enterprise PEN 47196)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -150,16 +149,22 @@ monitor_object_metric:
         protection or hardware damage if left unaddressed.
     device_fan_state:
       name: Fan Status
-      desc: This metric reports the operational state of each cooling fan on the device.
-        A non-normal state (warning, critical, shutdown, or notFunctioning) indicates
-        a cooling fault that can quickly lead to overheating and should be investigated
-        immediately.
+      desc: Operational state of each Aruba cooling fan, normalized to 1 = normal,
+        2 = fault, 3 = Unknown (grey, does not alert). empty/ok map to 1; uninitialized/fault
+        map to 2; unknown maps to 3. Only value 2 alerts.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     device_psu_state:
       name: Power Supply Status
-      desc: This metric reports the operational state of each power supply unit on
-        the device. A non-normal state signals a power redundancy or hardware fault;
-        on devices with redundant PSUs a single failure may not cause an outage but
-        removes redundancy and must be remediated promptly.
+      desc: Operational state of each Aruba power supply, normalized to 1 = normal,
+        2 = fault, 3 = Unknown (grey, does not alert). ok/empty map to 1; unknown maps
+        to 3; faultAbsent, init and remaining fault codes map to 2. Only value 2 alerts.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     device_fan_speed:
       name: Fan Speed
       desc: This metric reports the fan rotation speed (RPM) of the device, taken
@@ -167,6 +172,22 @@ monitor_object_metric:
         or failed fan and a risk of overheating; abnormally high RPM may indicate
         the device is compensating for high temperature. For devices that expose only
         fan speed without a fan-state enum, speed is the only signal of fan health.
+    device_fan_rpm:
+      name: Fan Speed (RPM)
+      desc: Fan rotation speed in RPM from arubaWiredFanRPM. Values outside 0 to 100000
+        (including no-readback) are dropped. A stalled fan reports 0 RPM.
+    aruba_psu_instantaneous_watts:
+      name: PSU Instantaneous Power
+      desc: Instantaneous output power of each Aruba CX power supply in watts.
+    aruba_psu_maximum_watts:
+      name: PSU Maximum Power
+      desc: Nameplate maximum power of each Aruba CX power supply in watts.
+    aruba_cpu_avg_1min:
+      name: CPU Average (1 min)
+      desc: One-minute CPU utilization average of each Aruba CX module, 0-100 percent.
+    aruba_cpu_avg_5min:
+      name: CPU Average (5 min)
+      desc: Five-minute CPU utilization average of each Aruba CX module, 0-100 percent.
     device_flow_bytes_rate:
       name: Device Flow Traffic Rate
       desc: Total device traffic rate estimated from Flow records according to the

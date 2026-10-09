@@ -52,6 +52,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useTranslation } from '@/utils/i18n';
 import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
+import { getUnifiedFilterTimeSelectorDefaultValue } from '@/app/ops-analysis/utils/filterValue';
 import { hasInvalidDateRangeDefinitions } from '@/app/ops-analysis/utils/unifiedFilterState';
 import type {
   UnifiedFilterDefinition,
@@ -573,35 +574,11 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
       width: 350,
       render: (value: FilterValue, record: UnifiedFilterDefinition) => {
         if (record.type === 'timeRange') {
-          const getDefaultValue = (): {
-            selectValue: number;
-            rangePickerVaule: [dayjs.Dayjs, dayjs.Dayjs] | null;
-          } => {
-            if (value === null || value === undefined) {
-              return { selectValue: 15, rangePickerVaule: null };
-            }
-            if (typeof value === 'number') {
-              return { selectValue: value, rangePickerVaule: null };
-            }
-            const timeValue = value as TimeRangeValue;
-            if (!timeValue.start || !timeValue.end) {
-              return { selectValue: 15, rangePickerVaule: null };
-            }
-            const selectVal = timeValue.selectValue ?? 0;
-            if (selectVal > 0) {
-              return { selectValue: selectVal, rangePickerVaule: null };
-            }
-            return {
-              selectValue: 0,
-              rangePickerVaule: [dayjs(timeValue.start), dayjs(timeValue.end)],
-            };
-          };
-
           return (
             <TimeSelector
               key={`${record.id}-${JSON.stringify(value)}`}
               onlyTimeSelect
-              defaultValue={getDefaultValue()}
+              defaultValue={getUnifiedFilterTimeSelectorDefaultValue(value)}
               onChange={(range, originValue) => {
                 if (range.length === 2) {
                   handleFieldChange(record.id, 'defaultValue', {

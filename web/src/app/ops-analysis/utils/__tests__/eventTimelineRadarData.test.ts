@@ -112,7 +112,7 @@ test('all unparseable events fail structure validation', () => {
     ],
   });
   assert.equal(result.isValid, false);
-  assert.match(result.message || '', /数据结构不符/);
+  assert.equal(result.message, 'dashboard.eventTimelineStructureMismatch');
 });
 
 test('radar resolves [{name,value}] mode', () => {

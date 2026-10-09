@@ -1,7 +1,6 @@
 Router MikroTik SNMP:
   name: MikroTik (Telegraf)
-  desc: SNMP monitoring template for MikroTik router. It reports CPU utilization,
-    memory utilization, per-port inbound traffic rate, and other key metrics
+  desc: "SNMP monitoring template for MikroTik router. It reports uptime, CPU utilization, memory utilization, board/CPU temperature, fan speed, power-supply state, input voltage, and interface traffic, for RouterOS (enterprise PEN 14988)."
 monitor_object:
   Router: Router
 monitor_object_type:
@@ -219,6 +218,18 @@ monitor_object_metric:
       name: Top Conversation Flow Traffic Rate
       desc: Conversation traffic ranked by source, destination, protocol, and destination
         port, used to locate dominant communication pairs.
+    device_cpu_temperature_celsius:
+      name: CPU Temperature
+      desc: CPU temperature reading of the device in degrees Celsius. Sustained high
+        values indicate cooling problems and may cause thermal throttling.
+    device_fan_speed:
+      name: Fan Speed
+      desc: Fan rotation speed (RPM) of each fan on the device. Abnormally low or
+        zero RPM indicates a stalled or failed fan and a risk of overheating.
+    device_voltage_volts:
+      name: Input Voltage
+      desc: Device input voltage reading in volts. Values outside the rated range
+        may indicate unstable power and hardware risk.
 monitor_object_metric_group:
   Router:
     CPU: CPU

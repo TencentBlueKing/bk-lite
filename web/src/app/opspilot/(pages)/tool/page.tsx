@@ -190,7 +190,7 @@ const ToolListPage: React.FC = () => {
                 }
               }}
             />
-            <span className="text-sm">Basic Auth 认证</span>
+            <span className="text-sm">{t('tool.basicAuth')}</span>
           </div>
         ),
       },
@@ -255,7 +255,7 @@ const ToolListPage: React.FC = () => {
       setSkillAssets(data.items || []);
     } catch (error) {
       console.error(t('common.fetchFailed'), error);
-      message.error('技能包加载失败');
+      message.error(t('tool.loadFailed'));
     } finally {
       setSkillAssetsLoading(false);
     }
@@ -438,21 +438,22 @@ const ToolListPage: React.FC = () => {
     .filter((asset) => {
       const keyword = skillSearchKeyword.trim().toLowerCase();
       const matchesKeyword = !keyword || [
+        asset.display_name || asset.name,
         asset.name,
         asset.package_id,
         asset.category || '',
-        asset.description || '',
+        asset.description_tr || asset.description || '',
         (asset.required_tools || []).join(' '),
         (asset.triggers || []).join(' '),
       ].some((value) => value.toLowerCase().includes(keyword));
       return matchesKeyword;
     })
-    .sort((left, right) => Number(right.source_type === 'builtin') - Number(left.source_type === 'builtin'));
+    .sort((left, right) => Number(Boolean(right.is_build_in) || right.source_type === 'builtin') - Number(Boolean(left.is_build_in) || left.source_type === 'builtin'));
 
   const handleImportSkillOk = async () => {
     const file = (skillPackageFileList[0]?.originFileObj || skillPackageFileList[0]) as File | undefined;
     if (!file) {
-      message.warning('请选择包含 SKILL.md 的 ZIP 技能包');
+      message.warning(t('tool.requireSkillMd'));
       return;
     }
     setIsImporting(true);
@@ -461,20 +462,21 @@ const ToolListPage: React.FC = () => {
       await fetchSkillPackageData();
       setSkillPackageFileList([]);
       setIsImportSkillModalVisible(false);
-      message.success('技能包已导入');
+      message.success(t('tool.importedSuccess'));
     } finally {
       setIsImporting(false);
     }
   };
 
   const handleDeleteSkillAsset = (asset: SkillPackage) => {
+    const title = asset.display_name || asset.name;
     Modal.confirm({
-      title: `删除技能包「${asset.name}」？`,
-      content: '删除后不会再出现在技能包列表和智能体技能选择中。',
+      title: t('tool.deleteTitle', '删除技能包「{name}」？', { name: title }),
+      content: t('tool.deleteContent'),
       onOk: async () => {
         await deleteSkillPackage(asset.id);
         await fetchSkillPackageData();
-        message.success('技能包已删除');
+        message.success(t('tool.deletedSuccess'));
       },
     });
   };
@@ -484,8 +486,8 @@ const ToolListPage: React.FC = () => {
       value={assetView}
       onChange={(value) => setAssetView(value as 'builtin' | 'mcp' | 'skills')}
       options={[
-        { label: '工具', value: 'builtin' },
-        { label: '技能', value: 'skills' },
+        { label: t('tool.categoryBuiltin'), value: 'builtin' },
+        { label: t('tool.categorySkills'), value: 'skills' },
         { label: 'MCP', value: 'mcp' },
       ]}
     />
@@ -511,7 +513,7 @@ const ToolListPage: React.FC = () => {
       className="w-60"
       placeholder={
         assetView === 'skills'
-          ? '搜索技能名称或说明'
+          ? t('tool.searchPlaceholder')
           : `${t('common.search')}...`
       }
       value={assetView === 'skills' ? skillSearchKeyword : toolSearchKeyword}
@@ -539,14 +541,14 @@ const ToolListPage: React.FC = () => {
       ) : null}
       {assetView === 'skills' ? (
         <Button type="primary" onClick={() => setIsImportSkillModalVisible(true)}>
-          导入技能包
+          {t('tool.importPackage')}
         </Button>
       ) : null}
     </>
   );
 
   const renderSkillAssetView = () => (
-    <div className="w-full" aria-label="技能资产">
+    <div className="w-full" aria-label={t('tool.assetsLabel')}>
       <div className="mb-4">{renderAssetSwitcher()}</div>
       {skillAssetsLoading ? (
         <CardGridSkeleton count={6} />
@@ -554,7 +556,9 @@ const ToolListPage: React.FC = () => {
         <div className="grid w-full grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-6">
           {filteredSkillAssets.map((asset) => {
             const skillAssetKey = `${asset.package_id}:${asset.version}`;
-            const canDeleteSkillAsset = asset.source_type !== 'builtin';
+            const canDeleteSkillAsset = !asset.is_build_in && asset.source_type !== 'builtin';
+            const displayName = asset.display_name || asset.name;
+            const displayDescription = asset.description_tr || asset.description || '';
             const deleteMenu = canDeleteSkillAsset ? (
               <Menu>
                 <Menu.Item key="delete" danger>
@@ -562,7 +566,7 @@ const ToolListPage: React.FC = () => {
                     className="block"
                     onClick={() => handleDeleteSkillAsset(asset)}
                   >
-                    删除
+                    {t('common.delete')}
                   </span>
                 </Menu.Item>
               </Menu>
@@ -571,10 +575,14 @@ const ToolListPage: React.FC = () => {
             return (
               <UnifiedOpsCard
                 key={skillAssetKey}
-                name={asset.name}
-                description={asset.description || ''}
+                name={displayName}
+                description={displayDescription}
                 icon="jinengpeixun"
-                meta={[asset.category, asset.version].filter(Boolean) as string[]}
+                meta={[
+                  asset.is_build_in || asset.source_type === 'builtin' ? t('common.builtin') : null,
+                  asset.category,
+                  asset.version,
+                ].filter(Boolean) as string[]}
                 footer="none"
                 menuOverlay={deleteMenu}
                 onClick={() => setSelectedSkillAssetForDetail(asset)}
@@ -583,7 +591,7 @@ const ToolListPage: React.FC = () => {
           })}
         </div>
       ) : (
-        <CompactEmptyState description="没有匹配的技能" />
+        <CompactEmptyState description={t('tool.noMatch')} />
       )}
     </div>
   );
@@ -724,21 +732,33 @@ const ToolListPage: React.FC = () => {
         </div>
       </OperateModal>
       <Modal
-        title="导入技能包"
+        title={t('tool.importPackage')}
         open={isImportSkillModalVisible}
         onOk={handleImportSkillOk}
         onCancel={() => {
           setIsImportSkillModalVisible(false);
           setSkillPackageFileList([]);
         }}
-        okText="确认导入"
-        cancelText="取消"
+        okText={t('tool.confirmImport')}
+        cancelText={t('common.cancel')}
         confirmLoading={isImporting}
         width={760}
       >
         <div>
           <div className="mb-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)] px-4 py-3 text-sm leading-6 text-[var(--color-text-2)]">
-            上传 ZIP 技能包。包内必须包含 <code>SKILL.md</code>，可选 <code>skill.yaml</code>、<code>references/</code>、<code>templates/</code> 等目录。没有 <code>skill.yaml</code> 时会读取 <code>SKILL.md</code> 顶部 YAML frontmatter，或从标题和目录名推导基础信息。
+            {t('tool.uploadIntroBefore')}
+            <code>SKILL.md</code>
+            {t('tool.uploadIntroMiddle')}
+            <code>skill.yaml</code>
+            {t('tool.uploadIntroFiles')}
+            <code>references/</code>
+            {t('tool.uploadIntroFiles')}
+            <code>templates/</code>
+            {t('tool.uploadIntroAfter')}
+            <code>skill.yaml</code>
+            {t('tool.uploadIntroTail')}
+            <code>SKILL.md</code>
+            {t('tool.uploadIntroEnd')}
           </div>
           <Upload.Dragger
             accept=".zip"
@@ -752,8 +772,8 @@ const ToolListPage: React.FC = () => {
               setSkillPackageFileList([]);
             }}
           >
-            <p className="ant-upload-text">点击或拖拽 ZIP 技能包到这里</p>
-            <p className="ant-upload-hint">第一版支持本地 ZIP 上传；公开 Git 仓库导入后续接入同一导入器。</p>
+            <p className="ant-upload-text">{t('tool.uploadDropzone')}</p>
+            <p className="ant-upload-hint">{t('tool.uploadHint')}</p>
           </Upload.Dragger>
         </div>
       </Modal>

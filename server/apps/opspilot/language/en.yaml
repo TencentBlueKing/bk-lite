@@ -102,6 +102,13 @@ base_constant:
   time: time
   float: float
   json: json
+skill:
+  default_prompt: |-
+    You are a professional assistant. Reply according to these rules:
+    1. For the user's question, retrieve related knowledge from the knowledge base and summarize the answer.
+    2. Based on the user's need, choose and run the appropriate tool.
+    3. Keep the reply accurate. Do not make things up.
+    4. Organize the answer in clear points.
 error:
   network_whitelist_required: The target IP is not in the allowlist. Add it in System Management > Network Allowlist.
   go_to_network_whitelist: Open Network Allowlist
@@ -190,7 +197,30 @@ error:
   mcp_tools_fetch_failed: Failed to fetch tools from MCP server
   no_bot_stop_permission: You do not have permission to stop this bot
   knowledge_base_training: The knowledge base is training and cannot be modified.
-  knowledge_base_used_by_skills: ''
+  knowledge_base_used_by_skills: 'This knowledge base is used by the following skills and cannot be deleted: {skill_names}'
+  knowledge_base_build_running: A build is still running for this knowledge base. Wait for it to finish before continuing.
+  knowledge_base_build_running_wait: A build is still running for this knowledge base. Wait for it to finish before continuing.
+  knowledge_base_build_running_retry: A build is still running for this knowledge base. Wait for it to finish before retrying.
+  builtin_skill_package_not_deletable: Built-in skill packages cannot be deleted
+  skill_package_zip_required: Upload a skill package ZIP file
+  skill_package_must_be_zip: The skill package must be a ZIP file
+  skill_package_file_missing: The skill package file does not exist
+  skill_package_missing_file: 'The skill package is missing {filename}'
+  no_embedding_model: This knowledge base has no embedding model configured, so the index cannot be rebuilt.
+  material_build_in_progress: This material is already being built. Do not submit it again.
+  material_build_dispatch_failed: Failed to submit the knowledge build. Try again later.
+  material_no_source_file: This material has no original file to download
+  material_source_file_missing: The original file does not exist
+  object_storage_unavailable: Object storage is unavailable. Try again later.
+  archived_page_not_editable: Archived knowledge pages cannot be edited. Restore the page first.
+  page_reindex_requires_active: Only active knowledge pages can have their index rebuilt
+  page_reindex_requires_version: This knowledge page has no current version, so the index cannot be rebuilt
+  no_skill_channel_permission: You do not have permission to manage this agent's channels
+  local_memory_no_test: Local storage does not need a connection test
+  memory_connection_test_unimplemented: Connection test is not implemented
+  build_task_dispatch_failed: Failed to dispatch the build task. Try again.
+  knowledge_base_protected: This knowledge base is still referenced and cannot be deleted. Try again later or contact an administrator.
+  knowledge_base_delete_failed: 'Failed to delete the knowledge base: {error}'
   knowledge_base_delete_related_data_failed: ''
   crontab_expression_required: crontab_expression is required
   invalid_crontab_expression: 'Invalid crontab expression: {expression}'
@@ -212,34 +242,31 @@ tools:
   monitor:
     name: Monitor
     description: |
-      [Host CPU] Query BK-Lite monitored objects, instances, metric series, and monitor-policy alerts with caller identity. Colloquial "open tickets / is this host still alerting" belongs to alert-center alerts_*, not this pack.
-      Typical flow: object type → match name to instance → filter metrics by the user's word → query series.
-      Prefer these tools; do not suggest SSH/top/htop.
-      If the user did not say the object type, list types then request_user_choice; do not guess Host/K8s Pod from the name.
-      For CPU, list metrics and filter names/display names containing CPU; do not guess cpu.util or ask the user to type metric names.
-      instance_ids are monitor instance IDs (or host name/IP), not CMDB inst_uuid/_id.
+      Query BK-Lite monitoring with caller identity: managed objects and instances, metric definitions and time series, host resource snapshots, and monitor-policy active alerts / alert history.
+      Covers host, Kubernetes, middleware, and other objects for CPU/memory/disk/business metrics.
     tools:
       monitor_list_objects:
-        description: "[Host CPU] Step 1: list object types; if the user did not specify a type, request_user_choice instead of guessing."
+        description: List managed monitor object types.
       monitor_list_object_instances:
-        description: "[Host CPU] Step 2: list instances by the confirmed object type; keyword must be the full name/IP. Call once per obj_id; empty list must ask the object type; do not guess IDs or truncate names."
+        description: List monitor instances for an object type (name, IP, etc.).
       monitor_list_object_metrics:
-        description: "[Host CPU] Step 3: list metrics; if the user asked CPU, pass keyword=CPU to filter name/display_name. Do not guess cpu.util. Must share a step with the query tool."
+        description: List metric definitions for an object type.
       monitor_list_instance_metrics:
-        description: "[Host CPU] Optional: confirm whether an instance has CPU metrics."
+        description: List metrics already collected on an instance.
       monitor_query_metric_data:
-        description: "[Host CPU] Step 4: query metric time series; metric must come from list_object_metrics names, never guess cpu.util. instance_ids must be monitor IDs/name/IP, not CMDB inst_uuid."
+        description: Query time series for a selected metric.
       monitor_list_active_alerts:
-        description: "[Monitor-policy alerts] List scanner-produced active alerts, not alert-center tickets. Use only when the user names monitor/policy alerts; colloquial open tickets go to alerts_list_alerts. instance_ids accepts monitor instance_id, name, or IP, not CMDB inst_uuid."
+        description: List active instance alerts from monitor policies (host detail alert tab; not alert-center tickets).
       monitor_query_alert_segments:
-        description: "[Monitor-policy alert history] Query scanner alert segments in a time window."
+        description: Query monitor-policy alert history segments in a time window.
       monitor_get_host_resource_snapshot:
-        description: "[Host CPU] Query CPU/memory/disk avg and max snapshot by monitor instance_ids; not CMDB inst_uuid."
+        description: Query host CPU/memory/disk avg and max snapshot.
+      monitor_get_host_resource_top_by_time:
+        description: Rank all hosts by CPU/memory/disk usage within a time window (Top N).
   cmdb:
     name: CMDB
     description: |
-      Query and change BK-Lite CMDB assets with caller identity. Models, instance CRUD, associations, topology, and full-text search. Permissions are enforced server-side.
-      When linking to Monitor: CMDB inst_uuid/_id is not a monitor instance_id; use monitor_id or cmdb_get_monitor_ids.
+      Query and change BK-Lite CMDB assets with caller identity: models, instance CRUD, associations, topology, and full-text search. Permissions are enforced server-side.
     tools:
       cmdb_list_models:
         description: List accessible CMDB models.
@@ -248,11 +275,11 @@ tools:
       cmdb_list_model_attrs:
         description: List model attributes.
       cmdb_search_instances:
-        description: Search instances by model with pagination. Returns inst_uuid and linked monitor_id; do not pass inst_uuid/_id as monitor instance_ids.
+        description: Search instances by model with pagination.
       cmdb_get_instance:
-        description: Get an instance by UUID. Use monitor_id for monitor queries; do not pass inst_uuid as instance_ids.
+        description: Get an instance by UUID.
       cmdb_get_monitor_ids:
-        description: Map CMDB inst_uuids to linked monitor instance_ids (monitor_id).
+        description: Map CMDB instance UUIDs to linked monitor instance IDs.
       cmdb_create_instance:
         description: Create an instance.
       cmdb_update_instance:
@@ -287,18 +314,17 @@ tools:
     name: Alert Center
     description: |
       Query unified alert-center alerts, details, and related events with caller identity. Read-only; no acknowledge or close.
-      Colloquial "any open tickets / is this host still alerting / unassigned" must use this pack, not monitor_list_active_alerts.
     tools:
       alerts_list_alerts:
-        description: List alert-center tickets. Open/unassigned/host-still-alerting must use this tool; put host/IP/title in keyword. Do not use monitor_list_active_alerts or ask the monitor object type first.
+        description: List alert-center tickets; filter by status, level, and keyword.
       alerts_get_alert_detail:
-        description: Get alert details by alert_id.
+        description: Get alert details by alert ID.
       alerts_list_alert_events:
         description: List events related to an alert.
   log:
     name: Log Center
     description: |
-      Query logs with caller identity. List groups, then search by keyword and time range; use raw LogsQL for advanced queries.
+      Query logs with caller identity: list accessible groups, search by keyword, or use native LogsQL for advanced queries.
     tools:
       log_list_groups:
         description: List accessible log groups.
@@ -533,10 +559,10 @@ tools:
       - current_time: Get current time tool
 
       **Tool List:**
-      - get_current_time: Get current system time, supports timezone specification
+      - get_current_time: Get the current time in the current user's timezone
     tools:
       get_current_time:
-        description: This tool can be used to get the current time
+        description: Get the current time in the current user's timezone. Falls back to Asia/Shanghai when the timezone is missing or invalid.
   duckduckgo:
     name: DuckDuckGo Search
     description: |
@@ -942,6 +968,19 @@ tools:
       SQL Server Operations Tool Module
 
       Provides Microsoft SQL Server connection management, schema inspection, safe queries, and diagnostics for Agent to inspect and operate SQL Server databases.
+  activedirectory:
+    name: Active Directory
+    description: |
+      Active Directory Query Tool
+
+      Query users, groups, computers, and other directory objects as tables. Inspect table schemas and run read-only SQL searches.
+    tools:
+      activedirectory_get_tables:
+        description: List available Active Directory object tables (such as users, groups, and computers). Output is CSV.
+      activedirectory_get_columns:
+        description: List fields and data types for a selected Active Directory table. Output is CSV.
+      activedirectory_run_query:
+        description: Run a read-only SELECT against Active Directory tables, with optional joins, filters, and sorting. Output is CSV.
   elasticsearch:
     name: Elasticsearch
     description: |
@@ -960,3 +999,11 @@ tools:
       Agent Browser Tool Module
 
       Provides agent-driven browser automation capabilities for visiting web pages and extracting information.
+
+skill_packages:
+  kubernetes-configuration:
+    name: Kubernetes Configuration
+    description: |
+      Scenario skill package for deploying and managing Kubernetes workloads.
+
+      Covers Deployments/StatefulSets, network policies, RBAC, Helm, troubleshooting, GitOps, service mesh, and multi-cluster operations.

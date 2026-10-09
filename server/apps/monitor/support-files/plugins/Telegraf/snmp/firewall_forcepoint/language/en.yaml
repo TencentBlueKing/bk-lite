@@ -1,9 +1,6 @@
 Firewall Forcepoint SNMP:
   name: Forcepoint (Telegraf)
-  desc: SNMP monitoring template for Forcepoint NGFW. It reports per-core CPU and
-    memory from STONESOFT-FIREWALL-MIB, plus current connections, temperature,
-    fan/PSU state and fan RPM from FORCEPOINT-NGFW-ENGINE-MIB. Interface traffic
-    uses the built-in IF-MIB catalog; this plugin does not declare ifHC*.
+  desc: "SNMP monitoring template for Forcepoint firewall. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, sessions/connections, and interface traffic (enterprise PEN 47565)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:

@@ -2,6 +2,7 @@ import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ReactEcharts from 'echarts-for-react';
 import ChartEmptyState from '@/components/chart-empty-state';
 import useChartColors, { type ChartColors } from './docker/useChartColors';
+import { useTranslation } from '@/utils/i18n';
 
 const trimTrailingZeros = (value: string) =>
   value.replace(/\.0+$|(?<=\.\d*[1-9])0+$/g, '');
@@ -180,6 +181,7 @@ const ComKpiCard: React.FC<SharedKpiCardProps> = ({
   config,
   calculateMetric
 }) => {
+  const { t } = useTranslation();
   const colors = useChartColors();
   const valueAreaRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
@@ -344,7 +346,7 @@ const ComKpiCard: React.FC<SharedKpiCardProps> = ({
           </div>
         </div>
         <div className="flex items-center gap-1 text-xs flex-wrap mt-[10px]">
-          <span style={{ color: colors.textTertiary }}>较上一周期</span>
+          <span style={{ color: colors.textTertiary }}>{t('log.analysis.comparedWithPrevious', '较上一周期')}</span>
           {metricResult.changePercent !== null ? (
             <span
               className="font-medium"

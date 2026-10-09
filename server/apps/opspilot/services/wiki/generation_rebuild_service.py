@@ -74,7 +74,15 @@ def _lock_prepared_snapshot(kb, prepared, build):
 
     prepared_ids = list(prepared["material_ids"])
     materials = {material.pk: material for material in Material.objects.select_for_update().filter(knowledge_base=locked_kb).order_by("id")}
-    if set(materials) != set(prepared_ids):
+    live_ids = set(materials)
+    frozen_ids = set(prepared_ids)
+    if frozen_ids - live_ids:
+        raise BuildGenerationError(
+            "source_deleted",
+            "重建期间资料已被删除，请重新发起重建",
+            retryable=True,
+        )
+    if live_ids - frozen_ids:
         raise BuildGenerationError(
             "source_set_changed",
             "重建期间资料集合已变化，请重新发起重建",
@@ -99,9 +107,15 @@ def _lock_prepared_snapshot(kb, prepared, build):
         material = materials[material_id]
         material.current_version = versions.get(material.current_version_id)
         item = prepared_by_id[material_id]
+        if material.current_version_id != item["material_version_id"]:
+            raise BuildGenerationError(
+                "source_version_changed",
+                "重建期间资料版本已变化，请重新发起重建",
+                retryable=True,
+                details={"material_id": material_id},
+            )
         if (
-            material.current_version_id != item["material_version_id"]
-            or _material_snapshot_hash(material) != item["material_content_hash"]
+            _material_snapshot_hash(material) != item["material_content_hash"]
             or material.updated_at != item["material_updated_at"]
         ):
             raise BuildGenerationError(

@@ -175,11 +175,19 @@ MISSING_PARAMS_CHOICE_HINT = (
 )
 
 # 查询缺参：走选择器。namespace 仍留给 K8s 反查重规划；host/url 走配置失败。
+# 覆盖服务端中文缺参文案（如 monitor 的「instance_ids 不能为空」「必须是列表」），
+# 否则这类错误落进「失败但不缺参」灰区，既不追问也不换参，只会反复空参重试。
 _MISSING_PARAMS_RE = re.compile(
     r"missing parameters|missing required|field required|"
     r"缺少必要(?:的)?(?:检索)?参数|"
     r"\b(?:monitor_obj_id|metric|instance_id|instance_ids|search|model_id|"
-    r"start|end|query|alert_id)\s+is required\b",
+    r"start|end|query|alert_id)\s+is required\b|"
+    r"\b(?:monitor_obj_id|metric|instance_id|instance_ids|search|model_id|"
+    r"start|end|query|alert_id)\b.{0,8}(?:不能为空|不可为空|必须提供|必填|不能同时为空)|"
+    r"(?:不能为空|不可为空|必须提供|必填).{0,8}\b(?:monitor_obj_id|metric|instance_id|instance_ids|"
+    r"search|model_id|start|end|query|alert_id)\b|"
+    r"\b(?:instance_ids|instance_id|monitor_obj_id|metric|search|model_id|alert_id)\s*"
+    r"(?:必须|须)是列表\b",
     re.I,
 )
 

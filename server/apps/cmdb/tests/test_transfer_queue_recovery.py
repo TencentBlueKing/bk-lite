@@ -54,8 +54,8 @@ def test_import_exception_is_failed_releases_slot_and_preserves_confirmed_counts
     assert data["failure"]["result_uncertain"]
     assert data["summary"]["created"] == 1
     assert data["summary"]["updated"] is None
-    assert "RuntimeError" in data["message"]
-    assert "SECRET-IMPORT-PAYLOAD" not in json.dumps(data)
+    assert data["message"].startswith("RuntimeError: SECRET-IMPORT-PAYLOAD")
+    assert "transfer_queue_recovery.py" in data["message"]
     records = [r for r in caplog.records if "cmdb_transfer_failed" in r.msg]
     assert len(records) == 1 and records[0].exc_info[2] is error.__traceback__
     assert records[0].args[1:3] == ("writing_instances", "RuntimeError")

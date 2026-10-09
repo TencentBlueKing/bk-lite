@@ -10,8 +10,17 @@ import {
   Switch,
   Segmented,
   Spin,
+  Alert,
 } from 'antd';
 import { ExclamationCircleFilled, MinusCircleOutlined, PlusOutlined, SyncOutlined } from '@ant-design/icons';
+import CodeEditor from '@/components/code-editor';
+import {
+  ScriptBodyEditor,
+  ScriptInterpreterSelect,
+  ScriptOsSegmented,
+  ScriptRunAsInput,
+  ScriptWindowsRunAsBanner
+} from '@/app/monitor/(pages)/integration/list/detail/configure/scriptCollectForm';
 import Password from '@/components/password';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
@@ -33,6 +42,7 @@ export type FormFieldOptionControls = Record<
     refreshTip?: string;
     /** 云地域：true=腾讯云多选，false=阿里云单选；用来覆盖 UI.json 残留的 mode。 */
     multiple?: boolean;
+    isWindows?: boolean;
   }
 >;
 
@@ -149,12 +159,18 @@ export const useConfigRenderer = () => {
     const optionControl = resolvedOptionsKey
       ? optionControls?.[resolvedOptionsKey]
       : undefined;
+    const isWindows = Boolean(
+      optionControl?.isWindows ||
+      optionControls?.run_as?.isWindows
+    );
     // 帮助文案只使用当前插件字段自身的 description/tooltip/guide_short，
     // 禁止按 name === "username" 去套 monitor.integrations.usernameDes 或 WMI 文案。
     const guideTip = guide_short || tooltip || description;
     const hasGuideTip = Boolean(guideTip);
-    // 悬浮提示已承载说明时，不再在控件旁重复展示同一段 description
-    const showInlineDescription = Boolean(description && description !== guideTip);
+    // 悬浮提示已承载说明时，不再在控件旁重复展示同一段 description；run_as 保留内联灰字说明
+    const showInlineDescription = Boolean(
+      (description && description !== guideTip) || name === 'run_as'
+    );
 
     if (type === 'hidden') {
       return (
@@ -292,6 +308,61 @@ export const useConfigRenderer = () => {
           }
         ]
         : []),
+      ...(name === 'run_as'
+        ? [
+          ({ getFieldValue }: { getFieldValue: (name: string) => unknown }) => ({
+            validator: async (_: unknown, value: unknown) => {
+              const scriptOs = getFieldValue('script_os');
+              const windows = scriptOs === 'windows' || (scriptOs == null && isWindows);
+              if (windows) return;
+              // 依赖字段触发的校验会抓住切换前的值；以 store 里的当前值为准。
+              const live = getFieldValue('run_as');
+              const str = String((live === undefined ? value : live) ?? '')
+                .trim()
+                .toLowerCase();
+              if (!str) {
+                throw new Error(
+                  t(
+                    'monitor.integrations.runAsRequiredLinux',
+                    'Linux 节点下执行用户不能为空'
+                  )
+                );
+              }
+              if (
+                str === 'root' ||
+                /^0+$/.test(str) ||
+                /^uid\s*[:=]\s*0+$/i.test(str)
+              ) {
+                throw new Error(
+                  t(
+                    'monitor.integrations.runAsNonRoot',
+                    '不允许以 root 运行'
+                  )
+                );
+              }
+            }
+          })
+        ]
+        : []),
+      ...(name === 'interval'
+        ? [
+          {
+            validator: async (_: unknown, value: unknown) => {
+              if (value !== undefined && value !== null && value !== '') {
+                const num = Number(value);
+                if (Number.isFinite(num) && num < 60) {
+                  throw new Error(
+                    t(
+                      'monitor.integrations.intervalMin60',
+                      '采集间隔不能小于 60 秒'
+                    )
+                  );
+                }
+              }
+            }
+          }
+        ]
+        : []),
       ...rules.flatMap((rule: any) => {
         if (rule?.type === 'mutex_with') {
           return [];
@@ -402,6 +473,15 @@ export const useConfigRenderer = () => {
     const renderWidget = () => {
       switch (type) {
         case 'input':
+          if (name === 'run_as' && fieldConfig.os_driven) {
+            return (
+              <ScriptRunAsInput
+                disabled={Boolean(locked || widget_props.disabled)}
+                placeholder={widget_props.placeholder || label}
+                style={formWidgetWidthStyle(widget_props.style)}
+              />
+            );
+          }
           return (
             <Input
               {...widget_props}
@@ -444,6 +524,15 @@ export const useConfigRenderer = () => {
         }
 
         case 'select': {
+          if (fieldConfig.options_by_os) {
+            return (
+              <ScriptInterpreterSelect
+                disabled={Boolean(locked || widget_props.disabled)}
+                style={formWidgetWidthStyle(widget_props.style)}
+                placeholder={widget_props.placeholder || label}
+              />
+            );
+          }
           const allowCustomTags =
             name === 'iftype_exclude' || name === 'iftype_include';
           const {
@@ -542,7 +631,33 @@ export const useConfigRenderer = () => {
           );
         }
 
+        case 'code_editor':
+        case 'codeEditor':
+          return (
+            <div style={{ maxWidth: 640 }} className="w-full">
+              <CodeEditor
+                mode={widget_props.mode || 'sh'}
+                theme={widget_props.theme || 'monokai'}
+                height={widget_props.height || '200px'}
+                width="100%"
+                placeholder={widget_props.placeholder || t('monitor.integrations.scriptPlaceholder', '粘贴或输入脚本内容')}
+                headerOptions={{ copy: true, fullscreen: true }}
+                readOnly={Boolean(locked || widget_props.disabled || widget_props.readOnly)}
+                {...widget_props}
+              />
+            </div>
+          );
+
         case 'textarea':
+          if (name === 'script') {
+            return (
+              <ScriptBodyEditor
+                height={widget_props.height || '200px'}
+                placeholder={widget_props.placeholder || t('monitor.integrations.scriptPlaceholder', '粘贴或输入脚本内容')}
+                readOnly={Boolean(locked || widget_props.disabled || widget_props.readOnly)}
+              />
+            );
+          }
           return (
             <Input.TextArea
               {...widget_props}
@@ -561,6 +676,14 @@ export const useConfigRenderer = () => {
           return <Switch {...widget_props} className="mr-[10px]" />;
 
         case 'segmented':
+          if (name === 'script_os') {
+            return (
+              <ScriptOsSegmented
+                disabled={Boolean(locked || widget_props.disabled)}
+                options={options}
+              />
+            );
+          }
           return (
             <Segmented
               {...widget_props}
@@ -619,9 +742,11 @@ export const useConfigRenderer = () => {
         default:
           return (
             <Input
-              placeholder={label}
+              {...widget_props}
+              disabled={Boolean(locked || widget_props.disabled || (name === 'run_as' && isWindows))}
+              placeholder={widget_props.placeholder || label}
               className="mr-[10px]"
-              style={formWidgetWidthStyle()}
+              style={formWidgetWidthStyle(widget_props.style)}
             />
           );
       }
@@ -631,14 +756,64 @@ export const useConfigRenderer = () => {
       <Form.Item
         noStyle
         name={name}
+        preserve
         rules={formRules}
-        dependencies={[...mutexPeerFields, ...ltPeerFields]}
+        dependencies={[
+          ...mutexPeerFields,
+          ...ltPeerFields,
+          ...(name === 'run_as' ? ['script_os'] : [])
+        ]}
         initialValue={default_value}
         valuePropName={type === 'switch' ? 'checked' : 'value'}
       >
         {renderWidget()}
       </Form.Item>
     );
+
+    const renderFieldBody = () => (
+      <>
+        {name === 'run_as' && fieldConfig.os_driven && <ScriptWindowsRunAsBanner />}
+        {name === 'run_as' && !fieldConfig.os_driven && isWindows && (
+          <Alert
+            message={t('monitor.integrations.runAsWindowsHelper', 'Windows 以服务账号运行，执行用户不可修改')}
+            type="info"
+            showIcon={false}
+            className="mb-2 max-w-[640px] !border-[var(--color-border-2)] !bg-[var(--color-fill-2)] !text-[var(--color-text-1)] text-xs"
+          />
+        )}
+        {renderNamedControl()}
+      </>
+    );
+
+    if (name === 'run_as') {
+      return (
+        <Form.Item
+          noStyle
+          shouldUpdate={(prev, curr) => prev.script_os !== curr.script_os}
+          key={name}
+        >
+          {({ getFieldValue }) => {
+            const scriptOs = getFieldValue('script_os');
+            const isWindowsHost = scriptOs === 'windows' || (scriptOs == null && isWindows);
+            return (
+              <Form.Item
+                key={name}
+                required={required}
+                hidden={isWindowsHost}
+                label={renderLabel()}
+              >
+                {renderNamedControl()}
+                {showInlineDescription && !isWindowsHost && (
+                  <div className="mt-2 text-[12px] text-[var(--color-text-3)] leading-[18px]">
+                    {description}
+                  </div>
+                )}
+              </Form.Item>
+            );
+          }}
+        </Form.Item>
+      );
+    }
 
     if (dependency?.field || mutexPeerField || warningOnlyRules.length) {
       return (
@@ -663,7 +838,7 @@ export const useConfigRenderer = () => {
             );
             return (
               <Form.Item required={required} label={renderLabel()}>
-                {renderNamedControl()}
+                {renderFieldBody()}
                 {showMutexConflict ? (
                   <span className="align-middle text-[12px] leading-[18px] text-[var(--color-fail)]">
                     {mutexPeerOccupiedTip}
@@ -684,19 +859,17 @@ export const useConfigRenderer = () => {
 
     return (
       <Form.Item key={name} required={required} label={renderLabel()}>
-        <Form.Item
-          noStyle
-          name={name}
-          rules={formRules}
-          initialValue={default_value}
-          valuePropName={type === 'switch' ? 'checked' : 'value'}
-        >
-          {renderWidget()}
-        </Form.Item>
+        {renderFieldBody()}
         {showInlineDescription && (
-          <span className="align-middle text-[12px] text-[var(--color-text-3)]">
-            {description}
-          </span>
+          name === 'run_as' ? (
+            <div className="mt-2 text-[12px] text-[var(--color-text-3)] leading-[18px]">
+              {description}
+            </div>
+          ) : (
+            <span className="align-middle text-[12px] text-[var(--color-text-3)]">
+              {description}
+            </span>
+          )
         )}
       </Form.Item>
     );

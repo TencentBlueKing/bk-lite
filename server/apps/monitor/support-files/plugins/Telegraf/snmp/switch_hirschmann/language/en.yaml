@@ -1,8 +1,6 @@
 Switch Hirschmann SNMP:
   name: Hirschmann (Telegraf)
-  desc: SNMP monitoring template for Hirschmann switch. It reports CPU utilization,
-    memory utilization, chassis temperature, power-supply status, per-port inbound
-    traffic rate, and other key metrics
+  desc: "SNMP monitoring template for Hirschmann switch. It reports uptime, CPU utilization, memory utilization, chassis temperature, power supply status, SFP DDM temperature and optical power, fan state, and interface traffic (enterprise PEN 248)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -151,16 +149,22 @@ monitor_object_metric:
         protection or hardware damage if left unaddressed.
     device_fan_state:
       name: Fan Status
-      desc: This metric reports the operational state of each cooling fan on the device.
-        A non-normal state (warning, critical, shutdown, or notFunctioning) indicates
-        a cooling fault that can quickly lead to overheating and should be investigated
-        immediately.
+      desc: Fan state of the Hirschmann switch (hmFanState). 1 means ok; 2 means
+        failed (abnormal); 3 means unknown (gray, no alert) for MIB-undefined
+        values. Only value 2 alerts.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     device_psu_state:
       name: Power Supply Status
-      desc: This metric reports the operational state of each power supply unit on
-        the device. A non-normal state signals a power redundancy or hardware fault;
-        on devices with redundant PSUs a single failure may not cause an outage but
-        removes redundancy and must be remediated promptly.
+      desc: Power-supply state of the Hirschmann switch. 1 means ok or notInstalled
+        (empty slots keep a series); 2 means failed (abnormal); 3 means unknown
+        (gray, no alert).
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     device_fan_speed:
       name: Fan Speed
       desc: This metric reports the fan rotation speed (RPM) of the device, taken
@@ -259,6 +263,26 @@ monitor_object_metric:
         power module operating temperature; abnormally high values may indicate blocked
         airflow, failing fans or excessive ambient heat, which can trigger thermal
         protection or hardware damage if left unaddressed.
+    device_sfp_temperature_celsius:
+      name: SFP Temperature
+      desc: SFP module temperature in degrees Celsius from hmSfpTemperature. Readings
+        outside -40 to 125 degrees Celsius are dropped.
+    device_sfp_tx_power:
+      name: SFP TX Power
+      desc: SFP transmit power in microwatts from hmSfpTxPowerInt (raw integer in
+        0.1 µW, divided by 10 once). Out-of-range raw values are dropped.
+    device_sfp_rx_power:
+      name: SFP RX Power
+      desc: SFP receive power in microwatts from hmSfpRxPowerInt (raw integer in 0.1
+        µW, divided by 10 once). Out-of-range raw values are dropped.
+    device_sfp_rx_power_state:
+      name: SFP RX Power State
+      desc: SFP receive-power state from hmSfpRxPowerState. ok maps to normal;
+        warning or alarm maps to abnormal. alarm is a fault code, not unknown.
+        Only value 2 alerts.
+      enum:
+        "1": Normal
+        "2": Abnormal
 monitor_object_metric_group:
   Switch:
     Base: Base

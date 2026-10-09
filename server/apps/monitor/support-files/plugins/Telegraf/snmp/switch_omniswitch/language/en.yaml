@@ -1,9 +1,6 @@
 Switch Alcatel OmniSwitch SNMP:
   name: Alcatel OmniSwitch (Telegraf)
-  desc: SNMP monitoring template for Alcatel OmniSwitch AOS6 (ALCATEL-IND1-HEALTH-MIB,
-    PEN 6486.800). It reports device CPU utilization (healthDeviceCpuLatest), memory
-    utilization (healthDeviceMemoryLatest), per-port inbound traffic rate, and system
-    uptime.
+  desc: "SNMP monitoring template for Alcatel OmniSwitch switch. It reports uptime, CPU utilization, memory utilization, and interface traffic (enterprise PEN 6486)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

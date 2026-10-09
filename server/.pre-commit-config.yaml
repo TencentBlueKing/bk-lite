@@ -31,15 +31,21 @@ repos:
     hooks:
       - id: check-migrate
         name: check migrate
-        entry: python ./server/scripts/check_migrate/check_migrate.py
+        entry: python3 ./server/scripts/check_migrate/check_migrate.py
         language: system
         types: [python]
       - id: check-commit-message
         name: Check commit message
-        entry: python ./server/scripts/check_commit_message.py
+        entry: python3 ./server/scripts/check_commit_message.py
         language: system
         stages: [commit-msg]
       - id: check-requirements
         name: Check Requirements
-        entry: python ./server/scripts/check_requirements.py
+        entry: python3 ./server/scripts/check_requirements.py
         language: system
+      - id: ops-analysis-i18n
+        name: ops-analysis i18n catalogs
+        entry: uv run --directory server pytest apps/operation_analysis/tests/test_language_catalog_i18n.py apps/operation_analysis/tests/test_user_messages.py apps/system_mgmt/tests/test_ops_analysis_permission_tabs.py -o addopts= -q --no-cov
+        language: system
+        pass_filenames: false
+        files: ^server/apps/(operation_analysis/language/|system_mgmt/language/|operation_analysis/tests/test_language_catalog_i18n\.py|operation_analysis/tests/test_user_messages\.py|system_mgmt/tests/test_ops_analysis_permission_tabs\.py)

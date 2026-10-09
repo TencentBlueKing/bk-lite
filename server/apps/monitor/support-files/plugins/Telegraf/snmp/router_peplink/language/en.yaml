@@ -1,7 +1,6 @@
 Router Peplink SNMP:
   name: Peplink (Telegraf)
-  desc: SNMP monitoring template for Peplink and Pepwave Balance, MAX and Edge
-    routers. It reports CPU utilization, memory used/total and derived utilization.
+  desc: "SNMP monitoring template for Peplink router. It reports uptime, CPU utilization, memory utilization, WAN/cellular signal strength in dBm, and interface traffic (enterprise PEN 23695)."
 monitor_object:
   Router: Router
 monitor_object_type:
@@ -34,8 +33,15 @@ monitor_object_metric:
       desc: This metric reports overall memory utilization of the Peplink or Pepwave
         router, computed as used / total * 100. High memory usage may indicate leaks,
         oversized connection tables, or insufficient capacity.
+    peplink_wan_signal_dbm:
+      name: WAN Signal Strength
+      desc: WAN or cellular received signal strength of the Peplink or Pepwave router
+        (wanSignal) in dBm. Values outside the usable radio range (-150 to 0 dBm)
+        are dropped. A persistently low reading indicates weak coverage or an antenna
+        problem.
 monitor_object_metric_group:
   Router:
     CPU: CPU
     Memory: Memory
     Base: Base
+    WAN: WAN

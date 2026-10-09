@@ -1,0 +1,61 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_uhp"
+        config_type = "uhp"
+        brand = "uhp"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- UHP VSAT system 标量（PEN 8000 · uhpV32.system = 1.3.6.1.4.1.8000.22.8）----
+    # 顶层 field GET 必须带实例 .0；temperature 已是 ℃，cpuLoad 已是 %，不做倍率换算。
+    # system.buffers 不是内存池利用率，不采集 device_memory_*。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.8000.22.8.1.0"
+        name = "device_temperature_celsius"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.8000.22.8.2.0"
+        name = "device_cpu_usage"
+# ---- 内存/风扇/电源：system 树无内存池与风扇/电源叶 → N/A 不采。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    cpu = f.get("device_cpu_usage")
+    if cpu != None:
+        if cpu < 0 or cpu > 100 or cpu == 65535 or cpu == 65534 or cpu == -1 or cpu == 2147483647 or cpu == -2147483648 or cpu == 4294967295:
+            f.pop("device_cpu_usage")
+    temp = f.get("device_temperature_celsius")
+    if temp != None:
+        if temp < -40 or temp > 125 or temp == 65535 or temp == 65534 or temp == -1 or temp == 2147483647 or temp == -2147483648 or temp == 4294967295:
+            f.pop("device_temperature_celsius")
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["uhp"]

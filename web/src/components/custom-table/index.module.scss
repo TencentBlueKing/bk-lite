@@ -26,6 +26,12 @@
   width: 100%;
 }
 
+/* scroll.y 会让 tbody overflow:auto，即使列宽并未超出也会多出一条横向滚动条 */
+.noHorizontalScroll :global(.ant-table-body),
+.noHorizontalScroll :global(.ant-table-content) {
+  overflow-x: hidden !important;
+}
+
 .customTable :global(.ant-btn-link) {
   padding: 0 !important;
 }

@@ -1,0 +1,61 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission DeltaNet Lambdatrail SNMP",
+  "templates": [
+    {
+      "name": "DeltaNet传输设备温度过高",
+      "alert_name": "传输设备${resource_name} 温度过高",
+      "description": "监控 DeltaNet Lambdatrail2-S 光传输设备的机箱环境温度（lt2sTemperature，摄氏度），当持续高于阈值时触发告警，提示可能存在散热异常或环境过热。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 65,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 60,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "DeltaNet传输设备电源异常",
+      "alert_name": "传输设备${resource_name} 电源异常",
+      "description": "监控 DeltaNet Lambdatrail2-S 光传输设备的电源状态（lt2sPowerStatus，failed=2），当电源故障时触发告警。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "DeltaNet传输设备风扇故障",
+      "alert_name": "传输设备${resource_name} 风扇故障",
+      "description": "监控 DeltaNet Lambdatrail2-S 光传输设备的电源风扇状态（lt2sPowerFanStatus，故障=2）。风扇按策略关闭（停止=0）不是故障；仅故障状态触发告警。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

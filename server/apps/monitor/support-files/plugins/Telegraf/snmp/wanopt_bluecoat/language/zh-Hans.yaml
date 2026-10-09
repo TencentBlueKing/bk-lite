@@ -1,7 +1,6 @@
 Wanopt BlueCoat SNMP:
   name: Blue Coat / Symantec Edge SWG / Broadcom ProxySG（Telegraf）
-  desc: 面向 Blue Coat / Symantec Edge SWG / Broadcom ProxySG 的 SNMP 监控模板，可采集按核平均的
-    CPU 忙闲百分比、内存压力、可用内存字节，以及系统进程加对象缓存的已用内存分解（企业号 PEN 3417）。
+  desc: 面向 Blue Coat / Symantec Edge SWG / Broadcom ProxySG 设备的 SNMP 监控模板（企业号 PEN 3417）。可采集运行时长、每核 CPU 使用率、内存使用率与用量分解、接口流量，以及硬件传感器读数（温度、电压、风扇转速）及其健康状态。
 monitor_object:
   Wanopt: WAN优化
 monitor_object_type:
@@ -37,8 +36,27 @@ monitor_object_metric:
       name: 内存使用率
       desc: ProxySG 代理内存压力，按已用占可用内存的 0-100 百分比上报（BLUECOAT-SG-PROXY-MIB
         sgProxyMemoryPressure）。持续偏高可能影响缓存或 SSL 检查性能。
+    bluecoat_sensor_celsius:
+      name: 硬件传感器温度
+      desc: ProxySG 硬件传感器温度读数，单位摄氏度（BLUECOAT-SG-SENSOR-MIB deviceSensorValue
+        乘以 10^deviceSensorScale，当 deviceSensorUnits 为 celsius）。超出 -40 至 125
+        ℃ 的读数仅丢弃该数值字段，传感器状态仍保留。
+    bluecoat_sensor_volts:
+      name: 硬件传感器电压
+      desc: ProxySG 硬件传感器电压读数，单位伏特（BLUECOAT-SG-SENSOR-MIB deviceSensorValue
+        乘以 10^deviceSensorScale，当 deviceSensorUnits 为 volts）。超范围读数仅丢弃该数值字段，传感器状态仍保留。
+    bluecoat_sensor_rpm:
+      name: 硬件传感器风扇转速（RPM）
+      desc: ProxySG 硬件传感器风扇转速，单位 RPM（BLUECOAT-SG-SENSOR-MIB deviceSensorValue
+        乘以 10^deviceSensorScale，当 deviceSensorUnits 为 rpm）。超范围读数仅丢弃该数值字段，传感器状态仍保留。
+    bluecoat_sensor_state:
+      name: 硬件传感器状态
+      desc: ProxySG 硬件传感器健康状态。deviceSensorStatus 为 ok(1) 时按
+        deviceSensorCode 映射（ok(1)=1=正常，编码 2-15=2=异常）；unavailable(2)、
+        nonoperational(3)、notInstalled(4) 归一为 2=异常。MIB 未定义的取值不产出状态。
 monitor_object_metric_group:
   Wanopt:
     Base: 基础
     CPU: CPU
     Memory: 内存
+    Hardware Status: 硬件状态

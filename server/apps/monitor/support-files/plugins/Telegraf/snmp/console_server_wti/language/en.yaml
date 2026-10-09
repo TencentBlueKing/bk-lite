@@ -1,7 +1,6 @@
 ConsoleServer WTI SNMP:
   name: WTI Console Server (Telegraf)
-  desc: SNMP monitoring template for WTI console server. It reports per-port inbound
-    traffic rate, per-port outbound traffic rate, and system uptime
+  desc: "SNMP monitoring template for WTI console server. It reports uptime, temperature, power supply status, per-branch current, voltage and power of the environment units, and interface traffic (enterprise PEN 2634)."
 monitor_object:
   ConsoleServer: ConsoleServer
 monitor_object_type:
@@ -58,6 +57,15 @@ monitor_object_metric:
     wti_input_power_4_state:
       name: WTI Input Power 4 State
       desc: State of WTI input power 4, normalized to normal or abnormal.
+    wti_branch_current_amps:
+      name: Branch Current (A)
+      desc: Current drawn on each power branch of the environment unit in amperes.
+    wti_branch_voltage_volts:
+      name: Branch Voltage
+      desc: Voltage of each power branch of the environment unit in volts.
+    wti_branch_power_watts:
+      name: Branch Power
+      desc: Power used by each power branch of the environment unit in watts.
 monitor_object_metric_group:
   ConsoleServer:
     Base: Base

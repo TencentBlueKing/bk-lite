@@ -1,8 +1,6 @@
 Switch Juniper SNMP:
   name: Juniper (Telegraf)
-  desc: SNMP monitoring template for Juniper switches. Device health comes
-    from JUNIPER-MIB jnxOperating; optical DDM comes from JUNIPER-DOM-MIB;
-    interface traffic uses the built-in IF-MIB floor.
+  desc: "SNMP monitoring template for Juniper switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, optical modules, interface traffic, and voltage (enterprise PEN 2636)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -166,16 +164,24 @@ monitor_object_metric:
         protection or hardware damage if left unaddressed.
     device_fan_state:
       name: Fan Status
-      desc: This metric reports the operational state of each cooling fan on the device.
-        A non-normal state (warning, critical, shutdown, or notFunctioning) indicates
-        a cooling fault that can quickly lead to overheating and should be investigated
-        immediately.
+      desc: Operational state of each Juniper cooling fan (jnxOperatingState), normalized
+        to 1=normal / 2=abnormal / 3=Unknown. running(2), ready(3), runningAtFullSpeed(5)
+        and standby(7) map to 1; reset(4) and down(6) map to 2; unknown(1) maps to
+        3 (gray, no alert). Only value 2 alerts.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     device_psu_state:
       name: Power Supply Status
-      desc: This metric reports the operational state of each power supply unit on
-        the device. A non-normal state signals a power redundancy or hardware fault;
-        on devices with redundant PSUs a single failure may not cause an outage but
-        removes redundancy and must be remediated promptly.
+      desc: Operational state of each Juniper power supply (jnxOperatingState), normalized
+        to 1=normal / 2=abnormal / 3=Unknown. running(2), ready(3), runningAtFullSpeed(5)
+        and standby(7) map to 1; reset(4) and down(6) map to 2; unknown(1) maps to
+        3 (gray, no alert). Only value 2 alerts.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     device_fan_speed:
       name: Fan Speed
       desc: This metric reports the fan rotation speed (RPM) of the device, taken

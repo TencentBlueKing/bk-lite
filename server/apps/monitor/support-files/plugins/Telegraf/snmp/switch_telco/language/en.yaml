@@ -1,0 +1,24 @@
+Switch Telco SNMP:
+  name: Telco Systems (Telegraf)
+  desc: "SNMP monitoring template for Telco Systems / BATM BiNOS ethernet switch. It reports uptime, CPU utilization, and interface traffic (enterprise PEN 738)."
+monitor_object:
+  Switch: Switch
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Switch:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart.
+        By monitoring the uptime, network administrators can understand the stability
+        and reliability of the device and identify potential reboot or failure issues.
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: This metric reports the CPU utilization of the Telco Systems / BATM
+        BiNOS ethernet switch (monCpuUtilization) as a 0-100 percentage. Sustained
+        high CPU usage can indicate control-plane overload, forwarding instability,
+        or attack traffic.
+monitor_object_metric_group:
+  Switch:
+    CPU: CPU
+    Base: Base

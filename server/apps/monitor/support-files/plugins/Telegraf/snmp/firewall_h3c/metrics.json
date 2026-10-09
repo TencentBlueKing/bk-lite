@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_h3c_firewall",
   "plugin": "Firewall H3C SNMP",
-  "plugin_desc": "H3C SecPath firewall SNMP collection (HH3C-ENTITY-EXT-MIB and HH3C-FIREWALL-MIB, IANA PEN 25506). Collects per-entity CPU and memory utilization (hh3cEntityExtCpuUsage / hh3cEntityExtMemUsage), temperature (hh3cEntityExtTemperature; 65535 unsupported sentinel filtered), fan and power-supply operational state from hh3cEntityExtOperStatus joined with ENTITY-MIB entPhysicalClass fan(7)/powerSupply(6) and normalized to 1=ok / 2=bad, plus firewall session scalars (hh3cFWConnNumCurr, hh3cFWMaxConnNum, hh3cFWConnRate). Interface counters come from the built-in IF-MIB catalog, not this plugin. Distinct from Switch H3C SNMP (snmp_h3c). Supported models — H3C SecPath F1000/F5000/T9000 and related Comware firewall appliances.",
+  "plugin_desc": "SNMP monitoring template for H3C SecPath firewalls. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, sessions/connections, session establishment rate, and interface traffic (enterprise PEN 25506).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='firewall', collect_type='snmp_h3c_firewall'}) by (instance_id)",
   "name": "Firewall",

@@ -92,7 +92,7 @@ const validateTopNData = (
   }
 
   if (!Array.isArray(data)) {
-    return { isValid: false, message: errorMessage || "数据格式不匹配" };
+    return { isValid: false, message: errorMessage || "dashboard.dataFormatMismatch" };
   }
 
   const hasNamedRows =
@@ -101,7 +101,7 @@ const validateTopNData = (
 
   return hasNamedRows
     ? { isValid: true }
-    : { isValid: false, message: errorMessage || "数据格式不匹配" };
+    : { isValid: false, message: errorMessage || "dashboard.dataFormatMismatch" };
 };
 
 const DEFAULT_RUNTIME_PRIORITY: RuntimeRequestPriority = {
@@ -118,8 +118,7 @@ const validateEventTableData = (
     return { isValid: true };
   }
 
-  const failMessage =
-    "数据结构不符：事件表期望数组，或包含 items 数组的分页结构";
+  const failMessage = "dashboard.eventTableStructureMismatch";
 
   const list = Array.isArray(data)
     ? data
@@ -169,15 +168,14 @@ const validateRadarData = (
   if (series.unsupported === "multi_series") {
     return {
       isValid: false,
-      message: "雷达图当前仅支持单实体多维数据，不支持多实体对比输入",
+      message: "dashboard.radarMultiSeriesUnsupported",
     };
   }
 
   if (series.indicatorLabels.length === 0) {
     return {
       isValid: false,
-      message:
-        "数据结构不符：雷达图期望 [{name,value}] 或对象 + 指标字段映射",
+      message: "dashboard.radarStructureMismatch",
     };
   }
 
@@ -583,6 +581,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       filterBindings: config?.filterBindings,
       filterDefinitions,
       resolutionContext: dateRangeResolutionContext,
+      t,
     });
   }, [
     requestEnabled,
@@ -592,6 +591,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     unifiedFilterValues,
     filterDefinitions,
     dateRangeResolutionContext,
+    t,
   ]);
 
   const requestSignatureParams = useMemo(() => {
@@ -607,6 +607,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       filterBindings: config?.filterBindings,
       filterDefinitions,
       resolutionContext: dateRangeResolutionContext,
+      t,
     });
   }, [
     requestEnabled,
@@ -616,6 +617,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     unifiedFilterValues,
     filterDefinitions,
     dateRangeResolutionContext,
+    t,
   ]);
 
   const requestSignature = useMemo(() => {
@@ -683,14 +685,22 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
   const validateChartData = useCallback(
     (data: unknown, type?: string) => {
+      const localizeStructureMessage = (
+        result: { isValid: boolean; message?: string },
+      ) => {
+        if (!result.isValid && result.message?.startsWith("dashboard.")) {
+          return { ...result, message: t(result.message) };
+        }
+        return result;
+      };
       const errorMessage = t("dashboard.dataFormatMismatch");
       if (type === "topologyMap") {
         return validateTopologyMapWidgetData(data, errorMessage);
       }
       if (type === "cardList") {
-        return validateCardListPayload(data, {
+        return localizeStructureMessage(validateCardListPayload(data, {
           titleField: config?.cardList?.titleField || "",
-        });
+        }));
       }
 
       const isDataEmpty = () =>
@@ -715,13 +725,13 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         case "topN":
           return validateTopNData(data, config, errorMessage);
         case "gauge":
-          return validateGaugeData(data, config);
+          return localizeStructureMessage(validateGaugeData(data, config));
         case "eventTable":
-          return validateEventTableData(data);
+          return localizeStructureMessage(validateEventTableData(data));
         case "eventTimeline":
-          return validateEventTimelineData(data, config);
+          return localizeStructureMessage(validateEventTimelineData(data, config));
         case "radar":
-          return validateRadarData(data, config);
+          return localizeStructureMessage(validateRadarData(data, config));
         case "multiValue":
           const result = validateMultiValueData(data, errorMessage, {
             labelField: config?.multiValueLabelField,

@@ -42,6 +42,46 @@ def test_watchdog_does_not_replay_uncertain_import(transfer_owner):
     dispatch.assert_not_called()
 
 
+@pytest.mark.django_db
+def test_hard_limit_grace_releases_dead_slot_without_replaying(transfer_owner, caplog):
+    import logging
+
+    expired = submit(transfer_owner, key="expired", kind="import")
+    token = TransferService.claim(expired.pk)
+    TransferService.progress(expired.pk, token, "writing_instances", 1, 4, {"created": 1, "updated": 0, "failed_rows": 0})
+    TransferService.interrupt(expired.pk, token, "worker_lost")
+    recent = submit(transfer_owner, key="recent", kind="import", model_id="mysql")
+    recent_token = TransferService.claim(recent.pk)
+    TransferService.interrupt(recent.pk, recent_token, "worker_lost")
+    CmdbTransferTask.objects.filter(pk=expired.pk).update(
+        started_at=now() - timedelta(minutes=19),
+        filename="SECRET-FILENAME-SENTINEL",
+        message="SECRET-MESSAGE-SENTINEL",
+    )
+    CmdbTransferTask.objects.filter(pk=recent.pk).update(started_at=now() - timedelta(minutes=17))
+    send = Mock()
+    with caplog.at_level(logging.INFO, logger="cmdb"):
+        TransferMaintenance.maintain(send)
+    expired.refresh_from_db()
+    recent.refresh_from_db()
+    assert expired.status == "failed" and not expired.holds_slot
+    assert expired.summary["created"] == 1
+    assert expired.summary["_failure"]["stage"] == "writing_instances"
+    assert expired.summary["_failure"]["result_uncertain"]
+    assert expired.message == "执行已超过进程时限，占用已解除；已写入数据保留，未自动重跑"
+    assert recent.status == "failed" and recent.holds_slot
+    send.assert_not_called()
+    assert TransferService.claim(submit(transfer_owner, key="same-model", kind="import", model_id="mysql").pk) is None
+    assert TransferService.claim(submit(transfer_owner, key="next", kind="import").pk)
+    records = [record for record in caplog.records if record.msg == "event=cmdb_transfer_slot_released task_id=%s failed_stage=%s error_type=%s"]
+    assert len(records) == 1
+    assert records[0].args == (str(expired.pk), "writing_instances", "ExecutionHardLimit")
+    rendered = logging.Formatter().format(records[0])
+    assert str(expired.pk) in records[0].getMessage()
+    assert "SECRET-FILENAME-SENTINEL" not in rendered
+    assert "SECRET-MESSAGE-SENTINEL" not in rendered
+
+
 def test_broker_failure_is_recovered_without_creating_another_task(transfer_owner, caplog):
     task = submit(transfer_owner)
     send = Mock(side_effect=OSError("PRIVATE-BROKER-SENTINEL"))

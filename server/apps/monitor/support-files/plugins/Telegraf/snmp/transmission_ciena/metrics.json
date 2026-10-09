@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_ciena",
   "plugin": "Transmission Ciena SNMP",
-  "plugin_desc": "Ciena CES/SAOS transmission SNMP child template (enterprise PEN 1271). Beyond standard IF-MIB interface metrics supplied by the shared Transmission SNMP floor, it collects CES chassis CPU utilization as a direct 0-100 percentage per slot from cienaCesChassisCPUHealthCurrMeasurement (cpu-Usage). Chassis memory current measurement (cienaCesChassisMemoryHealthCurrMeasurement) is in KB and is reported as used memory; memory utilization percent is not derived because this table does not expose a paired used/total. This template binds CES/SAOS platforms only and does not bind Ciena 6500 Packet-Optical. Temperature, optical power and laser bias remain N/A because those health tables need per-row skip_values that telegraf inputs.snmp cannot apply. Supported brands/models — Ciena CES/SAOS packet/optical transport (for example 3000/3900/5000/5100 series, enterprise 1271), not 6500 SP.",
+  "plugin_desc": "SNMP monitoring template for Ciena transmission device. It reports uptime, CPU utilization, memory used, and interface traffic, for CES/SAOS (enterprise PEN 1271).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='transmission', collect_type='snmp_ciena'}) by (instance_id)",
   "name": "Transmission",
@@ -51,6 +51,60 @@
         "instance_id"
       ],
       "description": "This metric reports CES/SAOS chassis memory current measurement from cienaCesChassisMemoryHealthCurrMeasurement in KB, scaled to bytes. The chassis memory health table does not expose a paired used/total, so memory utilization percent is not derived."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='transmission', __$labels__}",
+      "display_name": "Device Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Module temperature of the Ciena CES/SAOS chassis in degrees Celsius (cienaCesChassisModuleTempHealthCurrMeasurement), one series per sensor and slot."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "device_fan_state{instance_type='transmission', __$labels__}",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Fan state of the Ciena CES/SAOS chassis (cienaCesChassisFanStatus): ok/uninstalled=1 normal (empty slots keep a row), rpm-warning=2 abnormal, unknown=3 (gray, no alert); pending (stats not ready) is not reported."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='transmission', __$labels__}",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Power-supply state of the Ciena CES/SAOS chassis (cienaCesChassisPowerSupplyState): online/uninstalled=1 normal (empty slots keep a row), faulted/offline=2 abnormal."
     },
     {
       "metric_group": "Traffic",

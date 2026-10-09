@@ -1,0 +1,8 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "message": {"type": "string", "title": "智能体输出", "maxLength": 100000}
+  },
+  "required": ["message"]
+}

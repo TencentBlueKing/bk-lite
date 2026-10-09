@@ -9,6 +9,43 @@ _OUTPUT_BLOCK_PATTERN = re.compile(r"(?ms)^\s*\[\[outputs\.[^\]]+\]\].*?(?=^\s*\
 _SECRET_ASSIGNMENT_PATTERN = re.compile(r"(?i)\b(password|passwd|token|secret|private_key|passphrase)\s*=\s*([^\s,;]+)")
 
 
+def sidecar_node_render_variables(node) -> dict:
+    """与 Sidecar.get_variables 的 node__* 键对齐，供探测路径做 ${node.*} 替换。"""
+    ip = str(getattr(node, "ip", "") or "")
+    return {
+        "node__id": str(getattr(node, "id", "") or ""),
+        "node__cloud_region": str(getattr(node, "cloud_region_id", "") or ""),
+        "node__name": str(getattr(node, "name", "") or ""),
+        "node__ip": ip,
+        "node__ip_filter": ip.replace(".", "-").replace("*", "-").replace("*", ">"),
+        "node__operating_system": str(getattr(node, "operating_system", "") or ""),
+        "node__collector_configuration_directory": str(
+            getattr(node, "collector_configuration_directory", "") or ""
+        ),
+    }
+
+
+def substitute_sidecar_node_variables(config_content: str, node) -> str:
+    """探测不走 Sidecar 拉配置，用正式下发同一套 ${node.*} 替换。"""
+    if node is None or not config_content:
+        return config_content
+    from apps.node_mgmt.services.sidecar import Sidecar
+
+    return Sidecar.render_template(config_content, sidecar_node_render_variables(node))
+
+
+def script_isolation_name_prefixes(config_id) -> list:
+    """child name_prefix 可能是 bklite_script_{id}_ 或仅 {id}_，调试展示都要剥掉。"""
+    text = str(config_id or "").strip()
+    if not text:
+        return []
+    prefixes = []
+    for item in (f"bklite_script_{text}_", f"{text}_"):
+        if item not in prefixes:
+            prefixes.append(item)
+    return prefixes
+
+
 def render_preflight_telegraf_config(template_content: str, context: dict) -> str:
     rendered = render_telegraf_config_template(template_content, context)
     return disable_real_outputs(rendered)

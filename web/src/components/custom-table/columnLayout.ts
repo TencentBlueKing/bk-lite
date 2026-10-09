@@ -1,4 +1,18 @@
 export const DEFAULT_COL_WIDTH = 150;
+export const DEFAULT_SELECTION_COLUMN_WIDTH = 32;
+
+export const resolveSelectionColumnWidth = (
+  columnWidth?: number | string,
+): number => {
+  if (typeof columnWidth === 'number' && Number.isFinite(columnWidth) && columnWidth > 0) {
+    return columnWidth;
+  }
+  if (typeof columnWidth === 'string' && columnWidth.endsWith('px')) {
+    const parsed = Number.parseFloat(columnWidth);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_SELECTION_COLUMN_WIDTH;
+  }
+  return DEFAULT_SELECTION_COLUMN_WIDTH;
+};
 
 type ColumnWidth = number | string | undefined;
 
@@ -15,6 +29,8 @@ interface ResolveColumnLayoutOptions {
   columnWidths: Record<string, number>;
   tableLayout?: 'auto' | 'fixed';
   containerWidth?: number;
+  /** 勾选列等不在 columns 里的固定槽，铺满时要从容器宽度里扣掉 */
+  reservedWidth?: number;
 }
 
 export const getColumnKey = (column: ColumnLike, index: number): string => {
@@ -81,16 +97,22 @@ export const resolveColumnLayout = ({
   columnWidths,
   tableLayout,
   containerWidth,
+  reservedWidth = 0,
 }: ResolveColumnLayoutOptions) => {
   const contentMinWidth = estimateContentMinWidth(columns, columnWidths);
+  const gutter = Math.max(0, reservedWidth);
   const measuredWidth =
     typeof containerWidth === 'number' && containerWidth > 0
       ? containerWidth
       : undefined;
+  const usableWidth =
+    measuredWidth !== undefined
+      ? Math.max(0, measuredWidth - gutter)
+      : undefined;
   const overflows =
     autoScrollX
-    && measuredWidth !== undefined
-    && contentMinWidth > measuredWidth;
+    && usableWidth !== undefined
+    && contentMinWidth > usableWidth;
 
   const minWidths = columns.map((column, index) => {
     const columnKey = getColumnKey(column, index);
@@ -105,17 +127,17 @@ export const resolveColumnLayout = ({
   if (overflows) {
     return {
       widths: minWidths,
-      scrollX: contentMinWidth,
+      scrollX: contentMinWidth + gutter,
       tableLayout: tableLayout ?? 'fixed',
     };
   }
 
-  if (measuredWidth !== undefined && contentMinWidth > 0 && contentMinWidth <= measuredWidth) {
+  if (usableWidth !== undefined && contentMinWidth > 0 && contentMinWidth <= usableWidth) {
     return {
-      widths: contentMinWidth < measuredWidth
+      widths: contentMinWidth < usableWidth
         ? scaleWidthsToContainer(
           minWidths,
-          measuredWidth,
+          usableWidth,
           columns.map((column) => Boolean(column.fixed)),
         )
         : minWidths,

@@ -255,3 +255,146 @@ class TestContextView:
         body = r.json()
         assert body["result"] is False
         assert body["code"] == "chunk_retrieval_not_generation_safe"
+
+
+NEAR_IMAGE = "wiki/media/1/9/bbbbbbbbbbbbbbbb.png"
+FAR_IMAGE = "wiki/media/1/9/aaaaaaaaaaaaaaaa.png"
+PAGE_IMAGE = "wiki/media/1/pages/cccccccccccccccc.png"
+FLOW_IMAGE = "wiki/media/1/9/ffffffffffffffff.png"
+
+
+@pytest.mark.django_db
+def test_build_context_includes_page_body_images():
+    from apps.opspilot.services.wiki.wiki_context_service import build_context
+
+    kb = _kb()
+    _page(kb, "重启服务", f"执行重启\n![步骤]({PAGE_IMAGE})\n完成")
+
+    out = build_context([kb.id], "重启服务", top_k=5, graph_hops=0)
+
+    assert "附图" in out["context"]
+    assert PAGE_IMAGE in out["context"] or "![" in out["context"]
+    assert out["hits"][0]["images"]
+
+
+@pytest.mark.django_db
+def test_build_context_includes_material_images_in_snippet_window_only():
+    from apps.opspilot.models import Material, PageEvidence
+    from apps.opspilot.services.wiki.wiki_context_service import build_context
+
+    kb = _kb()
+    page = _page(kb, "登录流程", "在登录页输入账号后点击确认")
+    material = Material.objects.create(
+        knowledge_base=kb,
+        name="手册.pdf",
+        material_type="text",
+        text_content=(f"![远]({FAR_IMAGE})\n" + ("x" * 500) + f"\n在登录页输入账号后点击确认\n![近]({NEAR_IMAGE})\n"),
+    )
+    PageEvidence.objects.create(page=page, material=material, locator="")
+
+    out = build_context([kb.id], "登录页输入账号", top_k=5, graph_hops=0)
+
+    assert "bbbbbbbbbbbbbbbb" in out["context"]
+    assert "aaaaaaaaaaaaaaaa" not in out["context"]
+
+
+@pytest.mark.django_db
+def test_build_context_loads_images_from_parsed_markdown_not_text_content(monkeypatch):
+    from apps.opspilot.models import Material, MaterialVersion, PageEvidence
+    from apps.opspilot.services.wiki import wiki_context_service
+
+    kb = _kb()
+    page = _page(kb, "堡垒机规范", "版本记录表\n版本 1.0")
+    material = Material.objects.create(
+        knowledge_base=kb,
+        name="嘉为堡垒机使用管理规范.docx",
+        material_type="file",
+        text_content="",
+    )
+    version = MaterialVersion.objects.create(
+        material=material,
+        content_locator=f"wiki/parsed/{kb.id}/{material.id}/digest.md",
+        content_hash="digest",
+    )
+    material.current_version = version
+    material.save(update_fields=["current_version", "updated_at"])
+    PageEvidence.objects.create(page=page, material=material, locator="")
+
+    parsed = "版本记录表\n版本 1.0\n" + ("y" * 500) + f"\n9. 堡垒机资源申请流程图:\n![流程图]({FLOW_IMAGE})\n"
+    monkeypatch.setattr(
+        wiki_context_service,
+        "load_parsed_markdown",
+        lambda material, for_display=False: parsed,
+    )
+
+    out = wiki_context_service.build_context([kb.id], "堡垒机资源申请流程图", top_k=5, graph_hops=0)
+
+    assert "附图" in out["context"]
+    assert "ffffffffffffffff" in out["context"]
+    assert out["hits"][0]["images"]
+
+
+@pytest.mark.django_db
+def test_build_context_attaches_query_near_material_images_when_snippet_elsewhere():
+    from apps.opspilot.models import Material, PageEvidence
+    from apps.opspilot.services.wiki.wiki_context_service import build_context
+
+    kb = _kb()
+    # 页面正文只有版本表，检索 snippet 落在这里；流程图在来源 md 后半段。
+    page = _page(kb, "嘉为堡垒机使用管理规范", "版本记录表\n版本号 V1.0\n修订说明 初稿")
+    material = Material.objects.create(
+        knowledge_base=kb,
+        name="规范.pdf",
+        material_type="text",
+        text_content=("版本记录表\n版本号 V1.0\n修订说明 初稿\n" + ("z" * 500) + f"\n9. 堡垒机资源申请流程图:\n![申请流程]({FLOW_IMAGE})\n"),
+    )
+    PageEvidence.objects.create(page=page, material=material, locator="")
+
+    out = build_context([kb.id], "堡垒机资源申请流程图", top_k=5, graph_hops=0)
+
+    assert "附图" in out["context"]
+    assert "ffffffffffffffff" in out["context"]
+
+
+@pytest.mark.django_db
+def test_build_context_page_body_images_use_nearby_caption_as_alt():
+    from apps.opspilot.services.wiki.wiki_context_service import build_context
+
+    kb = _kb()
+    # 正文前半是版本表噪声；流程图在后半段且 Markdown alt 为空。
+    body = "版本记录表\n堡垒机 流程\n" + ("表。" * 200) + f"\n## 四、堡垒机管理流程\n9. 堡垒机资源申请流程图:\n![]({FLOW_IMAGE})\n"
+    _page(kb, "嘉为堡垒机使用管理规范", body)
+
+    out = build_context([kb.id], "堡垒机资源申请流程", top_k=5, graph_hops=0)
+
+    assert "资源申请流程图" in (out["hits"][0].get("snippet") or "")
+    assert out["hits"][0]["images"]
+    assert any("堡垒机资源申请流程图" in image for image in out["hits"][0]["images"])
+    assert "ffffffffffffffff" in out["context"]
+    assert "禁止改写为「无法展示」" in out["context"]
+    assert "/api/proxy/opspilot/wiki_mgmt/media/" in out["context"]
+
+
+def test_wiki_rules_require_emitting_markdown_images():
+    from apps.opspilot.services.wiki.wiki_context_service import FORCE_WIKI_RULES, NON_FORCE_WIKI_RULES
+
+    for rules in (FORCE_WIKI_RULES, NON_FORCE_WIKI_RULES):
+        assert "原样输出" in rules
+        assert "无法直接展示" in rules
+
+
+def test_truncate_context_line_keeps_images_before_shrinking_snippet_away():
+    from apps.opspilot.services.wiki import wiki_context_service as svc
+
+    hit = {
+        "title": "规范",
+        "kb_name": "kb",
+        "snippet": "正文" * 400,
+        "images": [f"![流程图](/api/proxy/opspilot/wiki_mgmt/media/?locator={FLOW_IMAGE})"],
+        "directory_breadcrumb": [],
+        "heading_path": "",
+    }
+    # 预算只够前缀 + 少量正文 + 附图，不应直接丢掉附图。
+    line = svc._truncate_context_line(1, hit, token_budget=180)
+    assert "流程图" in line
+    assert "附图" in line

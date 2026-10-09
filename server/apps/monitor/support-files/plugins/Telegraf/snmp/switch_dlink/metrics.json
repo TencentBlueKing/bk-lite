@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_dlink",
   "plugin": "Switch D-Link SNMP",
-  "plugin_desc": "D-Link DGS/DXS enterprise switch SNMP collection (enterprise PEN 171, AGENT-GENERAL-MIB). Device identity is the sysObjectID prefix 1.3.6.1.4.1.171.10. Collects CPU utilization as a 0-100 percent (agentCPUutilizationIn5min, with optional 5-second and 1-minute windows) and DRAM total/used as kilobytes converted to bytes in the metric query, plus vendor DRAM utilization as a 0-100 percent. DRAM rows are indexed by unitID (0 = local device). Interface traffic comes from the built-in IF-MIB table. This plugin is a Switch object only and does not poll Flash utilization in this round.",
+  "plugin_desc": "SNMP monitoring template for D-Link switch. It reports uptime, CPU utilization, memory utilization and interface traffic (enterprise PEN 171), plus temperature sensors, fan and power-supply state on DGS-1250 series (DLINKSW-ENTITY-EXT-MIB).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_dlink'}) by (instance_id)",
   "name": "Switch",
@@ -123,6 +123,60 @@
         "instance_id"
       ],
       "description": "This metric reports DRAM utilization of the D-Link DGS/DXS switch (agentDRAMutilization) as a 0-100 percentage. Rows are indexed by unitID (0 = local device). High memory usage may indicate leaks, oversized MAC/ARP tables, or insufficient capacity."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "sensor_name",
+          "description": "Temperature sensor name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the temperature reading of each DGS-1250 hardware sensor (dEntityExtEnvTempCurrent) in degrees Celsius. Values outside −40..125 ℃ are dropped. Abnormally high temperatures may indicate fan failure, blocked airflow, or excessive ambient heat."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "device_fan_state{instance_type='switch', __$labels__}",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "fan_name",
+          "description": "Fan name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the operational state of each DGS-1250 cooling fan. ok is stored as 1 (normal); fault is stored as 2 (abnormal). Any other code is dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='switch', __$labels__}",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "psu_name",
+          "description": "Power supply name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the operational state of each DGS-1250 power supply. inOperation and empty are stored as 1 (normal); failed is stored as 2 (abnormal). Any other code is dropped."
     },
     {
       "metric_group": "Base",

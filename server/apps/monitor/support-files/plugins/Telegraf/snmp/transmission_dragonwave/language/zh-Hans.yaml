@@ -1,6 +1,6 @@
 Transmission DragonWave SNMP:
   name: DragonWave（Telegraf）
-  desc: 面向 DragonWave 传输设备的 SNMP 监控模板,可采集 射频温度、可选 MWR 系统温度、每端口入向流量速率、每端口出向流量速率和运行时长（企业号 PEN 7262）。
+  desc: 面向 DragonWave 传输设备的 SNMP 监控模板，可采集运行时长、温度、接口流量，适用于 Horizon Compact Plus、Harmony MWR（企业号 PEN 7262）。
 monitor_object:
   Transmission: 传输设备
 monitor_object_type:

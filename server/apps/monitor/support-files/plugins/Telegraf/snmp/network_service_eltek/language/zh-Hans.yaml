@@ -1,0 +1,46 @@
+NetworkService Eltek SNMP:
+  name: Eltek（Telegraf）
+  desc: 面向 Eltek SmartPack / WebPower 直流电源系统（ELTEK-DISTRIBUTED-MIB，企业号 PEN 12148）的 SNMP 监控模板，可采集运行时长、电池电压与温度、各整流器状态
+    / 输出电压 / 输出电流 / 进风温度，以及接口流量。
+monitor_object:
+  NetworkService: 网络服务
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  NetworkService:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    battery_voltage_volts:
+      name: 电池电压
+      desc: 电池电压，单位为伏。持续下降可能表示市电中断后电池正在放电。
+    battery_temperature_celsius:
+      name: 电池温度
+      desc: 电池温度最高值，单位为摄氏度。温度过高会缩短电池寿命。
+    rectifier_output_voltage_volts:
+      name: 整流器输出电压
+      desc: 各整流器输出电压，单位为伏。
+    rectifier_output_current_amps:
+      name: 整流器输出电流（A）
+      desc: 各整流器输出电流，单位为安。
+    rectifier_temperature_celsius:
+      name: 整流器进风温度
+      desc: 各整流器进风温度，单位为摄氏度。
+    rectifier_state:
+      name: 整流器状态
+      desc: 各整流器运行状态，异常表示整流器处于告警状态。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位
+        ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内出向发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32
+        位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+monitor_object_metric_group:
+  NetworkService:
+    Base: 基础
+    Traffic: 流量
+    Power: 电力
+    Temperature: 温度
+    Hardware Status: 硬件状态

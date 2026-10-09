@@ -1,15 +1,29 @@
 """脚本库视图测试（CRUD + 高危命令拦截 + 批量删除）"""
 
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
 from apps.job_mgmt.constants import DangerousLevel
 from apps.job_mgmt.models import DangerousRule, Script
+from apps.job_mgmt.serializers.script import ScriptListSerializer
 
 pytestmark = [pytest.mark.unit, pytest.mark.django_db]
 
 URL = "/api/v1/job_mgmt/api/script/"
+
+
+class TestScriptListSerializer:
+    def test_list_includes_created_by_and_team(self):
+        script = Script.objects.create(name="s1", content="echo", script_type="shell", team=[1], created_by="admin")
+        request = SimpleNamespace(user=SimpleNamespace(group_list=[{"id": 1, "name": "Default"}]))
+
+        data = ScriptListSerializer(script, context={"request": request}).data
+
+        assert data["created_by"] == "admin"
+        assert data["team"] == [1]
+        assert data["team_name"] == ["Default"]
 
 
 class TestScriptCrud:
@@ -206,6 +220,46 @@ class TestScriptCrud:
         assert resp.data["skipped"][0]["name"] == "exists"
         created = Script.objects.get(name="fresh", team=[1])
         assert created.params[0]["default"] == ""
+
+    def test_create_script_with_enum_param(self, su_client):
+        resp = su_client.post(
+            URL,
+            {
+                "name": "enum-script",
+                "content": "echo $1",
+                "script_type": "shell",
+                "team": [1],
+                "params": [
+                    {
+                        "name": "env",
+                        "type": "enum",
+                        "options": ["prod", "dev", "prod", ""],
+                        "default": "prod",
+                        "is_required": True,
+                    }
+                ],
+            },
+            format="json",
+        )
+        assert resp.status_code == 201
+        script = Script.objects.get(name="enum-script")
+        assert script.params[0]["type"] == "enum"
+        assert script.params[0]["options"] == ["prod", "dev"]
+        assert script.params[0]["default"] == "prod"
+
+    def test_create_rejects_enum_with_encrypt(self, su_client):
+        resp = su_client.post(
+            URL,
+            {
+                "name": "bad-enum",
+                "content": "echo",
+                "script_type": "shell",
+                "team": [1],
+                "params": [{"name": "env", "type": "enum", "options": ["a"], "is_encrypted": True}],
+            },
+            format="json",
+        )
+        assert resp.status_code == 400
 
     def test_update_keeps_encrypted_default_when_mask_echoed(self, su_client):
         """二次编辑未改加密默认值时，回传 ****** 不得覆盖库中原密文。"""

@@ -1,8 +1,6 @@
 Switch H3C SNMP:
   name: H3C (Telegraf)
-  desc: SNMP monitoring template for H3C / HPE Comware switches. Device health comes
-    from HH3C-ENTITY-EXT-MIB; optical DDM comes from HH3C-TRANSCEIVER-INFO-MIB;
-    interface traffic uses the built-in IF-MIB floor.
+  desc: "SNMP monitoring template for H3C switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, optical modules, interface traffic, voltage, and power, for S-series Comware (enterprise PEN 25506)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

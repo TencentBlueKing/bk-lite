@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_waystream",
   "plugin": "Switch Waystream SNMP",
-  "plugin_desc": "Waystream ASR / FTTH switch SNMP collection (IANA PEN 9303). Interface traffic is supplied by the shared Switch SNMP IF-MIB floor. Device health comes from wsSystem scalars—CPU utilization is 100 minus wsCPUIdleLoad, with a fallback of wsCPUUserLoad plus wsCPUSystemLoad; memory utilization is wsMemoryUsed over wsMemoryTotal after converting kilobytes to bytes, with a fallback of 100 minus wsMemoryPctFree (tenths of a percent divided by 10). Optional chassis temperature comes from the wsTempMeasured table (hundredths of a degree Celsius divided by 100). Fan and power-supply state are not collected. Supported brands/models — Waystream ASR and FTTH access switches.",
+  "plugin_desc": "SNMP monitoring template for Waystream switch. It reports uptime, temperature, fan speed, and interface traffic, for ASR and FTTH access switches (enterprise PEN 9303). CPU, memory, and power supply are not exposed by the private MIB and are not collected.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_waystream'}) by (instance_id)",
   "name": "Switch",
@@ -15,63 +15,10 @@
   ],
   "supplementary_indicators": [
     "snmp_uptime",
-    "device_cpu_usage",
-    "device_memory_usage",
-    "device_temperature_celsius"
+    "device_temperature_celsius",
+    "device_fan_speed"
   ],
   "metrics": [
-    {
-      "metric_group": "CPU",
-      "name": "device_cpu_usage",
-      "query": "(100 - avg(device_cpu_idle{instance_type='switch', __$labels__}) by (instance_id)) or (avg(device_cpu_user{instance_type='switch', __$labels__}) by (instance_id) + avg(device_cpu_system{instance_type='switch', __$labels__}) by (instance_id))",
-      "display_name": "CPU Utilization",
-      "data_type": "Number",
-      "unit": "percent",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "CPU utilization of the Waystream switch control plane (PEN 9303 wsSystem). Prefer 100 minus wsCPUIdleLoad; if idle is absent, fall back to wsCPUUserLoad plus wsCPUSystemLoad. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
-    },
-    {
-      "metric_group": "Memory",
-      "name": "device_memory_used",
-      "query": "sum(device_memory_used{instance_type='switch', __$labels__} * 1024) by (instance_id)",
-      "display_name": "Memory Used",
-      "data_type": "Number",
-      "unit": "bytes",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "Used system memory of the Waystream switch in bytes (wsMemoryUsed, reported in kilobytes and multiplied by 1024). Helps administrators see absolute memory consumption and identify memory pressure."
-    },
-    {
-      "metric_group": "Memory",
-      "name": "device_memory_total",
-      "query": "sum(device_memory_total{instance_type='switch', __$labels__} * 1024) by (instance_id)",
-      "display_name": "Memory Total",
-      "data_type": "Number",
-      "unit": "bytes",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "Total system memory of the Waystream switch in bytes (wsMemoryTotal, reported in kilobytes and multiplied by 1024). Together with used bytes it is the denominator for memory utilization."
-    },
-    {
-      "metric_group": "Memory",
-      "name": "device_memory_usage",
-      "query": "(sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100) or (100 - avg(device_memory_pct_free{instance_type='switch', __$labels__}) by (instance_id) / 10)",
-      "display_name": "Memory Utilization",
-      "data_type": "Number",
-      "unit": "percent",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "Overall memory utilization of the Waystream switch. Prefer used / total from wsMemoryUsed and wsMemoryTotal; if those scalars are absent, fall back to 100 minus wsMemoryPctFree after dividing tenths of a percent by 10. High memory usage may indicate memory leaks, oversized tables, or insufficient capacity."
-    },
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
@@ -83,7 +30,20 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Highest chassis temperature reading from the optional wsTempMeasured table, in degrees Celsius. The raw object is hundredths of a degree, so the query divides by 100. Models without this table simply omit the metric. Abnormally high temperatures may indicate cooling failure, blocked airflow, or excessive ambient heat."
+      "description": "Highest chassis temperature reading from the wsTempMeasured table (one row per sensor), in degrees Celsius. The raw object is hundredths of a degree, so the query divides by 100. Abnormally high temperatures may indicate cooling failure, blocked airflow, or excessive ambient heat."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_speed",
+      "query": "max(device_fan_speed{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Fan Speed",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Highest fan rotation speed from the wsFanRPM table (one row per fan), in revolutions per minute. Abnormally low or zero RPM indicates a stalled or failed fan and a risk of overheating; abnormally high RPM may indicate the device is compensating for high temperature."
     },
     {
       "metric_group": "Base",

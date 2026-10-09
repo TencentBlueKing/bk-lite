@@ -1,6 +1,6 @@
 Router Benu SNMP:
   name: Benu Networks（Telegraf）
-  desc: 面向 Benu 路由器的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Benu Networks 路由器的 SNMP 监控模板，可采集运行时长、温度、风扇与电源状态、风扇卡转速与故障风扇数、接口流量（企业号 PEN 39406）。
 monitor_object:
   Router: 路由器
 monitor_object_type:
@@ -16,6 +16,12 @@ monitor_object_metric:
     device_psu_state:
       name: 电源状态
       desc: 该指标报告设备电源模块的运行状态（枚举）。非正常状态表示电源冗余或硬件故障；在冗余电源设备上单个故障会移除冗余，需尽快处理。
+    benu_fan_speed_percent:
+      name: 风扇卡转速
+      desc: Benu 各风扇卡当前转速，单位百分比（0-100），来自 BENU-CHASSIS-MIB benuFanCurSpeed。
+    benu_fan_fault_count:
+      name: 风扇卡故障风扇数
+      desc: 风扇卡上未运行风扇的数量，由 BENU-CHASSIS-MIB benuFanStatus 低 7 位比特计数得到。
     device_memory_total:
       name: 内存总量
       desc: 该指标报告路由器的物理内存总容量（UCD-SNMP-MIB memTotalReal，原始单位 KB，已换算为字节）。

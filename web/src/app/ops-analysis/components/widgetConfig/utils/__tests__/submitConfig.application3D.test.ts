@@ -77,14 +77,21 @@ describe('application3D submit config', () => {
     });
   });
 
-  it('clamps page size and dwell and falls back to slide for an unknown effect', () => {
+  it('keeps a page size of at least 1, clamps a non-positive value to 1, and falls back dwell and effect', () => {
     expect(resolveApplication3DWallConfig({
-      pageSize: 99,
+      pageSize: 800,
+      alarmPageSize: 37,
+    })).toMatchObject({
+      pageSize: 800,
+      alarmPageSize: 37,
+    });
+    expect(resolveApplication3DWallConfig({
+      pageSize: 0,
       dwellSeconds: 1,
       pageEffect: 'cube' as 'slide',
       autoPageEnabled: true,
     })).toEqual({
-      pageSize: 36,
+      pageSize: 1,
       alarmPagesEnabled: false,
       alarmPageSize: 24,
       autoPageEnabled: true,

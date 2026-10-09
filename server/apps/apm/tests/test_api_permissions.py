@@ -17,6 +17,16 @@ from apps.apm.tests.helpers import create_application
 pytestmark = pytest.mark.django_db
 
 
+@pytest.fixture(autouse=True)
+def _stub_probe_artifact_sha256(monkeypatch):
+    # 接入脚本要给探针制品算 SHA-256，真跑会去连 NATS 对象存储；
+    # 这里统一桩掉，制品缺失 / 不可用的用例在测试体内再覆盖。
+    monkeypatch.setattr(
+        "apps.apm.services.integration_configuration.get_probe_artifact_sha256",
+        lambda artifact_name: "0" * 64,
+    )
+
+
 def _configuration_script(code: str) -> str:
     section = code.split("# 2. 配置上报", maxsplit=1)[1].split("# 3. 启动应用", maxsplit=1)[0]
     return section.split("\n", maxsplit=1)[1]
@@ -513,7 +523,7 @@ def test_integration_config_reports_missing_probe_artifact_instead_of_500(apm_ap
 
     assert response.status_code == 404
     assert response.data["code"] == "probe_artifact_not_found"
-    assert "探针文件不存在" in response.data["detail"]
+    assert "probe artifact does not exist" in response.data["detail"]
     assert "系统错误" not in str(response.data)
 
 
@@ -551,7 +561,7 @@ def test_integration_config_reports_probe_storage_unavailability_instead_of_500(
 
     assert response.status_code == 503
     assert response.data["code"] == "probe_artifact_unavailable"
-    assert response.data["detail"] == "探针文件暂时不可用，请稍后重试。"
+    assert response.data["detail"] == "The probe artifact is temporarily unavailable. Try again later."
     assert "nats" not in str(response.data).lower()
     assert "timeout" not in str(response.data).lower()
     records = [record for record in caplog.records if record.msg == "APM ingest snippet rendering failed: %s"]
@@ -686,7 +696,7 @@ def test_integration_config_hides_probe_download_rpc_failures_from_clients(apm_a
 
     assert response.status_code == 503
     assert response.data["code"] == "cloud_region_unavailable"
-    assert response.data["detail"] == "云区域配置暂时不可用，请稍后重试。"
+    assert response.data["detail"] == "Cloud region configuration is temporarily unavailable. Try again later."
     assert "nats" not in str(response.data).lower()
     assert "no responders" not in str(response.data).lower()
 
@@ -719,7 +729,7 @@ def test_integration_config_rejects_client_endpoint_and_invalid_region_proxy_add
         )
 
     assert injected.status_code == 400
-    assert "服务器" in str(injected.data)
+    assert "resolved by the server" in str(injected.data)
     assert invalid_config.status_code == 400
     assert invalid_config.data["code"] == "invalid_cloud_region_proxy_address"
 

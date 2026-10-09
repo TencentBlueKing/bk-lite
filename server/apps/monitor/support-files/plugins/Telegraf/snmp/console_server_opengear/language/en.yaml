@@ -1,7 +1,6 @@
 ConsoleServer Opengear SNMP:
   name: ConsoleServer Opengear SNMP
-  desc: SNMP monitoring template for Opengear console server. It reports system uptime,
-    per-port inbound traffic rate, and per-port outbound traffic rate
+  desc: SNMP monitoring template for Opengear console server. It reports uptime, CPU utilization, memory, and interface traffic (based on standard MIBs and UCD-SNMP-MIB).
 monitor_object:
   ConsoleServer: ConsoleServer
 monitor_object_type:
@@ -46,8 +45,25 @@ monitor_object_metric:
       name: Power Supply Status
       desc: Input power state of the console server, normalized to 1=healthy and 2=fault.
         Any unknown or non-normal code should be investigated as a power-path risk.
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: CPU utilization of the Opengear console server over the last minute, computed
+        as 100 - ssCpuIdle (UCD-SNMP-MIB). Sustained high CPU may indicate heavy serial
+        session or management load.
+    device_memory_total:
+      name: Memory Total
+      desc: Total physical memory of the Opengear console server in bytes (memTotalReal).
+    device_memory_free:
+      name: Memory Available
+      desc: Available physical memory of the Opengear console server in bytes (memAvailReal).
+    device_memory_usage:
+      name: Memory Utilization
+      desc: Memory utilization of the Opengear console server, computed as (total -
+        available) / total * 100. High usage may indicate memory leaks or resource pressure.
 monitor_object_metric_group:
   ConsoleServer:
+    CPU: CPU
+    Memory: Memory
     Base: Base
     Traffic: Traffic
     Temperature: Temperature

@@ -3,6 +3,7 @@
 继承 BaseChatFlowUtils，实现企业微信特定的消息发送逻辑
 """
 
+import io
 import time
 
 import xmltodict
@@ -131,6 +132,20 @@ class WechatChatFlowUtils(BaseChatFlowUtils):
                     self.send_message_chunks(sender_id, msg_chunk, agent_id, corp_id, secret)
                 except Exception as send_err:
                     logger.error(f"企业微信发送消息失败，Bot {self.bot_id}，错误: {str(send_err)}")
+
+    def send_image_reply(self, image, sender_id: str, config: dict):
+        """上传临时素材并以 image 消息发送。"""
+
+        agent_id = config["agent_id"]
+        corp_id = config["corp_id"]
+        secret = config["secret"]
+        wechat_client = WeChatClient(corp_id, secret)
+        name = f"{(getattr(image, 'alt', None) or 'image').strip() or 'image'}.png"
+        media = wechat_client.media.upload("image", (name, io.BytesIO(image.content)))
+        media_id = media.get("media_id") if isinstance(media, dict) else getattr(media, "media_id", None)
+        if not media_id:
+            raise RuntimeError("企业微信图片上传未返回 media_id")
+        wechat_client.message.send_image(agent_id, sender_id, media_id)
 
     def handle_wechat_message(self, request, crypto, bot_chat_flow, wechat_config):
         """处理企业微信消息

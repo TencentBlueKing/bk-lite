@@ -1,6 +1,6 @@
 ConsoleServer Raritan SX SNMP:
   name: Raritan SX 控制台服务器（Telegraf）
-  desc: 面向 Raritan SX 控制台服务器的 SNMP 监控模板,可采集 每端口入向流量速率、每端口出向流量速率和运行时长。
+  desc: 面向 Raritan SX 控制台服务器的 SNMP 监控模板，可采集运行时长、接口流量（基于标准 MIB）。
 monitor_object:
   ConsoleServer: 控制台服务器
 monitor_object_type:

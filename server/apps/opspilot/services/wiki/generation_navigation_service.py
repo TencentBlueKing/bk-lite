@@ -207,12 +207,12 @@ def _overview_text(generation, *, directory, entries):
     kb = generation.knowledge_base
     title = kb.name if directory is None else directory.name
     description = kb.introduction if directory is None else directory.description
-    purpose = (kb.purpose_md or "").strip()
+    introduction = (kb.introduction or "").strip()
     lines = [f"# {title}"]
     if description:
         lines.append(description.strip())
-    if purpose and directory is None:
-        lines.extend(["", "## 用途", purpose[:2000]])
+    if introduction and directory is None and introduction != (description or "").strip():
+        lines.extend(["", "## 简介", introduction[:2000]])
     lines.extend(["", "## 内容索引"])
     if not entries:
         lines.append("当前范围暂无知识页面。")
