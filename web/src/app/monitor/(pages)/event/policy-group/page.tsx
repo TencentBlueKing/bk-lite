@@ -7,7 +7,6 @@ import { cloneDeep } from 'lodash';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
-import useEventApi from '@/app/monitor/api/event';
 import { useTranslation } from '@/utils/i18n';
 import { ColumnItem, ObjectItem, TableDataItem, TreeItem, UserItem } from '@/app/monitor/types';
 import CustomTable from '@/components/custom-table';
@@ -56,7 +55,6 @@ const PolicyGroupPage: React.FC = () => {
     setDefaultPolicyGroup,
     deletePolicyGroup,
   } = useIntegrationApi();
-  const { patchMonitorPolicy } = useEventApi();
   const searchParams = useSearchParams();
   const { syncObjectId } = useMonitorObjectQuery();
   const users: UserItem[] = useCommon()?.userList || [];
@@ -279,17 +277,6 @@ const PolicyGroupPage: React.FC = () => {
                     <div key={item.id}>
                       {item.name}
                       {item.enable ? ' · 仍会一起告警' : ' · 已停用'}
-                      {item.enable ? (
-                        <Button
-                          type="link"
-                          onClick={async () => {
-                            await patchMonitorPolicy(item.id, { enable: false });
-                            if (memberGroup) await openMembers(memberGroup);
-                          }}
-                        >
-                          停用
-                        </Button>
-                      ) : null}
                     </div>
                   ))
                 ) : (

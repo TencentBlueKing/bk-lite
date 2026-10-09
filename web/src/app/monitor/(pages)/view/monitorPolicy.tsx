@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useState, useRef } from 'react';
-import { Button, Modal, Select, Tag, message } from 'antd';
+import { Button, Select, Tag, message } from 'antd';
 import { useRouter } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
@@ -29,8 +29,8 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
 }) => {
   const { isLoading } = useApiClient();
   const { getMonitorMetrics } = useMonitorApi();
-  const { getMonitorPolicy, patchMonitorPolicy } = useEventApi();
-  const { getPolicyGroupMembership, joinPolicyGroup, leavePolicyGroup, createStandalonePolicy } = useIntegrationApi();
+  const { getMonitorPolicy } = useEventApi();
+  const { getPolicyGroupMembership, joinPolicyGroup, leavePolicyGroup } = useIntegrationApi();
   const { t } = useTranslation();
   const router = useRouter();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -54,10 +54,8 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
     group_name: string;
     groups: Array<{ id: number; name: string; is_default?: boolean }>;
     legacy_policies: Array<{ id: number; name: string; enable: boolean }>;
-    templates: Array<{ id: number; name: string }>;
   } | null>(null);
   const [nextGroupId, setNextGroupId] = useState<number | undefined>();
-  const [templateId, setTemplateId] = useState<number | undefined>();
 
   const columns: ColumnItem[] = [
     {
@@ -233,18 +231,6 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
             <div key={item.id} className="mb-1 text-[12px]">
               {item.name}
               {item.enable ? ' 仍会和策略组一起告警' : ' 已停用'}
-              {item.enable ? (
-                <Button
-                  type="link"
-                  onClick={async () => {
-                    await patchMonitorPolicy(item.id, { enable: false });
-                    refreshMembership();
-                    getBoundPolicies();
-                  }}
-                >
-                  停用
-                </Button>
-              ) : null}
             </div>
           ))}
           <Permission requiredPermissions={['Edit']} permissionPath="/monitor/event/strategy">
@@ -281,32 +267,6 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
                   退出
                 </Button>
               ) : null}
-              <Select
-                className="min-w-[220px]"
-                placeholder="补一条单独规则"
-                value={templateId}
-                options={(membership.templates || []).map((item) => ({ value: item.id, label: item.name }))}
-                onChange={setTemplateId}
-              />
-              <Button
-                disabled={!templateId}
-                onClick={() => {
-                  Modal.confirm({
-                    title: '单独规则会和所属策略组同时告警',
-                    content: '未停用时，这条单独规则和实例所属策略组都会告警。',
-                    onOk: async () => {
-                      if (!templateId) return;
-                      await createStandalonePolicy(String(form.instance_id), templateId);
-                      message.success('已创建单独规则');
-                      setTemplateId(undefined);
-                      getBoundPolicies();
-                      refreshMembership();
-                    }
-                  });
-                }}
-              >
-                保存单独规则
-              </Button>
             </div>
           </Permission>
         </div>
