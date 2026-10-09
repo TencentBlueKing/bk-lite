@@ -1783,6 +1783,17 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_mguard",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "temperature",
+        "psu",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_neteye",
       "capabilities": [
         "uptime",
