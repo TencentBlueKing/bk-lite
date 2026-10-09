@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Button, Drawer, Input, InputNumber, Modal, Popconfirm, Select, Spin, Tag, message } from 'antd';
+import { Button, Drawer, Input, Modal, Popconfirm, Select, Spin, Tag, message } from 'antd';
 import { useSearchParams } from 'next/navigation';
 import { cloneDeep } from 'lodash';
 import useApiClient from '@/utils/request';
@@ -18,6 +18,7 @@ import { useCommon } from '@/app/monitor/context/common';
 import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
 import { resolveMonitorObjectQueryId, resolveMonitorObjectTreeKey } from '@/app/monitor/utils/monitorObjectQuery';
 import assetStyle from '../strategy/index.module.scss';
+import ThresholdList, { ThresholdItem } from '../strategy/detail/thresholdList';
 
 interface PolicyGroupRule {
   id: number;
@@ -72,7 +73,7 @@ const PolicyGroupPage: React.FC = () => {
   const [candidates, setCandidates] = useState<Array<{ value: string; label: string }>>([]);
   const [ruleGroup, setRuleGroup] = useState<PolicyGroupRow | null>(null);
   const [rule, setRule] = useState<PolicyGroupRule | null>(null);
-  const [thresholdValue, setThresholdValue] = useState<number | null>(null);
+  const [thresholdDraft, setThresholdDraft] = useState<ThresholdItem[]>([]);
   const [noticeUsers, setNoticeUsers] = useState<string[]>([]);
   const [copySource, setCopySource] = useState<PolicyGroupRow | null>(null);
   const [copyName, setCopyName] = useState('');
@@ -350,7 +351,7 @@ const PolicyGroupPage: React.FC = () => {
               type="link"
               onClick={() => {
                 setRule(item);
-                setThresholdValue(item.threshold?.[0]?.value ?? null);
+                setThresholdDraft(cloneDeep(item.threshold || []) as ThresholdItem[]);
                 setNoticeUsers(item.notice_users || []);
               }}
             >
@@ -379,16 +380,10 @@ const PolicyGroupPage: React.FC = () => {
         onCancel={() => setRule(null)}
         onOk={async () => {
           if (!rule || !ruleGroup) return;
-          const nextThreshold = cloneDeep(rule.threshold || []);
-          if (nextThreshold[0]) {
-            nextThreshold[0].value = thresholdValue ?? nextThreshold[0].value;
-          } else if (thresholdValue !== null) {
-            nextThreshold.push({ level: 'warning', method: '>', value: thresholdValue });
-          }
           await updatePolicyGroupRule({
             group_id: ruleGroup.id,
             rule_id: rule.id,
-            threshold: nextThreshold,
+            threshold: thresholdDraft,
             notice_users: noticeUsers,
           });
           message.success('已修改当前规则，未恢复告警会结束');
@@ -399,7 +394,14 @@ const PolicyGroupPage: React.FC = () => {
       >
         <div className="mb-3">
           <div className="mb-1">阈值</div>
-          <InputNumber className="w-full" value={thresholdValue} onChange={(value) => setThresholdValue(typeof value === 'number' ? value : null)} />
+          <ThresholdList
+            data={thresholdDraft}
+            onChange={setThresholdDraft}
+            thresholdUnit={null}
+            onThresholdUnitChange={() => undefined}
+            showUnitSelector={false}
+            allowStructureEdit
+          />
         </div>
         <div>
           <div className="mb-1">通知人</div>
