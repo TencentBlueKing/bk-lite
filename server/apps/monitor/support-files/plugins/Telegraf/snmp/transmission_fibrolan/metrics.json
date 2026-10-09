@@ -88,7 +88,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Power supply operational status from FIBROLAN-DEVICE-MIB flDevicePsuStatus: ok is 1 (normal), fail is 2 (abnormal). Slots reported as not installed and unknown readings are skipped."
+      "description": "Power supply operational status from FIBROLAN-DEVICE-MIB: notInstalled keeps a row as 1 (normal); ok=1, fail/unknown=2 (abnormal)."
     },
     {
       "metric_group": "Hardware Status",

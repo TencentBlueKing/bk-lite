@@ -92,8 +92,8 @@ def apply(metric):
     [processors.starlark.tagpass]
         brand = ["fibrolan"]
 
-# ---- 电源 / 电源风扇：notInstalled(3) 的槽位整行丢弃；电源 ok(2)→1(正常)、fail(3)→2(异常)，unknown 不输出；
-# ---- 电源风扇 ok(3)→1、fail(4)/singleFail(5)→2，输出为同索引的 device_fan，unknown/notApplicable 不输出。----
+# ---- 电源 / 电源风扇：notInstalled(3) 空槽→1 保留行；电源 ok(2)→1、fail(3)/unknown(1)→2；
+# ---- 电源风扇 ok(3)→1、fail(4)/singleFail(5)→2，输出为同索引的 device_fan；空槽不拆风扇，unknown/notApplicable 不输出。----
 [[processors.starlark]]
     namepass = ["device_psu"]
     source = '''
@@ -101,13 +101,17 @@ def apply(metric):
     installed = metric.fields.pop("installed_raw", None)
     status = metric.fields.pop("state_raw", None)
     fan = metric.fields.pop("fan_raw", None)
-    if installed == 3:
-        return None
     out = []
-    if status == 2 or status == 3:
-        metric.fields["state"] = 1 if status == 2 else 2
+    if installed == 3:
+        metric.fields["state"] = 1
         out.append(metric)
-    if fan == 3 or fan == 4 or fan == 5:
+    elif status == 2:
+        metric.fields["state"] = 1
+        out.append(metric)
+    elif status == 1 or status == 3:
+        metric.fields["state"] = 2
+        out.append(metric)
+    if installed != 3 and (fan == 3 or fan == 4 or fan == 5):
         fan_metric = Metric("device_fan")
         for k, v in metric.tags.items():
             fan_metric.tags[k] = v

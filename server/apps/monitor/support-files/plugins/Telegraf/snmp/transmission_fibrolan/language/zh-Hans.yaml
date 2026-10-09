@@ -44,10 +44,10 @@ monitor_object_metric:
       desc: 传输设备的 CPU 或机箱温度，单位为摄氏度。温度偏高可能表示散热异常、环境温度过高或硬件过载。
     device_fan_state:
       name: 风扇状态
-      desc: 传输设备各散热风扇或风扇控制器的运行状态。非正常状态表示散热模块异常、离线或通信故障，可能导致设备过热。
+      desc: Fibrolan Falcon 电源风扇状态：1 表示正常，2 表示故障或单风扇故障；未安装电源槽不拆出风扇序列。
     device_psu_state:
       name: 电源状态
-      desc: 传输设备各电源模块的运行状态。非正常状态表示电源离线、无输入、过温、硬件故障或告警，需及时排查。
+      desc: Fibrolan Falcon 电源状态：1 表示正常或未安装（空槽保留序列），2 表示故障或未知。
 monitor_object_metric_group:
   Transmission:
     Base: 基础
