@@ -1,0 +1,31 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission Nokia Wavence SNMP",
+  "templates": [
+    {
+      "name": "Nokia Wavence本端接收电平过低",
+      "alert_name": "传输设备${resource_name} 接口 ${metric__ifDescr} 本端接收电平过低",
+      "description": "监控 Nokia Wavence 微波射频本端主接收机输入电平。当低于阈值时触发告警，提示链路衰减、天线对准偏差或对端发射异常，需按调制与天线预算排查。",
+      "metric_name": "wavence_local_rx_power_dbm",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": -80,
+          "method": "<"
+        },
+        {
+          "level": "error",
+          "value": -75,
+          "method": "<"
+        },
+        {
+          "level": "warning",
+          "value": -70,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "object": "Wireless",
+  "plugin": "Wireless BATS SNMP",
+  "templates": [
+    {
+      "name": "BATS无线设备CPU温度过高",
+      "alert_name": "无线设备${resource_name} CPU 温度过高",
+      "description": "监控 BATS 天线自动跟踪系统的 CPU 温度（cpuTemp，摄氏度），当持续高于阈值时触发告警，提示户外机箱温升或散热异常。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

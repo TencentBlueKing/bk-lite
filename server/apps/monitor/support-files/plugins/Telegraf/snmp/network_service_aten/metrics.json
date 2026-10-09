@@ -1,0 +1,137 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_aten",
+  "plugin": "NetworkService ATEN PE eco PDU SNMP",
+  "plugin_desc": "SNMP monitoring template for ATEN PE / eco PDU intelligent power distribution (ATEN-PE-CFG, enterprise PEN 21317). It reports uptime, environment temperature and humidity, whole-device current, voltage and power, and interface traffic.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='network_service', collect_type='snmp_aten'}) by (instance_id)",
+  "name": "NetworkService",
+  "icon": "mm-network_service_网络服务",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='network_service'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "env_temperature_celsius",
+    "pdu_device_current_amps"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Environment",
+      "name": "env_temperature_celsius",
+      "query": "max(env_temperature_celsius{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Environment Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Environment temperature of the ATEN PE / eco PDU in degrees Celsius, from sensorIntegerTemperature (1.3.6.1.4.1.21317.1.3.2.2.2.1.100.1.2, INTEGER millidegrees, divided by 1000). Sentinel values -1000000 (no reading) and -2000000 (unsupported) are dropped."
+    },
+    {
+      "metric_group": "Environment",
+      "name": "env_humidity_percent",
+      "query": "max(env_humidity_percent{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Environment Humidity",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Environment relative humidity of the ATEN PE / eco PDU in percent, from sensorIntegerHumidity (1.3.6.1.4.1.21317.1.3.2.2.2.1.100.1.3, INTEGER millipercent, divided by 1000). Sentinel values -1000000 (no reading) and -2000000 (unsupported) are dropped."
+    },
+    {
+      "metric_group": "Power",
+      "name": "pdu_device_current_amps",
+      "query": "max(pdu_device_current_amps{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Device Current (A)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Whole-device current of the ATEN PE / eco PDU in amperes, from deviceIntegerCurrent (1.3.6.1.4.1.21317.1.3.2.2.2.1.99.1.2, INTEGER milliamps, divided by 1000). Sentinel value -2000000 (unsupported) is dropped."
+    },
+    {
+      "metric_group": "Power",
+      "name": "pdu_device_voltage_volts",
+      "query": "max(pdu_device_voltage_volts{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Device Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Whole-device voltage of the ATEN PE / eco PDU in volts, from deviceIntegerVoltage (1.3.6.1.4.1.21317.1.3.2.2.2.1.99.1.3, INTEGER millivolts, divided by 1000)."
+    },
+    {
+      "metric_group": "Power",
+      "name": "pdu_device_power_watts",
+      "query": "max(pdu_device_power_watts{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Device Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Whole-device power of the ATEN PE / eco PDU in watts, from deviceIntegerPower (1.3.6.1.4.1.21317.1.3.2.2.2.1.99.1.4, INTEGER milliwatts, divided by 1000)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of inbound bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of outbound bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

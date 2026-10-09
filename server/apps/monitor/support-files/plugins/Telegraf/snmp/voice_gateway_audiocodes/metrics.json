@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_audiocodes",
   "plugin": "VoiceGateway AudioCodes SNMP",
-  "plugin_desc": "SNMP monitoring template for AudioCodes voice gateway. It reports uptime and interface traffic (based on standard MIBs).",
+  "plugin_desc": "SNMP monitoring template for AudioCodes voice gateway. It reports uptime, interface traffic, voice and data CPU and memory utilization, and board temperature (enterprise PEN 5003).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='voice_gateway', collect_type='snmp_audiocodes'}) by (instance_id)",
   "name": "VoiceGateway",
@@ -14,6 +14,10 @@
     "instance_id"
   ],
   "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius",
     "device_total_incoming_traffic",
     "device_total_outgoing_traffic"
   ],
@@ -30,6 +34,71 @@
         "instance_id"
       ],
       "description": "This metric indicates the uptime of the wireless device since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "max(snmp_device_cpu_usage{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "Voice CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Voice (VoIP) processor utilization of the AudioCodes gateway in percent (AC-SYSTEM-MIB acSysStateVoIpCpuUtilization)."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "device_data_cpu_usage",
+      "query": "max(snmp_device_data_cpu_usage{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "Data CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Data processor utilization of the AudioCodes gateway in percent (acSysStateDataCpuUtilization). Models without a data plane do not report it."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "max(snmp_device_memory_usage{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "Voice Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Voice (VoIP) memory utilization of the AudioCodes gateway in percent (acSysStateVoIpMemoryUtilization)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_data_memory_usage",
+      "query": "max(snmp_device_data_memory_usage{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "Data Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Data memory utilization of the AudioCodes gateway in percent (acSysStateDataMemoryUtilization). Models without a data plane do not report it."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(snmp_device_temperature_celsius{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "Board Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Board temperature of the AudioCodes gateway in degrees Celsius (acSysStateTemperature). The vendor recommends keeping it below 60 degrees."
     },
     {
       "metric_group": "Traffic",

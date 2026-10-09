@@ -1,0 +1,81 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission TERRA SNMP",
+  "templates": [
+    {
+      "name": "TERRA头端CPU使用率过高",
+      "alert_name": "TERRA头端${resource_name} CPU 使用率过高",
+      "description": "监控 TERRA sti440 头端接收机的 CPU 负载，当持续高于阈值时触发告警，提示可能存在转码或接收业务过载。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "TERRA头端温度过高",
+      "alert_name": "TERRA头端${resource_name} 温度过高",
+      "description": "监控 TERRA sti440 头端接收机的机内温度，当持续高于阈值时触发告警，提示可能存在散热异常、环境温度过高或设备过载。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 65,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 55,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "TERRA头端输入信噪比过低",
+      "alert_name": "TERRA头端${resource_name} 调谐器 ${metric__tuner} 输入信噪比过低",
+      "description": "监控 TERRA sti440 各调谐器的输入信噪比，当持续低于阈值时触发告警，提示射频输入质量下降，可能影响解调与转码。",
+      "metric_name": "terra_tuner_snr_db",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 18,
+          "method": "<"
+        },
+        {
+          "level": "error",
+          "value": 22,
+          "method": "<"
+        },
+        {
+          "level": "warning",
+          "value": 25,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

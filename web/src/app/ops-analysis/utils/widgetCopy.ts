@@ -6,6 +6,7 @@ import type {
   WidgetConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import type { ScreenViewSets } from '@/app/ops-analysis/types/screen';
+import { isScreenWidgetItem } from '@/app/ops-analysis/(pages)/view/screen/utils/screenItems';
 import type { ReportViewSets } from '@/app/ops-analysis/types/report';
 import { isSceneWidgetType } from '@/app/ops-analysis/types/sceneWidgetCapability';
 import {
@@ -241,6 +242,7 @@ export const copyScreenWidget = (
   const source = viewSets.items.find((item) => item.id === sourceId);
   if (
     !source ||
+    !isScreenWidgetItem(source) ||
     !isCopyableAnalysisWidget({
       sceneWidgetType: source.valueConfig?.sceneWidgetType,
       chartType: source.chartType,

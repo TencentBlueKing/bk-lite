@@ -56,6 +56,12 @@ class TestPlaybookSimpleActions:
         resp = su_client.get(f"{URL}download_template/")
         assert resp.status_code == 200
         assert resp["Content-Type"] == "application/zip"
+        with zipfile.ZipFile(io.BytesIO(b"".join(resp.streaming_content))) as zf:
+            readme = zf.read("playbook-template/README.md").decode("utf-8")
+            vars_yml = zf.read("playbook-template/roles/example/vars/main.yml").decode("utf-8")
+        assert "参数说明（供平台展示）" in readme
+        assert "同一行行尾" in readme
+        assert "# 发送给目标的问候语" in vars_yml
 
     def test_download_without_file_returns_404(self, su_client):
         pb = _make()

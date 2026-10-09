@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Form, InputNumber, Select, Switch } from 'antd';
+import { Form, InputNumber, Select, Space, Switch } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import {
   APPLICATION3D_PAGE_EFFECTS,
@@ -39,6 +39,18 @@ interface PageSizeInputControlProps {
   disabled?: boolean;
 }
 
+const NumberWithUnit = ({
+  unit,
+  ...props
+}: React.ComponentProps<typeof InputNumber> & { unit: string }) => (
+  <Space.Compact>
+    <InputNumber {...props} />
+    <span className="inline-flex items-center rounded-r-md border border-l-0 border-(--color-border) bg-(--color-fill-1) px-2 text-sm text-(--color-text-2)">
+      {unit}
+    </span>
+  </Space.Compact>
+);
+
 const PageSizeInputControl: React.FC<PageSizeInputControlProps> = ({
   id,
   value,
@@ -56,7 +68,7 @@ const PageSizeInputControl: React.FC<PageSizeInputControlProps> = ({
 
   return (
     <div id={id} className="flex flex-wrap items-center gap-2">
-      <InputNumber
+      <NumberWithUnit
         min={APPLICATION3D_WALL_PAGE_SIZE_MIN}
         precision={0}
         disabled={disabled}
@@ -67,7 +79,7 @@ const PageSizeInputControl: React.FC<PageSizeInputControlProps> = ({
           }
         }}
         className="w-32"
-        addonAfter={t('dashboard.application3DCountUnit', '个')}
+        unit={t('dashboard.application3DCountUnit', '个')}
       />
       <div className="flex items-center gap-1.5">
         {presets.map((preset) => {
@@ -196,12 +208,12 @@ export const Application3DWallFields = () => {
               label={t('dashboard.application3DDwell', '每页停留')}
               className="!mb-0"
             >
-              <InputNumber
+              <NumberWithUnit
                 min={APPLICATION3D_WALL_DWELL_MIN}
                 max={APPLICATION3D_WALL_DWELL_MAX}
                 precision={0}
                 className="w-32"
-                addonAfter={t('dashboard.application3DDwellUnit', '秒')}
+                unit={t('dashboard.application3DDwellUnit', '秒')}
               />
             </Form.Item>
           </div>

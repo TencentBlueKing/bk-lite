@@ -1,0 +1,41 @@
+VoiceGateway Fortinet FortiVoice SNMP:
+  name: Fortinet FortiVoice（Telegraf）
+  desc: 面向 Fortinet FortiVoice 语音网关 / IP PBX 的 SNMP 监控模板（企业号 PEN 12356，树 1.3.6.1.4.1.12356.115），可采集运行时长、CPU 使用率、内存使用率、日志盘使用率、存储盘使用率以及 IF-MIB 64 位接口流量。
+monitor_object:
+  VoiceGateway: 语音网关
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  VoiceGateway:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示 FortiVoice 网关自上次启动以来的运行时间（IF-MIB sysUpTime）。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标报告 FortiVoice 网关瞬时 CPU 使用率（FORTINET-FORTIVOICE-MIB fvSysCpuUsage
+        1.3.6.1.4.1.12356.115.1.6.0，Gauge32 百分比）。超出 0～100 的值会被丢弃。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 该指标报告 FortiVoice 网关瞬时内存使用率（FORTINET-FORTIVOICE-MIB fvSysMemUsage
+        1.3.6.1.4.1.12356.115.1.7.0，Gauge32 百分比）。超出 0～100 的值会被丢弃。
+    device_log_disk_usage:
+      name: 日志盘使用率
+      desc: 该指标报告 FortiVoice 网关日志盘使用率（FORTINET-FORTIVOICE-MIB fvSysLogDiskUsage
+        1.3.6.1.4.1.12356.115.1.8.0，Gauge32 百分比）。超出 0～100 的值会被丢弃。
+    device_storage_disk_usage:
+      name: 存储盘使用率
+      desc: 该指标报告 FortiVoice 网关存储盘使用率（FORTINET-FORTIVOICE-MIB fvSysStorageDiskUsage
+        1.3.6.1.4.1.12356.115.1.9.0，Gauge32 百分比）。超出 0～100 的值会被丢弃。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 该指标表示过去 5 分钟内接收字节的平均速率，来自 64 位 IF-MIB ifHCInOctets 计数器（ifXTable）。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标表示过去 5 分钟内发送字节的平均速率，来自 64 位 IF-MIB ifHCOutOctets 计数器（ifXTable）。
+monitor_object_metric_group:
+  VoiceGateway:
+    Base: 基础
+    CPU: CPU
+    Memory: 内存
+    Storage: 存储
+    Traffic: 流量

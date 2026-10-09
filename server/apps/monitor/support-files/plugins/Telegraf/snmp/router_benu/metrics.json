@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_benu",
   "plugin": "Router Benu SNMP",
-  "plugin_desc": "SNMP monitoring template for Benu Networks router. It reports uptime, temperature, fan, power supply status, and interface traffic (enterprise PEN 39406).",
+  "plugin_desc": "SNMP monitoring template for Benu Networks vBNG / CGNAT platforms (enterprise PEN 39406, BENU-CHASSIS-MIB). Besides standard IF-MIB interface traffic and uptime, it reports chassis temperature sensors, fan and power-supply state, and per fan-card speed and number of failed fans.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_benu'}) by (instance_id)",
   "name": "Router",
@@ -55,6 +55,42 @@
         "instance_id"
       ],
       "description": "Worst Benu fan sensor state, normalized from benuSensorState so normal(1) is healthy and every other state is abnormal."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "benu_fan_speed_percent",
+      "query": "benu_fan_speed_percent{instance_type='router', __$labels__}",
+      "display_name": "Fan Card Speed",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current speed of each Benu fan card as a 0-100 percentage (BENU-CHASSIS-MIB benuFanCurSpeed)."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "benu_fan_fault_count",
+      "query": "benu_fan_fault_count{instance_type='router', __$labels__}",
+      "display_name": "Fan Card Fault Count",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of non-operational fans on the fan card from the BENU-CHASSIS-MIB benuFanStatus bitmask."
     },
     {
       "metric_group": "Hardware Status",

@@ -59,14 +59,12 @@ monitor_object_metric:
         hardware.
     device_fan_state:
       name: Fan Status
-      desc: Operational state of each transmission device fan or fan controller. A
-        non-normal state indicates a cooling module fault, offline module, or communication
-        failure and may lead to overheating.
+      desc: Fan state of the Ciena CES/SAOS chassis. 1 means ok or uninstalled (empty
+        slots keep a series); 2 means rpm-warning or unknown.
     device_psu_state:
       name: Power Supply Status
-      desc: Operational state of each transmission device power supply. A non-normal
-        state indicates offline power, missing input, over-temperature, hardware fault,
-        or alert condition that should be investigated.
+      desc: Power-supply state of the Ciena CES/SAOS chassis. 1 means online or uninstalled
+        (empty slots keep a series); 2 means faulted or operationally offline.
 monitor_object_metric_group:
   Transmission:
     Base: Base

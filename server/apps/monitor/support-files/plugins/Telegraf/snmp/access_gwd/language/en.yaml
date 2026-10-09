@@ -1,0 +1,65 @@
+Access GWD SNMP:
+  name: GWD EPON (Telegraf)
+  desc: SNMP monitoring template for GWD (GWTT) EPON OLT / ONU devices (enterprise PEN 10072). It reports
+    uptime, per-board CPU, memory and temperature, device temperature, power supply status and temperature,
+    fan status and speed, and interface traffic.
+monitor_object:
+  Access: Access
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Access:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
+        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
+        or failures.
+    device_board_cpu_usage:
+      name: Board CPU Usage
+      desc: CPU utilization of each board in percent. Sustained high usage indicates control-plane or
+        management-plane pressure on that board.
+    device_board_memory_usage:
+      name: Board Memory Usage
+      desc: Memory utilization of each board in percent. Sustained high usage can indicate memory pressure
+        or abnormal processes.
+    device_board_temperature_celsius:
+      name: Board Temperature
+      desc: Temperature of each board in degrees Celsius. Persistently high values may indicate cooling
+        problems or high ambient temperature.
+    device_temperature_celsius:
+      name: Device Temperature
+      desc: Device temperature of the access device in degrees Celsius. Persistently high values may indicate
+        cooling problems, high ambient temperature, or excessive device load.
+    device_psu_state:
+      name: Power Supply Status
+      desc: Power supply status of the access device. Normal state is normalized to 1 and abnormal states
+        to 2, indicating possible power input or module failure.
+    device_psu_temperature_celsius:
+      name: Power Supply Temperature
+      desc: Temperature of each power supply in degrees Celsius. High values may indicate power module
+        overload or poor cooling.
+    device_fan_state:
+      name: Fan State
+      desc: Fan operating state of the access device. Normal state is normalized to 1 and abnormal or
+        unknown states are normalized to 2, indicating possible cooling degradation.
+    device_fan_rpm:
+      name: Fan Speed
+      desc: Fan rotation speed of the access device in revolutions per minute. Persistently low or zero
+        RPM may indicate a stalled fan or cooling failure.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured
+        in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in
+        bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifOutOctets on high-speed ports, keeping the rate accurate.
+monitor_object_metric_group:
+  Access:
+    Base: Base
+    Traffic: Traffic
+    Access: Access
+    Temperature: Temperature
+    Hardware Status: Hardware Status

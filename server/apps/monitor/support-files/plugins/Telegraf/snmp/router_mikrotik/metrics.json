@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_mikrotik_router",
   "plugin": "Router MikroTik SNMP",
-  "plugin_desc": "SNMP monitoring template for MikroTik router. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic, for RouterOS (enterprise PEN 14988).",
+  "plugin_desc": "SNMP monitoring template for MikroTik router. It reports uptime, CPU utilization, memory utilization, board/CPU temperature, fan speed, power-supply state, input voltage, and interface traffic, for RouterOS (enterprise PEN 14988).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_mikrotik_router'}) by (instance_id)",
   "name": "Router",
@@ -48,7 +48,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the number of bytes currently in use by the MikroTik (RouterOS) system memory (HOST-RESOURCES-MIB hrStorageUsed at the main-memory index). It helps administrators understand absolute memory consumption and identify when the device is under memory pressure."
+      "description": "This metric reports the number of bytes currently in use by the MikroTik (RouterOS) system memory. hrStorageTable is walked by column, only the hrStorageRam row is kept, and hrStorageUsed is multiplied by hrStorageAllocationUnits to give bytes. It helps administrators understand absolute memory consumption and identify when the device is under memory pressure."
     },
     {
       "metric_group": "Memory",
@@ -61,7 +61,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the total size in bytes of the MikroTik (RouterOS) system memory (HOST-RESOURCES-MIB hrStorageSize at the main-memory index). Together with the used bytes it determines overall memory utilization."
+      "description": "This metric reports the total size in bytes of the MikroTik (RouterOS) system memory: hrStorageSize of the hrStorageRam row multiplied by hrStorageAllocationUnits. Together with the used bytes it determines overall memory utilization."
     },
     {
       "metric_group": "Memory",
@@ -79,20 +79,77 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='router', __$labels__}",
+      "query": "max(snmp_device_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the board temperature of the MikroTik (RouterOS) device (MIKROTIK-MIB mtxrHlTemperature, scalar 1.3.6.1.4.1.14988.1.1.3.10.0), in degrees Celsius. The device reports tenths of a degree (DISPLAY-HINT d-1), so the value is divided by 10 at collection. Abnormally high temperatures may indicate fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal protection or hardware damage if left unaddressed."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_cpu_temperature_celsius",
+      "query": "max(snmp_device_cpu_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
+      "display_name": "CPU Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU temperature of the MikroTik (RouterOS) device (MIKROTIK-MIB mtxrHlProcessorTemperature, scalar 1.3.6.1.4.1.14988.1.1.3.11.0) in degrees Celsius, divided by 10 from tenths of a degree at collection. Models without a CPU sensor do not report it."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_speed",
+      "query": "device_fan_speed{instance_type='router', __$labels__}",
+      "display_name": "Fan Speed",
+      "data_type": "Number",
+      "unit": "counts",
       "dimensions": [
         {
-          "name": "index",
-          "description": "SNMP table row index"
+          "name": "fan",
+          "description": "Fan number (1 = mtxrHlFanSpeed1, 2 = mtxrHlFanSpeed2)"
         }
       ],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the board temperature of the MikroTik (RouterOS) device (MIKROTIK-MIB mtxrHlTemperature), in degrees Celsius. Abnormally high temperatures may indicate fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal protection or hardware damage if left unaddressed."
+      "description": "Fan rotation speed in RPM of the MikroTik (RouterOS) device (MIKROTIK-MIB mtxrHlFanSpeed1/mtxrHlFanSpeed2, scalars 1.3.6.1.4.1.14988.1.1.3.17.0 / .18.0). Fanless models do not report it. A drop to zero on a fan-cooled model indicates a stalled fan and a risk of overheating."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "device_psu_state{instance_type='router', __$labels__}",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "psu",
+          "description": "Power supply (primary = mtxrHlPowerSupplyState, backup = mtxrHlBackupPowerSupplyState)"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Power-supply state of the MikroTik (RouterOS) device (MIKROTIK-MIB mtxrHlPowerSupplyState / mtxrHlBackupPowerSupplyState, scalars 1.3.6.1.4.1.14988.1.1.3.15.0 / .16.0). The BoolValue true(1) is normalized to 1 (normal) and false(0) to 2 (abnormal). Only dual-PSU models report it."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_voltage_volts",
+      "query": "max(snmp_device_voltage_volts{instance_type='router', __$labels__}) by (instance_id)",
+      "display_name": "Input Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Input voltage of the MikroTik (RouterOS) device (MIKROTIK-MIB mtxrHlVoltage, scalar 1.3.6.1.4.1.14988.1.1.3.8.0) in volts, divided by 10 from tenths of a volt at collection. Values outside the adapter or PoE rated range may indicate unstable power."
     },
     {
       "metric_group": "Traffic",

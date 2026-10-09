@@ -1,0 +1,74 @@
+NetworkService Raritan PDU SNMP:
+  name: Raritan PDU (Telegraf)
+  desc: SNMP monitoring template for Raritan PX PX2 and PX3 rack PDU. It reports inlet
+    RMS current, RMS voltage, active power, external temperature and humidity, per-port
+    inbound traffic rate, per-port outbound traffic rate, and system uptime
+monitor_object:
+  NetworkService: NetworkService
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  NetworkService:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart,
+        derived from sysUpTime. Monitoring uptime helps administrators understand
+        device stability and identify unexpected reboots or failures.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of outbound bytes sent over the
+        past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifOutOctets on high-speed ports, keeping the rate accurate.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the
+        entire device over the past 5 minutes, measured in bytes per second, summed
+        across all interfaces from the 64-bit ifHCInOctets counter. It helps administrators
+        obtain an overview of incoming traffic for overall monitoring and capacity
+        planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire
+        device over the past 5 minutes, measured in bytes per second, summed across
+        all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
+        assess sending performance for traffic management and optimization.
+    pdu_inlet_current_amps:
+      name: PDU Inlet Current
+      desc: Per-inlet RMS current in amperes from PDU2 measurementsInletSensorValue.
+        Only rmsCurrent(1) rows are kept and scaled by 10 to the power of inletSensorDecimalDigits.
+        Empty tables, missing digits or unmatched sensor types yield no points.
+    pdu_inlet_voltage_volts:
+      name: PDU Inlet Voltage
+      desc: Per-inlet RMS voltage in volts from PDU2 measurementsInletSensorValue.
+        Only rmsVoltage(4) rows are kept and scaled by 10 to the power of inletSensorDecimalDigits.
+        Empty tables, missing digits or unmatched sensor types yield no points.
+    pdu_inlet_power_watts:
+      name: PDU Inlet Active Power
+      desc: Per-inlet active power in watts from PDU2 measurementsInletSensorValue.
+        Only activePower(5) rows are kept and scaled by 10 to the power of inletSensorDecimalDigits.
+        Empty tables, missing digits or unmatched sensor types yield no points.
+    env_temperature_celsius:
+      name: Environment Temperature
+      desc: Per-sensor external temperature in degrees Celsius from PDU2 measurementsExternalSensorValue.
+        Only temperature(10) rows are kept and scaled by 10 to the power of externalSensorDecimalDigits.
+        Fahrenheit readings are converted to Celsius. Unavailable sensors, other units, values
+        outside -40 to 100 C, empty tables or unmatched types yield no points.
+    env_humidity_percent:
+      name: Environment Humidity
+      desc: Per-sensor external relative humidity in percent from PDU2 measurementsExternalSensorValue.
+        Only humidity(11) rows are kept and scaled by 10 to the power of externalSensorDecimalDigits.
+        Values outside 0-100 and empty tables yield no points.
+monitor_object_metric_group:
+  NetworkService:
+    Base: Base
+    Traffic: Traffic
+    NetworkService: NetworkService
+    Power: Power
+    Environment: Environment

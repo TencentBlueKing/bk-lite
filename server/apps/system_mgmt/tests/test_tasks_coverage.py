@@ -386,12 +386,12 @@ def test_password_expiry_notifies_soon_and_already_expired():
     # 即将过期：last_modified 175 天前 -> 剩余 ~5 天
     User.objects.create(
         username="soon", display_name="Soon", email="soon@x.com", domain="d.com",
-        disabled=False, password_last_modified=now - datetime.timedelta(days=175),
+        locale="en", disabled=False, password_last_modified=now - datetime.timedelta(days=175),
     )
     # 已过期：last_modified 200 天前 -> 剩余 < 0
     User.objects.create(
         username="expired", display_name="Exp", email="exp@x.com", domain="d.com",
-        disabled=False, password_last_modified=now - datetime.timedelta(days=200),
+        locale="en", disabled=False, password_last_modified=now - datetime.timedelta(days=200),
     )
     # 还很久：last_modified 10 天前 -> 跳过
     User.objects.create(
@@ -406,10 +406,15 @@ def test_password_expiry_notifies_soon_and_already_expired():
     assert result["result"] is True
     assert result["notified"] == 2
     assert result["failed"] == 0
-    # 验证邮件主题区分即将过期 / 已过期
-    subjects = {c.kwargs.get("subject", c.args[3] if len(c.args) > 3 else None) for c in m_send.call_args_list}
-    assert "密码即将过期提醒" in subjects
-    assert "密码已过期提醒" in subjects
+    sent = {call.args[2][0]: (call.args[3], call.args[1]) for call in m_send.call_args_list}
+    soon_subject, soon_body = sent["soon@x.com"]
+    assert soon_subject == "Your password will expire soon"
+    assert soon_body.startswith("<p>Hello Soon,</p><p>Your password will expire in <b>")
+    assert soon_body.endswith("</b> day(s). Please change it soon.</p>")
+    assert sent["exp@x.com"] == (
+        "Your password has expired",
+        "<p>Hello Exp,</p><p>Your password has expired. Please change it now.</p>",
+    )
 
 
 def test_password_expiry_send_failure_counts_skipped():

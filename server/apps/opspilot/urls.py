@@ -160,6 +160,11 @@ urlpatterns += [
     ),
     # 智能体渠道发布
     path(
+        r"skill_channel/platform/width/",
+        views.save_platform_webchat_width,
+        name="save_platform_webchat_width",
+    ),
+    path(
         r"skill_channel/platform/",
         views.list_platform_skill_channels,
         name="list_platform_skill_channels",

@@ -1,0 +1,38 @@
+Wireless HPE MSM SNMP:
+  name: HPE MSM（Telegraf）
+  desc: 面向 HPE MSM / Colubris 无线控制器与 AP 平台的 SNMP 监控模板，可采集运行时长、CPU 使用率（当前与 5 秒）、1 分钟负载均值、内存总量/空闲/使用率以及临时存储使用率，按 COLUBRIS-USAGE-INFORMATION-MIB（coUsageInformationGroup，企业号 PEN 8744）采集。无机箱温度、风扇或电源传感器。
+monitor_object:
+  Wireless: 无线设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示 HPE MSM / Colubris 无线设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测运行时间，管理员可以了解设备稳定性，识别意外重启。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标表示 HPE MSM / Colubris 设备的瞬时 CPU 使用率（coUsInfoCpuUseNow），以 0-100 百分比上报。持续偏高可能表示 AP 或终端管理负载过重，会影响漫游与管理响应。
+    device_cpu_usage_5s:
+      name: CPU 使用率（5 秒）
+      desc: 该指标表示 HPE MSM / Colubris 设备最近 5 秒的 CPU 使用率（coUsInfoCpuUse5Sec），单位为百分比。
+    device_load_average:
+      name: 负载均值
+      desc: 该指标表示 HPE MSM / Colubris 设备 1 分钟系统负载均值（coUsInfoLoadAverage1Min）。持续偏高可能意味着控制平面过载。
+    device_memory_total:
+      name: 内存总量
+      desc: 该指标表示 HPE MSM / Colubris 设备的内存总量（coUsInfoRamTotal）。设备以 Kb 上报，采集后换算为字节（×1024）。
+    device_memory_free:
+      name: 内存空闲量
+      desc: 该指标表示 HPE MSM / Colubris 设备的空闲内存（coUsInfoRamFree）。设备以 Kb 上报，采集后换算为字节（×1024）。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 该指标表示 HPE MSM / Colubris 设备的内存使用率，按 (总量−空闲)/总量×100 由 coUsInfoRamTotal 与 coUsInfoRamFree 计算。内存压力过高可能导致控制器丢弃终端关联或延迟 AP 上线。
+    device_storage_usage:
+      name: 临时存储使用率
+      desc: 该指标表示 HPE MSM / Colubris 设备临时存储使用率（coUsInfoStorageUseTemporary），单位为百分比。
+monitor_object_metric_group:
+  Wireless:
+    Base: 基础
+    CPU: CPU
+    Memory: 内存

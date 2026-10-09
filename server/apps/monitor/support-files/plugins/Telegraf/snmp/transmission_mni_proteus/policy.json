@@ -1,0 +1,31 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission MNI Proteus SNMP",
+  "templates": [
+    {
+      "name": "Proteus微波RFU温度过高",
+      "alert_name": "传输设备${resource_name} 射频 ${metric__index} RFU 温度过高",
+      "description": "监控 Microwave Networks Proteus 微波设备各 RFU（室外射频单元）温度，持续高于阈值时提示日晒、散热异常或环境温度过高。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 65,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 55,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

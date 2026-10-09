@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_patton",
   "plugin": "VoiceGateway Patton SNMP",
-  "plugin_desc": "SNMP monitoring template for Patton voice gateway. It reports uptime and interface traffic (based on standard MIBs).",
+  "plugin_desc": "SNMP monitoring template for Patton SmartNode voice gateway. It reports uptime, interface traffic, per-CPU workload, memory pool usage and temperature probes (enterprise PEN 1768).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='voice_gateway', collect_type='snmp_patton'}) by (instance_id)",
   "name": "VoiceGateway",
@@ -14,9 +14,120 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius"
   ],
   "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "max(device_cpu_usage{instance_type='voice_gateway', __$labels__}) by (instance_id, cpu)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "cpu",
+          "description": "CPU description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current workload of each CPU of the Patton SmartNode in percent (SMARTNODE-MIB cpuWorkloadCurrent)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "max(device_memory_total{instance_type='voice_gateway', __$labels__}) by (instance_id, pool)",
+      "display_name": "Memory Pool Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "pool",
+          "description": "Memory pool description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total size of each memory pool of the Patton SmartNode in bytes (memTotalBytes; allocated + free when the device does not report it)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "max(device_memory_used{instance_type='voice_gateway', __$labels__}) by (instance_id, pool)",
+      "display_name": "Memory Pool Allocated",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "pool",
+          "description": "Memory pool description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Allocated bytes of each memory pool of the Patton SmartNode (memAllocatedBytes)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_free",
+      "query": "max(device_memory_free{instance_type='voice_gateway', __$labels__}) by (instance_id, pool)",
+      "display_name": "Memory Pool Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "pool",
+          "description": "Memory pool description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Free bytes of each memory pool of the Patton SmartNode (memFreeBytes)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "max(device_memory_usage{instance_type='voice_gateway', __$labels__}) by (instance_id, pool)",
+      "display_name": "Memory Pool Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "pool",
+          "description": "Memory pool description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Utilization of each memory pool of the Patton SmartNode, computed at collection as allocated / (allocated + free) * 100. Empty pools are dropped."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='voice_gateway', __$labels__}) by (instance_id, probe)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+        {
+          "name": "probe",
+          "description": "Temperature probe description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current temperature of each temperature probe of the Patton SmartNode in degrees Celsius (SMARTNODE-MIB currentDegreesCelsius)."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
