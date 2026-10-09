@@ -33,35 +33,8 @@
         name = "source"
         is_tag = true
 # @bk_include_ifmib_table
-    # ---- CPU（PEN 9303 wsSystem）：优先 wsCPUIdleLoad，使用率 = 100−idle；
-    # 回退 wsCPUUserLoad + wsCPUSystemLoad。标量放入 device_cpu 表。
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.9303.4.1.1.20"
-        name = "idle"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.9303.4.1.1.16"
-        name = "user"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.9303.4.1.1.18"
-        name = "system"
-    # ---- 内存（PEN 9303 wsSystem）：wsMemoryUsed + wsMemoryTotal，单位 KB，查询侧 ×1024 为字节；
-    # 回退 wsMemoryPctFree（十分之一百分比，查询侧 ÷10 后 100−空闲率）。
-    [[inputs.snmp.table]]
-        name = "device_memory"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.9303.4.1.1.12"
-        name = "used"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.9303.4.1.1.10"
-        name = "total"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.9303.4.1.1.15"
-        name = "pct_free"
-    # ---- 可选温度表 wsTempMeasured：百分之一摄氏度，查询侧 ÷100。机型无该表时自然无点。
+    # ---- CPU / 内存：WAYSTREAM-MIB wsSystem（9303.4.1.1）仅含 .1–.5 管理对象，无 CPU/内存 Gauge → N/A 不采。----
+    # ---- 温度表 wsTempTable（9303.4.1.2.1）INDEX wsTempSensor：wsTempMeasured 为百分之一摄氏度，查询侧 ÷100。----
     [[inputs.snmp.table]]
         name = "device_temperature"
         inherit_tags = ["source"]
@@ -69,4 +42,12 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.9303.4.1.2.1.1.2"
         name = "celsius"
-# ---- 风扇/电源：本轮不采。----
+    # ---- 风扇表 wsFanTable（9303.4.1.2.3）INDEX wsFanNumber：wsFanRPM 转速（RPM）。----
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9303.4.1.2.3.1.2"
+        name = "speed"
+# ---- 电源：私有树无电源状态/读数对象 → N/A 不采。----

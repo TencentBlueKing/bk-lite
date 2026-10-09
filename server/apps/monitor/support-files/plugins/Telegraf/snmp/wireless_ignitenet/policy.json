@@ -1,0 +1,21 @@
+{
+  "object": "Wireless",
+  "plugin": "Wireless IgniteNet SNMP",
+  "templates": [
+    {
+      "name": "IgniteNet射频链路切换到5GHz备份",
+      "alert_name": "无线设备${resource_name} 射频 ${metric__index} 已切换到5GHz备份",
+      "description": "监控 IgniteNet MetroLinq 射频的 60 GHz 链路是否已故障切换到 5 GHz 备份无线电。当 mlRadioStatusFailoverStatus 为 on 时触发告警，提示需检查 60 GHz 链路质量与对准。",
+      "metric_name": "ignitenet_radio_failover_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

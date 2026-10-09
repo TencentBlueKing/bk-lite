@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Button, Divider, Input, Select, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
@@ -28,6 +28,8 @@ interface ScriptMetricGroupSelectProps {
   loading?: boolean;
   onSearch?: (value: string) => void;
   filterOption?: boolean | ((input: string, option?: { label?: string }) => boolean);
+  getPopupContainer?: (node: HTMLElement) => HTMLElement;
+  popupMatchSelectWidth?: boolean;
 }
 
 const ScriptMetricGroupSelect: React.FC<ScriptMetricGroupSelectProps> = ({
@@ -45,12 +47,16 @@ const ScriptMetricGroupSelect: React.FC<ScriptMetricGroupSelectProps> = ({
   className,
   loading,
   onSearch,
-  filterOption = true
+  filterOption = true,
+  getPopupContainer,
+  popupMatchSelectWidth
 }) => {
   const { t } = useTranslation();
   const { post } = useApiClient();
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
+  const [open, setOpen] = useState(false);
+  const retainOpenRef = useRef(false);
   const canCreate = Boolean(objectId && pluginId) && !disabled;
   const uniqueGroups = useMemo(
     () =>
@@ -59,19 +65,36 @@ const ScriptMetricGroupSelect: React.FC<ScriptMetricGroupSelectProps> = ({
   );
   const createNameReady = !!newName.trim() && !creating;
 
+  const closeDropdown = () => {
+    retainOpenRef.current = false;
+    setOpen(false);
+    setNewName('');
+  };
+
+  const handleOpenChange = (next: boolean) => {
+    if (!next && retainOpenRef.current) {
+      return;
+    }
+    setOpen(next);
+    if (!next) {
+      setNewName('');
+    }
+  };
+
   const handleCreate = async () => {
     const trimmed = newName.trim();
     if (!trimmed || !objectId || !pluginId || creating) {
       return;
     }
-    const existing = uniqueGroups.find(
-      (group) =>
-        catalogGroupLabel(group).toLowerCase() === trimmed.toLowerCase() ||
-        String(group.name || '').trim().toLowerCase() === trimmed.toLowerCase()
-    );
+    const needle = trimmed.toLowerCase();
+    const existing = uniqueGroups.find((group) => {
+      const label = catalogGroupLabel(group).toLowerCase();
+      const name = String(group.name || '').trim().toLowerCase();
+      return label === needle || name === needle;
+    });
     if (typeof existing?.id === 'number') {
       onChange?.(existing.id);
-      setNewName('');
+      closeDropdown();
       return;
     }
     setCreating(true);
@@ -88,7 +111,7 @@ const ScriptMetricGroupSelect: React.FC<ScriptMetricGroupSelectProps> = ({
       onGroupsChange?.(nextGroups);
       onChange?.(created.id);
       onCreated?.(created);
-      setNewName('');
+      closeDropdown();
       message.success(t('common.successfullyAdded'));
     } catch {
       message.error(t('common.operationFailed'));
@@ -102,6 +125,8 @@ const ScriptMetricGroupSelect: React.FC<ScriptMetricGroupSelectProps> = ({
       size={size}
       allowClear={allowClear}
       showSearch
+      open={open}
+      onOpenChange={handleOpenChange}
       disabled={disabled}
       loading={loading || creating}
       optionFilterProp="label"
@@ -114,6 +139,8 @@ const ScriptMetricGroupSelect: React.FC<ScriptMetricGroupSelectProps> = ({
       }
       className={className}
       placeholder={placeholder}
+      getPopupContainer={getPopupContainer}
+      popupMatchSelectWidth={popupMatchSelectWidth}
       value={value}
       onChange={(next) => onChange?.(typeof next === 'number' ? next : null)}
       onSearch={onSearch}
@@ -129,7 +156,18 @@ const ScriptMetricGroupSelect: React.FC<ScriptMetricGroupSelectProps> = ({
               <Divider className="my-2" />
               <div
                 className="flex items-center gap-1 px-2 pb-1"
-                onMouseDown={(event) => event.preventDefault()}
+                onMouseDown={(event) => {
+                  retainOpenRef.current = true;
+                  const target = event.target as HTMLElement;
+                  if (target.tagName !== 'INPUT') {
+                    event.preventDefault();
+                  }
+                }}
+                onMouseUp={() => {
+                  window.setTimeout(() => {
+                    retainOpenRef.current = false;
+                  }, 0);
+                }}
               >
                 <Input
                   size="small"
@@ -141,10 +179,12 @@ const ScriptMetricGroupSelect: React.FC<ScriptMetricGroupSelectProps> = ({
                     '输入分组名'
                   )}
                   onChange={(event) => setNewName(event.target.value)}
-                  onPressEnter={(event) => {
-                    event.preventDefault();
+                  onKeyDown={(event) => {
                     event.stopPropagation();
-                    void handleCreate();
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      void handleCreate();
+                    }
                   }}
                 />
                 <Button

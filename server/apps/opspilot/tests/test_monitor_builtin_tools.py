@@ -43,6 +43,7 @@ def test_monitor_language_keys_exist_in_en_and_zh():
         "monitor_list_active_alerts",
         "monitor_query_alert_segments",
         "monitor_get_host_resource_snapshot",
+        "monitor_get_host_resource_top_by_time",
     ]
     for name in sub_tools:
         assert en_loader.get(f"tools.monitor.tools.{name}.description"), name

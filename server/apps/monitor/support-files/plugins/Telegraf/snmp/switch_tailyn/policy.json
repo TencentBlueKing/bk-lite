@@ -1,0 +1,81 @@
+{
+  "object": "Switch",
+  "plugin": "Switch Tailyn SNMP",
+  "templates": [
+    {
+      "name": "Tailyn交换机CPU使用率过高",
+      "alert_name": "交换机${resource_name} CPU 使用率过高",
+      "description": "监控 Tailyn IMP-HF528 工业以太网交换机的 CPU 使用率，当持续高于阈值时触发告警，提示可能存在环网协议震荡、广播风暴或管理面过载。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Tailyn交换机内存使用率过高",
+      "alert_name": "交换机${resource_name} 内存使用率过高",
+      "description": "监控 Tailyn IMP-HF528 工业以太网交换机的内存使用率，当持续高于阈值时触发告警，提示可能存在内存泄漏或资源紧张。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Tailyn交换机CPU温度过高",
+      "alert_name": "交换机${resource_name} CPU 温度过高",
+      "description": "监控 Tailyn IMP-HF528 工业以太网交换机的 CPU 温度，当持续高于阈值时触发告警，提示可能存在散热不良或环境温度过高，避免器件过热损坏。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

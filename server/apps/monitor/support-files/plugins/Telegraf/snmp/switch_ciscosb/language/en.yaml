@@ -1,0 +1,43 @@
+Switch CiscoSB SNMP:
+  name: Cisco Small Business (Telegraf)
+  desc: "SNMP monitoring template for Cisco Small Business switch. It reports uptime, CPU utilization, temperature, fan, power supply status, and interface traffic, for Cisco Business CBS, SG300/SG500 and Catalyst 1200/1300 series (enterprise PEN 9, CISCOSB subtree). Memory is not reported."
+monitor_object:
+  Switch: Switch
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Switch:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart.
+        By monitoring the uptime, network administrators can understand the stability
+        and reliability of the device and identify potential reboot or failure issues.
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: This metric reports the 1-minute average CPU utilization of the Cisco
+        Small Business switch (rlCpuUtilDuringLastMinute) as a 0-100 percentage.
+        The value 101 (measurement disabled) is dropped. Sustained high CPU usage
+        can indicate control-plane overload, broadcast storms, or attack traffic.
+    device_temperature_celsius:
+      name: Temperature
+      desc: This metric reports the temperature of each stack unit of the Cisco
+        Small Business switch in degrees Celsius (rlEnvFanDataTemp). High temperatures
+        can indicate cooling failure or airflow obstruction and risk thermal shutdown.
+    device_fan_state:
+      name: Fan Status
+      desc: This metric reports the fan state of the Cisco Small Business switch
+        (rlEnvMonFanState), normalized so that 1 = healthy (normal / not present)
+        and 2 = fault. A value greater than 1 indicates a fan failure that can lead
+        to overheating.
+    device_psu_state:
+      name: Power Supply Status
+      desc: This metric reports the power supply state of the Cisco Small Business
+        switch (rlEnvMonSupplyState), normalized so that 1 = healthy (normal / not
+        present) and 2 = fault. A value greater than 1 indicates a power supply problem
+        or lost redundancy.
+monitor_object_metric_group:
+  Switch:
+    CPU: CPU
+    Temperature: Temperature
+    Hardware Status: Hardware Status
+    Base: Base

@@ -2177,6 +2177,133 @@ def test_summarize_planned_step_keeps_tool_result_not_investigation_dump():
     assert "调查结论" not in summary
 
 
+def test_summarize_planned_step_carries_instance_id_into_next_step():
+    """查全部主机时第 3 步要用第 2 步查到的 instance_id，摘要只留正文会把它丢掉。"""
+    import json
+
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    instances = json.dumps(
+        {
+            "success": True,
+            "data": [
+                {
+                    "id": "3f0e6d2a-1c2b-4a5d-9e8f-7a6b5c4d3e2f",
+                    "name": "bj-web-server-01",
+                    "ip": "172.16.196.222",
+                    "instance_id": "3f0e6d2a-1c2b-4a5d-9e8f-7a6b5c4d3e2f",
+                }
+            ],
+        },
+        ensure_ascii=False,
+    )
+    messages = [
+        AIMessage(content="", tool_calls=[{"id": "1", "name": "monitor_list_object_instances", "args": {}}]),
+        ToolMessage(content=instances, tool_call_id="1", name="monitor_list_object_instances"),
+        AIMessage(content="已获取 1 个主机实例。"),
+    ]
+
+    summary = ToolsNodes._summarize_planned_step_messages(messages)
+
+    assert "已获取 1 个主机实例。" in summary
+    assert "3f0e6d2a-1c2b-4a5d-9e8f-7a6b5c4d3e2f" in summary
+    assert "instance_id=" in summary
+
+
+def test_summarize_planned_step_carries_monitor_metric_name():
+    import json
+
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    metrics = json.dumps(
+        {"success": True, "data": [{"name": "disk.used_percent", "display_name": "磁盘使用率", "unit": "%"}]},
+        ensure_ascii=False,
+    )
+    messages = [
+        AIMessage(content="", tool_calls=[{"id": "1", "name": "monitor_list_object_metrics", "args": {}}]),
+        ToolMessage(content=metrics, tool_call_id="1", name="monitor_list_object_metrics"),
+        AIMessage(content="已列出指标。"),
+    ]
+
+    summary = ToolsNodes._summarize_planned_step_messages(messages)
+
+    assert "metric=disk.used_percent" in summary
+
+
+def test_summarize_planned_step_does_not_treat_instance_name_as_metric():
+    """列实例结果里的 name 是主机名，不能被当成指标名带进下一步。"""
+    import json
+
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    instances = json.dumps(
+        {"success": True, "data": [{"id": "abc-123", "name": "bj-web-server-01", "ip": "172.16.196.222"}]},
+        ensure_ascii=False,
+    )
+    messages = [
+        AIMessage(content="", tool_calls=[{"id": "1", "name": "monitor_list_object_instances", "args": {}}]),
+        ToolMessage(content=instances, tool_call_id="1", name="monitor_list_object_instances"),
+        AIMessage(content="已获取 1 个主机实例。"),
+    ]
+
+    summary = ToolsNodes._summarize_planned_step_messages(messages)
+
+    assert "instance_id=abc-123" in summary
+    assert "metric=" not in summary
+
+
+def test_summarize_planned_step_skips_failed_tool_result_facts():
+    """失败结果里的 id 不能作为已取得的证据传给后续步骤。"""
+    import json
+
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    failed = json.dumps({"success": False, "error": "instance_ids 不能为空"}, ensure_ascii=False)
+    messages = [
+        AIMessage(content="", tool_calls=[{"id": "1", "name": "monitor_list_object_instances", "args": {}}]),
+        ToolMessage(content=failed, tool_call_id="1", name="monitor_list_object_instances", status="error"),
+        AIMessage(content="查询失败。"),
+    ]
+
+    summary = ToolsNodes._summarize_planned_step_messages(messages)
+
+    assert "instance_id=" not in summary
+    assert "结构化结果" not in summary
+
+
+def test_summarize_planned_step_keeps_final_report_and_ids():
+    """本步已写出终稿时，正文照旧保留，同时仍带上结构化字段。"""
+    import json
+
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    instances = json.dumps({"success": True, "data": [{"id": "abc-123", "name": "web-01"}]}, ensure_ascii=False)
+    messages = [
+        AIMessage(content="", tool_calls=[{"id": "1", "name": "monitor_list_object_instances", "args": {}}]),
+        ToolMessage(content=instances, tool_call_id="1", name="monitor_list_object_instances"),
+        AIMessage(content="当前主机共 1 台，磁盘使用率正常，未发现异常。"),
+    ]
+
+    summary = ToolsNodes._summarize_planned_step_messages(messages)
+
+    assert "磁盘使用率正常" in summary
+    assert "instance_id=abc-123" in summary
+
+
+def test_missing_params_detects_monitor_chinese_empty_param_errors():
+    from apps.opspilot.metis.llm.common.tool_failure import is_missing_tool_params_failure
+
+    assert is_missing_tool_params_failure("instance_ids 不能为空") is True
+    assert is_missing_tool_params_failure("instance_ids 必须是列表") is True
+    assert is_missing_tool_params_failure("metric is required") is True
+    assert is_missing_tool_params_failure("缺少必要参数") is True
+    # namespace 仍走 K8s 反查重规划，不算用户缺参。
+    assert is_missing_tool_params_failure("namespace 不能为空") is False
+    # 凭据/权限失败不能被误判成缺参，否则会弹无意义的补参卡。
+    assert is_missing_tool_params_failure("401 Unauthorized") is False
+    assert is_missing_tool_params_failure("403 Forbidden") is False
+
+
 def test_planned_step_already_answered_detects_tool_sentence():
     from langchain_core.messages import AIMessage
 

@@ -1,0 +1,73 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_zmtel"
+        config_type = "zmtel"
+        brand = "zmtel"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- ZMTEL-ODU-MIB systemInfo 标量（PEN 38595 · ODU …38595.10 · systemInfo …10.2），顶层 field 带 .0 → measurement snmp ----
+    # cpuUsageCurrent …10.2.2.0：当前 CPU 利用率 %。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.38595.10.2.2.0"
+        name = "device_cpu_usage"
+    # memUsageCurrent …10.2.6.0：当前内存利用率 %。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.38595.10.2.6.0"
+        name = "device_memory_usage"
+    # memTotal …10.2.5.0：内存总量 KB，starlark 内 ×1024 存为字节。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.38595.10.2.5.0"
+        name = "device_memory_total"
+# ---- 风扇/电源：systemInfo 无对应对象 → N/A 不采。----
+# ---- 过滤：CPU/Mem 超出 0..100 丢弃；memTotal 为 0 或 4294967295 丢弃；有效总量 KB×1024 转为字节。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    cpu = f.get("device_cpu_usage")
+    if cpu != None:
+        if cpu < 0 or cpu > 100:
+            f.pop("device_cpu_usage")
+    mem = f.get("device_memory_usage")
+    if mem != None:
+        if mem < 0 or mem > 100:
+            f.pop("device_memory_usage")
+    total = f.get("device_memory_total")
+    if total != None:
+        if total <= 0 or total == 4294967295:
+            f.pop("device_memory_total")
+        else:
+            f["device_memory_total"] = int(total) * 1024
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["zmtel"]

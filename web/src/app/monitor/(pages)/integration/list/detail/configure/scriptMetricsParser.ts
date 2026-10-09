@@ -1,8 +1,11 @@
 export interface BusinessMetricItem {
+  /** 脚本 stdout 短名；勾选、分组、单位与落库均按名。 */
   key: string;
   name: string;
   value: number | string;
   tags?: Record<string, string>;
+  /** 同一短名下的全部采样；确认只写一行。 */
+  samples?: Array<{ value: number | string; tags?: Record<string, string> }>;
   /** 脚本占用的保留标签键，确认时拦截。 */
   reservedTagKeys?: string[];
   /** 指标目录分组 ID，确认时写入 metric_group。 */
@@ -11,6 +14,12 @@ export interface BusinessMetricItem {
   unit?: string;
   /** 指标目录描述，允许空字符串。 */
   description?: string;
+  /** 指标目录数据类型，已有枚举指标不改单位。 */
+  data_type?: string;
+  /** 用户在调试表改过分组时，已有指标才 PATCH metric_group。 */
+  editedGroup?: boolean;
+  /** 用户在调试表改过单位时，已有指标才 PATCH unit。 */
+  editedUnit?: boolean;
 }
 
 export interface ParsedScriptOutput {
@@ -188,10 +197,32 @@ export const isReservedScriptTagKey = (key: string): boolean => {
   if (!tagKey) {
     return false;
   }
-  if (RESERVED_SCRIPT_TAG_KEYS.has(tagKey)) {
+  const lower = tagKey.toLowerCase();
+  if (RESERVED_SCRIPT_TAG_KEYS.has(tagKey) || RESERVED_SCRIPT_TAG_KEYS.has(lower)) {
     return true;
   }
-  return tagKey.toLowerCase().startsWith('bklite_script_');
+  return lower.startsWith('bklite_script_');
+};
+
+/** 指标 ID 黑名单：保留标签 + config_id + bklite_script_ 前缀。 */
+export const RESERVED_SCRIPT_METRIC_NAMES = new Set<string>([
+  ...RESERVED_SCRIPT_TAG_KEYS,
+  'config_id'
+]);
+
+export const isReservedScriptMetricId = (name: string): boolean => {
+  const text = String(name || '').trim();
+  if (!text) {
+    return false;
+  }
+  const lower = text.toLowerCase();
+  if (
+    RESERVED_SCRIPT_METRIC_NAMES.has(text) ||
+    RESERVED_SCRIPT_METRIC_NAMES.has(lower)
+  ) {
+    return true;
+  }
+  return lower.startsWith('bklite_script_');
 };
 
 export const collectReservedScriptTagKeys = (
@@ -264,6 +295,24 @@ export const cleanDisplayTags = (
   return Object.keys(out).length ? out : undefined;
 };
 
+/** 展示层只显示维度名；平台内置维度仍隐藏。跨采样取并集。 */
+export const unionVisibleDimensionNames = (
+  tags?: Record<string, string>,
+  samples?: Array<{ tags?: Record<string, string> }>
+): string[] => {
+  const names: string[] = [];
+  const add = (source?: Record<string, string>) => {
+    Object.keys(cleanDisplayTags(source) || {}).forEach((key) => {
+      if (!names.includes(key)) {
+        names.push(key);
+      }
+    });
+  };
+  add(tags);
+  samples?.forEach((sample) => add(sample.tags));
+  return names;
+};
+
 const businessMetricName = (measurement: string, fieldName: string): string => {
   const meas = String(measurement || '');
   const field = String(fieldName || '');
@@ -277,14 +326,36 @@ const businessMetricName = (measurement: string, fieldName: string): string => {
   return `${meas}_${field}`;
 };
 
-const stableTagKey = (tags?: Record<string, string>): string => {
-  if (!tags) {
-    return '';
+const mergeStoredTags = (
+  current?: Record<string, string>,
+  incoming?: Record<string, string>
+): Record<string, string> | undefined => {
+  if (!incoming) {
+    return current;
   }
-  return Object.keys(tags)
-    .sort()
-    .map((key) => `${key}=${tags[key]}`)
-    .join(',');
+  if (!current) {
+    return { ...incoming };
+  }
+  const merged = { ...current };
+  Object.entries(incoming).forEach(([key, value]) => {
+    if (merged[key] === undefined) {
+      merged[key] = value;
+    }
+  });
+  return merged;
+};
+
+const mergeReservedTagKeys = (
+  current: string[] | undefined,
+  incoming: string[]
+): string[] => {
+  const merged = [...(current || [])];
+  incoming.forEach((key) => {
+    if (key && !merged.includes(key)) {
+      merged.push(key);
+    }
+  });
+  return merged;
 };
 
 /**
@@ -407,8 +478,7 @@ export const parseScriptMetrics = (
   }
 
   let up = exitCode === 0 ? 1 : 0;
-  const businessMetrics: BusinessMetricItem[] = [];
-  const seenKeys = new Set<string>();
+  const metricsByName = new Map<string, BusinessMetricItem>();
 
   const isTruncated = Boolean(result?.stdout_truncated || result?.stderr_truncated);
   const isTimeout = Boolean(
@@ -431,18 +501,26 @@ export const parseScriptMetrics = (
     }
     const storedTags = keepStoredTags(tags);
     const reservedTagKeys = collectReservedScriptTagKeys(tags);
-    const metricKey = `${stdoutName}|${stableTagKey(cleanDisplayTags(storedTags))}`;
-    if (seenKeys.has(metricKey)) {
+    const sample = { value, tags: storedTags };
+    // 按 stdout 短名合并：多样本同一指标只占一行，不算重复 ID。
+    const existing = metricsByName.get(stdoutName);
+    if (!existing) {
+      metricsByName.set(stdoutName, {
+        key: stdoutName,
+        name: stdoutName,
+        value,
+        tags: storedTags,
+        reservedTagKeys,
+        samples: [sample]
+      });
       return;
     }
-    seenKeys.add(metricKey);
-    businessMetrics.push({
-      key: metricKey,
-      name: stdoutName,
-      value,
-      tags: storedTags,
+    existing.samples = [...(existing.samples || []), sample];
+    existing.tags = mergeStoredTags(existing.tags, storedTags);
+    existing.reservedTagKeys = mergeReservedTagKeys(
+      existing.reservedTagKeys,
       reservedTagKeys
-    });
+    );
   };
 
   if (stdout) {
@@ -508,6 +586,7 @@ export const parseScriptMetrics = (
     }
   }
 
+  const businessMetrics = Array.from(metricsByName.values());
   return {
     selfMetrics: {
       up,

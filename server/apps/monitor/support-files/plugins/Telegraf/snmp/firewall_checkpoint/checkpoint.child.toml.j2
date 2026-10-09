@@ -46,40 +46,119 @@
         name = "ifDescr"
         is_tag = true
     # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
-    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
+    # ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.6"
         name = "ifHCInOctets"
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
-    # ---- Check Point CPU utilization (CHECKPOINT-MIB procUsage, scalar %) ----
-    # 待现网核验：1.3.6.1.4.1.2620.1.6.7.2.4.0（已是 0-100%）。table(measurement=device_cpu)+field usage → device_cpu_usage。
+    # ---- Check Point CPU (procUsage, 直接 0-100%, 标量) ----
+    # 顶层 field GET 必须带实例 .0；禁止 table.field（标量 GET-NEXT 会走到空子树，指标静默为空）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2620.1.6.7.2.4.0"
+        name = "device_cpu_usage"
+    # ---- Check Point 真实内存 (memTotalReal64 总量 / memFreeReal64 空闲, Counter64 字节, 标量) ----
+    # 顶层 field GET 必须带实例 .0。已用 = total-free；使用率 = (total-free)/total。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2620.1.6.7.4.3.0"
+        name = "device_memory_total"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2620.1.6.7.4.5.0"
+        name = "device_memory_free"
+    # ---- Check Point 当前连接数 (fwNumConn, 标量) ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2620.1.1.25.3.0"
+        name = "firewall_active_sessions"
+    # ---- Check Point 温度传感器表 (tempertureSensorTable) ----
+    # 名称 ...8.1.1.2 作 tag；读数 ...8.1.1.3 为 DisplayString，下方 starlark 解析为浮点 ℃；
+    # 状态 ...8.1.1.6 为 Integer32，下方 enum 归一 0→1(正常)，其余→2(异常)。
     [[inputs.snmp.table]]
-        name = "device_cpu"
+        name = "device_temperature"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2620.1.6.7.2.4"
-        name = "usage"
-    # ---- Check Point real memory (CHECKPOINT-MIB, total + free, bytes; used/usage 在共享盘按 total-free 计算) ----
-    # 待现网核验：memTotalReal64 1.3.6.1.4.1.2620.1.6.7.4.3.0；memFreeReal64 ...4.5.0（均为字节）。
+        oid = "1.3.6.1.4.1.2620.1.6.7.8.1.1.2"
+        name = "sensor"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2620.1.6.7.8.1.1.3"
+        name = "celsius"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2620.1.6.7.8.1.1.6"
+        name = "state"
+    # ---- Check Point 风扇传感器表 (fanSpeedSensorTable) ----
+    # 名称 ...8.2.1.2 作 tag；状态 ...8.2.1.6 为 Integer32，下方 enum 归一 0→1(正常)，其余→2(异常)。
     [[inputs.snmp.table]]
-        name = "device_memory"
+        name = "device_fan"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2620.1.6.7.4.3"
-        name = "total"
+        oid = "1.3.6.1.4.1.2620.1.6.7.8.2.1.2"
+        name = "sensor"
+        is_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2620.1.6.7.4.5"
-        name = "free"
-    # ---- Check Point firewall-specific VPN throughput (encrypted / decrypted packets per second, scalars) ----
-    # 待现网核验：fwEncPacketsPerSec 1.3.6.1.4.1.2620.1.2.5.4.5.0；fwDecPacketsPerSec ...4.6.0（设备已上报速率值）。
+        oid = "1.3.6.1.4.1.2620.1.6.7.8.2.1.6"
+        name = "state"
+    # ---- Check Point 电源表 (powerSupplyTable) ----
+    # 状态 ...9.1.1.2 为 DisplayString，下方 starlark 归一 OK/Up/Normal→1(正常)，其余→2(异常)。
     [[inputs.snmp.table]]
-        name = "firewall"
+        name = "device_psu"
         inherit_tags = ["source"]
+        index_as_tag = true
     [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2620.1.2.5.4.5"
-        name = "vpn_encrypted_pps"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2620.1.2.5.4.6"
-        name = "vpn_decrypted_pps"
+        oid = "1.3.6.1.4.1.2620.1.6.7.9.1.1.2"
+        name = "state"
+
+# ---- 温度读数与电源状态为文本：温度解析为浮点 ℃（无法解析则丢弃该字段）；电源 OK/Up/Normal→1，其余→2。----
+[[processors.starlark]]
+    namepass = ["device_temperature", "device_psu"]
+    source = '''
+NUMERIC = "0123456789.+-"
+
+def _to_float(raw):
+    if raw == None:
+        return None
+    if type(raw) == "int" or type(raw) == "float":
+        return float(raw)
+    cleaned = ""
+    for ch in str(raw).strip().elems():
+        if ch in NUMERIC:
+            cleaned += ch
+        elif cleaned != "":
+            break
+    if cleaned == "" or cleaned == "." or cleaned == "+" or cleaned == "-":
+        return None
+    err = catch(lambda: float(cleaned))
+    if err != None:
+        return None
+    return float(cleaned)
+
+def apply(metric):
+    if metric.name == "device_temperature" and "celsius" in metric.fields:
+        value = _to_float(metric.fields["celsius"])
+        if value == None:
+            metric.fields.pop("celsius")
+        else:
+            metric.fields["celsius"] = value
+    elif metric.name == "device_psu" and "state" in metric.fields:
+        text = str(metric.fields["state"]).strip().lower()
+        if text == "ok" or text == "up" or text == "normal":
+            metric.fields["state"] = 1
+        else:
+            metric.fields["state"] = 2
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["checkpoint"]
+
+# ---- 温度/风扇传感器状态归一：0→1(正常)，其余→2(异常)。----
+[[processors.enum]]
+    namepass = ["device_temperature", "device_fan"]
+    [processors.enum.tagpass]
+        brand = ["checkpoint"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "0" = 1

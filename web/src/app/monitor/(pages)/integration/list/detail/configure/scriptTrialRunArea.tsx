@@ -1,75 +1,307 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Alert, Button, Cascader, Checkbox, Input, Spin, Tag, Tooltip } from 'antd';
+import React, { useMemo, useState, useEffect, useRef, useLayoutEffect } from 'react';
+import { Alert, Button, Cascader, Checkbox, Popover, Spin, Tag, Tooltip } from 'antd';
 import {
   CheckCircleFilled,
   CloseCircleFilled,
   ExclamationCircleFilled,
-  ReloadOutlined,
   PlayCircleOutlined,
-  DashboardOutlined
+  DashboardOutlined,
+  QuestionCircleOutlined
 } from '@ant-design/icons';
 import CompactEmptyState from '@/components/compact-empty-state';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
 import { useCommon } from '@/app/monitor/context/common';
-import { parseScriptMetrics, BusinessMetricItem, cleanDisplayTags } from './scriptMetricsParser';
+import { parseScriptMetrics, BusinessMetricItem, cleanMeasurementName, isReservedScriptMetricId, unionVisibleDimensionNames } from './scriptMetricsParser';
 import {
   applyDefaultCatalogDrafts,
   buildUnitCascaderOptions,
+  catalogMetricsByName,
   extractCatalogItems,
-  formatDimensionTagSummary,
+  listPluginCatalogMetrics,
   mergeRetainedTrialMetricState,
   pickSelectedBusinessMetrics,
   resolveDefaultCatalogGroupId,
-  resolveDefaultCatalogUnitPath,
   CatalogMetricGroupOption,
+  CatalogMetricRef,
   ScriptMetricCatalogDraft
 } from './scriptMetricPersist';
 import ScriptMetricGroupSelect from './scriptMetricGroupSelect';
 
+/** checkbox | 指标 ID | 维度 | 分组 180 | 单位 150 | 采样值，列间距 12px。 */
 const BUSINESS_METRIC_GRID =
-  'grid-cols-[36px_minmax(160px,1.3fr)_minmax(72px,0.55fr)_minmax(110px,0.95fr)_minmax(128px,1.05fr)_minmax(140px,1.2fr)]';
+  'grid grid-cols-[48px_minmax(220px,1.6fr)_minmax(160px,1fr)_180px_150px_minmax(140px,0.9fr)] items-center gap-x-3 px-3';
 
-const DimensionTagLine: React.FC<{ tags?: Record<string, string> }> = ({
-  tags
+const BUSINESS_METRIC_TABLE_MIN_WIDTH = 'min-w-[982px]';
+
+const INLINE_CONTROL_CLASS = 'w-full';
+
+const DIMENSION_TAG_GAP = 4;
+const DIMENSION_TAG_MAX_LINES = 2;
+const DIMENSION_CHIP_CLASS =
+  'inline-flex h-5 max-w-full min-w-0 items-center overflow-hidden rounded border border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-1 font-mono text-[11px] leading-none text-[var(--color-text-2)]';
+const DIMENSION_MORE_CLASS =
+  'inline-flex h-5 shrink-0 items-center rounded border border-[var(--color-border-1)] bg-[var(--color-fill-2)] px-1 font-mono text-[11px] leading-none tabular-nums text-[var(--color-text-3)]';
+
+/** 按真实宽度把维度标签排进两行，并为 +N 预留宽度。 */
+const visibleDimensionTagCount = (
+  tagWidths: number[],
+  containerWidth: number,
+  badgeWidth: number,
+  gap = DIMENSION_TAG_GAP,
+  maxLines = DIMENSION_TAG_MAX_LINES
+): number => {
+  if (!tagWidths.length) return 0;
+  if (containerWidth <= 0) return tagWidths.length;
+
+  const fits = (count: number, includeBadge: boolean) => {
+    const widths = tagWidths
+      .slice(0, count)
+      .map((width) => Math.min(Math.max(width, 0), containerWidth));
+    if (includeBadge) {
+      widths.push(Math.min(Math.max(badgeWidth, 0), containerWidth));
+    }
+    let line = 1;
+    let used = 0;
+    for (const width of widths) {
+      if (used === 0) {
+        used = width;
+        continue;
+      }
+      if (used + gap + width <= containerWidth + 0.5) {
+        used += gap + width;
+        continue;
+      }
+      line += 1;
+      used = width;
+      if (line > maxLines) return false;
+    }
+    return true;
+  };
+
+  if (fits(tagWidths.length, false)) return tagWidths.length;
+
+  let low = 0;
+  let high = tagWidths.length - 1;
+  let best = 0;
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    if (fits(mid, true)) {
+      best = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return best;
+};
+
+const DimensionChip: React.FC<{ label: string; measure?: boolean }> = ({
+  label,
+  measure = false
+}) => (
+  <span
+    className={
+      measure
+        ? 'inline-flex h-5 shrink-0 items-center whitespace-nowrap rounded border border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-1 font-mono text-[11px] leading-none text-[var(--color-text-2)]'
+        : DIMENSION_CHIP_CLASS
+    }
+  >
+    <span className={measure ? undefined : 'min-w-0 truncate'}>{label}</span>
+  </span>
+);
+
+const DimensionTagLine: React.FC<{ names: string[] }> = ({
+  names
 }) => {
-  const displayTags = cleanDisplayTags(tags);
-  const entries = Object.entries(displayTags || {});
-  if (!entries.length) {
+  const signature = names.join('\n');
+  const containerRef = useRef<HTMLDivElement>(null);
+  const measureRef = useRef<HTMLDivElement>(null);
+  const badgeMeasureRef = useRef<HTMLSpanElement>(null);
+  const [visibleCount, setVisibleCount] = useState(names.length);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    const measure = measureRef.current;
+    if (!container || !measure) return undefined;
+
+    const recalc = () => {
+      const widths = Array.from(measure.children, (node) =>
+        (node as HTMLElement).getBoundingClientRect().width
+      );
+      const badgeWidth = badgeMeasureRef.current?.getBoundingClientRect().width ?? 28;
+      const next = visibleDimensionTagCount(
+        widths,
+        container.clientWidth,
+        badgeWidth
+      );
+      setVisibleCount((prev) => (prev === next ? prev : next));
+    };
+
+    recalc();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(recalc);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [signature]);
+
+  if (!names.length) {
     return null;
   }
-  const summary = formatDimensionTagSummary(displayTags);
+
+  const count = Math.min(visibleCount, names.length);
+  const visible = names.slice(0, count);
+  const hidden = names.slice(count);
+
   return (
-    <Tooltip title={summary}>
-      <div className="mt-0.5 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">
-        {entries.map(([key, value]) => (
-          <Tag
-            key={key}
-            className="m-0 mr-1 inline-block text-[11px] font-mono leading-4 py-0 px-1"
+    <div ref={containerRef} className="relative w-full min-w-0 overflow-hidden">
+      <div className="flex max-h-11 min-w-0 flex-wrap content-start items-center gap-1 overflow-hidden">
+        {visible.map((name) => (
+          <Tooltip key={name} title={name}>
+            <span className="inline-flex max-w-full min-w-0 overflow-hidden">
+              <DimensionChip label={name} />
+            </span>
+          </Tooltip>
+        ))}
+        {hidden.length > 0 ? (
+          <Tooltip
+            title={(
+              <div className="flex max-w-[280px] flex-col gap-0.5">
+                {hidden.map((name) => (
+                  <span key={name} className="break-all font-mono text-xs">
+                    {name}
+                  </span>
+                ))}
+              </div>
+            )}
           >
-            {key}={value}
-          </Tag>
+            <span className={DIMENSION_MORE_CLASS}>+{hidden.length}</span>
+          </Tooltip>
+        ) : null}
+      </div>
+      <div
+        ref={measureRef}
+        aria-hidden
+        className="pointer-events-none absolute left-0 top-0 flex w-max gap-1 opacity-0"
+      >
+        {names.map((name) => (
+          <DimensionChip key={name} measure label={name} />
         ))}
       </div>
-    </Tooltip>
+      <span
+        ref={badgeMeasureRef}
+        aria-hidden
+        className={`${DIMENSION_MORE_CLASS} pointer-events-none absolute left-0 top-0 opacity-0`}
+      >
+        +{names.length}
+      </span>
+    </div>
+  );
+};
+
+const SAMPLE_PREVIEW_MAX = 100;
+/** 采样值格固定两行高；内容作为一组垂直居中，避免贴顶。 */
+const SAMPLE_VALUE_CELL_CLASS =
+  'flex h-8 w-full min-w-0 items-center justify-end';
+/** 表头吸顶：浅灰叠在不透明底色上，暗色主题滚动时不透出正文。 */
+const SAMPLE_PREVIEW_HEAD_CLASS =
+  'sticky top-0 z-[1] h-7 whitespace-nowrap border-b border-[var(--color-border-1)] [background:linear-gradient(var(--color-fill-1),var(--color-fill-1)),var(--color-bg)] px-2 font-medium text-[var(--color-text-2)]';
+const SAMPLE_PREVIEW_CELL_CLASS =
+  'h-7 border-b border-[var(--color-border-1)] px-2 align-middle';
+const SAMPLE_PREVIEW_EMPTY = '--';
+
+interface SamplePreviewItem {
+  value: number | string;
+  tags?: Record<string, string>;
+}
+
+/** 维度值弹层：每个维度一列，末列为采样值；表头吸顶，超出高度内部滚动。 */
+const SamplePreviewTable: React.FC<{
+  dimensionNames: string[];
+  samples: SamplePreviewItem[];
+}> = ({ dimensionNames, samples }) => {
+  const { t } = useTranslation();
+  const visible = samples.slice(0, SAMPLE_PREVIEW_MAX);
+  const remaining = Math.max(0, samples.length - SAMPLE_PREVIEW_MAX);
+  return (
+    <div className="min-w-[200px] max-w-[480px]">
+      <div className="max-h-[240px] overflow-auto">
+        <table className="w-full border-separate border-spacing-0 text-xs leading-4">
+          <thead>
+            <tr>
+              {dimensionNames.map((name) => (
+                <th
+                  key={name}
+                  title={name}
+                  className={`${SAMPLE_PREVIEW_HEAD_CLASS} text-left`}
+                >
+                  <div className="max-w-[160px] truncate font-mono">{name}</div>
+                </th>
+              ))}
+              <th className={`${SAMPLE_PREVIEW_HEAD_CLASS} text-right`}>
+                {t('monitor.integrations.trialRunMetricValue', '采样值')}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map((sample, index) => (
+              <tr key={index}>
+                {dimensionNames.map((name) => {
+                  const raw = sample.tags?.[name];
+                  const text =
+                    raw === undefined || raw === null || String(raw) === ''
+                      ? SAMPLE_PREVIEW_EMPTY
+                      : String(raw);
+                  return (
+                    <td
+                      key={name}
+                      className={`${SAMPLE_PREVIEW_CELL_CLASS} text-left text-[var(--color-text-1)]`}
+                    >
+                      <div className="max-w-[160px] truncate" title={text}>
+                        {text}
+                      </div>
+                    </td>
+                  );
+                })}
+                <td
+                  className={`${SAMPLE_PREVIEW_CELL_CLASS} whitespace-nowrap text-right font-mono tabular-nums text-[var(--color-text-1)]`}
+                >
+                  {String(sample.value)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {remaining > 0 ? (
+        <div className="pt-1.5 text-right text-xs text-[var(--color-text-3)]">
+          {t('monitor.integrations.trialRunSampleMore', '还有 {count} 条', {
+            count: remaining
+          })}
+        </div>
+      ) : null}
+    </div>
   );
 };
 
 export interface TrialRunTaskState {
-  status: 'pending' | 'running' | 'success' | 'failed' | 'warning';
+  status: 'pending' | 'running' | 'success' | 'failed' | 'warning' | 'stopped';
   warning_type?: 'no_permission' | 'rate_limit';
   fingerprint?: string;
   result?: Record<string, any>;
   error_message?: string;
   started_at?: string | null;
   finished_at?: string | null;
+  debug_timeout?: number;
+  wait_stopped?: boolean;
 }
 
-/** 与失败 Alert 同一判定：未通过则确认与去编辑不可用。运行中不算失败。 */
+/** 与失败 Alert 同一判定：未通过则确认不可用。运行中不算失败。 */
 export const scriptTrialBlocksMetricActions = (
   task?: TrialRunTaskState | null
 ): boolean => {
-  if (!task?.status || task.status === 'pending' || task.status === 'running') {
+  if (!task?.status || task.status === 'pending' || task.status === 'running' || task.status === 'stopped') {
     return false;
   }
   const parsed =
@@ -98,9 +330,118 @@ const TrialActionsBlockedNote: React.FC = () => {
     <div className="text-[13px] font-medium text-[var(--color-text-1)]">
       {t(
         'monitor.integrations.trialRunActionsUnavailable',
-        '调试未通过，确认与去编辑不可用。'
+        '调试未通过，确认不可用。'
       )}
     </div>
+  );
+};
+
+const TrialTimeoutHint: React.FC<{ seconds: number }> = ({ seconds }) => {
+  const { t } = useTranslation();
+  return (
+    <span className="inline-flex items-center gap-1 text-[12px] text-[var(--color-text-3)]">
+      <span>
+        {t(
+          'monitor.integrations.trialRunTimeoutFollowsInterval',
+          '超时 {n} 秒（= 采集间隔 − 1）',
+          {
+            n: seconds
+          }
+        )}
+      </span>
+      <Tooltip
+        title={t(
+          'monitor.integrations.trialRunTimeoutFollowsIntervalHelp',
+          '调试与正式采集使用同一超时，修改采集间隔即可调整'
+        )}
+      >
+        <QuestionCircleOutlined className="cursor-help text-[12px] text-[var(--color-text-3)]" />
+      </Tooltip>
+    </span>
+  );
+};
+
+const TrialDebugActions: React.FC<{
+  running?: boolean;
+  loading?: boolean;
+  disabled?: boolean;
+  timeoutSeconds: number;
+  debugLabel: string;
+  onDebug: () => void;
+  onStopWaiting?: () => void;
+  primary?: boolean;
+  size?: 'small' | 'middle';
+}> = ({
+  running,
+  loading,
+  disabled,
+  timeoutSeconds,
+  debugLabel,
+  onDebug,
+  onStopWaiting,
+  primary = true,
+  size
+}) => {
+  const { t } = useTranslation();
+  return (
+    <div className="flex items-center gap-2">
+      <Button
+        type={primary ? 'primary' : 'default'}
+        size={size}
+        icon={running ? undefined : <PlayCircleOutlined />}
+        loading={Boolean(loading || running)}
+        disabled={disabled}
+        onClick={onDebug}
+      >
+        {debugLabel}
+      </Button>
+      {running ? (
+        <Tooltip
+          title={t(
+            'monitor.integrations.trialRunStopWaitingTooltip',
+            '脚本将在 {n} 秒超时后自行结束',
+            { n: timeoutSeconds }
+          )}
+        >
+          <Button size={size} onClick={onStopWaiting}>
+            {t('monitor.integrations.trialRunStopWaiting', '停止等待')}
+          </Button>
+        </Tooltip>
+      ) : null}
+      <TrialTimeoutHint seconds={timeoutSeconds} />
+    </div>
+  );
+};
+
+const DurationElapsed: React.FC<{
+  durationMs?: number;
+  timeoutSeconds: number;
+}> = ({ durationMs, timeoutSeconds }) => {
+  const { t } = useTranslation();
+  if (durationMs === undefined) {
+    return <>--</>;
+  }
+  const text = `${durationMs} ms`;
+  const nearTimeout =
+    timeoutSeconds > 0 && durationMs > timeoutSeconds * 1000 * 0.8;
+  if (!nearTimeout) {
+    return (
+      <span className="mt-1 text-[16px] font-bold font-mono text-[var(--color-text-1)]">
+        {text}
+      </span>
+    );
+  }
+  return (
+    <Tooltip
+      title={t(
+        'monitor.integrations.trialRunNearTimeout',
+        '接近超时上限（采集间隔 − 1 秒）'
+      )}
+    >
+      <span className="mt-1 text-[16px] font-bold font-mono text-[var(--color-warning)]">
+        {text}
+      </span>
+    </Tooltip>
   );
 };
 
@@ -108,24 +449,32 @@ interface ScriptTrialRunAreaProps {
   task?: TrialRunTaskState;
   spinning?: boolean;
   onTrialRun: () => void;
+  onStopWaiting?: () => void;
+  timeoutSeconds?: number;
   nodeSelected?: boolean;
   instanceName?: string;
   pluginId?: string | number;
   objectId?: string | number;
   onSelectedMetricsChange?: (metrics: BusinessMetricItem[]) => void;
   onBusinessMetricsAvailableChange?: (available: boolean) => void;
+  onCatalogBlockingChange?: (blocking: boolean) => void;
+  onCatalogErrorChange?: (failed: boolean) => void;
 }
 
 const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
   task,
   spinning = false,
   onTrialRun,
+  onStopWaiting,
+  timeoutSeconds = 59,
   nodeSelected = true,
   instanceName,
   pluginId,
   objectId,
   onSelectedMetricsChange,
-  onBusinessMetricsAvailableChange
+  onBusinessMetricsAvailableChange,
+  onCatalogBlockingChange,
+  onCatalogErrorChange
 }) => {
   const { t } = useTranslation();
   const { get } = useApiClient();
@@ -133,6 +482,10 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
   const [selectedMetrics, setSelectedMetrics] = useState<Record<string, boolean>>({});
   const [catalogByKey, setCatalogByKey] = useState<Record<string, ScriptMetricCatalogDraft>>({});
   const [groupOptions, setGroupOptions] = useState<CatalogMetricGroupOption[]>([]);
+  const [catalogMetrics, setCatalogMetrics] = useState<CatalogMetricRef[]>([]);
+  const [catalogLoaded, setCatalogLoaded] = useState(false);
+  const [catalogError, setCatalogError] = useState(false);
+  const [catalogEpoch, setCatalogEpoch] = useState(0);
   const [trialSubmitting, setTrialSubmitting] = useState(false);
   const retainedMetricStateRef = useRef({
     selected: {} as Record<string, boolean>,
@@ -145,6 +498,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
 
   const isSpinning = spinning || task?.status === 'pending' || task?.status === 'running';
   const trialBusy = isSpinning || trialSubmitting;
+  const runTimeoutSeconds = task?.debug_timeout ?? timeoutSeconds;
 
   useEffect(() => {
     if (isSpinning || (task?.status && task.status !== 'pending')) {
@@ -170,7 +524,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     );
   }, [task]);
 
-  // 与失败 Alert 同一判定：只有 status=success 且退出码为 0，且不是超时 / 节点不可用 / 告警，才允许确认与去编辑。
+  // 与失败 Alert 同一判定：只有 status=success 且退出码为 0，且不是超时 / 节点不可用 / 告警，才允许确认。
   const isNonZeroExit = Boolean(task?.result && task.result.exit_code !== 0);
   const blocksMetricActions = scriptTrialBlocksMetricActions(task);
   const canFeedScriptMetricActions =
@@ -180,9 +534,9 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     () => resolveDefaultCatalogGroupId(groupOptions),
     [groupOptions]
   );
-  const defaultUnitPath = useMemo(
-    () => resolveDefaultCatalogUnitPath(unitOptions),
-    [unitOptions]
+  const existingByName = useMemo(
+    () => catalogMetricsByName(catalogMetrics),
+    [catalogMetrics]
   );
 
   useEffect(() => {
@@ -194,6 +548,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
   }, [catalogByKey]);
 
   // 重新调试成功：刷新采样值；仍存在的指标保留勾选/分组/单位/描述；消失的视为未勾选。
+  // 已有目录指标的分组/单位从目录预填，不用后缀猜测。
   useEffect(() => {
     const metrics = parsedOutput?.businessMetrics;
     if (!metrics?.length) {
@@ -202,6 +557,9 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
         setSelectedMetrics({});
         setCatalogByKey({});
       }
+      return;
+    }
+    if (pluginId && objectId && !catalogLoaded) {
       return;
     }
     const merged = mergeRetainedTrialMetricState({
@@ -213,50 +571,99 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
       metrics,
       merged.catalog,
       defaultGroupId,
-      defaultUnitPath
+      unitOptions,
+      existingByName
     );
     const next = { selected: merged.selected, catalog: withDefaults.catalog };
     retainedMetricStateRef.current = next;
     setSelectedMetrics(next.selected);
     setCatalogByKey(next.catalog);
-  }, [parsedOutput, defaultGroupId, defaultUnitPath]);
+  }, [
+    parsedOutput,
+    defaultGroupId,
+    unitOptions,
+    existingByName,
+    catalogLoaded,
+    pluginId,
+    objectId
+  ]);
 
   useEffect(() => {
     if (!pluginId || !objectId) {
       setGroupOptions([]);
+      setCatalogMetrics([]);
+      setCatalogError(false);
+      setCatalogLoaded(true);
       return;
     }
     let cancelled = false;
-    const loadGroups = async () => {
+    setCatalogLoaded(false);
+    setCatalogError(false);
+    const loadCatalog = async () => {
       try {
-        const groupRes = await get('/monitor/api/metrics_group/', {
-          params: {
-            monitor_object_id: objectId,
-            monitor_plugin_id: pluginId,
-            page: 1,
-            page_size: 100
-          },
-          suppressErrorNotification: true
-        });
+        const [groupRes, metricRefs] = await Promise.all([
+          get('/monitor/api/metrics_group/', {
+            params: {
+              monitor_object_id: objectId,
+              monitor_plugin_id: pluginId,
+              page: 1,
+              page_size: 100
+            },
+            suppressErrorNotification: true
+          }),
+          listPluginCatalogMetrics({
+            pluginId,
+            objectId,
+            client: { get }
+          })
+        ]);
         if (!cancelled) {
           setGroupOptions(extractCatalogItems<CatalogMetricGroupOption>(groupRes));
+          setCatalogMetrics(metricRefs);
+          setCatalogError(false);
+          setCatalogLoaded(true);
         }
       } catch {
         if (!cancelled) {
           setGroupOptions([]);
+          setCatalogMetrics([]);
+          setCatalogError(true);
+          setCatalogLoaded(false);
         }
       }
     };
-    void loadGroups();
+    void loadCatalog();
     return () => {
       cancelled = true;
     };
-  }, [get, pluginId, objectId]);
+  }, [get, pluginId, objectId, catalogEpoch]);
 
-  // 仅成功调试把勾选业务指标交给确认 / 去编辑；失败即使解析到行也不喂。
+  // 仅成功调试把勾选业务指标交给确认；失败即使解析到行也不喂。
+  // 目录未就绪时不喂，避免把空草稿当新建指标写入。
+  const catalogBlocking = Boolean(pluginId && objectId && !catalogLoaded);
+
+  useEffect(() => {
+    onCatalogBlockingChange?.(catalogBlocking);
+  }, [catalogBlocking, onCatalogBlockingChange]);
+
+  useEffect(() => {
+    onCatalogErrorChange?.(catalogError);
+  }, [catalogError, onCatalogErrorChange]);
+
+  useEffect(() => {
+    return () => {
+      onCatalogBlockingChange?.(false);
+      onCatalogErrorChange?.(false);
+    };
+  }, [onCatalogBlockingChange, onCatalogErrorChange]);
+
   useEffect(() => {
     if (!onSelectedMetricsChange) return;
-    if (!canFeedScriptMetricActions || !parsedOutput?.businessMetrics?.length) {
+    if (
+      catalogBlocking ||
+      !canFeedScriptMetricActions ||
+      !parsedOutput?.businessMetrics?.length
+    ) {
       onSelectedMetricsChange([]);
       return;
     }
@@ -268,6 +675,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
       )
     );
   }, [
+    catalogBlocking,
     canFeedScriptMetricActions,
     selectedMetrics,
     parsedOutput,
@@ -277,10 +685,12 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
 
   useEffect(() => {
     onBusinessMetricsAvailableChange?.(
-      canFeedScriptMetricActions &&
+      !catalogBlocking &&
+        canFeedScriptMetricActions &&
         (parsedOutput?.businessMetrics?.length || 0) > 0
     );
   }, [
+    catalogBlocking,
     canFeedScriptMetricActions,
     parsedOutput,
     onBusinessMetricsAvailableChange
@@ -300,8 +710,8 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     }));
   };
 
-  const toggleMetric = (key: string) => {
-    if (isSpinning) return;
+  const toggleMetric = (key: string, disabled = false) => {
+    if (isSpinning || disabled) return;
     setSelectedMetrics((prev) => ({
       ...prev,
       [key]: !prev[key]
@@ -312,10 +722,35 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
     if (isSpinning || !parsedOutput?.businessMetrics) return;
     const nextMap: Record<string, boolean> = {};
     parsedOutput.businessMetrics.forEach((m) => {
-      nextMap[m.key] = checked;
+      nextMap[m.key] = checked && !isReservedScriptMetricId(m.name);
     });
     setSelectedMetrics(nextMap);
   };
+
+  const retryCatalog = () => setCatalogEpoch((n) => n + 1);
+  const catalogErrorAlert = catalogError ? (
+    <Alert
+      className="mb-3 py-1 text-[13px]"
+      type="warning"
+      showIcon
+      message={
+        <span>
+          {t(
+            'monitor.integrations.scriptCatalogLoadFailed',
+            '指标目录加载失败，暂无法确认写入'
+          )}
+          <Button
+            type="link"
+            size="small"
+            className="ml-1 h-auto px-0"
+            onClick={retryCatalog}
+          >
+            {t('common.retry', '重试')}
+          </Button>
+        </span>
+      }
+    />
+  ) : null;
 
   // 1. 未运行状态
   if (!task || !task.status) {
@@ -332,6 +767,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
             )}
           </div>
         </div>
+        {catalogErrorAlert}
         <div className="flex flex-col items-center justify-center py-6 px-4 rounded-md border border-dashed border-[var(--color-border-2)] bg-[var(--color-bg-2)]">
           <CompactEmptyState
             description={t(
@@ -339,16 +775,15 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               '保存前可先调试，验证输出指标'
             )}
           >
-            <Button
-              type="primary"
-              className="mt-3"
-              icon={<PlayCircleOutlined />}
-              loading={trialBusy}
-              disabled={!nodeSelected || trialBusy}
-              onClick={handleTrialClick}
-            >
-              {t('monitor.integrations.trialRun', '调试')}
-            </Button>
+            <div className="mt-3">
+              <TrialDebugActions
+                timeoutSeconds={runTimeoutSeconds}
+                debugLabel={t('monitor.integrations.trialRun', '调试')}
+                loading={trialBusy}
+                disabled={!nodeSelected || trialBusy}
+                onDebug={handleTrialClick}
+              />
+            </div>
           </CompactEmptyState>
         </div>
       </div>
@@ -369,10 +804,18 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
             )}
           </div>
-          <Button size="small" disabled loading icon={<ReloadOutlined />}>
-            {t('monitor.integrations.reTrialRun', '重新调试')}
-          </Button>
+          <TrialDebugActions
+            running
+            size="small"
+            timeoutSeconds={runTimeoutSeconds}
+            debugLabel={t('monitor.integrations.trialRun', '调试')}
+            loading
+            disabled
+            onDebug={handleTrialClick}
+            onStopWaiting={onStopWaiting}
+          />
         </div>
+        {catalogErrorAlert}
         <div className="flex flex-col items-center justify-center py-10 px-4 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
           <Spin
             tip={
@@ -386,6 +829,41 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           >
             <div className="h-10 w-48" />
           </Spin>
+        </div>
+      </div>
+    );
+  }
+
+  // 2b. 停止等待（仅停前端轮询，节点上的脚本仍会跑到超时）
+  if (task.status === 'stopped' || task.wait_stopped) {
+    return (
+      <div className="mt-4 mb-4 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4">
+        <div className="flex items-center justify-between mb-3 border-b border-[var(--color-border-1)] pb-2">
+          <div className="flex items-center gap-2">
+            <DashboardOutlined className="text-[var(--color-primary)] text-[15px]" />
+            <b className="text-[14px] text-[var(--color-text-1)]">
+              {t('monitor.integrations.trialRunAreaTitle', '调试结果')}
+            </b>
+            {instanceName && (
+              <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
+            )}
+          </div>
+          <TrialDebugActions
+            size="small"
+            primary={false}
+            timeoutSeconds={runTimeoutSeconds}
+            debugLabel={t('monitor.integrations.reTrialRun', '重新调试')}
+            loading={trialSubmitting}
+            disabled={!nodeSelected || trialBusy}
+            onDebug={handleTrialClick}
+          />
+        </div>
+        {catalogErrorAlert}
+        <div className="rounded-md border border-dashed border-[var(--color-border-2)] bg-[var(--color-bg-2)] px-4 py-6 text-center text-[12px] text-[var(--color-text-3)]">
+          {t(
+            'monitor.integrations.trialRunWaitStopped',
+            '已停止等待，节点上的脚本仍会运行到超时'
+          )}
         </div>
       </div>
     );
@@ -413,16 +891,17 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
             )}
           </div>
-          <Button
+          <TrialDebugActions
             size="small"
-            icon={<ReloadOutlined />}
+            primary={false}
+            timeoutSeconds={runTimeoutSeconds}
+            debugLabel={t('monitor.integrations.reTrialRun', '重新调试')}
             loading={trialSubmitting}
             disabled={!nodeSelected || trialBusy}
-            onClick={handleTrialClick}
-          >
-            {t('monitor.integrations.reTrialRun', '重新调试')}
-          </Button>
+            onDebug={handleTrialClick}
+          />
         </div>
+        {catalogErrorAlert}
         <Alert
           type="warning"
           showIcon
@@ -495,16 +974,17 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
             )}
           </div>
-          <Button
+          <TrialDebugActions
             size="small"
-            icon={<ReloadOutlined />}
+            primary={false}
+            timeoutSeconds={runTimeoutSeconds}
+            debugLabel={t('monitor.integrations.reTrialRun', '重新调试')}
             loading={trialSubmitting}
             disabled={!nodeSelected || trialBusy}
-            onClick={handleTrialClick}
-          >
-            {t('monitor.integrations.reTrialRun', '重新调试')}
-          </Button>
+            onDebug={handleTrialClick}
+          />
         </div>
+        {catalogErrorAlert}
         <Alert
           type="error"
           showIcon
@@ -556,16 +1036,17 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
               <Tag className="ml-1 text-[12px]">{instanceName}</Tag>
             )}
           </div>
-          <Button
+          <TrialDebugActions
             size="small"
-            icon={<ReloadOutlined />}
+            primary={false}
+            timeoutSeconds={runTimeoutSeconds}
+            debugLabel={t('monitor.integrations.reTrialRun', '重新调试')}
             loading={trialSubmitting}
             disabled={!nodeSelected || trialBusy}
-            onClick={handleTrialClick}
-          >
-            {t('monitor.integrations.reTrialRun', '重新调试')}
-          </Button>
+            onDebug={handleTrialClick}
+          />
         </div>
+        {catalogErrorAlert}
         {/* 仍展示自身指标概览 */}
         <div className="grid grid-cols-3 gap-3 mb-4">
           <div className="p-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
@@ -576,11 +1057,10 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           </div>
           <div className="p-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
             <div className="text-[12px] text-[var(--color-text-3)] font-medium">duration (执行耗时)</div>
-            <div className="mt-1 text-[16px] font-bold text-[var(--color-text-1)] font-mono">
-              {parsedOutput?.selfMetrics?.duration_ms !== undefined
-                ? `${parsedOutput.selfMetrics.duration_ms} ms`
-                : '--'}
-            </div>
+            <DurationElapsed
+              durationMs={parsedOutput?.selfMetrics?.duration_ms}
+              timeoutSeconds={runTimeoutSeconds}
+            />
           </div>
           <div className="p-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
             <div className="text-[12px] text-[var(--color-text-3)] font-medium">exit_code (退出码)</div>
@@ -601,10 +1081,15 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
 
   // 6. 成功且有指标状态 (Self-metrics vs Business metrics)
   const businessMetrics = parsedOutput.businessMetrics;
+  const selectableMetrics = businessMetrics.filter(
+    (m) => !isReservedScriptMetricId(m.name)
+  );
   const allChecked =
-    businessMetrics.length > 0 && businessMetrics.every((m) => selectedMetrics[m.key] !== false);
+    selectableMetrics.length > 0 &&
+    selectableMetrics.every((m) => selectedMetrics[m.key] !== false);
   const indeterminate =
-    businessMetrics.some((m) => selectedMetrics[m.key] !== false) && !allChecked;
+    selectableMetrics.some((m) => selectedMetrics[m.key] !== false) &&
+    !allChecked;
 
   return (
     <div className="mt-4 mb-4 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] p-4">
@@ -630,15 +1115,15 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
             </Tooltip>
           )}
         </div>
-        <Button
+        <TrialDebugActions
           size="small"
-          icon={<ReloadOutlined />}
+          primary={false}
+          timeoutSeconds={runTimeoutSeconds}
+          debugLabel={t('monitor.integrations.reTrialRun', '重新调试')}
           loading={trialSubmitting}
           disabled={!nodeSelected || trialBusy}
-          onClick={handleTrialClick}
-        >
-          {t('monitor.integrations.reTrialRun', '重新调试')}
-        </Button>
+          onDebug={handleTrialClick}
+        />
       </div>
 
       {/* 自监控指标仅展示，不可勾选落库 */}
@@ -655,11 +1140,10 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
           </div>
           <div className="p-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
             <div className="text-[12px] text-[var(--color-text-3)]">duration (执行耗时)</div>
-            <div className="mt-1 text-[16px] font-bold text-[var(--color-text-1)] font-mono">
-              {parsedOutput.selfMetrics.duration_ms !== undefined
-                ? `${parsedOutput.selfMetrics.duration_ms} ms`
-                : '--'}
-            </div>
+            <DurationElapsed
+              durationMs={parsedOutput.selfMetrics.duration_ms}
+              timeoutSeconds={runTimeoutSeconds}
+            />
           </div>
           <div className="p-3 rounded-md border border-[var(--color-border-1)] bg-[var(--color-bg-2)]">
             <div className="text-[12px] text-[var(--color-text-3)]">exit_code (退出码)</div>
@@ -670,6 +1154,7 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
 
       {/* Business metrics with trial-run checkboxes */}
       <div>
+        {catalogErrorAlert}
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <Checkbox
@@ -679,144 +1164,202 @@ const ScriptTrialRunArea: React.FC<ScriptTrialRunAreaProps> = ({
             />
             <span className="text-[12px] font-medium text-[var(--color-text-2)]">
               {t('monitor.integrations.trialRunBusinessMetrics', '业务指标')} (
-              {businessMetrics.filter((m) => selectedMetrics[m.key] !== false).length}/
-              {businessMetrics.length})
+              {selectableMetrics.filter((m) => selectedMetrics[m.key] !== false).length}/
+              {selectableMetrics.length})
             </span>
           </div>
         </div>
         <div className="rounded-md border border-[var(--color-border-1)] overflow-hidden bg-[var(--color-bg)]">
           <div className="overflow-x-auto">
-            <div
-              className={`grid ${BUSINESS_METRIC_GRID} min-w-[760px] border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)] px-3 py-2 text-[12px] font-medium text-[var(--color-text-2)]`}
-            >
-              <div />
-              <div>{t('monitor.integrations.trialRunMetricName', '指标名称')}</div>
-              <div>{t('monitor.integrations.trialRunMetricValue', '采样值')}</div>
-              <div>{t('monitor.integrations.metricGroup', '分组')}</div>
-              <div>{t('common.unit', '单位')}</div>
-              <div>{t('monitor.integrations.trialRunMetricDescription', '指标描述')}</div>
-            </div>
-            <div className="max-h-[360px] min-w-[760px] overflow-auto divide-y divide-[var(--color-border-1)]">
-              {businessMetrics.map((item: BusinessMetricItem) => {
-                const isChecked = selectedMetrics[item.key] !== false;
-                const catalog = catalogByKey[item.key] || {};
-                return (
-                  <div
-                    key={item.key}
-                    className={`grid ${BUSINESS_METRIC_GRID} items-center px-3 py-2 text-[13px] hover:bg-[var(--color-fill-2)] transition-colors ${
-                      isChecked ? '' : 'opacity-60 bg-[var(--color-bg-2)]'
-                    }`}
-                  >
-                    <div>
-                      <Checkbox
-                        checked={isChecked}
-                        onChange={() => toggleMetric(item.key)}
-                      />
-                    </div>
-                    <div className="min-w-0 pr-2">
-                      <div
-                        className="truncate font-mono text-xs font-medium text-[var(--color-text-1)]"
-                        title={item.name}
-                      >
-                        {item.name}
-                      </div>
-                      <DimensionTagLine tags={item.tags} />
-                      {Boolean(item.reservedTagKeys?.length) && (
-                        <div
-                          className="mt-0.5 text-[11px] text-[var(--color-fail)]"
-                          role="alert"
-                        >
-                          {t('monitor.integrations.reservedTagRename', '保留字段，请换名')}
+            <div className={BUSINESS_METRIC_TABLE_MIN_WIDTH}>
+              <div
+                className={`${BUSINESS_METRIC_GRID} border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)] py-2 text-[12px] font-medium text-[var(--color-text-2)]`}
+              >
+                <div />
+                <div className="min-w-0">{t('monitor.integrations.trialRunMetricId', '指标 ID')}</div>
+                <div className="min-w-0">{t('monitor.integrations.trialRunMetricDimensions', '维度')}</div>
+                <div className="min-w-0">{t('monitor.integrations.metricGroup', '分组')}</div>
+                <div className="min-w-0">{t('common.unit', '单位')}</div>
+                <div className="min-w-0 text-right">
+                  {t('monitor.integrations.trialRunMetricValue', '采样值')}
+                </div>
+              </div>
+              <div className="max-h-[360px] overflow-y-auto overflow-x-hidden divide-y divide-[var(--color-border-1)]">
+                {businessMetrics.map((item: BusinessMetricItem) => {
+                  const reservedMetricId = isReservedScriptMetricId(item.name);
+                  const isChecked =
+                    !reservedMetricId && selectedMetrics[item.key] !== false;
+                  const catalog = catalogByKey[item.key] || {};
+                  const existingEnum =
+                    String(
+                      catalog.data_type ||
+                        existingByName.get(cleanMeasurementName(item.name))
+                          ?.data_type ||
+                        ''
+                    ).toLowerCase() === 'enum';
+                  const visibleDimensionNames = unionVisibleDimensionNames(
+                    item.tags,
+                    item.samples
+                  );
+                  const sampleCount = item.samples?.length || 1;
+                  const showSamplePreview = visibleDimensionNames.length > 0;
+                  const previewSamples =
+                    item.samples?.length
+                      ? item.samples
+                      : [{ value: item.value, tags: item.tags }];
+                  const sampleStack = (
+                    <div className={SAMPLE_VALUE_CELL_CLASS}>
+                      <div className="flex min-w-0 flex-col items-end">
+                        <div className="min-w-0 max-w-full truncate text-right font-mono text-xs leading-4 tabular-nums text-[var(--color-text-3)]">
+                          {String(item.value)}
                         </div>
-                      )}
+                        {showSamplePreview ? (
+                          <Popover
+                            placement="bottomRight"
+                            arrow={false}
+                            title={(
+                              <span className="text-xs font-medium text-[var(--color-text-1)]">
+                                {t(
+                                  'monitor.integrations.trialRunDimensionValues',
+                                  '维度值（{count}）',
+                                  { count: sampleCount }
+                                )}
+                              </span>
+                            )}
+                            styles={{
+                              body: {
+                                padding: '8px 10px',
+                                border: '1px solid var(--color-border-1)'
+                              }
+                            }}
+                            content={(
+                              <SamplePreviewTable
+                                dimensionNames={visibleDimensionNames}
+                                samples={previewSamples}
+                              />
+                            )}
+                          >
+                            <div className="cursor-help text-right text-[11px] leading-[14px] text-[var(--color-text-3)] underline decoration-dashed decoration-[var(--color-text-3)] underline-offset-2">
+                              {t(
+                                'monitor.integrations.trialRunSampleCount',
+                                '共 {count} 条',
+                                { count: sampleCount }
+                              )}
+                            </div>
+                          </Popover>
+                        ) : null}
+                      </div>
                     </div>
+                  );
+                  return (
                     <div
-                      className="min-w-0 truncate font-mono text-xs text-[var(--color-text-2)]"
-                      title={String(item.value)}
+                      key={item.key}
+                      className={`${BUSINESS_METRIC_GRID} py-2 text-[13px] hover:bg-[var(--color-fill-2)] transition-colors ${
+                        isChecked ? '' : 'opacity-60 bg-[var(--color-bg-2)]'
+                      }`}
                     >
-                      {String(item.value)}
-                    </div>
-                    <div className="min-w-0 pr-1">
-                      <ScriptMetricGroupSelect
-                        size="small"
-                        allowClear
-                        disabled={!isChecked}
-                        className="w-full"
-                        placeholder={t('monitor.integrations.metricGroup', '分组')}
-                        value={
-                          typeof catalog.metric_group === 'number'
-                            ? catalog.metric_group
-                            : undefined
-                        }
-                        groups={groupOptions}
-                        onGroupsChange={setGroupOptions}
-                        objectId={objectId}
-                        pluginId={pluginId}
-                        onChange={(next) =>
-                          updateCatalog(item.key, {
-                            metric_group: typeof next === 'number' ? next : null
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="min-w-0 pr-1">
-                      <Cascader
-                        size="small"
-                        allowClear
-                        disabled={!isChecked}
-                        className="w-full"
-                        placeholder={t('common.unit', '单位')}
-                        options={unitOptions}
-                        displayRender={(labels) => {
-                          const leaf = labels[labels.length - 1];
-                          return leaf == null ? '' : String(leaf);
-                        }}
-                        showSearch={{
-                          filter: (inputValue, path) => {
-                            const needle = inputValue.trim().toLowerCase();
-                            if (!needle) return true;
-                            return path.some((option) => {
-                              const label = String(option.label ?? '').toLowerCase();
-                              const extra = String(
-                                (option as { searchText?: string }).searchText ?? ''
-                              ).toLowerCase();
-                              return label.includes(needle) || extra.includes(needle);
-                            });
-                          }
-                        }}
-                        value={
-                          Array.isArray(catalog.unit)
-                            ? catalog.unit.map((unit) => String(unit))
-                            : undefined
-                        }
-                        onChange={(value) =>
-                          updateCatalog(item.key, {
-                            unit: Array.isArray(value) ? value : undefined
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="min-w-0">
-                      <Input
-                        size="small"
-                        allowClear
-                        disabled={!isChecked}
-                        className="w-full"
-                        placeholder={t(
-                          'monitor.integrations.trialRunMetricDescription',
-                          '指标描述'
+                      <div className="flex items-center justify-center">
+                        <Checkbox
+                          checked={isChecked}
+                          disabled={reservedMetricId}
+                          onChange={() => toggleMetric(item.key, reservedMetricId)}
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <EllipsisWithTooltip
+                          className="truncate font-mono text-xs font-medium text-[var(--color-text-1)]"
+                          text={item.name}
+                        />
+                        {reservedMetricId ? (
+                          <div
+                            className="mt-0.5 text-[11px] text-[var(--color-fail)]"
+                            role="alert"
+                          >
+                            {t(
+                              'monitor.integrations.reservedMetricId',
+                              '指标 ID 与保留字段冲突，请更换'
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className="min-w-0">
+                        <DimensionTagLine names={visibleDimensionNames} />
+                        {Boolean(item.reservedTagKeys?.length) && (
+                          <div
+                            className="mt-0.5 text-[11px] text-[var(--color-fail)]"
+                            role="alert"
+                          >
+                            {t('monitor.integrations.reservedTagRename', '保留字段，请换名')}
+                          </div>
                         )}
-                        value={catalog.description || ''}
-                        onChange={(event) =>
-                          updateCatalog(item.key, {
-                            description: event.target.value
-                          })
-                        }
-                      />
+                      </div>
+                      <div className="min-w-0">
+                        <ScriptMetricGroupSelect
+                          size="middle"
+                          allowClear
+                          disabled={!isChecked || catalogError}
+                          className={INLINE_CONTROL_CLASS}
+                          placeholder={t('monitor.integrations.metricGroup', '分组')}
+                          value={
+                            typeof catalog.metric_group === 'number'
+                              ? catalog.metric_group
+                              : undefined
+                          }
+                          groups={groupOptions}
+                          onGroupsChange={setGroupOptions}
+                          objectId={objectId}
+                          pluginId={pluginId}
+                          onChange={(next) =>
+                            updateCatalog(item.key, {
+                              metric_group: typeof next === 'number' ? next : null,
+                              editedGroup: true
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <Cascader
+                          size="middle"
+                          allowClear
+                          disabled={!isChecked || existingEnum || catalogError}
+                          className={INLINE_CONTROL_CLASS}
+                          placeholder={t('common.unit', '单位')}
+                          options={unitOptions}
+                          displayRender={(labels) => {
+                            const leaf = labels[labels.length - 1];
+                            return leaf == null ? '' : String(leaf);
+                          }}
+                          showSearch={{
+                            filter: (inputValue, path) => {
+                              const needle = inputValue.trim().toLowerCase();
+                              if (!needle) return true;
+                              return path.some((option) => {
+                                const label = String(option.label ?? '').toLowerCase();
+                                const extra = String(
+                                  (option as { searchText?: string }).searchText ?? ''
+                                ).toLowerCase();
+                                return label.includes(needle) || extra.includes(needle);
+                              });
+                            }
+                          }}
+                          value={
+                            Array.isArray(catalog.unit)
+                              ? catalog.unit.map((unit) => String(unit))
+                              : undefined
+                          }
+                          onChange={(value) =>
+                            updateCatalog(item.key, {
+                              unit: Array.isArray(value) ? value : undefined,
+                              editedUnit: true
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="min-w-0">{sampleStack}</div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>

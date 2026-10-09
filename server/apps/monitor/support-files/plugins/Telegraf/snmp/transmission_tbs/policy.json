@@ -1,0 +1,56 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission TBS SNMP",
+  "templates": [
+    {
+      "name": "TBS网关CPU使用率过高",
+      "alert_name": "传输设备${resource_name} CPU 使用率过高",
+      "description": "监控 TBS / Skylone IPTV-DVB 头端网关的 CPU 使用率（SKYLONE-MIB sysResourceCPU），当持续高于阈值时触发告警，提示控制面或转码负载过高。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 85,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "TBS网关内存使用率过高",
+      "alert_name": "传输设备${resource_name} 内存使用率过高",
+      "description": "监控 TBS / Skylone IPTV-DVB 头端网关的内存使用率（SKYLONE-MIB sysResourceMEM），当持续高于阈值时触发告警，提示资源紧张。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 85,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

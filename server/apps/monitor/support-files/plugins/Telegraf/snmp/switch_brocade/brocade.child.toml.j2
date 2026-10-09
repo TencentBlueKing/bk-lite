@@ -46,43 +46,49 @@
         name = "ifDescr"
         is_tag = true
     # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
-    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
+    # ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.6"
         name = "ifHCInOctets"
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
-    # ---- Brocade/Foundry CPU 1-min average utilization (FOUNDRY-SN-AGENT-MIB snAgGblCpuUtil1MinAvg, scalar %) ----
-    # 待现网核验：1.3.6.1.4.1.1991.1.1.2.1.52.0（已是 0-100%）。用 table(measurement=device_cpu)+field usage → 指标 device_cpu_usage。
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.1991.1.1.2.1.52"
-        name = "usage"
-    # ---- Brocade/Foundry dynamic memory utilization (FOUNDRY-SN-AGENT-MIB snAgGblDynMemUtil, scalar %) ----
-    # 待现网核验：1.3.6.1.4.1.1991.1.1.2.1.53.0（% 直报，无 used/free 字节）→ 统一 device_memory_usage(原始%)。
-    [[inputs.snmp.table]]
-        name = "device_memory"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.1991.1.1.2.1.53"
-        name = "usage"
-    # ---- Brocade/Foundry chassis temperature (FOUNDRY-SN-AGENT-MIB snChasActualTemperature) ----
-    # 待现网核验：1.3.6.1.4.1.1991.1.1.1.1.18 → device_temperature_celsius。
-    # ⚠ 原始单位是 0.5℃/单位（模版有 MULTIPLIER 0.5），telegraf inputs.snmp 不能做算术缩放 →
-    #   真机采到的是原始值（需 ×0.5 才是摄氏度），留「待现网核验」；mock 直接发摄氏度，验证不受影响。
-    [[inputs.snmp.table]]
-        name = "device_temperature"
-        inherit_tags = ["source"]
-        index_as_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.1991.1.1.1.1.18"
-        name = "celsius"
-    # ---- Brocade/Foundry fans (FOUNDRY-SN-AGENT-MIB snChasFanTable) ----
-    # 待现网核验：风扇状态 snChasFanOperStatus 1.3.6.1.4.1.1991.1.1.1.3.1.1.3；descr=snChasFanDescription ...3.1.1.2。
-    # 枚举非 1=normal：1 other / 2 normal / 3 failure → 下方 processors.enum 归一(2→1，其余→2)。
+    # ---- Brocade/Foundry/Ruckus ICX CPU (snAgGblCpuUtil1MinAvg, 1 分钟平均, 直接 0-100%, 标量) ----
+    # 顶层 field GET 必须带实例 .0；禁止 table.field（标量 GET-NEXT 会走到空子树，指标静默为空）。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1991.1.1.2.1.52.0"
+        name = "device_cpu_usage"
+    # ---- 系统 DRAM (snAgSystemDRAMUtil %, snAgSystemDRAMTotal / snAgSystemDRAMFree 字节, 标量) ----
+    # 顶层 field GET 必须带实例 .0。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1991.1.1.2.12.4.1.0"
+        name = "device_memory_usage"
+    # ---- 动态内存使用率回退 (snAgGblDynMemUtil %, 标量) ----
+    # 顶层 field GET 必须带实例 .0。无 DRAM OID 的机型用此指标。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1991.1.1.2.1.53.0"
+        name = "device_memory_dynmem_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1991.1.1.2.12.4.2.0"
+        name = "device_memory_total"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1991.1.1.2.12.4.3.0"
+        name = "device_memory_free"
+    # ---- 机箱温度 (snChasActualTemperature, 标量, 原始单位 0.5℃) ----
+    # 顶层 field GET 必须带实例 .0；下方 starlark ×0.5 换算为摄氏度。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1991.1.1.1.1.18.0"
+        name = "device_temperature_celsius"
+    # ---- Fabric OS FC 回退标量（swCpuUsage / swMemUsage, Integer32 0-100%, 顶层 field 必须带 .0）----
+    # 仅当 1991 的 device_cpu_usage / device_memory_usage 缺失时采用；辅助字段采集后丢弃。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1588.2.1.1.1.26.1.0"
+        name = "fos_cpu_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.1588.2.1.1.1.26.6.0"
+        name = "fos_mem_usage"
+    # ---- 风扇 (snChasFanTable)：描述 ...3.1.1.2 作 tag；状态 snChasFanOperStatus ...3.1.1.3 ----
+    # 原始码 1 other / 2 normal / 3 failure → 下方 processors.enum 归一(2→1，其余→2)。
     [[inputs.snmp.table]]
         name = "device_fan"
         inherit_tags = ["source"]
@@ -93,8 +99,7 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.1991.1.1.1.3.1.1.3"
         name = "state"
-    # ---- Brocade/Foundry power supplies (FOUNDRY-SN-AGENT-MIB snChasPwrSupplyTable) ----
-    # 待现网核验：电源状态 snChasPwrSupplyOperStatus 1.3.6.1.4.1.1991.1.1.1.2.1.1.3；descr=snChasPwrSupplyDescription ...2.1.1.2。
+    # ---- 电源 (snChasPwrSupplyTable)：描述 ...2.1.1.2 作 tag；状态 snChasPwrSupplyOperStatus ...2.1.1.3 ----
     # 枚举同风扇：1 other / 2 normal / 3 failure → 下方 processors.enum 归一(2→1，其余→2)。
     [[inputs.snmp.table]]
         name = "device_psu"
@@ -107,21 +112,35 @@
         oid = "1.3.6.1.4.1.1991.1.1.1.2.1.1.3"
         name = "state"
 
-# ---- 枚举归一：把 Brocade/Foundry snChas*OperStatus 映射到统一 1=normal/2=abnormal（偏离1即异常）----
-# 待现网核验：仅作用于本品牌(tagpass brand=brocade)，避免影响其它品牌同名字段。
-# 健康态 2 normal → 1；其余(1 other / 3 failure)→2。
+# ---- 机箱温度原始值单位为 0.5℃，×0.5 换算为摄氏度。----
+# ---- Fabric OS 辅助字段：1991 值优先；仅在其缺失且 FOS 值位于 0-100 时回填；辅助字段始终丢弃。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    raw = metric.fields.get("device_temperature_celsius")
+    if raw != None:
+        metric.fields["device_temperature_celsius"] = float(raw) * 0.5
+    fos_cpu = metric.fields.pop("fos_cpu_usage", None)
+    fos_mem = metric.fields.pop("fos_mem_usage", None)
+    if metric.fields.get("device_cpu_usage") == None and fos_cpu != None:
+        if fos_cpu >= 0 and fos_cpu <= 100:
+            metric.fields["device_cpu_usage"] = fos_cpu
+    if metric.fields.get("device_memory_usage") == None and fos_mem != None:
+        if fos_mem >= 0 and fos_mem <= 100:
+            metric.fields["device_memory_usage"] = fos_mem
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["brocade"]
+
+# ---- 风扇/电源状态归一：2 normal→1(正常)，其余(1 other / 3 failure)→2(异常)。----
 [[processors.enum]]
+    namepass = ["device_fan", "device_psu"]
     [processors.enum.tagpass]
         brand = ["brocade"]
     [[processors.enum.mapping]]
-        field = "device_fan_state"
-        dest = "device_fan_state"
-        default = 2
-        [processors.enum.mapping.value_mappings]
-            "2" = 1
-    [[processors.enum.mapping]]
-        field = "device_psu_state"
-        dest = "device_psu_state"
+        field = "state"
         default = 2
         [processors.enum.mapping.value_mappings]
             "2" = 1

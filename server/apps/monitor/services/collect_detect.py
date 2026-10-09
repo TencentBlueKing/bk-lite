@@ -17,7 +17,12 @@ from apps.monitor.services.collect_detect_runtime import (
     script_isolation_name_prefixes,
     substitute_sidecar_node_variables,
 )
-from apps.monitor.services.custom_script_plugin import CustomScriptPluginService
+from apps.monitor.services.custom_script_plugin import (
+    SCRIPT_DETECT_TIMEOUT_MARGIN,
+    CustomScriptPluginService,
+    assert_script_interval,
+    default_script_timeout_seconds,
+)
 from apps.monitor.services.website_config import normalize_website_request_config
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models import Node
@@ -59,11 +64,18 @@ class CollectDetectService:
             cls._ensure_script_run_as(plugin, instance)
         except ValueError as exc:
             raise ValidationAppException(str(exc)) from exc
+        if cls._is_script_plugin(plugin):
+            interval_seconds = assert_script_interval(instance.get("interval"))
+            instance.pop("timeout", None)
+            timeout_seconds = default_script_timeout_seconds(interval_seconds)
+            runtime_timeout = timeout_seconds + SCRIPT_DETECT_TIMEOUT_MARGIN
+        else:
+            runtime_timeout = cls._normalize_timeout(payload.get("timeout"))
         env = payload.get("env") or {}
         runtime_payload = {
             "instance": instance,
             "env": env,
-            "timeout": cls._normalize_timeout(payload.get("timeout")),
+            "timeout": runtime_timeout,
         }
 
         task = CollectDetectTask.objects.create(
@@ -118,16 +130,11 @@ class CollectDetectService:
             cls._ensure_required_render_vars(plugin, config_context)
             env = cls._build_preflight_env(config_context, runtime_payload.get("env") or {}, config_id)
             if cls._is_script_plugin(plugin):
-                config_content = disable_real_outputs(
-                    CustomScriptPluginService.render_child_template(config_context)
-                )
+                config_content = disable_real_outputs(CustomScriptPluginService.render_child_template(config_context))
             else:
                 templates = cls._get_child_templates(plugin, cls._resolve_config_types(config_context, plugin))
                 config_content = disable_real_outputs(
-                    "\n\n".join(
-                        render_telegraf_config_template(template.content, config_context)
-                        for template in templates
-                    )
+                    "\n\n".join(render_telegraf_config_template(template.content, config_context) for template in templates)
                 )
             config_content = substitute_sidecar_node_variables(config_content, node)
             operating_system, executable_path = cls._resolve_telegraf_runtime(task.node_id)
@@ -143,7 +150,7 @@ class CollectDetectService:
             task.save(update_fields=["phase", "updated_at"])
             raw_result = Executor(task.node_id).execute_local(
                 command,
-                timeout=int(runtime_payload.get("timeout") or 60),
+                timeout=int(runtime_payload.get("timeout") or DEFAULT_TIMEOUT_SECONDS),
                 shell=shell,
                 env=env,
             )

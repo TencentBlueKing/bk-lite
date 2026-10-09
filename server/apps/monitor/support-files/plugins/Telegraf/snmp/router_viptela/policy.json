@@ -1,0 +1,56 @@
+{
+  "object": "Router",
+  "plugin": "Router Viptela SNMP",
+  "templates": [
+    {
+      "name": "Viptela路由器CPU使用率过高",
+      "alert_name": "路由器${resource_name} CPU 使用率过高",
+      "description": "监控 Cisco SD-WAN（Viptela）路由器/控制器的 CPU 使用率，当持续高于阈值时触发告警，提示可能存在转发过载、隧道/控制面处理压力或异常流量，避免管理响应变慢或转发受影响。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Viptela路由器内存使用率过高",
+      "alert_name": "路由器${resource_name} 内存使用率过高",
+      "description": "监控 Cisco SD-WAN（Viptela）路由器/控制器的内存使用率（已用/总量），当超过阈值时触发告警，便于及时发现内存泄漏或容量不足，防止设备不稳定。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

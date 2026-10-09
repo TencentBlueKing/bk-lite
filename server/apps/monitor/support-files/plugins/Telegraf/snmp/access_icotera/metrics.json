@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_icotera",
   "plugin": "Access Icotera SNMP",
-  "plugin_desc": "Baseline SNMP child template for Icotera FTTH / GPON / CATV / VoIP CPE devices (i64xx and i68xx families, enterprise PEN 29865). The Icotera enterprise root and the ictIGW1k / ictIGW4k sub-trees are publicly documented through the public ICOTERA-I6400-SERIES and ICOTERA-I6800-SERIES MIB modules and the public IANA enterprise-numbers entry, but no stable, row-filter-free CPU, memory, temperature, fan or power-supply device-health leaf OID is confirmed in this pass; CATV module admin state, RF levels and optical-transceiver DDM values are device-specific and require per-row filtering that telegraf inputs.snmp cannot provide reliably. This child therefore declares no vendor metric deltas in metrics.json; the shared Access SNMP floor supplies MIB-II uptime, IF-MIB/ifXTable interface metrics including 64-bit ifHCInOctets and ifHCOutOctets, and aggregate device traffic. Supported brands/models - Icotera i64xx (1K CPE) and i68xx (4K CPE) FTTH/GPON/CATV/VoIP terminal devices that expose standard IF-MIB.",
+  "plugin_desc": "SNMP child template for Icotera FTTH / GPON / CATV / VoIP CPE devices (i64xx and i68xx families, enterprise PEN 29865). On i6400-series units with a DDM-capable optical transceiver it reads the ICOTERA-I6400-SERIES ictTransceiver scalars (1.3.6.1.4.1.29865.11.3.1.3): transceiver temperature (1/256 degree Celsius), supply voltage (1/10000 V), Tx / Rx optical power (1/10000 mW) and laser bias current (1/500 mA), converted to degrees Celsius, volts, mW and mA. Units without a DDM transceiver, and i68xx units, produce no transceiver series. No device-level CPU, memory, fan or power-supply object is collected. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB/ifXTable interface metrics including 64-bit ifHCInOctets and ifHCOutOctets. Supported brands/models - Icotera i64xx (1K CPE) and i68xx (4K CPE) FTTH/GPON/CATV/VoIP terminal devices that expose standard IF-MIB.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='access', collect_type='snmp_icotera'}) by (instance_id)",
   "name": "Access",
@@ -14,9 +14,76 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "transceiver_temperature_celsius",
+    "transceiver_voltage_volts"
   ],
   "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "transceiver_temperature_celsius",
+      "query": "max(snmp_transceiver_temperature_celsius{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "Transceiver Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Temperature of the optical transceiver on Icotera i6400-series CPE in degrees Celsius, from transceiverDdmTemperature (1.3.6.1.4.1.29865.11.3.1.3.1.0, 1/256 degree units, divided by 256). Absent when no DDM-capable transceiver is fitted."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "transceiver_voltage_volts",
+      "query": "max(snmp_transceiver_voltage_volts{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "Transceiver Supply Voltage",
+      "data_type": "Number",
+      "unit": "volts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Supply voltage of the optical transceiver in volts, from transceiverDdmVoltage (1.3.6.1.4.1.29865.11.3.1.3.4.0, 1/10000 V units, divided by 10000). A raw value of 0 is treated as no transceiver and dropped."
+    },
+    {
+      "metric_group": "Access",
+      "name": "transceiver_tx_power_mw",
+      "query": "max(snmp_transceiver_tx_power_mw{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "Transceiver Tx Power (mW)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Transmit optical power of the transceiver in mW, from transceiverDdmTxPower (1.3.6.1.4.1.29865.11.3.1.3.2.0, 1/10000 mW units, divided by 10000)."
+    },
+    {
+      "metric_group": "Access",
+      "name": "transceiver_rx_power_mw",
+      "query": "max(snmp_transceiver_rx_power_mw{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "Transceiver Rx Power (mW)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Receive optical power of the transceiver in mW, from transceiverDdmRxPower (1.3.6.1.4.1.29865.11.3.1.3.3.0, 1/10000 mW units, divided by 10000). 0 means no light is received."
+    },
+    {
+      "metric_group": "Access",
+      "name": "transceiver_tx_bias_ma",
+      "query": "max(snmp_transceiver_tx_bias_ma{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "Transceiver Tx Bias (mA)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Laser bias current of the transceiver in mA, from transceiverDdmTxBiasCurrent (1.3.6.1.4.1.29865.11.3.1.3.5.0, 1/500 mA units, divided by 500)."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
