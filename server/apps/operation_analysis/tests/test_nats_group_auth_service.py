@@ -270,6 +270,11 @@ def test_dashboard_handlers_require_a_token_bound_to_team_and_action(monkeypatch
         seen["briefs"] = briefs
         return {"ok": True}
 
+    def fake_search(requirements, briefs):
+        seen["requirements"] = requirements
+        seen["search_briefs"] = briefs
+        return [{"id": 2}]
+
     monkeypatch.setattr(
         "apps.operation_analysis.services.dashboard_proposal_service.list_visible_briefs",
         fake_briefs,
@@ -278,21 +283,31 @@ def test_dashboard_handlers_require_a_token_bound_to_team_and_action(monkeypatch
         "apps.operation_analysis.services.dashboard_proposal_service.prepare_dashboard_proposal",
         fake_prepare,
     )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.dashboard_proposal_service.search_briefs",
+        fake_search,
+    )
 
     with pytest.raises(PermissionDenied, match="NATS authentication failed"):
-        nats_module.list_dashboard_datasource_briefs(7)
+        nats_module.search_dashboard_data_sources([], 7)
     with pytest.raises(PermissionDenied, match="NATS authentication failed"):
-        nats_module.list_dashboard_datasource_briefs("nope", _internal_auth="forged")
+        nats_module.search_dashboard_data_sources([], "nope", _internal_auth="forged")
 
-    list_token = sign_dashboard_request(7, "list_dashboard_datasource_briefs")
+    list_token = sign_dashboard_request(7, "search_dashboard_data_sources")
     with pytest.raises(PermissionDenied, match="NATS authentication failed"):
-        nats_module.list_dashboard_datasource_briefs(8, _internal_auth=list_token)
+        nats_module.search_dashboard_data_sources([], 8, _internal_auth=list_token)
     with pytest.raises(PermissionDenied, match="NATS authentication failed"):
         nats_module.prepare_dashboard_proposal({}, 7, _internal_auth=list_token)
 
-    listed = nats_module.list_dashboard_datasource_briefs(7, _internal_auth=list_token)
-    assert listed == {"briefs": [{"id": 2}]}
+    listed = nats_module.search_dashboard_data_sources(
+        [{"text": "告警趋势"}],
+        7,
+        _internal_auth=list_token,
+    )
+    assert listed == {"candidates": [{"id": 2}]}
     assert seen["team_id"] == 7
+    assert seen["requirements"] == [{"text": "告警趋势"}]
+    assert seen["search_briefs"] == [{"id": 2}]
 
     prepare_token = sign_dashboard_request(7, "prepare_dashboard_proposal")
     prepared = nats_module.prepare_dashboard_proposal({"schemaVersion": "1.0"}, 7, _internal_auth=prepare_token)

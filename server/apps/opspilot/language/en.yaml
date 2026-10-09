@@ -302,6 +302,15 @@ tools:
         description: Search logs by keyword and time range.
       log_search_raw:
         description: Search logs with native LogsQL.
+  ops_analysis_dashboard:
+    name: Operations Analytics Dashboard
+    description: |
+      Search operations analytics data sources available to the current team and validate a structured proposal that the dashboard page can apply directly.
+    tools:
+      search_data_sources:
+        description: Search authorized, contract-complete data sources from explicit requirements. Call this before naming any data source, and use only returned candidates. Do not call it to read numbers already on the canvas, or to only delete or rearrange widgets.
+      prepare_dashboard_proposal:
+        description: Validate a proposal built from search candidates. When it passes, the page applies it to the canvas without another confirmation. Delete or rearrange by editing the current layout, without searching again.
   attachment_file:
     name: Workflow Attachment File
     description: |

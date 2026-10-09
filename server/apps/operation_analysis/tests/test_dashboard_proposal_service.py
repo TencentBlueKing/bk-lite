@@ -1,12 +1,7 @@
 import json
 
-from apps.operation_analysis.services.dashboard_proposal_service import (
-    brief_from_source,
-    dashboard_confirmation_intent,
-    prepare_dashboard_proposal,
-    proposal_from_edit_state,
-    search_briefs,
-)
+from apps.operation_analysis.services.dashboard_proposal_service import brief_from_source, prepare_dashboard_proposal, search_briefs
+from apps.operation_analysis.services.dashboard_widget_draft import proposal_from_edit_state
 
 
 def test_structured_edit_state_preserves_widget_contract_and_filters():
@@ -57,15 +52,6 @@ def test_structured_edit_state_preserves_widget_contract_and_filters():
     assert proposal["layout"][0]["valueConfig"]["filterBindings"] == {"organization__string": True}
     assert proposal["filters"][0]["id"] == "organization__string"
     assert proposal["otherConfig"] == {"displayMode": "compact"}
-
-
-def test_dashboard_confirmation_requires_an_unambiguous_positive_answer():
-    assert dashboard_confirmation_intent("确认") == "apply"
-    assert dashboard_confirmation_intent("可以应用") == "apply"
-    assert dashboard_confirmation_intent("先不要应用") == "cancel"
-    assert dashboard_confirmation_intent("暂不应用") == "cancel"
-    assert dashboard_confirmation_intent("不确认") == "cancel"
-    assert dashboard_confirmation_intent("应用效果会怎么样") is None
 
 
 def test_incomplete_source_is_not_recommended():
@@ -432,28 +418,6 @@ def test_capabilities_cover_datasource_widgets_and_exclude_scene_widgets():
     assert len(AI_CHART_TYPES) == 14
 
 
-def test_edit_state_section_is_dropped_instead_of_truncated():
-    from apps.opspilot.services.skill_channel_chat_service import _sanitize_page_context
-
-    marker = "EDITSTATE_MARKER"
-    snapshot = _sanitize_page_context(
-        {
-            "title": "盘",
-            "sections": [
-                {
-                    "id": "dashboard-edit-state",
-                    "label": "仪表盘编辑状态",
-                    "content": marker + ("x" * 9000),
-                    "priority": 100,
-                    "atomic": True,
-                }
-            ],
-        }
-    )
-    assert snapshot is not None
-    assert all(marker not in section["content"] for section in snapshot["sections"])
-
-
 def test_list_visible_briefs_keeps_only_current_org(monkeypatch):
     class Tags:
         def all(self):
@@ -544,7 +508,7 @@ def test_list_visible_briefs_keeps_only_current_org(monkeypatch):
 
 
 def test_topn_picks_label_and_metric_not_schema_order():
-    from apps.operation_analysis.services.dashboard_proposal_service import draft_proposal_from_candidates
+    from apps.operation_analysis.services.dashboard_widget_draft import draft_proposal_from_candidates
 
     draft = draft_proposal_from_candidates(
         [
@@ -570,7 +534,7 @@ def test_topn_picks_label_and_metric_not_schema_order():
 
 
 def test_line_does_not_split_metric_type_into_multiple_widgets():
-    from apps.operation_analysis.services.dashboard_proposal_service import draft_proposal_from_candidates
+    from apps.operation_analysis.services.dashboard_widget_draft import draft_proposal_from_candidates
 
     draft = draft_proposal_from_candidates(
         [
@@ -603,7 +567,7 @@ def test_line_does_not_split_metric_type_into_multiple_widgets():
 
 
 def test_drop_named_widget_keeps_other_ids():
-    from apps.operation_analysis.services.dashboard_proposal_service import drop_named_widgets
+    from apps.operation_analysis.services.dashboard_widget_draft import drop_named_widgets
 
     revised = drop_named_widgets(
         {
@@ -622,7 +586,7 @@ def test_drop_named_widget_keeps_other_ids():
 
 
 def test_edit_state_round_trips_widget_ids():
-    from apps.operation_analysis.services.dashboard_proposal_service import proposal_from_edit_state
+    from apps.operation_analysis.services.dashboard_widget_draft import proposal_from_edit_state
 
     proposal = proposal_from_edit_state(
         "去掉主机数\n## 仪表盘编辑状态\ndashboardId: 424\nname: 1\nwidgets:\n"
@@ -636,7 +600,7 @@ def test_edit_state_round_trips_widget_ids():
 
 
 def test_draft_packs_three_widgets_per_row_and_keeps_source_description():
-    from apps.operation_analysis.services.dashboard_proposal_service import draft_proposal_from_candidates, format_proposal_inventory
+    from apps.operation_analysis.services.dashboard_widget_draft import draft_proposal_from_candidates, format_proposal_inventory
 
     draft = draft_proposal_from_candidates(
         [
@@ -694,11 +658,8 @@ def test_draft_packs_three_widgets_per_row_and_keeps_source_description():
 
 
 def test_revise_renames_keeps_position_and_reflows_width():
-    from apps.operation_analysis.services.dashboard_proposal_service import (
-        format_proposal_inventory,
-        prepare_dashboard_proposal,
-        revise_dashboard_proposal,
-    )
+    from apps.operation_analysis.services.dashboard_proposal_service import prepare_dashboard_proposal, revise_dashboard_proposal
+    from apps.operation_analysis.services.dashboard_widget_draft import format_proposal_inventory
 
     current = {
         "schemaVersion": "1.0",
@@ -771,7 +732,8 @@ def test_revise_renames_keeps_position_and_reflows_width():
 
 
 def test_inventory_describes_four_columns_when_widget_heights_differ():
-    from apps.operation_analysis.services.dashboard_proposal_service import format_proposal_inventory, revise_dashboard_proposal
+    from apps.operation_analysis.services.dashboard_proposal_service import revise_dashboard_proposal
+    from apps.operation_analysis.services.dashboard_widget_draft import format_proposal_inventory
 
     current = {
         "schemaVersion": "1.0",
@@ -817,69 +779,6 @@ def test_classify_implicit_widget_goal_without_chart_noun():
     assert classify_dashboard_request("补充主机明细") == "extend"
     assert classify_dashboard_request("新增一个CMDB模型") == "none"
     assert classify_dashboard_request("新增用户") == "none"
-
-
-def test_add_on_an_existing_dashboard_keeps_current_widgets():
-    from apps.opspilot.metis.llm.tools.dashboard_proposal_memory import proposal_for_prepare
-
-    existing = {
-        "i": "kept",
-        "name": "主机数",
-        "x": 0,
-        "y": 0,
-        "w": 4,
-        "h": 3,
-        "valueConfig": {"chartType": "single", "dataSource": 3},
-    }
-    snapshot = json.dumps(
-        {"snapshotVersion": "1.0", "dashboardId": "dashboard_2", "layout": [existing], "filters": []},
-        ensure_ascii=False,
-    )
-    message = f"帮我新增一个cmdb数据概览的仪表盘\n\n## 仪表盘编辑状态\n{snapshot}"
-    prepared = proposal_for_prepare(
-        1,
-        message,
-        [
-            {
-                "id": 11,
-                "name": "模型实例数",
-                "desc": "CMDB 模型实例数量",
-                "chart_type": ["single"],
-                "fields": [{"name": "value", "type": "number", "desc": "数量"}],
-                "params": [],
-            }
-        ],
-    )
-
-    assert [item["i"] for item in prepared["layout"]][0] == "kept"
-    assert len(prepared["layout"]) > 1
-
-
-def test_add_onto_an_empty_existing_dashboard_places_widgets():
-    from apps.opspilot.metis.llm.tools.dashboard_proposal_memory import proposal_for_prepare
-
-    snapshot = json.dumps(
-        {"snapshotVersion": "1.0", "dashboardId": "dashboard_2", "layout": [], "filters": []},
-        ensure_ascii=False,
-    )
-    message = f"新增一个告警趋势\n\n## 仪表盘编辑状态\n{snapshot}"
-    prepared = proposal_for_prepare(
-        1,
-        message,
-        [
-            {
-                "id": 21,
-                "name": "告警趋势",
-                "desc": "告警数量随时间变化",
-                "chart_type": ["line"],
-                "fields": [],
-                "params": [],
-            }
-        ],
-    )
-
-    assert prepared.get("reply") is None
-    assert prepared["layout"][0]["valueConfig"]["dataSource"] == 21
 
 
 def test_required_param_uses_a_matching_choice_and_otherwise_asks():

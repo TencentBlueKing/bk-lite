@@ -25,7 +25,6 @@ from apps.opspilot.metis.llm.chain.node import (
     MISSING_PARAMS_NUDGE_LOG,
     ToolsNodes,
     _bounded_log_field,
-    _dashboard_search_backfill_log_args,
     _missing_params_log_args,
 )
 from apps.opspilot.metis.llm.middleware.tool_runtime import (
@@ -2385,19 +2384,6 @@ def test_bounded_log_field_collapses_newlines_and_truncates():
     assert _bounded_log_field("查询\n指标\r\n") == "查询 指标"
     assert _bounded_log_field("") == "-"
     assert len(_bounded_log_field("x" * 200)) == 120
-    assert _dashboard_search_backfill_log_args("RuntimeError\nsecret-token", "thread\n1") == (
-        "RuntimeError secret-token"[:80],
-        "thread 1",
-    )
-    formatted = (
-        "event=dashboard_search_backfill_failed failed_stage=search_backfill error_type=%s thread_id=%s"
-        % _dashboard_search_backfill_log_args(
-            "RuntimeError",
-            "thread-9",
-        )
-    )
-    assert formatted == "event=dashboard_search_backfill_failed failed_stage=search_backfill error_type=RuntimeError thread_id=thread-9"
-    assert "secret" not in formatted
     assert _missing_params_log_args("查询\n指标", "thread-1") == (
         "查询 指标",
         "MissingToolParams",
@@ -2448,20 +2434,6 @@ def test_planned_tool_step_guidance_restart_reason_forbids_rca_template():
     assert "重启原因报告" in summary
     assert "禁止写「# RCA 报告」" in summary
     assert "必须以「# RCA 报告」" not in summary
-
-
-def test_planned_summary_uses_dashboard_guidance_only_for_the_dashboard_marker():
-    leaked = ToolsNodes._planned_summary_guidance(
-        user_message="看看告警趋势",
-        agent_system_prompt="你是告警助手。这里提到运营分析搭盘，只是说明不要混用。",
-    )
-    assert "已应用到当前编辑中的仪表盘" not in leaked
-    assert "按系统提示写最终答案" in leaked
-    dashboard = ToolsNodes._planned_summary_guidance(
-        user_message="搭一个告警盘",
-        agent_system_prompt="【运营分析搭盘】用户在运营分析仪表盘页面。",
-    )
-    assert "已应用到当前编辑中的仪表盘" in dashboard
 
 
 def test_skill_only_step_guidance_lists_real_scripts(tmp_path):

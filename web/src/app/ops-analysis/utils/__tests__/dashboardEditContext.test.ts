@@ -40,7 +40,6 @@ test('edit state section serializes the complete structured dashboard snapshot',
   });
 
   assert.equal(section.id, 'dashboard-edit-state');
-  assert.equal(section.atomic, true);
   const snapshot = JSON.parse(section.content);
   assert.equal(snapshot.snapshotVersion, '1.0');
   assert.equal(snapshot.mode, 'edit');
@@ -103,6 +102,43 @@ test('dynamic filter source ref remains structured json', () => {
     type: 'rest_api',
     value: 'region-list',
   });
+});
+
+test('long widget descriptions are omitted so visible values can share the page context budget', () => {
+  const section = buildDashboardEditStateSection({
+    dashboardId: 7,
+    name: '告警',
+    layout: [{
+      i: 'ai-224-active_count',
+      x: 0,
+      y: 0,
+      w: 4,
+      h: 3,
+      name: '未分派、待响应和处理中的告警数',
+      description: '说明'.repeat(4000),
+      valueConfig: { chartType: 'single', dataSource: 224 },
+    }],
+    filters: [],
+  });
+
+  const snapshot = JSON.parse(section.content);
+  assert.equal(snapshot.layout[0].i, 'ai-224-active_count');
+  assert.equal(snapshot.layout[0].description, undefined);
+  assert.equal(dashboardEditStateAllowsApply({
+    dashboardId: 7,
+    name: '告警',
+    layout: [{
+      i: 'ai-224-active_count',
+      x: 0,
+      y: 0,
+      w: 4,
+      h: 3,
+      name: '未分派、待响应和处理中的告警数',
+      description: '说明'.repeat(4000),
+      valueConfig: { chartType: 'single', dataSource: 224 },
+    }],
+    filters: [],
+  }), true);
 });
 
 test('a short edit state still allows apply', () => {

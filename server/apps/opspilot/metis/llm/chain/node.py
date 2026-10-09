@@ -155,13 +155,6 @@ def _missing_params_log_args(objective, thread_id) -> tuple[str, str, str, str]:
     )
 
 
-def _dashboard_search_backfill_log_args(error_type, thread_id) -> tuple[str, str]:
-    return (
-        _bounded_log_field(error_type, max_len=80),
-        _bounded_log_field(thread_id, max_len=80),
-    )
-
-
 def _safe_log_preview(content: str, max_len: int = 200) -> str:
     """
     安全地截取日志预览内容。
@@ -1390,10 +1383,7 @@ class ToolsNodes(
             title: str = PydanticField(default="K8S 配置修复对比", description="报告标题（如 'K8S 配置修复对比'、'MySQL 索引优化建议'）")
             context_name: str = PydanticField(default="", description="上下文名称（如集群名、数据库实例名）")
             items: List[RepairItem] = PydanticField(default=[], description="修复项列表（可选：留空则自动从分析结果生成）")
-            target_names: List[str] = PydanticField(
-                default=[],
-                description="要包含的目标名称过滤列表（如 ['payment-gateway']）。留空=全部。当检查特定工作负载时必须填写，自动生成时会只保留这些目标。",
-            )
+            target_names: List[str] = PydanticField(default=[], description="要包含的目标名称过滤列表（如 ['payment-gateway']）。留空=全部。当检查特定工作负载时必须填写，自动生成时会只保留这些目标。")
             expected_target_count: int = PydanticField(default=0, description="预期的修复目标数量（即分析报告中有问题的目标总数）。用于校验是否遗漏，必须填写真实数量。")
             group_by: str = PydanticField(
                 default="target",
@@ -2445,7 +2435,6 @@ class ToolsNodes(
                 is_tool_result_failure,
                 llm_upstream_user_message,
                 merge_replanned_pending_steps,
-                missing_planned_dashboard_tools,
                 step_has_unasked_missing_params,
                 tool_graph_failure_plain_text,
                 tool_graph_failure_user_prompt,
@@ -2610,13 +2599,6 @@ class ToolsNodes(
                     if isinstance(message, HumanMessage):
                         planning_question = str(message.content or "").strip()
                         break
-            from apps.opspilot.metis.llm.agent.tool_execution_planner import dashboard_planning_message_for_tools
-
-            planning_question = dashboard_planning_message_for_tools(
-                planning_question,
-                original_messages,
-                [getattr(tool, "name", "") for tool in tools],
-            )
 
             async def _emit_planned_execution_status(phase: str, **payload: Any) -> None:
                 """规划阶段心跳：让前端显示「正在规划」而非长时间空白。"""
@@ -2783,7 +2765,6 @@ class ToolsNodes(
                     "enabled_report_capabilities": sorted(self._enabled_report_capabilities()),
                     "report_package_context": matched_packages[0] if matched_packages else {},
                     DECLARED_CMDB_MODEL_KEY: extract_declared_cmdb_model(planning_question) or "",
-                    "dashboard_user_message": planning_question,
                 },
             }
 
@@ -2881,8 +2862,6 @@ class ToolsNodes(
                 )
 
             completed_steps: List[CompletedExecutionStep] = []
-            dashboard_candidates: list = []
-            dashboard_requirements: list = []
             replan_count = 0
             summary_ran = False
             run_started = monotonic_ms()
@@ -2897,7 +2876,6 @@ class ToolsNodes(
                     step = pending_steps.pop(0)
                     step_index = len(completed_steps) + 1
                     missing_params_nudged = False
-                    dashboard_tool_nudged = False
                     active_tools[:] = _resolve_step_tools(step.tools)
                     visibility_middleware.include_always_visible = True
                     visible_names = [getattr(tool, "name", "") for tool in active_tools]
@@ -2923,12 +2901,6 @@ class ToolsNodes(
                             is_last_step=is_last_step,
                             user_message=planning_question,
                             agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
-                        )
-                    if missing_planned_dashboard_tools(step.tools, []):
-                        step_guidance = (
-                            "\n【搭盘】本步必须调用计划工具。调用前禁止编写方案，禁止编造数据源 id 或字段。"
-                            "search 用用户原话；prepare 只能用检索结果里的 id 和 fields.name；"
-                            "apply 传入前一步 prepare 的 data.proposal，无需再要求用户确认。" + step_guidance
                         )
                     step_message = _internal_message(
                         f"执行计划当前步骤：{step.objective}\n"
@@ -3280,225 +3252,6 @@ class ToolsNodes(
                             await _replan_remaining(failure, extra_messages=step_messages)
                             break
 
-                        missing_dashboard_tools = missing_planned_dashboard_tools(step.tools, tools_invoked_in_step(step_messages))
-                        if missing_dashboard_tools:
-                            if "search_data_sources" in missing_dashboard_tools and not dashboard_tool_nudged:
-                                search_tool = tool_by_name.get("search_data_sources")
-                                from apps.operation_analysis.services.dashboard_builder_pipeline import plan_dashboard_requirements
-                                from apps.opspilot.metis.llm.agent.tool_execution_planner import dashboard_build_query
-
-                                utterance = dashboard_build_query(planning_question, original_messages)
-                                planned_requirements = plan_dashboard_requirements(utterance)
-                                search_result = None
-                                if search_tool is not None:
-                                    try:
-                                        search_result = await asyncio.to_thread(
-                                            search_tool.invoke,
-                                            {"requirements": planned_requirements},
-                                            deep_config,
-                                        )
-                                    except Exception as search_exc:
-                                        logger.warning(
-                                            "event=dashboard_search_backfill_failed failed_stage=search_backfill error_type=%s thread_id=%s",
-                                            *_dashboard_search_backfill_log_args(type(search_exc).__name__, missing_params_thread_id),
-                                        )
-                                from apps.opspilot.metis.llm.tools.ops_analysis_dashboard import format_search_step_result
-
-                                found = ((search_result or {}).get("data") or {}).get("candidates") if isinstance(search_result, dict) else None
-                                planned = ((search_result or {}).get("data") or {}).get("requirements") if isinstance(search_result, dict) else None
-                                if isinstance(found, list):
-                                    dashboard_candidates = found
-                                if isinstance(planned, list):
-                                    dashboard_requirements = planned
-                                search_text = (
-                                    format_search_step_result(search_result) if isinstance(search_result, dict) else "search_data_sources: 没有匹配的数据源"
-                                )
-                                completed_steps.append(CompletedExecutionStep(objective=step.objective, result=search_text))
-                                agent_state = _compact_agent_state_with_summaries(overflow=False)
-                                await _emit_step_boundary(
-                                    "planned_execution_step",
-                                    _step_end_payload(
-                                        step_index=step_index,
-                                        total_steps=total_steps,
-                                        objective=step.objective,
-                                        planned_tools=list(step.tools),
-                                        step_messages=[ToolMessage(content=search_text, name="search_data_sources", tool_call_id="dashboard-search")],
-                                    ),
-                                )
-                                step_finished = True
-                                break
-                            if "prepare_dashboard_proposal" in missing_dashboard_tools:
-                                from apps.opspilot.metis.llm.tools.ops_analysis_dashboard import (
-                                    dashboard_scope,
-                                    proposal_for_prepare,
-                                    remember_ready_proposal,
-                                )
-
-                                team_id, session_id, dashboard_id = dashboard_scope(deep_config)
-                                draft = proposal_for_prepare(
-                                    team_id,
-                                    planning_question,
-                                    dashboard_candidates,
-                                    requirements=dashboard_requirements,
-                                    session_id=session_id,
-                                    dashboard_id=dashboard_id,
-                                )
-                                if isinstance(draft, dict) and draft.get("reply") and not draft.get("schemaVersion"):
-                                    completed_steps.append(CompletedExecutionStep(objective=step.objective, result=draft["reply"]))
-                                    agent_state = _compact_agent_state_with_summaries(overflow=False)
-                                    await _emit_step_boundary(
-                                        "planned_execution_step",
-                                        _step_end_payload(
-                                            step_index=step_index,
-                                            total_steps=total_steps,
-                                            objective=step.objective,
-                                            planned_tools=list(step.tools),
-                                            step_messages=[
-                                                ToolMessage(
-                                                    content=draft["reply"],
-                                                    name="prepare_dashboard_proposal",
-                                                    tool_call_id="dashboard-prepare",
-                                                )
-                                            ],
-                                        ),
-                                    )
-                                    step_finished = True
-                                    break
-                                prepare_tool = tool_by_name.get("prepare_dashboard_proposal")
-                                prepared = None
-                                if draft and prepare_tool is not None:
-                                    try:
-                                        prepared = await asyncio.to_thread(
-                                            prepare_tool.invoke,
-                                            {"proposal": draft},
-                                            deep_config,
-                                        )
-                                    except Exception as prepare_exc:
-                                        logger.warning("搭盘方案补调用失败: error_type=%s", type(prepare_exc).__name__)
-                                proposal = ((prepared or {}).get("data") or {}).get("proposal") if isinstance(prepared, dict) else None
-                                if isinstance(proposal, dict) and ((prepared or {}).get("data") or {}).get("ok"):
-                                    remember_ready_proposal(team_id, dashboard_id, proposal, session_id=session_id)
-                                    names = "、".join(
-                                        str(item.get("name") or (item.get("valueConfig") or {}).get("dataSource"))
-                                        for item in proposal.get("layout") or []
-                                        if isinstance(item, dict)
-                                    )
-                                    from apps.opspilot.metis.llm.tools.ops_analysis_dashboard import confirmation_reply
-
-                                    reply = confirmation_reply(proposal) or f"已生成并校验仪表盘方案：{names}\n正在应用到当前画布。"
-                                    completed_steps.append(
-                                        CompletedExecutionStep(
-                                            objective=step.objective,
-                                            result=reply,
-                                        )
-                                    )
-                                else:
-                                    completed_steps.append(
-                                        CompletedExecutionStep(
-                                            objective=step.objective,
-                                            result="prepare_dashboard_proposal: 当前还不能生成方案。去掉组件时按编辑状态改现有画布，新搭才检索数据源。不要编造数据源。",
-                                        )
-                                    )
-                                agent_state = _compact_agent_state_with_summaries(overflow=False)
-                                await _emit_step_boundary(
-                                    "planned_execution_step",
-                                    _step_end_payload(
-                                        step_index=step_index,
-                                        total_steps=total_steps,
-                                        objective=step.objective,
-                                        planned_tools=list(step.tools),
-                                        step_messages=[
-                                            ToolMessage(
-                                                content=completed_steps[-1].result,
-                                                name="prepare_dashboard_proposal",
-                                                tool_call_id="dashboard-prepare",
-                                            )
-                                        ],
-                                    ),
-                                )
-                                step_finished = True
-                                break
-                            if "apply_dashboard_proposal" in missing_dashboard_tools:
-                                from apps.opspilot.metis.llm.tools.ops_analysis_dashboard import dashboard_scope, load_ready_proposal
-
-                                team_id, session_id, dashboard_id = dashboard_scope(deep_config)
-                                ready = load_ready_proposal(
-                                    team_id,
-                                    dashboard_id,
-                                    session_id=session_id,
-                                    pending_only=True,
-                                )
-                                apply_tool = tool_by_name.get("apply_dashboard_proposal")
-                                applied = None
-                                if ready and apply_tool is not None:
-                                    try:
-                                        applied = await asyncio.to_thread(
-                                            apply_tool.invoke,
-                                            {"proposal": ready, "dashboard_id": dashboard_id},
-                                            deep_config,
-                                        )
-                                    except Exception as apply_exc:
-                                        logger.warning("搭盘应用补调用失败: error_type=%s", type(apply_exc).__name__)
-                                from apps.opspilot.metis.llm.tools.ops_analysis_dashboard import reply_from_apply_content
-
-                                applied_ok = isinstance(applied, dict) and ((applied.get("data") or {}).get("applied") is True)
-                                applied_text = reply_from_apply_content(applied)
-                                completed_steps.append(
-                                    CompletedExecutionStep(
-                                        objective=step.objective,
-                                        result=applied_text or ("已应用到当前编辑中的仪表盘。" if applied_ok else "这次没有套上画布。上一份方案没保存下来，请再说一次要搭什么。"),
-                                    )
-                                )
-                                agent_state = _compact_agent_state_with_summaries(overflow=False)
-                                await _emit_step_boundary(
-                                    "planned_execution_step",
-                                    _step_end_payload(
-                                        step_index=step_index,
-                                        total_steps=total_steps,
-                                        objective=step.objective,
-                                        planned_tools=list(step.tools),
-                                        step_messages=[
-                                            ToolMessage(
-                                                content=completed_steps[-1].result,
-                                                name="apply_dashboard_proposal",
-                                                tool_call_id="dashboard-apply",
-                                            )
-                                        ],
-                                        status=None if applied_ok else "failed_no_tool",
-                                    ),
-                                )
-                                step_finished = True
-                                break
-                            if not dashboard_tool_nudged:
-                                dashboard_tool_nudged = True
-                                step_payload = {
-                                    **agent_state,
-                                    "messages": list(agent_state.get("messages") or [])
-                                    + [_internal_message("本步计划工具还没有调用。立刻调用计划工具。" "禁止编写方案，禁止编造数据源 id 或字段。")],
-                                }
-                                continue
-                            completed_steps.append(
-                                CompletedExecutionStep(
-                                    objective=step.objective,
-                                    result="未调用计划工具，没有真实数据源结果。不要编造数据源或字段。",
-                                )
-                            )
-                            agent_state = _compact_agent_state_with_summaries(overflow=False)
-                            await _emit_step_boundary(
-                                "planned_execution_step",
-                                _step_end_payload(
-                                    step_index=step_index,
-                                    total_steps=total_steps,
-                                    objective=step.objective,
-                                    planned_tools=list(step.tools),
-                                    step_messages=step_messages,
-                                    status="failed_no_tool",
-                                ),
-                            )
-                            pending_steps.clear()
-                            step_finished = True
-                            break
-
                         _collect_output_messages(step_messages)
                         # 仅在本步实际跑过配置分析时提前推进修复闭环，避免列表/诊断步后抢弹选择卡。
                         if "analyze_deployment_configurations" in (step.tools or []):
@@ -3514,42 +3267,10 @@ class ToolsNodes(
                                 len(pending_steps) - len(remaining_inventory),
                             )
                             pending_steps = remaining_inventory
-                        step_result_text = _step_summary(step_messages)
-                        from apps.opspilot.metis.llm.tools.ops_analysis_dashboard import reply_from_apply_content, reply_from_prepare_content
-
-                        for message in step_messages:
-                            name = getattr(message, "name", "")
-                            if not isinstance(message, ToolMessage):
-                                continue
-                            if name == "prepare_dashboard_proposal":
-                                prepared_reply = reply_from_prepare_content(getattr(message, "content", None))
-                                if prepared_reply:
-                                    step_result_text = prepared_reply
-                            elif name == "apply_dashboard_proposal":
-                                applied_reply = reply_from_apply_content(getattr(message, "content", None))
-                                step_result_text = applied_reply or "这次没有套上画布。"
-                        if "search_data_sources" in (step.tools or []):
-                            from apps.opspilot.metis.llm.tools.ops_analysis_dashboard import (
-                                candidates_from_tool_content,
-                                format_search_step_result,
-                                requirements_from_tool_content,
-                            )
-
-                            for message in step_messages:
-                                if not isinstance(message, ToolMessage) or getattr(message, "name", "") != "search_data_sources":
-                                    continue
-                                found = candidates_from_tool_content(getattr(message, "content", None))
-                                if found:
-                                    dashboard_candidates = found
-                                    step_result_text = format_search_step_result({"success": True, "data": {"candidates": found}})
-                                planned = requirements_from_tool_content(getattr(message, "content", None))
-                                if planned:
-                                    dashboard_requirements = planned
-                                break
                         completed_steps.append(
                             CompletedExecutionStep(
                                 objective=step.objective,
-                                result=step_result_text,
+                                result=_step_summary(step_messages),
                             )
                         )
                         # 步间只保留摘要，避免巨型 diagnose/logs 结果拖垮后续步与最终总结。
@@ -3582,14 +3303,7 @@ class ToolsNodes(
                     getattr(message, "type", "") == "tool" and getattr(message, "name", "") == "generate_repair_report"
                     for message in collected_output_messages
                 )
-                from apps.opspilot.metis.llm.agent.tool_execution_planner import dashboard_final_reply
-
-                dashboard_reply = dashboard_final_reply(completed_steps, plan.steps)
-                if dashboard_reply:
-                    collected_output_messages.append(AIMessage(content=dashboard_reply))
-                    result = {"messages": [AIMessage(content=dashboard_reply)]}
-                    final_message = None
-                elif repair_already_done:
+                if repair_already_done:
                     final_message = _internal_message(
                         f"工具执行计划目标：{plan.goal or planning_question}\n"
                         f"已完成步骤及结果：\n{completed_text}\n\n"

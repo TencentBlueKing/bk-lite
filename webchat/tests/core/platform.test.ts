@@ -392,7 +392,6 @@ test('planned execution CUSTOM events stay out of chat bubbles', () => {
   assert.equal(isSilentCustomEvent('planned_execution_step'), true);
   assert.equal(isSilentCustomEvent('wiki_citations'), true);
   assert.equal(isSilentCustomEvent('llm_context_usage'), true);
-  assert.equal(isSilentCustomEvent('dashboard_config_apply'), true);
   assert.equal(isSilentCustomEvent('approval_request'), false);
   assert.equal(isSilentCustomEvent('config_analysis_report'), false);
 

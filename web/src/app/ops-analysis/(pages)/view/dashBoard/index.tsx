@@ -88,13 +88,8 @@ import {
   type CanvasDraftPayload,
 } from '@/app/ops-analysis/api/canvasDraft';
 import { bindCanvasDraftControls } from '@/app/ops-analysis/components/canvasDraftControls';
-import { registerPageCommand } from '@/components/ai-page-commands/registry';
 import { useAiPageContext } from '@/components/ai-page-context';
-import {
-  applyDashboardProposal,
-  proposalTargetsDashboard,
-} from '@/app/ops-analysis/utils/applyDashboardProposal';
-import { buildDashboardEditStateSection, dashboardEditStateAllowsApply } from '@/app/ops-analysis/utils/dashboardEditContext';
+import { buildDashboardEditStateSection } from '@/app/ops-analysis/utils/dashboardEditContext';
 import {
   cloneDashboardUndoEntry,
   recordDashboardEdit,
@@ -812,38 +807,6 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       syncFilterStateAfterLayoutChange,
     };
 
-    const applyProposalRef = useRef({
-      isEditMode,
-      shareMode,
-      layout,
-      definitions,
-      filterValues,
-      otherConfig,
-      savedRefreshInterval,
-      selectedDashboardId: selectedDashboard?.data_id,
-      dashboardName: selectedDashboard?.name,
-      selectedOrganizationId,
-      appliedNamespaceId,
-      appliedFilterDefinitions,
-      appliedFilterValues,
-      namespaceDraftId,
-    });
-    applyProposalRef.current = {
-      isEditMode,
-      shareMode,
-      layout,
-      definitions,
-      filterValues,
-      otherConfig,
-      savedRefreshInterval,
-      selectedDashboardId: selectedDashboard?.data_id,
-      dashboardName: selectedDashboard?.name,
-      selectedOrganizationId,
-      appliedNamespaceId,
-      appliedFilterDefinitions,
-      appliedFilterValues,
-      namespaceDraftId,
-    };
     const undoEntryRef = useRef<DashboardUndoEntry>({
       layout,
       definitions,
@@ -871,82 +834,10 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setRedoStack([]);
     };
 
-    useEffect(() => {
-      return registerPageCommand('dashboard_config_apply', (value) => {
-        const current = applyProposalRef.current;
-        if (current.shareMode || !value || typeof value !== 'object') return;
-        const event = value as { dashboardId?: unknown; proposal?: unknown };
-        if (!proposalTargetsDashboard(event.dashboardId, current.selectedDashboardId)) return;
-        let proposal = event.proposal;
-        if (typeof proposal === 'string') {
-          try {
-            proposal = JSON.parse(proposal);
-          } catch {
-            return;
-          }
-        }
-        if (!proposal || typeof proposal !== 'object') return;
-        if (!dashboardEditStateAllowsApply({
-          dashboardId: current.selectedDashboardId,
-          name: current.dashboardName,
-          layout: current.layout,
-          filters: current.definitions,
-          filterValues: current.filterValues,
-          otherConfig: current.otherConfig,
-          refreshInterval: current.savedRefreshInterval,
-        })) {
-          message.warning(t('dashboard.editStateTooLarge'));
-          return;
-        }
-        const applied = applyDashboardProposal({
-          layout: current.layout,
-          filters: current.definitions,
-          filterValues: current.filterValues,
-          proposal: proposal as Parameters<typeof applyDashboardProposal>[0]['proposal'],
-          allocateId: (preferred, used) => (preferred && !used.has(preferred) ? preferred : uuidv4()),
-        });
-        if (!applied.ok) return;
-        if (!current.isEditMode) {
-          setIsEditMode(true);
-          current.isEditMode = true;
-        }
-        const mergedFilters = buildFiltersFromLayout(applied.layout, applied.filters);
-        const nextValues = fillMissingOrganizationFilterValues(
-          mergedFilters,
-          syncFilterValuesWithDefinitions(mergedFilters, applied.filterValues),
-          current.selectedOrganizationId,
-        );
-        const syncedLayout = syncLayoutFilterBindings(applied.layout, mergedFilters);
-        recordUndoRef.current();
-        setLayout(syncedLayout);
-        syncFilterStateAfterLayoutChange(mergedFilters, nextValues, nextValues);
-        message.success(t('dashboard.aiApplySuccess'));
-        void syncDashboardCanvasResources(syncedLayout).then((canvasDataSources) => {
-          const latest = applyProposalRef.current;
-          if (!latest.isEditMode || latest.shareMode || latest.appliedNamespaceId !== undefined) return;
-          const nextNamespaceId = resolveLayoutNamespaceId(syncedLayout, canvasDataSources);
-          if (nextNamespaceId === undefined) return;
-          setNamespaceDraftId(nextNamespaceId);
-          applyQueryState(mergedFilters, nextValues, nextNamespaceId);
-          setNamespaceSearchVersion((version) => version + 1);
-        }).catch(() => undefined);
-      });
-    }, [
-      applyQueryState,
-      buildFiltersFromLayout,
-      resolveLayoutNamespaceId,
-      syncDashboardCanvasResources,
-      syncFilterStateAfterLayoutChange,
-      syncFilterValuesWithDefinitions,
-      syncLayoutFilterBindings,
-      t,
-    ]);
-
     useAiPageContext(() => {
       if (shareMode) return { sections: [] };
       return {
         app: 'ops-analysis',
-        capabilities: ['dashboard-builder'],
         sections: [buildDashboardEditStateSection({
           dashboardId: selectedDashboard?.data_id,
           name: selectedDashboard?.name,

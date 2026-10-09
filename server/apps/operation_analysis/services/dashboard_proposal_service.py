@@ -777,10 +777,6 @@ def user_utterance(message: str) -> str:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     if not lines:
         return ""
-    last = lines[-1]
-    compact = compact_text(last)
-    if len(compact) <= 24 and (_CONFIRM_CANCEL_RE.search(compact) or _CONFIRM_POSITIVE_RE.fullmatch(compact)):
-        return last
     return text
 
 
@@ -831,22 +827,6 @@ _SIDE_RE = re.compile(r"把(?P<a>.+?)和(?P<b>.+?)并排")
 _SWAP_RE = re.compile(r"交换(?P<a>.+?)和(?P<b>.+)")
 _WIDTH_ONE_RE = re.compile(r"把(?P<src>.+?)的?宽度(?:改成|改为|为|到)(?P<size>\d+)")
 _HEIGHT_ONE_RE = re.compile(r"把(?P<src>.+?)的?高度(?:改成|改为|为|到)(?P<size>\d+)")
-_CONFIRM_CANCEL_RE = re.compile(r"取消|不要(?:了|应用)?|算了|不用(?:了)?|别(?:应用|套用|改)?|暂时不|暂不|先不|不应用|不确认")
-_CONFIRM_POSITIVE_RE = re.compile(r"(?:是|好|好的|行|可以(?:了|应用)?|嗯|对|没问题|确认(?:应用)?|就这样|符合(?:了)?|应用(?:(?:这个|该|当前)?方案)?)(?:吧)?")
-
-
-def dashboard_confirmation_intent(message: str) -> str | None:
-    """只接受无歧义的短句确认。否定语优先，防止「先不要应用」因包含「应用」而误触发。"""
-    compact = compact_text(user_utterance(message))
-    if not compact or len(compact) > 24:
-        return None
-    if _CONFIRM_CANCEL_RE.search(compact):
-        return "cancel"
-    if _REVISE_RE.search(compact):
-        return None
-    if _CONFIRM_POSITIVE_RE.fullmatch(compact):
-        return "apply"
-    return None
 
 
 def should_keep_existing_widgets(message: str, current: dict | None) -> bool:
@@ -868,16 +848,11 @@ def _creates_new_dashboard(utterance: str) -> bool:
 
 
 def classify_dashboard_request(message: str) -> str:
-    """按用户这句话决定管道：apply、cancel、revise、build、extend、deferred、unsupported、split、none。"""
+    """按用户这句话决定方案处理类型：revise、build、extend 或不支持的类型。"""
     utterance = user_utterance(message)
     compact = compact_text(utterance)
     if not compact:
         return "none"
-    confirmation = dashboard_confirmation_intent(message)
-    if confirmation == "cancel":
-        return "cancel"
-    if confirmation == "apply":
-        return "apply"
     if _creates_new_dashboard(utterance):
         return "build"
     implicit_widget = _WIDGET_NOUN_RE.search(utterance) or _IMPLICIT_WIDGET_GOAL_RE.search(utterance)
@@ -900,6 +875,8 @@ def classify_dashboard_request(message: str) -> str:
 
 def preserve_placed_widgets(layout: list[dict]) -> list[dict]:
     """已有坐标的组件保持原位，只给还没位置的新组件排版。"""
+    from apps.operation_analysis.services.dashboard_widget_draft import pack_widgets
+
     placed = []
     missing = []
     for item in layout:
@@ -967,6 +944,8 @@ def _small_positive_int(value: str) -> int | None:
 
 
 def _apply_uniform_layout(layout: list[dict], message: str) -> list[dict] | None:
+    from apps.operation_analysis.services.dashboard_widget_draft import pack_widgets
+
     compact = compact_text(user_utterance(message))
     per_row_match = re.search(r"(?:每行|一行)(?:放|展示|显示|排|摆)?(?P<count>\d{1,2}|[一二两三四五六七八九十]{1,3})个", compact)
     width_match = re.search(r"宽(?:度)?(?:改为|改成|为|到)?(\d+)", compact)
@@ -995,6 +974,8 @@ def _apply_uniform_layout(layout: list[dict], message: str) -> list[dict] | None
 
 def revise_dashboard_proposal(proposal: dict | None, message: str) -> dict:  # noqa: C901
     """在当前画布上改标题、说明、布局、图表类型或删除。认不出目标时返回 reply。"""
+    from apps.operation_analysis.services.dashboard_widget_draft import widget_matches_removal
+
     if not isinstance(proposal, dict):
         return {"reply": "还看不到当前画布，不能改组件。"}
     layout = [dict(item) for item in (proposal.get("layout") or []) if isinstance(item, dict)]
@@ -1077,18 +1058,3 @@ def revise_dashboard_proposal(proposal: dict | None, message: str) -> dict:  # n
         "layout": layout,
         "filters": proposal.get("filters") or [],
     }
-
-
-from apps.operation_analysis.services.dashboard_widget_draft import (  # noqa: E402,F401
-    append_dashboard_widgets,
-    current_dashboard_proposal,
-    dashboard_snapshot_from_message,
-    draft_proposal_from_candidates,
-    drop_named_widgets,
-    format_proposal_inventory,
-    pack_widgets,
-    proposal_from_edit_state,
-    removal_clauses,
-    removal_outcome,
-    widget_matches_removal,
-)

@@ -1203,3 +1203,25 @@ toolkits:
         type: string
         description: 被执行的python代码
         required: true
+- id: ops_analysis_dashboard
+  name: 运营分析仪表盘
+  description: 按用户需求检索运营分析数据源，并校验可直接应用到仪表盘页面的结构化方案。
+  tools:
+  - name: search_data_sources
+    description: 按显式的数据需求检索当前组织有权限且契约完整的运营分析数据源。列举数据源前必须调用，只能使用返回的候选 id 和 name。询问画布上已显示的数字，或只删除、改行列时不要调用。
+    parameters:
+      requirements:
+        type: array
+        description: 结构化数据需求列表，每项至少包含 text，可包含 purpose、domain、metric、dimension、analysisType、chartType。
+        required: true
+  - name: prepare_dashboard_proposal
+    description: 用检索候选校验并补全仪表盘方案。通过后页面直接套上画布，不要再请用户确认。删除或改行列时基于当前布局修改后调用，不要重新检索。
+    parameters:
+      proposal:
+        type: object
+        description: DashboardProposal 1.0 对象。
+        required: true
+      dashboard_id:
+        type: string
+        description: 目标仪表盘 ID；新建或无法确定时使用 current。
+        required: false

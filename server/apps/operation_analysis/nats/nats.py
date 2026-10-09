@@ -45,11 +45,11 @@ def get_operation_analysis_module_list():
 
 
 @nats_client.register
-def list_dashboard_datasource_briefs(team_id, _internal_auth=None):
-    from apps.operation_analysis.services.dashboard_proposal_service import list_visible_briefs
+def search_dashboard_data_sources(requirements, team_id, _internal_auth=None):
+    from apps.operation_analysis.services.dashboard_proposal_service import list_visible_briefs, search_briefs
 
-    verified_team = verify_dashboard_request(_internal_auth, team_id, "list_dashboard_datasource_briefs")
-    return {"briefs": list_visible_briefs(verified_team)}
+    verified_team = verify_dashboard_request(_internal_auth, team_id, "search_dashboard_data_sources")
+    return {"candidates": search_briefs(requirements or [], list_visible_briefs(verified_team))}
 
 
 @nats_client.register

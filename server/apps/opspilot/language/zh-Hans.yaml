@@ -297,6 +297,15 @@ tools:
         description: 按关键词和时间范围查询日志。
       log_search_raw:
         description: 使用原生 LogsQL 查询日志。
+  ops_analysis_dashboard:
+    name: 运营分析仪表盘
+    description: |
+      根据用户需求检索当前组织可用的运营分析数据源，并校验可直接应用到仪表盘页面的结构化方案。
+    tools:
+      search_data_sources:
+        description: 按显式的数据需求检索有权限且契约完整的运营分析数据源。列举数据源前必须调用，只能使用返回的候选。询问画布上已显示的数字，或只删除、改行列时不要调用。
+      prepare_dashboard_proposal:
+        description: 用检索候选校验并补全仪表盘方案。通过后页面直接套上画布，不要再请用户确认。删除或改行列时基于当前布局修改后调用，不要重新检索。
   attachment_file:
     name: 工作流附件文件
     description: |

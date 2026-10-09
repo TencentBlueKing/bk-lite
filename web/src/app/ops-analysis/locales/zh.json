@@ -746,8 +746,6 @@
       "contains": "包含",
       "connect": "关联"
     },
-    "editStateTooLarge": "仪表盘编辑配置过长，本轮无法安全搭盘。请先减少组件后再描述调整。",
-    "aiApplySuccess": "AI 已应用到当前仪表盘，保存前可撤销",
     "undoAiApply": "撤销(Ctrl+Z)",
     "undoAiApplySuccess": "已撤销",
     "redo": "恢复(Ctrl+Y)",

@@ -5,7 +5,6 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { message } from 'antd';
 
 import { installPageContextBridge } from '@/components/ai-page-context/registry';
-import { dispatchPageCommand } from '@/components/ai-page-commands/registry';
 import { isScreenModeEnabled } from '@/console-layout';
 import { useAuth } from '@/context/auth';
 import { useClientData } from '@/context/client';
@@ -20,8 +19,8 @@ import {
 } from './visibility';
 import './global-webchat.css';
 
-const WEBCHAT_SCRIPT_URL = '/webchat/webchat.js?v=20261008-dashboard';
-const WEBCHAT_STYLE_URL = '/webchat/style.css?v=20261008-dashboard';
+const WEBCHAT_SCRIPT_URL = '/webchat/webchat.js?v=20261008-dock8';
+const WEBCHAT_STYLE_URL = '/webchat/style.css?v=20261008-dock8';
 const WEBCHAT_ROOT_ID = 'webchat-root';
 const MANAGE_AGENTS_URL = '/opspilot/studio';
 
@@ -50,7 +49,6 @@ interface WebChatPlatformConfig {
   canManageAgents?: boolean;
   manageAgentsUrl?: string;
   collectContext?: (hint?: { message?: string }) => Promise<unknown>;
-  onCustomEvent?: (event: { type: 'CUSTOM'; name: string; value: unknown }) => void;
 }
 
 interface WebChatBrowserApi {
@@ -175,9 +173,6 @@ const GlobalWebchat = () => {
           collectContext: async (hint) => {
             installPageContextBridge();
             return window.__BK_AI_PAGE_CONTEXT__?.collect(hint) ?? null;
-          },
-          onCustomEvent: (event) => {
-            dispatchPageCommand(event);
           },
         },
         null,

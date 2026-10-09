@@ -17,7 +17,6 @@ const SKIP_CUSTOM_EVENTS = new Set([
   'stream_keepalive',
   'planned_step_hidden_text',
   'llm_context_usage',
-  'dashboard_config_apply',
 ]);
 
 /**

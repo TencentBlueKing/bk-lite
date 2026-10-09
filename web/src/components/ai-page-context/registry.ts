@@ -74,7 +74,6 @@ export const mergePageContexts = (parts: Array<Partial<AiPageContext> | null | u
   const merged: AiPageContext = {
     url: typeof window !== 'undefined' ? window.location.href : '',
     title: typeof document !== 'undefined' ? document.title : '',
-    capabilities: [],
     sections: [],
     images: [],
   };
@@ -83,9 +82,6 @@ export const mergePageContexts = (parts: Array<Partial<AiPageContext> | null | u
     if (part.url) merged.url = part.url;
     if (part.app) merged.app = part.app;
     if (part.title) merged.title = part.title;
-    if (part.capabilities?.length) {
-      merged.capabilities = Array.from(new Set([...(merged.capabilities || []), ...part.capabilities]));
-    }
     if (part.sections?.length) merged.sections = [...(merged.sections || []), ...part.sections];
     if (part.images?.length) merged.images = [...(merged.images || []), ...part.images];
   }
@@ -98,7 +94,6 @@ export const mergePageContexts = (parts: Array<Partial<AiPageContext> | null | u
     const remaining = PAGE_CONTEXT_TEXT_BUDGET - used;
     if (remaining <= 0) break;
     if (content.length > remaining) {
-      if (section.atomic) continue;
       if (used === 0) {
         kept.push({ ...section, content: content.slice(0, remaining) });
         used = PAGE_CONTEXT_TEXT_BUDGET;
@@ -237,7 +232,7 @@ export const createPageContextRegistry = (options?: {
     const parts = (await Promise.all(tasks)).map(stripOverlaySections);
     // 弹窗/Drawer 每轮现场采集，避免被 pilot cache 冻住开关状态
     const merged = mergePageContexts([...parts, { sections: overlaySection() }]);
-    if (!merged.sections?.length && !merged.images?.length && !merged.capabilities?.length) {
+    if (!merged.sections?.length && !merged.images?.length) {
       return null;
     }
     return merged;

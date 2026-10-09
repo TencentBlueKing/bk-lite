@@ -107,23 +107,6 @@ class TestInjectPageContext:
         assert "## 低" not in result
         assert len(result) <= 8000 + 400
 
-    def test_edit_state_section_is_dropped_instead_of_truncated(self):
-        marker = "EDITSTATE_MARKER"
-        snapshot = {
-            "sections": [
-                {
-                    "id": "dashboard-edit-state",
-                    "label": "仪表盘编辑状态",
-                    "content": marker + ("x" * 9000),
-                    "priority": 100,
-                    "atomic": True,
-                }
-            ]
-        }
-        result = chat_svc.inject_page_context("q", snapshot)
-        assert marker not in result
-        assert "xxxx" not in result
-
     def test_named_question_keeps_only_matching_chart(self):
         page_context = {
             "sections": [
@@ -478,8 +461,6 @@ class TestStreamPageContext:
         ch = _channel(skill)
         user = _superuser()
         page_context = {
-            "app": "ops-analysis",
-            "capabilities": ["dashboard-builder", "dashboard-builder", "INVALID CAPABILITY"],
             "title": "host dashboard",
             "sections": [{"id": "obj", "label": "实例", "content": "host-1", "priority": 5}],
             "images": [{"caption": "cpu", "dataUrl": _tiny_png_data_url()}],
@@ -502,8 +483,6 @@ class TestStreamPageContext:
         assert isinstance(injected, list)
         assert any(item.get("type") == "image_url" for item in injected)
         assert "host-1" in injected[-1]["message"]
-        assert params["page_context"]["app"] == "ops-analysis"
-        assert params["page_context"]["capabilities"] == ["dashboard-builder"]
         user_msgs = list(SkillConversationMessage.objects.filter(role="user"))
         assert len(user_msgs) == 1
         assert user_msgs[0].content == "这个尖峰是什么"
