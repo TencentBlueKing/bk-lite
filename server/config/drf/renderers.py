@@ -55,11 +55,18 @@ class CustomRenderer(JSONRenderer):
                 "data": data,
             }
         else:
+            detail = data
+            if isinstance(data, dict):
+                explicit = data.get("message")
+                if isinstance(explicit, str) and explicit.strip():
+                    detail = explicit
+                else:
+                    detail = data.get("detail", "") or data
             ret = {
                 "result": False,
                 "code": str((response.status_code if response else 500) * 100),
-                "message": self._format_validation_message(detail=data.get("detail", "") or data),
-                "data": data.get("data"),
+                "message": self._format_validation_message(detail=detail),
+                "data": data.get("data") if isinstance(data, dict) else None,
             }
         # 返回JSON数据
         return super(CustomRenderer, self).render(ret, accepted_media_type, renderer_context)

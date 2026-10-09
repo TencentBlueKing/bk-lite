@@ -127,7 +127,7 @@ const StudioSettingsPage: React.FC = () => {
     const isChanged = originalDataStr !== emptyDataStr;
     setHasUnsavedChanges(isChanged);
 
-    message.success('Canvas cleared');
+    message.success(t('studio.canvasCleared', '画布已清空'));
   };
 
   const handleSaveWorkflow = useCallback((newWorkflowData: { nodes: any[], edges: any[] }) => {

@@ -201,7 +201,7 @@ const ProviderModal: React.FC<ProviderModalProps> = ({
               >
                 {MODEL_CATEGORY_OPTIONS.map((option) => (
                   <Select.Option key={option.value} value={option.value}>
-                    {option.label}
+                    {t(option.labelKey, option.label)}
                   </Select.Option>
                 ))}
               </Select>

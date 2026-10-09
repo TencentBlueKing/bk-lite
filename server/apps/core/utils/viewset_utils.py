@@ -240,13 +240,20 @@ class LanguageViewSet(viewsets.ModelViewSet, GenericViewSetFun):
 
     def initialize_request(self, request, *args, **kwargs):
         request = super().initialize_request(request, *args, **kwargs)
-        app_name = self._get_app_name()
-        if hasattr(request, "user") and request.user:
+        self._bind_language_loader(request)
+        return request
+
+    def _bind_language_loader(self, request):
+        """页面语言优先，其次账号 locale。非 ModelViewSet 也可直接调用。"""
+        app_name = self._get_app_name() if hasattr(self, "_get_app_name") else None
+        header_locale = request.headers.get("X-BK-Locale") if hasattr(request, "headers") else None
+        if header_locale:
+            locale = header_locale
+        elif hasattr(request, "user") and request.user:
             locale = getattr(request.user, "locale", "en") or "en"
         else:
             locale = "en"
         self.loader = LanguageLoader(app=app_name, default_lang=locale)
-        return request
 
 
 class MaintainerViewSet(LanguageViewSet):

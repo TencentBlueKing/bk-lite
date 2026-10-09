@@ -6,14 +6,21 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 
 from apps.core.logger import opspilot_logger as logger
+from apps.core.utils.viewset_utils import GenericViewSetFun, LanguageViewSet
 from apps.opspilot.memory.engines.registry import MemoryEngineRegistry, check_sdk_availability
+from apps.opspilot.utils.user_message import user_message
 
 
-class MemoryEngineViewSet(ViewSet):
+class MemoryEngineViewSet(GenericViewSetFun, ViewSet):
     """记忆引擎 API
 
     提供引擎列表、Schema 查询、连接测试等功能。
     """
+
+    def initialize_request(self, request, *args, **kwargs):
+        request = super().initialize_request(request, *args, **kwargs)
+        LanguageViewSet._bind_language_loader(self, request)
+        return request
 
     @action(detail=False, methods=["get"], url_path="")
     def list_engines(self, request):
@@ -74,7 +81,10 @@ class MemoryEngineViewSet(ViewSet):
                 return Response(
                     {
                         "result": True,
-                        "data": {"success": True, "message": "本地存储无需测试"},
+                        "data": {
+                            "success": True,
+                            "message": user_message(request, "error.local_memory_no_test", "本地存储无需测试", getattr(self, "loader", None)),
+                        },
                     }
                 )
 
@@ -88,6 +98,16 @@ class MemoryEngineViewSet(ViewSet):
 
             temp_engine = TempEngine(config)
             result = temp_engine.test_connection()
+            if isinstance(result, dict) and result.get("message") == "连接测试未实现":
+                result = {
+                    **result,
+                    "message": user_message(
+                        request,
+                        "error.memory_connection_test_unimplemented",
+                        "连接测试未实现",
+                        getattr(self, "loader", None),
+                    ),
+                }
 
             return Response({"result": True, "data": result})
         except ValueError as e:
