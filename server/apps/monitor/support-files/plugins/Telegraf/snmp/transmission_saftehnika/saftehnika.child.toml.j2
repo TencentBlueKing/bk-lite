@@ -34,12 +34,34 @@
         is_tag = true
 # @bk_include_ifmib_table
     {% set _branch = product_branch | default('integra-b', true) %}
+    {% if _branch == 'mpmux' %}
+    # ---- MPMUX（SAF-MPMUX-MIB，…7571.100.1.1.2.22）：只采本分支标量，顶层 field 带 .0 直接 GET，不采内存 ----
+    # cpuUsage terminal.28 → snmp_cpu_usage_percent（INTEGER，直接为 %）
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.7571.100.1.1.2.22.1.28.0"
+        name = "cpu_usage_percent"
+        conversion = "int"
+    # termIduTemperature terminal.6 / rf1OduTemperature radio1.15 / rf2OduTemperature radio2.15（可选），整 ℃；
+    # 由下方 starlark 拆为 device_temperature（sensor=idu/odu1/odu2），设备不返回的叶不产生数据。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.7571.100.1.1.2.22.1.6.0"
+        name = "idu_temperature"
+        conversion = "int"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.7571.100.1.1.2.22.3.15.0"
+        name = "odu1_temperature"
+        conversion = "int"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.7571.100.1.1.2.22.4.15.0"
+        name = "odu2_temperature"
+        conversion = "int"
+    {% else %}
     {% if _branch == 'integra-w' %}
     {% set _sys = '1.3.6.1.4.1.7571.100.1.1.7.2' %}
     {% else %}
     {% set _sys = '1.3.6.1.4.1.7571.100.1.1.7.1' %}
     {% endif %}
-    # Integra-B 系统树 7.1 / Integra-W 系统树 7.2：下发时按 product_branch 二选一，禁止混采。
+    # Integra-B 系统树 7.1 / Integra-W 系统树 7.2 / MPMUX 树 2.22：下发时按 product_branch 三选一，禁止混采。
     # CPU 空闲 ×10% → cpu_usage_percent = 100 - idle/10
     [[inputs.snmp.table]]
         name = "cpu_usage"
@@ -56,6 +78,25 @@
         oid = "{{ _sys }}.4.9"
         name = "free"
         conversion = "int"
+    # 电源与主板温度（system 组 .4.5 ~ .4.8，Integer32 标量）：顶层 field 带 .0，落 measurement snmp，查询用 snmp_ 前缀。
+    # sysPSUvoltage 单位 mV、sysPSUcurrent 单位 mA、sysPSUpower 单位 mW，查询侧换算为 V / A / W，并丢弃 ≤0 的读数。
+    [[inputs.snmp.field]]
+        oid = "{{ _sys }}.4.5.0"
+        name = "psu_voltage_mv"
+        conversion = "int"
+    [[inputs.snmp.field]]
+        oid = "{{ _sys }}.4.6.0"
+        name = "psu_current_ma"
+        conversion = "int"
+    [[inputs.snmp.field]]
+        oid = "{{ _sys }}.4.7.0"
+        name = "psu_power_mw"
+        conversion = "int"
+    # sysBoardTemperature 主板温度 ×10 °C（区别于 .4.2 CPU 温度），查询侧 /10 → board_temperature_celsius
+    [[inputs.snmp.field]]
+        oid = "{{ _sys }}.4.8.0"
+        name = "board_temperature"
+        conversion = "int"
     # CPU 温度 ×10 °C，查询侧 /10 → cpu_temperature_celsius
     [[inputs.snmp.table]]
         name = "cpu_temperature"
@@ -64,4 +105,29 @@
         oid = "{{ _sys }}.4.2"
         name = "celsius"
         conversion = "int"
-# ---- 风扇/电源：无稳定可轮询共享健康对象，N/A 不采。----
+    {% endif %}
+# ---- 风扇：无独立可轮询风扇对象，N/A 不采。Integra 电源标量见上；MPMUX 不采电源。----
+{% if _branch == 'mpmux' %}
+
+# ---- MPMUX 温度拆分：idu/odu1/odu2 → device_temperature（tag sensor，field celsius）----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    out = [metric]
+    for key, sensor in (("idu_temperature", "idu"), ("odu1_temperature", "odu1"), ("odu2_temperature", "odu2")):
+        raw = metric.fields.pop(key, None)
+        if raw == None:
+            continue
+        t = Metric("device_temperature")
+        for k, v in metric.tags.items():
+            t.tags[k] = v
+        t.tags["sensor"] = sensor
+        t.fields["celsius"] = int(raw)
+        t.time = metric.time
+        out.append(t)
+    return out
+'''
+    [processors.starlark.tagpass]
+        brand = ["saftehnika"]
+{% endif %}

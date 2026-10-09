@@ -1,0 +1,31 @@
+{
+  "object": "Router",
+  "plugin": "Router RACOM RipEX SNMP",
+  "templates": [
+    {
+      "name": "RACOM RipEX路由器CPU温度过高",
+      "alert_name": "路由器${resource_name} CPU 温度过高",
+      "description": "监控 RACOM RipEX2 / M!DGE3 路由器 CPU 温度，持续高于阈值时提示散热不良、环境温度过高或机箱过热风险。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

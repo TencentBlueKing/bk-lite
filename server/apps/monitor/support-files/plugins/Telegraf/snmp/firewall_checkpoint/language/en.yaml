@@ -1,6 +1,6 @@
 Firewall Check Point SNMP:
   name: Check Point (Telegraf)
-  desc: "SNMP monitoring template for Check Point firewall. It reports uptime, CPU utilization, memory utilization, and interface traffic, for Check Point Security Gateways (enterprise PEN 2620)."
+  desc: "SNMP monitoring template for Check Point firewall. It reports uptime, CPU utilization, memory total/free/used/utilization, active connections, temperature sensor reading and status, fan sensor status, power supply status, and interface traffic, for Check Point Security Gateways (enterprise PEN 2620)."
 monitor_object:
   Firewall: Firewall
 monitor_object_type:
@@ -24,6 +24,16 @@ monitor_object_metric:
       name: Signed-In Web Users
       desc: Number of currently signed-in web users on the gateway. Tracking the active
         session count helps capacity planning and detecting abnormal connection spikes.
+    device_temperature_state:
+      name: Temperature Sensor Status
+      desc: Status of each hardware temperature sensor, normalized so that 1 is normal
+        and 2 is abnormal. A non-normal state indicates an out-of-range temperature
+        or a sensor fault and should be investigated.
+    device_fan_state:
+      name: Fan Status
+      desc: Operational state of each cooling fan sensor, normalized so that 1 is normal
+        and 2 is abnormal. A non-normal state indicates a cooling fault that can quickly
+        lead to overheating.
     device_psu_state:
       name: Power Supply Status
       desc: Operational state of each power supply unit (enum). A non-normal state

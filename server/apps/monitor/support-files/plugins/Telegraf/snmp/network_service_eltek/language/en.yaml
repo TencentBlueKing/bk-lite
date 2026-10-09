@@ -1,0 +1,52 @@
+NetworkService Eltek SNMP:
+  name: Eltek (Telegraf)
+  desc: SNMP monitoring template for Eltek SmartPack / WebPower DC power systems (ELTEK-DISTRIBUTED-MIB,
+    enterprise PEN 12148). It reports uptime, battery voltage and temperature, rectifier status, output
+    voltage, output current and inlet temperature, and interface traffic.
+monitor_object:
+  NetworkService: NetworkService
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  NetworkService:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
+        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
+        or failures.
+    battery_voltage_volts:
+      name: Battery Voltage
+      desc: Measured battery voltage in volts. A sustained drop may indicate battery discharge after a
+        mains failure.
+    battery_temperature_celsius:
+      name: Battery Temperature
+      desc: Highest battery temperature in degrees Celsius. High temperatures shorten battery life.
+    rectifier_output_voltage_volts:
+      name: Rectifier Output Voltage
+      desc: Output voltage of each rectifier in volts.
+    rectifier_output_current_amps:
+      name: Rectifier Output Current (A)
+      desc: Output current of each rectifier in amperes.
+    rectifier_temperature_celsius:
+      name: Rectifier Inlet Temperature
+      desc: Input air temperature of each rectifier in degrees Celsius.
+    rectifier_state:
+      name: Rectifier Status
+      desc: Operational status of each rectifier. Abnormal means the rectifier is in alarm.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of inbound bytes received over the past 5 minutes,
+        measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit
+        counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of outbound bytes sent over the past 5 minutes, measured
+        in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifOutOctets on high-speed ports, keeping the rate accurate.
+monitor_object_metric_group:
+  NetworkService:
+    Base: Base
+    Traffic: Traffic
+    Power: Power
+    Temperature: Temperature
+    Hardware Status: Hardware Status

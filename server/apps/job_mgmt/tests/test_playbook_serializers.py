@@ -62,6 +62,29 @@ class TestArchiveParsing:
         names = {p["name"] for p in params}
         assert "k" in names and "nested" in names
 
+    def test_extract_params_reads_trailing_comment_as_description(self):
+        content = ('message: "Hello from playbook template"  # 发送给目标的问候语\n' 'text: "abcd"  # 示例文本\n').encode()
+        params = {p["name"]: p for p in pb._extract_params_from_yaml(content)}
+        assert params["message"]["default"] == "Hello from playbook template"
+        assert params["message"]["description"] == "发送给目标的问候语"
+        assert params["text"]["description"] == "示例文本"
+
+    def test_extract_params_ignores_preceding_line_comment(self):
+        content = "# 发送给目标的问候语\nmessage: Hello\n".encode()
+        params = {p["name"]: p for p in pb._extract_params_from_yaml(content)}
+        assert params["message"]["description"] == ""
+
+    def test_extract_params_ignores_hash_inside_quoted_value(self):
+        content = b'message: "hello # not comment"  # real desc\n'
+        params = {p["name"]: p for p in pb._extract_params_from_yaml(content)}
+        assert params["message"]["default"] == "hello # not comment"
+        assert params["message"]["description"] == "real desc"
+
+    def test_extract_params_ignores_indented_child_trailing_comment(self):
+        content = b"nested:\n  x: 1  # child desc\n"
+        params = {p["name"]: p for p in pb._extract_params_from_yaml(content)}
+        assert params["nested"]["description"] == ""
+
     def test_extract_params_non_dict_returns_empty(self):
         assert pb._extract_params_from_yaml(b"- 1\n- 2\n") == []
 

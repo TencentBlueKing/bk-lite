@@ -1,0 +1,49 @@
+Transmission Montclair SNMP:
+  name: Montclair（Telegraf）
+  desc: 面向 Montclair Fiber EDFA 光放大器的 SNMP 监控模板，可采集运行时长、机箱/散热器/预泵温度、电源状态、风扇状态与转速、光功率、接口流量（企业号 PEN 1385）。
+monitor_object:
+  Transmission: 传输设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Transmission:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器），单位为字节每秒。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器），单位为字节每秒。
+    device_temperature_celsius:
+      name: 温度
+      desc: Montclair EDFA 机箱内部温度（deviceInternalTemperatute），单位为摄氏度。温度偏高可能表示散热或环境温度风险。
+    radiator_temperature_celsius:
+      name: 散热器温度
+      desc: Montclair EDFA 放大器散热器温度（amplifierRadiatorTemperature），单位为摄氏度。
+    prepump_temperature_celsius:
+      name: 预泵温度
+      desc: Montclair EDFA 预泵温度（amplifierPrePumpTemperature 按 1/10 换算为摄氏度）。
+    device_psu_state:
+      name: 电源状态
+      desc: Montclair EDFA 电源模块运行状态，统一归一为 1=正常、2=异常；未安装/未定义不采集。
+    device_fan_state:
+      name: 风扇状态
+      desc: Montclair EDFA 风扇运行状态，统一归一为 1=正常、2=异常；未知状态不采集。
+    device_fan_speed:
+      name: 风扇转速
+      desc: Montclair EDFA 风扇转速（RPM）。转速异常偏低或为 0 表示风扇卡转或故障。
+    amplifier_input_power_dbm:
+      name: 放大器输入光功率
+      desc: Montclair EDFA 输入光功率，单位 dBm（原始值按 1/10 换算）。
+    amplifier_output_power_dbm:
+      name: 放大器输出光功率
+      desc: Montclair EDFA 输出光功率，单位 dBm（原始值按 1/10 换算）。
+monitor_object_metric_group:
+  Transmission:
+    Base: 基础
+    Traffic: 流量
+    Temperature: 温度
+    Hardware Status: 硬件状态
+    Optical: 光功率

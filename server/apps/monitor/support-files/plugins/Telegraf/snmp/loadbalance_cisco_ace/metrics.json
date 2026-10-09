@@ -1,0 +1,160 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_cisco_ace",
+  "plugin": "Loadbalance Cisco ACE SNMP",
+  "plugin_desc": "SNMP monitoring template for Cisco ACE Application Control Engine appliances and modules. Besides standard IF-MIB 64-bit interface traffic, it collects host CPU utilization (CISCO-PROCESS-MIB), memory pools (CISCO-MEMORY-POOL-MIB), network-processor CPU and buffer utilization (CISCO-L4L7MODULE-RESOURCE-LIMIT-MIB) and current SLB connections (CISCO-SLB-EXT-MIB).",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='loadbalance', collect_type='snmp_cisco_ace'}) by (instance_id)",
+  "name": "Loadbalance",
+  "icon": "mm-loadbalance_负载均衡",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='loadbalance'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "ace_np_cpu_usage",
+    "ace_np_buffer_usage",
+    "lb_current_connections"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='loadbalance', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "device_cpu_usage",
+      "query": "device_cpu_usage{instance_type='loadbalance', __$labels__}",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Host CPU utilization of Cisco ACE (CISCO-PROCESS-MIB cpmCPUTotal5minRev, Gauge32 0-100, 5-minute average) per CPU entity. Values outside 0-100 are dropped."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "device_memory_used",
+      "query": "device_memory_used{instance_type='loadbalance', __$labels__}",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "pool_name",
+          "description": "pool_name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Bytes used in each Cisco ACE memory pool (CISCO-MEMORY-POOL-MIB ciscoMemoryPoolUsed). Pools whose ciscoMemoryPoolValid is not true(1) are dropped."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "device_memory_free",
+      "query": "device_memory_free{instance_type='loadbalance', __$labels__}",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "pool_name",
+          "description": "pool_name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Free bytes in each Cisco ACE memory pool (CISCO-MEMORY-POOL-MIB ciscoMemoryPoolFree). Pools whose ciscoMemoryPoolValid is not true(1) are dropped."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "device_memory_usage",
+      "query": "device_memory_usage{instance_type='loadbalance', __$labels__}",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "pool_name",
+          "description": "pool_name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of each Cisco ACE memory pool, computed during collection as used/(used+free)*100 and rounded to 0.01 percent. Only pools with ciscoMemoryPoolValid true(1) and used+free greater than 0 are stored."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "ace_np_cpu_usage",
+      "query": "ace_np_cpu_usage{instance_type='loadbalance', __$labels__}",
+      "display_name": "NP CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average CPU utilization of each Cisco ACE network processor (CISCO-L4L7MODULE-RESOURCE-LIMIT-MIB clrNpCpuUtilizationAverage). Values outside 0-100 are dropped."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "ace_np_buffer_usage",
+      "query": "ace_np_buffer_usage{instance_type='loadbalance', __$labels__}",
+      "display_name": "NP Buffer Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Buffer utilization of each Cisco ACE network processor (CISCO-L4L7MODULE-RESOURCE-LIMIT-MIB crlPercentageBufferUsage). The raw 0-10000 DISPLAY-HINT d-2 value is divided by 100 during collection to a 0-100 percentage. Raw values outside 0-10000 are dropped."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "lb_current_connections",
+      "query": "sum(lb_current_connections{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "display_name": "Current Connections",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current SLB connections on Cisco ACE (CISCO-SLB-EXT-MIB cslbxStatsCurrConnections), summed across SLB entities. The Gauge32 not-available sentinel is dropped."
+    }
+  ]
+}

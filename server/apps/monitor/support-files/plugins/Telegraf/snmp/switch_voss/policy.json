@@ -1,0 +1,81 @@
+{
+  "object": "Switch",
+  "plugin": "Switch Extreme VOSS SNMP",
+  "templates": [
+    {
+      "name": "VOSS交换机CPU使用率过高",
+      "alert_name": "交换机${resource_name} 槽位 ${metric__index} CPU 使用率过高",
+      "description": "监控 Extreme VOSS 交换机各槽位 5 分钟 CPU 使用率，当持续高于阈值时触发告警，提示可能存在控制平面过载或异常流量。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "VOSS交换机内存使用率过高",
+      "alert_name": "交换机${resource_name} 槽位 ${metric__index} 内存使用率过高",
+      "description": "监控 Extreme VOSS 交换机各槽位内存使用率（已用/(已用+空闲)），当超过阈值时触发告警，便于发现内存压力。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "VOSS交换机温度过高",
+      "alert_name": "交换机${resource_name} 传感器 ${metric__sensor_name} 温度过高",
+      "description": "监控 Extreme VOSS 交换机各机箱温度传感器读数，当持续高于阈值时触发告警，提示可能存在散热不良或环境过热。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 60,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

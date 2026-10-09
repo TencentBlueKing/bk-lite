@@ -814,7 +814,7 @@ def test_preview_keeps_password_init_in_platform_config(
         ({"mode": "random"}, "email_channel_id is required"),
         ({"mode": "uniform", "uniform_password": "Abc12345!"}, "email_channel_id is required"),
         ({"mode": "uniform", "email_channel_id": 7}, "uniform_password is required"),
-        ({"mode": "uniform", "uniform_password": "123", "email_channel_id": 7}, "密码"),
+        ({"mode": "uniform", "uniform_password": "123", "email_channel_id": 7}, "Password"),
     ],
 )
 def test_preview_rejects_invalid_platform_password_init(password_init, expected_error, password_init_preview_admin, ready_integration_instance):

@@ -13,6 +13,7 @@ import { isScreenModeEnabled } from '@/console-layout';
 import { useAuth } from '@/context/auth';
 import { useClientData } from '@/context/client';
 import { useUserInfoContext } from '@/context/userInfo';
+import { getStoredLocale } from '@/utils/userPreferences';
 import { useTranslation } from '@/utils/i18n';
 
 import {
@@ -22,13 +23,14 @@ import {
 } from './visibility';
 import './global-webchat.css';
 
-const WEBCHAT_SCRIPT_URL = '/webchat/webchat.js?v=20260922-1';
-const WEBCHAT_STYLE_URL = '/webchat/style.css?v=20260922-1';
+const WEBCHAT_SCRIPT_URL = '/webchat/webchat.js?v=20261008-dock8';
+const WEBCHAT_STYLE_URL = '/webchat/style.css?v=20261008-dock8';
 const WEBCHAT_ROOT_ID = 'webchat-root';
 const MANAGE_AGENTS_URL = '/opspilot/studio';
 
 const PLATFORM = {
   applicationsUrl: '/api/proxy/opspilot/skill_channel/platform/',
+  webchatWidthUrl: '/api/proxy/opspilot/skill_channel/platform/width/',
   sessionsUrl: '/api/proxy/opspilot/skill_channel/conversations/?channel_id={channelId}',
   messagesUrl: '/api/proxy/opspilot/skill_channel/conversations/messages/?session_id={sessionId}',
   deleteSessionUrl: '/api/proxy/opspilot/skill_channel/conversations/delete/',
@@ -43,6 +45,7 @@ interface WebChatPlatformConfig {
   apiKey?: string;
   credentials?: RequestCredentials;
   placeholder?: string;
+  locale?: 'zh' | 'en';
   position: 'bottom-right';
   platform: typeof PLATFORM & { storageKey: string };
   userId: string;
@@ -109,6 +112,9 @@ const GlobalWebchat = () => {
   const { userId, selectedGroup, isSuperUser, loading: userInfoLoading } = useUserInfoContext();
   const { t } = useTranslation();
   const loadErrorMessage = t('common.loadFailed');
+  // WebChat 是独立打包的通用包，只能通过 config 传语言；这里与 LocaleProvider 同源。
+  const webchatLocale: 'zh' | 'en' = getStoredLocale() === 'en' ? 'en' : 'zh';
+  const chatPlaceholder = t('webchat.inputPlaceholder', '请输入消息...');
   const apps = appConfigList.length > 0 ? appConfigList : clientData;
   const mountedRef = useRef(false);
   const [appViewFullscreen, setAppViewFullscreen] = useState(false);
@@ -166,7 +172,8 @@ const GlobalWebchat = () => {
         {
           apiKey: token,
           credentials: 'include',
-          placeholder: '请输入消息...',
+          placeholder: chatPlaceholder,
+          locale: webchatLocale,
           position: 'bottom-right',
           platform: {
             ...PLATFORM,
@@ -221,7 +228,7 @@ const GlobalWebchat = () => {
       script.removeEventListener('error', handleResourceError);
       destroyWebChat();
     };
-  }, [shouldMount, token, storageKey, resolvedUserId, teamId, isSuperUser, loadErrorMessage]);
+  }, [shouldMount, token, storageKey, resolvedUserId, teamId, isSuperUser, loadErrorMessage, chatPlaceholder, webchatLocale]);
 
   return null;
 };

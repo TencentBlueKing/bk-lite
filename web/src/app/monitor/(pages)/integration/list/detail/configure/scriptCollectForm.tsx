@@ -1,10 +1,14 @@
 'use client';
 
 import React from 'react';
-import { Alert, Form, Input, Segmented, Select } from 'antd';
+import { Alert, Form, Input, InputNumber, Segmented, Select } from 'antd';
 import type { FormInstance } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import CodeEditor from '@/components/code-editor';
+import {
+  SCRIPT_MIN_INTERVAL_SECONDS,
+  parseScriptDurationSeconds
+} from './scriptCollectTimeout';
 
 export const LINUX_INTERPRETERS = [
   { label: '/bin/sh', value: '/bin/sh' },
@@ -19,7 +23,6 @@ export const WINDOWS_INTERPRETERS = [
 ];
 
 const RESOURCE_KNOB_FIELDS = new Set([
-  'timeout',
   'cpu',
   'memory',
   'mem',
@@ -27,6 +30,8 @@ const RESOURCE_KNOB_FIELDS = new Set([
   'mem_limit',
   'memory_limit'
 ]);
+
+const SCRIPT_INTERVAL_WIDTH = 300;
 
 export const isScriptCollectConfig = (
   config: { collect_type?: unknown; config_type?: unknown } | null | undefined
@@ -74,6 +79,7 @@ export const applyScriptCollectSubmit = <T extends Record<string, any>>(
   if (os === 'windows') {
     delete next.run_as;
   }
+  delete next.timeout;
   return next as T;
 };
 
@@ -86,6 +92,19 @@ export const omitPersistedWindowsRunAs = (
   const config = result?.child?.content?.config;
   if (config && Object.prototype.hasOwnProperty.call(config, 'run_as')) {
     delete config.run_as;
+  }
+};
+
+/** 脚本采集不下发 timeout，由采集器按 interval-1s 推导。 */
+export const omitPersistedScriptTimeout = (
+  result: { child?: { content?: { config?: Record<string, any> } } } | null | undefined,
+  values: Record<string, any> | null | undefined,
+  collectType?: unknown
+) => {
+  if (!isScriptCollectPayload(values, collectType)) return;
+  const config = result?.child?.content?.config;
+  if (config && Object.prototype.hasOwnProperty.call(config, 'timeout')) {
+    delete config.timeout;
   }
 };
 
@@ -157,7 +176,12 @@ export const normalizeScriptCollectFormFields = (fields: any[] = []) => {
     }
   };
   const rest = kept
-    .filter((field) => field.name !== 'interpreter' && field.name !== 'run_as')
+    .filter(
+      (field) =>
+        field.name !== 'interpreter' &&
+        field.name !== 'run_as' &&
+        field.name !== 'timeout'
+    )
     .map((field) => {
       if (field?.name !== 'script') return field;
       return {
@@ -172,6 +196,65 @@ export const normalizeScriptCollectFormFields = (fields: any[] = []) => {
 };
 
 const LINUX_RUN_AS_DEFAULT = 'telegraf';
+
+export const ScriptIntervalField: React.FC<{
+  intervalField?: Record<string, any>;
+  mode?: string;
+}> = ({ intervalField, mode }) => {
+  const { t } = useTranslation();
+  const intervalLocked =
+    mode === 'edit' && intervalField?.editable === false;
+
+  return (
+    <div className="mb-3 inline-block" style={{ width: SCRIPT_INTERVAL_WIDTH }}>
+      <Form.Item
+        className="mb-0"
+        name="interval"
+        required
+        label={intervalField?.label || t('monitor.integrations.interval', '采集间隔')}
+        rules={[
+          { required: true, message: t('common.required') },
+          {
+            validator: async (_, value) => {
+              const seconds = parseScriptDurationSeconds(value);
+              if (seconds == null) {
+                return;
+              }
+              if (seconds < SCRIPT_MIN_INTERVAL_SECONDS) {
+                throw new Error(
+                  t(
+                    'monitor.integrations.intervalMin60',
+                    '采集间隔不能小于 60 秒'
+                  )
+                );
+              }
+            }
+          }
+        ]}
+        initialValue={intervalField?.default_value ?? SCRIPT_MIN_INTERVAL_SECONDS}
+      >
+        <InputNumber
+          min={SCRIPT_MIN_INTERVAL_SECONDS}
+          precision={0}
+          disabled={intervalLocked}
+          addonAfter={intervalField?.widget_props?.addonAfter || 's'}
+          placeholder={
+            intervalField?.widget_props?.placeholder ||
+            t('monitor.integrations.interval', '间隔')
+          }
+          className="align-middle"
+          style={{ width: SCRIPT_INTERVAL_WIDTH }}
+        />
+      </Form.Item>
+      <div className="mt-1 text-[12px] leading-[18px] text-[var(--color-text-3)]">
+        {t(
+          'monitor.integrations.scriptTimeoutFollowsInterval',
+          '脚本超时 = 采集间隔 − 1 秒'
+        )}
+      </div>
+    </div>
+  );
+};
 
 /**
  * 先写入 run_as，再改 script_os。

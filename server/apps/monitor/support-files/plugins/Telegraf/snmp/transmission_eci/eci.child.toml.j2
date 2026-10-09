@@ -1,0 +1,143 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_eci"
+        config_type = "eci"
+        brand = "eci"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- ECI / Ribbon Apollo CPU 与内存：ECI-OPERATING-MIB cpuOperatingTable（PEN 5395，table.field 不带 .0，索引为 entPhysicalIndex）----
+    # cpuName .1 作为 descr 标签；cpuUser5min .9 / cpuSystem5min .10：Unsigned32，两位小数定点（8888 = 88.88%）。
+    # 下方 starlark 输出 usage = (user + system) / 100，原始列不落库。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5395.3.3.1.1.1.1"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5395.3.3.1.1.1.9"
+        name = "user_5min_raw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5395.3.3.1.1.1.10"
+        name = "system_5min_raw"
+    # freeMemory .12 / allocMemory .13 / totalMemory .14：Gauge32，单位字节（同一 cpuOperatingEntry 行）。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5395.3.3.1.1.1.1"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5395.3.3.1.1.1.12"
+        name = "free"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5395.3.3.1.1.1.13"
+        name = "used"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5395.3.3.1.1.1.14"
+        name = "total"
+    # ---- 风扇：fanOperatingTable，fanName .1 → descr，fanRunningStatus .2：running(1)/stopped(2) ----
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5395.3.3.1.2.1.1"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5395.3.3.1.2.1.2"
+        name = "state"
+    # ---- 电源：powerOperatingTable，powerName .1 → descr，powerVoltageStatus .2：normal(1)/low(2) ----
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5395.3.3.1.3.1.1"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5395.3.3.1.3.1.2"
+        name = "state"
+# ---- FIB 表项与活动告警表未纳入。----
+
+# ---- CPU：(user + system) / 100 → usage（%），两列缺一或结果超出 0~100 时丢弃整行。----
+[[processors.starlark]]
+    namepass = ["device_cpu"]
+    source = '''
+def apply(metric):
+    user = metric.fields.pop("user_5min_raw", None)
+    system = metric.fields.pop("system_5min_raw", None)
+    if type(user) not in ["int", "float"] or type(system) not in ["int", "float"]:
+        return None
+    usage = (user + system) / 100.0
+    if user < 0 or system < 0 or usage > 100:
+        return None
+    metric.fields["usage"] = usage
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["eci"]
+
+# ---- 内存：usage = used / total * 100；总量 <= 0 或已用大于总量时丢弃整行。----
+[[processors.starlark]]
+    namepass = ["device_memory"]
+    source = '''
+def apply(metric):
+    total = metric.fields.get("total")
+    used = metric.fields.get("used")
+    if type(total) not in ["int", "float"] or type(used) not in ["int", "float"]:
+        return None
+    if total <= 0 or used < 0 or used > total:
+        return None
+    metric.fields["usage"] = used * 100.0 / total
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["eci"]
+
+# ---- 风扇 running(1)→1(正常)、stopped(2)→2(异常)；电源 normal(1)→1、low(2)→2；其它值丢弃。----
+[[processors.starlark]]
+    namepass = ["device_fan", "device_psu"]
+    source = '''
+def apply(metric):
+    state = metric.fields.get("state")
+    if state == 1 or state == 2:
+        return metric
+    return None
+'''
+    [processors.starlark.tagpass]
+        brand = ["eci"]

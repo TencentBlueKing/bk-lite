@@ -11,6 +11,7 @@
 from apps.opspilot.metis.llm.tools.monitor.alerts import monitor_list_active_alerts, monitor_query_alert_segments
 from apps.opspilot.metis.llm.tools.monitor.metrics import (
     monitor_get_host_resource_snapshot,
+    monitor_get_host_resource_top_by_time,
     monitor_list_instance_metrics,
     monitor_list_object_metrics,
     monitor_query_metric_data,
@@ -27,6 +28,7 @@ __all__ = [
     "monitor_list_instance_metrics",
     "monitor_query_metric_data",
     "monitor_get_host_resource_snapshot",
+    "monitor_get_host_resource_top_by_time",
     "monitor_list_active_alerts",
     "monitor_query_alert_segments",
 ]

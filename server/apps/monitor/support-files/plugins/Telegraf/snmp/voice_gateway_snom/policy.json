@@ -1,0 +1,21 @@
+{
+  "object": "VoiceGateway",
+  "plugin": "VoiceGateway Snom SNMP",
+  "templates": [
+    {
+      "name": "Snom话机SIP注册丢失",
+      "alert_name": "语音网关${resource_name} SIP 注册数为 0",
+      "description": "监控 Snom 话机的 SIP 注册数，当注册数降到 0 时触发告警，提示话机已无法注册到呼叫服务器，无法正常拨打或接听电话。",
+      "metric_name": "sip_registration_count",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "min"
+    }
+  ]
+}

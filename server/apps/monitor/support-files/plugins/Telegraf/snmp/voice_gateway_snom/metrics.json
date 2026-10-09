@@ -1,0 +1,137 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_snom",
+  "plugin": "VoiceGateway Snom SNMP",
+  "plugin_desc": "SNMP monitoring template for Snom SIP desk and DECT phones (private tree 1.3.6.1.2.1.7526, GET only). It reports uptime, CPU load average, free memory, SIP registration count, firmware, and interface traffic.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='voice_gateway', collect_type='snmp_snom'}) by (instance_id)",
+  "name": "VoiceGateway",
+  "icon": "mm-voice_gateway_语音网关",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='voice_gateway'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_load1",
+    "sip_registration_count"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_load1",
+      "query": "max(snmp_device_cpu_load1{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "CPU Load Average (1 min)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "1-minute CPU load average of the Snom phone, parsed from the CPU load average string (1.3.6.1.2.1.7526.2.9, firmware V8.2.6 and later). This is a load average, not a utilization percentage."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_load5",
+      "query": "max(snmp_device_cpu_load5{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "CPU Load Average (5 min)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "5-minute CPU load average of the Snom phone, the second value of the CPU load average string (1.3.6.1.2.1.7526.2.9)."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_load15",
+      "query": "max(snmp_device_cpu_load15{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "CPU Load Average (15 min)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "15-minute CPU load average of the Snom phone, the third value of the CPU load average string (1.3.6.1.2.1.7526.2.9)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_free",
+      "query": "max(snmp_device_memory_free{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Free memory of the Snom phone (Memfree, 1.3.6.1.2.1.7526.2.7, Integer). The vendor does not document the unit, so the raw value is reported unchanged; use it for trends rather than absolute capacity."
+    },
+    {
+      "metric_group": "Voice",
+      "name": "sip_registration_count",
+      "query": "max(snmp_sip_registration_count{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "SIP Registration Count",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of SIP registrations on the Snom phone (Registrations, 1.3.6.1.2.1.7526.2.5). A value of 0 means the phone has no working registration and cannot place or receive calls."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='voice_gateway', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='voice_gateway', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='voice_gateway', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

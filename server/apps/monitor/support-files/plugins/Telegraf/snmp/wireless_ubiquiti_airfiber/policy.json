@@ -1,0 +1,81 @@
+{
+  "object": "Wireless",
+  "plugin": "Wireless Ubiquiti airFiber SNMP",
+  "templates": [
+    {
+      "name": "Ubiquiti airFiber CPU使用率过高",
+      "alert_name": "无线设备${resource_name} CPU使用率过高",
+      "description": "监控 Ubiquiti airFiber LTU 的 CPU 使用率，持续高于阈值时提示无线链路处理压力或管理面负载过高。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Ubiquiti airFiber内存使用率过高",
+      "alert_name": "无线设备${resource_name} 内存使用率过高",
+      "description": "监控 Ubiquiti airFiber LTU 的内存使用率，持续高于阈值时提示内存资源紧张或服务异常。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Ubiquiti airFiber射频温度过高",
+      "alert_name": "无线设备${resource_name} 射频链 ${metric__chain} 温度过高",
+      "description": "监控 classic airFiber 射频链 DAC 温度，持续高于阈值时提示室外单元散热异常或环境温度过高。",
+      "metric_name": "device_radio_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

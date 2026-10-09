@@ -72,8 +72,7 @@ def parse_percent(raw):
     text = str(raw)
     digits = ""
     started = False
-    i = 0
-    while i < len(text):
+    for i in range(len(text)):
         c = text[i]
         if c >= "0" and c <= "9":
             digits += c
@@ -83,7 +82,6 @@ def parse_percent(raw):
                 digits += c
         elif started:
             break
-        i += 1
     if digits == "" or digits == ".":
         return None
     return float(digits)
@@ -91,12 +89,10 @@ def parse_percent(raw):
 def oid_arc_matches(s, prefix):
     n = len(s)
     p = len(prefix)
-    i = 0
-    while i + p <= n:
+    for i in range(n - p + 1):
         if s[i:i+p] == prefix:
             if i + p == n or s[i+p] == ".":
                 return True
-        i += 1
     return False
 
 def oid_matches(soid, prefix):

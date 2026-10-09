@@ -1,0 +1,87 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_comet"
+        config_type = "comet"
+        brand = "comet"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- COMET SYSTEM WebSensor 温湿度计（T3510-MIB，PEN 22626，products → t3510(2)）：标量顶层 field 带 .0，落 measurement snmp，查询用 snmp_ 前缀。----
+    # valuesInt（1.3.6.1.4.1.22626.1.2.3）：tempInt（.1）/ humInt（.2）为数值 ×10 的整数（-5000..20000）；tempAlarmInt（.5）/ humAlarmInt（.6）：0 无告警 / 1 高限 / 2 低限。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22626.1.2.3.1.0"
+        name = "temperature_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22626.1.2.3.2.0"
+        name = "humidity_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22626.1.2.3.5.0"
+        name = "temperature_alarm_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22626.1.2.3.6.0"
+        name = "humidity_alarm_raw"
+    # tempUnit（1.3.6.1.4.1.22626.1.2.1.9）：温度单位文本（如 °C / °F），用于判断是否需要换算。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.22626.1.2.1.9.0"
+        name = "temperature_unit_text"
+# ---- CPU / 内存使用率：设备不提供；values 分支的字符串读数不作为数值采集；P8652 等多通道机型的通道值单位随探头而变，不在本模板内。----
+
+# ---- 换算：温度 ÷10，单位文本含 F 时按华氏换算为摄氏度，须在 -60~150 ℃ → env_temperature_celsius；湿度 ÷10，须在 0~100 → env_humidity_percent；
+# 告警：0 → 1，1（高限）/ 2（低限）→ 2，只在对应读数有效时输出 → env_temperature_state / env_humidity_state。原始字段不落库。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    unit = f.pop("temperature_unit_text", "")
+    t = f.pop("temperature_raw", None)
+    h = f.pop("humidity_raw", None)
+    ta = f.pop("temperature_alarm_raw", None)
+    ha = f.pop("humidity_alarm_raw", None)
+    if type(t) == "int" and t >= -5000 and t <= 20000:
+        value = t / 10.0
+        if type(unit) == "string" and "F" in unit.upper():
+            value = int(((value - 32) * 5.0 / 9.0) * 10 + 0.5) / 10.0
+        if value >= -60 and value <= 150:
+            f["env_temperature_celsius"] = value
+            if ta == 0:
+                f["env_temperature_state"] = 1
+            elif ta == 1 or ta == 2:
+                f["env_temperature_state"] = 2
+    if type(h) == "int" and h >= 0 and h <= 1000:
+        f["env_humidity_percent"] = h / 10.0
+        if ha == 0:
+            f["env_humidity_state"] = 1
+        elif ha == 1 or ha == 2:
+            f["env_humidity_state"] = 2
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["comet"]

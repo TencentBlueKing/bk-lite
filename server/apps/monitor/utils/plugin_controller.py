@@ -683,11 +683,18 @@ class Controller:
                             config_info.get("ENV_GROUP_METRICS_TIMEOUT") or env_config.get("GROUP_METRICS_TIMEOUT"),
                             config_info.get("interval"),
                         )
-                    template_config = self.render_template(
-                        template["content"],
-                        render_context,
-                        escape_toml_strings=template["file_type"] == "toml",
-                    )
+                    script_collect = str(collect_type or "") == "script"
+                    if script_collect and is_child:
+                        from apps.monitor.services.custom_script_plugin import CustomScriptPluginService, assert_script_interval
+
+                        assert_script_interval(config_info.get("interval"))
+                        template_config = CustomScriptPluginService.render_child_template(render_context)
+                    else:
+                        template_config = self.render_template(
+                            template["content"],
+                            render_context,
+                            escape_toml_strings=template["file_type"] == "toml",
+                        )
                 except ValidationAppException:
                     raise
                 except ValueError as e:

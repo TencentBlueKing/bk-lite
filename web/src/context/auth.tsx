@@ -17,6 +17,8 @@ import {
   emitSessionExpired,
   isAuthPath,
   isSessionExpiredState,
+  latchSessionExpired,
+  releaseSessionExpiryConfirmation,
   resetSessionExpiredState,
   SESSION_EXPIRED_EVENT,
   shouldTriggerSessionExpiry,
@@ -29,6 +31,7 @@ import {
   type AuthRecoveryEvent,
 } from '@/utils/authRecoveryChannel';
 import {
+  confirmAuthStillValid,
   fetchRecoveredAuth,
   getAuthUserIdentity,
   recoverAuthWithRetry,
@@ -319,29 +322,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     performInitialAuthCheck();
   }, [hasCheckedExistingAuth, isCurrentAuthPath, isDashboardRenderRoute, pathname]);
 
-  useEffect(() => {
-    const handleSessionExpired = () => {
-      if (isCurrentAuthPath || isDashboardRenderRoute) {
-        return;
-      }
-
-      expectedRecoveryUserIdentityRef.current ??= pageUserIdentityRef.current;
-      pendingRecoveryRef.current = true;
-      sessionExpiredOpenRef.current = true;
-      setSessionExpiredOpen(true);
-      setIsCheckingAuth(false);
-    };
-
-    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired as EventListener);
-
-    return () => {
-      window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired as EventListener);
-    };
-  }, [isCurrentAuthPath, isDashboardRenderRoute]);
-
   const recoverAuthenticatedSession = useCallback((
     event?: AuthRecoveryEvent,
-    options?: { replaceInflight?: boolean },
+    options?: { replaceInflight?: boolean; confirmOnly?: boolean },
   ) => {
     if (event && handledRecoveryEventIdsRef.current.has(event.eventId)) {
       return recoveryPromiseRef.current ?? Promise.resolve(true);
@@ -365,12 +348,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     recoveryEpochRef.current = recoveryEpoch;
     const abortController = new AbortController();
     recoveryAbortRef.current = abortController;
+    const confirmOnly = options?.confirmOnly === true;
 
     const recoveryPromise = (async () => {
       try {
-        const recoveryResult = await recoverAuthWithRetry(
-          expectedRecoveryUserIdentityRef.current,
-          () => fetchRecoveredAuth(fetch, abortController.signal),
+        const checkAuth = () => fetchRecoveredAuth(fetch, abortController.signal);
+        const recoveryResult = await (
+          confirmOnly
+            ? confirmAuthStillValid(
+              expectedRecoveryUserIdentityRef.current,
+              checkAuth,
+            )
+            : recoverAuthWithRetry(
+              expectedRecoveryUserIdentityRef.current,
+              checkAuth,
+            )
         );
         if (
           abortController.signal.aborted
@@ -415,6 +407,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     recoveryPromiseRef.current = recoveryPromise;
     return recoveryPromise;
   }, [message, t]);
+
+  useEffect(() => {
+    const openSessionExpiredOverlay = () => {
+      latchSessionExpired();
+      sessionExpiredOpenRef.current = true;
+      setSessionExpiredOpen(true);
+      setIsCheckingAuth(false);
+    };
+
+    const handleSessionExpired = () => {
+      if (isCurrentAuthPath || isDashboardRenderRoute) {
+        releaseSessionExpiryConfirmation();
+        return;
+      }
+
+      expectedRecoveryUserIdentityRef.current ??= pageUserIdentityRef.current;
+      pendingRecoveryRef.current = true;
+
+      if (!isProtectedContentReadyRef.current) {
+        openSessionExpiredOverlay();
+        return;
+      }
+
+      const recovery = recoverAuthenticatedSession(undefined, { confirmOnly: true });
+      const confirmEpoch = recoveryEpochRef.current;
+      void recovery.then((recovered) => {
+        if (recovered || confirmEpoch !== recoveryEpochRef.current) {
+          return;
+        }
+        if (
+          isAuthPath(window.location.pathname)
+          || isDashboardExecutionRenderRoute(window.location.pathname)
+        ) {
+          releaseSessionExpiryConfirmation();
+          return;
+        }
+        openSessionExpiredOverlay();
+      });
+    };
+
+    window.addEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired as EventListener);
+
+    return () => {
+      window.removeEventListener(SESSION_EXPIRED_EVENT, handleSessionExpired as EventListener);
+    };
+  }, [isCurrentAuthPath, isDashboardRenderRoute, recoverAuthenticatedSession]);
 
   useEffect(() => subscribeAuthRecovery((event) => {
     void recoverAuthenticatedSession(event);
@@ -545,6 +583,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               return;
             }
 
+            latchSessionExpired();
             pendingRecoveryRef.current = true;
             sessionExpiredOpenRef.current = true;
             setSessionExpiredOpen(true);

@@ -1,5 +1,31 @@
 {
   "object": "Wireless",
   "plugin": "Wireless Radwin SNMP",
-  "templates": []
+  "templates": [
+    {
+      "name": "Radwin无线设备板温过高",
+      "alert_name": "无线设备${resource_name} 板温过高",
+      "description": "监控 Radwin 无线设备 ODU 板内温度（winlink1000OduAdmTemperatureC，摄氏度），当持续高于阈值时触发告警，提示户外单元散热异常、日晒或环境温度过高。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
 }

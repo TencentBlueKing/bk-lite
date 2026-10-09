@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_brocade",
   "plugin": "Switch Brocade SNMP",
-  "plugin_desc": "SNMP monitoring template for Brocade switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic, for ICX/FCX/NetIron, Ruckus ICX, and Foundry/IronWare (enterprise PEN 1991).",
+  "plugin_desc": "SNMP monitoring template for Brocade switch. It reports uptime, CPU utilization, memory utilization/total/free/used, temperature, fan, power supply status, and interface traffic, for ICX/FCX/NetIron, Ruckus ICX, and Foundry/IronWare (enterprise PEN 1991). When FastIron CPU/memory scalars are absent, Fabric OS swCpuUsage/swMemUsage (enterprise PEN 1588) are used as a fallback.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_brocade'}) by (instance_id)",
   "name": "Switch",
@@ -22,7 +22,7 @@
     {
       "metric_group": "CPU",
       "name": "device_cpu_usage",
-      "query": "device_cpu_usage{instance_type='switch', __$labels__}",
+      "query": "snmp_device_cpu_usage{instance_type='switch', __$labels__}",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -30,12 +30,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the 1-minute average CPU utilization of the Brocade/Foundry device (FOUNDRY-SN-AGENT-MIB snAgGblCpuUtil1MinAvg), normalized to a 0-100 percentage. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
+      "description": "This metric reports the 1-minute average CPU utilization of the Brocade/Foundry/Ruckus ICX device (snAgGblCpuUtil1MinAvg, a scalar GET with instance .0), reported directly as a 0-100 percentage. When that FastIron scalar is absent, Fabric OS swCpuUsage (0-100) is used instead. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
     },
     {
       "metric_group": "Memory",
       "name": "device_memory_usage",
-      "query": "device_memory_usage{instance_type='switch', __$labels__}",
+      "query": "snmp_device_memory_usage{instance_type='switch', __$labels__} or snmp_device_memory_dynmem_usage{instance_type='switch', __$labels__}",
       "display_name": "Memory Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -43,25 +43,59 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports overall dynamic memory utilization of the Brocade/Foundry device (FOUNDRY-SN-AGENT-MIB snAgGblDynMemUtil), reported directly as a 0-100 percentage. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
+      "description": "This metric reports the system DRAM utilization of the Brocade/Foundry/Ruckus ICX device (snAgSystemDRAMUtil, a scalar GET with instance .0), falling back to snAgGblDynMemUtil when DRAM is absent, reported directly as a 0-100 percentage. When FastIron memory scalars are absent, Fabric OS swMemUsage (0-100) is used instead. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "snmp_device_memory_total{instance_type='switch', __$labels__}",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the total system DRAM of the Brocade/Foundry/Ruckus ICX device in bytes (snAgSystemDRAMTotal, a scalar GET with instance .0)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_free",
+      "query": "snmp_device_memory_free{instance_type='switch', __$labels__}",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the free system DRAM of the Brocade/Foundry/Ruckus ICX device in bytes (snAgSystemDRAMFree, a scalar GET with instance .0)."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "snmp_device_memory_total{instance_type='switch', __$labels__} - snmp_device_memory_free{instance_type='switch', __$labels__}",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the used system DRAM of the Brocade/Foundry/Ruckus ICX device in bytes, derived as total minus free."
     },
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
+      "query": "snmp_device_temperature_celsius{instance_type='switch', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
-      "dimensions": [
-        {
-          "name": "index",
-          "description": "SNMP table row index"
-        }
-      ],
+      "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the chassis temperature reading of each Brocade/Foundry sensor (FOUNDRY-SN-AGENT-MIB snChasActualTemperature), in degrees Celsius. Abnormally high temperatures may indicate fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal protection or hardware damage if left unaddressed."
+      "description": "This metric reports the chassis temperature of the Brocade/Foundry/Ruckus ICX device (snChasActualTemperature, a scalar GET with instance .0). The raw value is in units of 0.5 degrees Celsius and is multiplied by 0.5 at collection time. Abnormally high temperatures may indicate fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal protection or hardware damage if left unaddressed."
     },
     {
       "metric_group": "Hardware Status",
@@ -69,7 +103,7 @@
       "query": "device_fan_state{instance_type='switch', __$labels__}",
       "display_name": "Fan Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"shutdown\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notPresent\",\"id\":5,\"color\":\"#d9d9d9\"},{\"name\":\"notFunctioning\",\"id\":6,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [
         {
           "name": "descr",
@@ -87,7 +121,7 @@
       "query": "device_psu_state{instance_type='switch', __$labels__}",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"shutdown\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notPresent\",\"id\":5,\"color\":\"#d9d9d9\"},{\"name\":\"notFunctioning\",\"id\":6,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [
         {
           "name": "descr",

@@ -18,6 +18,7 @@ def _runtime_config(identity=CALLER_IDENTITY, **legacy_configurable):
 def _monitor_tools():
     from apps.opspilot.metis.llm.tools.monitor import (
         monitor_get_host_resource_snapshot,
+        monitor_get_host_resource_top_by_time,
         monitor_list_active_alerts,
         monitor_list_instance_metrics,
         monitor_list_object_instances,
@@ -36,6 +37,7 @@ def _monitor_tools():
         monitor_list_active_alerts,
         monitor_query_alert_segments,
         monitor_get_host_resource_snapshot,
+        monitor_get_host_resource_top_by_time,
     ]
 
 
@@ -86,6 +88,46 @@ def test_monitor_tool_descriptions_guide_metric_queries():
     metrics = tools["monitor_list_object_metrics"].description
     assert "keyword" in metrics
     assert "猜测" in metrics or "cpu.util" in metrics
+
+
+def test_monitor_top_by_time_tool_is_registered_and_routes_ranking_queries():
+    """排行类问题必须能选到按时间窗排行的工具，而不是只会用 snapshot。"""
+    tools = {tool.name: tool for tool in _monitor_tools()}
+
+    assert "monitor_get_host_resource_top_by_time" in tools
+    top_by_time = tools["monitor_get_host_resource_top_by_time"].description
+    assert "排行" in top_by_time or "Top" in top_by_time
+    # 必须显式把选型边界写给模型：snapshot 不排名、不接受时间窗
+    assert "monitor_get_host_resource_snapshot" in top_by_time
+    assert "lookback_minutes" in top_by_time
+    assert "metric_type" in top_by_time
+    assert "max" in top_by_time and "avg" in top_by_time
+
+
+def test_monitor_top_by_time_tool_requires_a_window():
+    from apps.opspilot.metis.llm.tools.monitor.metrics import monitor_get_host_resource_top_by_time
+
+    missing = monitor_get_host_resource_top_by_time.func(metric_type="disk", config=None)
+    assert missing["success"] is False
+    assert "lookback_minutes" in missing["error"]
+
+
+def test_monitor_planner_hint_prefers_top_by_time_for_ranking_questions():
+    """选型发生在读完全部工具描述之后，必须在系统 prompt 里显式引导。"""
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import _MONITOR_CATALOG_HINT
+
+    assert "monitor_get_host_resource_top_by_time" in _MONITOR_CATALOG_HINT
+    assert "排行" in _MONITOR_CATALOG_HINT
+    # 明确禁止用 snapshot 做排行，避免重演 37 台被判成 4 台
+    assert "monitor_get_host_resource_snapshot" in _MONITOR_CATALOG_HINT
+
+
+def test_monitor_planner_step_guidance_warns_against_snapshot_host_count():
+    from apps.opspilot.metis.llm.chain.node import ToolsNodes
+
+    guidance = ToolsNodes._planned_tool_step_guidance()
+    assert "monitor_get_host_resource_top_by_time" in guidance
+    assert "host_count" in guidance
 
 
 def test_monitor_constructor_has_no_identity_params():

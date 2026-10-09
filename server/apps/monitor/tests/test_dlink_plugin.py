@@ -1,20 +1,10 @@
 """Contract tests for the D-Link DES/DGS switch SNMP plugin.
 
-Validates Telegraf/snmp_dlink/switch against the Cisco baseline and the
-cross-vendor design decisions for the SNMP brand-plugin family.
-
-D-Link (EQUIPMENT-MIB, enterprise 171) reports CPU and memory as utilization
-percentages directly (swCPUUtilizationIn5min / swDevInfoTotalUtilizationOfMemory)
-— the same shape as Huawei — so device_memory_usage is a raw single series and
-the shared brand-adaptive dashboard hits its raw branch with zero config change.
-Temperature/fan/psu tables expose no descr name column, so none of those metrics
-declare a descr dimension and their alert templates carry no ${metric_descr}.
-swFanStatus / swPowerStatus are non-binary (a 0=other state exists below
-normal), so BOTH are normalized to the unified 1=normal convention via a
-brand-scoped enum processor (psu working=3 -> 1, fan working=1 -> 1, everything
-else -> 2) — a plain policy `>1` on the raw codes would miss the 0=other state.
-
-OID correctness is intentionally NOT tested here (pending on-site SNMP walk).
+Validates Telegraf/snmp_dlink/switch against the Cisco baseline for shared
+CPU/interface fields, and against this plugin's DGS-1250 ENTITY-EXT fan/psu
+contract: stored values are only 1 (ok / inOperation / empty) and 2
+(fault / failed). The two-value enum labels 正常/异常, starlark (not
+processors.enum), policy `= 2`, and named dimensions (not descr).
 """
 import json
 from pathlib import Path
@@ -40,6 +30,11 @@ SUPPORTED_SCALAR_UNITS = {
     "byteps", "bytes", "counts", "cps", "percent", "celsius", "s", "short", "none",
 }
 INTERFACE_METRICS = ("interface_ifHCInOctets", "interface_ifHCOutOctets")
+TWO_VALUE_FAN_PSU_ENUM = [
+    {"name": "正常", "id": 1, "color": "#1ac44a"},
+    {"name": "异常", "id": 2, "color": "#ff4d4f"},
+]
+CISCO_SIX_STATE_SKIP = ("device_fan_state", "device_psu_state")
 
 
 def _read_json(path):
@@ -119,6 +114,8 @@ def test_shared_device_metrics_match_cisco_group_and_unit(metrics, cisco_metrics
             continue
         if m["metric_group"] != base["metric_group"]:
             drift.append(f'{m["name"]}.group')
+        if m["name"] in CISCO_SIX_STATE_SKIP:
+            continue
         if m["unit"] != base["unit"]:
             drift.append(f'{m["name"]}.unit')
     assert drift == [], f"device_*/interface drift vs Cisco: {drift}"
@@ -132,15 +129,15 @@ def test_cpu_query_byte_identical_to_cisco(metrics, cisco_metrics):
 
 
 @pytest.mark.unit
-def test_fan_psu_enum_unit_byte_identical_to_cisco(metrics, cisco_metrics):
+def test_fan_psu_enum_unit_byte_identical_to_cisco(metrics):
     ext = {m["name"]: m for m in metrics["metrics"]}
-    cis = {m["name"]: m for m in cisco_metrics["metrics"]}
     for name in ("device_fan_state", "device_psu_state"):
         assert ext[name]["data_type"] == "Enum"
-        assert ext[name]["unit"] == cis[name]["unit"], f"{name} enum unit drift vs Cisco"
         states = json.loads(ext[name]["unit"])
-        normal = [s for s in states if s["name"] == "normal"]
-        assert normal and normal[0]["id"] == 1, f"{name} normal must be id=1"
+        assert states == TWO_VALUE_FAN_PSU_ENUM, f"{name} must use 1=正常 / 2=异常"
+        by_id = {item["id"]: item for item in states}
+        assert by_id[1]["name"] == "正常" and by_id[1]["color"] == "#1ac44a"
+        assert by_id[2]["name"] == "异常" and by_id[2]["color"] == "#ff4d4f"
 
 
 # --------------------------------------------------------------------------- #
@@ -161,13 +158,12 @@ def test_memory_is_direct_percent_raw_series(metrics):
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
 def test_fan_and_psu_normalized_via_brand_scoped_enum_processor(toml_text):
-    assert "[[processors.enum]]" in toml_text
+    assert "[[processors.starlark]]" in toml_text
     assert f'brand = ["{BRAND}"]' in toml_text
-    assert 'field = "device_fan_state"' in toml_text
-    assert 'field = "device_psu_state"' in toml_text
-    # psu working=3 -> 1, fan working=1 -> 1; default 2 maps every other code (incl 0=other)
-    assert '"3" = 1' in toml_text and '"1" = 1' in toml_text
-    assert toml_text.count("default = 2") >= 2
+    assert "[[processors.enum]]" not in toml_text
+    assert "value == 1 or value == 3" in toml_text
+    assert 'metric.fields["state"] = 1' in toml_text
+    assert 'metric.fields["state"] = 2' in toml_text
 
 
 @pytest.mark.unit
@@ -177,7 +173,7 @@ def test_fan_psu_policy_thresholds_use_gt_one(policy):
         assert name in by_metric, f"policy missing {name}"
         methods = {th["method"] for th in by_metric[name]["threshold"]}
         values = {th["value"] for th in by_metric[name]["threshold"]}
-        assert methods == {">"} and values == {1}, f"{name} must alert on >1"
+        assert methods == {"="} and values == {2}, f"{name} must alert on =2"
 
 
 # --------------------------------------------------------------------------- #
@@ -186,8 +182,15 @@ def test_fan_psu_policy_thresholds_use_gt_one(policy):
 @pytest.mark.unit
 def test_health_metrics_have_no_descr_dimension(metrics):
     by_name = {m["name"]: m for m in metrics["metrics"]}
-    for name in ("device_temperature_celsius", "device_fan_state", "device_psu_state"):
-        assert by_name[name]["dimensions"] == [], f"{name} must declare no descr dimension"
+    expected = {
+        "device_temperature_celsius": {"sensor_name"},
+        "device_fan_state": {"fan_name"},
+        "device_psu_state": {"psu_name"},
+    }
+    for name, dim_names in expected.items():
+        declared = {d["name"] for d in by_name[name]["dimensions"]}
+        assert declared == dim_names, f"{name} dimensions {declared} != {dim_names}"
+        assert "descr" not in declared
 
 
 @pytest.mark.unit
