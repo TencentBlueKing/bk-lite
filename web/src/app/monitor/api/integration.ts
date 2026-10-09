@@ -21,9 +21,15 @@ const useIntegrationApi = () => {
   return useMemo(
     () => ({
       getPolicyGroups: async (
-        params: { monitor_object_id?: React.Key } = {}
+        params: { monitor_object_id?: React.Key; create_default?: boolean } = {}
       ) => {
-        return await get(`/monitor/api/policy_group/`, { params });
+        const { create_default, ...rest } = params;
+        return await get(`/monitor/api/policy_group/`, {
+          params: {
+            ...rest,
+            ...(create_default === false ? { create_default: 'false' } : {}),
+          },
+        });
       },
       getPolicyGroupMembers: async (groupId: number | string) => {
         return await get(`/monitor/api/policy_group/members/`, {

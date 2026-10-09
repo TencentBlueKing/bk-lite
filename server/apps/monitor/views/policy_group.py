@@ -79,7 +79,7 @@ class PolicyGroupViewSet(viewsets.ViewSet):
         scope = resolve_current_team_data_scope(request)
         organization = int(scope.current_team)
         object_id = request.query_params.get("monitor_object_id")
-        if object_id not in (None, ""):
+        if object_id not in (None, "") and request.query_params.get("create_default", "true") != "false":
             monitor_object = MonitorObject.objects.filter(id=object_id).first()
             if monitor_object is not None:
                 PolicyGroupService.ensure_default(organization=organization, monitor_object=monitor_object, operator=_operator(scope))
