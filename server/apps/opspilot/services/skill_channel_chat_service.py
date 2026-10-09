@@ -1100,6 +1100,19 @@ def delete_skill_session(*, session_id: str, external_user_id: str, keep_memory:
     conv.delete()
 
 
+def _request_user_timezone(request_user) -> str:
+    """当前请求用户的 IANA 时区。账号对象上没有时区时，按用户名和域再查一次。"""
+    timezone_name = str(getattr(request_user, "timezone", "") or "").strip()
+    if timezone_name:
+        return timezone_name
+    username = str(getattr(request_user, "username", "") or "").strip()
+    domain = str(getattr(request_user, "domain", "") or "").strip()
+    if not username or not domain:
+        return ""
+    stored = SystemUser.objects.filter(username=username, domain=domain).values_list("timezone", flat=True).first()
+    return str(stored or "").strip()
+
+
 def build_skill_chat_params(skill: LLMSkill, user_message: str, request_user, extra: dict | None = None) -> dict:
     tools = resolve_request_tools(None, skill.tools)
     params = {
@@ -1121,6 +1134,7 @@ def build_skill_chat_params(skill: LLMSkill, user_message: str, request_user, ex
         "username": getattr(request_user, "username", "") or "",
         "user_id": getattr(request_user, "id", None),
         "locale": getattr(request_user, "locale", "en") or "en",
+        "user_timezone": _request_user_timezone(request_user),
     }
     skill_packages = hydrate_skill_packages(getattr(skill, "skill_packages", []) or [])
     tool_names = []

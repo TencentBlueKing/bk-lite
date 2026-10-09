@@ -524,10 +524,10 @@ tools:
       - current_time: 获取当前时间工具
 
       **工具列表：**
-      - get_current_time: 获取当前系统时间，支持指定时区
+      - get_current_time: 获取当前用户时区下的当前时间
     tools:
       get_current_time:
-        description: 这个工具可以用于获取当前时间
+        description: 获取当前用户时区下的当前时间。时区缺失或非法时使用 Asia/Shanghai。
   duckduckgo:
     name: DuckDuckGo搜索
     description: |

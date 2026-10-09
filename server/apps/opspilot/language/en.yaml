@@ -529,10 +529,10 @@ tools:
       - current_time: Get current time tool
 
       **Tool List:**
-      - get_current_time: Get current system time, supports timezone specification
+      - get_current_time: Get the current time in the current user's timezone
     tools:
       get_current_time:
-        description: This tool can be used to get the current time
+        description: Get the current time in the current user's timezone. Falls back to Asia/Shanghai when the timezone is missing or invalid.
   duckduckgo:
     name: DuckDuckGo Search
     description: |
