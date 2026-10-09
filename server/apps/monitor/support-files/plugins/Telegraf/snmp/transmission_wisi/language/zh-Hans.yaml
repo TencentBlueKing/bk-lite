@@ -35,7 +35,7 @@ monitor_object_metric:
       desc: WISI Tangram 电源模块温度，单位为摄氏度，与机箱温度分系列上报。温度偏高可能表示电源散热异常或过载。
     psu_current_amps:
       name: 电源电流
-      desc: WISI Tangram 电源输出电流，单位为安培。原始值为毫安，采集侧除以 1000。缺席电源行不报告该指标。
+      desc: WISI Tangram 电源输出电流，单位为安培。原始值为毫安，采集侧除以 1000。双路电压均为 0 的空槽仍上报电流，仅抑制电压。
     device_voltage_volts:
       name: 电源电压
       desc: WISI Tangram 电源内/外电压，单位为伏特。原始值为毫伏，采集侧除以 1000，并用 voltage_type 区分内部与外部电压。

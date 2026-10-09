@@ -55,7 +55,8 @@ monitor_object_metric:
     psu_current_amps:
       name: PSU Current
       desc: WISI Tangram power-supply current in amperes. The SNMP value is milliamperes
-        and is divided by 1000 in the collector. Absent PSU rows omit this metric.
+        and is divided by 1000 in the collector. Empty-slot rows (both voltages 0)
+        still report current; only the voltage series are omitted.
     device_voltage_volts:
       name: PSU Voltage
       desc: WISI Tangram internal or external power-supply voltage in volts. The SNMP
