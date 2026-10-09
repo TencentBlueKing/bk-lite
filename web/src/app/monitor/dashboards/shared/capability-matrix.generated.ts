@@ -916,7 +916,6 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "memory",
         "temperature",
         "fan",
-        "psu",
         "traffic"
       ]
     },
