@@ -2,6 +2,7 @@
 import './register-strategy-pilot';
 import React, { useEffect, useState, useRef } from 'react';
 import { Spin, Input, Button, message, Switch, Popconfirm } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useEventApi from '@/app/monitor/api/event';
@@ -421,6 +422,11 @@ const Strategy: React.FC = () => {
                 onChange={(e) => setSearchText(e.target.value)}
               ></Input>
             </div>
+            <Permission requiredPermissions={['Add']}>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => linkToStrategyDetail('add')}>
+                {t('common.add')}
+              </Button>
+            </Permission>
           </div>
           <div className="min-h-0 min-w-0 flex-1">
             <CustomTable
