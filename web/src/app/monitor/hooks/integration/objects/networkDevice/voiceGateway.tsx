@@ -67,7 +67,8 @@ export const useVoiceGatewayConfig = () => {
       'VoiceGateway Zenitel SNMP': 'snmp_zenitel',
       'VoiceGateway MetaSwitch SNMP': 'snmp_metaswitch',
       'VoiceGateway Sangoma Vega SNMP': 'snmp_sangoma',
-      'VoiceGateway AddPac SNMP': 'snmp_addpac'
+      'VoiceGateway AddPac SNMP': 'snmp_addpac',
+      'VoiceGateway Dialogic SNMP': 'snmp_dialogic'
     }
   };
 };
