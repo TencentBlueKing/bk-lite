@@ -87,7 +87,7 @@
     # ---- Aruba CX fans (arubaWiredFanTable, PEN 47196) ----
     # arubaWiredFanName …11.5.1.1.4；arubaWiredFanRPM …11.5.1.1.8（Integer32 RPM，−1 无回读）；
     # arubaWiredFanStateEnum …11.5.1.1.10：unknown(1)/empty(2)/uninitialized(3)/ok(4)/fault(5)。
-    # 归一：empty(2)/ok(4)→1；unknown(1)/uninitialized(3)/fault(5)→2。
+    # 归一：empty(2)/ok(4)→1；uninitialized(3)/fault(5)→2；unknown(1)→3。
     [[inputs.snmp.table]]
         name = "device_fan"
         inherit_tags = ["source"]
@@ -103,7 +103,7 @@
         name = "state"
     # ---- Aruba CX power supplies (arubaWiredPowerSupplyTable) ----
     # arubaWiredPSUProductName …11.2.1.1.5 作 descr；arubaWiredPSUStateEnum …11.2.1.1.11。
-    # 归一：ok(1)/empty(12)→1；unknown(8)/init(11)/fault* 及其余 2–17→2。
+    # 归一：ok(1)/empty(12)→1；unknown(8)→3；faultAbsent(2)/init(11)/fault* 及其余→2。
     [[inputs.snmp.table]]
         name = "device_psu"
         inherit_tags = ["source"]
@@ -163,9 +163,11 @@ def apply(metric):
         if st == None:
             if "state" in f:
                 f.pop("state")
+        elif st == 1:
+            f["state"] = 3
         elif st == 2 or st == 4:
             f["state"] = 1
-        elif st >= 1 and st <= 5:
+        elif st >= 3 and st <= 5:
             f["state"] = 2
         else:
             f.pop("state")
@@ -184,6 +186,8 @@ def apply(metric):
                 f.pop("state")
         elif st == 1 or st == 12:
             f["state"] = 1
+        elif st == 8:
+            f["state"] = 3
         elif st >= 2 and st <= 17:
             f["state"] = 2
         else:

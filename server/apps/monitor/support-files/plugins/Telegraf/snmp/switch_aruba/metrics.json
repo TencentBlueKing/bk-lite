@@ -79,7 +79,7 @@
       "query": "device_fan_state{instance_type='switch', __$labels__}",
       "display_name": "Fan Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "dimensions": [
         {
           "name": "descr",
@@ -89,7 +89,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the operational state of each Aruba cooling fan, normalized to the unified convention where 1 means normal and any other value indicates an abnormal/fault state. A non-normal state indicates a cooling fault that can quickly lead to overheating and should be investigated immediately."
+      "description": "This metric reports the operational state of each Aruba cooling fan (arubaWiredFanStateEnum), normalized to 1 = normal (empty/ok), 2 = fault (uninitialized/fault), 3 = unknown (grey, does not alert). Only value 2 is treated as a cooling fault."
     },
     {
       "metric_group": "Hardware Status",
@@ -97,7 +97,7 @@
       "query": "device_psu_state{instance_type='switch', __$labels__}",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "dimensions": [
         {
           "name": "descr",
@@ -107,7 +107,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric reports the operational state of each Aruba power supply unit, normalized to the unified convention where 1 means normal and any other value indicates an abnormal/fault state. A non-normal state signals a power redundancy or hardware fault and must be remediated promptly."
+      "description": "This metric reports the operational state of each Aruba power supply unit (arubaWiredPSUStateEnum), normalized to 1 = normal (ok/empty), 2 = fault (including faultAbsent), 3 = unknown (grey, does not alert). Empty slots map to 1 and do not alert. Only value 2 is treated as a power-supply fault."
     },
     {
       "metric_group": "Hardware Status",
