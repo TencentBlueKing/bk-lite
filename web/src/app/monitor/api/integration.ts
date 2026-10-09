@@ -21,7 +21,13 @@ const useIntegrationApi = () => {
   return useMemo(
     () => ({
       getPolicyGroups: async (
-        params: { monitor_object_id?: React.Key; create_default?: boolean } = {}
+        params: {
+          monitor_object_id?: React.Key;
+          create_default?: boolean;
+          name?: string;
+          page?: number;
+          page_size?: number;
+        } = {}
       ) => {
         const { create_default, ...rest } = params;
         return await get(`/monitor/api/policy_group/`, {
@@ -75,6 +81,9 @@ const useIntegrationApi = () => {
         return await post(`/monitor/api/policy_group/delete_group/`, {
           group_id: groupId,
         });
+      },
+      createPolicyGroup: async (payload: { name: string; template_ids: number[] }) => {
+        return await post(`/monitor/api/policy_group/create_from_templates/`, payload);
       },
       createStandalonePolicy: async (instanceId: string, templateId: number) => {
         return await post(`/monitor/api/policy_group/create_standalone/`, {

@@ -17,6 +17,7 @@ from apps.monitor.models import (
     PolicyTemplate,
 )
 from apps.monitor.services.policy_group import PolicyGroupService
+from apps.monitor.utils.pagination import parse_page_params
 
 
 def _operator(scope):
@@ -67,6 +68,17 @@ def _serialize_group(group, default_id, metric_names=None):
     }
 
 
+def _serialize_groups(groups, default_id):
+    policies = [rule.policy for group in groups for rule in group.rules.all()]
+    metric_names = PolicyGroupService.metric_names_for_policies(policies)
+    data = []
+    for group in groups:
+        for rule in group.rules.all():
+            PolicyGroupService.ensure_scan_task(rule.policy)
+        data.append(_serialize_group(group, default_id, metric_names))
+    return data
+
+
 def _legacy_policies(instance):
     found = []
     policies = MonitorPolicy.objects.filter(monitor_object_id=instance.monitor_object_id, group_rule__isnull=True).only("id", "name", "enable", "source")
@@ -93,19 +105,21 @@ class PolicyGroupViewSet(viewsets.ViewSet):
         )
         if object_id not in (None, ""):
             queryset = queryset.filter(monitor_object_id=object_id)
+        name = str(request.query_params.get("name") or "").strip()
+        if name:
+            queryset = queryset.filter(name__icontains=name)
+        queryset = queryset.order_by("-id")
         default_id = None
         if object_id not in (None, ""):
             pointer = PolicyGroupDefault.objects.filter(organization=organization, monitor_object_id=object_id).first()
             default_id = pointer.policy_group_id if pointer else None
-        groups = list(queryset.order_by("id"))
-        policies = [rule.policy for group in groups for rule in group.rules.all()]
-        metric_names = PolicyGroupService.metric_names_for_policies(policies)
-        data = []
-        for group in groups:
-            for rule in group.rules.all():
-                PolicyGroupService.ensure_scan_task(rule.policy)
-            data.append(_serialize_group(group, default_id, metric_names))
-        return WebUtils.response_success(data)
+        if request.query_params.get("page") not in (None, ""):
+            page, page_size = parse_page_params(request.GET, default_page=1, default_page_size=20)
+            count = queryset.count()
+            start = (page - 1) * page_size
+            groups = list(queryset[start : start + page_size])
+            return WebUtils.response_success({"count": count, "items": _serialize_groups(groups, default_id)})
+        return WebUtils.response_success(_serialize_groups(list(queryset), default_id))
 
     @action(methods=["post"], detail=False, url_path="create_from_templates")
     @HasPermission("strategy_list-Edit")

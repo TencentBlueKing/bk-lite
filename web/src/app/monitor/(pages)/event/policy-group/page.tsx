@@ -1,14 +1,17 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Button, Drawer, Input, Modal, Popconfirm, Select, Spin, Tag, message } from 'antd';
+import { Button, Checkbox, Drawer, Input, Modal, Popconfirm, Select, Spin, Tag, message } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
 import { cloneDeep } from 'lodash';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
+import useEventApi from '@/app/monitor/api/event';
 import { useTranslation } from '@/utils/i18n';
-import { ColumnItem, ObjectItem, TableDataItem, TreeItem, UserItem } from '@/app/monitor/types';
+import { ColumnItem, ObjectItem, Pagination, TableDataItem, TreeItem, UserItem } from '@/app/monitor/types';
+import { findLabelById } from '@/app/monitor/utils/common';
 import CustomTable from '@/components/custom-table';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
@@ -35,6 +38,12 @@ interface PolicyGroupRow {
   rules: PolicyGroupRule[];
 }
 
+interface TemplateOption {
+  id: number;
+  name: string;
+  pluginName: string;
+}
+
 const MEMBER_STATE: Record<string, string> = {
   member: '在组',
   declined: '不自动入组',
@@ -54,7 +63,9 @@ const PolicyGroupPage: React.FC = () => {
     copyPolicyGroup,
     setDefaultPolicyGroup,
     deletePolicyGroup,
+    createPolicyGroup,
   } = useIntegrationApi();
+  const { getPolicyTemplate } = useEventApi();
   const searchParams = useSearchParams();
   const { syncObjectId } = useMonitorObjectQuery();
   const users: UserItem[] = useCommon()?.userList || [];
@@ -63,7 +74,21 @@ const PolicyGroupPage: React.FC = () => {
   const [selectedKey, setSelectedKey] = useState('');
   const [objectId, setObjectId] = useState<React.Key>('');
   const [groups, setGroups] = useState<PolicyGroupRow[]>([]);
+  const [switchGroups, setSwitchGroups] = useState<PolicyGroupRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [pagination, setPagination] = useState<Pagination>({
+    current: 1,
+    total: 0,
+    pageSize: 20,
+  });
+  const [searchText, setSearchText] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createName, setCreateName] = useState('');
+  const [createSaving, setCreateSaving] = useState(false);
+  const [templateLoading, setTemplateLoading] = useState(false);
+  const [templateOptions, setTemplateOptions] = useState<TemplateOption[]>([]);
+  const [selectedTemplateIds, setSelectedTemplateIds] = useState<number[]>([]);
   const [memberGroup, setMemberGroup] = useState<PolicyGroupRow | null>(null);
   const [members, setMembers] = useState<TableDataItem[]>([]);
   const [memberLoading, setMemberLoading] = useState(false);
@@ -76,11 +101,29 @@ const PolicyGroupPage: React.FC = () => {
   const [copySource, setCopySource] = useState<PolicyGroupRow | null>(null);
   const [copyName, setCopyName] = useState('');
 
-  const loadGroups = async (id: React.Key) => {
+  const loadGroups = async (
+    id: React.Key,
+    options?: { page?: number; pageSize?: number; name?: string }
+  ) => {
+    const page = options?.page ?? pagination.current;
+    const pageSize = options?.pageSize ?? pagination.pageSize;
+    const name = options?.name ?? appliedSearch;
     setLoading(true);
     try {
-      const data = await getPolicyGroups({ monitor_object_id: id });
-      setGroups(Array.isArray(data) ? data : []);
+      const data = await getPolicyGroups({
+        monitor_object_id: id,
+        name: name || undefined,
+        page,
+        page_size: pageSize,
+      });
+      const items = Array.isArray(data) ? data : data?.items || [];
+      const total = Array.isArray(data) ? items.length : Number(data?.count || 0);
+      if (page > 1 && items.length === 0 && total > 0) {
+        setPagination((prev) => ({ ...prev, current: page - 1, total }));
+        return;
+      }
+      setGroups(items);
+      setPagination((prev) => ({ ...prev, current: page, pageSize, total }));
     } finally {
       setLoading(false);
     }
@@ -119,18 +162,20 @@ const PolicyGroupPage: React.FC = () => {
   useEffect(() => {
     if (!objectId) return;
     void loadGroups(objectId);
-  }, [objectId]);
+  }, [objectId, pagination.current, pagination.pageSize, appliedSearch]);
 
   const openMembers = async (group: PolicyGroupRow) => {
     setMemberGroup(group);
     setMemberLoading(true);
     setCandidateIds([]);
     try {
-      const [memberRows, instancePage] = await Promise.all([
+      const [memberRows, instancePage, allGroups] = await Promise.all([
         getPolicyGroupMembers(group.id),
         getInstanceList(objectId, { page: 1, page_size: 100 }),
+        getPolicyGroups({ monitor_object_id: objectId, create_default: false }),
       ]);
       setMembers(Array.isArray(memberRows) ? memberRows : []);
+      setSwitchGroups(Array.isArray(allGroups) ? allGroups : []);
       const results = instancePage?.results || instancePage?.items || [];
       setCandidates(
         results.map((item: { id?: string; instance_id?: string; name?: string }) => ({
@@ -142,6 +187,58 @@ const PolicyGroupPage: React.FC = () => {
       setMemberLoading(false);
     }
   };
+
+  const reloadFirstPage = async () => {
+    setSearchText('');
+    const unchanged = pagination.current === 1 && appliedSearch === '';
+    if (appliedSearch) setAppliedSearch('');
+    if (pagination.current !== 1) {
+      setPagination((prev) => ({ ...prev, current: 1 }));
+    }
+    if (unchanged && objectId) await loadGroups(objectId, { page: 1, name: '' });
+  };
+
+  const openCreate = async () => {
+    setCreateOpen(true);
+    setCreateName('新建策略组');
+    setSelectedTemplateIds([]);
+    setTemplateLoading(true);
+    try {
+      const monitorName = findLabelById(treeData, String(objectId));
+      const data = monitorName ? await getPolicyTemplate({ monitor_object_name: monitorName }) : [];
+      const options = (Array.isArray(data) ? data : [])
+        .map((item: { id?: number; name?: string; plugin_display_name?: string; plugin_name?: string }) => ({
+          id: Number(item.id),
+          name: item.name || '--',
+          pluginName: item.plugin_display_name || item.plugin_name || '其他',
+        }))
+        .filter((item: TemplateOption) => Number.isFinite(item.id));
+      setTemplateOptions(options);
+    } finally {
+      setTemplateLoading(false);
+    }
+  };
+
+  const submitCreate = async () => {
+    const name = createName.trim();
+    if (!name || selectedTemplateIds.length === 0) return;
+    setCreateSaving(true);
+    try {
+      await createPolicyGroup({ name, template_ids: selectedTemplateIds });
+      message.success('已创建策略组。实例尚未加入');
+      setCreateOpen(false);
+      await reloadFirstPage();
+    } finally {
+      setCreateSaving(false);
+    }
+  };
+
+  const templateGroups = templateOptions.reduce((acc, item) => {
+    const found = acc.find((group) => group.name === item.pluginName);
+    if (found) found.items.push(item);
+    else acc.push({ name: item.pluginName, items: [item] });
+    return acc;
+  }, [] as Array<{ name: string; items: TemplateOption[] }>);
 
   const columns: ColumnItem[] = [
     { title: t('common.name'), dataIndex: 'name', key: 'name' },
@@ -208,7 +305,10 @@ const PolicyGroupPage: React.FC = () => {
   ];
 
   return (
-    <Spin spinning={treeLoading} wrapperClassName="flex h-full min-h-0 w-full flex-1 flex-col">
+    <Spin
+      spinning={treeLoading}
+      wrapperClassName="flex h-full min-h-0 w-full min-w-0 max-w-full flex-1 flex-col [&>.ant-spin-container]:flex [&>.ant-spin-container]:h-full [&>.ant-spin-container]:min-h-0 [&>.ant-spin-container]:flex-1 [&>.ant-spin-container]:flex-col"
+    >
       <div className={assetStyle.asset}>
         <ResizableSidebar collapseStorageKey="monitor.event.policyGroup.sidebarCollapsed">
           <div className={assetStyle.assetTree}>
@@ -219,12 +319,54 @@ const PolicyGroupPage: React.FC = () => {
               onNodeSelect={(key) => {
                 setObjectId(key);
                 syncObjectId(key);
+                setPagination((prev) => (prev.current === 1 ? prev : { ...prev, current: 1 }));
               }}
             />
           </div>
         </ResizableSidebar>
         <div className={assetStyle.table}>
-          <CustomTable rowKey="id" columns={columns} dataSource={groups} loading={loading} pagination={false} />
+          <div className={assetStyle.search}>
+            <div className="min-w-0 flex-1">
+              <Input
+                className="w-full max-w-[320px]"
+                placeholder={t('common.searchPlaceHolder')}
+                allowClear
+                value={searchText}
+                onPressEnter={() => {
+                  setAppliedSearch(searchText.trim());
+                  setPagination((prev) => (prev.current === 1 ? prev : { ...prev, current: 1 }));
+                }}
+                onClear={() => {
+                  setSearchText('');
+                  setAppliedSearch('');
+                  setPagination((prev) => (prev.current === 1 ? prev : { ...prev, current: 1 }));
+                }}
+                onChange={(event) => setSearchText(event.target.value)}
+              />
+            </div>
+            <Permission requiredPermissions={['Edit']}>
+              <Button type="primary" icon={<PlusOutlined />} disabled={!objectId} onClick={() => void openCreate()}>
+                {t('common.add')}
+              </Button>
+            </Permission>
+          </div>
+          <div className="min-h-0 min-w-0 flex-1">
+            <CustomTable
+              rowKey="id"
+              columns={columns}
+              dataSource={groups}
+              loading={loading}
+              scroll={{ x: 'max-content' }}
+              pagination={pagination}
+              onChange={(next: Pagination) => {
+                setPagination((prev) => ({
+                  ...prev,
+                  current: next.pageSize !== prev.pageSize ? 1 : next.current,
+                  pageSize: next.pageSize || prev.pageSize,
+                }));
+              }}
+            />
+          </div>
         </div>
       </div>
       <Drawer title={memberGroup ? `${memberGroup.name} 的实例` : '实例'} open={Boolean(memberGroup)} width={720} onClose={() => setMemberGroup(null)}>
@@ -291,7 +433,7 @@ const PolicyGroupPage: React.FC = () => {
                   <Select
                     className="mr-2 w-[160px]"
                     placeholder="换到其他组"
-                    options={groups
+                    options={switchGroups
                       .filter((item) => item.id !== memberGroup?.id)
                       .map((item) => ({ value: item.id, label: item.name }))}
                     onChange={async (value) => {
@@ -346,6 +488,71 @@ const PolicyGroupPage: React.FC = () => {
             </Button>
           </div>
         ))}
+      </Modal>
+      <Modal
+        title="新建策略组"
+        open={createOpen}
+        confirmLoading={createSaving}
+        okText={t('common.confirm')}
+        cancelText={t('common.cancel')}
+        okButtonProps={{ disabled: !createName.trim() || selectedTemplateIds.length === 0 }}
+        onCancel={() => {
+          if (createSaving) return;
+          setCreateOpen(false);
+        }}
+        onOk={() => void submitCreate()}
+      >
+        <div className="mb-3">
+          <div className="mb-1">名称</div>
+          <Input maxLength={100} value={createName} onChange={(event) => setCreateName(event.target.value)} />
+        </div>
+        <div>
+          <div className="mb-1">策略模板</div>
+          <Spin spinning={templateLoading}>
+            <div className="max-h-[360px] overflow-y-auto">
+              {templateGroups.length === 0 && !templateLoading ? (
+                <span className="text-[var(--color-text-3)]">当前对象没有策略模板</span>
+              ) : (
+                templateGroups.map((group) => {
+                  const ids = group.items.map((item) => item.id);
+                  const selectedCount = ids.filter((id) => selectedTemplateIds.includes(id)).length;
+                  return (
+                    <div key={group.name} className="mb-3">
+                      <Checkbox
+                        checked={selectedCount === ids.length && ids.length > 0}
+                        indeterminate={selectedCount > 0 && selectedCount < ids.length}
+                        onChange={(event) => {
+                          setSelectedTemplateIds((prev) =>
+                            event.target.checked
+                              ? Array.from(new Set([...prev, ...ids]))
+                              : prev.filter((id) => !ids.includes(id))
+                          );
+                        }}
+                      >
+                        {group.name}
+                      </Checkbox>
+                      <div className="mt-1 flex flex-col gap-1 pl-6">
+                        {group.items.map((item) => (
+                          <Checkbox
+                            key={item.id}
+                            checked={selectedTemplateIds.includes(item.id)}
+                            onChange={(event) => {
+                              setSelectedTemplateIds((prev) =>
+                                event.target.checked ? [...prev, item.id] : prev.filter((id) => id !== item.id)
+                              );
+                            }}
+                          >
+                            {item.name}
+                          </Checkbox>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </Spin>
+        </div>
       </Modal>
       <Modal
         title="复制策略组"
