@@ -37,7 +37,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_cpu_usage",
-      "query": "snmp_device_cpu_usage{instance_type='loadbalance', __$labels__}",
+      "query": "device_cpu_usage{instance_type='loadbalance', __$labels__}",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -50,7 +50,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_memory_total",
-      "query": "snmp_device_memory_total{instance_type='loadbalance', __$labels__} * 1024",
+      "query": "device_memory_total{instance_type='loadbalance', __$labels__} * 1024",
       "display_name": "Total Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -63,7 +63,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_memory_used",
-      "query": "snmp_device_memory_used{instance_type='loadbalance', __$labels__} * 1024",
+      "query": "device_memory_used{instance_type='loadbalance', __$labels__} * 1024",
       "display_name": "Used Memory",
       "data_type": "Number",
       "unit": "bytes",
@@ -76,7 +76,7 @@
     {
       "metric_group": "Loadbalance",
       "name": "device_memory_usage",
-      "query": "100 * snmp_device_memory_used{instance_type='loadbalance', __$labels__} / snmp_device_memory_total{instance_type='loadbalance', __$labels__}",
+      "query": "100 * device_memory_used{instance_type='loadbalance', __$labels__} / device_memory_total{instance_type='loadbalance', __$labels__}",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -89,7 +89,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(snmp_device_temperature_celsius{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "query": "max(device_temperature_celsius{instance_type='loadbalance', __$labels__}) by (instance_id)",
       "display_name": "Device Temperature",
       "data_type": "Number",
       "unit": "celsius",

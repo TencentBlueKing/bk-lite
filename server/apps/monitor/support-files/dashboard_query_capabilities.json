@@ -4214,6 +4214,7 @@
     {
       "id": "dashboard:v1:aa39e9d2",
       "object_names": [
+        "Loadbalance",
         "Router"
       ],
       "template": "max(device_temperature_celsius{__$labels__}) by (instance_id)"
@@ -6120,7 +6121,6 @@
     {
       "id": "dashboard:v1:fe2e0d57",
       "object_names": [
-        "Loadbalance",
         "Switch"
       ],
       "template": "max(device_temperature_celsius{__$labels__}) by (instance_id) or max(snmp_device_temperature_celsius{__$labels__}) by (instance_id)"
