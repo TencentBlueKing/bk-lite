@@ -11,11 +11,10 @@ must not be modelled. The fan raw codes are 0=Normal / 1=Abnormal (note the
 inverted polarity vs Eltex's 1=OK), normalized via processors.enum so 0->1
 (healthy) and everything else ->2 (fault).
 
-  - device_cpu_usage: avg per instance across slots (sysCpuUsage, percent)
-  - device_memory_total/used: bytes; usage = sum(used)/sum(total)*100 (branch3)
-  - device_temperature_celsius: max per instance (group Temperature)
-  - device_fan_state: Enum normalized to 1=healthy/2=fault (group Hardware
-    Status), max per instance; policy alerts on state > 1
+  - device_cpu_usage: sysCpuUsage percent, per-slot (index dimension)
+  - device_memory_total/used: bytes; usage = used/total*100 (per-slot)
+  - device_temperature_celsius: sysTemperature, per-slot
+  - device_fan_state: Enum 1=healthy/2=fault; policy alerts on state > 1
   - interface_ifHCIn/OutOctets: byte-identical Cisco
 
 SNR reuses the shared Switch metric names + existing Temperature / Hardware
@@ -36,7 +35,6 @@ SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
 SNR_DIR = PLUGINS / "snmp" / "switch_snr"
 CISCO_DIR = PLUGINS / "snmp" / "switch_cisco"
-MIKROTIK_DIR = PLUGINS / "snmp" / "switch_mikrotik"
 LANGUAGE_DIR = SERVER_ROOT / "apps" / "monitor" / "language"
 WEB_ROOT = SERVER_ROOT.parents[0] / "web"
 
@@ -54,6 +52,11 @@ INTERFACE_METRICS = ("interface_ifHCInOctets", "interface_ifHCOutOctets")
 MEMORY_METRICS = ("device_memory_total", "device_memory_used", "device_memory_usage")
 ENUM_METRICS = ("device_fan_state",)
 ABSENT_METRICS = ("device_psu_state",)
+INDEX_DIMENSION = [{"name": "index", "description": "SNMP table row index"}]
+MEMORY_USAGE_QUERY = (
+    "device_memory_used{instance_type='switch', __$labels__} / "
+    "device_memory_total{instance_type='switch', __$labels__} * 100"
+)
 
 
 def _read_json(path):
@@ -68,11 +71,6 @@ def metrics():
 @pytest.fixture(scope="module")
 def cisco_metrics():
     return _read_json(CISCO_DIR / "metrics.json")
-
-
-@pytest.fixture(scope="module")
-def mikrotik_metrics():
-    return _read_json(MIKROTIK_DIR / "metrics.json")
 
 
 @pytest.fixture(scope="module")
@@ -159,14 +157,12 @@ def test_shared_metrics_match_cisco_group_and_unit(metrics, cisco_metrics):
 
 
 @pytest.mark.unit
-def test_cpu_is_per_slot_avg_aggregated_percent(metrics):
+def test_cpu_is_per_slot_percent(metrics):
     cpu = {m["name"]: m for m in metrics["metrics"]}["device_cpu_usage"]
     assert cpu["unit"] == "percent"
     assert cpu["metric_group"] == "CPU"
-    assert cpu["dimensions"] == []
-    q = cpu["query"].replace(" ", "")
-    assert q.startswith("avg(") and "by(instance_id)" in q, \
-        "SNR CPU is per-slot and must be averaged per instance"
+    assert cpu["dimensions"] == INDEX_DIMENSION
+    assert "device_cpu_usage{" in cpu["query"]
 
 
 @pytest.mark.unit
@@ -180,7 +176,7 @@ def test_interface_hc_metrics_match_cisco(metrics, cisco_metrics):
 
 
 # --------------------------------------------------------------------------- #
-# memory: total/used bytes, usage = branch3 (byte-identical mikrotik)
+# memory: total/used bytes, usage = used/total*100
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
 def test_memory_metrics_present(metrics):
@@ -195,28 +191,27 @@ def test_memory_total_and_used_are_bytes(metrics):
     for name in ("device_memory_total", "device_memory_used"):
         assert by[name]["unit"] == "bytes", f"{name} must be bytes"
         assert by[name]["metric_group"] == "Memory"
-        assert by[name]["dimensions"] == []
+        assert by[name]["dimensions"] == INDEX_DIMENSION
 
 
 @pytest.mark.unit
-def test_memory_usage_is_used_over_total_branch3(metrics, mikrotik_metrics):
+def test_memory_usage_is_used_over_total(metrics):
     ext = {m["name"]: m for m in metrics["metrics"]}["device_memory_usage"]
-    ref = {m["name"]: m for m in mikrotik_metrics["metrics"]}["device_memory_usage"]
     assert ext["unit"] == "percent"
-    assert ext["query"] == ref["query"], "memory_usage must match the branch3 used/total formula"
+    assert ext["query"] == MEMORY_USAGE_QUERY
+    assert ext["dimensions"] == INDEX_DIMENSION
 
 
 # --------------------------------------------------------------------------- #
 # Environment: temperature + fan, but NO PSU (NAG-MIB has no PSU object)
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
-def test_temperature_is_celsius_max_aggregated(metrics):
+def test_temperature_is_celsius_per_slot(metrics):
     t = {m["name"]: m for m in metrics["metrics"]}["device_temperature_celsius"]
     assert t["unit"] == "celsius"
     assert t["metric_group"] == "Temperature"
-    assert t["dimensions"] == []
-    q = t["query"].replace(" ", "")
-    assert q.startswith("max(") and "by(instance_id)" in q
+    assert t["dimensions"] == INDEX_DIMENSION
+    assert "device_temperature_celsius{" in t["query"]
 
 
 @pytest.mark.unit
@@ -224,12 +219,11 @@ def test_fan_is_normalized_enum(metrics):
     fan = {m["name"]: m for m in metrics["metrics"]}["device_fan_state"]
     assert fan["data_type"] == "Enum"
     assert fan["metric_group"] == "Hardware Status"
-    assert fan["dimensions"] == [], "aggregated fan metric must carry no dimension"
+    assert fan["dimensions"] == INDEX_DIMENSION
     opts = json.loads(fan["unit"])
     ids = sorted(o["id"] for o in opts)
     assert ids == [1, 2], f"fan enum must be normalized to 1=healthy/2=fault, got {ids}"
-    q = fan["query"].replace(" ", "")
-    assert q.startswith("max(") and "by(instance_id)" in q
+    assert "device_fan_state{" in fan["query"]
 
 
 @pytest.mark.unit
@@ -401,5 +395,5 @@ def test_shared_dashboard_no_brand_special_case():
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
 def test_passwords_use_template_vars_not_plaintext(toml_text):
-    for field in ("auth_password", "priv_password"):
-        assert f'{field} = "{{{{ {field} }}}}"' in toml_text, f"{field} must be templated"
+    assert 'auth_password = "${AUTH_PASSWORD__{{ config_id }}}"' in toml_text
+    assert 'priv_password = "${PRIV_PASSWORD__{{ config_id }}}"' in toml_text

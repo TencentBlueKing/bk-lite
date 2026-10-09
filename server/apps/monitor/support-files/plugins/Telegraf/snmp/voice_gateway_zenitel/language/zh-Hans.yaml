@@ -29,7 +29,11 @@ monitor_object_metric:
       desc: 语音网关设备温度，单位为摄氏度。用于识别散热异常、风道堵塞或过热风险。
     device_psu_state:
       name: 电源状态
-      desc: 语音网关电源状态，归一后 1 表示正常，2 表示异常。
+      desc: 语音网关电源状态，归一后 1 表示已连接（正常），2 表示未连接（异常），3 表示未知（灰，不告警）。
+      enum:
+        "1": 正常
+        "2": 异常
+        "3": 未知
 monitor_object_metric_group:
   VoiceGateway:
     Base: 基础

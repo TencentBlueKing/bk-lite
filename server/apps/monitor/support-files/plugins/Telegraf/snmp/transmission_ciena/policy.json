@@ -55,14 +55,14 @@
     {
       "name": "Ciena传输设备风扇异常",
       "alert_name": "传输设备${resource_name} 风扇状态异常",
-      "description": "监控 Ciena CES/SAOS 机箱风扇状态，当风扇转速告警或状态未知时触发告警；未安装槽位记为正常，不触发告警。",
+      "description": "监控 Ciena CES/SAOS 机箱风扇状态（1=正常或未安装，2=转速告警，3=未知），仅转速告警（=2）时触发告警；未安装槽位记为正常，未知不告警。",
       "metric_name": "device_fan_state",
       "algorithm": "last_over_time",
       "threshold": [
         {
           "level": "critical",
-          "value": 1,
-          "method": ">"
+          "value": 2,
+          "method": "="
         }
       ],
       "group_algorithm": "max"
@@ -76,8 +76,8 @@
       "threshold": [
         {
           "level": "critical",
-          "value": 1,
-          "method": ">"
+          "value": 2,
+          "method": "="
         }
       ],
       "group_algorithm": "max"
