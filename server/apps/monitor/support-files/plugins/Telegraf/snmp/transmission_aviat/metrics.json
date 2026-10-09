@@ -1,0 +1,146 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_aviat",
+  "plugin": "Transmission Aviat SNMP",
+  "plugin_desc": "SNMP monitoring template for Aviat Networks microwave radios (enterprise PEN 2509, AVIAT-RXPERFORMANCE-MIB). Besides standard IF-MIB interface traffic and uptime, it reports per-radio receive signal level (current, mean, maximum and minimum).",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='transmission', collect_type='snmp_aviat'}) by (instance_id)",
+  "name": "Transmission",
+  "icon": "mm-transmission_传输设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='transmission'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "aviat_rx_rsl_current_dbm",
+    "aviat_rx_rsl_mean_dbm",
+    "aviat_rx_rsl_max_dbm",
+    "aviat_rx_rsl_min_dbm"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Radio",
+      "name": "aviat_rx_rsl_current_dbm",
+      "query": "aviat_rx_rsl_current_dbm{instance_type='transmission', __$labels__}",
+      "display_name": "Rx RSL Current (dBm)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "name",
+          "description": "Radio / entity name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current receive signal level of an Aviat microwave radio in dBm, from aviatRxPerformRslReadingCurrent. The device reports 0.1 dBm steps; the stored value is divided by 10."
+    },
+    {
+      "metric_group": "Radio",
+      "name": "aviat_rx_rsl_mean_dbm",
+      "query": "aviat_rx_rsl_mean_dbm{instance_type='transmission', __$labels__}",
+      "display_name": "Rx RSL Mean (dBm)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "name",
+          "description": "Radio / entity name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Mean receive signal level of an Aviat microwave radio in dBm, from aviatRxPerformRslReadingMean. The device reports 0.1 dBm steps; the stored value is divided by 10."
+    },
+    {
+      "metric_group": "Radio",
+      "name": "aviat_rx_rsl_max_dbm",
+      "query": "aviat_rx_rsl_max_dbm{instance_type='transmission', __$labels__}",
+      "display_name": "Rx RSL Maximum (dBm)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "name",
+          "description": "Radio / entity name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Maximum receive signal level of an Aviat microwave radio in dBm, from aviatRxPerformRslReadingMax. The device reports 0.1 dBm steps; the stored value is divided by 10."
+    },
+    {
+      "metric_group": "Radio",
+      "name": "aviat_rx_rsl_min_dbm",
+      "query": "aviat_rx_rsl_min_dbm{instance_type='transmission', __$labels__}",
+      "display_name": "Rx RSL Minimum (dBm)",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "name",
+          "description": "Radio / entity name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Minimum receive signal level of an Aviat microwave radio in dBm, from aviatRxPerformRslReadingMin. The device reports 0.1 dBm steps; the stored value is divided by 10."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    }
+  ]
+}

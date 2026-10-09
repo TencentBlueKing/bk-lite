@@ -1,0 +1,96 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission WISI SNMP",
+  "templates": [
+    {
+      "name": "WISI传输设备机箱温度过高",
+      "alert_name": "传输设备${resource_name} 温度传感器 ${metric__gtTempName} 温度过高",
+      "description": "监控 WISI Tangram 机箱温度传感器读数，当持续高于阈值时触发告警，提示可能存在散热异常、环境温度过高或设备过载。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "WISI传输设备电源温度过高",
+      "alert_name": "传输设备${resource_name} 电源 ${metric__gtPSUName} 温度过高",
+      "description": "监控 WISI Tangram 电源模块温度，当持续高于阈值时触发告警，提示电源散热异常或过载。",
+      "metric_name": "psu_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "WISI传输设备风扇转速过低",
+      "alert_name": "传输设备${resource_name} 风扇 ${metric__gtFanName} 转速过低",
+      "description": "监控 WISI Tangram 风扇转速，当转速低于 500 RPM 时触发告警，提示风扇卡滞、停转或转速过低，可能导致机箱过热。",
+      "metric_name": "device_fan_speed",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 200,
+          "method": "<"
+        },
+        {
+          "level": "warning",
+          "value": 500,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "WISI传输设备电源电压过低",
+      "alert_name": "传输设备${resource_name} 电源 ${metric__gtPSUName} ${metric__voltage_type} 电压过低",
+      "description": "监控 WISI Tangram 电源内/外电压，当电压过低时触发告警，提示供电异常或电源模块故障。",
+      "metric_name": "device_voltage_volts",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 8,
+          "method": "<"
+        },
+        {
+          "level": "warning",
+          "value": 10,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

@@ -37,10 +37,11 @@
         name = "sysObjectID"
         is_tag = true
 # @bk_include_ifmib_table
-    # Primary live metering subtree is GUDEADS-PDU8310-MIB (PEN 28507.27),
-    # selected by sysObjectID gadsPDU8310 and a responding pdu8310PowerTable.
-    # Do not invent CPU% or memory. Do not mix-bind other GUDEADS product
-    # branches such as 28507.64 even when the table shape looks similar.
+    # Live metering subtrees: GUDEADS-PDU8310-MIB (PEN 28507.27, gadsPDU8310)
+    # and GUDEADS-EPC8221-MIB (PEN 28507.56, gadsEPC8221). A device answers
+    # only one product branch; sysObjectID distinguishes them. Do not invent
+    # CPU% or memory. Do not mix-bind other GUDEADS product branches such as
+    # 28507.64 even when the table shape looks similar.
     # pdu8310PowerActive, Watts.
     [[inputs.snmp.table]]
         name = "pdu_active_power"
@@ -68,6 +69,34 @@
         name = "current_amps"
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.28507.27.1.5.1.2.1.6"
+        name = "voltage_volts"
+    # epc8221PowerActive, Watts. Same measurement/field names as PDU8310.
+    [[inputs.snmp.table]]
+        name = "pdu_active_power"
+        inherit_tags = ["source", "sysObjectID"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.28507.56.1.5.1.2.1.1"
+        name = "channel"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.28507.56.1.5.1.2.1.4"
+        name = "watts"
+    # epc8221Current (mA, /1000 in query -> A) plus epc8221Voltage (V)
+    # from the same epc8221PowerTable parent.
+    [[inputs.snmp.table]]
+        name = "pdu_channel"
+        inherit_tags = ["source", "sysObjectID"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.28507.56.1.5.1.2.1.1"
+        name = "channel"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.28507.56.1.5.1.2.1.5"
+        name = "current_amps"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.28507.56.1.5.1.2.1.6"
         name = "voltage_volts"
     # Fallback for old EPC8 without metering: epc8PortState only (0=off/1=on).
     [[inputs.snmp.table]]

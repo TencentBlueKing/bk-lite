@@ -1,0 +1,53 @@
+VoiceGateway Snom SNMP:
+  name: Snom (Telegraf)
+  desc: SNMP monitoring template for Snom SIP desk and DECT phones (private tree 1.3.6.1.2.1.7526, GET
+    only). It reports uptime, CPU load average, free memory, SIP registration count, firmware, and interface
+    traffic.
+monitor_object:
+  VoiceGateway: VoiceGateway
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  VoiceGateway:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
+        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
+        or failures.
+    device_cpu_load1:
+      name: CPU Load Average (1 min)
+      desc: 1-minute CPU load average of the phone, parsed from the load-average text reported by the
+        device. A value persistently above the CPU core count indicates the phone is overloaded.
+    device_cpu_load5:
+      name: CPU Load Average (5 min)
+      desc: 5-minute CPU load average of the phone, reported when the device returns three load-average
+        values.
+    device_cpu_load15:
+      name: CPU Load Average (15 min)
+      desc: 15-minute CPU load average of the phone, reported when the device returns three load-average
+        values.
+    device_memory_free:
+      name: Memory Free
+      desc: Free memory reported by the phone as a raw value; the vendor does not document the unit. A
+        steadily falling value can indicate a memory leak.
+    sip_registration_count:
+      name: SIP Registration Count
+      desc: Number of SIP registrations on the phone. A value of 0 means the phone cannot register to
+        the call server and cannot make or receive calls.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured
+        in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in
+        bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifOutOctets on high-speed ports, keeping the rate accurate.
+monitor_object_metric_group:
+  VoiceGateway:
+    Base: Base
+    Traffic: Traffic
+    CPU: CPU
+    Memory: Memory
+    Voice: Voice

@@ -20,7 +20,6 @@ from apps.opspilot.views.chat_flow import (
     execute_chat_flow_enterprise_wechat_aibot,
     execute_chat_flow_wechat,
     execute_chat_flow_wechat_official,
-    interrupt_chat_flow_execution,
     extract_api_token,
     format_knowledge_sources,
     get_bot_detail,
@@ -28,6 +27,7 @@ from apps.opspilot.views.chat_flow import (
     get_loader,
     get_skill_and_params,
     get_skill_execute_result,
+    interrupt_chat_flow_execution,
     invoke_chat,
     openai_completions,
     parse_json_body,
@@ -51,6 +51,7 @@ from apps.opspilot.views.skill_channel import (
     list_skill_channel_conversations,
     list_skill_channel_session_messages,
     list_web_chat_skill_channels,
+    save_platform_webchat_width,
 )
 
 __all__ = [
@@ -91,6 +92,7 @@ __all__ = [
     "invoke_chat",
     "interrupt_chat_flow_execution",
     "list_platform_skill_channels",
+    "save_platform_webchat_width",
     "list_published_web_skills",
     "list_skill_channel_conversations",
     "list_skill_channel_session_messages",

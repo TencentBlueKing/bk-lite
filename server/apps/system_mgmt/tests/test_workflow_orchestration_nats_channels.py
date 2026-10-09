@@ -131,6 +131,6 @@ def test_send_nats_message_rejects_inactive_or_cross_team_managed_channel(monkey
     inactive = send_nats_message(SimpleNamespace(team=[7], config={**base_config, "active": False}), {"team": 7})
     cross_team = send_nats_message(SimpleNamespace(team=[7], config={**base_config, "active": True}), {"team": 8})
 
-    assert inactive == {"result": False, "message": "编排流程已停用"}
+    assert inactive == {"result": False, "message": "The orchestration workflow is inactive"}
     assert cross_team["result"] is False
     assert "organization scope" in cross_team["message"]

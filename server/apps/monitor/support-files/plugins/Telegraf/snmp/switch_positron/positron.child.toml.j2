@@ -1,0 +1,144 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_positron"
+        config_type = "positron"
+        brand = "positron"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- GAM-SYSUTIL-MIB（PEN 20095 · gamMgmt …20095.2001 · gamSysutilMib …2001.24）----
+    # CPU 10 秒均值 gamSysutilStatusCpuLoadAverage10sec …24.1.3.1.3.0，顶层 field 带 .0 → measurement snmp。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.20095.2001.24.1.3.1.3.0"
+        name = "device_cpu_usage"
+    # ---- 温度表 …24.1.3.7.1：INDEX SensorId；.2 SensorsName 作 tag sensor_name；.3 TemperatureX10，starlark ÷10 为 ℃。table.field 不带 .0 ----
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.20095.2001.24.1.3.7.1.2"
+        name = "sensor_name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.20095.2001.24.1.3.7.1.3"
+        name = "celsius"
+    # ---- 风扇表 …24.1.3.8.1：INDEX FanId；.2 FanRPM。无名称列，保留 index tag。----
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.20095.2001.24.1.3.8.1.2"
+        name = "speed"
+    # ---- 电源表 …24.1.3.2.1：INDEX {SwitchId, PsuId}，保留两段 index（如 1.2）；.3 State；.4 Description 作 tag。----
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.20095.2001.24.1.3.2.1.4"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.20095.2001.24.1.3.2.1.3"
+        name = "state"
+# ---- 内存：SYSUTIL 无内存池叶 → N/A 不采。----
+# ---- 标量过滤：CPU 超出 0..100 丢弃。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    cpu = f.get("device_cpu_usage")
+    if cpu != None:
+        if cpu < 0 or cpu > 100:
+            f.pop("device_cpu_usage")
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["positron"]
+# ---- 温度：先丢哨兵，再 ÷10 并四舍五入到 0.1 ℃；超出 -40..125 丢弃整行。----
+[[processors.starlark]]
+    namepass = ["device_temperature"]
+    source = '''
+def _round10(x):
+    scaled = x * 10.0
+    if scaled >= 0:
+        return float(int(scaled + 0.5)) / 10.0
+    return float(int(scaled - 0.5)) / 10.0
+
+def apply(metric):
+    raw = metric.fields.get("celsius")
+    if raw == None:
+        return None
+    if raw == -1 or raw == 32767 or raw == 65534 or raw == 65535 or raw == 2147483647 or raw == -2147483648 or raw == 4294967295:
+        return None
+    value = _round10(float(raw) / 10.0)
+    if value < -40 or value > 125:
+        return None
+    metric.fields["celsius"] = value
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["positron"]
+# ---- 风扇转速：0 RPM 保留；小于 0 或大于 30000 以及哨兵丢弃整行。----
+[[processors.starlark]]
+    namepass = ["device_fan"]
+    source = '''
+def apply(metric):
+    rpm = metric.fields.get("speed")
+    if rpm == None:
+        return None
+    if rpm == -1 or rpm == 32767 or rpm == 65534 or rpm == 65535 or rpm == 2147483647 or rpm == -2147483648 or rpm == 4294967295:
+        return None
+    if rpm < 0 or rpm > 30000:
+        return None
+    metric.fields["speed"] = int(rpm)
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["positron"]
+# ---- 电源：active(0)/standby(1)/notPresent(2 空槽) → 1（正常）；其余丢弃，不臆造故障值。保留 index，避免两路电源互相覆盖。----
+[[processors.starlark]]
+    namepass = ["device_psu"]
+    source = '''
+def apply(metric):
+    raw = metric.fields.get("state")
+    if raw == None:
+        return None
+    code = int(raw)
+    if code == 0 or code == 1 or code == 2:
+        metric.fields["state"] = 1
+        return metric
+    return None
+'''
+    [processors.starlark.tagpass]
+        brand = ["positron"]

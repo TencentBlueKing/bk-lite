@@ -156,6 +156,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const [value, setValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [imageList, setImageList] = useState<UploadFile[]>([]);
+  const [markdownPreview, setMarkdownPreview] = useState<{ src: string; alt: string } | null>(null);
   const [messages, setMessages] = useState<CustomChatMessage[]>(
     initialMessages.length ? initialMessages : []
   );
@@ -458,6 +459,25 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     []
   );
 
+  const handleMarkdownBodyClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const target = event.target;
+      if (target instanceof HTMLImageElement || (target instanceof HTMLElement && target.tagName === 'IMG')) {
+        const image = target as HTMLImageElement;
+        const src = image.currentSrc || image.getAttribute('src') || image.src;
+        if (src) {
+          event.preventDefault();
+          event.stopPropagation();
+          setMarkdownPreview({ src, alt: image.alt || '' });
+          return;
+        }
+      }
+      handleToolCallClick(event);
+      handleSuggestionClick(event);
+    },
+    [handleSuggestionClick, handleToolCallClick]
+  );
+
   const handleFullscreenToggle = () => setIsFullscreen(!isFullscreen);
 
   const handleClearMessages = () => {
@@ -661,10 +681,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               <div
                 dangerouslySetInnerHTML={{ __html: html }}
                 className={styles.markdownBody}
-                onClick={e => {
-                  handleToolCallClick(e);
-                  handleSuggestionClick(e);
-                }}
+                onClick={handleMarkdownBodyClick}
               />
             ) : null}
             {Array.isArray(configDiffReports) && configDiffReports.length > 0 && (
@@ -749,10 +766,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               key={`seg-${i}`}
               dangerouslySetInnerHTML={{ __html: segHtml }}
               className={styles.markdownBody}
-              onClick={e => {
-                handleToolCallClick(e);
-                handleSuggestionClick(e);
-              }}
+              onClick={handleMarkdownBodyClick}
             />
           );
         }
@@ -1120,6 +1134,21 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
   return (
     <div className={`rounded-lg h-full ${isFullscreen ? styles.fullscreen : ''}`}>
+      {markdownPreview ? <span data-testid="markdown-preview-open" hidden>{markdownPreview.src}</span> : null}
+      <Image
+        alt={markdownPreview?.alt || ''}
+        src={markdownPreview?.src}
+        wrapperStyle={{ display: 'none' }}
+        preview={{
+          visible: Boolean(markdownPreview),
+          src: markdownPreview?.src,
+          onVisibleChange: (visible) => {
+            if (!visible) setMarkdownPreview(null);
+          },
+          getContainer: () => document.body,
+          zIndex: 10000,
+        }}
+      />
       {mode === 'chat' && showHeader && (
         <div className="flex justify-between items-center mb-3">
           <h2 className="text-base font-semibold">{t('chat.test')}</h2>

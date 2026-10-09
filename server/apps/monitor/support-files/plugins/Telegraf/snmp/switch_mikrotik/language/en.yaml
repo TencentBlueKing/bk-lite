@@ -1,6 +1,6 @@
 Switch MikroTik SNMP:
   name: MikroTik (Telegraf)
-  desc: "SNMP monitoring template for MikroTik switch. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic, for RouterOS (enterprise PEN 14988)."
+  desc: "SNMP monitoring template for MikroTik switch. It reports uptime, CPU utilization, memory utilization, board/CPU temperature, fan speed, power-supply state, input voltage, and interface traffic, for RouterOS (enterprise PEN 14988)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -257,6 +257,10 @@ monitor_object_metric:
         power module operating temperature; abnormally high values may indicate blocked
         airflow, failing fans or excessive ambient heat, which can trigger thermal
         protection or hardware damage if left unaddressed.
+    device_cpu_temperature_celsius:
+      name: CPU Temperature
+      desc: CPU temperature reading of the device in degrees Celsius. Sustained high
+        values indicate cooling problems and may cause thermal throttling.
 monitor_object_metric_group:
   Switch:
     Base: Base

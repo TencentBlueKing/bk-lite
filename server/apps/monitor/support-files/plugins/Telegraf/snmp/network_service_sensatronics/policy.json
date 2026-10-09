@@ -1,0 +1,31 @@
+{
+  "object": "NetworkService",
+  "plugin": "NetworkService Sensatronics SNMP",
+  "templates": [
+    {
+      "name": "Sensatronics温度过高",
+      "alert_name": "网络服务设备${resource_name} 第 ${metric__group} 组温度过高",
+      "description": "监控 Sensatronics 各组温度探头读数，持续高于阈值提示机房或机柜散热异常。",
+      "metric_name": "env_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 45,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 40,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 35,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_ruckus_unleashed"
+        config_type = "ruckus_unleashed"
+        brand = "ruckus_unleashed"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Ruckus Unleashed（RUCKUS-UNLEASHED-SYSTEM-MIB，ruckusUnleashedSystemMIB = 1.3.6.1.4.1.25053.1.15.1.1）----
+    # 均为 Unsigned32 标量，顶层 field GET 带实例 .0；由 Unleashed 主 AP（内嵌控制器）应答。
+    # 勿与 ZoneDirector / RUCKUS-SYSTEM（wireless_ruckus）或 SmartZone 同实例混采。
+    # ruckusUnleashedSystemStatsCPUUtil / MemoryUtil（…15.13.0 / …15.14.0）：0~100 百分比，越界由下方 starlark 丢弃。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25053.1.15.1.1.1.15.13.0"
+        name = "device_cpu_usage"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25053.1.15.1.1.1.15.14.0"
+        name = "device_memory_usage"
+    # ruckusUnleashedSystemStatsNumAP（…15.1.0）在线 AP 数 / NumRegisteredAP（…15.15.0）已注册 AP 数 / NumSta（…15.2.0）已认证终端数。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25053.1.15.1.1.1.15.1.0"
+        name = "wireless_ap_count"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25053.1.15.1.1.1.15.15.0"
+        name = "wireless_registered_ap_count"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25053.1.15.1.1.1.15.2.0"
+        name = "wireless_client_count"
+    # ruckusUnleashedSystemLicensedAPs（ruckusUnleashedSystemInfo …1.12.0）授权 AP 数。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25053.1.15.1.1.1.1.12.0"
+        name = "wireless_licensed_ap_count"
+
+# ---- CPU / 内存使用率只接受 0~100 的数值，其它值（缺失、非数值、越界）丢弃。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    for key in ["device_cpu_usage", "device_memory_usage"]:
+        if key in metric.fields:
+            value = metric.fields.pop(key)
+            if type(value) in ["int", "float"] and value >= 0 and value <= 100:
+                metric.fields[key] = value
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["ruckus_unleashed"]

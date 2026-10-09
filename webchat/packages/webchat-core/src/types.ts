@@ -126,6 +126,8 @@ export interface WebChatConfig {
 /** URL templates may include `{channelId}` and `{sessionId}`. */
 export interface PlatformContract {
   applicationsUrl: string;
+  /** POST JSON `{ width }` 保存当前用户的悬浮对话栏宽度。 */
+  webchatWidthUrl?: string;
   sessionsUrl: string;
   messagesUrl: string;
   /** POST JSON `{ session_id }` to delete one persisted conversation. */

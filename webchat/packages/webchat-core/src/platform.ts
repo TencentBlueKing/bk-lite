@@ -479,7 +479,64 @@ export const WEBCHAT_APPS_CHANGED_EVENT = 'bk-webchat:apps-changed';
 /** Host shell reads this to inset page content while the dock is open. */
 export const WEBCHAT_DOCK_INSET_VAR = '--bk-webchat-dock-width';
 export const PLATFORM_DOCK_CHAT_WIDTH = 380;
+export const PLATFORM_DOCK_CHAT_MIN_WIDTH = 320;
+/** 侧边栏（含历史轨）最多占视口宽度的一半。 */
+export const PLATFORM_DOCK_MAX_VIEWPORT_RATIO = 0.5;
 export const PLATFORM_HISTORY_RAIL_DOCK = 176;
+
+/** 对话栏宽度。历史轨只在展开时计入这 50% 上限。 */
+export function clampPlatformDockChatWidth(
+  width: number,
+  viewportWidth?: number,
+  historyOpen = false
+): number {
+  const half =
+    typeof viewportWidth === 'number' && Number.isFinite(viewportWidth)
+      ? Math.round(viewportWidth * PLATFORM_DOCK_MAX_VIEWPORT_RATIO)
+      : Number.POSITIVE_INFINITY;
+  const chatMax = half - (historyOpen ? PLATFORM_HISTORY_RAIL_DOCK : 0);
+  const max = Math.min(Math.max(PLATFORM_DOCK_CHAT_MIN_WIDTH, chatMax), half);
+  const min = Math.min(PLATFORM_DOCK_CHAT_MIN_WIDTH, max);
+  if (!Number.isFinite(width)) {
+    return Math.min(max, Math.max(min, PLATFORM_DOCK_CHAT_WIDTH));
+  }
+  return Math.round(Math.min(max, Math.max(min, width)));
+}
+
+/** 右缘固定，向左拖增大宽度。deltaX 为指针相对起点的水平位移。 */
+export function nextPlatformDockChatWidth(
+  startWidth: number,
+  deltaX: number,
+  viewportWidth?: number,
+  historyOpen = false
+): number {
+  return clampPlatformDockChatWidth(startWidth - deltaX, viewportWidth, historyOpen);
+}
+
+export function readPlatformWebchatWidth(body: unknown): number {
+  if (!body || typeof body !== 'object' || !('webchat_width' in body)) {
+    return PLATFORM_DOCK_CHAT_WIDTH;
+  }
+  const raw = (body as { webchat_width: unknown }).webchat_width;
+  const width = typeof raw === 'number' ? raw : Number(raw);
+  return clampPlatformDockChatWidth(width);
+}
+
+/** 保存宽度的地址。宿主没单独传时，挂在已有的平台列表地址后面。 */
+export function resolvePlatformWebchatWidthUrl(contract: {
+  webchatWidthUrl?: string;
+  applicationsUrl?: string;
+}): string {
+  const explicit = (contract.webchatWidthUrl || '').trim();
+  if (explicit) {
+    return explicit;
+  }
+  const applicationsUrl = (contract.applicationsUrl || '').trim();
+  if (!applicationsUrl) {
+    return '';
+  }
+  return applicationsUrl.endsWith('/') ? `${applicationsUrl}width/` : `${applicationsUrl}/width/`;
+}
 
 /**
  * Empty published-app list: hide the launcher unless the host says this user
@@ -498,13 +555,13 @@ export function platformDockInsetWidth(input: {
   visible: boolean;
   fullscreen?: boolean;
   historyOpen?: boolean;
+  chatWidth?: number;
 }): number {
   if (!input.visible || input.fullscreen) {
     return 0;
   }
-  return input.historyOpen
-    ? PLATFORM_DOCK_CHAT_WIDTH + PLATFORM_HISTORY_RAIL_DOCK
-    : PLATFORM_DOCK_CHAT_WIDTH;
+  const chatWidth = clampPlatformDockChatWidth(input.chatWidth ?? PLATFORM_DOCK_CHAT_WIDTH);
+  return input.historyOpen ? chatWidth + PLATFORM_HISTORY_RAIL_DOCK : chatWidth;
 }
 
 export const FAB_SIZE = 72;

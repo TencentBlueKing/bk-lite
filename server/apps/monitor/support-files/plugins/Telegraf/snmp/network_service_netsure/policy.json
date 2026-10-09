@@ -1,0 +1,46 @@
+{
+  "object": "NetworkService",
+  "plugin": "NetworkService Emerson NetSure SNMP",
+  "templates": [
+    {
+      "name": "NetSure电源系统告警",
+      "alert_name": "网络服务设备${resource_name} 电源系统告警",
+      "description": "监控 Emerson NetSure 直流电源系统整体告警级别，出现 warning 及以上级别告警时触发，提示整流器、电池或市电异常。",
+      "metric_name": "system_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "NetSure温度过高",
+      "alert_name": "网络服务设备${resource_name} 第 ${metric__probe} 路温度过高",
+      "description": "监控 Emerson NetSure 温度探头读数（通常为电池或机房环境温度），持续偏高会加速电池老化。",
+      "metric_name": "env_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 45,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 40,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 35,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

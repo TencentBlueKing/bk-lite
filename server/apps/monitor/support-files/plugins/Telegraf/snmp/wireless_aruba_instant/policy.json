@@ -1,0 +1,71 @@
+{
+  "object": "Wireless",
+  "plugin": "Wireless Aruba Instant SNMP",
+  "templates": [
+    {
+      "name": "Aruba Instant AP CPU使用率过高",
+      "alert_name": "无线设备${resource_name} AP CPU 使用率过高",
+      "description": "监控 Aruba Instant 集群内各 AP 的 CPU 使用率，当持续高于阈值时触发告警，提示 AP 负载过重，可能影响终端接入与漫游。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Aruba Instant AP内存使用率过高",
+      "alert_name": "无线设备${resource_name} AP 内存使用率过高",
+      "description": "监控 Aruba Instant 集群内各 AP 的内存使用率，当持续高于阈值时触发告警，内存压力过高可能导致终端关联失败。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Aruba Instant AP离线",
+      "alert_name": "无线设备${resource_name} AP 状态异常",
+      "description": "监控 Virtual Controller 上各 AP 的状态（归一后 1=up，>1=down），当 AP 离线时触发告警，提示 AP 掉电、断网或重启。",
+      "metric_name": "wireless_ap_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

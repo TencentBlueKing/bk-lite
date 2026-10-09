@@ -1,0 +1,45 @@
+NetworkService Dataprobe iBoot-PDU SNMP:
+  name: Dataprobe iBoot-PDU（Telegraf）
+  desc: 面向 Dataprobe iBoot-PDU 智能配电设备的 SNMP 监控模板，可采集线缆电压、线缆电流、环境温度、每端口入向流量速率、每端口出向流量速率和运行时长。
+monitor_object:
+  NetworkService: 网络服务
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  NetworkService:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64
+        位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内出向发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64
+        位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+    snmp_pdu_line1_voltage_volts:
+      name: 线缆1电压
+      desc: 来自 voltageLC1 的线缆1电压，单位为伏特。SNMP 原始值为百分之一伏，采集侧除以 100。缺测不产出占位零。
+    snmp_pdu_line1_current_amps:
+      name: 线缆1电流
+      desc: 来自 currentLC1 的线缆1电流，单位为安培。SNMP 原始值为百分之一安，采集侧除以 100。缺测不产出占位零。
+    snmp_pdu_line2_voltage_volts:
+      name: 线缆2电压
+      desc: 来自 voltageLC2 的可选线缆2电压，单位为伏特。电压为 0 或缺测时丢弃该线缆，适用于单线缆机型。
+    snmp_pdu_line2_current_amps:
+      name: 线缆2电流
+      desc: 来自 currentLC2 的可选线缆2电流，单位为安培。线缆2电压为 0 或缺测时一并丢弃。
+    snmp_env_temperature_celsius:
+      name: 环境温度
+      desc: 来自 temperature1 的探头1温度，单位为摄氏度。读数为 999 表示无探头，丢弃。华氏单位会换算为摄氏。
+    snmp_env_temperature_2_celsius:
+      name: 环境温度2
+      desc: 来自 temperature2 的可选探头2温度，单位为摄氏度。读数为 999 表示无探头，丢弃。华氏单位会换算为摄氏。
+monitor_object_metric_group:
+  NetworkService:
+    Base: 基础
+    Traffic: 流量
+    NetworkService: 网络服务
+    Power: 电力
+    Environment: 环境

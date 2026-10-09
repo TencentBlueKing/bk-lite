@@ -81,4 +81,51 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.57344.1.3.3"
         name = "celsius"
+    # ---- Tachyon TNA 300 wirelessRadioTable (TACHYON-MIB, PEN 57344) ----
+    # INDEX wirelessRadioName (DisplayString). table.field OIDs have no .0 suffix.
+    # wirelessRadioName 1.3.6.1.4.1.57344.1.2.2.1.2 -> tag radio (for example wlan0).
+    # wirelessRadioModemTemperature 1.3.6.1.4.1.57344.1.2.2.1.10 Integer32 Celsius, no scaling.
+    # wirelessRadioTemperature 1.3.6.1.4.1.57344.1.2.2.1.11 Integer32 Celsius, no scaling.
+    [[inputs.snmp.table]]
+        name = "radio"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.57344.1.2.2.1.2"
+        name = "radio"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.57344.1.2.2.1.11"
+        name = "temperature_celsius"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.57344.1.2.2.1.10"
+        name = "modem_temperature_celsius"
     # ---- Fan/PSU: TACHYON-MIB exposes CPU/memory/temperature scalars but no stable fan or power-supply state objects. ----
+
+# ---- Radio temperature filter: keep -40..125 C; drop sentinels -1, -273, 2147483647. ----
+[[processors.starlark]]
+    namepass = ["radio"]
+    source = '''
+def apply(metric):
+    radio = metric.tags.get("radio")
+    if radio == None or radio == "":
+        return None
+    for key in ["temperature_celsius", "modem_temperature_celsius"]:
+        value = metric.fields.get(key)
+        if value == None:
+            continue
+        if type(value) not in ["int", "float"]:
+            metric.fields.pop(key)
+            continue
+        if value == -1 or value == -273 or value == 2147483647:
+            metric.fields.pop(key)
+            continue
+        if value < -40 or value > 125:
+            metric.fields.pop(key)
+    f = metric.fields
+    if len(f.keys()) == 0:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["tachyon"]
+

@@ -1,0 +1,54 @@
+NetworkService Raritan PDU SNMP:
+  name: Raritan PDU（Telegraf）
+  desc: 面向 Raritan PX / PX2 / PX3 机架 PDU 的 SNMP 监控模板，可采集进线 RMS 电流、RMS 电压、有功功率、外置温度与湿度、每端口入向流量速率、每端口出向流量速率和运行时长。
+monitor_object:
+  NetworkService: 网络服务
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  NetworkService:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64
+        位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内出向发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64
+        位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+    device_total_incoming_traffic:
+      name: 设备接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率（按所有接口的 64 位 ifHCInOctets 汇总），单位为字节每秒。帮助管理员获取整个设备的接收流量情况，支持总体流量监控与容量规划。
+    device_total_outgoing_traffic:
+      name: 设备发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
+    pdu_inlet_current_amps:
+      name: PDU 进线电流
+      desc: 来自 PDU2 measurementsInletSensorValue 的进线 RMS 电流，单位为安培。仅保留 sensorType=rmsCurrent(1)，并按
+        inletSensorDecimalDigits 缩小 10 的幂次。空表、缺小数位或不匹配类型的行不产生数据点。
+    pdu_inlet_voltage_volts:
+      name: PDU 进线电压
+      desc: 来自 PDU2 measurementsInletSensorValue 的进线 RMS 电压，单位为伏特。仅保留 sensorType=rmsVoltage(4)，并按
+        inletSensorDecimalDigits 缩小 10 的幂次。空表、缺小数位或不匹配类型的行不产生数据点。
+    pdu_inlet_power_watts:
+      name: PDU 进线有功功率
+      desc: 来自 PDU2 measurementsInletSensorValue 的进线有功功率，单位为瓦特。仅保留 sensorType=activePower(5)，并按
+        inletSensorDecimalDigits 缩小 10 的幂次。空表、缺小数位或不匹配类型的行不产生数据点。
+    env_temperature_celsius:
+      name: 环境温度
+      desc: 来自 PDU2 measurementsExternalSensorValue 的外置温度，单位为摄氏度。仅保留 externalSensorType=temperature(10)，并按
+        externalSensorDecimalDigits 缩小 10 的幂次。华氏度按 degreeF 换算为摄氏度（保留一位小数）。不可用、单位非摄氏/华氏、超出
+        -40..100℃ 或不匹配类型的行不产生数据点。
+    env_humidity_percent:
+      name: 环境湿度
+      desc: 来自 PDU2 measurementsExternalSensorValue 的外置相对湿度，单位为百分比。仅保留 externalSensorType=humidity(11)，并按
+        externalSensorDecimalDigits 缩小 10 的幂次。超出 0-100 或空表不产生数据点。
+monitor_object_metric_group:
+  NetworkService:
+    Base: 基础
+    Traffic: 流量
+    NetworkService: 网络服务
+    Power: 电力
+    Environment: 环境

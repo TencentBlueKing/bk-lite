@@ -1,0 +1,56 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission Glassway EDFA SNMP",
+  "templates": [
+    {
+      "name": "Glassway EDFA设备内部温度过高",
+      "alert_name": "传输设备${resource_name} 内部温度过高",
+      "description": "监控 NSCRTV / Glassway 光放大器网元内部温度，持续高于阈值时提示散热异常或环境温度过高。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 65,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 55,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Glassway EDFA槽位温度过高",
+      "alert_name": "传输设备${resource_name} 槽位 ${metric__index} 温度过高",
+      "description": "监控 NSCRTV / Glassway 光放大器各槽位设备内部温度，持续高于阈值时提示模块散热异常或过载。",
+      "metric_name": "device_slot_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 65,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 55,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

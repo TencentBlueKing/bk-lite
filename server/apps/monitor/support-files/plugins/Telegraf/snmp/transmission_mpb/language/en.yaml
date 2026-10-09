@@ -1,0 +1,108 @@
+Transmission MPB SNMP:
+  name: MPB Communications (Telegraf)
+  desc: SNMP monitoring template for MPB Communications 2RU optical amplifier
+    (MPBC-2RU-MIB, enterprise PEN 4464). It reports case and pump-laser temperatures,
+    optical input and output power, gain, unit state, per-port inbound traffic
+    rate, per-port outbound traffic rate, and system uptime.
+monitor_object:
+  Transmission: Transmission
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Transmission:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart,
+        derived from sysUpTime. Monitoring uptime helps administrators understand
+        device stability and identify unexpected reboots or failures.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5
+        minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifOutOctets on high-speed ports, keeping the rate accurate.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the
+        entire device over the past 5 minutes, measured in bytes per second, summed
+        across all interfaces from the 64-bit ifHCInOctets counter. It helps administrators
+        obtain an overview of incoming traffic for overall monitoring and capacity
+        planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire
+        device over the past 5 minutes, measured in bytes per second, summed across
+        all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
+        assess sending performance for traffic management and optimization.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: CPU utilization of the transmission device reported directly as a 0-100
+        percentage. Sustained high CPU usage can indicate wireless backhaul traffic
+        pressure, control-plane load or abnormal traffic.
+    device_memory_usage:
+      name: Memory Usage
+      desc: Memory utilization of the transmission device reported directly as a 0-100
+        percentage. Sustained high memory usage may indicate control-plane resource
+        pressure or unstable device services.
+    device_temperature_celsius:
+      name: Temperature
+      desc: CPU or chassis temperature of the transmission device in degrees Celsius.
+        High values may indicate cooling problems, high ambient temperature or overloaded
+        hardware.
+    device_fan_state:
+      name: Fan Status
+      desc: Operational state of each transmission device fan or fan controller. A
+        non-normal state indicates a cooling module fault, offline module, or communication
+        failure and may lead to overheating.
+    device_psu_state:
+      name: Power Supply Status
+      desc: Operational state of each transmission device power supply. A non-normal
+        state indicates offline power, missing input, over-temperature, hardware fault,
+        or alert condition that should be investigated.
+    mpb_ld1_temperature_celsius:
+      name: Pump Laser 1 Temperature
+      desc: Pump laser 1 temperature of the MPB Communications 2RU optical amplifier
+        in degrees Celsius, from MPBC-2RU-MIB mpbc2RUPxxLD1TempDegCx10 (OID
+        1.3.6.1.4.1.4464.2.2.2.2.2, 0.1 C) divided by 10 in the collector. Values
+        outside -40 to 125 C are dropped.
+    mpb_ld2_temperature_celsius:
+      name: Pump Laser 2 Temperature
+      desc: Pump laser 2 temperature of the MPB Communications 2RU optical amplifier
+        in degrees Celsius, from MPBC-2RU-MIB mpbc2RUPxxLD2TempDegCx10 (OID
+        1.3.6.1.4.1.4464.2.2.2.2.5, 0.1 C) divided by 10 in the collector. Values
+        outside -40 to 125 C are dropped.
+    mpb_output_power_mw:
+      name: Optical Output Power (mW)
+      desc: Optical output power of the MPB Communications 2RU optical amplifier in
+        milliwatts, from MPBC-2RU-MIB mpbc2RUPxxOutputPwrmW (OID 1.3.6.1.4.1.4464.2.2.2.2.8).
+        Values above 100000 mW or the 4294967295 sentinel are dropped.
+    mpb_input_power_mw:
+      name: Optical Input Power (mW)
+      desc: Optical input power of the MPB Communications 2RU optical amplifier in
+        milliwatts, from MPBC-2RU-MIB mpbc2RUPxxInputPwrmWx100 (OID 1.3.6.1.4.1.4464.2.2.2.2.10,
+        0.01 mW) divided by 100 in the collector. The 4294967295 sentinel is dropped.
+    mpb_gain_db:
+      name: Amplifier Gain (dB)
+      desc: Optical gain of the MPB Communications 2RU optical amplifier in dB, from
+        MPBC-2RU-MIB mpbc2RUPxxGaindBx10 (OID 1.3.6.1.4.1.4464.2.2.2.2.9, 0.1 dB)
+        divided by 10 in the collector. Values outside -10 to 60 dB are dropped.
+    mpb_unit_state:
+      name: Amplifier Unit State
+      desc: Unit state of the MPB Communications 2RU optical amplifier from MPBC-2RU-MIB
+        mpbc2RUPxxUnitState (OID 1.3.6.1.4.1.4464.2.2.2.2.16). stateNormal(1) maps
+        to 1 (normal); stateInit(0) and stateFault(2) map to 2 (abnormal). Values
+        outside 0-2 are dropped.
+monitor_object_metric_group:
+  Transmission:
+    Base: Base
+    Traffic: Traffic
+    CPU: CPU
+    Memory: Memory
+    Temperature: Temperature
+    Hardware Status: Hardware Status
