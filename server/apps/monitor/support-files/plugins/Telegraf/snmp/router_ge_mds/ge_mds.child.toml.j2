@@ -1,0 +1,105 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_ge_mds"
+        config_type = "ge_mds"
+        brand = "ge_mds"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- GE MDS Orbit 系统状态（MDS-SYSTEM-MIB，PEN 4130，mSysStatus 1.3.6.1.4.1.4130.10.1.1.1.2）----
+    # 标量顶层 field 带 .0，落 measurement snmp，查询用 snmp_ 前缀。
+    # mSysTemperature：系统温度，Integer32，单位摄氏度。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.4130.10.1.1.1.2.6.0"
+        name = "system_temperature_raw"
+    # mSysPowerSupplyVoltage：电源电压（VDC），OCTET STRING，由下方 starlark 解析为浮点伏。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.4130.10.1.1.1.2.9.0"
+        name = "power_supply_voltage_raw"
+    # mSysMprStatus（1.3.6.1.4.1.4130.10.1.1.1.2.8）仅 MPR 机型存在：两路散热片温度（摄氏度）与两路电源输出电压（OCTET STRING）；非 MPR 机型 GET 失败即无点。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.4130.10.1.1.1.2.8.1.0"
+        name = "mpr_heatsink1_temperature_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.4130.10.1.1.1.2.8.2.0"
+        name = "mpr_heatsink2_temperature_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.4130.10.1.1.1.2.8.3.0"
+        name = "mpr_psu1_voltage_raw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.4130.10.1.1.1.2.8.4.0"
+        name = "mpr_psu2_voltage_raw"
+# ---- CPU/内存使用率、风扇：MDS-SYSTEM-MIB 不提供，不采集。----
+
+# ---- 温度须为 -60~150 的整数（摄氏度）；电压字符串去掉空白与末尾单位后按浮点解析，须落在 (0, 100] 伏；无效值丢弃，原始字段不落库。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+TEMPS = [
+    ("system_temperature_raw", "device_temperature_celsius"),
+    ("mpr_heatsink1_temperature_raw", "mpr_heatsink1_temperature_celsius"),
+    ("mpr_heatsink2_temperature_raw", "mpr_heatsink2_temperature_celsius"),
+]
+VOLTS = [
+    ("power_supply_voltage_raw", "device_voltage_volts"),
+    ("mpr_psu1_voltage_raw", "mpr_psu1_voltage_volts"),
+    ("mpr_psu2_voltage_raw", "mpr_psu2_voltage_volts"),
+]
+DIGITS = "0123456789."
+
+def parse_volts(value):
+    if type(value) == "int" or type(value) == "float":
+        return float(value)
+    if type(value) != "string":
+        return None
+    text = value.strip()
+    num = ""
+    for ch in text.elems():
+        if ch in DIGITS or (ch == "-" and num == ""):
+            num += ch
+        else:
+            break
+    if num == "" or num == "-" or num == "." or num.count(".") > 1:
+        return None
+    return float(num)
+
+def apply(metric):
+    for src, dst in TEMPS:
+        value = metric.fields.pop(src, None)
+        if type(value) == "int" and value >= -60 and value <= 150:
+            metric.fields[dst] = value
+    for src, dst in VOLTS:
+        volts = parse_volts(metric.fields.pop(src, None))
+        if volts != None and volts > 0 and volts <= 100:
+            metric.fields[dst] = volts
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["ge_mds"]

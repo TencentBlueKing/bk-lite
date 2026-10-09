@@ -12,8 +12,11 @@ import {
   isPlatformMode,
   lastSessionStorageKey,
   mergePlatformCurrentApp,
+  PLATFORM_DOCK_CHAT_MIN_WIDTH,
   PLATFORM_DOCK_CHAT_WIDTH,
   PLATFORM_HISTORY_RAIL_DOCK,
+  clampPlatformDockChatWidth,
+  nextPlatformDockChatWidth,
   platformDockInsetWidth,
   clampFabPosition,
   DEFAULT_FAB_POSITION,
@@ -42,13 +45,14 @@ import {
 import type { ChatProps } from './chatProps';
 import { WC } from './chrome';
 import { ConversationSkeleton } from './components/ConversationSkeleton';
-import { useTranslator } from './useTranslator';
+import { useTranslator, WebChatLocaleProvider } from './useTranslator';
 import {
   deletePlatformSession,
-  fetchPlatformApplications,
+  fetchPlatformLaunch,
   fetchPlatformMessages,
   fetchPlatformSessions,
   interruptPlatformChat,
+  savePlatformWebchatWidth,
 } from './platform/api';
 
 const Chat = React.lazy(async () => {
@@ -443,7 +447,7 @@ const FabLauncher = React.forwardRef<
 });
 FabLauncher.displayName = 'FabLauncher';
 
-export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, PlatformChatProps>((props, ref) => {
+const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformChatProps>((props, ref) => {
   const {
     platform,
     userId = 'anonymous',
@@ -496,7 +500,14 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState<string>('');
+  const [chatWidth, setChatWidth] = useState(PLATFORM_DOCK_CHAT_WIDTH);
+  const [resizing, setResizing] = useState(false);
   const chatStateRef = useRef<ChatState>('idle');
+  const chatWidthRef = useRef(chatWidth);
+  chatWidthRef.current = chatWidth;
+  const historyOpenRef = useRef(historyOpen);
+  historyOpenRef.current = historyOpen;
+  const resizingRef = useRef(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const loadedSessionIdRef = useRef<string | null>(null);
   const appsLoadGenerationRef = useRef(0);
@@ -517,11 +528,16 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
         setLoading(true);
       }
       try {
-        const nextApps = await fetchPlatformApplications(platform, requestInit);
+        const launch = await fetchPlatformLaunch(platform, requestInit);
         if (generation !== appsLoadGenerationRef.current) return;
-        setApps(nextApps);
+        setApps(launch.applications);
+        if (!resizingRef.current) {
+          setChatWidth(
+            clampPlatformDockChatWidth(launch.webchatWidth, window.innerWidth, historyOpenRef.current)
+          );
+        }
         const stored = readLastSelection(storage, storageKey);
-        setCurrentApp((prev) => mergePlatformCurrentApp(nextApps, prev, stored));
+        setCurrentApp((prev) => mergePlatformCurrentApp(launch.applications, prev, stored));
         setForbidden(false);
       } catch (error) {
         if (generation !== appsLoadGenerationRef.current) return;
@@ -845,16 +861,60 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   const emptyApps = !loading && apps.length === 0;
 
   useEffect(() => {
+    setChatWidth((current) => clampPlatformDockChatWidth(current, window.innerWidth, historyOpen));
+  }, [historyOpen]);
+
+  const onResizePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (isFullscreen || event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const startX = event.clientX;
+      const startWidth = chatWidthRef.current;
+      resizingRef.current = true;
+      setResizing(true);
+      const previousCursor = document.body.style.cursor;
+      document.body.style.cursor = 'col-resize';
+      const move = (ev: PointerEvent) => {
+        setChatWidth(
+          nextPlatformDockChatWidth(startWidth, ev.clientX - startX, window.innerWidth, historyOpenRef.current)
+        );
+      };
+      const stop = (ev: PointerEvent) => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', stop);
+        window.removeEventListener('pointercancel', stop);
+        document.body.style.cursor = previousCursor;
+        resizingRef.current = false;
+        setResizing(false);
+        const next = nextPlatformDockChatWidth(
+          startWidth,
+          ev.clientX - startX,
+          window.innerWidth,
+          historyOpenRef.current
+        );
+        setChatWidth(next);
+        void savePlatformWebchatWidth(platform, next, requestInit).catch(() => undefined);
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', stop);
+      window.addEventListener('pointercancel', stop);
+    },
+    [isFullscreen, platform, requestInit]
+  );
+
+  useEffect(() => {
     const width = platformDockInsetWidth({
       visible: showLauncher && !forbidden && hasOpened && !collapsed,
       fullscreen: isFullscreen,
       historyOpen,
+      chatWidth,
     });
     document.documentElement.style.setProperty(WEBCHAT_DOCK_INSET_VAR, `${width}px`);
     return () => {
       document.documentElement.style.setProperty(WEBCHAT_DOCK_INSET_VAR, '0px');
     };
-  }, [showLauncher, forbidden, hasOpened, collapsed, isFullscreen, historyOpen]);
+  }, [showLauncher, forbidden, hasOpened, collapsed, isFullscreen, historyOpen, chatWidth]);
 
   if (forbidden || !showLauncher) {
     return null;
@@ -884,20 +944,34 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
           className={
             isFullscreen
               ? 'fixed inset-0 z-[2000] flex h-full w-full flex-col overflow-hidden font-sans'
-              : 'fixed bottom-0 right-0 top-0 z-[1200] flex flex-col overflow-hidden font-sans transition-[width] duration-200 ease-out'
+              : `fixed bottom-0 right-0 top-0 z-[1200] flex flex-col overflow-hidden font-sans${
+                  resizing ? '' : ' transition-[width] duration-200 ease-out'
+                }`
           }
           style={{
             width: isFullscreen
               ? undefined
               : historyOpen
-                ? PLATFORM_DOCK_CHAT_WIDTH + PLATFORM_HISTORY_RAIL_DOCK
-                : PLATFORM_DOCK_CHAT_WIDTH,
+                ? chatWidth + PLATFORM_HISTORY_RAIL_DOCK
+                : chatWidth,
             background: WC.white,
             borderLeft: isFullscreen ? undefined : `1px solid ${WC.dockEdge}`,
             display: collapsed ? 'none' : undefined,
           }}
           aria-hidden={collapsed}
         >
+      {!isFullscreen ? (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t('chat.resizeDock', '拖拽调整宽度')}
+          aria-valuemin={PLATFORM_DOCK_CHAT_MIN_WIDTH}
+          aria-valuenow={chatWidth}
+          title={t('chat.resizeDock', '拖拽调整宽度')}
+          className="absolute bottom-0 left-0 top-0 z-30 w-3 cursor-col-resize touch-none"
+          onPointerDown={onResizePointerDown}
+        />
+      ) : null}
       <div ref={menuRef} className="relative flex-shrink-0">
         <div
           className="flex h-12 items-center gap-1.5 pl-4 pr-2"
@@ -1089,7 +1163,13 @@ export const PlatformChat = React.memo(React.forwardRef<HTMLDivElement, Platform
   );
 }));
 
-PlatformChat.displayName = 'PlatformChat';
+PlatformChatInner.displayName = 'PlatformChat';
+
+export const PlatformChat = React.forwardRef<HTMLDivElement, PlatformChatProps>((props, ref) => (
+  <WebChatLocaleProvider locale={props.locale}>
+    <PlatformChatInner {...props} ref={ref} />
+  </WebChatLocaleProvider>
+));
 
 export function shouldRenderPlatformChat(props: Pick<PlatformChatProps, 'platform' | 'sseUrl'>): boolean {
   return isPlatformMode(props);

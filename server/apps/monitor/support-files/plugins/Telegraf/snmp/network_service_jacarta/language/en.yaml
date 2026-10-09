@@ -1,0 +1,53 @@
+NetworkService Jacarta interSeptor Pro SNMP:
+  name: Jacarta interSeptor Pro (Telegraf)
+  desc: SNMP monitoring template for Jacarta interSeptor Pro environmental device. It
+    reports environment temperature and humidity with alarm status, per-port inbound
+    traffic rate, per-port outbound traffic rate, and system uptime (IANA PEN 19011).
+    Temperature defaults to Celsius; confirm the device unit on site.
+monitor_object:
+  NetworkService: NetworkService
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  NetworkService:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart,
+        derived from sysUpTime. Monitoring uptime helps administrators understand
+        device stability and identify unexpected reboots or failures.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5
+        minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifOutOctets on high-speed ports, keeping the rate accurate.
+    env_temperature_celsius:
+      name: Environment Temperature
+      desc: Per-sensor environment temperature in degrees Celsius from isDeviceMonitorTemperature.
+        The SNMP value is hundredths of a degree and is scaled by /100. Fahrenheit
+        readings are converted to Celsius. Rows with alarm disable are dropped.
+    env_temperature_status:
+      name: Environment Temperature Status
+      desc: Temperature alarm from isDeviceMonitorTemperatureAlarm, normalized to
+        1=normal and 2=abnormal. unknown emits no status value; disable drops the row.
+    env_humidity_percent:
+      name: Environment Humidity
+      desc: Per-sensor relative humidity in percent from isDeviceMonitorHumidity.
+        The SNMP value is hundredths of a percent and is scaled by /100. Rows with
+        alarm disable are dropped.
+    env_humidity_status:
+      name: Environment Humidity Status
+      desc: Humidity alarm from isDeviceMonitorHumidityAlarm, normalized to 1=normal
+        and 2=abnormal. unknown emits no status value; disable drops the row.
+monitor_object_metric_group:
+  NetworkService:
+    Base: Base
+    Traffic: Traffic
+    NetworkService: NetworkService
+    Environment: Environment

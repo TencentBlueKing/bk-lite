@@ -1,0 +1,104 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_mpb"
+        config_type = "mpb"
+        brand = "mpb"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # MPBC-2RU-MIB mpbc2RUPxxMonitor 标量（企业号 PEN 4464）：field 带 .0，落入 measurement snmp。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.4464.2.2.2.2.7.0"
+        name = "case_temp_x10"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.4464.2.2.2.2.2.0"
+        name = "ld1_temp_x10"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.4464.2.2.2.2.5.0"
+        name = "ld2_temp_x10"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.4464.2.2.2.2.8.0"
+        name = "output_power_mw"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.4464.2.2.2.2.10.0"
+        name = "input_power_x100"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.4464.2.2.2.2.9.0"
+        name = "gain_x10"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.4464.2.2.2.2.16.0"
+        name = "unit_state_raw"
+
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def _temp_c(raw):
+    if raw == None:
+        return None
+    celsius = float(raw) / 10.0
+    if celsius < -40 or celsius > 125:
+        return None
+    return celsius
+
+def apply(metric):
+    case_temp = _temp_c(metric.fields.pop("case_temp_x10", None))
+    if case_temp != None:
+        metric.fields["device_temperature_celsius"] = case_temp
+    ld1 = _temp_c(metric.fields.pop("ld1_temp_x10", None))
+    if ld1 != None:
+        metric.fields["mpb_ld1_temperature_celsius"] = ld1
+    ld2 = _temp_c(metric.fields.pop("ld2_temp_x10", None))
+    if ld2 != None:
+        metric.fields["mpb_ld2_temperature_celsius"] = ld2
+    output_mw = metric.fields.pop("output_power_mw", None)
+    if output_mw != None:
+        if float(output_mw) >= 0 and float(output_mw) <= 100000:
+            metric.fields["mpb_output_power_mw"] = float(output_mw)
+    input_x100 = metric.fields.pop("input_power_x100", None)
+    if input_x100 != None:
+        input_mw = float(input_x100) / 100.0
+        if input_mw >= 0 and input_mw <= 100000:
+            metric.fields["mpb_input_power_mw"] = input_mw
+    gain_raw = metric.fields.pop("gain_x10", None)
+    if gain_raw != None:
+        gain_db = float(gain_raw) / 10.0
+        if gain_db >= -10 and gain_db <= 60:
+            metric.fields["mpb_gain_db"] = gain_db
+    state_raw = metric.fields.pop("unit_state_raw", None)
+    if state_raw != None:
+        code = int(state_raw)
+        if code == 1:
+            metric.fields["mpb_unit_state"] = 1
+        elif code == 0 or code == 2:
+            metric.fields["mpb_unit_state"] = 2
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["mpb"]

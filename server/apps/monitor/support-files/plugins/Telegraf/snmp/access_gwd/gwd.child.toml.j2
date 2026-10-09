@@ -1,0 +1,123 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_gwd"
+        config_type = "gwd"
+        brand = "gwd"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- GWD EPON（PEN 10072，devices 1.3.6.1.4.1.10072.2）：GW-EPON-MIB gwEponBoardTable 1.3.6.1.4.1.10072.2.20.1.1.2.1（INDEX deviceIndex, boardIndex）----
+    # boardDescription .3（标签 board）、boardTemperature .10（摄氏度）、boardCpuUsage .19（%）、boardMemoryUsage .20（%）。table.field 不带 .0。
+    [[inputs.snmp.table]]
+        name = "device_board"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10072.2.20.1.1.2.1.1.3"
+        name = "board"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10072.2.20.1.1.2.1.1.10"
+        name = "temperature_celsius"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10072.2.20.1.1.2.1.1.19"
+        name = "cpu_usage"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10072.2.20.1.1.2.1.1.20"
+        name = "memory_usage"
+    # ---- GW-EPON-DEV-MIB eponDevManMIBObjects 1.3.6.1.4.1.10072.2.15.1：temperatureInfoTable .6.1（INDEX temperatureDeviceIndex），devTemperature .6.1.1.2 ----
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10072.2.15.1.6.1.1.2"
+        name = "celsius"
+    # ---- powerInfoTable .5.1（INDEX powerIndex）：powerRunStatus .5.1.1.2 empty(1)/powerOff(2)/powerOn(3)；powerTemperature .5.1.1.3（1..100）----
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10072.2.15.1.5.1.1.2"
+        name = "state"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10072.2.15.1.5.1.1.3"
+        name = "temperature_celsius"
+    # ---- devFanAlarmTable .4.1（INDEX devFanDeviceIndex, devFanIndex）：devFanAlarmStatus .4.1.1.3 ALARM(1)/CLEAR(5)；devFanRev .4.1.1.5 转速 ----
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10072.2.15.1.4.1.1.3"
+        name = "state"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10072.2.15.1.4.1.1.5"
+        name = "rpm"
+
+# ---- 归一与合法性：板卡 CPU / 内存需为 0~100 整数，温度需为 -50~150 整数；电源温度需为 1~100；风扇转速需为非负整数。----
+# ---- 电源 powerOn(3) → 1 正常，powerOff(2) → 2 异常，empty(1)（槽位无电源）与其它取值不输出；风扇 CLEAR(5) → 1，ALARM(1) → 2，其它不输出。----
+# ---- 无效字段删除，整行没有有效字段时丢弃。----
+[[processors.starlark]]
+    namepass = ["device_board", "device_temperature", "device_psu", "device_fan"]
+    source = '''
+def in_range(v, lo, hi):
+    return type(v) == "int" and v >= lo and v <= hi
+
+def check(metric, key, lo, hi):
+    if key in metric.fields and not in_range(metric.fields[key], lo, hi):
+        metric.fields.pop(key)
+
+def map_state(metric, mapping):
+    if "state" in metric.fields:
+        v = metric.fields.pop("state")
+        if type(v) == "int" and v in mapping:
+            metric.fields["state"] = mapping[v]
+
+def apply(metric):
+    if metric.name == "device_board":
+        check(metric, "temperature_celsius", -50, 150)
+        check(metric, "cpu_usage", 0, 100)
+        check(metric, "memory_usage", 0, 100)
+    elif metric.name == "device_temperature":
+        check(metric, "celsius", -50, 150)
+    elif metric.name == "device_psu":
+        map_state(metric, {3: 1, 2: 2})
+        check(metric, "temperature_celsius", 1, 100)
+    else:
+        map_state(metric, {5: 1, 1: 2})
+        check(metric, "rpm", 0, 100000)
+    if len(metric.fields.keys()) == 0:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["gwd"]

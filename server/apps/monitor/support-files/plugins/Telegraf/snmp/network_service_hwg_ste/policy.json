@@ -1,0 +1,46 @@
+{
+  "object": "NetworkService",
+  "plugin": "NetworkService HW group STE SNMP",
+  "templates": [
+    {
+      "name": "STE传感器告警",
+      "alert_name": "网络服务设备${resource_name} 传感器 ${metric__sensor} 告警",
+      "description": "监控 HW group STE / STE2 各温湿度传感器状态，读数超出设备上配置的范围或告警上下限时触发，提示机房环境异常。",
+      "metric_name": "sensor_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "STE温度过高",
+      "alert_name": "网络服务设备${resource_name} 传感器 ${metric__sensor} 温度过高",
+      "description": "监控 HW group STE / STE2 温度传感器读数，持续高于阈值提示机房或机柜散热异常。",
+      "metric_name": "sensor_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 45,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 40,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 35,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

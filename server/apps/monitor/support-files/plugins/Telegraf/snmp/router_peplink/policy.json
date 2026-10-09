@@ -51,6 +51,26 @@
         }
       ],
       "group_algorithm": "avg"
+    },
+    {
+      "name": "Peplink路由器WAN信号过弱",
+      "alert_name": "路由器${resource_name} WAN ${metric__wan_name} 信号过弱",
+      "description": "监控 Peplink/Pepwave 路由器各 WAN/蜂窝口的接收信号强度（dBm）。信号持续过弱会导致蜂窝链路不稳或掉线，应及时检查天线、覆盖或运营商质量。",
+      "metric_name": "peplink_wan_signal_dbm",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": -100,
+          "method": "<="
+        },
+        {
+          "level": "critical",
+          "value": -110,
+          "method": "<="
+        }
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

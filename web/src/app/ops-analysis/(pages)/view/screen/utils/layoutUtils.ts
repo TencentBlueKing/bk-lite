@@ -12,10 +12,10 @@ import type {
 import type {
   ScreenItem,
   ScreenViewSets,
-  ScreenViewportConfig,
   ScreenWidgetChartType,
   ScreenWidgetItem,
 } from "@/app/ops-analysis/types/screen";
+import { isScreenWidgetItem } from "./screenItems";
 import type { DateRangeValue } from "@/app/ops-analysis/types/dateRange";
 import { buildRelativeTimeRangeFilterValue } from "@/app/ops-analysis/utils/filterValue";
 import {
@@ -41,51 +41,43 @@ const clamp = (value: number, min: number, max: number) =>
 const getNextZIndex = (items: ScreenItem[]) =>
   items.reduce((max, item) => Math.max(max, item.zIndex || 0), 0) + 1;
 
+const BARE_FRAME_CHART_TYPES = new Set<string>(["room3D", "application3D"]);
+
 export const normalizeScreenWidgetAppearance = (
   appearance?: ScreenWidgetAppearance,
-): Required<ScreenWidgetAppearance> => ({
-  frame: appearance?.frame === "bare" ? "bare" : "panel",
-});
+  fallback: ScreenWidgetAppearance["frame"] = "panel",
+): Required<Pick<ScreenWidgetAppearance, "frame">> & ScreenWidgetAppearance => {
+  const storedFrame = appearance?.frame as string | undefined;
+  const frame: ScreenWidgetAppearance["frame"] =
+    storedFrame === "bare"
+      ? "bare"
+      : storedFrame === "panel" || storedFrame === "light"
+        ? "panel"
+        : fallback;
+  return { frame };
+};
 
 export const canConfigureScreenWidgetFrame = (
   chartType?: ScreenWidgetChartType | string,
-) => chartType === "room3D" || chartType === "application3D";
+) => Boolean(chartType);
 
 export const getDefaultScreenWidgetAppearance = (
   chartType?: ScreenWidgetChartType | string,
-): Required<ScreenWidgetAppearance> => ({
-  frame: canConfigureScreenWidgetFrame(chartType) ? "bare" : "panel",
-});
+): Required<Pick<ScreenWidgetAppearance, "frame">> => {
+  if (chartType && BARE_FRAME_CHART_TYPES.has(chartType)) {
+    return { frame: "bare" };
+  }
+  return { frame: "panel" };
+};
 
 export const resolveScreenWidgetAppearance = (
   chartType?: ScreenWidgetChartType | string,
   appearance?: ScreenWidgetAppearance,
-): Required<ScreenWidgetAppearance> =>
-  canConfigureScreenWidgetFrame(chartType)
-    ? appearance
-      ? normalizeScreenWidgetAppearance(appearance)
-      : getDefaultScreenWidgetAppearance(chartType)
-    : getDefaultScreenWidgetAppearance(chartType);
-
-export const isScreenItemInsideViewport = (
-  item: ScreenItem,
-  viewport: ScreenViewportConfig,
-) =>
-  Number.isFinite(item.x) &&
-  Number.isFinite(item.y) &&
-  Number.isFinite(item.w) &&
-  Number.isFinite(item.h) &&
-  item.x >= 0 &&
-  item.y >= 0 &&
-  item.w > 0 &&
-  item.h > 0 &&
-  item.x + item.w <= viewport.width &&
-  item.y + item.h <= viewport.height;
-
-export const canViewportContainItems = (
-  items: ScreenItem[],
-  viewport: ScreenViewportConfig,
-) => items.every((item) => isScreenItemInsideViewport(item, viewport));
+): Required<Pick<ScreenWidgetAppearance, "frame">> & ScreenWidgetAppearance =>
+  normalizeScreenWidgetAppearance(
+    appearance,
+    getDefaultScreenWidgetAppearance(chartType).frame,
+  );
 
 const resolveScreenWidgetParams = (
   item: ScreenWidgetItem,
@@ -122,6 +114,7 @@ export const buildFiltersFromScreenItems = ({
   >();
 
   viewSets.items.forEach((item) => {
+    if (!isScreenWidgetItem(item)) return;
     const dataSource = resolveScreenItemDataSource(item, dataSources);
     const params = resolveScreenWidgetParams(item, dataSource);
     getBindableFilterParams(params).forEach((param) => {
@@ -223,6 +216,7 @@ export const syncScreenFilterBindings = (
   ...viewSets,
   filters: definitions,
   items: viewSets.items.map((item) => {
+    if (!isScreenWidgetItem(item)) return item;
     const dataSource = resolveScreenItemDataSource(item, dataSources);
     const params = resolveScreenWidgetParams(item, dataSource);
     const nextBindings = cleanupScreenFilterBindings(
@@ -263,6 +257,7 @@ export const createScreenWidgetItem = (
 
   return {
     id: uuidv4(),
+    kind: "widget",
     type: "widget",
     chartType,
     title: "",

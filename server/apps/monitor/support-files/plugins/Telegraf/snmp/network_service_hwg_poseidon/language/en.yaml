@@ -1,0 +1,46 @@
+NetworkService HW group Poseidon SNMP:
+  name: HW group Poseidon (Telegraf)
+  desc: SNMP monitoring template for HW group Poseidon / Poseidon2 environment monitoring units (POSEIDON-MIB,
+    enterprise PEN 21796). It reports uptime, temperature, relative humidity and voltage sensor readings,
+    sensor alarm state, and interface traffic.
+monitor_object:
+  NetworkService: NetworkService
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  NetworkService:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
+        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
+        or failures.
+    sensor_temperature_celsius:
+      name: Sensor Temperature
+      desc: Reading of each temperature sensor in degrees Celsius.
+    sensor_humidity_percent:
+      name: Sensor Relative Humidity
+      desc: Reading of each relative humidity sensor in percent.
+    sensor_voltage_volts:
+      name: Sensor Voltage
+      desc: Reading of each voltage sensor in volts.
+    sensor_state:
+      name: Sensor Alarm State
+      desc: Alarm state of each sensor. Abnormal means the reading is outside the limits configured on
+        the unit.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured
+        in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of outbound bytes sent over the past 5 minutes, measured
+        in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifOutOctets on high-speed ports, keeping the rate accurate.
+monitor_object_metric_group:
+  NetworkService:
+    Base: Base
+    Traffic: Traffic
+    Environment: Environment
+    Power: Power
+    Hardware Status: Hardware Status

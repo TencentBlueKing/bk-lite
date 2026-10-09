@@ -1,0 +1,71 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission MPB SNMP",
+  "templates": [
+    {
+      "name": "MPB光放大器机箱温度过高",
+      "alert_name": "MPB光放大器${resource_name} 机箱温度过高",
+      "description": "监控 MPB Communications 2RU 光放大器机箱温度，当持续高于阈值时触发告警，提示散热异常或环境过热。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 65,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 55,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "MPB光放大器激光器温度过高",
+      "alert_name": "MPB光放大器${resource_name} 泵浦激光器温度过高",
+      "description": "监控 MPB 2RU 光放大器泵浦激光器 1 温度。泵浦激光由 TEC 稳定在约 25℃，偏离过多表示温控异常。",
+      "metric_name": "mpb_ld1_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 50,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 45,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 40,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "MPB光放大器单元故障",
+      "alert_name": "MPB光放大器${resource_name} 单元故障",
+      "description": "监控 MPB 2RU 光放大器单元状态，当 mpbc2RUPxxUnitState 为故障时触发严重告警。",
+      "metric_name": "mpb_unit_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

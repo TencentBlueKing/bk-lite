@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_aruba",
   "plugin": "Switch Aruba SNMP",
-  "plugin_desc": "SNMP monitoring template for Aruba switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic, for ArubaOS-CX and ArubaOS-Switch (enterprise PEN 47196).",
+  "plugin_desc": "SNMP monitoring template for Aruba switch. It reports uptime, CPU utilization, CPU 1/5-minute averages, memory utilization, temperature, fan status and RPM, power-supply status and watts, and interface traffic, for ArubaOS-CX and ArubaOS-Switch (enterprise PEN 47196).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='switch', collect_type='snmp_aruba'}) by (instance_id)",
   "name": "Switch",
@@ -79,7 +79,7 @@
       "query": "device_fan_state{instance_type='switch', __$labels__}",
       "display_name": "Fan Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"shutdown\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notPresent\",\"id\":5,\"color\":\"#d9d9d9\"},{\"name\":\"notFunctioning\",\"id\":6,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [
         {
           "name": "descr",
@@ -97,7 +97,7 @@
       "query": "device_psu_state{instance_type='switch', __$labels__}",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"shutdown\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notPresent\",\"id\":5,\"color\":\"#d9d9d9\"},{\"name\":\"notFunctioning\",\"id\":6,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
       "dimensions": [
         {
           "name": "descr",
@@ -108,6 +108,104 @@
         "instance_id"
       ],
       "description": "This metric reports the operational state of each Aruba power supply unit, normalized to the unified convention where 1 means normal and any other value indicates an abnormal/fault state. A non-normal state signals a power redundancy or hardware fault and must be remediated promptly."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_rpm",
+      "query": "device_fan_rpm{instance_type='switch', __$labels__}",
+      "display_name": "Fan Speed (RPM)",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Fan description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Fan rotation speed in RPM from arubaWiredFanRPM, reported per fan. Values outside 0..100000 (including -1 no-readback) are dropped. A stalled fan reports 0 RPM."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "aruba_psu_instantaneous_watts",
+      "query": "aruba_psu_instantaneous_watts{instance_type='switch', __$labels__}",
+      "display_name": "PSU Instantaneous Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [
+        {
+          "name": "psu_name",
+          "description": "Power supply name"
+        },
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Instantaneous output power of each Aruba CX power supply in watts (arubaWiredPSUInstantaneousPower). Values outside 0..100000 are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "aruba_psu_maximum_watts",
+      "query": "aruba_psu_maximum_watts{instance_type='switch', __$labels__}",
+      "display_name": "PSU Maximum Power",
+      "data_type": "Number",
+      "unit": "watts",
+      "dimensions": [
+        {
+          "name": "psu_name",
+          "description": "Power supply name"
+        },
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Nameplate maximum power of each Aruba CX power supply in watts (arubaWiredPSUMaximumPower). Values outside 0..100000 are dropped."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "aruba_cpu_avg_1min",
+      "query": "aruba_cpu_avg_1min{instance_type='switch', __$labels__}",
+      "display_name": "CPU Average (1 min)",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "One-minute CPU utilization average of each Aruba CX module (arubaWiredSystemInfoCpuAvgOneMin), 0-100 percent. Values outside 0..100 are dropped."
+    },
+    {
+      "metric_group": "CPU",
+      "name": "aruba_cpu_avg_5min",
+      "query": "aruba_cpu_avg_5min{instance_type='switch', __$labels__}",
+      "display_name": "CPU Average (5 min)",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "index",
+          "description": "SNMP table row index"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Five-minute CPU utilization average of each Aruba CX module (arubaWiredSystemInfoCpuAvgFiveMin), 0-100 percent. Values outside 0..100 are dropped."
     },
     {
       "metric_group": "Traffic",

@@ -98,8 +98,7 @@ def parse_numeric(raw):
     digits = ""
     started = False
     sign = ""
-    i = 0
-    while i < len(text):
+    for i in range(len(text)):
         c = text[i]
         if (c == "-" or c == "+") and not started and digits == "":
             sign = c
@@ -111,7 +110,6 @@ def parse_numeric(raw):
                 digits += c
         elif started:
             break
-        i += 1
     if digits == "" or digits == ".":
         return None
     return float(sign + digits)

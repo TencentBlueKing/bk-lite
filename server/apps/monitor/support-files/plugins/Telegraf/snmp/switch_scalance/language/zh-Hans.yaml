@@ -1,6 +1,6 @@
 Switch Scalance SNMP:
   name: Scalance（Telegraf）
-  desc: 面向 Scalance 交换机的 SNMP 监控模板，可采集运行时长、电源状态、接口流量（企业号 PEN 4329）。机箱温度为 N/A。
+  desc: 面向 Siemens SCALANCE 工业交换机的 SNMP 监控模板（企业号 PEN 4329）。可采集运行时长、接口流量、电源状态（AUTOMATION-PS）、各传感器温度以及设备故障信号状态（SN-MSPS-SCX200-MIB）。
 monitor_object:
   Switch: 交换机
 monitor_object_type:
@@ -164,6 +164,10 @@ monitor_object_metric:
     device_psu_state_backup:
       name: 备用电源状态
       desc: 设备备用电源模块的运行状态，统一归一为正常或异常。
+    scalance_fault_state:
+      name: 故障信号状态
+      desc: SCALANCE 工业交换机故障指示灯/信号触点状态（SN-MSPS-SCX200-MIB snMspsFaultState）。noFault(1)
+        归一为 1=正常，fault(2) 归一为 2=异常；其他取值丢弃。
 monitor_object_metric_group:
   Switch:
     Base: 基础

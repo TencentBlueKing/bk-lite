@@ -1,6 +1,7 @@
 """Playbook序列化器"""
 
 import os
+import re
 
 import yaml
 from rest_framework import serializers
@@ -9,6 +10,47 @@ from apps.core.utils.serializers import TeamSerializer
 from apps.job_mgmt.models import Playbook
 from apps.job_mgmt.utils.i18n import serializer_message
 from apps.job_mgmt.utils.playbook_archive import enforce_archive_limits, open_archive, validate_archive_extension
+
+# 顶层参数行：仅匹配无缩进行首 key（vars/defaults 的扁平变量）
+_TOP_LEVEL_KEY_RE = re.compile(r"^([A-Za-z_][\w.-]*)\s*:")
+
+
+def _trailing_comment(line: str) -> str:
+    """提取行尾 `#` 注释；忽略引号内的 `#`。"""
+    in_single = False
+    in_double = False
+    for index, char in enumerate(line):
+        if char == "'" and not in_double:
+            in_single = not in_single
+        elif char == '"' and not in_single:
+            if index > 0 and line[index - 1] == "\\":
+                continue
+            in_double = not in_double
+        elif char == "#" and not in_single and not in_double:
+            return line[index + 1 :].strip()
+    return ""
+
+
+def _extract_inline_descriptions(text: str) -> dict:
+    """
+    从 YAML 原文提取顶层参数的行尾注释作为 description。
+
+    约定：只认同一行行尾 `# ...`；上一行注释、缩进子键均忽略。
+    """
+    descriptions = {}
+    for raw_line in text.splitlines():
+        if not raw_line or raw_line[0] in " \t":
+            continue
+        stripped = raw_line.lstrip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        match = _TOP_LEVEL_KEY_RE.match(raw_line)
+        if not match:
+            continue
+        comment = _trailing_comment(raw_line)
+        if comment:
+            descriptions[match.group(1)] = comment
+    return descriptions
 
 
 def parse_playbook_zip(file) -> dict:
@@ -139,18 +181,21 @@ def _extract_params_from_yaml(content: bytes) -> list:
     从 YAML 内容提取参数定义
 
     返回格式: [{"name": str, "default": any, "description": str}]
+    description 来自参数行行尾 `#` 注释（若有）。
     """
     params = []
     try:
-        data = yaml.safe_load(content.decode("utf-8", errors="ignore"))
+        text = content.decode("utf-8", errors="ignore")
+        data = yaml.safe_load(text)
         if not isinstance(data, dict):
             return params
 
+        descriptions = _extract_inline_descriptions(text)
         for key, value in data.items():
             param = {
                 "name": key,
                 "default": value if not isinstance(value, (dict, list)) else None,
-                "description": "",
+                "description": descriptions.get(str(key), ""),
             }
             params.append(param)
     except Exception:

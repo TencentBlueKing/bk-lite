@@ -1,0 +1,41 @@
+Router GE MDS Orbit SNMP:
+  name: GE MDS Orbit (Telegraf)
+  desc: SNMP monitoring template for GE MDS Orbit industrial routers (MDS-SYSTEM-MIB, enterprise PEN 4130).
+    It reports uptime, system temperature, power supply voltage, MPR heatsink temperatures and PSU output
+    voltages where present, and interface traffic.
+monitor_object:
+  Router: Router
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Router:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart. By monitoring the uptime,
+        network administrators can understand the stability and reliability of the device and identify
+        potential reboot or failure issues.
+    device_temperature_celsius:
+      name: System Temperature
+      desc: System temperature of the router in degrees Celsius. Persistently high values may indicate
+        poor cooling or high ambient temperature.
+    mpr_heatsink1_temperature_celsius:
+      name: MPR Heatsink 1 Temperature
+      desc: 'Heatsink #1 temperature in degrees Celsius. Only present on MPR units.'
+    mpr_heatsink2_temperature_celsius:
+      name: MPR Heatsink 2 Temperature
+      desc: 'Heatsink #2 temperature in degrees Celsius. Only present on MPR units.'
+    device_voltage_volts:
+      name: Power Supply Voltage
+      desc: Power supply voltage in volts DC. Values drifting away from the nominal supply may indicate
+        a power problem.
+    mpr_psu1_voltage_volts:
+      name: MPR PSU 1 Output Voltage
+      desc: 'Output voltage of power supply #1 in volts. Only present on MPR units.'
+    mpr_psu2_voltage_volts:
+      name: MPR PSU 2 Output Voltage
+      desc: 'Output voltage of power supply #2 in volts. Only present on MPR units.'
+monitor_object_metric_group:
+  Router:
+    Base: Base
+    Temperature: Temperature
+    Hardware Status: Hardware Status

@@ -1,0 +1,111 @@
+{
+  "object": "Switch",
+  "plugin": "Switch SmartByte SNMP",
+  "templates": [
+    {
+      "name": "SmartByte交换机CPU使用率过高",
+      "alert_name": "交换机${resource_name} CPU 使用率过高",
+      "description": "监控 SmartByte 交换机近 1 分钟 CPU 使用率，当持续高于阈值时触发告警，提示可能存在控制平面过载。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "SmartByte交换机内存使用率过高",
+      "alert_name": "交换机${resource_name} 内存使用率过高",
+      "description": "监控 SmartByte 交换机内存使用率，当持续高于阈值时触发告警，提示可能存在内存泄漏或资源紧张。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "SmartByte交换机温度过高",
+      "alert_name": "交换机${resource_name} 传感器 ${metric__index} 温度过高",
+      "description": "监控 SmartByte 交换机各温度传感器读数，当超过阈值时触发告警，提示散热故障或风道堵塞。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 50,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "SmartByte交换机风扇异常",
+      "alert_name": "交换机${resource_name} 风扇 ${metric__index} 状态异常",
+      "description": "监控 SmartByte 交换机风扇状态，当风扇故障时触发告警，防止设备过热。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "SmartByte交换机电源异常",
+      "alert_name": "交换机${resource_name} 电源 ${metric__index} 状态异常",
+      "description": "监控 SmartByte 交换机电源状态，当电源关闭或异常时触发告警，提示需检查供电。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}
