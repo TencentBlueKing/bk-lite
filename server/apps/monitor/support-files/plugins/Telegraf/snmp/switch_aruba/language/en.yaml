@@ -149,16 +149,22 @@ monitor_object_metric:
         protection or hardware damage if left unaddressed.
     device_fan_state:
       name: Fan Status
-      desc: This metric reports the operational state of each cooling fan on the device.
-        A non-normal state (warning, critical, shutdown, or notFunctioning) indicates
-        a cooling fault that can quickly lead to overheating and should be investigated
-        immediately.
+      desc: Operational state of each Aruba cooling fan, normalized to 1 = normal,
+        2 = fault, 3 = Unknown (grey, does not alert). empty/ok map to 1; uninitialized/fault
+        map to 2; unknown maps to 3. Only value 2 alerts.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     device_psu_state:
       name: Power Supply Status
-      desc: This metric reports the operational state of each power supply unit on
-        the device. A non-normal state signals a power redundancy or hardware fault;
-        on devices with redundant PSUs a single failure may not cause an outage but
-        removes redundancy and must be remediated promptly.
+      desc: Operational state of each Aruba power supply, normalized to 1 = normal,
+        2 = fault, 3 = Unknown (grey, does not alert). ok/empty map to 1; unknown maps
+        to 3; remaining fault codes map to 2. Only value 2 alerts.
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     device_fan_speed:
       name: Fan Speed
       desc: This metric reports the fan rotation speed (RPM) of the device, taken
