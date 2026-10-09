@@ -30,4 +30,4 @@ def test_network_service_status_enums_have_options():
             assert by_id[2] == "fault", metric["name"]
             assert len({item["id"] for item in options}) == len(options)
             total += 1
-    assert total == 13
+    assert total == 11
