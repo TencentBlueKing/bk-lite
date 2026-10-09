@@ -30,13 +30,14 @@ def _ui_template_with_binding(content, plugin, locale, localize_ui_template):
     from apps.monitor.services.vault_credential.binding import derive_credential_binding, public_credential_binding
 
     source = content if isinstance(content, dict) else {}
-    binding = public_credential_binding(derive_credential_binding(source, plugin))
     localized = localize_ui_template(source, locale) if source else {}
     if not isinstance(localized, dict):
         localized = {}
     else:
         localized = dict(localized)
-    localized["credential_binding"] = binding
+    binding = public_credential_binding(derive_credential_binding(source, plugin))
+    if binding.get("variants"):
+        localized["credential_binding"] = binding
     return localized
 
 
@@ -416,7 +417,7 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
         except MonitorPluginUITemplate.DoesNotExist:
             return WebUtils.response_success(
                 {
-                    "ui_template": {"credential_binding": {"variants": []}},
+                    "ui_template": {},
                     "node_selector": plugin.node_selector or {},
                     "support_collect_detect": resolve_support_collect_detect(plugin, fallback=plugin.support_collect_detect),
                 }
@@ -454,7 +455,10 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
             enrich_ui_template_from_plugin_files(ui_template.get("ui_template"), plugin),
             plugin,
         )
-        ui_template["ui_template"] = _ui_template_with_binding(content or {}, plugin, locale, localize_ui_template)
+        if content:
+            ui_template["ui_template"] = _ui_template_with_binding(content, plugin, locale, localize_ui_template)
+        else:
+            ui_template["ui_template"] = content
         ui_template["support_collect_detect"] = resolve_support_collect_detect(plugin, fallback=bool(ui_template.get("support_collect_detect")))
         return WebUtils.response_success(ui_template)
 

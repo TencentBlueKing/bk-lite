@@ -23,7 +23,7 @@
 
 **存储**：PostgreSQL（ORM）；VictoriaMetrics（指标查询，`utils/victoriametrics_api.py`）；MinIO（`monitor-alert-raw-data` 等，S3JSONField）。
 
-采集配置仓库绑定【已实现】：`CollectConfig` 增加 `vault_credential_id`（默认空串，有索引；非空表示选用凭据仓库，空表示手填）、`vault_variant`、`vault_actor_context`（只存绑定人 `username` / `domain` / `current_team`）、`vault_credential_name`、`vault_applied_version`、`vault_sync_error`、`vault_synced_at`。不另存来源列或类型列。口令不写入这些字段。手填行保持空绑定。
+采集配置仓库绑定【已实现】：`CollectConfig` 增加 `vault_credential_id`（默认空串，有索引；非空表示选用凭据仓库，空表示手填）、`vault_variant`、`vault_actor_context`（只存绑定人 `username` / `domain` / `current_team`）、`vault_credential_name`、`vault_applied_version`（默认 0，表示尚未成功下发；与从 1 起的 `secret_version` 不相等时要解析，0 不是哨兵）、`vault_sync_error`、`vault_synced_at`。不另存来源列或类型列。口令不写入这些字段。手填行保持空绑定。
 
 ## 3. 接口【已实现/已存在】
 各为独立 ViewSet 路由：`monitor_object`、`monitor_object_type`、`metrics_group`、`metrics`、`metrics_instance`、`organization_rule`、`monitor_instance`、`monitor_policy`、`monitor_plugin`、`monitor_alert`、`monitor_event`、`manual_collect`、`collect_detect`、`unit`、`monitor_condition`、`system_mgmt`、`node_mgmt`；开放端点 `open_api/infra`；另有 `api/k3s_onboarding` 与 `open_api/k3s_onboarding`（轻量集群接入）。

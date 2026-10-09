@@ -295,6 +295,53 @@ def _raw(fields, key):
     return value
 
 
+def stored_writes_for_variant(variant, env_by_config, content_by_config, configs):
+    """把每一行自己的受管值写回同一行，不把第一行的密文复制到其他行。"""
+    writes = []
+    child_ids = [str(row.id) for row in configs if getattr(row, "is_child", True)]
+    base_ids = [str(row.id) for row in configs if not getattr(row, "is_child", True)]
+    for target in (variant or {}).get("_targets") or []:
+        if target.get("kind") == "env":
+            env_name = target.get("env_name") or ""
+            scope_ids = child_ids if target.get("scope") == "child" else base_ids
+            for config_id in scope_ids:
+                key = f"{env_name}__{config_id.upper()}" if target.get("scope") == "child" else env_name
+                env = (env_by_config or {}).get(str(config_id)) or {}
+                if key not in env:
+                    continue
+                writes.append({"config_id": config_id, "kind": "env", "env_key": key, "value": env.get(key)})
+            if target.get("scope") == "child" and base_ids and env_name:
+                for config_id in base_ids:
+                    env = (env_by_config or {}).get(str(config_id)) or {}
+                    if env_name not in env:
+                        continue
+                    writes.append({"config_id": config_id, "kind": "env", "env_key": env_name, "value": env.get(env_name)})
+            continue
+        scope_ids = child_ids if target.get("scope") == "child" else base_ids
+        for config_id in scope_ids:
+            content = (content_by_config or {}).get(str(config_id))
+            current = get_path(content, target.get("path"))
+            if target.get("kind") == "dsn":
+                if not isinstance(current, str):
+                    continue
+                value = _extract_capture(target.get("regex"), current)
+            else:
+                value = current
+            if value is None:
+                continue
+            writes.append(
+                {
+                    "config_id": config_id,
+                    "kind": target.get("kind") or "content",
+                    "path": target.get("path"),
+                    "regex": target.get("regex"),
+                    "value": value,
+                    "field": target.get("field"),
+                }
+            )
+    return writes
+
+
 def stored_values_for_variant(variant, env_by_config, content_by_config, configs):
     """Read the current branch values already stored on the node. Does not decrypt."""
     values = {}

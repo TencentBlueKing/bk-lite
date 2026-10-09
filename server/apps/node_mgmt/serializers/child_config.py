@@ -11,6 +11,16 @@ def _vault_env_keys(config_id):
     return managed_env_keys_for_child(config_id)
 
 
+class ChildConfigListSerializer(serializers.ListSerializer):
+    def to_representation(self, data):
+        from apps.monitor.services.vault_credential.binding import managed_env_keys_by_config_ids
+
+        iterable = data.all() if hasattr(data, "all") else data
+        items = list(iterable)
+        self.child.context["_vault_env_key_map"] = managed_env_keys_by_config_ids([item.id for item in items])
+        return [self.child.to_representation(item) for item in items]
+
+
 def _retain_vault_env(original, incoming, keys):
     managed = set(keys or [])
     original = original or {}
@@ -32,7 +42,11 @@ class ChildConfigSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        keys = _vault_env_keys(instance.id)
+        key_map = self.context.get("_vault_env_key_map")
+        if isinstance(key_map, dict):
+            keys = key_map.get(str(instance.id))
+        else:
+            keys = _vault_env_keys(instance.id)
         env_config = data.get("env_config")
         if keys and isinstance(env_config, dict):
             data["env_config"] = {key: ("***" if key in keys and value not in (None, "") else value) for key, value in env_config.items()}
@@ -49,6 +63,7 @@ class ChildConfigSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ChildConfig
+        list_serializer_class = ChildConfigListSerializer
         fields = [
             "id",
             "collect_type",

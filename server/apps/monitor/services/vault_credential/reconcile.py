@@ -139,13 +139,25 @@ def _version_map(credential_ids):
 def _apply_groups(groups, *, trigger, skip_locked):
     counts = {"processed": 0, "success": 0, "failed": 0, "skipped": 0}
     for group in groups:
-        status = apply_vault_credential(
-            group["credential_id"],
-            group["instance_id"],
-            group["monitor_plugin_id"],
-            trigger=trigger,
-            skip_locked=skip_locked,
-        )
+        try:
+            status = apply_vault_credential(
+                group["credential_id"],
+                group["instance_id"],
+                group["monitor_plugin_id"],
+                trigger=trigger,
+                skip_locked=skip_locked,
+            )
+        except Exception as exc:
+            counts["processed"] += 1
+            counts["failed"] += 1
+            logger.error(
+                "event=vault_credential_apply_failed credential_id=%s instance_id=%s failed_stage=apply error_type=%s",
+                group["credential_id"],
+                group["instance_id"],
+                type(exc).__name__,
+                exc_info=(type(exc), exc, exc.__traceback__),
+            )
+            continue
         counts["processed"] += 1
         if status == "success":
             counts["success"] += 1

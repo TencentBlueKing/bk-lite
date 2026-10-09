@@ -45,7 +45,7 @@ DRF Router 注册 13 个路由组：`group`/`user`/`role`/`channel`/`group_data_
 ### 4.2 凭据仓库跨模块契约【已实现 / 监控引用与改密通知已接线】
 
 - 系统管理拥有类型目录与实例仓库。其它模块只保存 `credential_id`，不存口令。消费可见性为归属向下共享：`group_id ∈ {current_team} ∪ 活动祖先`。台账列表/创建/编辑归属为编辑者授权组织，不按当前节点裁子孙。
-- `Credential.secret_version` 为正整数，默认 1。只有 `fields` 密文变化、`group_id` 变化、停用、启用才加 1；只改名称不加。停用/启用走 `set_disabled`，与更新同一套加版本。加版本后在事务提交时通知已注册的消费方；通知失败记 WARNING，不回滚保存。
+- `Credential.secret_version` 为正整数，默认 1。只有 `fields` 密文与原值不相等、`group_id` 变化、停用、启用才加 1；重新填写相同秘密也算变化。只改名称不加。停用/启用走 `set_disabled`，与更新同一套加版本。加版本后在事务提交时通知已注册的消费方；通知失败记 WARNING，不回滚保存。
 - 已注册 NATS（RPC 封装 `server/apps/rpc/system_mgmt.py`）：`list_credentials`（无密文分页列表，不附引用计数）、`create_credential`、`resolve_credential`（明文只走这条，页面与 picker 不调用）、`describe_credential`（同一用户/组织/消费范围，不解密，不停用拒绝）、`get_credential_versions`（无 actor，只返回版本）。`list` 与 `resolve` 都不需 `credential-View`，也不新增「使用」权限；`resolve` 由调用方先做业务鉴权，仓库只做已登录、当前组织在授权内、消费范围、未停用、服务端解密；`create` 需 `credential-Add`。HTTP `credential/selectable/` 与 `credential_type/selectable/` 同样不占 View；台账 CRUD 与 `assignable_groups` / `usable_groups` 仍要 View/Add/Edit/Delete。带 `type` 时必须同时带 `category`。
 - `describe_credential` 成功体为 `{credential_id, type, name, disabled, secret_version}`。当前组织已归档时返回 `{"result": false, "message": "team_archived"}`。`resolve_credential` 的失败 message 保持原样，归档组织仍走既有本地化文案，不改成 `team_archived`。
 - `get_credential_versions` 入参为凭据 ID 列表，最多 100；空列表、非字符串或超过 100 返回 `{"result": false, "message": "invalid"}`。成功体 `data.versions` 的键覆盖每个入参 ID，已删除为 `null`。

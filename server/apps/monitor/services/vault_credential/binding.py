@@ -104,6 +104,8 @@ def select_variant(binding, values, requested_key=None):
     chosen = None
     if len(matched) == 1:
         chosen = matched[0]
+    elif not matched and _when_field_submitted(variants, values):
+        return None
     elif len(variants) == 1 and not (variants[0].get("when") or {}):
         chosen = variants[0]
     elif requested_key:
@@ -164,6 +166,54 @@ def managed_storage_targets(binding, config_ids):
                 copied["config_id"] = config_id
                 targets.append(copied)
     return targets
+
+
+def _when_field_submitted(variants, values):
+    values = values if isinstance(values, dict) else {}
+    for variant in variants or []:
+        field_name = (variant.get("when") or {}).get("field")
+        if field_name and field_name in values:
+            return True
+    return False
+
+
+def managed_env_keys_by_config_ids(config_ids):
+    """一次查出这批子配置里仓库行的受管 env 键。非仓库行不出现在结果里。"""
+    from apps.monitor.models import CollectConfig
+
+    wanted = [str(item) for item in (config_ids or []) if item]
+    if not wanted:
+        return {}
+    rows = list(CollectConfig.objects.filter(id__in=wanted).select_related("monitor_plugin"))
+    vault_rows = [row for row in rows if row.vault_credential_id]
+    if not vault_rows:
+        return {}
+    pair_filter = None
+    seen_pairs = set()
+    for row in vault_rows:
+        pair = (row.monitor_instance_id, row.monitor_plugin_id)
+        if pair in seen_pairs:
+            continue
+        seen_pairs.add(pair)
+        clause = CollectConfig.objects.filter(monitor_instance_id=pair[0], monitor_plugin_id=pair[1])
+        pair_filter = clause if pair_filter is None else pair_filter | clause
+    grouped = {}
+    for row in pair_filter.select_related("monitor_plugin"):
+        grouped.setdefault((row.monitor_instance_id, row.monitor_plugin_id), []).append(row)
+    bindings = {}
+    result = {}
+    for row in vault_rows:
+        plugin = row.monitor_plugin
+        plugin_id = getattr(plugin, "id", None)
+        if plugin_id not in bindings:
+            bindings[plugin_id] = binding_for_plugin(plugin)
+        group = grouped.get((row.monitor_instance_id, row.monitor_plugin_id)) or [row]
+        keys = []
+        for target in managed_storage_targets(bindings[plugin_id], group):
+            if target.get("kind") == "env" and target.get("config_id") == str(row.id) and target.get("env_key"):
+                keys.append(target["env_key"])
+        result[str(row.id)] = list(dict.fromkeys(keys))
+    return result
 
 
 def managed_env_keys_for_child(config_id):
@@ -264,7 +314,8 @@ def _match_variants(names, by_name, config_types, collect_type):
     password_fields = [field["name"] for field in by_name.values() if field.get("type") == "password"]
     user_field = "username" if "username" in names else ("ENV_USER" if "ENV_USER" in names else "")
     if user_field and len(password_fields) == 1:
-        return [_variant("default", {}, ["sql"], None, user_field, [user_field, password_fields[0]], "user_password")]
+        hinted = collect_type if collect_type in {"database", "middleware", "host", "network"} else None
+        return [_variant("default", {}, ["sql"], hinted, user_field, [user_field, password_fields[0]], "user_password")]
     if not user_field and len(password_fields) == 1:
         return [_variant("default", {}, ["token"], "other", password_fields[0], [password_fields[0]], "token")]
     return []

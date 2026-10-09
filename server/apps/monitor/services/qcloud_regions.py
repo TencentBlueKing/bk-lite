@@ -163,7 +163,9 @@ def resolve_stored_cloud_credentials(collect_config_id, actor_context=None) -> t
     if not ids:
         raise ValidationAppException("配置不存在或无权限")
 
-    vault_row = CollectConfig.objects.filter(id__in=ids).exclude(vault_credential_id="").select_related("monitor_plugin").first()
+    authorized = InstanceConfigService._get_authorized_collect_configs(ids, actor_context)
+    authorized_ids = [row.id for row in authorized]
+    vault_row = CollectConfig.objects.filter(id__in=authorized_ids).exclude(vault_credential_id="").select_related("monitor_plugin").first()
     if vault_row is not None:
         return resolve_vault_cloud_credentials(
             vault_row.vault_credential_id,

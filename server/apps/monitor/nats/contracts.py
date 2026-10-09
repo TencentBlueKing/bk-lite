@@ -23,6 +23,8 @@ MONITOR_NATS_HANDLER_NAMES = frozenset(
         "get_network_device_resource_top",
         "monitor_bind_cmdb_id",
         "monitor_clear_cmdb_id",
+        "monitor_count_credential_refs",
+        "monitor_refresh_credential_refs",
         "monitor_ingest_from_source",
         "monitor_list_cmdb_bind_candidates",
         "monitor_instance_metrics",

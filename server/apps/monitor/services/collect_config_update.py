@@ -504,8 +504,6 @@ class CollectConfigUpdateService:
                     config_obj.id,
                 )
             raise BaseAppException("采集配置写入失败，已尝试回滚") from exc
-        if config_obj.vault_credential_id:
-            return
         stamp_applied(config_obj, plugin_fp=plugin_fp, rendered_content=rendered, hand_edited=False)
         config_obj.save(
             update_fields=[
@@ -663,7 +661,37 @@ class CollectConfigUpdateService:
                         current = locked_by_id.get(config_obj.id)
                         if current is None or not current.vault_credential_id:
                             continue
-                        _rerender_row(current)
+                        try:
+                            with transaction.atomic():
+                                if not discard_hand_edited and not is_config_stale(current, plugin):
+                                    continue
+                                if is_config_hand_edited(current) and not discard_hand_edited:
+                                    instance_edited = True
+                                    continue
+                                CollectConfigUpdateService._rerender_one(
+                                    node_mgmt,
+                                    current,
+                                    plugin_fp,
+                                    discard_hand_edited=discard_hand_edited,
+                                )
+                                instance_updated = True
+                        except HandEditedCollectConfigError:
+                            instance_edited = True
+                        except Exception as exc:
+                            instance_failed = True
+                            logger.warning(
+                                "event=collect_config_update_item_failed config_id=%s instance_id=%s failed_stage=rerender error_type=%s",
+                                current.id,
+                                instance_id,
+                                type(exc).__name__,
+                            )
+                            failed.append(
+                                {
+                                    "instance_id": instance_id,
+                                    "config_id": current.id,
+                                    "error_type": type(exc).__name__,
+                                }
+                            )
             for config_obj in plain_rows:
                 _rerender_row(config_obj)
             if instance_failed:

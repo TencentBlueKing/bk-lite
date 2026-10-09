@@ -30,10 +30,6 @@ SNMP_TAGS_PATTERN = re.compile(r"^(?P<indent>\s*)\[inputs\.snmp\.tags\]\s*$", re
 SNMP_PLUGIN_ID_TAG_PATTERN = re.compile(r"^\s*plugin_id\s*=", re.M)
 
 
-def _vault_child_config(config_id) -> bool:
-    return CollectConfig.objects.filter(id=config_id).exclude(vault_credential_id="").exists()
-
-
 def _overlay_vault_rendered_content(config_id, original_content, rendered_content):
     from apps.monitor.services.vault_credential.apply import retain_managed_content
 
@@ -323,6 +319,7 @@ class CustomSnmpPluginService:
                     "id": config_obj.id,
                     "original_content": child_config.get("content") or "",
                     "rendered_content": rendered_content,
+                    "vault_credential_id": config_obj.vault_credential_id or "",
                 }
             )
 
@@ -367,14 +364,17 @@ class CustomSnmpPluginService:
         if not update_plan:
             return
         node_mgmt = NodeMgmt()
+        local_node = None
         applied_updates = []
         retry_ids = []
         try:
             for item in update_plan:
                 rendered_content = item["rendered_content"]
-                if _vault_child_config(item["id"]):
+                if item.get("vault_credential_id"):
                     rendered_content = _overlay_vault_rendered_content(item["id"], item.get("original_content") or "", rendered_content)
-                    swapped = node_mgmt.compare_and_swap_child_config_content_local(
+                    if local_node is None:
+                        local_node = NodeMgmt(is_local_client=True)
+                    swapped = local_node.compare_and_swap_child_config_content_local(
                         item["id"],
                         item.get("original_content") or "",
                         rendered_content,
@@ -389,9 +389,9 @@ class CustomSnmpPluginService:
             from apps.monitor.models import CollectConfig as CollectConfigModel
             from apps.monitor.services.collect_config_update import plugin_content_fingerprint, stamp_applied
 
-            config_ids = [item["id"] for item in update_plan]
+            config_ids = [item["id"] for item in applied_updates]
             config_map = {config.id: config for config in CollectConfigModel.objects.filter(id__in=config_ids).select_related("monitor_plugin")}
-            for item in update_plan:
+            for item in applied_updates:
                 config_obj = config_map.get(item["id"])
                 if config_obj is None:
                     continue
@@ -454,8 +454,12 @@ class CustomSnmpPluginService:
 
         try:
             update_plan = CustomSnmpPluginService._build_propagation_plan(plugin, updated_content, child_template)
-            CustomSnmpPluginService.propagate_collect_template(update_plan)
+            propagation = CustomSnmpPluginService.propagate_collect_template(update_plan) or {}
         except Exception:
             MonitorPluginConfigTemplate.objects.filter(id=child_template_id).update(content=original_content)
             raise
-        return CustomSnmpPluginService.get_collect_template(plugin)
+        result = CustomSnmpPluginService.get_collect_template(plugin)
+        retry_ids = propagation.get("retry_config_ids") or []
+        if retry_ids:
+            result["retry_config_ids"] = retry_ids
+        return result
