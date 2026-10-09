@@ -123,7 +123,7 @@
       "query": "max(device_fan_state{instance_type='loadbalance', __$labels__}) by (instance_id, name)",
       "display_name": "Fan State",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "dimensions": [
         {
           "name": "name",
@@ -133,7 +133,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Fan status of the A10 Thunder/AX appliance (A10-AX-MIB axSysFanStatusTable axFanStatus, some hardware models only), normalised so that okFixedHigh/okLowMed/okMedMed/okMedHigh = 1 (normal) and failed/notReady/unknown = 2 (fault). Missing table rows are not emitted."
+      "description": "Fan status of the A10 Thunder/AX appliance (A10-AX-MIB axSysFanStatusTable axFanStatus, some hardware models only), normalised so that okFixedHigh/okLowMed/okMedMed/okMedHigh = 1 (normal), failed/notReady(-2) = 2 (fault), and unknown(-1) = 3 (unknown, no alert). Missing table rows are not emitted."
     },
     {
       "metric_group": "Hardware Status",
@@ -141,7 +141,7 @@
       "query": "max(device_psu_state{instance_type='loadbalance', __$labels__}) by (instance_id, psu)",
       "display_name": "PSU State",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
       "dimensions": [
         {
           "name": "psu",
@@ -151,7 +151,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Status of the lower and upper power supplies of the A10 Thunder/AX appliance (A10-AX-MIB axSysLowerPowerSupplyStatus / axSysUpperPowerSupplyStatus scalars), normalised so that on(1) = 1 (normal) and off(0)/unknown(-1) = 2 (fault). A missing scalar is not emitted."
+      "description": "Status of the lower and upper power supplies of the A10 Thunder/AX appliance (A10-AX-MIB axSysLowerPowerSupplyStatus / axSysUpperPowerSupplyStatus scalars), normalised so that on(1) = 1 (normal), off(0) = 2 (fault), and unknown(-1) = 3 (unknown, no alert). A missing scalar is not emitted."
     }
   ]
 }
