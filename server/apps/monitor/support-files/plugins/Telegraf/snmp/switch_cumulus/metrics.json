@@ -80,10 +80,10 @@
       ],
       "name": "device_memory_total",
       "display_name": "内存总量",
-      "query": "sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id)*1024",
       "unit": "bytes",
       "data_type": "Number",
-      "description": "Total physical memory of the Cumulus Linux switch in bytes (UCD-SNMP-MIB memTotalReal)."
+      "description": "Total physical memory of the Cumulus Linux switch in bytes (UCD-SNMP-MIB memTotalReal, reported in kB and converted to bytes in the query)."
     },
     {
       "metric_group": "Memory",
@@ -93,10 +93,10 @@
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲",
-      "query": "sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)*1024",
       "unit": "bytes",
       "data_type": "Number",
-      "description": "Free physical memory of the Cumulus Linux switch in bytes (UCD-SNMP-MIB memAvailReal)."
+      "description": "Free physical memory of the Cumulus Linux switch in bytes (UCD-SNMP-MIB memAvailReal, reported in kB and converted to bytes in the query)."
     },
     {
       "metric_group": "Memory",
