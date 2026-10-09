@@ -182,9 +182,11 @@ def test_health_metric_queries_units_and_scaling(metrics):
     by = {metric["name"]: metric for metric in metrics["metrics"]}
     assert by["device_temperature_celsius"]["unit"] == "celsius"
     assert "/ 1000" in by["device_temperature_celsius"]["query"]
-    assert by["device_temperature_celsius"]["query"].replace(" ", "").startswith("max(")
+    assert by["device_temperature_celsius"]["query"] == "device_temperature_celsius{instance_type='access', __$labels__} / 1000"
+    assert [item["name"] for item in by["device_temperature_celsius"]["dimensions"]] == ["descr"]
     assert by["device_psu_state"]["data_type"] == "Enum"
-    assert by["device_psu_state"]["query"].replace(" ", "").startswith("max(")
+    assert by["device_psu_state"]["query"] == "device_psu_state{instance_type='access', __$labels__}"
+    assert [item["name"] for item in by["device_psu_state"]["dimensions"]] == ["descr"]
 
 
 @pytest.mark.unit
