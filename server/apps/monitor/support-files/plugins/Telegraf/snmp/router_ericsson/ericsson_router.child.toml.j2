@@ -128,7 +128,7 @@ def apply(metric):
     [processors.starlark.tagpass]
         brand = ["ericsson_router"]
 
-# ---- 风扇/电源状态归一：normal(1)→1，failed(2)→2；absent(3) 空槽→1 保留行；unknown(4)→2 保留行。只有转速的风扇行原样保留。----
+# ---- 风扇/电源状态归一：normal(1)→1，failed(2)→2；absent(3) 空槽→1 保留行；unknown(4)→3 保留行。只有转速的风扇行原样保留。----
 [[processors.starlark]]
     namepass = ["device_fan", "device_psu"]
     source = '''
@@ -143,7 +143,7 @@ def apply(metric):
     elif raw == 3:
         metric.fields["state"] = 1
     elif raw == 4:
-        metric.fields["state"] = 2
+        metric.fields["state"] = 3
     else:
         return None
     return metric
