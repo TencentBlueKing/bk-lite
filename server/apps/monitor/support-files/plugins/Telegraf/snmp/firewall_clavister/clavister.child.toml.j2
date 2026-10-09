@@ -53,4 +53,48 @@
     [[inputs.snmp.field]]
         oid = "1.3.6.1.4.1.5089.1.2.1.5.0"
         name = "firewall_active_sessions"
+    # ---- 硬件传感器：clvHWSensorTable 1.3.6.1.4.1.5089.1.2.1.11（表，table.field 不带 .0）----
+    # clvHWSensorName .1.2（DisplayString）/ clvHWSensorValue .1.3（Gauge32）/ clvHWSensorUnit .1.4（DisplayString）；下方 starlark 只保留温度行 → device_temperature_celsius{sensor}。
+    [[inputs.snmp.table]]
+        name = "clv_hw_sensor"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5089.1.2.1.11.1.2"
+        name = "sensor"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5089.1.2.1.11.1.3"
+        name = "value"
+        conversion = "int"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5089.1.2.1.11.1.4"
+        name = "unit"
 # ---- 不采集 clvSysForwardedBits(.2) / clvSysBuffUse(.4)；接口走内置 IF-MIB。不搬 IPsec/Pipe/ALG 树。----
+
+# ---- 温度行筛选：单位为 C / °C / degC / Celsius（不区分大小写）的行，或单位为空且名称含 temp 的行 → device_temperature（celsius）；其它单位（风扇转速、电压等）与无值行丢弃。----
+[[processors.starlark]]
+    namepass = ["clv_hw_sensor"]
+    source = '''
+CELSIUS_UNITS = ["c", "°c", "degc", "deg c", "celsius", "degree celsius", "degrees celsius"]
+
+def apply(metric):
+    value = metric.fields.get("value")
+    if value == None:
+        return None
+    unit = str(metric.fields.get("unit", "")).strip().lower()
+    name = str(metric.tags.get("sensor", "")).lower()
+    is_temp = unit in CELSIUS_UNITS or "celsius" in unit
+    if unit == "" and "temp" in name:
+        is_temp = True
+    if not is_temp:
+        return None
+    m = Metric("device_temperature")
+    for k, v in metric.tags.items():
+        m.tags[k] = v
+    m.fields["celsius"] = int(value)
+    m.time = metric.time
+    return m
+'''
+    [processors.starlark.tagpass]
+        brand = ["clavister"]
