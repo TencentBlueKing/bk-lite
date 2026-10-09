@@ -40,14 +40,14 @@ monitor_object_metric:
       name: Fan Status
       desc: Fan status of the A10 Thunder/AX appliance (A10-AX-MIB axFanStatus, available
         on some hardware models only). okFixedHigh/okLowMed/okMedMed/okMedHigh are
-        mapped to normal; failed and notReady are mapped to fault; rows reporting
-        unknown(-1) are dropped and not counted as faults.
+        mapped to normal; failed, notReady and unknown(-1) are mapped to fault.
+        Missing table rows are not emitted.
     device_psu_state:
       name: Power Supply Status
       desc: Status of the lower and upper power supplies of the A10 Thunder/AX appliance
         (A10-AX-MIB axSysLowerPowerSupplyStatus / axSysUpperPowerSupplyStatus). on(1)
-        is mapped to normal; off(0) is mapped to fault; a supply reporting unknown(-1)
-        is dropped and not counted as a fault.
+        is mapped to normal; off(0) and unknown(-1) are mapped to fault.
+        A missing scalar is not emitted.
     snmp_uptime:
       name: System Uptime
       desc: This metric indicates the uptime of the device since the last restart.
