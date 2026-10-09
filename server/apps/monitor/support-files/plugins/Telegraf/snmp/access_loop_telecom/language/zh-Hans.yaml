@@ -1,0 +1,42 @@
+Access Loop Telecom SNMP:
+  name: Loop Telecom（Telegraf）
+  desc: 面向 Loop Telecom AM3440 接入复用器（L-AM3440-A-Private，企业号 PEN 823）的 SNMP 监控模板，可采集运行时长、整机功耗估算值、主控温度与相对湿度、电源卡与风扇状态，以及接口流量。
+monitor_object:
+  Access: 接入设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Access:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    power_consumption_watts:
+      name: 整机功耗
+      desc: 整机功耗估算值，单位为瓦。
+    device_temperature_celsius:
+      name: 主控温度
+      desc: 各主控卡温度，单位为摄氏度。温度持续偏高可能表示散热不良或风扇故障。
+    device_humidity_percent:
+      name: 主控相对湿度
+      desc: 各主控卡测得的相对湿度，单位为百分比。
+    device_psu_state:
+      name: 电源状态
+      desc: 各电源卡状态，异常表示电源卡关闭或故障。
+    device_fan_state:
+      name: 风扇状态
+      desc: 各风扇状态，异常表示风扇故障或未安装。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位
+        ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位
+        ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+monitor_object_metric_group:
+  Access:
+    Base: 基础
+    Traffic: 流量
+    Power: 电力
+    Temperature: 温度
+    Hardware Status: 硬件状态

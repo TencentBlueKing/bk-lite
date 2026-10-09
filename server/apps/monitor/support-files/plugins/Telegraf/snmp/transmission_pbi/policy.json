@@ -1,0 +1,31 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission PBI SNMP",
+  "templates": [
+    {
+      "name": "PBI数字前端机箱温度过高",
+      "alert_name": "传输设备${resource_name} 机箱温度过高",
+      "description": "监控 PBI 数字前端机箱的胸腔温度（chestTemp），当持续高于阈值时触发告警，提示可能存在散热异常、环境温度过高或机箱过载。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 62,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 55,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

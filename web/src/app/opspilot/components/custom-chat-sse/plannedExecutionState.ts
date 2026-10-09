@@ -1,3 +1,5 @@
+import { getOpspilotTranslate } from './i18n';
+
 /**
  * DeepAgent planned_execution_step 状态机。
  * 将工具调用挂到当前执行步骤，供对话 UI 按方案 A（步骤嵌套工具组）渲染。
@@ -120,7 +122,7 @@ export const applyPlannedExecutionStep = (
       steps.push({
         step_index: stepIndex,
         total_steps: totalSteps,
-        objective: objective || `步骤 ${stepIndex}`,
+        objective: objective || getOpspilotTranslate()('chat.plannedStep.unnamed', '步骤 {index}', { index: stepIndex }),
         status: endStatus,
         toolCallIds: [],
         reusedPriorResult: reused,
@@ -147,7 +149,7 @@ export const applyPlannedExecutionStep = (
     steps.push({
       step_index: stepIndex,
       total_steps: totalSteps,
-      objective: objective || `步骤 ${stepIndex}`,
+      objective: objective || getOpspilotTranslate()('chat.plannedStep.unnamed', '步骤 {index}', { index: stepIndex }),
       status: 'running',
       toolCallIds: [],
     });

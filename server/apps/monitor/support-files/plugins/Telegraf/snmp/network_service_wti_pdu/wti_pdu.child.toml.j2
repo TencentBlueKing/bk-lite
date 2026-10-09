@@ -1,0 +1,158 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_wti_pdu"
+        config_type = "wti_pdu"
+        brand = "wti_pdu"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- WTI VMR / NPS / RPC / NBB 系列 PDU（WTI-POWER-MIB，PEN 2634，westernTelematic → power(3)）；控制台产品线的 2634.1 树不在本模板内。----
+    # environmentUnitTable（1.3.6.1.4.1.2634.3.200.10，INDEX environmentUnitIndex 0..3）：按表遍历，table.field 不带 .0。
+    # 每个单元：environmentUnitTemperature（.3，℃）；A / B / C / D 四条支路 environmentUnitCurrentX（1/10 A）/ VoltageX（V）/ PowerX（W）。
+    [[inputs.snmp.table]]
+        name = "wti_environment_unit"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    # environmentUnitName（.2）：单元名称，作为 unit_name 标签。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2634.3.200.10.1.2"
+        name = "unit_name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2634.3.200.10.1.3"
+        name = "temperature_raw"
+    # A：.4 / .5 / .6；B：.7 / .8 / .9；C：.10 / .11 / .12；D：.13 / .14 / .15。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2634.3.200.10.1.4"
+        name = "current_a_raw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2634.3.200.10.1.5"
+        name = "voltage_a_raw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2634.3.200.10.1.6"
+        name = "power_a_raw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2634.3.200.10.1.7"
+        name = "current_b_raw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2634.3.200.10.1.8"
+        name = "voltage_b_raw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2634.3.200.10.1.9"
+        name = "power_b_raw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2634.3.200.10.1.10"
+        name = "current_c_raw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2634.3.200.10.1.11"
+        name = "voltage_c_raw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2634.3.200.10.1.12"
+        name = "power_c_raw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2634.3.200.10.1.13"
+        name = "current_d_raw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2634.3.200.10.1.14"
+        name = "voltage_d_raw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2634.3.200.10.1.15"
+        name = "power_d_raw"
+    # plugTable（1.3.6.1.4.1.2634.3.100.200，INDEX plugIndex 0..80）：插座级计量，table.field 不带 .0。
+    [[inputs.snmp.table]]
+        name = "pdu_outlet"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    # plugName（.5）：插座名称，作为 outlet 标签。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2634.3.100.200.1.5"
+        name = "outlet"
+        is_tag = true
+    # plugCurrent（.7）：1/10 A；plugPower（.8）：W。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2634.3.100.200.1.7"
+        name = "current_raw"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2634.3.100.200.1.8"
+        name = "power_raw"
+# ---- CPU 使用率：MIB 只有内存 / 闪存总量，不采。----
+
+# ---- 换算与拆分：环境单元行拆成 pdu_temperature（celsius）与按支路的 pdu_branch（标签 branch=A / B / C / D），原始行不落库；
+# 温度须在 -40~125 ℃ 且不为 0（未接入的单元各列为 0）；支路电压须为 1~600 V，否则视为该支路不存在、整条支路不出点；电流原始值须为 0~10000（÷10 → A）；功率须为 0~100000 W。
+# 插座：电流原始值 0~10000（÷10 → A）、功率 0~100000 W，两者都无效时不出点。----
+[[processors.starlark]]
+    namepass = ["wti_environment_unit", "pdu_outlet"]
+    source = '''
+def child(metric, name, extra):
+    m = Metric(name)
+    for k, v in metric.tags.items():
+        m.tags[k] = v
+    for k, v in extra.items():
+        m.tags[k] = v
+    m.time = metric.time
+    return m
+
+def apply(metric):
+    f = metric.fields
+    if metric.name == "pdu_outlet":
+        current = f.pop("current_raw", None)
+        watts = f.pop("power_raw", None)
+        if type(current) == "int" and current >= 0 and current <= 10000:
+            f["current_amps"] = current / 10.0
+        if type(watts) == "int" and watts >= 0 and watts <= 100000:
+            f["power_watts"] = watts
+        if "current_amps" not in f and "power_watts" not in f:
+            return None
+        return metric
+    out = []
+    temp = f.get("temperature_raw")
+    if type(temp) == "int" and temp != 0 and temp >= -40 and temp <= 125:
+        t = child(metric, "pdu_temperature", {})
+        t.fields["celsius"] = temp
+        out.append(t)
+    for b in ["a", "b", "c", "d"]:
+        current = f.get("current_" + b + "_raw")
+        volts = f.get("voltage_" + b + "_raw")
+        watts = f.get("power_" + b + "_raw")
+        if type(volts) != "int" or volts < 1 or volts > 600:
+            continue
+        m = child(metric, "pdu_branch", {"branch": b.upper()})
+        m.fields["voltage_volts"] = volts
+        if type(current) == "int" and current >= 0 and current <= 10000:
+            m.fields["current_amps"] = current / 10.0
+        if type(watts) == "int" and watts >= 0 and watts <= 100000:
+            m.fields["power_watts"] = watts
+        out.append(m)
+    if len(out) == 0:
+        return None
+    return out
+'''
+    [processors.starlark.tagpass]
+        brand = ["wti_pdu"]

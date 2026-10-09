@@ -537,6 +537,27 @@ class TestBuildDeepagentNodes:
         assert "不需要调用工具或读取技能文件" in str(captured["direct_reply_calls"][0][0].content)
         assert result["messages"][0].content == "你好！"
 
+    def test_empty_plan_with_registered_tools_lists_them(self):
+        """寒暄式空计划仍要带上已配置工具名，不能对用户说没有工具。"""
+        node = ToolsNodes()
+        node.all_tools = [_tool("get_current_time")]
+        req = _request(user_message="你当前有哪些可以调用的工具")
+        captured = {}
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={"goal": "说明可用工具", "steps": []},
+                direct_reply_content="可以调用 get_current_time。",
+            )
+
+        system_text = str(captured["direct_reply_calls"][0][0].content)
+        assert "当前没有可用工具与技能" not in system_text
+        assert "当前可用工具:" in system_text
+        assert "get_current_time" in system_text
+
     def test_use_skills_step_materializes_sandbox_and_enables_fs(self):
         node = ToolsNodes()
         node.all_tools = []

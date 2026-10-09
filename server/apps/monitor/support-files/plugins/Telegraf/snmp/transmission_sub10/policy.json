@@ -1,0 +1,31 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission Sub10 SNMP",
+  "templates": [
+    {
+      "name": "Sub10传输设备温度过高",
+      "alert_name": "传输设备${resource_name} 温度过高",
+      "description": "监控 Sub10 本地单元 MWU 温度（sub10UnitLclMWUTemperature），当持续高于阈值时触发告警，提示散热不良、日照或环境过热。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

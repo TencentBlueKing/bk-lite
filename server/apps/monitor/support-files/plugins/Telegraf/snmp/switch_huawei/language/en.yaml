@@ -172,12 +172,21 @@ monitor_object_metric:
         Huawei reports a binary state (1=normal, 2=abnormal). A non-normal state
         indicates a cooling fault that can quickly lead to overheating and should be investigated
         immediately.
+      enum:
+        "1": Normal
+        "2": Abnormal
     device_psu_state:
       name: Power Supply Status
       desc: Operational state of each installed power supply (hwEntityPwrState).
-        On-wire values are supply(1), notSupply(2), sleep(3), and unknown(4).
-        sleep is a valid redundant-PSU energy-saving state, not a fault. Empty slots
-        are excluded by pairing with present(1).
+        On-wire values are kept as-is (supply(1), notSupply(2), sleep(3), and
+        unknown(4)). 4=Unknown (gray, no alert). sleep(3) is a valid redundant-PSU
+        energy-saving state, not a fault. Only value 2 alerts. Empty slots are
+        excluded by pairing with present(1).
+      enum:
+        "1": Supply
+        "2": Not Supply
+        "3": Sleep
+        "4": Unknown
     device_psu_present:
       name: Power Supply Present
       desc: Presence of each power supply (hwEntityPwrPresent). On-wire values are

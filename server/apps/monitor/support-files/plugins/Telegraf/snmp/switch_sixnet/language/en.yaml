@@ -161,14 +161,20 @@ monitor_object_metric:
         removes redundancy and must be remediated promptly.
     psu1_status:
       name: PSU1 Status
-      desc: Operational state of Sixnet P1 power input. Native codes are off (0),
-        on (1), and unknown (2). A value other than 1 means the primary power input
-        is lost or the state cannot be determined.
+      desc: Operational state of Sixnet P1 power input, normalised so 1 means on
+        (normal), 2 means off (abnormal), and 3 means unknown (gray, no alert).
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     psu2_status:
       name: PSU2 Status
-      desc: Operational state of Sixnet P2 power input. Native codes are off (0),
-        on (1), and unknown (2). A value other than 1 means the redundant power input
-        is lost or the state cannot be determined.
+      desc: Operational state of Sixnet P2 power input, normalised so 1 means on
+        (normal), 2 means off (abnormal), and 3 means unknown (gray, no alert).
+      enum:
+        "1": Normal
+        "2": Abnormal
+        "3": Unknown
     ok_relay_status:
       name: OK Relay Status
       desc: Operational state of the Sixnet OK alarm relay. Native codes are off (0),

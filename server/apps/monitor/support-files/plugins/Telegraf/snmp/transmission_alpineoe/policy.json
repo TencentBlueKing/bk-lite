@@ -1,0 +1,101 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission Alpine Optoelectronics SNMP",
+  "templates": [
+    {
+      "name": "Alpine传输设备风扇异常",
+      "alert_name": "传输设备${resource_name} 风扇${metric__fan} 状态异常",
+      "description": "监控 Alpine TDCM-EDFA 各系统风扇运行状态，当归一后为异常时触发告警，提示散热故障。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Alpine传输设备电源输入异常",
+      "alert_name": "传输设备${resource_name} 电源${metric__index} 输入异常",
+      "description": "监控 Alpine TDCM-EDFA 电源卡输入状态，当输入关闭或无输入时触发告警。",
+      "metric_name": "device_psu_input_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Alpine传输设备电源输出异常",
+      "alert_name": "传输设备${resource_name} 电源${metric__index} 输出异常",
+      "description": "监控 Alpine TDCM-EDFA 电源卡输出状态，当输出过压或欠压时触发告警。",
+      "metric_name": "device_psu_output_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Alpine传输设备槽位温度过高",
+      "alert_name": "传输设备${resource_name} 槽位${metric__index} 温度过高",
+      "description": "监控 Alpine TDCM-EDFA 槽位温度，当持续高于阈值时触发告警。",
+      "metric_name": "slot_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 65,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 60,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Alpine传输设备EDFA温度过高",
+      "alert_name": "传输设备${resource_name} EDFA${metric__index} 温度过高",
+      "description": "监控 Alpine TDCM-EDFA 光放大模块温度，当持续高于阈值时触发告警。",
+      "metric_name": "edfa_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 65,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 60,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

@@ -127,7 +127,7 @@ const OpspilotSelectorOperateModal: React.FC<
                 </span>
                 {tempSelectedOptions.length > 0 && (
                   <span className="inline-flex h-5 items-center rounded-full bg-[var(--color-count-alt-bg)] px-2 text-[11px] font-medium tabular-nums text-[var(--color-count-alt)]">
-                    已选 {tempSelectedOptions.length} 项
+                    {t('skill.settings.selectedItems', '已选 {count} 项', { count: tempSelectedOptions.length })}
                   </span>
                 )}
               </div>

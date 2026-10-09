@@ -29,7 +29,7 @@ import type {
 import { HandledRequestError } from "@/utils/request";
 import { useTranslation } from "@/utils/i18n";
 import WikiDirectorySelect from "./WikiDirectorySelect";
-import { formatPageTypeLabel } from "./wikiFormat";
+import { formatPageTypeLabel, formatWikiDirectoryLabel } from "./wikiFormat";
 import {
   markdownImportGovernanceErrorView,
   formatArchiveBytes,
@@ -58,13 +58,14 @@ const UNCLASSIFIED_DIRECTORY_KEY = "__unclassified__";
 
 const directoryPathMap = (
   directories: WikiDirectoryNode[],
+  labelOf: (directory: WikiDirectoryNode) => string,
   ancestors: string[] = [],
   result = new Map<number, string>(),
 ): Map<number, string> => {
   directories.forEach((directory) => {
-    const path = [...ancestors, directory.name];
+    const path = [...ancestors, labelOf(directory)];
     result.set(directory.id, path.join(" / "));
-    directoryPathMap(directory.children || [], path, result);
+    directoryPathMap(directory.children || [], labelOf, path, result);
   });
   return result;
 };
@@ -104,8 +105,11 @@ const WikiMarkdownImportModal = ({
   const preflightSequenceRef = useRef(0);
 
   const pathsByDirectoryId = useMemo(
-    () => directoryPathMap(directories),
-    [directories],
+    () =>
+      directoryPathMap(directories, (directory) =>
+        formatWikiDirectoryLabel(t, directory),
+      ),
+    [directories, t],
   );
 
   const preflightOptions = useMemo<WikiMarkdownImportPreflightOptions>(() => {

@@ -1,0 +1,108 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_powerdsine"
+        config_type = "powerdsine"
+        brand = "powerdsine"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.2.0"
+        name = "sysObjectID"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Microsemi / PowerDsine PoE Midspan 主 PSE 表（MICROSEMI-PDSINE-MIB，PEN 7428）：mainPseTable 1.3.6.1.4.1.7428.1.2.2.1，INDEX pethMainPseGroupIndex ----
+    # table.field 不带 .0；index 标签即 PSE 组号（非模块化设备固定为 1）。一次遍历取齐各列，由下方 starlark 拆分为各指标。
+    [[inputs.snmp.table]]
+        name = "pse_main"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    # mainVoltage（.2）：电源电压，Gauge32，单位 V。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.7428.1.2.2.1.1.2"
+        name = "voltage"
+    # mainPSEMaxPower（.5）：扣除功率预算限制后的最大可供电功率，Gauge32，单位 W。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.7428.1.2.2.1.1.5"
+        name = "max_power"
+    # internalPowerSourceStatus（.9）：内部电源 ok(1) / fail(2)；externalPowerSourceStatus（.10）：外部电源 ok(1) / fail(2) / notsupported(3)。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.7428.1.2.2.1.1.9"
+        name = "internal_power"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.7428.1.2.2.1.1.10"
+        name = "external_power"
+    # temperature（.11）：机内温度，仅 95xxG 系列提供；temperatureformat（.12）：celcius(1) / fahrenheit(2) / notsupported(3)。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.7428.1.2.2.1.1.11"
+        name = "temperature"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.7428.1.2.2.1.1.12"
+        name = "temperature_format"
+# ---- CPU/内存使用率、风扇转速：该 MIB 不提供，不采集；按端口的 PoE 供电表不在本模板范围内。----
+
+# ---- 拆分与校验：电压须为 1~1000 的整数（V）；最大供电功率须为 1~65535 的整数（W）；
+# 温度按 temperatureformat 换算：1 为摄氏度直接使用，2 为华氏度换算为摄氏度，3 或缺失表示无温度传感器，丢弃；换算后须在 -60~150 ℃；
+# 电源状态 ok(1) → 1（正常）、fail(2) → 2（异常），notsupported(3) 与其它值丢弃。无效值不出点，原始行不落库。----
+[[processors.starlark]]
+    namepass = ["pse_main"]
+    source = '''
+def child(metric, name, field, value):
+    out = Metric(name)
+    for k, v in metric.tags.items():
+        out.tags[k] = v
+    out.fields[field] = value
+    out.time = metric.time
+    return out
+
+def apply(metric):
+    f = metric.fields
+    result = []
+    volts = f.get("voltage")
+    if type(volts) == "int" and volts >= 1 and volts <= 1000:
+        result.append(child(metric, "device_voltage", "volts", volts))
+    watts = f.get("max_power")
+    if type(watts) == "int" and watts >= 1 and watts <= 65535:
+        result.append(child(metric, "poe_max_power", "watts", watts))
+    temp = f.get("temperature")
+    unit = f.get("temperature_format")
+    if type(temp) == "int" and unit in (1, 2):
+        celsius = temp * 1.0 if unit == 1 else (temp - 32) * 5.0 / 9.0
+        if celsius >= -60 and celsius <= 150:
+            result.append(child(metric, "device_temperature", "celsius", int(celsius * 10 + (0.5 if celsius >= 0 else -0.5)) / 10.0))
+    for key, psu in (("internal_power", "internal"), ("external_power", "external")):
+        raw = f.get(key)
+        if raw in (1, 2):
+            p = child(metric, "device_psu", "state", raw)
+            p.tags["psu"] = psu
+            result.append(p)
+    return result
+'''
+    [processors.starlark.tagpass]
+        brand = ["powerdsine"]

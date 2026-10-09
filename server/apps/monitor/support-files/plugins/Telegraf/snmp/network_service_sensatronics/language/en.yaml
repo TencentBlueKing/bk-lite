@@ -1,0 +1,37 @@
+NetworkService Sensatronics SNMP:
+  name: Sensatronics (Telegraf)
+  desc: SNMP monitoring template for Sensatronics EM1 / E4 environment monitors (SENSATRONICS-EM1, enterprise
+    PEN 16174). It reports uptime, temperature and relative humidity of up to four sensor groups, and
+    interface traffic.
+monitor_object:
+  NetworkService: NetworkService
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  NetworkService:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
+        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
+        or failures.
+    env_temperature_celsius:
+      name: Temperature
+      desc: Reading of each temperature probe in degrees Celsius.
+    env_humidity_percent:
+      name: Relative Humidity
+      desc: Reading of each humidity probe in percent.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured
+        in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of outbound bytes sent over the past 5 minutes, measured
+        in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifOutOctets on high-speed ports, keeping the rate accurate.
+monitor_object_metric_group:
+  NetworkService:
+    Base: Base
+    Traffic: Traffic
+    Environment: Environment

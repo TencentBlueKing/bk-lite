@@ -1,0 +1,111 @@
+{
+  "object": "Router",
+  "plugin": "Router Ericsson IPOS SNMP",
+  "templates": [
+    {
+      "name": "Ericsson路由器CPU使用率过高",
+      "alert_name": "路由器${resource_name} CPU 使用率过高",
+      "description": "监控 Ericsson IPOS 路由器 5 分钟平均 CPU 使用率，当持续高于阈值时触发告警，提示可能存在控制平面过载、路由计算频繁或异常流量。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Ericsson路由器内存使用率过高",
+      "alert_name": "路由器${resource_name} 内存使用率过高",
+      "description": "监控 Ericsson IPOS 路由器各内存模块使用率（已用/(已用+空闲)），当超过阈值时触发告警，便于及时发现内存压力。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Ericsson路由器温度过高",
+      "alert_name": "路由器${resource_name} 温度过高",
+      "description": "监控 Ericsson IPOS 路由器各实体温度传感器，当持续高于阈值时触发告警，提示可能存在散热不良或环境温度过高。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 55,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Ericsson路由器风扇异常",
+      "alert_name": "路由器${resource_name} 风扇状态异常",
+      "description": "监控 Ericsson IPOS 路由器各风扇托盘状态（归一后 1=正常、2=异常、3=未知且不告警；空槽 absent 记 1）。仅取值为 2 时触发告警，防止设备过热。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Ericsson路由器电源异常",
+      "alert_name": "路由器${resource_name} 电源状态异常",
+      "description": "监控 Ericsson IPOS 路由器各电源模块状态（归一后 1=正常、2=异常、3=未知且不告警；空槽 absent 记 1）。仅取值为 2 时触发告警，避免冗余丢失或掉电。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

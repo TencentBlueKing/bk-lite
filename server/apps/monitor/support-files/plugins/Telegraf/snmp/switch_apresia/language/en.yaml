@@ -1,6 +1,6 @@
 Switch APRESIA SNMP:
   name: APRESIA (Telegraf)
-  desc: "SNMP monitoring template for APRESIA switch. It reports uptime, CPU utilization, temperature, fan, power supply status, and interface traffic (enterprise PEN 278)."
+  desc: "SNMP monitoring template for APRESIA switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply status, and interface traffic (enterprise PEN 278)."
 monitor_object:
   Switch: Switch
 monitor_object_type:

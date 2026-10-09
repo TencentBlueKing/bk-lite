@@ -156,17 +156,17 @@ const JenkinsToolEditor = forwardRef<JenkinsToolEditorHandle, JenkinsToolEditorP
               <Input value={selectedInstance.name} onChange={(e) => handleChange(selectedInstance.id, 'name', e.target.value)} placeholder={t('tool.jenkins.instanceNamePlaceholder')} />
             </div>
             <div>
-              <div className="mb-1 text-sm text-[var(--color-text-2)]">{t('tool.jenkins.jenkinsUrl')}</div>
-              <Input value={selectedInstance.jenkins_url} onChange={(e) => handleChange(selectedInstance.id, 'jenkins_url', e.target.value)} placeholder="http://jenkins:8080" />
+              <div className="mb-1 text-sm text-[var(--color-text-2)]">{t('tool.jenkins.url')}</div>
+              <Input value={selectedInstance.jenkins_url} onChange={(e) => handleChange(selectedInstance.id, 'jenkins_url', e.target.value)} placeholder={t('tool.jenkins.urlPlaceholder')} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <div className="mb-1 text-sm text-[var(--color-text-2)]">{t('tool.jenkins.jenkinsUsername')}</div>
-                <Input value={selectedInstance.jenkins_username} onChange={(e) => handleChange(selectedInstance.id, 'jenkins_username', e.target.value)} placeholder={t('tool.jenkins.jenkinsUsernamePlaceholder')} />
+                <div className="mb-1 text-sm text-[var(--color-text-2)]">{t('tool.jenkins.username')}</div>
+                <Input value={selectedInstance.jenkins_username} onChange={(e) => handleChange(selectedInstance.id, 'jenkins_username', e.target.value)} placeholder={t('tool.jenkins.usernamePlaceholder')} />
               </div>
               <div>
-                <div className="mb-1 text-sm text-[var(--color-text-2)]">{t('tool.jenkins.jenkinsPassword')}</div>
-                <Input.Password value={selectedInstance.jenkins_password} onChange={(e) => handleChange(selectedInstance.id, 'jenkins_password', e.target.value)} placeholder={t('tool.jenkins.jenkinsPasswordPlaceholder')} />
+                <div className="mb-1 text-sm text-[var(--color-text-2)]">{t('tool.jenkins.password')}</div>
+                <Input.Password value={selectedInstance.jenkins_password} onChange={(e) => handleChange(selectedInstance.id, 'jenkins_password', e.target.value)} placeholder={t('tool.jenkins.passwordPlaceholder')} />
               </div>
             </div>
             <div className="flex justify-end">

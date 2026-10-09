@@ -30,15 +30,6 @@
         oid = "1.3.6.1.2.1.1.5.0"
         name = "source"
         is_tag = true
-    [[inputs.snmp.table]]
-        name = "interface"
-        inherit_tags = ["source"]
-        index_as_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.1"
-        name = "ifIndex"
-        is_tag = true
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.2.1.2.2.1.2"
-        name = "ifDescr"
-        is_tag = true
+    # ---- 标准 IF-MIB 接口表：导入时展开为 _common/ifmib.table.toml，与 metrics.json 声明的 interface_* 指标对应 ----
+    # Hardware Device 类型下发时不会替换接口表，也不加接口类型排除，所以模板自身需要带完整字段。
+# @bk_include_ifmib_table

@@ -1,0 +1,69 @@
+Wireless Ubiquiti airOS SNMP:
+  name: Ubiquiti airOS (Telegraf)
+  desc: "SNMP monitoring template for Ubiquiti airOS wireless device (airMAX and airOS-based airFiber, FROGFOOT-RESOURCES-MIB, enterprise PEN 10002). It reports uptime, CPU load, memory usage, and interface traffic. Not for EdgeSwitch / UniFi switches."
+monitor_object:
+  Wireless: Wireless
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Wireless:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart,
+        derived from sysUpTime. Monitoring uptime helps administrators understand
+        device stability and identify unexpected reboots or failures.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past
+        5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5
+        minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets
+        counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit
+        ifOutOctets on high-speed ports, keeping the rate accurate.
+    device_total_incoming_traffic:
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the
+        entire device over the past 5 minutes, measured in bytes per second, summed
+        across all interfaces from the 64-bit ifHCInOctets counter. It helps administrators
+        obtain an overview of incoming traffic for overall monitoring and capacity
+        planning.
+    device_total_outgoing_traffic:
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire
+        device over the past 5 minutes, measured in bytes per second, summed across
+        all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators
+        assess sending performance for traffic management and optimization.
+    device_cpu_usage:
+      name: CPU load (5-min avg)
+      desc: 5-minute CPU load average of the airOS device, taken from the 5-minute row
+        of the load table. The value is the load average x100 (e.g. 150 = load 1.5),
+        not a utilization percentage, and can exceed 100 on multi-core devices or when
+        processes are queued. A sustained rise can indicate heavy wireless traffic,
+        many associated stations or abnormal management-plane load.
+    device_memory_usage:
+      name: Memory Usage
+      desc: Memory utilization of the airOS device, computed at collection time as
+        (total - free) / total * 100. High memory pressure can cause station drops
+        or service restarts.
+    device_memory_total:
+      name: Memory Total
+      desc: Total usable physical memory of the airOS device in bytes, converted from
+        KB at collection time.
+    device_memory_used:
+      name: Memory Used
+      desc: Used physical memory of the airOS device in bytes, computed at collection
+        time as total - free.
+    device_memory_free:
+      name: Memory Free
+      desc: Available physical memory of the airOS device in bytes, converted from
+        KB at collection time.
+monitor_object_metric_group:
+  Wireless:
+    Base: Base
+    Traffic: Traffic
+    CPU: CPU
+    Memory: Memory

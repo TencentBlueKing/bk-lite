@@ -345,7 +345,7 @@ def test_page_reindex_endpoint_requires_embed_provider(api_client):
     response = api_client.post(f"/api/v1/opspilot/wiki_mgmt/page/{page.id}/reindex/", {}, format="json")
 
     assert response.status_code == 400
-    assert "向量模型" in response.json()["message"]
+    assert "embedding model" in response.json()["message"]
     assert not BuildRecord.objects.filter(knowledge_base=kb, trigger="page_reindex").exists()
 
 
@@ -410,7 +410,7 @@ def test_material_reindex_endpoint_requires_embed_provider(api_client):
     response = api_client.post(f"/api/v1/opspilot/wiki_mgmt/material/{material.id}/reindex/", {}, format="json")
 
     assert response.status_code == 400
-    assert "向量模型" in response.json()["message"]
+    assert "embedding model" in response.json()["message"]
     assert not BuildRecord.objects.filter(knowledge_base=kb, trigger="material_reindex").exists()
 
 

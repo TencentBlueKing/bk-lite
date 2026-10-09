@@ -4,6 +4,7 @@ import React from 'react';
 import { Typography } from 'antd';
 import Icon from '@/components/icon';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
+import { useTranslation } from '@/utils/i18n';
 
 export interface OpsPilotEntityDetailIntroProps {
   name?: string | null;
@@ -18,11 +19,13 @@ const OpsPilotEntityDetailIntro: React.FC<OpsPilotEntityDetailIntroProps> = ({
   name,
   description,
   iconType,
-  fallbackTitle = '详情',
-  emptyIntroText = '暂无简介',
+  fallbackTitle,
+  emptyIntroText,
   className = '',
 }) => {
-  const displayName = name || fallbackTitle;
+  const { t } = useTranslation();
+  const displayName = name || fallbackTitle || t('opspilotEntity.detailTitle', '详情');
+  const emptyText = emptyIntroText || t('opspilotEntity.noIntro', '暂无简介');
 
   return (
     <div className={`flex w-full items-center gap-2 ${className}`.trim()}>
@@ -44,7 +47,7 @@ const OpsPilotEntityDetailIntro: React.FC<OpsPilotEntityDetailIntroProps> = ({
           </Typography.Paragraph>
         ) : (
           <p className="m-0 text-xs leading-[18px] text-[var(--color-text-4)]">
-            {emptyIntroText}
+            {emptyText}
           </p>
         )}
       </div>

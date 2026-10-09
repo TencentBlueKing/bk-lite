@@ -1,0 +1,125 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_lambdatrail",
+  "plugin": "Transmission DeltaNet Lambdatrail SNMP",
+  "plugin_desc": "SNMP monitoring template for DeltaNet Lambdatrail2-S optical transmission devices. It reports chassis ambient temperature, power-supply state, PSU fan state/speed, and interface traffic (enterprise PEN 35616, lambdatrail2s 1.3.6.1.4.1.35616.5).",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='transmission', collect_type='snmp_lambdatrail'}) by (instance_id)",
+  "name": "Transmission",
+  "icon": "mm-transmission_传输设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='transmission'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_temperature_celsius",
+    "device_fan_state",
+    "device_psu_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(snmp_device_temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Chassis ambient temperature of the DeltaNet Lambdatrail2-S in degrees Celsius, from lt2sTemperature (1.3.6.1.4.1.35616.5.2.1.0, Integer32 0-80). Values outside 0-80 and sentinel readings are dropped. The SNMP value is already in Celsius."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "max(snmp_device_psu_state{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Power supply status of the DeltaNet Lambdatrail2-S from lt2sPowerStatus (1.3.6.1.4.1.35616.5.2.3.0). Mapped as normal(1)->1, failed(2)->2; notPlugged(3) and other codes are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "max(snmp_device_fan_state{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"停止\",\"id\":0,\"color\":\"#8c8c8c\"},{\"name\":\"运行\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"故障\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "PSU fan status of the DeltaNet Lambdatrail2-S from lt2sPowerFanStatus (1.3.6.1.4.1.35616.5.2.4.0). Mapped as on(2)->1 (running), off(3)->0 (stopped, a configured state), failed(1)->2 (fault); other codes are dropped."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_speed",
+      "query": "max(snmp_device_fan_speed{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Fan Speed",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "PSU fan rotation speed of the DeltaNet Lambdatrail2-S in RPM, from lt2sPowerFanRPM (1.3.6.1.4.1.35616.5.2.5.0, Integer32 0-20000). 0 is a real reading when the fan is off. Values outside 0-20000 and sentinel readings are dropped."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the DeltaNet Lambdatrail2-S since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots."
+    }
+  ]
+}

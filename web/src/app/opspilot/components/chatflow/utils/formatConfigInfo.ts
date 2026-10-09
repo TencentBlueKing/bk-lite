@@ -93,7 +93,7 @@ export const formatConfigInfo = (data: ChatflowNodeData, t: any) => {
         if (wechatConfig.aes_key) configuredParams.push('AES Key');
         if (wechatConfig.corp_id) configuredParams.push('Corp ID');
         if (wechatConfig.agent_id) configuredParams.push('Agent ID');
-        return `已配置: ${configuredParams.join(', ')}`;
+        return t('chatflow.configured', '已配置: {params}', { params: configuredParams.join(', ') });
       }
       return t('chatflow.notConfigured');
     }
@@ -102,7 +102,7 @@ export const formatConfigInfo = (data: ChatflowNodeData, t: any) => {
       const aibotConfig = config as EnterpriseWechatAibotNodeConfig;
       if (aibotConfig.connectionMode === 'websocket') {
         if (aibotConfig.websocket?.botId && aibotConfig.websocket?.secret) {
-          return '已配置: Bot ID, Secret';
+          return t('chatflow.configured', '已配置: {params}', { params: 'Bot ID, Secret' });
         }
         return t('chatflow.notConfigured');
       }
@@ -110,7 +110,7 @@ export const formatConfigInfo = (data: ChatflowNodeData, t: any) => {
       if (aibotConfig.webhook?.token && aibotConfig.webhook?.encodingAESKey) {
         const configuredParams = ['Token', 'EncodingAESKey'];
         if (aibotConfig.webhook.aibotid) configuredParams.push('AIBot ID');
-        return `已配置: ${configuredParams.join(', ')}`;
+        return t('chatflow.configured', '已配置: {params}', { params: configuredParams.join(', ') });
       }
       return t('chatflow.notConfigured');
     }
@@ -118,7 +118,7 @@ export const formatConfigInfo = (data: ChatflowNodeData, t: any) => {
     case 'dingtalk': {
       const dingtalkConfig = config as DingtalkNodeConfig;
       if (dingtalkConfig.client_id && dingtalkConfig.client_secret) {
-        return `已配置: Client ID, Client Secret`;
+        return t('chatflow.configured', '已配置: {params}', { params: 'Client ID, Client Secret' });
       }
       return t('chatflow.notConfigured');
     }
@@ -131,7 +131,7 @@ export const formatConfigInfo = (data: ChatflowNodeData, t: any) => {
         if (officialConfig.appid) configuredParams.push('AppID');
         if (officialConfig.secret) configuredParams.push('Secret');
         if (officialConfig.aes_key) configuredParams.push('AES Key');
-        return `已配置: ${configuredParams.join(', ')}`;
+        return t('chatflow.configured', '已配置: {params}', { params: configuredParams.join(', ') });
       }
       return t('chatflow.notConfigured');
     }
@@ -148,7 +148,7 @@ export const formatConfigInfo = (data: ChatflowNodeData, t: any) => {
       const mobileConfig = config as MobileNodeConfig;
       if (mobileConfig.appName) {
         const tags = mobileConfig.appTags && mobileConfig.appTags.length > 0 
-          ? ` (${mobileConfig.appTags.length}个标签)` 
+          ? t('chatflow.tagCount', ' ({count}个标签)', { count: mobileConfig.appTags.length }) 
           : '';
         return `${mobileConfig.appName}${tags}`;
       }

@@ -1,0 +1,90 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_profline"
+        config_type = "profline"
+        brand = "profline"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- PROFLINE-SFD-MIB sfdMeasurement 标量，顶层 field 带 .0 ----
+    # 射频输入强度 sfdMsrRfInSignalStrength，Integer32 dBuV；>115 表示过载。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.21222.1.4.1.3.3.2.0"
+        name = "profline_rf_level_dbuv"
+    # 音频左电平 sfdMsrAudioLeftLevel，Integer32 dBFS。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.21222.1.4.1.3.5.1.0"
+        name = "profline_audio_left_level_dbfs"
+    # 音频右电平 sfdMsrAudioRightLevel，Integer32 dBFS。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.21222.1.4.1.3.5.2.0"
+        name = "profline_audio_right_level_dbfs"
+    # 射频输入过低告警 sfdMsrAlarmRfInLevelLow，AlarmStatus noProblem(1)/warning(3)/alarm(5)。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.21222.1.4.1.3.1.1.0"
+        name = "profline_rf_low_alarm_state"
+    # 射频输入过高告警 sfdMsrAlarmRfInLevelHigh，AlarmStatus noProblem(1)/warning(3)/alarm(5)。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.21222.1.4.1.3.1.2.0"
+        name = "profline_rf_high_alarm_state"
+# ---- CPU/内存/温度/风扇/电源：SFD 解调器 MIB 无机箱健康 Gauge，不采集。----
+
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    v = f.get("profline_rf_level_dbuv")
+    if v != None:
+        if v < 0 or v > 150:
+            f.pop("profline_rf_level_dbuv")
+    left = f.get("profline_audio_left_level_dbfs")
+    if left != None:
+        if left < -120 or left > 0:
+            f.pop("profline_audio_left_level_dbfs")
+    right = f.get("profline_audio_right_level_dbfs")
+    if right != None:
+        if right < -120 or right > 0:
+            f.pop("profline_audio_right_level_dbfs")
+    keys = ["profline_rf_low_alarm_state", "profline_rf_high_alarm_state"]
+    for key in keys:
+        raw = f.get(key)
+        if raw != None:
+            a = int(raw)
+            if a == 1:
+                f[key] = 1
+            elif a == 3 or a == 5:
+                f[key] = 2
+            else:
+                f.pop(key)
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["profline"]

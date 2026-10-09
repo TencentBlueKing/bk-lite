@@ -1,0 +1,48 @@
+Access Nokia ISAM SNMP:
+  name: Nokia ISAM（Telegraf）
+  desc: 面向 Nokia ISAM 接入设备的 SNMP 监控模板，可采集运行时长、板卡 CPU 使用率、板卡内存使用率、板卡温度、接口流量，适用于 Nokia（Alcatel-Lucent）ISAM
+    / 7360 / 7302 接入节点（企业号 PEN 637）。
+monitor_object:
+  Access: 接入设备
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Access:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位
+        ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位
+        ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+    device_total_incoming_traffic:
+      name: 设备接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率（按所有接口的 64 位 ifHCInOctets 汇总），单位为字节每秒。帮助管理员获取整个设备的接收流量情况，支持总体流量监控与容量规划。
+    device_total_outgoing_traffic:
+      name: 设备发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: Nokia ISAM 各板卡 CPU 负载（ASAM-SYSTEM-MIB cpuLoadAverage，按槽位上报的百分比），取最高的板卡。仅在该槽位 CPU 负载监测进行中时上报。持续偏高说明控制板或线卡负载过高。
+    device_memory_total:
+      name: 内存总量
+      desc: Nokia ISAM 所有板卡的内存总量，单位为字节（ASAM-SYSTEM-MIB totalMemSize，按槽位以 Mbyte 上报）。
+    device_memory_used:
+      name: 内存已用量
+      desc: Nokia ISAM 所有板卡已使用的内存，单位为字节（ASAM-SYSTEM-MIB memAbsoluteUsage，按槽位以 Mbyte 上报）。
+    device_memory_usage:
+      name: 内存使用率
+      desc: Nokia ISAM 板卡内存使用率，按槽位以 已用/总量*100 计算，取最高的板卡。持续偏高可能表示内存泄漏或业务表项过大。
+    device_temperature_celsius:
+      name: 板卡温度
+      desc: Nokia ISAM 板卡温度传感器的最高读数，单位摄氏度（ASAM-EQUIP-MIB）。温度持续升高可能表示散热异常或环境温度过高。
+monitor_object_metric_group:
+  Access:
+    Base: 基础
+    Traffic: 流量
+    Access: 接入设备
+    Temperature: 温度

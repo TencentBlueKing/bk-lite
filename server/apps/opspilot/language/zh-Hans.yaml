@@ -100,6 +100,13 @@ base_constant:
   time: 时间
   float: 浮点数
   json: JSON
+skill:
+  default_prompt: |-
+    你是关于专业机器人，请按照以下要求进行回复
+    1、请根据用户的问题，从知识库检索关联的知识进行总结回复
+    2、请根据用户需求，从工具中选取适当的工具进行执行
+    3、回复的语句请保证准确，不要杜撰
+    4、请按照要点有条理的梳理答案
 error:
   network_whitelist_required: 目标 IP 不在白名单内，请前往系统管理的白名单管理中添加。
   go_to_network_whitelist: 前往白名单管理
@@ -186,6 +193,29 @@ error:
   no_bot_stop_permission: 你没有权限停止此机器人
   knowledge_base_training: 知识库正在训练，无法修改。
   knowledge_base_used_by_skills: 该知识库正在被以下技能使用，无法删除：{skill_names}
+  knowledge_base_build_running: 知识库存在运行中的构建任务,请等待完成后再操作
+  knowledge_base_build_running_wait: 知识库存在运行中的构建任务，请等待完成后再操作
+  knowledge_base_build_running_retry: 知识库存在运行中的构建任务，请等待完成后再重试
+  builtin_skill_package_not_deletable: 内置技能包不可删除
+  skill_package_zip_required: 请上传技能包 ZIP 文件
+  skill_package_must_be_zip: 技能包必须是 ZIP 文件
+  skill_package_file_missing: 技能包文件不存在
+  skill_package_missing_file: 技能包缺少 {filename}
+  no_embedding_model: 知识库未配置向量模型,无法重建索引
+  material_build_in_progress: 资料正在构建中，请勿重复提交
+  material_build_dispatch_failed: 知识构建任务投递失败，请稍后重试
+  material_no_source_file: 该资料没有可下载的原始文件
+  material_source_file_missing: 原始文件不存在
+  object_storage_unavailable: 对象存储不可用，请稍后重试
+  archived_page_not_editable: 已归档知识页面不可编辑,请先恢复
+  page_reindex_requires_active: 只有启用中的知识页面可以重建索引
+  page_reindex_requires_version: 知识页面无当前版本,无法重建索引
+  no_skill_channel_permission: 无权管理该智能体渠道
+  local_memory_no_test: 本地存储无需测试
+  memory_connection_test_unimplemented: 连接测试未实现
+  build_task_dispatch_failed: 构建任务下发失败，请重试
+  knowledge_base_protected: 知识库仍被受保护引用占用，无法删除，请稍后重试或联系管理员
+  knowledge_base_delete_failed: '删除知识库失败: {error}'
   knowledge_base_delete_related_data_failed: 删除关联数据失败，请重试
   crontab_expression_required: crontab 表达式为必填项
   invalid_crontab_expression: '无效的 crontab 表达式：{expression}'
@@ -524,10 +554,10 @@ tools:
       - current_time: 获取当前时间工具
 
       **工具列表：**
-      - get_current_time: 获取当前系统时间，支持指定时区
+      - get_current_time: 获取当前用户时区下的当前时间
     tools:
       get_current_time:
-        description: 这个工具可以用于获取当前时间
+        description: 获取当前用户时区下的当前时间。时区缺失或非法时使用 Asia/Shanghai。
   duckduckgo:
     name: DuckDuckGo搜索
     description: |

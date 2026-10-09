@@ -348,7 +348,7 @@ def send_nats_message(channel_obj: Channel, content: dict, *, timeout_override=N
         if not trigger_id or not subject:
             return {"result": False, "message": "NATS channel config missing trigger_id or subject"}
         if config.get("active") is not True:
-            return {"result": False, "message": "编排流程已停用"}
+            return {"result": False, "message": "The orchestration workflow is inactive"}
         try:
             team = int(payload.get("team"))
             channel_teams = {int(item) for item in (getattr(channel_obj, "team", None) or [])}

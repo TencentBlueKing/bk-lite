@@ -11,10 +11,9 @@ MemoryEngineViewSet 是普通 DRF ViewSet，action 未叠加权限装饰器，
 
 断言 DRF Response 的 status_code 与 .data（未渲染即可读）。
 """
-import pydantic.root_model  # noqa  预热避免 mcp 导入崩溃
-
 from types import SimpleNamespace
 
+import pydantic.root_model  # noqa  预热避免 mcp 导入崩溃
 import pytest
 
 from apps.opspilot.memory.engines.base import BaseMemoryEngine
@@ -118,7 +117,7 @@ def test_test_connection_local_short_circuits():
     assert resp.status_code == 200
     assert resp.data["result"] is True
     assert resp.data["data"]["success"] is True
-    assert resp.data["data"]["message"] == "本地存储无需测试"
+    assert resp.data["data"]["message"] == "Local storage does not need a connection test"
 
 
 def test_test_connection_unknown_type_returns_400():

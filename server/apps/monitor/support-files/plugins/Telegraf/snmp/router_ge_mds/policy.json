@@ -1,0 +1,31 @@
+{
+  "object": "Router",
+  "plugin": "Router GE MDS Orbit SNMP",
+  "templates": [
+    {
+      "name": "GE MDS Orbit路由器系统温度过高",
+      "alert_name": "路由器${resource_name} 系统温度过高",
+      "description": "监控 GE MDS Orbit 路由器系统温度，持续高于阈值时提示散热不良、环境温度过高或机箱过热风险。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 60,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

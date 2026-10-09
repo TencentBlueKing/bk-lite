@@ -102,6 +102,13 @@ base_constant:
   time: time
   float: float
   json: json
+skill:
+  default_prompt: |-
+    You are a professional assistant. Reply according to these rules:
+    1. For the user's question, retrieve related knowledge from the knowledge base and summarize the answer.
+    2. Based on the user's need, choose and run the appropriate tool.
+    3. Keep the reply accurate. Do not make things up.
+    4. Organize the answer in clear points.
 error:
   network_whitelist_required: The target IP is not in the allowlist. Add it in System Management > Network Allowlist.
   go_to_network_whitelist: Open Network Allowlist
@@ -190,7 +197,30 @@ error:
   mcp_tools_fetch_failed: Failed to fetch tools from MCP server
   no_bot_stop_permission: You do not have permission to stop this bot
   knowledge_base_training: The knowledge base is training and cannot be modified.
-  knowledge_base_used_by_skills: ''
+  knowledge_base_used_by_skills: 'This knowledge base is used by the following skills and cannot be deleted: {skill_names}'
+  knowledge_base_build_running: A build is still running for this knowledge base. Wait for it to finish before continuing.
+  knowledge_base_build_running_wait: A build is still running for this knowledge base. Wait for it to finish before continuing.
+  knowledge_base_build_running_retry: A build is still running for this knowledge base. Wait for it to finish before retrying.
+  builtin_skill_package_not_deletable: Built-in skill packages cannot be deleted
+  skill_package_zip_required: Upload a skill package ZIP file
+  skill_package_must_be_zip: The skill package must be a ZIP file
+  skill_package_file_missing: The skill package file does not exist
+  skill_package_missing_file: 'The skill package is missing {filename}'
+  no_embedding_model: This knowledge base has no embedding model configured, so the index cannot be rebuilt.
+  material_build_in_progress: This material is already being built. Do not submit it again.
+  material_build_dispatch_failed: Failed to submit the knowledge build. Try again later.
+  material_no_source_file: This material has no original file to download
+  material_source_file_missing: The original file does not exist
+  object_storage_unavailable: Object storage is unavailable. Try again later.
+  archived_page_not_editable: Archived knowledge pages cannot be edited. Restore the page first.
+  page_reindex_requires_active: Only active knowledge pages can have their index rebuilt
+  page_reindex_requires_version: This knowledge page has no current version, so the index cannot be rebuilt
+  no_skill_channel_permission: You do not have permission to manage this agent's channels
+  local_memory_no_test: Local storage does not need a connection test
+  memory_connection_test_unimplemented: Connection test is not implemented
+  build_task_dispatch_failed: Failed to dispatch the build task. Try again.
+  knowledge_base_protected: This knowledge base is still referenced and cannot be deleted. Try again later or contact an administrator.
+  knowledge_base_delete_failed: 'Failed to delete the knowledge base: {error}'
   knowledge_base_delete_related_data_failed: ''
   crontab_expression_required: crontab_expression is required
   invalid_crontab_expression: 'Invalid crontab expression: {expression}'
@@ -529,10 +559,10 @@ tools:
       - current_time: Get current time tool
 
       **Tool List:**
-      - get_current_time: Get current system time, supports timezone specification
+      - get_current_time: Get the current time in the current user's timezone
     tools:
       get_current_time:
-        description: This tool can be used to get the current time
+        description: Get the current time in the current user's timezone. Falls back to Asia/Shanghai when the timezone is missing or invalid.
   duckduckgo:
     name: DuckDuckGo Search
     description: |

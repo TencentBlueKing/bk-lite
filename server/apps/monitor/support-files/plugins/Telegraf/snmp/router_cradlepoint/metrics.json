@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_cradlepoint",
   "plugin": "Router Cradlepoint SNMP",
-  "plugin_desc": "SNMP monitoring template for Cradlepoint router. It reports uptime, CPU utilization, memory utilization, temperature, and interface traffic, for NetCloud, COR/E-series, and IBR-series (enterprise PEN 20992).",
+  "plugin_desc": "SNMP monitoring template for Cradlepoint router. It reports uptime, CP-SYSTEM-MIB CPU utilization, CP-SYSTEM-MIB memory utilization, and interface traffic, for NetCloud, COR/E-series, and IBR-series (enterprise PEN 20992).",
   "support_collect_detect": true,
   "status_query": "any({instance_type='router', collect_type='snmp_cradlepoint'}) by (instance_id)",
   "name": "Router",
@@ -18,8 +18,7 @@
     "device_cpu_usage",
     "device_memory_usage",
     "device_total_incoming_traffic",
-    "device_total_outgoing_traffic",
-    "device_temperature_celsius"
+    "device_total_outgoing_traffic"
   ],
   "display_fields": [],
   "metrics": [
@@ -39,7 +38,7 @@
     {
       "metric_group": "Router",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "avg(snmp_device_cpu_usage{instance_type='router', __$labels__}) by (instance_id)",
       "display_name": "CPU Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -52,7 +51,7 @@
     {
       "metric_group": "Router",
       "name": "device_memory_usage",
-      "query": "avg(device_memory_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "avg(snmp_device_memory_usage{instance_type='router', __$labels__}) by (instance_id)",
       "display_name": "Memory Usage",
       "data_type": "Number",
       "unit": "percent",
@@ -223,19 +222,6 @@
         "instance_id"
       ],
       "description": "This metric calculates the average rate of outgoing unicast packets over the past 5 minutes."
-    },
-    {
-      "metric_group": "Router",
-      "name": "device_temperature_celsius",
-      "query": "max(device_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
-      "display_name": "Temperature",
-      "data_type": "Number",
-      "unit": "celsius",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "Internal chassis temperature of the Cradlepoint cellular router in degrees Celsius (Cradlepoint private MIB, IANA PEN 20992, scalar)."
     },
     {
       "metric_group": "Traffic",

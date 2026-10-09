@@ -1,0 +1,90 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_fireeye"
+        config_type = "fireeye"
+        brand = "fireeye"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- CPU (HOST-RESOURCES hrProcessorLoad, 每核 0-100%, 表列禁止 .0) ----
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.25.3.3.1.2"
+        name = "usage"
+    # ---- FireEye 系统健康标量（feCommon = 1.3.6.1.4.1.25597.11，TruthValue true(1)/false(2)，顶层 field 必须带 .0）----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25597.11.1.1.6.0"
+        name = "device_temperature_state"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25597.11.3.1.2.0"
+        name = "device_psu_state"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25597.11.4.1.2.0"
+        name = "device_fan_state"
+    # ---- 可选识别 tag：系统状态 / 硬件型号（OCTET STRING 标量）----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25597.11.1.1.1.0"
+        name = "system_status"
+        is_tag = true
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.25597.11.1.1.2.0"
+        name = "hardware_model"
+        is_tag = true
+# ---- CPU 超出 0-100 丢弃；TruthValue 仅保留 1=正常 / 2=异常，其余丢弃。----
+[[processors.starlark]]
+    namepass = ["snmp", "device_cpu"]
+    source = '''
+HEALTH_KEYS = ["device_temperature_state", "device_psu_state", "device_fan_state"]
+
+def apply(metric):
+    f = metric.fields
+    if metric.name == "device_cpu":
+        usage = f.get("usage")
+        if usage != None:
+            if usage < 0 or usage > 100:
+                f.pop("usage")
+        if len(f.keys()) == 0:
+            return None
+        return metric
+    for key in HEALTH_KEYS:
+        raw = f.get(key)
+        if raw == None:
+            continue
+        if raw == 1 or raw == 2:
+            f[key] = int(raw)
+        else:
+            f.pop(key)
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["fireeye"]

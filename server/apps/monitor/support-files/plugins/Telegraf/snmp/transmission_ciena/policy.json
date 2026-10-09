@@ -26,6 +26,61 @@
         }
       ],
       "group_algorithm": "avg"
+    },
+    {
+      "name": "Ciena传输设备温度过高",
+      "alert_name": "传输设备${resource_name} 模块温度过高",
+      "description": "监控 Ciena CES/SAOS 机箱各模块温度传感器读数，当持续高于阈值时触发告警，提示可能存在风扇故障、散热不良或机房环境温度过高，避免器件过热损坏。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 65,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 60,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Ciena传输设备风扇异常",
+      "alert_name": "传输设备${resource_name} 风扇状态异常",
+      "description": "监控 Ciena CES/SAOS 机箱风扇状态（1=正常或未安装，2=转速告警，3=未知），仅转速告警（=2）时触发告警；未安装槽位记为正常，未知不告警。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Ciena传输设备电源异常",
+      "alert_name": "传输设备${resource_name} 电源状态异常",
+      "description": "监控 Ciena CES/SAOS 机箱电源模块状态，当电源故障或运行离线时触发告警；未安装槽位记为正常，不触发告警。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
     }
   ]
 }

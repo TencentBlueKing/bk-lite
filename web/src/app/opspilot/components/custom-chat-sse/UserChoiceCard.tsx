@@ -67,7 +67,7 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
 
     // 乐观关闭卡片，避免用户以为没点上而连点
     onSubmit(request.choice_id, 'submitted', keys);
-    const hideLoading = antMessage.loading(t('chat.choiceSubmitting') || '正在提交选择...', 0);
+    const hideLoading = antMessage.loading(t('chat.choiceSubmitting', '正在提交选择...'), 0);
     try {
       await postUserChoice(token, {
         execution_id: request.execution_id,
@@ -155,7 +155,7 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
           {option.icon && <span>{option.icon}</span>}
           <span>{option.label}</span>
           {option.recommended && (
-            <span className="rounded px-1.5 py-px text-[11px] font-medium text-[var(--color-primary)] bg-[var(--color-primary-light-1)]">推荐</span>
+            <span className="rounded px-1.5 py-px text-[11px] font-medium text-[var(--color-primary)] bg-[var(--color-primary-light-1)]">{t('chat.choiceRecommend', '推荐')}</span>
           )}
         </div>
         {option.description && (
@@ -200,7 +200,7 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
           {submitting ? (
             <span className="inline-flex items-center gap-1.5">
               <LoadingOutlined />
-              {t('chat.choiceSubmitting') || '正在提交选择...'}
+              {t('chat.choiceSubmitting', '正在提交选择...')}
             </span>
           ) : (
             t('chat.choiceConfirm')
@@ -225,7 +225,7 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
             }
             handleTextSubmit();
           }}
-          placeholder={t('chat.choiceTextPlaceholder') || '输入你的回答...'}
+          placeholder={t('chat.choiceTextPlaceholder', '输入你的回答...')}
           disabled={submitting}
           className="flex-1 rounded-lg"
         />
@@ -240,7 +240,7 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
               : 'cursor-not-allowed border-none bg-[var(--color-fill-3)] text-[var(--color-text-3)]',
           ].join(' ')}
         >
-          {submitting ? <LoadingOutlined /> : (t('chat.choiceConfirm') || '确认')}
+          {submitting ? <LoadingOutlined /> : t('chat.choiceConfirm', '确认')}
         </button>
       </div>
     );
@@ -307,7 +307,7 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
             <div className={choiceOptions.length > 0 && displayMode !== 'text' ? 'mt-2.5' : 'mt-0'}>
               {choiceOptions.length > 0 && displayMode !== 'text' && (
                 <div className="mb-1.5 text-[11px] text-[var(--color-text-4)]">
-                  {t('chat.choiceOrType') || '或者自行输入'}
+                  {t('chat.choiceOrType', '或者自行输入')}
                 </div>
               )}
               {renderTextInput()}
