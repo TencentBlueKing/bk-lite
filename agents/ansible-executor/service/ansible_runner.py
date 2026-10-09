@@ -743,6 +743,13 @@ def _build_host_credentials_inventory(workspace: Path, host_credentials: list[di
                 if item.get("winrm_cert_validation") is False:
                     parts.append("ansible_winrm_server_cert_validation=ignore")
 
+                # 慢主机/并发下默认 WinRM 超时过短易 MODULE FAILURE；
+                # pipelining 在部分主机上会触发 send input OperationTimeout。
+                parts.append("ansible_winrm_operation_timeout_sec=60")
+                parts.append("ansible_winrm_read_timeout_sec=70")
+                parts.append("ansible_winrm_connection_timeout=60")
+                parts.append("ansible_pipelining=False")
+
         password = item.get("password")
         if password:
             parts.append(f"ansible_password={_quote_inventory_value(password)}")
