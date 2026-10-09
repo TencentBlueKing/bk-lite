@@ -22,7 +22,7 @@
     {
       "metric_group": "Temperature",
       "name": "device_temperature_celsius",
-      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id, sensor)",
+      "query": "device_temperature_celsius{instance_type='switch', __$labels__}",
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
@@ -40,7 +40,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_speed",
-      "query": "max(device_fan_speed{instance_type='switch', __$labels__}) by (instance_id, index)",
+      "query": "device_fan_speed{instance_type='switch', __$labels__}",
       "display_name": "Fan Speed",
       "data_type": "Number",
       "unit": "counts",
@@ -58,7 +58,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_voltage_volts",
-      "query": "max(device_voltage_volts{instance_type='switch', __$labels__}) by (instance_id, sensor)",
+      "query": "device_voltage_volts{instance_type='switch', __$labels__}",
       "display_name": "Voltage",
       "data_type": "Number",
       "unit": "volts",
