@@ -92,13 +92,13 @@
           "name": "alert_list"
         },
         {
-          "icon": "mulu",
+          "icon": "guize1",
           "title": "策略组",
           "url": "/monitor/event/policy-group",
           "name": "strategy_list"
         },
         {
-          "icon": "mulu",
+          "icon": "wendang1",
           "title": "单策略",
           "url": "/monitor/event/strategy",
           "name": "strategy_list",
@@ -265,13 +265,13 @@
           "name": "alert_list"
         },
         {
-          "icon": "mulu",
+          "icon": "guize1",
           "title": "Policy Group",
           "url": "/monitor/event/policy-group",
           "name": "strategy_list"
         },
         {
-          "icon": "mulu",
+          "icon": "wendang1",
           "title": "Standalone Strategy",
           "url": "/monitor/event/strategy",
           "name": "strategy_list",
