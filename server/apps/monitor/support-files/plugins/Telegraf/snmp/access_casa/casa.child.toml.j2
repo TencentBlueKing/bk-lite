@@ -47,3 +47,72 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
+    # ---- Casa 模块 CPU / 内存 / 温度（CASA-ENTITY-EXT-MIB casaModuleCpuMemTable …20858.10.13.1.1，AUGMENTS entPhysicalEntry）----
+    # 行索引 = entPhysicalIndex，table.field 不带 .0；entPhysicalDescr（…47.1.1.1.1.2，同索引）作 module 标签。
+    # casaModuleTotalAllocatableMem .1 / casaModuleTotalMemAllocated .2 / casaModuleTotalFreeMem .3：KBytes（下方 starlark 采集侧 ×1024 存为字节）。
+    # casaModuleTotalCpuUtilization .4：CPUUtilization（DISPLAY-HINT d-2，0.01% 为单位，5 = 0.05%），下方 starlark ÷100。
+    # casaModuleCpuTemperatureSensor .5：模块 CPU 温度，摄氏度。
+    [[inputs.snmp.table]]
+        name = "casa_module"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.2"
+        name = "module"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.20858.10.13.1.1.1.1"
+        name = "mem_total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.20858.10.13.1.1.1.2"
+        name = "mem_used"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.20858.10.13.1.1.1.3"
+        name = "mem_free"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.20858.10.13.1.1.1.4"
+        name = "cpu"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.20858.10.13.1.1.1.5"
+        name = "temp"
+# ---- 模块行拆分：总内存缺失或为 0 的实体（机箱/端口/传感器等非计算模块）整行丢弃；
+# 其余拆为 device_cpu（usage，÷100 得百分比）、device_memory（total/used/free 由 KB ×1024 存为字节，usage=used/total×100）、device_temperature（celsius）。----
+[[processors.starlark]]
+    namepass = ["casa_module"]
+    source = '''
+def _new(metric, name):
+    m = Metric(name)
+    for k, v in metric.tags.items():
+        m.tags[k] = v
+    m.time = metric.time
+    return m
+
+def apply(metric):
+    total = metric.fields.get("mem_total")
+    if total == None or int(total) <= 0:
+        return None
+    out = []
+    cpu = metric.fields.get("cpu")
+    if cpu != None:
+        c = _new(metric, "device_cpu")
+        c.fields["usage"] = int(cpu) / 100.0
+        out.append(c)
+    m = _new(metric, "device_memory")
+    m.fields["total"] = int(total) * 1024
+    used = metric.fields.get("mem_used")
+    if used != None:
+        m.fields["used"] = int(used) * 1024
+        m.fields["usage"] = int(used) * 100.0 / int(total)
+    free = metric.fields.get("mem_free")
+    if free != None:
+        m.fields["free"] = int(free) * 1024
+    out.append(m)
+    temp = metric.fields.get("temp")
+    if temp != None:
+        t = _new(metric, "device_temperature")
+        t.fields["celsius"] = int(temp)
+        out.append(t)
+    return out
+'''
+    [processors.starlark.tagpass]
+        brand = ["casa"]

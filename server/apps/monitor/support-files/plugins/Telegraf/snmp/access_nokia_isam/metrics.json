@@ -1,0 +1,165 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_nokia_isam",
+  "plugin": "Access Nokia ISAM SNMP",
+  "plugin_desc": "SNMP monitoring template for Nokia ISAM access device. It reports uptime, board CPU utilization, board memory utilization, board temperature, and interface traffic, for Nokia (Alcatel-Lucent) ISAM / 7360 / 7302 access nodes (enterprise PEN 637).",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='access', collect_type='snmp_nokia_isam'}) by (instance_id)",
+  "name": "Access",
+  "icon": "mm-access_接入设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='access'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Access",
+      "name": "device_cpu_usage",
+      "query": "max(device_cpu_usage{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Board CPU load of the Nokia ISAM from ASAM-SYSTEM-MIB cpuLoadAverage (per slot, 0-100 %), shown as the busiest board. A slot is reported only while its CPU-load monitoring is in progress (operateStatus proceeding)."
+    },
+    {
+      "metric_group": "Access",
+      "name": "device_memory_total",
+      "query": "sum(device_memory_total{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total memory of all boards of the Nokia ISAM, from ASAM-SYSTEM-MIB totalMemSize (per slot, Mbyte scaled to bytes)."
+    },
+    {
+      "metric_group": "Access",
+      "name": "device_memory_used",
+      "query": "sum(device_memory_used{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Used memory of all boards of the Nokia ISAM, from ASAM-SYSTEM-MIB memAbsoluteUsage (per slot, Mbyte scaled to bytes)."
+    },
+    {
+      "metric_group": "Access",
+      "name": "device_memory_usage",
+      "query": "max(device_memory_usage{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Board memory utilization of the Nokia ISAM, computed per slot as memAbsoluteUsage / totalMemSize * 100 and shown as the highest board."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "Board Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Highest board thermal-sensor reading of the Nokia ISAM, from ASAM-EQUIP-MIB eqptBoardThermalSensorActualTemperature, in degrees Celsius. Sensors are reported only for boards that are plugged in and operationally up."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='access', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='access', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_incoming_traffic",
+      "query": "sum(rate(interface_ifHCInOctets{instance_type='access', __$labels__}[5m]) or rate(interface_ifInOctets{instance_type='access', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, summed from IF-MIB inbound octet counters (prefer 64-bit ifHCInOctets)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_outgoing_traffic",
+      "query": "sum(rate(interface_ifHCOutOctets{instance_type='access', __$labels__}[5m]) or rate(interface_ifOutOctets{instance_type='access', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, summed from IF-MIB outbound octet counters (prefer 64-bit ifHCOutOctets)."
+    },
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='access', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart, derived from IF-MIB sysUpTime."
+    }
+  ]
+}

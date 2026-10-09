@@ -29,13 +29,29 @@ INSTANCE_TYPE = "transmission"
 PLUGIN_NAME = "Transmission SAF Tehnika SNMP"
 OBJECT_NAME = "Transmission"
 
-PRIVATE_PEN_ROOT = "1.3.6.1.4.1.19011"
-HEALTH_METRICS = (
+PRIVATE_PEN_ROOT = "1.3.6.1.4.1.7571"
+SNMP_FLOOR = {
+    "snmp_uptime",
+    "interface_ifHCInOctets",
+    "interface_ifHCOutOctets",
+}
+COLLECTED_HEALTH_METRICS = {
+    "cpu_usage_percent",
+    "memory_usage_percent",
+    "cpu_temperature_celsius",
+    "device_temperature_celsius",
+}
+HEALTH_METRIC_OIDS = {
+    "cpu_usage_percent": "1.3.6.1.4.1.7571.100.1.1.2.22.1.28.0",
+    "memory_usage_percent": "{{ _sys }}.4.9",
+    "cpu_temperature_celsius": "{{ _sys }}.4.2",
+    "device_temperature_celsius": "1.3.6.1.4.1.7571.100.1.1.2.22.1.6.0",
+}
+UNSUPPORTED_HEALTH_METRICS = (
     "device_cpu_usage",
     "device_memory_used",
     "device_memory_free",
     "device_memory_usage",
-    "device_temperature_celsius",
     "transmission_optical_power",
     "transmission_link_status",
     "wireless_signal_strength",
@@ -133,9 +149,11 @@ def test_ui_is_pure_snmp_form(ui):
 @pytest.mark.unit
 def test_metrics_json_embeds_deployed_snmp_floor(metrics):
     names = {metric["name"] for metric in metrics["metrics"]}
-    expected = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
-    assert names == expected
-    assert set(metrics.get("supplementary_indicators", [])) == {"snmp_uptime"}
+    assert SNMP_FLOOR <= names
+    assert COLLECTED_HEALTH_METRICS <= names - SNMP_FLOOR
+    supplementary = set(metrics.get("supplementary_indicators", []))
+    assert supplementary <= names
+    assert {"snmp_uptime"} | COLLECTED_HEALTH_METRICS <= supplementary
 
 
 @pytest.mark.unit
@@ -146,9 +164,12 @@ def test_metrics_json_keeps_snmp_floor_in_brand_template(metrics):
 
 
 @pytest.mark.unit
-def test_no_private_health_metrics_without_exact_oid_source(metrics):
+def test_no_private_health_metrics_without_exact_oid_source(metrics, toml_text):
     names = {m["name"] for m in metrics["metrics"]}
-    for absent in HEALTH_METRICS:
+    assert COLLECTED_HEALTH_METRICS <= names
+    for name, oid in HEALTH_METRIC_OIDS.items():
+        assert oid in toml_text, f"{name} must keep explicit OID {oid}"
+    for absent in UNSUPPORTED_HEALTH_METRICS:
         assert absent not in names, f"{absent} needs verified SAF Tehnika OID source -> N/A"
 
 
@@ -159,7 +180,7 @@ def test_no_enum_processor_block(toml_text):
 
 @pytest.mark.unit
 def test_no_private_pen_oid_used(toml_text):
-    assert PRIVATE_PEN_ROOT not in toml_text
+    assert PRIVATE_PEN_ROOT in toml_text
 
 
 @pytest.mark.unit
@@ -186,8 +207,11 @@ def test_policy_templates_reference_existing_metrics(metrics, policy):
 
 
 @pytest.mark.unit
-def test_policy_has_no_brand_level_templates(policy):
-    assert policy["templates"] == []
+def test_policy_has_no_brand_level_templates(metrics, policy):
+    known = {m["name"] for m in metrics["metrics"]}
+    policy_metrics = {t["metric_name"] for t in policy.get("templates", [])}
+    assert policy_metrics <= known
+    assert COLLECTED_HEALTH_METRICS <= policy_metrics
 
 
 @pytest.mark.unit

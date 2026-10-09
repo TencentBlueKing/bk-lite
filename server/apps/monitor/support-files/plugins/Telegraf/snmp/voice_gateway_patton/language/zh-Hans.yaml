@@ -1,6 +1,6 @@
 VoiceGateway Patton SNMP:
   name: Patton（Telegraf）
-  desc: 面向 Patton 语音网关的 SNMP 监控模板，可采集运行时长、接口流量（基于标准 MIB）。
+  desc: 面向 Patton SmartNode 语音网关的 SNMP 监控模板，可采集运行时长、接口流量、各 CPU 负载、内存池使用率和温度探头读数（企业号 PEN 1768）。
 monitor_object:
   VoiceGateway: 语音网关
 monitor_object_type:
@@ -24,9 +24,24 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: 设备发送总流量速率
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: Patton SmartNode 各 CPU 当前负载百分比（SMARTNODE-MIB cpuWorkloadCurrent）。持续偏高说明呼叫处理或控制面负载过高。
+    device_memory_total:
+      name: 内存池总量
+      desc: Patton SmartNode 各内存池总大小（memTotalBytes），单位字节；设备未上报时按 已分配+空闲 计算。
+    device_memory_used:
+      name: 内存池已分配
+      desc: Patton SmartNode 各内存池已分配字节数（memAllocatedBytes）。
+    device_memory_free:
+      name: 内存池空闲
+      desc: Patton SmartNode 各内存池空闲字节数（memFreeBytes）。
+    device_memory_usage:
+      name: 内存池使用率
+      desc: Patton SmartNode 各内存池使用率，采集时按 已分配/(已分配+空闲)*100 计算；空内存池丢弃。
     device_temperature_celsius:
       name: 设备温度
-      desc: 语音网关设备温度，单位为摄氏度。用于识别散热异常、风道堵塞或过热风险。
+      desc: Patton SmartNode 各温度探头当前读数（SMARTNODE-MIB currentDegreesCelsius），单位摄氏度。用于识别散热异常、风道堵塞或过热风险。
     device_psu_state:
       name: 电源状态
       desc: 语音网关电源状态，归一后 1 表示正常，2 表示异常。
@@ -34,5 +49,7 @@ monitor_object_metric_group:
   VoiceGateway:
     Base: 基础
     Traffic: 流量
+    CPU: CPU
+    Memory: 内存
     Temperature: 温度
     Hardware Status: 硬件状态

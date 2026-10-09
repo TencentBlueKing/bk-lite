@@ -49,6 +49,20 @@ VENDOR_METRICS = {
     "device_temperature_celsius",
     "device_psu_state",
 }
+DDM_METRICS = {
+    "transceiver_temperature_celsius",
+    "transceiver_voltage_volts",
+    "transceiver_tx_bias_ma",
+    "transceiver_tx_power_dbm",
+    "transceiver_rx_power_dbm",
+}
+DDM_OIDS = {
+    "transceiver_temperature_celsius": "1.3.6.1.4.1.4249.2.5.9.2.1.2",
+    "transceiver_voltage_volts": "1.3.6.1.4.1.4249.2.5.9.2.1.3",
+    "transceiver_tx_bias_ma": "1.3.6.1.4.1.4249.2.5.9.2.1.4",
+    "transceiver_tx_power_dbm": "1.3.6.1.4.1.4249.2.5.9.2.1.6",
+    "transceiver_rx_power_dbm": "1.3.6.1.4.1.4249.2.5.9.2.1.8",
+}
 UNSUPPORTED_METRICS = {
     "device_cpu_usage",
     "device_memory_usage",
@@ -142,7 +156,7 @@ def test_ui_is_pure_snmp_form(ui):
 def test_metrics_json_declares_only_vendor_delta_child(metrics):
     names = {metric["name"] for metric in metrics["metrics"]}
     floor = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
-    assert names - floor == VENDOR_METRICS
+    assert names - floor == VENDOR_METRICS | DDM_METRICS
     assert floor <= names
     assert names & UNSUPPORTED_METRICS == set()
     assert set(metrics["supplementary_indicators"]) <= names
@@ -184,8 +198,11 @@ def test_status_enum_is_conservatively_normalized(toml_text):
 @pytest.mark.unit
 def test_unsupported_tables_not_promoted_to_health_metrics(metrics, toml_text):
     names = {metric["name"] for metric in metrics["metrics"]}
+    assert DDM_METRICS <= names
+    for name, oid in DDM_OIDS.items():
+        assert oid in toml_text, f"{name} must keep explicit OID {oid}"
     assert names & UNSUPPORTED_METRICS == set()
-    forbidden = ("sfpDDM", "systemAlarm", "alarmTable", "tlm", "dIn", "dOut")
+    forbidden = ("systemAlarm", "alarmTable", "tlm", "dIn", "dOut")
     assert not any(term in toml_text for term in forbidden)
 
 

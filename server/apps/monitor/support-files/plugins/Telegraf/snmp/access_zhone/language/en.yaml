@@ -1,8 +1,6 @@
 Access Zhone DZS SNMP:
   name: Access Zhone DZS SNMP
-  desc: SNMP monitoring template for Zhone DZS access device. It reports per-port
-    inbound traffic rate, per-port outbound traffic rate, and system uptime (IANA
-    PEN 6296).
+  desc: "SNMP monitoring template for Zhone/DZS access device. It reports per-card CPU utilization and memory (total, free, utilization) from ZHONE-CARD-RESOURCES-MIB cardRuntimeTable, per-port inbound and outbound traffic rate, and system uptime (enterprise PEN 5504). Fan and power supply status are not collected."
 monitor_object:
   Access: Access
 monitor_object_type:
@@ -41,9 +39,9 @@ monitor_object_metric:
         assess sending performance for traffic management and optimization.
     device_cpu_usage:
       name: CPU Usage
-      desc: Overall CPU utilization of the access device, reported directly as a percentage
-        by a private scalar. Sustained high usage indicates OLT control-plane or management-plane
-        pressure.
+      desc: CPU utilization of each card of the Zhone/DZS access device in percent
+        (ZHONE-CARD-RESOURCES-MIB cardProcessorUsage). Sustained high usage indicates
+        control-plane or management-plane pressure on that card.
     device_memory_total:
       name: Memory Total
       desc: Total physical memory capacity reported by the access device in bytes.
@@ -55,9 +53,9 @@ monitor_object_metric:
         or service tables.
     device_memory_usage:
       name: Memory Usage
-      desc: System memory utilization of the access device, reported directly as a
-        percentage by a private scalar. Sustained high memory can indicate forwarding
-        table, ONU management table, or control-service pressure.
+      desc: Memory utilization of each card of the Zhone/DZS access device, computed
+        as (cardTotalMem - cardAvailMem) / cardTotalMem * 100. Sustained high memory
+        can indicate forwarding table, subscriber table, or control-service pressure.
     device_temperature_celsius:
       name: System Temperature
       desc: System temperature of the access device in degrees Celsius. Persistently

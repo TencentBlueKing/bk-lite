@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_radwin",
   "plugin": "Wireless Radwin SNMP",
-  "plugin_desc": "SNMP monitoring template for Radwin wireless device. It reports uptime and interface traffic (based on standard MIBs).",
+  "plugin_desc": "SNMP monitoring template for Radwin wireless device (WinLink 1000 / RADWIN-MIB-WINLINK1000, enterprise PEN 4458). It reports uptime, ODU board temperature, and interface traffic. The private MIB has no CPU, memory, fan or power supply objects.",
   "support_collect_detect": true,
   "status_query": "any({instance_type='wireless', collect_type='snmp_radwin'}) by (instance_id)",
   "name": "Wireless",
@@ -14,9 +14,23 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime"
+    "snmp_uptime",
+    "device_temperature_celsius"
   ],
   "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(snmp_device_temperature_celsius{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Temperature inside the ODU board of the Radwin device in degrees Celsius (RADWIN-MIB-WINLINK1000 winlink1000OduAdmTemperatureC, scalar OID 4458.1000.1.1.44.0 read with a direct GET). The value is already in whole degrees, so the query does not scale it. Devices that do not return this object report no value."
+    },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",

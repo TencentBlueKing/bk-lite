@@ -155,6 +155,7 @@ def test_metrics_json_is_brand_delta_without_base_metrics(metrics):
         "barracuda_system_temperature_celsius",
         "barracuda_firmware_storage_usage",
         "barracuda_log_storage_usage",
+        "device_fan_speed",
     }
     assert floor <= names
     assert names - floor == EXPECTED_METRICS | diagnostic_metrics

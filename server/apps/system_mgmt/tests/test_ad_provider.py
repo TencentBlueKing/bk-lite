@@ -725,6 +725,7 @@ def test_ad_authenticate_returns_invalid_config_when_base_dn_missing():
     assert result.success is False
     assert result.errors[0].code == "provider.invalid_config"
     assert "base_dn" in result.errors[0].message.lower()
+    assert "登录认证" not in result.errors[0].message
 
 
 # ---------------------------------------------------------------------------

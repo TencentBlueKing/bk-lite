@@ -1,0 +1,61 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_tait"
+        config_type = "tait"
+        brand = "tait"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Tait TN9300 网络节点（TAIT-TN9300-MIB，PEN 3570，tn9300NodeObjs 1.3.6.1.4.1.3570.3.6.2.1）：标量，顶层 field 带 .0 → measurement snmp，查询用 snmp_ 前缀 ----
+    # tn9300MemoryUsage（.15）：所有节点进程占用的物理内存百分比，Gauge32。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.3570.3.6.2.1.15.0"
+        name = "memory_usage_raw"
+    # tn9300CpuUsage（.16）：所有节点进程的 CPU 总负载百分比，Gauge32。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.3570.3.6.2.1.16.0"
+        name = "cpu_usage_raw"
+# ---- 温度/风扇/电源：该 MIB 只有告警类枚举，没有温度、转速或电源状态读数，不采集。----
+
+# ---- CPU / 内存使用率须为 0~100 的整数，否则丢弃；原始字段不落库。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+FIELDS = [("cpu_usage_raw", "device_cpu_usage"), ("memory_usage_raw", "device_memory_usage")]
+
+def apply(metric):
+    for src, dst in FIELDS:
+        value = metric.fields.pop(src, None)
+        if type(value) == "int" and value >= 0 and value <= 100:
+            metric.fields[dst] = value
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["tait"]

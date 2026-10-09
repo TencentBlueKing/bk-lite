@@ -182,12 +182,20 @@ class PlaybookViewSet(BatchDeleteMixin, AuthViewSet):
                 "- `playbook.yml`：Playbook 入口文件（`hosts: all`，由系统自动注入目标主机）\n"
                 "- `README.md`：Playbook 说明文档\n"
                 "- `roles/example/tasks/main.yml`：任务示例\n"
-                "- `roles/example/vars/main.yml`：变量示例\n\n"
+                "- `roles/example/vars/main.yml`：变量与参数说明（行尾注释）\n\n"
+                "## 参数说明（供平台展示）\n\n"
+                "执行参数从 `roles/*/vars/main.yml` 解析。\n\n"
+                "请在参数**同一行行尾**用 `#` 写说明，平台会用于快速执行的参数提示；"
+                "不支持上一行或多行注释。\n\n"
+                "示例：\n\n"
+                "```yaml\n"
+                'message: "Hello from playbook template"  # 发送给目标的问候语\n'
+                "```\n\n"
                 "## 执行说明\n\n"
                 "上传后在「快速执行」中选择目标主机即可运行，系统会自动生成 inventory。\n\n"
                 "## 自定义建议\n\n"
                 "1. 按业务需要修改 `roles/example/tasks/main.yml`\n"
-                "2. 在 `vars/main.yml` 中补充变量\n"
+                "2. 在 `vars/main.yml` 中补充变量，并在行尾用 `#` 写上参数说明\n"
                 "3. 如果需要多角色，可以在 `roles/` 下继续增加目录\n",
             )
             zip_file.writestr(
@@ -196,7 +204,7 @@ class PlaybookViewSet(BatchDeleteMixin, AuthViewSet):
             )
             zip_file.writestr(
                 "playbook-template/roles/example/vars/main.yml",
-                '---\nmessage: "Hello from playbook template"\n',
+                '---\nmessage: "Hello from playbook template"  # 发送给目标的问候语\n',
             )
             zip_file.writestr("playbook-template/roles/example/templates/.gitkeep", "")
 

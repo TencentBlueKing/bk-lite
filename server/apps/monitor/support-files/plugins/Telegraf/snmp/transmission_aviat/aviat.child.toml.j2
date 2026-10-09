@@ -1,0 +1,92 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_aviat"
+        config_type = "aviat"
+        brand = "aviat"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- aviatRxPerformEntry 1.3.6.1.4.1.2509.9.15.2.2.1（INDEX entPhysicalIndex）：table.field 不带 .0 ----
+    # AviatPowerLevel 为 Integer32，0.1 dBm 步进；entPhysicalName 同索引作 name 标签。
+    [[inputs.snmp.table]]
+        name = "aviat_rx"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+        name = "name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2509.9.15.2.2.1.3"
+        name = "rsl_mean_dbm"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2509.9.15.2.2.1.4"
+        name = "rsl_current_dbm"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2509.9.15.2.2.1.5"
+        name = "rsl_max_dbm"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2509.9.15.2.2.1.6"
+        name = "rsl_min_dbm"
+# ---- CPU/内存/温度/风扇/电源：本模块无对应对象，不采集。----
+
+# ---- 先按原始 0.1 dBm 校验（保留 -1500..300），再除以 10；仅 name 标签而无 RSL 字段的行丢弃。----
+[[processors.starlark]]
+    namepass = ["aviat_rx"]
+    source = '''
+def apply(metric):
+    keys = ["rsl_current_dbm", "rsl_mean_dbm", "rsl_max_dbm", "rsl_min_dbm"]
+    sentinels = [65535, 65534, 2147483647, -2147483648, 4294967295]
+    for key in keys:
+        raw = metric.fields.get(key)
+        if raw == None:
+            continue
+        if type(raw) not in ["int", "float"]:
+            metric.fields.pop(key)
+            continue
+        drop = False
+        for sentinel in sentinels:
+            if raw == sentinel:
+                drop = True
+                break
+        if drop or raw < -1500 or raw > 300:
+            metric.fields.pop(key)
+            continue
+        metric.fields[key] = float(raw) / 10.0
+    kept = False
+    for key in keys:
+        if key in metric.fields:
+            kept = True
+            break
+    if not kept:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["aviat"]

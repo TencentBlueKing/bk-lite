@@ -1,0 +1,46 @@
+{
+  "object": "Access",
+  "plugin": "Access Loop Telecom SNMP",
+  "templates": [
+    {
+      "name": "Loop Telecom电源异常",
+      "alert_name": "接入设备${resource_name} 电源 ${metric__psu} 异常",
+      "description": "监控 Loop Telecom AM3440 各电源卡状态，电源卡关闭或故障时提示供电冗余丢失。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Loop Telecom主控温度过高",
+      "alert_name": "接入设备${resource_name} 主控 ${metric__controller} 温度过高",
+      "description": "监控 Loop Telecom AM3440 主控卡温度，持续偏高提示机房散热或风扇异常。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 65,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 55,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

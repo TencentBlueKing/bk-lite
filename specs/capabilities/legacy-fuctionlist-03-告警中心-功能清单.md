@@ -61,7 +61,7 @@
 |---|---|---|---|
 | 告警列表 | 按级别、状态、来源、时间范围、我的告警、是否有 Incident 等筛选 | — | GA |
 | 告警详情 | 展示基础信息、关联事件、关联事故、操作记录、通知结果 | — | GA |
-| 告警状态机 | 告警状态枚举与迁移 | 状态：`unassigned` 未分派 / `pending` 待处理 / `processing` 处理中 / `resolved` 人工恢复 / `closed` 人工关闭 / `auto_close` 自动关闭 / `auto_recovery` 自动恢复；默认 `unassigned` | GA |
+| 告警状态机 | 告警状态枚举与迁移 | 状态：`unassigned` 未分派 / `pending` 待处理 / `processing` 处理中 / `resolved` 人工恢复 / `closed` 人工关闭 / `auto_close` 自动关闭 / `auto_recovery` 自动恢复；默认 `unassigned`。关闭态含 `resolved`，活跃列表不展示已解决 | GA |
 | 状态操作 | 分派、认领、转派、关闭、恢复 | assign：`unassigned→pending`；acknowledge：`pending→processing`；reassign：`processing→pending`（当前处理人）；平台超级用户还可对 `pending` 转派且状态保持 `pending`；close：`processing→closed`；resolve：`processing→resolved`；非法前置状态操作被拒绝 | GA |
 | 批量操作 | 批量分派、认领、关闭、恢复 | 按后端支持动作执行 | GA |
 | 自动恢复 | 恢复事件经 `external_id` 关联历史创建事件，创建事件均被更晚恢复事件覆盖时转 `auto_recovery` | **依赖 `external_id`**：CREATED 或 RECOVERY 缺少 `external_id` 时不自动恢复（保持跳过）；因此产生的悬挂活跃告警依赖自动关闭（`close_minutes` / `beat_close_alert`）兜底，不放宽匹配键 | GA |
@@ -177,7 +177,7 @@
 | 状态机 | 取值（中文） |
 |---|---|
 | 事件状态（`EventStatus`） | received 已接收 / pending 待响应 / processing 处理中 / resolved 已处理 / closed 已关闭 / shield 已屏蔽 |
-| 告警状态（`AlertStatus`） | pending 待响应 / processing 处理中 / resolved 已处理 / closed 已关闭 / unassigned 未分派 / auto_close 自动关闭 / auto_recovery 自动恢复（活跃态：pending/processing/unassigned；关闭态：closed/auto_close/auto_recovery） |
+| 告警状态（`AlertStatus`） | pending 待响应 / processing 处理中 / resolved 已处理 / closed 已关闭 / unassigned 未分派 / auto_close 自动关闭 / auto_recovery 自动恢复（活跃态：pending/processing/unassigned；关闭态：closed/auto_close/auto_recovery/resolved） |
 | 会话 Alert 状态（`SessionStatus`） | observing 观察中 / confirmed 已确认 / recovered 已恢复 |
 | 事故状态（`IncidentStatus`） | pending 待响应 / processing 处理中 / resolved 已处理 / closed 已关闭 |
 | 告警操作（`AlertOperate`） | acknowledge 认领 / close 关闭 / reassign 转派 / assign 分派 |

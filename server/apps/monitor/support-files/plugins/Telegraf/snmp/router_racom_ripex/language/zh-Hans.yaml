@@ -1,0 +1,30 @@
+Router RACOM RipEX SNMP:
+  name: RACOM RipEX（Telegraf）
+  desc: 面向 RACOM RipEX2 数传电台与 M!DGE3 蜂窝路由器（RACOM-RA2-MIB，企业号 PEN 33555）的 SNMP 监控模板，可采集运行时长、CPU / Modem
+    / 射频板温度、电源输入电压、接口流量。
+monitor_object:
+  Router: 路由器
+monitor_object_type:
+  Network Device: 网络设备
+monitor_object_metric:
+  Router:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+    device_temperature_celsius:
+      name: CPU 温度
+      desc: 路由器 CPU 温度，单位为摄氏度。温度持续偏高可能表示散热不良或环境温度过高。
+    modem_temperature_celsius:
+      name: Modem 板温度
+      desc: Modem 板温度，单位为摄氏度。
+    radio_temperature_celsius:
+      name: 射频板温度
+      desc: 射频板温度，单位为摄氏度。无主射频的设备上没有该指标。
+    device_voltage_volts:
+      name: 输入电压
+      desc: 电源输入电压，单位为伏。偏离标称供电电压可能表示供电异常。
+monitor_object_metric_group:
+  Router:
+    Base: 基础
+    Temperature: 温度
+    Hardware Status: 硬件状态
