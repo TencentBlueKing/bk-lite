@@ -141,12 +141,13 @@ def _instance_ids_for_query(items: list, *, limit: int = 8) -> list:
 def _instance_query_hint(items: list) -> str:
     ids = _instance_ids_for_query(items)
     if not ids:
-        return "后续查时序的 instance_ids 必须用本列表的 instance_id，禁止用 name 或 IP 代替。"
+        return "后续查时序的 instance_ids 必须原样复制本列表每条记录的 instance_id 字段。" "禁止用 name、IP、id、cmdb_id，禁止用 CMDB 的 inst_id、inst_uuid、_id，禁止传负数。" "列表里没有的值不要编造。"
     shown = "、".join(ids)
     extra = " 等" if len(items) > len(ids) else ""
     return (
-        f"后续 monitor_query_metric_data / monitor_list_instance_metrics 的 instance_ids 必须用本列表 instance_id（{shown}{extra}），"
-        "禁止用 name 或 IP 代替，禁止 CMDB 的 inst_uuid/_id。"
+        f"后续 monitor_query_metric_data / monitor_list_instance_metrics 的 instance_ids 必须原样复制本列表每条记录的 instance_id 字段（{shown}{extra}）。"
+        "禁止用 name、IP、id、cmdb_id，禁止用 CMDB 的 inst_id、inst_uuid、_id，禁止传负数。"
+        "列表里没有的值不要编造。"
     )
 
 
@@ -176,7 +177,8 @@ def monitor_list_objects(
         "monitor_obj_id 只能来自 list_objects 返回的对象 id，且须用户已明确类型或已选择；每个 obj_id 只调一次。"
         "keyword 用完整主机名/IP 或用户原词，禁止截断后按台循环，禁止猜测/递增 ID。"
         "空列表且用户未声明类型时须 request_user_choice 问对象类型；已声明类型则不要再问。"
-        "后续 instance_ids 必须用本列表 instance_id，禁止用 name 或 IP 代替，禁止 CMDB 的 inst_uuid/_id。"
+        "后续 instance_ids 必须原样复制本列表每条记录的 instance_id 字段，禁止用 name、IP、id、cmdb_id，"
+        "禁止用 CMDB 的 inst_id、inst_uuid、_id，禁止传负数，列表里没有的值不要编造。"
     )
 )
 def monitor_list_object_instances(

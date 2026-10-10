@@ -2400,6 +2400,7 @@ def test_planned_tool_step_guidance_is_policy_not_skill_scan():
     assert "空矩阵" in guidance
     assert "instance_ids" in guidance
     assert "禁止用 name" in guidance or "禁止用实例名" in guidance
+    assert "负数" in guidance
     assert "不要输出 Markdown 表" in guidance
     assert "禁止降低 lines" in guidance
     assert "execute" not in guidance

@@ -2621,6 +2621,7 @@ class ToolsNodes(
                     config=config,
                     agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
                     thread_id=missing_params_thread_id,
+                    conversation_messages=original_messages,
                 )
             except Exception as planning_exc:
                 # 规划失败时保持零工具可见，仍允许模型直接回答，绝不退回全量工具。
@@ -2936,6 +2937,7 @@ class ToolsNodes(
                             config=config,
                             agent_system_prompt=str(getattr(graph_request, "system_message_prompt", "") or ""),
                             thread_id=missing_params_thread_id,
+                            conversation_messages=original_messages,
                         )
                         _ensure_skill_runtime_for_plan(replacement)
                         pending_steps = merge_replanned_pending_steps(replacement.steps, leftover_steps)
