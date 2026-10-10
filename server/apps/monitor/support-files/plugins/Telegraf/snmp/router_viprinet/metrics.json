@@ -96,10 +96,10 @@
       ],
       "name": "device_temperature_celsius",
       "display_name": "设备温度",
-      "query": "max(device_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "device_temperature_celsius{instance_type='router', __$labels__}",
       "unit": "celsius",
       "data_type": "Number",
-      "description": "Chassis temperature of the Viprinet router in degrees Celsius. System temperature is the primary reading; CPU temperature is collected as a second sensor. The dashboard takes the maximum per instance."
+      "description": "Chassis temperature of the Viprinet router in degrees Celsius. System temperature is the primary reading; CPU temperature is collected as a second sensor. One series per sensor."
     },
     {
       "metric_group": "Hardware Status",
@@ -117,7 +117,7 @@
     {
       "metric_group": "Hardware Status",
       "name": "device_fan_state",
-      "query": "max(device_fan_state{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "device_fan_state{instance_type='router', __$labels__}",
       "display_name": "Fan Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",

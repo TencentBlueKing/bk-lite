@@ -7,7 +7,8 @@ buildRelativeTimeRangeFilterValue。
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import datetime, timedelta, timezone as dt_timezone
+from datetime import datetime, timedelta
+from datetime import timezone as dt_timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from apps.operation_analysis.services.filter_snapshot import (
@@ -19,6 +20,7 @@ from apps.operation_analysis.services.filter_snapshot import (
     FilterSnapshotError,
     load_filter_snapshot,
 )
+from apps.operation_analysis.services.user_messages import oa_message
 
 
 def _ensure_aware(moment: datetime) -> datetime:
@@ -32,7 +34,7 @@ def _resolve_timezone(timezone_name: str | None) -> ZoneInfo:
     try:
         return ZoneInfo(name)
     except ZoneInfoNotFoundError as exc:
-        raise FilterSnapshotError(f"无效时区: {name}") from exc
+        raise FilterSnapshotError(oa_message("messages.filter_snapshot_invalid_timezone", "无效时区: {name}", name=name)) from exc
 
 
 def _format_iso(moment: datetime) -> str:
@@ -48,7 +50,13 @@ def resolve_date_range(
 ) -> tuple[str, str]:
     """对齐前端 resolveDateRange；返回 (startDate, endDate) YYYY-MM-DD。"""
     if range_type not in QUICK_DATE_RANGE_TYPES:
-        raise FilterSnapshotError(f"未知动态 dateRange 类型: {range_type}")
+        raise FilterSnapshotError(
+            oa_message(
+                "messages.filter_snapshot_unknown_date_range",
+                "未知动态 dateRange 类型: {range_type}",
+                range_type=range_type,
+            )
+        )
 
     tz = _resolve_timezone(timezone_name)
     local = _ensure_aware(reference_at).astimezone(tz)
@@ -81,7 +89,7 @@ def resolve_time_range(
     reference_at: datetime,
 ) -> dict:
     if not isinstance(minutes, int) or minutes <= 0:
-        raise FilterSnapshotError("dynamic timeRange 分钟数必须为正整数")
+        raise FilterSnapshotError(oa_message("messages.filter_snapshot_minutes_positive", "dynamic timeRange 分钟数必须为正整数"))
     end = _ensure_aware(reference_at)
     start = end - timedelta(minutes=minutes)
     # 写入具体起止，不保留 selectValue，避免渲染页按「现在」重算
@@ -95,19 +103,19 @@ def _resolve_entry(
     timezone_name: str | None,
 ) -> object:
     if not isinstance(entry, dict):
-        raise FilterSnapshotError("filter_snapshot entry 无效")
+        raise FilterSnapshotError(oa_message("messages.filter_snapshot_entry_invalid", "filter_snapshot entry 无效"))
 
     kind = entry.get("value_kind")
     if kind == VALUE_KIND_STATIC:
         if "value" not in entry:
-            raise FilterSnapshotError("static entry 缺少 value")
+            raise FilterSnapshotError(oa_message("messages.filter_snapshot_static_value", "static entry 缺少 value"))
         return deepcopy(entry["value"])
 
     if kind == VALUE_KIND_DYNAMIC_DATE_RANGE:
         range_type = entry.get("date_range_type")
         if range_type not in QUICK_DATE_RANGE_TYPES:
             raise FilterSnapshotError(
-                f"未知动态 dateRange 类型: {range_type}"
+                oa_message("messages.filter_snapshot_unknown_date_range", "未知动态 dateRange 类型: {range_type}", range_type=range_type)
             )
         start, end = resolve_date_range(
             range_type,
@@ -123,10 +131,10 @@ def _resolve_entry(
     if kind == VALUE_KIND_DYNAMIC_TIME_RANGE:
         minutes = entry.get("time_range_select_minutes")
         if not isinstance(minutes, int):
-            raise FilterSnapshotError("dynamic timeRange 缺少分钟数")
+            raise FilterSnapshotError(oa_message("messages.filter_snapshot_minutes_missing", "dynamic timeRange 缺少分钟数"))
         return resolve_time_range(minutes, reference_at=reference_at)
 
-    raise FilterSnapshotError(f"未知 value_kind: {kind}")
+    raise FilterSnapshotError(oa_message("messages.filter_snapshot_unknown_kind", "未知 value_kind: {kind}", kind=kind))
 
 
 def resolve_filter_snapshot(
@@ -139,7 +147,7 @@ def resolve_filter_snapshot(
     snapshot = load_filter_snapshot(subscription_config)
     entries = snapshot.get("entries")
     if not isinstance(entries, dict):
-        raise FilterSnapshotError("filter_snapshot.entries 必须是对象")
+        raise FilterSnapshotError(oa_message("messages.filter_snapshot_entries_object", "filter_snapshot.entries 必须是对象"))
 
     semantics = deepcopy(entries)
     values: dict = {}

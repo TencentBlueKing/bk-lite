@@ -8,7 +8,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { DocumentRenderForm } from '../components/document-render-form';
 
-vi.mock('@/utils/request', () => ({ default: () => ({ post: vi.fn() }) }));
+vi.mock('@/utils/request', () => ({ default: () => ({ get: vi.fn(), post: vi.fn() }) }));
 
 describe('文档生成节点配置', () => {
   afterEach(cleanup);

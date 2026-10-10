@@ -14,7 +14,7 @@
 | Dashboard / Topology / Architecture | `models/models.py` | 仪表盘/拓扑/架构图（filters、view_sets JSON）；三者均含 `is_build_in`/`build_in_key`（unique）内置标识 |
 | Screen / Report | `models/models.py` | 大屏/报表画布；均含 `directory`、`view_sets`、`is_build_in`/`build_in_key`、`refresh_interval` |
 | NetworkTopology | `models/models.py` | 第六类画布：网络拓扑；含 WeOps 连接、视图集与运行缓存 |
-| NameSpace | `models/datasource_models.py` | NATS 连接配置（域/账号/密码加密/TLS）；含 `namespace`（NATS 命名空间标识，消息主题前缀，default=`bklite`）；含 `is_active`（内部预留，前端不暴露、运行时不校验） |
+| NameSpace | `models/datasource_models.py` | NATS 连接配置（域/账号/密码加密/TLS）；含 `namespace`（NATS 命名空间标识，消息主题前缀；缺省读取 `NATS_NAMESPACE`，未配置时为 `bklite`）；含 `is_active`（内部预留，前端不暴露、运行时不校验） |
 | DataSourceAPIModel | `models/datasource_models.py` | 数据源定义；含 `source_type`、`connection` FK（可空，引用公共数据连接）、`connection_config`/`connection_overrides`、`query_config`、`transform_config`（REST/Excel 可选 Python）、Excel 双槽 FK（`excel_success_slot`/`excel_candidate_slot`/`excel_materialization_generation`）、`chart_type`、`field_schema`、内置标记与稳定键 |
 | DataConnection | `models/datasource_models.py` | 组织内可复用 MySQL/PostgreSQL/REST 物理连接；凭据加密；被引用时删除受 PROTECT |
 | ExcelMaterializationSlot | `models/excel_materialization_models.py` | Excel 成功/候选物化槽；原文件与结果存对象存储，元数据在库内 |
@@ -80,7 +80,7 @@
 证据：`web/src/app/ops-analysis/components/widgetRegistry.ts:19-36`、`web/src/app/ops-analysis/components/widgets/networkStatusTopology/index.tsx`、`web/src/app/ops-analysis/api/networkStatusTopology.ts:11-25`、`web/src/app/ops-analysis/components/widgets/room3D/{index.tsx,room3DData.ts,room3DMeshes.ts,room3DScene.ts}`。
 
 **大屏与报表前端入口**【已实现】
-- `screen`：前端提供独立页面、全屏、统一筛选、命名空间选择、组件布局与保存接口（`(pages)/view/screen/index.tsx:76-213`、`api/screen.ts:4-28`）。
+- `screen`：前端提供独立页面、三区编辑器、文本/时钟/标题框/装饰元素、面板两档（标准 / 无边框）、查看页收壳、全屏筛选按钮、fill/fitWidth/fitHeight 仅用于放大和分享，以及保存接口（`(pages)/view/screen/`、`api/screen.ts`）。画布背景为纯色、内置壁纸或一张自定义图片（data URL，PNG/JPEG/WebP，不超过 2MB，铺满设计画布）。文本、标题框和时钟的字色可取任意 `#RRGGBB`，取色后不随主题变化；未改过的 `canvas` / `muted` / `accent` 仍跟主题。证据：`specs/changes/ops-analysis-screen-basic-layout/spec.md`、`specs/changes/ops-analysis-screen-custom-background-image/spec.md`。
 - 网络状态拓扑布局【已实现】：组件提供层级、力导向、环形三种布局；编辑态的节点位置和连线形态按布局分别持久化及重置。几何写回只替换布局字段，保留流量阈值与连线展示。查看与分享态只读取已保存布局，不回写配置（证据：`web/src/app/ops-analysis/utils/networkStatusTopologyLayout.ts`、`web/src/app/ops-analysis/components/widgets/networkStatusTopology/index.tsx`）。
 - `report`：前端提供独立的纵向报表构建器；非内置且具备 `EditChart` 权限的报表可在草稿态添加、配置、排序和删除组件，当前 `report` surface 只开放 `table` 与 `eventTable`。`section` 仅保存稳定 `id` 与单个组件 `valueConfig`；画布保存统一筛选定义，组件通过 `filterBindings` 选择联动，运行时按数据源的 `filterType=filter` 及 `key + type` 严格匹配注入查询参数，不默认展示或接管时间参数。保存使用保留六位微秒的 `updated_at` 条件令牌防止旧草稿覆盖新版本，后端创建、更新与 YAML 导入统一校验版本化 `view_sets`。查看态工具栏对齐仪表盘：周期刷新（`refresh_interval`）、全屏 overlay、客户端 A4 横向分页 PDF、画布分享与邮件订阅；订阅 Chromium 使用仪表盘视口与分页，不套用大屏单页等比缩小（证据：`web/src/app/ops-analysis/(pages)/view/report/`、`web/src/app/ops-analysis/utils/{chartTypeSurface,reportBuilder,widgetDataTransform}.ts`、`server/apps/operation_analysis/services/report_view_sets.py`、`server/apps/operation_analysis/serializers/directory_serializers.py`）。
 - 画布分享目的地【已实现】：`/ops-analysis/share/*` 隐藏平台顶栏（`shouldHideConsoleTopNav`）、左侧 App 导航（既有 chrome exception）与全局助手（`GLOBAL_WEBCHAT_EXCLUDED_PATH_PREFIXES`），`main` 无内边距；不进入订阅 Render 专用 layout，仍保留 User/Menus/Permissions providers。产品内 `/ops-analysis/view` 保持完整壳层。证据：`web/src/console-layout/resolve.ts`、`web/src/app/layout.tsx`、`web/src/app/(core)/components/global-webchat/visibility.ts`。

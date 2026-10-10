@@ -1,3 +1,12 @@
+"""CMDB built-in toolset.
+
+用当前用户身份查询和变更 BK-Lite CMDB 资产：模型、实例增删改查、关联与拓扑、全文检索。
+权限由服务端按调用方身份校验。
+
+说明：本模块 docstring 仅供 parse_tools_yml 入库与界面展示；
+给大模型的调用约束写在各 @tool(description=...) 中，运行时从代码加载。
+"""
+
 from apps.opspilot.metis.llm.tools.cmdb.associations import (
     cmdb_create_instance_association,
     cmdb_delete_instance_association,

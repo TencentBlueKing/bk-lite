@@ -3,8 +3,10 @@ from rest_framework import serializers
 
 from apps.monitor.models import MonitorPlugin
 from apps.monitor.services.custom_pull_plugin import CustomPullPluginService
+from apps.monitor.services.custom_script_plugin import SCRIPT_COLLECT_OBJECT_TYPE_ERROR, CustomScriptPluginService, is_script_collect_allowed_object
 from apps.monitor.services.custom_snmp_plugin import CustomSnmpPluginService
 from apps.monitor.utils.node_selector import normalize_node_selector
+from apps.monitor.utils.plugin_source import CUSTOM_PLUGIN_TEMPLATE_TYPES, is_custom_plugin_template
 
 
 class MonitorPluginSerializer(serializers.ModelSerializer):
@@ -27,7 +29,7 @@ class MonitorPluginSerializer(serializers.ModelSerializer):
         display_name = attrs.get("display_name", getattr(instance, "display_name", ""))
         monitor_objects = attrs.get("monitor_object")
 
-        if template_type in {"api", "pull", "snmp"}:
+        if is_custom_plugin_template(template_type):
             if not template_id:
                 raise serializers.ValidationError({"template_id": "模板ID不能为空"})
             if not display_name:
@@ -45,6 +47,11 @@ class MonitorPluginSerializer(serializers.ModelSerializer):
             if monitor_objects is not None and len(monitor_objects) != 1:
                 raise serializers.ValidationError({"monitor_object": "自定义模板必须且只能绑定一个监控对象"})
 
+            if template_type == "script" and monitor_objects:
+                for monitor_object in monitor_objects:
+                    if not is_script_collect_allowed_object(monitor_object):
+                        raise serializers.ValidationError({"monitor_object": SCRIPT_COLLECT_OBJECT_TYPE_ERROR})
+
         if "node_selector" in attrs:
             try:
                 attrs["node_selector"] = normalize_node_selector(attrs.get("node_selector"))
@@ -56,7 +63,7 @@ class MonitorPluginSerializer(serializers.ModelSerializer):
         return attrs
 
     def validate_template_type(self, value):
-        allowed = {"builtin", "api", "pull", "snmp"}
+        allowed = {"builtin", *CUSTOM_PLUGIN_TEMPLATE_TYPES}
         if value not in allowed:
             raise serializers.ValidationError("模板类型不合法")
         return value
@@ -115,16 +122,22 @@ class MonitorPluginSerializer(serializers.ModelSerializer):
         elif template_type == "snmp":
             validated_data["collect_type"] = "snmp"
             validated_data["collector"] = "Telegraf"
+        elif template_type == "script":
+            validated_data["collect_type"] = "script"
+            validated_data["collector"] = "Telegraf"
+            validated_data["support_collect_detect"] = True
 
         with transaction.atomic():
             plugin = super().create(validated_data)
-            if template_type in {"api", "pull"} and not (plugin.status_query or "").strip():
+            if template_type in {"api", "pull", "script"} and not (plugin.status_query or "").strip():
                 plugin.status_query = self.build_default_status_query(plugin)
                 plugin.save(update_fields=["status_query", "updated_at"])
             if template_type == "pull":
                 CustomPullPluginService.initialize_templates(plugin)
             elif template_type == "snmp":
                 CustomSnmpPluginService.initialize_templates(plugin)
+            elif template_type == "script":
+                CustomScriptPluginService.initialize_templates(plugin)
             return plugin
 
 

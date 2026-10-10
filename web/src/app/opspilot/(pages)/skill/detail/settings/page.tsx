@@ -124,7 +124,20 @@ const SkillSettingsPage: React.FC = () => {
     const fetchFormData = async () => {
       try {
         const data = await fetchSkillDetail(id);
-        const initialGuide = '您好，请问有什么可以帮助您的吗？可以点击如下问题进行快速提问。\n[问题1]\n[问题2]';
+        const stockGuideZh = '您好，请问有什么可以帮助您的吗？可以点击如下问题进行快速提问。\n[问题1]\n[问题2]';
+        const stockGuideEn = 'Hello, how can I help? Click a question below.\n[Question 1]\n[Question 2]';
+        const initialGuide = t('skill.form.guideDefault', stockGuideZh);
+        const savedGuide = typeof data.guide === 'string' ? data.guide : '';
+        const guide = !savedGuide || savedGuide === stockGuideZh || savedGuide === stockGuideEn
+          ? initialGuide
+          : savedGuide;
+        const stockPromptZh = '你是关于专业机器人，请按照以下要求进行回复\n1、请根据用户的问题，从知识库检索关联的知识进行总结回复\n2、请根据用户需求，从工具中选取适当的工具进行执行\n3、回复的语句请保证准确，不要杜撰\n4、请按照要点有条理的梳理答案';
+        const stockPromptEn = 'You are a professional assistant. Reply according to these rules:\n1. For the user\'s question, retrieve related knowledge from the knowledge base and summarize the answer.\n2. Based on the user\'s need, choose and run the appropriate tool.\n3. Keep the reply accurate. Do not make things up.\n4. Organize the answer in clear points.';
+        const localizedPrompt = t('skill.form.promptDefault', stockPromptZh);
+        const savedPrompt = typeof data.skill_prompt === 'string' ? data.skill_prompt.replace(/\r\n/g, '\n') : '';
+        const prompt = !savedPrompt || savedPrompt === stockPromptZh || savedPrompt === stockPromptEn
+          ? localizedPrompt
+          : savedPrompt;
         form.setFieldsValue({
           name: data.name,
           group: data.team,
@@ -134,15 +147,15 @@ const SkillSettingsPage: React.FC = () => {
             : (data.team || []),
           introduction: data.introduction,
           llmModel: data.llm_model,
-          prompt: data.skill_prompt,
-          guide: data.guide || initialGuide,
+          prompt,
+          guide,
           wiki_knowledge_bases: data.wiki_knowledge_bases || [],
           force_wiki_grounded: data.force_wiki_grounded ?? false,
           memory_space: data.memory_space || undefined,
           memory_write_rounds: data.memory_write_rounds ?? 10,
           skill_params: data.skill_params || [],
         });
-        setGuideValue(data.guide || initialGuide);
+        setGuideValue(guide);
         setChatHistoryEnabled(data.enable_conversation_history ?? true);
         setQuantity(data.conversation_window_size ?? 10);
         setSelectedTools(normalizeMonitorToolConfigs((data.tools || []) as SelectTool[]));
@@ -244,7 +257,7 @@ const SkillSettingsPage: React.FC = () => {
       setSaveLoading(true);
       await saveSkillDetail(id, payload);
       const missingOnSave = effectiveSkillCapabilityProfiles.flatMap((pkg) =>
-        listMissingRequiredParams(pkg, skillPackageParams[pkg.package_id]).map((name) => `${pkg.name} / ${name}`)
+        listMissingRequiredParams(pkg, skillPackageParams[pkg.package_id]).map((name) => `${pkg.display_name || pkg.name} / ${name}`)
       );
       if (missingOnSave.length > 0) {
         message.warning(t('skill.skillPackageParams.saveWarning', '以下技能包缺少必填变量，运行时将不可用：{names}', { names: missingOnSave.join('；') }));
@@ -365,9 +378,10 @@ const SkillSettingsPage: React.FC = () => {
     if (!keyword) return availableSkillAssets;
 
     return availableSkillAssets.filter((asset) => [
+      asset.display_name || asset.name,
       asset.name,
       asset.category,
-      asset.description,
+      asset.description_tr || asset.description,
       asset.package_id,
       ...(asset.triggers || []),
       ...getPackageRequiredTools(asset),
@@ -443,7 +457,7 @@ const SkillSettingsPage: React.FC = () => {
     <div className="mt-4 border-t border-[var(--color-border-1)] pt-4">
       <div className="mb-1 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <span className="text-[13px] font-medium text-[var(--color-text-1)]">技能包</span>
+          <span className="text-[13px] font-medium text-[var(--color-text-1)]">{t('skill.settings.skillPackageSection')}</span>
           {effectiveSkillCapabilityProfiles.length > 0 && (
             <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--color-count-bg)] px-1.5 text-[11px] font-medium tabular-nums leading-none text-[var(--color-count)]">
               {effectiveSkillCapabilityProfiles.length}
@@ -451,13 +465,13 @@ const SkillSettingsPage: React.FC = () => {
           )}
         </div>
         <Button size="small" type="link" icon={<PlusOutlined />} onClick={openSkillPicker} className="px-0 text-xs">
-          添加技能包
+          {t('skill.settings.addSkillPackage')}
         </Button>
       </div>
-      <p className="mb-2.5 mt-0 text-xs text-[var(--color-text-3)]">挂载场景技能包，注入专业运维处理逻辑与提示规则</p>
+      <p className="mb-2.5 mt-0 text-xs text-[var(--color-text-3)]">{t('skill.settings.skillPackageHint')}</p>
       {effectiveSkillCapabilityProfiles.length === 0 ? (
         <div className="py-1 text-xs text-[var(--color-text-4)]">
-          暂未挂载技能包，可点击右上角「添加技能包」进行挂载
+          {t('skill.settings.skillPackageEmpty')}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-2 pt-1">
@@ -486,8 +500,8 @@ const SkillSettingsPage: React.FC = () => {
                     <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[var(--color-bg)] text-[var(--color-primary)] shadow-2xs">
                       <Icon type="jinengpeixun" className="text-xs" />
                     </span>
-                    <span className="truncate text-xs font-medium text-[var(--color-text-1)]" title={resolvedAsset.name}>
-                      {resolvedAsset.name}
+                    <span className="truncate text-xs font-medium text-[var(--color-text-1)]" title={resolvedAsset.display_name || resolvedAsset.name}>
+                      {resolvedAsset.display_name || resolvedAsset.name}
                     </span>
                   </div>
                   <div className="ml-2 flex shrink-0 items-center gap-1">
@@ -524,22 +538,22 @@ const SkillSettingsPage: React.FC = () => {
 
   const renderSkillPickerModal = () => (
     <OperateModal
-      title="选择技能包"
+      title={t('skill.settings.selectSkillPackage')}
       open={isSkillPickerOpen}
       onCancel={() => setIsSkillPickerOpen(false)}
       width={720}
       footer={
         <div className="flex w-full items-center justify-between">
           <div className="text-xs text-[var(--color-text-3)]">
-            已选择数量:{' '}
+            {t('skill.selectedCount')}{' '}
             <span className="font-semibold tabular-nums text-[var(--color-text-1)]">
               {draftSkillAssetKeys.length}
             </span>
           </div>
           <Space>
-            <Button onClick={() => setIsSkillPickerOpen(false)}>取消</Button>
+            <Button onClick={() => setIsSkillPickerOpen(false)}>{t('common.cancel')}</Button>
             <Button type="primary" onClick={handleConfirmSkillPicker}>
-              确认选择
+              {t('skill.settings.confirmSelection')}
             </Button>
           </Space>
         </div>
@@ -548,18 +562,18 @@ const SkillSettingsPage: React.FC = () => {
       <div className="mb-3.5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <span className="text-xs text-[var(--color-text-3)]">
-            共 {filteredAvailableSkillAssets.length} 项
+            {t('skill.settings.totalItems', '共 {count} 项', { count: filteredAvailableSkillAssets.length })}
           </span>
           {draftSkillAssetKeys.length > 0 && (
             <span className="inline-flex h-5 items-center rounded-full bg-[var(--color-count-bg)] px-2 text-[11px] font-medium tabular-nums text-[var(--color-count)]">
-              已选 {draftSkillAssetKeys.length} 项
+              {t('skill.settings.selectedItems', '已选 {count} 项', { count: draftSkillAssetKeys.length })}
             </span>
           )}
         </div>
         <Input
           allowClear
           className="w-64"
-          placeholder="搜索技能包..."
+          placeholder={t('skill.settings.searchPlaceholder')}
           prefix={<SearchOutlined className="text-[var(--color-text-4)]" />}
           value={skillPickerKeyword}
           onChange={(event) => setSkillPickerKeyword(event.target.value)}
@@ -568,7 +582,7 @@ const SkillSettingsPage: React.FC = () => {
 
       {filteredAvailableSkillAssets.length === 0 ? (
         <div className="py-8">
-          <CompactEmptyState description="没有匹配的技能包" />
+          <CompactEmptyState description={t('skill.settings.noMatch')} />
         </div>
       ) : (
         <div className="grid max-h-[440px] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
@@ -600,9 +614,9 @@ const SkillSettingsPage: React.FC = () => {
                       <Icon type="jinengpeixun" className="text-xl" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <Tooltip title={asset.name}>
+                      <Tooltip title={asset.display_name || asset.name}>
                         <div className="truncate text-[13px] font-semibold leading-snug text-[var(--color-text-1)]">
-                          {asset.name}
+                          {asset.display_name || asset.name}
                         </div>
                       </Tooltip>
                       {asset.category && (
@@ -622,7 +636,7 @@ const SkillSettingsPage: React.FC = () => {
 
                 <div className="mt-2 min-h-[36px]">
                   <p className="line-clamp-2 text-xs leading-relaxed text-[var(--color-text-3)] m-0">
-                    {asset.description || '暂无描述'}
+                    {asset.description_tr || asset.description || t('skill.settings.noDescription')}
                   </p>
                 </div>
               </div>
@@ -799,7 +813,9 @@ const SkillSettingsPage: React.FC = () => {
                       </span>
                     </div>
                     <span className="text-xs text-[var(--color-text-3)]">
-                      支持 <code className="font-mono text-[var(--color-primary)]">{'{{param}}'}</code> 声明参数
+                      {t('skill.settings.paramSyntaxHintBefore')}{' '}
+                      <code className="font-mono text-[var(--color-primary)]">{'{{param}}'}</code>{' '}
+                      {t('skill.settings.paramSyntaxHintAfter')}
                     </span>
                   </div>
 
@@ -814,7 +830,7 @@ const SkillSettingsPage: React.FC = () => {
                     <TextArea
                       rows={5}
                       className="font-mono text-xs"
-                      placeholder="定义智能体的身份角色、任务指引与执行规范..."
+                      placeholder={t('skill.settings.guidePlaceholder')}
                       onChange={(e) => syncSkillParamsFromPrompt(e.target.value)}
                     />
                   </Form.Item>
@@ -899,13 +915,13 @@ const SkillSettingsPage: React.FC = () => {
                         <div>{t('skill.form.guideTip')}</div>
                       </>
                     }
-                    extra={<span className="text-xs text-[var(--color-text-3)]">支持 Markdown 与 [快捷提问] 语法</span>}
+                    extra={<span className="text-xs text-[var(--color-text-3)]">{t('skill.settings.guideExtra')}</span>}
                     className="!mb-0"
                   >
                     <TextArea
                       rows={3}
                       className="text-xs font-mono"
-                      placeholder={'您好，请问有什么可以帮助您的吗？可以点击如下问题进行快速提问。\n[问题1]\n[问题2]'}
+                      placeholder={t('skill.settings.guidePlaceholder')}
                       onChange={(e) => setGuideValue(e.target.value)}
                     />
                   </Form.Item>
@@ -926,6 +942,8 @@ const SkillSettingsPage: React.FC = () => {
                         <Select
                           mode="multiple"
                           allowClear
+                          showSearch
+                          optionFilterProp="label"
                           placeholder={t('wiki.title')}
                           className="min-w-0 flex-1"
                           options={wikiKbs.map((kb) => ({ value: kb.id, label: kb.name }))}
@@ -1011,7 +1029,7 @@ const SkillSettingsPage: React.FC = () => {
             {/* 配置面板底部 Sticky Action Bar */}
             <div className="flex h-12 shrink-0 items-center justify-between border-t border-[var(--color-border-1)] bg-[var(--color-bg)] px-5">
               <span className="text-xs text-[var(--color-text-4)]">
-                保存后即时在右侧生效
+                {t('skill.settings.applyHint')}
               </span>
               <PermissionWrapper requiredPermissions={['Edit']} instPermissions={skillPermissions}>
                 <Button type="primary" onClick={handleSave} loading={saveLoading}>
@@ -1046,7 +1064,7 @@ const SkillSettingsPage: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="rounded bg-[var(--color-bg)] border border-[var(--color-border-1)] px-2 py-0.5 text-[11px] text-[var(--color-text-3)]">
-                    实时测试环境
+                    {t('skill.settings.testEnv')}
                   </span>
                   <Tooltip title={isTestChatFullscreen ? t('common.exitFullscreen') : t('common.fullscreen')}>
                     <button

@@ -22,7 +22,7 @@ def _payload(knowledge_base):
         "base_generation_id": current["active_generation"]["id"],
         "structure": {
             "format_version": 1,
-            "page_types": ["concept"],
+            "page_types": list(current["structure"]["page_types"]),
             "directories": [{"kind": "existing", **deepcopy(directory)} for directory in current["structure"]["directories"]],
         },
     }

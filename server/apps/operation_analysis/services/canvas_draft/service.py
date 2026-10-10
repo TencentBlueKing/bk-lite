@@ -165,7 +165,9 @@ def update_checkpoint_label(
     if label is None:
         normalized = ""
     elif not isinstance(label, str):
-        raise DraftValidationFailed([{"field": "label", "message": "label 必须是字符串"}])
+        from apps.operation_analysis.services.user_messages import oa_message
+
+        raise DraftValidationFailed([{"field": "label", "message": oa_message("messages.draft_label_string", "label 必须是字符串")}])
     else:
         normalized = label.strip()[:CHECKPOINT_LABEL_MAX_LENGTH]
     frame.label = normalized

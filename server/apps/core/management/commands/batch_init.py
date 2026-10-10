@@ -47,6 +47,7 @@ class Command(BaseCommand):
                 "log",
                 "mlops",
                 "patch_mgmt",
+                "workflow_orchestration",
             ]
         else:
             apps_list = [app.strip() for app in apps.split(",")]
@@ -82,6 +83,8 @@ class Command(BaseCommand):
                     self._init_mlops()
                 elif app == "patch_mgmt":
                     self._init_patch_mgmt()
+                elif app == "workflow_orchestration":
+                    self._init_workflow_orchestration()
                 else:
                     self.stdout.write(self.style.WARNING(f"未知模块: {app}"))
             except Exception as e:
@@ -248,6 +251,10 @@ class Command(BaseCommand):
         self.stdout.write("OpsPilot资源初始化...")
         call_command("init_llm")
         call_command("parse_tools_yml")
+        try:
+            call_command("init_skill_packages")
+        except Exception as error:  # noqa: BLE001 - 非关键可重建数据不得阻断启动
+            self.stdout.write(self.style.WARNING(f"内置技能包同步跳过（{type(error).__name__}）: {error}"))
         call_command("init_chatflow")
 
     def _init_log(self):
@@ -270,6 +277,15 @@ class Command(BaseCommand):
         except Exception as error:  # noqa: BLE001 - 非关键可重建数据不得阻断启动
             logger.warning("内置补丁源初始化失败，可运行 init_patch_sources 重试", exc_info=True)
             self.stdout.write(self.style.WARNING(f"内置补丁源初始化跳过（{type(error).__name__}）: {error}"))
+
+    def _init_workflow_orchestration(self):
+        """编排中心内置巡检流程（按团队幂等，失败不阻断启动）。"""
+        self.stdout.write("编排中心内置流程初始化...")
+        try:
+            call_command("init_workflow_orchestration_builtins", skip_conductor=True)
+        except Exception as error:  # noqa: BLE001 - 非关键可重建数据不得阻断启动
+            logger.warning("编排内置巡检初始化失败，可运行 init_workflow_orchestration_builtins 重试", exc_info=True)
+            self.stdout.write(self.style.WARNING(f"编排内置巡检初始化跳过（{type(error).__name__}）: {error}"))
 
     def _preload_language_cache(self):
         """预热语言缓存"""

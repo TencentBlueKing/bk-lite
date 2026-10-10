@@ -15,7 +15,8 @@ export interface ToolConnectionStatusTagProps {
     | 'tool.postgres'
     | 'tool.elasticsearch'
     | 'tool.jenkins'
-    | 'tool.kubernetes';
+    | 'tool.kubernetes'
+    | 'tool.activedirectory';
   status: ToolConnectionStatus;
 }
 

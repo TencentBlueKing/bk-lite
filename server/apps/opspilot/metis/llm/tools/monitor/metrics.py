@@ -96,7 +96,7 @@ def _metric_query_hint(items: list, keyword: Optional[str]) -> str:
     )
 
 
-@tool(description=("【主机CPU使用率】第3步：列出该对象指标定义。用户问 CPU/内存/磁盘时必须传 keyword 筛选 name/display_name。" "metric 只能用返回的 name，禁止猜测 cpu.util。与查时序同一步。"))
+@tool(description=("列出该对象指标定义。用户问 CPU/内存/磁盘或其它指标时必须传 keyword 筛选 name/display_name。" "metric 只能用返回的 name，禁止猜测 cpu.util 等通用名。与查时序同一步。"))
 def monitor_list_object_metrics(
     monitor_obj_id: str,
     keyword: Optional[str] = None,
@@ -120,7 +120,7 @@ def monitor_list_object_metrics(
     return payload
 
 
-@tool(description=("【主机CPU使用率】可选：列出某实例已采集指标，确认该主机是否有CPU数据。" "参数monitor_obj_id+instance_id；可only_with_data过滤。"))
+@tool(description=("可选：列出某实例已采集指标，确认该实例是否有目标指标数据。" "参数 monitor_obj_id+instance_id；可 only_with_data 过滤。"))
 def monitor_list_instance_metrics(
     monitor_obj_id: str,
     instance_id: str,
@@ -151,10 +151,10 @@ def monitor_list_instance_metrics(
 
 @tool(
     description=(
-        "【主机CPU使用率】第4步：查询指标时序（返回CPU使用率数值）。"
+        "查询指标时序（任意已纳管指标，含 CPU/内存/磁盘/业务等）。"
         "metric 必须来自本步 monitor_list_object_metrics 返回的 name，禁止猜测 cpu.util。"
-        "必填monitor_obj_id、metric；instance_ids 必须用 list_object_instances 返回的 instance_id，禁止用实例名或 IP 代替。"
-        "禁止CMDB的inst_uuid/_id。可省略start/end（默认近1小时）。禁止建议top/htop/SSH。"
+        "必填 monitor_obj_id、metric；instance_ids 必须用 list_object_instances 返回的 instance_id，禁止用实例名或 IP 代替。"
+        "禁止 CMDB 的 inst_uuid/_id。可省略 start/end（默认近1小时）。禁止建议 top/htop/SSH。"
         "同一实例同一指标只查一次；空矩阵/无时序是有效结论，禁止改 instance_ids、IP、dimensions、时间窗或 metric 重试。"
     )
 )
@@ -198,7 +198,7 @@ def monitor_query_metric_data(
     return result
 
 
-@tool(description=("【主机CPU使用率】按监控 instance_ids 查询主机 CPU/内存/磁盘均值与最高值快照。" "须用监控 instance_id/主机名/IP，禁止 CMDB 的 inst_uuid/_id。"))
+@tool(description=("按监控 instance_ids 查询主机 CPU/内存/磁盘均值与最高值快照。" "须用监控 instance_id/主机名/IP，禁止 CMDB 的 inst_uuid/_id。"))
 def monitor_get_host_resource_snapshot(
     instance_ids: Optional[List[str]] = None,
     config: RunnableConfig = None,
@@ -209,4 +209,38 @@ def monitor_get_host_resource_snapshot(
         "get_host_resource_snapshot",
         config,
         instance_ids=instance_ids,
+    )
+
+
+@tool(
+    description=(
+        "按时间窗对全量主机做 CPU/内存/磁盘监控指标使用率排行（Top N）。"
+        "用户问「最近/近 N 分钟使用率最高的前 M 台主机」「哪些主机磁盘高」等排名类问题时必须用本工具，"
+        "不要用 monitor_get_host_resource_snapshot（它只出全局聚合快照值、不排名、不接受时间窗），"
+        "也不要逐台传 instance_ids 调 query_metric_data 再手工排序。"
+        "metric_type 取 cpu/memory/disk；窗口用 lookback_minutes（如「最近5分钟」传 5），"
+        "或 time 传 RFC3339 区间；limit 默认 10。"
+        "aggregation=max 看窗口内峰值（默认，瞬时打满），avg 看持续偏高；返回行同时含 peak_percent 与 avg_percent。"
+    )
+)
+def monitor_get_host_resource_top_by_time(
+    metric_type: str = "disk",
+    lookback_minutes: Optional[float] = None,
+    time: Optional[List[str]] = None,
+    aggregation: str = "max",
+    limit: int = 10,
+    config: RunnableConfig = None,
+) -> Dict[str, Any]:
+    if not metric_type:
+        return wrap_error("metric_type is required")
+    if lookback_minutes in (None, "") and not time:
+        return wrap_error("lookback_minutes 或 time is required")
+    return call_monitor_rpc(
+        "get_host_resource_top_by_time",
+        config,
+        metric_type=metric_type,
+        lookback_minutes=lookback_minutes,
+        time=time,
+        aggregation=aggregation,
+        limit=limit,
     )

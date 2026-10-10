@@ -868,7 +868,8 @@ export default function Application3D({
         const alarmCount = formatArchitectureHostAlarmCount(
           isAlarming ? architectureHost.node.health?.activeAlarmCount : isNormal ? 0 : null,
         );
-        const severityLabel = formatArchitectureHostSeverity(architectureHost.node.health?.highestSeverity?.label);
+        const highestSeverity = architectureHost.node.health?.highestSeverity;
+        const severityLabel = formatArchitectureHostSeverity(highestSeverity?.label, highestSeverity?.id, t);
         const dismissHostOverlay = (event: { stopPropagation: () => void }) => {
           event.stopPropagation();
           setArchitectureHost(null);

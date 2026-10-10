@@ -25,15 +25,19 @@ from apps.opspilot.models import (
 )
 from apps.opspilot.services.wiki.generation_service import GenerationServiceError, activate_generation, clone_base_snapshot, mark_generation_ready
 from apps.opspilot.services.wiki.governance_api_schemas import SchemaName, get_schema
-from apps.opspilot.services.wiki.purpose_schema_service import get_template_structure
+from apps.opspilot.services.wiki.purpose_schema_service import (
+    FROZEN_ROOT_BY_KEY,
+    FROZEN_ROOT_KEYS,
+    get_template_structure,
+)
 
 STRUCTURE_SAVE_REQUEST = get_schema(SchemaName.STRUCTURE_SAVE_REQUEST)
 STRUCTURE_SAVE_RESPONSE = get_schema(SchemaName.STRUCTURE_SAVE_RESPONSE)
 UNCLASSIFIED_DIRECTORY_KEY = "__unclassified__"
 UNCLASSIFIED_DIRECTORY_NAME = "待归类"
+SYSTEM_DIRECTORY_KEYS = frozenset({UNCLASSIFIED_DIRECTORY_KEY, *FROZEN_ROOT_KEYS})
 MAX_DIRECTORY_DEPTH = 8
 GOVERNANCE_PIPELINE_VERSION = "wiki-structure-governance-v1"
-NATIVE_RESTORE_PIPELINE_VERSION = "wiki-native-structure-restore-v1"
 BOOTSTRAP_PIPELINE_VERSION = "wiki-knowledge-base-bootstrap-v1"
 BOOTSTRAP_SOURCE_FINGERPRINTS = [
     {"kind": "wiki_knowledge_base_bootstrap", "version": 1},
@@ -400,44 +404,48 @@ def _active_snapshot_directory(active_revision, directory_id):
     return None
 
 
-def _validate_unclassified(active_revision, nodes, nodes_by_token, local_directories):
-    system_directories = [directory for directory in local_directories if directory.origin == "system"]
-    reserved_directories = [directory for directory in local_directories if directory.key == UNCLASSIFIED_DIRECTORY_KEY]
-    if len(system_directories) != 1 or len(reserved_directories) != 1 or system_directories[0].pk != reserved_directories[0].pk:
-        raise StructureServiceError(
-            "unclassified_directory_invariant",
-            "知识库必须且只能有一个使用保留 key 的 system 待归类目录",
-            details={
-                "system_directory_ids": [directory.pk for directory in system_directories],
-                "reserved_directory_ids": [directory.pk for directory in reserved_directories],
-            },
-        )
-    directory = system_directories[0]
-    invalid_projection = []
-    expected_projection = {
-        "key": UNCLASSIFIED_DIRECTORY_KEY,
-        "name": UNCLASSIFIED_DIRECTORY_NAME,
+def _system_directory_expected(directory):
+    if directory.key == UNCLASSIFIED_DIRECTORY_KEY:
+        return {
+            "key": UNCLASSIFIED_DIRECTORY_KEY,
+            "name": UNCLASSIFIED_DIRECTORY_NAME,
+            "parent_id": None,
+            "origin": "system",
+            "status": "active",
+            "accepts_pages": True,
+            "merged_into_id": None,
+        }
+    spec = FROZEN_ROOT_BY_KEY.get(directory.key)
+    if spec is None:
+        return None
+    return {
+        "key": spec["key"],
+        "name": spec["name"],
         "parent_id": None,
         "origin": "system",
         "status": "active",
-        "accepts_pages": True,
+        "accepts_pages": spec.get("accepts_pages", True),
         "merged_into_id": None,
     }
-    for field, value in expected_projection.items():
-        if getattr(directory, field) != value:
-            invalid_projection.append(field)
+
+
+def _validate_system_node(active_revision, nodes_by_token, directory, *, error_code, message):
+    expected = _system_directory_expected(directory)
+    invalid_projection = []
+    if expected is None:
+        invalid_projection.append("key")
+    else:
+        invalid_projection.extend(field for field, value in expected.items() if getattr(directory, field) != value)
     token = ("existing", directory.pk)
     node = nodes_by_token.get(token)
     if node is None:
         raise StructureServiceError(
-            "unclassified_directory_omitted",
-            "完整结构不能省略系统待归类目录",
-            details={"directory_id": directory.pk},
+            "system_directory_omission_forbidden" if directory.key != UNCLASSIFIED_DIRECTORY_KEY else "unclassified_directory_omitted",
+            "完整结构不能省略系统目录" if directory.key != UNCLASSIFIED_DIRECTORY_KEY else "完整结构不能省略系统待归类目录",
+            details={"directory_id": directory.pk, "directory_key": directory.key},
         )
     current = _active_snapshot_directory(active_revision, directory.pk)
-    if current is None:
-        invalid_projection.append("active_structure_snapshot")
-    else:
+    if current is not None:
         immutable = {
             "name": current.get("name"),
             "parent": current.get("parent"),
@@ -449,18 +457,69 @@ def _validate_unclassified(active_revision, nodes, nodes_by_token, local_directo
         invalid_projection.extend(field for field, value in immutable.items() if submitted[field] != value)
     if node.get("origin") != "system" or node.get("status") != "active" or node["parent_token"] is not None:
         invalid_projection.extend(["origin/status/parent"])
+    if expected is not None and node["name"] != expected["name"]:
+        invalid_projection.append("name")
     if invalid_projection:
         raise StructureServiceError(
-            "unclassified_directory_invariant",
-            "系统待归类目录是不可编辑的 system/active/root 节点",
-            details={"directory_id": directory.pk, "fields": sorted(set(invalid_projection))},
+            error_code,
+            message,
+            details={"directory_id": directory.pk, "directory_key": directory.key, "fields": sorted(set(invalid_projection))},
         )
+
+
+def _validate_unclassified(active_revision, nodes, nodes_by_token, local_directories):
+    reserved_directories = [directory for directory in local_directories if directory.key == UNCLASSIFIED_DIRECTORY_KEY]
+    if len(reserved_directories) != 1:
+        raise StructureServiceError(
+            "unclassified_directory_invariant",
+            "知识库必须且只能有一个使用保留 key 的 system 待归类目录",
+            details={"reserved_directory_ids": [directory.pk for directory in reserved_directories]},
+        )
+    local_keys = {directory.key for directory in local_directories}
+    missing_frozen = sorted(FROZEN_ROOT_KEYS - local_keys)
+    if missing_frozen:
+        raise StructureServiceError(
+            "frozen_directory_missing",
+            "知识库缺少冻结根目录",
+            details={"missing_keys": missing_frozen},
+        )
+    system_directories = [directory for directory in local_directories if directory.origin == "system"]
+    expected_system = [directory for directory in local_directories if directory.key in SYSTEM_DIRECTORY_KEYS]
+    if {directory.pk for directory in system_directories} != {directory.pk for directory in expected_system}:
+        raise StructureServiceError(
+            "system_directory_invariant",
+            "系统目录必须恰好是待归类与六个冻结根",
+            details={
+                "system_directory_ids": [directory.pk for directory in system_directories],
+                "expected_directory_ids": [directory.pk for directory in expected_system],
+            },
+        )
+    _validate_system_node(
+        active_revision,
+        nodes_by_token,
+        reserved_directories[0],
+        error_code="unclassified_directory_invariant",
+        message="系统待归类目录是不可编辑的 system/active/root 节点",
+    )
+    for directory in expected_system:
+        if directory.key == UNCLASSIFIED_DIRECTORY_KEY:
+            continue
+        _validate_system_node(
+            active_revision,
+            nodes_by_token,
+            directory,
+            error_code="frozen_directory_invariant",
+            message="冻结根目录不可删除、改名或移出根",
+        )
+    reserved_ids = {directory.pk for directory in expected_system}
     for node in nodes:
-        if node["kind"] == "existing" and node["key"] == UNCLASSIFIED_DIRECTORY_KEY and node["id"] != directory.pk:
+        if node["kind"] != "existing":
+            continue
+        if node["key"] in SYSTEM_DIRECTORY_KEYS and node["id"] not in reserved_ids:
             raise StructureServiceError(
                 "reserved_directory_key_forbidden",
-                "非系统目录不得使用待归类保留 key",
-                details={"directory_id": node["id"]},
+                "非系统目录不得使用冻结根或待归类保留 key",
+                details={"directory_id": node["id"], "directory_key": node["key"]},
             )
 
 
@@ -564,7 +623,7 @@ def _apply_projection(knowledge_base, nodes, omitted, local_directories, operato
             sort_order=node["order"],
             origin=node.get("restore_origin", "manual"),
             status="active",
-            accepts_pages=True,
+            accepts_pages=bool(node.get("accepts_pages", True)),
             merged_into=None,
             created_by=operator,
             updated_by=operator,
@@ -785,6 +844,7 @@ def _bootstrap_template_nodes(template_key):
                 }
             )
 
+        accepts_pages_by_key = {item["key"]: bool(item.get("accepts_pages", True)) for item in raw_directories}
         normalized_page_types, nodes, nodes_by_token = _normalize_structure(
             {
                 "page_types": page_types,
@@ -794,7 +854,8 @@ def _bootstrap_template_nodes(template_key):
         _validate_graph(nodes, nodes_by_token)
         for node in nodes:
             node["restore_key"] = node["client_ref"]
-            node["restore_origin"] = "schema"
+            node["restore_origin"] = "system"
+            node["accepts_pages"] = accepts_pages_by_key.get(node["client_ref"], True)
         return normalized_page_types, nodes
     except StructureServiceError as error:
         raise StructureServiceError(
@@ -860,8 +921,6 @@ def _bootstrap_snapshot(directories, template_key):
 def _bootstrap_content_ids(knowledge_base):
     return {
         "page_id": KnowledgePage.objects.filter(knowledge_base=knowledge_base).order_by("id").values_list("id", flat=True).first(),
-        "material_id": Material.objects.filter(knowledge_base=knowledge_base).order_by("id").values_list("id", flat=True).first(),
-        "build_record_id": BuildRecord.objects.filter(knowledge_base=knowledge_base).order_by("id").values_list("id", flat=True).first(),
     }
 
 
@@ -907,9 +966,9 @@ def _bootstrap_completion_errors(knowledge_base, directories, revisions, generat
             "description": node["description"],
             "parent_id": getattr(parent, "pk", None),
             "sort_order": node["order"],
-            "origin": "schema",
+            "origin": "system",
             "status": "active",
-            "accepts_pages": True,
+            "accepts_pages": bool(node.get("accepts_pages", True)),
             "merged_into_id": None,
         }
         errors.extend(
@@ -1290,285 +1349,6 @@ def save_structure(knowledge_base, payload, *, operator=""):
     return _response(revision, candidate, snapshot, client_ref_map)
 
 
-def _native_restore_nodes(locked, native_snapshot, active_revision, active_generation, local_directories):
-    if not isinstance(native_snapshot, dict) or native_snapshot.get("format_version") != 1:
-        raise StructureServiceError("native_structure_invalid", "原生 structure.json 格式版本无效")
-    raw_directories = native_snapshot.get("directories")
-    if not isinstance(raw_directories, list):
-        raise StructureServiceError("native_structure_invalid", "原生 structure.json 缺少 directories")
-    if KnowledgePage.objects.filter(knowledge_base=locked).exists() or active_generation.page_members.exists():
-        raise StructureServiceError(
-            "native_structure_restore_requires_empty_kb",
-            "原生结构仅可恢复到没有任何知识页面的空知识库",
-        )
-    if len(local_directories) != 1:
-        raise StructureServiceError(
-            "native_structure_restore_requires_pristine_projection",
-            "原生结构恢复要求目标知识库仅包含系统待归类目录",
-            details={"directory_ids": [directory.pk for directory in local_directories]},
-        )
-    unclassified = local_directories[0]
-    if unclassified.key != UNCLASSIFIED_DIRECTORY_KEY or unclassified.origin != "system":
-        raise StructureServiceError(
-            "unclassified_directory_invariant",
-            "目标知识库缺少唯一系统待归类目录",
-        )
-
-    source_by_key = {}
-    for index, raw in enumerate(raw_directories):
-        if not isinstance(raw, dict):
-            raise StructureServiceError(
-                "native_structure_directory_invalid",
-                "原生结构目录必须是对象",
-                details={"index": index},
-            )
-        key = raw.get("key")
-        if not isinstance(key, str) or not NATIVE_DIRECTORY_KEY_RE.fullmatch(key):
-            raise StructureServiceError(
-                "native_directory_key_invalid",
-                "原生结构目录 key 非法",
-                details={"index": index, "key": key},
-            )
-        if key in source_by_key:
-            raise StructureServiceError(
-                "native_directory_key_duplicate",
-                "原生结构目录 key 重复",
-                details={"key": key},
-            )
-        origin = raw.get("origin")
-        status = raw.get("status")
-        if status != "active":
-            raise StructureServiceError(
-                "native_directory_status_invalid",
-                "原生活动结构只能包含 active 目录",
-                details={"key": key, "status": status},
-            )
-        if key == UNCLASSIFIED_DIRECTORY_KEY:
-            if origin != "system":
-                raise StructureServiceError(
-                    "reserved_directory_key_forbidden",
-                    "待归类保留 key 只能属于 system 目录",
-                )
-        elif origin not in {"schema", "manual"}:
-            raise StructureServiceError(
-                "native_directory_origin_invalid",
-                "原生结构只允许 schema/manual 目录和系统待归类目录",
-                details={"key": key, "origin": origin},
-            )
-        source_by_key[key] = raw
-    if UNCLASSIFIED_DIRECTORY_KEY not in source_by_key:
-        raise StructureServiceError("unclassified_directory_omitted", "原生结构不能省略系统待归类目录")
-
-    active_unclassified = _active_snapshot_directory(active_revision, unclassified.pk) or {}
-    converted = []
-    restore_metadata = {}
-    for key, raw in source_by_key.items():
-        parent = raw.get("parent")
-        parent_key = None
-        if parent is not None:
-            if not isinstance(parent, dict) or not isinstance(parent.get("key"), str):
-                raise StructureServiceError(
-                    "native_directory_parent_invalid",
-                    "原生结构父目录必须使用稳定 key",
-                    details={"key": key},
-                )
-            parent_key = parent["key"]
-            if parent_key not in source_by_key:
-                raise StructureServiceError(
-                    "directory_parent_missing",
-                    "原生结构父目录 key 不存在",
-                    details={"key": key, "parent_key": parent_key},
-                )
-        if parent_key is None:
-            parent_ref = None
-        elif parent_key == UNCLASSIFIED_DIRECTORY_KEY:
-            parent_ref = {"id": unclassified.pk, "key": unclassified.key}
-        else:
-            parent_ref = {"client_ref": f"native:{parent_key}"}
-
-        common = {
-            "name": (active_unclassified.get("name", unclassified.name) if key == UNCLASSIFIED_DIRECTORY_KEY else raw.get("name")),
-            "description": raw.get("description", ""),
-            "order": raw.get("order"),
-            "rules": raw.get("rules"),
-            "parent": parent_ref,
-        }
-        if key == UNCLASSIFIED_DIRECTORY_KEY:
-            converted.append(
-                {
-                    "kind": "existing",
-                    "id": unclassified.pk,
-                    "key": unclassified.key,
-                    "origin": unclassified.origin,
-                    "status": unclassified.status,
-                    **common,
-                }
-            )
-        else:
-            client_ref = f"native:{key}"
-            converted.append({"kind": "new", "client_ref": client_ref, **common})
-            restore_metadata[client_ref] = {"key": key, "origin": raw["origin"]}
-
-    request = {
-        "structure_version": active_revision.revision_no,
-        "base_generation_id": active_generation.pk,
-        "structure": {
-            "format_version": 1,
-            "page_types": native_snapshot.get("page_types"),
-            "directories": converted,
-        },
-    }
-    _validate_contract(request, STRUCTURE_SAVE_REQUEST, request=True)
-    page_types, nodes, nodes_by_token = _normalize_structure(request["structure"])
-    _validate_existing_identities(locked, nodes, nodes_by_token, local_directories)
-    _validate_graph(nodes, nodes_by_token)
-    _validate_unclassified(active_revision, nodes, nodes_by_token, local_directories)
-    omitted = _validate_omissions(active_revision, active_generation, nodes, local_directories)
-    if omitted:
-        raise StructureServiceError(
-            "native_structure_restore_requires_pristine_projection",
-            "原生结构恢复不能覆盖已有目录投影",
-        )
-    for node in nodes:
-        if node["kind"] == "new":
-            metadata = restore_metadata[node["client_ref"]]
-            node["restore_key"] = metadata["key"]
-            node["restore_origin"] = metadata["origin"]
-    return page_types, nodes
-
-
-def preview_native_structure_restore(knowledge_base, native_snapshot):
-    current = WikiKnowledgeBase.objects.select_related(
-        "active_structure_revision",
-        "active_generation",
-    ).get(pk=getattr(knowledge_base, "pk", knowledge_base))
-    active_revision, active_generation = _require_active_pair(current)
-    local_directories = list(WikiDirectory.objects.filter(knowledge_base=current).order_by("id"))
-    _page_types, nodes = _native_restore_nodes(
-        current,
-        native_snapshot,
-        active_revision,
-        active_generation,
-        local_directories,
-    )
-    return {
-        "restore_native_structure": True,
-        "create_directory_count": sum(node["kind"] == "new" for node in nodes),
-    }
-
-
-@transaction.atomic
-def restore_native_structure(
-    knowledge_base,
-    native_snapshot,
-    *,
-    expected_base_generation_id,
-    expected_structure_version,
-    source_fingerprint="",
-    operator="",
-):
-    locked = WikiKnowledgeBase.objects.select_for_update().filter(pk=getattr(knowledge_base, "pk", knowledge_base)).first()
-    if locked is None:
-        raise StructureServiceError("knowledge_base_not_found", "知识库不存在", status_code=404)
-    active_revision, active_generation = _require_active_pair(locked)
-    if expected_structure_version != active_revision.revision_no:
-        raise StructureServiceError(
-            "structure_version_conflict",
-            "active structure version 已变化",
-            status_code=409,
-            retryable=True,
-            details={"latest": _latest_pointers(locked)},
-        )
-    if expected_base_generation_id != active_generation.pk:
-        raise StructureServiceError(
-            "base_generation_conflict",
-            "active generation 已变化",
-            status_code=409,
-            retryable=True,
-            details={"latest": _latest_pointers(locked)},
-        )
-
-    local_directories = list(WikiDirectory.objects.select_for_update().filter(knowledge_base=locked).order_by("id"))
-    page_types, nodes = _native_restore_nodes(
-        locked,
-        native_snapshot,
-        active_revision,
-        active_generation,
-        local_directories,
-    )
-    actor = unicodedata.normalize("NFKC", str(operator or "")).strip()[:32]
-    client_ref_map = _apply_projection(locked, nodes, [], local_directories, actor)
-    snapshot = _canonical_snapshot(page_types, nodes)
-    fingerprint = _fingerprint(snapshot)
-    revision_no = (WikiStructureRevision.objects.filter(knowledge_base=locked).aggregate(value=Max("revision_no"))["value"] or 0) + 1
-    revision = WikiStructureRevision.objects.create(
-        knowledge_base=locked,
-        revision_no=revision_no,
-        structure_snapshot=snapshot,
-        fingerprint=fingerprint,
-        created_by=actor,
-        updated_by=actor,
-    )
-    candidate = WikiGeneration.objects.create(
-        knowledge_base=locked,
-        build_record=None,
-        structure_revision=revision,
-        base_generation=active_generation,
-        rollback_of=None,
-        kind="governance",
-        structure_fingerprint=fingerprint,
-        pipeline_version=NATIVE_RESTORE_PIPELINE_VERSION,
-        source_fingerprints=([{"archive_sha256": source_fingerprint}] if source_fingerprint else []),
-        status="preparing",
-        created_by=actor,
-        updated_by=actor,
-    )
-    try:
-        clone_base_snapshot(candidate.pk)
-        refreshed_directories = list(WikiDirectory.objects.filter(knowledge_base=locked).order_by("id"))
-        _refresh_generation_breadcrumbs(candidate, refreshed_directories)
-        mark_generation_ready(candidate.pk)
-    except GenerationServiceError as error:
-        raise StructureServiceError(
-            error.code,
-            str(error),
-            status_code=409 if error.retryable else 422,
-            retryable=error.retryable,
-            details=error.details,
-        ) from error
-
-    locked.active_structure_revision = revision
-    locked.updated_by = actor
-    locked.save(update_fields=["active_structure_revision", "updated_by", "updated_at"])
-    try:
-        activation = activate_generation(
-            candidate.pk,
-            requested_base_generation_id=active_generation.pk,
-            expected_structure_revision_id=revision.pk,
-            expected_structure_version=revision.revision_no,
-        )
-    except GenerationServiceError as error:
-        raise StructureServiceError(
-            error.code,
-            str(error),
-            status_code=409 if error.retryable else 422,
-            retryable=error.retryable,
-            details=error.details,
-        ) from error
-    if activation.outcome != "active":
-        raise StructureServiceError(
-            activation.code,
-            "原生目录结构 generation 激活失败",
-            status_code=409 if activation.retryable else 422,
-            retryable=activation.retryable,
-            details={
-                "latest": _latest_pointers(locked),
-                "candidate_generation_id": candidate.pk,
-            },
-        )
-    candidate.refresh_from_db(fields=["status"])
-    return _response(revision, candidate, snapshot, client_ref_map)
-
 
 __all__ = [
     "STRUCTURE_SAVE_REQUEST",
@@ -1576,7 +1356,5 @@ __all__ = [
     "StructureServiceError",
     "bootstrap_knowledge_base",
     "get_structure",
-    "preview_native_structure_restore",
-    "restore_native_structure",
     "save_structure",
 ]

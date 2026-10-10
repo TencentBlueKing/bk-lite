@@ -9,6 +9,27 @@
 
 import { BrowserTaskReceivedData } from '@/app/opspilot/types/global';
 
+export type Translate = (
+  key: string,
+  defaultMessage?: string,
+  values?: Record<string, string | number>,
+) => string;
+
+/**
+ * 渲染器不在 React 树内，用模块级 locale 兜底。
+ * 词条缺失时 `t` 返回 key 本身，据此即可判断当前是否英文。
+ */
+let rendererLocale: 'zh' | 'en' = 'zh';
+
+export const setToolCallRendererLocale = (locale: 'zh' | 'en') => {
+  rendererLocale = locale;
+};
+
+const isEnglishLocale = () => rendererLocale === 'en';
+
+/** 缺词条时回退到默认渲染，保证旧调用方（不传 t）行为不变。 */
+const fallbackTranslate: Translate = (key, defaultMessage) => defaultMessage ?? key;
+
 export interface ToolCallInfo {
   name: string;
   args: string;
@@ -35,17 +56,17 @@ const escapeHtml = (text: string) => {
  * 从工具参数中提取调用目的/概要
  * 尝试多种常见字段名
  */
-const extractSummary = (args: string, toolName?: string): string => {
+const extractSummary = (args: string, toolName: string | undefined, t: Translate): string => {
   if (!args || args === '{}' || args === '""' || args === 'null') {
     // 如果没有参数，根据工具名生成默认描述
-    return generateDefaultSummary(toolName);
+    return generateDefaultSummary(toolName, t);
   }
   try {
     const parsed = JSON.parse(args);
     
     // 如果解析后是空对象
     if (typeof parsed === 'object' && parsed !== null && Object.keys(parsed).length === 0) {
-      return generateDefaultSummary(toolName);
+      return generateDefaultSummary(toolName, t);
     }
     
     // 常见的概要/目的字段（按优先级排序）
@@ -91,189 +112,31 @@ const extractSummary = (args: string, toolName?: string): string => {
       return args.length > 100 ? args.slice(0, 100) + '...' : args;
     }
   }
-  return generateDefaultSummary(toolName);
+  return generateDefaultSummary(toolName, t);
 };
 
 /**
  * 根据工具名生成默认描述
  */
-const generateDefaultSummary = (toolName?: string): string => {
+const generateDefaultSummary = (toolName: string | undefined, t: Translate): string => {
   if (!toolName) return '';
-  
-  // 将工具名转换为可读的描述
-  // 例如: check_database_health -> 检查数据库健康状态
-  //       get_user_info -> 获取用户信息
+
+  // 把工具名拆成词后逐词取词：中文界面显示「检查数据库健康状态」；
+  // 英文界面沿用工具名原词（本来就是英文），缺词时原样返回，不引入冗余翻译。
   const words = toolName.toLowerCase().split(/[_-]/);
-  
-  // 常见动词映射
-  const verbMap: Record<string, string> = {
-    'check': '检查',
-    'get': '获取',
-    'set': '设置',
-    'create': '创建',
-    'delete': '删除',
-    'update': '更新',
-    'list': '列出',
-    'search': '搜索',
-    'find': '查找',
-    'query': '查询',
-    'fetch': '获取',
-    'send': '发送',
-    'read': '读取',
-    'write': '写入',
-    'execute': '执行',
-    'run': '运行',
-    'start': '启动',
-    'stop': '停止',
-    'activate': '激活',
-    'deactivate': '停用',
-    'enable': '启用',
-    'disable': '禁用',
-    'validate': '验证',
-    'verify': '验证',
-    'test': '测试',
-    'analyze': '分析',
-    'process': '处理',
-    'generate': '生成',
-    'calculate': '计算',
-    'convert': '转换',
-    'export': '导出',
-    'import': '导入',
-    'upload': '上传',
-    'download': '下载',
-    'connect': '连接',
-    'disconnect': '断开',
-    'open': '打开',
-    'close': '关闭',
-    'load': '加载',
-    'save': '保存',
-    'backup': '备份',
-    'restore': '恢复',
-    'sync': '同步',
-    'refresh': '刷新',
-    'reset': '重置',
-    'clear': '清除',
-    'add': '添加',
-    'remove': '移除',
-    'insert': '插入',
-    'append': '追加',
-    'merge': '合并',
-    'split': '拆分',
-    'filter': '过滤',
-    'sort': '排序',
-    'group': '分组',
-    'count': '统计',
-    'sum': '求和',
-    'avg': '平均',
-    'max': '最大',
-    'min': '最小'
-  };
-  
-  // 常见名词映射
-  const nounMap: Record<string, string> = {
-    'database': '数据库',
-    'db': '数据库',
-    'health': '健康状态',
-    'status': '状态',
-    'info': '信息',
-    'information': '信息',
-    'data': '数据',
-    'user': '用户',
-    'users': '用户',
-    'file': '文件',
-    'files': '文件',
-    'config': '配置',
-    'configuration': '配置',
-    'setting': '设置',
-    'settings': '设置',
-    'log': '日志',
-    'logs': '日志',
-    'error': '错误',
-    'errors': '错误',
-    'message': '消息',
-    'messages': '消息',
-    'result': '结果',
-    'results': '结果',
-    'report': '报告',
-    'reports': '报告',
-    'list': '列表',
-    'table': '表',
-    'tables': '表',
-    'record': '记录',
-    'records': '记录',
-    'item': '项目',
-    'items': '项目',
-    'task': '任务',
-    'tasks': '任务',
-    'job': '作业',
-    'jobs': '作业',
-    'process': '进程',
-    'service': '服务',
-    'services': '服务',
-    'server': '服务器',
-    'servers': '服务器',
-    'client': '客户端',
-    'connection': '连接',
-    'connections': '连接',
-    'session': '会话',
-    'sessions': '会话',
-    'cache': '缓存',
-    'memory': '内存',
-    'disk': '磁盘',
-    'cpu': 'CPU',
-    'network': '网络',
-    'metrics': '指标',
-    'metric': '指标',
-    'performance': '性能',
-    'tools': '工具',
-    'tool': '工具',
-    'cluster': '集群',
-    'node': '节点',
-    'nodes': '节点',
-    'instance': '实例',
-    'instances': '实例',
-    'resource': '资源',
-    'resources': '资源',
-    'permission': '权限',
-    'permissions': '权限',
-    'role': '角色',
-    'roles': '角色',
-    'group': '组',
-    'groups': '组',
-    'team': '团队',
-    'project': '项目',
-    'projects': '项目',
-    'api': 'API',
-    'endpoint': '端点',
-    'url': 'URL',
-    'path': '路径',
-    'query': '查询',
-    'response': '响应',
-    'request': '请求',
-    'token': '令牌',
-    'key': '密钥',
-    'secret': '密钥',
-    'password': '密码',
-    'credential': '凭证',
-    'credentials': '凭证',
-    'auth': '认证',
-    'authentication': '认证',
-    'authorization': '授权'
-  };
-  
-  // 尝试翻译
-  const translated = words.map(word => {
-    if (verbMap[word]) return verbMap[word];
-    if (nounMap[word]) return nounMap[word];
+
+  const translated = words.map((word) => {
+    const verbKey = `chat.toolCallVerb.${word}`;
+    const verb = t(verbKey);
+    if (verb !== verbKey) return verb;
+    const nounKey = `chat.toolCallNoun.${word}`;
+    const noun = t(nounKey);
+    if (noun !== nounKey) return noun;
     return word;
   });
-  
-  // 如果第一个词是动词，调整语序
-  if (verbMap[words[0]] && translated.length > 1) {
-    return translated.join('');
-  }
-  
-  return translated.join(' ');
+
+  // 英文词之间需要空格分隔；中文可连读
+  return translated.join(isEnglishLocale() ? ' ' : '');
 };
 
 /**
@@ -329,7 +192,7 @@ export const syncActiveToolCallPanel = (toolId: string, info: ToolCallInfo) => {
     // 更新概要（如果 args 有变化）
     const summarySpan = toolItem.querySelector('.tool-call-summary');
     if (summarySpan) {
-      const summary = extractSummary(info.args);
+      const summary = extractSummary(info.args, undefined, fallbackTranslate);
       if (summary) {
         summarySpan.innerHTML = `<span style="color: var(--color-text-3);">· ${escapeHtml(summary)}</span>`;
       }
@@ -390,10 +253,10 @@ export const closeActiveToolCallPanel = (_toolId?: string) => {
 /**
  * 渲染单个工具项（一行显示：状态 + 工具名 + 概要，点击展开详情）
  */
-const renderToolItem = (id: string, info: ToolCallInfo): string => {
+const renderToolItem = (id: string, info: ToolCallInfo, t: Translate = fallbackTranslate): string => {
   const isCalling = info.status === 'calling';
   const isError = info.status === 'error';
-  const summary = extractSummary(info.args, info.name);
+  const summary = extractSummary(info.args, info.name, t);
 
   // 状态图标
   const statusIcon = isCalling
@@ -526,10 +389,10 @@ const renderToolItem = (id: string, info: ToolCallInfo): string => {
   
   let detailContent = '';
   if (argsFormatted) {
-    detailContent += `<div style="margin-bottom: 8px;"><div style="font-weight: 500; color: var(--color-text-2); margin-bottom: 4px;">参数:</div><pre style="margin: 0; padding: 8px; background: var(--color-fill-2); border-radius: 4px; font-size: 11px; overflow-x: auto; white-space: pre-wrap; word-break: break-word;">${escapeHtml(argsFormatted)}</pre></div>`;
+    detailContent += `<div style="margin-bottom: 8px;"><div style="font-weight: 500; color: var(--color-text-2); margin-bottom: 4px;">${escapeHtml(t('chat.toolCall.params', '参数:'))}</div><pre style="margin: 0; padding: 8px; background: var(--color-fill-2); border-radius: 4px; font-size: 11px; overflow-x: auto; white-space: pre-wrap; word-break: break-word;">${escapeHtml(argsFormatted)}</pre></div>`;
   }
   if (resultFormatted) {
-    detailContent += `<div><div style="font-weight: 500; color: var(--color-text-2); margin-bottom: 4px;">结果:</div><pre style="margin: 0; padding: 8px; background: var(--color-fill-2); border-radius: 4px; font-size: 11px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; max-height: 300px; overflow-y: auto;">${escapeHtml(resultFormatted)}</pre></div>`;
+    detailContent += `<div><div style="font-weight: 500; color: var(--color-text-2); margin-bottom: 4px;">${escapeHtml(t('chat.toolCall.result', '结果:'))}</div><pre style="margin: 0; padding: 8px; background: var(--color-fill-2); border-radius: 4px; font-size: 11px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; max-height: 300px; overflow-y: auto;">${escapeHtml(resultFormatted)}</pre></div>`;
   }
 
   // 如果没有详情内容，不显示展开图标
@@ -550,8 +413,12 @@ const renderToolItem = (id: string, info: ToolCallInfo): string => {
 /**
  * 渲染单个工具调用卡片（兼容旧 API）
  */
-export const renderToolCallCard = (id: string, info: ToolCallInfo): string => {
-  return renderToolItem(id, info);
+export const renderToolCallCard = (
+  id: string,
+  info: ToolCallInfo,
+  t: Translate = fallbackTranslate
+): string => {
+  return renderToolItem(id, info, t);
 };
 
 /**
@@ -584,7 +451,11 @@ const dedupeToolCallsBySignature = (entries: Array<[string, ToolCallInfo]>): Arr
   return Array.from(sigToEntry.values());
 };
 
-export const renderAllToolCalls = (toolCalls: Map<string, ToolCallInfo>, isStreaming?: boolean): string => {
+export const renderAllToolCalls = (
+  toolCalls: Map<string, ToolCallInfo>,
+  isStreaming?: boolean,
+  t: Translate = fallbackTranslate,
+): string => {
   if (toolCalls.size === 0) return '';
 
   const toolsArray = dedupeToolCallsBySignature(Array.from(toolCalls.entries()));
@@ -595,9 +466,6 @@ export const renderAllToolCalls = (toolCalls: Map<string, ToolCallInfo>, isStrea
   const hasError = toolsArray.some(([, info]) => info.status === 'error');
   const hasRunning = completedCount < totalCount;
 
-  // 如果传入了 isStreaming 参数，使用它；否则根据工具状态判断
-  const shouldExpand = isStreaming !== undefined ? isStreaming : hasRunning;
-
   // 组头部状态图标
   const groupStatusIcon = hasRunning
     ? `<span style="display: inline-block; width: 10px; height: 10px; border: 1.5px solid #1677ff; border-top-color: transparent; border-radius: 50%; animation: tool-spin 0.8s linear infinite;"></span>`
@@ -606,13 +474,20 @@ export const renderAllToolCalls = (toolCalls: Map<string, ToolCallInfo>, isStrea
       : `<span style="color: #52c41a; font-size: 12px;">✓</span>`;
 
   // 渲染所有工具项
-  const toolItems = toolsArray.map(([id, info]) => renderToolItem(id, info)).join('');
+  const toolItems = toolsArray.map(([id, info]) => renderToolItem(id, info, t)).join('');
 
-  // 提示文字：流式回复中显示"执行中"，完成后显示"点击展开查看详情"
-  const hintText = shouldExpand ? '执行中...' : '点击展开查看详情';
+  // 提示文字：工具还在跑 → 执行中；工具都结束但流未收尾 → 正在分析；否则引导展开
+  const hintText = hasRunning
+    ? t('chat.toolCall.running', '执行中...')
+    : isStreaming
+      ? t('chat.toolCall.analyzing', '正在分析工具结果...')
+      : t('chat.toolCall.expandHint', '点击展开查看详情');
+
+  // 流式中默认展开：仍在跑工具或仍在等模型输出
+  const shouldExpand = isStreaming !== undefined ? isStreaming : hasRunning;
 
   // 组头部
-  const header = `<div class="tool-call-group-header" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; cursor: pointer; user-select: none; font-size: 12px; color: var(--color-text-3); border-radius: 4px; margin: 2px 0;"><span class="tool-call-expand-icon" style="font-size: 8px; width: 12px; display: inline-flex; align-items: center; justify-content: center;">▶</span><span class="tool-call-group-status" style="display: inline-flex; align-items: center;">${groupStatusIcon}</span><span>已调用 ${totalCount} 个工具</span><span style="color: var(--color-text-4);">${hintText}</span></div>`;
+  const header = `<div class="tool-call-group-header" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; cursor: pointer; user-select: none; font-size: 12px; color: var(--color-text-3); border-radius: 4px; margin: 2px 0;"><span class="tool-call-expand-icon" style="font-size: 8px; width: 12px; display: inline-flex; align-items: center; justify-content: center;">▶</span><span class="tool-call-group-status" style="display: inline-flex; align-items: center;">${groupStatusIcon}</span><span>${escapeHtml(t('chat.toolCall.calledCount', '已调用 {count} 个工具', { count: totalCount }))}</span><span style="color: var(--color-text-4);">${hintText}</span></div>`;
 
   // 组内容 - 默认收起时用 display:none，避免 CSS 优先级问题
   const bodyDisplay = shouldExpand ? '' : 'display: none;';
@@ -627,11 +502,18 @@ export const renderAllToolCalls = (toolCalls: Map<string, ToolCallInfo>, isStrea
 /**
  * 渲染错误消息卡片
  */
-export const renderErrorMessage = (error: string, type: 'error' | 'run_error' = 'error', code?: string): string => {
+export const renderErrorMessage = (
+  error: string,
+  type: 'error' | 'run_error' = 'error',
+  code?: string,
+  t: Translate = fallbackTranslate,
+): string => {
   const bgColor = 'rgba(255, 77, 79, 0.05)';
   const textColor = '#ff4d4f';
   const icon = type === 'run_error' ? '⚠️' : '❌';
-  const title = type === 'run_error' ? '运行错误' : '错误';
+  const title = type === 'run_error'
+    ? t('chat.toolCall.runError', '运行错误')
+    : t('chat.toolCall.error', '错误');
   const codeDisplay = code ? ` (${code})` : '';
   // 移除连续空行，避免破坏 HTML 块解析
   const sanitizedError = error.replace(/\n\s*\n/g, '\n');

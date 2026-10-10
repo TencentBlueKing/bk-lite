@@ -1,29 +1,18 @@
-from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime
 
-from apps.core.logger import operation_analysis_logger as logger
-from apps.operation_analysis.models.subscription_models import (
-    DashboardReportExecution,
-    DashboardReportExecutionSnapshot,
-    DashboardReportSubscription,
-)
-from apps.operation_analysis.services.report_display_time import (
-    resolve_creator_timezone,
-)
-from apps.operation_analysis.services.schedule_calculator import (
-    ScheduleSpec,
-    catch_up_scheduled_time,
-    next_run_strictly_after_now,
-)
-from apps.operation_analysis.services.subscription_service import (
-    DashboardSubscriptionService,
-)
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.exceptions import ValidationError as DRFValidationError
+
+from apps.core.logger import operation_analysis_logger as logger
+from apps.operation_analysis.models.subscription_models import DashboardReportExecution, DashboardReportExecutionSnapshot, DashboardReportSubscription
+from apps.operation_analysis.services.report_display_time import resolve_creator_timezone
+from apps.operation_analysis.services.schedule_calculator import ScheduleSpec, catch_up_scheduled_time, next_run_strictly_after_now
+from apps.operation_analysis.services.subscription_service import DashboardSubscriptionService
+from apps.operation_analysis.services.user_messages import oa_message
 
 IN_FLIGHT_STATUSES = (
     DashboardReportExecution.Status.PENDING,
@@ -43,7 +32,10 @@ class CreateScheduledResult:
 
 class DashboardReportExecutionService:
     SNAPSHOT_FAILURE_MESSAGE = "Execution Input Snapshot 创建失败"
-    IN_FLIGHT_MESSAGE = "订阅已有进行中的报告执行，请稍后再试"
+
+    @staticmethod
+    def in_flight_message() -> str:
+        return oa_message("messages.execution_in_flight", "订阅已有进行中的报告执行，请稍后再试")
 
     @classmethod
     @transaction.atomic
@@ -77,13 +69,8 @@ class DashboardReportExecutionService:
         error_code: str = "",
         error_message: str = "",
     ) -> DashboardReportExecution:
-        if (
-            execution.status == DashboardReportExecution.Status.PENDING
-            and target_status == DashboardReportExecution.Status.RUNNING
-        ):
-            raise ValidationError(
-                {"status": "pending → running 必须通过 claim_execution"}
-            )
+        if execution.status == DashboardReportExecution.Status.PENDING and target_status == DashboardReportExecution.Status.RUNNING:
+            raise ValidationError({"status": oa_message("messages.execution_claim_required", "pending → running 必须通过 claim_execution")})
 
         allowed = DashboardReportExecution.ALLOWED_TRANSITIONS.get(
             execution.status,
@@ -92,17 +79,17 @@ class DashboardReportExecutionService:
         if target_status not in allowed:
             raise ValidationError(
                 {
-                    "status": (
-                        f"不允许从 {execution.status} 转换到 {target_status}"
+                    "status": oa_message(
+                        "messages.execution_status_transition",
+                        "不允许从 {status} 转换到 {target_status}",
+                        status=execution.status,
+                        target_status=target_status,
                     )
                 }
             )
 
         now = timezone.now()
-        if (
-            execution.status == DashboardReportExecution.Status.RUNNING
-            and target_status in cls.TERMINAL_STATUSES
-        ):
+        if execution.status == DashboardReportExecution.Status.RUNNING and target_status in cls.TERMINAL_STATUSES:
             return cls._cas_running_to_terminal(
                 execution,
                 target_status,
@@ -121,16 +108,12 @@ class DashboardReportExecutionService:
             execution.failure_stage = failure_stage
             execution.error_code = error_code
             execution.error_message = error_message
-            update_fields.extend(
-                ["failure_stage", "error_code", "error_message"]
-            )
+            update_fields.extend(["failure_stage", "error_code", "error_message"])
         elif target_status == DashboardReportExecution.Status.UNKNOWN:
             execution.failure_stage = failure_stage
             execution.error_code = error_code or "smtp_result_unknown"
             execution.error_message = error_message
-            update_fields.extend(
-                ["failure_stage", "error_code", "error_message"]
-            )
+            update_fields.extend(["failure_stage", "error_code", "error_message"])
         execution.save(update_fields=update_fields)
         return execution
 
@@ -167,8 +150,7 @@ class DashboardReportExecutionService:
         execution.refresh_from_db()
         if updated != 1:
             logger.info(
-                "Execution 终态 CAS 未生效（可能已被并发收敛）: "
-                "execution_id=%s target=%s current=%s",
+                "Execution 终态 CAS 未生效（可能已被并发收敛）: " "execution_id=%s target=%s current=%s",
                 execution.id,
                 target_status,
                 execution.status,
@@ -203,9 +185,7 @@ class DashboardReportExecutionService:
             DashboardReportExecution.DeliveryOutcome.SMTP_UNKNOWN,
         }
         if outcome not in allowed:
-            raise ValidationError(
-                {"delivery_outcome": f"不允许标记为 {outcome}"}
-            )
+            raise ValidationError({"delivery_outcome": oa_message("messages.execution_delivery_outcome", "不允许标记为 {outcome}", outcome=outcome)})
 
         updates = {
             "delivery_outcome": outcome,
@@ -217,11 +197,7 @@ class DashboardReportExecutionService:
         # 已 delivered 不可降级为 smtp_unknown
         filter_q = DashboardReportExecution.objects.filter(pk=execution.pk)
         if outcome == DashboardReportExecution.DeliveryOutcome.SMTP_UNKNOWN:
-            filter_q = filter_q.exclude(
-                delivery_outcome=(
-                    DashboardReportExecution.DeliveryOutcome.DELIVERED
-                )
-            )
+            filter_q = filter_q.exclude(delivery_outcome=(DashboardReportExecution.DeliveryOutcome.DELIVERED))
         filter_q.update(**updates)
         execution.refresh_from_db()
         return execution
@@ -243,20 +219,11 @@ class DashboardReportExecutionService:
         execution.refresh_from_db()
         now = timezone.now()
         outcome = execution.delivery_outcome
-        if (
-            outcome == DashboardReportExecution.DeliveryOutcome.DELIVERED
-            or execution.delivered_at is not None
-        ):
+        if outcome == DashboardReportExecution.DeliveryOutcome.DELIVERED or execution.delivered_at is not None:
             original_status = execution.status
             allowed = original_status == DashboardReportExecution.Status.RUNNING
-            allowed = allowed or (
-                original_status == DashboardReportExecution.Status.FAILED
-                and execution.error_code == "execution_timeout"
-            )
-            allowed = allowed or (
-                original_status == DashboardReportExecution.Status.UNKNOWN
-                and execution.error_code == "smtp_result_unknown"
-            )
+            allowed = allowed or (original_status == DashboardReportExecution.Status.FAILED and execution.error_code == "execution_timeout")
+            allowed = allowed or (original_status == DashboardReportExecution.Status.UNKNOWN and execution.error_code == "smtp_result_unknown")
             if not allowed:
                 return execution
             updates = dict(
@@ -266,9 +233,7 @@ class DashboardReportExecutionService:
                 failure_stage="",
                 error_code="",
                 error_message="",
-                delivery_outcome=(
-                    DashboardReportExecution.DeliveryOutcome.DELIVERED
-                ),
+                delivery_outcome=(DashboardReportExecution.DeliveryOutcome.DELIVERED),
             )
             if original_status in cls.TERMINAL_STATUSES:
                 updates.update(
@@ -285,22 +250,15 @@ class DashboardReportExecutionService:
             execution.refresh_from_db()
             if updated:
                 logger.info(
-                    "按 delivery_outcome=delivered 对齐 status=succeeded: "
-                    "execution_id=%s",
+                    "按 delivery_outcome=delivered 对齐 status=succeeded: " "execution_id=%s",
                     execution.id,
                 )
             return execution
 
-        if (
-            outcome
-            == DashboardReportExecution.DeliveryOutcome.SMTP_UNKNOWN
-        ):
+        if outcome == DashboardReportExecution.DeliveryOutcome.SMTP_UNKNOWN:
             original_status = execution.status
             allowed = original_status == DashboardReportExecution.Status.RUNNING
-            allowed = allowed or (
-                original_status == DashboardReportExecution.Status.FAILED
-                and execution.error_code == "execution_timeout"
-            )
+            allowed = allowed or (original_status == DashboardReportExecution.Status.FAILED and execution.error_code == "execution_timeout")
             if not allowed:
                 return execution
             updates = dict(
@@ -309,10 +267,8 @@ class DashboardReportExecutionService:
                 updated_at=now,
                 failure_stage="email",
                 error_code="smtp_result_unknown",
-                error_message="SMTP 提交结果未知",
-                delivery_outcome=(
-                    DashboardReportExecution.DeliveryOutcome.SMTP_UNKNOWN
-                ),
+                error_message=oa_message("messages.smtp_result_unknown", "SMTP 提交结果未知"),
+                delivery_outcome=(DashboardReportExecution.DeliveryOutcome.SMTP_UNKNOWN),
             )
             if original_status in cls.TERMINAL_STATUSES:
                 updates.update(
@@ -329,8 +285,7 @@ class DashboardReportExecutionService:
             execution.refresh_from_db()
             if updated:
                 logger.info(
-                    "按 delivery_outcome=smtp_unknown 对齐 status=unknown: "
-                    "execution_id=%s",
+                    "按 delivery_outcome=smtp_unknown 对齐 status=unknown: " "execution_id=%s",
                     execution.id,
                 )
             return execution
@@ -342,18 +297,10 @@ class DashboardReportExecutionService:
         subscription: DashboardReportSubscription,
         execution: DashboardReportExecution,
     ) -> tuple[dict, dict]:
-        from apps.operation_analysis.services.filter_snapshot import (
-            FilterSnapshotError,
-        )
-        from apps.operation_analysis.services.filter_snapshot_resolver import (
-            resolve_filter_snapshot,
-        )
+        from apps.operation_analysis.services.filter_snapshot import FilterSnapshotError
+        from apps.operation_analysis.services.filter_snapshot_resolver import resolve_filter_snapshot
 
-        if (
-            execution.trigger_type
-            == DashboardReportExecution.TriggerType.SCHEDULED
-            and execution.scheduled_time_utc is not None
-        ):
+        if execution.trigger_type == DashboardReportExecution.TriggerType.SCHEDULED and execution.scheduled_time_utc is not None:
             reference_at = execution.scheduled_time_utc
         else:
             reference_at = timezone.now()
@@ -370,14 +317,12 @@ class DashboardReportExecutionService:
     @staticmethod
     def _normalize_request_id(request_id: str | None) -> str:
         if not isinstance(request_id, str):
-            raise DRFValidationError({"request_id": "request_id 必填"})
+            raise DRFValidationError({"request_id": oa_message("messages.request_id_required", "request_id 必填")})
         normalized = request_id.strip()
         if not normalized:
-            raise DRFValidationError({"request_id": "request_id 必填"})
+            raise DRFValidationError({"request_id": oa_message("messages.request_id_required", "request_id 必填")})
         if len(normalized) > 64:
-            raise DRFValidationError(
-                {"request_id": "request_id 长度不能超过 64"}
-            )
+            raise DRFValidationError({"request_id": oa_message("messages.request_id_too_long", "request_id 长度不能超过 64")})
         return normalized
 
     @classmethod
@@ -386,10 +331,7 @@ class DashboardReportExecutionService:
         execution: DashboardReportExecution,
         subscription: DashboardReportSubscription,
     ) -> dict:
-        if (
-            execution.trigger_type
-            != DashboardReportExecution.TriggerType.SCHEDULED
-        ):
+        if execution.trigger_type != DashboardReportExecution.TriggerType.SCHEDULED:
             return {
                 "scheduled_time_utc": None,
                 "schedule_timezone": "",
@@ -419,15 +361,9 @@ class DashboardReportExecutionService:
         *,
         creator_timezone: str,
     ) -> DashboardReportExecutionSnapshot:
-        schedule_fields = cls._schedule_snapshot_fields(
-            execution, subscription
-        )
-        filter_semantics, filter_values = cls._snapshot_filter_payload(
-            subscription, execution
-        )
-        from apps.operation_analysis.services.canvas_report.registry import (
-            get_canvas_report_adapter,
-        )
+        schedule_fields = cls._schedule_snapshot_fields(execution, subscription)
+        filter_semantics, filter_values = cls._snapshot_filter_payload(subscription, execution)
+        from apps.operation_analysis.services.canvas_report.registry import get_canvas_report_adapter
 
         resource_type = subscription.resource_type or "dashboard"
         adapter = get_canvas_report_adapter(resource_type)
@@ -435,11 +371,7 @@ class DashboardReportExecutionService:
             execution=execution,
             dashboard_id=subscription.dashboard_id,
             resource_type=resource_type,
-            resource_id=(
-                subscription.resource_id
-                if subscription.resource_id is not None
-                else subscription.dashboard_id
-            ),
+            resource_id=(subscription.resource_id if subscription.resource_id is not None else subscription.dashboard_id),
             resource_display_label=adapter.resource_display_label(),
             creator_id=subscription.creator,
             creator_domain=subscription.creator_domain,
@@ -522,42 +454,27 @@ class DashboardReportExecutionService:
         *,
         request_id: str | None = None,
     ) -> tuple[DashboardReportExecution, bool]:
-        if (
-            subscription.creator != request.user.username
-            or subscription.creator_domain != request.user.domain
-        ):
-            raise PermissionDenied("只能执行自己的报告订阅")
+        if subscription.creator != request.user.username or subscription.creator_domain != request.user.domain:
+            raise PermissionDenied(oa_message("messages.execution_owner_only", "只能执行自己的报告订阅"))
         resource_type = subscription.resource_type or "dashboard"
-        resource_id = (
-            subscription.resource_id
-            if subscription.resource_id is not None
-            else subscription.dashboard_id
-        )
+        resource_id = subscription.resource_id if subscription.resource_id is not None else subscription.dashboard_id
         if resource_id is None:
-            raise PermissionDenied("源画布已不存在，不能执行该订阅")
+            raise PermissionDenied(oa_message("messages.execution_source_missing", "源画布已不存在，不能执行该订阅"))
 
         DashboardSubscriptionService.require_canvas_view(
             request,
             resource_type,
             resource_id,
-            missing_message="源画布已不存在，不能执行该订阅",
+            missing_message=oa_message("messages.execution_source_missing", "源画布已不存在，不能执行该订阅"),
             denied_message=(
-                "无权查看该仪表盘"
+                oa_message("messages.dashboard_view_denied", "无权查看该仪表盘")
                 if resource_type == "dashboard"
-                else "无权查看该画布"
+                else oa_message("messages.canvas_view_denied", "无权查看该画布")
             ),
         )
-        normalized_request_id = cls._normalize_request_id(
-            request_id
-            if request_id is not None
-            else request.data.get("request_id")
-        )
+        normalized_request_id = cls._normalize_request_id(request_id if request_id is not None else request.data.get("request_id"))
 
-        locked_subscription = (
-            DashboardReportSubscription.objects.select_for_update().get(
-                pk=subscription.pk
-            )
-        )
+        locked_subscription = DashboardReportSubscription.objects.select_for_update().get(pk=subscription.pk)
         existing = cls._find_by_request_id(
             subscription_id=locked_subscription.id,
             request_id=normalized_request_id,
@@ -569,9 +486,7 @@ class DashboardReportExecutionService:
             subscription_id=locked_subscription.id,
             status__in=IN_FLIGHT_STATUSES,
         ).exists():
-            raise DRFValidationError(
-                {"detail": cls.IN_FLIGHT_MESSAGE}
-            )
+            raise DRFValidationError({"detail": cls.in_flight_message()})
 
         creator_timezone = resolve_creator_timezone(
             locked_subscription.creator,
@@ -581,14 +496,8 @@ class DashboardReportExecutionService:
             execution = DashboardReportExecution.objects.create(
                 subscription=locked_subscription,
                 dashboard=locked_subscription.dashboard,
-                resource_type=(
-                    locked_subscription.resource_type or "dashboard"
-                ),
-                resource_id=(
-                    locked_subscription.resource_id
-                    if locked_subscription.resource_id is not None
-                    else locked_subscription.dashboard_id
-                ),
+                resource_type=(locked_subscription.resource_type or "dashboard"),
+                resource_id=(locked_subscription.resource_id if locked_subscription.resource_id is not None else locked_subscription.dashboard_id),
                 creator=locked_subscription.creator,
                 creator_domain=locked_subscription.creator_domain,
                 trigger_type=DashboardReportExecution.TriggerType.MANUAL_TEST,
@@ -617,9 +526,7 @@ class DashboardReportExecutionService:
             )
             message = str(exc)
             if hasattr(exc, "message_dict"):
-                message = "; ".join(
-                    f"{k}: {v}" for k, v in exc.message_dict.items()
-                )
+                message = "; ".join(f"{k}: {v}" for k, v in exc.message_dict.items())
             elif getattr(exc, "messages", None):
                 message = "; ".join(str(m) for m in exc.messages)
             cls.transition(
@@ -627,7 +534,7 @@ class DashboardReportExecutionService:
                 DashboardReportExecution.Status.FAILED,
                 failure_stage="snapshot",
                 error_code="filter_invalid",
-                error_message=message or cls.SNAPSHOT_FAILURE_MESSAGE,
+                error_message=message or oa_message("messages.snapshot_create_failed", cls.SNAPSHOT_FAILURE_MESSAGE),
             )
         except Exception:
             logger.exception(
@@ -638,12 +545,10 @@ class DashboardReportExecutionService:
                 execution,
                 DashboardReportExecution.Status.FAILED,
                 failure_stage="snapshot",
-                error_message=cls.SNAPSHOT_FAILURE_MESSAGE,
+                error_message=oa_message("messages.snapshot_create_failed", cls.SNAPSHOT_FAILURE_MESSAGE),
             )
         if execution.status == DashboardReportExecution.Status.PENDING:
-            transaction.on_commit(
-                lambda: cls._dispatch_render(execution.id)
-            )
+            transaction.on_commit(lambda: cls._dispatch_render(execution.id))
         return execution, True
 
     @classmethod
@@ -661,34 +566,20 @@ class DashboardReportExecutionService:
         最终 scheduled_time_utc 仅由锁内 catch_up_scheduled_time 决定。
         """
         moment = now or timezone.now()
-        locked_subscription = (
-            DashboardReportSubscription.all_objects.select_for_update().get(
-                pk=subscription_id
-            )
-        )
+        locked_subscription = DashboardReportSubscription.all_objects.select_for_update().get(pk=subscription_id)
         if locked_subscription.deleted_at is not None:
-            return CreateScheduledResult(
-                execution=None, created=False
-            )
+            return CreateScheduledResult(execution=None, created=False)
         if (
-            locked_subscription.status
-            != DashboardReportSubscription.Status.ACTIVE
+            locked_subscription.status != DashboardReportSubscription.Status.ACTIVE
             or locked_subscription.schedule_type is None
             or locked_subscription.next_run_at is None
-            or (
-                locked_subscription.resource_id is None
-                and locked_subscription.dashboard_id is None
-            )
+            or (locked_subscription.resource_id is None and locked_subscription.dashboard_id is None)
         ):
-            return CreateScheduledResult(
-                execution=None, created=False
-            )
+            return CreateScheduledResult(execution=None, created=False)
 
         # 并发下可能已被推进到未来：不再 due，直接 skip（不推进）
         if locked_subscription.next_run_at > moment:
-            return CreateScheduledResult(
-                execution=None, created=False
-            )
+            return CreateScheduledResult(execution=None, created=False)
 
         spec = cls._subscription_schedule_spec(locked_subscription)
         scheduled_time_utc = catch_up_scheduled_time(
@@ -727,14 +618,8 @@ class DashboardReportExecutionService:
             execution = DashboardReportExecution.objects.create(
                 subscription=locked_subscription,
                 dashboard=locked_subscription.dashboard,
-                resource_type=(
-                    locked_subscription.resource_type or "dashboard"
-                ),
-                resource_id=(
-                    locked_subscription.resource_id
-                    if locked_subscription.resource_id is not None
-                    else locked_subscription.dashboard_id
-                ),
+                resource_type=(locked_subscription.resource_type or "dashboard"),
+                resource_id=(locked_subscription.resource_id if locked_subscription.resource_id is not None else locked_subscription.dashboard_id),
                 creator=locked_subscription.creator,
                 creator_domain=locked_subscription.creator_domain,
                 trigger_type=DashboardReportExecution.TriggerType.SCHEDULED,
@@ -773,16 +658,14 @@ class DashboardReportExecutionService:
                 DashboardReportExecution.Status.FAILED,
                 failure_stage="snapshot",
                 error_code="filter_invalid",
-                error_message=message or cls.SNAPSHOT_FAILURE_MESSAGE,
+                error_message=message or oa_message("messages.snapshot_create_failed", cls.SNAPSHOT_FAILURE_MESSAGE),
             )
             cls._advance_subscription_next_run(
                 locked_subscription,
                 scheduled_time_utc=scheduled_time_utc,
                 now=moment,
             )
-            return CreateScheduledResult(
-                execution=execution, created=True
-            )
+            return CreateScheduledResult(execution=execution, created=True)
         except Exception:
             logger.exception(
                 "创建 scheduled Execution Snapshot 失败: execution_id=%s",
@@ -792,16 +675,14 @@ class DashboardReportExecutionService:
                 execution,
                 DashboardReportExecution.Status.FAILED,
                 failure_stage="snapshot",
-                error_message=cls.SNAPSHOT_FAILURE_MESSAGE,
+                error_message=oa_message("messages.snapshot_create_failed", cls.SNAPSHOT_FAILURE_MESSAGE),
             )
             cls._advance_subscription_next_run(
                 locked_subscription,
                 scheduled_time_utc=scheduled_time_utc,
                 now=moment,
             )
-            return CreateScheduledResult(
-                execution=execution, created=True
-            )
+            return CreateScheduledResult(execution=execution, created=True)
 
         cls._advance_subscription_next_run(
             locked_subscription,
@@ -810,18 +691,12 @@ class DashboardReportExecutionService:
         )
 
         if execution.status == DashboardReportExecution.Status.PENDING:
-            transaction.on_commit(
-                lambda: cls._dispatch_render(execution.id)
-            )
-        return CreateScheduledResult(
-            execution=execution, created=True
-        )
+            transaction.on_commit(lambda: cls._dispatch_render(execution.id))
+        return CreateScheduledResult(execution=execution, created=True)
 
     @staticmethod
     def _dispatch_render(execution_id: int) -> None:
-        from apps.operation_analysis.tasks.tasks import (
-            render_dashboard_report_task,
-        )
+        from apps.operation_analysis.tasks.tasks import render_dashboard_report_task
 
         try:
             render_dashboard_report_task.delay(execution_id)
@@ -839,5 +714,5 @@ class DashboardReportExecutionService:
                     execution,
                     DashboardReportExecution.Status.FAILED,
                     failure_stage="render",
-                    error_message="报告渲染任务投递失败",
+                    error_message=oa_message("messages.render_dispatch_failed", "报告渲染任务投递失败"),
                 )

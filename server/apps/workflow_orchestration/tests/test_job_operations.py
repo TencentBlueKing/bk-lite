@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from apps.workflow_orchestration.atom_packages.bklite_job_execute.runtime.handler import execute as execute_job_atom
@@ -132,6 +134,31 @@ def test_parse_optional_data_only_reads_bounded_stdout_prefix():
 
     assert _parse_optional_data(stdout) is None
     assert _parse_optional_data(marker + "\n" + ("y" * MAX_CAPTURED_OUTPUT)) == {"ok": True}
+
+
+def test_parse_optional_data_completes_json_past_capture_window_when_marker_is_in_prefix():
+    from apps.workflow_orchestration.services.job_operations import MAX_CAPTURED_OUTPUT, _parse_optional_data
+
+    # 标记落在窗口内，但 JSON 本体很长并越过窗口（Win Ansible 包装 stdout 常见）。
+    big = {"host": {"hostname": "win-1"}, "metrics": [{"name": f"m{i}", "value": i} for i in range(800)]}
+    payload = json.dumps(big, ensure_ascii=False, separators=(",", ":"))
+    prefix = 'prefix {"changed": true, "stdout": "BK_LITE_RESULT='
+    stdout = prefix + payload + '"}\n'
+    assert stdout.find("BK_LITE_RESULT=") < MAX_CAPTURED_OUTPUT
+    assert len(stdout) > MAX_CAPTURED_OUTPUT
+    assert _parse_optional_data(stdout) == big
+
+
+def test_parse_optional_data_unwraps_escaped_marker_inside_ansible_json_string():
+    from apps.workflow_orchestration.services.job_operations import MAX_CAPTURED_OUTPUT, _parse_optional_data
+
+    big = {"host": {"hostname": "WIN-1"}, "metrics": [{"name": f"m{i}", "value": i} for i in range(500)], "conclusion": "健康"}
+    inner = "BK_LITE_RESULT=" + json.dumps(big, ensure_ascii=False, separators=(",", ":"))
+    wrapped = json.dumps({"changed": True, "stdout": inner, "rc": 0}, ensure_ascii=False)
+    stdout = '{"changed": true, "path": "C:\\\\Temp\\\\a.ps1"}\n\n' + wrapped + '\n\n{"changed": true}\n'
+    assert "BK_LITE_RESULT=" in stdout[:MAX_CAPTURED_OUTPUT]
+    assert len(stdout) > MAX_CAPTURED_OUTPUT
+    assert _parse_optional_data(stdout) == big
 
 
 def test_invalid_result_marker_fails_the_node():
@@ -305,3 +332,65 @@ def test_job_atom_revalidates_selected_references_with_trusted_execution_identit
 def test_job_atom_rejects_fixed_targets_without_trusted_execution_context():
     with pytest.raises(ValueError, match="缺少可信流程上下文"):
         execute_job_atom(_inputs("manual:5"), gateway=FakeTargetGateway(), executor=FakeExecutor([]))
+
+
+def test_execute_custom_script_resumes_prior_job_task_ids_without_resubmit():
+    runner = FakeExecutor([{"execution_results": [{"target_key": "5", "status": "success", "stdout": "ok"}]}])
+    checkpoints = []
+
+    output = execute_custom_script(
+        {
+            "targets": [
+                {
+                    "id": "manual:5",
+                    "source": "job_mgmt",
+                    "source_id": "5",
+                    "name": "host",
+                    "ip": "10.0.0.5",
+                    "operating_system": "linux",
+                }
+            ],
+            "script_type": "shell",
+            "script_content": "echo ok",
+            "team": 7,
+            "actor": {"username": "operator", "domain": "example.com"},
+            "__job_task_ids": [1],
+            "__job_submit_checkpoint": checkpoints.append,
+        },
+        executor=runner,
+    )
+
+    assert runner.submissions == []
+    assert checkpoints == []
+    assert output["job_task_ids"] == [1]
+    assert output["summary"] == {"total": 1, "succeeded": 1, "failed": 0}
+
+
+def test_execute_custom_script_checkpoints_job_ids_after_submit():
+    runner = FakeExecutor([{"execution_results": [{"target_key": "5", "status": "success", "stdout": "ok"}]}])
+    checkpoints = []
+
+    output = execute_custom_script(
+        {
+            "targets": [
+                {
+                    "id": "manual:5",
+                    "source": "job_mgmt",
+                    "source_id": "5",
+                    "name": "host",
+                    "ip": "10.0.0.5",
+                    "operating_system": "linux",
+                }
+            ],
+            "script_type": "shell",
+            "script_content": "echo ok",
+            "team": 7,
+            "actor": {"username": "operator", "domain": "example.com"},
+            "__job_submit_checkpoint": checkpoints.append,
+        },
+        executor=runner,
+    )
+
+    assert len(runner.submissions) == 1
+    assert checkpoints == [[1]]
+    assert output["job_task_ids"] == [1]

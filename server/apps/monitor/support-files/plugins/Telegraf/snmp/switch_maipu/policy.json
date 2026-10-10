@@ -55,7 +55,7 @@
     {
       "name": "Maipu交换机温度过高",
       "alert_name": "交换机${resource_name} 温度过高",
-      "description": "监控 Maipu 交换机的机箱温度，当持续高于阈值时触发告警，提示可能存在散热不良或环境温度过高，避免器件过热损坏。",
+      "description": "监控 Maipu 交换机的主板温度，当持续高于阈值时触发告警，提示可能存在散热不良或环境温度过高，避免器件过热损坏。",
       "metric_name": "device_temperature_celsius",
       "algorithm": "last_over_time",
       "threshold": [

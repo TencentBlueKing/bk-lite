@@ -265,6 +265,10 @@ class MonitorOperationAnaRpc(BaseOperationAnaRpc):
         """查询主机资源使用率 Top10，可选 instance_ids 收窄。"""
         return self.client.run("get_host_resource_top", metric_type=metric_type, **kwargs)
 
+    def get_host_resource_top_by_time(self, metric_type: str, **kwargs):
+        """按时间窗查询主机资源使用率排行（Top N），支持 max/avg 聚合。"""
+        return self.client.run("get_host_resource_top_by_time", metric_type=metric_type, **kwargs)
+
     def get_monitor_instance_list(self, **kwargs):
         """查询当前组织权限范围内的监控实例，供下拉选项使用。"""
         return self.client.run("get_monitor_instance_list", **kwargs)

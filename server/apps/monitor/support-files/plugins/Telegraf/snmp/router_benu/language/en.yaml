@@ -1,6 +1,6 @@
 Router Benu SNMP:
   name: Benu Networks (Telegraf)
-  desc: "SNMP monitoring template for Benu Networks router. It reports uptime, temperature, fan, power supply status, and interface traffic (enterprise PEN 39406)."
+  desc: "SNMP monitoring template for Benu Networks router. It reports uptime, temperature, fan and power-supply state, per fan-card speed and failed-fan count, and interface traffic (enterprise PEN 39406)."
 monitor_object:
   Router: Router
 monitor_object_type:
@@ -19,6 +19,14 @@ monitor_object_metric:
       name: Power Supply Status
       desc: Operational state of each power supply unit (enum). A non-normal state
         indicates a power redundancy or hardware fault and should be remediated promptly.
+    benu_fan_speed_percent:
+      name: Fan Card Speed
+      desc: Current speed of each Benu fan card as a 0-100 percentage from BENU-CHASSIS-MIB
+        benuFanCurSpeed.
+    benu_fan_fault_count:
+      name: Fan Card Fault Count
+      desc: Number of non-operational fans on the fan card, counted from the low 7
+        bits of BENU-CHASSIS-MIB benuFanStatus.
     device_memory_total:
       name: Total Memory
       desc: This metric reports the total physical memory capacity of the router (UCD-SNMP-MIB

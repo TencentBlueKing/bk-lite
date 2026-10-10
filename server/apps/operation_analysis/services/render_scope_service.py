@@ -10,6 +10,7 @@ from apps.core.backends import AuthBackend
 from apps.operation_analysis.models.datasource_models import NameSpace
 from apps.operation_analysis.models.subscription_models import DashboardReportExecution, DashboardReportRenderToken
 from apps.operation_analysis.services.named_option_datasources import collect_named_option_datasource_ids
+from apps.operation_analysis.services.user_messages import oa_message
 from apps.system_mgmt.models import User as SystemUser
 from apps.system_mgmt.nats.auth import build_user_authorization_context
 
@@ -102,20 +103,20 @@ class DashboardReportRenderScopeService:
             disabled=False,
         ).first()
         if execution_team_id not in cls._creator_team_ids(creator):
-            raise DashboardReportRenderScopeError("创建者已无权使用本执行组织")
+            raise DashboardReportRenderScopeError(oa_message("messages.render_scope_creator_denied", "创建者已无权使用本执行组织"))
 
     @classmethod
     def authorize_request(cls, request, token: str) -> dict:
         claims = cls.decode_if_render(token)
         if claims is None:
-            raise DashboardReportRenderScopeError("Render Session 无效")
+            raise DashboardReportRenderScopeError(oa_message("messages.render_session_invalid", "Render Session 无效"))
 
         try:
             execution_id = int(claims["render_execution_id"])
             snapshot_id = int(claims["render_snapshot_id"])
             attempt_no = int(claims["render_attempt_no"])
         except (KeyError, TypeError, ValueError) as exc:
-            raise DashboardReportRenderScopeError("Render Session 缺少作用域") from exc
+            raise DashboardReportRenderScopeError(oa_message("messages.render_session_missing_scope", "Render Session 缺少作用域")) from exc
 
         try:
             execution = DashboardReportExecution.objects.select_related("render_snapshot", "render_token", "snapshot").get(
@@ -129,7 +130,7 @@ class DashboardReportRenderScopeService:
             DashboardReportExecution.DoesNotExist,
             DashboardReportRenderToken.DoesNotExist,
         ) as exc:
-            raise DashboardReportRenderScopeError("Render Session 已失效") from exc
+            raise DashboardReportRenderScopeError(oa_message("messages.render_session_expired", "Render Session 已失效")) from exc
 
         if (
             execution.render_snapshot.id != snapshot_id
@@ -138,18 +139,18 @@ class DashboardReportRenderScopeService:
             or record.revoked_at is not None
             or record.expires_at <= timezone.now()
         ):
-            raise DashboardReportRenderScopeError("Render Session 已失效")
+            raise DashboardReportRenderScopeError(oa_message("messages.render_session_expired", "Render Session 已失效"))
 
         if not SystemUser.objects.filter(
             username=execution.creator,
             domain=execution.creator_domain,
             disabled=False,
         ).exists():
-            raise DashboardReportRenderScopeError("Render Session 已失效")
+            raise DashboardReportRenderScopeError(oa_message("messages.render_session_expired", "Render Session 已失效"))
 
         execution_team_id = execution.snapshot.execution_team_id
         if not execution_team_id:
-            raise DashboardReportRenderScopeError("Render Session 缺少组织作用域")
+            raise DashboardReportRenderScopeError(oa_message("messages.render_session_missing_org", "Render Session 缺少组织作用域"))
         # Render Worker 没有普通浏览器的 current_team cookie。通过与 API Key
         # 相同的可信请求属性把 Execution 创建时冻结的组织 identity 传给现有
         # DataSource 权限链；下游仍会实时校验创建者成员关系和 DataSource 权限。
@@ -176,7 +177,7 @@ class DashboardReportRenderScopeService:
             try:
                 requested_ids = {int(item.strip()) for item in raw_ids.split(",") if item.strip()}
             except ValueError as exc:
-                raise DashboardReportRenderScopeError("数据源作用域无效") from exc
+                raise DashboardReportRenderScopeError(oa_message("messages.render_scope_datasource_invalid", "数据源作用域无效")) from exc
             if requested_ids and requested_ids <= allowed_datasources:
                 return claims
 
@@ -185,7 +186,7 @@ class DashboardReportRenderScopeService:
             try:
                 requested_ids = {int(item.strip()) for item in raw_ids.split(",") if item.strip()}
             except ValueError as exc:
-                raise DashboardReportRenderScopeError("命名空间作用域无效") from exc
+                raise DashboardReportRenderScopeError(oa_message("messages.render_scope_namespace_invalid", "命名空间作用域无效")) from exc
             allowed_namespace_ids = set(NameSpace.objects.filter(data_sources__id__in=allowed_datasources).values_list("id", flat=True))
             if requested_ids and requested_ids <= allowed_namespace_ids:
                 return claims
@@ -199,7 +200,7 @@ class DashboardReportRenderScopeService:
                 if requested_ids and requested_ids <= allowed_targets:
                     return claims
 
-        raise DashboardReportRenderScopeError("Render Session 不允许访问该接口")
+        raise DashboardReportRenderScopeError(oa_message("messages.render_session_path_denied", "Render Session 不允许访问该接口"))
 
     @classmethod
     def collect_allowed_datasource_ids(cls, widget_manifest) -> set[int]:

@@ -123,13 +123,28 @@ export class DataMapper {
                   : '';
               break;
             case 'key_value_list':
-              processedValue =
-                processedValue && typeof processedValue === 'object'
-                  ? Object.entries(processedValue).map(([key, itemValue]) => ({
-                    key,
-                    value: String(itemValue ?? '')
-                  }))
-                  : [];
+              if (Array.isArray(processedValue)) {
+                processedValue = processedValue.map((item) => {
+                  if (typeof item === 'string') {
+                    const eqIdx = item.indexOf('=');
+                    if (eqIdx !== -1) {
+                      return {
+                        key: item.slice(0, eqIdx),
+                        value: item.slice(eqIdx + 1)
+                      };
+                    }
+                    return { key: item, value: '' };
+                  }
+                  return item;
+                });
+              } else if (processedValue && typeof processedValue === 'object') {
+                processedValue = Object.entries(processedValue).map(([key, itemValue]) => ({
+                  key,
+                  value: String(itemValue ?? '')
+                }));
+              } else {
+                processedValue = [];
+              }
               break;
           }
         }
@@ -194,6 +209,13 @@ export class DataMapper {
                   .map((item: any) => [String(item.key).trim(), String(item.value ?? '')])
               )
               : {};
+            break;
+          case 'key_value_env_array':
+            processedValue = Array.isArray(processedValue)
+              ? processedValue
+                .filter((item: any) => String(item?.key || '').trim())
+                .map((item: any) => `${String(item.key).trim()}=${String(item.value ?? '')}`)
+              : [];
             break;
         }
       }
@@ -378,7 +400,28 @@ export class DataMapper {
             case 'string':
               fieldValue = String(fieldValue);
               break;
+            case 'key_value_env_array':
+              fieldValue = Array.isArray(fieldValue)
+                ? fieldValue
+                  .filter((item: any) => String(item?.key || '').trim())
+                  .map((item: any) => `${String(item.key).trim()}=${String(item.value ?? '')}`)
+                : [];
+              break;
           }
+        }
+        if (
+          fieldValue !== undefined &&
+          typeof fieldValue === 'string' &&
+          transform_on_create?.split
+        ) {
+          const sep =
+            typeof transform_on_create.split === 'string'
+              ? transform_on_create.split
+              : ',';
+          fieldValue = fieldValue
+            .split(sep)
+            .map((s: string) => s.trim())
+            .filter(Boolean);
         }
         if (
           fieldValue !== undefined &&

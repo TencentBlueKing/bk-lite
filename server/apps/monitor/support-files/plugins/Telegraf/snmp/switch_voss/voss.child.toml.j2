@@ -1,0 +1,100 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_voss"
+        config_type = "voss"
+        brand = "voss"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    [[inputs.snmp.table]]
+        name = "device"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2272.1.85.10.1.1.3"
+        name = "cpu_usage"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2272.1.85.10.1.1.6"
+        name = "mem_used_kb"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2272.1.85.10.1.1.7"
+        name = "mem_free_kb"
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2272.1.101.1.1.2.1.2"
+        name = "sensor_name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2272.1.101.1.1.2.1.3"
+        name = "celsius"
+
+[[processors.starlark]]
+    namepass = ["device"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    cpu = f.get("cpu_usage")
+    if cpu != None:
+        if cpu < 0 or cpu > 100:
+            f.pop("cpu_usage")
+    used_kb = f.get("mem_used_kb")
+    free_kb = f.get("mem_free_kb")
+    if f.get("mem_used_kb") != None:
+        f.pop("mem_used_kb")
+    if f.get("mem_free_kb") != None:
+        f.pop("mem_free_kb")
+    if used_kb != None and free_kb != None and used_kb >= 0 and free_kb >= 0:
+        f["memory_used"] = used_kb * 1024
+        f["memory_free"] = free_kb * 1024
+        if (used_kb + free_kb) > 0:
+            f["memory_usage"] = int(used_kb * 10000 / (used_kb + free_kb) + 0.5) / 100.0
+    if len(f.keys()) == 0:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["voss"]
+
+[[processors.starlark]]
+    namepass = ["device_temperature"]
+    source = '''
+def apply(metric):
+    f = metric.fields
+    temp = f.get("celsius")
+    if temp == None:
+        return None
+    if temp < -40 or temp > 125:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["voss"]

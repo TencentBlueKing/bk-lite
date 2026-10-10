@@ -1,4 +1,13 @@
+from datetime import datetime, timedelta
 from typing import Any, cast
+
+from django.db import transaction
+from django.db.models import Count, Q
+from django.http import HttpResponse
+from django.utils import timezone as dj_timezone
+from rest_framework import mixins
+from rest_framework.decorators import action
+from rest_framework.viewsets import GenericViewSet
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.loader import LanguageLoader
@@ -9,7 +18,9 @@ from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.language import LanguageConstants
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models.action import CollectorActionTaskNode
-from apps.node_mgmt.models.sidecar import Node, NodeOrganization
+from apps.node_mgmt.models.cloud_region import CloudRegion
+from apps.node_mgmt.models.installer import NodeCollectorInstallStatus
+from apps.node_mgmt.models.sidecar import Collector, Node, NodeOrganization
 from apps.node_mgmt.serializers.node import (
     BatchBindingNodeConfigurationSerializer,
     BatchOperateNodeCollectorSerializer,
@@ -20,6 +31,21 @@ from apps.node_mgmt.serializers.node import (
 )
 from apps.node_mgmt.services.module_push import ModulePushService, build_module_push_actor_scope, parse_retire_linked_flag
 from apps.node_mgmt.services.node import NodeService
+from apps.node_mgmt.services.node_export import (
+    EXPORT_LIMIT,
+    build_export_filename,
+    build_export_row,
+    build_export_workbook_bytes,
+    content_disposition,
+    export_labels,
+    load_organization_names,
+)
+from apps.node_mgmt.services.node_status_filter import (
+    ACTIVE_WINDOW_SECONDS,
+    collector_status_codes_from_filter_values,
+    hosted_collectors_for_filter,
+    node_matches_collector_filter,
+)
 from apps.node_mgmt.services.sidecar_cache import invalidate_node_configuration_etags
 from apps.node_mgmt.tasks.sidecar_config import sync_node_properties_to_sidecar, sync_nodes_organizations_to_sidecar
 from apps.node_mgmt.utils.permission import (
@@ -33,11 +59,6 @@ from apps.node_mgmt.utils.permission import (
 )
 from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_read, project_task_status_from_summary
 from config.drf.pagination import CustomPageNumberPagination
-from django.db import transaction
-from django.db.models import Count, Q
-from rest_framework import mixins
-from rest_framework.decorators import action
-from rest_framework.viewsets import GenericViewSet
 
 
 class NodeFilterHandler:
@@ -138,6 +159,70 @@ class NodeFilterHandler:
             return queryset.exclude(id__in=upgradeable_node_ids)
 
     @staticmethod
+    def _condition_values(conditions):
+        values = []
+        if not conditions or not isinstance(conditions, list):
+            return values
+        for condition in conditions:
+            if not isinstance(condition, dict):
+                continue
+            value = condition.get("value")
+            if value is None or value == "":
+                continue
+            if isinstance(value, (list, tuple)):
+                values.extend(value)
+            else:
+                values.append(value)
+        return values
+
+    @staticmethod
+    def handle_active_filter(queryset, conditions):
+        values = NodeFilterHandler._condition_values(conditions)
+        wanted = set()
+        for value in values:
+            normalized = NodeFilterHandler.normalize_bool_value(value)
+            if normalized is not None:
+                wanted.add(normalized)
+        if not wanted or (True in wanted and False in wanted):
+            return queryset
+        cutoff = dj_timezone.now() - timedelta(seconds=ACTIVE_WINDOW_SECONDS)
+        if True in wanted:
+            return queryset.filter(updated_at__gt=cutoff)
+        return queryset.filter(updated_at__lte=cutoff)
+
+    @staticmethod
+    def handle_collector_status_filter(queryset, conditions, collector_name_conditions=None):
+        wanted_codes = collector_status_codes_from_filter_values(NodeFilterHandler._condition_values(conditions))
+        if not wanted_codes:
+            return queryset
+        name_values = [str(item).strip() for item in NodeFilterHandler._condition_values(collector_name_conditions) if str(item).strip()]
+
+        node_rows = list(queryset.values_list("id", "status"))
+        if not node_rows:
+            return queryset.none()
+
+        node_ids = [node_id for node_id, _ in node_rows]
+        collector_name_by_id = dict(Collector.objects.values_list("id", "name"))
+        install_by_node = {}
+        for row in NodeCollectorInstallStatus.objects.filter(node_id__in=node_ids).values("node_id", "collector_id", "status"):
+            install_by_node.setdefault(row["node_id"], []).append(row)
+
+        matched_ids = []
+        for node_id, status in node_rows:
+            reported = status.get("collectors") if isinstance(status, dict) else None
+            hosted = hosted_collectors_for_filter(
+                reported,
+                install_by_node.get(node_id, []),
+                collector_name_by_id,
+            )
+            if not name_values:
+                if node_matches_collector_filter(hosted, wanted_codes):
+                    matched_ids.append(node_id)
+            elif any(node_matches_collector_filter(hosted, wanted_codes, name) for name in name_values):
+                matched_ids.append(node_id)
+        return queryset.filter(id__in=matched_ids)
+
+    @staticmethod
     def build_standard_filters(params):
         """
         构建标准字段的 Q 对象过滤条件
@@ -208,6 +293,7 @@ class NodeFilterHandler:
         # 特殊字段列表（需要自定义处理逻辑）
         SPECIAL_FIELDS = {
             "upgradeable": cls.handle_upgradeable_filter,
+            "active": cls.handle_active_filter,
             # 未来可以在这里添加其他特殊字段处理器
             # 'custom_field': cls.handle_custom_field_filter,
         }
@@ -219,6 +305,8 @@ class NodeFilterHandler:
         for field_name, conditions in filters.items():
             if field_name in SPECIAL_FIELDS:
                 special_filters[field_name] = conditions
+            elif field_name in ("collector_status", "collector_name"):
+                continue
             else:
                 standard_filters[field_name] = conditions
 
@@ -232,6 +320,13 @@ class NodeFilterHandler:
         for field_name, conditions in special_filters.items():
             handler = SPECIAL_FIELDS[field_name]
             queryset = handler(queryset, conditions)
+
+        if "collector_status" in filters:
+            queryset = cls.handle_collector_status_filter(
+                queryset,
+                filters["collector_status"],
+                collector_name_conditions=filters.get("collector_name"),
+            )
 
         return queryset
 
@@ -291,6 +386,59 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
         self.add_permission(permission, processed_data)
 
         return WebUtils.response_success(processed_data)
+
+    @action(methods=["post"], detail=False, url_path="export_excel")
+    def export_excel(self, request, *args, **kwargs):
+        labels = export_labels(getattr(request.user, "locale", None))
+        permission = get_node_permission(request)
+        queryset = get_catalog_node_queryset(request, permission)
+        raw_selected_ids = request.data.get("selected_ids")
+        if raw_selected_ids is None:
+            raw_selected_ids = []
+        elif not isinstance(raw_selected_ids, (list, tuple)):
+            return WebUtils.response_error(error_message="selected_ids must be a list")
+        selected_ids = [str(item).strip() for item in raw_selected_ids if str(item).strip()]
+
+        cloud_region_id = request.query_params.get("cloud_region_id") or request.data.get("cloud_region_id")
+        if not cloud_region_id:
+            return WebUtils.response_error(error_message="cloud_region_id is required")
+        queryset = queryset.filter(cloud_region_id=cloud_region_id)
+
+        if selected_ids:
+            queryset = queryset.filter(id__in=selected_ids)
+        else:
+            custom_filters = request.data.get("filters")
+            if custom_filters:
+                queryset = NodeFilterHandler.apply_filters(queryset, custom_filters)
+            organization_ids = request.query_params.get("organization_ids") or request.data.get("organization_ids")
+            if organization_ids:
+                organization_ids = organization_ids.split(",")
+                queryset = queryset.filter(nodeorganization__organization__in=organization_ids).distinct()
+
+        queryset = NodeSerializer.setup_eager_loading(queryset).order_by("-created_at")
+        total = queryset.count()
+        if total == 0:
+            return WebUtils.response_error(error_message=labels["empty"])
+        if total > EXPORT_LIMIT:
+            return WebUtils.response_error(error_message=labels["over_limit"].format(limit=EXPORT_LIMIT, count=total))
+
+        serializer = NodeSerializer(queryset, many=True)
+        processed = NodeService.process_node_data(serializer.data)
+        org_ids = []
+        for node in processed:
+            org_ids.extend(node.get("organization") or [])
+        organization_names = load_organization_names(org_ids)
+        rows = [build_export_row(node, labels, organization_names) for node in processed]
+        content = build_export_workbook_bytes(rows, labels["headers"])
+        region_name = CloudRegion.objects.filter(id=cloud_region_id).values_list("name", flat=True).first() or ""
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = build_export_filename(region_name, stamp)
+        response = HttpResponse(
+            content,
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = content_disposition(filename)
+        return response
 
     @HasPermission("cloud_region_node-Delete")
     def destroy(self, request, *args, **kwargs):

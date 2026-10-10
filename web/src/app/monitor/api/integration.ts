@@ -151,6 +151,22 @@ const useIntegrationApi = () => {
       updateMonitorMetrics: async (data: OrderParam[]) => {
         return await post('/monitor/api/metrics/set_order/', data);
       },
+      batchUpdateMonitorMetrics: async (data: {
+        monitor_plugin: number;
+        items: Array<{
+          id: number;
+          display_name?: string;
+          metric_group?: number;
+          unit?: string;
+          data_type?: string;
+          description?: string;
+          dimensions?: string[];
+        }>;
+      }) => {
+        return await post('/monitor/api/metrics/batch_update/', data, {
+          suppressErrorNotification: true,
+        });
+      },
       updateNodeChildConfig: async (data: NodeConfigParam) => {
         return await post(
           '/monitor/api/node_mgmt/batch_setting_node_child_config/',
@@ -194,6 +210,11 @@ const useIntegrationApi = () => {
       },
       getConfigContent: async (data: { ids: string[] }) => {
         return await post('/monitor/api/node_mgmt/get_config_content/', data);
+      },
+      getPluginChildConfig: async (data: {
+        monitor_plugin_id: string | number;
+      }) => {
+        return await post('/monitor/api/node_mgmt/get_plugin_child_config/', data);
       },
       updateMonitorInstance: async (data: InstanceInfo) => {
         return await post(

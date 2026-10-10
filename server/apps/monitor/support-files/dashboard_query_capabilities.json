@@ -347,6 +347,13 @@
       "template": "rate(mongodb_commands{__$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:0cc5ce4e",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "sum(device_memory_used{__$labels__}) by (instance_id) or (sum(snmp_device_memory_total{__$labels__}) by (instance_id) - sum(snmp_device_memory_free{__$labels__}) by (instance_id))"
+    },
+    {
       "id": "dashboard:v1:0d432287",
       "object_names": [
         "Host"
@@ -445,18 +452,18 @@
       "template": "100 * ( sum(irate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k8s\",__$labels__}[__$window__])) by (instance_id,pod) / on(instance_id,pod) sum(prometheus_remote_write_kube_pod_container_resource_limits{instance_type=\"k8s\", resource=\"cpu\",__$labels__}) by (instance_id,pod) )"
     },
     {
+      "id": "dashboard:v1:10ddbbf7",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "max(device_cpu_usage{__$labels__}) by (instance_id) or max(snmp_device_cpu_usage{__$labels__}) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:113f8935",
       "object_names": [
         "K3SCluster"
       ],
       "template": "topk(5, sum by (pod) (increase(prometheus_remote_write_kube_pod_container_status_restarts_total{instance_type=\"k3s\",__$labels__}[1h])))"
-    },
-    {
-      "id": "dashboard:v1:1182a607",
-      "object_names": [
-        "Switch"
-      ],
-      "template": "max(device_memory_usage{__$labels__}) by (instance_id) or avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)"
     },
     {
       "id": "dashboard:v1:11eabfbd",
@@ -2006,6 +2013,14 @@
       "template": "rate(nginx_accepts{__$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:4d34db2f",
+      "object_names": [
+        "Firewall",
+        "Router"
+      ],
+      "template": "avg(device_cpu_usage{__$labels__}) by (instance_id) or avg(snmp_device_cpu_usage{__$labels__}) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:4d3788b9",
       "object_names": [
         "InfluxDB"
@@ -2141,8 +2156,7 @@
     {
       "id": "dashboard:v1:525575db",
       "object_names": [
-        "Loadbalance",
-        "Switch"
+        "Loadbalance"
       ],
       "template": "sum(device_memory_used{__$labels__}) by (instance_id)"
     },
@@ -2327,13 +2341,6 @@
         "Etcd"
       ],
       "template": "sum by (instance_id) (rate(etcd_mvcc_delete_total_counter{__$labels__}[__$window__]))"
-    },
-    {
-      "id": "dashboard:v1:59ae969c",
-      "object_names": [
-        "Firewall"
-      ],
-      "template": "firewall_active_sessions{__$labels__} or firewall_current_connections{__$labels__} or firewall_active_connections{__$labels__} or firewall_tcp_connections{__$labels__} or firewall_pf_states{__$labels__}"
     },
     {
       "id": "dashboard:v1:5a55e526",
@@ -2779,6 +2786,13 @@
       "template": "count({instance_type='redis', collect_type='database', __$labels__}) by (instance_id)"
     },
     {
+      "id": "dashboard:v1:6cfc04c8",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "max(device_memory_usage{__$labels__}) by (instance_id) or avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or max(snmp_device_memory_usage{__$labels__}) by (instance_id) or ((sum(snmp_device_memory_total{__$labels__}) by (instance_id) - sum(snmp_device_memory_free{__$labels__}) by (instance_id)) / sum(snmp_device_memory_total{__$labels__}) by (instance_id) * 100)"
+    },
+    {
       "id": "dashboard:v1:6d074c64",
       "object_names": [
         "K3SCluster"
@@ -3100,6 +3114,13 @@
         "Haproxy"
       ],
       "template": "sum by (instance_id) (haproxy_req_rate{svname=\"FRONTEND\",__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:7d59476a",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "avg(device_memory_usage{__$labels__}) by (instance_id) or avg(snmp_device_memory_usage{__$labels__}) by (instance_id) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100)"
     },
     {
       "id": "dashboard:v1:7d6fd449",
@@ -3449,6 +3470,13 @@
       "template": "rate(mysql_queries{__$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:8abc1975",
+      "object_names": [
+        "Router"
+      ],
+      "template": "avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or avg(snmp_device_memory_usage{__$labels__}) by (instance_id) or ((sum(snmp_device_memory_total{__$labels__}) by (instance_id) - sum(snmp_device_memory_free{__$labels__}) by (instance_id)) / sum(snmp_device_memory_total{__$labels__}) by (instance_id) * 100)"
+    },
+    {
       "id": "dashboard:v1:8ae3b991",
       "object_names": [
         "RabbitMQ"
@@ -3556,9 +3584,7 @@
     {
       "id": "dashboard:v1:91755901",
       "object_names": [
-        "Firewall",
-        "Loadbalance",
-        "Router"
+        "Loadbalance"
       ],
       "template": "avg(device_cpu_usage{__$labels__}) by (instance_id)"
     },
@@ -3934,6 +3960,13 @@
       "template": "rate(prometheus_remote_write_net_bytes_sent{instance_type=\"k8s\", __$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:9f8aca6d",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "sum(device_memory_free{__$labels__}) by (instance_id) or sum(snmp_device_memory_free{__$labels__}) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:9f9b304e",
       "object_names": [
         "Etcd"
@@ -4023,6 +4056,13 @@
         "InfluxDB"
       ],
       "template": "sum by (instance_id) (rate(influxdb_httpd_serverError{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:a4345e6b",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "firewall_active_sessions{__$labels__} or snmp_firewall_active_sessions{__$labels__} or firewall_current_connections{__$labels__} or snmp_firewall_current_connections{__$labels__} or firewall_active_connections{__$labels__} or firewall_tcp_connections{__$labels__} or firewall_pf_states{__$labels__}"
     },
     {
       "id": "dashboard:v1:a4719240",
@@ -4175,8 +4215,7 @@
       "id": "dashboard:v1:aa39e9d2",
       "object_names": [
         "Loadbalance",
-        "Router",
-        "Switch"
+        "Router"
       ],
       "template": "max(device_temperature_celsius{__$labels__}) by (instance_id)"
     },
@@ -4214,13 +4253,6 @@
         "Host"
       ],
       "template": "sum by (instance_id) (rate(diskio_read_bytes{instance_type=\"os\", __$labels__}[__$window__]) or rate(diskio_read_bytes_total_gauge{instance_type=\"os\", config_type!~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__}[__$window__]) or rate(diskio_read_bytes_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__]) or diskio_read_bytes_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__})"
-    },
-    {
-      "id": "dashboard:v1:aed37e56",
-      "object_names": [
-        "Router"
-      ],
-      "template": "avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)"
     },
     {
       "id": "dashboard:v1:af0b870f",
@@ -4724,13 +4756,6 @@
       "template": "min(ping_minimum_response_ms{__$labels__})"
     },
     {
-      "id": "dashboard:v1:c2e57aaf",
-      "object_names": [
-        "Switch"
-      ],
-      "template": "max(device_cpu_usage{__$labels__}) by (instance_id)"
-    },
-    {
       "id": "dashboard:v1:c3434181",
       "object_names": [
         "Exchange"
@@ -4906,13 +4931,6 @@
         "ConsoleServer"
       ],
       "template": "count({instance_type='console_server', __$labels__}) by (instance_id)"
-    },
-    {
-      "id": "dashboard:v1:c9f0ea5c",
-      "object_names": [
-        "Firewall"
-      ],
-      "template": "firewall_session_utilization{__$labels__} or (firewall_active_sessions{__$labels__} / firewall_max_sessions{__$labels__} * 100) or (firewall_current_connections{__$labels__} / firewall_max_sessions{__$labels__} * 100) or (firewall_current_connections{__$labels__} / firewall_max_connections{__$labels__} * 100)"
     },
     {
       "id": "dashboard:v1:ca17f83c",
@@ -5467,6 +5485,13 @@
       "template": "rate(elasticsearch_breakers_request_tripped{__$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:dfa359d3",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "firewall_session_utilization{__$labels__} or (firewall_active_sessions{__$labels__} / firewall_max_sessions{__$labels__} * 100) or (firewall_current_connections{__$labels__} / firewall_max_sessions{__$labels__} * 100) or (snmp_firewall_current_connections{__$labels__} / snmp_firewall_max_sessions{__$labels__} * 100) or (firewall_current_connections{__$labels__} / firewall_max_connections{__$labels__} * 100)"
+    },
+    {
       "id": "dashboard:v1:dfdd50bc",
       "object_names": [
         "Website"
@@ -5635,13 +5660,6 @@
         "RabbitMQ"
       ],
       "template": "rabbitmq_overview_consumers{__$labels__}"
-    },
-    {
-      "id": "dashboard:v1:e766f12a",
-      "object_names": [
-        "Switch"
-      ],
-      "template": "sum(device_memory_free{__$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:e823e064",
@@ -6017,13 +6035,6 @@
       "template": "sum(netflow_in_packets{instance_type='firewall', collect_type='netflow', __$labels__} * label_value(netflow_in_packets{instance_type='firewall', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
     },
     {
-      "id": "dashboard:v1:f9276881",
-      "object_names": [
-        "Firewall"
-      ],
-      "template": "avg(device_memory_usage{__$labels__}) by (instance_id) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100)"
-    },
-    {
       "id": "dashboard:v1:f9d16f6f",
       "object_names": [
         "K3SNode"
@@ -6106,6 +6117,13 @@
         "Process"
       ],
       "template": "sum(procstat_memory_rss{instance_type=\"process\", __$labels__}) by (instance_id, process_name)"
+    },
+    {
+      "id": "dashboard:v1:fe2e0d57",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "max(device_temperature_celsius{__$labels__}) by (instance_id) or max(snmp_device_temperature_celsius{__$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:fea6f24d",

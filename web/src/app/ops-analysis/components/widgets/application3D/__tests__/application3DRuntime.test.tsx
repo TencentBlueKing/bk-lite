@@ -287,6 +287,25 @@ describe('application3D application detail', () => {
     expect(chip?.textContent).toContain('3');
     expect(chip?.textContent).toContain('application3DHostHighestSeverity');
     expect(chip?.textContent).toContain('严重');
+
+    act(() => {
+      mocks.sceneCallbacks?.onArchitectureHostSelect?.({
+        node: {
+          id: 'host-alarm',
+          name: 'web-alarm',
+          kind: 'host',
+          health: {
+            state: 'alarming',
+            activeAlarmCount: 3,
+            highestSeverity: { id: 'critical', label: '严重' },
+          },
+        },
+        overlay: { left: 48, top: 12 },
+      } as never);
+    });
+    const translatedChip = document.querySelector('.app3d-arch-host-chip');
+    expect(translatedChip?.textContent).toContain('dashboard.application3DSeverity_critical');
+    expect(translatedChip?.textContent).not.toContain('严重');
     expect(chip?.querySelector('button')).toBeNull();
     expect(chip?.textContent).not.toContain('application3DBackWall');
     expect(getComputedStyle(chip as Element).pointerEvents === 'none' || chip?.className.includes('app3d-arch-host-chip')).toBe(true);

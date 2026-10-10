@@ -23,6 +23,7 @@ from apps.system_mgmt.services.user_sync_service import (
     get_user_sync_root_scope_field,
     is_root_group_name_reserved,
 )
+from apps.system_mgmt.utils.i18n import system_mgmt_message
 from apps.system_mgmt.utils.password_validator import PasswordValidator
 from apps.system_mgmt.utils.password_vault import encrypt_for_vault
 
@@ -30,7 +31,13 @@ from apps.system_mgmt.utils.password_vault import encrypt_for_vault
 PASSWORD_INIT_MODES = {"none", "uniform", "random"}
 
 
-def validate_platform_config(platform_config, existing_platform_config=None):
+def _request_locale(serializer):
+    request = getattr(serializer, "context", {}).get("request")
+    user = getattr(request, "user", None)
+    return getattr(user, "locale", None) or "zh-Hans"
+
+
+def validate_platform_config(platform_config, existing_platform_config=None, locale="zh-Hans"):
     if platform_config is None:
         return None
     if not isinstance(platform_config, dict):
@@ -71,9 +78,14 @@ def validate_platform_config(platform_config, existing_platform_config=None):
             return normalized_config
         raise serializers.ValidationError({"platform_config": "uniform_password is required for password_init"})
 
-    is_valid, error_message = PasswordValidator.validate_password(raw_password)
+    is_valid, error_message = PasswordValidator.validate_password(raw_password, locale=locale)
     if not is_valid:
-        raise serializers.ValidationError({"platform_config": error_message or "密码强度不够"})
+        raise serializers.ValidationError(
+            {
+                "platform_config": error_message
+                or system_mgmt_message(locale, "error.password_strength_insufficient")
+            }
+        )
     password_init["uniform_password"] = encrypt_for_vault(raw_password)
     return normalized_config
 
@@ -167,6 +179,7 @@ class UserSyncSourceSerializer(UsernameSerializer):
             attrs["platform_config"] = validate_platform_config(
                 attrs["platform_config"],
                 getattr(self.instance, "platform_config", None),
+                locale=_request_locale(self),
             )
 
         field_mapping = attrs.get("field_mapping")
@@ -239,7 +252,9 @@ class UserSyncSourceSerializer(UsernameSerializer):
 
                 valid_department_ids = user_sync_service.flatten_department_ids(department_result.payload.get("items") or [])
                 if root_scope_value not in valid_department_ids:
-                    raise serializers.ValidationError({"business_config": "当前同步范围已不可用，请重新选择部门"})
+                    raise serializers.ValidationError(
+                        {"business_config": system_mgmt_message(_request_locale(self), "error.user_sync_scope_unavailable")}
+                    )
                 business_config[root_scope_field] = root_scope_value
 
         attrs["business_config"] = business_config

@@ -70,6 +70,7 @@ export const useLoadbalanceConfig = () => {
     collectTypes: {
       'Loadbalance SNMP General': 'snmp',
       'Loadbalance F5 SNMP': 'snmp_f5',
+      'Loadbalance Cisco ACE SNMP': 'snmp_cisco_ace',
       'Loadbalance Citrix NetScaler SNMP': 'snmp_netscaler',
       'Loadbalance A10 SNMP': 'snmp_a10',
       'Loadbalance FortiADC SNMP': 'snmp_fortiadc',

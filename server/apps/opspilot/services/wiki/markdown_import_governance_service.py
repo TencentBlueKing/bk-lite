@@ -30,12 +30,14 @@ from apps.opspilot.services.wiki.build_service import _invoke_llm
 from apps.opspilot.services.wiki.cascade_service import cascade
 from apps.opspilot.services.wiki.colloquial_alias_service import enrich_generation_colloquial_aliases_safely
 from apps.opspilot.services.wiki.directory_assignment_service import resolve_page_directory
+from apps.opspilot.services.wiki.generation_navigation_service import enhance_generation_overviews
 from apps.opspilot.services.wiki.markdown_import_service import parse_markdown_document
 from apps.opspilot.services.wiki.material_build_queue_service import kb_has_user_build_in_progress
 from apps.opspilot.services.wiki.okf_import_service import (
     OkfParseError,
     bound_okf_image_missing,
     detect_bundle_root,
+    import_layer_name,
     is_okf_import_format,
     is_reserved_okf_path,
     parse_okf_document,
@@ -44,23 +46,22 @@ from apps.opspilot.services.wiki.okf_import_service import (
     read_okf_version,
     strip_bundle_root,
 )
+from apps.opspilot.services.wiki.purpose_schema_service import (
+    MATERIALS_ROOT_KEY,
+    import_folder_display_name,
+    match_frozen_knowledge_root_name,
+    normalize_folder_name,
+)
 from apps.opspilot.services.wiki.parsed_media_service import (
     collect_page_media_locators,
     delete_media_locator,
     save_import_archive_bytes,
     save_page_media_bytes,
 )
-from apps.opspilot.services.wiki.structure_service import (
-    UNCLASSIFIED_DIRECTORY_KEY,
-    StructureServiceError,
-    preview_native_structure_restore,
-    restore_native_structure,
-    save_structure,
-)
+from apps.opspilot.services.wiki.structure_service import StructureServiceError, save_structure
 from apps.opspilot.services.wiki.title_service import InvalidWikiTitle, canonical_title, title_identity_key, validate_display_title
 from apps.opspilot.services.wiki.wiki_budget_service import new_alias_enrich_call_budget
 
-NATIVE_ARCHIVE_FORMAT = "opspilot-wiki-native-v1"
 MAX_ARCHIVE_BYTES = 200 * 1024 * 1024
 MAX_ENTRIES = 5000
 MAX_UNCOMPRESSED_BYTES = 400 * 1024 * 1024
@@ -69,7 +70,6 @@ MAX_COMPRESSION_RATIO = 1000
 # 大包二次上传需要时间，但不能无限有效。
 TOKEN_TTL_MINUTES = 120
 _MARKDOWN_SUFFIXES = {".md", ".markdown"}
-_KEY_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._:-]{0,63}$")
 _ERROR_DETAIL_TEXT_LIMIT = 160
 
 
@@ -102,6 +102,7 @@ class InspectedArchive:
     skipped_entries: int
     archive_sha256: str
     bundle_root: str = ""
+    import_layer_name: str = ""
     okf_version: str = ""
     skipped_details: tuple = ()
     okf_stats: dict = field(default_factory=dict)
@@ -258,6 +259,7 @@ def _inspect_okf_archive(payloads, skipped, archive_sha256, member_paths):
         skipped_entries=skipped + extra_skipped,
         archive_sha256=archive_sha256,
         bundle_root=bundle_root,
+        import_layer_name=import_layer_name(bundle_root),
         okf_version=okf_version,
         skipped_details=tuple(skipped_details),
     )
@@ -379,6 +381,13 @@ def _gc_okf_page_media(knowledge_base, released_locators):
 
 
 def inspect_markdown_archive(content, filename="", import_format=""):  # noqa: C901
+    if not is_okf_import_format(import_format):
+        raise MarkdownImportGovernanceError(
+            "import_format_unsupported",
+            "批量知识导入仅支持 OKF",
+            status_code=400,
+            details={"import_format": str(import_format or "")},
+        )
     if not isinstance(content, (bytes, bytearray)):
         raise MarkdownImportGovernanceError("archive_content_invalid", "导入内容必须为 bytes")
     content = bytes(content)
@@ -396,20 +405,8 @@ def inspect_markdown_archive(content, filename="", import_format=""):  # noqa: C
         )
     archive_sha256 = hashlib.sha256(content).hexdigest()
     suffix = PurePosixPath(filename or "").suffix.casefold()
-    okf_requested = is_okf_import_format(import_format)
-    if suffix in _MARKDOWN_SUFFIXES:
-        if okf_requested:
-            raise MarkdownImportGovernanceError("archive_type_unsupported", "OKF 导入仅支持 ZIP")
-        return InspectedArchive(
-            archive_kind="markdown",
-            documents=(_document(PurePosixPath(filename or "import.md").name, content),),
-            manifest={},
-            structure={},
-            skipped_entries=0,
-            archive_sha256=archive_sha256,
-        )
     if suffix != ".zip":
-        raise MarkdownImportGovernanceError("archive_type_unsupported", "仅支持 Markdown 或 ZIP")
+        raise MarkdownImportGovernanceError("archive_type_unsupported", "OKF 导入仅支持 ZIP")
 
     try:
         archive = zipfile.ZipFile(io.BytesIO(content))
@@ -464,133 +461,7 @@ def inspect_markdown_archive(content, filename="", import_format=""):  # noqa: C
             else:
                 skipped += 1
 
-    if okf_requested:
-        return _inspect_okf_archive(payloads, skipped, archive_sha256, member_paths)
-
-    manifest = {}
-    structure = {}
-    archive_kind = "third_party"
-    if "manifest.json" in payloads:
-        try:
-            manifest = json.loads(_decode_utf8(payloads["manifest.json"], "manifest.json"))
-        except json.JSONDecodeError as error:
-            raise MarkdownImportGovernanceError("manifest_invalid", "manifest.json 不是合法 JSON") from error
-        if manifest.get("format") == NATIVE_ARCHIVE_FORMAT:
-            archive_kind = "native"
-            if "structure.json" not in payloads:
-                raise MarkdownImportGovernanceError("native_structure_missing", "原生归档缺少 structure.json")
-            try:
-                structure = json.loads(_decode_utf8(payloads["structure.json"], "structure.json"))
-            except json.JSONDecodeError as error:
-                raise MarkdownImportGovernanceError("native_structure_invalid", "structure.json 不是合法 JSON") from error
-
-    manifest_pages = {item.get("archive_path"): item for item in manifest.get("pages", []) if isinstance(item, dict)}
-    documents = []
-    for path, payload in sorted(payloads.items()):
-        if PurePosixPath(path).suffix.casefold() not in _MARKDOWN_SUFFIXES:
-            continue
-        metadata = manifest_pages.get(path, {})
-        document = _document(path, payload, metadata=metadata)
-        if archive_kind == "native":
-            expected_hash = metadata.get("content_sha256")
-            if not metadata or expected_hash != document["content_sha256"]:
-                raise MarkdownImportGovernanceError(
-                    "native_page_hash_mismatch",
-                    "原生归档页面映射或内容哈希不一致",
-                    details={"path": path},
-                )
-        documents.append(document)
-    if not documents and archive_kind != "native":
-        raise MarkdownImportGovernanceError("archive_has_no_markdown", "归档中没有 Markdown 页面")
-    if archive_kind == "native":
-        manifest_directories = manifest.get("directories")
-        structure_directories = structure.get("directories") if isinstance(structure, dict) else None
-        manifest_page_entries = manifest.get("pages")
-        if not isinstance(manifest_directories, list) or not isinstance(structure_directories, list):
-            raise MarkdownImportGovernanceError("native_structure_invalid", "原生目录清单格式无效")
-        if not isinstance(manifest_page_entries, list):
-            raise MarkdownImportGovernanceError("native_manifest_pages_invalid", "原生页面清单格式无效")
-
-        manifest_keys = [item.get("key") for item in manifest_directories if isinstance(item, dict)]
-        structure_keys = [item.get("key") for item in structure_directories if isinstance(item, dict)]
-        if (
-            len(manifest_keys) != len(manifest_directories)
-            or len(structure_keys) != len(structure_directories)
-            or len(manifest_keys) != len(set(manifest_keys))
-            or len(structure_keys) != len(set(structure_keys))
-            or any(not _KEY_RE.fullmatch(str(key or "")) for key in manifest_keys + structure_keys)
-            or set(manifest_keys) != set(structure_keys)
-        ):
-            raise MarkdownImportGovernanceError(
-                "native_directory_key_invalid",
-                "原生归档目录 key 非法、重复或 manifest/structure 不一致",
-            )
-        structure_key_set = set(structure_keys)
-        for item in structure_directories:
-            parent = item.get("parent")
-            if parent is not None and (not isinstance(parent, dict) or parent.get("key") not in structure_key_set):
-                raise MarkdownImportGovernanceError(
-                    "native_directory_parent_invalid",
-                    "原生结构包含未知父目录 key",
-                    details={"key": item.get("key")},
-                )
-
-        manifest_paths = set()
-        for item in manifest_page_entries:
-            if not isinstance(item, dict):
-                raise MarkdownImportGovernanceError(
-                    "native_manifest_pages_invalid",
-                    "原生页面映射必须是对象",
-                )
-            archive_path = _safe_member_path(item.get("archive_path"))
-            if archive_path in manifest_paths:
-                raise MarkdownImportGovernanceError(
-                    "native_manifest_page_duplicate",
-                    "原生页面 archive_path 重复",
-                    details={"path": archive_path},
-                )
-            manifest_paths.add(archive_path)
-            if item.get("directory_key") not in structure_key_set:
-                raise MarkdownImportGovernanceError(
-                    "native_page_directory_unknown",
-                    "原生页面引用未知目录 key",
-                    details={
-                        "path": archive_path,
-                        "directory_key": item.get("directory_key"),
-                    },
-                )
-        document_paths = {document["archive_path"] for document in documents}
-        if manifest_paths != document_paths:
-            raise MarkdownImportGovernanceError(
-                "native_manifest_page_set_mismatch",
-                "原生页面清单与 ZIP 中 Markdown 文件不一致",
-                details={
-                    "missing": sorted(manifest_paths - document_paths),
-                    "unexpected": sorted(document_paths - manifest_paths),
-                },
-            )
-        expected_fingerprint = manifest.get("structure_fingerprint")
-        actual_fingerprint = hashlib.sha256(
-            json.dumps(
-                structure,
-                ensure_ascii=False,
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode("utf-8")
-        ).hexdigest()
-        if expected_fingerprint and expected_fingerprint != actual_fingerprint:
-            raise MarkdownImportGovernanceError(
-                "native_structure_fingerprint_mismatch",
-                "原生结构 fingerprint 与 structure.json 不一致",
-            )
-    return InspectedArchive(
-        archive_kind=archive_kind,
-        documents=tuple(documents),
-        manifest=manifest,
-        structure=structure,
-        skipped_entries=skipped,
-        archive_sha256=archive_sha256,
-    )
+    return _inspect_okf_archive(payloads, skipped, archive_sha256, member_paths)
 
 
 def _existing_pages(knowledge_base):
@@ -600,13 +471,18 @@ def _existing_pages(knowledge_base):
     return result
 
 
+def _folder_path(document):
+    parent = PurePosixPath(document["archive_path"]).parent.as_posix()
+    return "" if parent == "." else parent
+
+
 def _path_suggestion(knowledge_base, document, options):
     explicit_id = options.get("target_directory_id")
     if explicit_id:
         directory = knowledge_base.directories.filter(pk=explicit_id).first()
         return directory.key if directory is not None else None
     mappings = options.get("path_mappings") or {}
-    folder = PurePosixPath(document["archive_path"]).parent.as_posix()
+    folder = _folder_path(document)
     value = mappings.get(folder)
     if value is None:
         return document.get("directory_key") or None
@@ -620,13 +496,25 @@ def _restore_structure_requested(options):
     return bool(options.get("restore_structure") or options.get("restore_native_structure"))
 
 
+def _reject_structure_restore(options):
+    if _restore_structure_requested(options):
+        raise MarkdownImportGovernanceError(
+            "native_structure_restore_unavailable",
+            "OKF 导入不支持恢复原生结构",
+            status_code=400,
+        )
+
+
+def _drop_retired_import_options(options):
+    cleaned = dict(options or {})
+    cleaned.pop("path_mappings", None)
+    return cleaned
+
+
 def _create_folders_requested(options):
+    if "create_directories_from_folders" not in options:
+        return True
     return bool(options.get("create_directories_from_folders"))
-
-
-def _folder_path(document):
-    parent = PurePosixPath(document["archive_path"]).parent.as_posix()
-    return "" if parent == "." else parent
 
 
 def _resolve_existing_directory(knowledge_base, value, *, field):
@@ -675,7 +563,7 @@ def _walk_named_folder_children(names, start_parent, sibling_names):
     parent = start_parent
     matched = 0
     for name in names:
-        hit = sibling_names.get((_folder_parent_token(parent), name.casefold()))
+        hit = sibling_names.get((_folder_parent_token(parent), normalize_folder_name(name)))
         if hit is None:
             break
         parent = _anchor_from_sibling(hit)
@@ -683,29 +571,68 @@ def _walk_named_folder_children(names, start_parent, sibling_names):
     return matched, parent
 
 
-def _align_okf_folder_parts(parts, sibling_names, unclassified_parent):
-    """Match only the archive's first folder onto a root structure directory.
+def _okf_has_loose_pages(inspected):
+    return any(len(PurePosixPath(document["archive_path"]).parts) == 1 for document in inspected.documents)
 
-    Nested folders stay under that first-level directory (create or reuse
-    children). They are never aligned onto other root directories.
-    """
-    if not parts:
-        return unclassified_parent, ()
-    first_hit = sibling_names.get((None, parts[0].casefold()))
-    if first_hit is not None and first_hit.get("key") != UNCLASSIFIED_DIRECTORY_KEY:
-        start = _anchor_from_sibling(first_hit)
-        matched, parent = _walk_named_folder_children(parts[1:], start, sibling_names)
-        matched += 1
+
+def _okf_first_level_folders(inspected):
+    folders = []
+    seen = set()
+    for document in inspected.documents:
+        parts = PurePosixPath(document["archive_path"]).parts
+        if len(parts) < 2:
+            continue
+        name = parts[0]
+        identity = normalize_folder_name(name)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        folders.append(name)
+    return folders
+
+
+def _okf_alignment_mode(inspected):
+    if _okf_has_loose_pages(inspected):
+        return "new_root"
+    if any(match_frozen_knowledge_root_name(name) for name in _okf_first_level_folders(inspected)):
+        return "merge"
+    return "new_root"
+
+
+def _okf_layer_display_name(inspected, options):
+    name = str(getattr(inspected, "import_layer_name", "") or "").strip()
+    if name:
+        return name
+    filename = str((options or {}).get("filename") or "").strip()
+    stem = PurePosixPath(filename).stem
+    return stem or "imported"
+
+
+def _align_okf_folder_parts(parts, sibling_names, root_parent, *, mode):
+    if mode == "new_root":
+        if not parts:
+            return root_parent, ()
+        matched, parent = _walk_named_folder_children(parts, root_parent, sibling_names)
         return parent, parts[matched:]
-    matched, parent = _walk_named_folder_children(parts, unclassified_parent, sibling_names)
+    if not parts:
+        return None, ()
+    spec = match_frozen_knowledge_root_name(parts[0])
+    if spec is not None:
+        hit = sibling_names.get((None, normalize_folder_name(spec["name"])))
+        if hit is None:
+            return None, parts
+        start = _anchor_from_sibling(hit)
+        matched, parent = _walk_named_folder_children(parts[1:], start, sibling_names)
+        return parent, parts[1 + matched :]
+    matched, parent = _walk_named_folder_children(parts, None, sibling_names)
     return parent, parts[matched:]
 
 
 def _folder_structure_plan(knowledge_base, inspected, options):
-    if inspected.archive_kind not in {"third_party", "okf"}:
+    if inspected.archive_kind != "okf":
         raise MarkdownImportGovernanceError(
-            "folder_structure_requires_third_party",
-            "仅第三方 ZIP 或 OKF 归档可从文件夹创建人工目录",
+            "folder_structure_requires_okf",
+            "仅 OKF 归档可从文件夹创建人工目录",
         )
     revision = knowledge_base.active_structure_revision
     generation = knowledge_base.active_generation
@@ -731,16 +658,9 @@ def _folder_structure_plan(knowledge_base, inspected, options):
     )
     if target is not None:
         root_parent = {"id": target.pk, "key": target.key}
-    elif inspected.archive_kind == "okf":
-        unclassified = _resolve_existing_directory(
-            knowledge_base,
-            UNCLASSIFIED_DIRECTORY_KEY,
-            field="unclassified_directory",
-        )
-        root_parent = {"id": unclassified.pk, "key": unclassified.key}
     else:
         root_parent = None
-    path_mappings = dict(options.get("path_mappings") or {})
+    path_mappings = {}
     folders = set()
     for document in inspected.documents:
         folder = _folder_path(document)
@@ -777,28 +697,26 @@ def _folder_structure_plan(knowledge_base, inspected, options):
     for node in existing_nodes:
         if node.get("status") != "active":
             continue
+        if node.get("key") == MATERIALS_ROOT_KEY:
+            continue
         parent = node.get("parent")
         parent_token = ("existing", parent["id"]) if parent else None
-        sibling_names[(parent_token, str(node["name"]).casefold())] = {
+        sibling_names[(parent_token, normalize_folder_name(node["name"]))] = {
             "id": node["id"],
             "key": node["key"],
         }
 
-    reuse_name_collisions = inspected.archive_kind == "okf"
-    okf_align_structure = inspected.archive_kind == "okf" and target is None
+    okf_align_structure = target is None
+    alignment_mode = _okf_alignment_mode(inspected) if okf_align_structure else ""
+    alignment_reports = []
     created_reports = []
 
     def ensure_child(parent, name, folder_path):
+        display_name = import_folder_display_name(name, parent_is_root=parent is None)
         parent_token = _folder_parent_token(parent)
-        collision = sibling_names.get((parent_token, name.casefold()))
+        collision = sibling_names.get((parent_token, normalize_folder_name(display_name)))
         if collision is not None:
-            if reuse_name_collisions:
-                return _anchor_from_sibling(collision)
-            raise MarkdownImportGovernanceError(
-                "folder_directory_name_conflict",
-                "文件夹名称与目标结构中的同级目录冲突，请显式配置路径映射",
-                details={"folder": folder_path, "directory": collision},
-            )
+            return _anchor_from_sibling(collision)
         client_ref = _folder_client_ref(folder_path)
         if parent is None:
             depth = 1
@@ -815,8 +733,8 @@ def _folder_structure_plan(knowledge_base, inspected, options):
         node = {
             "kind": "new",
             "client_ref": client_ref,
-            "name": name,
-            "description": (f"由 OKF 归档文件夹 {folder_path} 创建" if inspected.archive_kind == "okf" else f"由第三方归档文件夹 {folder_path} 创建"),
+            "name": display_name,
+            "description": f"由 OKF 归档文件夹 {folder_path} 创建",
             "order": len(existing_nodes) + len(new_nodes),
             "rules": {
                 "allowed_page_types": [],
@@ -827,18 +745,36 @@ def _folder_structure_plan(knowledge_base, inspected, options):
         new_nodes.append(node)
         anchor = {"client_ref": client_ref}
         new_depths[client_ref] = depth
-        sibling_names[(parent_token, name.casefold())] = anchor
+        sibling_names[(parent_token, normalize_folder_name(display_name))] = anchor
         created_reports.append(
             {
                 "folder_path": folder_path,
                 "client_ref": client_ref,
-                "name": name,
+                "name": display_name,
             }
         )
         return anchor
 
     if okf_align_structure:
         folders = {_folder_path(document) for document in inspected.documents if _folder_path(document)}
+        if alignment_mode == "new_root":
+            layer_name = _okf_layer_display_name(inspected, options)
+            root_parent = ensure_child(None, layer_name, layer_name)
+            alignment_reports.append({"folder": "", "action": "new_root", "target": layer_name})
+            directory_bindings[""] = _binding_from_anchor(root_parent)
+        else:
+            for name in _okf_first_level_folders(inspected):
+                spec = match_frozen_knowledge_root_name(name)
+                if spec is not None:
+                    alignment_reports.append({"folder": name, "action": "merge", "target": spec["name"]})
+                else:
+                    alignment_reports.append(
+                        {
+                            "folder": name,
+                            "action": "create",
+                            "target": import_folder_display_name(name, parent_is_root=True),
+                        }
+                    )
 
     for folder in sorted(
         folders,
@@ -861,6 +797,7 @@ def _folder_structure_plan(knowledge_base, inspected, options):
                 PurePosixPath(folder).parts,
                 sibling_names,
                 root_parent,
+                mode=alignment_mode,
             )
             current = parent
             created = list(PurePosixPath(folder).parts[: len(PurePosixPath(folder).parts) - len(remainder)])
@@ -889,51 +826,34 @@ def _folder_structure_plan(knowledge_base, inspected, options):
         },
         "directory_bindings": directory_bindings,
         "new_directories": list(created_reports),
+        "alignment": alignment_reports,
+        "alignment_mode": alignment_mode,
+        "bundle_root": inspected.bundle_root,
+        "import_layer_name": getattr(inspected, "import_layer_name", "") or "",
     }
 
 
 def build_import_preview(knowledge_base, inspected, options=None):
     options = dict(options or {})
+    _reject_structure_restore(options)
     inspected = _ensure_okf_prepared(knowledge_base, inspected)
     existing = _existing_pages(knowledge_base)
     titles = set()
     rows = []
     revision = knowledge_base.active_structure_revision
-    restoring_structure = _restore_structure_requested(options)
     creating_folders = _create_folders_requested(options)
-    if restoring_structure and creating_folders:
-        raise MarkdownImportGovernanceError(
-            "import_structure_options_conflict",
-            "恢复原生结构与从第三方文件夹创建目录不能同时启用",
-        )
     structure_preview = None
     folder_plan = None
-    if restoring_structure:
-        if inspected.archive_kind != "native" or not inspected.structure:
-            raise MarkdownImportGovernanceError(
-                "native_structure_restore_unavailable",
-                "只有包含 structure.json 的 OpsPilot 原生归档可恢复结构",
-            )
-        try:
-            structure_preview = preview_native_structure_restore(
-                knowledge_base,
-                inspected.structure,
-            )
-        except StructureServiceError as error:
-            raise MarkdownImportGovernanceError(
-                error.code,
-                str(error),
-                status_code=error.status_code,
-                retryable=error.retryable,
-                details=error.details,
-            ) from error
     if creating_folders:
         folder_plan = _folder_structure_plan(knowledge_base, inspected, options)
         structure_preview = {
-            "restore_native_structure": False,
             "create_directories_from_folders": True,
             "create_directory_count": len(folder_plan["new_directories"]),
             "directories": folder_plan["new_directories"],
+            "alignment": list(folder_plan.get("alignment") or []),
+            "alignment_mode": folder_plan.get("alignment_mode") or "",
+            "bundle_root": folder_plan.get("bundle_root") or "",
+            "import_layer_name": folder_plan.get("import_layer_name") or "",
         }
     for document in inspected.documents:
         original_title = document["title"]
@@ -973,34 +893,7 @@ def build_import_preview(knowledge_base, inspected, options=None):
             row["renamed_from"] = document["renamed_from"]
         if revision is None:
             raise MarkdownImportGovernanceError("active_structure_missing", "知识库缺少 active structure")
-        if restoring_structure:
-            directory_key = document.get("directory_key") or UNCLASSIFIED_DIRECTORY_KEY
-            row["directory"] = {
-                "directory_id": None,
-                "directory_key": directory_key,
-                "assignment_mode": "auto",
-                "source": "native_import",
-                "trace": ["native_structure_restore"],
-                "route_reason": "native_structure_restore",
-                "suggestion": {
-                    "key": directory_key,
-                    "source": "native_import",
-                    "reason": "native manifest stable key",
-                    "confidence": 1,
-                    "schema_mismatch": False,
-                    "low_confidence": False,
-                },
-                "redirect_chain": [],
-                "structure_revision": {
-                    "id": None,
-                    "revision_no": None,
-                    "fingerprint": inspected.manifest.get(
-                        "structure_fingerprint",
-                        "",
-                    ),
-                },
-            }
-        elif creating_folders and folder_plan["directory_bindings"].get(_folder_path(document)):
+        if creating_folders and folder_plan["directory_bindings"].get(_folder_path(document)):
             binding = folder_plan["directory_bindings"][_folder_path(document)]
             folder = _folder_path(document)
             if binding["kind"] == "new":
@@ -1009,16 +902,16 @@ def build_import_preview(knowledge_base, inspected, options=None):
                     "directory_key": "",
                     "pending_client_ref": binding["client_ref"],
                     "assignment_mode": "auto",
-                    "source": "third_party_folder_preview",
+                    "source": "okf_folder_preview",
                     "trace": [
-                        "third_party_folder",
+                        "okf_folder",
                         folder,
                         binding["client_ref"],
                     ],
                     "route_reason": "create_manual_directory_from_folder",
                     "suggestion": {
                         "key": None,
-                        "source": "third_party_folder",
+                        "source": "okf_folder",
                         "reason": folder,
                         "confidence": 1,
                         "schema_mismatch": False,
@@ -1064,7 +957,7 @@ def build_import_preview(knowledge_base, inspected, options=None):
                 suggested_key=_path_suggestion(knowledge_base, document, options),
                 suggestion_source="native_import",
                 classification_root_id=options.get("classification_root_id"),
-                suggestion_reason="native manifest" if inspected.archive_kind == "native" else "archive path mapping",
+                suggestion_reason="okf folder alignment",
             )
             row["directory"] = assignment.as_build_trace()
         rows.append(row)
@@ -1079,8 +972,6 @@ def build_import_preview(knowledge_base, inspected, options=None):
             "update": sum(row["action"] == "update" for row in rows),
             "candidate": sum(row["action"] == "candidate" for row in rows),
         },
-        "native_structure_available": bool(inspected.structure),
-        "restore_structure_requested": restoring_structure,
         "create_directories_from_folders_requested": creating_folders,
         "structure_preview": structure_preview,
     }
@@ -1089,6 +980,9 @@ def build_import_preview(knowledge_base, inspected, options=None):
         preview["okf"] = {
             "okf_version": inspected.okf_version,
             "bundle_root": inspected.bundle_root,
+            "import_layer_name": getattr(inspected, "import_layer_name", "") or "",
+            "alignment": list((structure_preview or {}).get("alignment") or []),
+            "alignment_mode": (structure_preview or {}).get("alignment_mode") or "",
             "type_mapping": list(stats.get("type_mapping") or []),
             "skipped": list(stats.get("skipped") or [dict(item) for item in inspected.skipped_details]),
             "links": dict(stats.get("links") or {"rewritten": 0, "unresolved": 0}),
@@ -1105,7 +999,9 @@ def _fingerprint(value):
 
 @transaction.atomic
 def preflight_markdown_import(knowledge_base, content, *, filename="", actor="", options=None):
-    options = dict(options or {})
+    options = _drop_retired_import_options(options)
+    if filename and not options.get("filename"):
+        options["filename"] = filename
     inspected = inspect_markdown_archive(content, filename, import_format=options.get("import_format"))
     knowledge_base = WikiKnowledgeBase.objects.select_for_update().get(pk=knowledge_base.pk)
     inspected = _ensure_okf_prepared(knowledge_base, inspected)
@@ -1142,7 +1038,7 @@ def preflight_markdown_import(knowledge_base, content, *, filename="", actor="",
 
 def _import_meta_snapshot(document, inspected):
     snapshot = {
-        "source": "okf_import" if inspected.archive_kind == "okf" else "markdown_import",
+        "source": "okf_import",
         "archive_path": document["archive_path"],
         "archive_sha256": inspected.archive_sha256,
     }
@@ -1487,6 +1383,18 @@ def run_markdown_import_search_enrichment(knowledge_base_id, generation_id, page
         llm_when="always",
         inplace=True,
     )
+    try:
+        enhance_generation_overviews(
+            generation_id,
+            llm_model_id=knowledge_base.llm_model_id,
+            budget=new_alias_enrich_call_budget(),
+            invoke_llm=_invoke_llm,
+        )
+    except Exception:
+        logger.exception(
+            "wiki okf import overview enhance failed generation_id=%s",
+            generation_id,
+        )
     try:
         cascade(
             knowledge_base,
@@ -1913,8 +1821,7 @@ def execute_markdown_import(
     inspected = _ensure_okf_prepared(current, inspected)
     inspected = _attach_okf_images(current, inspected, content)
     preview = build_import_preview(current, inspected, options=probe.options)
-    structure_change_requested = _restore_structure_requested(probe.options) or _create_folders_requested(probe.options)
-    if structure_change_requested:
+    if _create_folders_requested(probe.options):
         with transaction.atomic():
             record, current = _claim_preflight(
                 current,
@@ -1924,16 +1831,17 @@ def execute_markdown_import(
                 preview,
                 preflight_id=probe.pk,
             )
+            folder_plan = _folder_structure_plan(
+                current,
+                inspected,
+                record.options,
+            )
             structure_result = None
-            folder_plan = None
-            if _restore_structure_requested(record.options):
+            if folder_plan["new_directories"]:
                 try:
-                    structure_result = restore_native_structure(
+                    structure_result = save_structure(
                         current,
-                        inspected.structure,
-                        expected_base_generation_id=record.base_generation_id,
-                        expected_structure_version=record.structure_version,
-                        source_fingerprint=inspected.archive_sha256,
+                        folder_plan["payload"],
                         operator=actor,
                     )
                 except StructureServiceError as error:
@@ -1944,70 +1852,46 @@ def execute_markdown_import(
                         retryable=error.retryable,
                         details=error.details,
                     ) from error
-            else:
-                folder_plan = _folder_structure_plan(
-                    current,
-                    inspected,
-                    record.options,
-                )
-                if folder_plan["new_directories"]:
-                    try:
-                        structure_result = save_structure(
-                            current,
-                            folder_plan["payload"],
-                            operator=actor,
-                        )
-                    except StructureServiceError as error:
-                        raise MarkdownImportGovernanceError(
-                            error.code,
-                            str(error),
-                            status_code=error.status_code,
-                            retryable=error.retryable,
-                            details=error.details,
-                        ) from error
 
             current = WikiKnowledgeBase.objects.select_related(
                 "active_structure_revision",
                 "active_generation",
             ).get(pk=current.pk)
             routed_options = dict(record.options or {})
-            routed_options["restore_structure"] = False
-            routed_options["restore_native_structure"] = False
             routed_options["create_directories_from_folders"] = False
 
             folder_report = []
-            if folder_plan is not None:
-                created_by_ref = {
-                    item["client_ref"]: item for item in (structure_result.get("client_ref_map", []) if structure_result is not None else [])
-                }
-                path_mappings = dict(routed_options.get("path_mappings") or {})
-                for folder, binding in folder_plan["directory_bindings"].items():
-                    if binding["kind"] == "existing":
-                        directory_id = binding["id"]
-                        directory_key = binding["key"]
-                    else:
-                        created = created_by_ref.get(binding["client_ref"])
-                        if created is None:
-                            raise MarkdownImportGovernanceError(
-                                "folder_directory_mapping_missing",
-                                "结构发布后缺少文件夹目录映射",
-                                details={
-                                    "folder": folder,
-                                    "client_ref": binding["client_ref"],
-                                },
-                            )
-                        directory_id = created["id"]
-                        directory_key = created["key"]
-                    path_mappings[folder] = directory_id
-                    folder_report.append(
-                        {
-                            "folder_path": folder,
-                            "directory_id": directory_id,
-                            "directory_key": directory_key,
-                            "created": binding["kind"] == "new",
-                        }
-                    )
-                routed_options["path_mappings"] = path_mappings
+            created_by_ref = {
+                item["client_ref"]: item for item in (structure_result.get("client_ref_map", []) if structure_result is not None else [])
+            }
+            path_mappings = dict(routed_options.get("path_mappings") or {})
+            for folder, binding in folder_plan["directory_bindings"].items():
+                if binding["kind"] == "existing":
+                    directory_id = binding["id"]
+                    directory_key = binding["key"]
+                else:
+                    created = created_by_ref.get(binding["client_ref"])
+                    if created is None:
+                        raise MarkdownImportGovernanceError(
+                            "folder_directory_mapping_missing",
+                            "结构发布后缺少文件夹目录映射",
+                            details={
+                                "folder": folder,
+                                "client_ref": binding["client_ref"],
+                            },
+                        )
+                    directory_id = created["id"]
+                    directory_key = created["key"]
+                path_mappings[folder] = directory_id
+                folder_report.append(
+                    {
+                        "folder_path": folder,
+                        "directory_id": directory_id,
+                        "directory_key": directory_key,
+                        "created": binding["kind"] == "new",
+                    }
+                )
+            routed_options["path_mappings"] = path_mappings
 
             routed_preview = build_import_preview(
                 current,
@@ -2024,19 +1908,12 @@ def execute_markdown_import(
                 existing_build_record_id=existing_build_record_id,
                 archive_content=content,
             )
-            if _restore_structure_requested(record.options):
-                result["structure_restore"] = {
-                    "structure_revision": structure_result["structure_revision"],
-                    "governance_generation": structure_result["active_generation"],
-                    "client_ref_map": structure_result["client_ref_map"],
-                }
-            else:
-                result["folder_structure"] = {
-                    "created_directory_count": sum(item["created"] for item in folder_report),
-                    "directories": folder_report,
-                    "structure_revision": (structure_result["structure_revision"] if structure_result is not None else None),
-                    "governance_generation": (structure_result["active_generation"] if structure_result is not None else None),
-                }
+            result["folder_structure"] = {
+                "created_directory_count": sum(item["created"] for item in folder_report),
+                "directories": folder_report,
+                "structure_revision": (structure_result["structure_revision"] if structure_result is not None else None),
+                "governance_generation": (structure_result["active_generation"] if structure_result is not None else None),
+            }
             _store_preflight_execution_result(record.pk, result)
         return _maybe_run_markdown_import_search_enrichment(
             current,

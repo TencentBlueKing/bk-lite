@@ -2,12 +2,7 @@ from datetime import timedelta
 from typing import Any
 
 from apps.core.utils.time_util import parse_rfc3339_range_utc, rfc3339_to_timestamp
-from apps.operation_analysis.services.datasource_preview.base import (
-    BaseConnectorExecutor,
-    ConnectorError,
-    ExecuteResult,
-    PreviewResult,
-)
+from apps.operation_analysis.services.datasource_preview.base import BaseConnectorExecutor, ConnectorError, ExecuteResult, PreviewResult
 from apps.operation_analysis.services.datasource_preview.prometheus_client import PrometheusHttpClient
 from apps.operation_analysis.services.datasource_preview.prometheus_transform import (
     clamp_max_series,
@@ -15,6 +10,7 @@ from apps.operation_analysis.services.datasource_preview.prometheus_transform im
     transform_range_result,
 )
 from apps.operation_analysis.services.datasource_preview.schema import infer_fields
+from apps.operation_analysis.services.user_messages import oa_message
 
 MAX_RANGE_SPAN = timedelta(days=31)
 DEFAULT_STEP = "1m"
@@ -32,12 +28,14 @@ class PrometheusConnectorExecutor(BaseConnectorExecutor):
     def execute(self, connection_config: dict[str, Any], params: dict[str, Any]) -> ExecuteResult:
         query = str(params.get("query") or "").strip()
         if not query:
-            raise ConnectorError("Prometheus 查询不能为空", code="prometheus_query_required", status_code=400)
+            raise ConnectorError(
+                oa_message("messages.preview_prom_query_required", "Prometheus 查询不能为空"), code="prometheus_query_required", status_code=400
+            )
 
         query_type = str(params.get("query_type") or "range").lower()
         if query_type not in {"range", "instant"}:
             raise ConnectorError(
-                "Prometheus query_type 仅支持 range 或 instant",
+                oa_message("messages.preview_prom_query_type", "Prometheus query_type 仅支持 range 或 instant"),
                 code="prometheus_query_type_invalid",
                 status_code=400,
             )
@@ -53,7 +51,7 @@ class PrometheusConnectorExecutor(BaseConnectorExecutor):
                     query_time = rfc3339_to_timestamp(end_dt)
                 except (TypeError, ValueError, OverflowError) as exc:
                     raise ConnectorError(
-                        "Prometheus time_range 必须是包含两个 RFC3339 时间戳的数组",
+                        oa_message("messages.preview_prom_time_range", "Prometheus time_range 必须是包含两个 RFC3339 时间戳的数组"),
                         code="prometheus_time_range_invalid",
                         status_code=400,
                     ) from exc
@@ -66,14 +64,14 @@ class PrometheusConnectorExecutor(BaseConnectorExecutor):
             start_dt, end_dt = parse_rfc3339_range_utc(time_range)
         except (TypeError, ValueError, OverflowError) as exc:
             raise ConnectorError(
-                "Prometheus time_range 必须是包含两个 RFC3339 时间戳的数组",
+                oa_message("messages.preview_prom_time_range", "Prometheus time_range 必须是包含两个 RFC3339 时间戳的数组"),
                 code="prometheus_time_range_invalid",
                 status_code=400,
             ) from exc
 
         if end_dt - start_dt > MAX_RANGE_SPAN:
             raise ConnectorError(
-                "Prometheus 查询时间范围不能超过 31 天",
+                oa_message("messages.preview_prom_range_too_large", "Prometheus 查询时间范围不能超过 31 天"),
                 code="prometheus_range_too_large",
                 status_code=400,
             )

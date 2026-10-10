@@ -706,6 +706,17 @@
         "hostAssetSelectionNeedsProxy": "Host model instance mode requires selecting a proxy before choosing assets",
         "proxyCloudUnavailable": "The current proxy is not bound to a cloud region, so host model instances cannot be filtered",
         "everyMinute": "Every",
+        "everyMinuteMin": "Minimum execution interval is 1 minute",
+        "api_version": "API version",
+        "smartxTask": {
+            "source": "Authentication source"
+        },
+        "fusioncomputeTask": {
+            "userType": "User type"
+        },
+        "azureTask": {
+            "subscriptionId": "Subscription ID"
+        },
         "executeOnce": "Execute once",
         "database": "Database",
         "port": "Port",
@@ -1084,6 +1095,7 @@
             "invalidPort": "Enter a valid port from 1 to 65535"
         },
         "platformApiTask": {
+            "identityPort": "Identity service port",
             "tenantId": "Tenant ID",
             "userDomainName": "User domain",
             "projectId": "Project ID",
@@ -1345,6 +1357,7 @@
             "switch": "Switch"
         },
         "objectType": "Object type",
+        "selectedAssetCount": "{count} selected",
         "selectDeviceModels": "Device models",
         "selectDeviceModelsPlaceholder": "Select models",
         "duplicateManageIp": "The same management IP cannot be selected twice: {ip}",
@@ -1737,9 +1750,9 @@
         "credentialHint": "A reporting credential is generated when the task is saved. View or rotate it in task details.",
         "cudCounts": "Create / update / delete",
         "curlCommand": "Report command (curl)",
-        "curlHintHost": "Replace <CMDB_HOST> with the CMDB backend address (localhost:8011 locally; use the backend domain or gateway in production).",
+        "curlHintHost": "Replace '<CMDB_HOST>' with the CMDB backend address (localhost:8011 locally; use the backend domain or gateway in production).",
         "curlHintPayload": "This is the smallest runnable single report. See Report examples below for multiple records and relations.",
-        "curlHintToken": "Replace <token> with the task credential token and each <field> placeholder with an actual value before running.",
+        "curlHintToken": "Replace '<token>' with the task credential token and each '<field>' placeholder with an actual value before running.",
         "errorCount": "Errors",
         "exampleInstances": "Example 1: Report instances only",
         "exampleInstancesHint": "The instances array supports multiple records. Each identity key locates a record uniquely; existing records update and new records are created. Other model fields are allowed.",
@@ -1994,6 +2007,8 @@
     "delete": "Delete record",
     "download": "Download file",
     "download_errors": "Download error report",
+    "view_errors": "View error report",
+    "errorsEmpty": "The error report has nothing to show",
     "deleteConfirm": "Delete this record and its files? Imported instances will remain.",
     "status": {
       "queued": "Queued",

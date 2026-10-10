@@ -5,35 +5,52 @@ import path from 'node:path';
 const root = process.cwd();
 const read = (file: string) => fs.readFileSync(path.join(root, file), 'utf8');
 
-const wikiApi = read('src/app/opspilot/api/wiki.ts');
-const wikiTypes = read('src/app/opspilot/types/wiki.ts');
 const pageTab = read('src/app/opspilot/components/wiki/PageTab.tsx');
+const modal = read('src/app/opspilot/components/wiki/WikiMarkdownImportModal.tsx');
+const editor = read('src/app/opspilot/components/wiki/WikiPageEditorDrawer.tsx');
 const zh = JSON.parse(read('src/app/opspilot/locales/zh.json'));
 const en = JSON.parse(read('src/app/opspilot/locales/en.json'));
 
-assert.match(wikiTypes, /export interface MarkdownImportResult/);
-assert.match(wikiTypes, /created: number/);
-assert.match(wikiTypes, /updated: number/);
-assert.match(wikiTypes, /skipped: number/);
+assert.match(pageTab, /t\(["']wiki\.importOkf["']\)/);
+assert.doesNotMatch(pageTab, /wiki\.exportMarkdown/);
+assert.doesNotMatch(pageTab, /wiki\.importMarkdown/);
+assert.doesNotMatch(pageTab, /markdownImportOpen/);
+assert.doesNotMatch(pageTab, /importFormat/);
+assert.doesNotMatch(modal, /importFormat/);
+assert.doesNotMatch(modal, /restoreStructure/);
+assert.doesNotMatch(modal, /restore_structure/);
+assert.doesNotMatch(modal, /path_mappings/);
+assert.doesNotMatch(modal, /markdownImportArchiveMarkdown/);
+assert.match(modal, /okfImportAlignmentTitle/);
+assert.match(modal, /options\.import_format = ["']okf["']/);
+assert.match(
+  editor,
+  /!\[\"other\", \"source\"\]\.includes\(key\)/,
+  "new page type select must not offer source",
+);
 
-assert.match(wikiApi, /const importKnowledgeBaseMarkdown = \(id: number, file: File\): Promise<MarkdownImportResult> =>/);
-assert.match(wikiApi, /new FormData\(\)/);
-assert.match(wikiApi, /fd\.append\('file', file\)/);
-assert.match(wikiApi, /\/knowledge_base\/\$\{id\}\/import_markdown\//);
-assert.match(wikiApi, /importKnowledgeBaseMarkdown,/);
-
-assert.match(pageTab, /UploadOutlined/);
-assert.match(pageTab, /importKnowledgeBaseMarkdown/);
-assert.match(pageTab, /handleImportMarkdown/);
-assert.match(pageTab, /accept="\.md,\.markdown,\.zip"/);
-assert.match(pageTab, /showUploadList=\{false\}/);
-assert.match(pageTab, /beforeUpload=\{\(file\) =>/);
-assert.match(pageTab, /t\('wiki\.importMarkdown'\)/);
-assert.match(pageTab, /t\('wiki\.importMarkdownDone'\)/);
-
-for (const key of ['importMarkdown', 'importMarkdownDone', 'importMarkdownFailed']) {
+for (const key of ['importOkf', 'okfImportAlignmentTitle', 'materialsRootEmpty', 'introductionRequired']) {
   assert.ok(zh.wiki[key], `missing zh wiki.${key}`);
   assert.ok(en.wiki[key], `missing en wiki.${key}`);
 }
+for (const gone of [
+  'importMarkdown',
+  'markdownImportTitle',
+  'markdownImportDropHint',
+  'markdownImportFileTypeInvalid',
+  'markdownImportArchiveMarkdown',
+  'markdownImportRestoreStructure',
+]) {
+  assert.equal(zh.wiki[gone], undefined, `zh wiki.${gone} should be removed`);
+  assert.equal(en.wiki[gone], undefined, `en wiki.${gone} should be removed`);
+}
+assert.equal(zh.wiki.importOkf, '导入 OKF');
+assert.equal(en.wiki.importOkf, 'Import OKF');
+assert.equal(zh.wiki.triggerMarkdownImport, '导入 OKF');
+assert.equal(en.wiki.triggerMarkdownImport, 'Import OKF');
+assert.doesNotMatch(zh.wiki.triggerMarkdownImport, /Markdown/);
+assert.doesNotMatch(en.wiki.triggerMarkdownImport, /Markdown/);
+assert.doesNotMatch(zh.wiki.importOkf, /Markdown/);
+assert.doesNotMatch(en.wiki.importOkf, /Markdown/);
 
-console.log('wiki markdown import validation passed');
+console.log('wiki OKF-only import validation passed');

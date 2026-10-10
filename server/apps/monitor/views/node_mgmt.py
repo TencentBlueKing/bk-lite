@@ -116,6 +116,15 @@ class NodeMgmtView(ViewSet):
         result = InstanceConfigService.get_config_content(request.data["ids"], actor_context)
         return WebUtils.response_success(result)
 
+    @action(methods=["post"], detail=False, url_path="get_plugin_child_config")
+    def get_plugin_child_config(self, request):
+        actor_context = _build_actor_context(request)
+        result = InstanceConfigService.get_plugin_child_config_content(
+            request.data.get("monitor_plugin_id"),
+            actor_context,
+        )
+        return WebUtils.response_success(result)
+
     @action(methods=["post"], detail=False, url_path="update_instance_collect_config")
     def update_instance_collect_config(self, request):
         actor_context = _build_actor_context(request)

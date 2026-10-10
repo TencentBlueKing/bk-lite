@@ -1,9 +1,9 @@
 """Contract tests for the Asentria NetworkService SNMP plugin.
 
-Asentria SiteBoss devices expose PEN 3052 and configurable EventSensor tables.
-Those tables are site-specific and require row-level interpretation before
-temperature, humidity, contact, or power-output points can be promoted safely.
-This plugin therefore keeps a conservative baseline child for the current tick.
+Asentria SiteBoss devices expose PEN 3052. The child collects EventSensor
+temperature and humidity from the SiteBoss 450 product subtree (point class
+1 = temperature, 3 = humidity) while leaving contact, relay and analog points
+unpromoted. Shared CPU / memory / fan / PSU health metrics stay absent.
 """
 import json
 from pathlib import Path
@@ -34,6 +34,20 @@ BASE_METRICS = (
     "device_total_incoming_traffic",
     "device_total_outgoing_traffic",
 )
+SNMP_FLOOR = {
+    "snmp_uptime",
+    "interface_ifHCInOctets",
+    "interface_ifHCOutOctets",
+}
+COLLECTED_ESPOINT_METRICS = {
+    "network_service_asentria_temperature",
+    "network_service_asentria_humidity",
+}
+ESPOINT_COLUMN_OIDS = (
+    "1.3.6.1.4.1.3052.17.1.1.1.1.2",
+    "1.3.6.1.4.1.3052.17.1.1.1.1.4",
+    "1.3.6.1.4.1.3052.17.1.1.1.1.6",
+)
 UNSUPPORTED_HEALTH_METRICS = (
     "device_cpu_usage",
     "device_memory_usage",
@@ -44,8 +58,6 @@ UNSUPPORTED_HEALTH_METRICS = (
     "device_psu_state",
 )
 UNSUPPORTED_EVENT_SENSOR_METRICS = (
-    "asentria_temperature",
-    "asentria_humidity",
     "asentria_contact_state",
     "asentria_power_output_state",
     "asentria_alarm_state",
@@ -136,20 +148,37 @@ def test_snmpv3_passwords_use_runtime_env_placeholders(toml_text):
 @pytest.mark.unit
 def test_asentria_event_sensor_health_oids_are_not_guessed(metrics, policy, toml_text):
     names = {m["name"] for m in metrics["metrics"]}
+    assert COLLECTED_ESPOINT_METRICS <= names
     for absent in UNSUPPORTED_HEALTH_METRICS + UNSUPPORTED_EVENT_SENSOR_METRICS:
         assert absent not in names
         assert absent not in toml_text
-    assert PEN_ROOT not in toml_text
-    assert "esPoint" not in toml_text
+    assert PEN_ROOT in toml_text
+    for oid in ESPOINT_COLUMN_OIDS:
+        assert oid in toml_text
+    assert "esIndexPC" in toml_text
+    assert "esPointName" in toml_text
     assert policy["templates"] == []
 
 
 @pytest.mark.unit
 def test_metrics_json_embeds_deployed_snmp_floor(metrics):
     names = {metric["name"] for metric in metrics["metrics"]}
-    expected = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
-    assert names == expected
-    assert set(metrics.get("supplementary_indicators", [])) == {"snmp_uptime"}
+    assert SNMP_FLOOR <= names
+    assert names - SNMP_FLOOR == COLLECTED_ESPOINT_METRICS
+    supplementary = set(metrics.get("supplementary_indicators", []))
+    assert supplementary <= names
+    assert {"snmp_uptime"} | COLLECTED_ESPOINT_METRICS <= supplementary
+    by_name = {metric["name"]: metric for metric in metrics["metrics"]}
+    temperature = by_name["network_service_asentria_temperature"]
+    humidity = by_name["network_service_asentria_humidity"]
+    assert temperature["unit"] == "none"
+    assert humidity["unit"] == "percent"
+    assert [item["name"] for item in temperature["dimensions"]] == ["esPointName"]
+    assert [item["name"] for item in humidity["dimensions"]] == ["esPointName"]
+    assert "network_service_asentria_espoint_value{" in temperature["query"]
+    assert "esIndexPC='1'" in temperature["query"]
+    assert "network_service_asentria_espoint_value{" in humidity["query"]
+    assert "esIndexPC='3'" in humidity["query"]
 
 
 @pytest.mark.unit

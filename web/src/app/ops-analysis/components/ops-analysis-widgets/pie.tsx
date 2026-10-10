@@ -13,6 +13,7 @@ import { renderEChartsTooltipCard } from '@/components/echarts-tooltip-card';
 import type { ValueConfig } from '@/app/ops-analysis/components/ops-analysis-widgets';
 import { useEchartsFinishedReady } from '@/app/ops-analysis/hooks/useEchartsFinishedReady';
 import { formatVisibleChartValue } from '@/app/ops-analysis/utils/chartValueFormat';
+import { useTranslation } from '@/utils/i18n';
 
 export interface OpsAnalysisPieProps {
   rawData: any;
@@ -27,6 +28,8 @@ const OpsAnalysisPie: React.FC<OpsAnalysisPieProps> = ({
   onReady,
   config,
 }) => {
+  const { t } = useTranslation();
+  const pieTotalLabel = t('dashboard.pieTotal');
   const chartRef = useRef<any>(null);
   const themeName = resolveOpsChartThemeName();
   const chartTheme = useMemo(() => getOpsChartTheme(themeName), [themeName]);
@@ -112,7 +115,7 @@ const OpsAnalysisPie: React.FC<OpsAnalysisPieProps> = ({
               (sum: number, item: any) => sum + item.value,
               0,
             );
-            return `{title|总数}\n{value|${formatVisibleChartValue(total, config)}}`;
+            return `{title|${pieTotalLabel}}\n{value|${formatVisibleChartValue(total, config)}}`;
           },
           rich: {
             title: {
@@ -146,7 +149,7 @@ const OpsAnalysisPie: React.FC<OpsAnalysisPieProps> = ({
         data: chartData || [],
       },
     ],
-  }), [chartColors, chartData, chartTheme, config, legendSelected]);
+  }), [chartColors, chartData, chartTheme, config, legendSelected, pieTotalLabel]);
 
   return (
     <ChartWithSidebarLegend

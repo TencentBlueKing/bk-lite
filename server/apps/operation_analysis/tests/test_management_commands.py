@@ -22,12 +22,53 @@ from apps.operation_analysis.services.canvas.registry import CANVAS_TYPE_REGISTR
 @pytest.mark.django_db
 def test_init_default_namespace_creates_from_nats_url(settings):
     settings.NATS_SERVERS = "nats://admin:secret@127.0.0.1:4222"
+    settings.NATS_NAMESPACE = "bklite"
     call_command("init_default_namespace")
 
     ns = NameSpace.objects.get(name="默认命名空间")
     assert ns.account == "admin"
     assert ns.domain == "127.0.0.1:4222"
     assert ns.enable_tls is False
+    assert ns.namespace == "bklite"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("nats_namespace", ["", "   ", None])
+def test_init_default_namespace_uses_bklite_when_namespace_unset(settings, monkeypatch, nats_namespace):
+    settings.NATS_SERVERS = "nats://admin:secret@127.0.0.1:4222"
+    settings.NATS_NAMESPACE = nats_namespace
+    monkeypatch.delenv("NATS_NAMESPACE", raising=False)
+
+    call_command("init_default_namespace")
+
+    assert NameSpace.objects.get(name="默认命名空间").namespace == "bklite"
+
+
+@pytest.mark.django_db
+def test_init_default_namespace_reads_nats_namespace_and_updates_on_rerun(settings):
+    settings.NATS_SERVERS = "nats://admin:secret@127.0.0.1:4222"
+    settings.NATS_NAMESPACE = "team-a"
+    call_command("init_default_namespace")
+    assert NameSpace.objects.get(name="默认命名空间").namespace == "team-a"
+
+    settings.NATS_NAMESPACE = " team-b "
+    call_command("init_default_namespace")
+
+    assert NameSpace.objects.get(name="默认命名空间").namespace == "team-b"
+
+
+@pytest.mark.django_db
+def test_namespace_defaults_follow_nats_namespace_setting(settings, monkeypatch):
+    from apps.operation_analysis.schemas.import_export_schema import NamespaceItem
+
+    settings.NATS_NAMESPACE = "from-setting"
+    monkeypatch.delenv("NATS_NAMESPACE", raising=False)
+
+    created = NameSpace.objects.create(name="implicit", account="a", password="p", domain="h:4222")
+    imported = NamespaceItem(key="k", name="n", domain="d", account="a")
+
+    assert created.namespace == "from-setting"
+    assert imported.namespace == "from-setting"
 
 
 @pytest.mark.django_db

@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { WC } from '../chrome';
+import { useTranslator } from '../useTranslator';
 
-function formatThinkingDuration(ms: number): string {
+function formatThinkingDuration(ms: number, t: (key: string, fallback?: string, values?: Record<string, string | number>) => string): string {
   const seconds = Math.max(1, Math.round(ms / 1000));
-  return `思考了 ${seconds} 秒`;
+  return t('chat.thoughtFor', '思考了 {count} 秒', { count: seconds });
 }
 
 function Chevron({ expanded }: { expanded: boolean }) {
@@ -29,6 +30,7 @@ export const ThinkingPanel: React.FC<{ thinking?: string; isThinking?: boolean }
   thinking,
   isThinking,
 }) => {
+  const t = useTranslator();
   const text = (thinking || '').replace(/<\/?think>/gi, '').trim();
   const [expanded, setExpanded] = useState(Boolean(isThinking));
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -78,10 +80,10 @@ export const ThinkingPanel: React.FC<{ thinking?: string; isThinking?: boolean }
   }
 
   const label = isThinking
-    ? '思考中'
+    ? t('chat.thinking', '思考中')
     : elapsedMs > 0
-      ? formatThinkingDuration(elapsedMs)
-      : '已完成思考';
+      ? formatThinkingDuration(elapsedMs, t)
+      : t('chat.thinkingDone', '已完成思考');
 
   const toggle = () => {
     userPinnedRef.current = true;
@@ -125,7 +127,7 @@ export const ThinkingPanel: React.FC<{ thinking?: string; isThinking?: boolean }
             }}
           >
             <p className="m-0 whitespace-pre-wrap break-words text-xs italic leading-[1.75]">
-              {text || '正在整理思路'}
+              {text || t('chat.organizing', '正在整理思路')}
               {isThinking ? <span className="webchat-thinking-caret" aria-hidden /> : null}
             </p>
           </div>

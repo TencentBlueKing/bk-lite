@@ -1,0 +1,212 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_exalink"
+        config_type = "exalink"
+        brand = "exalink"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- ExaLINK Fusion 系统信息标量（exaFusion = 1.3.6.1.4.1.43296.3，顶层 field 带 .0 → measurement snmp）----
+    # fusionSysInfoLoadAverage …3.1.7.1.0：Integer32，负载均值 ×100，下方 starlark ÷100。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.43296.3.1.7.1.0"
+        name = "load_average_raw"
+    # fusionSysInfoAvailMem …3.1.7.2.0：Integer32，可用内存字节；无私有总量对象。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.43296.3.1.7.2.0"
+        name = "device_memory_free"
+    # ---- fusionTempSensorTable …43296.3.2.1.1（INDEX fusionTempSensorIndex）：table.field 不带 .0 ----
+    # .2 fusionTempSensorName → tag sensor_name；.3 fusionTempSensorValue Integer32 ℃。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.43296.3.2.1.1.2"
+        name = "sensor_name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.43296.3.2.1.1.3"
+        name = "celsius"
+    # ---- fusionFanSensorTable …43296.3.2.2.1（INDEX fusionFanSensorIndex）----
+    # .2 fusionFanSensorName → tag sensor_name；.3 fusionFanSensorValue Integer32 RPM。
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.43296.3.2.2.1.2"
+        name = "sensor_name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.43296.3.2.2.1.3"
+        name = "speed"
+    # ---- fusionPsuTable …43296.3.3.1（INDEX fusionPsuIndex）；电源温度不得写入 device_temperature_celsius ----
+    # .2 fusionPsuType 可选 tag；.3 fusionPsuPresent TruthValue true(1)/false(2)，helper：2 时丢弃整行。
+    # .4 fusionPsuTemperature ℃；.5/.6 fusionPsuPowerIn/Out W。
+    [[inputs.snmp.table]]
+        name = "psu"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.43296.3.3.1.2"
+        name = "psu_type"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.43296.3.3.1.3"
+        name = "present"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.43296.3.3.1.4"
+        name = "temperature_celsius"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.43296.3.3.1.5"
+        name = "power_in_watts"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.43296.3.3.1.6"
+        name = "power_out_watts"
+# ---- 无私有 CPU% / 内存总量；不臆造 device_cpu_usage / device_memory_usage。----
+
+# ---- 负载均值 ÷100（保留两位）；可用内存 ≤0 丢弃。原始 helper 不落库。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def _sentinel(v):
+    if v == None:
+        return True
+    x = int(v)
+    if x == 65535 or x == 65534:
+        return True
+    if x == 2147483647 or x == -2147483648:
+        return True
+    if x == 4294967295:
+        return True
+    return False
+
+def apply(metric):
+    f = metric.fields
+    raw_avg = f.pop("load_average_raw", None)
+    if raw_avg != None and not _sentinel(raw_avg):
+        avg_val = float(raw_avg)
+        if avg_val >= 0:
+            scaled = avg_val / 100.0
+            f["device_load_average"] = float(int(scaled * 100.0 + 0.5)) / 100.0
+    mem = f.get("device_memory_free")
+    if mem == None or _sentinel(mem) or float(mem) <= 0:
+        f.pop("device_memory_free", None)
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["exalink"]
+
+# ---- 机箱温 −40..125 ℃；风扇 RPM 0..30000（0 为真实读数）；越界/哨兵丢弃整行。----
+[[processors.starlark]]
+    namepass = ["device_temperature", "device_fan"]
+    source = '''
+def _sentinel(v):
+    if v == None:
+        return True
+    x = int(v)
+    if x == 65535 or x == 65534:
+        return True
+    if x == 2147483647 or x == -2147483648:
+        return True
+    if x == 4294967295:
+        return True
+    return False
+
+def apply(metric):
+    f = metric.fields
+    if metric.name == "device_temperature":
+        raw = f.get("celsius")
+        if raw == None or _sentinel(raw):
+            return None
+        val = float(raw)
+        if val < -40 or val > 125:
+            return None
+        f["celsius"] = val
+        return metric
+    raw = f.get("speed")
+    if raw == None or _sentinel(raw):
+        return None
+    rpm = float(raw)
+    if rpm < 0 or rpm > 30000:
+        return None
+    f["speed"] = rpm
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["exalink"]
+
+# ---- 电源行：present=2 丢弃整行；温度/功率越界只丢该字段；helper present 不落库。----
+[[processors.starlark]]
+    namepass = ["psu"]
+    source = '''
+def _sentinel(v):
+    if v == None:
+        return True
+    x = int(v)
+    if x == 65535 or x == 65534:
+        return True
+    if x == 2147483647 or x == -2147483648:
+        return True
+    if x == 4294967295:
+        return True
+    return False
+
+def apply(metric):
+    f = metric.fields
+    present = f.pop("present", None)
+    if present != None and int(present) == 2:
+        return None
+    temp = f.get("temperature_celsius")
+    if temp == None or _sentinel(temp):
+        f.pop("temperature_celsius", None)
+    else:
+        tval = float(temp)
+        if tval < -40 or tval > 125:
+            f.pop("temperature_celsius", None)
+        else:
+            f["temperature_celsius"] = tval
+    for key in ["power_in_watts", "power_out_watts"]:
+        watts = f.get(key)
+        if watts == None or _sentinel(watts):
+            f.pop(key, None)
+            continue
+        wval = float(watts)
+        if wval < 0 or wval > 5000:
+            f.pop(key, None)
+        else:
+            f[key] = wval
+    if len(f.keys()) == 0:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["exalink"]

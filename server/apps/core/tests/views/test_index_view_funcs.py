@@ -565,6 +565,42 @@ class TestGetClientView:
         data = _json(resp)
         assert data["data"]["display_name"] == "监控中心"
 
+    def test_get_client_translates_workflow_orchestration_like_job(self):
+        req = _post({}, user=MagicMock(username="alice", domain="domain.com", locale="zh-Hans"))
+        return_data = {
+            "result": True,
+            "data": [
+                {
+                    "name": "job",
+                    "display_name": "Job",
+                    "is_build_in": True,
+                    "description": "app.job",
+                    "tags": ["tag.job_execution"],
+                },
+                {
+                    "name": "workflow-orchestration",
+                    "display_name": "Workflow Orchestration",
+                    "is_build_in": True,
+                    "description": "app.workflow-orchestration",
+                    "tags": ["tag.workflow_design", "tag.approval"],
+                },
+            ],
+        }
+        with patch.dict(
+            "sys.modules",
+            {"apps.core.enterprise.license_filter": MagicMock(filter_clients_by_license=lambda data: data)},
+        ), patch.object(index_view, "_create_system_mgmt_client") as mock_client:
+            mock_client.return_value.get_client.return_value = return_data
+            resp = index_view.get_client(req)
+        data = _json(resp)
+        job, workflow = data["data"]
+        assert job["display_name"] == "作业管理"
+        assert job["description"] == "快速创建并执行作业，统一管理脚本执行、文件分发和定时任务"
+        assert job["tags"] == ["作业执行"]
+        assert workflow["display_name"] == "编排中心"
+        assert workflow["description"] == ("通过可视化流程设计、自动化执行、人工审批与运行追踪，统一编排跨系统运维任务。")
+        assert workflow["tags"] == ["流程设计", "人工审批"]
+
 
 class TestViewExceptionPaths:
     """各视图在外部边界抛错时返回 result=False，不向上冒泡。"""

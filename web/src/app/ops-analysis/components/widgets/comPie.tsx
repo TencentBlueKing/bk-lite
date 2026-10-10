@@ -22,6 +22,7 @@ import {
 } from './shared/screenMetrics';
 import { useEchartsFinishedReady } from '@/app/ops-analysis/hooks/useEchartsFinishedReady';
 import { formatVisibleChartValue } from '@/app/ops-analysis/utils/chartValueFormat';
+import { useTranslation } from '@/utils/i18n';
 
 interface OsPieProps {
   rawData: any;
@@ -38,6 +39,8 @@ const OsPie: React.FC<OsPieProps> = ({
   config,
   screenRenderContext,
 }) => {
+  const { t } = useTranslation();
+  const pieTotalLabel = t('dashboard.pieTotal');
   const chartRef = useRef<any>(null);
   const themeName = resolveOpsChartThemeName();
   const usesScreenChartTheme = isScreenChartThemeMode(config?.chartThemeMode);
@@ -132,7 +135,7 @@ const OsPie: React.FC<OsPieProps> = ({
               (sum: number, item: any) => sum + item.value,
               0,
             );
-            return `{title|总数}\n{value|${formatVisibleChartValue(total, config)}}`;
+            return `{title|${pieTotalLabel}}\n{value|${formatVisibleChartValue(total, config)}}`;
           },
           rich: {
             title: {
@@ -178,6 +181,7 @@ const OsPie: React.FC<OsPieProps> = ({
     chartTheme,
     config,
     legendSelected,
+    pieTotalLabel,
     screenRenderContext,
     usesScreenChartTheme,
   ]);

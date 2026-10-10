@@ -102,7 +102,7 @@ def test_budgeted_generation_fits_legacy_32k_source_in_one_200k_call(monkeypatch
 
     monkeypatch.setattr(build_service, "_invoke_llm", fake_invoke)
     result = build_service.generate_material_pages_with_budget(
-        SimpleNamespace(purpose_md="", schema_md=""),
+        SimpleNamespace(introduction="", schema_md=""),
         source,
         model.pk,
         budget=LLMCallBudget(max_calls=6, max_total_tokens=60000, scope="wiki_material:test"),
@@ -140,7 +140,7 @@ def test_budgeted_generation_maps_when_source_exceeds_8k_input_working(monkeypat
 
     monkeypatch.setattr(build_service, "_invoke_llm", fake_invoke)
     result = build_service.generate_material_pages_with_budget(
-        SimpleNamespace(purpose_md="", schema_md=""),
+        SimpleNamespace(introduction="", schema_md=""),
         source,
         model.pk,
         budget=LLMCallBudget(max_calls=32, max_total_tokens=None, scope="wiki_material:test"),
@@ -255,7 +255,7 @@ def test_map_retries_empty_llm_then_continues(monkeypatch):
 
     monkeypatch.setattr(build_service, "_invoke_llm", fake_invoke)
     budget = LLMCallBudget(max_calls=8, max_total_tokens=60000, scope="wiki_material:map-retry")
-    knowledge_base = SimpleNamespace(purpose_md="", schema_md="")
+    knowledge_base = SimpleNamespace(introduction="", schema_md="")
     structure_revision = SimpleNamespace(
         pk=1,
         revision_no=1,
@@ -304,7 +304,7 @@ def test_map_skips_chunk_after_retry_still_empty(monkeypatch, caplog):
 
     monkeypatch.setattr(build_service, "_invoke_llm", fake_invoke)
     budget = LLMCallBudget(max_calls=8, max_total_tokens=60000, scope="wiki_material:map-skip")
-    knowledge_base = SimpleNamespace(purpose_md="", schema_md="")
+    knowledge_base = SimpleNamespace(introduction="", schema_md="")
     structure_revision = SimpleNamespace(
         pk=1,
         revision_no=1,
@@ -354,7 +354,7 @@ def test_map_still_fails_on_provider_llm_error(monkeypatch):
 
     monkeypatch.setattr(build_service, "_invoke_llm", fake_invoke)
     budget = LLMCallBudget(max_calls=8, max_total_tokens=60000, scope="wiki_material:map-error")
-    knowledge_base = SimpleNamespace(purpose_md="", schema_md="")
+    knowledge_base = SimpleNamespace(introduction="", schema_md="")
     structure_revision = SimpleNamespace(
         pk=1,
         revision_no=1,
@@ -397,7 +397,7 @@ def test_compact_empty_after_retry_fails_instead_of_skipping(monkeypatch):
 
     monkeypatch.setattr(build_service, "_invoke_llm", fake_invoke)
     budget = LLMCallBudget(max_calls=12, max_total_tokens=None, scope="wiki_material:compact-fail")
-    knowledge_base = SimpleNamespace(purpose_md="", schema_md="")
+    knowledge_base = SimpleNamespace(introduction="", schema_md="")
     structure_revision = SimpleNamespace(
         pk=1,
         revision_no=1,

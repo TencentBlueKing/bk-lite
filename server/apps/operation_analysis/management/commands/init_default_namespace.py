@@ -11,6 +11,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.common.load_json_data import load_support_json
+from apps.operation_analysis.constants.nats_namespace import resolve_nats_namespace
 from apps.operation_analysis.models.datasource_models import NameSpace
 
 
@@ -85,12 +86,14 @@ class Command(BaseCommand):
 
         功能:
         - 如果命名空间不存在,则创建
-        - 如果命名空间已存在,则更新配置(account、domain、enable_tls、password)
+        - 如果命名空间已存在,则更新配置(account、domain、enable_tls、password、namespace)
+        - namespace 读取 NATS_NAMESPACE，未配置时为 bklite
         """
         try:
             # 从环境变量获取NATS服务器配置
             nats_servers = getattr(settings, "NATS_SERVERS", "") or os.getenv("NATS_SERVERS", "")
             account, password, domain, enable_tls = self._parse_nats_config(nats_servers)
+            nats_namespace = resolve_nats_namespace()
 
             # 从JSON文件加载命名空间数据
             namespace_data_list = load_support_json("namespace.json")
@@ -98,7 +101,15 @@ class Command(BaseCommand):
             # 初始化默认命名空间数据
             for namespace_data in namespace_data_list:
                 if namespace_data["name"] == "默认命名空间":
-                    namespace_data.update({"account": account, "password": password, "domain": domain, "enable_tls": enable_tls})
+                    namespace_data.update(
+                        {
+                            "account": account,
+                            "password": password,
+                            "domain": domain,
+                            "enable_tls": enable_tls,
+                            "namespace": nats_namespace,
+                        }
+                    )
 
                 # 使用get_or_create获取或创建命名空间
                 namespace, created = NameSpace.objects.get_or_create(name=namespace_data["name"], defaults=namespace_data)
@@ -117,6 +128,9 @@ class Command(BaseCommand):
                         updated = True
                     if namespace.enable_tls != enable_tls:
                         namespace.enable_tls = enable_tls
+                        updated = True
+                    if namespace.namespace != nats_namespace:
+                        namespace.namespace = nats_namespace
                         updated = True
                     # 注意：密码需要特殊处理，因为存储的是加密后的密码
                     if password and namespace.decrypt_password != password:

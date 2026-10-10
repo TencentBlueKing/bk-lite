@@ -1,4 +1,4 @@
-import type { ChatState, Message, WebChatConfig, LlmContextUsage } from '@webchat/core';
+import type { ChatState, Message, WebChatConfig, LlmContextUsage, Locale } from '@webchat/core';
 
 export interface ChatProps extends WebChatConfig {
   onStateChange?: (state: ChatState) => void;
@@ -7,6 +7,8 @@ export interface ChatProps extends WebChatConfig {
   onClose?: () => void;
   botAvatarUrl?: string;
   userAvatarUrl?: string;
+  /** 界面语言；未传时按 webchat 默认（中文）渲染。 */
+  locale?: Locale;
   agui?: {
     enabled?: boolean;
     debug?: boolean;

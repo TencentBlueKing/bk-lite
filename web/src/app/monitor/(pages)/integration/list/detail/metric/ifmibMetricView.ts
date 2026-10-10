@@ -56,8 +56,8 @@ const getIfmibMetricGroup = (metric: MetricItem) => (
 
 /**
  * 指标页只反映当前下发流程是否采集 IF-MIB。
- * 开启时：厂商/模板指标保持原分组并置顶；公共 IF-MIB 归并为少量业务组并置底，
- * 以来源组标签标识。关闭时隐藏 IF-MIB 指标及由此产生的空分组。
+ * 开启时：厂商/模板指标保持原分组并置顶；公共 IF-MIB 归并为少量业务组并置底。
+ * 用户新建的空分组保留；内置分组在没有可见指标时隐藏（含 IF-MIB 归并后变空的组）。
  */
 export const buildIfmibMetricView = (
   groups: GroupInfo[],
@@ -85,7 +85,9 @@ export const buildIfmibMetricView = (
         child
       };
     })
-    .filter((group) => group.child.length > 0) as MetricListItem[];
+    .filter(
+      (group) => group.child.length > 0 || group.is_pre === false
+    ) as MetricListItem[];
 
   if (!enabled) {
     return grouped;

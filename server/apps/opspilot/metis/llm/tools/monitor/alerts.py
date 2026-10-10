@@ -8,10 +8,12 @@ from apps.opspilot.metis.llm.tools.monitor.utils import call_monitor_rpc, to_mon
 
 @tool(
     description=(
-        "【监控策略告警】查询监控扫描产生的主机/实例活跃告警（MonitorAlert），不是告警中心工单。"
-        "仅当用户点名监控告警/策略告警/new 状态时使用；口语「没关的告警/某台还在告」应改用 alerts_list_alerts。"
-        "monitor_obj_id 只能是 monitor_list_objects 返回的数字对象类型 id；"
-        "instance_ids 须用监控 instance_id（含 CMDB monitor_id、1_IP_端口）、实例名或 IP，禁止把实例标识填进 monitor_obj_id，禁止 CMDB 的 inst_uuid/_id。"
+        "【监控策略告警】查询监控扫描产生的主机/实例活跃告警（MonitorAlert），"
+        "对应监控详情页「告警列表」，不是告警中心工单；监控侧告警未必同步到告警中心。"
+        "查某台主机是否还在告时，应用本工具并传 instance_ids（监控 instance_id/主机名/IP），"
+        "可与 alerts_list_alerts 一起用；不要只查告警中心就下「无告警」结论。"
+        "monitor_obj_id 可选，只能是 monitor_list_objects 返回的数字对象类型 id；"
+        "禁止把实例标识填进 monitor_obj_id，禁止 CMDB 的 inst_uuid/_id。"
     )
 )
 def monitor_list_active_alerts(
@@ -43,7 +45,7 @@ def monitor_list_active_alerts(
     )
 
 
-@tool(description=("【主机告警历史】按时间窗查询告警片段。" "必填monitor_obj_id、start、end；可筛实例/状态/级别。"))
+@tool(description=("【监控策略告警历史】按时间窗查询监控扫描告警片段。" "必填 monitor_obj_id、start、end；可筛实例/状态/级别。"))
 def monitor_query_alert_segments(
     monitor_obj_id: Optional[str] = None,
     start: Optional[Any] = None,

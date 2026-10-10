@@ -8,33 +8,13 @@ const modal = fs.readFileSync(
   "utf8",
 );
 
-assert.match(modal, /const isEditing = Boolean\(initialValues\?\.id\);/);
-assert.match(
-  modal,
-  /const \[templateSchemaMd,\s*setTemplateSchemaMd\] = useState\(["']{2}\)/,
-);
-assert.match(
-  modal,
-  /const submitValues = \{[\s\S]*\.\.\.values,[\s\S]*schema_md: templateSchemaMd/,
-);
+assert.doesNotMatch(modal, /template_key/);
+assert.doesNotMatch(modal, /purpose_md/);
+assert.doesNotMatch(modal, /schema_md/);
+assert.doesNotMatch(modal, /fetchTemplates/);
+assert.match(modal, /name=["']introduction["']/);
+assert.match(modal, /wiki\.introductionRequired/);
+assert.match(modal, /name=["']name["']/);
+assert.match(modal, /name=["']llm_model["']/);
 
-for (const field of ["template_key", "purpose_md", "schema_md"]) {
-  assert.match(modal, new RegExp(`delete submitValues\\.${field};`));
-}
-
-assert.match(modal, /!\s*isEditing && \(/);
-assert.match(
-  modal,
-  /label=\{t\(["']wiki\.template["']\)\}[\s\S]*name=["']template_key["']/,
-);
-assert.match(
-  modal,
-  /label=\{t\(["']wiki\.purpose["']\)\}[\s\S]*name=["']purpose_md["']/,
-);
-assert.doesNotMatch(
-  modal,
-  /label=\{t\(["']wiki\.schema["']\)\}[\s\S]*name=["']schema_md["']/,
-  "Schema must be configured by the structured editor, not a second free-text field",
-);
-
-console.log("wiki modify modal edit-only fields hidden validation passed");
+console.log("wiki modify modal introduction-only create fields validation passed");

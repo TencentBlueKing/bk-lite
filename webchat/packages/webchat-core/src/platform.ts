@@ -4,6 +4,7 @@ import {
   assembleAguiHistoryText,
   type HistoryContentChunk,
 } from './aguiHistoryText';
+import { translate, type Translate } from './i18n';
 
 const TEMPLATE_TOKEN = /\{(\w+)\}/g;
 
@@ -91,7 +92,10 @@ export function asRecordList(payload: unknown): Record<string, unknown>[] {
   return [];
 }
 
-export function mapPlatformApplications(rows: Record<string, unknown>[]): PlatformApplication[] {
+export function mapPlatformApplications(
+  rows: Record<string, unknown>[],
+  t: Translate = translate,
+): PlatformApplication[] {
   const prepared = rows
     .map((item) => {
       const id = String(item.id ?? item.channel_id ?? '');
@@ -99,7 +103,7 @@ export function mapPlatformApplications(rows: Record<string, unknown>[]): Platfo
       const channelName =
         String(item.name ?? item.app_name ?? '').trim() ||
         String(item.skill_name ?? '').trim() ||
-        (id ? `渠道 ${id}` : '');
+        (id ? t('session.channelFallback', '渠道 {id}', { id }) : '');
       const skillName = String(item.skill_name ?? '').trim() || undefined;
       const skillId =
         item.skill_id === undefined || item.skill_id === null ? undefined : String(item.skill_id);
@@ -160,18 +164,25 @@ function optionalTime(value: unknown): string | undefined {
   return undefined;
 }
 
-export function mapPlatformSessions(rows: Record<string, unknown>[]): PlatformSession[] {
+export function mapPlatformSessions(
+  rows: Record<string, unknown>[],
+  t: Translate = translate,
+): PlatformSession[] {
   return rows
     .map((item) => ({
       id: String(item.session_id ?? item.id ?? ''),
-      title: String(item.title ?? '新会话'),
+      title: String(item.title ?? t('session.new', '新会话')),
       source: typeof item.source === 'string' ? item.source : undefined,
       updatedAt: optionalTime(item.updated_at ?? item.created_at ?? item.first_time),
     }))
     .filter((item) => item.id);
 }
 
-export function formatSessionTime(value?: string, now = Date.now()): string | undefined {
+export function formatSessionTime(
+  value?: string,
+  now = Date.now(),
+  t: Translate = translate,
+): string | undefined {
   if (!value) {
     return undefined;
   }
@@ -183,12 +194,20 @@ export function formatSessionTime(value?: string, now = Date.now()): string | un
   const minute = 60 * 1000;
   const hour = 60 * minute;
   const day = 24 * hour;
-  if (delta < minute) return '刚刚';
-  if (delta < hour) return `${Math.floor(delta / minute)} 分钟前`;
-  if (delta < day) return `${Math.floor(delta / hour)} 小时前`;
-  if (delta < 2 * day) return '昨天';
-  if (delta < 30 * day) return `${Math.floor(delta / day)} 天前`;
-  return `${Math.max(1, Math.floor(delta / (30 * day)))} 个月前`;
+  if (delta < minute) return t('session.justNow', '刚刚');
+  if (delta < hour) {
+    return t('session.minutesAgo', '{count} 分钟前', { count: Math.floor(delta / minute) });
+  }
+  if (delta < day) {
+    return t('session.hoursAgo', '{count} 小时前', { count: Math.floor(delta / hour) });
+  }
+  if (delta < 2 * day) return t('session.yesterday', '昨天');
+  if (delta < 30 * day) {
+    return t('session.daysAgo', '{count} 天前', { count: Math.floor(delta / day) });
+  }
+  return t('session.monthsAgo', '{count} 个月前', {
+    count: Math.max(1, Math.floor(delta / (30 * day))),
+  });
 }
 
 function extractMessageText(content: unknown): string {
@@ -409,7 +428,11 @@ export function isPersistedPlatformSession(
   return Boolean(sessionId && sessions.some((item) => item.id === sessionId));
 }
 
-export function sessionTitleFromUserContent(content: Message['content'], max = 50): string {
+export function sessionTitleFromUserContent(
+  content: Message['content'],
+  max = 50,
+  t: Translate = translate,
+): string {
   let text = '';
   if (typeof content === 'string') {
     text = content;
@@ -419,7 +442,7 @@ export function sessionTitleFromUserContent(content: Message['content'], max = 5
       .join('');
   }
   text = text.trim().replace(/\s+/g, ' ');
-  if (!text) return '新会话';
+  if (!text) return t('session.new', '新会话');
   return text.length > max ? `${text.slice(0, max)}...` : text;
 }
 
@@ -456,7 +479,64 @@ export const WEBCHAT_APPS_CHANGED_EVENT = 'bk-webchat:apps-changed';
 /** Host shell reads this to inset page content while the dock is open. */
 export const WEBCHAT_DOCK_INSET_VAR = '--bk-webchat-dock-width';
 export const PLATFORM_DOCK_CHAT_WIDTH = 380;
+export const PLATFORM_DOCK_CHAT_MIN_WIDTH = 320;
+/** 侧边栏（含历史轨）最多占视口宽度的一半。 */
+export const PLATFORM_DOCK_MAX_VIEWPORT_RATIO = 0.5;
 export const PLATFORM_HISTORY_RAIL_DOCK = 176;
+
+/** 对话栏宽度。历史轨只在展开时计入这 50% 上限。 */
+export function clampPlatformDockChatWidth(
+  width: number,
+  viewportWidth?: number,
+  historyOpen = false
+): number {
+  const half =
+    typeof viewportWidth === 'number' && Number.isFinite(viewportWidth)
+      ? Math.round(viewportWidth * PLATFORM_DOCK_MAX_VIEWPORT_RATIO)
+      : Number.POSITIVE_INFINITY;
+  const chatMax = half - (historyOpen ? PLATFORM_HISTORY_RAIL_DOCK : 0);
+  const max = Math.min(Math.max(PLATFORM_DOCK_CHAT_MIN_WIDTH, chatMax), half);
+  const min = Math.min(PLATFORM_DOCK_CHAT_MIN_WIDTH, max);
+  if (!Number.isFinite(width)) {
+    return Math.min(max, Math.max(min, PLATFORM_DOCK_CHAT_WIDTH));
+  }
+  return Math.round(Math.min(max, Math.max(min, width)));
+}
+
+/** 右缘固定，向左拖增大宽度。deltaX 为指针相对起点的水平位移。 */
+export function nextPlatformDockChatWidth(
+  startWidth: number,
+  deltaX: number,
+  viewportWidth?: number,
+  historyOpen = false
+): number {
+  return clampPlatformDockChatWidth(startWidth - deltaX, viewportWidth, historyOpen);
+}
+
+export function readPlatformWebchatWidth(body: unknown): number {
+  if (!body || typeof body !== 'object' || !('webchat_width' in body)) {
+    return PLATFORM_DOCK_CHAT_WIDTH;
+  }
+  const raw = (body as { webchat_width: unknown }).webchat_width;
+  const width = typeof raw === 'number' ? raw : Number(raw);
+  return clampPlatformDockChatWidth(width);
+}
+
+/** 保存宽度的地址。宿主没单独传时，挂在已有的平台列表地址后面。 */
+export function resolvePlatformWebchatWidthUrl(contract: {
+  webchatWidthUrl?: string;
+  applicationsUrl?: string;
+}): string {
+  const explicit = (contract.webchatWidthUrl || '').trim();
+  if (explicit) {
+    return explicit;
+  }
+  const applicationsUrl = (contract.applicationsUrl || '').trim();
+  if (!applicationsUrl) {
+    return '';
+  }
+  return applicationsUrl.endsWith('/') ? `${applicationsUrl}width/` : `${applicationsUrl}/width/`;
+}
 
 /**
  * Empty published-app list: hide the launcher unless the host says this user
@@ -475,13 +555,13 @@ export function platformDockInsetWidth(input: {
   visible: boolean;
   fullscreen?: boolean;
   historyOpen?: boolean;
+  chatWidth?: number;
 }): number {
   if (!input.visible || input.fullscreen) {
     return 0;
   }
-  return input.historyOpen
-    ? PLATFORM_DOCK_CHAT_WIDTH + PLATFORM_HISTORY_RAIL_DOCK
-    : PLATFORM_DOCK_CHAT_WIDTH;
+  const chatWidth = clampPlatformDockChatWidth(input.chatWidth ?? PLATFORM_DOCK_CHAT_WIDTH);
+  return input.historyOpen ? chatWidth + PLATFORM_HISTORY_RAIL_DOCK : chatWidth;
 }
 
 export const FAB_SIZE = 72;

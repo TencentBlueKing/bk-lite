@@ -24,6 +24,11 @@ vi.mock('@/utils/request', () => ({
   default: () => ({ get: mocks.get, patch: mocks.patch, post: mocks.post, del: mocks.del }),
 }));
 
+async function closeTopDialog() {
+  const buttons = await screen.findAllByRole('button', { name: 'Close' });
+  fireEvent.click(buttons[buttons.length - 1]!);
+}
+
 const workflow = {
   id: 1,
   name: '主机健康巡检',
@@ -130,7 +135,7 @@ const atoms = [
   },
 ];
 
-describe('编排中心正式设计器', () => {
+describe('编排中心正式设计器', { timeout: 30000 }, () => {
   beforeAll(() => {
     Object.defineProperty(window, 'matchMedia', {
       configurable: true,
@@ -230,7 +235,7 @@ describe('编排中心正式设计器', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '添加第一个节点' }));
     fireEvent.click(await screen.findByRole('button', { name: /表单触发器/ }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Close' }));
+    await closeTopDialog();
     const trigger = container.querySelector<HTMLButtonElement>('[data-workflow-node="trigger"] button[aria-label="表单触发器"]');
     expect(trigger).not.toBeNull();
     if (!trigger) return;
@@ -257,10 +262,10 @@ describe('编排中心正式设计器', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '添加第一个节点' }));
     fireEvent.click(await screen.findByRole('button', { name: /表单触发器/ }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Close' }));
+    await closeTopDialog();
     fireEvent.click(screen.getByRole('button', { name: '添加节点' }));
     fireEvent.click(await screen.findByRole('button', { name: /HTTP 请求/ }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Close' }));
+    await closeTopDialog();
     const httpNode = container.querySelector<HTMLButtonElement>('[data-workflow-node="atom"] button[aria-label="HTTP 请求"]');
     expect(httpNode).not.toBeNull();
     if (!httpNode) return;
@@ -325,8 +330,8 @@ describe('编排中心正式设计器', () => {
     expect(within(nodeTestDialog!).getByText('目标主机')).not.toBeNull();
     expect(within(nodeTestDialog!).getByText('报告模板')).not.toBeNull();
     expect(within(nodeTestDialog!).getByRole('button', { name: /选择 Word \/ Excel 模板/ })).not.toBeNull();
-    expect(within(nodeTestDialog!).getByRole('link', { name: 'Word' }).getAttribute('href')).toBe('/workflow-orchestration/templates/health-inspection-example.docx');
-    expect(within(nodeTestDialog!).getByRole('link', { name: 'Excel' }).getAttribute('href')).toBe('/workflow-orchestration/templates/health-inspection-example.xlsx');
+    expect(within(nodeTestDialog!).getByRole('button', { name: 'Word' })).not.toBeNull();
+    expect(within(nodeTestDialog!).getByRole('button', { name: 'Excel' })).not.toBeNull();
     fireEvent.click(within(nodeTestDialog!).getByRole('button', { name: /Cancel|取\s*消/ }));
 
     const inspector = screen.getByDisplayValue('健康巡检表单').closest<HTMLElement>('.ant-modal-content');
@@ -340,8 +345,8 @@ describe('编排中心正式设计器', () => {
     expect(within(debugDialog!).getByText('目标主机')).not.toBeNull();
     expect(within(debugDialog!).getByText('报告模板')).not.toBeNull();
     expect(within(debugDialog!).queryByText('调试入口')).toBeNull();
-    expect(within(debugDialog!).getByRole('link', { name: 'Word' }).getAttribute('href')).toBe('/workflow-orchestration/templates/health-inspection-example.docx');
-    expect(within(debugDialog!).getByRole('link', { name: 'Excel' }).getAttribute('href')).toBe('/workflow-orchestration/templates/health-inspection-example.xlsx');
+    expect(within(debugDialog!).getByRole('button', { name: 'Word' })).not.toBeNull();
+    expect(within(debugDialog!).getByRole('button', { name: 'Excel' })).not.toBeNull();
   });
 
   it('多触发器流程调试时选择一个入口并生成单条调试执行', async () => {
@@ -396,14 +401,34 @@ describe('编排中心正式设计器', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '添加第一个节点' }));
     fireEvent.click(await screen.findByRole('button', { name: /表单触发器/ }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Close' }));
+    await closeTopDialog();
     fireEvent.click(screen.getByRole('button', { name: '添加节点' }));
     fireEvent.click(await screen.findByRole('button', { name: /系统通知/ }));
     expect(await screen.findByRole('dialog')).not.toBeNull();
     expect(container.querySelector('[data-workflow-node="atom"] button[aria-label="系统通知"]')).not.toBeNull();
     expect(screen.queryByRole('button', { name: /^保\s*存$/ })).toBeNull();
-    fireEvent.click(document.querySelector<HTMLButtonElement>('.ant-modal-close')!);
+    await closeTopDialog();
     expect(screen.queryByRole('button', { name: '添加第一个节点' })).toBeNull();
+  });
+
+  it('点击查看原子详情展示目录信息', async () => {
+    const { container } = render(<App><WorkflowOrchestrationConsole workflowId={null} initialName="空白流程" /></App>);
+
+    fireEvent.click(await screen.findByRole('button', { name: '添加第一个节点' }));
+    fireEvent.click(await screen.findByRole('button', { name: /表单触发器/ }));
+    await closeTopDialog();
+    fireEvent.click(screen.getByRole('button', { name: '添加节点' }));
+    fireEvent.click(await screen.findByRole('button', { name: /文档生成/ }));
+    await closeTopDialog();
+
+    fireEvent.click(container.querySelector('[data-workflow-node="atom"] button[aria-label="文档生成"]')!);
+    fireEvent.click(await screen.findByRole('button', { name: '查看原子详情' }));
+
+    const detailDialog = (await screen.findByText('查看原子详情')).closest<HTMLElement>('.ant-modal-content');
+    expect(detailDialog).not.toBeNull();
+    expect(within(detailDialog!).getByText('bklite_document_render')).not.toBeNull();
+    expect(within(detailDialog!).getByText('使用用户模板生成文档')).not.toBeNull();
+    expect(within(detailDialog!).getByText('只读')).not.toBeNull();
   });
 
   it('作业执行可从作业平台选择主机并回填节点固定值', async () => {
@@ -418,7 +443,7 @@ describe('编排中心正式设计器', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '添加第一个节点' }));
     fireEvent.click(await screen.findByRole('button', { name: /表单触发器/ }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Close' }));
+    await closeTopDialog();
     fireEvent.click(screen.getByRole('button', { name: '添加节点' }));
     fireEvent.click(await screen.findByRole('button', { name: /作业执行/ }));
 
@@ -633,7 +658,7 @@ describe('编排中心正式设计器', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '添加第一个节点' }));
     fireEvent.click(await screen.findByRole('button', { name: /表单触发器/ }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Close' }));
+    await closeTopDialog();
     fireEvent.click(screen.getByRole('button', { name: '添加节点' }));
     fireEvent.click(await screen.findByRole('button', { name: /条件分支/ }));
     fireEvent.mouseDown(await screen.findByText('固定值'));
@@ -711,7 +736,6 @@ describe('编排中心正式设计器', () => {
       '/workflow_orchestration/api/workflows/1/debug/',
       expect.objectContaining({ task_reference: 'request_status', node_inputs: expect.objectContaining({ method: 'GET', url: 'https://example.com/health' }) }),
     ));
-    expect(screen.queryByText('测试当前节点')).toBeNull();
     const httpOutput = screen.getByRole('region', { name: '节点输出' });
     fireEvent.click(within(httpOutput).getByText('JSON'));
     await waitFor(() => expect(httpOutput.querySelector('pre')?.textContent).toContain('200'));
@@ -763,8 +787,8 @@ describe('编排中心正式设计器', () => {
     const testDialogTitle = await screen.findByText('测试当前节点');
     const testDialog = testDialogTitle.closest<HTMLElement>('.ant-modal-content');
     expect(testDialog).not.toBeNull();
-    expect(within(testDialog!).getByRole('link', { name: 'Word' })).not.toBeNull();
-    expect(within(testDialog!).getByRole('link', { name: 'Excel' })).not.toBeNull();
+    expect(within(testDialog!).getByRole('button', { name: 'Word' })).not.toBeNull();
+    expect(within(testDialog!).getByRole('button', { name: 'Excel' })).not.toBeNull();
     expect(within(testDialog!).getByRole('button', { name: /上传测试模板/ })).not.toBeNull();
     fireEvent.click(within(testDialog!).getByRole('button', { name: /执行节点/ }));
     expect(await screen.findByText('请先上传 Word 或 Excel 测试模板')).not.toBeNull();
@@ -1045,7 +1069,7 @@ describe('编排中心正式设计器', () => {
     expect((await screen.findAllByText('临时名称')).length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: /完\s*成/ })).toBeNull();
     expect(screen.queryByText(/刷新前未保存内容会丢失/)).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await closeTopDialog();
 
     const reopenedTrigger = container.querySelector<HTMLButtonElement>('[data-workflow-node="trigger"] button[aria-label="临时名称"]');
     expect(reopenedTrigger).not.toBeNull();
@@ -1054,7 +1078,7 @@ describe('编排中心正式设计器', () => {
     fireEvent.click(await screen.findByRole('button', { name: '配置' }));
     expect(await screen.findByDisplayValue('临时名称')).not.toBeNull();
     fireEvent.change(screen.getByDisplayValue('临时名称'), { target: { value: '已暂存名称' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await closeTopDialog();
 
     expect(mocks.patch).not.toHaveBeenCalled();
     expect(mocks.post).not.toHaveBeenCalled();

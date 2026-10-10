@@ -52,6 +52,18 @@ monitor_object_metric:
       desc: CPU or chassis temperature of the transmission device in degrees Celsius.
         High values may indicate cooling problems, high ambient temperature or overloaded
         hardware.
+    radio_temperature_celsius:
+      name: Radio Temperature
+      desc: Per-radio temperature of the Tachyon TNA 300 series transmission device
+        in degrees Celsius, from wirelessRadioTemperature (1.3.6.1.4.1.57344.1.2.2.1.11),
+        reported directly with no scaling. High values may indicate RF cooling problems
+        or high ambient temperature.
+    radio_modem_temperature_celsius:
+      name: Radio Modem Temperature
+      desc: Per-radio modem temperature of the Tachyon TNA 300 series transmission
+        device in degrees Celsius, from wirelessRadioModemTemperature
+        (1.3.6.1.4.1.57344.1.2.2.1.10), reported directly with no scaling. High values
+        may indicate RF modem thermal stress.
     device_fan_state:
       name: Fan Status
       desc: Operational state of each transmission device fan or fan controller. A

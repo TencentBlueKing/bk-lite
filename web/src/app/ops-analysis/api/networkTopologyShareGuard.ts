@@ -27,7 +27,7 @@ export class NetworkTopologyShareEditBlockedError extends Error {
 
   constructor(api: NetworkTopologyShareBlockedEditApi) {
     super(
-      `NetworkTopology shareMode 禁止调用编辑接口: ${api}`,
+      `NetworkTopology shareMode blocked an edit API call: ${api}`,
     );
     this.name = 'NetworkTopologyShareEditBlockedError';
     this.api = api;

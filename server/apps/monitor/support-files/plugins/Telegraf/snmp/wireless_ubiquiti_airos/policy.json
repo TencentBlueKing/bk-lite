@@ -1,0 +1,31 @@
+{
+  "object": "Wireless",
+  "plugin": "Wireless Ubiquiti airOS SNMP",
+  "templates": [
+    {
+      "name": "Ubiquiti airOS无线设备内存使用率过高",
+      "alert_name": "无线设备${resource_name} 内存使用率过高",
+      "description": "监控 Ubiquiti airOS 无线设备内存使用率（(memTotal - memFree) / memTotal），当持续高于阈值时触发告警，提示可能存在内存泄漏或资源紧张。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

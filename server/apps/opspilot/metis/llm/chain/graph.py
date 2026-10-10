@@ -4,6 +4,7 @@ import os
 import time
 import uuid
 from abc import ABC, abstractmethod
+from contextlib import aclosing
 from typing import Any, AsyncGenerator, Callable, Dict, List, Optional
 
 from ag_ui.core import (
@@ -42,6 +43,7 @@ from apps.opspilot.metis.llm.chain.nested_stream import (
     OWNED_STREAM_CONTEXT_KEY,
     PLANNED_STEP_HOLDER_KEY,
     PLANNED_TOOL_STEPS_KEY,
+    OwnedEventQueue,
     OwnedStreamContext,
     current_planned_step_index,
     lookup_planned_tool_step,
@@ -276,20 +278,22 @@ def _mask_sensitive_data(data: Any) -> Any:
         return data
 
 
-def agui_run_deadline_seconds() -> float:
-    """整轮 SSE 硬上限。显式 AGUI_RUN_DEADLINE_SECONDS 优先，否则取两倍 LLM 超时。"""
+def agui_run_deadline_seconds() -> float | None:
+    """整轮 SSE 墙钟上限；默认关闭。
+
+    - 未设置 / 0 / off / none / false → 无死线（长任务靠单工具超时与用户中断）
+    - 显式正数 → max(value, 30) 秒，运维可临时打开
+    """
     explicit = os.getenv("AGUI_RUN_DEADLINE_SECONDS")
-    if explicit:
-        try:
-            return max(float(explicit), 30.0)
-        except (TypeError, ValueError):
-            pass
-    raw = os.getenv("LLM_INVOKE_TIMEOUT", "300")
+    if explicit is None or not str(explicit).strip():
+        return None
+    raw = str(explicit).strip().lower()
+    if raw in {"0", "off", "none", "false", "disabled"}:
+        return None
     try:
-        base = float(raw)
+        return max(float(raw), 30.0)
     except (TypeError, ValueError):
-        base = 300.0
-    return max(base * 2, 180.0)
+        return None
 
 
 def log_lingering_agui_tasks(thread_id: str, *, reason: str) -> None:
@@ -1594,11 +1598,9 @@ class BasicGraph(ABC):
     ) -> AsyncGenerator[str, None]:
         """使用 agui 协议以 SSE 格式流式输出事件。"""
         encoder = EventEncoder()
-        async for frame in iter_sse_frames_with_idle_keepalive(
-            self._agui_stream_events(request, token_usage_accumulator),
-            encoder,
-        ):
-            yield frame
+        async with aclosing(iter_sse_frames_with_idle_keepalive(self._agui_stream_events(request, token_usage_accumulator), encoder)) as frames:
+            async for frame in frames:
+                yield frame
 
     async def _agui_stream_events(  # noqa: C901
         self,
@@ -1658,7 +1660,7 @@ class BasicGraph(ABC):
             token_usage_accumulator = None
         # 创建浏览器步骤事件队列和回调
         browser_event_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=100)
-        owned_queue: asyncio.Queue = asyncio.Queue()
+        owned_queue = OwnedEventQueue(maxsize=SSE_OUTPUT_QUEUE_MAXSIZE)
         stream_ctx = make_owned_stream_context(owned_queue)
         previous_stream_ctx = getattr(self, "_owned_stream_context", None)
         self._owned_stream_context = stream_ctx
@@ -1686,12 +1688,15 @@ class BasicGraph(ABC):
                 yield frame
 
             compile_started = monotonic_ms()
+            compile_task = asyncio.ensure_future(self.compile_graph(request))
             try:
-                compile_task = asyncio.ensure_future(self.compile_graph(request))
                 async for keepalive in iter_sse_keepalive_until(compile_task, encoder, "compile_graph"):
                     yield keepalive
                 graph = compile_task.result()
             finally:
+                if not compile_task.done():
+                    compile_task.cancel()
+                await asyncio.gather(compile_task, return_exceptions=True)
                 log_stage_timing("compile_graph", elapsed_ms(compile_started), thread_id=thread_id)
             if graph is None:
                 raise RuntimeError("Failed to compile graph: graph is None")
@@ -1720,14 +1725,15 @@ class BasicGraph(ABC):
             )
 
             node_finished_at: float | None = None
-            deadline_ms = agui_run_deadline_seconds() * 1000
+            deadline_seconds = agui_run_deadline_seconds()
+            deadline_ms = deadline_seconds * 1000 if deadline_seconds is not None else None
             async for stream_type, stream_data in _merge_async_streams(
                 langgraph_stream,
                 browser_event_queue,
                 stop_event,
                 owned_queue,
             ):
-                if elapsed_ms(run_started) >= deadline_ms:
+                if deadline_ms is not None and elapsed_ms(run_started) >= deadline_ms:
                     log_lingering_agui_tasks(thread_id, reason="deadline")
                     yield encoder.encode(
                         RunErrorEvent(
@@ -2147,6 +2153,7 @@ class BasicGraph(ABC):
                 )
             )
         finally:
+            await owned_queue.aclose()
             await interrupt_watch.aclose()
             self._owned_stream_context = previous_stream_ctx
             stop_event.set()

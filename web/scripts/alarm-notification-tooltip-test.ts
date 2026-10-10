@@ -2,6 +2,7 @@ import * as assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { IntlMessageFormat } from 'intl-messageformat';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (path: string) => readFileSync(resolve(here, path), 'utf8');
@@ -45,5 +46,36 @@ for (const locale of [zh, en]) {
     assert.equal(typeof locale.alarms[key], 'string', `missing alarms.${key}`);
   }
 }
+
+assert.equal(
+  new IntlMessageFormat(en.alarms.notificationSummary, 'en').format({ total: 5, shown: 3 }),
+  '5 notifications; showing the latest 3',
+);
+assert.equal(
+  new IntlMessageFormat(zh.alarms.notificationSummary, 'zh').format({ total: 5, shown: 3 }),
+  '共 5 次通知，显示最近 3 次',
+);
+assert.match(tooltipSource, /t\('alarms\.notificationSummary', undefined, \{/);
+assert.doesNotMatch(tooltipSource, /\.replace\('{{total}}'/);
+
+const visibleKeys = [
+  'actionTriggerCreated',
+  'actionTypeJob',
+  'actionExecPending',
+  'actionViewJob',
+  'actionComingSoon',
+  'actionTargetHost',
+  'actionFallbackName',
+  'actionRecordsRuleName',
+];
+for (const key of visibleKeys) {
+  assert.equal(typeof zh.settings[key], 'string', key);
+  assert.equal(typeof en.settings[key], 'string', key);
+  if (key !== 'actionTypeItsm' && key !== 'actionTypeWebhook') {
+    assert.notEqual(zh.settings[key], en.settings[key], key);
+  }
+}
+assert.equal(zh.integration.precheck.title, '部署前检查');
+assert.equal(en.integration.precheck.title, 'Pre-deployment checks');
 
 console.log('alarm notification tooltip test passed');

@@ -72,10 +72,52 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
     return data;
   };
 
+  const collectKeysWithChildren = (nodes: TreeItem[]): React.Key[] => {
+    const keys: React.Key[] = [];
+    nodes.forEach((item) => {
+      if (item.children?.length) {
+        keys.push(item.key);
+        keys.push(...collectKeysWithChildren(item.children));
+      }
+    });
+    return keys;
+  };
+
+  const restoreMatchingNodeChildren = (
+    filtered: TreeItem[],
+    original: TreeItem[],
+    searchValue: string
+  ): TreeItem[] => {
+    const needle = searchValue.toLowerCase();
+    return filtered.map((item) => {
+      const originalItem = original.find((orig) => orig.key === item.key);
+      if (!originalItem) return item;
+      const titleMatches = String(item.title).toLowerCase().includes(needle);
+      const originalChildren = originalItem.children || [];
+      if (
+        titleMatches &&
+        (!item.children || item.children.length === 0) &&
+        originalChildren.length
+      ) {
+        return { ...item, children: originalChildren };
+      }
+      return {
+        ...item,
+        children: restoreMatchingNodeChildren(
+          item.children || [],
+          originalChildren,
+          searchValue
+        )
+      };
+    });
+  };
+
   const handleSelect = (selectedKeys: React.Key[], info: any) => {
     const hasChildren = !!info.node?.children?.length;
-    // 默认仅叶子可选；allowParentSelect 时一级分类也可选（如点「数据库」看该类全部能力）
-    if ((!hasChildren || allowParentSelect) && selectedKeys?.length) {
+    // 默认仅叶子可选；allowParentSelect 时一级分类也可选（如点「数据库」看该类全部能力）。
+    // 带 label 的监控对象（如 Cisco Meraki）即使挂了派生子节点也要能选中。
+    const isObjectNode = Boolean(info.node?.label);
+    if ((!hasChildren || allowParentSelect || isObjectNode) && selectedKeys?.length) {
       setSelectedKeys(selectedKeys);
       notifyNodeSelect(selectedKeys[0]);
     }
@@ -108,39 +150,13 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
     }
     const filteredData = filterTree(originalTreeData, value);
     const allMenuFilteredData = filterAllMenu(filteredData, value);
-    // 检查是否只有一级菜单匹配，如果是，则展开并显示所有子节点
-    const expandedFilteredData = allMenuFilteredData.map((item: any) => {
-      // 如果一级菜单匹配但没有子节点匹配到搜索条件，则显示所有子节点
-      const originalItem = originalTreeData.find(
-        (orig) => orig.key === item.key
-      );
-      if (
-        originalItem &&
-        item.title.toLowerCase().includes(value.toLowerCase()) &&
-        (!item.children || item.children.length === 0) &&
-        originalItem.children
-      ) {
-        return {
-          ...item,
-          children: originalItem.children
-        };
-      }
-      return item;
-    });
+    const expandedFilteredData = restoreMatchingNodeChildren(
+      allMenuFilteredData,
+      originalTreeData,
+      value
+    );
     setTreeData(expandedFilteredData);
-    // 自动展开所有包含匹配结果的一级节点
-    const keysToExpand: React.Key[] = [];
-    expandedFilteredData.forEach((item: any) => {
-      // 展开一级菜单匹配的节点
-      if (item.title.toLowerCase().includes(value.toLowerCase())) {
-        keysToExpand.push(item.key);
-      }
-      // 展开包含匹配子节点的一级节点
-      if (item.children && item.children.length > 0) {
-        keysToExpand.push(item.key);
-      }
-    });
-    setExpandedKeys(keysToExpand);
+    setExpandedKeys(collectKeysWithChildren(expandedFilteredData));
   };
 
   const onDrop: TreeProps['onDrop'] = (info) => {

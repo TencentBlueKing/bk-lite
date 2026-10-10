@@ -179,8 +179,7 @@ export interface CardListParseResult {
   message?: string;
 }
 
-const INVALID_MESSAGE =
-  '数据结构不符：卡片列表期望对象数组，或包含 items 数组的记录列表';
+const INVALID_MESSAGE = 'dashboard.cardListStructureMismatch';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);

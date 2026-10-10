@@ -1,0 +1,56 @@
+{
+  "object": "Wireless",
+  "plugin": "Wireless Tait SNMP",
+  "templates": [
+    {
+      "name": "Tait TN9300 CPU使用率过高",
+      "alert_name": "无线设备${resource_name} CPU使用率过高",
+      "description": "监控 Tait TN9300 网络节点的 CPU 使用率，持续高于阈值时提示呼叫处理压力或节点进程异常。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Tait TN9300内存使用率过高",
+      "alert_name": "无线设备${resource_name} 内存使用率过高",
+      "description": "监控 Tait TN9300 网络节点的内存使用率，持续高于阈值时提示内存资源紧张或进程内存泄漏。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

@@ -116,6 +116,18 @@ import {
   normalizeDatasourceItemParams,
 } from '@/app/ops-analysis/utils/stringParamMultipleMigrate';
 
+const viewConfigReloadKey = (item: ViewConfigItem | null | undefined) => {
+  if (!item) return '';
+  const id = 'i' in item && item.i ? String(item.i) : 'id' in item && item.id ? String(item.id) : '';
+  const name = 'name' in item ? item.name ?? '' : '';
+  const valueConfig = item.valueConfig;
+  if (!valueConfig) {
+    return JSON.stringify({ id, name });
+  }
+  const { appearance: _appearance, ...dataConfig } = valueConfig;
+  return JSON.stringify({ id, name, dataConfig });
+};
+
 interface ViewConfigPropsWithManager extends ViewConfigProps {
   dataSourceManager: ReturnType<typeof useDataSourceManager>;
   filterDefinitions?: UnifiedFilterDefinition[];
@@ -133,6 +145,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   builtinNamespaceId,
   showChartThemeMode = false,
   surface = 'dashboard',
+  variant = 'drawer',
+  onDirtyChange,
 }) => {
   const { t } = useTranslation();
   const guardClose = useUnsavedConfirm();
@@ -495,6 +509,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           referenceNow: Date.now(),
           timezone: getDateRangeTimezone(),
         },
+        t,
       });
 
       if (
@@ -662,6 +677,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       });
       // setFieldsValue 在 rc-field-form 2.x 会标记 touched，初始化后清掉以免误报未保存
       markFormPristine(form);
+      onDirtyChange?.(false);
       return;
     }
 
@@ -827,6 +843,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     form.setFieldsValue(formValues);
     // setFieldsValue 在 rc-field-form 2.x 会标记 touched，初始化后清掉以免误报未保存
     markFormPristine(form);
+    onDirtyChange?.(false);
   };
 
   const resetForm = (): void => {
@@ -940,6 +957,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   }, [effectiveDataSource]);
 
   const handleFormValuesChange = (changedValues: Record<string, any>) => {
+    onDirtyChange?.(true);
     if (!isTableLikeChartType) {
       return;
     }
@@ -948,18 +966,24 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     }
   };
 
+  const widgetItemRef = useRef(widgetItem);
+  widgetItemRef.current = widgetItem;
+  const configReloadKey = viewConfigReloadKey(widgetItem);
+
   useEffect(() => {
     if (open) {
-      if (!widgetItem) {
+      const currentItem = widgetItemRef.current;
+      if (!currentItem) {
         return;
       }
       const requestId = nextConfigRequestId();
-      void initializeItemForm(widgetItem, requestId);
+      void initializeItemForm(currentItem, requestId);
     } else if (!open) {
       nextConfigRequestId();
       resetForm();
     }
-  }, [open, widgetItem, form]);
+    // 样式、坐标会换新对象，但不该把数据表单整份重开。只有数据配置变了才重新回填。
+  }, [open, configReloadKey, form]);
 
   useEffect(() => {
     if (!tableConfig.displayColumnsError) {
@@ -1179,14 +1203,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
       if (submitResult.error) {
         if (submitResult.error === 'duplicateFieldKey') {
-          message.error(
-            t('dashboard.duplicateFieldKey') || '字段 key 不能重复',
-          );
+          message.error(t('dashboard.duplicateFieldKey'));
           return;
         }
         if (submitResult.error === 'atLeastOneVisibleColumn') {
           tableConfig.setDisplayColumnsError(
-            t('dashboard.atLeastOneVisibleColumn') || '请至少保留一列可见',
+            t('dashboard.atLeastOneVisibleColumn'),
           );
           return;
         }
@@ -1229,58 +1251,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     }
   };
 
-  return (
-    <Drawer
-      title={t('dashboard.viewConfig')}
-      placement="right"
-      width={drawerWidth}
-      open={open}
-      maskClosable={false}
-      onClose={handleClose}
-      styles={{
-        body: {
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          padding: 0,
-        },
-        footer: {
-          padding: '12px 24px',
-          borderTop: '1px solid var(--color-border-1)',
-        },
-      }}
-      footer={
-        <div className="flex items-center justify-between">
-          <div>
-            <Button
-              data-testid="widget-config-preview-button"
-              icon={<EyeOutlined />}
-              onClick={() => {
-                if (previewOpen) {
-                  setPreviewOpen(false);
-                } else {
-                  handlePreview();
-                }
-              }}
-            >
-              {previewOpen
-                ? t('dashboard.configPreviewCollapse', '收起预览')
-                : t('common.preview', '预览')}
-            </Button>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button onClick={handleClose}>
-              {t('common.cancel')}
-            </Button>
-            <Button type="primary" onClick={handleConfirm}>
-              {t('common.confirm')}
-            </Button>
-          </div>
-        </div>
-      }
-    >
+  const configInner = (
+    <>
       <div className="flex min-h-0 flex-1">
-        {previewOpen ? (
+        {previewOpen && variant !== 'panel' ? (
           <aside
             className="flex h-full min-h-0 w-[480px] shrink-0 flex-col overflow-hidden border-r border-(--color-border-1) bg-(--color-fill-1)/20 p-4"
             data-testid="widget-config-preview-aside"
@@ -1310,7 +1284,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             />
           </aside>
         ) : null}
-        <div className="min-w-0 flex-1 overflow-y-auto p-6 bg-(--color-bg)">
+        <div
+          className={`h-full min-h-0 min-w-0 flex-1 overflow-y-auto bg-(--color-bg) ${
+            variant === 'panel' ? 'px-3 py-3' : 'p-6'
+          }`}
+        >
       <Form
         form={form}
         layout="vertical"
@@ -1605,6 +1583,77 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         componentSwitchOwner={componentSwitchOwner}
         editingParamName={editingInputConfigParam?.name}
       />
+    </>
+  );
+
+  if (variant === 'panel') {
+    return (
+      <div
+        className="flex h-full min-h-0 flex-1 flex-col bg-(--color-bg)"
+        data-testid="widget-config-panel"
+      >
+        {configInner}
+        <div className="flex shrink-0 justify-end gap-2 border-t border-(--color-border-1) px-4 py-3">
+          <Button onClick={handleClose}>{t('common.cancel')}</Button>
+          <Button type="primary" onClick={handleConfirm}>
+            {t('common.confirm')}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Drawer
+      title={t('dashboard.viewConfig')}
+      placement="right"
+      width={drawerWidth}
+      open={open}
+      maskClosable={false}
+      onClose={handleClose}
+      styles={{
+        body: {
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          padding: 0,
+        },
+        footer: {
+          padding: '12px 24px',
+          borderTop: '1px solid var(--color-border-1)',
+        },
+      }}
+      footer={
+        <div className="flex items-center justify-between">
+          <div>
+            <Button
+              data-testid="widget-config-preview-button"
+              icon={<EyeOutlined />}
+              onClick={() => {
+                if (previewOpen) {
+                  setPreviewOpen(false);
+                } else {
+                  handlePreview();
+                }
+              }}
+            >
+              {previewOpen
+                ? t('dashboard.configPreviewCollapse', '收起预览')
+                : t('common.preview', '预览')}
+            </Button>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button onClick={handleClose}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="primary" onClick={handleConfirm}>
+              {t('common.confirm')}
+            </Button>
+          </div>
+        </div>
+      }
+    >
+      {configInner}
     </Drawer>
   );
 };

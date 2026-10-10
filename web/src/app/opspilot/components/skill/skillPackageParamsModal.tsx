@@ -258,7 +258,7 @@ const SkillPackageParamsModal: React.FC<SkillPackageParamsModalProps> = ({
   return (
     <OperateModal
       title={t('skill.skillPackageParams.modalTitle')}
-      subTitle={pkg?.name}
+      subTitle={pkg?.display_name || pkg?.name}
       open={open}
       onCancel={onCancel}
       width={720}

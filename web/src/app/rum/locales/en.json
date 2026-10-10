@@ -79,7 +79,8 @@
       "waitingForTelemetry": "Not connected",
       "healthObserving": "Observing",
       "errorRateHint": "Error rate = errored sessions / total sessions",
-      "trendV2": "Views trend"
+      "trendV2": "Views trend",
+      "loadFailed": "Failed to load applications"
     },
     "setup": {
       "title": "Setup",
@@ -273,10 +274,35 @@
       "replayPlaying": "Viewing",
       "replayRecordingOrdinal": "Recording {n}",
       "replayRecordingMeta": "{segments} segments · {events} events",
-      "replayNotSessionFilm": "Multi-page visits split into recordings; the player plays one at a time, not a full-session film."
+      "replayNotSessionFilm": "Multi-page visits split into recordings; the player plays one at a time, not a full-session film.",
+      "viewSession": "View session",
+      "healthy": "Healthy",
+      "hasReplayTag": "Has replay",
+      "actions": "Actions",
+      "journeySteps": "Page journey",
+      "showAllEvents": "Show all events",
+      "clickToFilter": "Click a stage to filter events",
+      "noEventsInRoute": "No events of this type on this page",
+      "replayReady": "Ready",
+      "replayNotAvailable": "Not recorded",
+      "watchReplay": "Play full screen replay",
+      "noReplayDesc": "This session has no screen recording.",
+      "metadata": "Environment & attributes",
+      "geo": "Location",
+      "device": "Device",
+      "browser": "Browser",
+      "app": "Application",
+      "release": "Release",
+      "timeSpan": "Time span",
+      "timeStart": "Start: {time}",
+      "timeEnd": "End: {time}",
+      "quickFilter": "Quick filters",
+      "detailTitle": "Session details",
+      "loadFailed": "Failed to load sessions"
     },
     "filter": {
-      "allApps": "All applications"
+      "allApps": "All applications",
+      "application": "Application"
     },
     "views": {
       "title": "Views & performance",
@@ -315,7 +341,14 @@
         "poor": "Poor experience, investigate",
         "lowSample": "Low sample"
       },
-      "allReleases": "All releases"
+      "allReleases": "All releases",
+      "dimensionTitle": "View dimensions",
+      "aggregate": "Aggregate",
+      "releaseDetail": "Release details",
+      "routeDetail": "Route details",
+      "sortByMetric": "Sort by {metric}",
+      "rowCount": "{n} items",
+      "searchPlaceholder": "Search routes"
     },
     "errors": {
       "title": "Error tracking",
@@ -373,8 +406,20 @@
         "occurrencesEmpty": "No occurrences",
         "missingFingerprint": "Missing error fingerprint",
         "affectedSessions": "Affected sessions",
-        "affectedUsers": "Affected users"
-      }
+        "affectedUsers": "Affected users",
+        "stackCopied": "Full stack copied",
+        "missingMapHint": "Upload build source maps to restore minified stacks to precise source locations",
+        "copyStack": "Copy stack",
+        "sampleHint": "Sampled from recent error session context",
+        "peakCount": "Peak count in window",
+        "times": "times",
+        "attributes": "Attributes & diagnostics"
+      },
+      "filterTitle": "Error filters",
+      "rowCount": "{n} items",
+      "type": "Error type",
+      "fingerprint": "Fingerprint",
+      "copyFingerprint": "Copy"
     },
     "funnels": {
       "title": "Conversion funnel",
@@ -399,7 +444,11 @@
       "convFromStart": "Conversion vs start",
       "retention": "Retention",
       "stepDropoff": "Step drop-off",
-      "endpoint": "End"
+      "endpoint": "End",
+      "convFromFirst": "Conversion from first step",
+      "dropoff": "Drop-off",
+      "list": "Funnel list",
+      "stepUnit": "steps"
     },
     "releases": {
       "title": "Releases",
@@ -421,7 +470,8 @@
         "newIssues": "{n} new issues",
         "lcpDegrade": "LCP {v}",
         "noDegrade": "No experience regression"
-      }
+      },
+      "release": "Release"
     },
     "sourcemaps": {
       "title": "Source maps",
@@ -537,7 +587,8 @@
       "createdAt": "Submitted",
       "searchPlaceholder": "Search by end-user ID",
       "empty": "No erase jobs yet",
-      "emptyHint": "Submitted requests are written to the server ledger for audit tracking."
+      "emptyHint": "Submitted requests are written to the server ledger for audit tracking.",
+      "statusFailed": "Failed"
     },
     "savedViews": {
       "title": "Saved views",
@@ -562,12 +613,24 @@
     "export": {
       "csv": "Export CSV",
       "json": "Export JSON",
-      "truncated": "Exporting first {n} rows only"
+      "truncated": "Exporting first {n} rows only",
+      "label": "Export"
     },
     "traffic": {
       "visitors": "Visitors",
       "automated": "Automated",
-      "all": "All traffic"
+      "all": "All traffic",
+      "label": "Traffic"
+    },
+    "range": {
+      "1h": "Last 1 hour",
+      "24h": "Last 24 hours",
+      "current": "Current range"
+    },
+    "cwv": {
+      "good": "Good",
+      "needsImprove": "Needs improvement",
+      "poor": "Poor"
     }
   }
 }

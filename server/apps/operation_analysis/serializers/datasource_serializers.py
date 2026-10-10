@@ -11,6 +11,7 @@ from apps.operation_analysis.constants.import_export import SENSITIVE_PLACEHOLDE
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
 from apps.operation_analysis.serializers.base_serializers import BaseFormatTimeSerializer
 from apps.operation_analysis.serializers.data_connection_serializers import validate_datasource_connection_binding, validate_rest_headers
+from apps.operation_analysis.services.user_messages import oa_message
 
 TRANSFORM_ALLOWED_SOURCE_TYPES = {
     DataSourceAPIModel.SOURCE_TYPE_REST_API,
@@ -124,7 +125,7 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
     def validate_source_type(self, value):
         allowed = {choice[0] for choice in DataSourceAPIModel.SOURCE_TYPE_CHOICES}
         if value not in allowed:
-            raise serializers.ValidationError("source_type 不支持")
+            raise serializers.ValidationError(oa_message("messages.source_type_unsupported", "source_type 不支持"))
         return value
 
     def validate_groups(self, value):
@@ -132,14 +133,14 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
         if self.instance is not None and getattr(self.instance, "is_build_in", False):
             return groups
         if not groups:
-            raise serializers.ValidationError("必须选择所属组织")
+            raise serializers.ValidationError(oa_message("messages.groups_required", "必须选择所属组织"))
         return groups
 
     def validate_connection_config(self, value):
         if value in (None, ""):
             return {}
         if not isinstance(value, dict):
-            raise serializers.ValidationError("connection_config 必须为对象")
+            raise serializers.ValidationError(oa_message("messages.connection_config_object", "connection_config 必须为对象"))
         if self.instance:
             return merge_redacted_config(self.instance.connection_config or {}, value)
         return value
@@ -148,7 +149,7 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
         if value in (None, ""):
             return {}
         if not isinstance(value, dict):
-            raise serializers.ValidationError("query_config 必须为对象")
+            raise serializers.ValidationError(oa_message("messages.query_config_object", "query_config 必须为对象"))
         if self.instance:
             return merge_redacted_config(self.instance.query_config or {}, value)
         return value
@@ -158,17 +159,17 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
             return value
 
         if not isinstance(value, list):
-            raise serializers.ValidationError("field_schema 必须为数组")
+            raise serializers.ValidationError(oa_message("messages.field_schema_array", "field_schema 必须为数组"))
 
         keys = []
         for idx, field in enumerate(value):
             if not isinstance(field, dict):
-                raise serializers.ValidationError(f"[{idx}] 必须为对象")
+                raise serializers.ValidationError(oa_message("messages.indexed_must_be_object", "[{index}] 必须为对象", index=idx))
             key = field.get("key", "")
             if not isinstance(key, str) or not key.strip():
-                raise serializers.ValidationError(f"[{idx}].key 不能为空")
+                raise serializers.ValidationError(oa_message("messages.indexed_key_empty", "[{index}].key 不能为空", index=idx))
             if key in keys:
-                raise serializers.ValidationError(f"[{idx}].key '{key}' 重复")
+                raise serializers.ValidationError(oa_message("messages.indexed_key_duplicate", "[{index}].key '{key}' 重复", index=idx, key=key))
             keys.append(key)
 
         return value
@@ -177,21 +178,27 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
         if not value:
             return value
         if not isinstance(value, list):
-            raise serializers.ValidationError("params 必须为数组")
+            raise serializers.ValidationError(oa_message("messages.params_array", "params 必须为数组"))
 
         bindable_types = {"string", "timeRange", "dateRange", "number"}
         for index, param in enumerate(value):
             if not isinstance(param, dict):
-                raise serializers.ValidationError(f"[{index}] 必须为对象")
+                raise serializers.ValidationError(oa_message("messages.indexed_must_be_object", "[{index}] 必须为对象", index=index))
             if param.get("filterType") == "filter" and param.get("type") not in bindable_types:
-                raise serializers.ValidationError(f"[{index}].type 仅 string、timeRange、dateRange、number 支持筛选联动")
+                raise serializers.ValidationError(
+                    oa_message(
+                        "messages.params_filter_type",
+                        "[{index}].type 仅 string、timeRange、dateRange、number 支持筛选联动",
+                        index=index,
+                    )
+                )
         return value
 
     def validate_transform_config(self, value):
         if value in (None, ""):
             return {}
         if not isinstance(value, dict):
-            raise serializers.ValidationError("transform_config 必须为对象")
+            raise serializers.ValidationError(oa_message("messages.transform_config_object", "transform_config 必须为对象"))
         source_type = None
         initial_data = getattr(self, "initial_data", None)
         if isinstance(initial_data, dict):
@@ -204,9 +211,9 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
         language = (value.get("language") or "python").lower()
         script = value.get("script") or ""
         if enabled and language != "python":
-            raise serializers.ValidationError("仅支持 language=python")
+            raise serializers.ValidationError(oa_message("messages.transform_language_python", "仅支持 language=python"))
         if enabled and (not isinstance(script, str) or not script.strip()):
-            raise serializers.ValidationError("启用转换时 script 不能为空")
+            raise serializers.ValidationError(oa_message("messages.transform_script_required", "启用转换时 script 不能为空"))
         return {
             "enabled": enabled,
             "language": "python",
@@ -222,7 +229,7 @@ class DataSourceAPIModelSerializer(BaseFormatTimeSerializer, AuthSerializer):
         )
         rest_api = attrs.get("rest_api", getattr(self.instance, "rest_api", ""))
         if is_legacy_raw_monitor_query(source_type=source_type, rest_api=rest_api):
-            raise serializers.ValidationError({"rest_api": LEGACY_RAW_MONITOR_QUERY_ERROR})
+            raise serializers.ValidationError({"rest_api": oa_message("messages.import_legacy_raw_monitor", LEGACY_RAW_MONITOR_QUERY_ERROR)})
 
         transform_config = attrs.get(
             "transform_config",

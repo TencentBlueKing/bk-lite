@@ -8,6 +8,7 @@ import { useScreenAwareRouter } from '@/console-layout';
 import { useTranslation } from '@/utils/i18n';
 import type { MenuItem } from '@/types';
 import { getPluginBrandIcon } from '@/app/monitor/utils/common';
+import { resolvePluginSourceBadge } from '@/app/monitor/utils/pluginSourceBadge';
 
 const IntegrationDetailLayout = ({
   children
@@ -25,6 +26,10 @@ const IntegrationDetailLayout = ({
   const packVersion = searchParams.get('pack_version') || '';
   const resolvedIcon = getPluginBrandIcon(pluginName) || icon || 'cc-default_默认';
   const templateType = searchParams.get('template_type') || '';
+  const sourceBadge = resolvePluginSourceBadge({
+    template_type: templateType,
+    pack_version: packVersion
+  });
 
   const handleBackButtonClick = () => {
     const params = new URLSearchParams({ objId });
@@ -48,21 +53,28 @@ const IntegrationDetailLayout = ({
       <div className="w-full min-w-0">
         <h2 className="text-lg font-semibold mb-2">
           {pluginDisplayName}
-          <Tooltip
-            title={
-              packVersion
-                ? t('monitor.integrations.pinnedPackHint', '', {
-                  version: packVersion
-                })
-                : t('monitor.integrations.builtinPackHint')
-            }
-          >
+          {sourceBadge.showPackTag && (
+            <Tooltip
+              title={
+                sourceBadge.packKind === 'pinned'
+                  ? t('monitor.integrations.pinnedPackHint', '', {
+                    version: sourceBadge.packVersion
+                  })
+                  : t('monitor.integrations.builtinPackHint')
+              }
+            >
+              <Tag className="ml-2 align-middle">
+                {sourceBadge.packKind === 'pinned'
+                  ? sourceBadge.packVersion
+                  : t('monitor.integrations.builtinPack')}
+              </Tag>
+            </Tooltip>
+          )}
+          {sourceBadge.showSelfBuilt && (
             <Tag className="ml-2 align-middle">
-              {packVersion
-                ? packVersion
-                : t('monitor.integrations.builtinPack')}
+              {t('monitor.integrations.selfBuilt')}
             </Tag>
-          </Tooltip>
+          )}
         </h2>
         <Typography.Paragraph
           className="!mb-0 text-sm text-[var(--color-text-3)]"

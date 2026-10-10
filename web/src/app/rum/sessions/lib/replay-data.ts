@@ -92,7 +92,7 @@ function checksumMaterial(envelope: StoredEnvelope) {
 async function sha256(value: string) {
   const subtle = globalThis.crypto?.subtle;
   if (!subtle) {
-    throw new Error('当前环境无法校验回放分段');
+    throw new Error('Replay checksum is unavailable in this environment');
   }
   const digest = await subtle.digest('SHA-256', new TextEncoder().encode(value));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -103,7 +103,7 @@ async function assertChecksum(envelope: StoredEnvelope) {
   // (plain HTTP non-localhost).
   if (!globalThis.crypto?.subtle) return;
   if ((await sha256(checksumMaterial(envelope))) !== envelope.checksum_sha256) {
-    throw new Error('回放分段校验失败');
+    throw new Error('Replay segment checksum mismatch');
   }
 }
 
@@ -120,19 +120,21 @@ async function decodeSegment(
     credentials: 'same-origin',
     headers,
   });
-  if (response.status === 401 || response.status === 403) throw new Error('没有回放数据访问权限');
-  if (response.status === 410) throw new Error('回放数据已过期');
-  if (!response.ok || !response.body) throw new Error('回放分段读取失败');
+  if (response.status === 401 || response.status === 403) {
+    throw new Error('Replay data access denied');
+  }
+  if (response.status === 410) throw new Error('Replay data expired');
+  if (!response.ok || !response.body) throw new Error('Failed to read replay segment');
   if (response.headers.get('content-type') !== 'application/octet-stream') {
-    throw new Error('回放分段格式不正确');
+    throw new Error('Unexpected replay segment content type');
   }
   const length = Number(response.headers.get('content-length'));
   if (length !== segment.compressedBytes || length > MAX_COMPRESSED_BYTES) {
-    throw new Error('回放分段大小不正确');
+    throw new Error('Replay segment size does not match the manifest');
   }
   const compressed = await readBounded(response.body, length, MAX_COMPRESSED_BYTES);
   const stream = new Response(compressed).body;
-  if (!stream) throw new Error('浏览器无法解压回放数据');
+  if (!stream) throw new Error('Browser cannot decompress replay data');
   const decoded = await readBounded(
     stream.pipeThrough(new DecompressionStream('gzip')),
     segment.uncompressedBytes,
@@ -145,7 +147,7 @@ async function decodeSegment(
     Object.keys(value).length !== ENVELOPE_KEYS.length ||
     !Object.keys(value).every((key) => ENVELOPE_KEYS.includes(key as (typeof ENVELOPE_KEYS)[number]))
   ) {
-    throw new Error('回放信封格式不正确');
+    throw new Error('Unexpected replay envelope format');
   }
   const envelope = value as unknown as StoredEnvelope;
   if (
@@ -157,7 +159,7 @@ async function decodeSegment(
     envelope.events.length !== segment.eventCount ||
     envelope.has_full_snapshot !== segment.hasFullSnapshot
   ) {
-    throw new Error('回放分段与索引不一致');
+    throw new Error('Replay segment does not match the manifest');
   }
   await assertChecksum(envelope);
   return envelope.events;
@@ -165,7 +167,7 @@ async function decodeSegment(
 
 function eventTimestamp(value: unknown) {
   if (!isRecord(value) || typeof value.timestamp !== 'number' || !Number.isSafeInteger(value.timestamp)) {
-    throw new Error('回放事件时间无效');
+    throw new Error('Invalid replay event timestamp');
   }
   return value.timestamp;
 }
@@ -183,12 +185,14 @@ export async function loadReplayRecording(
   authToken?: string | null,
 ) {
   const recording = manifest.recordings.find((item) => item.recordingId === recordingId);
-  if (!recording?.segments.length) throw new Error('回放录制为空');
+  if (!recording?.segments.length) throw new Error('Replay recording has no segments');
   const events: unknown[] = [];
   for (const segment of [...recording.segments].sort((a, b) => a.sequence - b.sequence)) {
     const grant = await createReplayGrant(application, session, segment.ref);
     const granted = grant.segments?.find((item) => item.ref === segment.ref);
-    if (!grant.targetIncluded || !granted) throw new Error('回放授权不包含目标分段');
+    if (!grant.targetIncluded || !granted) {
+      throw new Error('Replay grant does not include the target segment');
+    }
     events.push(
       ...(await decodeSegment(granted.url, { application, session, recordingId }, segment, authToken)),
     );
@@ -196,9 +200,9 @@ export async function loadReplayRecording(
   let previous = -1;
   for (const event of events) {
     const timestamp = eventTimestamp(event);
-    if (timestamp < previous) throw new Error('回放事件顺序无效');
+    if (timestamp < previous) throw new Error('Replay events are out of order');
     previous = timestamp;
   }
-  if (events.length < 2) throw new Error('回放事件不足');
+  if (events.length < 2) throw new Error('Replay recording has too few events');
   return events;
 }

@@ -369,6 +369,39 @@ def test_workflow_list_is_server_paginated_and_filtered(superuser):
     assert enabled.data["count"] == 1
     assert enabled.data["items"][0]["name"] == "生产巡检"
 
+    Workflow.objects.create(
+        name="内置巡检",
+        team=[7],
+        definition={},
+        current_version=1,
+        enabled=True,
+        is_builtin=True,
+    )
+    builtin = list_view(_request(APIRequestFactory(), "get", "/workflows/?is_builtin=true", superuser))
+    assert builtin.data["count"] == 1
+    assert builtin.data["items"][0]["name"] == "内置巡检"
+    assert builtin.data["items"][0]["is_builtin"] is True
+
+    custom = list_view(_request(APIRequestFactory(), "get", "/workflows/?is_builtin=false", superuser))
+    assert custom.data["count"] == 3
+    assert all(not item["is_builtin"] for item in custom.data["items"])
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("fmt", ["docx", "xlsx"])
+def test_sample_templates_download_from_backend_assets(superuser, fmt):
+    from apps.workflow_orchestration.services.demo_templates import builtin_health_template_path
+
+    view = WorkflowViewSet.as_view({"get": "sample_templates"})
+    response = view(
+        _request(APIRequestFactory(), "get", f"/workflows/sample-templates/{fmt}/", superuser),
+        fmt=fmt,
+    )
+
+    assert response.status_code == 200
+    assert response["Content-Disposition"].endswith(f'filename="health-inspection-example.{fmt}"')
+    assert b"".join(response.streaming_content) == builtin_health_template_path(fmt).read_bytes()
+
 
 @pytest.mark.django_db
 def test_dashboard_returns_only_current_team_actionable_mvp_summary(superuser):

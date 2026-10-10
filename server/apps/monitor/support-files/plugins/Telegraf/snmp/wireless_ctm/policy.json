@@ -1,0 +1,46 @@
+{
+  "object": "Wireless",
+  "plugin": "Wireless Last Mile Gear CTM SNMP",
+  "templates": [
+    {
+      "name": "CTM无线设备温度过高",
+      "alert_name": "无线设备${resource_name} 温度过高",
+      "description": "监控 Last Mile Gear CTM 机箱温度，当持续高于阈值时触发告警，提示可能存在散热异常、环境温度过高或设备过载。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "CTM无线设备电源异常",
+      "alert_name": "无线设备${resource_name} 电源 ${metric__supply} 状态异常",
+      "description": "监控 Last Mile Gear CTM 主路/从路电源状态，当电源为 Off 或电压过低时触发告警，提示需检查供电冗余。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

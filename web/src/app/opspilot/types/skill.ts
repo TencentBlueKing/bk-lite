@@ -238,6 +238,8 @@ export interface SkillPackage {
   name: string;
   version: string;
   description?: string;
+  display_name?: string;
+  description_tr?: string;
   category?: string;
   source_type?: string;
   source_url?: string;
@@ -248,6 +250,7 @@ export interface SkillPackage {
   triggers?: string[];
   team?: string[];
   is_enabled?: boolean;
+  is_build_in?: boolean;
   permissions?: string[];
   created_at?: string;
   updated_at?: string;

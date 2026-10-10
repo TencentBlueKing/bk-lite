@@ -1,6 +1,7 @@
 from copy import deepcopy
 
 from apps.operation_analysis.models.models import Report
+from apps.operation_analysis.services.canvas_report.base import canvas_type_label
 from apps.operation_analysis.services.canvas_report.types import RESOURCE_TYPE_REPORT
 from apps.operation_analysis.services.named_option_datasources import expand_widget_manifest_with_named_option_datasources
 from apps.operation_analysis.services.network_status_topology_overlay import expand_widget_manifest_with_topology_overlay
@@ -71,7 +72,7 @@ class ReportCanvasReportAdapter:
         return "report"
 
     def resource_display_label(self) -> str:
-        return "报表"
+        return canvas_type_label(self.resource_type) or "报表"
 
     def can_view_resource(
         self,

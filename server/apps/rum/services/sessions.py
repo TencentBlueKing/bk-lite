@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from apps.core.logger import rum_logger as logger
 from apps.rum.constants import SUBJECT_APPLICATION_LIST
 from apps.rum.services.analytics import Analytics, get_analytics
 from apps.rum.services.control import ControlError, ControlPlane, control_unavailable, get_control_plane
@@ -87,7 +88,14 @@ class SessionsService:
             "limit": int(params.get("limit") or 0),
             "offset": int(params.get("offset") or 0),
         }
-        page = self.analytics.list_sessions(self.settings.tenant_id, opts)
+        try:
+            page = self.analytics.list_sessions(self.settings.tenant_id, opts)
+        except Exception as exc:  # noqa: BLE001 — degrade; do not 500 the BFF
+            logger.warning(
+                "rum sessions list analytics failed failed_stage=list_sessions error_type=%s",
+                type(exc).__name__,
+            )
+            return empty_session_list(reason="analytics")
         if self.replay_index.available() and page.get("sessions"):
             replayed = 0
             for row in page["sessions"]:
@@ -123,7 +131,14 @@ class SessionsService:
             "hasReplay": params.get("hasReplay") in {"1", "true", True},
             "traffic": params.get("traffic") or "visitors",
         }
-        return self.analytics.session_trend(self.settings.tenant_id, opts)
+        try:
+            return self.analytics.session_trend(self.settings.tenant_id, opts)
+        except Exception as exc:  # noqa: BLE001 — degrade; do not 500 the BFF
+            logger.warning(
+                "rum sessions trend analytics failed failed_stage=session_trend error_type=%s",
+                type(exc).__name__,
+            )
+            return empty_session_trend(reason="analytics")
 
     def get_session(self, actor: str, session_id: str, params: dict[str, Any]) -> dict:
         application = (params.get("application") or "").strip()

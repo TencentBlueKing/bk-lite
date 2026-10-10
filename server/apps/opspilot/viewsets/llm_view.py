@@ -43,6 +43,7 @@ from apps.opspilot.serializers.llm_serializer import (
     SkillToolsSerializer,
 )
 from apps.opspilot.services.builtin_tools import (
+    BUILTIN_ACTIVEDIRECTORY_TOOL_NAME,
     BUILTIN_ALERTS_TOOL_NAME,
     BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
     BUILTIN_CMDB_TOOL_NAME,
@@ -52,6 +53,7 @@ from apps.opspilot.services.builtin_tools import (
     BUILTIN_MYSQL_TOOL_NAME,
     BUILTIN_ORACLE_TOOL_NAME,
     BUILTIN_REDIS_TOOL_NAME,
+    build_builtin_activedirectory_tool,
     build_builtin_alerts_tool,
     build_builtin_attachment_file_tool,
     build_builtin_cmdb_tool,
@@ -82,6 +84,7 @@ from apps.opspilot.utils.prompt_utils import merge_skill_params
 from apps.opspilot.utils.skill_execution_params import resolve_request_tools
 from apps.opspilot.utils.skill_package_params import annotate_packages_missing_params, merge_package_params, validate_package_params
 from apps.opspilot.utils.sse_chat import create_error_stream_response, stream_chat
+from apps.opspilot.utils.user_message import user_message
 from apps.opspilot.utils.vendor_model_mixin import VendorModelMixin
 from apps.system_mgmt.utils.network_whitelist_error import build_network_whitelist_error_payload
 from apps.system_mgmt.utils.operation_log_utils import log_operation
@@ -189,13 +192,13 @@ class LLMViewSet(PinMixin, AuthViewSet):
                 message = message.format(validate_msg=validate_msg)
             return JsonResponse({"result": False, "message": message})
         params["enable_conversation_history"] = True
-        params[
-            "skill_prompt"
-        ] = """你是关于专业机器人，请按照以下要求进行回复
-1、请根据用户的问题，从知识库检索关联的知识进行总结回复
-2、请根据用户需求，从工具中选取适当的工具进行执行
-3、回复的语句请保证准确，不要杜撰
-4、请按照要点有条理的梳理答案"""
+        params["skill_prompt"] = (self.loader.get("skill.default_prompt") if self.loader else None) or (
+            "You are a professional assistant. Reply according to these rules:\n"
+            "1. For the user's question, retrieve related knowledge from the knowledge base and summarize the answer.\n"
+            "2. Based on the user's need, choose and run the appropriate tool.\n"
+            "3. Keep the reply accurate. Do not make things up.\n"
+            "4. Organize the answer in clear points."
+        )
         for item in params.get("skill_params", []):
             if item.get("type") == "password":
                 EncryptMixin.encrypt_field("value", item)
@@ -426,6 +429,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             params["show_think"] = False
             params["temperature"] = DEFAULT_CHAT_TEMPERATURE
             params["locale"] = getattr(request.user, "locale", "en")  # 用户语言设置
+            params["user_timezone"] = getattr(request.user, "timezone", "") or ""
             # 透传技能绑定的 Wiki 知识库,触发 format_chat_server_kwargs 的检索增强;
             # 否则智能体对话不会引用知识库内容,易凭 LLM 自身知识作答(幻觉)。
             params["wiki_kb_ids"] = list(skill_obj.wiki_knowledge_bases.values_list("id", flat=True))
@@ -511,6 +515,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             params["show_think"] = False
             params["temperature"] = DEFAULT_CHAT_TEMPERATURE
             params["locale"] = getattr(request.user, "locale", "en")  # 用户语言设置
+            params["user_timezone"] = getattr(request.user, "timezone", "") or ""
             params["browser_use_force_task"] = True
             # 同 execute:透传 Wiki 知识库以触发检索增强,避免智能体不查知识库而凭空作答。
             params["wiki_kb_ids"] = list(skill_obj.wiki_knowledge_bases.values_list("id", flat=True))
@@ -883,9 +888,21 @@ class SkillPackageViewSet(AuthViewSet):
             logger.warning("[skill-package] 清理磁盘目录失败 %s: %r", storage_path_text, e)
         return False
 
+    def get_queryset_by_permission(self, request, queryset, permission_key=None):
+        """组织过滤后仍并入内置技能包，避免 team=[] 的内置行对各团队不可见。"""
+        result = super().get_queryset_by_permission(request, queryset, permission_key)
+        if isinstance(result, JsonResponse):
+            return result
+        return (result | queryset.filter(is_build_in=True)).distinct()
+
     def destroy(self, request, *args, **kwargs):
         """删技能包:DRF 默认 destroy 删 DB 行,再调 _cleanup_storage_path 清磁盘。"""
         instance = self.get_object()
+        if getattr(instance, "is_build_in", False):
+            return Response(
+                {"result": False, "message": user_message(request, "error.builtin_skill_package_not_deletable", "内置技能包不可删除", self.loader)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         storage_path_text = str(getattr(instance, "storage_path", "") or "")
         response = super().destroy(request, *args, **kwargs)
         self._cleanup_storage_path(storage_path_text)
@@ -920,14 +937,36 @@ class SkillPackageViewSet(AuthViewSet):
     def partial_update(self, request, *args, **kwargs):
         return super().partial_update(request, *args, **kwargs)
 
+    def _skill_package_import_message(self, request, exc: ValueError) -> str:
+        """导入失败时按页面语言返回文案。导入器仍抛中文原句，这里只翻译返回给页面的句子。"""
+        text = str(exc)
+        if text == "技能包文件不存在":
+            return user_message(request, "error.skill_package_file_missing", text, self.loader)
+        missing_prefix = "技能包缺少 "
+        if text.startswith(missing_prefix):
+            template = user_message(
+                request,
+                "error.skill_package_missing_file",
+                "技能包缺少 {filename}",
+                self.loader,
+            )
+            return template.format(filename=text[len(missing_prefix) :])
+        return text
+
     @action(methods=["POST"], detail=False)
     @HasPermission("tool_list-Add")
     def import_zip(self, request):
         upload = request.FILES.get("file")
         if not upload:
-            return Response({"result": False, "message": "请上传技能包 ZIP 文件"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"result": False, "message": user_message(request, "error.skill_package_zip_required", "请上传技能包 ZIP 文件", self.loader)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if not upload.name.lower().endswith(".zip"):
-            return Response({"result": False, "message": "技能包必须是 ZIP 文件"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"result": False, "message": user_message(request, "error.skill_package_must_be_zip", "技能包必须是 ZIP 文件", self.loader)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         temp_path = ""
         try:
@@ -968,7 +1007,10 @@ class SkillPackageViewSet(AuthViewSet):
             log_operation(request, "create", "opspilot", f"导入技能包: {package.name}")
             return Response({"result": True, "data": serializer.data})
         except ValueError as exc:
-            return Response({"result": False, "message": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"result": False, "message": self._skill_package_import_message(request, exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         except Exception as exc:
             logger.exception("Import skill package failed")
             return Response({"result": False, "message": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -1033,7 +1075,10 @@ class SkillPackageViewSet(AuthViewSet):
             log_operation(request, "create", "opspilot", f"导入技能包(本地): {package.name}")
             return Response({"result": True, "data": serializer.data})
         except ValueError as exc:
-            return Response({"result": False, "message": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"result": False, "message": self._skill_package_import_message(request, exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         except Exception as exc:
             logger.exception("Import local skill package failed")
             return Response({"result": False, "message": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -1146,6 +1191,8 @@ class SkillToolsViewSet(AuthViewSet):
                 response.data.append(build_builtin_oracle_tool(loader))
             if not any(item.get("name") == BUILTIN_MSSQL_TOOL_NAME for item in response.data):
                 response.data.append(build_builtin_mssql_tool(loader))
+            if not any(item.get("name") == BUILTIN_ACTIVEDIRECTORY_TOOL_NAME for item in response.data):
+                response.data.append(build_builtin_activedirectory_tool(loader))
         return response
 
     @HasPermission("tool_list-Add")
@@ -1389,3 +1436,21 @@ class SkillToolsViewSet(AuthViewSet):
         except Exception as error:
             return JsonResponse({"result": False, "message": f"Kubernetes connection test failed: {error}"}, status=status.HTTP_400_BAD_REQUEST)
         return JsonResponse({"result": False, "message": "Kubernetes connection test failed"}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(methods=["POST"], detail=False)
+    @HasPermission("tool_list-View")
+    def test_ad_connection(self, request):
+        from apps.opspilot.metis.llm.tools.activedirectory.connection import normalize_ad_instance, test_ad_instance
+
+        try:
+            self._guard_connection_host(request.data.get("host"), request.data.get("port"))
+            instance = normalize_ad_instance(request.data)
+            if test_ad_instance(instance):
+                return JsonResponse({"result": True, "data": {"success": True}})
+        except SSRFError as error:
+            return self._ssrf_error_response(error)
+        except ValueError as error:
+            return JsonResponse({"result": False, "message": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as error:
+            return JsonResponse({"result": False, "message": f"Active Directory connection test failed: {error}"}, status=status.HTTP_400_BAD_REQUEST)
+        return JsonResponse({"result": False, "message": "Active Directory connection test failed"}, status=status.HTTP_400_BAD_REQUEST)

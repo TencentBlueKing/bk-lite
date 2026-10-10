@@ -43,11 +43,28 @@ import {
   stripMetricLabelsPlaceholder
 } from '@/app/monitor/utils/metricQueryLabels';
 import { cloneDeep } from 'lodash';
+import { useSearchParams } from 'next/navigation';
+import ScriptMetricGroupSelect from '../configure/scriptMetricGroupSelect';
+import {
+  CatalogMetricGroupOption,
+  dedupeCatalogMetricGroups
+} from '../configure/scriptMetricPersist';
+import {
+  isHiddenPlatformDimensionKey,
+  isReservedScriptMetricId,
+  visibleDimensionItems
+} from '../configure/scriptMetricsParser';
 const { Option } = Select;
 
 interface ModalProps {
   onSuccess: () => void;
+  onGroupListChange?: (group?: CatalogMetricGroupOption) => void;
   groupList: ListItem[];
+  catalogMetrics?: Array<{
+    id?: number;
+    name?: string;
+    display_name?: string;
+  }>;
   monitorObject: number;
   pluginId: number;
 }
@@ -158,14 +175,43 @@ const normalizeDimensions = (items?: DimensionItem[]): DimensionItem[] => {
   }));
 };
 
+const splitScriptVisibleDimensions = (
+  items?: DimensionItem[]
+): { visible: DimensionItem[]; hidden: DimensionItem[] } => {
+  const normalized = normalizeDimensions(items).filter((item) =>
+    String(item.name || '').trim()
+  );
+  const hidden = normalized.filter((item) =>
+    isHiddenPlatformDimensionKey(String(item.name || '').trim())
+  );
+  const visible = visibleDimensionItems(normalized);
+  return {
+    visible: visible.length ? visible : [{ ...INIT_DIMENSION }],
+    hidden
+  };
+};
+
 const buildMetricSnippet = (metricName: string) => metricName;
 
 const MetricModal = forwardRef<ModalRef, ModalProps>(
-  ({ onSuccess, groupList, monitorObject, pluginId }, ref) => {
+  (
+    {
+      onSuccess,
+      onGroupListChange,
+      groupList,
+      catalogMetrics = [],
+      monitorObject,
+      pluginId
+    },
+    ref
+  ) => {
     const { post, put } = useApiClient();
-    const { getMetricsGroup, getVmMetricNames, testMetricQuery } =
-      useMonitorApi();
+    const { getVmMetricNames, testMetricQuery } = useMonitorApi();
     const { t } = useTranslation();
+    const searchParams = useSearchParams();
+    const isScriptTemplate =
+      String(searchParams.get('template_type') || '') === 'script';
+    const hiddenDimensionsRef = useRef<DimensionItem[]>([]);
     const { token } = theme.useToken();
     const presets = genPresets({
       primary: generate(token.colorPrimary),
@@ -185,14 +231,9 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
     const [groupVisible, setGroupVisible] = useState<boolean>(false);
     const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
     const [groupForm, setGroupForm] = useState<MetricInfo>({});
-    const [groupOptions, setGroupOptions] = useState<ListItem[]>(groupList);
-    const [groupLoading, setGroupLoading] = useState(false);
-    const groupSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
-      null
+    const [pendingGroups, setPendingGroups] = useState<CatalogMetricGroupOption[]>(
+      []
     );
-    const selectedGroupIdRef = useRef<React.Key | null>(null);
-    const allowInheritedGroupsRef = useRef(false);
-    const groupRequestGenerationRef = useRef(0);
     const [title, setTitle] = useState<string>('');
     const [type, setType] = useState<string>('');
     const [dimensions, setDimensions] = useState<DimensionItem[]>([
@@ -314,49 +355,27 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
       return formFields.length > 0 || leftover.length > 0;
     };
 
-    const loadGroupOptions = async (keyword = '') => {
-      const generation = groupRequestGenerationRef.current + 1;
-      groupRequestGenerationRef.current = generation;
-      setGroupLoading(true);
-      try {
-        const page = await getMetricsGroup({
-          monitor_object_id: monitorObject,
-          monitor_plugin_id: pluginId,
-          ...(keyword.trim() ? { keyword: keyword.trim() } : {})
-        });
-        const items = page.items.filter(
-          (item) =>
-            allowInheritedGroupsRef.current ||
-            String(item.monitor_plugin) === String(pluginId)
-        ) as ListItem[];
-        const selectedGroup = groupList.find(
-          (item) => String(item.id) === String(selectedGroupIdRef.current)
-        );
-        if (groupRequestGenerationRef.current !== generation) return;
-        setGroupOptions(
-          selectedGroup && !items.some((item) => item.id === selectedGroup.id)
-            ? [...items, selectedGroup]
-            : items
-        );
-      } catch {
-        if (groupRequestGenerationRef.current === generation) {
-          setGroupOptions(groupList);
-        }
-      } finally {
-        if (groupRequestGenerationRef.current === generation) {
-          setGroupLoading(false);
-        }
-      }
-    };
+    const groupOptions = useMemo(() => {
+      const fromPage: CatalogMetricGroupOption[] = groupList.map((item) => ({
+        id: typeof item.id === 'number' ? item.id : Number(item.id),
+        name: item.name,
+        display_name: item.display_name || item.name,
+        monitor_plugin: (item as { monitor_plugin?: string | number }).monitor_plugin,
+        is_pre: (item as { is_pre?: boolean }).is_pre
+      }));
+      return dedupeCatalogMetricGroups(
+        [...fromPage, ...pendingGroups],
+        { preferredPluginId: pluginId }
+      ).groups;
+    }, [groupList, pendingGroups, pluginId]);
 
-    const handleGroupSearch = (value: string) => {
-      if (groupSearchTimerRef.current) {
-        clearTimeout(groupSearchTimerRef.current);
-      }
-      groupSearchTimerRef.current = setTimeout(() => {
-        loadGroupOptions(value);
-      }, 300);
-    };
+    useEffect(() => {
+      const known = new Set(groupList.map((item) => String(item.id)));
+      setPendingGroups((current) => {
+        const next = current.filter((group) => !known.has(String(group.id)));
+        return next.length === current.length ? current : next;
+      });
+    }, [groupList]);
 
     const loadVmMetricNames = async (keyword = '') => {
       const generation = metricRequestGenerationRef.current + 1;
@@ -393,9 +412,6 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
 
     useEffect(
       () => () => {
-        if (groupSearchTimerRef.current) {
-          clearTimeout(groupSearchTimerRef.current);
-        }
         if (metricSearchTimerRef.current) {
           clearTimeout(metricSearchTimerRef.current);
         }
@@ -403,18 +419,10 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
       []
     );
 
-    useEffect(() => {
-      setGroupOptions(groupList);
-    }, [groupList]);
-
     useImperativeHandle(ref, () => ({
       showModal: ({ type, form, title }) => {
         const formData = cloneDeep(form);
-        allowInheritedGroupsRef.current = type === 'view';
-        selectedGroupIdRef.current =
-          (formData.metric_group as React.Key) || null;
         setGroupVisible(true);
-        void loadGroupOptions();
         setType(type);
         setTitle(title);
         resetDimensionGuideState();
@@ -425,12 +433,43 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
         try {
           if (type === 'add') {
             formData.type = 'metric';
-            setDimensions([{ ...INIT_DIMENSION }]);
+            formData.data_type = formData.data_type || 'Number';
+            const incomingDimensions = isScriptTemplate
+              ? splitScriptVisibleDimensions(
+                  formData.dimensions as DimensionItem[]
+              )
+              : {
+                visible: normalizeDimensions(
+                    formData.dimensions as DimensionItem[]
+                ),
+                hidden: [] as DimensionItem[]
+              };
+            hiddenDimensionsRef.current = incomingDimensions.hidden;
+            const hasPrefill = incomingDimensions.visible.some((item) =>
+              String(item.name || '').trim()
+            );
+            setDimensions(
+              hasPrefill ? incomingDimensions.visible : [{ ...INIT_DIMENSION }]
+            );
+            if (formData.data_type === 'Number' && formData.unit) {
+              formData.unit = Array.isArray(formData.unit)
+                ? formData.unit
+                : findCascaderPath(unitList, formData.unit as string);
+            }
             setEnumList([INIT_UNIT_ITEM]);
           } else {
-            setDimensions(
-              normalizeDimensions(formData.dimensions as DimensionItem[])
-            );
+            const loaded = isScriptTemplate
+              ? splitScriptVisibleDimensions(
+                  formData.dimensions as DimensionItem[]
+              )
+              : {
+                visible: normalizeDimensions(
+                    formData.dimensions as DimensionItem[]
+                ),
+                hidden: [] as DimensionItem[]
+              };
+            hiddenDimensionsRef.current = loaded.hidden;
+            setDimensions(loaded.visible);
             if (formData.data_type === 'Number') {
               formData.unit = findCascaderPath(
                 unitList,
@@ -553,7 +592,13 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
               const keys = Array.isArray(result.label_keys)
                 ? result.label_keys
                 : [];
-              setDimensionLabelKeys(keys);
+              setDimensionLabelKeys(
+                isScriptTemplate
+                  ? keys.filter(
+                    (key: string) => !isHiddenPlatformDimensionKey(key)
+                  )
+                  : keys
+              );
               markFormulaProbeAllowed(normalizedQuery);
               if (keys.length) {
                 setDimensionMode('select');
@@ -561,12 +606,31 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
             }
           }
 
-          const cleanedDimensions = dimensions
-            .filter((item) => item.name?.trim())
+          const visibleDimensions = dimensions
+            .filter((item) => String(item.name || '').trim())
+            .filter(
+              (item) =>
+                !isScriptTemplate ||
+                !isHiddenPlatformDimensionKey(String(item.name || '').trim())
+            )
             .map((item) => ({
-              name: item.name.trim(),
-              description: (item.description || item.name).trim()
+              name: String(item.name || '').trim(),
+              description: String(item.description || item.name || '').trim()
             }));
+          const hiddenDimensions = isScriptTemplate
+            ? hiddenDimensionsRef.current
+              .filter((item) => String(item.name || '').trim())
+              .filter(
+                (item) =>
+                  !visibleDimensions.some(
+                    (visible) => visible.name === item.name
+                  )
+              )
+            : [];
+          const cleanedDimensions = [
+            ...visibleDimensions,
+            ...hiddenDimensions
+          ];
           await operateGroup({
             ...values,
             query: normalizedQuery,
@@ -916,14 +980,72 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
               <Form.Item<MetricInfo>
                 label={t('common.id')}
                 name="name"
-                rules={[{ required: true, message: t('common.required') }]}
+                rules={[
+                  { required: true, message: t('common.required') },
+                  {
+                    validator: async (_, value) => {
+                      const metricId = String(value || '').trim();
+                      if (!metricId) {
+                        return;
+                      }
+                      if (
+                        isScriptTemplate &&
+                        isReservedScriptMetricId(metricId)
+                      ) {
+                        throw new Error(
+                          t(
+                            'monitor.integrations.reservedMetricId',
+                            '指标 ID 与保留字段冲突，请更换'
+                          )
+                        );
+                      }
+                      const duplicated = catalogMetrics.some(
+                        (item) =>
+                          String(item.name || '').trim() === metricId &&
+                          String(item.id) !== String(groupForm.id)
+                      );
+                      if (duplicated) {
+                        throw new Error(
+                          t('monitor.integrations.duplicateMetricId')
+                        );
+                      }
+                    }
+                  }
+                ]}
               >
                 <Input disabled={type === 'edit'} />
               </Form.Item>
               <Form.Item<MetricInfo>
                 label={t('common.name')}
                 name="display_name"
-                rules={[{ required: true, message: t('common.required') }]}
+                rules={[
+                  { required: true, message: t('common.required') },
+                  {
+                    warningOnly: true,
+                    validator: async (_, value) => {
+                      const displayName = String(value || '').trim();
+                      if (!displayName) {
+                        return;
+                      }
+                      const duplicated = catalogMetrics.some((item) => {
+                        const other =
+                          String(item.display_name || item.name || '').trim();
+                        return (
+                          other.toLowerCase() === displayName.toLowerCase() &&
+                          String(item.id) !== String(groupForm.id)
+                        );
+                      });
+                      if (duplicated) {
+                        throw new Error(
+                          t(
+                            'monitor.integrations.duplicateDisplayName',
+                            '展示名称与已有指标重复'
+                          )
+                        );
+                      }
+                    }
+                  }
+                ]}
               >
                 <Input />
               </Form.Item>
@@ -932,21 +1054,22 @@ const MetricModal = forwardRef<ModalRef, ModalProps>(
                 name="metric_group"
                 rules={[{ required: true, message: t('common.required') }]}
               >
-                <Select
-                  showSearch
-                  filterOption={false}
-                  loading={groupLoading}
-                  onSearch={handleGroupSearch}
-                  onDropdownVisibleChange={(open) =>
-                    !open && handleGroupSearch('')
-                  }
-                >
-                  {groupOptions.map((item) => (
-                    <Option key={item.id} value={item.id}>
-                      {item.display_name}
-                    </Option>
-                  ))}
-                </Select>
+                <ScriptMetricGroupSelect
+                  allowClear={false}
+                  placeholder={t('monitor.integrations.metricGroup')}
+                  objectId={monitorObject}
+                  pluginId={pluginId}
+                  groups={groupOptions}
+                  onGroupsChange={(next) => {
+                    const known = new Set(groupList.map((item) => String(item.id)));
+                    setPendingGroups(
+                      next.filter((group) => !known.has(String(group.id)))
+                    );
+                  }}
+                  onCreated={(created) => {
+                    onGroupListChange?.(created);
+                  }}
+                />
               </Form.Item>
               <Form.Item<MetricInfo>
                 label={t('monitor.integrations.formula')}

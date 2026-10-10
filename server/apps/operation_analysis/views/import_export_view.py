@@ -16,6 +16,7 @@ from apps.operation_analysis.services.import_export.authorization_service import
 from apps.operation_analysis.services.import_export.export_service import ExportService
 from apps.operation_analysis.services.import_export.import_service import ImportService
 from apps.operation_analysis.services.import_export.precheck_service import PrecheckService
+from apps.operation_analysis.services.user_messages import oa_message
 
 
 class ImportExportViewSet(ViewSet):
@@ -113,7 +114,7 @@ class ImportExportViewSet(ViewSet):
                 {
                     "success": False,
                     "errors": precheck_result["errors"],
-                    "message": "预检失败，无法执行导入",
+                    "message": oa_message("messages.precheck_failed", "预检失败，无法执行导入"),
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -130,7 +131,7 @@ class ImportExportViewSet(ViewSet):
                 {
                     "success": False,
                     "errors": precheck_result["errors"],
-                    "message": "预检失败，无法执行导入",
+                    "message": oa_message("messages.precheck_failed", "预检失败，无法执行导入"),
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -146,7 +147,7 @@ class ImportExportViewSet(ViewSet):
                 {
                     "success": False,
                     "errors": invalid_decisions,
-                    "message": "冲突决策无效",
+                    "message": oa_message("messages.conflict_decision_invalid", "冲突决策无效"),
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )

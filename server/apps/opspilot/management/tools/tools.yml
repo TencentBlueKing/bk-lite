@@ -6,7 +6,7 @@ toolkits:
   description: 时间工具集合
   tools:
   - name: get_current_time
-    description: 这个工具可以用于获取当前时间
+    description: 获取当前用户时区下的当前时间。时区缺失或非法时使用 Asia/Shanghai。
     parameters: {}
 - id: duckduckgo
   name: 搜索工具

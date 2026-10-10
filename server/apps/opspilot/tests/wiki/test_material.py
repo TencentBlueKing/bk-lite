@@ -1,4 +1,25 @@
+import io
+
 import pytest
+
+
+def _use_fake_storage(monkeypatch, material, objects, *, open_error=None):
+    """把 Material.file 的 storage 换成内存实现，避免单测依赖真实 MinIO。
+
+    storage 由 field 共享，monkeypatch 保证用例结束后还原。
+    """
+    storage = type(material)._meta.get_field("file").storage
+
+    def _open(name, mode="rb"):
+        if open_error is not None:
+            raise open_error
+        if name not in objects:
+            raise FileNotFoundError(name)
+        return io.BytesIO(objects[name])
+
+    monkeypatch.setattr(storage, "open", _open, raising=False)
+    monkeypatch.setattr(storage, "exists", lambda name: name in objects, raising=False)
+    return storage
 
 
 def test_llm_summarize_uses_entire_long_markdown(monkeypatch):
@@ -499,3 +520,67 @@ def test_material_list_filters_by_name_search(api_client, wiki_factory):
     assert gate.id in combined_ids
     assert monitor.id in combined_ids
     assert other.id not in combined_ids
+
+
+@pytest.mark.django_db
+def test_material_download_streams_from_server_not_minio_url(api_client, wiki_factory, monkeypatch):
+    """原始文件下载走 Server 代理：info 不下发 MinIO 直链，download 返回文件字节。"""
+
+    from apps.opspilot.models import Material
+
+    kb = wiki_factory.knowledge_base(team=[1])
+    payload = b"%PDF-1.4 fake pdf bytes"
+    material = Material.objects.create(
+        knowledge_base=kb,
+        name="manual.pdf",
+        material_type="file",
+        status="built",
+        file="2026/01/02/manual.pdf",
+    )
+    _use_fake_storage(monkeypatch, material, {"2026/01/02/manual.pdf": payload})
+
+    info = api_client.get(f"/api/v1/opspilot/wiki_mgmt/material/{material.id}/info/")
+    assert info.status_code == 200, info.content
+    file_url = info.json()["data"]["file_url"]
+    assert file_url == f"/api/proxy/opspilot/wiki_mgmt/material/{material.id}/download/"
+    assert "minio" not in file_url.lower()
+
+    resp = api_client.get(f"/api/v1/opspilot/wiki_mgmt/material/{material.id}/download/")
+    assert resp.status_code == 200, resp.content
+    assert b"".join(resp.streaming_content) == payload
+    assert resp["Content-Type"] == "application/pdf"
+    assert "attachment" in resp["Content-Disposition"]
+
+
+@pytest.mark.django_db
+def test_material_download_rejects_text_material_and_storage_failure(api_client, wiki_factory, monkeypatch):
+    """无文件资料返回 404；对象存储故障返回 503 而不是裸异常。"""
+
+    from apps.opspilot.models import Material
+
+    kb = wiki_factory.knowledge_base(team=[1])
+    text_material = Material.objects.create(
+        knowledge_base=kb,
+        name="note",
+        material_type="text",
+        text_content="plain",
+        status="built",
+    )
+    missing = api_client.get(f"/api/v1/opspilot/wiki_mgmt/material/{text_material.id}/download/")
+    assert missing.status_code == 404
+
+    file_material = Material.objects.create(
+        knowledge_base=kb,
+        name="broken.pdf",
+        material_type="file",
+        status="built",
+        file="2026/01/02/broken.pdf",
+    )
+    _use_fake_storage(
+        monkeypatch,
+        file_material,
+        {"2026/01/02/broken.pdf": b"x"},
+        open_error=OSError("minio down"),
+    )
+    failed = api_client.get(f"/api/v1/opspilot/wiki_mgmt/material/{file_material.id}/download/")
+    assert failed.status_code == 503

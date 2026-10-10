@@ -6,10 +6,11 @@ export interface CollectDetectFingerprintInput {
 }
 
 export interface CollectDetectTaskLike {
-  status: 'pending' | 'running' | 'success' | 'failed';
+  status: 'pending' | 'running' | 'success' | 'failed' | 'warning' | 'stopped';
+  warning_type?: 'no_permission' | 'rate_limit';
 }
 
-export type CollectDetectPresentationTone = 'processing' | 'success' | 'error';
+export type CollectDetectPresentationTone = 'processing' | 'success' | 'error' | 'warning';
 
 export const stableStringify = (value: unknown): string => {
   if (Array.isArray(value)) {
@@ -53,6 +54,12 @@ export const getRowsForBatchCollectDetect = <T extends { key?: unknown }>(
 export const getCollectDetectResultPresentation = (
   task: CollectDetectTaskLike
 ): { tone: CollectDetectPresentationTone; titleKey: string } => {
+  if (task.status === 'warning') {
+    return {
+      tone: 'warning',
+      titleKey: 'monitor.integrations.trialRunWarning',
+    };
+  }
   if (task.status === 'success') {
     return {
       tone: 'success',

@@ -177,7 +177,10 @@ def _page_frontmatter(snapshot, okf, meta):
         if value is None:
             continue
         data[name] = value
-    if "generated" not in data and not _is_okf_imported(meta):
+    concept_id = str(okf.get("concept_id") or "").strip()
+    if concept_id:
+        data["concept_id"] = concept_id
+    if "generated" not in data and not _is_okf_imported(meta) and not concept_id:
         data["generated"] = _synthesize_generated(snapshot)
     if "status" not in data and _has_deprecated_tag(snapshot.tags):
         data["status"] = "deprecated"
@@ -275,7 +278,7 @@ def _rewrite_image_segment(segment, knowledge_base_id, href_by_locator):
         if not href:
             return match.group(0)
         suffix = f" {title}" if title else ""
-        return f"![{match.group(1)}]({href}{suffix})"
+        return f"![{match.group(1)}]({markdown_destination(href)}{suffix})"
 
     def replace_def(match):
         locator = _locator_from_destination(match.group(2), knowledge_base_id)
@@ -324,7 +327,7 @@ def _rewrite_wikilink_segment(segment, titles_to_concept, stats):
             return match.group(0)
         text = (label if label is not None else target).strip() or target
         stats["rewritten"] += 1
-        href = f"/{concept_id}.md"
+        href = markdown_destination(f"/{concept_id}.md")
         return f"[{text}]({href})"
 
     return LINK_RE.sub(replace, segment)
@@ -364,14 +367,56 @@ def _writestr(archive, name, data):
     written.flag_bits |= _ZIP_UTF8_FLAG
 
 
-def _purpose_excerpt(purpose_md):
-    text = str(purpose_md or "").strip()
+def _purpose_excerpt(text):
+    text = str(text or "").strip()
     if not text:
         return ""
     return text[:500].rstrip()
 
 
-def _index_markdown(knowledge_base, *, generation_id, exported_at, concept_count, directory_names):
+def _one_line(text):
+    return " ".join(str(text or "").split())
+
+
+def markdown_destination(href):
+    dest = str(href or "")
+    if any(ch in dest for ch in "() \t"):
+        return f"<{dest}>"
+    return dest
+
+
+def _export_log_date(exported_at):
+    text = str(exported_at or "").strip()
+    if len(text) >= 10 and text[4:5] == "-" and text[7:8] == "-":
+        return text[:10]
+    return text or "1970-01-01"
+
+
+def _index_entry_line(entry):
+    title = _one_line(entry.get("title") or entry.get("concept_id") or "untitled")
+    href = markdown_destination(f"/{entry['concept_id']}.md")
+    description = _one_line((entry.get("okf") or {}).get("description") or entry.get("description") or "")
+    if description:
+        return f"* [{title}]({href}) - {description}"
+    return f"* [{title}]({href})"
+
+
+def _group_index_entries(entries, directory_names):
+    groups = {}
+    seen = []
+    for entry in entries:
+        parts = PurePosixPath(entry["concept_id"]).parts
+        heading = parts[0] if len(parts) >= 2 else ""
+        if heading not in groups:
+            groups[heading] = []
+            seen.append(heading)
+        groups[heading].append(entry)
+    preferred = [name for name in directory_names if name in groups]
+    remainder = [name for name in seen if name not in preferred]
+    return [(name, groups[name]) for name in (*preferred, *remainder)]
+
+
+def _index_markdown(knowledge_base, *, generation_id, exported_at, concept_count, directory_names, entries=()):
     lines = [
         "---",
         f'okf_version: "{OKF_EXPORT_VERSION}"',
@@ -380,13 +425,13 @@ def _index_markdown(knowledge_base, *, generation_id, exported_at, concept_count
         f"# {knowledge_base.name}",
         "",
     ]
-    excerpt = _purpose_excerpt(getattr(knowledge_base, "purpose_md", "") or "")
+    excerpt = _purpose_excerpt(getattr(knowledge_base, "introduction", "") or "")
     if excerpt:
         lines.extend([excerpt, ""])
-    if directory_names:
-        lines.append("## 目录")
+    for heading, items in _group_index_entries(entries, directory_names):
+        lines.append(f"## {heading or '其他'}")
         lines.append("")
-        lines.extend(f"- {name}" for name in directory_names)
+        lines.extend(_index_entry_line(item) for item in items)
         lines.append("")
     lines.extend(
         [
@@ -400,10 +445,12 @@ def _index_markdown(knowledge_base, *, generation_id, exported_at, concept_count
 
 
 def _log_markdown(knowledge_base, *, generation_id, exported_at, concept_count):
+    generation = generation_id if generation_id is not None else ""
     return (
         "# Directory Update Log\n\n"
-        f"- {exported_at} exported {concept_count} concepts from {knowledge_base.name}"
-        f" (generation {generation_id if generation_id is not None else ''})\n"
+        f"## {_export_log_date(exported_at)}\n"
+        f"* **Export**: exported {concept_count} concepts from {knowledge_base.name}"
+        f" (generation {generation})\n"
     )
 
 
@@ -509,6 +556,7 @@ def build_okf_export_zip(knowledge_base, *, max_pages=None, max_bytes=None):
                 exported_at=exported_at,
                 concept_count=len(entries),
                 directory_names=_directory_display_names(scope.structure_snapshot),
+                entries=entries,
             ),
         )
         _writestr(
@@ -546,6 +594,7 @@ __all__ = [
     "DEFAULT_MAX_OKF_EXPORT_BYTES",
     "OKF_EXPORT_VERSION",
     "build_okf_export_zip",
+    "markdown_destination",
     "posix_relpath",
     "posix_safe_segment",
     "zip_root_name",

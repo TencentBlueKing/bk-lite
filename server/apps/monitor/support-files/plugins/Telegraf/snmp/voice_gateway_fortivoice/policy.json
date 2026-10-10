@@ -1,0 +1,81 @@
+{
+  "object": "VoiceGateway",
+  "plugin": "VoiceGateway Fortinet FortiVoice SNMP",
+  "templates": [
+    {
+      "name": "FortiVoice语音网关CPU使用率过高",
+      "alert_name": "语音网关${resource_name} CPU 使用率过高",
+      "description": "监控 FortiVoice 语音网关的瞬时 CPU 使用率（fvSysCpuUsage），当持续高于阈值时触发告警，提示可能存在呼叫处理压力或控制面过载。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "FortiVoice语音网关内存使用率过高",
+      "alert_name": "语音网关${resource_name} 内存使用率过高",
+      "description": "监控 FortiVoice 语音网关的瞬时内存使用率（fvSysMemUsage），当超过阈值时触发告警，提示可能存在资源紧张。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "FortiVoice语音网关存储盘使用率过高",
+      "alert_name": "语音网关${resource_name} 存储盘使用率过高",
+      "description": "监控 FortiVoice 语音网关的存储盘使用率（fvSysStorageDiskUsage），当超过阈值时触发告警，提示录音或系统存储可能耗尽。",
+      "metric_name": "device_storage_disk_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

@@ -29,6 +29,7 @@ from apps.operation_analysis.services.import_export.authorization_service import
 from apps.operation_analysis.services.import_export.export_service import ExportService
 from apps.operation_analysis.services.import_export.import_service import ImportService
 from apps.operation_analysis.services.import_export.precheck_service import PrecheckService
+from apps.operation_analysis.services.user_messages import oa_message
 
 
 class OpenImportExportViewSet(OpenAPIViewSet):
@@ -48,7 +49,7 @@ class OpenImportExportViewSet(OpenAPIViewSet):
     def _check_api_auth(self, request):
         if not getattr(request, "api_pass", False):
             logger.warning("Open API request rejected: missing or invalid API token, path=%s", request.path)
-            raise UnauthorizedException("缺少有效的 API Token，请在请求头中提供有效的认证信息")
+            raise UnauthorizedException(oa_message("messages.api_token_missing", "缺少有效的 API Token，请在请求头中提供有效的认证信息"))
 
     def _get_groups_from_request(self, request) -> list[int]:
         user = getattr(request, "user", None)
@@ -77,7 +78,7 @@ class OpenImportExportViewSet(OpenAPIViewSet):
     def _require_groups(self, request) -> list[int]:
         groups = self._get_groups_from_request(request)
         if not groups:
-            raise ValidationError("无法从API Token上下文解析有效的组织信息")
+            raise ValidationError(oa_message("messages.token_org_unresolved", "无法从API Token上下文解析有效的组织信息"))
         return groups
 
     def _get_username_from_request(self, request) -> str:
@@ -389,7 +390,7 @@ class OpenImportExportViewSet(OpenAPIViewSet):
                 {
                     "success": False,
                     "errors": precheck_result["errors"],
-                    "message": "预检失败，无法执行导入",
+                    "message": oa_message("messages.precheck_failed", "预检失败，无法执行导入"),
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -406,7 +407,7 @@ class OpenImportExportViewSet(OpenAPIViewSet):
                 {
                     "success": False,
                     "errors": precheck_result["errors"],
-                    "message": "预检失败，无法执行导入",
+                    "message": oa_message("messages.precheck_failed", "预检失败，无法执行导入"),
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -422,7 +423,7 @@ class OpenImportExportViewSet(OpenAPIViewSet):
                 {
                     "success": False,
                     "errors": invalid_decisions,
-                    "message": "冲突决策无效",
+                    "message": oa_message("messages.conflict_decision_invalid", "冲突决策无效"),
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )

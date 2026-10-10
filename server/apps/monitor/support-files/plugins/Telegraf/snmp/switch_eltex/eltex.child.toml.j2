@@ -46,35 +46,28 @@
         name = "ifDescr"
         is_tag = true
     # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
-    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
+    # ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.6"
         name = "ifHCInOctets"
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.2.1.31.1.1.1.10"
         name = "ifHCOutOctets"
-    # ---- Eltex MES CPU (RADLAN-rndMng rlCpuUtilDuringLast5Minutes, scalar %, 0-100) ----
-    # 待现网核验：1.3.6.1.4.1.89.1.9.0（snmprec 实测 .0=7%）。scalar-in-table → 指标 device_cpu_usage。
-    [[inputs.snmp.table]]
-        name = "device_cpu"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.89.1.9"
-        name = "usage"
-    # ---- Eltex MES system memory (ELTEX private 35265.41, total + free, bytes, scalar) ----
-    # 待现网核验：total 1.3.6.1.4.1.35265.41.1.2.1.1.3.0 / free ...1.1.7.0（snmprec total512MB/free102MB）。
-    # 利用率在共享盘按 (total-free)/total 计算。
-    [[inputs.snmp.table]]
-        name = "device_memory"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.35265.41.1.2.1.1.3"
-        name = "total"
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.35265.41.1.2.1.1.7"
-        name = "free"
+    # ---- Eltex MES CPU (rlCpuUtilDuringLast5Minutes, 5 分钟平均, 0-100%, 101 表示未测量, 标量) ----
+    # 顶层 field GET 必须带实例 .0 → measurement snmp → 查询 snmp_device_cpu_usage；下方 starlark 丢弃 101。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.89.1.9.0"
+        name = "device_cpu_usage"
+    # ---- Eltex MES 系统内存 (ELTEX 私有 35265.41, 总量 + 空闲, 字节, 标量) ----
+    # 顶层 field GET 必须带实例 .0 → 查询 snmp_device_memory_total / snmp_device_memory_free；利用率按 (total-free)/total 计算。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.35265.41.1.2.1.1.3.0"
+        name = "device_memory_total"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.35265.41.1.2.1.1.7.0"
+        name = "device_memory_free"
     # ---- Eltex MES chassis temperature (RADLAN-Physicaldescription rlPhdUnitEnvParamTempSensorValue, °C, per-unit table) ----
-    # 待现网核验：列 OID 1.3.6.1.4.1.89.53.15.1.10（snmprec .1=41°C，直采摄氏度无除数）。专用温度列，非 entPhySensor 混表 → 可直采。
+    # 列 OID 1.3.6.1.4.1.89.53.15.1.10，直采摄氏度无除数。专用温度列，非 entPhySensor 混表 → 可直采。
     [[inputs.snmp.table]]
         name = "device_temperature"
         inherit_tags = ["source"]
@@ -83,7 +76,7 @@
         oid = "1.3.6.1.4.1.89.53.15.1.10"
         name = "celsius"
     # ---- Eltex MES fan state (RADLAN-HWENVIROMENT rlEnvMonFanState, per-fan table) ----
-    # 待现网核验：state 列 1.3.6.1.4.1.89.83.1.1.1.3 / name 列 ...1.2（snmprec .1.3.x=5）。
+    # state 列 1.3.6.1.4.1.89.83.1.1.1.3 / name 列 ...1.2。
     # 原始码 1=OK，其余=异常；下方 processors.enum 归一为 1=正常/2=异常（5=Missing 视为缺位正常）。
     [[inputs.snmp.table]]
         name = "device_fan"
@@ -96,7 +89,7 @@
         name = "fanName"
         is_tag = true
     # ---- Eltex MES PSU state (RADLAN-Physicaldescription rlPhdUnitEnvParamMainPSStatus, per-unit table) ----
-    # 待现网核验：state 列 1.3.6.1.4.1.89.53.15.1.2（snmprec .1=1 Normal）。
+    # state 列 1.3.6.1.4.1.89.53.15.1.2。
     # 原始码 1=Normal，其余=异常；下方 processors.enum 归一为 1=正常/2=异常（5/8 缺位、9 backup 视为正常）。
     [[inputs.snmp.table]]
         name = "device_psu"
@@ -106,9 +99,24 @@
         oid = "1.3.6.1.4.1.89.53.15.1.2"
         name = "state"
 
+# ---- CPU 取值 101 表示未测量（CPU 统计未启用），丢弃该字段，避免写入超过 100% 的假值。----
+[[processors.starlark]]
+    namepass = ["snmp"]
+    source = '''
+def apply(metric):
+    raw = metric.fields.get("device_cpu_usage")
+    if raw != None and int(raw) > 100:
+        metric.fields.pop("device_cpu_usage")
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["eltex"]
+
 # ---- 风扇状态归一：1=OK / 5=Missing(缺位)→1(正常)，其余→2(异常)。共享盘 device_fan_state 约定 1=正常,>1=异常。----
 [[processors.enum]]
     namepass = ["device_fan"]
+    [processors.enum.tagpass]
+        brand = ["eltex"]
     [[processors.enum.mapping]]
         field = "state"
         default = 2
@@ -118,6 +126,8 @@
 # ---- 电源状态归一：1=Normal / 5=notPresent / 8=notAvailable / 9=backingUp →1(正常)，其余(2 Warn/3 Crit/4 Shutdown/6 notFunc/7 restore)→2(异常)。----
 [[processors.enum]]
     namepass = ["device_psu"]
+    [processors.enum.tagpass]
+        brand = ["eltex"]
     [[processors.enum.mapping]]
         field = "state"
         default = 2

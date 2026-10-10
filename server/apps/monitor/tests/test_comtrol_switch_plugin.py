@@ -12,6 +12,7 @@ import pytest
 import yaml
 
 from apps.core.utils.loader import LanguageLoader
+from apps.monitor.tests.snmp_contract_helpers import assert_common_ifmib_counters
 
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
@@ -34,6 +35,25 @@ BASE_METRICS = (
     "device_total_incoming_traffic",
     "device_total_outgoing_traffic",
 )
+SNMP_FLOOR = {
+    "snmp_uptime",
+    "interface_ifHCInOctets",
+    "interface_ifHCOutOctets",
+}
+COLLECTED_HEALTH_METRICS = {
+    "sfp_temperature_celsius",
+    "sfp_tx_power",
+    "sfp_rx_power",
+    "device_psu_state",
+    "device_psu_state_backup",
+}
+HEALTH_METRIC_OIDS = {
+    "sfp_temperature_celsius": "1.3.6.1.4.1.2882.2.1.5.3.2.2.1.5",
+    "sfp_tx_power": "1.3.6.1.4.1.2882.2.1.5.3.2.2.1.7",
+    "sfp_rx_power": "1.3.6.1.4.1.2882.2.1.5.3.2.2.1.9",
+    "device_psu_state": "1.3.6.1.4.1.2882.2.1.1.10.3.1.1.2",
+    "device_psu_state_backup": "1.3.6.1.4.1.2882.2.1.1.10.3.1.1.3",
+}
 UNSUPPORTED_HEALTH_METRICS = (
     "device_cpu_usage",
     "device_memory_usage",
@@ -41,7 +61,6 @@ UNSUPPORTED_HEALTH_METRICS = (
     "device_memory_free",
     "device_temperature_celsius",
     "device_fan_state",
-    "device_psu_state",
 )
 
 
@@ -129,19 +148,26 @@ def test_snmpv3_passwords_use_runtime_env_placeholders(toml_text):
 @pytest.mark.unit
 def test_comtrol_private_health_oids_are_not_guessed(metrics, policy, toml_text):
     names = {m["name"] for m in metrics["metrics"]}
+    assert COLLECTED_HEALTH_METRICS <= names
+    for name, oid in HEALTH_METRIC_OIDS.items():
+        assert oid in toml_text, f"{name} must keep explicit OID {oid}"
     for absent in UNSUPPORTED_HEALTH_METRICS:
         assert absent not in names
         assert absent not in toml_text
-    assert PEN_ROOT not in toml_text
-    assert policy["templates"] == []
+    known = {m["name"] for m in metrics["metrics"]}
+    policy_metrics = {t["metric_name"] for t in policy["templates"]}
+    assert policy_metrics <= known
+    assert policy_metrics == {"device_psu_state", "device_psu_state_backup"}
 
 
 @pytest.mark.unit
 def test_metrics_json_embeds_deployed_snmp_floor(metrics):
     names = {metric["name"] for metric in metrics["metrics"]}
-    expected = {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"}
-    assert names == expected
-    assert set(metrics.get("supplementary_indicators", [])) == {"snmp_uptime"}
+    assert SNMP_FLOOR <= names
+    assert names - SNMP_FLOOR == COLLECTED_HEALTH_METRICS
+    supplementary = set(metrics.get("supplementary_indicators", []))
+    assert supplementary <= names
+    assert {"snmp_uptime", "sfp_temperature_celsius", "sfp_tx_power", "sfp_rx_power"} <= supplementary
 
 
 @pytest.mark.unit
@@ -152,12 +178,8 @@ def test_policy_templates_reference_existing_metrics(metrics, policy):
 
 
 @pytest.mark.unit
-def test_toml_collects_uptime_and_64bit_ifhc_counters(toml_text):
-    assert "1.3.6.1.2.1.1.3.0" in toml_text
-    assert "1.3.6.1.2.1.31.1.1.1.6" in toml_text
-    assert "1.3.6.1.2.1.31.1.1.1.10" in toml_text
-    assert "1.3.6.1.2.1.2.2.1.10" not in toml_text
-    assert "1.3.6.1.2.1.2.2.1.16" not in toml_text
+def test_rendered_toml_contains_common_ifmib_counters_and_uptime(toml_text):
+    assert_common_ifmib_counters(toml_text, BRAND_DIR)
 
 
 @pytest.mark.unit

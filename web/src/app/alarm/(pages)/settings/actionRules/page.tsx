@@ -42,13 +42,13 @@ const ActionRules: React.FC = () => {
   });
 
   const triggerEventLabelMap = useMemo(
-    () => Object.fromEntries(ACTION_TRIGGER_EVENTS.map(({ value, label }) => [value, label])),
-    []
+    () => Object.fromEntries(ACTION_TRIGGER_EVENTS.map(({ value, labelKey }) => [value, t(labelKey)])),
+    [t]
   );
 
   const actionTypeLabelMap = useMemo(
-    () => Object.fromEntries(ACTION_TYPES.map(({ value, label }) => [value, label])),
-    []
+    () => Object.fromEntries(ACTION_TYPES.map(({ value, labelKey }) => [value, t(labelKey)])),
+    [t]
   );
 
   const renderMatchRulesSummary = (matchRules: ActionRuleListItem['match_rules']): string => {

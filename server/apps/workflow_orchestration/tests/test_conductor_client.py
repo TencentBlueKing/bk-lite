@@ -77,25 +77,56 @@ def test_conductor_client_ignores_ambient_http_proxy(mocker):
     assert client_factory.call_args.kwargs["trust_env"] is False
 
 
-def test_register_workflow_compensates_orphaned_conductor_version():
+def test_register_workflow_accepts_orphaned_same_digest_without_overwrite():
     requests = []
+    definition = {"name": "demo", "version": 1, "tasks": [], "inputParameters": []}
 
     def handler(request):
         requests.append(request)
         if request.method == "POST":
             return httpx.Response(409, json={"message": "already exists"})
+        if request.method == "GET":
+            return httpx.Response(200, json=definition)
         return httpx.Response(204)
 
     client = ConductorClient(
         "http://conductor:8080/api",
         transport=httpx.MockTransport(handler),
     )
-    definition = {"name": "demo", "version": 1, "tasks": []}
 
     client.register_workflow(definition)
 
     assert [(request.method, request.url.path) for request in requests] == [
         ("POST", "/api/metadata/workflow"),
-        ("PUT", "/api/metadata/workflow"),
+        ("GET", "/api/metadata/workflow/demo"),
     ]
-    assert json.loads(requests[1].read()) == [definition]
+    assert "PUT" not in {request.method for request in requests}
+
+
+def test_register_workflow_rejects_conflicting_content_without_overwrite():
+    from apps.workflow_orchestration.services.conductor import ConductorConflict
+
+    requests = []
+    definition = {"name": "demo", "version": 1, "tasks": [{"name": "a"}], "inputParameters": []}
+
+    def handler(request):
+        requests.append(request)
+        if request.method == "POST":
+            return httpx.Response(409, json={"message": "already exists"})
+        if request.method == "GET":
+            return httpx.Response(200, json={"name": "demo", "version": 1, "tasks": [{"name": "b"}], "inputParameters": []})
+        return httpx.Response(204)
+
+    client = ConductorClient(
+        "http://conductor:8080/api",
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(ConductorConflict, match="内容不一致"):
+        client.register_workflow(definition)
+
+    assert [(request.method, request.url.path) for request in requests] == [
+        ("POST", "/api/metadata/workflow"),
+        ("GET", "/api/metadata/workflow/demo"),
+    ]
+    assert "PUT" not in {request.method for request in requests}

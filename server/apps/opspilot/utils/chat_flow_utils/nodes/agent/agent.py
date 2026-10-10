@@ -265,6 +265,7 @@ class AgentNode(BaseNodeExecutor):
             "enable_suggest": False,
             "enable_query_rewrite": False,
             "locale": flow_input.get("locale", "en"),  # 用户语言设置，用于 browser-use 输出国际化
+            "user_timezone": flow_input.get("user_timezone") or "",
             "thread_id": flow_input.get("execution_id", ""),
             "execution_id": flow_input.get("execution_id", ""),
             "node_id": effective_node_id,

@@ -1,6 +1,24 @@
 import pytest
 
 
+def test_build_qa_prompt_includes_attached_images_and_forbids_cannot_display():
+    from apps.opspilot.services.wiki.retrieval_service import _build_qa_prompt
+
+    locator = "wiki/media/8/pages/" + ("a" * 64) + ".jpg"
+    contexts = [
+        {
+            "title": "嘉为堡垒机使用管理规范",
+            "snippet": f"9. 堡垒机资源申请流程图:\n![]({locator})",
+            "images": [f"![9. 堡垒机资源申请流程图](/api/proxy/opspilot/wiki_mgmt/media/?locator={locator}&exp=1&sig=abc)"],
+        }
+    ]
+    prompt = _build_qa_prompt("堡垒机资源申请流程", contexts)
+    assert "附图" in prompt
+    assert "/api/proxy/opspilot/wiki_mgmt/media/" in prompt
+    assert "原样输出" in prompt
+    assert "无法直接展示" in prompt
+
+
 def test_dynamic_snippet_default_window_is_long():
     from apps.opspilot.services.wiki.retrieval_service import _dynamic_snippet
 
@@ -8,6 +26,32 @@ def test_dynamic_snippet_default_window_is_long():
     snippet = _dynamic_snippet(body, ["systemctl", "restart"])
     assert "systemctl restart nginx" in snippet
     assert len(snippet) > 300
+
+
+def test_dynamic_snippet_prefers_dense_match_over_earliest_bigram():
+    from apps.opspilot.services.wiki.retrieval_service import _dynamic_snippet, _tokenize
+
+    # 前半段只有「堡垒」等短词噪声（文档信息表），精确流程段在后半段。
+    noise = "堡垒机文档信息表\n版本记录 堡垒 流程\n" + ("表格单元格。" * 80)
+    target = "## 四、堡垒机管理流程\n" "1. 初始申请纳入堡垒机管理；\n" "9. 堡垒机资源申请流程图:\n" "![](wiki/media/8/pages/flow.jpg)\n" "## IT 服务台堡垒机申请流程:\n" "登录服务台完成堡垒机资源申请。\n"
+    body = noise + target + ("附录无关内容。" * 40)
+    terms = _tokenize("堡垒机资源申请流程")
+    snippet = _dynamic_snippet(body, terms)
+
+    assert "堡垒机资源申请流程图" in snippet
+    assert "四、堡垒机管理流程" in snippet
+    assert "文档信息表" not in snippet or "资源申请流程图" in snippet
+
+
+def test_best_heading_path_prefers_most_specific_match():
+    from apps.opspilot.services.wiki.retrieval_service import _best_heading_path, _tokenize
+
+    terms = _tokenize("堡垒机资源申请流程")
+    heading = _best_heading_path(
+        ["嘉为堡垒机使用管理规范", "四、堡垒机管理流程", "五、资源管理"],
+        terms,
+    )
+    assert heading == "四、堡垒机管理流程"
 
 
 def test_fallback_answer_includes_title_and_snippet():
@@ -284,12 +328,13 @@ def test_stream_answer_fallback_events():
     _seed(kb)
     events = list(stream_answer(kb, "如何重启服务", llm_model_id=None))
     kinds = [event["event"] for event in events]
-    assert kinds[:3] == ["meta", "delta", "done"]
-    assert events[0]["mode"] == "fallback"
-    assert events[0]["citations"]
-    assert "未使用模型" in events[1]["text"]
-    assert events[2]["mode"] == "fallback"
-    assert events[2]["warning_code"] == "wiki_answer_fallback"
+    assert kinds[:4] == ["status", "meta", "delta", "done"]
+    assert events[0]["phase"] == "retrieving"
+    assert events[1]["mode"] == "fallback"
+    assert events[1]["citations"]
+    assert "未使用模型" in events[2]["text"]
+    assert events[3]["mode"] == "fallback"
+    assert events[3]["warning_code"] == "wiki_answer_fallback"
 
 
 @pytest.mark.django_db
@@ -326,8 +371,10 @@ def test_stream_answer_llm_deltas(monkeypatch):
     monkeypatch.setattr(LLMClientFactory, "stream_isolated", fake_stream)
 
     events = list(stream_answer(kb, "如何重启服务", llm_model_id=1))
-    assert events[0]["event"] == "meta"
-    assert events[0]["mode"] == "llm"
+    assert events[0]["event"] == "status"
+    assert events[0]["phase"] == "retrieving"
+    meta = next(event for event in events if event["event"] == "meta")
+    assert meta["mode"] == "llm"
     deltas = [event["text"] for event in events if event["event"] == "delta"]
     assert deltas == ["部", "分回答"]
     done = events[-1]

@@ -26,17 +26,17 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'CPU 使用率',
       description: '设备控制平面 CPU 使用率（5 分钟平均），持续偏高说明控制平面过载或异常流量。',
       unit: 'percent',
-      query: 'max(device_cpu_usage{__$labels__}) by (instance_id)',
+      query: 'max(device_cpu_usage{__$labels__}) by (instance_id) or max(snmp_device_cpu_usage{__$labels__}) by (instance_id)',
       color: '#2f6bff'
     },
     {
       name: 'device_memory_usage',
       display_name: '内存使用率',
       description:
-        '设备整体内存使用率（百分比）。品牌自适应，依次回退：①设备直报利用率（华为/Aruba/Juniper）；②已用/(已用+空闲)（思科内存池）；③已用/总量；④(总量-空闲)/总量（Extreme 等 总量+空闲 机型）。',
+        '设备整体内存使用率（百分比）。品牌自适应，依次回退：①设备直报利用率（华为/Aruba/Juniper）；②已用/(已用+空闲)（思科内存池）；③已用/总量；④(总量-空闲)/总量（Extreme 等 总量+空闲 机型）；⑤标量直采品牌（snmp_ 前缀）的利用率或 (总量-空闲)/总量。',
       unit: 'percent',
       query:
-        'max(device_memory_usage{__$labels__}) by (instance_id) or avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)',
+        'max(device_memory_usage{__$labels__}) by (instance_id) or avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or max(snmp_device_memory_usage{__$labels__}) by (instance_id) or ((sum(snmp_device_memory_total{__$labels__}) by (instance_id) - sum(snmp_device_memory_free{__$labels__}) by (instance_id)) / sum(snmp_device_memory_total{__$labels__}) by (instance_id) * 100)',
       color: '#ff8a1f'
     },
     {
@@ -44,7 +44,8 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '内存已用',
       description: '设备各内存池当前已使用的字节数之和。',
       unit: 'bytes',
-      query: 'sum(device_memory_used{__$labels__}) by (instance_id)',
+      query:
+        'sum(device_memory_used{__$labels__}) by (instance_id) or (sum(snmp_device_memory_total{__$labels__}) by (instance_id) - sum(snmp_device_memory_free{__$labels__}) by (instance_id))',
       color: '#ff8a1f'
     },
     {
@@ -52,7 +53,7 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '内存空闲',
       description: '设备各内存池当前空闲可用的字节数之和。',
       unit: 'bytes',
-      query: 'sum(device_memory_free{__$labels__}) by (instance_id)',
+      query: 'sum(device_memory_free{__$labels__}) by (instance_id) or sum(snmp_device_memory_free{__$labels__}) by (instance_id)',
       color: '#27c274'
     },
     {
@@ -60,7 +61,8 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '最高温度',
       description: '设备各温度传感器读数中的最高值（摄氏度）。65535 仅在序列标签 collect_type 为华三交换机或防火墙时视为无传感器，不看实例名。其它品牌哨兵仍由 collect_type 契约注入。',
       unit: 'celsius',
-      query: 'max(device_temperature_celsius{__$labels__}) by (instance_id)',
+      query:
+        'max(device_temperature_celsius{__$labels__}) by (instance_id) or max(snmp_device_temperature_celsius{__$labels__}) by (instance_id)',
       color: '#f5222d'
     },
     {

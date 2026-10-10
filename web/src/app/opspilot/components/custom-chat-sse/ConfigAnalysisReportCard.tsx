@@ -2,6 +2,7 @@ import React from 'react';
 
 import { ConfigAnalysisReport, ConfigAnalysisReportItem, ConfigAnalysisSeveritySection } from '@/app/opspilot/types/global';
 import { getConfigAnalysisSummaryText } from './configAnalysisReportSummary';
+import { useTranslation } from '@/utils/i18n';
 
 interface ConfigAnalysisReportCardProps {
   report: ConfigAnalysisReport;
@@ -60,7 +61,16 @@ const normalizeSeverity = (value: unknown): NormalizedSection['severity'] => {
 
 const formatCount = (value?: number) => (typeof value === 'number' && Number.isFinite(value) ? value : '--');
 
-const normalizeItems = (section: Record<string, unknown>): { items: NormalizedIssue[]; degraded: boolean } => {
+type Translate = (
+  key: string,
+  defaultMessage?: string,
+  values?: Record<string, string | number>,
+) => string;
+
+const normalizeItems = (
+  section: Record<string, unknown>,
+  t: Translate
+): { items: NormalizedIssue[]; degraded: boolean } => {
   const source = Array.isArray(section.issues)
     ? section.issues
     : Array.isArray(section.items)
@@ -89,7 +99,7 @@ const normalizeItems = (section: Record<string, unknown>): { items: NormalizedIs
       const count = typeof itemRecord.count === 'number' && Number.isFinite(itemRecord.count) ? itemRecord.count : 0;
       const risk = typeof itemRecord.risk === 'string' && itemRecord.risk.trim().length > 0
         ? itemRecord.risk
-        : '信息不完整，风险说明暂缺。';
+        : t('chat.configAnalysis.riskIncomplete', '信息不完整，风险说明暂缺。');
       const degraded = !Array.isArray(itemRecord.workloads) || workloads.length !== itemRecord.workloads.length;
 
       return {
@@ -141,7 +151,7 @@ const normalizeRecommendations = (recommendations: unknown): NormalizedRecommend
     .filter((recommendation): recommendation is NormalizedRecommendation => Boolean(recommendation));
 };
 
-const normalizeSection = (section: unknown, index: number): NormalizedSection | null => {
+const normalizeSection = (section: unknown, index: number, t: Translate): NormalizedSection | null => {
   if (!section || typeof section !== 'object') {
     return null;
   }
@@ -149,9 +159,9 @@ const normalizeSection = (section: unknown, index: number): NormalizedSection | 
   const sectionRecord = section as Record<string, unknown>;
   const title = typeof sectionRecord.title === 'string' && sectionRecord.title.trim().length > 0
     ? sectionRecord.title.trim()
-    : `问题分组 ${index + 1}`;
+    : t('chat.configAnalysis.groupTitle', '问题分组 {index}', { index: index + 1 });
   const severity = normalizeSeverity(sectionRecord.severity);
-  const { items, degraded: itemsDegraded } = normalizeItems(sectionRecord);
+  const { items, degraded: itemsDegraded } = normalizeItems(sectionRecord, t);
   const degraded = severity === 'unknown' || itemsDegraded || !Array.isArray(sectionRecord.issues) && !Array.isArray(sectionRecord.items);
 
   return {
@@ -163,11 +173,12 @@ const normalizeSection = (section: unknown, index: number): NormalizedSection | 
 };
 
 const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ report }) => {
+  const { t } = useTranslation();
   const a2uiComponent = report.a2ui?.component || 'config-analysis-report';
   const a2uiVersion = report.a2ui?.version || 'legacy';
   const severitySections = Array.isArray(report.severity_sections)
     ? report.severity_sections
-      .map(normalizeSection)
+      .map((section, index) => normalizeSection(section, index, t))
       .filter((section): section is NormalizedSection => Boolean(section))
     : [];
   const recommendationRows = normalizeRecommendations(report.recommendations);
@@ -181,17 +192,21 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
     problematicCount,
     hasIssueDetails,
     topRecommendation: report.summary.top_recommendation,
-  });
+  }, t);
   const scopeItems = [
     report.scope?.cluster_name || report.cluster_name,
     report.scope?.namespace
-      ? `命名空间：${Array.isArray(report.scope.namespace) ? report.scope.namespace.join('、') : report.scope.namespace}`
+      ? t('chat.configAnalysis.scopeNamespace', '命名空间：{value}', {
+        value: Array.isArray(report.scope.namespace) ? report.scope.namespace.join('、') : report.scope.namespace,
+      })
       : null,
-    report.scope?.instance_name ? `实例：${report.scope.instance_name}` : null,
+    report.scope?.instance_name
+      ? t('chat.configAnalysis.scopeInstance', '实例：{value}', { value: report.scope.instance_name })
+      : null,
     report.scope?.target_name
-      ? `对象：${report.scope.target_name}`
+      ? t('chat.configAnalysis.scopeTarget', '对象：{value}', { value: report.scope.target_name })
       : report.scope?.name
-        ? `对象：${report.scope.name}`
+        ? t('chat.configAnalysis.scopeTarget', '对象：{value}', { value: report.scope.name })
         : null,
   ].filter(Boolean);
   const hasScanRange = typeof report.scan_range?.offset === 'number' && typeof report.scan_range?.limit === 'number';
@@ -208,7 +223,7 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
       <header className="border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white px-4 py-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-700">
-            配置分析
+            {t('chat.configAnalysis.title', '配置分析')}
           </span>
           <h3 className="text-sm font-semibold text-slate-900">{report.title}</h3>
           <span className="ml-auto rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-600">
@@ -229,9 +244,9 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
       <div className="space-y-4 px-4 py-4">
         <div className="grid gap-3 sm:grid-cols-3">
           {[
-            { label: '扫描对象', value: formatCount(report.summary.total), tone: 'text-slate-900' },
-            { label: '发现问题', value: formatCount(report.summary.problematic), tone: 'text-rose-600' },
-            { label: '健康对象', value: formatCount(report.summary.healthy), tone: 'text-emerald-600' },
+            { label: t('chat.configAnalysis.statTotal', '扫描对象'), value: formatCount(report.summary.total), tone: 'text-slate-900' },
+            { label: t('chat.configAnalysis.statProblematic', '发现问题'), value: formatCount(report.summary.problematic), tone: 'text-rose-600' },
+            { label: t('chat.configAnalysis.statHealthy', '健康对象'), value: formatCount(report.summary.healthy), tone: 'text-emerald-600' },
           ].map(card => (
             <div key={card.label} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
               <div className="text-xs text-slate-500">{card.label}</div>
@@ -241,33 +256,36 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
         </div>
 
         <div className="rounded-xl border border-sky-100 bg-sky-50 px-3 py-3 text-sm text-slate-700">
-          <div className="text-xs font-medium uppercase tracking-wide text-sky-700">建议摘要</div>
+          <div className="text-xs font-medium uppercase tracking-wide text-sky-700">{t('chat.configAnalysis.recommendation', '建议摘要')}</div>
           <div className="mt-1">{summaryText}</div>
           {hasScanRange && report.scan_range?.has_more && (
             <div className="mt-2 text-xs text-sky-700">
-              当前展示第 {scanRangeStart} - {scanRangeEnd} 项结果，仍有更多对象待继续检查。
+              {t('chat.configAnalysis.moreToScan', '当前展示第 {start} - {end} 项结果，仍有更多对象待继续检查。', {
+                start: String(scanRangeStart),
+                end: String(scanRangeEnd),
+              })}
             </div>
           )}
         </div>
 
         {degradedCount > 0 && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
-            结构化明细存在不完整字段，已自动跳过异常分组并降级展示。
+            {t('chat.configAnalysis.degradedHint', '结构化明细存在不完整字段，已自动跳过异常分组并降级展示。')}
           </div>
         )}
 
         {!hasIssues ? (
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4">
-            <div className="text-sm font-semibold text-emerald-700">未发现明显配置问题</div>
+            <div className="text-sm font-semibold text-emerald-700">{t('chat.configAnalysis.noIssueTitle', '未发现明显配置问题')}</div>
             <div className="mt-1 text-sm text-emerald-700/80">
-              当前扫描范围内的工作负载配置表现正常，可继续按需巡检。
+              {t('chat.configAnalysis.noIssueHint', '当前扫描范围内的工作负载配置表现正常，可继续按需巡检。')}
             </div>
           </div>
         ) : !hasIssueDetails ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4">
-            <div className="text-sm font-semibold text-amber-800">已发现配置问题，但明细暂不可用</div>
+            <div className="text-sm font-semibold text-amber-800">{t('chat.configAnalysis.detailsMissingTitle', '已发现配置问题，但明细暂不可用')}</div>
             <div className="mt-1 text-sm text-amber-800/80">
-              当前报告仅返回问题统计，详细分项尚未提供，请结合原始扫描结果继续排查。
+              {t('chat.configAnalysis.detailsMissingHint', '当前报告仅返回问题统计，详细分项尚未提供，请结合原始扫描结果继续排查。')}
             </div>
           </div>
         ) : (
@@ -279,10 +297,10 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
                 <div key={`${report.report_id}-${section.severity}`} className={`overflow-hidden rounded-xl border ${style.border}`}>
                   <div className="flex items-center gap-2 border-b border-slate-200 bg-slate-50 px-3 py-3">
                     <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${style.badge}`}>
-                      {style.text}
+                      {t(`configSeverity.${section.severity}`, style.text)}
                     </span>
                     <span className="text-sm font-medium text-slate-800">{section.title}</span>
-                    <span className="ml-auto text-xs text-slate-500">问题类别</span>
+                    <span className="ml-auto text-xs text-slate-500">{t('chat.configAnalysis.category', '问题类别')}</span>
                   </div>
                   <div className="overflow-x-auto">
                     {section.issues.length > 0 ? (
@@ -295,10 +313,10 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
                         </colgroup>
                         <thead className="bg-white text-slate-500">
                           <tr>
-                            <th className="px-3 py-2 font-medium">问题类别</th>
-                            <th className="px-3 py-2 font-medium">影响数量</th>
-                            <th className="px-3 py-2 font-medium">涉及工作负载</th>
-                            <th className="px-3 py-2 font-medium">风险说明</th>
+                            <th className="px-3 py-2 font-medium">{t('chat.configAnalysis.category', '问题类别')}</th>
+                            <th className="px-3 py-2 font-medium">{t('chat.configAnalysis.affectedCount', '影响数量')}</th>
+                            <th className="px-3 py-2 font-medium">{t('chat.configAnalysis.workloads', '涉及工作负载')}</th>
+                            <th className="px-3 py-2 font-medium">{t('chat.configAnalysis.riskNote', '风险说明')}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
@@ -313,7 +331,7 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
                                     <span>{item.issue}</span>
                                     {item.degraded && (
                                       <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-                                        信息不完整
+                                        {t('chat.configAnalysis.incomplete', '信息不完整')}
                                       </span>
                                     )}
                                   </div>
@@ -333,7 +351,7 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
                                       ))}
                                       {hiddenWorkloadCount > 0 && (
                                         <span
-                                          title={`另有 ${hiddenWorkloadCount} 个工作负载`}
+                                          title={t('chat.configAnalysis.moreWorkloads', '另有 {count} 个工作负载', { count: hiddenWorkloadCount })}
                                           className="rounded-full border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-500"
                                         >
                                           +{hiddenWorkloadCount}
@@ -352,7 +370,7 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
                       </table>
                     ) : (
                       <div className="px-3 py-3 text-sm text-slate-500">
-                        当前分组缺少完整的问题明细，已保留分组标题以便继续排查原始结果。
+                        {t('chat.configAnalysis.groupIncomplete', '当前分组缺少完整的问题明细，已保留分组标题以便继续排查原始结果。')}
                       </div>
                     )}
                   </div>
@@ -363,7 +381,7 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
             {recommendationRows.length > 0 && (
               <div className="overflow-hidden rounded-xl border border-slate-200">
                 <div className="border-b border-slate-200 bg-slate-50 px-3 py-3 text-sm font-medium text-slate-800">
-                  修复建议
+                  {t('chat.configAnalysis.recommendation', '修复建议')}
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[760px] table-fixed divide-y divide-slate-200 text-left text-xs">
@@ -375,10 +393,10 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
                     </colgroup>
                     <thead className="bg-white text-slate-500">
                       <tr>
-                        <th className="px-4 py-2 font-medium">优先级</th>
-                        <th className="px-3 py-2 font-medium">建议动作</th>
-                        <th className="px-3 py-2 font-medium">目标范围</th>
-                        <th className="px-3 py-2 font-medium">预期收益</th>
+                        <th className="px-4 py-2 font-medium">{t('chat.configAnalysis.priority', '优先级')}</th>
+                        <th className="px-3 py-2 font-medium">{t('chat.configAnalysis.action', '建议动作')}</th>
+                        <th className="px-3 py-2 font-medium">{t('chat.configAnalysis.targetScope', '目标范围')}</th>
+                        <th className="px-3 py-2 font-medium">{t('chat.configAnalysis.expectedGain', '预期收益')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white text-slate-700">

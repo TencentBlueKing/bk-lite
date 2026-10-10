@@ -16,7 +16,7 @@ from apps.cmdb.services.transfer_import import TransferImport
 from apps.cmdb.services.transfer_service import TransferError, TransferService
 from apps.cmdb.services.transfer_validation import inspect_workbook
 from apps.core.logger import cmdb_logger as logger
-from apps.core.logger import safe_exception_info
+from apps.core.logger import safe_exception_call_chain, safe_exception_info, safe_log_value
 
 
 @contextmanager
@@ -87,12 +87,14 @@ class TransferExecution:
             elif isinstance(exc, ConnectionError):
                 message = "依赖服务连接失败，请检查服务状态"
             else:
-                message = "数据处理异常，请根据任务编号联系管理员查看日志"
+                detail = safe_log_value(exc, max_length=240)
+                location = safe_exception_call_chain(exc, max_frames=4)
+                message = f"{type(exc).__name__}: {detail} ({location})"
             TransferService.fail_execution(
                 task.pk,
                 token,
                 "storage_unavailable" if storage_code else "execution_failed",
-                storage_message or f"{message}（{type(exc).__name__}）",
+                storage_message or message,
                 execution_stopped=True,
                 error_type=type(exc).__name__,
             )
@@ -180,6 +182,13 @@ class TransferExecution:
         return {"exported": exported}, {"result": output, "manifest": references}
 
     @staticmethod
+    def _excel_text(value):
+        # 用户单元格可能以公式前缀开头，写报告时强制按文本输出。
+        if isinstance(value, str) and value[:1] in ("=", "+", "-", "@"):
+            return "'" + value
+        return value
+
+    @staticmethod
     def import_file(task, token, context, files, prefix):
         def progress(processed, total, summary, phase):
             TransferService.progress(task.pk, token, phase, processed, total, summary)
@@ -197,9 +206,9 @@ class TransferExecution:
         if errors:
             book = openpyxl.Workbook(write_only=True)
             sheet = book.create_sheet("errors")
-            sheet.append(["Excel 行号", "类型", "失败原因"])
+            sheet.append(["Excel 行号", "列", "字段标识", "失败原因"])
             for row in errors:
-                sheet.append(list(row))
+                sheet.append([TransferExecution._excel_text(cell) for cell in row])
             with TemporaryFile(mode="w+b") as report:
                 book.save(report)
                 report.seek(0)

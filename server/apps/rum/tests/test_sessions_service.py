@@ -52,6 +52,28 @@ def test_list_and_trend_degrade_when_analytics_unavailable():
     assert trend["points"] == []
 
 
+def test_list_and_trend_degrade_when_analytics_raises():
+    class BoomAnalytics:
+        def available(self):
+            return True
+
+        def list_sessions(self, tenant_id, opts):
+            raise RuntimeError("victoria blew up")
+
+        def session_trend(self, tenant_id, opts):
+            raise RuntimeError("victoria blew up")
+
+    control = MemoryControl()
+    _seed_app(control)
+    service = SessionsService(control=control, analytics=BoomAnalytics())
+    listed = service.list_sessions("tester", {"range": "24h"})
+    assert listed["analyticsUnavailable"] is True
+    assert listed["sessions"] == []
+    trend = service.session_trend("tester", {"range": "24h"})
+    assert trend["analyticsUnavailable"] is True
+    assert trend["points"] == []
+
+
 def test_list_degrades_when_control_unavailable():
     service = SessionsService(control=UnavailableControl())
     listed = service.list_sessions("tester", {"range": "24h"})
@@ -96,9 +118,11 @@ def test_replay_manifest_grant_and_segment_contract():
 
 
 def test_replay_manifest_degrades_without_index():
+    from apps.rum.services.replay import UnavailableReplayIndex
+
     control = MemoryControl()
     _seed_app(control)
-    service = SessionsService(control=control)
+    service = SessionsService(control=control, replay_index=UnavailableReplayIndex())
     manifest = service.replay_manifest("tester", {"application": "checkout", "session": "sess-1"})
     assert manifest["analyticsUnavailable"] is True
     assert manifest["state"] == "unavailable"
