@@ -13,6 +13,7 @@ import { preserveDashboardReturnContext } from '../shared/utils';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import { ObjectItem, TreeItem } from '@/app/monitor/types';
+import { isDerivativeObject } from '@/app/monitor/utils/monitorObject';
 import styles from './dashboard-sidebar.module.scss';
 
 interface DashboardSidebarProps {
@@ -28,14 +29,16 @@ const buildMonitorObjectTree = (objects: ObjectItem[]): TreeItem[] => {
         children: []
       };
     }
-    acc[item.type].children.push({
-      title: getProfessionalObjectDisplayName(item.name, item.display_name) || '--',
-      label: item.name || '--',
-      key: item.id,
-      icon: item.icon,
-      count: item.instance_count || 0,
-      children: []
-    });
+    if (!isDerivativeObject(item, objects)) {
+      acc[item.type].children.push({
+        title: getProfessionalObjectDisplayName(item.name, item.display_name) || '--',
+        label: item.name || '--',
+        key: item.id,
+        icon: item.icon,
+        count: item.instance_count || 0,
+        children: []
+      });
+    }
     return acc;
   }, {} as Record<string, TreeItem>);
 
