@@ -49,12 +49,12 @@ def _grant_user_group_view(system_user):
     return role
 
 
-def _create_directory_user(*, username, domain, group_ids, disabled=False, display_name="", email="", locale=""):
+def _create_directory_user(*, username, group_ids, disabled=False, display_name="", email="", locale=""):
     return SystemUser.objects.create(
         username=username,
-        domain=domain,
+        domain="domain.com",
         display_name=display_name,
-        email=email or f"{username}@{domain}",
+        email=email or f"{username}@example.com",
         password="x",
         locale=locale or "zh-Hans",
         disabled=disabled,
@@ -88,26 +88,23 @@ def tenants():
     _grant_user_group_view(b.system_user)
     a.member = _create_directory_user(
         username=f"member-a-{uuid.uuid4().hex[:8]}",
-        domain="a.test.com",
         group_ids=[team_a.id],
         display_name="Alice",
-        email="alice@a.test.com",
+        email="alice@example.com",
         locale="en",
     )
     a.disabled_member = _create_directory_user(
         username=f"disabled-a-{uuid.uuid4().hex[:8]}",
-        domain="a.test.com",
         group_ids=[team_a.id],
         disabled=True,
         display_name="Disabled",
-        email="disabled@a.test.com",
+        email="disabled@example.com",
     )
     b.member = _create_directory_user(
         username=f"member-b-{uuid.uuid4().hex[:8]}",
-        domain="b.test.com",
         group_ids=[team_b.id],
         display_name="Bob",
-        email="bob@b.test.com",
+        email="bob@example.com",
     )
     return SimpleNamespace(a=a, b=b, token=token)
 
@@ -138,9 +135,9 @@ def test_system_tenant_can_read_own_org_users(tenants):
     assert own == {
         "id": str(tenants.a.member.id),
         "username": tenants.a.member.username,
-        "domain": "a.test.com",
+        "domain": "domain.com",
         "display_name": "Alice",
-        "email": "alice@a.test.com",
+        "email": "alice@example.com",
         "disabled": False,
         "locale": "en",
         "group_list": [str(tenants.a.team.id)],
@@ -334,15 +331,15 @@ def test_groups_reject_name_search(tenants):
     assert response.json()["code"] == "SCHEMA_INVALID"
 
 
-def test_username_domain_filter_and_selector_conflict(tenants):
+def test_username_query_and_selector_conflict(tenants):
     matched = APIClient().get(
         USERS_URL,
-        {"username": tenants.a.member.username, "domain": "a.test.com"},
+        {"username": tenants.a.member.username},
         **_acting(tenants.a),
     )
-    other_domain = APIClient().get(
+    domain_rejected = APIClient().get(
         USERS_URL,
-        {"username": tenants.a.member.username, "domain": "other.test.com"},
+        {"username": tenants.a.member.username, "domain": "domain.com"},
         **_acting(tenants.a),
     )
     conflict = APIClient().get(
@@ -353,8 +350,8 @@ def test_username_domain_filter_and_selector_conflict(tenants):
 
     assert matched.status_code == 200, matched.json()
     assert _user_ids(matched.json()) == [str(tenants.a.member.id)]
-    assert other_domain.status_code == 200, other_domain.json()
-    assert other_domain.json()["data"]["results"] == []
+    assert domain_rejected.status_code == 400
+    assert domain_rejected.json()["code"] == "SCHEMA_INVALID"
     assert conflict.status_code == 400
     assert conflict.json()["code"] == "SCHEMA_INVALID"
 
@@ -362,10 +359,9 @@ def test_username_domain_filter_and_selector_conflict(tenants):
 def test_group_list_only_contains_authorized_orgs(tenants):
     shared = _create_directory_user(
         username=f"shared-{uuid.uuid4().hex[:8]}",
-        domain="shared.test.com",
         group_ids=[tenants.a.team.id, tenants.b.team.id],
         display_name="Shared",
-        email="shared@shared.test.com",
+        email="shared@example.com",
     )
 
     response = APIClient().get(
@@ -387,17 +383,15 @@ def test_include_children_does_not_expand_unauthorized_child(tenants):
     tenants.a.system_user.save(update_fields=["group_list"])
     child_user = _create_directory_user(
         username=f"child-user-{uuid.uuid4().hex[:8]}",
-        domain="a.test.com",
         group_ids=[child.id],
         display_name="Child",
-        email="child@a.test.com",
+        email="child@example.com",
     )
     outsider_user = _create_directory_user(
         username=f"out-user-{uuid.uuid4().hex[:8]}",
-        domain="a.test.com",
         group_ids=[outsider.id],
         display_name="Out",
-        email="out@a.test.com",
+        email="out@example.com",
     )
 
     without_children = APIClient().get(

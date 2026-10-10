@@ -44,7 +44,6 @@ class SystemMgmtUsersQuerySerializer(DirectoryPageSerializer):
     username = serializers.CharField(required=False, allow_blank=False, max_length=100)
     usernames = serializers.CharField(required=False, allow_blank=False, max_length=4096)
     search = serializers.CharField(required=False, allow_blank=False, max_length=128)
-    domain = serializers.CharField(required=False, allow_blank=False, max_length=100)
     disabled = StrictBooleanField(required=False)
 
     def validate_usernames(self, value):
@@ -66,6 +65,4 @@ class SystemMgmtUsersQuerySerializer(DirectoryPageSerializer):
         present = [name for name in _USER_SELECTORS if name in attrs]
         if len(present) > 1:
             raise serializers.ValidationError("at most one of user_id, username, usernames, search")
-        if "domain" in attrs and "username" not in attrs:
-            raise serializers.ValidationError("domain can only be used with username")
         return attrs

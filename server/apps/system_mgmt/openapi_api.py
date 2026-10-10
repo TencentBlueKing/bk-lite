@@ -157,13 +157,11 @@ def _serialize_group(group, result_ids):
     }
 
 
-def _apply_user_selectors(queryset, *, user_id, username, usernames, search, domain, disabled):
+def _apply_user_selectors(queryset, *, user_id, username, usernames, search, disabled):
     if user_id not in (None, ""):
         queryset = queryset.filter(pk=int(user_id))
     elif username:
         queryset = queryset.filter(username=username)
-        if domain:
-            queryset = queryset.filter(domain=domain)
     elif usernames:
         queryset = queryset.filter(username__in=list(usernames))
     elif search:
@@ -195,7 +193,6 @@ def openapi_list_users(
     username="",
     usernames=None,
     search="",
-    domain="",
     disabled=None,
     *,
     team=None,
@@ -216,7 +213,6 @@ def openapi_list_users(
         username=username,
         usernames=usernames,
         search=search,
-        domain=domain,
         disabled=disabled,
     )
     users = list(

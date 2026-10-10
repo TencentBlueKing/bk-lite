@@ -121,9 +121,7 @@ class OpenAPIRegistry:
                         raise ImproperlyConfigured(
                             f"openapi_expose({func_name}): inject='{inject}' 要求函数具有 user_info 参数"
                         )
-                    # domain 可作为业务过滤字段（如用户目录按登录域筛选）；
-                    # 调用方身份仍只来自网关注入的 user_info，客户端 domain 不能覆盖它。
-                    conflict = serializer_fields & {"user_info", "user"}
+                    conflict = serializer_fields & {"user_info", "user", "domain"}
                     if conflict:
                         raise ImproperlyConfigured(
                             f"openapi_expose({func_name}): serializer 不得声明身份字段 {sorted(conflict)}"

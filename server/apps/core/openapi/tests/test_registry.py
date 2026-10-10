@@ -112,10 +112,6 @@ def test_user_info_registration():
     assert endpoint.inject == "user_info"
 
 
-class DomainFilterSerializer(OpenAPIRequestSerializer):
-    domain = serializers.CharField(required=False)
-
-
 def test_team_list_with_user_registration_requires_both_trusted_parameters():
     reg = OpenAPIRegistry()
     endpoint = register(reg, inject="team_list_with_user", func=team_list_with_user_func)
@@ -123,25 +119,6 @@ def test_team_list_with_user_registration_requires_both_trusted_parameters():
 
     with pytest.raises(ImproperlyConfigured):
         register(OpenAPIRegistry(), inject="team_list_with_user", func=team_list_func)
-
-
-def test_team_list_with_user_allows_domain_as_business_filter():
-    reg = OpenAPIRegistry()
-    endpoint = register(
-        reg,
-        inject="team_list_with_user",
-        func=team_list_with_user_func,
-        serializer_class=DomainFilterSerializer,
-    )
-    assert "domain" in endpoint.serializer_class().fields
-
-    with pytest.raises(ImproperlyConfigured):
-        register(
-            OpenAPIRegistry(),
-            inject="team_list_with_user",
-            func=team_list_with_user_func,
-            serializer_class=UserFieldSerializer,
-        )
 
 
 def test_permission_with_app_accepted():
