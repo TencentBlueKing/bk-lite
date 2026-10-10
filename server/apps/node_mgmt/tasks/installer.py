@@ -500,6 +500,31 @@ def _fail_controller_dispatch_batch(task_id: int, claimed_items: tuple[tuple[int
         return changed
 
 
+def _installed_controller_node_ids(task_obj, task_nodes) -> list[str]:
+    """安装成功的节点 ID。优先用任务上记下的 ID，否则按本区域 IP 回查。"""
+    explicit_ids = []
+    ips = []
+    for task_node in task_nodes:
+        if task_node.status != InstallerConstants.STEP_STATUS_SUCCESS:
+            continue
+        result = task_node.result or {}
+        for candidate in (
+            result.get(InstallerConstants.INSTALL_NODE_ID_KEY),
+            task_node.connectivity_observed_node_id,
+            task_node.node_id,
+        ):
+            if candidate:
+                explicit_ids.append(str(candidate))
+        if task_node.ip:
+            ips.append(task_node.ip)
+    resolved = set(explicit_ids)
+    if ips:
+        resolved.update(
+            Node.objects.filter(cloud_region_id=task_obj.cloud_region_id, ip__in=ips).values_list("id", flat=True)
+        )
+    return sorted(resolved)
+
+
 def _dispatch_or_finalize_controller_task(task_id: int):
     dispatch_items = []
     should_refresh_controller_versions = False
@@ -576,7 +601,7 @@ def _dispatch_or_finalize_controller_task(task_id: int):
             transaction.on_commit(dispatch_claimed_nodes)
 
     if should_refresh_controller_versions:
-        discover_node_versions.delay()
+        discover_node_versions.delay(_installed_controller_node_ids(task_obj, task_nodes))
 
 
 def _parse_exception_details(error_message, exception_obj=None):

@@ -4,7 +4,9 @@ import { Input, Button, Select, message } from 'antd';
 import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
+import useIntegrationApi from '@/app/monitor/api/integration';
 import useViewApi from '@/app/monitor/api/view';
+import Permission from '@/components/permission';
 import { useTranslation } from '@/utils/i18n';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { useSearchParams } from 'next/navigation';
@@ -62,6 +64,7 @@ const ViewList: React.FC<ViewListProps> = ({
   const { isLoading } = useApiClient();
   const { getMonitorMetrics, getInstanceList, getEffectivePlugins } =
     useMonitorApi();
+  const { getPolicyGroups, joinPolicyGroup, leavePolicyGroup } = useIntegrationApi();
   const {
     getInstanceSearch,
     getInstanceQueryParams,
@@ -99,6 +102,9 @@ const ViewList: React.FC<ViewListProps> = ({
   const [unassignedOnly, setUnassignedOnly] = useState(false);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [tableData, setTableData] = useState<TableDataItem[]>([]);
+  const [selectedInstanceIds, setSelectedInstanceIds] = useState<React.Key[]>([]);
+  const [groupChoices, setGroupChoices] = useState<Array<{ id: number; name: string; is_default?: boolean }>>([]);
+  const [batchGroupId, setBatchGroupId] = useState<number>();
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
@@ -171,6 +177,29 @@ const ViewList: React.FC<ViewListProps> = ({
   useEffect(() => {
     unassignedOnlyRef.current = unassignedOnly;
   }, [unassignedOnly]);
+
+  useEffect(() => {
+    setSelectedInstanceIds([]);
+    if (isLoading || !objectId) {
+      setGroupChoices([]);
+      return;
+    }
+    let cancelled = false;
+    getPolicyGroups({ monitor_object_id: objectId, create_default: false })
+      .then((data) => {
+        if (cancelled) return;
+        const list = Array.isArray(data) ? data : [];
+        setGroupChoices(list);
+        const preferred = list.find((item) => item.is_default) || list[0];
+        setBatchGroupId(preferred?.id);
+      })
+      .catch(() => {
+        if (!cancelled) setGroupChoices([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [getPolicyGroups, isLoading, objectId]);
   useEffect(() => {
     paginationRef.current = pagination;
   }, [pagination]);
@@ -1003,6 +1032,44 @@ const ViewList: React.FC<ViewListProps> = ({
           />
         </div>
       </div>
+      {selectedInstanceIds.length > 0 ? (
+        <Permission requiredPermissions={['Edit']} permissionPath="/monitor/event/strategy">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <span>已选 {selectedInstanceIds.length} 台</span>
+            <Select
+              className="min-w-[220px]"
+              placeholder="选择策略组"
+              value={batchGroupId}
+              options={groupChoices.map((item) => ({
+                value: item.id,
+                label: item.is_default ? `${item.name}（默认）` : item.name
+              }))}
+              onChange={setBatchGroupId}
+            />
+            <Button
+              type="primary"
+              disabled={!batchGroupId}
+              onClick={async () => {
+                if (!batchGroupId) return;
+                await joinPolicyGroup(batchGroupId, selectedInstanceIds.map(String));
+                message.success('已处理所选实例。已在其他组的会先离开原组，未恢复告警会结束');
+                setSelectedInstanceIds([]);
+              }}
+            >
+              加入或更换
+            </Button>
+            <Button
+              onClick={async () => {
+                await leavePolicyGroup(selectedInstanceIds.map(String));
+                message.success('已退出，未恢复告警会结束');
+                setSelectedInstanceIds([]);
+              }}
+            >
+              退出
+            </Button>
+          </div>
+        </Permission>
+      ) : null}
       <CustomTable
         scroll={{
           y: `calc(100vh - ${showTab ? '330px' : '280px'})`,
@@ -1013,6 +1080,10 @@ const ViewList: React.FC<ViewListProps> = ({
         pagination={pagination}
         loading={tableLoading}
         rowKey="instance_id"
+        rowSelection={{
+          selectedRowKeys: selectedInstanceIds,
+          onChange: (keys) => setSelectedInstanceIds(keys)
+        }}
         fieldSetting={{
           showSetting: true,
           displayFieldKeys: resolvedColumns.fieldKeys,

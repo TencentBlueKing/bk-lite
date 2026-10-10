@@ -182,3 +182,25 @@ class TestSyncMonitorInstances:
         obj.refresh_from_db()
         assert instance.missing_duration_seconds == 24 * 60 * 60 - 1
         assert obj.last_discovery_success_at < timezone.now() - timedelta(days=1)
+
+    def test_manual_id_collision_is_not_recreated_and_deleted_auto_is_removed(self, mocker):
+        obj = _make_obj()
+        MonitorInstance.objects.create(
+            id="('manual',)", name="manual", monitor_object=obj, auto=False, is_deleted=False,
+        )
+        MonitorInstance.objects.create(
+            id="('gone',)", name="gone", monitor_object=obj, auto=True, is_deleted=True,
+        )
+        live = MonitorInstance.objects.create(
+            id="('live',)", name="live", monitor_object=obj, auto=True, is_deleted=False, is_active=True,
+        )
+        vm = mocker.patch("apps.monitor.tasks.services.sync_instance.VictoriaMetricsAPI")
+        vm.return_value.query.return_value = _vm_result(
+            {"metric": {"instance_id": "manual"}},
+            {"metric": {"instance_id": "fresh"}},
+        )
+        SyncInstance().run()
+        assert MonitorInstance.objects.filter(id="('manual',)").count() == 1
+        assert MonitorInstance.objects.filter(id="('fresh',)", auto=True, is_deleted=False).exists()
+        assert MonitorInstance.objects.filter(id=live.id).exists()
+        assert not MonitorInstance.objects.filter(id="('gone',)").exists()

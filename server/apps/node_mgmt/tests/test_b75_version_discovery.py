@@ -248,3 +248,26 @@ def test_discover_node_versions_counts(node):
     assert result["total"] == 1
     assert result["success_count"] == 1
     assert result["failed_count"] == 0
+
+
+@pytest.mark.django_db
+def test_discover_node_versions_limits_to_given_ids(node):
+    Controller.objects.create(
+        os="linux", cpu_architecture="x86_64", name="Controller", version_command="ctl --version"
+    )
+    other = Node.objects.create(
+        id="other-node",
+        name="other",
+        ip="10.1.1.9",
+        operating_system="linux",
+        cpu_architecture="x86_64",
+        collector_configuration_directory="/etc",
+        cloud_region=node.cloud_region,
+    )
+    executor = MagicMock()
+    executor.execute_local.return_value = "1.0.0"
+    with patch("apps.node_mgmt.tasks.version_discovery.Executor", return_value=executor):
+        result = vd.discover_node_versions(node_ids=[node.id])
+    assert result["total"] == 1
+    assert NodeComponentVersion.objects.filter(node=node).exists()
+    assert not NodeComponentVersion.objects.filter(node=other).exists()

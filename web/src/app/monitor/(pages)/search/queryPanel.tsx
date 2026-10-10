@@ -11,7 +11,6 @@ import {
   PlusOutlined,
   DeleteOutlined,
   CopyOutlined,
-  BellOutlined,
   SaveOutlined,
   FolderOpenOutlined,
   ClearOutlined,
@@ -1000,32 +999,6 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
               className="flex items-center"
               onClick={(e) => e.stopPropagation()}
             >
-              <Tooltip title={t('monitor.events.createPolicy')}>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<BellOutlined />}
-                  className="hidden text-[var(--color-text-3)] hover:text-[var(--color-primary)]"
-                  onClick={() => {
-                    const objectInfo = objects.find(
-                      (o) => o.id === group.object
-                    );
-                    const params = {
-                      monitorName: objectInfo?.display_name || '',
-                      monitorObjId: String(group.object),
-                      instanceId: group.instanceIds[0] || '',
-                      metricId: String(listSelectedMetricIds(group.metric)[0] || ''),
-                      type: 'add'
-                    };
-                    const queryString = new URLSearchParams(params).toString();
-                    window.open(
-                      `/monitor/event/strategy/detail?${queryString}`,
-                      '_blank',
-                      'noopener,noreferrer'
-                    );
-                  }}
-                />
-              </Tooltip>
               <Tooltip title={t('common.copy')}>
                 <Button
                   type="text"
