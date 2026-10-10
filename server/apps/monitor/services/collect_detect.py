@@ -52,12 +52,31 @@ SCRIPT_REQUIRED_RENDER_VARS = ("plugin_id", "instance_id", "instance_type", "con
 _LINUX_ROOT_RUN_AS_UID = re.compile(r"^(?:0+|uid\s*[:=]\s*0+)$")
 
 
+def _secret_values(variant, values):
+    secrets = []
+    for target in (variant or {}).get("_targets") or []:
+        field = str(target.get("field") or "")
+        lowered = field.lower()
+        secret_field = bool(target.get("encrypted")) or any(
+            token in lowered for token in ("password", "token", "community", "secret", "passphrase", "private_key")
+        )
+        if not secret_field:
+            continue
+        value = (values or {}).get(field)
+        if value not in (None, ""):
+            secrets.append(value)
+    return secrets
+
+
 class CollectDetectService:
     @classmethod
     def create_task(cls, payload: dict, user, organization: int):
         plugin = cls._get_supported_plugin(payload.get("monitor_plugin_id"))
         instance = payload.get("instance") or {}
-        if plugin.collect_type == "web":
+        vault_plan = cls._vault_detect_plan(plugin, instance, user, organization)
+        if vault_plan is not None:
+            instance = vault_plan["public_instance"]
+        elif plugin.collect_type == "web":
             instance = normalize_website_request_config(instance)
         instance = cls._inject_formal_config_vars(plugin, instance)
         try:
@@ -72,11 +91,22 @@ class CollectDetectService:
         else:
             runtime_timeout = cls._normalize_timeout(payload.get("timeout"))
         env = payload.get("env") or {}
-        runtime_payload = {
-            "instance": instance,
-            "env": env,
-            "timeout": runtime_timeout,
-        }
+        credential_id = ""
+        if vault_plan is not None:
+            env = cls._strip_vault_values(env, vault_plan["managed_names"], vault_plan["secrets"])
+            credential_id = vault_plan["credential_id"]
+            runtime_payload = {
+                "instance": instance,
+                "env": env,
+                "timeout": runtime_timeout,
+                "vault": vault_plan["vault"],
+            }
+        else:
+            runtime_payload = {
+                "instance": instance,
+                "env": env,
+                "timeout": runtime_timeout,
+            }
 
         task = CollectDetectTask.objects.create(
             status="pending",
@@ -87,7 +117,7 @@ class CollectDetectService:
             collect_type=plugin.collect_type,
             node_id=str(payload.get("node_id") or ""),
             instance_key=str(payload.get("instance_key") or instance.get("instance_id") or ""),
-            request_fingerprint=cls._fingerprint(plugin.id, payload.get("node_id"), instance),
+            request_fingerprint=cls._fingerprint(plugin.id, payload.get("node_id"), instance, credential_id=credential_id),
             created_by=getattr(user, "username", "") or "",
             organization=int(organization),
             request_snapshot={
@@ -97,6 +127,7 @@ class CollectDetectService:
                 "instance_key": payload.get("instance_key"),
                 "instance": cls._sanitize_mapping(instance),
                 "env": cls._sanitize_mapping(env),
+                **({"credential_id": credential_id} if credential_id else {}),
             },
         )
         from apps.monitor.tasks.collect_detect import run_collect_detect_task
@@ -113,8 +144,23 @@ class CollectDetectService:
         task.save(update_fields=["status", "phase", "started_at", "updated_at"])
 
         try:
+            filled_values = []
             plugin = cls._get_supported_plugin(task.monitor_plugin_id)
             instance = dict(runtime_payload.get("instance") or {})
+            vault = runtime_payload.get("vault") if isinstance(runtime_payload.get("vault"), dict) else None
+            if vault:
+                try:
+                    instance, filled_values = cls._fill_vault_detect_instance(plugin, instance, vault)
+                except Exception as exc:
+                    from apps.monitor.services.vault_credential.errors import VaultCredentialError
+
+                    code = exc.code if isinstance(exc, VaultCredentialError) else "apply_failed"
+                    task.status = "failed"
+                    task.error_message = code
+                    task.result = {"success": False, "stdout": "", "stderr": code, "exit_code": 1}
+                    task.finished_at = timezone.now()
+                    task.save(update_fields=["status", "result", "error_message", "finished_at", "updated_at"])
+                    return task.result
             if not instance.get("instance_id"):
                 fallback_instance_id = task.instance_key or instance.get("instance_name") or instance.get("host")
                 if fallback_instance_id:
@@ -154,7 +200,8 @@ class CollectDetectService:
                 shell=shell,
                 env=env,
             )
-            result = sanitize_execution_result(raw_result, sensitive_values=list(env.values()))
+            sensitive_values = [str(value) for value in list(env.values()) + list(filled_values) if value not in (None, "")]
+            result = sanitize_execution_result(raw_result, sensitive_values=sensitive_values)
             if plugin.collect_type == "web" and config_context.get("request_url"):
                 result["request_url"] = config_context["request_url"]
             if cls._is_script_plugin(plugin):
@@ -169,7 +216,9 @@ class CollectDetectService:
         except Exception as exc:
             safe_message = sanitize_execution_result(
                 {"success": False, "error": str(exc)},
-                sensitive_values=list((runtime_payload.get("env") or {}).values()),
+                sensitive_values=[
+                    str(value) for value in list((runtime_payload.get("env") or {}).values()) + list(filled_values) if value not in (None, "")
+                ],
             )["stderr"]
             task.status = "failed"
             task.error_message = safe_message
@@ -383,14 +432,96 @@ class CollectDetectService:
         return min(normalized, MAX_TIMEOUT_SECONDS)
 
     @classmethod
-    def _fingerprint(cls, plugin_id, node_id, instance):
+    def _fingerprint(cls, plugin_id, node_id, instance, credential_id=""):
         safe_instance = cls._sanitize_mapping(instance)
-        source = json.dumps(
-            {"plugin_id": plugin_id, "node_id": node_id, "instance": safe_instance},
-            sort_keys=True,
-            ensure_ascii=True,
-        )
+        source_payload = {"plugin_id": plugin_id, "node_id": node_id, "instance": safe_instance}
+        if credential_id:
+            source_payload["credential_id"] = credential_id
+        source = json.dumps(source_payload, sort_keys=True, ensure_ascii=True)
         return hashlib.sha256(source.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def _vault_detect_plan(cls, plugin, instance, user, organization):
+        if str((instance or {}).get("credential_source") or "") != "vault":
+            return None
+        from apps.core.exceptions.base_app_exception import ValidationAppException
+        from apps.monitor.services.vault_credential.apply import raise_client, stored_actor
+        from apps.monitor.services.vault_credential.binding import binding_for_plugin, managed_field_names
+        from apps.monitor.services.vault_credential.errors import VaultCredentialError
+        from apps.monitor.services.vault_credential.mapper import form_values_for_credential
+        from apps.monitor.services.vault_credential.resolver import resolve_for_actor
+
+        binding = binding_for_plugin(plugin)
+        variant_key = str(instance.get("vault_variant") or "")
+        variant = next((item for item in binding.get("variants") or [] if item.get("key") == variant_key), None)
+        if variant is None:
+            raise ValidationAppException()
+        actor = stored_actor(
+            {
+                "username": getattr(user, "username", "") or "",
+                "domain": getattr(user, "domain", "") or "",
+                "current_team": organization,
+            }
+        )
+        credential_id = str(instance.get("vault_credential_id") or "")
+        try:
+            resolved = resolve_for_actor(actor, credential_id, variant, form_values=instance)
+            values = form_values_for_credential(resolved, variant, binding, encode=False)
+        except VaultCredentialError as exc:
+            raise_client(exc)
+        memory = dict(instance)
+        memory.update(values)
+        if plugin.collect_type == "web":
+            memory = normalize_website_request_config(memory)
+        try:
+            cls._ensure_script_run_as(plugin, memory)
+        except ValueError as exc:
+            raise ValidationAppException(str(exc)) from exc
+        names = set(managed_field_names(binding))
+        secrets = _secret_values(variant, values)
+        return {
+            "public_instance": cls._strip_vault_values(instance, names, secrets),
+            "managed_names": names,
+            "secrets": secrets,
+            "credential_id": credential_id,
+            "vault": {"credential_id": credential_id, "variant": variant.get("key"), "actor_context": actor},
+        }
+
+    @classmethod
+    def _fill_vault_detect_instance(cls, plugin, instance, vault):
+        from apps.monitor.services.vault_credential.binding import binding_for_plugin
+        from apps.monitor.services.vault_credential.mapper import form_values_for_credential
+        from apps.monitor.services.vault_credential.resolver import resolve_for_actor
+
+        binding = binding_for_plugin(plugin)
+        variant = next((item for item in binding.get("variants") or [] if item.get("key") == vault.get("variant")), None)
+        if variant is None:
+            from apps.monitor.services.vault_credential.errors import VaultCredentialError
+
+            raise VaultCredentialError("apply_failed")
+        resolved = resolve_for_actor(vault.get("actor_context") or {}, vault.get("credential_id"), variant, form_values=instance)
+        values = form_values_for_credential(resolved, variant, binding, encode=False)
+        filled = dict(instance)
+        filled.update(values)
+        if plugin.collect_type == "web":
+            filled = normalize_website_request_config(filled)
+        return filled, _secret_values(variant, values)
+
+    @staticmethod
+    def _strip_vault_values(value, names, secrets):
+        secret_values = {str(item) for item in secrets or [] if item not in (None, "")}
+        if isinstance(value, dict):
+            cleaned = {}
+            for key, item in value.items():
+                if key in names or key in {"credential_source", "vault_credential_id", "vault_variant"}:
+                    continue
+                cleaned[key] = CollectDetectService._strip_vault_values(item, names, secrets)
+            return cleaned
+        if isinstance(value, list):
+            return [CollectDetectService._strip_vault_values(item, names, secrets) for item in value]
+        if isinstance(value, str) and value in secret_values:
+            return ""
+        return value
 
     @classmethod
     def purge_terminal_tasks(cls, now=None) -> int:

@@ -444,6 +444,9 @@ def update_credential(credential_id, payload=None, actor=None, **values):
             validate_instance_fields(type_fields=type_fields, values=effective_fields, require_secrets=True)
         except SchemaError as exc:
             raise CredentialServiceError("invalid", str(exc)) from exc
+        original_fields = deepcopy(credential.fields)
+        original_group_id = credential.group_id
+        original_disabled = credential.disabled
         credential.fields = effective_fields
         if "name" in data:
             if not isinstance(data["name"], str) or not data["name"]:
@@ -455,7 +458,15 @@ def update_credential(credential_id, payload=None, actor=None, **values):
         maintainer = _maintainer(actor, include_created=False)
         credential.updated_by = maintainer["updated_by"]
         credential.updated_by_domain = maintainer["updated_by_domain"]
-        credential.save(update_fields=["name", "group_id", "fields", "disabled", "updated_at", "updated_by", "updated_by_domain"])
+        version_advanced = _advance_secret_version(
+            credential,
+            fields_changed=credential.fields != original_fields,
+            group_changed=credential.group_id != original_group_id,
+            disabled_changed=credential.disabled != original_disabled,
+        )
+        credential.save(update_fields=["name", "group_id", "fields", "disabled", "secret_version", "updated_at", "updated_by", "updated_by_domain"])
+        if version_advanced:
+            _schedule_secret_refresh(credential.credential_id)
     return credential
 
 
@@ -470,8 +481,17 @@ def set_disabled(credential_id, disabled, actor=None, *, current_team=None, grou
                 group_list=group_list,
                 is_superuser=is_superuser,
             )
+        original_disabled = credential.disabled
         credential.disabled = bool(disabled)
-        credential.save(update_fields=["disabled", "updated_at", "updated_by", "updated_by_domain"])
+        version_advanced = _advance_secret_version(
+            credential,
+            fields_changed=False,
+            group_changed=False,
+            disabled_changed=credential.disabled != original_disabled,
+        )
+        credential.save(update_fields=["disabled", "secret_version", "updated_at", "updated_by", "updated_by_domain"])
+        if version_advanced:
+            _schedule_secret_refresh(credential.credential_id)
     return _public_credential(credential)
 
 
@@ -557,7 +577,47 @@ def resolve_credential(credential_id, current_team, actor=None, *, group_list=No
     type_fields = effective_type_fields(credential.type)
     result = _public_credential(credential)
     result["fields"] = decrypt_instance_fields(type_fields, credential.fields)
+    result["secret_version"] = credential.secret_version
     return result
+
+
+def describe_credential(credential_id, current_team, actor=None, *, group_list=None, is_superuser=None):
+    """Same consume-scope check as resolve, without decrypting and without rejecting disabled rows."""
+    credential = _load_credential(credential_id)
+    current_team, _group_list, _is_superuser = _require_current_team(
+        actor,
+        current_team=current_team,
+        group_list=group_list,
+        is_superuser=is_superuser,
+    )
+    if credential.group_id not in usable_owner_group_ids(current_team):
+        raise CredentialServiceError("forbidden")
+    return {
+        "credential_id": credential.credential_id,
+        "type": credential.type_id,
+        "name": credential.name,
+        "disabled": credential.disabled,
+        "secret_version": credential.secret_version,
+    }
+
+
+def get_credential_versions(credential_ids):
+    ids = list(credential_ids or [])
+    found = {row.credential_id: row.secret_version for row in Credential.objects.filter(credential_id__in=ids)}
+    return {credential_id: found.get(credential_id) for credential_id in ids}
+
+
+def _advance_secret_version(credential, *, fields_changed, group_changed, disabled_changed):
+    if not (fields_changed or group_changed or disabled_changed):
+        return False
+    credential.secret_version = int(credential.secret_version or 1) + 1
+    return True
+
+
+def _schedule_secret_refresh(credential_id):
+    from apps.system_mgmt.services.credential_refresh import schedule_credential_refresh
+
+    schedule_credential_refresh(credential_id)
 
 
 def resolve_secret_field(credential_id, field_id=None):

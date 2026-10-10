@@ -196,15 +196,15 @@ class NodeMgmt(object):
             permission_data or {},
         )
 
-    def update_child_config_content(self, id, content, env_config=None):
+    def update_child_config_content(self, id, content, env_config=None, replace_env=False):
         """
         :param id: 子配置ID
         :param content: 子配置内容
         """
-        return_data = self.client.run(
-            "update_child_config_content",
-            {"id": id, "content": content, "env_config": env_config},
-        )
+        payload = {"id": id, "content": content, "env_config": env_config}
+        if replace_env:
+            payload["replace_env"] = True
+        return_data = self.client.run("update_child_config_content", payload)
         return return_data
 
     def compare_and_swap_child_config_content_local(self, id, expected_content, content):
@@ -217,15 +217,15 @@ class NodeMgmt(object):
             {"id": id, "expected_content": expected_content, "content": content},
         )
 
-    def update_config_content(self, id, content, env_config=None):
+    def update_config_content(self, id, content, env_config=None, replace_env=False):
         """
         :param id: 配置ID
         :param content: 配置内容
         """
-        return_data = self.client.run(
-            "update_config_content",
-            {"id": id, "content": content, "env_config": env_config},
-        )
+        payload = {"id": id, "content": content, "env_config": env_config}
+        if replace_env:
+            payload["replace_env"] = True
+        return_data = self.client.run("update_config_content", payload)
         return return_data
 
     def delete_child_configs(self, ids):

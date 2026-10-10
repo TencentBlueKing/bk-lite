@@ -23,8 +23,9 @@
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.servers[0]",
+        "url_encode": true,
         "to_form": {
-          "regex": "User Id=([^;]+)"
+          "regex": "://([^:@/]+):"
         }
       },
       "label_en": "Username",
