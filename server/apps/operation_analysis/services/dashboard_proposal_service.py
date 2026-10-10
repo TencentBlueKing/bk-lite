@@ -70,13 +70,16 @@ def _fields(source: dict) -> list[dict]:
         name = _field_name(item)
         if not name:
             continue
-        fields.append(
-            {
-                "name": name,
-                "type": item.get("value_type") or item.get("type") or "",
-                "desc": item.get("description") or item.get("desc") or item.get("title") or "",
-            }
-        )
+        title = str(item.get("title") or "").strip()
+        description = str(item.get("description") or item.get("desc") or "").strip()
+        field = {
+            "name": name,
+            "type": item.get("value_type") or item.get("type") or "",
+            "desc": description or title,
+        }
+        if title:
+            field["title"] = title
+        fields.append(field)
     return fields
 
 
@@ -212,7 +215,9 @@ def _brief_search_text(brief: dict) -> tuple[str, str, str, str]:
     name = str(brief.get("name") or "").casefold()
     tags = " ".join(_canonical_tag(item) for item in (brief.get("tags") or []))
     field_names = " ".join(
-        f"{item.get('name') or ''} {item.get('desc') or ''}" for item in (brief.get("fields") or []) if isinstance(item, dict)
+        f"{item.get('name') or ''} {item.get('title') or ''} {item.get('desc') or ''}"
+        for item in (brief.get("fields") or [])
+        if isinstance(item, dict)
     ).casefold()
     body = " ".join(
         [
@@ -245,8 +250,43 @@ def _requested_subject_tokens(requirement: dict, requested_domains: set[str]) ->
     return _tokens(subject)
 
 
+def _chart_family(chart_types) -> str:
+    types = set(chart_types or [])
+    if types & {"line", "bar", "area"}:
+        return "trend"
+    if "pie" in types:
+        return "share"
+    if "multiValue" in types:
+        return "multi"
+    if types & {"table", "topN"}:
+        return "table"
+    if "gauge" in types:
+        return "gauge"
+    return "single"
+
+
+def _prefer_chart_families(ranked: list[tuple], limit: int) -> list[dict]:
+    """概览先保留最相关的源，再补上趋势、占比、表格，避免目录里只剩单值。"""
+    remaining = list(ranked)
+    picked: list[dict] = []
+    families: set[str] = set()
+    while remaining and len(picked) < limit:
+        choice = 0
+        if len(picked) >= 2:
+            missing = {"trend", "share", "table"} - families
+            if missing:
+                for index, (_, brief) in enumerate(remaining):
+                    if _chart_family(brief.get("chart_type")) in missing:
+                        choice = index
+                        break
+        _, brief = remaining.pop(choice)
+        families.add(_chart_family(brief.get("chart_type")))
+        picked.append(brief)
+    return picked
+
+
 def search_briefs(requirements: list[dict], briefs: list[dict], *, limit_per_requirement: int = 5, total_limit: int = 20) -> list[dict]:
-    """按语义领域和数据契约检索 brief，每项最多 5 个。"""
+    """按语义领域和数据契约检索 brief。指定图表时每项最多 5 个，概览会补齐不同图表。"""
     chosen: list[dict] = []
     seen: set[int] = set()
     for requirement in requirements:
@@ -298,7 +338,11 @@ def search_briefs(requirements: list[dict], briefs: list[dict], *, limit_per_req
                 score += min(number_fields, 6)
             ranked.append((score, brief))
         ranked.sort(key=lambda item: (-item[0], item[1].get("id") or 0))
-        for _, brief in ranked[:limit_per_requirement]:
+        if overview and not chart_type:
+            picked = _prefer_chart_families(ranked, min(8, max(limit_per_requirement, 8)))
+        else:
+            picked = [brief for _, brief in ranked[:limit_per_requirement]]
+        for brief in picked:
             source_id = brief.get("id")
             if source_id in seen:
                 continue
@@ -405,10 +449,268 @@ def _dynamic_source_error(input_config, by_id: dict) -> str | None:
     return None
 
 
+def _brief_field_names(brief: dict) -> list[str]:
+    return [str(field["name"]) for field in (brief.get("fields") or []) if isinstance(field, dict) and field.get("name")]
+
+
+def _compact_source_index(briefs: list[dict], *, budget: int = 900) -> list[dict]:
+    """失败时给模型的目录。优先保住 id，超长时从尾部去掉字段。"""
+    entries = []
+    for brief in briefs or []:
+        if not isinstance(brief, dict) or brief.get("id") is None or not brief.get("chart_type"):
+            continue
+        entries.append(
+            {
+                "id": brief.get("id"),
+                "name": brief.get("name") or "",
+                "chart_type": list(brief.get("chart_type") or []),
+                "fields": _brief_field_names(brief),
+            }
+        )
+
+    def encoded() -> str:
+        return json.dumps(entries, ensure_ascii=False, separators=(",", ":"))
+
+    for entry in reversed(entries):
+        if len(encoded()) <= budget:
+            return entries
+        entry["fields"] = []
+    while entries and len(encoded()) > budget:
+        entries.pop()
+    return entries
+
+
+def _first_present(source: dict, keys: tuple[str, ...]):
+    for key in keys:
+        value = source.get(key)
+        if value not in (None, "", []):
+            return value
+    return None
+
+
+def _coerce_widget_item(item: dict) -> dict:
+    """模型常把图表配置写在组件根上，收进 valueConfig 后再校验。"""
+    config = dict(item.get("valueConfig") or {}) if isinstance(item.get("valueConfig"), dict) else {}
+    aliases = {
+        "chartType": ("chartType", "chart_type"),
+        "dataSource": ("dataSource", "dataSourceId", "data_source_id", "data_source"),
+        "selectedFields": ("selectedFields", "selected_fields"),
+        "dimensionField": ("dimensionField", "dimension_field"),
+        "valueField": ("valueField", "value_field"),
+        "dataSourceParams": ("dataSourceParams", "data_source_params"),
+    }
+    for key, names in aliases.items():
+        if config.get(key) not in (None, "", []):
+            continue
+        found = _first_present(item, names)
+        if found not in (None, "", []):
+            config[key] = found
+    if not config.get("chartType"):
+        kind = item.get("type")
+        if isinstance(kind, str) and kind not in {"row", "group", "container"}:
+            config["chartType"] = kind
+    return {**item, "valueConfig": config}
+
+
+def _widget_field_keys(config: dict) -> list[str]:
+    keys = []
+    selected = config.get("selectedFields")
+    if isinstance(selected, list):
+        keys.extend(str(item) for item in selected if item)
+    for key in ("dimensionField", "valueField"):
+        if config.get(key):
+            keys.append(str(config[key]))
+    return keys
+
+
+_REQUIRED_ROLE_PAIRS = {
+    "dimensionField",
+    "valueField",
+    "topNLabelField",
+    "topNValueField",
+    "multiValueLabelField",
+    "multiValueValueField",
+}
+
+
+def _role_value(config: dict, key: str):
+    if "." in key:
+        parent, child = key.split(".", 1)
+        nested = config.get(parent)
+        if isinstance(nested, dict):
+            return nested.get(child)
+        return None
+    return config.get(key)
+
+
+_LABEL_TERMS = ("名称", "分组", "对象", "name", "label", "title", "display", "model", "key", "category")
+_VALUE_TERMS = ("费用", "合计", "数量", "实例", "占比", "健康", "count", "cost", "total", "amount", "score", "value", "pct", "rate", "percent")
+_LABEL_ROLE_KEYS = {"dimensionField", "topNLabelField", "multiValueLabelField"}
+
+
+def _field_semantics(field: dict) -> str:
+    return " ".join(str(field.get(key) or "") for key in ("name", "title", "desc")).casefold()
+
+
+def _semantic_role_field(fields: list[dict], *, label: bool, used: set[str], selected_names: set[str], source_text: str) -> dict | None:
+    """按名称和说明推荐字段。展示和数值都会被页面转换，不看声明类型。"""
+    terms = _LABEL_TERMS if label else _VALUE_TERMS
+    avoid = _VALUE_TERMS if label else _LABEL_TERMS
+    best = None
+    best_score = None
+    for index, field in enumerate(fields):
+        name = str(field.get("name") or "")
+        if not name or name in used:
+            continue
+        text = _field_semantics(field)
+        matched = sum(1 for term in terms if term.casefold() in text)
+        if matched <= 0:
+            continue
+        score = matched * 3
+        score -= sum(3 for term in avoid if term.casefold() in text)
+        if any(term.casefold() in source_text and term.casefold() in text for term in terms):
+            score += 2
+        if name in selected_names:
+            score += 1
+        if label and (name.casefold().endswith("_id") or text.endswith("id")):
+            score -= 2
+        if score <= 0:
+            continue
+        rank = (score, name in selected_names, -index)
+        if best_score is None or rank > best_score:
+            best = field
+            best_score = rank
+    return best
+
+
+def _fill_missing_role_fields(config: dict, chart_type: str, source: dict) -> None:
+    """必填的展示字段和数值字段为空时，按字段语义补上。不查询数据源。"""
+    fields = [field for field in (source.get("fields") or []) if isinstance(field, dict) and field.get("name")]
+    if not fields:
+        return
+    spec = widget_specs().get(str(chart_type or "")) or {}
+    from apps.operation_analysis.services.dashboard_widget_draft import _set_role
+
+    selected_names = {str(item) for item in (config.get("selectedFields") or []) if item}
+    source_text = " ".join(str(source.get(key) or "") for key in ("name", "desc")).casefold()
+    used: set[str] = set()
+    for role in spec.get("roles") or []:
+        if isinstance(role, dict):
+            current = _role_value(config, str(role.get("key") or ""))
+            if current not in (None, "", []):
+                used.add(str(current))
+    for role in spec.get("roles") or []:
+        if not isinstance(role, dict) or not role.get("required"):
+            continue
+        key = str(role.get("key") or "")
+        if key not in _REQUIRED_ROLE_PAIRS:
+            continue
+        if _role_value(config, key) not in (None, "", []):
+            continue
+        picked = _semantic_role_field(
+            fields,
+            label=key in _LABEL_ROLE_KEYS,
+            used=used,
+            selected_names=selected_names,
+            source_text=source_text,
+        )
+        if picked is None or not picked.get("name"):
+            continue
+        _set_role(config, key, picked["name"])
+        used.add(picked["name"])
+
+
+def _label_widget(item: dict, config: dict, source: dict) -> dict:
+    """单值卡用字段中文名做标题、字段说明做描述。趋势和表格保留数据源名称。"""
+    fields = {str(field.get("name")): field for field in (source.get("fields") or []) if isinstance(field, dict) and field.get("name")}
+    keys = _widget_field_keys(config)
+    primary = fields.get(keys[0]) if keys else None
+    title = str((primary or {}).get("title") or "").strip()
+    description = str((primary or {}).get("desc") or "").strip()
+    chart_type = str(config.get("chartType") or "")
+    source_name = str(source.get("name") or "").strip()
+    if chart_type not in {"single", "gauge"}:
+        title = source_name or title
+        description = str(source.get("desc") or "").strip() or description
+    elif description == title:
+        description = str(source.get("desc") or "").strip()
+    name = str(item.get("name") or "").strip()
+    raw_names = set(keys)
+    raw_names.add(chart_type)
+    if title and (not name or name in raw_names):
+        name = title
+    labeled = {**item, "name": name or source_name}
+    current = str(item.get("description") or "").strip()
+    if description and description != labeled["name"] and (not current or current in raw_names):
+        labeled["description"] = description
+    return labeled
+
+
+_REFRESH_MS = {0: 0, 60: 60_000, 300: 300_000, 600: 600_000, 60_000: 60_000, 300_000: 300_000, 600_000: 600_000}
+_PERCENT_TERMS = ("占比", "%", "percent", "pct")
+_COUNT_TERMS = ("数量", "实例", "count")
+
+
+def _refresh_ms(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return _REFRESH_MS.get(int(value))
+
+
+def _valid_thresholds(value) -> bool:
+    if not isinstance(value, list) or not value:
+        return False
+    return all(isinstance(item, dict) and item.get("color") and item.get("value") not in (None, "") for item in value)
+
+
+def _valid_mappings(value) -> bool:
+    return isinstance(value, list) and all(isinstance(item, dict) for item in value)
+
+
+def _apply_display_format(config: dict, source: dict) -> None:
+    """保留模型写上的单位、精度、阈值和值映射。没写时只按字段说明补占比或数量。"""
+    factor = config.get("conversionFactor")
+    if "conversionFactor" in config and (isinstance(factor, bool) or not isinstance(factor, (int, float))):
+        config.pop("conversionFactor", None)
+    places = config.get("decimalPlaces")
+    if "decimalPlaces" in config and (isinstance(places, bool) or type(places) is not int or not 0 <= places <= 8):
+        config.pop("decimalPlaces", None)
+    if "thresholdColors" in config and not _valid_thresholds(config.get("thresholdColors")):
+        config.pop("thresholdColors", None)
+    if "valueMappings" in config and not _valid_mappings(config.get("valueMappings")):
+        config.pop("valueMappings", None)
+    if config.get("unitId") or "decimalPlaces" in config:
+        return
+    value_name = config.get("valueField") or config.get("topNValueField") or config.get("multiValueValueField")
+    selected = config.get("selectedFields")
+    if not value_name and isinstance(selected, list) and selected:
+        value_name = selected[0]
+    field = next((item for item in (source.get("fields") or []) if isinstance(item, dict) and item.get("name") == value_name), None)
+    text = _field_semantics(field or {}).casefold()
+    if any(term.casefold() in text for term in _PERCENT_TERMS):
+        config["unitId"] = "percent"
+        config["decimalPlaces"] = 2
+    elif any(term.casefold() in text for term in _COUNT_TERMS):
+        config["decimalPlaces"] = 0
+
+
+def _page_settings(proposal: dict) -> dict:
+    settings = {}
+    other = proposal.get("otherConfig")
+    if isinstance(other, dict) and other:
+        settings["otherConfig"] = other
+    refresh = _refresh_ms(proposal.get("refreshInterval"))
+    if refresh is not None:
+        settings["refreshInterval"] = refresh
+    return settings
+
+
 def prepare_dashboard_proposal(proposal: dict, briefs: list[dict]) -> dict:
     """补全固定参数并校验方案。不加载选项全量，也不预览数据。"""
     if not isinstance(proposal, dict) or proposal.get("schemaVersion") != SCHEMA_VERSION:
         return {"ok": False, "reason": "schema", "pending": []}
+    if not isinstance(proposal.get("layout"), list):
+        return {"ok": False, "reason": "layout", "pending": []}
     by_id = {brief.get("id"): brief for brief in briefs}
     pending = []
     layout = []
@@ -416,6 +718,7 @@ def prepare_dashboard_proposal(proposal: dict, briefs: list[dict]) -> dict:
     for index, item in enumerate(proposal.get("layout") or []):
         if not isinstance(item, dict):
             return {"ok": False, "reason": "layout", "pending": []}
+        item = _coerce_widget_item(item)
         config = dict(item.get("valueConfig") or {})
         chart_type = config.get("chartType") or config.get("sceneWidgetType")
         if chart_type in SCENE_CHART_TYPES:
@@ -429,11 +732,28 @@ def prepare_dashboard_proposal(proposal: dict, briefs: list[dict]) -> dict:
             continue
         config["dataSource"] = source.get("id")
         if chart_type not in (source.get("chart_type") or []):
-            return {"ok": False, "reason": "chart_type_mismatch", "pending": [{"index": index, "chartType": chart_type}]}
+            return {
+                "ok": False,
+                "reason": "chart_type_mismatch",
+                "pending": [
+                    {
+                        "index": index,
+                        "chartType": chart_type,
+                        "allowedChartTypes": list(source.get("chart_type") or []),
+                        "fields": _brief_field_names(source),
+                    }
+                ],
+            }
         known_fields = {field["name"] for field in source.get("fields") or []}
         unknown = sorted(name for name in _widget_fields(config) if name not in known_fields)
         if unknown:
-            return {"ok": False, "reason": "unknown_field", "pending": [{"index": index, "fields": unknown}]}
+            return {
+                "ok": False,
+                "reason": "unknown_field",
+                "pending": [{"index": index, "fields": unknown, "allowedFields": sorted(known_fields)}],
+            }
+        _fill_missing_role_fields(config, chart_type, source)
+        _apply_display_format(config, source)
         params = []
         provided = {param.get("name"): param for param in (config.get("dataSourceParams") or []) if isinstance(param, dict)}
         for declared in source.get("params") or []:
@@ -450,6 +770,10 @@ def prepare_dashboard_proposal(proposal: dict, briefs: list[dict]) -> dict:
                 current["value"] = declared.get("default")
             if declared.get("filterType") == "fixed" and declared.get("default") not in (None, ""):
                 current["value"] = declared.get("default")
+            if current.get("value") in (None, ""):
+                choices = static_param_choices(declared)
+                if choices:
+                    current["value"] = choices[0]["value"]
             if declared.get("required") and current.get("value") in (None, "") and declared.get("filterType") != "filter":
                 pending.append({"index": index, "reason": "required_param", "name": declared["name"]})
             params.append(current)
@@ -459,7 +783,7 @@ def prepare_dashboard_proposal(proposal: dict, briefs: list[dict]) -> dict:
             options_error = _dynamic_source_error(param.get("inputConfig"), by_id)
             if options_error:
                 return {"ok": False, "reason": options_error, "pending": [{"index": index, "name": param.get("name")}]}
-        layout.append({**item, "valueConfig": config})
+        layout.append(_label_widget({**item, "valueConfig": config}, config, source))
     for filt in proposal.get("filters") or []:
         if not isinstance(filt, dict):
             return {"ok": False, "reason": "filter", "pending": []}
@@ -468,10 +792,17 @@ def prepare_dashboard_proposal(proposal: dict, briefs: list[dict]) -> dict:
             return {"ok": False, "reason": options_error, "pending": [{"id": filt.get("id")}]}
     packed = preserve_placed_widgets(layout)
     if pending:
-        return {"ok": False, "reason": "pending", "pending": pending, "proposal": {**proposal, "layout": packed}}
+        payload = {"ok": False, "reason": "pending", "pending": pending, "proposal": {**proposal, "layout": packed}}
+        if any(isinstance(item, dict) and item.get("reason") == "datasource_not_found" for item in pending):
+            payload["sources"] = _compact_source_index(briefs)
+        return payload
     if skipped_scene and not packed:
         return {"ok": False, "reason": "chart_type", "pending": []}
-    return {"ok": True, "proposal": {**proposal, "layout": packed, "filters": proposal.get("filters") or []}, "pending": []}
+    finished = {**proposal, "layout": packed, "filters": proposal.get("filters") or []}
+    finished.pop("otherConfig", None)
+    finished.pop("refreshInterval", None)
+    finished.update(_page_settings(proposal))
+    return {"ok": True, "proposal": finished, "pending": []}
 
 
 PARAM_ASK_PREFIX = "还要先定这些参数"
@@ -661,14 +992,26 @@ def param_filled_reply(notes: list[str]) -> str:
 VISIBLE_BRIEF_LIMIT = 500
 
 
-def list_visible_briefs(team_id: int) -> list[dict]:
+def list_visible_briefs(team_id: int, group_ids: list[int] | None = None) -> list[dict]:
     from django.db.models import Q
 
     from apps.operation_analysis.common.datasource_visibility import expand_datasource_org_query
     from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 
+    ids = []
+    for item in group_ids or [team_id]:
+        if type(item) is int and item > 0 and item not in ids:
+            ids.append(item)
+    if not ids:
+        return []
+    if len(ids) == 1:
+        membership = Q(groups__contains=ids[0])
+    else:
+        membership = Q()
+        for gid in ids:
+            membership |= Q(groups__contains=gid)
     briefs = []
-    visible = expand_datasource_org_query(Q(groups__contains=team_id), include_all_builtins=False)
+    visible = expand_datasource_org_query(membership, include_all_builtins=False)
     queryset = (
         DataSourceAPIModel.objects.filter(visible)
         .only("id", "name", "desc", "chart_type", "params", "field_schema")

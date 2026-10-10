@@ -953,6 +953,12 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         recordUndoRef.current();
         setLayout(syncedLayout);
         syncFilterStateAfterLayoutChange(mergedFilters, nextValues, nextValues);
+        if (applied.otherConfig) {
+          setOtherConfig((current) => ({ ...current, ...applied.otherConfig }));
+        }
+        if (applied.refreshInterval != null) {
+          setSavedRefreshInterval(applied.refreshInterval);
+        }
         message.success(t('dashboard.aiApplySuccess'));
         void syncDashboardCanvasResources(syncedLayout).then((canvasDataSources) => {
           const latest = applyProposalRef.current;

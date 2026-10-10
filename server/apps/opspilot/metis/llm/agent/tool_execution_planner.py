@@ -845,6 +845,48 @@ def enforce_k8s_namespace_lookup_first(
     return ToolExecutionPlan(goal=plan.goal, steps=steps)
 
 
+_DASHBOARD_SEARCH_TOOL = "search_data_sources"
+_DASHBOARD_PREPARE_TOOL = "prepare_dashboard_proposal"
+
+
+def ensure_dashboard_prepare_follows_search(
+    plan: ToolExecutionPlan,
+    available_names: set[str],
+    *,
+    max_steps: int,
+) -> ToolExecutionPlan:
+    """检索数据源之后必须搭盘。规划若只留检索，补上应用步骤。"""
+    if _DASHBOARD_SEARCH_TOOL not in available_names or _DASHBOARD_PREPARE_TOOL not in available_names:
+        return plan
+    planned = {tool for step in plan.steps for tool in (step.tools or [])}
+    if _DASHBOARD_SEARCH_TOOL not in planned or _DASHBOARD_PREPARE_TOOL in planned:
+        return plan
+    steps: list[ToolExecutionStep] = []
+    for step in plan.steps:
+        tools = [tool for tool in step.tools if tool != _REQUEST_USER_CHOICE]
+        if not tools:
+            continue
+        if tools != list(step.tools):
+            steps.append(step.model_copy(update={"tools": tools}))
+        else:
+            steps.append(step)
+    steps.append(
+        ToolExecutionStep(
+            objective="根据检索到的数据源生成仪表盘方案并应用到当前画布",
+            tools=[_DASHBOARD_PREPARE_TOOL],
+        )
+    )
+    if len(steps) > max_steps:
+        steps = steps[: max(max_steps, 1)]
+        if _DASHBOARD_PREPARE_TOOL not in {tool for step in steps for tool in step.tools}:
+            steps[-1] = ToolExecutionStep(
+                objective="根据检索到的数据源生成仪表盘方案并应用到当前画布",
+                tools=[_DASHBOARD_PREPARE_TOOL],
+            )
+    logger.info("DeepAgent 规划硬校验：检索数据源后补上仪表盘应用")
+    return ToolExecutionPlan(goal=plan.goal, steps=steps)
+
+
 _REQUEST_USER_CHOICE = "request_user_choice"
 _MONITOR_INSTANCE_LOOKUP_TOOLS = frozenset(
     {
@@ -1748,6 +1790,7 @@ class ToolExecutionPlanner:
             steps=steps,
         )
         plan = enforce_k8s_namespace_lookup_first(plan, available_names, max_steps=self._max_steps)
+        plan = ensure_dashboard_prepare_follows_search(plan, available_names, max_steps=self._max_steps)
         plan = enforce_list_metrics_with_query(plan, available_names, max_tools_per_step=self._max_tools_per_step)
         plan = rewrite_generic_alert_query_to_alerts_center(plan, available_names, user_message=user_message)
         plan = rewrite_cmdb_search_for_declared_model(plan, available_names, user_message=user_message)

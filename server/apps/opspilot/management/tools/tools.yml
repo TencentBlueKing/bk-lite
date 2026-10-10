@@ -1208,20 +1208,20 @@ toolkits:
   description: 按用户需求检索运营分析数据源，并校验可直接应用到仪表盘页面的结构化方案。
   tools:
   - name: search_data_sources
-    description: 按显式的数据需求检索当前组织有权限且契约完整的运营分析数据源。列举数据源前必须调用，只能使用返回的候选 id 和 name。询问画布上已显示的数字，或只删除、改行列时不要调用。
+    description: 按显式需求检索数据源。candidates[].id 是唯一合法的 dataSource，fields[].name 是唯一合法字段名，禁止编造。fields[].title 是中文标题，fields[].description 是说明，不要把英文字段名写成标题。chart_type 是该源允许的图表。一张盘要混用不同数据源：概览源最多两个 single 或 gauge，其余组件改用 pie、topN、line、table 的其他数据源，不要把同一个源的每个数字都做成卡片。检索后的下一步只能调用 prepare_dashboard_proposal，禁止插入 request_user_choice 让用户挑选指标。不要反复检索，不要只写文字，不要让用户手工添加或再确认。询问画布上已有数字，或只删除、改行列时不要调用。
     parameters:
       requirements:
         type: array
         description: 结构化数据需求列表，每项至少包含 text，可包含 purpose、domain、metric、dimension、analysisType、chartType。
         required: true
   - name: prepare_dashboard_proposal
-    description: 用检索候选校验并补全仪表盘方案。schemaVersion 必须为 1.0，组件放在 layout[].valueConfig，dataSource 只能填检索返回的数字 id，字段放在 selectedFields。禁止 title、panels、chart_type、data_source_id。通过后页面直接套上画布，不要再请用户确认。删除或改行列时基于当前布局修改后调用，不要重新检索。
+    description: 校验并应用仪表盘方案。schemaVersion 必须为字符串 "1.0"，layout 必须为扁平数组，禁止 row、children、title、panels、chart_type、data_source_id。组件 name 用字段中文 title，description 用字段说明。chartType 从该数据源 chart_type 里选。概览源最多两个 single 或 gauge，其余组件改用 pie、topN、line、table 的其他数据源，不要把同一个源的每个数字都做成卡片。dataSource 只能填检索返回的数字 id。single 和 gauge 的 selectedFields 必须填写该数据源 fields 中的一个 name，不能为空。pie 填写 dimensionField 与 valueField，table 的 selectedFields 填写要展示的列。用户要求搭建或应用时必须调用，不能只写文字、让用户手工添加或再确认，也不要先调用 request_user_choice。通过后页面写入画布，立即结束调用，由用户点击保存。失败时只按 _next_step_hint、sources 或 allowedFields 改一次，禁止换一组 id。删除或改行列时基于当前布局修改后调用，不要重新检索。
     parameters:
       proposal:
         type: object
-        description: schemaVersion 为 1.0 的对象。组件在 layout，每项用 valueConfig.chartType 与 valueConfig.dataSource（检索返回的数字 id），字段放在 valueConfig.selectedFields。禁止 title、panels、chart_type、data_source_id。
+        description: schemaVersion 为字符串 "1.0" 的对象。layout 必须显式传入数组，只有要求清空时才为空。组件在 layout，每项用 valueConfig.chartType 与 valueConfig.dataSource（检索返回的数字 id）。single 和 gauge 的 valueConfig.selectedFields 填写一个 fields[].name，不能为空。pie 用 dimensionField 与 valueField。禁止 title、panels、chart_type、data_source_id。
         required: true
       dashboard_id:
         type: string
-        description: 目标仪表盘 ID；新建或无法确定时使用 current。
+        description: 当前打开的仪表盘用 current。目录节点 id（如 dashboard_426）也表示这张盘。
         required: false

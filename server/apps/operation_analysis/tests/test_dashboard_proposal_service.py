@@ -76,7 +76,7 @@ def test_incomplete_source_is_not_recommended():
             "field_schema": [{"key": "hostname", "title": "主机名", "value_type": "string", "description": "主机名称"}],
         }
     )
-    assert keyed["fields"] == [{"name": "hostname", "type": "string", "desc": "主机名称"}]
+    assert keyed["fields"] == [{"name": "hostname", "type": "string", "desc": "主机名称", "title": "主机名"}]
 
 
 def test_prepare_keeps_organization_control_and_declared_option_source():
@@ -405,6 +405,175 @@ def test_prepare_fills_fixed_default_and_rejects_unknown_chart():
     assert missing["ok"] is False
     assert missing["reason"] == "pending"
     assert missing["pending"][0]["reason"] == "datasource_not_found"
+    assert missing["sources"][0]["id"] == 2
+    assert missing["sources"][0]["fields"] == ["value"]
+
+    unknown = prepare_dashboard_proposal(
+        {
+            "schemaVersion": "1.0",
+            "layout": [{"valueConfig": {"chartType": "single", "dataSource": 2, "selectedFields": ["instance_total"]}}],
+            "filters": [],
+        },
+        briefs,
+    )
+    assert unknown["reason"] == "unknown_field"
+    assert unknown["pending"][0]["allowedFields"] == ["value"]
+    assert missing["sources"][0]["id"] == 2
+    assert missing["sources"][0]["fields"] == ["value"]
+
+    unknown = prepare_dashboard_proposal(
+        {
+            "schemaVersion": "1.0",
+            "layout": [{"valueConfig": {"chartType": "single", "dataSource": 2, "selectedFields": ["instance_total"]}}],
+            "filters": [],
+        },
+        briefs,
+    )
+    assert unknown["reason"] == "unknown_field"
+    assert unknown["pending"][0]["allowedFields"] == ["value"]
+
+
+def test_overview_search_keeps_trend_share_and_table():
+    briefs = [
+        {
+            "id": 218,
+            "name": "CMDB 覆盖概览",
+            "tags": ["CMDB"],
+            "chart_type": ["single", "gauge"],
+            "fields": [{"name": "instance_count", "type": "number", "desc": "实例"}],
+            "params": [],
+        },
+        {
+            "id": 232,
+            "name": "数据治理健康度概览",
+            "tags": ["CMDB"],
+            "chart_type": ["single", "gauge"],
+            "fields": [{"name": "score", "type": "number", "desc": "健康度"}],
+            "params": [],
+        },
+        {
+            "id": 216,
+            "name": "CMDB 采集任务状态",
+            "tags": ["CMDB"],
+            "chart_type": ["single"],
+            "fields": [{"name": "task_count", "type": "number", "desc": "任务"}],
+            "params": [],
+        },
+        {
+            "id": 208,
+            "name": "CMDB 变更趋势",
+            "tags": ["CMDB"],
+            "chart_type": ["line", "bar"],
+            "fields": [{"name": "count", "type": "number", "desc": "次数"}],
+            "params": [],
+        },
+        {
+            "id": 215,
+            "name": "CMDB 实例排行",
+            "tags": ["CMDB"],
+            "chart_type": ["table", "topN"],
+            "fields": [{"name": "count", "type": "number", "desc": "实例数"}],
+            "params": [],
+        },
+        {
+            "id": 217,
+            "name": "主机操作系统分布",
+            "tags": ["CMDB"],
+            "chart_type": ["pie"],
+            "fields": [{"name": "name", "type": "string", "desc": "系统"}],
+            "params": [],
+        },
+    ]
+
+    found = search_briefs([{"text": "cmdb数据概览", "purpose": "visualization"}], briefs)
+
+    families = {tuple(item["chart_type"]) for item in found}
+    assert ("line", "bar") in families
+    assert ("table", "topN") in families
+    assert ("pie",) in families
+    assert found[0]["id"] == 218
+
+
+def test_prepare_labels_widget_with_field_title_and_keeps_unsupported_chart():
+    briefs = [
+        brief_from_source(
+            {
+                "id": 218,
+                "name": "CMDB 覆盖概览",
+                "desc": "分类、模型、实例总数",
+                "chart_type": ["single", "gauge"],
+                "field_schema": [
+                    {"key": "instance_count", "title": "实例总数", "description": "当前可见实例总量", "value_type": "number"},
+                ],
+            }
+        )
+    ]
+    labeled = prepare_dashboard_proposal(
+        {
+            "schemaVersion": "1.0",
+            "layout": [
+                {
+                    "name": "instance_count",
+                    "valueConfig": {"chartType": "single", "dataSource": 218, "selectedFields": ["instance_count"]},
+                }
+            ],
+            "filters": [],
+        },
+        briefs,
+    )
+    widget = labeled["proposal"]["layout"][0]
+    assert widget["name"] == "实例总数"
+    assert widget["description"] == "当前可见实例总量"
+
+    rejected = prepare_dashboard_proposal(
+        {
+            "schemaVersion": "1.0",
+            "layout": [{"valueConfig": {"chartType": "table", "dataSource": 218, "selectedFields": ["instance_count"]}}],
+            "filters": [],
+        },
+        briefs,
+    )
+    assert rejected["ok"] is False
+    assert rejected["reason"] == "chart_type_mismatch"
+
+
+def test_prepare_accepts_root_level_chart_fields():
+    briefs = [
+        brief_from_source(
+            {
+                "id": 218,
+                "name": "CMDB 覆盖概览",
+                "chart_type": ["single", "gauge"],
+                "field_schema": [{"key": "model_count", "title": "模型总数", "value_type": "number"}],
+            }
+        )
+    ]
+    prepared = prepare_dashboard_proposal(
+        {
+            "schemaVersion": "1.0",
+            "layout": [
+                {
+                    "id": "kpi_model_count",
+                    "type": "single",
+                    "dataSourceId": 218,
+                    "chartType": "single",
+                    "selectedFields": ["model_count"],
+                    "x": 0,
+                    "y": 0,
+                    "w": 3,
+                    "h": 4,
+                }
+            ],
+            "filters": [],
+        },
+        briefs,
+    )
+
+    assert prepared["ok"] is True
+    widget = prepared["proposal"]["layout"][0]
+    assert widget["valueConfig"]["dataSource"] == 218
+    assert widget["valueConfig"]["chartType"] == "single"
+    assert widget["name"] == "模型总数"
 
 
 def test_capabilities_cover_datasource_widgets_and_exclude_scene_widgets():
@@ -505,6 +674,202 @@ def test_list_visible_briefs_keeps_only_current_org(monkeypatch):
     )
     assert prepared["ok"] is True
     assert prepared["proposal"]["layout"][0]["valueConfig"]["dataSourceParams"][0]["value"] == "org-001"
+
+
+def test_prepare_fills_empty_topn_and_pie_roles_from_declared_types():
+    ranking = brief_from_source(
+        {
+            "id": 215,
+            "name": "CMDB 实例排行",
+            "chart_type": ["table", "topN"],
+            "field_schema": [
+                {"key": "model_id", "title": "模型ID", "value_type": "string"},
+                {"key": "model", "title": "模型名称", "value_type": "string"},
+                {"key": "count", "title": "实例数", "value_type": "number"},
+            ],
+        }
+    )
+    prepared = prepare_dashboard_proposal(
+        {
+            "schemaVersion": "1.0",
+            "layout": [{"name": "实例排行", "valueConfig": {"chartType": "topN", "dataSource": 215}}],
+            "filters": [],
+        },
+        [ranking],
+    )
+    config = prepared["proposal"]["layout"][0]["valueConfig"]
+    assert prepared["ok"] is True
+    assert config["topNLabelField"] == "model"
+    assert config["topNValueField"] == "count"
+
+    kept = prepare_dashboard_proposal(
+        {
+            "schemaVersion": "1.0",
+            "layout": [
+                {
+                    "valueConfig": {
+                        "chartType": "topN",
+                        "dataSource": 215,
+                        "topNLabelField": "model_id",
+                        "topNValueField": "count",
+                    }
+                }
+            ],
+            "filters": [],
+        },
+        [ranking],
+    )
+    kept_config = kept["proposal"]["layout"][0]["valueConfig"]
+    assert kept_config["topNLabelField"] == "model_id"
+    assert kept_config["topNValueField"] == "count"
+
+    pie = brief_from_source(
+        {
+            "id": 217,
+            "name": "主机操作系统分布",
+            "chart_type": ["pie"],
+            "field_schema": [
+                {"key": "name", "title": "操作系统", "value_type": "string"},
+                {"key": "value", "title": "实例数", "value_type": "number"},
+            ],
+        }
+    )
+    pie_prepared = prepare_dashboard_proposal(
+        {
+            "schemaVersion": "1.0",
+            "layout": [{"valueConfig": {"chartType": "pie", "dataSource": 217}}],
+            "filters": [],
+        },
+        [pie],
+    )
+    pie_config = pie_prepared["proposal"]["layout"][0]["valueConfig"]
+    assert pie_config["dimensionField"] == "name"
+    assert pie_config["valueField"] == "value"
+
+    trend = brief_from_source(
+        {
+            "id": 208,
+            "name": "CMDB 变更趋势",
+            "chart_type": ["line", "bar"],
+            "field_schema": [
+                {"key": "date", "title": "日期", "value_type": "string"},
+                {"key": "count", "title": "次数", "value_type": "number"},
+            ],
+        }
+    )
+    trend_prepared = prepare_dashboard_proposal(
+        {
+            "schemaVersion": "1.0",
+            "layout": [{"valueConfig": {"chartType": "line", "dataSource": 208}}],
+            "filters": [],
+        },
+        [trend],
+    )
+    trend_config = trend_prepared["proposal"]["layout"][0]["valueConfig"]
+    assert "dimensionField" not in trend_config
+    assert "valueField" not in trend_config
+
+    undeclared = brief_from_source(
+        {
+            "id": 300,
+            "name": "未声明字段",
+            "chart_type": ["topN"],
+            "field_schema": [{"key": "placeholder", "value_type": "string"}],
+        }
+    )
+    undeclared["fields"] = []
+    empty = prepare_dashboard_proposal(
+        {
+            "schemaVersion": "1.0",
+            "layout": [{"valueConfig": {"chartType": "topN", "dataSource": 300}}],
+            "filters": [],
+        },
+        [undeclared],
+    )
+    empty_config = empty["proposal"]["layout"][0]["valueConfig"]
+    assert empty["ok"] is True
+    assert "topNLabelField" not in empty_config
+    assert "topNValueField" not in empty_config
+
+    unrelated = brief_from_source(
+        {
+            "id": 301,
+            "name": "备注表",
+            "chart_type": ["topN"],
+            "field_schema": [
+                {"key": "remark", "title": "备注", "value_type": "string"},
+                {"key": "updated_at", "title": "更新时间", "value_type": "time"},
+            ],
+        }
+    )
+    unrelated_prepared = prepare_dashboard_proposal(
+        {
+            "schemaVersion": "1.0",
+            "layout": [{"valueConfig": {"chartType": "topN", "dataSource": 301}}],
+            "filters": [],
+        },
+        [unrelated],
+    )
+    unrelated_config = unrelated_prepared["proposal"]["layout"][0]["valueConfig"]
+    assert unrelated_prepared["ok"] is True
+    assert "topNLabelField" not in unrelated_config
+    assert "topNValueField" not in unrelated_config
+
+    cost = brief_from_source(
+        {
+            "id": 205,
+            "name": "云资源费用分布",
+            "chart_type": ["topN"],
+            "field_schema": [
+                {"key": "key", "title": "分组值", "value_type": "string"},
+                {"key": "total_cost", "title": "费用合计(元)", "value_type": "number"},
+                {"key": "instance_count", "title": "实例数", "value_type": "number"},
+                {"key": "pct", "title": "费用占比(%)", "value_type": "number"},
+            ],
+        }
+    )
+    listed = prepare_dashboard_proposal(
+        {
+            "schemaVersion": "1.0",
+            "layout": [
+                {
+                    "valueConfig": {
+                        "chartType": "topN",
+                        "dataSource": 205,
+                        "selectedFields": ["key", "total_cost", "pct"],
+                    }
+                }
+            ],
+            "filters": [],
+        },
+        [cost],
+    )
+    listed_config = listed["proposal"]["layout"][0]["valueConfig"]
+    assert listed_config["topNLabelField"] == "key"
+    assert listed_config["topNValueField"] == "total_cost"
+
+    typed_against_role = brief_from_source(
+        {
+            "id": 401,
+            "name": "费用排行",
+            "chart_type": ["topN"],
+            "field_schema": [
+                {"key": "group_name", "title": "分组名称", "value_type": "number"},
+                {"key": "fee_text", "title": "费用合计", "value_type": "string"},
+            ],
+        }
+    )
+    ignored_type = prepare_dashboard_proposal(
+        {
+            "schemaVersion": "1.0",
+            "layout": [{"valueConfig": {"chartType": "topN", "dataSource": 401}}],
+            "filters": [],
+        },
+        [typed_against_role],
+    )
+    ignored_config = ignored_type["proposal"]["layout"][0]["valueConfig"]
+    assert ignored_config["topNLabelField"] == "group_name"
+    assert ignored_config["topNValueField"] == "fee_text"
 
 
 def test_topn_picks_label_and_metric_not_schema_order():
@@ -892,3 +1257,62 @@ def test_removal_ignores_the_explanation_after_the_title():
     revised = revise_dashboard_proposal(current, "去掉数据治理健康度趋势，这不是告警的数据")
     assert [item["name"] for item in revised["layout"]] == ["告警趋势"]
     assert revised["filters"][0]["id"] == "org"
+
+
+def test_prepare_uses_first_static_option_and_keeps_display_and_page_settings():
+    brief = brief_from_source(
+        {
+            "id": 12,
+            "name": "费用占比",
+            "chart_type": ["single"],
+            "field_schema": [{"key": "pct", "title": "费用占比(%)", "value_type": "number"}],
+            "params": [
+                {
+                    "name": "region",
+                    "alias_name": "区域",
+                    "type": "string",
+                    "required": True,
+                    "filterType": "params",
+                    "inputConfig": {
+                        "control": "select",
+                        "optionsSource": {
+                            "type": "static",
+                            "staticItems": [{"label": "华东", "value": "east"}, {"label": "华北", "value": "north"}],
+                        },
+                    },
+                }
+            ],
+        }
+    )
+    prepared = prepare_dashboard_proposal(
+        {
+            "schemaVersion": "1.0",
+            "layout": [{"valueConfig": {"chartType": "single", "dataSource": 12, "selectedFields": ["pct"]}}],
+            "filters": [],
+            "otherConfig": {"displayMode": "compact"},
+            "refreshInterval": 60,
+        },
+        [brief],
+    )
+    config = prepared["proposal"]["layout"][0]["valueConfig"]
+    assert prepared["ok"] is True
+    assert config["dataSourceParams"][0]["value"] == "east"
+    assert config["unitId"] == "percent"
+    assert config["decimalPlaces"] == 2
+    assert prepared["proposal"]["otherConfig"] == {"displayMode": "compact"}
+    assert prepared["proposal"]["refreshInterval"] == 60000
+
+    dropped = prepare_dashboard_proposal(
+        {
+            "schemaVersion": "1.0",
+            "layout": [{"valueConfig": {"chartType": "single", "dataSource": 12, "selectedFields": ["pct"], "thresholdColors": "red"}}],
+            "filters": [],
+            "otherConfig": {},
+            "refreshInterval": 15,
+        },
+        [brief],
+    )
+    dropped_config = dropped["proposal"]["layout"][0]["valueConfig"]
+    assert "thresholdColors" not in dropped_config
+    assert "otherConfig" not in dropped["proposal"]
+    assert "refreshInterval" not in dropped["proposal"]

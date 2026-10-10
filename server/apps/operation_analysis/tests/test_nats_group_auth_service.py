@@ -261,8 +261,9 @@ def test_dashboard_handlers_require_a_token_bound_to_team_and_action(monkeypatch
 
     seen = {}
 
-    def fake_briefs(team_id):
+    def fake_briefs(team_id, group_ids=None):
         seen["team_id"] = team_id
+        seen["group_ids"] = group_ids
         return [{"id": 2}]
 
     def fake_prepare(proposal, briefs):
@@ -288,6 +289,16 @@ def test_dashboard_handlers_require_a_token_bound_to_team_and_action(monkeypatch
         fake_search,
     )
 
+    class FakeMgmt:
+        def get_authorized_groups_scoped(self, actor_context, include_children=False):
+            seen["include_children"] = include_children
+            if actor_context.get("username") == "intruder":
+                return {"result": True, "data": []}
+            return {"result": True, "data": [7, 9] if include_children else [7]}
+
+    monkeypatch.setattr(nats_module, "SystemMgmt", lambda: FakeMgmt())
+    user_info = {"user": "alice", "domain": "default", "team": 7, "include_children": False}
+
     with pytest.raises(PermissionDenied, match="NATS authentication failed"):
         nats_module.search_dashboard_data_sources([], 7)
     with pytest.raises(PermissionDenied, match="NATS authentication failed"):
@@ -299,18 +310,49 @@ def test_dashboard_handlers_require_a_token_bound_to_team_and_action(monkeypatch
     with pytest.raises(PermissionDenied, match="NATS authentication failed"):
         nats_module.prepare_dashboard_proposal({}, 7, _internal_auth=list_token)
 
+    with pytest.raises(PermissionDenied, match="NATS authentication failed"):
+        nats_module.search_dashboard_data_sources([{"text": "告警趋势"}], 7, _internal_auth=list_token)
+    with pytest.raises(PermissionDenied, match="NATS authentication failed"):
+        nats_module.search_dashboard_data_sources(
+            [{"text": "告警趋势"}],
+            7,
+            user_info={**user_info, "user": "intruder"},
+            _internal_auth=list_token,
+        )
+
+    with pytest.raises(ValueError, match="requirements must be a list of objects"):
+        nats_module.search_dashboard_data_sources(["告警趋势"], 7, user_info=user_info, _internal_auth=list_token)
+    assert "requirements" not in seen
+
     listed = nats_module.search_dashboard_data_sources(
         [{"text": "告警趋势"}],
         7,
+        user_info=user_info,
         _internal_auth=list_token,
     )
     assert listed == {"candidates": [{"id": 2}]}
     assert seen["team_id"] == 7
+    assert seen["group_ids"] == [7]
+    assert seen["include_children"] is False
     assert seen["requirements"] == [{"text": "告警趋势"}]
     assert seen["search_briefs"] == [{"id": 2}]
 
+    child_info = {**user_info, "include_children": True}
+    nats_module.search_dashboard_data_sources(
+        [{"text": "告警趋势"}],
+        7,
+        user_info=child_info,
+        _internal_auth=list_token,
+    )
+    assert seen["group_ids"] == [7, 9]
+
     prepare_token = sign_dashboard_request(7, "prepare_dashboard_proposal")
-    prepared = nats_module.prepare_dashboard_proposal({"schemaVersion": "1.0"}, 7, _internal_auth=prepare_token)
+    prepared = nats_module.prepare_dashboard_proposal(
+        {"schemaVersion": "1.0"},
+        7,
+        user_info=user_info,
+        _internal_auth=prepare_token,
+    )
     assert prepared == {"ok": True}
     assert seen["briefs"] == [{"id": 2}]
     assert seen["proposal"] == {"schemaVersion": "1.0"}

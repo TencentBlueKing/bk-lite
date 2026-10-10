@@ -46,7 +46,7 @@ class ToolsLoader:
         "mssql": ("apps.opspilot.metis.llm.tools.mssql", True),
         "mysql": ("apps.opspilot.metis.llm.tools.mysql", True),
         "monitor": ("apps.opspilot.metis.llm.tools.monitor", False),
-        "ops_analysis_dashboard": ("apps.operation_analysis.tools.dashboard", False),
+        "ops_analysis_dashboard": ("apps.opspilot.metis.llm.tools.ops_analysis_dashboard", False),
         "oracle": ("apps.opspilot.metis.llm.tools.oracle", True),
         "postgres": ("apps.opspilot.metis.llm.tools.postgres", True),
         "python": ("apps.opspilot.metis.llm.tools.python", False),

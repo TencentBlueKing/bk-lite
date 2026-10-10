@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import type { DashboardLayoutItem, UnifiedFilterDefinition } from '@/app/ops-analysis/types/dashBoard';
-import { applyDashboardProposal } from '../applyDashboardProposal';
+import { applyDashboardProposal, proposalTargetsDashboard } from '../applyDashboardProposal';
 
 const allocateId = (preferred: string | undefined, used: Set<string>) => {
   if (preferred && !used.has(preferred)) return preferred;
@@ -242,5 +242,53 @@ test('packs a fresh proposal into three widgets per row', () => {
       ['d', 0, 3, 4, 3],
     ],
   );
+});
+
+test('applies page settings only when the proposal names them', () => {
+  const result = applyDashboardProposal({
+    layout: [],
+    filters: [],
+    filterValues: {},
+    allocateId,
+    proposal: {
+      schemaVersion: '1.0',
+      layout: [{ i: 'a', valueConfig: { chartType: 'single', dataSource: 1, selectedFields: ['pct'], unitId: 'percent', decimalPlaces: 2 } }],
+      filters: [],
+      otherConfig: { displayMode: 'compact' },
+      refreshInterval: 60000,
+    },
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(result.otherConfig, { displayMode: 'compact' });
+  assert.equal(result.refreshInterval, 60000);
+  assert.equal(result.layout[0].valueConfig?.unitId, 'percent');
+
+  const untouched = applyDashboardProposal({
+    layout: [],
+    filters: [],
+    filterValues: {},
+    allocateId,
+    proposal: {
+      schemaVersion: '1.0',
+      layout: [{ i: 'a', valueConfig: { chartType: 'single', dataSource: 1 } }],
+      filters: [],
+      otherConfig: {},
+      refreshInterval: 15,
+    },
+  });
+  assert.equal(untouched.ok, true);
+  if (!untouched.ok) return;
+  assert.equal(untouched.otherConfig, undefined);
+  assert.equal(untouched.refreshInterval, undefined);
+});
+
+test('directory node id matches the open dashboard numeric id', () => {
+  assert.equal(proposalTargetsDashboard('current', 426), true);
+  assert.equal(proposalTargetsDashboard('dashboard_426', 426), true);
+  assert.equal(proposalTargetsDashboard(426, 426), true);
+  assert.equal(proposalTargetsDashboard('dashboard_419', 426), false);
+  assert.equal(proposalTargetsDashboard('dashboard_426', undefined), false);
 });
 

@@ -5,9 +5,11 @@ import type {
   DashboardLayoutItem,
   DashboardWidgetLayoutItem,
   FilterValue,
+  OtherConfig,
   UnifiedFilterDefinition,
   ValueConfig,
 } from '@/app/ops-analysis/types/dashBoard';
+import { isCanvasRefreshIntervalMs } from '@/app/ops-analysis/utils/canvasRefreshInterval';
 import { isDashboardGroupItem, isDashboardWidgetItem } from '@/app/ops-analysis/utils/dashboardGroups';
 import { syncFilterValuesWithDefinitions } from '@/app/ops-analysis/utils/unifiedFilterState';
 
@@ -60,6 +62,8 @@ export interface DashboardProposal {
   dashboardId?: string;
   layout?: DashboardProposalWidget[];
   filters?: DashboardProposalFilter[];
+  otherConfig?: OtherConfig;
+  refreshInterval?: number;
 }
 
 export interface ApplyDashboardProposalInput {
@@ -76,6 +80,8 @@ export type ApplyDashboardProposalResult =
     layout: DashboardLayoutItem[];
     filters: UnifiedFilterDefinition[];
     filterValues: Record<string, FilterValue>;
+    otherConfig?: OtherConfig;
+    refreshInterval?: number;
   }
   | {
     ok: false;
@@ -428,16 +434,28 @@ export const applyDashboardProposal = (
     usedIds,
     input.allocateId,
   );
+  const otherConfig = isRecord(input.proposal.otherConfig) && Object.keys(input.proposal.otherConfig).length > 0
+    ? input.proposal.otherConfig
+    : undefined;
+  const refreshInterval = isCanvasRefreshIntervalMs(input.proposal.refreshInterval)
+    ? input.proposal.refreshInterval
+    : undefined;
   return {
     ok: true,
     layout: nextLayout,
     filters,
     filterValues: mergeFilterValues(input.filters, filters, input.filterValues),
+    ...(otherConfig ? { otherConfig } : {}),
+    ...(refreshInterval != null ? { refreshInterval } : {}),
   };
 };
 
 export const proposalTargetsDashboard = (dashboardId: unknown, currentId: string | number | undefined) => {
   if (dashboardId === 'current') return true;
   if (currentId == null || dashboardId == null) return false;
-  return String(dashboardId) === String(currentId);
+  const current = String(currentId);
+  const target = String(dashboardId);
+  if (target === current) return true;
+  const treeNodeId = target.match(/^dashboard_(\d+)$/);
+  return treeNodeId?.[1] === current;
 };
