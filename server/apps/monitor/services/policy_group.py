@@ -310,17 +310,34 @@ class PolicyGroupService:
         return PolicyInstanceBaseline.objects.filter(policy_id=policy.id, monitor_instance_id=instance_id).exists()
 
     @staticmethod
-    def update_rule(rule, *, threshold=None, notice_users=None, operator="system"):
+    def update_rule(rule, *, threshold=None, operator="system"):
         policy = rule.policy
         if threshold is not None:
             policy.threshold = threshold
-        if notice_users is not None:
-            policy.notice_users = notice_users
         policy.updated_by = operator
-        policy.save(update_fields=["threshold", "notice_users", "updated_by", "updated_at"])
+        policy.save(update_fields=["threshold", "updated_by", "updated_at"])
         alerts = list(MonitorAlert.objects.filter(policy_id=policy.id, status="new"))
         PolicyGroupService._publish_closed_alerts(alerts, [policy], operator, "policy_group_rule_changed")
         return rule
+
+    @staticmethod
+    def update_notice(group, *, notice, notice_type="", notice_type_ids=None, notice_users=None, operator="system"):
+        """把同一套通知写到组内每条策略上。不结束未恢复告警。"""
+        enabled = bool(notice)
+        channel_ids = [] if not enabled else [int(item) for item in (notice_type_ids or [])]
+        users = [] if not enabled else [str(item) for item in (notice_users or []) if str(item) != ""]
+        if enabled and not channel_ids:
+            raise BaseAppException("请选择通知方式")
+        with transaction.atomic():
+            MonitorPolicy.objects.filter(group_rule__group=group).update(
+                notice=enabled,
+                notice_type="" if not enabled else (notice_type or "")[:50],
+                notice_type_ids=channel_ids,
+                notice_users=users,
+                updated_by=operator,
+                updated_at=timezone.now(),
+            )
+        return group
 
     @staticmethod
     def metric_id_for_policy(policy):

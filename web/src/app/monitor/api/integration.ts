@@ -62,9 +62,17 @@ const useIntegrationApi = () => {
         group_id: number;
         rule_id: number;
         threshold?: unknown;
-        notice_users?: string[];
       }) => {
         return await post(`/monitor/api/policy_group/update_rule/`, payload);
+      },
+      updatePolicyGroupNotice: async (payload: {
+        group_id: number;
+        notice: boolean;
+        notice_type?: string;
+        notice_type_ids?: number[];
+        notice_users?: Array<string | number>;
+      }) => {
+        return await post(`/monitor/api/policy_group/update_notice/`, payload);
       },
       copyPolicyGroup: async (groupId: number, name: string) => {
         return await post(`/monitor/api/policy_group/copy_group/`, {

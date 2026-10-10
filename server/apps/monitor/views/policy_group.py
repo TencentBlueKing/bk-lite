@@ -39,8 +39,9 @@ def _serialize_group(group, default_id, metric_names=None):
     member_count = getattr(group, "joined_member_count", None)
     if member_count is None:
         member_count = group.memberships.filter(state=PolicyGroupMembership.STATE_MEMBER).count()
+    loaded_rules = list(group.rules.select_related("plugin", "policy"))
     rules = []
-    for rule in group.rules.select_related("plugin", "policy"):
+    for rule in loaded_rules:
         metric_id = PolicyGroupService.metric_id_for_policy(rule.policy)
         metric_name = ""
         if metric_id and metric_names is not None:
@@ -53,10 +54,10 @@ def _serialize_group(group, default_id, metric_names=None):
                 "plugin_name": rule.plugin.name,
                 "metric_name": metric_name,
                 "threshold": rule.policy.threshold,
-                "notice_users": rule.policy.notice_users or [],
                 "policy_id": rule.policy_id,
             }
         )
+    notice = _group_notice(loaded_rules)
     return {
         "id": group.id,
         "name": group.name,
@@ -65,6 +66,33 @@ def _serialize_group(group, default_id, metric_names=None):
         "is_default": group.id == default_id,
         "member_count": member_count,
         "rules": rules,
+        **notice,
+    }
+
+
+def _group_notice(rules):
+    policies = [rule.policy for rule in rules]
+    if not policies:
+        return {"notice": False, "notice_type": "", "notice_type_ids": [], "notice_users": [], "notice_uniform": True}
+
+    def snapshot(policy):
+        return (
+            bool(policy.notice),
+            policy.notice_type or "",
+            tuple(policy.notice_type_ids or []),
+            tuple(str(item) for item in (policy.notice_users or [])),
+        )
+
+    first = policies[0]
+    uniform = all(snapshot(policy) == snapshot(first) for policy in policies)
+    if not uniform:
+        return {"notice": False, "notice_type": "", "notice_type_ids": [], "notice_users": [], "notice_uniform": False}
+    return {
+        "notice": bool(first.notice),
+        "notice_type": first.notice_type or "",
+        "notice_type_ids": list(first.notice_type_ids or []),
+        "notice_users": list(first.notice_users or []),
+        "notice_uniform": True,
     }
 
 
@@ -227,10 +255,32 @@ class PolicyGroupViewSet(viewsets.ViewSet):
         PolicyGroupService.update_rule(
             rule,
             threshold=request.data.get("threshold", rule.policy.threshold),
-            notice_users=request.data.get("notice_users", rule.policy.notice_users),
             operator=_operator(scope),
         )
         return WebUtils.response_success({"id": rule.id})
+
+    @action(methods=["post"], detail=False, url_path="update_notice")
+    @HasPermission("strategy_list-Edit")
+    def update_notice(self, request):
+        scope = resolve_current_team_data_scope(request)
+        group = _group_in_scope(scope, request.data.get("group_id"))
+        raw_ids = request.data.get("notice_type_ids") or []
+        raw_users = request.data.get("notice_users") or []
+        if not isinstance(raw_ids, list) or not isinstance(raw_users, list):
+            raise BaseAppException("通知方式不正确")
+        try:
+            notice_type_ids = [int(item) for item in raw_ids]
+        except (TypeError, ValueError):
+            raise BaseAppException("通知方式不正确")
+        PolicyGroupService.update_notice(
+            group,
+            notice=bool(request.data.get("notice")),
+            notice_type=str(request.data.get("notice_type") or ""),
+            notice_type_ids=notice_type_ids,
+            notice_users=raw_users,
+            operator=_operator(scope),
+        )
+        return WebUtils.response_success({"id": group.id})
 
     @action(methods=["post"], detail=False, url_path="copy_group")
     @HasPermission("strategy_list-Edit")

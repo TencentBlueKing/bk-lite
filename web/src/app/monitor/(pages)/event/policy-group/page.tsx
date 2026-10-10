@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Button, Checkbox, Drawer, Dropdown, Input, Modal, Popconfirm, Select, Spin, Tag, message } from 'antd';
+import { Button, Checkbox, Drawer, Dropdown, Input, Modal, Popconfirm, Select, Spin, Switch, Tag, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import SearchActionBar from '@/components/search-action-bar';
 import { useSearchParams } from 'next/navigation';
@@ -17,18 +17,21 @@ import CustomTable from '@/components/custom-table';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import Permission from '@/components/permission';
-import { useCommon } from '@/app/monitor/context/common';
 import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
 import { resolveMonitorObjectQueryId, resolveMonitorObjectTreeKey } from '@/app/monitor/utils/monitorObjectQuery';
 import assetStyle from '../strategy/index.module.scss';
 import ThresholdList, { ThresholdItem } from '../strategy/detail/thresholdList';
+import SelectCard from '../strategy/detail/selectCard';
+import { shouldRequireNoticeUsers } from '../strategy/detail/strategyDetailUtils';
+import { ChannelItem } from '@/app/monitor/types/event';
+import { formatUserName } from '@/utils/userDisplay';
+import { useUserInfoContext } from '@/context/userInfo';
 
 interface PolicyGroupRule {
   id: number;
   name: string;
   plugin_name: string;
   threshold: Array<{ level?: string; method?: string; value?: number }>;
-  notice_users: string[];
 }
 
 interface PolicyGroupRow {
@@ -37,6 +40,11 @@ interface PolicyGroupRow {
   is_default?: boolean;
   member_count: number;
   rules: PolicyGroupRule[];
+  notice?: boolean;
+  notice_type?: string;
+  notice_type_ids?: number[];
+  notice_users?: Array<string | number>;
+  notice_uniform?: boolean;
 }
 
 interface TemplateOption {
@@ -83,25 +91,44 @@ const candidateLabel = (item: InstanceCandidate) => {
   return name;
 };
 
+const CHANNEL_ICON: Record<string, string> = {
+  email: 'youjian',
+  enterprise_wechat_bot: 'qiwei2',
+  feishu_bot: 'feishu',
+  dingtalk_bot: 'dingding',
+  custom_webhook: 'webhook',
+  nats: 'dongzuo1',
+};
+
+const CHANNEL_TYPE_KEY: Record<string, string> = {
+  email: 'monitor.events.channelTypeEmail',
+  enterprise_wechat_bot: 'monitor.events.channelTypeWechatBot',
+  feishu_bot: 'monitor.events.channelTypeFeishuBot',
+  dingtalk_bot: 'monitor.events.channelTypeDingtalkBot',
+  custom_webhook: 'monitor.events.channelTypeCustomWebhook',
+  nats: 'monitor.events.channelTypeNats',
+};
+
 const PolicyGroupPage: React.FC = () => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
-  const { getMonitorObject, getInstanceList } = useMonitorApi();
+  const { getMonitorObject, getInstanceList, getAllUsers } = useMonitorApi();
   const {
     getPolicyGroups,
     getPolicyGroupMembers,
     joinPolicyGroup,
     leavePolicyGroup,
     updatePolicyGroupRule,
+    updatePolicyGroupNotice,
     copyPolicyGroup,
     setDefaultPolicyGroup,
     deletePolicyGroup,
     createPolicyGroup,
   } = useIntegrationApi();
-  const { getPolicyTemplate } = useEventApi();
+  const { getPolicyTemplate, getSystemChannelList } = useEventApi();
+  const currentGroupId = useUserInfoContext()?.selectedGroup?.id;
   const searchParams = useSearchParams();
   const { syncObjectId } = useMonitorObjectQuery();
-  const users: UserItem[] = useCommon()?.userList || [];
   const [treeLoading, setTreeLoading] = useState(false);
   const [treeData, setTreeData] = useState<TreeItem[]>([]);
   const [selectedKey, setSelectedKey] = useState('');
@@ -151,7 +178,14 @@ const PolicyGroupPage: React.FC = () => {
   const [rule, setRule] = useState<PolicyGroupRule | null>(null);
   const [ruleSaving, setRuleSaving] = useState(false);
   const [thresholdDraft, setThresholdDraft] = useState<ThresholdItem[]>([]);
-  const [noticeUsers, setNoticeUsers] = useState<string[]>([]);
+  const [noticeGroup, setNoticeGroup] = useState<PolicyGroupRow | null>(null);
+  const [noticeEnabled, setNoticeEnabled] = useState(false);
+  const [noticeTypeIds, setNoticeTypeIds] = useState<number[]>([]);
+  const [noticeUserIds, setNoticeUserIds] = useState<string[]>([]);
+  const [noticeChannels, setNoticeChannels] = useState<ChannelItem[]>([]);
+  const [noticeUserOptions, setNoticeUserOptions] = useState<UserItem[]>([]);
+  const [noticeLoading, setNoticeLoading] = useState(false);
+  const [noticeSaving, setNoticeSaving] = useState(false);
   const [copySource, setCopySource] = useState<PolicyGroupRow | null>(null);
   const [copyName, setCopyName] = useState('');
 
@@ -324,6 +358,59 @@ const PolicyGroupPage: React.FC = () => {
     }
   };
 
+  const openNotice = (group: PolicyGroupRow) => {
+    setNoticeGroup(group);
+    setNoticeEnabled(Boolean(group.notice));
+    setNoticeTypeIds((group.notice_type_ids || []).map((item) => Number(item)));
+    setNoticeUserIds((group.notice_users || []).map((item) => String(item)));
+    setNoticeLoading(true);
+    Promise.all([
+      getSystemChannelList(),
+      currentGroupId ? getAllUsers([currentGroupId]) : getAllUsers(),
+    ])
+      .then(([channels, userList]) => {
+        const nextChannels = Array.isArray(channels) ? channels : [];
+        const nextUsers = Array.isArray(userList) ? userList : [];
+        setNoticeChannels(nextChannels);
+        setNoticeUserOptions(nextUsers);
+        setNoticeUserIds((prev) =>
+          prev.map((value) => {
+            const matched = nextUsers.find(
+              (item) => String(item.id) === value || item.username === value
+            );
+            return matched ? String(matched.id) : value;
+          })
+        );
+      })
+      .finally(() => setNoticeLoading(false));
+  };
+
+  const noticeUsersRequired = shouldRequireNoticeUsers({
+    notice: noticeEnabled,
+    noticeTypeIds,
+    channelList: noticeChannels,
+  });
+
+  const saveNotice = async () => {
+    if (!noticeGroup || noticeSaving) return;
+    const selectedChannels = noticeChannels.filter((item) => noticeTypeIds.includes(item.id));
+    setNoticeSaving(true);
+    try {
+      await updatePolicyGroupNotice({
+        group_id: noticeGroup.id,
+        notice: noticeEnabled,
+        notice_type: selectedChannels[0]?.channel_type || '',
+        notice_type_ids: noticeEnabled ? noticeTypeIds : [],
+        notice_users: noticeEnabled && noticeUsersRequired ? noticeUserIds : [],
+      });
+      message.success('已写入这一组的全部规则');
+      setNoticeGroup(null);
+      await loadGroups(objectId);
+    } finally {
+      setNoticeSaving(false);
+    }
+  };
+
   const templateGroups = templateOptions.reduce((acc, item) => {
     const found = acc.find((group) => group.name === item.pluginName);
     if (found) found.items.push(item);
@@ -373,9 +460,12 @@ const PolicyGroupPage: React.FC = () => {
       title: t('common.action'),
       dataIndex: 'action',
       key: 'action',
-      width: 280,
+      width: 340,
       render: (_, record) => (
         <Permission requiredPermissions={['Edit']}>
+          <Button type="link" className="px-0" onClick={() => openNotice(record as PolicyGroupRow)}>
+            通知
+          </Button>
           <Button
             type="link"
             disabled={Boolean(record.is_default)}
@@ -430,7 +520,6 @@ const PolicyGroupPage: React.FC = () => {
         group_id: ruleGroup.id,
         rule_id: rule.id,
         threshold: thresholdDraft,
-        notice_users: noticeUsers,
       });
       message.success('已修改当前规则，未恢复告警会结束');
       const items = await loadGroups(objectId);
@@ -756,16 +845,6 @@ const PolicyGroupPage: React.FC = () => {
                 allowStructureEdit
               />
             </div>
-            <div>
-              <div className="mb-1">通知人</div>
-              <Select
-                mode="multiple"
-                className="w-full"
-                value={noticeUsers}
-                options={users.map((item) => ({ value: item.username, label: item.display_name || item.username }))}
-                onChange={setNoticeUsers}
-              />
-            </div>
           </>
         ) : (
           <CustomTable
@@ -800,7 +879,6 @@ const PolicyGroupPage: React.FC = () => {
                     onClick={() => {
                       setRule(record);
                       setThresholdDraft(cloneDeep(record.threshold || []) as ThresholdItem[]);
-                      setNoticeUsers(record.notice_users || []);
                     }}
                   >
                     修改
@@ -810,6 +888,82 @@ const PolicyGroupPage: React.FC = () => {
             ]}
           />
         )}
+      </Drawer>
+      <Drawer
+        title={noticeGroup ? `${noticeGroup.name} 的通知` : '通知'}
+        open={Boolean(noticeGroup)}
+        width={760}
+        closable={false}
+        onClose={() => setNoticeGroup(null)}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button
+              type="primary"
+              loading={noticeSaving}
+              disabled={
+                noticeLoading ||
+                (noticeEnabled && noticeTypeIds.length === 0) ||
+                (noticeUsersRequired && noticeUserIds.length === 0)
+              }
+              onClick={() => void saveNotice()}
+            >
+              确认
+            </Button>
+            <Button disabled={noticeSaving} onClick={() => setNoticeGroup(null)}>
+              取消
+            </Button>
+          </div>
+        }
+      >
+        <Spin spinning={noticeLoading}>
+          {noticeGroup?.notice_uniform === false ? (
+            <div className="mb-3 text-[var(--color-text-3)]">组内规则的通知不一致，保存后会写成同一套。</div>
+          ) : null}
+          <div className="mb-3">
+            <div className="mb-1">通知</div>
+            <Switch checked={noticeEnabled} onChange={setNoticeEnabled} />
+            <div className="mt-2 text-[var(--color-text-3)]">保存后写入这一组的全部规则，不结束正在告警的事件。</div>
+          </div>
+          {noticeEnabled ? (
+            <>
+              <div className="mb-3">
+                <div className="mb-1">通知方式</div>
+                {noticeChannels.length ? (
+                  <SelectCard
+                    data={noticeChannels.map((item) => ({
+                      icon: CHANNEL_ICON[item.channel_type] || 'jiqiren3',
+                      title: item.name,
+                      tag: CHANNEL_TYPE_KEY[item.channel_type] ? t(CHANNEL_TYPE_KEY[item.channel_type]) : item.channel_type,
+                      description: item.description,
+                      value: item.id,
+                    }))}
+                    value={noticeTypeIds}
+                    onChange={(ids) => setNoticeTypeIds(ids.map((item) => Number(item)))}
+                  />
+                ) : (
+                  <span className="text-[var(--color-text-3)]">还没有可用的通知方式</span>
+                )}
+              </div>
+              {noticeUsersRequired ? (
+                <div>
+                  <div className="mb-1">通知人</div>
+                  <Select
+                    mode="multiple"
+                    className="w-full"
+                    showSearch
+                    optionFilterProp="label"
+                    value={noticeUserIds}
+                    options={noticeUserOptions.map((item) => ({
+                      value: String(item.id),
+                      label: formatUserName(item),
+                    }))}
+                    onChange={setNoticeUserIds}
+                  />
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </Spin>
       </Drawer>
       <Modal
         title="新建策略组"

@@ -645,3 +645,48 @@ def test_matching_instance_resumes_scan_from_now_and_disabled_policy_stays_off()
     policy.save(update_fields=["enable"])
     PolicyGroupService.sync_coverage(group)
     assert PeriodicTask.objects.get(name=task_name).enabled is False
+
+
+def test_update_notice_writes_every_policy_and_keeps_open_alerts():
+    monitor_object = _object()
+    wmi = _plugin(monitor_object, "WMI")
+    ssh = _plugin(monitor_object, "SSH")
+    group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="主机默认告警",
+        templates=[_template(monitor_object, wmi, "WMI CPU"), _template(monitor_object, ssh, "SSH CPU")],
+    )
+    other = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="另一组",
+        templates=[_template(monitor_object, wmi, "WMI 内存")],
+    )
+    host = _instance(monitor_object, "web-01", 1)
+    policy = group.rules.filter(plugin=wmi).get().policy
+    alert = MonitorAlert.objects.create(policy_id=policy.id, monitor_instance_id=host.id, status="new", alert_type="alert")
+
+    PolicyGroupService.update_notice(
+        group,
+        notice=True,
+        notice_type="email",
+        notice_type_ids=[9],
+        notice_users=["12"],
+    )
+
+    for rule in group.rules.select_related("policy"):
+        rule.policy.refresh_from_db()
+        assert rule.policy.notice is True
+        assert rule.policy.notice_type == "email"
+        assert rule.policy.notice_type_ids == [9]
+        assert rule.policy.notice_users == ["12"]
+    alert.refresh_from_db()
+    assert alert.status == "new"
+    other_policy = other.rules.get().policy
+    other_policy.refresh_from_db()
+    assert other_policy.notice_users == []
+    assert other_policy.notice_type_ids == []
+
+    with pytest.raises(BaseAppException):
+        PolicyGroupService.update_notice(group, notice=True, notice_type_ids=[], notice_users=["12"])
