@@ -304,7 +304,7 @@ def test_dashboard_handlers_require_a_token_bound_to_team_and_action(monkeypatch
     with pytest.raises(PermissionDenied, match="NATS authentication failed"):
         nats_module.search_dashboard_data_sources([], "nope", _internal_auth="forged")
 
-    list_token = sign_dashboard_request(7, "search_dashboard_data_sources")
+    list_token = sign_dashboard_request(7, "search_dashboard_data_sources", user_info)
     with pytest.raises(PermissionDenied, match="NATS authentication failed"):
         nats_module.search_dashboard_data_sources([], 8, _internal_auth=list_token)
     with pytest.raises(PermissionDenied, match="NATS authentication failed"):
@@ -338,15 +338,34 @@ def test_dashboard_handlers_require_a_token_bound_to_team_and_action(monkeypatch
     assert seen["search_briefs"] == [{"id": 2}]
 
     child_info = {**user_info, "include_children": True}
+    with pytest.raises(PermissionDenied, match="NATS authentication failed"):
+        nats_module.search_dashboard_data_sources(
+            [{"text": "告警趋势"}],
+            7,
+            user_info=child_info,
+            _internal_auth=list_token,
+        )
+    with pytest.raises(PermissionDenied, match="NATS authentication failed"):
+        nats_module.search_dashboard_data_sources(
+            [{"text": "告警趋势"}],
+            7,
+            user_info={**user_info, "user": "bob"},
+            _internal_auth=list_token,
+        )
+    assert seen["group_ids"] == [7]
+    assert seen["include_children"] is False
+
+    child_token = sign_dashboard_request(7, "search_dashboard_data_sources", child_info)
     nats_module.search_dashboard_data_sources(
         [{"text": "告警趋势"}],
         7,
         user_info=child_info,
-        _internal_auth=list_token,
+        _internal_auth=child_token,
     )
     assert seen["group_ids"] == [7, 9]
+    assert seen["include_children"] is True
 
-    prepare_token = sign_dashboard_request(7, "prepare_dashboard_proposal")
+    prepare_token = sign_dashboard_request(7, "prepare_dashboard_proposal", user_info)
     prepared = nats_module.prepare_dashboard_proposal(
         {"schemaVersion": "1.0"},
         7,
@@ -356,6 +375,36 @@ def test_dashboard_handlers_require_a_token_bound_to_team_and_action(monkeypatch
     assert prepared == {"ok": True}
     assert seen["briefs"] == [{"id": 2}]
     assert seen["proposal"] == {"schemaVersion": "1.0"}
+
+    within_requirements = [{"text": "告警趋势"}] * nats_module.MAX_DASHBOARD_REQUIREMENTS
+    nats_module.search_dashboard_data_sources(within_requirements, 7, user_info=user_info, _internal_auth=list_token)
+    assert seen["requirements"] == within_requirements
+    with pytest.raises(ValueError, match="requirements exceed the dashboard search limit"):
+        nats_module.search_dashboard_data_sources(
+            within_requirements + [{"text": "再一条"}],
+            7,
+            user_info=user_info,
+            _internal_auth=list_token,
+        )
+    assert seen["requirements"] == within_requirements
+
+    within_layout = [{"valueConfig": {"chartType": "single"}}] * nats_module.MAX_DASHBOARD_LAYOUT_ITEMS
+    accepted = nats_module.prepare_dashboard_proposal(
+        {"schemaVersion": "1.0", "layout": within_layout},
+        7,
+        user_info=user_info,
+        _internal_auth=prepare_token,
+    )
+    assert accepted == {"ok": True}
+    assert seen["proposal"]["layout"] == within_layout
+    with pytest.raises(ValueError, match="layout exceeds the dashboard proposal limit"):
+        nats_module.prepare_dashboard_proposal(
+            {"schemaVersion": "1.0", "layout": within_layout + [{"valueConfig": {"chartType": "single"}}]},
+            7,
+            user_info=user_info,
+            _internal_auth=prepare_token,
+        )
+    assert seen["proposal"]["layout"] == within_layout
 
 
 def test_versioned_handler_rejects_unsigned_request(monkeypatch):

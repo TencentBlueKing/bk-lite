@@ -884,7 +884,11 @@ def ensure_dashboard_prepare_follows_search(
                 objective="根据检索到的数据源生成仪表盘方案并应用到当前画布",
                 tools=[_DASHBOARD_PREPARE_TOOL],
             )
-    logger.info("DeepAgent 规划硬校验：检索数据源后补上仪表盘应用")
+    logger.debug(
+        "event=dashboard_prepare_step_appended search_tool=%s prepare_tool=%s",
+        _DASHBOARD_SEARCH_TOOL,
+        _DASHBOARD_PREPARE_TOOL,
+    )
     return ToolExecutionPlan(goal=plan.goal, steps=steps)
 
 

@@ -67,7 +67,7 @@ def _rpc():
 def _run_dashboard_rpc(method: str, **kwargs):
     from apps.operation_analysis.nats.auth import sign_dashboard_request
 
-    kwargs["_internal_auth"] = sign_dashboard_request(kwargs.get("team_id"), method)
+    kwargs["_internal_auth"] = sign_dashboard_request(kwargs.get("team_id"), method, kwargs.get("user_info"))
 
     def _call():
         return _rpc().run(method, **kwargs)

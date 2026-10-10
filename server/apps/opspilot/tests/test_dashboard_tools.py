@@ -166,22 +166,49 @@ def test_search_catalog_fits_in_the_model_window_and_keeps_real_ids(monkeypatch)
     assert list(result)[0] == "success"
 
 
-def test_search_plan_without_prepare_gets_an_apply_step():
+def test_search_plan_without_prepare_gets_an_apply_step(caplog):
+    import logging
+
     from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlan, ToolExecutionStep, ensure_dashboard_prepare_follows_search
 
+    sentinel = "plan-goal-sentinel-not-for-logs"
+    template = "event=dashboard_prepare_step_appended search_tool=%s prepare_tool=%s"
     plan = ToolExecutionPlan(
-        goal="搭建告警概览",
+        goal=sentinel,
         steps=[ToolExecutionStep(objective="检索告警数据源", tools=["search_data_sources", "request_user_choice"])],
     )
-    fixed = ensure_dashboard_prepare_follows_search(
-        plan,
-        {"search_data_sources", "prepare_dashboard_proposal", "request_user_choice"},
-        max_steps=4,
-    )
+    with caplog.at_level(logging.DEBUG, logger="opspilot"):
+        fixed = ensure_dashboard_prepare_follows_search(
+            plan,
+            {"search_data_sources", "prepare_dashboard_proposal", "request_user_choice"},
+            max_steps=4,
+        )
     assert [step.tools for step in fixed.steps] == [
         ["search_data_sources"],
         ["prepare_dashboard_proposal"],
     ]
+    records = [record for record in caplog.records if record.msg == template]
+    assert len(records) == 1
+    assert records[0].levelno == logging.DEBUG
+    assert records[0].args == ("search_data_sources", "prepare_dashboard_proposal")
+    assert records[0].getMessage() == (
+        "event=dashboard_prepare_step_appended search_tool=search_data_sources prepare_tool=prepare_dashboard_proposal"
+    )
+    assert sentinel not in caplog.text
+    assert not any(record.levelno >= logging.INFO and record.msg == template for record in caplog.records)
+
+    caplog.clear()
+    with caplog.at_level(logging.DEBUG, logger="opspilot"):
+        unchanged = ensure_dashboard_prepare_follows_search(
+            fixed,
+            {"search_data_sources", "prepare_dashboard_proposal", "request_user_choice"},
+            max_steps=4,
+        )
+    assert [step.tools for step in unchanged.steps] == [
+        ["search_data_sources"],
+        ["prepare_dashboard_proposal"],
+    ]
+    assert not any(record.msg == template for record in caplog.records)
 
 
 def test_search_catalog_stays_in_the_next_step_summary():
@@ -398,7 +425,7 @@ def test_dashboard_rpc_can_run_inside_a_live_event_loop(monkeypatch):
     monkeypatch.setattr(tools, "_rpc", lambda: _Rpc())
     monkeypatch.setattr(
         "apps.operation_analysis.nats.auth.sign_dashboard_request",
-        lambda team_id, method: {"team_id": team_id, "method": method},
+        lambda team_id, method, user_info=None: {"team_id": team_id, "method": method},
     )
 
     async def _call():

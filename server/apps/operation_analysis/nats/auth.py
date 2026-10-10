@@ -66,24 +66,51 @@ def verify_module_data_request(token, module, child_module, page, page_size, gro
     return expected_params
 
 
-def sign_dashboard_request(team_id, action: str) -> str:
-    """签发绑定组织与动作的短时令牌。列表令牌不能拿去准备方案。"""
+def _dashboard_auth_payload(team_id, action: str, user_info) -> dict:
+    """令牌绑定动作、组织，以及用户名、域和 include_children。"""
+
+    verified_team = _positive_integer(team_id, "team_id")
+    if not isinstance(user_info, dict):
+        raise ValueError("user_info must be an object")
+    username = user_info.get("user")
+    domain = user_info.get("domain")
+    include_children = user_info.get("include_children")
+    if (
+        not isinstance(username, str)
+        or not username.strip()
+        or not isinstance(domain, str)
+        or not domain.strip()
+        or type(include_children) is not bool
+        or user_info.get("team") != verified_team
+    ):
+        raise ValueError("user_info does not match the dashboard request")
+    return {
+        "action": str(action),
+        "team_id": verified_team,
+        "user": username.strip(),
+        "domain": domain.strip(),
+        "include_children": include_children,
+    }
+
+
+def sign_dashboard_request(team_id, action: str, user_info) -> str:
+    """签发绑定组织、动作和调用身份的短时令牌。列表令牌不能拿去准备方案。"""
 
     return signing.dumps(
-        {"action": str(action), "team_id": _positive_integer(team_id, "team_id")},
+        _dashboard_auth_payload(team_id, action, user_info),
         salt=DASHBOARD_AUTH_SALT,
     )
 
 
-def verify_dashboard_request(token, team_id, action: str) -> int:
-    """校验令牌、有效期，以及它绑定的组织与动作。"""
+def verify_dashboard_request(token, team_id, action: str, user_info) -> int:
+    """校验令牌、有效期，以及它绑定的组织、动作和调用身份。"""
 
     try:
-        verified_team = _positive_integer(team_id, "team_id")
+        expected = _dashboard_auth_payload(team_id, action, user_info)
         max_age = int(os.getenv("OPERATION_ANALYSIS_NATS_AUTH_MAX_AGE", DEFAULT_AUTH_MAX_AGE_SECONDS))
         signed = signing.loads(token, salt=DASHBOARD_AUTH_SALT, max_age=max_age)
     except (signing.BadSignature, TypeError, ValueError):
         raise PermissionDenied("Operation analysis NATS authentication failed") from None
-    if signed != {"action": str(action), "team_id": verified_team}:
+    if signed != expected:
         raise PermissionDenied("Operation analysis NATS authentication failed")
-    return verified_team
+    return expected["team_id"]
