@@ -126,6 +126,11 @@ const PolicyGroupPage: React.FC = () => {
   const [members, setMembers] = useState<TableDataItem[]>([]);
   const [memberLoading, setMemberLoading] = useState(false);
   const [memberKeyword, setMemberKeyword] = useState('');
+  const [memberPagination, setMemberPagination] = useState<Pagination>({
+    current: 1,
+    total: 0,
+    pageSize: 10,
+  });
   const [joinOpen, setJoinOpen] = useState(false);
   const [joinKeyword, setJoinKeyword] = useState('');
   const [joinRows, setJoinRows] = useState<InstanceCandidate[]>([]);
@@ -138,7 +143,13 @@ const PolicyGroupPage: React.FC = () => {
     pageSize: 10,
   });
   const [ruleGroup, setRuleGroup] = useState<PolicyGroupRow | null>(null);
+  const [rulePagination, setRulePagination] = useState<Pagination>({
+    current: 1,
+    total: 0,
+    pageSize: 10,
+  });
   const [rule, setRule] = useState<PolicyGroupRule | null>(null);
+  const [ruleSaving, setRuleSaving] = useState(false);
   const [thresholdDraft, setThresholdDraft] = useState<ThresholdItem[]>([]);
   const [noticeUsers, setNoticeUsers] = useState<string[]>([]);
   const [copySource, setCopySource] = useState<PolicyGroupRow | null>(null);
@@ -167,6 +178,7 @@ const PolicyGroupPage: React.FC = () => {
       }
       setGroups(items);
       setPagination((prev) => ({ ...prev, current: page, pageSize, total }));
+      return items as PolicyGroupRow[];
     } finally {
       setLoading(false);
     }
@@ -210,6 +222,7 @@ const PolicyGroupPage: React.FC = () => {
   const openMembers = async (group: PolicyGroupRow) => {
     setMemberGroup(group);
     setMemberKeyword('');
+    setMemberPagination((prev) => ({ ...prev, current: 1 }));
     setMemberLoading(true);
     try {
       const [memberRows, allGroups] = await Promise.all([
@@ -332,7 +345,15 @@ const PolicyGroupPage: React.FC = () => {
       dataIndex: 'rules',
       key: 'rules',
       render: (_, record) => (
-        <Button type="link" className="px-0" onClick={() => setRuleGroup(record as PolicyGroupRow)}>
+        <Button
+          type="link"
+          className="px-0"
+          onClick={() => {
+            setRule(null);
+            setRulePagination((prev) => ({ ...prev, current: 1 }));
+            setRuleGroup(record as PolicyGroupRow);
+          }}
+        >
           {(record.rules || []).length}
         </Button>
       ),
@@ -385,6 +406,41 @@ const PolicyGroupPage: React.FC = () => {
       ),
     },
   ];
+
+  const memberKeywordText = memberKeyword.trim().toLowerCase();
+  const filteredMembers = members.filter((item) => {
+    if (!memberKeywordText) return true;
+    return String(item.name || '').toLowerCase().includes(memberKeywordText);
+  });
+  const visibleMembers = filteredMembers.slice(
+    (memberPagination.current - 1) * memberPagination.pageSize,
+    memberPagination.current * memberPagination.pageSize
+  );
+  const ruleRows = ruleGroup?.rules || [];
+  const visibleRules = ruleRows.slice(
+    (rulePagination.current - 1) * rulePagination.pageSize,
+    rulePagination.current * rulePagination.pageSize
+  );
+
+  const saveRule = async () => {
+    if (!rule || !ruleGroup || ruleSaving) return;
+    setRuleSaving(true);
+    try {
+      await updatePolicyGroupRule({
+        group_id: ruleGroup.id,
+        rule_id: rule.id,
+        threshold: thresholdDraft,
+        notice_users: noticeUsers,
+      });
+      message.success('已修改当前规则，未恢复告警会结束');
+      const items = await loadGroups(objectId);
+      const next = (items || []).find((item) => item.id === ruleGroup.id);
+      setRule(null);
+      if (next) setRuleGroup(next);
+    } finally {
+      setRuleSaving(false);
+    }
+  };
 
   return (
     <Spin
@@ -452,20 +508,114 @@ const PolicyGroupPage: React.FC = () => {
         </div>
       </div>
       <Drawer
-        title={memberGroup ? `${memberGroup.name} 的实例` : '实例'}
+        title={joinOpen ? '加入实例' : memberGroup ? `${memberGroup.name} 的实例` : '实例'}
         open={Boolean(memberGroup)}
         width={760}
+        closable={false}
         onClose={() => {
           setMemberGroup(null);
           setMemberKeyword('');
           setJoinOpen(false);
         }}
+        footer={
+          joinOpen ? (
+            <div className="flex justify-end gap-2">
+              <Button type="primary" disabled={joinSelected.length === 0} onClick={() => void confirmJoin()}>
+                加入
+              </Button>
+              <Button
+                onClick={() => {
+                  setJoinOpen(false);
+                  setJoinSelected([]);
+                }}
+              >
+                取消
+              </Button>
+            </div>
+          ) : null
+        }
       >
+        {joinOpen ? (
+          <>
+            <Input
+              allowClear
+              className="mb-3 w-80"
+              placeholder="搜索实例名称"
+              value={joinKeyword}
+              onChange={(event) => setJoinKeyword(event.target.value)}
+              onPressEnter={() => void loadJoinInstances(1, joinKeyword)}
+              onClear={() => {
+                setJoinKeyword('');
+                void loadJoinInstances(1, '');
+              }}
+            />
+            {joinSelected.length > 0 ? (
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                {joinSelected.map((id) => (
+                  <Tag
+                    key={id}
+                    closable
+                    onClose={(event) => {
+                      event.preventDefault();
+                      setJoinSelected((prev) => prev.filter((item) => item !== id));
+                    }}
+                  >
+                    {joinLabels[id] || id}
+                  </Tag>
+                ))}
+                <button type="button" className="cursor-pointer text-[var(--color-primary)]" onClick={() => setJoinSelected([])}>
+                  清空
+                </button>
+              </div>
+            ) : null}
+            <CustomTable
+              rowKey="instance_id"
+              loading={joinLoading}
+              dataSource={joinRows}
+              pagination={joinPagination}
+              scroll={{ y: 'auto' }}
+              rowSelection={{
+                selectedRowKeys: joinSelected,
+                onChange: (keys) => setJoinSelected(keys.map(String)),
+                getCheckboxProps: (record: InstanceCandidate) => ({
+                  disabled: members.some((item) => String(item.instance_id) === String(record.instance_id)),
+                }),
+              }}
+              onChange={(next: Pagination) => {
+                void loadJoinInstances(
+                  next.pageSize !== joinPagination.pageSize ? 1 : next.current,
+                  joinKeyword,
+                  next.pageSize || joinPagination.pageSize
+                );
+              }}
+              columns={[
+                {
+                  title: t('common.name'),
+                  dataIndex: 'instance_name',
+                  key: 'instance_name',
+                  render: (_, record) => {
+                    const joined = members.some((item) => String(item.instance_id) === String(record.instance_id));
+                    return (
+                      <span className="inline-flex items-center gap-2">
+                        <span>{candidateLabel(record)}</span>
+                        {joined ? <Tag>已在组</Tag> : null}
+                      </span>
+                    );
+                  },
+                },
+              ]}
+            />
+          </>
+        ) : (
+          <>
         <SearchActionBar
           searchProps={{
             placeholder: '搜索实例名称',
             value: memberKeyword,
-            onChange: (event) => setMemberKeyword(event.target.value),
+            onChange: (event) => {
+              setMemberKeyword(event.target.value);
+              setMemberPagination((prev) => ({ ...prev, current: 1 }));
+            },
           }}
           actions={
             <Permission requiredPermissions={['Edit']}>
@@ -478,12 +628,16 @@ const PolicyGroupPage: React.FC = () => {
         <CustomTable
           rowKey="instance_id"
           loading={memberLoading}
-          pagination={false}
-          dataSource={members.filter((item) => {
-            const keyword = memberKeyword.trim().toLowerCase();
-            if (!keyword) return true;
-            return String(item.name || '').toLowerCase().includes(keyword);
-          })}
+          pagination={{ ...memberPagination, total: filteredMembers.length }}
+          onChange={(next: Pagination) => {
+            setMemberPagination((prev) => ({
+              ...prev,
+              current: next.pageSize !== prev.pageSize ? 1 : next.current,
+              pageSize: next.pageSize || prev.pageSize,
+            }));
+          }}
+          dataSource={visibleMembers}
+          scroll={{ y: 'auto' }}
           columns={[
             { title: t('common.name'), dataIndex: 'name', key: 'name' },
             {
@@ -559,115 +713,104 @@ const PolicyGroupPage: React.FC = () => {
             },
           ]}
         />
+          </>
+        )}
       </Drawer>
-      <Modal
-        title="加入实例"
-        open={joinOpen}
-        width={720}
-        onCancel={() => setJoinOpen(false)}
+      <Drawer
+        title={rule ? `修改 ${rule.name}` : ruleGroup ? `${ruleGroup.name} 的规则` : '规则'}
+        open={Boolean(ruleGroup)}
+        width={760}
+        closable={false}
+        onClose={() => {
+          setRuleGroup(null);
+          setRule(null);
+        }}
         footer={
-          <div>
-            <Button className="mr-[10px]" type="primary" disabled={joinSelected.length === 0} onClick={() => void confirmJoin()}>
-              加入
-            </Button>
-            <Button onClick={() => setJoinOpen(false)}>取消</Button>
-          </div>
-        }
-      >
-        <Input
-          allowClear
-          className="mb-3 w-80"
-          placeholder="搜索实例名称"
-          value={joinKeyword}
-          onChange={(event) => setJoinKeyword(event.target.value)}
-          onPressEnter={() => void loadJoinInstances(1, joinKeyword)}
-          onClear={() => {
-            setJoinKeyword('');
-            void loadJoinInstances(1, '');
-          }}
-        />
-        {joinSelected.length > 0 ? (
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            {joinSelected.map((id) => (
-              <Tag
-                key={id}
-                closable
-                onClose={(event) => {
-                  event.preventDefault();
-                  setJoinSelected((prev) => prev.filter((item) => item !== id));
+          rule ? (
+            <div className="flex justify-end gap-2">
+              <Button type="primary" loading={ruleSaving} onClick={() => void saveRule()}>
+                确认
+              </Button>
+              <Button
+                disabled={ruleSaving}
+                onClick={() => {
+                  setRule(null);
                 }}
               >
-                {joinLabels[id] || id}
-              </Tag>
-            ))}
-            <button type="button" className="cursor-pointer text-[var(--color-primary)]" onClick={() => setJoinSelected([])}>
-              清空
-            </button>
-          </div>
-        ) : null}
-        <CustomTable
-          rowKey="instance_id"
-          loading={joinLoading}
-          dataSource={joinRows}
-          pagination={joinPagination}
-          scroll={{ y: 'auto' }}
-          rowSelection={{
-            selectedRowKeys: joinSelected,
-            onChange: (keys) => setJoinSelected(keys.map(String)),
-            getCheckboxProps: (record: InstanceCandidate) => ({
-              disabled: members.some((item) => String(item.instance_id) === String(record.instance_id)),
-            }),
-          }}
-          onChange={(next: Pagination) => {
-            void loadJoinInstances(
-              next.pageSize !== joinPagination.pageSize ? 1 : next.current,
-              joinKeyword,
-              next.pageSize || joinPagination.pageSize
-            );
-          }}
-          columns={[
-            {
-              title: t('common.name'),
-              dataIndex: 'instance_name',
-              key: 'instance_name',
-              render: (_, record) => {
-                const joined = members.some((item) => String(item.instance_id) === String(record.instance_id));
-                return (
-                  <span className="inline-flex items-center gap-2">
-                    <span>{candidateLabel(record)}</span>
-                    {joined ? <Tag>已在组</Tag> : null}
-                  </span>
-                );
-              },
-            },
-          ]}
-        />
-      </Modal>
-      <Modal
-        title={ruleGroup ? `${ruleGroup.name} 的规则` : '规则'}
-        open={Boolean(ruleGroup)}
-        footer={null}
-        onCancel={() => setRuleGroup(null)}
+                取消
+              </Button>
+            </div>
+          ) : null
+        }
       >
-        {(ruleGroup?.rules || []).map((item) => (
-          <div key={item.id} className="mb-2 flex items-center justify-between">
-            <span>
-              {item.name}
-              <span className="ml-2 text-[12px] text-[var(--color-text-3)]">{item.plugin_name}</span>
-            </span>
-            <Button
-              type="link"
-              onClick={() => {
-                setRule(item);
-                setThresholdDraft(cloneDeep(item.threshold || []) as ThresholdItem[]);
-                setNoticeUsers(item.notice_users || []);
-              }}
-            >
-              修改
-            </Button>
-          </div>
-        ))}
-      </Modal>
+        {rule ? (
+          <>
+            <div className="mb-3">
+              <div className="mb-1">阈值</div>
+              <ThresholdList
+                data={thresholdDraft}
+                onChange={setThresholdDraft}
+                thresholdUnit={null}
+                onThresholdUnitChange={() => undefined}
+                showUnitSelector={false}
+                allowStructureEdit
+              />
+            </div>
+            <div>
+              <div className="mb-1">通知人</div>
+              <Select
+                mode="multiple"
+                className="w-full"
+                value={noticeUsers}
+                options={users.map((item) => ({ value: item.username, label: item.display_name || item.username }))}
+                onChange={setNoticeUsers}
+              />
+            </div>
+          </>
+        ) : (
+          <CustomTable
+            rowKey="id"
+            dataSource={visibleRules}
+            pagination={{ ...rulePagination, total: ruleRows.length }}
+            scroll={{ y: 'auto' }}
+            onChange={(next: Pagination) => {
+              setRulePagination((prev) => ({
+                ...prev,
+                current: next.pageSize !== prev.pageSize ? 1 : next.current,
+                pageSize: next.pageSize || prev.pageSize,
+              }));
+            }}
+            columns={[
+              { title: t('common.name'), dataIndex: 'name', key: 'name' },
+              {
+                title: '模板',
+                dataIndex: 'plugin_name',
+                key: 'plugin_name',
+                width: 160,
+                render: (_, record) => record.plugin_name || '--',
+              },
+              {
+                title: t('common.action'),
+                key: 'action',
+                width: 90,
+                render: (_, record) => (
+                  <Button
+                    type="link"
+                    className="px-0"
+                    onClick={() => {
+                      setRule(record);
+                      setThresholdDraft(cloneDeep(record.threshold || []) as ThresholdItem[]);
+                      setNoticeUsers(record.notice_users || []);
+                    }}
+                  >
+                    修改
+                  </Button>
+                ),
+              },
+            ]}
+          />
+        )}
+      </Drawer>
       <Modal
         title="新建策略组"
         open={createOpen}
@@ -746,46 +889,6 @@ const PolicyGroupPage: React.FC = () => {
         }}
       >
         <Input value={copyName} onChange={(event) => setCopyName(event.target.value)} />
-      </Modal>
-      <Modal
-        title={rule ? `修改 ${rule.name}` : '修改规则'}
-        open={Boolean(rule)}
-        onCancel={() => setRule(null)}
-        onOk={async () => {
-          if (!rule || !ruleGroup) return;
-          await updatePolicyGroupRule({
-            group_id: ruleGroup.id,
-            rule_id: rule.id,
-            threshold: thresholdDraft,
-            notice_users: noticeUsers,
-          });
-          message.success('已修改当前规则，未恢复告警会结束');
-          setRule(null);
-          await loadGroups(objectId);
-          setRuleGroup(null);
-        }}
-      >
-        <div className="mb-3">
-          <div className="mb-1">阈值</div>
-          <ThresholdList
-            data={thresholdDraft}
-            onChange={setThresholdDraft}
-            thresholdUnit={null}
-            onThresholdUnitChange={() => undefined}
-            showUnitSelector={false}
-            allowStructureEdit
-          />
-        </div>
-        <div>
-          <div className="mb-1">通知人</div>
-          <Select
-            mode="multiple"
-            className="w-full"
-            value={noticeUsers}
-            options={users.map((item) => ({ value: item.username, label: item.display_name || item.username }))}
-            onChange={setNoticeUsers}
-          />
-        </div>
       </Modal>
     </Spin>
   );
