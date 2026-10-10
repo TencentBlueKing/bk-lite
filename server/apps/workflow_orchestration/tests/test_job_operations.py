@@ -332,3 +332,65 @@ def test_job_atom_revalidates_selected_references_with_trusted_execution_identit
 def test_job_atom_rejects_fixed_targets_without_trusted_execution_context():
     with pytest.raises(ValueError, match="缺少可信流程上下文"):
         execute_job_atom(_inputs("manual:5"), gateway=FakeTargetGateway(), executor=FakeExecutor([]))
+
+
+def test_execute_custom_script_resumes_prior_job_task_ids_without_resubmit():
+    runner = FakeExecutor([{"execution_results": [{"target_key": "5", "status": "success", "stdout": "ok"}]}])
+    checkpoints = []
+
+    output = execute_custom_script(
+        {
+            "targets": [
+                {
+                    "id": "manual:5",
+                    "source": "job_mgmt",
+                    "source_id": "5",
+                    "name": "host",
+                    "ip": "10.0.0.5",
+                    "operating_system": "linux",
+                }
+            ],
+            "script_type": "shell",
+            "script_content": "echo ok",
+            "team": 7,
+            "actor": {"username": "operator", "domain": "example.com"},
+            "__job_task_ids": [1],
+            "__job_submit_checkpoint": checkpoints.append,
+        },
+        executor=runner,
+    )
+
+    assert runner.submissions == []
+    assert checkpoints == []
+    assert output["job_task_ids"] == [1]
+    assert output["summary"] == {"total": 1, "succeeded": 1, "failed": 0}
+
+
+def test_execute_custom_script_checkpoints_job_ids_after_submit():
+    runner = FakeExecutor([{"execution_results": [{"target_key": "5", "status": "success", "stdout": "ok"}]}])
+    checkpoints = []
+
+    output = execute_custom_script(
+        {
+            "targets": [
+                {
+                    "id": "manual:5",
+                    "source": "job_mgmt",
+                    "source_id": "5",
+                    "name": "host",
+                    "ip": "10.0.0.5",
+                    "operating_system": "linux",
+                }
+            ],
+            "script_type": "shell",
+            "script_content": "echo ok",
+            "team": 7,
+            "actor": {"username": "operator", "domain": "example.com"},
+            "__job_submit_checkpoint": checkpoints.append,
+        },
+        executor=runner,
+    )
+
+    assert len(runner.submissions) == 1
+    assert checkpoints == [[1]]
+    assert output["job_task_ids"] == [1]

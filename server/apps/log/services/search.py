@@ -15,7 +15,7 @@ from apps.log.services.log_event_contract import (
     to_storage_field,
     to_storage_query,
 )
-from apps.log.utils.query_log import VictoriaMetricsAPI
+from apps.log.utils.query_log import TAIL_IDLE, VictoriaMetricsAPI
 from apps.log.utils.log_group import LogGroupQueryBuilder
 from apps.core.logger import log_logger as logger
 
@@ -294,6 +294,31 @@ class SearchService:
                 # 使用异步版本的tail方法
                 async for line in api.tail_async(final_query):
                     current_time = time.time()
+
+                    if line is TAIL_IDLE:
+                        if current_time - connection_start_time > max_connection_time:
+                            logger.info(
+                                "SSE连接达到最大时间限制",
+                                extra={
+                                    "duration": current_time - connection_start_time,
+                                    "data_sent": data_count,
+                                },
+                            )
+                            break
+                        try:
+                            yield ": heartbeat\n\n"
+                            last_activity_time = current_time
+                        except Exception as e:
+                            logger.info(
+                                "检测到客户端断开(心跳)",
+                                extra={
+                                    "duration": current_time - connection_start_time,
+                                    "data_sent": data_count,
+                                    "error": str(e),
+                                },
+                            )
+                            break
+                        continue
 
                     # 检查连接时间限制
                     if current_time - connection_start_time > max_connection_time:

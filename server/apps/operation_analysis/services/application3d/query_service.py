@@ -17,7 +17,7 @@ from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.services.service_tree import applications_by_system as project_system_applications
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
-from apps.core.logger import operation_analysis_logger as logger
+from apps.core.logger import operation_analysis_logger as logger, safe_exception_info, safe_log_value
 from apps.core.utils.current_team_scope import resolve_current_team_data_scope
 from apps.core.utils.permission_utils import check_instance_permission, get_permissions_rules
 from apps.monitor.constants.permission import PermissionConstants
@@ -33,6 +33,7 @@ from apps.operation_analysis.services.application3d.constants import (
 from apps.operation_analysis.services.application3d.detail_fields import present_alert_dimensions, present_policy_thresholds
 from apps.operation_analysis.services.application3d.errors import (
     Application3DCapacityExceeded,
+    Application3DError,
     Application3DInvalidRequest,
     Application3DNotFound,
     Application3DSourceFailure,
@@ -92,6 +93,7 @@ class _ApplicationScope:
     no_host_systems: set[str] = field(default_factory=set)
     authorized_monitor_ids: set[str] | None = None
     request: Any = None
+    monitor_degraded: bool = False
 
 
 class Application3DQueryService:
@@ -139,7 +141,7 @@ class Application3DQueryService:
         app_id = cls._instance_uuid(application)
         health = cls._health_for_application(scope, app_id)
 
-        if app_id in scope.empty_systems or app_id in scope.no_host_systems:
+        if app_id in scope.empty_systems or app_id in scope.no_host_systems or scope.monitor_degraded:
             alarms: dict[str, Any] = {"state": "unavailable"}
         else:
             page_items, has_more = cls._paged_scoped_alerts(
@@ -253,6 +255,8 @@ class Application3DQueryService:
             return no_application_health()
         if not hosts:
             return no_host_health()
+        if scope.monitor_degraded:
+            return unavailable_health()
         monitor_ids = cls._readable_monitor_ids(scope, hosts)
         if not monitor_ids:
             return unavailable_health()
@@ -263,6 +267,8 @@ class Application3DQueryService:
         monitor_id = host.get("monitor_id")
         if monitor_id in (None, ""):
             return unmonitored_health()
+        if scope.monitor_degraded:
+            return unavailable_health()
         if not cls._is_readable_host(scope, host):
             return monitor_unreadable_health()
         return cls._aggregate_monitor_health(scope, {str(monitor_id)})
@@ -283,6 +289,8 @@ class Application3DQueryService:
         application = cls._visible_application(request, application_id)
         scope = cls._build_scope(request, [application])
         app_id = cls._instance_uuid(application)
+        if scope.monitor_degraded:
+            raise cls._monitor_scope_failure()
         if app_id not in scope.complete_apps:
             raise Application3DNotFound(oa_message("messages.app3d_alarm_missing", "告警不存在"))
 
@@ -546,6 +554,24 @@ class Application3DQueryService:
                 if system_id not in empty_systems and system_id not in no_host_systems
                 for monitor_id in cls._mapped_monitor_ids(hosts_by_system.get(system_id, []))
             }
+        except Application3DError:
+            raise
+        except Exception as exc:
+            cls._log_scope_failure(
+                exc,
+                system_id=system_ids[0],
+                failed_stage="cmdb_relation_expand",
+                system_count=len(system_ids),
+                degraded=False,
+            )
+            raise Application3DSourceFailure(
+                oa_message("messages.app3d_cmdb_relation_expand_failed", "应用系统 CMDB 关联展开失败"),
+                code="cmdb_relation_expand_failed",
+            ) from exc
+
+        authorized_monitor_ids: set[str] = set()
+        failed_stage = "authorized_monitors"
+        try:
             authorized_monitor_ids = cls._authorized_monitor_ids(request, mapped_monitor_ids) if mapped_monitor_ids else set()
             complete_apps = {
                 system_id
@@ -575,6 +601,7 @@ class Application3DQueryService:
                     request,
                 )
 
+            failed_stage = "monitor_alerts"
             referenced_policy_ids = set(
                 MonitorAlert.objects.filter(
                     status="new",
@@ -583,6 +610,7 @@ class Application3DQueryService:
                 .values_list("policy_id", flat=True)
                 .distinct()
             )
+            failed_stage = "monitor_policies"
             policies = cls._accessible_policies(request, referenced_policy_ids)
             return _ApplicationScope(
                 applications,
@@ -594,9 +622,51 @@ class Application3DQueryService:
                 authorized_monitor_ids,
                 request,
             )
+        except Application3DError:
+            raise
         except Exception as exc:
-            logger.exception("application3D scope query failed")
-            raise Application3DSourceFailure(oa_message("messages.app3d_monitor_query_failed", "应用系统监控数据查询失败")) from exc
+            cls._log_scope_failure(
+                exc,
+                system_id=system_ids[0],
+                failed_stage=failed_stage,
+                system_count=len(system_ids),
+                degraded=True,
+            )
+            return _ApplicationScope(
+                applications,
+                hosts_by_system,
+                {},
+                set(),
+                empty_systems,
+                no_host_systems,
+                authorized_monitor_ids,
+                request,
+                monitor_degraded=True,
+            )
+
+    @staticmethod
+    def _monitor_scope_failure() -> Application3DSourceFailure:
+        """Alarm drill-in cannot degrade into a missing-alarm or permission result."""
+        return Application3DSourceFailure(oa_message("messages.app3d_monitor_query_failed", "应用系统监控数据查询失败"))
+
+    @staticmethod
+    def _log_scope_failure(
+        exc: BaseException,
+        *,
+        system_id: str,
+        failed_stage: str,
+        system_count: int,
+        degraded: bool,
+    ) -> None:
+        log = logger.warning if degraded else logger.error
+        log(
+            "event=application3d_scope_failed system_id=%s failed_stage=%s error_type=%s system_count=%s",
+            safe_log_value(system_id),
+            failed_stage,
+            type(exc).__name__,
+            system_count,
+            exc_info=safe_exception_info(exc),
+        )
 
     @classmethod
     def _visible_model_instances(cls, request, model_id: str, inst_uuids: list[str]) -> list[dict[str, Any]]:
@@ -717,6 +787,9 @@ class Application3DQueryService:
     @classmethod
     def _host_coverage(cls, scope: _ApplicationScope, app_id: str) -> dict[str, int] | None:
         if app_id in scope.empty_systems or app_id in scope.no_host_systems:
+            return None
+        # ACL did not finish. An empty authorized set here is not a proven zero.
+        if scope.monitor_degraded and not scope.authorized_monitor_ids:
             return None
         hosts = scope.hosts_by_app.get(app_id, [])
         if not hosts:
@@ -925,6 +998,8 @@ class Application3DQueryService:
         application = cls._visible_application(request, application_id)
         scope = cls._build_scope(request, [application])
         app_id = cls._instance_uuid(application)
+        if scope.monitor_degraded:
+            raise cls._monitor_scope_failure()
         if app_id not in scope.complete_apps:
             raise Application3DNotFound(oa_message("messages.app3d_alarm_missing", "告警不存在"))
         alert = cls._scoped_alert_or_404(scope, app_id, alarm_id)

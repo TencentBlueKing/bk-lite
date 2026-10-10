@@ -41,6 +41,7 @@ from apps.opspilot.services.wiki.parsed_media_service import (
     locator_from_stored_media_url,
     resign_stored_media_urls,
 )
+from apps.opspilot.services.workflow_attachment_service import refresh_attachment_download_urls
 from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.prompt_utils import merge_skill_params
 from apps.opspilot.utils.skill_execution_params import resolve_request_tools
@@ -1053,7 +1054,7 @@ def serialize_skill_session_messages(conv: SkillConversation) -> list[dict]:
             {
                 "id": msg.id,
                 "conversation_role": msg.role,
-                "conversation_content": refresh_history_message_media(msg.content or ""),
+                "conversation_content": refresh_attachment_download_urls(refresh_history_message_media(msg.content or "")),
                 "conversation_time": msg.created_at.isoformat() if msg.created_at else None,
                 "session_id": conv.session_id,
                 "channel_type": conv.channel.channel_type if conv.channel_id else "",

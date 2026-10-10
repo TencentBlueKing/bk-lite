@@ -316,6 +316,9 @@ def test_should_use_lightweight_direct_reply():
     assert ToolsNodes._should_use_lightweight_direct_reply([_tool("shell")], []) is False
     assert ToolsNodes._should_use_lightweight_direct_reply([_tool("shell"), _tool("request_user_choice")], []) is False
     assert ToolsNodes._should_use_lightweight_direct_reply([], ["/skills/"]) is False
+    assert ToolsNodes._attachment_request_needs_planner([_tool("generate_attachment_file")], "生成一个excel文件") is True
+    assert ToolsNodes._attachment_request_needs_planner([_tool("generate_attachment_file")], "你好") is False
+    assert ToolsNodes._should_use_lightweight_direct_reply([_tool("generate_attachment_file")], []) is True
 
 
 def test_should_use_lightweight_after_empty_plan():
@@ -557,6 +560,25 @@ class TestBuildDeepagentNodes:
         assert "当前没有可用工具与技能" not in system_text
         assert "当前可用工具:" in system_text
         assert "get_current_time" in system_text
+
+    def test_empty_plan_does_not_list_resident_attachment_tool(self):
+        node = ToolsNodes()
+        node.all_tools = [_tool("generate_attachment_file")]
+        req = _request(user_message="你好")
+        captured = {}
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={"goal": "问候", "steps": []},
+                direct_reply_content="你好！",
+            )
+
+        system_text = str(captured["direct_reply_calls"][0][0].content)
+        assert "当前可用工具:" not in system_text
+        assert "generate_attachment_file" not in system_text
 
     def test_use_skills_step_materializes_sandbox_and_enables_fs(self):
         node = ToolsNodes()
@@ -2378,6 +2400,7 @@ def test_planned_tool_step_guidance_is_policy_not_skill_scan():
     assert "空矩阵" in guidance
     assert "instance_ids" in guidance
     assert "禁止用 name" in guidance or "禁止用实例名" in guidance
+    assert "负数" in guidance
     assert "不要输出 Markdown 表" in guidance
     assert "禁止降低 lines" in guidance
     assert "execute" not in guidance

@@ -15,6 +15,7 @@ from django.utils import timezone
 from apps.core.logger import opspilot_logger as logger
 from apps.core.logger import safe_exception_call_chain, safe_exception_info
 from apps.opspilot.models import BuildRecord, Material, WikiKnowledgeBase
+from apps.opspilot.utils.user_message import BUILD_CONFLICT_WAIT
 
 QUEUE_ITEM_TRIGGER = "material_queue_item"
 RUNNER_TRIGGER = "material_queue"
@@ -28,12 +29,13 @@ _RUNNER_STALE_SECONDS = int(os.environ.get("WIKI_MATERIAL_BUILD_RUNNER_STALE_SEC
 
 
 class MaterialBuildQueueError(Exception):
-    def __init__(self, code: str, message: str, *, status_code: int = 400, details=None):
+    def __init__(self, code: str, message: str, *, status_code: int = 400, details=None, conflict_variant: str | None = None):
         super().__init__(message)
         self.code = code
         self.message = message
         self.status_code = status_code
         self.details = details or {}
+        self.conflict_variant = conflict_variant
 
 
 def _log_runner_dispatch_failure(kb_id: int, lease_id: int, exc: BaseException) -> None:
@@ -206,6 +208,7 @@ def enqueue_material_builds(*, knowledge_base_id: int, material_ids, operator: s
                 "knowledge_base_build_in_progress",
                 "知识库存在运行中的构建任务，请等待完成后再操作",
                 status_code=409,
+                conflict_variant=BUILD_CONFLICT_WAIT,
             )
         materials = {m.pk: m for m in Material.objects.select_for_update().filter(knowledge_base_id=knowledge_base_id, id__in=ids).order_by("id")}
         for mid in ids:
@@ -668,6 +671,7 @@ def resume_kb_material_builds(kb_id: int, *, operator: str = "") -> dict:
             "knowledge_base_build_in_progress",
             "知识库存在运行中的构建任务，请等待完成后再操作",
             status_code=409,
+            conflict_variant=BUILD_CONFLICT_WAIT,
         )
     requeued = requeue_interrupted_materials(kb_id, operator=operator)
     released = _force_release_runner_lease(kb_id)

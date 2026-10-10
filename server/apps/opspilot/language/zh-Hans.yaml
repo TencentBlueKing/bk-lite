@@ -339,10 +339,10 @@ tools:
   attachment_file:
     name: 工作流附件文件
     description: |
-      为工作流执行生成 Markdown、PDF 或 Word 附件文件，并返回可下载链接。
+      生成 Markdown、PDF、Word、Excel 或 CSV 附件。仅当用户明确要求生成文件时使用。
     tools:
       generate_attachment_file:
-        description: 生成工作流附件文件，保存到 MinIO 后端存储，并返回下载链接。
+        description: 生成 md、pdf、docx、xlsx 或 csv 附件并返回下载链接。xlsx 和 csv 需要带表头的逗号分隔数据。
   kubernetes:
     name: Kubernetes工具
     description: |

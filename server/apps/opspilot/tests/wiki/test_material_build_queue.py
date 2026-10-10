@@ -80,6 +80,7 @@ def test_enqueue_rejects_when_rebuild_running(monkeypatch, wiki_factory):
         queue.enqueue_material_builds(knowledge_base_id=kb.pk, material_ids=[material.pk], operator="u1")
 
     assert exc.value.code == "knowledge_base_build_in_progress"
+    assert exc.value.conflict_variant == "wait"
     assert exc.value.status_code == 409
     material.refresh_from_db()
     assert material.status == "pending"
@@ -955,6 +956,7 @@ def test_resume_rejects_when_rebuild_running(monkeypatch, wiki_factory):
         queue.resume_kb_material_builds(kb.pk, operator="u1")
 
     assert exc.value.code == "knowledge_base_build_in_progress"
+    assert exc.value.conflict_variant == "wait"
     assert exc.value.status_code == 409
     material.refresh_from_db()
     running.refresh_from_db()

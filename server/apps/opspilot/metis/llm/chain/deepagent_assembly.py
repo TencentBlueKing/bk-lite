@@ -8,12 +8,16 @@ from pathlib import Path
 
 from langchain_core.messages import AIMessage, ToolMessage
 
-from apps.opspilot.metis.llm.agent.tool_execution_planner import is_pod_restart_reason_query
+from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+    GENERATE_ATTACHMENT_FILE_TOOL_NAME,
+    is_pod_restart_reason_query,
+    looks_like_attachment_file_task,
+)
 from apps.opspilot.metis.llm.chain.entity import HIDE_PLANNED_STEP_TEXT_KEY
 from apps.opspilot.metis.llm.common.tool_failure import is_tool_result_failure
 
-# HITL/选择卡会进工具目录，但不算业务工具：无业务工具的寒暄仍走轻量直答。
-_LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES = frozenset({"request_user_choice"})
+# HITL/选择卡和常驻附件工具会进目录，但不算业务工具：无业务工具的寒暄仍走轻量直答。
+_LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES = frozenset({"request_user_choice", "generate_attachment_file"})
 
 # 步间正文上限。结构化关键字段单独保留，避免被正文或 400 字切片切掉。
 _STEP_SUMMARY_MAX_CHARS = 1200
@@ -63,9 +67,26 @@ class DeepAgentAssemblyMixin:
         return names
 
     @staticmethod
+    def _business_tool_names(tools) -> list[str]:
+        """去掉选择卡和常驻附件后的业务工具名。空计划直答只列举这些。"""
+        names = []
+        for tool in tools or []:
+            name = str(getattr(tool, "name", "") or "")
+            if name and name not in _LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES:
+                names.append(name)
+        return names
+
+    @staticmethod
     def _catalog_has_business_tools(tools) -> bool:
-        """目录里是否有会打断轻量直答的业务工具。HITL/选择卡不算。"""
-        return any((name := getattr(tool, "name", None)) and name not in _LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES for tool in (tools or []))
+        """目录里是否有会打断轻量直答的业务工具。HITL/选择卡和常驻附件不算。"""
+        return bool(DeepAgentAssemblyMixin._business_tool_names(tools))
+
+    @staticmethod
+    def _attachment_request_needs_planner(tools, user_message: str) -> bool:
+        """常驻附件不算业务工具，但用户本轮要文件时必须进入规划，不能轻量直答。"""
+        if not looks_like_attachment_file_task(user_message):
+            return False
+        return any(getattr(tool, "name", "") == GENERATE_ATTACHMENT_FILE_TOOL_NAME for tool in (tools or []))
 
     @staticmethod
     def _should_use_lightweight_direct_reply(tools, skill_sources) -> bool:
@@ -582,7 +603,8 @@ class DeepAgentAssemblyMixin:
             "禁止只拿告警中心空结果下「无告警」结论，也不要为此先问对象类型。"
             "monitor_query_metric_data 的 metric 必须来自本步 monitor_list_object_metrics 返回的 name；"
             "用户问 CPU/内存/磁盘时先 list_object_metrics(keyword=用户词) 筛选再查，禁止猜测 cpu.util，列表非空不要让用户手填指标名。"
-            "monitor_query_metric_data 的 instance_ids 必须用 list_object_instances 返回的 instance_id，禁止用 name 或 IP 代替。"
+            "monitor_query_metric_data 的 instance_ids 必须原样复制 list_object_instances 返回记录的 instance_id 字段，"
+            "禁止用 name、IP、id、cmdb_id，禁止用 CMDB 的 inst_id、inst_uuid、_id，禁止传负数。"
             "monitor_query_metric_data 返回空矩阵/无时序是有效结论，禁止改 instance_ids、IP、dimensions、时间窗或 metric 重试。"
             "问「最近 N 分钟哪些主机使用率高/Top N」时用 monitor_get_host_resource_top_by_time，"
             "窗口传 lookback_minutes，返回自带 rank；返回的 host_count/台数即全量台数，"

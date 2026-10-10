@@ -1,13 +1,14 @@
 import pytest
 
-from apps.workflow_orchestration.models import Workflow, WorkflowVersion
+from apps.workflow_orchestration.models import Workflow, WorkflowExecution, WorkflowVersion
+from apps.workflow_orchestration.services.conductor import ConductorUnavailable, ExecutionStartUnknown
 from apps.workflow_orchestration.services.data_contracts import (
     redact_sensitive_inputs,
     resolve_secret_envelopes,
     validate_and_compile_workflow_data_contract,
 )
 from apps.workflow_orchestration.services.definitions import DefinitionValidationError, validate_workflow_inputs
-from apps.workflow_orchestration.services.runtime import start_execution
+from apps.workflow_orchestration.services.runtime import reconcile_unknown_execution, start_execution
 
 CATALOG = {
     "source": {
@@ -289,3 +290,146 @@ def test_runtime_persists_redacted_sensitive_input_and_sends_encrypted_envelope_
     assert conductor_token != "secret-value"
     assert resolve_secret_envelopes(conductor_token) == "secret-value"
     assert execution.input["__system"]["workflow_id"] == str(workflow.pk)
+
+
+@pytest.mark.django_db
+def test_runtime_seals_entry_only_sensitive_field_absent_from_shared_contract(mocker):
+    metadata = {
+        "data_contract": {
+            "version": 1,
+            "systemContextVersion": 1,
+            "inputs": [{"key": "service", "sensitive": False}],
+            "constants": [],
+            "outputs": [],
+        },
+        "trigger_nodes": [
+            {
+                "id": "trigger_form",
+                "trigger_type": "FORM",
+                "input_schema": {"type": "object", "properties": {"service": {"type": "string"}}},
+            },
+            {
+                "id": "trigger_webhook",
+                "trigger_type": "WEBHOOK",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "service": {"type": "string"},
+                        "webhook_secret": {"type": "string", "sensitive": True},
+                    },
+                },
+            },
+        ],
+    }
+    workflow = Workflow.objects.create(
+        name="入口独有敏感字段",
+        team=[7],
+        definition={"tasks": []},
+        current_version=1,
+        status=Workflow.Status.PUBLISHED,
+        enabled=True,
+    )
+    WorkflowVersion.objects.create(workflow=workflow, version=1, definition={"tasks": []}, canvas_metadata=metadata)
+    conductor = mocker.Mock()
+    conductor.start_workflow.return_value = "conductor-entry-secret"
+
+    execution = start_execution(
+        workflow,
+        inputs={"service": "billing", "webhook_secret": "entry-secret"},
+        started_by="alice",
+        domain="example.com",
+        client=conductor,
+        entry_input_schema=metadata["trigger_nodes"][1]["input_schema"],
+    )
+
+    assert execution.input["webhook_secret"] == "***"
+    assert "entry-secret" not in str(execution.input)
+    sealed = conductor.start_workflow.call_args.kwargs["inputs"]["webhook_secret"]
+    assert resolve_secret_envelopes(sealed) == "entry-secret"
+
+
+@pytest.mark.django_db
+def test_start_marks_unknown_instead_of_failed_when_conductor_response_is_lost(mocker):
+    metadata = {"data_contract": contract()}
+    workflow = Workflow.objects.create(
+        name="启动回执未知",
+        team=[7],
+        definition={"tasks": []},
+        current_version=1,
+        status=Workflow.Status.PUBLISHED,
+        enabled=True,
+    )
+    WorkflowVersion.objects.create(workflow=workflow, version=1, definition={"tasks": []}, canvas_metadata=metadata)
+    conductor = mocker.Mock()
+    conductor.start_workflow.side_effect = ConductorUnavailable("timeout after accept")
+
+    with pytest.raises(ExecutionStartUnknown):
+        start_execution(
+            workflow,
+            inputs={"service": "billing", "api_token": "secret-value"},
+            started_by="alice",
+            domain="example.com",
+            client=conductor,
+        )
+
+    execution = WorkflowExecution.objects.get(workflow=workflow)
+    assert execution.status == WorkflowExecution.Status.UNKNOWN
+    assert execution.conductor_workflow_id is None
+    assert execution.failed_stage == "conductor_start"
+    assert execution.finished_at is None
+
+
+@pytest.mark.django_db
+def test_reconcile_unknown_execution_attaches_recovered_engine_id(mocker):
+    workflow = Workflow.objects.create(
+        name="对账恢复",
+        team=[7],
+        definition={"tasks": []},
+        current_version=1,
+        status=Workflow.Status.PUBLISHED,
+        enabled=True,
+    )
+    execution = WorkflowExecution.objects.create(
+        workflow=workflow,
+        workflow_version=1,
+        team=[7],
+        status=WorkflowExecution.Status.UNKNOWN,
+        failed_stage="conductor_start",
+    )
+    conductor = mocker.Mock()
+    conductor.find_workflow_ids_by_correlation_id.return_value = ["recovered-engine-1"]
+
+    recovered = reconcile_unknown_execution(execution, client=conductor)
+
+    assert recovered.status == WorkflowExecution.Status.RUNNING
+    assert recovered.conductor_workflow_id == "recovered-engine-1"
+    conductor.find_workflow_ids_by_correlation_id.assert_called_once_with(str(execution.id))
+
+
+@pytest.mark.django_db
+def test_runtime_does_not_persist_execution_when_sensitive_seal_fails(mocker):
+    metadata = {"data_contract": contract()}
+    workflow = Workflow.objects.create(
+        name="加密失败不落库",
+        team=[7],
+        definition={"tasks": []},
+        current_version=1,
+        status=Workflow.Status.PUBLISHED,
+        enabled=True,
+    )
+    WorkflowVersion.objects.create(workflow=workflow, version=1, definition={"tasks": []}, canvas_metadata=metadata)
+    mocker.patch(
+        "apps.workflow_orchestration.services.data_contracts.EncryptMixin.get_cipher_suite",
+        side_effect=RuntimeError("cipher unavailable"),
+    )
+
+    with pytest.raises(RuntimeError, match="cipher unavailable"):
+        start_execution(
+            workflow,
+            inputs={"service": "billing", "api_token": "secret-value"},
+            started_by="alice",
+            domain="example.com",
+            client=mocker.Mock(),
+        )
+
+    assert WorkflowExecution.objects.filter(workflow=workflow).count() == 0

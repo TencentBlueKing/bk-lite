@@ -1166,6 +1166,30 @@ class InstanceConfigService:
                     collect_type,
                 )
                 logger.info("采集配置创建成功")
+                from apps.monitor.services.policy_group import PolicyGroupService
+
+                created_ids = set(created_instance_ids)
+                choice = data.get("policy_group")
+                explicit_choice = isinstance(choice, dict) and "join" in choice
+                for raw in new_instances:
+                    instance_id = raw.get("instance_id")
+                    if instance_id not in created_ids:
+                        continue
+                    instance = MonitorInstance.objects.filter(id=instance_id).first()
+                    if instance is None:
+                        continue
+                    if explicit_choice:
+                        PolicyGroupService.apply_access_choice(
+                            instance,
+                            join=bool(choice.get("join")),
+                            group_id=choice.get("group_id"),
+                        )
+                    else:
+                        PolicyGroupService.consider_auto_join(instance, raw.get("group_ids") or [])
+                for raw in existing_instances:
+                    instance = MonitorInstance.objects.filter(id=raw.get("instance_id")).first()
+                    if instance is not None:
+                        PolicyGroupService.refresh_collect_coverage(instance)
                 processed_instance_ids = [
                     str(instance["instance_id"]) for instance in new_instances + existing_instances if instance.get("instance_id") not in (None, "")
                 ]

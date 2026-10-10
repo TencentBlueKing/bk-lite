@@ -6,3 +6,4 @@ class HandleConfig(AppConfig):
 
     def ready(self):
         import apps.system_mgmt.nats  # noqa
+        import apps.system_mgmt.openapi_api  # noqa

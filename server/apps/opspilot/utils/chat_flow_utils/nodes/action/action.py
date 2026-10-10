@@ -210,7 +210,7 @@ class HttpActionNode(BaseNodeExecutor):
 class NotifyNode(BaseNodeExecutor):
     """通知节点"""
 
-    SUPPORTED_ATTACHMENT_EXTENSIONS = {"md", "pdf", "docx"}
+    SUPPORTED_ATTACHMENT_EXTENSIONS = {"md", "pdf", "docx", "xlsx", "csv"}
 
     @staticmethod
     def _build_email_attachment_filename(original_filename: str, index: int) -> str:

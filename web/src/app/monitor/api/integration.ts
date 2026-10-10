@@ -20,6 +20,91 @@ const useIntegrationApi = () => {
   const { get, post, del, put } = useApiClient();
   return useMemo(
     () => ({
+      getPolicyGroups: async (
+        params: {
+          monitor_object_id?: React.Key;
+          create_default?: boolean;
+          name?: string;
+          page?: number;
+          page_size?: number;
+        } = {}
+      ) => {
+        const { create_default, ...rest } = params;
+        return await get(`/monitor/api/policy_group/`, {
+          params: {
+            ...rest,
+            ...(create_default === false ? { create_default: 'false' } : {}),
+          },
+        });
+      },
+      getPolicyGroupMembers: async (groupId: number | string) => {
+        return await get(`/monitor/api/policy_group/members/`, {
+          params: { group_id: groupId },
+        });
+      },
+      getPolicyGroupMembership: async (instanceId: string) => {
+        return await get(`/monitor/api/policy_group/membership/`, {
+          params: { instance_id: instanceId },
+        });
+      },
+      joinPolicyGroup: async (groupId: number, instanceIds: string[]) => {
+        return await post(`/monitor/api/policy_group/join/`, {
+          group_id: groupId,
+          instance_ids: instanceIds,
+        });
+      },
+      leavePolicyGroup: async (instanceIds: string[]) => {
+        return await post(`/monitor/api/policy_group/leave/`, {
+          instance_ids: instanceIds,
+        });
+      },
+      updatePolicyGroupRule: async (payload: {
+        group_id: number;
+        rule_id: number;
+        threshold?: unknown;
+      }) => {
+        return await post(`/monitor/api/policy_group/update_rule/`, payload);
+      },
+      updatePolicyGroupNotice: async (payload: {
+        group_id: number;
+        notice: boolean;
+        notice_type?: string;
+        notice_type_ids?: number[];
+        notice_users?: Array<string | number>;
+      }) => {
+        return await post(`/monitor/api/policy_group/update_notice/`, payload);
+      },
+      updatePolicyGroupEnable: async (groupId: number, enable: boolean) => {
+        return await post(`/monitor/api/policy_group/update_enable/`, {
+          group_id: groupId,
+          enable,
+        });
+      },
+      copyPolicyGroup: async (groupId: number, name: string) => {
+        return await post(`/monitor/api/policy_group/copy_group/`, {
+          group_id: groupId,
+          name,
+        });
+      },
+      setDefaultPolicyGroup: async (groupId: number) => {
+        return await post(`/monitor/api/policy_group/set_default/`, {
+          group_id: groupId,
+        });
+      },
+      deletePolicyGroup: async (groupId: number) => {
+        return await post(`/monitor/api/policy_group/delete_group/`, {
+          group_id: groupId,
+        });
+      },
+      createPolicyGroup: async (payload: { name: string; template_ids: number[] }) => {
+        return await post(`/monitor/api/policy_group/create_from_templates/`, payload);
+      },
+      createStandalonePolicy: async (instanceId: string, templateId: number) => {
+        return await post(`/monitor/api/policy_group/create_standalone/`, {
+          instance_id: instanceId,
+          template_id: templateId,
+        });
+      },
       getInstanceGroupRule: async (
         params: {
           monitor_object_id?: React.Key;

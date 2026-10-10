@@ -328,17 +328,14 @@ def test_builtin_alert_screen_yaml_uses_page_configurable_nodes_only():
         "theme": "screen-dark",
         "width": 3840,
         "height": 2160,
-        "background": {"key": "tech-grid", "type": "builtIn"},
+        "adapter": "fill",
+        "background": {"key": "dark-glow", "type": "preset"},
     }
     assert screen["view_sets"]["decorations"] == {"title": "告警运营大屏", "showClock": False, "showTitle": False}
     assert "edges" not in screen["view_sets"]
-    assert len(nodes) == 17
+    assert len(nodes) == 49
     assert len(widgets) == 15
-    assert nodes[0]["kind"] == "titleFrame"
-    assert nodes[0]["preset"] == "hero-5"
-    assert nodes[0]["textStyle"] == {"fontSize": 72}
-    assert nodes[1]["kind"] == "clock"
-    assert nodes[1]["textStyle"] == {"color": "canvas", "fontSize": 60, "fontWeight": 600}
+    assert all(node["valueConfig"]["appearance"]["frame"] == "bare" for node in widgets)
     assert all(node["type"] == "widget" for node in widgets)
     assert all("valueConfig" in node for node in widgets)
     assert _count_nested_key(widgets, "config") == 0
@@ -353,6 +350,11 @@ def test_builtin_alert_screen_yaml_uses_page_configurable_nodes_only():
     assert "按渠道通知成功率::alert/get_notification_channel_stats" in datasource_refs
 
     node_by_id = {node["id"]: node for node in nodes}
+    assert node_by_id["legacy-title-frame"]["kind"] == "titleFrame"
+    assert node_by_id["legacy-title-frame"]["preset"] == "hero-5"
+    assert node_by_id["legacy-title-frame"]["textStyle"] == {"fontSize": 72}
+    assert node_by_id["legacy-clock"]["kind"] == "clock"
+    assert node_by_id["legacy-clock"]["textStyle"] == {"color": "canvas", "fontSize": 60, "fontWeight": 600}
     kpi_ids = [
         "alert-kpi-created",
         "alert-kpi-closed",
@@ -1051,7 +1053,9 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
     assert screen.view_sets["viewport"]["theme"] == "screen-dark"
     assert screen.view_sets["decorations"] == {"title": "告警运营大屏", "showClock": False, "showTitle": False}
     assert "edges" not in screen.view_sets
-    assert len(nodes) == 17
+    assert len(nodes) == 49
+    assert screen.view_sets["viewport"]["adapter"] == "fill"
+    assert screen.view_sets["viewport"]["background"] == {"key": "dark-glow", "type": "preset"}
     widgets = [node for node in nodes if node.get("type") == "widget"]
     assert len(widgets) == 15
     assert all(node.get("type") == "widget" for node in widgets)
@@ -1083,7 +1087,16 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
                 "end": "2026-08-04T00:00:00.000Z",
                 "selectValue": 10080,
             },
-        }
+        },
+        {
+            "id": "organization__string",
+            "key": "organization",
+            "name": "组织",
+            "type": "string",
+            "order": 1,
+            "enabled": True,
+            "defaultValue": "",
+        },
     ]
     period_node_ids = {
         "alert-level-trend",

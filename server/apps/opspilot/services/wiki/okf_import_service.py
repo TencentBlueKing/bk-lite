@@ -13,7 +13,7 @@ import yaml
 
 from apps.opspilot.services.wiki.markdown_import_service import _title_from_filename, split_front_matter_block
 from apps.opspilot.services.wiki.purpose_schema_service import is_frozen_root_name
-from apps.opspilot.services.wiki.title_service import title_identity_key, validate_display_title
+from apps.opspilot.services.wiki.title_service import InvalidWikiTitle, title_identity_key, validate_display_title
 
 OKF_IMPORT_FORMAT = "okf"
 RESERVED_OKF_FILENAMES = frozenset({"index.md", "log.md"})
@@ -21,9 +21,7 @@ WRAPPER_DIRECTORY_NAMES = frozenset({"assets", "__macosx", ".git"})
 PEELABLE_WRAPPER_DIRECTORIES = frozenset({"wiki", "llm_wiki"})
 MARKDOWN_SUFFIXES = {".md", ".markdown"}
 CONSUMED_FRONTMATTER_KEYS = frozenset({"type", "title", "tags"})
-_LINK_RE = re.compile(
-    r"(?<!!)\[([^\]]+)\]\((?:<([^>\n]*)>|([^)\s]+))(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\)"
-)
+_LINK_RE = re.compile(r"(?<!!)\[([^\]]+)\]\((?:<([^>\n]*)>|([^)\s]+))(?:\s+(?:\"[^\"]*\"|'[^']*'|\([^)]*\)))?\)")
 _SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*:")
 _FENCE_RE = re.compile(r"^(`{3,}|~{3,})")
 _INLINE_IMAGE_RE = re.compile(r"!\[([^\]]*)\]\(([^)\n]+)\)")
@@ -667,7 +665,15 @@ def plan_okf_images(documents, *, knowledge_base_id, read_member):
     return (
         rewritten,
         stats,
-        [{"locator": item["locator"], "relative": item["relative"], "content_type": item["content_type"]} for item in unique],
+        [
+            {
+                "locator": item["locator"],
+                "relative": item["relative"],
+                "content_type": item["content_type"],
+                "bytes": item["bytes"],
+            }
+            for item in unique
+        ],
         missing,
     )
 
@@ -698,12 +704,26 @@ def _unique_tags(values):
 def prepare_okf_documents(documents, *, page_types, okf_version="", canonical_title_fn=None):
     """Apply type mapping, title disambiguation, link rewrite, and description inject."""
     normalized = []
+    rejected = []
     for document in documents:
         title = document["title"]
-        if canonical_title_fn is not None:
-            title = canonical_title_fn(title)
-        title = validate_display_title(title)
+        try:
+            if canonical_title_fn is not None:
+                title = canonical_title_fn(title)
+            title = validate_display_title(title)
+        except InvalidWikiTitle:
+            rejected.append({"path": document["archive_path"], "reason": "title_invalid"})
+            continue
         normalized.append({**document, "title": title})
+    if not normalized:
+        stats = {
+            "okf_version": okf_version or "",
+            "type_mapping": [],
+            "links": {"rewritten": 0, "unresolved": 0},
+            "renamed_count": 0,
+            "rejected": rejected,
+        }
+        return [], stats
 
     disambiguated = disambiguate_okf_titles([{"archive_path": document["archive_path"], "title": document["title"]} for document in normalized])
     by_path = {item["archive_path"]: item for item in disambiguated}
@@ -774,6 +794,7 @@ def prepare_okf_documents(documents, *, page_types, okf_version="", canonical_ti
             "unresolved": sum(document["okf_link_stats"]["unresolved"] for document in prepared),
         },
         "renamed_count": sum(1 for document in prepared if document.get("renamed_from")),
+        "rejected": rejected,
     }
     return prepared, stats
 

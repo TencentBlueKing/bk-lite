@@ -686,7 +686,7 @@ def _add_root_directories(knowledge_base, names):
 def test_okf_import_places_pages_in_matching_structure_directories(wiki_factory):
     from apps.opspilot.models import KnowledgePage, WikiDirectory
     from apps.opspilot.services.wiki.markdown_import_governance_service import execute_markdown_import, preflight_markdown_import
-    from apps.opspilot.services.wiki.structure_service import UNCLASSIFIED_DIRECTORY_KEY, bootstrap_knowledge_base
+    from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
 
     knowledge_base = wiki_factory.knowledge_base()
     bootstrap_knowledge_base(knowledge_base, operator="admin")
@@ -1101,6 +1101,35 @@ def test_okf_preflight_rejects_missing_and_fake_images(wiki_factory, monkeypatch
     assert preflight["preview"]["okf"]["images"]["count"] == 0
     inspected = inspect_markdown_archive(unused, "okf.zip", import_format="okf")
     assert inspected.okf_image_uploads == ()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_okf_preflight_skips_broken_pages_and_keeps_the_rest(wiki_factory, monkeypatch):
+    from apps.opspilot.services.wiki.markdown_import_governance_service import preflight_markdown_import
+    from apps.opspilot.services.wiki.structure_service import bootstrap_knowledge_base
+
+    _patch_page_media(monkeypatch)
+    knowledge_base = wiki_factory.knowledge_base()
+    bootstrap_knowledge_base(knowledge_base, operator="admin")
+    knowledge_base.refresh_from_db()
+    archive = _okf_zip(
+        **{
+            "guides/good.md": _okf_page("Guide Good", "A complete page."),
+            "guides/broken.md": _okf_page("Guide Broken", "![a](../assets/gone.png)"),
+            "guides/untitled.md": "\n".join(["---", "type: concept", "title: " + ("很长" * 200), "---", "", "body", ""]),
+        }
+    )
+    preflight = preflight_markdown_import(
+        knowledge_base,
+        archive,
+        filename="okf.zip",
+        actor="admin",
+        options={"import_format": "okf", "create_directories_from_folders": False},
+    )
+    assert [page["archive_path"] for page in preflight["preview"]["pages"]] == ["guides/good.md"]
+    reasons = {item["path"]: item["reason"] for item in preflight["preview"]["okf"]["skipped"]}
+    assert reasons["guides/broken.md"] == "images_missing"
+    assert reasons["guides/untitled.md"] == "title_invalid"
 
 
 @pytest.mark.django_db(transaction=True)

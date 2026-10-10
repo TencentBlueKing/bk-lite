@@ -15,10 +15,10 @@ VERSION_FORMAT_PATTERN = re.compile(r"^\d+\.\d+\.\d+(\.\d+)?(-[\w.]+)?$")
 
 
 @shared_task
-def discover_node_versions():
+def discover_node_versions(node_ids=None):
     """
-    定时任务：发现所有节点的控制器版本信息
-    通过执行配置的版本命令获取版本信息，并计算升级状态
+    定时任务：发现节点的控制器版本信息。
+    未指定 node_ids 时扫描全部节点；安装结束只传入这一批节点。
     """
     logger.info("开始执行节点控制器版本发现任务")
 
@@ -33,7 +33,12 @@ def discover_node_versions():
     success_count = 0
     failed_count = 0
 
-    for node in Node.objects.iterator(chunk_size=200):
+    if node_ids is None:
+        nodes = Node.objects.iterator(chunk_size=200)
+    else:
+        nodes = Node.objects.filter(id__in=list(node_ids)).iterator(chunk_size=200)
+
+    for node in nodes:
         try:
             _discover_controller_version(node, latest_versions_map, controllers_map, all_controllers)
             success_count += 1

@@ -94,3 +94,23 @@ class JobPlatformExecutor:
                 return detail["data"]
             self.sleep(1)
         raise JobPlatformError("作业平台巡检任务等待超时")
+
+    def cancel(self, task_id: int, *, authorized_team_ids: list[int], actor: dict[str, Any]) -> dict[str, Any]:
+        username = str(actor.get("username") or "").strip()
+        if not username:
+            raise JobPlatformError("作业取消缺少可信执行人快照")
+        teams = [int(team) for team in authorized_team_ids]
+        if not teams:
+            raise JobPlatformError("作业取消缺少组织边界")
+        actor_context = {
+            "username": username,
+            "domain": str(actor.get("domain") or "domain.com"),
+            "authorized_team_ids": teams,
+        }
+        response = self.client.cancel_automation_execution({"task_id": int(task_id)}, actor_context) or {}
+        if not response.get("result"):
+            raise JobPlatformError(str(response.get("message") or "作业平台拒绝了取消请求"))
+        data = response.get("data") or {}
+        if not isinstance(data, dict):
+            raise JobPlatformError("作业平台取消响应非法")
+        return data

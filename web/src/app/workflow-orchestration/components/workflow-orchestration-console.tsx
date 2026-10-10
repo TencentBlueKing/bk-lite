@@ -29,6 +29,7 @@ import { defaultTriggerRuntimeInputs, WorkflowTriggerRuntimeForm } from './workf
 import { OPSPILOT_ATOM_KEYS, OpsPilotAtomForm } from './opspilot-atom-form';
 import { approvalDecisionReference, configureApprovalTask } from '../lib/approval-dsl';
 import { localizeAtom } from '../lib/atom-localization';
+import { BUILTIN_SAMPLE_TEMPLATE_URLS } from '../lib/sample-templates';
 import { buildWorkflowFlow, commonTriggerInputSchema, expandApprovalCanvasEdges, flattenTasks, projectApprovalCanvasEdges, workflowTriggerNodes, type WorkflowCanvasMetadata, type WorkflowReturnNode, type WorkflowTriggerNode } from '../lib/canvas-dsl';
 import { configureConditionTask, type ConditionConfiguration, type ConditionOperator } from '../lib/condition-dsl';
 import { layoutWorkflowCanvas } from '../lib/canvas-layout';
@@ -1374,7 +1375,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                     targets: <Button onClick={() => {
                       setJobTargetSelectorPurpose('params');
                       setJobTargetSelectorOpen(true);
-                    }}>{t('workflowOrchestration.editor.selectJobPlatformHosts', '选择作业平台主机')}</Button>,
+                    }}>{t('workflowOrchestration.launch.selectTarget', '选择主机')}</Button>,
                   }}
                   onChange={changeTaskInputs}
                 />
@@ -1490,8 +1491,8 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                   maxCount: 1,
                   sourceModes: ['upload'],
                   sampleFiles: [
-                    { name: 'Word', url: '/workflow-orchestration/templates/health-inspection-example.docx' },
-                    { name: 'Excel', url: '/workflow-orchestration/templates/health-inspection-example.xlsx' },
+                    { name: 'Word', url: BUILTIN_SAMPLE_TEMPLATE_URLS.docx },
+                    { name: 'Excel', url: BUILTIN_SAMPLE_TEMPLATE_URLS.xlsx },
                   ],
                 },
               }} />
@@ -1566,7 +1567,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                     </span>
                   </span>
                   <span className="shrink-0 text-sm text-[var(--color-primary)]">
-                    {t('workflowOrchestration.editor.selectJobPlatformHosts', '选择作业平台主机')}
+                    {t('workflowOrchestration.launch.selectTarget', '选择主机')}
                   </span>
                 </button>
               </Form.Item>

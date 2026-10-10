@@ -153,7 +153,7 @@ export function JobExecuteForm({
   const targetSchema = schema?.properties?.targets || {
     type: 'array',
     title: t('workflowOrchestration.editor.targetHosts', '目标主机'),
-    description: t('workflowOrchestration.editor.jobTargetsHint', '可从左侧拖入兼容字段或手动填写，也可从作业平台选择主机'),
+    description: t('workflowOrchestration.editor.jobTargetsHint', '可从左侧拖入兼容字段或手动填写，也可从节点管理或作业平台选择主机；两个来源不能混选'),
     items: { type: 'string' },
   };
   const targetTooltip = String(targetSchema.description || '') || undefined;
