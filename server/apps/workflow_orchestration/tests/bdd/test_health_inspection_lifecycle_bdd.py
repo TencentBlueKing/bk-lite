@@ -11,10 +11,11 @@ from openpyxl import load_workbook
 from pytest_bdd import given, scenarios, then, when
 
 from apps.workflow_orchestration.models import Workflow, WorkflowExecution, WorkflowInteraction
+from apps.workflow_orchestration.services.demo_templates import BUILTIN_TEMPLATE_DIR
 from apps.workflow_orchestration.services.reports import parse_report_template, render_report
 
 FEATURE = str(Path(__file__).parent / "health_inspection_lifecycle.feature")
-TEMPLATE_DIR = Path(__file__).resolve().parents[5] / "web/public/workflow-orchestration/templates"
+TEMPLATE_DIR = BUILTIN_TEMPLATE_DIR
 scenarios(FEATURE)
 
 pytestmark = [pytest.mark.bdd, pytest.mark.django_db]

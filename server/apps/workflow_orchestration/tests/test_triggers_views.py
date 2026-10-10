@@ -6,6 +6,7 @@ from django.utils import timezone
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.workflow_orchestration.models import TriggerInvocation, Workflow, WorkflowExecution, WorkflowTrigger, WorkflowVersion
+from apps.workflow_orchestration.services.conductor import ConductorUnavailable
 from apps.workflow_orchestration.services.schedules import bind_schedule_timezones
 from apps.workflow_orchestration.services.triggers import invoke_trigger, run_due_cron_triggers
 from apps.workflow_orchestration.views import WorkflowTriggerViewSet
@@ -436,6 +437,52 @@ def test_expired_idempotency_key_can_start_a_new_execution(trigger_admin, mocker
     assert created_again is True
     assert second.id != first.id
     assert conductor.start_workflow.call_count == 2
+
+
+@pytest.mark.django_db
+def test_invoke_trigger_keeps_idempotency_bound_when_start_result_is_unknown(trigger_admin, mocker):
+    workflow = _workflow()
+    trigger = WorkflowTrigger.objects.create(
+        workflow=workflow,
+        name="Webhook",
+        trigger_type=WorkflowTrigger.Type.WEBHOOK,
+        enabled=True,
+        team=[7],
+        idempotency_window_seconds=60,
+    )
+    conductor = mocker.Mock()
+    conductor.start_workflow.side_effect = ConductorUnavailable("lost response")
+    conductor.find_workflow_ids_by_correlation_id.return_value = ["recovered-1"]
+
+    with pytest.raises(ConductorUnavailable):
+        invoke_trigger(
+            trigger,
+            inputs={"message": "one"},
+            idempotency_key="unknown-key",
+            started_by="trigger-admin",
+            domain="example.com",
+            client=conductor,
+        )
+
+    invocation = TriggerInvocation.objects.get(trigger=trigger, idempotency_key="unknown-key")
+    assert invocation.execution_id is not None
+    first_execution = invocation.execution
+    assert first_execution.status == WorkflowExecution.Status.UNKNOWN
+
+    recovered, created_again = invoke_trigger(
+        trigger,
+        inputs={"message": "one"},
+        idempotency_key="unknown-key",
+        started_by="trigger-admin",
+        domain="example.com",
+        client=conductor,
+    )
+
+    assert created_again is False
+    assert recovered.id == first_execution.id
+    assert recovered.status == WorkflowExecution.Status.RUNNING
+    assert recovered.conductor_workflow_id == "recovered-1"
+    assert conductor.start_workflow.call_count == 1
 
 
 @pytest.mark.django_db(transaction=True)

@@ -388,6 +388,22 @@ def test_workflow_list_is_server_paginated_and_filtered(superuser):
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("fmt", ["docx", "xlsx"])
+def test_sample_templates_download_from_backend_assets(superuser, fmt):
+    from apps.workflow_orchestration.services.demo_templates import builtin_health_template_path
+
+    view = WorkflowViewSet.as_view({"get": "sample_templates"})
+    response = view(
+        _request(APIRequestFactory(), "get", f"/workflows/sample-templates/{fmt}/", superuser),
+        fmt=fmt,
+    )
+
+    assert response.status_code == 200
+    assert response["Content-Disposition"].endswith(f'filename="health-inspection-example.{fmt}"')
+    assert b"".join(response.streaming_content) == builtin_health_template_path(fmt).read_bytes()
+
+
+@pytest.mark.django_db
 def test_dashboard_returns_only_current_team_actionable_mvp_summary(superuser):
     workflow = Workflow.objects.create(
         name="生产流程",

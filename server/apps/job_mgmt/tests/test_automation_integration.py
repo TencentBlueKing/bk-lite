@@ -92,3 +92,39 @@ def test_automation_execution_queries_hide_cross_team_jobs():
 
     assert [item["status"] for item in statuses["data"]] == [ExecutionStatus.SUCCESS, "not_found"]
     assert detail == {"result": False, "message": "任务不存在或无权访问"}
+
+
+@pytest.mark.django_db
+def test_automation_cancel_requests_cancel_for_running_job(mocker):
+    mocker.patch.object(nats_api, "dispatch_celery_task", return_value=True)
+    running = JobExecution.objects.create(
+        name="running",
+        job_type=JobType.SCRIPT,
+        status=ExecutionStatus.RUNNING,
+        team=[7],
+        celery_task_id="celery-1",
+    )
+
+    response = nats_api.cancel_automation_execution_local({"task_id": running.id}, ACTOR)
+
+    assert response["result"] is True
+    assert response["data"]["task_id"] == running.id
+    assert response["data"]["status"] == ExecutionStatus.CANCELLING
+    running.refresh_from_db()
+    assert running.status == ExecutionStatus.CANCELLING
+
+
+@pytest.mark.django_db
+def test_automation_cancel_treats_terminal_as_idempotent_skip():
+    done = JobExecution.objects.create(
+        name="done",
+        job_type=JobType.SCRIPT,
+        status=ExecutionStatus.SUCCESS,
+        team=[7],
+    )
+
+    response = nats_api.cancel_automation_execution_local({"task_id": done.id}, ACTOR)
+
+    assert response["result"] is True
+    assert response["data"]["task_id"] == done.id
+    assert response["data"]["status"] == "skipped"

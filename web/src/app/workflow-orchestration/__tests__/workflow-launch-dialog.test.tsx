@@ -163,8 +163,8 @@ describe('流程启动目标选择', () => {
           report_template: { type: 'object' as const, title: '报告模板', 'x-widget': 'file-upload' as const, 'x-file-options': {
             accept: ['docx', 'xlsx'], maxSizeMiB: 5, maxCount: 1 as const, sourceModes: ['upload'],
             sampleFiles: [
-              { name: 'Word', url: '/workflow-orchestration/templates/health-inspection-example.docx' },
-              { name: 'Excel', url: '/workflow-orchestration/templates/health-inspection-example.xlsx' },
+              { name: 'Word', url: '/workflow_orchestration/api/workflows/sample-templates/docx/' },
+              { name: 'Excel', url: '/workflow_orchestration/api/workflows/sample-templates/xlsx/' },
             ],
           } },
         },
@@ -175,17 +175,29 @@ describe('流程启动目标选择', () => {
     };
     mocks.get.mockImplementation((url: string) => {
       if (url === '/launch-plan/') return Promise.resolve(healthPlan);
+      if (url.includes('sample-templates/')) return Promise.resolve(new Blob(['docx']));
       if (url.includes('source=node_mgmt')) return Promise.resolve({ source: 'node_mgmt', count: 1, items: [nodeTarget] });
       if (url.includes('source=job_mgmt')) return Promise.resolve({ source: 'job_mgmt', count: 1, items: [jobTarget] });
       return Promise.reject(new Error(`unexpected request: ${url}`));
     });
+    const previousCreateObjectURL = URL.createObjectURL;
+    const previousRevokeObjectURL = URL.revokeObjectURL;
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, writable: true, value: vi.fn(() => 'blob:sample') });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value: vi.fn() });
     render(<IntlProvider locale="zh-CN" messages={{}}><App><WorkflowLaunchDialog open title="执行流程" planUrl="/launch-plan/" submitUrl="/run/" onClose={vi.fn()} onStarted={vi.fn()} /></App></IntlProvider>);
 
     expect(await screen.findByRole('button', { name: /选择 Word \/ Excel 模板/ })).not.toBeNull();
     expect(screen.queryByText('请上传一份报告模板后再启动')).toBeNull();
-    expect(screen.getByRole('link', { name: 'Word' }).getAttribute('href')).toBe('/workflow-orchestration/templates/health-inspection-example.docx');
-    expect(screen.getByRole('link', { name: 'Excel' }).getAttribute('href')).toBe('/workflow-orchestration/templates/health-inspection-example.xlsx');
+    expect(screen.getByRole('button', { name: 'Word' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Excel' })).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Word' }));
+    await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
+      '/workflow_orchestration/api/workflows/sample-templates/docx/',
+      expect.objectContaining({ responseType: 'blob' }),
+    ));
     expect(screen.queryByText('CPU 使用率')).toBeNull();
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, writable: true, value: previousCreateObjectURL });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value: previousRevokeObjectURL });
   });
 
   it('主启动弹窗关闭时同步关闭目标选择器且不跨会话保留草稿', async () => {

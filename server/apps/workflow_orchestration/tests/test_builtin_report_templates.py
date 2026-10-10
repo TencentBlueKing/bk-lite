@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 from io import BytesIO
-from pathlib import Path
 
 import pytest
 from docx import Document
 from openpyxl import load_workbook
 
+from apps.workflow_orchestration.services.demo_templates import BUILTIN_TEMPLATE_DIR
 from apps.workflow_orchestration.services.reports import parse_report_template, render_report
 
-TEMPLATE_DIR = Path(__file__).resolve().parents[4] / "web/public/workflow-orchestration/templates"
+TEMPLATE_DIR = BUILTIN_TEMPLATE_DIR
 
 
 def _metric(

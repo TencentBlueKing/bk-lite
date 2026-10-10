@@ -11,9 +11,26 @@ from apps.workflow_orchestration.models import Workflow, WorkflowExecution, Work
 from apps.workflow_orchestration.services.atom_registry import available_atom_catalog, ensure_platform_atom, task_definition_from_catalog_item
 from apps.workflow_orchestration.services.atoms import TASK_DEFINITIONS
 from apps.workflow_orchestration.services.capability_profiles import capability_resource_snapshot
-from apps.workflow_orchestration.services.conductor import ConductorClient, ConductorUnavailable
+from apps.workflow_orchestration.services.conductor import ConductorClient, ConductorUnavailable, ExecutionStartUnknown
 from apps.workflow_orchestration.services.data_contracts import redact_sensitive_inputs, seal_sensitive_inputs
 from apps.workflow_orchestration.services.definitions import prepare_definition_for_publish
+
+
+def reconcile_unknown_execution(execution: WorkflowExecution, *, client: ConductorClient | None = None) -> WorkflowExecution:
+    """Attach a recovered engine id to an UNKNOWN start, or leave it pending reconciliation."""
+
+    if execution.status != WorkflowExecution.Status.UNKNOWN or execution.conductor_workflow_id:
+        return execution
+    conductor = client or ConductorClient()
+    workflow_ids = conductor.find_workflow_ids_by_correlation_id(str(execution.id))
+    if len(workflow_ids) != 1:
+        return execution
+    execution.conductor_workflow_id = workflow_ids[0][:100]
+    execution.status = WorkflowExecution.Status.RUNNING
+    execution.error_message = ""
+    execution.failed_stage = ""
+    execution.save(update_fields=("conductor_workflow_id", "status", "error_message", "failed_stage", "updated_at"))
+    return execution
 
 
 def _system_context(
@@ -71,7 +88,8 @@ def _claim_execution(
     parent_execution: WorkflowExecution | None = None,
     launch_token_hash: str | None = None,
     target_snapshot: dict[str, Any] | None = None,
-) -> tuple[WorkflowExecution, WorkflowVersion, bool]:
+    entry_input_schema: dict[str, Any] | None = None,
+) -> tuple[WorkflowExecution, WorkflowVersion, bool, dict[str, Any]]:
     workflow = Workflow.all_objects.select_for_update().get(pk=workflow.pk)
     if workflow.deleted_at is not None:
         raise ValueError("流程已删除，不能创建新执行")
@@ -83,11 +101,14 @@ def _claim_execution(
     if not selected_version:
         raise ValueError("请先发布流程")
     version = WorkflowVersion.objects.get(workflow=workflow, version=selected_version)
+    # Seal/redact before the first durable write so crashes cannot leave plaintext secrets.
+    sealed_inputs = seal_sensitive_inputs(inputs, version.canvas_metadata, entry_schema=entry_input_schema)
+    redacted_inputs = redact_sensitive_inputs(sealed_inputs, version.canvas_metadata, entry_schema=entry_input_schema)
     defaults = {
         "workflow": workflow,
         "workflow_version": version.version,
         "team": workflow.team,
-        "input": copy.deepcopy(inputs),
+        "input": copy.deepcopy(redacted_inputs),
         "started_by": started_by,
         "domain": domain,
         "definition_snapshot": copy.deepcopy(version.definition),
@@ -104,10 +125,10 @@ def _claim_execution(
             defaults=defaults,
         )
         if not created:
-            return execution, version, False
+            return execution, version, False, sealed_inputs
     else:
         execution = WorkflowExecution.objects.create(**defaults)
-    return execution, version, True
+    return execution, version, True, sealed_inputs
 
 
 def start_execution(
@@ -124,8 +145,9 @@ def start_execution(
     parent_execution: WorkflowExecution | None = None,
     launch_token_hash: str | None = None,
     target_snapshot: dict[str, Any] | None = None,
+    entry_input_schema: dict[str, Any] | None = None,
 ) -> WorkflowExecution:
-    execution, version, created = _claim_execution(
+    execution, version, created, sealed_inputs = _claim_execution(
         workflow,
         inputs=inputs,
         started_by=started_by,
@@ -137,12 +159,13 @@ def start_execution(
         parent_execution=parent_execution,
         launch_token_hash=launch_token_hash,
         target_snapshot=target_snapshot,
+        entry_input_schema=entry_input_schema,
     )
     execution._launch_reused = not created
     if not created:
         return execution
     conductor_inputs = {
-        **seal_sensitive_inputs(inputs, version.canvas_metadata),
+        **sealed_inputs,
         "execution_id": str(execution.id),
         "team": workflow.team[0],
         "actor": {"username": started_by, "domain": domain},
@@ -155,7 +178,11 @@ def start_execution(
             started_by=started_by,
         ),
     }
-    execution.input = redact_sensitive_inputs(conductor_inputs, version.canvas_metadata)
+    execution.input = redact_sensitive_inputs(
+        conductor_inputs,
+        version.canvas_metadata,
+        entry_schema=entry_input_schema,
+    )
     conductor = client or ConductorClient()
     try:
         conductor_id = conductor.start_workflow(
@@ -165,14 +192,16 @@ def start_execution(
             correlation_id=str(execution.id),
         )
     except ConductorUnavailable as error:
-        execution.status = WorkflowExecution.Status.FAILED
+        # Response loss after engine accept is indistinguishable from reject; keep UNKNOWN for reconcile.
+        execution.status = WorkflowExecution.Status.UNKNOWN
         execution.error_message = str(error)[:500]
-        execution.finished_at = timezone.now()
-        execution.save(update_fields=("input", "status", "error_message", "finished_at", "updated_at"))
-        raise
+        execution.failed_stage = "conductor_start"
+        execution.save(update_fields=("input", "status", "error_message", "failed_stage", "updated_at"))
+        raise ExecutionStartUnknown(execution, str(error)) from error
     execution.conductor_workflow_id = conductor_id
     execution.status = WorkflowExecution.Status.RUNNING
-    execution.save(update_fields=("input", "conductor_workflow_id", "status", "updated_at"))
+    execution.failed_stage = ""
+    execution.save(update_fields=("input", "conductor_workflow_id", "status", "failed_stage", "updated_at"))
     return execution
 
 
@@ -222,11 +251,13 @@ def start_debug_execution(
     capability_profiles = capability_resource_snapshot(definition, catalog)
     conductor.register_task_definitions([*TASK_DEFINITIONS, *custom_task_definitions])
     conductor.register_workflow(definition)
+    sealed_inputs = seal_sensitive_inputs(inputs, canvas_metadata)
+    redacted_inputs = redact_sensitive_inputs(sealed_inputs, canvas_metadata)
     execution = WorkflowExecution.objects.create(
         workflow=workflow,
         workflow_version=0,
         team=workflow.team,
-        input=copy.deepcopy(inputs),
+        input=copy.deepcopy(redacted_inputs),
         started_by=started_by,
         domain=domain,
         definition_snapshot=copy.deepcopy(definition),
@@ -241,7 +272,7 @@ def start_debug_execution(
         trigger_id=trigger_id,
     )
     conductor_inputs = {
-        **seal_sensitive_inputs(inputs, canvas_metadata),
+        **sealed_inputs,
         "execution_id": str(execution.id),
         "team": workflow.team[0],
         "actor": {"username": started_by, "domain": domain},
