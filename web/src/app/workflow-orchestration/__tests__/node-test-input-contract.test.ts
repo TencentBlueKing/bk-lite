@@ -55,13 +55,13 @@ describe('作业节点测试输入契约', () => {
     });
   });
 
-  it('作业节点未配置目标时生成仅作业平台的测试选择器', () => {
+  it('作业节点未配置目标时生成可二选一的测试选择器', () => {
     const contract = buildNodeTestInputContract(task({ targets: [] }), jobSchema, triggerSchema);
     const [field] = Object.keys(contract.schema.properties || {});
 
     expect(field).toBe('__node_input__targets');
     expect(contract.nodeOverrides[field]).toBe('targets');
-    expect(contract.schema.properties?.[field]['x-target-binding']?.allowedSources).toEqual(['job_mgmt']);
+    expect(contract.schema.properties?.[field]['x-target-binding']?.allowedSources).toEqual(['node_mgmt', 'job_mgmt']);
 
     expect(materializeNodeTestInputs(contract, { targets: [] }, { [field]: ['manual:7'] }, {})).toEqual({
       workflowInputs: {},
@@ -76,7 +76,7 @@ describe('作业节点测试输入契约', () => {
 
     expect(field).toBe('__node_input__targets');
     expect(contract.nodeOverrides[field]).toBe('targets');
-    expect(contract.schema.properties?.[field]['x-target-binding']?.allowedSources).toEqual(['job_mgmt']);
+    expect(contract.schema.properties?.[field]['x-target-binding']?.allowedSources).toEqual(['node_mgmt', 'job_mgmt']);
     expect(materializeNodeTestInputs(contract, { targets: ['manual:8'] }, { [field]: ['manual:8', 'manual:9'] }, {})).toEqual({
       workflowInputs: {},
       nodeInputs: { targets: ['manual:8', 'manual:9'] },
