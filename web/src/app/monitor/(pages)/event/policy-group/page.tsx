@@ -966,18 +966,30 @@ const PolicyGroupPage: React.FC = () => {
           ) : null}
         </Spin>
       </Drawer>
-      <Modal
+      <Drawer
         title="新建策略组"
         open={createOpen}
-        confirmLoading={createSaving}
-        okText={t('common.confirm')}
-        cancelText={t('common.cancel')}
-        okButtonProps={{ disabled: !createName.trim() || selectedTemplateIds.length === 0 }}
-        onCancel={() => {
+        width={760}
+        closable={false}
+        onClose={() => {
           if (createSaving) return;
           setCreateOpen(false);
         }}
-        onOk={() => void submitCreate()}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button
+              type="primary"
+              loading={createSaving}
+              disabled={!createName.trim() || selectedTemplateIds.length === 0}
+              onClick={() => void submitCreate()}
+            >
+              确认
+            </Button>
+            <Button disabled={createSaving} onClick={() => setCreateOpen(false)}>
+              取消
+            </Button>
+          </div>
+        }
       >
         <div className="mb-3">
           <div className="mb-1">名称</div>
@@ -986,51 +998,49 @@ const PolicyGroupPage: React.FC = () => {
         <div>
           <div className="mb-1">策略模板</div>
           <Spin spinning={templateLoading}>
-            <div className="max-h-[360px] overflow-y-auto">
-              {templateGroups.length === 0 && !templateLoading ? (
-                <span className="text-[var(--color-text-3)]">当前对象没有策略模板</span>
-              ) : (
-                templateGroups.map((group) => {
-                  const ids = group.items.map((item) => item.id);
-                  const selectedCount = ids.filter((id) => selectedTemplateIds.includes(id)).length;
-                  return (
-                    <div key={group.name} className="mb-3">
-                      <Checkbox
-                        checked={selectedCount === ids.length && ids.length > 0}
-                        indeterminate={selectedCount > 0 && selectedCount < ids.length}
-                        onChange={(event) => {
-                          setSelectedTemplateIds((prev) =>
-                            event.target.checked
-                              ? Array.from(new Set([...prev, ...ids]))
-                              : prev.filter((id) => !ids.includes(id))
-                          );
-                        }}
-                      >
-                        {group.name}
-                      </Checkbox>
-                      <div className="mt-1 flex flex-col gap-1 pl-6">
-                        {group.items.map((item) => (
-                          <Checkbox
-                            key={item.id}
-                            checked={selectedTemplateIds.includes(item.id)}
-                            onChange={(event) => {
-                              setSelectedTemplateIds((prev) =>
-                                event.target.checked ? [...prev, item.id] : prev.filter((id) => id !== item.id)
-                              );
-                            }}
-                          >
-                            {item.name}
-                          </Checkbox>
-                        ))}
-                      </div>
+            {templateGroups.length === 0 && !templateLoading ? (
+              <span className="text-[var(--color-text-3)]">当前对象没有策略模板</span>
+            ) : (
+              templateGroups.map((group) => {
+                const ids = group.items.map((item) => item.id);
+                const selectedCount = ids.filter((id) => selectedTemplateIds.includes(id)).length;
+                return (
+                  <div key={group.name} className="mb-3">
+                    <Checkbox
+                      checked={selectedCount === ids.length && ids.length > 0}
+                      indeterminate={selectedCount > 0 && selectedCount < ids.length}
+                      onChange={(event) => {
+                        setSelectedTemplateIds((prev) =>
+                          event.target.checked
+                            ? Array.from(new Set([...prev, ...ids]))
+                            : prev.filter((id) => !ids.includes(id))
+                        );
+                      }}
+                    >
+                      {group.name}
+                    </Checkbox>
+                    <div className="mt-1 flex flex-col gap-1 pl-6">
+                      {group.items.map((item) => (
+                        <Checkbox
+                          key={item.id}
+                          checked={selectedTemplateIds.includes(item.id)}
+                          onChange={(event) => {
+                            setSelectedTemplateIds((prev) =>
+                              event.target.checked ? [...prev, item.id] : prev.filter((id) => id !== item.id)
+                            );
+                          }}
+                        >
+                          {item.name}
+                        </Checkbox>
+                      ))}
                     </div>
-                  );
-                })
-              )}
-            </div>
+                  </div>
+                );
+              })
+            )}
           </Spin>
         </div>
-      </Modal>
+      </Drawer>
       <Modal
         title="复制策略组"
         open={Boolean(copySource)}
