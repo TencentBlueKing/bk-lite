@@ -1546,8 +1546,70 @@ screens:
       id: border-alert-duration-top
       kind: decoration
       preset: border-22
-      zIndex: 62
+      zIndex: 49
       decorationType: panelFrame
+    - h: 524
+      w: 1434
+      x: 1103
+      y: 637
+      id: alert-duration-top
+      type: widget
+      title: 活跃告警持续时长 TOP10
+      zIndex: 48
+      chartType: topN
+      valueConfig:
+        name: 活动告警持续时长 TOP10
+        chartType: topN
+        appearance:
+          frame: bare
+        dataSource: 活跃告警 TOP N::get_active_alert_top
+        description: ''
+        tableConfig:
+          columns:
+          - key: alert_id
+            order: 0
+            title: 告警ID
+            width: 180
+            visible: true
+          - key: title
+            order: 1
+            title: 告警名称
+            width: 220
+            visible: true
+          - key: level
+            order: 2
+            title: 等级
+            width: 90
+            visible: true
+          - key: status
+            order: 3
+            title: 状态
+            width: 100
+            visible: true
+          - key: duration_seconds
+            order: 4
+            title: 持续秒数
+            width: 130
+            visible: true
+          - key: created_at
+            order: 5
+            title: 发生时间
+            width: 180
+            visible: true
+          - key: resource_name
+            order: 6
+            title: 资源名称
+            width: 180
+            visible: true
+        chartThemeMode: screen-dark
+        topNLabelField: title
+        topNValueField: duration_seconds
+        dataSourceParams:
+        - name: limit
+          type: number
+          value: 10
+          alias_name: 返回条数
+          filterType: params
     - h: 177
       w: 739
       x: 3065
@@ -1555,7 +1617,7 @@ screens:
       id: legacy-clock
       kind: clock
       format: YYYY-MM-DD HH:mm:ss
-      zIndex: 61
+      zIndex: 47
       textStyle:
         color: canvas
         fontSize: 60
@@ -1567,7 +1629,7 @@ screens:
       id: legacy-title-frame
       kind: titleFrame
       preset: hero-5
-      zIndex: 60
+      zIndex: 46
       content: 告警运营大屏
       textStyle:
         fontSize: 72
@@ -1577,7 +1639,7 @@ screens:
       y: 242
       id: label-2bdee93c-3a75-49a6-93b2-bd0d448967b3
       kind: text
-      zIndex: 59
+      zIndex: 45
       content: 新增事故数
       textStyle:
         align: left
@@ -1591,7 +1653,7 @@ screens:
       id: 2bdee93c-3a75-49a6-93b2-bd0d448967b3
       type: widget
       title: 新增事故数
-      zIndex: 58
+      zIndex: 44
       chartType: single
       valueConfig:
         name: 所选时段新增事故数
@@ -1625,7 +1687,7 @@ screens:
       y: 250
       id: label-f9156f59-ac47-48b9-b071-da3289f769af
       kind: text
-      zIndex: 57
+      zIndex: 43
       content: 告警关联事件数
       textStyle:
         align: left
@@ -1639,7 +1701,7 @@ screens:
       id: border-2bdee93c-3a75-49a6-93b2-bd0d448967b3
       kind: decoration
       preset: tech
-      zIndex: 56
+      zIndex: 42
       decorationType: panelFrame
     - h: 134
       w: 508
@@ -1648,7 +1710,7 @@ screens:
       id: f9156f59-ac47-48b9-b071-da3289f769af
       type: widget
       title: 告警关联事件数
-      zIndex: 55
+      zIndex: 41
       chartType: single
       valueConfig:
         name: 所选时段告警关联事件数
@@ -1683,7 +1745,7 @@ screens:
       id: label-081f2a79-debe-4825-9d4d-1aeb02d9702e
       kind: titleFrame
       preset: section-2
-      zIndex: 54
+      zIndex: 40
       content: 渠道通知成功率
       textStyle:
         align: left
@@ -1697,7 +1759,7 @@ screens:
       id: 081f2a79-debe-4825-9d4d-1aeb02d9702e
       type: widget
       title: 渠道通知成功率
-      zIndex: 53
+      zIndex: 39
       chartType: bar
       valueConfig:
         name: 通知渠道成功率
@@ -1721,7 +1783,7 @@ screens:
       id: border-f9156f59-ac47-48b9-b071-da3289f769af
       kind: decoration
       preset: tech
-      zIndex: 52
+      zIndex: 38
       decorationType: panelFrame
     - h: 100
       w: 957
@@ -1730,7 +1792,7 @@ screens:
       id: label-alert-access-trend
       kind: titleFrame
       preset: section-2
-      zIndex: 51
+      zIndex: 37
       content: 告警与关联事件趋势
       textStyle:
         align: left
@@ -1743,7 +1805,7 @@ screens:
       y: 234
       id: label-alert-active-pending
       kind: text
-      zIndex: 50
+      zIndex: 36
       content: 待响应
       textStyle:
         align: left
@@ -1757,7 +1819,7 @@ screens:
       id: label-alert-active-table
       kind: titleFrame
       preset: section-2
-      zIndex: 49
+      zIndex: 35
       content: 活跃告警信息
       textStyle:
         align: left
@@ -1770,7 +1832,7 @@ screens:
       y: 239
       id: label-alert-active-total
       kind: text
-      zIndex: 48
+      zIndex: 34
       content: 活跃告警总数
       textStyle:
         align: left
@@ -1784,7 +1846,7 @@ screens:
       id: label-alert-duration-top
       kind: titleFrame
       preset: section-2
-      zIndex: 47
+      zIndex: 33
       content: 活跃告警持续时长 TOP10
       textStyle:
         align: left
@@ -1797,7 +1859,7 @@ screens:
       y: 247
       id: label-alert-kpi-closed
       kind: text
-      zIndex: 46
+      zIndex: 32
       content: 今日已关闭
       textStyle:
         align: left
@@ -1810,7 +1872,7 @@ screens:
       y: 251
       id: label-alert-kpi-created
       kind: text
-      zIndex: 45
+      zIndex: 31
       content: 今日已产生
       textStyle:
         align: left
@@ -1823,7 +1885,7 @@ screens:
       y: 239
       id: label-alert-kpi-processing
       kind: text
-      zIndex: 44
+      zIndex: 30
       content: 处理中
       textStyle:
         align: left
@@ -1837,7 +1899,7 @@ screens:
       id: label-alert-level-distribution
       kind: titleFrame
       preset: section-2
-      zIndex: 43
+      zIndex: 29
       content: 活跃告警等级分布
       textStyle:
         align: left
@@ -1851,7 +1913,7 @@ screens:
       id: label-alert-level-trend
       kind: titleFrame
       preset: section-2
-      zIndex: 42
+      zIndex: 28
       content: 告警等级趋势
       textStyle:
         align: left
@@ -1865,7 +1927,7 @@ screens:
       id: label-alert-source-event-top
       kind: titleFrame
       preset: section-2
-      zIndex: 41
+      zIndex: 27
       content: 告警关联事件来源 TOP10
       textStyle:
         align: left
@@ -1879,7 +1941,7 @@ screens:
       id: label-alert-status-distribution
       kind: titleFrame
       preset: section-2
-      zIndex: 40
+      zIndex: 26
       content: 活跃告警状态分布
       textStyle:
         align: left
@@ -1893,7 +1955,7 @@ screens:
       id: panel-2bdee93c-3a75-49a6-93b2-bd0d448967b3
       kind: shape
       shape: rect
-      zIndex: 39
+      zIndex: 25
       shapeStyle:
         shadow: 0
         gradient: false
@@ -1912,7 +1974,7 @@ screens:
       id: alert-access-trend
       type: widget
       title: 告警与关联事件趋势
-      zIndex: 38
+      zIndex: 24
       chartType: line
       valueConfig:
         chartType: line
@@ -1935,7 +1997,7 @@ screens:
       id: alert-active-pending
       type: widget
       title: 待响应
-      zIndex: 37
+      zIndex: 23
       chartType: single
       valueConfig:
         unit: 条
@@ -1944,6 +2006,8 @@ screens:
           frame: bare
         dataSource: 告警快照统计::alert/get_alert_snapshot_statistics
         chartThemeMode: screen-dark
+        filterBindings:
+          organization__string: true
         selectedFields:
         - pending_count
     - h: 755
@@ -1953,7 +2017,7 @@ screens:
       id: alert-active-table
       type: widget
       title: 活跃告警信息
-      zIndex: 36
+      zIndex: 22
       chartType: table
       valueConfig:
         chartType: table
@@ -2011,7 +2075,7 @@ screens:
       id: alert-active-total
       type: widget
       title: 活跃告警总数
-      zIndex: 35
+      zIndex: 21
       chartType: single
       valueConfig:
         unit: 条
@@ -2020,70 +2084,10 @@ screens:
           frame: bare
         dataSource: 告警快照统计::alert/get_alert_snapshot_statistics
         chartThemeMode: screen-dark
+        filterBindings:
+          organization__string: true
         selectedFields:
         - active_count
-    - h: 544
-      w: 1434
-      x: 1103
-      y: 624
-      id: alert-duration-top
-      type: widget
-      title: 活跃告警持续时长 TOP10
-      zIndex: 34
-      chartType: topN
-      valueConfig:
-        name: 活动告警持续时长 TOP10
-        chartType: topN
-        appearance:
-          frame: bare
-        dataSource: 活跃告警 TOP N::get_active_alert_top
-        description: ''
-        tableConfig:
-          columns:
-          - key: alert_id
-            order: 0
-            title: 告警ID
-            width: 180
-            visible: true
-          - key: title
-            order: 1
-            title: 告警名称
-            width: 220
-            visible: true
-          - key: level
-            order: 2
-            title: 等级
-            width: 90
-            visible: true
-          - key: status
-            order: 3
-            title: 状态
-            width: 100
-            visible: true
-          - key: duration_seconds
-            order: 4
-            title: 持续秒数
-            width: 130
-            visible: true
-          - key: created_at
-            order: 5
-            title: 发生时间
-            width: 180
-            visible: true
-          - key: resource_name
-            order: 6
-            title: 资源名称
-            width: 180
-            visible: true
-        chartThemeMode: screen-dark
-        topNLabelField: title
-        topNValueField: duration_seconds
-        dataSourceParams:
-        - name: limit
-          type: number
-          value: 10
-          alias_name: 返回条数
-          filterType: params
     - h: 144
       w: 479
       x: 560
@@ -2091,7 +2095,7 @@ screens:
       id: alert-kpi-closed
       type: widget
       title: 今日已关闭
-      zIndex: 33
+      zIndex: 20
       chartType: single
       valueConfig:
         unit: 条
@@ -2109,7 +2113,7 @@ screens:
       id: alert-kpi-created
       type: widget
       title: 今日已产生
-      zIndex: 32
+      zIndex: 19
       chartType: single
       valueConfig:
         unit: 条
@@ -2127,7 +2131,7 @@ screens:
       id: alert-kpi-processing
       type: widget
       title: 处理中
-      zIndex: 31
+      zIndex: 18
       chartType: single
       valueConfig:
         unit: 条
@@ -2136,6 +2140,8 @@ screens:
           frame: bare
         dataSource: 告警快照统计::alert/get_alert_snapshot_statistics
         chartThemeMode: screen-dark
+        filterBindings:
+          organization__string: true
         selectedFields:
         - processing_count
     - h: 444
@@ -2145,7 +2151,7 @@ screens:
       id: alert-level-distribution
       type: widget
       title: 活跃告警等级分布
-      zIndex: 30
+      zIndex: 17
       chartType: pie
       valueConfig:
         chartType: pie
@@ -2166,7 +2172,7 @@ screens:
       id: alert-level-trend
       type: widget
       title: 告警等级趋势
-      zIndex: 29
+      zIndex: 16
       chartType: bar
       valueConfig:
         chartType: bar
@@ -2189,7 +2195,7 @@ screens:
       id: alert-source-event-top
       type: widget
       title: 告警关联事件来源 TOP10
-      zIndex: 28
+      zIndex: 15
       chartType: topN
       valueConfig:
         chartType: topN
@@ -2219,7 +2225,7 @@ screens:
       id: alert-status-distribution
       type: widget
       title: 活跃告警状态分布
-      zIndex: 27
+      zIndex: 14
       chartType: pie
       valueConfig:
         chartType: pie
@@ -2234,7 +2240,7 @@ screens:
       id: border-081f2a79-debe-4825-9d4d-1aeb02d9702e
       kind: decoration
       preset: border-22
-      zIndex: 26
+      zIndex: 13
       decorationType: panelFrame
     - h: 232
       w: 518
@@ -2243,7 +2249,7 @@ screens:
       id: panel-f9156f59-ac47-48b9-b071-da3289f769af
       kind: shape
       shape: rect
-      zIndex: 25
+      zIndex: 12
       shapeStyle:
         shadow: 0
         gradient: false
@@ -2262,7 +2268,7 @@ screens:
       id: border-alert-access-trend
       kind: decoration
       preset: border-22
-      zIndex: 24
+      zIndex: 11
       decorationType: panelFrame
     - h: 235
       w: 496
@@ -2271,7 +2277,7 @@ screens:
       id: border-alert-active-pending
       kind: decoration
       preset: tech
-      zIndex: 23
+      zIndex: 10
       decorationType: panelFrame
     - h: 881
       w: 1446
@@ -2280,7 +2286,7 @@ screens:
       id: border-alert-active-table
       kind: decoration
       preset: border-22
-      zIndex: 22
+      zIndex: 9
       decorationType: panelFrame
     - h: 238
       w: 483
@@ -2289,7 +2295,7 @@ screens:
       id: border-alert-active-total
       kind: decoration
       preset: tech
-      zIndex: 21
+      zIndex: 8
       decorationType: panelFrame
     - h: 232
       w: 492
@@ -2298,7 +2304,7 @@ screens:
       id: border-alert-kpi-closed
       kind: decoration
       preset: tech
-      zIndex: 20
+      zIndex: 7
       decorationType: panelFrame
     - h: 232
       w: 483
@@ -2307,7 +2313,7 @@ screens:
       id: border-alert-kpi-created
       kind: decoration
       preset: tech
-      zIndex: 19
+      zIndex: 6
       decorationType: panelFrame
     - h: 241
       w: 509
@@ -2316,7 +2322,7 @@ screens:
       id: border-alert-kpi-processing
       kind: decoration
       preset: tech
-      zIndex: 18
+      zIndex: 5
       decorationType: panelFrame
     - h: 570
       w: 979
@@ -2325,7 +2331,7 @@ screens:
       id: border-alert-level-distribution
       kind: decoration
       preset: border-22
-      zIndex: 17
+      zIndex: 4
       decorationType: panelFrame
     - h: 460
       w: 1003
@@ -2334,7 +2340,7 @@ screens:
       id: border-alert-level-trend
       kind: decoration
       preset: border-22
-      zIndex: 16
+      zIndex: 3
       decorationType: panelFrame
     - h: 571
       w: 1204
@@ -2343,7 +2349,7 @@ screens:
       id: border-alert-source-event-top
       kind: decoration
       preset: border-22
-      zIndex: 15
+      zIndex: 2
       decorationType: panelFrame
     - h: 535
       w: 1191
@@ -2352,255 +2358,8 @@ screens:
       id: border-alert-status-distribution
       kind: decoration
       preset: border-22
-      zIndex: 14
-      decorationType: panelFrame
-    - h: 402
-      w: 1190
-      x: 2604
-      y: 1705
-      id: panel-081f2a79-debe-4825-9d4d-1aeb02d9702e
-      kind: shape
-      shape: rect
-      zIndex: 13
-      shapeStyle:
-        shadow: 0
-        gradient: false
-        hideBorder: false
-        borderColor: rgba(0, 229, 255, 0.28)
-        borderWidth: 1
-        gradientEnd: rgba(8, 28, 52, 0.2)
-        gradientStart: rgba(0, 229, 255, 0.16)
-        hideBackground: false
-        backgroundColor: rgba(8, 28, 52, 0.62)
-        gradientDirection: vertical
-    - h: 472
-      w: 992
-      x: 50
-      y: 1008
-      id: panel-alert-access-trend
-      kind: shape
-      shape: rect
-      zIndex: 12
-      shapeStyle:
-        shadow: 0
-        gradient: false
-        hideBorder: false
-        borderColor: rgba(0, 229, 255, 0.28)
-        borderWidth: 1
-        gradientEnd: rgba(8, 28, 52, 0.2)
-        gradientStart: rgba(0, 229, 255, 0.16)
-        hideBackground: false
-        backgroundColor: rgba(8, 28, 52, 0.62)
-        gradientDirection: vertical
-    - h: 235
-      w: 496
-      x: 2152
-      y: 225
-      id: panel-alert-active-pending
-      kind: shape
-      shape: rect
-      zIndex: 11
-      shapeStyle:
-        shadow: 0
-        gradient: false
-        hideBorder: false
-        borderColor: rgba(0, 229, 255, 0.28)
-        borderWidth: 1
-        gradientEnd: rgba(8, 28, 52, 0.2)
-        gradientStart: rgba(0, 229, 255, 0.16)
-        hideBackground: false
-        backgroundColor: rgba(8, 28, 52, 0.62)
-        gradientDirection: vertical
-    - h: 881
-      w: 1446
-      x: 1103
-      y: 1218
-      id: panel-alert-active-table
-      kind: shape
-      shape: rect
-      zIndex: 10
-      shapeStyle:
-        shadow: 0
-        gradient: false
-        hideBorder: false
-        borderColor: rgba(0, 229, 255, 0.28)
-        borderWidth: 1
-        gradientEnd: rgba(8, 28, 52, 0.2)
-        gradientStart: rgba(0, 229, 255, 0.16)
-        hideBackground: false
-        backgroundColor: rgba(8, 28, 52, 0.62)
-        gradientDirection: vertical
-    - h: 238
-      w: 483
-      x: 1631
-      y: 226
-      id: panel-alert-active-total
-      kind: shape
-      shape: rect
-      zIndex: 9
-      shapeStyle:
-        shadow: 0
-        gradient: false
-        hideBorder: false
-        borderColor: rgba(0, 229, 255, 0.28)
-        borderWidth: 1
-        gradientEnd: rgba(8, 28, 52, 0.2)
-        gradientStart: rgba(0, 229, 255, 0.16)
-        hideBackground: false
-        backgroundColor: rgba(8, 28, 52, 0.62)
-        gradientDirection: vertical
-    - h: 670
-      w: 1456
-      x: 1092
-      y: 508
-      id: panel-alert-duration-top
-      kind: shape
-      shape: rect
-      zIndex: 8
-      shapeStyle:
-        shadow: 0
-        gradient: false
-        hideBorder: false
-        borderColor: rgba(0, 229, 255, 0.28)
-        borderWidth: 1
-        gradientEnd: rgba(8, 28, 52, 0.2)
-        gradientStart: rgba(0, 229, 255, 0.16)
-        hideBackground: false
-        backgroundColor: rgba(8, 28, 52, 0.62)
-        gradientDirection: vertical
-    - h: 232
-      w: 492
-      x: 555
-      y: 234
-      id: panel-alert-kpi-closed
-      kind: shape
-      shape: rect
-      zIndex: 7
-      shapeStyle:
-        shadow: 0
-        gradient: false
-        hideBorder: false
-        borderColor: rgba(0, 229, 255, 0.28)
-        borderWidth: 1
-        gradientEnd: rgba(8, 28, 52, 0.2)
-        gradientStart: rgba(0, 229, 255, 0.16)
-        hideBackground: false
-        backgroundColor: rgba(8, 28, 52, 0.62)
-        gradientDirection: vertical
-    - h: 232
-      w: 483
-      x: 36
-      y: 239
-      id: panel-alert-kpi-created
-      kind: shape
-      shape: rect
-      zIndex: 6
-      shapeStyle:
-        shadow: 0
-        gradient: false
-        hideBorder: false
-        borderColor: rgba(0, 229, 255, 0.28)
-        borderWidth: 1
-        gradientEnd: rgba(8, 28, 52, 0.2)
-        gradientStart: rgba(0, 229, 255, 0.16)
-        hideBackground: false
-        backgroundColor: rgba(8, 28, 52, 0.62)
-        gradientDirection: vertical
-    - h: 241
-      w: 509
-      x: 1085
-      y: 226
-      id: panel-alert-kpi-processing
-      kind: shape
-      shape: rect
-      zIndex: 5
-      shapeStyle:
-        shadow: 0
-        gradient: false
-        hideBorder: false
-        borderColor: rgba(0, 229, 255, 0.28)
-        borderWidth: 1
-        gradientEnd: rgba(8, 28, 52, 0.2)
-        gradientStart: rgba(0, 229, 255, 0.16)
-        hideBackground: false
-        backgroundColor: rgba(8, 28, 52, 0.62)
-        gradientDirection: vertical
-    - h: 570
-      w: 979
-      x: 61
-      y: 1519
-      id: panel-alert-level-distribution
-      kind: shape
-      shape: rect
-      zIndex: 4
-      shapeStyle:
-        shadow: 0
-        gradient: false
-        hideBorder: false
-        borderColor: rgba(0, 229, 255, 0.28)
-        borderWidth: 1
-        gradientEnd: rgba(8, 28, 52, 0.2)
-        gradientStart: rgba(0, 229, 255, 0.16)
-        hideBackground: false
-        backgroundColor: rgba(8, 28, 52, 0.62)
-        gradientDirection: vertical
-    - h: 460
-      w: 1003
-      x: 38
-      y: 509
-      id: panel-alert-level-trend
-      kind: shape
-      shape: rect
-      zIndex: 3
-      shapeStyle:
-        shadow: 0
-        gradient: false
-        hideBorder: false
-        borderColor: rgba(0, 229, 255, 0.28)
-        borderWidth: 1
-        gradientEnd: rgba(8, 28, 52, 0.2)
-        gradientStart: rgba(0, 229, 255, 0.16)
-        hideBackground: false
-        backgroundColor: rgba(8, 28, 52, 0.62)
-        gradientDirection: vertical
-    - h: 571
-      w: 1204
-      x: 2600
-      y: 1093
-      id: panel-alert-source-event-top
-      kind: shape
-      shape: rect
-      zIndex: 2
-      shapeStyle:
-        shadow: 0
-        gradient: false
-        hideBorder: false
-        borderColor: rgba(0, 229, 255, 0.28)
-        borderWidth: 1
-        gradientEnd: rgba(8, 28, 52, 0.2)
-        gradientStart: rgba(0, 229, 255, 0.16)
-        hideBackground: false
-        backgroundColor: rgba(8, 28, 52, 0.62)
-        gradientDirection: vertical
-    - h: 535
-      w: 1191
-      x: 2594
-      y: 503
-      id: panel-alert-status-distribution
-      kind: shape
-      shape: rect
       zIndex: 1
-      shapeStyle:
-        shadow: 0
-        gradient: false
-        hideBorder: false
-        borderColor: rgba(0, 229, 255, 0.28)
-        borderWidth: 1
-        gradientEnd: rgba(8, 28, 52, 0.2)
-        gradientStart: rgba(0, 229, 255, 0.16)
-        hideBackground: false
-        backgroundColor: rgba(8, 28, 52, 0.62)
-        gradientDirection: vertical
+      decorationType: panelFrame
     decorations:
       title: 告警运营大屏
       showClock: false
@@ -2616,6 +2375,13 @@ screens:
         end: '2026-08-04T00:00:00.000Z'
         start: '2026-07-28T00:00:00.000Z'
         selectValue: 10080
+    - id: organization__string
+      key: organization
+      name: 组织
+      type: string
+      order: 1
+      enabled: true
+      defaultValue: ''
   refs:
     datasource_keys:
     - 按渠道通知成功率::alert/get_notification_channel_stats

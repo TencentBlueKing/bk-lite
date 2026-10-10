@@ -333,7 +333,7 @@ def test_builtin_alert_screen_yaml_uses_page_configurable_nodes_only():
     }
     assert screen["view_sets"]["decorations"] == {"title": "告警运营大屏", "showClock": False, "showTitle": False}
     assert "edges" not in screen["view_sets"]
-    assert len(nodes) == 62
+    assert len(nodes) == 49
     assert len(widgets) == 15
     assert all(node["valueConfig"]["appearance"]["frame"] == "bare" for node in widgets)
     assert all(node["type"] == "widget" for node in widgets)
@@ -1053,7 +1053,7 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
     assert screen.view_sets["viewport"]["theme"] == "screen-dark"
     assert screen.view_sets["decorations"] == {"title": "告警运营大屏", "showClock": False, "showTitle": False}
     assert "edges" not in screen.view_sets
-    assert len(nodes) == 62
+    assert len(nodes) == 49
     assert screen.view_sets["viewport"]["adapter"] == "fill"
     assert screen.view_sets["viewport"]["background"] == {"key": "dark-glow", "type": "preset"}
     widgets = [node for node in nodes if node.get("type") == "widget"]
@@ -1087,7 +1087,16 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
                 "end": "2026-08-04T00:00:00.000Z",
                 "selectValue": 10080,
             },
-        }
+        },
+        {
+            "id": "organization__string",
+            "key": "organization",
+            "name": "组织",
+            "type": "string",
+            "order": 1,
+            "enabled": True,
+            "defaultValue": "",
+        },
     ]
     period_node_ids = {
         "alert-level-trend",
