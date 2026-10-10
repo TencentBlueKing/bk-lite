@@ -1,4 +1,6 @@
-.PHONY: tidy test test-controller test-maintainer build build-gateway build-controller build-maintainer validate-config
+.PHONY: tidy test test-controller test-maintainer build build-gateway build-controller build-maintainer validate-config image
+
+RUM_COLLECTOR_IMAGE ?= bklite/rum-collector:0.1.0-bklite.1
 
 tidy:
 	go mod tidy
@@ -25,6 +27,9 @@ build-controller:
 build-maintainer:
 	mkdir -p _build
 	go build -o _build/bklite-rum-maintainer ./cmd/bklite-rum-maintainer
+
+image:
+	docker build -t $(RUM_COLLECTOR_IMAGE) .
 
 validate-config: build-gateway
 	set -a; . ./env/rum.gateway.dev.env.example; set +a; \
