@@ -2,7 +2,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.workflow_orchestration.models import AtomDefinition, Workflow, WorkflowExecution, WorkflowVersion
+from apps.workflow_orchestration.models import AtomDefinition, AtomExecution, Workflow, WorkflowExecution, WorkflowVersion
 from apps.workflow_orchestration.services.atom_registry import ensure_platform_atom
 from apps.workflow_orchestration.services.atoms import ATOM_CATALOG
 from apps.workflow_orchestration.services.definitions import build_health_inspection_definition
@@ -122,6 +122,44 @@ def test_operator_can_terminate_and_rerun_the_same_frozen_version(operator, mock
     assert restarted.data["parent_execution"] == str(execution.id)
     conductor.terminate_workflow.assert_called_once_with("conductor-control-1", reason="人工取消")
     conductor.start_workflow.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_terminate_requests_cancel_for_linked_job_task_ids(operator, mocker):
+    execution = _execution()
+    AtomExecution.objects.create(
+        execution=execution,
+        task_reference="inspect",
+        atom_key="bklite_custom_script",
+        status=AtomExecution.Status.RUNNING,
+        job_task_id=101,
+        output={"job_task_ids": [101, 102]},
+    )
+    conductor = mocker.patch("apps.workflow_orchestration.views.ConductorClient").return_value
+    cancel = mocker.patch("apps.workflow_orchestration.views.cancel_linked_job_tasks")
+    cancel.return_value = [
+        {"task_id": 101, "ok": True, "status": "cancelling"},
+        {"task_id": 102, "ok": True, "status": "cancelling"},
+    ]
+    terminate = WorkflowExecutionViewSet.as_view({"post": "terminate"})
+
+    response = terminate(
+        _request("post", f"/executions/{execution.id}/terminate/", operator, {"reason": "人工取消"}),
+        pk=execution.id,
+    )
+
+    assert response.status_code == 200
+    assert response.data["status"] == "TERMINATING"
+    conductor.terminate_workflow.assert_called_once_with("conductor-control-1", reason="人工取消")
+    cancel.assert_called_once()
+    (called_execution,) = cancel.call_args.args
+    assert called_execution.id == execution.id
+    assert cancel.call_args.kwargs["actor"] == {"username": "workflow-operator", "domain": "example.com"}
+    execution.refresh_from_db()
+    assert execution.output["termination_job_cancels"] == [
+        {"task_id": 101, "ok": True, "status": "cancelling"},
+        {"task_id": 102, "ok": True, "status": "cancelling"},
+    ]
 
 
 @pytest.mark.django_db

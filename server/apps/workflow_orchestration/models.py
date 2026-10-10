@@ -127,6 +127,7 @@ class WorkflowExecution(TimeInfo):
         RUNNING = "RUNNING", "执行中"
         WAITING_APPROVAL = "WAITING_APPROVAL", "等待审批"
         TERMINATING = "TERMINATING", "终止中"
+        UNKNOWN = "UNKNOWN", "结果未知"
         SUCCEEDED = "SUCCEEDED", "成功"
         FAILED = "FAILED", "失败"
         TIMED_OUT = "TIMED_OUT", "已超时"

@@ -8,13 +8,21 @@ from django.core.files.base import ContentFile
 from apps.workflow_orchestration.services.object_store import WorkflowObjectStore
 from apps.workflow_orchestration.services.reports import parse_report_template
 
-BUILTIN_TEMPLATE_DIR = Path(__file__).resolve().parents[4] / "web/public/workflow-orchestration/templates"
+# 与 Server 镜像同包发布，禁止再依赖仓库根下的 web/public。
+BUILTIN_TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "assets" / "templates"
+SAMPLE_TEMPLATE_CONTENT_TYPES = {
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+}
+
+
+def builtin_sample_template_api_path(fmt: str) -> str:
+    normalized = _normalize_template_format(fmt)
+    return f"/workflow_orchestration/api/workflows/sample-templates/{normalized}/"
 
 
 def builtin_health_template_path(fmt: str) -> Path:
-    normalized = str(fmt or "").lower()
-    if normalized not in {"docx", "xlsx"}:
-        raise ValueError("演示模板格式只能是 docx 或 xlsx")
+    normalized = _normalize_template_format(fmt)
     path = BUILTIN_TEMPLATE_DIR / f"health-inspection-example.{normalized}"
     if not path.is_file():
         raise FileNotFoundError(f"缺少内置健康巡检模板: {path.name}")
@@ -42,3 +50,10 @@ def seed_builtin_health_template_snapshot(
         "size": len(content),
         "filename_prefix": f"health-inspection-{parsed.format}",
     }
+
+
+def _normalize_template_format(fmt: str) -> str:
+    normalized = str(fmt or "").lower()
+    if normalized not in {"docx", "xlsx"}:
+        raise ValueError("演示模板格式只能是 docx 或 xlsx")
+    return normalized

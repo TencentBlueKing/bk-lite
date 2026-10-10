@@ -65,6 +65,56 @@ export const isDerivativeObject = (
   return objectOrName?.level === 'derivative';
 };
 
+export const CISCO_MERAKI_OBJECT_NAME = 'Cisco Meraki';
+
+const MERAKI_DERIVATIVE_OBJECT_NAMES = new Set([
+  'Meraki Network',
+  'Meraki Device',
+  'Meraki Wireless AP',
+  'Meraki Switch',
+  'Meraki Appliance'
+]);
+
+/**
+ * 视图 / 专业大盘侧栏仅把 Cisco Meraki 的派生对象挂到父节点下。
+ * 名称集合覆盖内置五个子对象；parent 指向 Cisco Meraki 时也认，避免漏挂。
+ * 不根据 isDerivativeObject 全局建树，避免阿里云等复合对象改变 #6351 的隐藏行为。
+ */
+export const isMerakiSidebarDerivative = (
+  item: ObjectItem,
+  objects: ObjectItem[]
+): boolean => {
+  if (MERAKI_DERIVATIVE_OBJECT_NAMES.has(item.name)) {
+    return true;
+  }
+  if (item.parent == null) {
+    return false;
+  }
+  return objects.some(
+    (obj) => obj.id === item.parent && obj.name === CISCO_MERAKI_OBJECT_NAME
+  );
+};
+
+export const attachMerakiSidebarChildren = <T extends { label?: string; children: T[] }>(
+  groups: Record<string, { children: T[] }>,
+  merakiDerivatives: ObjectItem[],
+  toNode: (item: ObjectItem) => T
+): void => {
+  if (!merakiDerivatives.length) {
+    return;
+  }
+  for (const group of Object.values(groups)) {
+    const parent = group.children.find(
+      (child) => child.label === CISCO_MERAKI_OBJECT_NAME
+    );
+    if (!parent) {
+      continue;
+    }
+    parent.children = merakiDerivatives.map(toNode);
+    return;
+  }
+};
+
 /**
  * 获取所有派生对象的名称列表
  */
