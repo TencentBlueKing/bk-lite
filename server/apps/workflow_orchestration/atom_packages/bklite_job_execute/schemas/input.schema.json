@@ -2,7 +2,7 @@
   "type": "object",
   "properties": {
     "targets": {
-      "type": "array", "title": "目标主机", "description": "可从左侧拖入兼容字段，或从目标管理和节点管理选择主机",
+      "type": "array", "title": "目标主机", "description": "可从左侧拖入兼容字段，或从节点管理和作业平台选择主机；两个来源不能混选",
       "items": {"type": "string", "pattern": "^(node:[^:]+|manual:[0-9]+)$"},
       "minItems": 1, "maxItems": 100, "uniqueItems": true
     },
