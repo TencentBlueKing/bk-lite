@@ -668,7 +668,7 @@
         "afterExpiration": "过期删除",
         "afterExpirationPrefix": "超过",
         "afterExpirationSuffix": "天未更新则删除",
-        "afterExpirationTip": "当实例在数据源中持续消失且超过设定的缓冲时间后，再执行清理动作。",
+        "afterExpirationTip": "完整采集成功后，删除本任务已消失且上次采集更新时间超过设定天数的实例。采集失败或数据不完整时不清理。",
         "doNotClean": "不清理",
         "doNotCleanDesc": "系统仅同步新增和更新的实例，完全忽略数据源中的删除或丢失情况。",
         "doNotCleanTip": "适用场景提示：适合历史归档资产，或必须由人工走流程审批后才能确认下线的核心资产",

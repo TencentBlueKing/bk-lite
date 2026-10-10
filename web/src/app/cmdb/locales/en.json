@@ -668,7 +668,7 @@
         "afterExpiration": "Expire and Delete",
         "afterExpirationPrefix": "Delete after",
         "afterExpirationSuffix": "days without updates",
-        "afterExpirationTip": "When an instance continuously disappears from the data source and exceeds the set buffer time, cleanup will be performed.",
+        "afterExpirationTip": "After a complete successful collection, delete missing instances owned by this task whose last collection update exceeds the configured number of days. Failed or incomplete collections do not trigger cleanup.",
         "doNotClean": "No Cleanup",
         "doNotCleanDesc": "The system only syncs new and updated instances, completely ignoring deletions or missing data from the source.",
         "doNotCleanTip": "Scenario: Suitable for archived assets or core assets that require manual approval before decommissioning",

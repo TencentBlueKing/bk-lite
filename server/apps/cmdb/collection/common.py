@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 
 from apps.cmdb.collect.extensions import get_collect_enterprise_extension
 from apps.cmdb.collection.change_records import write_collect_instance_change_records
+from apps.cmdb.collection.cleanup import cleanup_due, is_collection_target, snapshot_allows_cleanup
 from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION, DataCleanupStrategy
 from apps.cmdb.constants.field_constraints import TAG_ATTR_ID
 from apps.cmdb.graph.drivers.graph_client import GraphClient
@@ -36,6 +37,8 @@ class Management:
         collect_plugin=None,
         data_cleanup_strategy=None,
         reconcile_task_assets=False,
+        expire_days=0,
+        collection_targets=(),
     ):
         self.organization = organization
         self.collect_time = collect_time
@@ -44,6 +47,8 @@ class Management:
         self.model_id = model_id
         self.old_data = old_data
         self.reconcile_task_assets = reconcile_task_assets
+        self.expire_days = expire_days
+        self.collection_targets = collection_targets
         self.existing_organizations = {row["_id"]: row.get("organization", []) for row in old_data} if reconcile_task_assets else {}
         self.new_data = new_data
         self.unique_keys = unique_keys
@@ -123,25 +128,15 @@ class Management:
                 else:
                     heartbeat_list.append(info)
 
-        explicit_snapshot_complete = getattr(self.collect_plugin, "snapshot_complete", None)
-        authoritative_snapshot = getattr(self.collect_plugin, "is_authoritative_snapshot", None)
-        if explicit_snapshot_complete is not None:
-            deletion_input_complete = bool(explicit_snapshot_complete)
-        elif callable(authoritative_snapshot):
-            deletion_input_complete = bool(authoritative_snapshot(self.model_id))
-        else:
-            deletion_input_complete = bool(new_map)
-
-        should_delete = (
-            self.data_cleanup_strategy == DataCleanupStrategy.IMMEDIATELY
-            and getattr(self.collect_plugin, "_MODEL_ID", None) is not None
-            and deletion_input_complete
-        )
-
-        if should_delete:
+        if snapshot_allows_cleanup(self.collect_plugin, self.model_id):
             for key, info in old_map.items():
                 info["model_id"] = self.model_id
-                if key not in new_map and (not self.reconcile_task_assets or str(info.get("collect_task")) == str(self.task_id)):
+                if (
+                    key not in new_map
+                    and str(info.get("collect_task")) == str(self.task_id)
+                    and not is_collection_target(info, self.collection_targets)
+                    and cleanup_due(self.data_cleanup_strategy, info.get("collect_time"), self.collect_time, self.expire_days)
+                ):
                     delete_list.append(info)
 
         return add_list, update_list, heartbeat_list, delete_list
@@ -306,8 +301,8 @@ class Management:
         with GraphClient() as ag:
             for instance_info in inst_list:
                 try:
-                    ag.detach_delete_entity(INSTANCE, instance_info["_id"])
-                    result["success"].append(instance_info)
+                    if ag.delete_entity_if_unchanged(INSTANCE, instance_info):
+                        result["success"].append(instance_info)
                 except Exception as e:
                     result["failed"].append({"instance_info": instance_info, "error": getattr(e, "message", e)})
 
@@ -421,12 +416,14 @@ class Management:
         return result
 
     def controller(self):
-        delete_result = self.delete_inst(self.delete_list)
         add_result = self.add_inst(self.add_list)
         update_result = self.update_inst(self.update_list)
         heartbeat_result = self.refresh_heartbeat(self.heartbeat_list)
         update_result["success"].extend(heartbeat_result["success"])
         update_result["failed"].extend(heartbeat_result["failed"])
+        delete_result = {"success": [], "failed": []}
+        if not add_result["failed"] and not update_result["failed"]:
+            delete_result = self.delete_inst(self.delete_list)
         result = dict(add=add_result, update=update_result, delete=delete_result)
         self._after_instances_applied(result)
         return result
