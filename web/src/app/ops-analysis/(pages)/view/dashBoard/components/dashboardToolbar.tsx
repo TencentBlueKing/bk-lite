@@ -6,8 +6,10 @@ import {
   FullscreenOutlined,
   MailOutlined,
   PlusOutlined,
+  RedoOutlined,
   ReloadOutlined,
   ShareAltOutlined,
+  UndoOutlined,
 } from '@ant-design/icons';
 
 import type { DirItem } from '@/app/ops-analysis/types';
@@ -37,6 +39,10 @@ interface DashboardToolbarProps {
   onToggleEditMode: () => void;
   onCancelEdit: () => void;
   onSave: () => void;
+  canUndo?: boolean;
+  onUndo?: () => void;
+  canRedo?: boolean;
+  onRedo?: () => void;
   editExtra?: React.ReactNode;
   shareMode?: boolean;
   shareLoading?: boolean;
@@ -62,6 +68,10 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
   onToggleEditMode,
   onCancelEdit,
   onSave,
+  canUndo = false,
+  onUndo,
+  canRedo = false,
+  onRedo,
   editExtra,
   shareMode = false,
   shareLoading = false,
@@ -71,6 +81,9 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
   const { t } = useTranslation();
   const iconButtonClassName =
     'h-8 w-8 min-w-8 px-0! flex items-center justify-center';
+  const historyButtonClassName =
+    'rounded-full! h-8 w-8 min-w-8 flex items-center justify-center';
+  const historyIconStyle = { fontSize: 20 };
 
   if (!shareMode && isEditMode) {
     const boxButtonStyle = {
@@ -111,6 +124,30 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
               />
             </Tooltip>
           </PermissionWrapper>
+          <Tooltip title={t('dashboard.undoAiApply')}>
+            <span className="inline-flex">
+              <Button
+                type="text"
+                icon={<UndoOutlined style={historyIconStyle} />}
+                aria-label={t('dashboard.undoAiApply')}
+                onClick={onUndo}
+                disabled={!canUndo}
+                className={historyButtonClassName}
+              />
+            </span>
+          </Tooltip>
+          <Tooltip title={t('dashboard.redo')}>
+            <span className="inline-flex">
+              <Button
+                type="text"
+                icon={<RedoOutlined style={historyIconStyle} />}
+                aria-label={t('dashboard.redo')}
+                onClick={onRedo}
+                disabled={!canRedo}
+                className={historyButtonClassName}
+              />
+            </span>
+          </Tooltip>
         </div>
 
         <PermissionWrapper requiredPermissions={['EditChart']}>

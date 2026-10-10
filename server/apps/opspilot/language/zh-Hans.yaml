@@ -327,6 +327,15 @@ tools:
         description: 按关键词和时间范围查询日志。
       log_search_raw:
         description: 使用原生 LogsQL 查询日志。
+  ops_analysis_dashboard:
+    name: 运营分析仪表盘
+    description: |
+      根据用户需求检索当前组织可用的运营分析数据源，并校验可直接应用到仪表盘页面的结构化方案。
+    tools:
+      search_data_sources:
+        description: 按显式的数据需求检索有权限且契约完整的运营分析数据源。列举数据源前必须调用。candidates[].id 是唯一合法 dataSource，fields[].name 是唯一合法字段名，禁止编造。fields[].title 是中文标题，fields[].description 是说明，不要把英文字段名写成标题。chart_type 是该源允许的图表，一张盘要混用目录里实际支持的类型，不要全部做成 single。检索后构造扁平 layout 并调用一次 prepare_dashboard_proposal，页面会写入画布。禁止 row、children。不要反复检索，不要只写文字，不要让用户手工添加或再确认。single 和 gauge 的 selectedFields 不能为空。询问画布上已显示的数字，或只删除、改行列时不要调用。
+      prepare_dashboard_proposal:
+        description: 用检索候选校验并应用到当前画布。schemaVersion 必须为字符串 "1.0"，layout 必须是扁平组件数组，禁止 row、children、title、panels、chart_type、data_source_id。组件 name 用字段中文 title，description 用字段说明。chartType 从该数据源 chart_type 里选，不要全部做成 single。dataSource 只能填检索返回的数字 id，禁止编造其他数字。single 和 gauge 的 selectedFields 必须填写该数据源 fields 中的一个 name，不能为空。pie 填写 dimensionField 与 valueField。用户要求搭建或应用时必须调用，不能只写文字、让用户手工添加或再用 request_user_choice 确认。通过后页面写入可撤销的编辑草稿，立即结束本轮调用，由用户点击保存。失败时只按 _next_step_hint、sources 或 allowedFields 改一次，禁止换一组 id 再试。删除或改行列时基于当前布局修改后调用，不要重新检索。
   attachment_file:
     name: 工作流附件文件
     description: |

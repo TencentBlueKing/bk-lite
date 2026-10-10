@@ -2,10 +2,16 @@
 # @File: nats.py
 # @Time: 2025/9/4 11:36
 # @Author: windyzhao
+from rest_framework.exceptions import PermissionDenied
+
 import nats_client
 from apps.operation_analysis.constants.constants import PERMISSION_DATASOURCE, PERMISSION_DIRECTORY
-from apps.operation_analysis.nats.auth import verify_module_data_request
+from apps.operation_analysis.nats.auth import verify_dashboard_request, verify_module_data_request
 from apps.operation_analysis.services.directory_service import DictDirectoryService
+from apps.rpc.system_mgmt import SystemMgmt
+
+MAX_DASHBOARD_REQUIREMENTS = 64
+MAX_DASHBOARD_LAYOUT_ITEMS = 200
 
 
 @nats_client.register
@@ -42,3 +48,77 @@ def get_operation_analysis_module_list():
         {"name": PERMISSION_DATASOURCE, "display_name": "数据源", "children": []},
     ]
     return result
+
+
+def _dashboard_group_ids(team_id: int, user_info) -> list[int]:
+    """用用户名、域和 include_children 核对组织范围。对不上就拒绝。"""
+    if not isinstance(user_info, dict):
+        raise PermissionDenied("Operation analysis NATS authentication failed")
+    username = user_info.get("user")
+    domain = user_info.get("domain")
+    include_children = user_info.get("include_children")
+    if (
+        not isinstance(username, str)
+        or not username.strip()
+        or not isinstance(domain, str)
+        or not domain.strip()
+        or type(include_children) is not bool
+        or user_info.get("team") != team_id
+    ):
+        raise PermissionDenied("Operation analysis NATS authentication failed")
+    scope = SystemMgmt().get_authorized_groups_scoped(
+        {"username": username.strip(), "domain": domain.strip(), "current_team": team_id},
+        include_children=include_children,
+    )
+    if not isinstance(scope, dict) or scope.get("result") is not True or not isinstance(scope.get("data"), list):
+        raise PermissionDenied("Operation analysis NATS authentication failed")
+    group_ids = []
+    for item in scope["data"]:
+        if type(item) is int and item > 0 and item not in group_ids:
+            group_ids.append(item)
+        elif isinstance(item, str) and item.isdecimal():
+            parsed = int(item)
+            if parsed > 0 and parsed not in group_ids:
+                group_ids.append(parsed)
+    if team_id not in group_ids:
+        raise PermissionDenied("Operation analysis NATS authentication failed")
+    return group_ids
+
+
+def _dashboard_requirements(requirements):
+    items = requirements or []
+    if not isinstance(items, list) or any(not isinstance(item, dict) for item in items):
+        raise ValueError("requirements must be a list of objects")
+    if len(items) > MAX_DASHBOARD_REQUIREMENTS:
+        raise ValueError("requirements exceed the dashboard search limit")
+    return items
+
+
+def _bounded_dashboard_proposal(proposal):
+    body = proposal or {}
+    if isinstance(body, dict):
+        layout = body.get("layout")
+        if isinstance(layout, list) and len(layout) > MAX_DASHBOARD_LAYOUT_ITEMS:
+            raise ValueError("layout exceeds the dashboard proposal limit")
+    return body
+
+
+@nats_client.register
+def search_dashboard_data_sources(requirements, team_id, user_info=None, _internal_auth=None):
+    from apps.operation_analysis.services.dashboard_proposal_service import list_visible_briefs, search_briefs
+
+    verified_team = verify_dashboard_request(_internal_auth, team_id, "search_dashboard_data_sources", user_info)
+    items = _dashboard_requirements(requirements)
+    group_ids = _dashboard_group_ids(verified_team, user_info)
+    return {"candidates": search_briefs(items, list_visible_briefs(verified_team, group_ids))}
+
+
+@nats_client.register
+def prepare_dashboard_proposal(proposal, team_id, user_info=None, _internal_auth=None):
+    from apps.operation_analysis.services.dashboard_proposal_service import list_visible_briefs
+    from apps.operation_analysis.services.dashboard_proposal_service import prepare_dashboard_proposal as prepare
+
+    verified_team = verify_dashboard_request(_internal_auth, team_id, "prepare_dashboard_proposal", user_info)
+    body = _bounded_dashboard_proposal(proposal)
+    group_ids = _dashboard_group_ids(verified_team, user_info)
+    return prepare(body, list_visible_briefs(verified_team, group_ids))

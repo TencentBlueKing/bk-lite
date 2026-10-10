@@ -112,6 +112,32 @@ def repeated_or_search_denial(request: Any) -> ToolMessage | None:
     return None
 
 
+def terminal_success_denial(request: Any) -> ToolMessage | None:
+    """工具结果已声明不要再次调用时，同名工具不再执行，参数变了也一样。"""
+    call = getattr(request, "tool_call", None) or {}
+    name = str(call.get("name") or "")
+    if not name:
+        return None
+    phrase = f"不要再次调用 {name}"
+    for message in _request_messages(request):
+        if not isinstance(message, ToolMessage):
+            continue
+        if str(getattr(message, "name", "") or "") != name:
+            continue
+        if str(getattr(message, "status", "") or "").lower() == "error":
+            continue
+        content = str(getattr(message, "content", "") or "")
+        if POLICY_RESULT_MARKER in content or phrase not in content:
+            continue
+        return ToolMessage(
+            content=(f"{POLICY_RESULT_MARKER} 工具 {name} 已完成。" "不要再调用。直接根据已有结果回答并结束本步。"),
+            tool_call_id=str(call.get("id") or ""),
+            name=name,
+            status="error",
+        )
+    return None
+
+
 def repeated_successful_tool_denial(request: Any) -> ToolMessage | None:
     """同名同参已经成功过，就不再真正执行第二次。"""
     call = getattr(request, "tool_call", None) or {}
@@ -248,7 +274,7 @@ class ToolVisibilityMiddleware(AgentMiddleware):
         denied = self._deny_invisible_tool(request)
         if denied is not None:
             return denied
-        repeated = repeated_successful_tool_denial(request) or repeated_or_search_denial(request)
+        repeated = terminal_success_denial(request) or repeated_successful_tool_denial(request) or repeated_or_search_denial(request)
         if repeated is not None:
             return repeated
         return handler(request)
@@ -257,7 +283,7 @@ class ToolVisibilityMiddleware(AgentMiddleware):
         denied = self._deny_invisible_tool(request)
         if denied is not None:
             return denied
-        repeated = repeated_successful_tool_denial(request) or repeated_or_search_denial(request)
+        repeated = terminal_success_denial(request) or repeated_successful_tool_denial(request) or repeated_or_search_denial(request)
         if repeated is not None:
             return repeated
         return await handler(request)

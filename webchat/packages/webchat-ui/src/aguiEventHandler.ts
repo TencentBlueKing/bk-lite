@@ -7,6 +7,8 @@ import {
   type StateMachine,
 } from '@webchat/core';
 import type { AGUIEvent } from './agui';
+import type { CompletedToolResult } from './chatProps';
+import { completedToolResult, rememberToolCall } from './toolResultForward';
 import type { ContentChunk, ToolCall } from './contentChunks';
 import {
   appendToolCallArgs,
@@ -34,6 +36,7 @@ export interface AGUIEventHandlerDeps {
   setIsLoading: Dispatch<SetStateAction<boolean>>;
   setIsThinking: Dispatch<SetStateAction<boolean>>;
   addMessage: (message: Message) => void;
+  onToolResultRef?: MutableRefObject<((result: CompletedToolResult) => void) | undefined>;
   frameScheduler?: FrameScheduler;
   streamingTextBatchingRef?: MutableRefObject<boolean>;
 }
@@ -100,10 +103,12 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
     setIsLoading,
     setIsThinking,
     addMessage,
+    onToolResultRef,
     frameScheduler,
     streamingTextBatchingRef,
   } = deps;
   let streamingSegmentContent = '';
+  const toolCallNames = new Map<string, string>();
 
   const ensureCurrentMessage = () => {
     if (currentMessageIdRef.current) return;
@@ -316,9 +321,12 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
       case 'TOOL_CALL_START': {
         textBatcher.flush();
         streamingSegmentContent = '';
+        const toolCallId = event.toolCallId || generateId();
+        const toolCallName = event.toolCallName || 'Unknown Tool';
+        rememberToolCall(toolCallNames, event.toolCallId, event.toolCallName);
         const newToolCall: ToolCall = {
-          id: event.toolCallId || generateId(),
-          name: event.toolCallName || 'Unknown Tool',
+          id: toolCallId,
+          name: toolCallName,
           status: 'running',
         };
         ensureCurrentMessage();
@@ -356,11 +364,15 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
         applyToolPatch(event.toolCallId || '', { status: 'completed' });
         break;
 
-      case 'TOOL_CALL_RESULT':
-        applyToolPatch(event.toolCallId || '', {
+      case 'TOOL_CALL_RESULT': {
+        const toolCallId = event.toolCallId || '';
+        applyToolPatch(toolCallId, {
           result: event.content,
         });
+        const completed = completedToolResult(toolCallNames, toolCallId, event.content);
+        if (completed) onToolResultRef?.current?.(completed);
         break;
+      }
 
       case 'RUN_FINISHED':
         flushAndPersistPendingText();

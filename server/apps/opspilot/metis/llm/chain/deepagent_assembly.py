@@ -19,8 +19,10 @@ from apps.opspilot.metis.llm.common.tool_failure import is_tool_result_failure
 # HITL/选择卡和常驻附件工具会进目录，但不算业务工具：无业务工具的寒暄仍走轻量直答。
 _LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES = frozenset({"request_user_choice", "generate_attachment_file"})
 
-# 步间摘要上限；正文 + 结构化关键字段共享，优先保住关键字段。
+# 步间正文上限。结构化关键字段单独保留，避免被正文或 400 字切片切掉。
 _STEP_SUMMARY_MAX_CHARS = 1200
+_CARRY_OVER_MARKER = "【本步已取得的结构化结果，后续步骤直接引用】"
+_CARRY_OVER_MAX_CHARS = 2400
 
 # 只有这些工具的结果会产出后续步要复用的结构化字段，避免把无关工具的 id 当成 instance_id。
 _MONITOR_OBJECT_TOOLS = frozenset({"monitor_list_objects"})
@@ -222,13 +224,14 @@ class DeepAgentAssemblyMixin:
 
     @classmethod
     def _join_step_summary(cls, summary: str, carry_over: str) -> str:
-        """摘要正文 + 结构化关键字段，总长受控且不重复拼接。"""
+        """结构化关键字段放在正文前面，下一步截断时仍能看到 id 和字段。"""
         body = (summary or "").strip()
         if not carry_over:
-            return body
-        if not body:
+            return body[:_STEP_SUMMARY_MAX_CHARS]
+        prose = body[:400]
+        if not prose:
             return carry_over
-        return f"{body}\n{carry_over}"[:_STEP_SUMMARY_MAX_CHARS]
+        return f"{carry_over}\n{prose}"
 
     @classmethod
     def _step_structured_carry_over(cls, messages) -> str:
@@ -251,14 +254,52 @@ class DeepAgentAssemblyMixin:
                 facts.append(fact)
         if not facts:
             return ""
-        return "【本步已取得的结构化结果，后续步骤直接引用】\n" + "\n".join(facts)
+        return _CARRY_OVER_MARKER + "\n" + "\n".join(facts)
+
+    @classmethod
+    def _dashboard_source_facts(cls, payload: dict) -> list[str]:
+        """检索目录的 id、名称、标签、图表和字段。搭盘下一步只能靠这些，不能改用别的源。"""
+        data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
+        candidates = data.get("candidates")
+        if not isinstance(candidates, list):
+            nested = payload.get("candidates")
+            candidates = nested if isinstance(nested, list) else []
+        facts = [
+            "一张盘要混用不同数据源和图表。概览源最多两个 single 或 gauge，其余组件改用 charts 里带 pie、topN、line、table 的其他 dataSource。不要把同一个源的每个数字都做成卡片。不要让用户挑选指标。",
+        ]
+        for row in candidates:
+            if not isinstance(row, dict) or row.get("id") in (None, ""):
+                continue
+            tags = ",".join(str(tag) for tag in (row.get("tags") or []) if tag not in (None, ""))
+            charts = ",".join(str(chart) for chart in (row.get("chart_type") or []) if chart not in (None, ""))
+            fields = []
+            for field in (row.get("fields") or [])[:6]:
+                if isinstance(field, dict) and field.get("name"):
+                    label = str(field["name"])
+                    title = str(field.get("title") or "").strip()
+                    if title and title != label:
+                        label = f"{label}({title})"
+                    fields.append(label)
+                elif isinstance(field, str) and field:
+                    fields.append(field)
+            fact = f"dataSource={row.get('id')} name={row.get('name') or ''}"
+            if tags:
+                fact += f" tag={tags}"
+            if charts:
+                fact += f" charts={charts}"
+            if fields:
+                fact += f" fields={','.join(fields)}"
+            facts.append(fact)
+        return facts
 
     @classmethod
     def _tool_result_structured_facts(cls, tool_name: str, content) -> list[str]:
-        """按工具类型提关键字段：只有列实例/列对象/列指标的结果会产出 ID 与 metric。"""
+        """按工具类型提关键字段。监控带实例 id，仪表盘检索带数据源目录。"""
         payload = cls._parse_tool_result_payload(content)
         if payload is None:
             return []
+        if tool_name == "search_data_sources":
+            return cls._dashboard_source_facts(payload)
         facts: list[str] = []
         for row in cls._rows_of(payload):
             if not isinstance(row, dict):
@@ -721,6 +762,25 @@ class DeepAgentAssemblyMixin:
         if interrupt_on:
             agent_kwargs["interrupt_on"] = interrupt_on
         return agent_kwargs
+
+
+def compact_completed_step_line(objective: str, result: str) -> str:
+    """下一步只看这段。有结构化目录时保留目录，只缩短前面的正文。"""
+    text = result or ""
+    if _CARRY_OVER_MARKER not in text:
+        return f"- {objective}: {text[:400]}"
+    prose, _, carried = text.partition(_CARRY_OVER_MARKER)
+    prose = prose.strip()
+    if len(prose) > 200:
+        prose = prose[:200]
+    carried = carried.strip()
+    if len(carried) > _CARRY_OVER_MAX_CHARS:
+        carried = carried[:_CARRY_OVER_MAX_CHARS]
+    parts = [f"- {objective}:"]
+    if prose:
+        parts.append(prose)
+    parts.append(f"{_CARRY_OVER_MARKER}\n{carried}")
+    return "\n".join(parts)
 
 
 # Backward-compat module-level aliases (tests patch chain.node.*)

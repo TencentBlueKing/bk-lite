@@ -40,6 +40,7 @@ from apps.opspilot.metis.llm.chain.deepagent_assembly import (  # noqa: E402,F40
     _should_use_lightweight_direct_reply,
     _skill_only_step_guidance,
     _skill_package_script_lines,
+    compact_completed_step_line,
 )
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, DoneToolConfig, ExtraConfig
 
@@ -2825,7 +2826,7 @@ class ToolsNodes(
 
             def _compact_agent_state_with_summaries(*, overflow: bool = False) -> Dict[str, Any]:
                 """用步骤摘要替换完整工具历史，避免 8K 窗口在后续步再次撑爆。"""
-                summary_lines = [f"- {item.objective}: {item.result[:400]}" for item in completed_steps]
+                summary_lines = [compact_completed_step_line(item.objective, item.result) for item in completed_steps]
                 if overflow:
                     header = "【上下文压缩】前序步骤因模型上下文窗口不足已跳过或截断。" "以下为已完成步骤摘要，请仅基于摘要与用户问题继续，不要重复已完成步骤。\n"
                 else:

@@ -223,11 +223,19 @@ const readCardListRows = (widget: Element): string[] =>
     .filter(Boolean)
     .slice(0, TABLE_ROW_LIMIT);
 
+const readLegendRows = (widget: Element): string[] =>
+  Array.from(widget.querySelectorAll('[data-testid="chart-legend-scroll"] button'))
+    .map((button) => cleanLabel(button.textContent || ''))
+    .filter(Boolean)
+    .slice(0, TABLE_ROW_LIMIT);
+
 const listLikeRows = (widget: Element): string[] => {
   if (isTopNWidget(widget)) return readTopNRows(widget);
   if (isTableWidget(widget)) return readTableRows(widget);
   const multi = readMultiValueRows(widget);
   if (multi.length) return multi;
+  const legend = readLegendRows(widget);
+  if (legend.length) return legend;
   return readCardListRows(widget);
 };
 
@@ -347,6 +355,7 @@ export const buildOpsAnalysisCurrentTime = (stamp: OpsAnalysisDashboardStamp): s
 
 const dashboardTextSections = (stamp: OpsAnalysisDashboardStamp): AiContextSection[] => {
   const identityLines = [
+    '用户询问当前画布上已经显示的数量或占比时，直接用「可见卡片」和「表与排行」里的数字回答，不要让用户自己去看组件。',
     '正在查看运营分析仪表盘',
     stamp.dashboardName ? `盘名: ${stamp.dashboardName}` : '',
     stamp.canvasId ? `画布 id: ${stamp.canvasId}` : '',
@@ -380,14 +389,14 @@ const dashboardTextSections = (stamp: OpsAnalysisDashboardStamp): AiContextSecti
       id: 'dashboard-identity',
       label: '当前仪表盘',
       content: identityLines.join('\n'),
-      priority: 10,
+      priority: 130,
     },
     ...(cardLines.length
       ? [{
         id: 'dashboard-cards',
         label: '可见卡片',
         content: cardLines.join('\n'),
-        priority: 8,
+        priority: 125,
       }]
       : []),
     ...(tableLines.length
@@ -395,14 +404,18 @@ const dashboardTextSections = (stamp: OpsAnalysisDashboardStamp): AiContextSecti
         id: 'dashboard-tables',
         label: '表与排行',
         content: tableLines.join('\n'),
-        priority: 4,
+        priority: 115,
       }]
       : []),
   ];
 };
 
+const isDashboardEditMode = () =>
+  typeof document !== 'undefined'
+  && document.querySelector('[data-dashboard-edit-mode="true"]') !== null;
+
 export function getMessage(): PageContextMessage {
-  if (!isOpsAnalysisDashboardView()) return { title: '' };
+  if (!isOpsAnalysisDashboardView() || isDashboardEditMode()) return { title: '' };
   const title = `${TITLE_PREFIX}${canvasIdFromSearch()}`;
   const currentTime = buildOpsAnalysisCurrentTime(readOpsAnalysisDashboardStamp());
   return currentTime ? { title, currentTime } : { title };
@@ -427,6 +440,9 @@ export async function getContext(
 ): Promise<Partial<AiPageContext>> {
   if (!isOpsAnalysisDashboardView()) {
     return { sections: [], images: [] };
+  }
+  if (isDashboardEditMode()) {
+    return getTextContext();
   }
   const stamp = readOpsAnalysisDashboardStamp();
   const base = getTextContext();

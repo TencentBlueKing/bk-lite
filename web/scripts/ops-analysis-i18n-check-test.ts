@@ -29,6 +29,8 @@ const CJK = /[\u4e00-\u9fff]/;
  */
 const keptCopy = new Map<string, string>([
   ['无数据', '#4340 DEFER：topology registerNode empty caption'],
+  ['仪表盘编辑状态', '搭盘协议标题，后端按这个标记读取编辑快照'],
+  ['仪表盘编辑配置过长，本轮无法安全搭盘。请先减少组件后再描述调整。', '搭盘协议正文，后端按「无法安全搭盘」停止套用'],
   // 时钟预设的存储 id 与画面字面量，规格要求原样展示，不随界面语言改写。
   ['YYYY年M月D日', 'screen clock format id'],
   ['M月D日 HH:mm', 'screen clock format id'],
