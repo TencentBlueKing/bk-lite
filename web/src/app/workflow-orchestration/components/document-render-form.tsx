@@ -6,6 +6,7 @@ import { Button, Form, Input, Typography, Upload, message } from 'antd';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import type { DataReferenceOption } from '../lib/data-references';
+import { BUILTIN_SAMPLE_TEMPLATE_URLS } from '../lib/sample-templates';
 import type { JsonSchema } from '../lib/types';
 import { FileSampleLinks } from './file-sample-links';
 import { ReportContractGuideDrawer } from './report-contract-guide-drawer';
@@ -47,8 +48,8 @@ const SAMPLE_SCHEMA: JsonSchema = {
     maxCount: 1,
     sourceModes: ['upload'],
     sampleFiles: [
-      { name: 'Word', url: '/workflow-orchestration/templates/health-inspection-example.docx' },
-      { name: 'Excel', url: '/workflow-orchestration/templates/health-inspection-example.xlsx' },
+      { name: 'Word', url: BUILTIN_SAMPLE_TEMPLATE_URLS.docx },
+      { name: 'Excel', url: BUILTIN_SAMPLE_TEMPLATE_URLS.xlsx },
     ],
   },
 };

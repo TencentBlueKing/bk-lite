@@ -32,3 +32,14 @@ def test_seed_builtin_health_template_snapshot_uploads_and_hashes(fmt):
 def test_builtin_health_template_path_rejects_unknown_format():
     with pytest.raises(ValueError, match="docx 或 xlsx"):
         builtin_health_template_path("pdf")
+
+
+def test_builtin_health_template_path_lives_under_app_assets():
+    from apps.workflow_orchestration.services.demo_templates import BUILTIN_TEMPLATE_DIR
+
+    path = builtin_health_template_path("docx")
+    assert BUILTIN_TEMPLATE_DIR.name == "templates"
+    assert BUILTIN_TEMPLATE_DIR.parent.name == "assets"
+    assert "workflow_orchestration" in path.parts
+    assert "web" not in path.parts[-6:]
+    assert path.is_file()
