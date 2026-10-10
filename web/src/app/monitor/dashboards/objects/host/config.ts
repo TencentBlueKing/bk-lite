@@ -1,7 +1,7 @@
 import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
 
 /** 主机仪表盘色板：高对比、鲜活通透的现代监控色系，告别暗淡沉闷 */
-const HOST_PALETTE = {
+export const HOST_PALETTE = {
   blue: '#2563EB',      // 活力皇家蓝 (CPU 使用率、网络入流量)
   indigo: '#6366F1',    // 现代紫靛 (系统 1 分钟负载、CPU 内核态、运行时长)
   cyan: '#06B6D4',      // 清亮青蓝 (系统 5 分钟负载、磁盘读吞吐、可用内存)
