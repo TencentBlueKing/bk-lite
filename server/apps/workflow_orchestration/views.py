@@ -71,6 +71,7 @@ from apps.workflow_orchestration.services.definitions import (
     validate_conductor_definition,
     validate_workflow_inputs,
 )
+from apps.workflow_orchestration.services.demo_templates import SAMPLE_TEMPLATE_CONTENT_TYPES, builtin_health_template_path
 from apps.workflow_orchestration.services.execution_details import build_execution_node_detail, build_execution_node_summary
 from apps.workflow_orchestration.services.execution_job_cancellation import cancel_linked_job_tasks
 from apps.workflow_orchestration.services.executions import apply_remote_execution
@@ -1103,6 +1104,20 @@ class WorkflowViewSet(AuthViewSet):
         if len(payload) > 100:
             return Response({"detail": "当前组织可用原子超过 100 个上限"}, status=status.HTTP_409_CONFLICT)
         return Response(payload)
+
+    @action(methods=["GET"], detail=False, url_path=r"sample-templates/(?P<fmt>docx|xlsx)")
+    @HasPermission("workflow-View", app_name=APP_NAME)
+    def sample_templates(self, request, fmt=None):
+        """下载后端维护的内置巡检示例模板（docx/xlsx）。"""
+        _team_id(request)
+        try:
+            path = builtin_health_template_path(str(fmt or ""))
+        except ValueError:
+            return Response({"detail": "格式非法"}, status=status.HTTP_400_BAD_REQUEST)
+        except FileNotFoundError:
+            return Response({"detail": "示例模板不存在"}, status=status.HTTP_404_NOT_FOUND)
+        content_type = SAMPLE_TEMPLATE_CONTENT_TYPES[str(fmt)]
+        return FileResponse(BytesIO(path.read_bytes()), content_type=content_type, as_attachment=True, filename=path.name)
 
     @action(methods=["GET"], detail=False)
     @HasPermission("workflow-View", app_name=APP_NAME)

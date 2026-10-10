@@ -39,8 +39,8 @@ const schema: JsonSchema = {
       'x-file-options': {
         accept: ['docx', 'xlsx'], maxSizeMiB: 5, maxCount: 1, sourceModes: ['upload'],
         sampleFiles: [
-          { name: 'Word', url: '/workflow-orchestration/templates/health-inspection-example.docx' },
-          { name: 'Excel', url: '/workflow-orchestration/templates/health-inspection-example.xlsx' },
+          { name: 'Word', url: '/workflow_orchestration/api/workflows/sample-templates/docx/' },
+          { name: 'Excel', url: '/workflow_orchestration/api/workflows/sample-templates/xlsx/' },
         ],
       },
     },
@@ -74,8 +74,20 @@ describe('表单触发运行表单', () => {
     expect(screen.getByText('报告模板')).not.toBeNull();
     expect(screen.getByRole('button', { name: /选择 Word \/ Excel 模板/ })).not.toBeNull();
     expect(screen.queryByText('请上传一份报告模板后再启动')).toBeNull();
-    expect(screen.getByRole('link', { name: 'Word' }).getAttribute('href')).toBe('/workflow-orchestration/templates/health-inspection-example.docx');
-    expect(screen.getByRole('link', { name: 'Excel' }).getAttribute('href')).toBe('/workflow-orchestration/templates/health-inspection-example.xlsx');
+    expect(screen.getByRole('button', { name: 'Word' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: 'Excel' })).not.toBeNull();
+    const previousCreateObjectURL = URL.createObjectURL;
+    const previousRevokeObjectURL = URL.revokeObjectURL;
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, writable: true, value: vi.fn(() => 'blob:sample') });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value: vi.fn() });
+    mocks.get.mockResolvedValueOnce(new Blob(['docx']));
+    fireEvent.click(screen.getByRole('button', { name: 'Word' }));
+    await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
+      '/workflow_orchestration/api/workflows/sample-templates/docx/',
+      expect.objectContaining({ responseType: 'blob' }),
+    ));
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, writable: true, value: previousCreateObjectURL });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value: previousRevokeObjectURL });
 
     fireEvent.click(screen.getByRole('button', { name: /请选择目标主机/ }));
 
