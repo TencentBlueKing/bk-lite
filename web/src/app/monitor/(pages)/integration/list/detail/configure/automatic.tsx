@@ -44,6 +44,7 @@ import {
   selectedPolicyTemplates
 } from './automaticPolicyApply';
 import { COLLECTION_POLICY_BULK_CONFIG_DEFAULTS } from '@/app/monitor/(pages)/event/template/templateBulkUtils';
+import { policyGroupAccessNotes } from './policyGroupAccessNotes';
 import { TableDataItem } from '@/app/monitor/types';
 import {
   IntegrationAccessProps,
@@ -1949,6 +1950,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   };
 
   // 判断是否显示空状态
+  const selectedPolicyGroup = policyGroups.find((item) => item.id === policyGroupId);
+  const policyGroupNote =
+    policyGroupJoin !== false && selectedPolicyGroup
+      ? policyGroupAccessNotes(selectedPolicyGroup.rules, pluginId, pluginMetricNames)
+      : null;
+
   const showEmpty =
     !configLoading && (!currentConfig || !currentConfig.table_columns);
 
@@ -2059,31 +2066,21 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           }))}
         />
       </Form.Item>
-      {policyGroupJoin !== false && policyGroups.some((item) => item.id === policyGroupId) ? (
+      {policyGroupNote?.kind === 'no-plugin-rules' ? (
         <div className="mb-[10px] text-[12px] text-[var(--color-text-3)]">
-          {(policyGroups.find((item) => item.id === policyGroupId)?.rules || []).map((rule) => {
-            const otherPlugin = String(rule.plugin_id) !== String(pluginId);
-            const missingMetric =
-              !otherPlugin &&
-              Boolean(rule.metric_name) &&
-              pluginMetricNames.length > 0 &&
-              !pluginMetricNames.includes(rule.metric_name || '');
-            const note = otherPlugin
-              ? ` · ${t(
-                'monitor.integrations.policyGroupNotApplicable',
-                `${rule.plugin_name} 对本次接入不适用`,
-                { plugin: rule.plugin_name }
-              )}`
-              : missingMetric
-                ? ` · ${t('monitor.integrations.policyGroupNoData', '这次没有数据')}`
-                : '';
-            return (
-              <div key={`${rule.plugin_id}-${rule.name}`}>
-                {rule.name}
-                {note}
-              </div>
-            );
-          })}
+          {t(
+            'monitor.integrations.policyGroupNoPluginRules',
+            '这个策略组没有适用于本次采集的规则，加入后这批实例不会按这个组告警'
+          )}
+        </div>
+      ) : null}
+      {policyGroupNote?.kind === 'missing' ? (
+        <div className="mb-[10px] text-[12px] text-[var(--color-text-3)]">
+          {policyGroupNote.names.map((name) => (
+            <div key={name}>
+              {`${name} · ${t('monitor.integrations.policyGroupNoData', '这次没有数据')}`}
+            </div>
+          ))}
         </div>
       ) : null}
       <b className="text-[14px] flex mb-[10px] ml-[-10px]">
