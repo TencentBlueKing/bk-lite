@@ -159,7 +159,7 @@ const ScanTaskDrawer: React.FC<ScanTaskDrawerProps> = ({
         form.setFieldsValue(mapScanDetailToFormValues(detail));
       } catch (error) {
         console.error(error);
-        message.error(t('loadFailed'));
+        message.error(t('common.loadFailed'));
       } finally {
         if (!cancelled) {
           setFormReady(true);
@@ -258,7 +258,7 @@ const ScanTaskDrawer: React.FC<ScanTaskDrawerProps> = ({
       onClose();
     } catch (error) {
       console.error(error);
-      message.error(t('loadFailed'));
+      message.error(t('common.loadFailed'));
     } finally {
       setSubmitting(false);
     }

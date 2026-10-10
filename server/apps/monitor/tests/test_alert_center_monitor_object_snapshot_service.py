@@ -51,6 +51,7 @@ def test_monitor_alert_center_payload_contains_monitor_and_cmdb_identity(monkeyp
         policy=SimpleNamespace(
             id=7,
             name="CPU 使用率",
+            query_condition={"type": "metric", "metric_name": "cpu_usage"},
             organizations=[1],
             notice=True,
             monitor_object=monitor_object,
@@ -88,11 +89,12 @@ def test_monitor_alert_center_payload_contains_monitor_and_cmdb_identity(monkeyp
         "resource_name": "ip1",
     }
     assert payload["external_id"] == str(alert.id)
+    assert payload["item"] == "cpu_usage"
     assert payload["action"] == "created"
     assert payload["organizations"] == [1]
     assert payload["tags"] == {"region": "us-east"}
     assert payload["labels"] == {
-        "policy_name": "CPU 使用率（主机）",
+        "policy_name": "CPU 使用率（cpu_usage）",
         "metric_instance_id": "cpu_usage",
         "operator": "",
         "reason": "",
@@ -246,6 +248,7 @@ def test_saved_outbox_payload_keeps_original_cmdb_snapshot(monkeypatch):
         policy=SimpleNamespace(
             id=10,
             name="快照策略",
+            query_condition={"type": "metric", "metric_name": "cpu_usage"},
             organizations=[1],
             notice=True,
             monitor_object=monitor_object,
@@ -263,9 +266,11 @@ def test_saved_outbox_payload_keeps_original_cmdb_snapshot(monkeypatch):
     enqueue_alert_center_deliveries([alert], "created", notifier=notifier)
     delivery = MonitorAlertCenterDelivery.objects.get(alert=alert)
     MonitorInstance.objects.filter(pk=instance.pk).update(cmdb_id="cmdb-after")
+    notifier.policy.query_condition["metric_name"] = "mem_used_percent"
 
     delivery.refresh_from_db()
     assert delivery.payload["cmdb_id"] == "cmdb-before"
+    assert delivery.payload["item"] == "cpu_usage"
 
 
 def test_missing_monitor_instance_keeps_alert_identity_with_policy_type(monkeypatch):
@@ -354,6 +359,7 @@ def test_legacy_and_outbox_payloads_share_monitor_identity(monkeypatch):
         policy=SimpleNamespace(
             id=12,
             name="丢包策略",
+            query_condition={"type": "metric", "metric_name": "packet_loss"},
             organizations=[1],
             notice=True,
             monitor_object=monitor_object,
@@ -387,6 +393,7 @@ def test_legacy_and_outbox_payloads_share_monitor_identity(monkeypatch):
 
     outbox_payload = MonitorAlertCenterDelivery.objects.get(alert=alert).payload
     legacy_payload = sent["content"]["events"][0]
+    assert legacy_payload["item"] == outbox_payload["item"] == "packet_loss"
     identity_fields = [
         "monitor_id",
         "cmdb_id",

@@ -26,6 +26,8 @@
       "status": "Workflow Status",
       "publishStatus": "Publish Status",
       "enableStatus": "Enabled",
+      "builtin": "Built-in",
+      "custom": "Custom",
       "create": "New Workflow",
       "duplicate": "Duplicate Workflow",
       "runTitle": "Run Workflow · {name}",
@@ -210,7 +212,15 @@
           }
         }
       },
-      "nodeTypeLabel": "Node Type"
+      "nodeTypeLabel": "Node Type",
+      "name": "Atom Name",
+      "key": "Atom Key",
+      "category": "Category",
+      "description": "Description",
+      "safetyLevel": "Safety Level",
+      "safetyReadOnly": "Read-only",
+      "safetyMutation": "Mutation",
+      "idempotent": "Idempotent"
     },
     "launch": {
       "enterAndPressReturn": "Type and press Enter to add",
@@ -609,6 +619,7 @@
       "singleStep": "Single-step Run",
       "configure": "Configure",
       "viewAtomDetails": "View Atom Details",
+      "atomDetailMissing": "Atom catalog details were not found",
       "deleteNode": "Delete Node",
       "newWorkflow": "New Workflow",
       "enterAndPressReturn": "Type and press Enter to add",

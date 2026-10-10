@@ -323,6 +323,7 @@ export function WorkflowNodeInspector({
   return (
     <OperateModal
       open={open}
+      destroyOnHidden
       centered
       mask
       maskClosable={false}
