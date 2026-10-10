@@ -84,6 +84,75 @@ def test_applications_by_system_only_follows_direct_contains():
     assert applications_by_system(["s1"], edge_loader=_loader(graph)) == {"s1": ["a-direct"]}
 
 
+def test_applications_by_system_skips_self_referential_non_application_child(caplog):
+    sentinel = "password=super-secret-token"
+    loop = _edge(SYSTEM_CONTAINS_APPLICATION, "system", "s1", "system", "s1")
+    loop["inst_name"] = sentinel
+    graph = [
+        _edge(SYSTEM_CONTAINS_APPLICATION, "system", "s1", "application", "a-ok"),
+        loop,
+        _edge(SYSTEM_CONTAINS_APPLICATION, "system", "s2", "application", "a-other"),
+    ]
+    caplog.set_level(logging.WARNING, logger="cmdb")
+
+    result = applications_by_system(["s1", "s2"], edge_loader=_loader(graph))
+
+    assert result == {"s1": ["a-ok"], "s2": ["a-other"]}
+    records = [record for record in caplog.records if record.name == "cmdb" and "event=service_tree_application_walk_skipped" in record.msg]
+    assert len(records) == 1
+    assert records[0].levelno == logging.WARNING
+    assert records[0].msg == "event=service_tree_application_walk_skipped node_uuid=%s model_id=%s reason=%s"
+    assert records[0].args == ("s1", "system", "cycle")
+    assert records[0].getMessage() == "event=service_tree_application_walk_skipped node_uuid=s1 model_id=system reason=cycle"
+    assert sentinel not in records[0].getMessage()
+    assert records[0].exc_info is None
+    assert not any(record.levelno >= logging.ERROR for record in caplog.records)
+
+
+def test_applications_by_system_bounds_skipped_node_identity(caplog):
+    dirty = "s1\n" + ("z" * 200)
+    sentinel = "password=super-secret-token"
+    loop = _edge(SYSTEM_CONTAINS_APPLICATION, "system", dirty, "system", dirty)
+    loop["inst_name"] = sentinel
+    graph = [
+        _edge(SYSTEM_CONTAINS_APPLICATION, "system", dirty, "application", "a-ok"),
+        loop,
+    ]
+    caplog.set_level(logging.WARNING, logger="cmdb")
+
+    result = applications_by_system([dirty], edge_loader=_loader(graph))
+
+    assert result == {dirty: ["a-ok"]}
+    records = [record for record in caplog.records if record.name == "cmdb" and "event=service_tree_application_walk_skipped" in record.msg]
+    assert len(records) == 1
+    expected_uuid = ("s1\\n" + ("z" * 200))[:160]
+    assert records[0].args == (expected_uuid, "system", "cycle")
+    assert len(expected_uuid) == 160
+    assert "\n" not in records[0].getMessage()
+    assert "\r" not in records[0].getMessage()
+    assert sentinel not in records[0].getMessage()
+    assert records[0].getMessage() == f"event=service_tree_application_walk_skipped node_uuid={expected_uuid} model_id=system reason=cycle"
+
+
+def test_applications_by_system_skips_cyclic_non_application_children(caplog):
+    graph = [
+        _edge(SYSTEM_CONTAINS_APPLICATION, "system", "s1", "application", "a-ok"),
+        _edge(SYSTEM_CONTAINS_APPLICATION, "system", "s1", "system", "mid"),
+        _edge(SYSTEM_CONTAINS_APPLICATION, "system", "mid", "system", "s1"),
+        _edge(SYSTEM_CONTAINS_APPLICATION, "system", "s-loop", "system", "other"),
+        _edge(SYSTEM_CONTAINS_APPLICATION, "system", "other", "system", "s-loop"),
+    ]
+    caplog.set_level(logging.WARNING, logger="cmdb")
+
+    result = applications_by_system(["s1", "s-loop"], edge_loader=_loader(graph))
+
+    assert result == {"s1": ["a-ok"], "s-loop": []}
+    messages = [record.getMessage() for record in caplog.records if record.name == "cmdb" and record.levelno == logging.WARNING]
+    assert "event=service_tree_application_walk_skipped node_uuid=s1 model_id=system reason=cycle" in messages
+    assert "event=service_tree_application_walk_skipped node_uuid=s-loop model_id=system reason=cycle" in messages
+    assert not any(record.exc_info for record in caplog.records if record.name == "cmdb")
+
+
 def _model(model_id, name, is_pre):
     return {"model_id": model_id, "model_name": name, "is_pre": is_pre}
 

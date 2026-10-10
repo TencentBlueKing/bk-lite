@@ -3,6 +3,8 @@
 Status: implemented (pending review) — 部署架构 scene state added on 2026-09-01
 
 > 后续修订：partial permission / 隐藏策略 / 不可见 Host 或子 Application 不再把整张系统打成 `unknown/unavailable`；策略对象不可见也不再因「策略不完整」丢掉可见告警。现行是可见范围健康与监控覆盖，告警与监控告警列表同一套可见性。下文一期正文里「整张系统 unavailable / 不得产生部分计数」两条已被该修订取代，不再作为现行契约。
+>
+> 2026-10-10：服务树 `applications_by_system` 遇到已见或异常节点必须停止并记录节点 uuid/model，不得因脏边 `RecursionError` 打满调用栈。`_build_scope` 的 CMDB 关联展开失败使用 `cmdb_relation_expand_failed` / 「应用系统 CMDB 关联展开失败」，不得再报成「应用系统监控数据查询失败」。授权监控、告警、策略查询失败时墙仍返回，对应系统健康为 `unknown/unavailable`，并记录真实异常。ACL 未完成时不得把 `hostCoverage.monitored` 报成 `0`；ACL 已成功则保留授权结果。告警详情与指标序列不得因此变成 `not_found` 或 `permission_denied`，仍以 `source_failure` 失败。
 
 ## Implementation Evidence (WIP)
 
@@ -765,6 +767,7 @@ type Application3DErrorCode =
   | 'not_found'
   | 'scope_changed'
   | 'source_failure'
+  | 'cmdb_relation_expand_failed'
   | 'capacity_exceeded';
 ```
 

@@ -527,6 +527,7 @@ messages:
   app3d_status_must_be_array: "system_status 必须为字符串数组"
   app3d_status_illegal: "system_status 包含非法值"
   app3d_monitor_query_failed: "应用系统监控数据查询失败"
+  app3d_cmdb_relation_expand_failed: "应用系统 CMDB 关联展开失败"
   app3d_cursor_invalid: "cursor 无效"
   app3d_cursor_expired: "cursor 已失效"
   weops_request_failed_detail: "WeOps 请求失败: {detail}"

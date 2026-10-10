@@ -21,7 +21,7 @@ from apps.cmdb.services.application_system import (
 )
 from apps.cmdb.services.instance import InstanceManage
 from apps.core.exceptions.base_app_exception import ValidationAppException
-from apps.core.logger import cmdb_logger as logger
+from apps.core.logger import cmdb_logger as logger, safe_log_value
 
 APPLICATION_MODEL = "application"
 SYSTEM_MODEL = "system"
@@ -281,18 +281,40 @@ def applications_by_system(system_uuids, edge_loader: EdgeLoader | None = None) 
     edges.extend(loader(SYSTEM_CONTAINS_APPLICATION, systems))
     children = _children_by_parent(edges)
     for system_uuid in systems:
-        apps: list[str] = []
-
-        def walk(uuid: str) -> None:
-            for kind, child_uuid in children.get(uuid, []):
-                if kind == APPLICATION_MODEL:
-                    apps.append(child_uuid)
-                else:
-                    walk(child_uuid)
-
-        walk(system_uuid)
-        result[system_uuid] = _unique(apps)
+        result[system_uuid] = _unique(_walk_system_applications(system_uuid, children))
     return result
+
+
+def _walk_system_applications(root_uuid: str, children: dict[str, list[tuple[str, str]]]) -> list[str]:
+    """沿服务树收集应用。已见节点或异常子节点停止，避免脏边递归打爆调用栈。"""
+    apps: list[str] = []
+    visited: set[str] = set()
+
+    def skip(node_uuid: str, model_id: str, reason: str) -> None:
+        logger.warning(
+            "event=service_tree_application_walk_skipped node_uuid=%s model_id=%s reason=%s",
+            safe_log_value(node_uuid),
+            safe_log_value(model_id or "-"),
+            reason,
+        )
+
+    def walk(uuid: str, model_id: str) -> None:
+        if not uuid or uuid in visited:
+            skip(uuid, model_id, "cycle" if uuid and uuid in visited else "abnormal")
+            return
+        visited.add(uuid)
+        for kind, child_uuid in children.get(uuid, []):
+            child_model = kind or "-"
+            if not child_uuid or child_model == HOST_MODEL:
+                skip(child_uuid, child_model, "abnormal")
+                continue
+            if child_model == APPLICATION_MODEL:
+                apps.append(child_uuid)
+                continue
+            walk(child_uuid, child_model)
+
+    walk(root_uuid, SYSTEM_MODEL)
+    return apps
 
 
 def expand_systems_to_host_uuids_via_service_tree(
