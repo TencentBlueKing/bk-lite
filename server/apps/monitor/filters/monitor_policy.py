@@ -50,6 +50,11 @@ def source_covers_instance(source, instance_ids) -> bool:
     return bool(value_set.intersection(instance_ids))
 
 
+def exclude_policy_group_rules(queryset):
+    """策略列表只保留旧策略和单独规则，组内规则不在此出现。"""
+    return queryset.filter(group_rule__isnull=True)
+
+
 def filter_policy_queryset_by_instance(queryset, instance_id):
     """按实例显式绑定过滤策略，在数据库完成 JSON 匹配以便后续分页。"""
     instance_ids = set(policy_instance_id_candidates(instance_id))

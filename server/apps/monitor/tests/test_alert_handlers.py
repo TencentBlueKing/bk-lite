@@ -6,7 +6,8 @@ import pytest
 
 from apps.monitor.models import MonitorAlert, MonitorEvent
 from apps.monitor.models.monitor_object import MonitorObject
-from apps.monitor.models.monitor_policy import MonitorPolicy, PolicyOrganization
+from apps.monitor.models.monitor_policy import MonitorPolicy, PolicyGroup, PolicyGroupRule, PolicyOrganization
+from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.system_mgmt.models import Channel, Group, User
 
@@ -133,8 +134,35 @@ def test_alert_list_exposes_handlers_and_display(api_client, grant_all):
     result = resp.json()["data"]["results"][0]
     assert result["handlers"] == [user.id]
     assert result["handlers_display"] == ["处理人甲(handler1)"]
+    assert result["policy"]["policy_group"] is None
     assert detail.status_code == 200
     assert detail.json()["data"]["handlers_display"] == ["处理人甲(handler1)"]
+
+
+def test_alert_list_marks_group_policy(api_client, grant_all):
+    Group.objects.get_or_create(id=1, defaults={"name": "Default Team", "parent_id": 0})
+    policy = _policy(name="磁盘写入速率过高")
+    plugin = MonitorPlugin.objects.create(name="alert-group-plugin", collector="Telegraf", collect_type="host")
+    group = PolicyGroup.objects.create(organization=1, monitor_object=policy.monitor_object, name="Host默认告警")
+    PolicyGroupRule.objects.create(group=group, plugin=plugin, policy=policy, name="磁盘写入速率过高")
+    MonitorAlert.objects.create(
+        policy_id=policy.id,
+        organizations=[1],
+        monitor_instance_id="fusion-collector",
+        status="new",
+        content="disk write high",
+    )
+    api_client.cookies["current_team"] = "1"
+
+    resp = api_client.get(
+        f"{BASE}/api/monitor_alert/",
+        {"status_in": "new", "page": 1, "page_size": 20},
+    )
+
+    assert resp.status_code == 200
+    result = resp.json()["data"]["results"][0]
+    assert result["policy"]["name"] == "磁盘写入速率过高"
+    assert result["policy"]["policy_group"] == {"id": group.id, "name": "Host默认告警"}
 
 
 def test_my_alert_filters_handlers_not_operator(api_client, grant_all):

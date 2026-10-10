@@ -152,6 +152,17 @@ class SyncInstance:
             if metrics_instance_map[instance_id].get("organization_id") is not None
         ]
 
+    def _existing_ids_among(self, candidate_ids):
+        """只确认本轮发现的 ID 是否已存在，避免为了对账装入全部实例主键。"""
+        present = set()
+        ordered = [instance_id for instance_id in candidate_ids if instance_id]
+        batch_size = DatabaseConstants.BULK_CREATE_BATCH_SIZE
+        for offset in range(0, len(ordered), batch_size):
+            present.update(
+                MonitorInstance.objects.filter(id__in=ordered[offset : offset + batch_size]).values_list("id", flat=True)
+            )
+        return present
+
     # 查询库中已有的实例
     def get_exist_instance_set(self):
         exist_instances = MonitorInstance.objects.filter().values("id")
@@ -160,19 +171,14 @@ class SyncInstance:
     def sync_monitor_instances(self):
         metrics_instance_map = self.get_instance_map_by_metrics()  # VM 指标采集
         vm_all = set(metrics_instance_map.keys())
+        all_existing_ids = self._existing_ids_among(vm_all)
 
-        # 查询所有实例ID（包括手动和自动），用于判断是否真正需要新增
-        all_existing_ids = set(MonitorInstance.objects.values_list("id", flat=True))
-
-        # 只查询自动发现的实例（auto=True），用于后续的恢复和删除逻辑
-        auto_qs = MonitorInstance.objects.filter(auto=True).exclude(
+        deleted_qs = MonitorInstance.objects.filter(auto=True, is_deleted=True).exclude(
             monitor_object_id__in=self.failed_monitor_object_ids
         )
         if self.is_scoped:
-            auto_qs = auto_qs.filter(monitor_object_id__in=self.successful_monitor_object_ids)
-        all_instances_qs = auto_qs.values("id", "is_deleted")
-        table_all = {i["id"] for i in all_instances_qs}
-        table_deleted = {i["id"] for i in all_instances_qs if i["is_deleted"]}
+            deleted_qs = deleted_qs.filter(monitor_object_id__in=self.successful_monitor_object_ids)
+        table_deleted = set(deleted_qs.values_list("id", flat=True))
 
         # 计算增删改集合
         # add_set: VM中新出现的实例 - 所有已存在的实例（不管手动还是自动），避免主键冲突

@@ -278,4 +278,78 @@ describe('告警详情信息', () => {
     expect(screen.getAllByText('主机').length).toBeGreaterThan(0);
     expect(screen.getByText('资产类型')).toBeTruthy();
   });
+
+  it('组策略在名称旁标识并禁用编辑', () => {
+    const formData = {
+      id: 'alert-group',
+      status: 'new',
+      level: 'critical',
+      content: '磁盘写入速率过高',
+      monitor_instance_name: 'fusion-collector',
+      policy: {
+        id: 14,
+        monitor_object: 1,
+        organizations: [],
+        name: '磁盘写入速率过高',
+        policy_group: { id: 8, name: 'Host默认告警' },
+        notice: true,
+        notice_users: [],
+        query_condition: { type: 'metric' },
+      },
+      policy_permission: ['Edit'],
+      permission: ['Detail'],
+    } as unknown as TableDataItem;
+
+    render(
+      <Information
+        formData={formData}
+        chartData={[]}
+        objects={[{ id: 1, name: 'Host', display_name: '主机', icon: '' }]}
+        userList={[]}
+        onClose={vi.fn()}
+        trapData={{}}
+      />
+    );
+
+    expect(screen.getAllByText('磁盘写入速率过高').length).toBeGreaterThan(0);
+    expect(screen.getByText('组策略')).toBeTruthy();
+    expect((screen.getByRole('button', { name: '编辑' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('单策略名称旁没有组策略标识，编辑可点', () => {
+    const formData = {
+      id: 'alert-standalone',
+      status: 'new',
+      level: 'critical',
+      content: 'CPU 高',
+      monitor_instance_name: 'node-01',
+      policy: {
+        id: 3,
+        monitor_object: 1,
+        organizations: [],
+        name: 'CPU 策略',
+        policy_group: null,
+        notice: false,
+        notice_users: [],
+        query_condition: { type: 'metric' },
+      },
+      policy_permission: ['Edit'],
+      permission: ['Detail'],
+    } as unknown as TableDataItem;
+
+    render(
+      <Information
+        formData={formData}
+        chartData={[]}
+        objects={[{ id: 1, name: 'Host', display_name: '主机', icon: '' }]}
+        userList={[]}
+        onClose={vi.fn()}
+        trapData={{}}
+      />
+    );
+
+    expect(screen.getByText('CPU 策略')).toBeTruthy();
+    expect(screen.queryByText('组策略')).toBeNull();
+    expect((screen.getByRole('button', { name: '编辑' }) as HTMLButtonElement).disabled).toBe(false);
+  });
 });

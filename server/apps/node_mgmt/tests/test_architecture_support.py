@@ -5532,7 +5532,7 @@ def test_converge_controller_install_connectivity_for_node_prefers_install_node_
         created_by="tester",
         updated_by="tester",
     )
-    monkeypatch.setattr(installer_tasks.discover_node_versions, "delay", lambda: None)
+    monkeypatch.setattr(installer_tasks.discover_node_versions, "delay", lambda *args, **kwargs: None)
 
     installer_tasks.converge_controller_install_connectivity_for_node("current-install-node")
 
@@ -5585,8 +5585,12 @@ def test_converge_controller_install_connectivity_triggers_version_discovery_whe
         created_by="tester",
         updated_by="tester",
     )
-    called = []
-    monkeypatch.setattr(installer_tasks.discover_node_versions, "delay", lambda: called.append("discover"))
+    discovered = []
+
+    def _delay(node_ids=None):
+        discovered.append(node_ids)
+
+    monkeypatch.setattr(installer_tasks.discover_node_versions, "delay", _delay)
 
     installer_tasks.converge_controller_install_connectivity_for_node("version-install-node")
 
@@ -5594,7 +5598,7 @@ def test_converge_controller_install_connectivity_triggers_version_discovery_whe
     task_node.refresh_from_db()
     assert task.status == "finished"
     assert task_node.status == InstallerConstants.STEP_STATUS_SUCCESS
-    assert called == ["discover"]
+    assert discovered == [["version-install-node"]]
 
 
 @pytest.mark.django_db
@@ -5664,7 +5668,7 @@ def test_converge_controller_install_connectivity_for_node_falls_back_for_legacy
         created_by="tester",
         updated_by="tester",
     )
-    monkeypatch.setattr(installer_tasks.discover_node_versions, "delay", lambda: None)
+    monkeypatch.setattr(installer_tasks.discover_node_versions, "delay", lambda *args, **kwargs: None)
 
     installer_tasks.converge_controller_install_connectivity_for_node("legacy-install-node")
 
@@ -5739,7 +5743,7 @@ def test_install_connectivity_converge_matches_generated_node_id_not_ip(monkeypa
         created_by="tester",
         updated_by="tester",
     )
-    monkeypatch.setattr(installer_tasks.discover_node_versions, "delay", lambda: None)
+    monkeypatch.setattr(installer_tasks.discover_node_versions, "delay", lambda *args, **kwargs: None)
 
     installer_tasks.converge_controller_install_connectivity_for_node("current-install-node")
 

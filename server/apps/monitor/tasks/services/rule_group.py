@@ -105,15 +105,27 @@ class RuleGrouping:
         logger.info(f"规则执行完成 - 成功: {success_count}, 失败: {failed_count}, 生成关联: {len(monitor_inst_asso_set)}")
 
         try:
-            exist_instance_map = {(i.monitor_instance_id, i.organization): i.id for i in MonitorInstanceOrganization.objects.all()}
-            create_asso_set = monitor_inst_asso_set - set(exist_instance_map.keys())
-
-            if create_asso_set:
-                create_objs = [
-                    MonitorInstanceOrganization(monitor_instance_id=asso_tuple[0], organization=asso_tuple[1])
-                    for asso_tuple in create_asso_set
-                ]
-                MonitorInstanceOrganization.objects.bulk_create(create_objs, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE, ignore_conflicts=True)
-                logger.info(f"新增监控实例组织关联: {len(create_objs)}")
+            instance_ids = list({instance_id for instance_id, _organization in monitor_inst_asso_set})
+            existing = set()
+            batch_size = DatabaseConstants.BULK_CREATE_BATCH_SIZE
+            for offset in range(0, len(instance_ids), batch_size):
+                existing.update(
+                    MonitorInstanceOrganization.objects.filter(
+                        monitor_instance_id__in=instance_ids[offset : offset + batch_size]
+                    ).values_list("monitor_instance_id", "organization")
+                )
+            create_asso_set = monitor_inst_asso_set - existing
+            if not create_asso_set:
+                return
+            create_objs = [
+                MonitorInstanceOrganization(monitor_instance_id=instance_id, organization=organization)
+                for instance_id, organization in create_asso_set
+            ]
+            MonitorInstanceOrganization.objects.bulk_create(
+                create_objs,
+                batch_size=batch_size,
+                ignore_conflicts=True,
+            )
+            logger.info("新增监控实例组织关联: %s", len(create_objs))
         except Exception as e:
             logger.error(f"批量创建监控实例组织关联失败: {e}", exc_info=True)
