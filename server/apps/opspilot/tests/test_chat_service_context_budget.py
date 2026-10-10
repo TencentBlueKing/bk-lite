@@ -74,3 +74,26 @@ def test_format_chat_server_kwargs_ignores_legacy_suggest_rewrite_and_think_flag
     assert chat_kwargs["enable_query_rewrite"] is False
     assert chat_kwargs["extra_config"]["show_think"] is False
     assert chat_kwargs["temperature"] == 1.0
+
+
+def test_non_knowledge_chat_always_includes_attachment_tool():
+    model = LLMModel.objects.create(name="chat-attachment", vendor=_vendor(), model="gpt-4", context_window_tokens=8_000)
+    kwargs = _kwargs([])
+    kwargs["skill_type"] = SkillTypeChoices.BASIC_TOOL
+    kwargs["tools"] = []
+
+    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(kwargs, model)
+
+    names = [item.get("name") for item in chat_kwargs["tools_servers"]]
+    assert names.count("attachment_file") == 1
+    assert "【附件生成】" in chat_kwargs["system_message_prompt"]
+    assert "附件生成强制规则" not in chat_kwargs["system_message_prompt"]
+
+
+def test_knowledge_chat_does_not_include_attachment_tool():
+    model = LLMModel.objects.create(name="chat-knowledge", vendor=_vendor(), model="gpt-4", context_window_tokens=8_000)
+
+    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(_kwargs([]), model)
+
+    assert not chat_kwargs.get("tools_servers")
+    assert "【附件生成】" not in chat_kwargs["system_message_prompt"]

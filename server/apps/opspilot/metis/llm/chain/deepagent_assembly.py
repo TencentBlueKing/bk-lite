@@ -8,12 +8,16 @@ from pathlib import Path
 
 from langchain_core.messages import AIMessage, ToolMessage
 
-from apps.opspilot.metis.llm.agent.tool_execution_planner import is_pod_restart_reason_query
+from apps.opspilot.metis.llm.agent.tool_execution_planner import (
+    GENERATE_ATTACHMENT_FILE_TOOL_NAME,
+    is_pod_restart_reason_query,
+    looks_like_attachment_file_task,
+)
 from apps.opspilot.metis.llm.chain.entity import HIDE_PLANNED_STEP_TEXT_KEY
 from apps.opspilot.metis.llm.common.tool_failure import is_tool_result_failure
 
-# HITL/选择卡会进工具目录，但不算业务工具：无业务工具的寒暄仍走轻量直答。
-_LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES = frozenset({"request_user_choice"})
+# HITL/选择卡和常驻附件工具会进目录，但不算业务工具：无业务工具的寒暄仍走轻量直答。
+_LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES = frozenset({"request_user_choice", "generate_attachment_file"})
 
 # 步间摘要上限；正文 + 结构化关键字段共享，优先保住关键字段。
 _STEP_SUMMARY_MAX_CHARS = 1200
@@ -61,9 +65,26 @@ class DeepAgentAssemblyMixin:
         return names
 
     @staticmethod
+    def _business_tool_names(tools) -> list[str]:
+        """去掉选择卡和常驻附件后的业务工具名。空计划直答只列举这些。"""
+        names = []
+        for tool in tools or []:
+            name = str(getattr(tool, "name", "") or "")
+            if name and name not in _LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES:
+                names.append(name)
+        return names
+
+    @staticmethod
     def _catalog_has_business_tools(tools) -> bool:
-        """目录里是否有会打断轻量直答的业务工具。HITL/选择卡不算。"""
-        return any((name := getattr(tool, "name", None)) and name not in _LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES for tool in (tools or []))
+        """目录里是否有会打断轻量直答的业务工具。HITL/选择卡和常驻附件不算。"""
+        return bool(DeepAgentAssemblyMixin._business_tool_names(tools))
+
+    @staticmethod
+    def _attachment_request_needs_planner(tools, user_message: str) -> bool:
+        """常驻附件不算业务工具，但用户本轮要文件时必须进入规划，不能轻量直答。"""
+        if not looks_like_attachment_file_task(user_message):
+            return False
+        return any(getattr(tool, "name", "") == GENERATE_ATTACHMENT_FILE_TOOL_NAME for tool in (tools or []))
 
     @staticmethod
     def _should_use_lightweight_direct_reply(tools, skill_sources) -> bool:

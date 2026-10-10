@@ -72,6 +72,8 @@ export interface SelectTool {
   icon: string;
   description?: string;
   kwargs?: ToolVariable[];
+  /** false 表示外部 MCP；缺省或 true 表示内置工具 */
+  isBuildIn?: boolean;
 }
 
 export interface TagOption {

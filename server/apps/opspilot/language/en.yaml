@@ -335,10 +335,10 @@ tools:
   attachment_file:
     name: Workflow Attachment File
     description: |
-      Generate markdown, PDF, or Word attachment files for workflow execution and return a downloadable link.
+      Generate Markdown, PDF, Word, Excel, or CSV attachments. Use only when the user explicitly asks for a file.
     tools:
       generate_attachment_file:
-        description: Generate a workflow attachment file, persist it to MinIO-backed storage, and return its download link.
+        description: Generate an md, pdf, docx, xlsx, or csv attachment and return its download link. xlsx and csv require comma-separated data with a header row.
   kubernetes:
     name: Kubernetes Tools
     description: |

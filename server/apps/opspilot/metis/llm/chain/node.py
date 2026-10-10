@@ -836,7 +836,7 @@ class ToolsNodes(
         if not tool_servers:
             return False
 
-        return all((getattr(server, "url", "") or "").startswith("langchain:") and self._is_k8s_tool_server(server) for server in tool_servers)
+        return any(self._is_k8s_tool_server(server) for server in tool_servers)
 
     async def call_with_structured_output(self, llm, user_message: str, pydantic_model):
         """
@@ -2487,11 +2487,19 @@ class ToolsNodes(
             interrupt_on = self._build_interrupt_on(graph_request, tools)
             token_usage_accumulator = config["configurable"].get("token_usage_accumulator")
 
+            planning_question = str(getattr(graph_request, "user_message", "") or getattr(graph_request, "graph_user_message", "") or "").strip()
+            if not planning_question:
+                for message in reversed(original_messages):
+                    if isinstance(message, HumanMessage):
+                        planning_question = str(message.content or "").strip()
+                        break
+
             # 无业务工具、无技能包：跳过规划器与 DeepAgent 内置 FS/execute 工具，直接短 system 回答。
+            # 用户本轮要求生成文件时除外，否则常驻附件进不了规划。
             if self._should_use_lightweight_direct_reply(
                 registered_tools,
                 ["/skills/"] if has_skill_packages else [],
-            ):
+            ) and not self._attachment_request_needs_planner(registered_tools, planning_question):
                 light_system = self._build_lightweight_system_prompt(getattr(graph_request, "system_message_prompt", "") or "")
                 if additional_system_prompt:
                     light_system = f"{light_system}\n\n{additional_system_prompt}"
@@ -2593,13 +2601,6 @@ class ToolsNodes(
                 accumulator=(token_usage_accumulator if isinstance(token_usage_accumulator, TokenUsageAccumulator) else None),
             )
 
-            planning_question = str(getattr(graph_request, "user_message", "") or getattr(graph_request, "graph_user_message", "") or "").strip()
-            if not planning_question:
-                for message in reversed(original_messages):
-                    if isinstance(message, HumanMessage):
-                        planning_question = str(message.content or "").strip()
-                        break
-
             async def _emit_planned_execution_status(phase: str, **payload: Any) -> None:
                 """规划阶段心跳：让前端显示「正在规划」而非长时间空白。"""
                 try:
@@ -2655,12 +2656,12 @@ class ToolsNodes(
             # 空计划（含已启用技能包的寒暄）：跳过 DeepAgent/FS，轻量直答。
             if self._should_use_lightweight_after_empty_plan(plan):
                 await _emit_planned_execution_status("idle", reason="empty_plan")
+                business_tool_names = self._business_tool_names(registered_tools)
                 light_system = self._build_lightweight_system_prompt(
                     getattr(graph_request, "system_message_prompt", "") or "",
-                    skills_available=has_skill_packages or bool(registered_tools),
+                    skills_available=has_skill_packages or bool(business_tool_names),
                 )
-                tool_names = [str(getattr(tool, "name", "") or "") for tool in registered_tools]
-                tool_names = [name for name in tool_names if name]
+                tool_names = business_tool_names
                 if tool_names:
                     light_system = f"{light_system}\n当前可用工具: {', '.join(tool_names)}"
                 if additional_system_prompt:

@@ -1589,6 +1589,8 @@
       "attachmentInChat": "Attachment can be downloaded in the chat",
       "linkLabel": "Download {name}"
     },
+    "sessionFiles": "Files in this chat",
+    "downloadFile": "Download",
     "clearChat": "Clear chat",
     "stopGenerating": "Stop generating",
     "sendMessage": "Send message",
@@ -1918,8 +1920,13 @@
     "selectedCount": "Selected Count",
     "deleteConfirm": "Are you sure you want to delete this skill?",
     "addTool": "Add Tool",
-    "toolMountHint": "Extend the agent with external APIs and plugin calls",
+    "toolMountHint": "Mount built-in tools. The model decides when to call them.",
     "toolEmpty": "No tools yet. Click \"Add Tool\" above to select.",
+    "mcpSection": "MCP",
+    "addMcp": "Add MCP",
+    "selectMcp": "Select MCP",
+    "mcpMountHint": "Mount connected MCP servers. The model decides when to call them.",
+    "mcpEmpty": "No MCP yet. Click \"Add MCP\" above to select.",
     "configureTool": "Config",
     "import": {
       "title": "Import skill package",

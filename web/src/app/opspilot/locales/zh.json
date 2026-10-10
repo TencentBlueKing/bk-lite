@@ -1586,6 +1586,8 @@
       "attachmentInChat": "附件可在对话中下载",
       "linkLabel": "下载 {name}"
     },
+    "sessionFiles": "本会话文件",
+    "downloadFile": "下载",
     "clearChat": "清空对话",
     "stopGenerating": "停止生成",
     "sendMessage": "发送消息",
@@ -1915,8 +1917,13 @@
     "selectedCount": "已选择数量",
     "deleteConfirm": "你确定要删除选中的智能体吗？",
     "addTool": "添加工具",
-    "toolMountHint": "扩展智能体的外部 API 和插件调用能力",
+    "toolMountHint": "挂载内置工具，由模型按需调用",
     "toolEmpty": "暂未添加工具，可点击右上角「添加工具」进行选择",
+    "mcpSection": "MCP",
+    "addMcp": "添加 MCP",
+    "selectMcp": "选择 MCP",
+    "mcpMountHint": "挂载已接入的 MCP 服务，由模型按需调用",
+    "mcpEmpty": "暂未添加 MCP，可点击右上角「添加 MCP」进行选择",
     "configureTool": "配置",
     "import": {
       "title": "导入技能包",
