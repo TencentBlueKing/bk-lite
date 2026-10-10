@@ -6,141 +6,23 @@ from datetime import timedelta
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.workflow_orchestration.models import TriggerInvocation, Workflow, WorkflowExecution, WorkflowInteraction, WorkflowVersion
 from apps.workflow_orchestration.services.atom_registry import ensure_platform_atom
 from apps.workflow_orchestration.services.atoms import TASK_DEFINITIONS, atom_catalog_payload
+from apps.workflow_orchestration.services.builtin_workflows import BUILTIN_LINUX_KEY, BUILTIN_WINDOWS_KEY, ensure_builtin_health_workflows
 from apps.workflow_orchestration.services.conductor import ConductorClient, ConductorUnavailable
 from apps.workflow_orchestration.services.definitions import prepare_definition_for_publish
-from apps.workflow_orchestration.services.demo_showcase import (
-    SHOWCASE_ATOM_KEYS,
-    build_additional_showcase_workflows,
-    build_health_inspection_showcase_workflow,
-)
-from apps.workflow_orchestration.services.demo_templates import seed_builtin_health_template_snapshot
+from apps.workflow_orchestration.services.demo_showcase import SHOWCASE_ATOM_KEYS, build_additional_showcase_workflows
+from apps.workflow_orchestration.services.health_inspection_scripts import LINUX_HEALTH_SCRIPT, WINDOWS_HEALTH_SCRIPT
 from apps.workflow_orchestration.services.orchestration_contract import validate_orchestration_metadata
 from apps.workflow_orchestration.services.triggers import sync_published_triggers
 
+__all__ = ("LINUX_HEALTH_SCRIPT", "WINDOWS_HEALTH_SCRIPT")
+
 DEMO_PREFIX = "[TDD/BDD]"
-
-WINDOWS_HEALTH_SCRIPT = r"""
-$cpu = [math]::Round((Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average, 2)
-$os = Get-CimInstance Win32_OperatingSystem
-$memory = [math]::Round((1 - ($os.FreePhysicalMemory / $os.TotalVisibleMemorySize)) * 100, 2)
-$collectedAt = (Get-Date).ToUniversalTime().ToString("o")
-function Get-HealthStatus([double]$value, [double]$warning, [double]$critical) {
-  if ($value -ge $critical) { return "CRITICAL" }
-  if ($value -ge $warning) { return "WARNING" }
-  return "NORMAL"
-}
-$metrics = @(
-  @{
-    category = "CPU"; object_type = "processor"; object_name = "CPU Total"; dimensions = "core=all"
-    metric_name = "usage_percent"; value = $cpu; unit = "%"; warning_threshold = 80; critical_threshold = 90
-    health_status = (Get-HealthStatus $cpu 80 90); collected_at = $collectedAt; detail = "CPU 总使用率"
-  },
-  @{
-    category = "内存"; object_type = "physical_memory"; object_name = "Memory Total"; dimensions = "scope=system"
-    metric_name = "usage_percent"; value = $memory; unit = "%"; warning_threshold = 80; critical_threshold = 90
-    health_status = (Get-HealthStatus $memory 80 90); collected_at = $collectedAt; detail = "物理内存使用率"
-  }
-)
-$diskMetrics = @(Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | ForEach-Object {
-  $usage = if ($_.Size -gt 0) { [math]::Round((($_.Size - $_.FreeSpace) / $_.Size) * 100, 2) } else { 0 }
-  @{
-    category = "磁盘"; object_type = "logical_disk"; object_name = $_.DeviceID; dimensions = ("mount=" + $_.DeviceID)
-    metric_name = "usage_percent"; value = $usage; unit = "%"; warning_threshold = 80; critical_threshold = 90
-    health_status = (Get-HealthStatus $usage 80 90); collected_at = $collectedAt
-    detail = ("total_gb=" + [math]::Round($_.Size / 1GB, 2) + ",used_gb=" + [math]::Round(($_.Size - $_.FreeSpace) / 1GB, 2))
-  }
-})
-$networkMetrics = @(Get-CimInstance Win32_PerfFormattedData_Tcpip_NetworkInterface -ErrorAction SilentlyContinue | ForEach-Object {
-  $mbps = [math]::Round(($_.BytesTotalPersec * 8) / 1MB, 2)
-  @{
-    category = "网络"; object_type = "network_adapter"; object_name = $_.Name; dimensions = ("adapter=" + $_.Name)
-    metric_name = "throughput_mbps"; value = $mbps; unit = "Mbps"; warning_threshold = 800; critical_threshold = 950
-    health_status = (Get-HealthStatus $mbps 800 950); collected_at = $collectedAt; detail = "网卡总吞吐率"
-  }
-})
-$metrics += $diskMetrics
-$metrics += $networkMetrics
-$critical = @($metrics | Where-Object { $_.health_status -eq "CRITICAL" })
-$warning = @($metrics | Where-Object { $_.health_status -eq "WARNING" })
-$normal = @($metrics | Where-Object { $_.health_status -eq "NORMAL" })
-$result = @{
-  collected_at = $collectedAt; metrics = $metrics; metric_count = $metrics.Count
-  critical = $critical; warning = $warning; normal = $normal
-  critical_count = $critical.Count; warning_count = $warning.Count; normal_count = $normal.Count
-  conclusion = $(if (($critical.Count + $warning.Count) -gt 0) { "需关注" } else { "健康" })
-}
-Write-Output ("BK_LITE_RESULT=" + ($result | ConvertTo-Json -Depth 8 -Compress))
-""".strip()
-
-# 注意：勿在脚本正文使用 `${var}`。Conductor 会把 `${...}` 解析成工作流引用，
-# 导致 registerWorkflowDef 校验失败；bash 下用 `$var` 即可。
-LINUX_HEALTH_SCRIPT = r"""
-#!/bin/bash
-set -euo pipefail
-collected_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-cores=$(nproc 2>/dev/null || echo 1)
-load=$(awk '{print $1}' /proc/loadavg)
-cpu=$(awk -v l="$load" -v c="$cores" 'BEGIN{v=(c>0? (l/c)*100 : 0); if(v>100)v=100; printf "%.2f", v}')
-mem_total=$(awk '/MemTotal:/ {print $2}' /proc/meminfo)
-mem_avail=$(awk '/MemAvailable:/ {print $2}' /proc/meminfo)
-memory=$(awk -v t="$mem_total" -v a="$mem_avail" 'BEGIN{ if(t<=0){print 0}else{printf "%.2f", (1-a/t)*100} }')
-disk=$(df -P / | awk 'NR==2 {gsub("%","",$5); print $5}')
-health() { awk -v v="$1" -v w="$2" -v c="$3" 'BEGIN{ if(v+0>=c) print "CRITICAL"; else if(v+0>=w) print "WARNING"; else print "NORMAL" }'; }
-cpu_s=$(health "$cpu" 80 90)
-mem_s=$(health "$memory" 80 90)
-disk_s=$(health "$disk" 80 90)
-python3 - <<PY
-import json
-collected_at = "$collected_at"
-metrics = [
-  {
-    "category":"CPU","object_type":"processor","object_name":"CPU Total","dimensions":"core=all",
-    "metric_name":"usage_percent","value":float("$cpu"),"unit":"%",
-    "warning_threshold":80,"critical_threshold":90,"health_status":"$cpu_s",
-    "collected_at":collected_at,"detail":"CPU 负载折算使用率",
-  },
-  {
-    "category":"内存","object_type":"physical_memory","object_name":"Memory Total","dimensions":"scope=system",
-    "metric_name":"usage_percent","value":float("$memory"),"unit":"%",
-    "warning_threshold":80,"critical_threshold":90,"health_status":"$mem_s",
-    "collected_at":collected_at,"detail":"物理内存使用率",
-  },
-  {
-    "category":"磁盘","object_type":"logical_disk","object_name":"/","dimensions":"mount=/",
-    "metric_name":"usage_percent","value":float("$disk"),"unit":"%",
-    "warning_threshold":80,"critical_threshold":90,"health_status":"$disk_s",
-    "collected_at":collected_at,"detail":"根分区使用率",
-  },
-  {
-    "category":"网络","object_type":"network_adapter","object_name":"lo","dimensions":"adapter=lo",
-    "metric_name":"throughput_mbps","value":0.0,"unit":"Mbps",
-    "warning_threshold":800,"critical_threshold":950,"health_status":"NORMAL",
-    "collected_at":collected_at,"detail":"环回接口占位吞吐",
-  },
-]
-critical=[m for m in metrics if m["health_status"]=="CRITICAL"]
-warning=[m for m in metrics if m["health_status"]=="WARNING"]
-normal=[m for m in metrics if m["health_status"]=="NORMAL"]
-result={
-  "collected_at": collected_at,
-  "metrics": metrics,
-  "metric_count": len(metrics),
-  "critical": critical,
-  "warning": warning,
-  "normal": normal,
-  "critical_count": len(critical),
-  "warning_count": len(warning),
-  "normal_count": len(normal),
-  "conclusion": "需关注" if (critical or warning) else "健康",
-}
-print("BK_LITE_RESULT=" + json.dumps(result, ensure_ascii=False, separators=(",", ":")))
-PY
-""".strip()
 
 
 def _walk_tasks(tasks):
@@ -161,91 +43,219 @@ def _execution_id(team_id: int, scenario: str) -> uuid.UUID:
     return uuid.uuid5(uuid.NAMESPACE_URL, f"bklite://workflow-orchestration/demo/{team_id}/{scenario}")
 
 
-def _health_job_output(*, collected_at: str, warning: bool) -> dict:
-    disk_d_value = 87.6 if warning else 64
-    disk_d_status = "WARNING" if warning else "NORMAL"
+def _metric(
+    *,
+    category: str,
+    object_type: str,
+    object_name: str,
+    dimensions: str,
+    metric_name: str,
+    display_name: str,
+    value: float,
+    unit: str,
+    health_status: str,
+    detail: str,
+    collected_at: str,
+    warning_threshold: float = 80,
+    critical_threshold: float = 90,
+) -> dict:
+    return {
+        "category": category,
+        "object_type": object_type,
+        "object_name": object_name,
+        "dimensions": dimensions,
+        "metric_name": metric_name,
+        "display_name": display_name,
+        "value": value,
+        "unit": unit,
+        "warning_threshold": warning_threshold,
+        "critical_threshold": critical_threshold,
+        "health_status": health_status,
+        "collected_at": collected_at,
+        "detail": detail,
+    }
+
+
+def _health_job_output(*, collected_at: str, warning: bool, operating_system: str = "windows") -> dict:
+    os_key = str(operating_system or "windows").lower()
+    disk_name = "D:" if os_key == "windows" else "/data"
+    disk_value = 87.6 if warning else 64
+    disk_status = "WARNING" if warning else "NORMAL"
+    host = {
+        "hostname": "win-demo-01" if os_key == "windows" else "linux-demo-01",
+        "os_version": "Windows Server 2022" if os_key == "windows" else "Ubuntu 22.04.5 LTS",
+        "architecture": "x86_64",
+        "uptime_hours": 240.5,
+        "cpu_cores": 4,
+        "memory_total_gb": 16.0,
+        "top_cpu": "python=12.0s; system=4.0s" if os_key == "windows" else "python=12.0%; systemd=3.0%",
+        "top_memory": "Memory Compression=800MB" if os_key == "windows" else "postgres=18.0%",
+    }
     metrics = [
-        {
-            "category": "CPU",
-            "object_type": "processor",
-            "object_name": "CPU Total",
-            "dimensions": "core=all",
-            "metric_name": "usage_percent",
-            "value": 42,
-            "unit": "%",
-            "warning_threshold": 80,
-            "critical_threshold": 90,
-            "health_status": "NORMAL",
-            "collected_at": collected_at,
-            "detail": "CPU 总使用率",
-        },
-        {
-            "category": "内存",
-            "object_type": "physical_memory",
-            "object_name": "Memory Total",
-            "dimensions": "scope=system",
-            "metric_name": "usage_percent",
-            "value": 68,
-            "unit": "%",
-            "warning_threshold": 80,
-            "critical_threshold": 90,
-            "health_status": "NORMAL",
-            "collected_at": collected_at,
-            "detail": "物理内存使用率",
-        },
-        {
-            "category": "磁盘",
-            "object_type": "logical_disk",
-            "object_name": "C:",
-            "dimensions": "mount=C:",
-            "metric_name": "usage_percent",
-            "value": 73,
-            "unit": "%",
-            "warning_threshold": 80,
-            "critical_threshold": 90,
-            "health_status": "NORMAL",
-            "collected_at": collected_at,
-            "detail": "total_gb=200,used_gb=146",
-        },
-        {
-            "category": "磁盘",
-            "object_type": "logical_disk",
-            "object_name": "D:",
-            "dimensions": "mount=D:",
-            "metric_name": "usage_percent",
-            "value": disk_d_value,
-            "unit": "%",
-            "warning_threshold": 80,
-            "critical_threshold": 90,
-            "health_status": disk_d_status,
-            "collected_at": collected_at,
-            "detail": "total_gb=500,used_gb=438",
-        },
-        {
-            "category": "网络",
-            "object_type": "network_adapter",
-            "object_name": "Ethernet0",
-            "dimensions": "adapter=Ethernet0,direction=receive",
-            "metric_name": "throughput_mbps",
-            "value": 18.6,
-            "unit": "Mbps",
-            "warning_threshold": 800,
-            "critical_threshold": 950,
-            "health_status": "NORMAL",
-            "collected_at": collected_at,
-            "detail": "网卡总吞吐率",
-        },
+        _metric(
+            category="计算",
+            object_type="processor",
+            object_name="CPU Total",
+            dimensions="core=all",
+            metric_name="usage_percent",
+            display_name="CPU 使用率",
+            value=42,
+            unit="%",
+            health_status="NORMAL",
+            detail="处理器使用率",
+            collected_at=collected_at,
+        ),
+        _metric(
+            category="内存",
+            object_type="physical_memory",
+            object_name="Memory Total",
+            dimensions="scope=system",
+            metric_name="usage_percent",
+            display_name="物理内存使用率",
+            value=68,
+            unit="%",
+            health_status="NORMAL",
+            detail="total_gb=16,available_mb=5120",
+            collected_at=collected_at,
+        ),
+        _metric(
+            category="磁盘",
+            object_type="logical_disk",
+            object_name="C:" if os_key == "windows" else "/",
+            dimensions="mount=%s" % ("C:" if os_key == "windows" else "/"),
+            metric_name="usage_percent",
+            display_name="磁盘使用率",
+            value=73,
+            unit="%",
+            health_status="NORMAL",
+            detail="total_gb=200,used_gb=146",
+            collected_at=collected_at,
+        ),
+        _metric(
+            category="磁盘",
+            object_type="logical_disk",
+            object_name=disk_name,
+            dimensions="mount=%s" % disk_name,
+            metric_name="usage_percent",
+            display_name="磁盘使用率",
+            value=disk_value,
+            unit="%",
+            health_status=disk_status,
+            detail="total_gb=500,used_gb=438",
+            collected_at=collected_at,
+        ),
+        _metric(
+            category="网络",
+            object_type="network_adapter",
+            object_name="Ethernet0" if os_key == "windows" else "eth0",
+            dimensions="adapter=%s" % ("Ethernet0" if os_key == "windows" else "eth0"),
+            metric_name="link_up",
+            display_name="网卡链路",
+            value=1,
+            unit="bool",
+            health_status="NORMAL",
+            detail="ip=10.10.90.120,status=up" if os_key == "windows" else "ip=192.168.64.5,status=up",
+            collected_at=collected_at,
+            warning_threshold=1,
+            critical_threshold=1,
+        ),
+        _metric(
+            category="系统健康",
+            object_type="service",
+            object_name="W32Time" if os_key == "windows" else "time_sync",
+            dimensions="scope=system",
+            metric_name="running",
+            display_name="时间同步服务",
+            value=1,
+            unit="bool",
+            health_status="NORMAL",
+            detail="时间服务运行中",
+            collected_at=collected_at,
+            warning_threshold=1,
+            critical_threshold=1,
+        ),
+        _metric(
+            category="基础服务",
+            object_type="service",
+            object_name="WinRM" if os_key == "windows" else "sshd",
+            dimensions="service=%s" % ("WinRM" if os_key == "windows" else "sshd"),
+            metric_name="running",
+            display_name="远程管理服务",
+            value=1,
+            unit="bool",
+            health_status="NORMAL",
+            detail="服务运行中",
+            collected_at=collected_at,
+            warning_threshold=1,
+            critical_threshold=1,
+        ),
+        _metric(
+            category="安全浅检",
+            object_type="service",
+            object_name="firewall",
+            dimensions="scope=system",
+            metric_name="running",
+            display_name="防火墙服务",
+            value=1,
+            unit="bool",
+            health_status="NORMAL",
+            detail="防火墙服务运行中",
+            collected_at=collected_at,
+            warning_threshold=1,
+            critical_threshold=1,
+        ),
+        _metric(
+            category="更新账龄",
+            object_type="patch",
+            object_name="Updates",
+            dimensions="scope=system",
+            metric_name="days_since_update",
+            display_name="距上次更新天数",
+            value=30,
+            unit="days",
+            health_status="NORMAL",
+            detail="days_since_update=30",
+            collected_at=collected_at,
+            warning_threshold=90,
+            critical_threshold=180,
+        ),
+        _metric(
+            category="进程热点",
+            object_type="process",
+            object_name="python",
+            dimensions="rank=1",
+            metric_name="cpu_percent",
+            display_name="CPU Top1",
+            value=12.5,
+            unit="%",
+            health_status="NORMAL",
+            detail="pid=1234",
+            collected_at=collected_at,
+            warning_threshold=0,
+            critical_threshold=0,
+        ),
     ]
+    critical_metrics = [metric for metric in metrics if metric["health_status"] == "CRITICAL"]
     warning_metrics = [metric for metric in metrics if metric["health_status"] == "WARNING"]
     normal_metrics = [metric for metric in metrics if metric["health_status"] == "NORMAL"]
-    target = {
-        "id": "manual:demo-windows-120",
-        "source": "job_mgmt",
-        "source_id": 1,
-        "name": "Windows 巡检主机",
-        "ip": "10.10.90.120",
-        "operating_system": "windows",
-    }
+    if os_key == "windows":
+        target = {
+            "id": "manual:demo-windows-120",
+            "source": "job_mgmt",
+            "source_id": 1,
+            "name": "Windows 巡检主机",
+            "ip": "10.10.90.120",
+            "operating_system": "windows",
+        }
+    else:
+        target = {
+            "id": "manual:demo-linux-5",
+            "source": "job_mgmt",
+            "source_id": 2,
+            "name": "Linux 巡检主机",
+            "ip": "192.168.64.5",
+            "operating_system": "linux",
+        }
     return {
         "results": [
             {
@@ -256,12 +266,13 @@ def _health_job_output(*, collected_at: str, warning: bool) -> dict:
                 "stderr": "",
                 "data": {
                     "collected_at": collected_at,
+                    "host": host,
                     "metrics": metrics,
                     "metric_count": len(metrics),
-                    "critical": [],
+                    "critical": critical_metrics,
                     "warning": warning_metrics,
                     "normal": normal_metrics,
-                    "critical_count": 0,
+                    "critical_count": len(critical_metrics),
                     "warning_count": len(warning_metrics),
                     "normal_count": len(normal_metrics),
                     "conclusion": "需关注" if warning else "健康",
@@ -304,30 +315,18 @@ class Command(BaseCommand):
         now = timezone.now()
 
         try:
-            docx_snapshot = seed_builtin_health_template_snapshot("docx", team_id=team_id)
-            xlsx_snapshot = seed_builtin_health_template_snapshot("xlsx", team_id=team_id)
+            builtin_workflows = ensure_builtin_health_workflows(
+                team_id=team_id,
+                username=username,
+                domain=domain,
+                channel_id=channel_id,
+                register_conductor=True,
+            )
         except Exception as error:
-            raise CommandError(f"无法写入健康巡检演示模板: {error}") from error
+            raise CommandError(f"无法写入内置巡检流程: {error}") from error
+        created_builtins = {BUILTIN_WINDOWS_KEY: builtin_workflows[0], BUILTIN_LINUX_KEY: builtin_workflows[1]}
 
         workflow_items = [
-            build_health_inspection_showcase_workflow(
-                team_id=team_id,
-                channel_id=channel_id,
-                username=username,
-                fmt="docx",
-                template_snapshot=docx_snapshot,
-                script_type="powershell",
-                script_content=WINDOWS_HEALTH_SCRIPT,
-            ),
-            build_health_inspection_showcase_workflow(
-                team_id=team_id,
-                channel_id=channel_id,
-                username=username,
-                fmt="xlsx",
-                template_snapshot=xlsx_snapshot,
-                script_type="powershell",
-                script_content=WINDOWS_HEALTH_SCRIPT,
-            ),
             *build_additional_showcase_workflows(
                 team_id=team_id,
                 channel_id=channel_id,
@@ -368,9 +367,12 @@ class Command(BaseCommand):
 
         with transaction.atomic():
             old_workflows = Workflow.all_objects.filter(name__startswith=DEMO_PREFIX, team=[team_id])
-            old_executions = WorkflowExecution.objects.filter(workflow__in=old_workflows)
-            TriggerInvocation.objects.filter(execution__in=old_executions).delete()
-            WorkflowExecution.objects.filter(parent_execution__in=old_executions).update(parent_execution=None)
+            builtin_workflows = Workflow.all_objects.filter(is_builtin=True, team=[team_id])
+            # 演示重建会重写内置巡检样例执行；一并清掉其子执行，避免残留抬高列表计数。
+            old_executions = WorkflowExecution.objects.filter(Q(workflow__in=old_workflows) | Q(workflow__in=builtin_workflows))
+            child_executions = WorkflowExecution.objects.filter(parent_execution__in=old_executions)
+            TriggerInvocation.objects.filter(Q(execution__in=old_executions) | Q(execution__in=child_executions)).delete()
+            child_executions.delete()
             old_executions.delete()
             old_workflows.delete()
 
@@ -414,11 +416,12 @@ class Command(BaseCommand):
                 )
                 sync_published_triggers(workflow, metadata, username=username, domain=domain)
                 created[item["key"]] = workflow
+            created.update(created_builtins)
 
             execution_specs = [
                 (
                     "health-word-success",
-                    "health_docx",
+                    BUILTIN_WINDOWS_KEY,
                     WorkflowExecution.Status.SUCCEEDED,
                     "10.10.90.120 Word 巡检闭环样例",
                     None,
@@ -426,15 +429,15 @@ class Command(BaseCommand):
                 ),
                 (
                     "health-excel-success",
-                    "health_xlsx",
+                    BUILTIN_LINUX_KEY,
                     WorkflowExecution.Status.SUCCEEDED,
-                    "10.10.90.120 Excel 巡检闭环样例",
+                    "192.168.64.5 Linux Excel 巡检闭环样例",
                     None,
                     False,
                 ),
                 (
                     "health-warning",
-                    "health_docx",
+                    BUILTIN_WINDOWS_KEY,
                     WorkflowExecution.Status.SUCCEEDED,
                     "多磁盘阈值触发告警样例",
                     None,
@@ -521,8 +524,12 @@ class Command(BaseCommand):
                 }
                 output = {"summary": summary, "scenario": scenario, "demo": True}
                 target_snapshot = {}
-                if workflow_key in {"health_docx", "health_xlsx"}:
-                    output["job"] = _health_job_output(collected_at=now.isoformat(), warning=warning)
+                if workflow_key in {BUILTIN_WINDOWS_KEY, BUILTIN_LINUX_KEY}:
+                    output["job"] = _health_job_output(
+                        collected_at=now.isoformat(),
+                        warning=warning,
+                        operating_system="windows" if workflow_key == BUILTIN_WINDOWS_KEY else "linux",
+                    )
                     target_snapshot = {
                         "fields": {
                             "targets": {
@@ -577,4 +584,4 @@ class Command(BaseCommand):
                         due_at=now + timedelta(days=1),
                     )
 
-        self.stdout.write(self.style.SUCCESS(f"已清理旧演示数据，并为团队 {team_id} 生成 7 条流程、11 条执行记录（含 Word/Excel 巡检与 1 条待审批）。"))
+        self.stdout.write(self.style.SUCCESS(f"已清理旧 [TDD/BDD] 演示数据，并为团队 {team_id} 确保 2 条内置巡检、生成 5 条演示流程与 11 条执行记录。"))

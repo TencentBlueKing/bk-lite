@@ -27,6 +27,7 @@ class Workflow(TimeInfo, MaintainerInfo):
     engine_name = models.CharField(max_length=100, unique=True, blank=True)
     current_version = models.PositiveIntegerField(default=0)
     enabled = models.BooleanField(default=False, db_index=True)
+    is_builtin = models.BooleanField(default=False, db_index=True)
     has_draft = models.BooleanField(default=True, db_index=True)
     draft_revision = models.PositiveIntegerField(default=0)
     draft_base_version = models.PositiveIntegerField(default=0)

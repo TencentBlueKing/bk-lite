@@ -53,10 +53,11 @@ def test_prepare_definition_escapes_script_content_literals_for_conductor():
     assert published["tasks"][0]["inputParameters"]["targets"] == "${workflow.input.targets}"
 
 
-def test_linux_health_script_avoids_conductor_expression_braces():
-    from apps.workflow_orchestration.management.commands.seed_workflow_orchestration_demo import LINUX_HEALTH_SCRIPT
+def test_health_scripts_avoid_conductor_expression_braces():
+    from apps.workflow_orchestration.services.health_inspection_scripts import LINUX_HEALTH_SCRIPT, WINDOWS_HEALTH_SCRIPT
 
     assert "${" not in LINUX_HEALTH_SCRIPT
+    assert "${" not in WINDOWS_HEALTH_SCRIPT
 
 
 def test_publish_freezes_engine_identity_without_mutating_draft():
