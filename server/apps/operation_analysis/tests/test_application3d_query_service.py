@@ -1,9 +1,16 @@
+import logging
 from types import SimpleNamespace
 
 import pytest
 
 from apps.cmdb.services.instance import InstanceManage
-from apps.operation_analysis.services.application3d.errors import Application3DCapacityExceeded, Application3DInvalidRequest, Application3DNotFound
+from apps.core.logger import SafeLogException
+from apps.operation_analysis.services.application3d.errors import (
+    Application3DCapacityExceeded,
+    Application3DInvalidRequest,
+    Application3DNotFound,
+    Application3DSourceFailure,
+)
 from apps.operation_analysis.services.application3d.query_service import Application3DQueryService, _ApplicationScope
 
 APP_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
@@ -2155,3 +2162,240 @@ def test_architecture_marks_unmonitored_and_unreadable_hosts_without_failing_sys
     assert by_id[SYSTEM_A]["health"]["state"] == "alarming"
     assert by_id[SYSTEM_A]["health"]["activeAlarmCount"] == 1
     assert by_id[SYSTEM_A]["health"]["severityCounts"]["critical"] == 0
+
+
+def _assert_scope_failure_log(records, *, failed_stage: str, error_type: str, system_count: int, sentinel: str, level: int, original: Exception):
+    matched = [record for record in records if record.name == "operation_analysis" and "event=application3d_scope_failed" in record.msg]
+    assert len(matched) == 1
+    record = matched[0]
+    assert record.levelno == level
+    assert record.msg == "event=application3d_scope_failed system_id=%s failed_stage=%s error_type=%s system_count=%s"
+    assert record.args == (SYSTEM_A, failed_stage, error_type, system_count)
+    expected_message = (
+        "event=application3d_scope_failed "
+        f"system_id={SYSTEM_A} failed_stage={failed_stage} "
+        f"error_type={error_type} system_count={system_count}"
+    )
+    assert record.getMessage() == expected_message
+    assert record.exc_info is not None
+    assert record.exc_info[0] is SafeLogException
+    assert str(record.exc_info[1]) == error_type
+    assert record.exc_info[2] is original.__traceback__
+    assert sentinel in str(original)
+    rendered = record.getMessage()
+    if record.exc_text:
+        rendered = f"{rendered}\n{record.exc_text}"
+    else:
+        rendered = f"{rendered}\n{logging.Formatter().formatException(record.exc_info)}"
+    assert sentinel not in rendered
+    assert sentinel not in record.getMessage()
+    if level >= logging.ERROR:
+        error_records = [item for item in records if item.name == "operation_analysis" and item.levelno >= logging.ERROR]
+        assert error_records == [record]
+    return record
+
+
+def test_wall_cmdb_relation_expand_failure_is_not_monitor_query_failure(monkeypatch, caplog):
+    sentinel = "password=super-secret-token"
+    systems = [_system(SYSTEM_A, "crm")]
+    original = RuntimeError(f"relation expand down {sentinel}")
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.project_system_applications",
+        lambda system_ids: (_ for _ in ()).throw(original),
+    )
+    monkeypatch.setattr(Application3DQueryService, "_filter_definition", classmethod(lambda cls: _filter_definition()))
+    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: systems))
+    caplog.set_level(logging.DEBUG, logger="operation_analysis")
+
+    with pytest.raises(Application3DSourceFailure) as caught:
+        Application3DQueryService.wall(_request())
+
+    exc = caught.value
+    assert exc.code == "cmdb_relation_expand_failed"
+    assert exc.message == "应用系统 CMDB 关联展开失败"
+    assert "应用系统监控数据查询失败" not in str(exc)
+    assert exc.__cause__ is original
+    _assert_scope_failure_log(
+        caplog.records,
+        failed_stage="cmdb_relation_expand",
+        error_type="RuntimeError",
+        system_count=1,
+        sentinel=sentinel,
+        level=logging.ERROR,
+        original=original,
+    )
+    from apps.operation_analysis.views.scene_widget_view import SceneWidgetViewSet
+
+    response = SceneWidgetViewSet.application3d_error_response(exc)
+    assert response.status_code == 502
+    assert response.data["code"] == "cmdb_relation_expand_failed"
+    assert response.data["detail"] == "应用系统 CMDB 关联展开失败"
+    assert "应用系统监控数据查询失败" not in response.data["detail"]
+
+
+def test_wall_host_relation_expand_failure_is_cmdb_not_monitor(monkeypatch, caplog):
+    sentinel = "password=super-secret-token"
+    systems = [_system(SYSTEM_A, "crm")]
+    original = RuntimeError(f"host expand down {sentinel}")
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.project_system_applications",
+        lambda system_ids: {SYSTEM_A: [APP_A]},
+    )
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_model_instances",
+        classmethod(lambda cls, request, model_id, inst_uuids: [_application(APP_A, "app")]),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.project_application_hosts",
+        lambda app_ids: (_ for _ in ()).throw(original),
+    )
+    monkeypatch.setattr(Application3DQueryService, "_filter_definition", classmethod(lambda cls: _filter_definition()))
+    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: systems))
+    caplog.set_level(logging.DEBUG, logger="operation_analysis")
+
+    with pytest.raises(Application3DSourceFailure) as caught:
+        Application3DQueryService.wall(_request())
+
+    assert caught.value.code == "cmdb_relation_expand_failed"
+    assert caught.value.message == "应用系统 CMDB 关联展开失败"
+    assert "应用系统监控数据查询失败" not in str(caught.value)
+    assert caught.value.__cause__ is original
+    _assert_scope_failure_log(
+        caplog.records,
+        failed_stage="cmdb_relation_expand",
+        error_type="RuntimeError",
+        system_count=1,
+        sentinel=sentinel,
+        level=logging.ERROR,
+        original=original,
+    )
+
+
+def _patch_wall_with_mapped_host(monkeypatch):
+    systems = [_system(SYSTEM_A, "crm")]
+    _patch_system_host_graph(
+        monkeypatch,
+        child_apps=[_application(APP_A, "门户")],
+        hosts_by_app={APP_A: ["host-1"]},
+        visible_hosts=[{"inst_uuid": "host-1", "inst_name": "web-1", "monitor_id": "m1"}],
+    )
+    _stub_monitor_alerts(
+        monkeypatch,
+        [{"monitor_instance_id": "m1", "policy_id": 7, "alert_type": "alert", "level": "warning", "status": "new"}],
+    )
+    monkeypatch.setattr(Application3DQueryService, "_filter_definition", classmethod(lambda cls: _filter_definition()))
+    monkeypatch.setattr(Application3DQueryService, "_visible_applications", classmethod(lambda cls, request: systems))
+
+
+def _assert_wall_monitor_degraded(caplog, *, failed_stage: str, original: Exception, sentinel: str, host_coverage):
+    caplog.set_level(logging.DEBUG, logger="operation_analysis")
+    result = Application3DQueryService.wall(_request())
+    item = result["items"][0]
+    assert item["id"] == SYSTEM_A
+    assert item["name"] == "crm"
+    assert item["health"]["state"] == "unknown"
+    assert item["health"]["reason"] == "unavailable"
+    assert item["health"]["activeAlarmCount"] is None
+    if host_coverage is None:
+        assert "hostCoverage" not in item
+    else:
+        assert item["hostCoverage"] == host_coverage
+    assert sentinel not in str(result)
+    assert not any(record.name == "operation_analysis" and record.levelno >= logging.ERROR for record in caplog.records)
+    record = _assert_scope_failure_log(
+        caplog.records,
+        failed_stage=failed_stage,
+        error_type="RuntimeError",
+        system_count=1,
+        sentinel=sentinel,
+        level=logging.WARNING,
+        original=original,
+    )
+    assert record.exc_info[2] is original.__traceback__
+
+
+def test_wall_continues_when_monitor_acl_fails(monkeypatch, caplog):
+    sentinel = "password=super-secret-token"
+    original = RuntimeError(f"acl down {sentinel}")
+    _patch_wall_with_mapped_host(monkeypatch)
+
+    def _boom(cls, request, candidate_ids):
+        raise original
+
+    monkeypatch.setattr(Application3DQueryService, "_authorized_monitor_ids", classmethod(_boom))
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_visible_application",
+        classmethod(lambda cls, request, application_id: _system(SYSTEM_A, "crm")),
+    )
+    monkeypatch.setattr("apps.operation_analysis.services.application3d.query_service.ModelManage.search_model_attr", lambda model_id: [])
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.ApplicationResourceOverviewService._get_show_fields",
+        lambda model_id, user: None,
+    )
+    _assert_wall_monitor_degraded(
+        caplog,
+        failed_stage="authorized_monitors",
+        original=original,
+        sentinel=sentinel,
+        host_coverage=None,
+    )
+
+    detail = Application3DQueryService.application_detail(_request(), SYSTEM_A)
+    assert detail["application"]["health"]["state"] == "unknown"
+    assert detail["application"]["health"]["reason"] == "unavailable"
+    assert detail["application"]["health"]["activeAlarmCount"] is None
+    assert detail["alarms"] == {"state": "unavailable"}
+    assert sentinel not in str(detail)
+
+    architecture = Application3DQueryService.architecture(_request(), SYSTEM_A)
+    host = next(node for node in architecture["nodes"] if node["kind"] == "host")
+    assert host["health"]["reason"] == "unavailable"
+    assert host["health"]["reason"] != "monitor_unreadable"
+    assert architecture["nodes"][0]["health"]["reason"] == "unavailable"
+
+    with pytest.raises(Application3DSourceFailure) as alarm_caught:
+        Application3DQueryService.alarm_detail(_request(), SYSTEM_A, "7")
+    assert alarm_caught.value.code == "source_failure"
+    assert "告警不存在" not in str(alarm_caught.value)
+
+    with pytest.raises(Application3DSourceFailure) as metric_caught:
+        Application3DQueryService.metric_series(_request(), SYSTEM_A, "7")
+    assert metric_caught.value.code == "source_failure"
+    assert metric_caught.value.code != "permission_denied"
+
+
+def test_wall_continues_when_monitor_alerts_fail(monkeypatch, caplog):
+    sentinel = "password=super-secret-token"
+    original = RuntimeError(f"alerts down {sentinel}")
+    _patch_wall_with_mapped_host(monkeypatch)
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.application3d.query_service.MonitorAlert.objects",
+        SimpleNamespace(filter=lambda **kwargs: (_ for _ in ()).throw(original), none=lambda: _AlertQuery([])),
+    )
+    _assert_wall_monitor_degraded(
+        caplog,
+        failed_stage="monitor_alerts",
+        original=original,
+        sentinel=sentinel,
+        host_coverage={"monitored": 1, "total": 1},
+    )
+
+
+def test_wall_continues_when_monitor_policies_fail(monkeypatch, caplog):
+    sentinel = "password=super-secret-token"
+    original = RuntimeError(f"policies down {sentinel}")
+    _patch_wall_with_mapped_host(monkeypatch)
+    monkeypatch.setattr(
+        Application3DQueryService,
+        "_accessible_policies",
+        staticmethod(lambda request, policy_ids: (_ for _ in ()).throw(original)),
+    )
+    _assert_wall_monitor_degraded(
+        caplog,
+        failed_stage="monitor_policies",
+        original=original,
+        sentinel=sentinel,
+        host_coverage={"monitored": 1, "total": 1},
+    )

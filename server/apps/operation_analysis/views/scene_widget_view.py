@@ -29,6 +29,7 @@ class SceneWidgetViewSet(ViewSet):
         "not_found": status.HTTP_404_NOT_FOUND,
         "scope_changed": status.HTTP_409_CONFLICT,
         "source_failure": status.HTTP_502_BAD_GATEWAY,
+        "cmdb_relation_expand_failed": status.HTTP_502_BAD_GATEWAY,
         "capacity_exceeded": status.HTTP_422_UNPROCESSABLE_ENTITY,
     }
 
