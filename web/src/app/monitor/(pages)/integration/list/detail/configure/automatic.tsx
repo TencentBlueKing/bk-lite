@@ -1335,7 +1335,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       key: 'policy_group',
       dataIndex: 'policy_group',
       width: 180,
-      render: () => (joining ? selectedGroup?.name || '--' : t('monitor.integrations.policyGroupNotJoining', '不加入'))
+      render: () => (joining && selectedGroup?.name ? selectedGroup.name : '--')
     };
     return [...dataColumns, policyGroupColumn, ...collectDetectStatusColumn, actionColumn];
   }, [
