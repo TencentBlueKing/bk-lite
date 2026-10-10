@@ -191,6 +191,11 @@ const CustomTable = <T extends object>({
   };
 
   // 将列宽状态和 onHeaderCell 合并到 columns
+  const selectionColumnWidth = !rowSelection
+    ? 0
+    : typeof rowSelection.columnWidth === 'number'
+      ? rowSelection.columnWidth
+      : 32;
   const columnLayout = useMemo(() => (
     resolveColumnLayout({
       autoScrollX,
@@ -198,8 +203,9 @@ const CustomTable = <T extends object>({
       columnWidths,
       tableLayout: TableProps.tableLayout,
       containerWidth,
+      reservedWidth: selectionColumnWidth,
     })
-  ), [autoScrollX, columns, columnWidths, TableProps.tableLayout, containerWidth]);
+  ), [autoScrollX, columns, columnWidths, TableProps.tableLayout, containerWidth, selectionColumnWidth]);
 
   const resizableColumns = useCallback(() => {
     return columns.map((col: any, index: number) => {

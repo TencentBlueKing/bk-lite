@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Button, Checkbox, Drawer, Input, Modal, Popconfirm, Select, Spin, Tag, message } from 'antd';
+import { Button, Checkbox, Drawer, Dropdown, Input, Modal, Popconfirm, Select, Spin, Tag, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
+import SearchActionBar from '@/components/search-action-bar';
 import { useSearchParams } from 'next/navigation';
 import { cloneDeep } from 'lodash';
 import useApiClient from '@/utils/request';
@@ -50,6 +51,38 @@ const MEMBER_STATE: Record<string, string> = {
   skipped: '未入组',
 };
 
+interface InstanceCandidate {
+  instance_id?: string;
+  instance_name?: string;
+  id?: string;
+  name?: string;
+  ip?: string | null;
+  summary_facts?: { 'asset.ip'?: string };
+}
+
+const logicalInstanceId = (instanceId: string) => {
+  const matched = instanceId.match(/^\('(.*)',\)$/);
+  return matched?.[1] || instanceId;
+};
+
+const candidateIp = (item: InstanceCandidate) => {
+  const ip = String(item.ip || '').trim();
+  if (ip) return ip;
+  const assetIp = item.summary_facts?.['asset.ip'];
+  return typeof assetIp === 'string' ? assetIp.trim() : '';
+};
+
+const candidateLabel = (item: InstanceCandidate) => {
+  const id = String(item.instance_id || item.id || '');
+  const name = String(item.instance_name || item.name || '').trim();
+  const ip = candidateIp(item);
+  const logicalId = logicalInstanceId(id);
+  const opaque = !name || name === id || name === logicalId;
+  if (opaque) return ip || name || logicalId;
+  if (ip && ip !== name) return `${name} · ${ip}`;
+  return name;
+};
+
 const PolicyGroupPage: React.FC = () => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
@@ -92,8 +125,18 @@ const PolicyGroupPage: React.FC = () => {
   const [memberGroup, setMemberGroup] = useState<PolicyGroupRow | null>(null);
   const [members, setMembers] = useState<TableDataItem[]>([]);
   const [memberLoading, setMemberLoading] = useState(false);
-  const [candidateIds, setCandidateIds] = useState<string[]>([]);
-  const [candidates, setCandidates] = useState<Array<{ value: string; label: string }>>([]);
+  const [memberKeyword, setMemberKeyword] = useState('');
+  const [joinOpen, setJoinOpen] = useState(false);
+  const [joinKeyword, setJoinKeyword] = useState('');
+  const [joinRows, setJoinRows] = useState<InstanceCandidate[]>([]);
+  const [joinLoading, setJoinLoading] = useState(false);
+  const [joinSelected, setJoinSelected] = useState<string[]>([]);
+  const [joinLabels, setJoinLabels] = useState<Record<string, string>>({});
+  const [joinPagination, setJoinPagination] = useState<Pagination>({
+    current: 1,
+    total: 0,
+    pageSize: 10,
+  });
   const [ruleGroup, setRuleGroup] = useState<PolicyGroupRow | null>(null);
   const [rule, setRule] = useState<PolicyGroupRule | null>(null);
   const [thresholdDraft, setThresholdDraft] = useState<ThresholdItem[]>([]);
@@ -166,26 +209,61 @@ const PolicyGroupPage: React.FC = () => {
 
   const openMembers = async (group: PolicyGroupRow) => {
     setMemberGroup(group);
+    setMemberKeyword('');
     setMemberLoading(true);
-    setCandidateIds([]);
     try {
-      const [memberRows, instancePage, allGroups] = await Promise.all([
+      const [memberRows, allGroups] = await Promise.all([
         getPolicyGroupMembers(group.id),
-        getInstanceList(objectId, { page: 1, page_size: 100 }),
         getPolicyGroups({ monitor_object_id: objectId, create_default: false }),
       ]);
       setMembers(Array.isArray(memberRows) ? memberRows : []);
       setSwitchGroups(Array.isArray(allGroups) ? allGroups : []);
-      const results = instancePage?.results || instancePage?.items || [];
-      setCandidates(
-        results.map((item: { id?: string; instance_id?: string; name?: string }) => ({
-          value: String(item.id || item.instance_id),
-          label: item.name || String(item.id || item.instance_id),
-        }))
-      );
     } finally {
       setMemberLoading(false);
     }
+  };
+
+  const loadJoinInstances = async (page = 1, name = '', pageSize = joinPagination.pageSize) => {
+    if (!objectId) return;
+    setJoinLoading(true);
+    try {
+      const data = await getInstanceList(objectId, {
+        page,
+        page_size: pageSize,
+        name: name.trim(),
+      });
+      const results = (data?.results || []) as InstanceCandidate[];
+      setJoinRows(results);
+      setJoinLabels((prev) => {
+        const next = { ...prev };
+        results.forEach((item) => {
+          const id = String(item.instance_id || item.id || '');
+          if (id) next[id] = candidateLabel(item);
+        });
+        return next;
+      });
+      setJoinPagination({ current: page, pageSize, total: Number(data?.count || 0) });
+    } finally {
+      setJoinLoading(false);
+    }
+  };
+
+  const openJoin = () => {
+    setJoinOpen(true);
+    setJoinSelected([]);
+    setJoinKeyword('');
+    setJoinLabels({});
+    void loadJoinInstances(1, '', 10);
+  };
+
+  const confirmJoin = async () => {
+    if (!memberGroup || joinSelected.length === 0) return;
+    await joinPolicyGroup(memberGroup.id, joinSelected);
+    message.success('已加入。已在其他组的实例会先离开原组');
+    setJoinOpen(false);
+    setJoinSelected([]);
+    await openMembers(memberGroup);
+    await loadGroups(objectId);
   };
 
   const reloadFirstPage = async () => {
@@ -373,45 +451,47 @@ const PolicyGroupPage: React.FC = () => {
           </div>
         </div>
       </div>
-      <Drawer title={memberGroup ? `${memberGroup.name} 的实例` : '实例'} open={Boolean(memberGroup)} width={720} onClose={() => setMemberGroup(null)}>
-        <Permission requiredPermissions={['Edit']}>
-          <div className="mb-3 flex gap-2">
-            <Select
-              mode="multiple"
-              className="min-w-0 flex-1"
-              placeholder="选择已接入实例加入这一组"
-              value={candidateIds}
-              options={candidates}
-              onChange={setCandidateIds}
-            />
-            <Button
-              type="primary"
-              disabled={!memberGroup || candidateIds.length === 0}
-              onClick={async () => {
-                if (!memberGroup) return;
-                await joinPolicyGroup(memberGroup.id, candidateIds);
-                message.success('已加入。已在其他组的实例会先离开原组');
-                setCandidateIds([]);
-                await openMembers(memberGroup);
-                await loadGroups(objectId);
-              }}
-            >
-              加入
-            </Button>
-          </div>
-        </Permission>
+      <Drawer
+        title={memberGroup ? `${memberGroup.name} 的实例` : '实例'}
+        open={Boolean(memberGroup)}
+        width={760}
+        onClose={() => {
+          setMemberGroup(null);
+          setMemberKeyword('');
+          setJoinOpen(false);
+        }}
+      >
+        <SearchActionBar
+          searchProps={{
+            placeholder: '搜索实例名称',
+            value: memberKeyword,
+            onChange: (event) => setMemberKeyword(event.target.value),
+          }}
+          actions={
+            <Permission requiredPermissions={['Edit']}>
+              <Button type="primary" disabled={!memberGroup} onClick={openJoin}>
+                加入
+              </Button>
+            </Permission>
+          }
+        />
         <CustomTable
           rowKey="instance_id"
           loading={memberLoading}
           pagination={false}
-          dataSource={members}
+          dataSource={members.filter((item) => {
+            const keyword = memberKeyword.trim().toLowerCase();
+            if (!keyword) return true;
+            return String(item.name || '').toLowerCase().includes(keyword);
+          })}
           columns={[
             { title: t('common.name'), dataIndex: 'name', key: 'name' },
             {
               title: '状态',
               dataIndex: 'state',
               key: 'state',
-              render: (_, record) => MEMBER_STATE[record.state] || record.state,
+              width: 110,
+              render: (_, record) => <Tag>{MEMBER_STATE[record.state] || record.state}</Tag>,
             },
             {
               title: '旧策略',
@@ -419,12 +499,14 @@ const PolicyGroupPage: React.FC = () => {
               key: 'legacy_policies',
               render: (_, record) =>
                 (record.legacy_policies || []).length ? (
-                  (record.legacy_policies || []).map((item: { id: number; name: string; enable: boolean }) => (
-                    <div key={item.id}>
-                      {item.name}
-                      {item.enable ? ' · 仍会一起告警' : ' · 已停用'}
-                    </div>
-                  ))
+                  <div className="flex flex-col gap-1">
+                    {(record.legacy_policies || []).map((item: { id: number; name: string; enable: boolean }) => (
+                      <span key={item.id}>
+                        {item.name}
+                        <span className="text-[var(--color-text-3)]">{item.enable ? ' · 仍会告警' : ' · 已停用'}</span>
+                      </span>
+                    ))}
+                  </div>
                 ) : (
                   '--'
                 ),
@@ -432,42 +514,135 @@ const PolicyGroupPage: React.FC = () => {
             {
               title: t('common.action'),
               key: 'action',
-              render: (_, record) => (
-                <Permission requiredPermissions={['Edit']}>
-                  <Select
-                    className="mr-2 w-[160px]"
-                    placeholder="换到其他组"
-                    options={switchGroups
-                      .filter((item) => item.id !== memberGroup?.id)
-                      .map((item) => ({ value: item.id, label: item.name }))}
-                    onChange={async (value) => {
-                      await joinPolicyGroup(value, [record.instance_id]);
-                      message.success('已更换，原规则未恢复告警会结束');
-                      if (memberGroup) {
-                        await openMembers(memberGroup);
-                        await loadGroups(objectId);
-                      }
-                    }}
-                  />
-                  <Button
-                    type="link"
-                    onClick={async () => {
-                      await leavePolicyGroup([record.instance_id]);
-                      message.success('已退出，未恢复告警会结束');
-                      if (memberGroup) {
-                        await openMembers(memberGroup);
-                        await loadGroups(objectId);
-                      }
-                    }}
-                  >
-                    退出
-                  </Button>
-                </Permission>
-              ),
+              width: 140,
+              render: (_, record) => {
+                const otherGroups = switchGroups.filter((item) => item.id !== memberGroup?.id);
+                return (
+                  <Permission requiredPermissions={['Edit']}>
+                    <Dropdown
+                      trigger={['click']}
+                      menu={{
+                        items: otherGroups.length
+                          ? otherGroups.map((item) => ({ key: String(item.id), label: item.name }))
+                          : [{ key: 'empty', label: '没有其他策略组', disabled: true }],
+                        onClick: async ({ key }) => {
+                          if (key === 'empty') return;
+                          await joinPolicyGroup(Number(key), [record.instance_id]);
+                          message.success('已更换，原规则未恢复告警会结束');
+                          if (memberGroup) {
+                            await openMembers(memberGroup);
+                            await loadGroups(objectId);
+                          }
+                        },
+                      }}
+                    >
+                      <Button type="link" className="px-0">
+                        换组
+                      </Button>
+                    </Dropdown>
+                    <Button
+                      type="link"
+                      onClick={async () => {
+                        await leavePolicyGroup([record.instance_id]);
+                        message.success('已退出，未恢复告警会结束');
+                        if (memberGroup) {
+                          await openMembers(memberGroup);
+                          await loadGroups(objectId);
+                        }
+                      }}
+                    >
+                      退出
+                    </Button>
+                  </Permission>
+                );
+              },
             },
           ]}
         />
       </Drawer>
+      <Modal
+        title="加入实例"
+        open={joinOpen}
+        width={720}
+        onCancel={() => setJoinOpen(false)}
+        footer={
+          <div>
+            <Button className="mr-[10px]" type="primary" disabled={joinSelected.length === 0} onClick={() => void confirmJoin()}>
+              加入
+            </Button>
+            <Button onClick={() => setJoinOpen(false)}>取消</Button>
+          </div>
+        }
+      >
+        <Input
+          allowClear
+          className="mb-3 w-80"
+          placeholder="搜索实例名称"
+          value={joinKeyword}
+          onChange={(event) => setJoinKeyword(event.target.value)}
+          onPressEnter={() => void loadJoinInstances(1, joinKeyword)}
+          onClear={() => {
+            setJoinKeyword('');
+            void loadJoinInstances(1, '');
+          }}
+        />
+        {joinSelected.length > 0 ? (
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            {joinSelected.map((id) => (
+              <Tag
+                key={id}
+                closable
+                onClose={(event) => {
+                  event.preventDefault();
+                  setJoinSelected((prev) => prev.filter((item) => item !== id));
+                }}
+              >
+                {joinLabels[id] || id}
+              </Tag>
+            ))}
+            <button type="button" className="cursor-pointer text-[var(--color-primary)]" onClick={() => setJoinSelected([])}>
+              清空
+            </button>
+          </div>
+        ) : null}
+        <CustomTable
+          rowKey="instance_id"
+          loading={joinLoading}
+          dataSource={joinRows}
+          pagination={joinPagination}
+          scroll={{ y: 'auto' }}
+          rowSelection={{
+            selectedRowKeys: joinSelected,
+            onChange: (keys) => setJoinSelected(keys.map(String)),
+            getCheckboxProps: (record: InstanceCandidate) => ({
+              disabled: members.some((item) => String(item.instance_id) === String(record.instance_id)),
+            }),
+          }}
+          onChange={(next: Pagination) => {
+            void loadJoinInstances(
+              next.pageSize !== joinPagination.pageSize ? 1 : next.current,
+              joinKeyword,
+              next.pageSize || joinPagination.pageSize
+            );
+          }}
+          columns={[
+            {
+              title: t('common.name'),
+              dataIndex: 'instance_name',
+              key: 'instance_name',
+              render: (_, record) => {
+                const joined = members.some((item) => String(item.instance_id) === String(record.instance_id));
+                return (
+                  <span className="inline-flex items-center gap-2">
+                    <span>{candidateLabel(record)}</span>
+                    {joined ? <Tag>已在组</Tag> : null}
+                  </span>
+                );
+              },
+            },
+          ]}
+        />
+      </Modal>
       <Modal
         title={ruleGroup ? `${ruleGroup.name} 的规则` : '规则'}
         open={Boolean(ruleGroup)}

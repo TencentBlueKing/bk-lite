@@ -15,6 +15,8 @@ interface ResolveColumnLayoutOptions {
   columnWidths: Record<string, number>;
   tableLayout?: 'auto' | 'fixed';
   containerWidth?: number;
+  /** 勾选列等不在 columns 里、但会占掉容器宽度的部分。 */
+  reservedWidth?: number;
 }
 
 export const getColumnKey = (column: ColumnLike, index: number): string => {
@@ -81,11 +83,12 @@ export const resolveColumnLayout = ({
   columnWidths,
   tableLayout,
   containerWidth,
+  reservedWidth = 0,
 }: ResolveColumnLayoutOptions) => {
   const contentMinWidth = estimateContentMinWidth(columns, columnWidths);
   const measuredWidth =
     typeof containerWidth === 'number' && containerWidth > 0
-      ? containerWidth
+      ? Math.max(0, containerWidth - Math.max(0, reservedWidth))
       : undefined;
   const overflows =
     autoScrollX

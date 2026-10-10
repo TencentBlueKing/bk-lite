@@ -66,6 +66,19 @@ describe('resolveColumnLayout fill width', () => {
     expect((layout.widths as number[]).reduce((sum, width) => sum + width, 0)).toBe(800);
   });
 
+  it('leaves room for a selection column when reserved width is set', () => {
+    const layout = resolveColumnLayout({
+      autoScrollX: true,
+      columns,
+      columnWidths: {},
+      containerWidth: 800,
+      reservedWidth: 32,
+    });
+
+    expect(layout.scrollX).toBeUndefined();
+    expect((layout.widths as number[]).reduce((sum, width) => sum + width, 0)).toBe(768);
+  });
+
   it('scales unspecified columns from the default min width so the table still fills', () => {
     const layout = resolveColumnLayout({
       autoScrollX: true,
