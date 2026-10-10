@@ -126,8 +126,195 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  # ---- RUM data-plane processes (profile: dataplane) ----
+  # Secrets are written to a private volume as 0400 files owned by the collector
+  # user; production injects them from its own secret store instead.
+  rum-secrets-init:
+    profiles: [dataplane]
+    image: ${RUM_INIT_IMAGE:-busybox:1.37.0}
+    restart: "no"
+    user: "0:0"
+    network_mode: none
+    environment:
+      RUM_IDENTITY_HMAC_CURRENT: ${RUM_IDENTITY_HMAC_CURRENT:-dev-bklite-rum-hmac-secret-key-32b}
+      RUM_IDENTITY_HMAC_PREVIOUS: ${RUM_IDENTITY_HMAC_PREVIOUS:-}
+      RUM_ADMISSION_REDIS_PASSWORD: ${RUM_ADMISSION_REDIS_PASSWORD:-rum-admission-dev-secret-2026-000002}
+      RUM_SESSIONIZER_REDIS_PASSWORD: ${RUM_SESSIONIZER_REDIS_PASSWORD:-rum-sessionizer-dev-secret-2026-000004}
+      RUM_REPLAY_EXPORTER_REDIS_PASSWORD: ${RUM_REPLAY_EXPORTER_REDIS_PASSWORD:-rum-replay-exporter-dev-secret-000003}
+      RUM_CONTROLLER_REDIS_PASSWORD: ${RUM_CONTROLLER_REDIS_PASSWORD:-rum-controller-dev-secret-2026-000001}
+      RUM_MAINTAINER_REDIS_PASSWORD: ${RUM_MAINTAINER_REDIS_PASSWORD:-rum-maintainer-dev-secret-2026-000005}
+      RUM_REPLAY_INDEX_MAINTAINER_REDIS_PASSWORD: ${RUM_REPLAY_INDEX_MAINTAINER_REDIS_PASSWORD:-rum-replay-index-maintainer-dev-secret-000006}
+      RUM_MINIO_SECRET_KEY: ${RUM_MINIO_SECRET_KEY:-rum-minio-contract-password}
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        umask 077
+        write() { printf '%s' "$$2" > "/run/secrets/$$1"; }
+        write rum_identity_hmac_current "$$RUM_IDENTITY_HMAC_CURRENT"
+        write rum_identity_hmac_previous "$$RUM_IDENTITY_HMAC_PREVIOUS"
+        write rum_admission_redis_password "$$RUM_ADMISSION_REDIS_PASSWORD"
+        write rum_sessionizer_redis_password "$$RUM_SESSIONIZER_REDIS_PASSWORD"
+        write rum_replay_exporter_redis_password "$$RUM_REPLAY_EXPORTER_REDIS_PASSWORD"
+        write rum_controller_redis_password "$$RUM_CONTROLLER_REDIS_PASSWORD"
+        write rum_maintainer_redis_password "$$RUM_MAINTAINER_REDIS_PASSWORD"
+        write rum_replay_index_maintainer_redis_password "$$RUM_REPLAY_INDEX_MAINTAINER_REDIS_PASSWORD"
+        write rum_gateway_minio_secret "$$RUM_MINIO_SECRET_KEY"
+        write rum_maintainer_minio_secret "$$RUM_MINIO_SECRET_KEY"
+        chown "${RUM_COLLECTOR_UID:-65532}:${RUM_COLLECTOR_GID:-65532}" /run/secrets/*
+        chmod 0400 /run/secrets/*
+    volumes:
+      - rum_secrets:/run/secrets
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    security_opt:
+      - no-new-privileges:true
+
+  rum-gateway-queue-init:
+    profiles: [dataplane]
+    image: ${RUM_INIT_IMAGE:-busybox:1.37.0}
+    restart: "no"
+    user: "0:0"
+    network_mode: none
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        chown "${RUM_COLLECTOR_UID:-65532}:${RUM_COLLECTOR_GID:-65532}" /var/lib/core-rum
+        chmod 0700 /var/lib/core-rum
+    volumes:
+      - rum_gateway_queue:/var/lib/core-rum
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    security_opt:
+      - no-new-privileges:true
+
+  rum-gateway:
+    profiles: [dataplane]
+    image: ${RUM_COLLECTOR_IMAGE:-bklite/rum-collector:0.1.0-bklite.1}
+    build:
+      context: ./collector
+    restart: unless-stopped
+    user: "${RUM_COLLECTOR_UID:-65532}:${RUM_COLLECTOR_GID:-65532}"
+    entrypoint: ["/usr/local/bin/bklite-rum-gateway"]
+    command: ["--config=/etc/bklite-rum/rum.gateway.yaml"]
+    depends_on:
+      rum-secrets-init:
+        condition: service_completed_successfully
+      rum-gateway-queue-init:
+        condition: service_completed_successfully
+      rum-redis:
+        condition: service_healthy
+      rum-victoria-logs:
+        condition: service_healthy
+      rum-victoria-traces:
+        condition: service_healthy
+      rum-minio-init:
+        condition: service_completed_successfully
+    environment:
+      RUM_IDENTITY_HMAC_CURRENT_VERSION: ${RUM_IDENTITY_HMAC_CURRENT_VERSION:-v1}
+      RUM_IDENTITY_HMAC_PREVIOUS_VERSION: ${RUM_IDENTITY_HMAC_PREVIOUS_VERSION:-}
+      RUM_ADMISSION_REDIS_URL: ${RUM_GATEWAY_ADMISSION_REDIS_URL:-redis://rum-admission@rum-redis:6379/0}
+      RUM_SESSION_REDIS_URL: ${RUM_GATEWAY_SESSION_REDIS_URL:-redis://rum-sessionizer@rum-redis:6379/1}
+      RUM_REPLAY_REDIS_URL: ${RUM_GATEWAY_REPLAY_REDIS_URL:-redis://rum-replay-exporter@rum-redis:6379/2}
+      RUM_VICTORIA_LOGS_ENDPOINT: ${RUM_GATEWAY_VICTORIA_LOGS_ENDPOINT:-http://rum-victoria-logs:9428}
+      RUM_VICTORIA_TRACES_ENDPOINT: ${RUM_GATEWAY_VICTORIA_TRACES_ENDPOINT:-http://rum-victoria-traces:10428}
+      RUM_MINIO_ENDPOINT: ${RUM_GATEWAY_MINIO_ENDPOINT:-rum-minio:9000}
+      RUM_MINIO_ACCESS_KEY: ${RUM_GATEWAY_MINIO_ACCESS_KEY:-rumminio}
+      RUM_MINIO_SECURE: ${RUM_GATEWAY_MINIO_SECURE:-false}
+    ports:
+      - "${RUM_GATEWAY_BIND:-127.0.0.1}:${RUM_GATEWAY_COLLECT_PORT:-4319}:4319"
+      - "${RUM_GATEWAY_BIND:-127.0.0.1}:${RUM_GATEWAY_REPLAY_PORT:-4320}:4320"
+      - "${RUM_GATEWAY_HEALTH_BIND:-127.0.0.1}:${RUM_GATEWAY_HEALTH_PORT:-13135}:13135"
+      - "${RUM_GATEWAY_METRICS_BIND:-127.0.0.1}:${RUM_GATEWAY_METRICS_PORT:-18890}:8888"
+    volumes:
+      - rum_secrets:/run/secrets:ro
+      - rum_gateway_queue:/var/lib/core-rum
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/bklite-rum-gateway", "validate", "--config=/etc/bklite-rum/rum.gateway.yaml"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    mem_limit: ${RUM_GATEWAY_MEMORY_LIMIT:-768m}
+    security_opt:
+      - no-new-privileges:true
+
+  rum-controller:
+    profiles: [dataplane]
+    image: ${RUM_COLLECTOR_IMAGE:-bklite/rum-collector:0.1.0-bklite.1}
+    build:
+      context: ./collector
+    restart: unless-stopped
+    user: "${RUM_COLLECTOR_UID:-65532}:${RUM_COLLECTOR_GID:-65532}"
+    entrypoint: ["/usr/local/bin/bklite-rum-controller"]
+    # Fixture NATS is plain nats://; production must use tls:// + NKey/creds
+    # and drop -nats-insecure.
+    command:
+      - -nats-url=nats://${RUM_NATS_CONTROLLER_USERNAME:-rum_controller}:${RUM_NATS_CONTROLLER_PASSWORD:-rum-controller-contract-password}@rum-nats:4222
+      - -nats-insecure
+      - -redis-url=redis://rum-controller@rum-redis:6379/0
+      - -redis-password-file=/run/secrets/rum_controller_redis_password
+      - -identity-hmac-current-file=/run/secrets/rum_identity_hmac_current
+      - -identity-hmac-current-version=${RUM_IDENTITY_HMAC_CURRENT_VERSION:-v1}
+      - -tenant-id=${RUM_TENANT_ID:-core}
+    depends_on:
+      rum-secrets-init:
+        condition: service_completed_successfully
+      rum-redis:
+        condition: service_healthy
+      rum-nats:
+        condition: service_healthy
+    volumes:
+      - rum_secrets:/run/secrets:ro
+    mem_limit: ${RUM_CONTROLLER_MEMORY_LIMIT:-256m}
+    security_opt:
+      - no-new-privileges:true
+
+  rum-maintainer:
+    profiles: [dataplane]
+    image: ${RUM_COLLECTOR_IMAGE:-bklite/rum-collector:0.1.0-bklite.1}
+    build:
+      context: ./collector
+    restart: unless-stopped
+    user: "${RUM_COLLECTOR_UID:-65532}:${RUM_COLLECTOR_GID:-65532}"
+    entrypoint: ["/usr/local/bin/bklite-rum-maintainer"]
+    command:
+      - -redis-url=redis://rum-maintainer@rum-redis:6379/0
+      - -redis-password-file=/run/secrets/rum_maintainer_redis_password
+      - -replay-index-redis-url=redis://rum-replay-index-maintainer@rum-redis:6379/2
+      - -replay-index-redis-password-file=/run/secrets/rum_replay_index_maintainer_redis_password
+      - -replay-index-epoch=${RUM_REPLAY_INDEX_EPOCH:-2026-01-01T00:00:00Z}
+      - -victoria-logs-endpoint=http://rum-victoria-logs:9428
+      - -victoria-traces-endpoint=http://rum-victoria-traces:10428
+      - -minio-endpoint=rum-minio:9000
+      - -minio-secure=${RUM_MAINTAINER_MINIO_SECURE:-false}
+      - -minio-access-key=${RUM_MAINTAINER_MINIO_ACCESS_KEY:-rumminio}
+      - -minio-secret-key-file=/run/secrets/rum_maintainer_minio_secret
+      - -minio-bucket=${RUM_MINIO_BUCKET:-rum-replay}
+      - -metrics-address=0.0.0.0:9090
+    depends_on:
+      rum-secrets-init:
+        condition: service_completed_successfully
+      rum-redis:
+        condition: service_healthy
+      rum-victoria-logs:
+        condition: service_healthy
+      rum-victoria-traces:
+        condition: service_healthy
+      rum-minio-init:
+        condition: service_completed_successfully
+    ports:
+      - "${RUM_MAINTAINER_METRICS_BIND:-127.0.0.1}:${RUM_MAINTAINER_METRICS_PORT:-19090}:9090"
+    volumes:
+      - rum_secrets:/run/secrets:ro
+    mem_limit: ${RUM_MAINTAINER_MEMORY_LIMIT:-256m}
+    security_opt:
+      - no-new-privileges:true
+
 volumes:
   rum_redis_data:
   rum_victoria_logs_data:
   rum_victoria_traces_data:
   rum_minio_data:
+  rum_secrets:
+  rum_gateway_queue:
