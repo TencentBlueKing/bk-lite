@@ -2070,10 +2070,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
               !pluginMetricNames.includes(rule.metric_name || '');
             const note = otherPlugin
               ? ` · ${t(
-                  'monitor.integrations.policyGroupNotApplicable',
-                  `${rule.plugin_name} 对本次接入不适用`,
-                  { plugin: rule.plugin_name }
-                )}`
+                'monitor.integrations.policyGroupNotApplicable',
+                `${rule.plugin_name} 对本次接入不适用`,
+                { plugin: rule.plugin_name }
+              )}`
               : missingMetric
                 ? ` · ${t('monitor.integrations.policyGroupNoData', '这次没有数据')}`
                 : '';
