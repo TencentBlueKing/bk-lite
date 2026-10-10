@@ -16,6 +16,7 @@ import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { cloneDeep } from 'lodash';
 import { getProfessionalObjectDisplayName } from '@/app/monitor/dashboards/registry';
 import { findByMonitorId, toMonitorIdString } from '@/app/monitor/utils/monitorIds';
+import { isDerivativeObject } from '@/app/monitor/utils/monitorObject';
 import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
 import {
   VIEW_OBJECT_QUERY_PARAM,
@@ -111,14 +112,16 @@ const Integration = () => {
           children: [],
         };
       }
-      acc[item.type].children.push({
-        title: getProfessionalObjectDisplayName(item.name, item.display_name) || '--',
-        label: item.name || '--',
-        key: toMonitorIdString(item.id),
-        icon: item.icon,
-        count: item.instance_count || 0,
-        children: [],
-      });
+      if (!isDerivativeObject(item, data)) {
+        acc[item.type].children.push({
+          title: getProfessionalObjectDisplayName(item.name, item.display_name) || '--',
+          label: item.name || '--',
+          key: toMonitorIdString(item.id),
+          icon: item.icon,
+          count: item.instance_count || 0,
+          children: [],
+        });
+      }
       return acc;
     }, {} as Record<string, TreeItem>);
     if (groupedData.Other) {
