@@ -103,7 +103,7 @@ export const resolveColumnLayout = ({
   const gutter = Math.max(0, reservedWidth);
   const measuredWidth =
     typeof containerWidth === 'number' && containerWidth > 0
-      ? Math.max(0, containerWidth - Math.max(0, reservedWidth))
+      ? containerWidth
       : undefined;
   const usableWidth =
     measuredWidth !== undefined
