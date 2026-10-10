@@ -1530,7 +1530,36 @@ screens:
   desc: 告警中心运营态势大屏，使用页面可配置图表节点展示今日、活动、趋势、分布与活跃告警信息
   other: {}
   view_sets:
+    viewport:
+      theme: screen-dark
+      width: 3840
+      height: 2160
+      adapter: fill
+      background:
+        key: dark-glow
+        type: preset
     items:
+    - h: 670
+      w: 1456
+      x: 1092
+      y: 508
+      id: border-alert-duration-top
+      kind: decoration
+      preset: border-22
+      zIndex: 62
+      decorationType: panelFrame
+    - h: 177
+      w: 739
+      x: 3065
+      y: 29
+      id: legacy-clock
+      kind: clock
+      format: YYYY-MM-DD HH:mm:ss
+      zIndex: 61
+      textStyle:
+        color: canvas
+        fontSize: 60
+        fontWeight: 600
     - h: 169
       w: 3839
       x: 0
@@ -1538,134 +1567,357 @@ screens:
       id: legacy-title-frame
       kind: titleFrame
       preset: hero-5
-      zIndex: 16
+      zIndex: 60
       content: 告警运营大屏
       textStyle:
         fontSize: 72
-    - h: 177
-      w: 739
-      x: 2968
-      y: 29
-      id: legacy-clock
-      kind: clock
-      format: YYYY-MM-DD HH:mm:ss
-      zIndex: 17
+    - h: 66
+      w: 384
+      x: 3278
+      y: 242
+      id: label-2bdee93c-3a75-49a6-93b2-bd0d448967b3
+      kind: text
+      zIndex: 59
+      content: 新增事故数
       textStyle:
-        color: canvas
-        fontSize: 60
-        fontWeight: 600
-    - h: 232
-      w: 446
-      x: 155
-      y: 239
-      id: alert-kpi-created
+        align: left
+        color: '#e8eef7'
+        fontSize: 48
+        fontWeight: 700
+    - h: 147
+      w: 466
+      x: 3275
+      y: 313
+      id: 2bdee93c-3a75-49a6-93b2-bd0d448967b3
       type: widget
-      title: 今日已产生
-      zIndex: 1
+      title: 新增事故数
+      zIndex: 58
       chartType: single
       valueConfig:
-        unit: 条
+        name: 所选时段新增事故数
+        compare: false
         chartType: single
-        dataSource: 今日告警状态总览::alert/get_alert_today_status_summary
-        chartThemeMode: screen-dark
-        selectedFields:
-        - today_created_count
-    - h: 232
-      w: 454
-      x: 634
-      y: 234
-      id: alert-kpi-closed
-      type: widget
-      title: 今日已关闭
-      zIndex: 1
-      chartType: single
-      valueConfig:
-        unit: 条
-        chartType: single
-        dataSource: 今日告警状态总览::alert/get_alert_today_status_summary
-        chartThemeMode: screen-dark
-        selectedFields:
-        - today_closed_count
-    - h: 241
-      w: 470
-      x: 1124
-      y: 226
-      id: alert-kpi-processing
-      type: widget
-      title: 处理中
-      zIndex: 1
-      chartType: single
-      valueConfig:
-        unit: 条
-        chartType: single
-        dataSource: 告警快照统计::alert/get_alert_snapshot_statistics
-        chartThemeMode: screen-dark
-        selectedFields:
-        - processing_count
-    - h: 238
-      w: 446
-      x: 1628
-      y: 226
-      id: alert-active-total
-      type: widget
-      title: 活跃告警总数
-      zIndex: 1
-      chartType: single
-      valueConfig:
-        unit: 条
-        chartType: single
-        dataSource: 告警快照统计::alert/get_alert_snapshot_statistics
-        chartThemeMode: screen-dark
-        selectedFields:
-        - active_count
-    - h: 235
-      w: 458
-      x: 2109
-      y: 225
-      id: alert-active-pending
-      type: widget
-      title: 待响应
-      zIndex: 1
-      chartType: single
-      valueConfig:
-        unit: 条
-        chartType: single
-        dataSource: 告警快照统计::alert/get_alert_snapshot_statistics
-        chartThemeMode: screen-dark
-        selectedFields:
-        - pending_count
-    - h: 460
-      w: 926
-      x: 157
-      y: 509
-      id: alert-level-trend
-      type: widget
-      title: 告警等级趋势
-      zIndex: 1
-      chartType: bar
-      valueConfig:
-        chartType: bar
-        dataSource: 告警等级趋势::alert/get_alert_level_trend
-        chartThemeMode: screen-dark
+        appearance:
+          frame: bare
+        dataSource: 告警期间统计::alert/get_alert_period_statistics
+        compareMode: percent
+        description: ''
         filterBindings:
           time__timeRange: true
+        selectedFields:
+        - new_incident_count
+        thresholdColors:
+        - color: '#dc2626'
+          value: '70'
+        - color: '#d97706'
+          value: '30'
+        - color: '#2563eb'
+          value: '0'
         dataSourceParams:
         - name: time
           type: timeRange
           value: 10080
           alias_name: 时间范围
           filterType: filter
-    - h: 472
-      w: 916
-      x: 168
-      y: 1008
+    - h: 66
+      w: 415
+      x: 2722
+      y: 250
+      id: label-f9156f59-ac47-48b9-b071-da3289f769af
+      kind: text
+      zIndex: 57
+      content: 告警关联事件数
+      textStyle:
+        align: left
+        color: '#e8eef7'
+        fontSize: 48
+        fontWeight: 700
+    - h: 232
+      w: 487
+      x: 3264
+      y: 229
+      id: border-2bdee93c-3a75-49a6-93b2-bd0d448967b3
+      kind: decoration
+      preset: tech
+      zIndex: 56
+      decorationType: panelFrame
+    - h: 134
+      w: 508
+      x: 2707
+      y: 320
+      id: f9156f59-ac47-48b9-b071-da3289f769af
+      type: widget
+      title: 告警关联事件数
+      zIndex: 55
+      chartType: single
+      valueConfig:
+        name: 所选时段告警关联事件数
+        compare: false
+        chartType: single
+        appearance:
+          frame: bare
+        dataSource: 告警期间统计::alert/get_alert_period_statistics
+        compareMode: percent
+        description: ''
+        filterBindings:
+          time__timeRange: true
+        selectedFields:
+        - linked_event_count
+        thresholdColors:
+        - color: '#dc2626'
+          value: '70'
+        - color: '#d97706'
+          value: '30'
+        - color: '#2563eb'
+          value: '0'
+        dataSourceParams:
+        - name: time
+          type: timeRange
+          value: 10080
+          alias_name: 时间范围
+          filterType: filter
+    - h: 100
+      w: 1155
+      x: 2623
+      y: 1719
+      id: label-081f2a79-debe-4825-9d4d-1aeb02d9702e
+      kind: titleFrame
+      preset: section-2
+      zIndex: 54
+      content: 渠道通知成功率
+      textStyle:
+        align: left
+        color: '#e8eef7'
+        fontSize: 48
+        fontWeight: 700
+    - h: 276
+      w: 1169
+      x: 2615
+      y: 1821
+      id: 081f2a79-debe-4825-9d4d-1aeb02d9702e
+      type: widget
+      title: 渠道通知成功率
+      zIndex: 53
+      chartType: bar
+      valueConfig:
+        name: 通知渠道成功率
+        chartType: bar
+        appearance:
+          frame: bare
+        dataSource: 按渠道通知成功率::alert/get_notification_channel_stats
+        description: ''
+        filterBindings:
+          time__timeRange: true
+        dataSourceParams:
+        - name: time
+          type: timeRange
+          value: 10080
+          alias_name: 时间
+          filterType: filter
+    - h: 232
+      w: 518
+      x: 2706
+      y: 231
+      id: border-f9156f59-ac47-48b9-b071-da3289f769af
+      kind: decoration
+      preset: tech
+      zIndex: 52
+      decorationType: panelFrame
+    - h: 100
+      w: 957
+      x: 69
+      y: 1026
+      id: label-alert-access-trend
+      kind: titleFrame
+      preset: section-2
+      zIndex: 51
+      content: 告警与关联事件趋势
+      textStyle:
+        align: left
+        color: '#e8eef7'
+        fontSize: 48
+        fontWeight: 700
+    - h: 66
+      w: 393
+      x: 2159
+      y: 234
+      id: label-alert-active-pending
+      kind: text
+      zIndex: 50
+      content: 待响应
+      textStyle:
+        align: left
+        color: '#e8eef7'
+        fontSize: 48
+        fontWeight: 700
+    - h: 91
+      w: 1411
+      x: 1122
+      y: 1237
+      id: label-alert-active-table
+      kind: titleFrame
+      preset: section-2
+      zIndex: 49
+      content: 活跃告警信息
+      textStyle:
+        align: left
+        color: '#e8eef7'
+        fontSize: 48
+        fontWeight: 700
+    - h: 66
+      w: 380
+      x: 1643
+      y: 239
+      id: label-alert-active-total
+      kind: text
+      zIndex: 48
+      content: 活跃告警总数
+      textStyle:
+        align: left
+        color: '#e8eef7'
+        fontSize: 48
+        fontWeight: 700
+    - h: 112
+      w: 1420
+      x: 1111
+      y: 525
+      id: label-alert-duration-top
+      kind: titleFrame
+      preset: section-2
+      zIndex: 47
+      content: 活跃告警持续时长 TOP10
+      textStyle:
+        align: left
+        color: '#e8eef7'
+        fontSize: 48
+        fontWeight: 700
+    - h: 66
+      w: 389
+      x: 563
+      y: 247
+      id: label-alert-kpi-closed
+      kind: text
+      zIndex: 46
+      content: 今日已关闭
+      textStyle:
+        align: left
+        color: '#e8eef7'
+        fontSize: 48
+        fontWeight: 700
+    - h: 66
+      w: 380
+      x: 51
+      y: 251
+      id: label-alert-kpi-created
+      kind: text
+      zIndex: 45
+      content: 今日已产生
+      textStyle:
+        align: left
+        color: '#e8eef7'
+        fontSize: 48
+        fontWeight: 700
+    - h: 66
+      w: 406
+      x: 1105
+      y: 239
+      id: label-alert-kpi-processing
+      kind: text
+      zIndex: 44
+      content: 处理中
+      textStyle:
+        align: left
+        color: '#e8eef7'
+        fontSize: 48
+        fontWeight: 700
+    - h: 100
+      w: 953
+      x: 74
+      y: 1538
+      id: label-alert-level-distribution
+      kind: titleFrame
+      preset: section-2
+      zIndex: 43
+      content: 活跃告警等级分布
+      textStyle:
+        align: left
+        color: '#e8eef7'
+        fontSize: 48
+        fontWeight: 700
+    - h: 100
+      w: 977
+      x: 52
+      y: 529
+      id: label-alert-level-trend
+      kind: titleFrame
+      preset: section-2
+      zIndex: 42
+      content: 告警等级趋势
+      textStyle:
+        align: left
+        color: '#e8eef7'
+        fontSize: 48
+        fontWeight: 700
+    - h: 97
+      w: 1169
+      x: 2617
+      y: 1108
+      id: label-alert-source-event-top
+      kind: titleFrame
+      preset: section-2
+      zIndex: 41
+      content: 告警关联事件来源 TOP10
+      textStyle:
+        align: left
+        color: '#e8eef7'
+        fontSize: 48
+        fontWeight: 700
+    - h: 100
+      w: 1159
+      x: 2609
+      y: 519
+      id: label-alert-status-distribution
+      kind: titleFrame
+      preset: section-2
+      zIndex: 40
+      content: 活跃告警状态分布
+      textStyle:
+        align: left
+        color: '#e8eef7'
+        fontSize: 48
+        fontWeight: 700
+    - h: 232
+      w: 487
+      x: 3264
+      y: 229
+      id: panel-2bdee93c-3a75-49a6-93b2-bd0d448967b3
+      kind: shape
+      shape: rect
+      zIndex: 39
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: rgba(0, 229, 255, 0.28)
+        borderWidth: 1
+        gradientEnd: rgba(8, 28, 52, 0.2)
+        gradientStart: rgba(0, 229, 255, 0.16)
+        hideBackground: false
+        backgroundColor: rgba(8, 28, 52, 0.62)
+        gradientDirection: vertical
+    - h: 346
+      w: 970
+      x: 61
+      y: 1124
       id: alert-access-trend
       type: widget
       title: 告警与关联事件趋势
-      zIndex: 1
+      zIndex: 38
       chartType: line
       valueConfig:
         chartType: line
+        appearance:
+          frame: bare
         dataSource: 告警趋势::alert/get_alert_trend_data
         chartThemeMode: screen-dark
         filterBindings:
@@ -1676,37 +1928,114 @@ screens:
           value: 10080
           alias_name: 时间范围
           filterType: filter
-    - h: 570
-      w: 904
-      x: 178
-      y: 1519
-      id: alert-level-distribution
+    - h: 153
+      w: 474
+      x: 2156
+      y: 300
+      id: alert-active-pending
       type: widget
-      title: 活跃告警等级分布
-      zIndex: 1
-      chartType: pie
+      title: 待响应
+      zIndex: 37
+      chartType: single
       valueConfig:
-        chartType: pie
-        dataSource: 告警等级分布::get_alert_level_distribution
+        unit: 条
+        chartType: single
+        appearance:
+          frame: bare
+        dataSource: 告警快照统计::alert/get_alert_snapshot_statistics
+        chartThemeMode: screen-dark
+        selectedFields:
+        - pending_count
+    - h: 755
+      w: 1424
+      x: 1114
+      y: 1334
+      id: alert-active-table
+      type: widget
+      title: 活跃告警信息
+      zIndex: 36
+      chartType: table
+      valueConfig:
+        chartType: table
+        appearance:
+          frame: bare
+        dataSource: 活跃告警 TOP N::get_active_alert_top
+        tableConfig:
+          columns:
+          - key: alert_id
+            order: 0
+            title: 告警ID
+            width: 180
+            visible: true
+          - key: title
+            order: 1
+            title: 告警名称
+            width: 220
+            visible: true
+          - key: level
+            order: 2
+            title: 等级
+            width: 90
+            visible: true
+          - key: status
+            order: 3
+            title: 状态
+            width: 100
+            visible: true
+          - key: duration_seconds
+            order: 4
+            title: 持续秒数
+            width: 130
+            visible: true
+          - key: created_at
+            order: 5
+            title: 发生时间
+            width: 180
+            visible: true
+          - key: resource_name
+            order: 6
+            title: 资源名称
+            width: 180
+            visible: true
         chartThemeMode: screen-dark
         dataSourceParams:
-        - name: status_filter
-          type: string
-          value: active
-          alias_name: 告警状态范围
-          filterType: fixed
-    - h: 670
-      w: 1344
-      x: 1130
-      y: 508
+        - name: limit
+          type: number
+          value: 10
+          alias_name: 返回条数
+          filterType: params
+    - h: 150
+      w: 470
+      x: 1636
+      y: 307
+      id: alert-active-total
+      type: widget
+      title: 活跃告警总数
+      zIndex: 35
+      chartType: single
+      valueConfig:
+        unit: 条
+        chartType: single
+        appearance:
+          frame: bare
+        dataSource: 告警快照统计::alert/get_alert_snapshot_statistics
+        chartThemeMode: screen-dark
+        selectedFields:
+        - active_count
+    - h: 544
+      w: 1434
+      x: 1103
+      y: 624
       id: alert-duration-top
       type: widget
       title: 活跃告警持续时长 TOP10
-      zIndex: 1
+      zIndex: 34
       chartType: topN
       valueConfig:
         name: 活动告警持续时长 TOP10
         chartType: topN
+        appearance:
+          frame: bare
         dataSource: 活跃告警 TOP N::get_active_alert_top
         description: ''
         tableConfig:
@@ -1755,86 +2084,117 @@ screens:
           value: 10
           alias_name: 返回条数
           filterType: params
-    - h: 535
-      w: 1100
-      x: 2517
-      y: 503
-      id: alert-status-distribution
+    - h: 144
+      w: 479
+      x: 560
+      y: 317
+      id: alert-kpi-closed
       type: widget
-      title: 活跃告警状态分布
-      zIndex: 1
+      title: 今日已关闭
+      zIndex: 33
+      chartType: single
+      valueConfig:
+        unit: 条
+        chartType: single
+        appearance:
+          frame: bare
+        dataSource: 今日告警状态总览::alert/get_alert_today_status_summary
+        chartThemeMode: screen-dark
+        selectedFields:
+        - today_closed_count
+    - h: 144
+      w: 461
+      x: 47
+      y: 315
+      id: alert-kpi-created
+      type: widget
+      title: 今日已产生
+      zIndex: 32
+      chartType: single
+      valueConfig:
+        unit: 条
+        chartType: single
+        appearance:
+          frame: bare
+        dataSource: 今日告警状态总览::alert/get_alert_today_status_summary
+        chartThemeMode: screen-dark
+        selectedFields:
+        - today_created_count
+    - h: 153
+      w: 502
+      x: 1089
+      y: 309
+      id: alert-kpi-processing
+      type: widget
+      title: 处理中
+      zIndex: 31
+      chartType: single
+      valueConfig:
+        unit: 条
+        chartType: single
+        appearance:
+          frame: bare
+        dataSource: 告警快照统计::alert/get_alert_snapshot_statistics
+        chartThemeMode: screen-dark
+        selectedFields:
+        - processing_count
+    - h: 444
+      w: 957
+      x: 72
+      y: 1635
+      id: alert-level-distribution
+      type: widget
+      title: 活跃告警等级分布
+      zIndex: 30
       chartType: pie
       valueConfig:
         chartType: pie
-        dataSource: 告警状态分布::alert/get_alert_status_distribution
-        chartThemeMode: screen-dark
-    - h: 881
-      w: 1335
-      x: 1140
-      y: 1218
-      id: alert-active-table
-      type: widget
-      title: 活跃告警信息
-      zIndex: 1
-      chartType: table
-      valueConfig:
-        chartType: table
-        dataSource: 活跃告警 TOP N::get_active_alert_top
-        tableConfig:
-          columns:
-          - key: alert_id
-            order: 0
-            title: 告警ID
-            width: 180
-            visible: true
-          - key: title
-            order: 1
-            title: 告警名称
-            width: 220
-            visible: true
-          - key: level
-            order: 2
-            title: 等级
-            width: 90
-            visible: true
-          - key: status
-            order: 3
-            title: 状态
-            width: 100
-            visible: true
-          - key: duration_seconds
-            order: 4
-            title: 持续秒数
-            width: 130
-            visible: true
-          - key: created_at
-            order: 5
-            title: 发生时间
-            width: 180
-            visible: true
-          - key: resource_name
-            order: 6
-            title: 资源名称
-            width: 180
-            visible: true
+        appearance:
+          frame: bare
+        dataSource: 告警等级分布::get_alert_level_distribution
         chartThemeMode: screen-dark
         dataSourceParams:
-        - name: limit
-          type: number
-          value: 10
-          alias_name: 返回条数
-          filterType: params
-    - h: 571
-      w: 1112
-      x: 2522
-      y: 1093
+        - name: status_filter
+          type: string
+          value: active
+          alias_name: 告警状态范围
+          filterType: fixed
+    - h: 334
+      w: 981
+      x: 49
+      y: 625
+      id: alert-level-trend
+      type: widget
+      title: 告警等级趋势
+      zIndex: 29
+      chartType: bar
+      valueConfig:
+        chartType: bar
+        appearance:
+          frame: bare
+        dataSource: 告警等级趋势::alert/get_alert_level_trend
+        chartThemeMode: screen-dark
+        filterBindings:
+          time__timeRange: true
+        dataSourceParams:
+        - name: time
+          type: timeRange
+          value: 10080
+          alias_name: 时间范围
+          filterType: filter
+    - h: 445
+      w: 1183
+      x: 2610
+      y: 1209
       id: alert-source-event-top
       type: widget
       title: 告警关联事件来源 TOP10
-      zIndex: 1
+      zIndex: 28
       chartType: topN
       valueConfig:
         chartType: topN
+        appearance:
+          frame: bare
         dataSource: 告警关联事件来源 TOP N::alert/get_alert_source_event_top
         chartThemeMode: screen-dark
         filterBindings:
@@ -1852,100 +2212,399 @@ screens:
           value: 10080
           alias_name: 时间
           filterType: filter
+    - h: 409
+      w: 1170
+      x: 2605
+      y: 619
+      id: alert-status-distribution
+      type: widget
+      title: 活跃告警状态分布
+      zIndex: 27
+      chartType: pie
+      valueConfig:
+        chartType: pie
+        appearance:
+          frame: bare
+        dataSource: 告警状态分布::alert/get_alert_status_distribution
+        chartThemeMode: screen-dark
     - h: 402
-      w: 1099
-      x: 2526
+      w: 1190
+      x: 2604
       y: 1705
-      id: 081f2a79-debe-4825-9d4d-1aeb02d9702e
-      type: widget
-      title: 渠道通知成功率
-      zIndex: 2
-      chartType: bar
-      valueConfig:
-        name: 通知渠道成功率
-        chartType: bar
-        appearance:
-          frame: panel
-        dataSource: 按渠道通知成功率::alert/get_notification_channel_stats
-        description: ''
-        filterBindings:
-          time__timeRange: true
-        dataSourceParams:
-        - name: time
-          type: timeRange
-          value: 10080
-          alias_name: 时间
-          filterType: filter
+      id: border-081f2a79-debe-4825-9d4d-1aeb02d9702e
+      kind: decoration
+      preset: border-22
+      zIndex: 26
+      decorationType: panelFrame
     - h: 232
-      w: 478
-      x: 2620
+      w: 518
+      x: 2706
       y: 231
-      id: f9156f59-ac47-48b9-b071-da3289f769af
-      type: widget
-      title: 告警关联事件数
-      zIndex: 3
-      chartType: single
-      valueConfig:
-        name: 所选时段告警关联事件数
-        compare: false
-        chartType: single
-        appearance:
-          frame: panel
-        dataSource: 告警期间统计::alert/get_alert_period_statistics
-        compareMode: percent
-        description: ''
-        selectedFields:
-        - linked_event_count
-        filterBindings:
-          time__timeRange: true
-        dataSourceParams:
-        - name: time
-          type: timeRange
-          value: 10080
-          alias_name: 时间范围
-          filterType: filter
-        thresholdColors:
-        - color: '#dc2626'
-          value: '70'
-        - color: '#d97706'
-          value: '30'
-        - color: '#2563eb'
-          value: '0'
+      id: panel-f9156f59-ac47-48b9-b071-da3289f769af
+      kind: shape
+      shape: rect
+      zIndex: 25
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: rgba(0, 229, 255, 0.28)
+        borderWidth: 1
+        gradientEnd: rgba(8, 28, 52, 0.2)
+        gradientStart: rgba(0, 229, 255, 0.16)
+        hideBackground: false
+        backgroundColor: rgba(8, 28, 52, 0.62)
+        gradientDirection: vertical
+    - h: 472
+      w: 992
+      x: 50
+      y: 1008
+      id: border-alert-access-trend
+      kind: decoration
+      preset: border-22
+      zIndex: 24
+      decorationType: panelFrame
+    - h: 235
+      w: 496
+      x: 2152
+      y: 225
+      id: border-alert-active-pending
+      kind: decoration
+      preset: tech
+      zIndex: 23
+      decorationType: panelFrame
+    - h: 881
+      w: 1446
+      x: 1103
+      y: 1218
+      id: border-alert-active-table
+      kind: decoration
+      preset: border-22
+      zIndex: 22
+      decorationType: panelFrame
+    - h: 238
+      w: 483
+      x: 1631
+      y: 226
+      id: border-alert-active-total
+      kind: decoration
+      preset: tech
+      zIndex: 21
+      decorationType: panelFrame
     - h: 232
-      w: 450
-      x: 3135
-      y: 229
-      id: 2bdee93c-3a75-49a6-93b2-bd0d448967b3
-      type: widget
-      title: 新增事故数
+      w: 492
+      x: 555
+      y: 234
+      id: border-alert-kpi-closed
+      kind: decoration
+      preset: tech
+      zIndex: 20
+      decorationType: panelFrame
+    - h: 232
+      w: 483
+      x: 36
+      y: 239
+      id: border-alert-kpi-created
+      kind: decoration
+      preset: tech
+      zIndex: 19
+      decorationType: panelFrame
+    - h: 241
+      w: 509
+      x: 1085
+      y: 226
+      id: border-alert-kpi-processing
+      kind: decoration
+      preset: tech
+      zIndex: 18
+      decorationType: panelFrame
+    - h: 570
+      w: 979
+      x: 61
+      y: 1519
+      id: border-alert-level-distribution
+      kind: decoration
+      preset: border-22
+      zIndex: 17
+      decorationType: panelFrame
+    - h: 460
+      w: 1003
+      x: 38
+      y: 509
+      id: border-alert-level-trend
+      kind: decoration
+      preset: border-22
+      zIndex: 16
+      decorationType: panelFrame
+    - h: 571
+      w: 1204
+      x: 2600
+      y: 1093
+      id: border-alert-source-event-top
+      kind: decoration
+      preset: border-22
+      zIndex: 15
+      decorationType: panelFrame
+    - h: 535
+      w: 1191
+      x: 2594
+      y: 503
+      id: border-alert-status-distribution
+      kind: decoration
+      preset: border-22
+      zIndex: 14
+      decorationType: panelFrame
+    - h: 402
+      w: 1190
+      x: 2604
+      y: 1705
+      id: panel-081f2a79-debe-4825-9d4d-1aeb02d9702e
+      kind: shape
+      shape: rect
+      zIndex: 13
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: rgba(0, 229, 255, 0.28)
+        borderWidth: 1
+        gradientEnd: rgba(8, 28, 52, 0.2)
+        gradientStart: rgba(0, 229, 255, 0.16)
+        hideBackground: false
+        backgroundColor: rgba(8, 28, 52, 0.62)
+        gradientDirection: vertical
+    - h: 472
+      w: 992
+      x: 50
+      y: 1008
+      id: panel-alert-access-trend
+      kind: shape
+      shape: rect
+      zIndex: 12
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: rgba(0, 229, 255, 0.28)
+        borderWidth: 1
+        gradientEnd: rgba(8, 28, 52, 0.2)
+        gradientStart: rgba(0, 229, 255, 0.16)
+        hideBackground: false
+        backgroundColor: rgba(8, 28, 52, 0.62)
+        gradientDirection: vertical
+    - h: 235
+      w: 496
+      x: 2152
+      y: 225
+      id: panel-alert-active-pending
+      kind: shape
+      shape: rect
+      zIndex: 11
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: rgba(0, 229, 255, 0.28)
+        borderWidth: 1
+        gradientEnd: rgba(8, 28, 52, 0.2)
+        gradientStart: rgba(0, 229, 255, 0.16)
+        hideBackground: false
+        backgroundColor: rgba(8, 28, 52, 0.62)
+        gradientDirection: vertical
+    - h: 881
+      w: 1446
+      x: 1103
+      y: 1218
+      id: panel-alert-active-table
+      kind: shape
+      shape: rect
+      zIndex: 10
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: rgba(0, 229, 255, 0.28)
+        borderWidth: 1
+        gradientEnd: rgba(8, 28, 52, 0.2)
+        gradientStart: rgba(0, 229, 255, 0.16)
+        hideBackground: false
+        backgroundColor: rgba(8, 28, 52, 0.62)
+        gradientDirection: vertical
+    - h: 238
+      w: 483
+      x: 1631
+      y: 226
+      id: panel-alert-active-total
+      kind: shape
+      shape: rect
+      zIndex: 9
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: rgba(0, 229, 255, 0.28)
+        borderWidth: 1
+        gradientEnd: rgba(8, 28, 52, 0.2)
+        gradientStart: rgba(0, 229, 255, 0.16)
+        hideBackground: false
+        backgroundColor: rgba(8, 28, 52, 0.62)
+        gradientDirection: vertical
+    - h: 670
+      w: 1456
+      x: 1092
+      y: 508
+      id: panel-alert-duration-top
+      kind: shape
+      shape: rect
+      zIndex: 8
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: rgba(0, 229, 255, 0.28)
+        borderWidth: 1
+        gradientEnd: rgba(8, 28, 52, 0.2)
+        gradientStart: rgba(0, 229, 255, 0.16)
+        hideBackground: false
+        backgroundColor: rgba(8, 28, 52, 0.62)
+        gradientDirection: vertical
+    - h: 232
+      w: 492
+      x: 555
+      y: 234
+      id: panel-alert-kpi-closed
+      kind: shape
+      shape: rect
+      zIndex: 7
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: rgba(0, 229, 255, 0.28)
+        borderWidth: 1
+        gradientEnd: rgba(8, 28, 52, 0.2)
+        gradientStart: rgba(0, 229, 255, 0.16)
+        hideBackground: false
+        backgroundColor: rgba(8, 28, 52, 0.62)
+        gradientDirection: vertical
+    - h: 232
+      w: 483
+      x: 36
+      y: 239
+      id: panel-alert-kpi-created
+      kind: shape
+      shape: rect
+      zIndex: 6
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: rgba(0, 229, 255, 0.28)
+        borderWidth: 1
+        gradientEnd: rgba(8, 28, 52, 0.2)
+        gradientStart: rgba(0, 229, 255, 0.16)
+        hideBackground: false
+        backgroundColor: rgba(8, 28, 52, 0.62)
+        gradientDirection: vertical
+    - h: 241
+      w: 509
+      x: 1085
+      y: 226
+      id: panel-alert-kpi-processing
+      kind: shape
+      shape: rect
+      zIndex: 5
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: rgba(0, 229, 255, 0.28)
+        borderWidth: 1
+        gradientEnd: rgba(8, 28, 52, 0.2)
+        gradientStart: rgba(0, 229, 255, 0.16)
+        hideBackground: false
+        backgroundColor: rgba(8, 28, 52, 0.62)
+        gradientDirection: vertical
+    - h: 570
+      w: 979
+      x: 61
+      y: 1519
+      id: panel-alert-level-distribution
+      kind: shape
+      shape: rect
       zIndex: 4
-      chartType: single
-      valueConfig:
-        name: 所选时段新增事故数
-        compare: false
-        chartType: single
-        appearance:
-          frame: panel
-        dataSource: 告警期间统计::alert/get_alert_period_statistics
-        compareMode: percent
-        description: ''
-        selectedFields:
-        - new_incident_count
-        filterBindings:
-          time__timeRange: true
-        dataSourceParams:
-        - name: time
-          type: timeRange
-          value: 10080
-          alias_name: 时间范围
-          filterType: filter
-        thresholdColors:
-        - color: '#dc2626'
-          value: '70'
-        - color: '#d97706'
-          value: '30'
-        - color: '#2563eb'
-          value: '0'
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: rgba(0, 229, 255, 0.28)
+        borderWidth: 1
+        gradientEnd: rgba(8, 28, 52, 0.2)
+        gradientStart: rgba(0, 229, 255, 0.16)
+        hideBackground: false
+        backgroundColor: rgba(8, 28, 52, 0.62)
+        gradientDirection: vertical
+    - h: 460
+      w: 1003
+      x: 38
+      y: 509
+      id: panel-alert-level-trend
+      kind: shape
+      shape: rect
+      zIndex: 3
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: rgba(0, 229, 255, 0.28)
+        borderWidth: 1
+        gradientEnd: rgba(8, 28, 52, 0.2)
+        gradientStart: rgba(0, 229, 255, 0.16)
+        hideBackground: false
+        backgroundColor: rgba(8, 28, 52, 0.62)
+        gradientDirection: vertical
+    - h: 571
+      w: 1204
+      x: 2600
+      y: 1093
+      id: panel-alert-source-event-top
+      kind: shape
+      shape: rect
+      zIndex: 2
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: rgba(0, 229, 255, 0.28)
+        borderWidth: 1
+        gradientEnd: rgba(8, 28, 52, 0.2)
+        gradientStart: rgba(0, 229, 255, 0.16)
+        hideBackground: false
+        backgroundColor: rgba(8, 28, 52, 0.62)
+        gradientDirection: vertical
+    - h: 535
+      w: 1191
+      x: 2594
+      y: 503
+      id: panel-alert-status-distribution
+      kind: shape
+      shape: rect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: rgba(0, 229, 255, 0.28)
+        borderWidth: 1
+        gradientEnd: rgba(8, 28, 52, 0.2)
+        gradientStart: rgba(0, 229, 255, 0.16)
+        hideBackground: false
+        backgroundColor: rgba(8, 28, 52, 0.62)
+        gradientDirection: vertical
+    decorations:
+      title: 告警运营大屏
+      showClock: false
+      showTitle: false
     filters:
     - id: time__timeRange
       key: time
@@ -1954,31 +2613,20 @@ screens:
       order: 0
       enabled: true
       defaultValue:
-        start: '2026-07-28T00:00:00.000Z'
         end: '2026-08-04T00:00:00.000Z'
+        start: '2026-07-28T00:00:00.000Z'
         selectValue: 10080
-    viewport:
-      theme: screen-dark
-      width: 3840
-      height: 2160
-      background:
-        key: tech-grid
-        type: builtIn
-    decorations:
-      title: 告警运营大屏
-      showClock: false
-      showTitle: false
   refs:
     datasource_keys:
-    - 告警快照统计::alert/get_alert_snapshot_statistics
-    - 告警期间统计::alert/get_alert_period_statistics
-    - 告警趋势::alert/get_alert_trend_data
     - 按渠道通知成功率::alert/get_notification_channel_stats
+    - 告警趋势::alert/get_alert_trend_data
     - 活跃告警 TOP N::get_active_alert_top
-    - 今日告警状态总览::alert/get_alert_today_status_summary
-    - 告警状态分布::alert/get_alert_status_distribution
     - 告警等级趋势::alert/get_alert_level_trend
+    - 今日告警状态总览::alert/get_alert_today_status_summary
+    - 告警期间统计::alert/get_alert_period_statistics
+    - 告警快照统计::alert/get_alert_snapshot_statistics
     - 告警关联事件来源 TOP N::alert/get_alert_source_event_top
+    - 告警状态分布::alert/get_alert_status_distribution
     - 告警等级分布::get_alert_level_distribution
     namespace_keys: []
 - key: screen::3D机房大屏_内置
