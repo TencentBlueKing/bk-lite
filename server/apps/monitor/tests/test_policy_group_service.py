@@ -14,6 +14,7 @@ from apps.monitor.models import (
     MonitorPlugin,
     MonitorPolicy,
     PolicyGroupDefault,
+    PolicyGroupMembership,
     PolicyInstanceBaseline,
     PolicyTemplate,
 )
@@ -690,3 +691,73 @@ def test_update_notice_writes_every_policy_and_keeps_open_alerts():
 
     with pytest.raises(BaseAppException):
         PolicyGroupService.update_notice(group, notice=True, notice_type_ids=[], notice_users=["12"])
+
+
+def test_update_enable_stops_the_group_and_resumes_from_now():
+    monitor_object = _object()
+    wmi = _plugin(monitor_object, "WMI")
+    ssh = _plugin(monitor_object, "SSH")
+    group = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="主机默认告警",
+        templates=[_template(monitor_object, wmi, "WMI CPU"), _template(monitor_object, ssh, "SSH CPU")],
+    )
+    other = PolicyGroupService.create_from_templates(
+        organization=1,
+        monitor_object=monitor_object,
+        name="另一组",
+        templates=[_template(monitor_object, wmi, "WMI 内存")],
+    )
+    host = _instance(monitor_object, "web-01", 1)
+    _collect(host, wmi)
+    _collect(host, ssh)
+    PolicyGroupService.join(instance=host, group=group)
+    wmi_policy = group.rules.filter(plugin=wmi, name="WMI CPU").get().policy
+    ssh_policy = group.rules.filter(plugin=ssh).get().policy
+    alert = MonitorAlert.objects.create(policy_id=wmi_policy.id, monitor_instance_id=host.id, status="new", alert_type="alert")
+    other_policy = other.rules.get().policy
+    other_alert = MonitorAlert.objects.create(
+        policy_id=other_policy.id, monitor_instance_id=host.id, status="new", alert_type="alert"
+    )
+
+    PolicyGroupService.update_enable(group, enable=False, operator="tester")
+
+    wmi_policy.refresh_from_db()
+    ssh_policy.refresh_from_db()
+    alert.refresh_from_db()
+    other_policy.refresh_from_db()
+    other_alert.refresh_from_db()
+    membership = PolicyGroupMembership.objects.get(monitor_instance=host)
+    assert wmi_policy.enable is False
+    assert ssh_policy.enable is False
+    assert PeriodicTask.objects.get(name=f"scan_policy_task_{wmi_policy.id}").enabled is False
+    assert PeriodicTask.objects.get(name=f"scan_policy_task_{ssh_policy.id}").enabled is False
+    assert alert.status == "closed"
+    assert alert.operation_logs[-1]["reason"] == "policy_disabled"
+    assert membership.state == PolicyGroupMembership.STATE_MEMBER
+    assert membership.policy_group_id == group.id
+    assert other_policy.enable is True
+    assert other_alert.status == "new"
+
+    extra = _instance(monitor_object, "web-02", 1)
+    _collect(extra, wmi)
+    PolicyGroupService.join(instance=extra, group=group)
+    assert PeriodicTask.objects.get(name=f"scan_policy_task_{wmi_policy.id}").enabled is False
+    assert PolicyGroupMembership.objects.get(monitor_instance=host).policy_group_id == group.id
+
+    PolicyGroupService.update_enable(group, enable=True, operator="tester")
+
+    wmi_policy.refresh_from_db()
+    ssh_policy.refresh_from_db()
+    assert wmi_policy.enable is True
+    assert ssh_policy.enable is True
+    assert wmi_policy.last_run_time is not None
+    assert PeriodicTask.objects.get(name=f"scan_policy_task_{wmi_policy.id}").enabled is True
+    assert MonitorAlert.objects.filter(policy_id=wmi_policy.id, status="new").count() == 0
+    assert PolicyGroupMembership.objects.filter(policy_group=group, state=PolicyGroupMembership.STATE_MEMBER).count() == 2
+
+    started = wmi_policy.last_run_time
+    PolicyGroupService.update_enable(group, enable=True)
+    wmi_policy.refresh_from_db()
+    assert wmi_policy.last_run_time == started

@@ -58,6 +58,7 @@ def _serialize_group(group, default_id, metric_names=None):
             }
         )
     notice = _group_notice(loaded_rules)
+    enable = _group_enable(loaded_rules)
     return {
         "id": group.id,
         "name": group.name,
@@ -67,6 +68,7 @@ def _serialize_group(group, default_id, metric_names=None):
         "member_count": member_count,
         "rules": rules,
         **notice,
+        **enable,
     }
 
 
@@ -94,6 +96,16 @@ def _group_notice(rules):
         "notice_users": list(first.notice_users or []),
         "notice_uniform": True,
     }
+
+
+def _group_enable(rules):
+    policies = [rule.policy for rule in rules]
+    if not policies:
+        return {"enable": True, "enable_uniform": True}
+    flags = [bool(policy.enable) for policy in policies]
+    if any(flag != flags[0] for flag in flags):
+        return {"enable": False, "enable_uniform": False}
+    return {"enable": flags[0], "enable_uniform": True}
 
 
 def _serialize_groups(groups, default_id):
@@ -280,6 +292,17 @@ class PolicyGroupViewSet(viewsets.ViewSet):
             notice_users=raw_users,
             operator=_operator(scope),
         )
+        return WebUtils.response_success({"id": group.id})
+
+    @action(methods=["post"], detail=False, url_path="update_enable")
+    @HasPermission("strategy_list-Edit")
+    def update_enable(self, request):
+        scope = resolve_current_team_data_scope(request)
+        group = _group_in_scope(scope, request.data.get("group_id"))
+        enable = request.data.get("enable")
+        if not isinstance(enable, bool):
+            raise BaseAppException("请指定是否生效")
+        PolicyGroupService.update_enable(group, enable=enable, operator=_operator(scope))
         return WebUtils.response_success({"id": group.id})
 
     @action(methods=["post"], detail=False, url_path="copy_group")

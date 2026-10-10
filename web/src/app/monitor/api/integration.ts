@@ -74,6 +74,12 @@ const useIntegrationApi = () => {
       }) => {
         return await post(`/monitor/api/policy_group/update_notice/`, payload);
       },
+      updatePolicyGroupEnable: async (groupId: number, enable: boolean) => {
+        return await post(`/monitor/api/policy_group/update_enable/`, {
+          group_id: groupId,
+          enable,
+        });
+      },
       copyPolicyGroup: async (groupId: number, name: string) => {
         return await post(`/monitor/api/policy_group/copy_group/`, {
           group_id: groupId,

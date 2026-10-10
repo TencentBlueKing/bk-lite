@@ -340,6 +340,31 @@ class PolicyGroupService:
         return group
 
     @staticmethod
+    def update_enable(group, *, enable, operator="system"):
+        """整组生效或停用。停用结束未恢复告警并停止扫描；再次生效从当前时间继续扫，不补历史告警。成员不变。"""
+        from django_celery_beat.models import PeriodicTask
+
+        enabled = bool(enable)
+        now = timezone.now()
+        with transaction.atomic():
+            policies = list(MonitorPolicy.objects.select_for_update().filter(group_rule__group=group))
+            changing = [policy for policy in policies if bool(policy.enable) != enabled]
+            if not changing:
+                return group
+            ids = [policy.id for policy in changing]
+            fields = {"enable": enabled, "updated_by": operator, "updated_at": now}
+            if enabled:
+                fields["last_run_time"] = now
+            MonitorPolicy.objects.filter(id__in=ids).update(**fields)
+            if not enabled:
+                alerts = list(MonitorAlert.objects.filter(policy_id__in=ids, status="new"))
+                PolicyGroupService._publish_closed_alerts(alerts, changing, operator, "policy_disabled")
+            for policy in changing:
+                covered = source_has_dispatch_targets(policy.source)
+                PeriodicTask.objects.filter(name=f"scan_policy_task_{policy.id}").update(enabled=enabled and covered)
+        return group
+
+    @staticmethod
     def metric_id_for_policy(policy):
         query = policy.query_condition if isinstance(policy.query_condition, dict) else {}
         if query.get("type") == "formula":

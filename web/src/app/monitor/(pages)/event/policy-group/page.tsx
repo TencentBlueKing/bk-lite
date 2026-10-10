@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Button, Checkbox, Drawer, Dropdown, Input, Modal, Popconfirm, Select, Spin, Switch, Tag, message } from 'antd';
+import { Button, Checkbox, Drawer, Dropdown, Input, Modal, Popconfirm, Select, Spin, Switch, Tag, Tooltip, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import SearchActionBar from '@/components/search-action-bar';
 import { useSearchParams } from 'next/navigation';
@@ -45,6 +45,8 @@ interface PolicyGroupRow {
   notice_type_ids?: number[];
   notice_users?: Array<string | number>;
   notice_uniform?: boolean;
+  enable?: boolean;
+  enable_uniform?: boolean;
 }
 
 interface TemplateOption {
@@ -120,6 +122,7 @@ const PolicyGroupPage: React.FC = () => {
     leavePolicyGroup,
     updatePolicyGroupRule,
     updatePolicyGroupNotice,
+    updatePolicyGroupEnable,
     copyPolicyGroup,
     setDefaultPolicyGroup,
     deletePolicyGroup,
@@ -146,6 +149,7 @@ const PolicyGroupPage: React.FC = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [createName, setCreateName] = useState('');
   const [createSaving, setCreateSaving] = useState(false);
+  const [enableSavingId, setEnableSavingId] = useState<number | null>(null);
   const [templateLoading, setTemplateLoading] = useState(false);
   const [templateOptions, setTemplateOptions] = useState<TemplateOption[]>([]);
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<number[]>([]);
@@ -411,6 +415,18 @@ const PolicyGroupPage: React.FC = () => {
     }
   };
 
+  const changeGroupEnable = async (record: PolicyGroupRow, enable: boolean) => {
+    if (enableSavingId != null) return;
+    setEnableSavingId(record.id);
+    try {
+      await updatePolicyGroupEnable(record.id, enable);
+      message.success(enable ? '已生效，从现在开始扫描' : '已停用，未恢复告警会结束');
+      await loadGroups(objectId);
+    } finally {
+      setEnableSavingId(null);
+    }
+  };
+
   const templateGroups = templateOptions.reduce((acc, item) => {
     const found = acc.find((group) => group.name === item.pluginName);
     if (found) found.items.push(item);
@@ -455,6 +471,28 @@ const PolicyGroupPage: React.FC = () => {
           {record.member_count || 0}
         </Button>
       ),
+    },
+    {
+      title: t('monitor.events.effective'),
+      dataIndex: 'enable',
+      key: 'enable',
+      width: 110,
+      render: (_, record) => {
+        const mixed = record.enable_uniform === false;
+        const control = (
+          <Switch
+            size="small"
+            loading={enableSavingId === record.id}
+            checked={Boolean(record.enable)}
+            onChange={(value) => void changeGroupEnable(record as PolicyGroupRow, value)}
+          />
+        );
+        return (
+          <Permission requiredPermissions={['Edit']}>
+            {mixed ? <Tooltip title="组内规则的生效不一致，切换后会写成同一套">{control}</Tooltip> : control}
+          </Permission>
+        );
+      },
     },
     {
       title: t('common.action'),
