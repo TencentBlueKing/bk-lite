@@ -480,8 +480,6 @@ const PageTab: React.FC<PageTabProps> = ({ kbId, directoryQuery }) => {
       <WikiMarkdownImportModal
         kbId={kbId}
         open={okfImportOpen}
-        directories={directoryTree?.directories || []}
-        directoryEnabled={directoryScopeEnabled}
         onCancel={() => setOkfImportOpen(false)}
         onCompleted={handleOkfImportCompleted}
       />
