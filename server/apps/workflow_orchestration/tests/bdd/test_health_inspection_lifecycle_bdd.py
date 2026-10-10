@@ -23,8 +23,9 @@ pytestmark = [pytest.mark.bdd, pytest.mark.django_db]
 @pytest.fixture
 def ctx(authenticated_user, mocker):
     conductor = mocker.patch("apps.workflow_orchestration.management.commands.seed_workflow_orchestration_demo.ConductorClient").return_value
+    mocker.patch("apps.workflow_orchestration.services.builtin_workflows.ConductorClient").return_value = conductor
     mocker.patch(
-        "apps.workflow_orchestration.management.commands.seed_workflow_orchestration_demo.seed_builtin_health_template_snapshot",
+        "apps.workflow_orchestration.services.builtin_workflows.seed_builtin_health_template_snapshot",
         side_effect=lambda fmt, team_id, store=None: {
             "object_key": f"workflow-orchestration/templates/demo/team-{team_id}/health.{fmt}",
             "format": fmt,
@@ -33,6 +34,7 @@ def ctx(authenticated_user, mocker):
             "filename_prefix": f"health-inspection-{fmt}",
         },
     )
+    mocker.patch("apps.workflow_orchestration.services.builtin_workflows.ensure_platform_atom")
     return {"user": authenticated_user, "team_id": 1, "error": None, "conductor": conductor}
 
 
@@ -101,8 +103,10 @@ def seed_twice(ctx):
 @then("应当生成七条已发布流程和十一条执行记录")
 def seven_workflows_and_eleven_executions(ctx):
     assert ctx["error"] is None
-    assert Workflow.objects.filter(name__startswith="[TDD/BDD]", status=Workflow.Status.PUBLISHED).count() == 7
-    assert WorkflowExecution.objects.filter(workflow__name__startswith="[TDD/BDD]").count() == 11
+    assert Workflow.objects.filter(name__startswith="[TDD/BDD]", status=Workflow.Status.PUBLISHED).count() == 5
+    assert Workflow.objects.filter(is_builtin=True, status=Workflow.Status.PUBLISHED).count() == 2
+    assert WorkflowExecution.objects.filter(workflow__name__startswith="[TDD/BDD]").count() == 8
+    assert WorkflowExecution.objects.filter(workflow__is_builtin=True).count() == 3
 
 
 @then("应当有一条待审批记录")
@@ -112,17 +116,20 @@ def one_pending_approval():
 
 @then("应当同时存在 Word 与 Excel 健康巡检流程")
 def word_and_excel_health_workflows():
-    names = set(Workflow.objects.filter(name__startswith="[TDD/BDD]").values_list("name", flat=True))
-    assert "[TDD/BDD] 主机健康巡检 Word" in names
-    assert "[TDD/BDD] 主机健康巡检 Excel" in names
+    names = set(Workflow.objects.filter(is_builtin=True).values_list("name", flat=True))
+    assert "Windows 主机巡检（Word）" in names
+    assert "Linux 主机巡检（Excel）" in names
 
 
 @then("健康巡检数据应当包含 CPU 内存 磁盘和网络维度")
 def multidimensional_health_data(ctx):
     execution = WorkflowExecution.objects.get(trigger_id="health-word-success")
     ctx["health_data"] = execution.output["job"]
-    categories = {metric["category"] for metric in ctx["health_data"]["results"][0]["data"]["metrics"]}
-    assert categories >= {"CPU", "内存", "磁盘", "网络"}
+    data = ctx["health_data"]["results"][0]["data"]
+    categories = {metric["category"] for metric in data["metrics"]}
+    assert categories >= {"计算", "内存", "磁盘", "网络", "系统健康", "基础服务", "安全浅检", "更新账龄"}
+    assert data["host"]["hostname"]
+    assert data["host"]["os_version"]
 
 
 @then("Excel 和 Word 内置模板都应当能渲染健康巡检数据")
@@ -133,9 +140,11 @@ def builtin_templates_render(ctx):
         rendered = render_report(content, fmt, ctx["health_data"])
         text = _rendered_text(fmt, rendered)
         assert "results" in parsed.loops
+        assert any("host.hostname" in item for item in parsed.placeholders)
         assert "10.10.90.120" in text
         assert "CPU Total" in text
         assert "Ethernet0" in text
+        assert "win-demo-01" in text
         assert "{{" not in text
 
 
@@ -160,8 +169,10 @@ def cross_team_rejected(ctx):
 @then("非演示流程应当保留且演示数据不应当重复")
 def scoped_idempotent_rebuild(ctx):
     assert Workflow.objects.filter(pk=ctx["business_workflow"].pk, name="用户业务流程").exists()
-    assert Workflow.objects.filter(name__startswith="[TDD/BDD]").count() == 7
-    assert WorkflowExecution.objects.filter(workflow__name__startswith="[TDD/BDD]").count() == 11
+    assert Workflow.objects.filter(name__startswith="[TDD/BDD]").count() == 5
+    assert Workflow.objects.filter(is_builtin=True).count() == 2
+    assert WorkflowExecution.objects.filter(workflow__name__startswith="[TDD/BDD]").count() == 8
+    assert WorkflowExecution.objects.filter(workflow__is_builtin=True).count() == 3
 
 
 @then("多磁盘告警执行应当标记告警并保留具体磁盘维度")
@@ -177,8 +188,8 @@ def warning_evidence():
 
 @then("Word 与 Excel 巡检流程应当分别挂载 docx 与 xlsx 模板快照")
 def health_template_snapshots():
-    word = Workflow.objects.get(name="[TDD/BDD] 主机健康巡检 Word")
-    excel = Workflow.objects.get(name="[TDD/BDD] 主机健康巡检 Excel")
+    word = Workflow.objects.get(name="Windows 主机巡检（Word）", is_builtin=True)
+    excel = Workflow.objects.get(name="Linux 主机巡检（Excel）", is_builtin=True)
     word_report = next(task for task in word.definition["tasks"] if task["name"] == "bklite_document_render")
     excel_report = next(task for task in excel.definition["tasks"] if task["name"] == "bklite_document_render")
     assert word_report["inputParameters"]["template_snapshot"]["format"] == "docx"

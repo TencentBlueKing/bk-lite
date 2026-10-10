@@ -87,6 +87,7 @@ export interface WorkflowRecord {
   status: WorkflowStatus;
   current_version: number;
   enabled: boolean;
+  is_builtin?: boolean;
   has_draft: boolean;
   draft_revision: number;
   draft_base_version: number;

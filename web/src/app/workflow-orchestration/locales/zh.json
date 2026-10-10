@@ -26,6 +26,8 @@
       "status": "流程状态",
       "publishStatus": "发布状态",
       "enableStatus": "启用状态",
+      "builtin": "是否内置",
+      "custom": "自定义",
       "create": "新建流程",
       "duplicate": "复制流程",
       "runTitle": "运行流程 · {name}",
@@ -210,7 +212,15 @@
           }
         }
       },
-      "nodeTypeLabel": "节点类型"
+      "nodeTypeLabel": "节点类型",
+      "name": "原子名称",
+      "key": "原子标识",
+      "category": "分类",
+      "description": "说明",
+      "safetyLevel": "安全级别",
+      "safetyReadOnly": "只读",
+      "safetyMutation": "变更",
+      "idempotent": "幂等"
     },
     "launch": {
       "enterAndPressReturn": "输入后按回车添加",
@@ -609,6 +619,7 @@
       "singleStep": "单步执行",
       "configure": "配置",
       "viewAtomDetails": "查看原子详情",
+      "atomDetailMissing": "未找到该原子的目录信息",
       "deleteNode": "删除节点",
       "newWorkflow": "新建流程",
       "enterAndPressReturn": "输入后按回车添加",

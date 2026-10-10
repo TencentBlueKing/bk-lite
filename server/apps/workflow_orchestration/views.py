@@ -326,6 +326,11 @@ class WorkflowViewSet(AuthViewSet):
             if trigger_type not in WorkflowTrigger.Type.values:
                 return Response({"detail": "trigger_type 非法"}, status=status.HTTP_400_BAD_REQUEST)
             queryset = queryset.filter(build_json_membership_query(queryset, "trigger_types", [trigger_type]))
+        builtin_filter = str(request.query_params.get("is_builtin") or "").strip().lower()
+        if builtin_filter in {"true", "false"}:
+            queryset = queryset.filter(is_builtin=builtin_filter == "true")
+        elif builtin_filter:
+            return Response({"detail": "is_builtin 非法"}, status=status.HTTP_400_BAD_REQUEST)
         page = self.paginate_queryset(queryset)
         return self.get_paginated_response(self.get_serializer(page, many=True).data)
 
@@ -363,6 +368,11 @@ class WorkflowViewSet(AuthViewSet):
     @HasPermission("workflow-Edit", app_name=APP_NAME)
     def partial_update(self, request, *args, **kwargs):
         scoped = self._scoped_object(request, require_operate=True)
+        if scoped.is_builtin:
+            return Response(
+                {"detail": "内置流程不可保存草稿，请复制后再编辑", "code": "BUILTIN_WORKFLOW_READONLY"},
+                status=status.HTTP_409_CONFLICT,
+            )
         supplied_revision = request.data.get("draft_revision")
         try:
             with transaction.atomic():
@@ -439,6 +449,11 @@ class WorkflowViewSet(AuthViewSet):
     @HasPermission("workflow-Delete", app_name=APP_NAME)
     def destroy(self, request, *args, **kwargs):
         workflow = self._scoped_object(request, require_operate=True)
+        if workflow.is_builtin:
+            return Response(
+                {"detail": "内置流程不可删除，可停用或复制后自定义", "code": "BUILTIN_WORKFLOW_READONLY"},
+                status=status.HTTP_409_CONFLICT,
+            )
         username, domain = _identity(request)
         try:
             deleted, audit_detail = soft_delete_workflow(
@@ -478,6 +493,7 @@ class WorkflowViewSet(AuthViewSet):
                 team=source.team,
                 definition=copy.deepcopy(source.definition),
                 canvas_metadata=copy.deepcopy(source.canvas_metadata),
+                is_builtin=False,
                 created_by=username,
                 updated_by=username,
                 domain=domain,
@@ -525,6 +541,11 @@ class WorkflowViewSet(AuthViewSet):
     @HasPermission("workflow-Publish", app_name=APP_NAME)
     def publish(self, request, pk=None):
         workflow = self._scoped_object(request, require_operate=True)
+        if workflow.is_builtin:
+            return Response(
+                {"detail": "内置流程不可发布，请复制后再编辑发布", "code": "BUILTIN_WORKFLOW_READONLY"},
+                status=status.HTTP_409_CONFLICT,
+            )
         supplied_revision = request.data.get("draft_revision")
         if supplied_revision is not None and supplied_revision != workflow.draft_revision:
             return Response(
@@ -1004,6 +1025,11 @@ class WorkflowViewSet(AuthViewSet):
     @HasPermission("workflow-Edit", app_name=APP_NAME)
     def restore_version_draft(self, request, pk=None, version=None):
         scoped = self._scoped_object(request, require_operate=True)
+        if scoped.is_builtin:
+            return Response(
+                {"detail": "内置流程不可恢复草稿", "code": "BUILTIN_WORKFLOW_READONLY"},
+                status=status.HTTP_409_CONFLICT,
+            )
         supplied_revision = request.data.get("draft_revision")
         username, domain = _identity(request)
         with transaction.atomic():
