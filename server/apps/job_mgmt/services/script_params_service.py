@@ -14,6 +14,7 @@ import shlex
 from rest_framework import serializers
 
 from apps.job_mgmt.services.param_crypto import ParamCrypto
+from apps.job_mgmt.services.script_param_definitions import assert_execution_value_allowed
 from apps.job_mgmt.utils.i18n import job_message
 
 
@@ -183,12 +184,9 @@ class ScriptParamsService:
 
             # 必填校验：脚本库定义 is_required=true 的参数最终值不能为空
             if has_script and index < len(default_params):
-                if default_params[index].get("is_required") and (value is None or str(value) == ""):
-                    display_name = (
-                        name
-                        or default_params[index].get("name")
-                        or job_message(request, "error.params_nth", "parameter {index}", index=display_index)
-                    )
+                param_def = default_params[index]
+                if param_def.get("is_required") and (value is None or str(value) == ""):
+                    display_name = name or param_def.get("name") or job_message(request, "error.params_nth", "parameter {index}", index=display_index)
                     raise serializers.ValidationError(
                         {
                             "params": job_message(
@@ -199,6 +197,7 @@ class ScriptParamsService:
                             )
                         }
                     )
+                assert_execution_value_allowed(param_def, value, request=request)
 
             resolved_params.append(
                 {

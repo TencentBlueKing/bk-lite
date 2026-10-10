@@ -453,8 +453,8 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
               .join("；");
             const suffix =
               failed.length > 3
-                ? `…(共 ${failed.length} 项)`
-                : `共 ${failed.length} 项`;
+                ? t('wiki.batchFailureMore', '…(共 {count} 项)', { count: failed.length })
+                : t('wiki.batchFailureCount', '共 {count} 项', { count: failed.length });
             const storageUnavailable = failed.some((item) =>
               item.error.includes("对象存储不可用"),
             );

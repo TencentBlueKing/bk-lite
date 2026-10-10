@@ -48,6 +48,7 @@ interface PasswordFormModalProps {
   validationHintTitle?: string;
   validationStatus?: PasswordValidationStatus;
   width?: number;
+  zIndex?: number;
 }
 
 const DEFAULT_FIELD_NAMES: PasswordFieldNames = {
@@ -87,6 +88,7 @@ const PasswordFormModal: React.FC<PasswordFormModalProps> = ({
   validationHintTitle,
   validationStatus,
   width = 700,
+  zIndex,
 }) => {
   const [form] = Form.useForm();
   const [isPasswordFocused, setIsPasswordFocused] = useState(false);
@@ -146,6 +148,7 @@ const PasswordFormModal: React.FC<PasswordFormModalProps> = ({
       confirmLoading={confirmLoading}
       cancelDisabled={confirmLoading}
       primaryFirst={false}
+      zIndex={zIndex}
     >
       <PasswordPolicyNotice
         className="mb-4"

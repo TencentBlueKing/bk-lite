@@ -19,6 +19,7 @@ import pytest
 import yaml
 
 from apps.core.utils.loader import LanguageLoader
+from apps.monitor.tests.snmp_contract_helpers import assert_snmpv3_env_credentials
 
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
@@ -115,14 +116,15 @@ def test_uses_private_pen_278(toml_text):
 
 
 @pytest.mark.unit
-def test_cpu_metric_is_percent_max_aggregated(metrics, toml_text):
+def test_cpu_metric_preserves_each_table_row(metrics, toml_text):
     by = {m["name"]: m for m in metrics["metrics"]}
     assert "device_cpu_usage" in by
     m = by["device_cpu_usage"]
     assert m["unit"] == "percent"
     assert m["metric_group"] == "CPU"
     q = m["query"].replace(" ", "")
-    assert q.startswith("max(") and "by(instance_id)" in q
+    assert q == f"{m['name']}{{instance_type='switch',__$labels__}}"
+    assert [item["name"] for item in m["dimensions"]] == ["index"]
     # npCpuUtilizationValue column
     assert "1.3.6.1.4.1.278.107.1.1.4.2.1.3" in toml_text
     assert 'name = "usage"' in toml_text
@@ -136,10 +138,10 @@ def test_temperature_metric_is_celsius_without_scaling(metrics, toml_text):
     assert m["unit"] == "celsius"
     assert m["metric_group"] == "Temperature"
     q = m["query"].replace(" ", "")
-    assert q.startswith("max(") and "by(instance_id)" in q
+    assert q == f"{m['name']}{{instance_type='switch',__$labels__}}"
+    assert [item["name"] for item in m["dimensions"]] == ["index"]
     # APRESIA temperature is already in Celsius -> NO /10 scaling
     assert "/10" not in q, "APRESIA npTemperatureCurrent is Celsius, must not divide by 10"
-    assert m["dimensions"] == []
     assert 'name = "celsius"' in toml_text
     assert "1.3.6.1.4.1.278.107.1.1.1.1.3" in toml_text
 
@@ -292,6 +294,5 @@ def test_brand_match_present_in_common():
 
 
 @pytest.mark.unit
-def test_passwords_use_template_vars_not_plaintext(toml_text):
-    for field in ("auth_password", "priv_password"):
-        assert f'{field} = "{{{{ {field} }}}}"' in toml_text
+def test_passwords_render_as_sidecar_env_references_without_plaintext(toml_text):
+    assert_snmpv3_env_credentials(toml_text, BRAND_DIR)

@@ -17,6 +17,7 @@ import {
   WikiCitation,
 } from '@/app/opspilot/types/global';
 import { initToolCallTooltips, renderErrorMessage, ToolCallInfo } from './toolCallRenderer';
+import { getOpspilotTranslate } from './i18n';
 import {
   applyPlannedExecutionStep,
   attachToolCallToCurrentStep,
@@ -514,8 +515,14 @@ const buildFromEvents = (events: any[], finalize = true) => {
           parts.push(currentText);
           currentText = '';
         }
-        const errorMessage = msg.message || '执行过程中发生错误';
-        const errorHtml = renderErrorMessage(errorMessage, msg.type === 'RUN_ERROR' ? 'run_error' : 'error', msg.code);
+        const errorMessage =
+        msg.message || getOpspilotTranslate()('chat.historyError', '执行过程中发生错误');
+        const errorHtml = renderErrorMessage(
+          errorMessage,
+          msg.type === 'RUN_ERROR' ? 'run_error' : 'error',
+          msg.code,
+          getOpspilotTranslate()
+        );
         if (parts.length > 0) {
           parts.push('\n\n' + errorHtml);
         } else {
@@ -595,7 +602,7 @@ const buildFromEvents = (events: any[], finalize = true) => {
               const errorText =
                 (typeof stepValue.error === 'string' && stepValue.error.trim()) ||
                 step?.error ||
-                '步骤因凭据、权限或配置失败已中止';
+                getOpspilotTranslate()('chat.plannedStep.abortedByCredentials', '步骤因凭据、权限或配置失败已中止');
               for (const toolCallId of step?.toolCallIds || []) {
                 const tool = toolCalls.get(toolCallId);
                 if (!tool || tool.status !== 'calling') continue;

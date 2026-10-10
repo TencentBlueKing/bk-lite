@@ -10,9 +10,16 @@
 import json
 import types
 
+import pytest
+from django.apps import apps
+
 from apps.cmdb.constants.constants import CollectDriverTypes
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 
+
+pytestmark = pytest.mark.skipif(
+    not apps.is_installed("apps.cmdb_enterprise"), reason="PC 节点参数契约仅适用于企业版"
+)
 
 def _fake_task(credential, params, timeout=120):
     task = types.SimpleNamespace()

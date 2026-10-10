@@ -80,12 +80,14 @@ export const useRouterConfig = () => {
     collectTypes: {
       'Router SNMP General': 'snmp',
       'Router Cisco SNMP': 'snmp_cisco_router',
+      'Router Cisco IOS-XR SNMP': 'snmp_cisco_iosxr',
       'Router Juniper MX SNMP': 'snmp_juniper_mx',
       'Router Huawei AR SNMP': 'snmp_huawei_ar',
       'Router Huawei ATN SNMP': 'snmp_huawei_atn',
       'Router Huawei NE SNMP': 'snmp_huawei_ne',
       'Router InHand Networks SNMP': 'snmp_inhand_router',
       'Router Vyatta SNMP': 'snmp_vyatta',
+      'Router Ubiquiti EdgeRouter SNMP': 'snmp_edgerouter',
       'Router NetModule SNMP': 'snmp_netmodule',
       'Router MultiTech SNMP': 'snmp_multitech',
       'Router CloudGenix SNMP': 'snmp_cloudgenix',
@@ -116,9 +118,11 @@ export const useRouterConfig = () => {
       'Router Yamaha SNMP': 'snmp_yamaha_router',
       'Router Benu SNMP': 'snmp_benu',
       'Router Peplink SNMP': 'snmp_peplink',
+      'Router RACOM RipEX SNMP': 'snmp_racom_ripex',
       'Router Advantech SNMP': 'snmp_advantech_router',
       'Router Nokia SNMP': 'snmp_nokia_router',
       'Router FireBrick SNMP': 'snmp_firebrick',
+      'Router Ericsson IPOS SNMP': 'snmp_ericsson_router',
       'Router Flow NetFlow': 'netflow',
       'Router Flow sFlow': 'sflow'
     }

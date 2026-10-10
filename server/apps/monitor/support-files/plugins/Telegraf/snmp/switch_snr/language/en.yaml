@@ -1,6 +1,6 @@
 Switch SNR SNMP:
   name: SNR (Telegraf)
-  desc: "SNMP monitoring template for SNR switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, and interface traffic (enterprise PEN 40418)."
+  desc: "SNMP monitoring template for SNR switch. It reports uptime, CPU utilization, memory utilization, temperature, fan, power supply, and interface traffic (enterprise PEN 40418)."
 monitor_object:
   Switch: Switch
 monitor_object_type:
@@ -155,10 +155,11 @@ monitor_object_metric:
         immediately.
     device_psu_state:
       name: Power Supply Status
-      desc: This metric reports the operational state of each power supply unit on
-        the device. A non-normal state signals a power redundancy or hardware fault;
-        on devices with redundant PSUs a single failure may not cause an outage but
-        removes redundancy and must be remediated promptly.
+      desc: Power-supply state of the SNR switch (priPowerSupply), normalized to 1
+        = Normal (up), 2 = Abnormal (shutdown/unknown). Only value 2 alerts.
+      enum:
+        "1": Normal
+        "2": Abnormal
     device_fan_speed:
       name: Fan Speed
       desc: This metric reports the fan rotation speed (RPM) of the device, taken

@@ -69,3 +69,12 @@ def test_rpc_client_forwards_module_data(monkeypatch):
 
     assert result == {"count": 0, "items": []}
     assert calls == [("get_patch_mgmt_module_data", {"module": "patch_target", "page": 1})]
+
+
+def test_local_rpc_preserves_structured_scope_rejection():
+    """本地 RPC 保留旧拒绝字段并附可供网关识别的机器码。"""
+    result = PatchMgmt(is_local_client=True).get_module_data(module="patch_target", child_module="", page=1, page_size=10, group_id=2, team=[1])
+    assert result["result"] is False
+    assert result["code"] == "TEAM_OUT_OF_SCOPE"
+    assert result["message"]
+    assert "items" not in result

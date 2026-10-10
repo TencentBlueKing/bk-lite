@@ -21,8 +21,8 @@ const PlannedExecutionStatus: React.FC<PlannedExecutionStatusProps> = ({ status 
 
   const label =
     status.phase === 'replanning'
-      ? t('chat.replanningExecution') || '正在根据执行结果重新规划…'
-      : t('chat.planningExecution') || '正在分析任务并规划执行步骤…';
+      ? t('chat.replanningExecution', '正在根据执行结果重新规划…')
+      : t('chat.planningExecution', '正在分析任务并规划执行步骤…');
 
   return (
     <div

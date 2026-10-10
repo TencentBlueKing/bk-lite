@@ -1,11 +1,15 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { message } from 'antd';
 
 import { installPageContextBridge } from '@/components/ai-page-context/registry';
 import { dispatchCompletedToolResult } from '@/components/ai-tool-results/registry';
+import {
+  APP_VIEW_FULLSCREEN_EVENT,
+  isAppViewFullscreenActive,
+} from '@/components/app-view-fullscreen';
 import { isScreenModeEnabled } from '@/console-layout';
 import { useAuth } from '@/context/auth';
 import { useClientData } from '@/context/client';
@@ -115,6 +119,14 @@ const GlobalWebchat = () => {
   const chatPlaceholder = t('webchat.inputPlaceholder', '请输入消息...');
   const apps = appConfigList.length > 0 ? appConfigList : clientData;
   const mountedRef = useRef(false);
+  const [appViewFullscreen, setAppViewFullscreen] = useState(false);
+
+  useEffect(() => {
+    const sync = () => setAppViewFullscreen(isAppViewFullscreenActive());
+    sync();
+    window.addEventListener(APP_VIEW_FULLSCREEN_EVENT, sync);
+    return () => window.removeEventListener(APP_VIEW_FULLSCREEN_EVENT, sync);
+  }, []);
 
   const shouldMount = shouldKeepGlobalWebchat({
     authenticated: isAuthenticated && !isCheckingAuth,
@@ -124,6 +136,7 @@ const GlobalWebchat = () => {
     pathname,
     alreadyMounted: mountedRef.current,
     screenMode: isScreenModeEnabled(searchParams),
+    appViewFullscreen,
   });
   mountedRef.current = shouldMount;
 

@@ -572,7 +572,7 @@ const IntegrationDetail: FC = () => {
         <div className="overflow-hidden rounded-[20px] border border-[var(--color-border-1)] bg-[var(--color-bg-1)]">
           <div className="border-b border-[var(--color-border-1)] bg-[color-mix(in_srgb,var(--color-primary)_3%,var(--color-bg-1))] px-5 py-4">
             <h3 className="text-[16px] font-semibold leading-6 text-[var(--color-text-1)]">
-              部署前检查
+              {t('integration.precheck.title')}
             </h3>
           </div>
           <div className="px-4 py-2.5">

@@ -5,6 +5,7 @@ from django_filters import CharFilter, FilterSet
 from rest_framework.exceptions import ValidationError
 
 from apps.alerts.models.models import Event
+from apps.alerts.utils.i18n import alerts_message
 
 
 class EventModelFilter(FilterSet):
@@ -39,12 +40,12 @@ class EventModelFilter(FilterSet):
         qs = qs.filter(alert__pk=int(value))
         return qs
 
-    @staticmethod
-    def filter_push_source_ids(qs, field_name, value):
+    def filter_push_source_ids(self, qs, field_name, value):
+        message = alerts_message(getattr(self, "request", None), "error.push_source_ids_must_be_json_array")
         try:
             ids = json.loads(value)
         except (ValueError, TypeError) as error:
-            raise ValidationError({"push_source_ids": "监控源须为 JSON 字符串数组"}) from error
+            raise ValidationError({"push_source_ids": message}) from error
         if not isinstance(ids, list):
-            raise ValidationError({"push_source_ids": "监控源须为 JSON 字符串数组"})
+            raise ValidationError({"push_source_ids": message})
         return qs.filter(push_source_id__in=ids)

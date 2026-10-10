@@ -277,6 +277,9 @@ const en: Record<string, string> = {
 
 const catalogs: Record<Locale, Record<string, string>> = { zh, en };
 
+/** 供测试与宿主校验「两侧 key 集合一致」；运行时无需使用。 */
+export const webChatCatalogs = catalogs;
+
 export const normalizeLocale = (locale?: string | null): Locale =>
   locale === 'en' || locale?.toLowerCase().startsWith('en') ? 'en' : DEFAULT_LOCALE;
 

@@ -1,4 +1,5 @@
 import type { ReportFileDownload } from '@/app/opspilot/types/global';
+import { getOpspilotTranslate } from './i18n';
 
 const API_V1_PREFIX = '/api/v1/';
 const API_PROXY_PREFIX = '/api/proxy/';
@@ -194,12 +195,13 @@ const buildFriendlyDownloadAnchor = (
   options?: NormalizeDownloadUrlOptions,
 ): string => {
   const linkableDownloads = resolveLinkableDownloads(downloads, options);
+  const t = getOpspilotTranslate();
   if (linkableDownloads.length === 0) {
-    return '附件可在对话中下载';
+    return t('chat.download.attachmentInChat', '附件可在对话中下载');
   }
   return linkableDownloads
     .map(({ download, safeUrl }) => (
-      `<a href="${escapeHtml(safeUrl)}" download="${escapeHtml(download.filename)}">下载 ${escapeHtml(download.filename)}</a>`
+      `<a href="${escapeHtml(safeUrl)}" download="${escapeHtml(download.filename)}">${t('chat.download.linkLabel', '下载 {name}', { name: escapeHtml(download.filename) })}</a>`
     ))
     .join(' ');
 };
@@ -304,7 +306,7 @@ export const hydrateGeneratedFileLinks = (
       || looksLikeAttachmentDownloadUrl(href)
       || looksLikeAttachmentDownloadUrl(anchor.textContent || '')
     ) {
-      anchor.textContent = `下载 ${matchedDownload.download.filename}`;
+      anchor.textContent = getOpspilotTranslate()('chat.download.linkLabel', '下载 {name}', { name: matchedDownload.download.filename });
     }
   });
 

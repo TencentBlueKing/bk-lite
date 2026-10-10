@@ -43,9 +43,9 @@ const TypeExtractorPage = () => {
       handoff?.event ||
         (collectTypeName
           ? consumeExtractorCreateSample({
-              kind: 'type',
-              id: collectTypeName
-            })
+            kind: 'type',
+            id: collectTypeName
+          })
           : null)
     );
     setInitialSourceField(

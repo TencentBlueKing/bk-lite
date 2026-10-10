@@ -57,6 +57,28 @@ describe('global webchat visibility', () => {
     ).toBe(true);
   });
 
+  it('hides while an in-app view is enlarged', () => {
+    expect(
+      shouldMountGlobalWebchat({
+        authenticated: true,
+        clientLoading: false,
+        hasOpsPilotAccess: true,
+        pathname: '/ops-analysis/view',
+        appViewFullscreen: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldKeepGlobalWebchat({
+        authenticated: true,
+        clientLoading: false,
+        hasOpsPilotAccess: true,
+        pathname: '/ops-analysis/view',
+        alreadyMounted: true,
+        appViewFullscreen: true,
+      }),
+    ).toBe(false);
+  });
+
   it('waits for client loading and OpsPilot access before mounting', () => {
     expect(
       shouldMountGlobalWebchat({

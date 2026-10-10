@@ -90,8 +90,7 @@ def test_zombie_report_yaml_parses_and_binds_table_and_filters():
 
     time_filter = next(item for item in view_sets["filters"] if item["key"] == "time")
     assert time_filter["type"] == "timeRange"
-    assert time_filter["defaultValue"]["selectValue"] == 10080
-    assert time_filter["defaultValue"]["rangePickerVaule"] is None
+    assert time_filter["defaultValue"] == {"selectValue": 10080}
     assert time_filter["enabled"] is True
 
     payload_columns = {

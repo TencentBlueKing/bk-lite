@@ -144,11 +144,12 @@ def test_isolated_child_context_keeps_parent_handler_out_of_merge():
     assert restored["callbacks"] == [parent]
 
 
-def test_publish_node_finished_enqueues_terminal_event():
+@pytest.mark.asyncio
+async def test_publish_node_finished_enqueues_terminal_event():
     queue = asyncio.Queue()
-    publish_node_finished({"configurable": {OWNED_EVENT_QUEUE_KEY: queue}})
+    await publish_node_finished({"configurable": {OWNED_EVENT_QUEUE_KEY: queue}})
     assert queue.get_nowait()["event"] == NODE_FINISHED_EVENT
-    publish_node_finished({})
+    await publish_node_finished({})
 
 
 def test_repeated_successful_tool_call_is_denied():
@@ -221,24 +222,26 @@ async def test_owned_bridge_forwards_user_choice_custom_event():
     assert event["data"]["choice_id"] == "abc"
 
 
-def test_publish_owned_custom_event_uses_configurable_queue():
+@pytest.mark.asyncio
+async def test_publish_owned_custom_event_uses_configurable_queue():
     queue = asyncio.Queue()
     payload = {"choice_id": "result-1", "selected": ["监控侧"], "source": "user"}
-    assert publish_owned_custom_event(_config_with_queue(queue), "user_choice_result", payload) is True
+    assert await publish_owned_custom_event(_config_with_queue(queue), "user_choice_result", payload) is True
     event = queue.get_nowait()
     assert event["name"] == "user_choice_result"
     assert event["data"]["selected"] == ["监控侧"]
-    assert publish_owned_custom_event({}, "user_choice_request", payload) is False
+    assert await publish_owned_custom_event({}, "user_choice_request", payload) is False
     assert queue.empty()
 
 
-def test_publish_owned_custom_event_does_not_use_process_global_fallback():
+@pytest.mark.asyncio
+async def test_publish_owned_custom_event_does_not_use_process_global_fallback():
     """空 config 不得回退到其他会话的队列。"""
     queue = asyncio.Queue()
     ctx = make_owned_stream_context(queue)
     config = attach_owned_stream_context({"configurable": {}}, ctx)
-    assert publish_owned_custom_event(config, "user_choice_request", {"choice_id": "own"}) is True
-    assert publish_owned_custom_event({}, "user_choice_request", {"choice_id": "leak"}) is False
+    assert await publish_owned_custom_event(config, "user_choice_request", {"choice_id": "own"}) is True
+    assert await publish_owned_custom_event({}, "user_choice_request", {"choice_id": "leak"}) is False
     event = queue.get_nowait()
     assert event["data"]["choice_id"] == "own"
     assert queue.empty()
@@ -285,7 +288,7 @@ async def test_overlapping_streams_do_not_cross_session_choice_or_step():
 
     async def run_stream(config, ctx, choice_id, step_index, tool_call_id):
         with bind_planned_step_index(step_index, config):
-            assert publish_owned_custom_event(config, "user_choice_request", {"choice_id": choice_id}) is True
+            assert await publish_owned_custom_event(config, "user_choice_request", {"choice_id": choice_id}) is True
             await asyncio.sleep(0.01)
             remember_planned_tool_steps(
                 config,
@@ -293,7 +296,7 @@ async def test_overlapping_streams_do_not_cross_session_choice_or_step():
                 [ToolMessage(content="ok", tool_call_id=tool_call_id, name="alerts_list_alerts")],
             )
             assert (
-                publish_owned_custom_event(
+                await publish_owned_custom_event(
                     config,
                     "user_choice_result",
                     {"choice_id": choice_id, "selected": [choice_id]},
@@ -321,7 +324,7 @@ async def test_overlapping_streams_do_not_cross_session_choice_or_step():
         choices_b.append(ctx_b.queue.get_nowait()["data"]["choice_id"])
     assert choices_a == ["aaa", "aaa"]
     assert choices_b == ["bbb", "bbb"]
-    assert publish_owned_custom_event({}, "user_choice_request", {"choice_id": "zzz"}) is False
+    assert await publish_owned_custom_event({}, "user_choice_request", {"choice_id": "zzz"}) is False
     assert ctx_a.queue.empty()
     assert ctx_b.queue.empty()
 

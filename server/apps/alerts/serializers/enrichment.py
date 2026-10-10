@@ -4,6 +4,7 @@ import re
 from rest_framework import serializers
 
 from apps.alerts.models.enrichment import EnrichmentRule
+from apps.alerts.utils.i18n import serializer_message
 from apps.alerts.utils.permission_scope import get_authorized_group_ids, normalize_team_ids
 from apps.alerts.utils.rule_catalog import validate_rules_for_serializer
 
@@ -30,28 +31,28 @@ class EnrichmentRuleModelSerializer(serializers.ModelSerializer):
 
     def validate_input_binding(self, value):
         if not isinstance(value, dict):
-            raise serializers.ValidationError("入参绑定必须是对象 {provider_param: event_field}")
+            raise serializers.ValidationError(serializer_message(self, "error.input_binding_must_be_object"))
         if not value:
-            raise serializers.ValidationError("入参绑定不能为空")
+            raise serializers.ValidationError(serializer_message(self, "error.input_binding_empty"))
         invalid_fields = sorted({field for field in value.values() if field not in self.EVENT_FIELDS})
         if invalid_fields:
-            raise serializers.ValidationError(f"不支持的事件字段: {', '.join(invalid_fields)}")
+            raise serializers.ValidationError(serializer_message(self, "error.unsupported_event_fields", fields=", ".join(invalid_fields)))
         return value
 
     def validate_output_projection(self, value):
         if not isinstance(value, list):
-            raise serializers.ValidationError("出参投影必须是列表 [{source, as}]")
+            raise serializers.ValidationError(serializer_message(self, "error.output_projection_must_be_list"))
         if not value:
-            raise serializers.ValidationError("出参投影不能为空，需显式选择可写入告警的字段")
+            raise serializers.ValidationError(serializer_message(self, "error.output_projection_empty"))
         aliases = set()
         for item in value:
             if not isinstance(item, dict) or not str(item.get("source") or "").strip():
-                raise serializers.ValidationError("每项投影须含 source 字段")
+                raise serializers.ValidationError(serializer_message(self, "error.projection_missing_source"))
             alias = str(item.get("as") or item["source"]).strip()
             if not self.NAMESPACE_PATTERN.fullmatch(alias):
-                raise serializers.ValidationError(f"投影字段名不合法: {alias}")
+                raise serializers.ValidationError(serializer_message(self, "error.projection_alias_invalid", alias=alias))
             if alias in aliases:
-                raise serializers.ValidationError(f"投影字段名重复: {alias}")
+                raise serializers.ValidationError(serializer_message(self, "error.projection_alias_duplicate", alias=alias))
             aliases.add(alias)
         return value
 
@@ -61,19 +62,19 @@ class EnrichmentRuleModelSerializer(serializers.ModelSerializer):
     def validate_namespace(self, value):
         value = str(value or "").strip()
         if not self.NAMESPACE_PATTERN.fullmatch(value):
-            raise serializers.ValidationError("命名空间须以字母开头，且只能包含字母、数字和下划线")
+            raise serializers.ValidationError(serializer_message(self, "error.namespace_invalid"))
         return value
 
     def validate_provider_config(self, value):
         if not isinstance(value, dict):
-            raise serializers.ValidationError("Provider 配置必须是对象")
+            raise serializers.ValidationError(serializer_message(self, "error.provider_config_must_be_object"))
         if "query_timeout_seconds" in value:
             try:
                 timeout = int(value["query_timeout_seconds"])
             except (TypeError, ValueError) as exc:
-                raise serializers.ValidationError("query_timeout_seconds 必须是整数") from exc
+                raise serializers.ValidationError(serializer_message(self, "error.query_timeout_must_be_int")) from exc
             if not 1 <= timeout <= 10:
-                raise serializers.ValidationError("query_timeout_seconds 必须在 1 到 10 秒之间")
+                raise serializers.ValidationError(serializer_message(self, "error.query_timeout_range"))
         return value
 
     def validate_team(self, value):
@@ -84,7 +85,7 @@ class EnrichmentRuleModelSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(str(exc)) from exc
         authorized = set(get_authorized_group_ids(request)) if request else set()
         if not normalized or not set(normalized).issubset(authorized):
-            raise serializers.ValidationError("team 必须位于当前授权团队范围内")
+            raise serializers.ValidationError(serializer_message(self, "error.team_outside_authorized_scope"))
         return normalized
 
     def validate(self, attrs):
@@ -93,9 +94,9 @@ class EnrichmentRuleModelSerializer(serializers.ModelSerializer):
         provider_type = attrs.get("provider_type", getattr(current, "provider_type", "cmdb"))
         binding = attrs.get("input_binding", getattr(current, "input_binding", {}))
         if provider_type != "cmdb":
-            raise serializers.ValidationError({"provider_type": "暂不支持的数据源类型"})
+            raise serializers.ValidationError({"provider_type": serializer_message(self, "error.provider_type_unsupported")})
         if "model_id" not in binding or not ({"inst_uuid", "inst_name"} & set(binding)):
-            raise serializers.ValidationError({"input_binding": "CMDB 绑定必须包含 model_id，以及 inst_uuid 或 inst_name"})
+            raise serializers.ValidationError({"input_binding": serializer_message(self, "error.cmdb_binding_required")})
 
         namespace = attrs.get("namespace", getattr(current, "namespace", ""))
         is_active = attrs.get("is_active", getattr(current, "is_active", True))
@@ -108,7 +109,7 @@ class EnrichmentRuleModelSerializer(serializers.ModelSerializer):
             for other in queryset.only("id", "team"):
                 other_team = set(other.team or [])
                 if not requested_team or not other_team or requested_team & other_team:
-                    raise serializers.ValidationError({"namespace": "当前团队已有启用规则使用该命名空间，请使用唯一命名空间"})
+                    raise serializers.ValidationError({"namespace": serializer_message(self, "error.namespace_already_used")})
         return attrs
 
     class Meta:

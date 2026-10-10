@@ -359,6 +359,28 @@ def build_multi_trigger_workflow(*, channel_id: int, username: str) -> dict[str,
     }
 
 
+def _restrict_target_operating_systems(metadata: dict[str, Any], allowed: list[str]) -> None:
+    """把表单目标选择器收窄到指定操作系统。"""
+    for trigger in metadata.get("trigger_nodes") or []:
+        props = ((trigger.get("input_schema") or {}).get("properties") or {}).get("targets") or {}
+        binding = props.get("x-target-binding")
+        if isinstance(binding, dict):
+            binding["allowedOperatingSystems"] = list(allowed)
+    schema_props = ((metadata.get("input_schema") or {}).get("properties") or {}).get("targets") or {}
+    schema_binding = schema_props.get("x-target-binding")
+    if isinstance(schema_binding, dict):
+        schema_binding["allowedOperatingSystems"] = list(allowed)
+    for item in (metadata.get("data_contract") or {}).get("inputs") or []:
+        if item.get("key") != "targets":
+            continue
+        ui_binding = ((item.get("ui") or {}).get("targetBinding")) if isinstance(item.get("ui"), dict) else None
+        if isinstance(ui_binding, dict):
+            ui_binding["allowedOperatingSystems"] = list(allowed)
+        schema = item.get("schema")
+        if isinstance(schema, dict) and isinstance(schema.get("x-target-binding"), dict):
+            schema["x-target-binding"]["allowedOperatingSystems"] = list(allowed)
+
+
 def build_health_inspection_showcase_workflow(
     *,
     team_id: int,
@@ -368,15 +390,20 @@ def build_health_inspection_showcase_workflow(
     template_snapshot: dict[str, Any],
     script_type: str,
     script_content: str,
+    operating_system: str = "windows",
 ) -> dict[str, Any]:
     normalized = str(fmt or "").lower()
     if normalized not in {"docx", "xlsx"}:
         raise ValueError("健康巡检演示流程只支持 docx 或 xlsx")
     if not isinstance(template_snapshot, dict) or template_snapshot.get("format") != normalized:
         raise ValueError("健康巡检模板快照与目标格式不一致")
+    os_key = str(operating_system or "windows").lower()
+    if os_key not in {"windows", "linux"}:
+        raise ValueError("健康巡检演示流程只支持 windows 或 linux")
     label = "Word" if normalized == "docx" else "Excel"
+    os_label = "Windows" if os_key == "windows" else "Linux"
     definition = build_health_inspection_definition()
-    definition["description"] = f"主机健康巡检（{label}）：授权主机采集后生成 {label} 报告并通知"
+    definition["description"] = f"{os_label} 主机健康巡检（{label}）：授权主机采集后生成 {label} 报告并通知"
     scan = definition["tasks"][0]["inputParameters"]
     scan.update(
         {
@@ -388,16 +415,22 @@ def build_health_inspection_showcase_workflow(
     )
     report = definition["tasks"][1]["inputParameters"]
     report["template_snapshot"] = copy.deepcopy(template_snapshot)
-    notify = definition["tasks"][2]["inputParameters"]
-    notify.update(
+    notify_task = definition["tasks"][2]
+    # 通知渠道未配齐时不应阻断报告产物；失败可在执行明细里看到。
+    notify_task["optional"] = True
+    notify_task["inputParameters"].update(
         {
             "channel_id": channel_id,
             "recipients": [username],
-            "title": f"主机健康巡检报告（{label}）",
-            "body": f"主机健康巡检已完成，请下载 {label} 报告。",
+            "title": f"{os_label} 主机健康巡检报告（{label}）",
+            "body": f"{os_label} 主机健康巡检已完成，请下载 {label} 报告。",
         }
     )
     metadata = build_health_inspection_canvas_metadata()
+    _restrict_target_operating_systems(metadata, [os_key])
+    for trigger in metadata.get("trigger_nodes") or []:
+        if trigger.get("id") == "trigger_form":
+            trigger["name"] = f"{os_label} 健康巡检表单"
     metadata["node_titles"] = {
         **metadata.get("node_titles", {}),
         "scan": "作业执行",
@@ -406,13 +439,13 @@ def build_health_inspection_showcase_workflow(
     }
     metadata["risk_summary"] = {
         "level": "low",
-        "description": f"在授权主机上执行只读健康采集并生成 {label} 巡检报告。",
+        "description": f"在授权 {os_label} 主机上执行只读健康采集并生成 {label} 巡检报告。",
     }
     return {
         "key": f"health_{normalized}",
         "engine_name": f"bklite_demo_health_inspection_{normalized}_team_{team_id}",
-        "name": f"[TDD/BDD] 主机健康巡检 {label}",
-        "description": f"用户选择授权主机，按发布版本中的脚本和 {label} 模板生成报告并通知。",
+        "name": f"[TDD/BDD] {os_label} 主机巡检 {label}",
+        "description": f"用户选择授权 {os_label} 主机，按发布版本中的脚本和 {label} 模板生成报告并通知。",
         "definition": definition,
         "metadata": metadata,
     }

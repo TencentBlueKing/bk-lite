@@ -101,10 +101,11 @@ function UsagePopoverBody({ usage }: { usage: LlmContextUsage | null }) {
         <div className="text-right text-xs" style={{ color: WC.inkSoft }}>
           {t('context.percentUsed', '{percent}% 已用', { percent })}
           <div>
-            {t('context.packetOverBudget', '约 {packet} / {budget}', {
-              packet: formatContextTokens(usage.packetTokens),
-              budget: formatContextTokens(usage.inputWorkingTokens),
-            })}
+            {(() => {
+              const packet = formatContextTokens(usage.packetTokens);
+              const budget = formatContextTokens(usage.inputWorkingTokens);
+              return t('context.packetOverBudget', '约 {packet} / {budget}', { packet, budget });
+            })()}
           </div>
         </div>
       </div>
@@ -132,10 +133,17 @@ function UsagePopoverBody({ usage }: { usage: LlmContextUsage | null }) {
         ))}
       </div>
       <p className="m-0 text-xs leading-5" style={{ color: WC.muted }}>
-        {t('context.budgetExplainer', '分母是输入工作预算（模型窗口 {window}）。压缩线约 {compact}。', {
-          window: formatContextTokens(usage.windowTokens || usage.inputWorkingTokens),
-          compact: formatContextTokens(usage.compactionThresholdTokens),
-        })}
+        {(() => {
+          const windowTokens = formatContextTokens(
+            usage.windowTokens || usage.inputWorkingTokens,
+          );
+          const compact = formatContextTokens(usage.compactionThresholdTokens);
+          return t(
+            'context.budgetExplainer',
+            '分母是输入工作预算（模型窗口 {window}）。压缩线约 {compact}。',
+            { window: windowTokens, compact },
+          );
+        })()}
       </p>
       {usage.compacted || pastCompact ? (
         <p className="m-0 text-xs leading-5" style={{ color: WC.inkSoft }}>

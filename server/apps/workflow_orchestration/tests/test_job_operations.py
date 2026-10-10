@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from apps.workflow_orchestration.atom_packages.bklite_job_execute.runtime.handler import execute as execute_job_atom
@@ -132,6 +134,31 @@ def test_parse_optional_data_only_reads_bounded_stdout_prefix():
 
     assert _parse_optional_data(stdout) is None
     assert _parse_optional_data(marker + "\n" + ("y" * MAX_CAPTURED_OUTPUT)) == {"ok": True}
+
+
+def test_parse_optional_data_completes_json_past_capture_window_when_marker_is_in_prefix():
+    from apps.workflow_orchestration.services.job_operations import MAX_CAPTURED_OUTPUT, _parse_optional_data
+
+    # 标记落在窗口内，但 JSON 本体很长并越过窗口（Win Ansible 包装 stdout 常见）。
+    big = {"host": {"hostname": "win-1"}, "metrics": [{"name": f"m{i}", "value": i} for i in range(800)]}
+    payload = json.dumps(big, ensure_ascii=False, separators=(",", ":"))
+    prefix = 'prefix {"changed": true, "stdout": "BK_LITE_RESULT='
+    stdout = prefix + payload + '"}\n'
+    assert stdout.find("BK_LITE_RESULT=") < MAX_CAPTURED_OUTPUT
+    assert len(stdout) > MAX_CAPTURED_OUTPUT
+    assert _parse_optional_data(stdout) == big
+
+
+def test_parse_optional_data_unwraps_escaped_marker_inside_ansible_json_string():
+    from apps.workflow_orchestration.services.job_operations import MAX_CAPTURED_OUTPUT, _parse_optional_data
+
+    big = {"host": {"hostname": "WIN-1"}, "metrics": [{"name": f"m{i}", "value": i} for i in range(500)], "conclusion": "健康"}
+    inner = "BK_LITE_RESULT=" + json.dumps(big, ensure_ascii=False, separators=(",", ":"))
+    wrapped = json.dumps({"changed": True, "stdout": inner, "rc": 0}, ensure_ascii=False)
+    stdout = '{"changed": true, "path": "C:\\\\Temp\\\\a.ps1"}\n\n' + wrapped + '\n\n{"changed": true}\n'
+    assert "BK_LITE_RESULT=" in stdout[:MAX_CAPTURED_OUTPUT]
+    assert len(stdout) > MAX_CAPTURED_OUTPUT
+    assert _parse_optional_data(stdout) == big
 
 
 def test_invalid_result_marker_fails_the_node():

@@ -20,6 +20,7 @@ import {
   type RequestErrorPresentation,
 } from '@/utils/requestErrorPresentation';
 import { showRequestErrorToast } from '@/utils/requestErrorToast';
+import { getStoredLocale } from '@/utils/userPreferences';
 import {
   getProxyTimeoutHeaderValue,
   PROXY_TIMEOUT_HEADER,
@@ -97,6 +98,9 @@ apiClient.interceptors.request.use(
     }
 
     config.headers.Authorization = `Bearer ${tokenRef.current}`;
+    if (typeof window !== 'undefined') {
+      config.headers.set('X-BK-Locale', getStoredLocale());
+    }
     const proxyTimeoutHeaderValue = getProxyTimeoutHeaderValue(config.timeout);
     if (proxyTimeoutHeaderValue) {
       config.headers.set(PROXY_TIMEOUT_HEADER, proxyTimeoutHeaderValue);

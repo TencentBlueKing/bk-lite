@@ -22,7 +22,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_asentria_temperature",
-      "query": "max(network_service_asentria_espoint_value{instance_type='network_service', esIndexPC='1', __$labels__}) by (instance_id, esPointName)",
+      "query": "network_service_asentria_espoint_value{instance_type='network_service', esIndexPC='1', __$labels__}",
       "display_name": "Asentria Temperature",
       "data_type": "Number",
       "unit": "none",
@@ -40,7 +40,7 @@
     {
       "metric_group": "NetworkService",
       "name": "network_service_asentria_humidity",
-      "query": "max(network_service_asentria_espoint_value{instance_type='network_service', esIndexPC='3', __$labels__}) by (instance_id, esPointName)",
+      "query": "network_service_asentria_espoint_value{instance_type='network_service', esIndexPC='3', __$labels__}",
       "display_name": "Asentria Humidity",
       "data_type": "Number",
       "unit": "percent",

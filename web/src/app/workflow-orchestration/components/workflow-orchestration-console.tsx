@@ -272,7 +272,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   const { convertToLocalizedTime } = useLocalizedTime();
   const effectiveInitialName = initialName || t('workflowOrchestration.editor.newWorkflow', '新建流程');
   const [workflow, setWorkflow] = useState<WorkflowRecord>();
-  const readOnly = mode === 'view' || (workflow?.permission !== undefined && !workflow.permission.includes('Operate'));
+  const readOnly = mode === 'view' || Boolean(workflow?.is_builtin) || (workflow?.permission !== undefined && !workflow.permission.includes('Operate'));
   const [definition, setDefinition] = useState<ConductorDefinition>();
   const [metadata, setMetadata] = useState<WorkflowCanvasMetadata>({});
   const [atoms, setAtoms] = useState<AtomCatalogItem[]>([]);
@@ -280,6 +280,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedId, setSelectedId] = useState<string>();
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [atomDetail, setAtomDetail] = useState<AtomCatalogItem>();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pendingSource, setPendingSource] = useState<{ id: string; handle?: string }>();
   const [query, setQuery] = useState('');
@@ -1123,6 +1124,15 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       setPickerOpen(true);
     }
     if (kind === 'configure') setInspectorOpen(true);
+    if (kind === 'detail') {
+      const task = flattenTasks(definition?.tasks || []).find((item) => item.taskReferenceName === id);
+      const atom = localizedAtoms.find((item) => item.key === task?.name);
+      if (!atom) {
+        message.warning(t('workflowOrchestration.editor.atomDetailMissing', '未找到该原子的目录信息'));
+        return;
+      }
+      setAtomDetail(atom);
+    }
     if (kind === 'test' && definition) {
       const trigger = workflowTriggerNodes(metadata).find((item) => item.id === id);
       if (trigger?.trigger_type === 'FORM') withPersistedDraft(() => prepareFormTriggerTest(trigger));
@@ -1420,6 +1430,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     <OperateModal
       title={t('workflowOrchestration.editor.testCurrentNode', '测试当前节点')}
       open={nodeTestOpen}
+      destroyOnHidden
       zIndex={WORKFLOW_OVERLAY_MODAL_Z_INDEX}
       confirmLoading={nodeTestBusy}
       okText={t('workflowOrchestration.editor.executeNode', '执行节点')}
@@ -1600,6 +1611,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     <OperateModal
       title={t('workflowOrchestration.editor.debugCurrentDraft', '调试当前草稿')}
       open={debugOpen}
+      destroyOnHidden
       zIndex={WORKFLOW_OVERLAY_MODAL_Z_INDEX}
       okText={t('workflowOrchestration.editor.startDebug', '开始调试')}
       okButtonProps={{ disabled: !debugTrigger }}
@@ -1614,6 +1626,61 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       }} /></Form.Item></Form> : null}
       {debugTrigger && workflow.id ? <WorkflowTriggerRuntimeForm workflowId={workflow.id} schema={debugTrigger.input_schema} value={debugInputs} onChange={setDebugInputs} /> : <Empty description={t('workflowOrchestration.editor.noTriggers', '当前流程没有触发器')} />}
     </OperateModal>
+    {atomDetail ? (
+      <OperateModal
+        title={t('workflowOrchestration.editor.viewAtomDetails', '查看原子详情')}
+        open
+        footer={null}
+        destroyOnHidden
+        width={560}
+        onCancel={() => setAtomDetail(undefined)}
+      >
+        <Descriptions
+          size="small"
+          column={1}
+          items={[
+            { key: 'name', label: t('workflowOrchestration.atom.name', '原子名称'), children: atomDetail.name },
+            { key: 'key', label: t('workflowOrchestration.atom.key', '原子标识'), children: atomDetail.key },
+            { key: 'category', label: t('workflowOrchestration.atom.category', '分类'), children: atomDetail.category },
+            { key: 'description', label: t('workflowOrchestration.atom.description', '说明'), children: atomDetail.description || '--' },
+            {
+              key: 'safety',
+              label: t('workflowOrchestration.atom.safetyLevel', '安全级别'),
+              children: atomDetail.safety_level === 'READ_ONLY'
+                ? t('workflowOrchestration.atom.safetyReadOnly', '只读')
+                : atomDetail.safety_level === 'MUTATION'
+                  ? t('workflowOrchestration.atom.safetyMutation', '变更')
+                  : '--',
+            },
+            {
+              key: 'timeout',
+              label: t('workflowOrchestration.editor.effectiveTimeout', '生效超时'),
+              children: atomDetail.default_timeout_seconds
+                ? t('workflowOrchestration.editor.effectiveTimeoutValue', '{seconds} 秒（由原子契约固定）', { seconds: atomDetail.default_timeout_seconds })
+                : '--',
+            },
+            {
+              key: 'retry',
+              label: t('workflowOrchestration.editor.effectiveRetry', '失败重试'),
+              children: atomDetail.retry_count === undefined
+                ? '--'
+                : atomDetail.retry_count
+                  ? t('workflowOrchestration.editor.effectiveRetryValue', '{count} 次，间隔 {seconds} 秒', { count: atomDetail.retry_count, seconds: atomDetail.retry_delay_seconds || 0 })
+                  : t('workflowOrchestration.editor.noAutomaticRetry', '不自动重试'),
+            },
+            {
+              key: 'idempotent',
+              label: t('workflowOrchestration.atom.idempotent', '幂等'),
+              children: atomDetail.idempotent === undefined
+                ? '--'
+                : atomDetail.idempotent
+                  ? t('common.yes', '是')
+                  : t('common.no', '否'),
+            },
+          ]}
+        />
+      </OperateModal>
+    ) : null}
     <Drawer
       title={t('workflowOrchestration.editor.versionRecordsPlain', '流程版本记录')}
       width={660}

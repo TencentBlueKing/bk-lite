@@ -7,6 +7,7 @@ import {
   shouldExpandPlannedStep,
 } from './plannedExecutionState';
 import ToolCallGroup from './ToolCallGroup';
+import { useTranslation } from '@/utils/i18n';
 
 export interface PlannedStepToolCall {
   id: string;
@@ -22,12 +23,18 @@ interface PlannedExecutionStepsProps {
   isStreaming?: boolean;
 }
 
-const statusLabel = (status: PlannedExecutionStepData['status'], isStreaming: boolean) => {
-  if (status === 'failed') return '失败';
-  if (status === 'skipped') return '已跳过';
-  if (status === 'running' && isStreaming) return '执行中';
-  if (status === 'done') return '已完成';
-  return '执行中';
+type Translate = (
+  key: string,
+  defaultMessage?: string,
+  values?: Record<string, string | number>,
+) => string;
+
+const statusLabel = (status: PlannedExecutionStepData['status'], isStreaming: boolean, t: Translate) => {
+  if (status === 'failed') return t('chat.plannedStep.failed', '失败');
+  if (status === 'skipped') return t('chat.plannedStep.skipped', '已跳过');
+  if (status === 'running' && isStreaming) return t('chat.plannedStep.running', '执行中');
+  if (status === 'done') return t('chat.plannedStep.done', '已完成');
+  return t('chat.plannedStep.running', '执行中');
 };
 
 const PlannedExecutionSteps: React.FC<PlannedExecutionStepsProps> = ({
@@ -35,6 +42,7 @@ const PlannedExecutionSteps: React.FC<PlannedExecutionStepsProps> = ({
   toolCalls,
   isStreaming = false,
 }) => {
+  const { t } = useTranslation();
   const [isGroupExpanded, setIsGroupExpanded] = useState<boolean>(Boolean(isStreaming));
   const prevStreamingRef = useRef<boolean>(Boolean(isStreaming));
 
@@ -44,51 +52,22 @@ const PlannedExecutionSteps: React.FC<PlannedExecutionStepsProps> = ({
     } else if (prevStreamingRef.current) {
       setIsGroupExpanded(false);
     }
-    prevStreamingRef.current = Boolean(isStreaming);
+    prevStreamingRef.current = isStreaming;
   }, [isStreaming]);
 
-  const [expandedSteps, setExpandedSteps] = useState<Set<number>>(() => {
-    const initial = new Set<number>();
-    steps.forEach((step) => {
-      if (shouldExpandPlannedStep(step, isStreaming)) {
-        initial.add(step.step_index);
-      }
-    });
-    return initial;
-  });
-
-  useEffect(() => {
-    if (!isStreaming) {
-      setExpandedSteps(new Set());
-      return;
-    }
-
-    setExpandedSteps((prev) => {
-      const next = new Set(prev);
-      let changed = false;
-      steps.forEach((step) => {
-        const shouldOpen = shouldExpandPlannedStep(step, true);
-        if (shouldOpen && !next.has(step.step_index)) {
-          next.add(step.step_index);
-          changed = true;
-        }
-        if (!shouldOpen && next.has(step.step_index) && (step.status === 'done' || step.status === 'failed' || step.status === 'skipped')) {
-          next.delete(step.step_index);
-          changed = true;
-        }
-      });
-      return changed ? next : prev;
-    });
-  }, [steps, isStreaming]);
-
-  if (!steps.length) return null;
-
-  const toolById = new Map(toolCalls.map((tool) => [tool.id, tool]));
-  const totalSteps = Math.max(steps[steps.length - 1]?.total_steps || 0, steps.length);
-  const doneCount = steps.filter((step) => step.status === 'done' || step.status === 'failed' || step.status === 'skipped').length;
+  const running = steps.find((step) => shouldExpandPlannedStep(step, isStreaming));
+  const doneCount = steps.filter((step) => step.status === 'done').length;
   const failedCount = steps.filter((step) => step.status === 'failed').length;
   const skippedCount = steps.filter((step) => step.status === 'skipped').length;
-  const running = steps.find((step) => step.status === 'running');
+  const totalSteps = steps.length;
+  const toolById = new Map(toolCalls.map((tool) => [tool.id, tool]));
+
+  const [expandedSteps, setExpandedSteps] = useState<Set<number>>(() => {
+    if (!running) {
+      return new Set<number>();
+    }
+    return new Set<number>([running.step_index]);
+  });
 
   const toggleStep = (stepIndex: number) => {
     setExpandedSteps((prev) => {
@@ -103,10 +82,25 @@ const PlannedExecutionSteps: React.FC<PlannedExecutionStepsProps> = ({
   };
 
   const summaryText = isStreaming
-    ? `步骤 ${running?.step_index ?? doneCount}/${totalSteps}`
+    ? t('chat.plannedStep.summaryRunning', '步骤 {current}/{total}', {
+      current: running?.step_index ?? doneCount,
+      total: totalSteps,
+    })
     : failedCount > 0 || skippedCount > 0
-      ? `完成 ${doneCount} 步${failedCount > 0 ? ` · ${failedCount} 步失败` : ''}${skippedCount > 0 ? ` · ${skippedCount} 步跳过` : ''}`
-      : `已完成 ${doneCount} 步`;
+      ? t(
+        'chat.plannedStep.summaryPartial',
+        '完成 {done} 步{failed}{skipped}',
+        {
+          done: doneCount,
+          failed: failedCount > 0
+            ? t('chat.plannedStep.summaryFailed', ' · {count} 步失败', { count: failedCount })
+            : '',
+          skipped: skippedCount > 0
+            ? t('chat.plannedStep.summarySkipped', ' · {count} 步跳过', { count: skippedCount })
+            : '',
+        }
+      )
+      : t('chat.plannedStep.summaryDone', '已完成 {count} 步', { count: doneCount });
 
   return (
     <div className="my-1.5">
@@ -118,7 +112,7 @@ const PlannedExecutionSteps: React.FC<PlannedExecutionStepsProps> = ({
         <RightOutlined className={`text-[9px] text-[var(--color-text-4)] group-hover:text-[var(--color-text-3)] transition-transform duration-200 ${isGroupExpanded ? 'rotate-90' : 'rotate-0'}`} />
         <span className="flex items-center gap-1.5 font-normal">
           <span className={`inline-block h-1.5 w-1.5 rounded-full ${isStreaming ? 'bg-[var(--color-primary)] animate-pulse' : 'bg-emerald-500'}`} />
-          <span className="text-[var(--color-text-2)]">执行计划</span>
+          <span className="text-[var(--color-text-2)]">{t('chat.plannedStep.planTitle', '执行计划')}</span>
         </span>
         <span className="text-[11px] text-[var(--color-text-4)] font-mono tabular-nums ml-0.5">
           ({summaryText})
@@ -142,7 +136,10 @@ const PlannedExecutionSteps: React.FC<PlannedExecutionStepsProps> = ({
                   type="button"
                   onClick={() => toggleStep(step.step_index)}
                   aria-expanded={expanded}
-                  aria-label={`步骤 ${step.step_index} ${step.objective}`}
+                  aria-label={t('chat.plannedStep.stepAria', '步骤 {index} {objective}', {
+                    index: step.step_index,
+                    objective: step.objective,
+                  })}
                   className="flex w-full cursor-pointer items-center gap-1.5 border-0 bg-transparent py-0.5 text-left text-xs transition-colors hover:text-[var(--color-text-1)] select-none group"
                   style={{ color: 'var(--color-text-2)' }}
                 >
@@ -154,7 +151,10 @@ const PlannedExecutionSteps: React.FC<PlannedExecutionStepsProps> = ({
                   </span>
                   <span className="min-w-0 flex-1 leading-5 tabular-nums">
                     <span className="font-medium text-[var(--color-text-1)]">
-                      步骤 {step.step_index}/{step.total_steps || totalSteps}
+                      {t('chat.plannedStep.stepTitle', '步骤 {index}/{total}', {
+                        index: step.step_index,
+                        total: step.total_steps || totalSteps,
+                      })}
                     </span>
                     <span className="text-[var(--color-text-3)]"> · {step.objective}</span>
                   </span>
@@ -168,7 +168,7 @@ const PlannedExecutionSteps: React.FC<PlannedExecutionStepsProps> = ({
                           : 'var(--color-text-4)',
                     }}
                   >
-                    {statusLabel(step.status, isStreaming)}
+                    {statusLabel(step.status, isStreaming, t)}
                   </span>
                 </button>
 
@@ -182,14 +182,14 @@ const PlannedExecutionSteps: React.FC<PlannedExecutionStepsProps> = ({
                     ) : (
                       <div className="px-2 py-0.5 text-[11px] text-[var(--color-text-4)]">
                         {isActive
-                          ? '等待工具调用…'
+                          ? t('chat.plannedStep.waitingTool', '等待工具调用…')
                           : isFailed
-                            ? (step.error || '本步未完成')
+                            ? (step.error || t('chat.plannedStep.incomplete', '本步未完成'))
                             : isSkipped
-                              ? '因上下文不足已跳过'
+                              ? t('chat.plannedStep.skippedNoContext', '因上下文不足已跳过')
                               : step.reusedPriorResult
-                                ? '复用上一步结果'
-                                : '本步无工具调用'}
+                                ? t('chat.plannedStep.reusedPrior', '复用上一步结果')
+                                : t('chat.plannedStep.noToolCall', '本步无工具调用')}
                       </div>
                     )}
                   </div>

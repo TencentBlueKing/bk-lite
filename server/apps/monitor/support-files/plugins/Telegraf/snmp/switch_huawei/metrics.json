@@ -158,7 +158,7 @@
       "query": "device_psu_state{instance_type='switch', __$labels__} and (device_psu_present{instance_type='switch', __$labels__} == 1)",
       "display_name": "Power Supply Status",
       "data_type": "Enum",
-      "unit": "[{\"name\":\"supply\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"notSupply\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"sleep\",\"id\":3,\"color\":\"#faad14\"},{\"name\":\"unknown\",\"id\":4,\"color\":\"#d9d9d9\"}]",
+      "unit": "[{\"name\":\"supply\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"notSupply\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"sleep\",\"id\":3,\"color\":\"#faad14\"},{\"name\":\"未知\",\"id\":4,\"color\":\"#8c8c8c\"}]",
       "dimensions": [
         {
           "name": "descr",
@@ -168,7 +168,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Operational state of each installed Huawei switch power supply (HUAWEI-ENTITY-EXTENT-MIB hwEntityPwrState). On-wire INTEGER is supply(1)/notSupply(2)/sleep(3)/unknown(4), not a binary normal/abnormal. The query keeps only present(1) rows so empty slots are not treated as faults. sleep(3) is a valid redundant-PSU energy-saving state. Dimension descr is hwEntityPwrSlot."
+      "description": "Operational state of each installed Huawei switch power supply (HUAWEI-ENTITY-EXTENT-MIB hwEntityPwrState). On-wire INTEGER is kept as-is: supply(1)/notSupply(2)/sleep(3)/unknown(4). The page shows 4 as 未知/Unknown (gray, no alert). The query keeps only present(1) rows so empty slots are not treated as faults. sleep(3) is a valid redundant-PSU energy-saving state. Only notSupply(2) alerts. Dimension descr is hwEntityPwrSlot."
     },
     {
       "metric_group": "Hardware Status",
