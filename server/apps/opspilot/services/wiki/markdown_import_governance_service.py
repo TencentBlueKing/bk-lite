@@ -46,17 +46,17 @@ from apps.opspilot.services.wiki.okf_import_service import (
     read_okf_version,
     strip_bundle_root,
 )
-from apps.opspilot.services.wiki.purpose_schema_service import (
-    MATERIALS_ROOT_KEY,
-    import_folder_display_name,
-    match_frozen_knowledge_root_name,
-    normalize_folder_name,
-)
 from apps.opspilot.services.wiki.parsed_media_service import (
     collect_page_media_locators,
     delete_media_locator,
     save_import_archive_bytes,
     save_page_media_bytes,
+)
+from apps.opspilot.services.wiki.purpose_schema_service import (
+    MATERIALS_ROOT_KEY,
+    import_folder_display_name,
+    match_frozen_knowledge_root_name,
+    normalize_folder_name,
 )
 from apps.opspilot.services.wiki.structure_service import StructureServiceError, save_structure
 from apps.opspilot.services.wiki.title_service import InvalidWikiTitle, canonical_title, title_identity_key, validate_display_title
@@ -65,7 +65,6 @@ from apps.opspilot.services.wiki.wiki_budget_service import new_alias_enrich_cal
 MAX_ARCHIVE_BYTES = 200 * 1024 * 1024
 MAX_ENTRIES = 5000
 MAX_UNCOMPRESSED_BYTES = 400 * 1024 * 1024
-MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_COMPRESSION_RATIO = 1000
 # 大包二次上传需要时间，但不能无限有效。
 TOKEN_TTL_MINUTES = 120
@@ -276,12 +275,22 @@ def _ensure_okf_prepared(knowledge_base, inspected):
         okf_version=inspected.okf_version,
         canonical_title_fn=lambda title: canonical_title(knowledge_base, title),
     )
+    skipped = [dict(item) for item in inspected.skipped_details]
+    skipped.extend(dict(item) for item in stats.pop("rejected", []) or [])
     stats = {
         **stats,
         "bundle_root": inspected.bundle_root,
-        "skipped": [dict(item) for item in inspected.skipped_details],
+        "skipped": skipped,
     }
-    return replace(inspected, documents=tuple(documents), okf_stats=stats)
+    if not documents:
+        raise _okf_no_concepts_error(skipped)
+    return replace(
+        inspected,
+        documents=tuple(documents),
+        skipped_details=tuple(skipped),
+        skipped_entries=inspected.skipped_entries + len(skipped) - len(inspected.skipped_details),
+        okf_stats=stats,
+    )
 
 
 def _okf_zip_member_index(content, bundle_root):
@@ -320,20 +329,41 @@ def _attach_okf_images(knowledge_base, inspected, content):
             knowledge_base_id=knowledge_base.pk,
             read_member=read_member,
         )
-    if missing:
-        details = bound_okf_image_missing(missing)
+    if not missing:
+        stats = dict(inspected.okf_stats or {})
+        stats["images"] = image_stats
+        return replace(
+            inspected,
+            documents=tuple(documents),
+            okf_stats=stats,
+            okf_image_uploads=tuple(uploads),
+        )
+    bad_paths = {item["archive_path"] for item in missing if item.get("archive_path")}
+    kept = [document for document in documents if document["archive_path"] not in bad_paths]
+    if not kept:
         raise MarkdownImportGovernanceError(
             "okf_images_missing",
             "OKF 归档中有正文引用了缺失或无效的本地图片",
-            details=details,
+            details=bound_okf_image_missing(missing),
         )
+    kept_uploads = [item for item in uploads if any(item["locator"] in (document.get("body") or "") for document in kept)]
+    skipped = [dict(item) for item in inspected.skipped_details]
+    skipped.extend({"path": path, "reason": "images_missing"} for path in sorted(bad_paths))
     stats = dict(inspected.okf_stats or {})
-    stats["images"] = image_stats
+    stats["images"] = {
+        "count": len(kept_uploads),
+        "bytes": sum(item.get("bytes") or 0 for item in kept_uploads),
+        "pages": sum(1 for document in kept if any(item["locator"] in (document.get("body") or "") for item in kept_uploads)),
+        "html_unchecked": image_stats.get("html_unchecked") or 0,
+    }
+    stats["skipped"] = skipped
     return replace(
         inspected,
-        documents=tuple(documents),
+        documents=tuple(kept),
+        skipped_details=tuple(skipped),
+        skipped_entries=inspected.skipped_entries + len(bad_paths),
         okf_stats=stats,
-        okf_image_uploads=tuple(uploads),
+        okf_image_uploads=tuple(kept_uploads),
     )
 
 
@@ -439,12 +469,6 @@ def inspect_markdown_archive(content, filename="", import_format=""):  # noqa: C
             if info.is_dir():
                 continue
             member_paths.append(name)
-            if info.file_size > MAX_FILE_BYTES:
-                raise MarkdownImportGovernanceError(
-                    "zip_file_size_limit",
-                    f"ZIP 单文件超过限制（上限 {MAX_FILE_BYTES // (1024 * 1024)}MB）",
-                    details={"path": name, "max_bytes": MAX_FILE_BYTES, "actual_bytes": info.file_size},
-                )
             total_size += info.file_size
             if total_size > MAX_UNCOMPRESSED_BYTES:
                 raise MarkdownImportGovernanceError(
@@ -628,7 +652,7 @@ def _align_okf_folder_parts(parts, sibling_names, root_parent, *, mode):
     return parent, parts[matched:]
 
 
-def _folder_structure_plan(knowledge_base, inspected, options):
+def _folder_structure_plan(knowledge_base, inspected, options):  # noqa: C901
     if inspected.archive_kind != "okf":
         raise MarkdownImportGovernanceError(
             "folder_structure_requires_okf",
@@ -840,6 +864,7 @@ def build_import_preview(knowledge_base, inspected, options=None):
     existing = _existing_pages(knowledge_base)
     titles = set()
     rows = []
+    rejected = []
     revision = knowledge_base.active_structure_revision
     creating_folders = _create_folders_requested(options)
     structure_preview = None
@@ -861,24 +886,13 @@ def build_import_preview(knowledge_base, inspected, options=None):
         try:
             canonicalized_title = canonical_title(knowledge_base, original_title)
             title = validate_display_title(canonicalized_title)
-        except InvalidWikiTitle as error:
-            raise MarkdownImportGovernanceError(
-                "archive_title_invalid",
-                str(error),
-                status_code=422,
-                details={
-                    "archive_path": document["archive_path"],
-                    **_bounded_text_details("original_title", original_title),
-                    **_bounded_text_details("canonical_title", canonicalized_title),
-                },
-            ) from error
+        except InvalidWikiTitle:
+            rejected.append({"path": document["archive_path"], "reason": "title_invalid"})
+            continue
         identity = title_identity_key(title)
         if identity in titles:
-            raise MarkdownImportGovernanceError(
-                "archive_title_duplicate",
-                "归档中存在规范化后同名页面",
-                details={"title": title},
-            )
+            rejected.append({"path": document["archive_path"], "reason": "title_duplicate"})
+            continue
         titles.add(identity)
         page = existing.get(identity)
         row = {
@@ -961,10 +975,14 @@ def build_import_preview(knowledge_base, inspected, options=None):
             )
             row["directory"] = assignment.as_build_trace()
         rows.append(row)
+    if not rows:
+        raise _okf_no_concepts_error([*list(inspected.skipped_details), *rejected])
+    skipped = [dict(item) for item in (inspected.okf_stats or {}).get("skipped") or inspected.skipped_details]
+    skipped.extend(rejected)
     preview = {
         "archive_kind": inspected.archive_kind,
         "archive_sha256": inspected.archive_sha256,
-        "skipped_entries": inspected.skipped_entries,
+        "skipped_entries": inspected.skipped_entries + len(rejected),
         "pages": rows,
         "counts": {
             "total": len(rows),
@@ -984,7 +1002,7 @@ def build_import_preview(knowledge_base, inspected, options=None):
             "alignment": list((structure_preview or {}).get("alignment") or []),
             "alignment_mode": (structure_preview or {}).get("alignment_mode") or "",
             "type_mapping": list(stats.get("type_mapping") or []),
-            "skipped": list(stats.get("skipped") or [dict(item) for item in inspected.skipped_details]),
+            "skipped": skipped,
             "links": dict(stats.get("links") or {"rewritten": 0, "unresolved": 0}),
             "renamed_count": int(stats.get("renamed_count") or 0),
             "images": dict(stats.get("images") or {"count": 0, "bytes": 0, "pages": 0, "html_unchecked": 0}),
@@ -1191,6 +1209,72 @@ def _bind_import_build(knowledge_base, inspected, *, operator="", existing_build
         return build
 
 
+def _import_one_document(
+    document,
+    row,
+    *,
+    existing,
+    build,
+    generation,
+    operator,
+    inspected,
+    context,
+    counts,
+    page_actions,
+    result_pages,
+    directory_trace,
+):
+    page = existing.get(title_identity_key(row["title"]))
+    directory = row.get("directory") or {}
+    if page is not None and page.contribution != "ai":
+        check = _create_import_body_candidate(page, document, build, generation, operator, inspected)
+        counts["candidate"] += 1
+        action = {
+            "page_id": page.pk,
+            "title": page.title,
+            "action": "candidate",
+            "check_id": check.pk,
+            "archive_path": document["archive_path"],
+        }
+        page_actions.append(action)
+        result_pages.append(action)
+        return
+    staged = stage_ai_page(
+        context,
+        title=row["title"],
+        page_type=document["page_type"],
+        tags=document["tags"],
+        body=document["body"],
+        directory_id=directory["directory_id"],
+        assignment_mode=directory["assignment_mode"],
+        build_record=build,
+        operator=operator,
+        update_method="markdown_import",
+        change_type="markdown_import",
+        body_strategy="replace",
+    )
+    version = PageVersion.objects.get(pk=staged.page_version_id)
+    version.meta_snapshot = {
+        **(version.meta_snapshot or {}),
+        **_import_meta_snapshot(document, inspected),
+    }
+    version.save(update_fields=["meta_snapshot", "updated_at"])
+    count_key = "created" if staged.action == "create" else "updated"
+    counts[count_key] += 1
+    action = {
+        "page_id": staged.page_id,
+        "page_version_id": staged.page_version_id,
+        "title": staged.title,
+        "action": staged.action,
+        "archive_path": document["archive_path"],
+        "directory_id": staged.directory_id,
+    }
+    page_actions.append(action)
+    directory_trace.append({**directory, "page_id": staged.page_id, "archive_path": document["archive_path"]})
+    result_pages.append(action)
+    existing[title_identity_key(staged.title)] = KnowledgePage.objects.get(pk=staged.page_id)
+
+
 def _execute_generation_import(
     knowledge_base,
     inspected,
@@ -1229,66 +1313,47 @@ def _execute_generation_import(
         existing = _existing_pages(knowledge_base)
         released_locators = set()
         for document in inspected.documents:
-            row = preview_by_path[document["archive_path"]]
+            row = preview_by_path.get(document["archive_path"])
+            if row is None:
+                continue
             page = existing.get(title_identity_key(row["title"]))
             if page is not None and page.contribution == "ai":
                 old_body = getattr(page.current_version, "body", None) or ""
                 released_locators.update(collect_page_media_locators(old_body) - collect_page_media_locators(document.get("body") or ""))
         created_locators = _upload_okf_page_images(knowledge_base, inspected, archive_content)
         _touch_markdown_import_build(build)
+        runtime_skipped = []
         for document in inspected.documents:
             _assert_markdown_import_owns(build, expected_token)
             _touch_markdown_import_build(build)
-            row = preview_by_path[document["archive_path"]]
-            page = existing.get(title_identity_key(row["title"]))
-            directory = row.get("directory") or {}
-            if page is not None and page.contribution != "ai":
-                check = _create_import_body_candidate(page, document, build, generation, operator, inspected)
-                counts["candidate"] += 1
-                action = {
-                    "page_id": page.pk,
-                    "title": page.title,
-                    "action": "candidate",
-                    "check_id": check.pk,
-                    "archive_path": document["archive_path"],
-                }
-                page_actions.append(action)
-                result_pages.append(action)
+            row = preview_by_path.get(document["archive_path"])
+            if row is None:
                 continue
-            staged = stage_ai_page(
-                context,
-                title=row["title"],
-                page_type=document["page_type"],
-                tags=document["tags"],
-                body=document["body"],
-                directory_id=directory["directory_id"],
-                assignment_mode=directory["assignment_mode"],
-                build_record=build,
-                operator=operator,
-                update_method="markdown_import",
-                change_type="markdown_import",
-                body_strategy="replace",
-            )
-            version = PageVersion.objects.get(pk=staged.page_version_id)
-            version.meta_snapshot = {
-                **(version.meta_snapshot or {}),
-                **_import_meta_snapshot(document, inspected),
-            }
-            version.save(update_fields=["meta_snapshot", "updated_at"])
-            count_key = "created" if staged.action == "create" else "updated"
-            counts[count_key] += 1
-            action = {
-                "page_id": staged.page_id,
-                "page_version_id": staged.page_version_id,
-                "title": staged.title,
-                "action": staged.action,
-                "archive_path": document["archive_path"],
-                "directory_id": staged.directory_id,
-            }
-            page_actions.append(action)
-            directory_trace.append({**directory, "page_id": staged.page_id, "archive_path": document["archive_path"]})
-            result_pages.append(action)
-            existing[title_identity_key(staged.title)] = KnowledgePage.objects.get(pk=staged.page_id)
+            try:
+                _import_one_document(
+                    document,
+                    row,
+                    existing=existing,
+                    build=build,
+                    generation=generation,
+                    operator=operator,
+                    inspected=inspected,
+                    context=context,
+                    counts=counts,
+                    page_actions=page_actions,
+                    result_pages=result_pages,
+                    directory_trace=directory_trace,
+                )
+            except Exception as error:
+                logger.warning(
+                    "wiki okf import skipped document knowledge_base=%s archive_path=%s error_type=%s",
+                    knowledge_base.pk,
+                    document.get("archive_path"),
+                    type(error).__name__,
+                )
+                runtime_skipped.append({"path": document.get("archive_path") or "", "reason": "import_failed"})
+        if not page_actions:
+            raise _okf_no_concepts_error([*((preview.get("okf") or {}).get("skipped") or []), *runtime_skipped])
 
         affected_page_ids = [row["page_id"] for row in result_pages]
 
@@ -1302,6 +1367,7 @@ def _execute_generation_import(
                 "counts": dict(counts),
                 "pages": list(result_pages),
                 "relations": relation_result,
+                "skipped_documents": [*((preview.get("okf") or {}).get("skipped") or []), *runtime_skipped],
             }
             locked_build = _assert_markdown_import_owns(build, expected_token)
             _complete_import_build(

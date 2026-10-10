@@ -798,6 +798,7 @@ export interface WikiMarkdownImportExecuteResult {
   created?: number;
   updated?: number;
   skipped?: number;
+  skipped_documents?: Array<{ path?: string; reason?: string }>;
 }
 
 export type WikiDecisionType = "knowledge_conflict" | "page_identity";

@@ -49,12 +49,14 @@ class DirectoryServiceError(Exception):
         status_code=422,
         retryable=False,
         details=None,
+        conflict_variant=None,
     ):
         super().__init__(message)
         self.code = code
         self.status_code = status_code
         self.retryable = retryable
         self.details = details or {}
+        self.conflict_variant = conflict_variant
 
 
 @dataclass(frozen=True)
