@@ -10,6 +10,7 @@ import { useTranslation } from '@/utils/i18n';
 import { ColumnItem, Pagination, TableDataItem } from '@/app/monitor/types';
 import { ViewModalProps } from '@/app/monitor/types/view';
 import CustomTable from '@/components/custom-table';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/view';
 import { buildMonitorStrategyDetailUrl } from '@/app/monitor/utils/policyRouteUtils';
@@ -51,20 +52,32 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
       title: t('common.name'),
       dataIndex: 'name',
       key: 'name',
-      render: (_, record) =>
-        !readOnly ? (
-          <Button type="link" className="px-0" onClick={() => linkToStrategyDetail(record)}>
-            {record.name || '--'}
+      ellipsis: true,
+      render: (_, record) => {
+        const name = String(record.name || '--');
+        return !readOnly ? (
+          <Button
+            type="link"
+            className="block min-w-0 max-w-full overflow-hidden px-0 text-left text-ellipsis whitespace-nowrap"
+            title={name}
+            onClick={() => linkToStrategyDetail(record)}
+          >
+            {name}
           </Button>
         ) : (
-          <span>{record.name || '--'}</span>
-        )
+          <EllipsisWithTooltip
+            text={name}
+            className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
+          />
+        );
+      }
     },
     {
       title: t('monitor.events.enableStatus'),
       dataIndex: 'enable',
       key: 'enable',
       width: 110,
+      ellipsis: true,
       render: (_, { enable }) =>
         enable ? (
           <Tag color="success">{t('monitor.events.turnedOn')}</Tag>
@@ -185,6 +198,7 @@ const MonitorPolicy: React.FC<ViewModalProps> = ({
   return (
     <div className={fillContainer ? 'flex h-full min-h-0 w-full flex-col' : 'w-full'}>
       <CustomTable
+        tableLayout="fixed"
         scroll={fillContainer ? { x: 890 } : { y: 'calc(100vh - 360px)', x: 890 }}
         columns={columns}
         dataSource={tableData}
