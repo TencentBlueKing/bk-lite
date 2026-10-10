@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Callable
+
+from django.utils import timezone
 
 from apps.workflow_orchestration.atom_packages.runtime import actor_snapshot, team_id
 from apps.workflow_orchestration.services.job_platform import JobPlatformExecutor
@@ -221,6 +223,24 @@ def _execution_params(raw: Any) -> list[dict[str, str]]:
     return [{"value": item} for item in text.split()] if text else []
 
 
+def _checkpoint_job_submissions(inputs: dict[str, Any], submissions: list[tuple[int, list[dict[str, Any]]]]) -> None:
+    checkpoint: Callable[[list[int]], None] | None = inputs.get("__job_submit_checkpoint")
+    task_ids = [task_id for task_id, _targets in submissions]
+    if callable(checkpoint):
+        checkpoint(task_ids)
+        return
+    atom_execution_id = inputs.get("__atom_execution_id")
+    if atom_execution_id in (None, ""):
+        return
+    from apps.workflow_orchestration.models import AtomExecution
+
+    AtomExecution.objects.filter(pk=atom_execution_id).update(
+        job_task_id=task_ids[0] if task_ids else None,
+        output={"job_task_ids": task_ids, "submit_checkpoint": True},
+        updated_at=timezone.now(),
+    )
+
+
 def execute_custom_script(inputs: dict[str, Any], *, executor=None) -> dict[str, Any]:
     targets = inputs.get("targets")
     if not isinstance(targets, list):
@@ -237,20 +257,27 @@ def execute_custom_script(inputs: dict[str, Any], *, executor=None) -> dict[str,
     actor = actor_snapshot(inputs)
     timeout = int(inputs.get("timeout_seconds") or 600)
     runner = executor or JobPlatformExecutor()
+    prior_ids = inputs.get("__job_task_ids")
     submissions: list[tuple[int, list[dict[str, Any]]]] = []
-    for source, source_targets in groups.items():
-        task_id = runner.submit(
-            name="编排中心-脚本执行",
-            nodes=source_targets,
-            team=team,
-            target_source=source,
-            script_type=script_type,
-            script_content=script_content,
-            timeout=timeout,
-            actor=actor,
-            params=params,
-        )
-        submissions.append((task_id, source_targets))
+    if isinstance(prior_ids, list) and prior_ids and len(prior_ids) == len(groups):
+        # Resume wait for durable submissions instead of blind resubmit after lease reclaim.
+        for task_id, (_source, source_targets) in zip(prior_ids, groups.items(), strict=True):
+            submissions.append((int(task_id), source_targets))
+    else:
+        for source, source_targets in groups.items():
+            task_id = runner.submit(
+                name="编排中心-脚本执行",
+                nodes=source_targets,
+                team=team,
+                target_source=source,
+                script_type=script_type,
+                script_content=script_content,
+                timeout=timeout,
+                actor=actor,
+                params=params,
+            )
+            submissions.append((task_id, source_targets))
+            _checkpoint_job_submissions(inputs, submissions)
 
     results: list[dict[str, Any]] = []
     for task_id, source_targets in submissions:

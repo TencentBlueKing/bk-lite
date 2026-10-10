@@ -6,12 +6,18 @@ from apps.workflow_orchestration.services.job_platform import JobPlatformError, 
 class FakeJobClient:
     def __init__(self, detail=None):
         self.submitted = None
+        self.cancelled = None
         self.detail = detail or {"result": True, "data": {"status": "success", "execution_results": []}}
 
     def execute_automation_script(self, payload, actor_context):
         self.submitted = payload
         self.actor_context = actor_context
         return {"result": True, "data": {"task_id": 9}}
+
+    def cancel_automation_execution(self, data, actor_context):
+        self.cancelled = data
+        self.cancel_actor_context = actor_context
+        return {"result": True, "data": {"task_id": data["task_id"], "status": "cancelling"}}
 
     def get_automation_execution_statuses(self, data, actor_context):
         return {"result": True, "data": [{"task_id": 9, "status": "success"}]}
@@ -67,6 +73,35 @@ def test_job_rejection_is_typed_error():
             script_type="shell",
             script_content="bad",
             timeout=60,
+            actor={"username": "operator", "domain": "example.com"},
+        )
+
+
+def test_cancel_uses_task_id_and_authorized_teams():
+    client = FakeJobClient()
+    result = JobPlatformExecutor(client=client).cancel(
+        101,
+        authorized_team_ids=[7, 9],
+        actor={"username": "operator", "domain": "example.com"},
+    )
+
+    assert result == {"task_id": 101, "status": "cancelling"}
+    assert client.cancelled == {"task_id": 101}
+    assert client.cancel_actor_context == {
+        "username": "operator",
+        "domain": "example.com",
+        "authorized_team_ids": [7, 9],
+    }
+
+
+def test_cancel_rejection_is_typed_error():
+    client = FakeJobClient()
+    client.cancel_automation_execution = lambda data, actor_context: {"result": False, "message": "无权取消"}
+
+    with pytest.raises(JobPlatformError, match="无权取消"):
+        JobPlatformExecutor(client=client).cancel(
+            101,
+            authorized_team_ids=[7],
             actor={"username": "operator", "domain": "example.com"},
         )
 
