@@ -144,6 +144,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
   hideTimeSelector = false,
   onExternalXRangeChange,
   preferredCollectType,
+  lockedPluginTab,
 }) => {
   const { isLoading } = useApiClient();
   const {
@@ -310,7 +311,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       return;
     }
     initPage();
-  }, [isLoading, monitorObjectId, instanceId, preferredCollectType]);
+  }, [isLoading, monitorObjectId, instanceId, preferredCollectType, lockedPluginTab]);
 
   useEffect(() => {
     clearTimer();
@@ -423,9 +424,14 @@ const MetricViews: React.FC<ViewDetailProps> = ({
 
       setPlugins(_plugins);
       const preferredTab = findPluginTabByCollectType(responseData, preferredCollectType);
-      const _activeTab = (preferredTab && _plugins.some((item) => item.value === preferredTab))
-        ? preferredTab
-        : (_plugins[0]?.value || '');
+      const lockedTab = lockedPluginTab && _plugins.some((item) => item.value === lockedPluginTab)
+        ? lockedPluginTab
+        : '';
+      const _activeTab = lockedPluginTab
+        ? lockedTab
+        : (preferredTab && _plugins.some((item) => item.value === preferredTab))
+          ? preferredTab
+          : (_plugins[0]?.value || '');
       setActiveTab(_activeTab);
       if (!_activeTab) {
         setMetricData([]);
@@ -1019,12 +1025,14 @@ const MetricViews: React.FC<ViewDetailProps> = ({
 
   return (
     <div className="w-full h-full">
-      <Segmented
-        className="mb-[16px]"
-        value={activeTab}
-        options={plugins}
-        onChange={onTabChange}
-      />
+      {lockedPluginTab ? null : (
+        <Segmented
+          className="mb-[16px]"
+          value={activeTab}
+          options={plugins}
+          onChange={onTabChange}
+        />
+      )}
       <div className="flex justify-between mb-[16px] gap-3">
         <div className="flex flex-wrap gap-2 min-w-0">
           <Select

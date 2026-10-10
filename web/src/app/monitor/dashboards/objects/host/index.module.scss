@@ -35,3 +35,104 @@
     }
   }
 }
+
+.hostTabs {
+  margin-top: 4px;
+
+  :global(.ant-tabs-nav) {
+    margin-bottom: 12px;
+  }
+}
+
+.entitySplit {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.entityTable {
+  min-width: 0;
+  padding: 8px 8px 0;
+}
+
+.entityChart {
+  min-width: 0;
+}
+
+.entityRow {
+  cursor: pointer;
+}
+
+.entityRowActive {
+  cursor: pointer;
+
+  :global(td) {
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent) !important;
+  }
+}
+
+.fleetStrip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.fleetTile {
+  padding: 14px 16px 12px;
+}
+
+.fleetTileLabel {
+  font-size: 12px;
+  color: var(--color-text-3);
+}
+
+.fleetTileValue {
+  margin-top: 4px;
+  font-size: 28px;
+  font-weight: 650;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+}
+
+.fleetTileHint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--color-text-4);
+}
+
+.fleetHints {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.fleetHintGroup {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.fleetTop {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.layerNote {
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--color-text-3);
+}
+
+@media (max-width: 1100px) {
+  .entitySplit,
+  .fleetStrip,
+  .fleetTop {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

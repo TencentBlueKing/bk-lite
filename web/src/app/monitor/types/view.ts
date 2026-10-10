@@ -77,6 +77,8 @@ export interface ViewDetailProps {
   onExternalXRangeChange?: (range: [Dayjs, Dayjs]) => void;
   /** 与 Flow 专业盘 routeKey 对齐，进入全量指标时预选对应插件页签。 */
   preferredCollectType?: 'snmp' | 'netflow' | 'sflow' | null;
+  /** 锁定到指定插件页签并隐藏页签条。主机仪表盘「进程」复用进程指标视图。 */
+  lockedPluginTab?: string;
 }
 
 export interface ViewInstanceSearchProps {
