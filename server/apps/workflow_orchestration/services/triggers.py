@@ -7,10 +7,10 @@ from django.utils import timezone
 
 from apps.core.logger import workflow_orchestration_logger as logger
 from apps.workflow_orchestration.models import TriggerInvocation, Workflow, WorkflowExecution, WorkflowTrigger, WorkflowVersion
-from apps.workflow_orchestration.services.conductor import ConductorClient
+from apps.workflow_orchestration.services.conductor import ConductorClient, ExecutionStartUnknown
 from apps.workflow_orchestration.services.definitions import DefinitionValidationError, validate_workflow_inputs
 from apps.workflow_orchestration.services.nats_contracts import build_nats_trigger_subject
-from apps.workflow_orchestration.services.runtime import start_execution
+from apps.workflow_orchestration.services.runtime import reconcile_unknown_execution, start_execution
 from apps.workflow_orchestration.services.schedules import build_schedule_event, compile_schedule_config, next_schedule_runs
 
 
@@ -150,23 +150,39 @@ def invoke_trigger(
         )
         if not created:
             if invocation.execution_id:
-                return invocation.execution, False
+                existing_execution = invocation.execution
+                if existing_execution.status == WorkflowExecution.Status.UNKNOWN:
+                    existing_execution = reconcile_unknown_execution(existing_execution, client=client or ConductorClient())
+                return existing_execution, False
             raise TriggerConflict("相同幂等键正在处理")
         workflow_id = locked_workflow.pk
         trigger_pk = locked_trigger.pk
         trigger_type = locked_trigger.trigger_type
         invocation_id = invocation.pk
+        entry_input_schema = locked_trigger.input_schema or {}
 
+    conductor = client or ConductorClient()
     try:
         execution = start_execution(
             Workflow.all_objects.get(pk=workflow_id),
             inputs=validated_inputs,
             started_by=started_by,
             domain=domain,
-            client=client or ConductorClient(),
+            client=conductor,
             trigger_type=trigger_type,
             trigger_id=str(trigger_pk),
+            entry_input_schema=entry_input_schema,
         )
+    except ExecutionStartUnknown as error:
+        # Keep the idempotency row bound so retries reconcile instead of starting again.
+        with transaction.atomic():
+            invocation = TriggerInvocation.objects.select_for_update().get(pk=invocation_id)
+            if invocation.execution_id and invocation.execution_id != error.execution.id:
+                return invocation.execution, False
+            invocation.execution = error.execution
+            invocation.save(update_fields=("execution", "updated_at"))
+            WorkflowTrigger.objects.filter(pk=trigger_pk).update(last_run_at=timezone.now(), updated_at=timezone.now())
+        raise
     except Exception:
         TriggerInvocation.objects.filter(pk=invocation_id, execution__isnull=True).delete()
         raise

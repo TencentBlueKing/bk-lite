@@ -511,21 +511,46 @@ def validate_and_compile_workflow_data_contract(
     return compiled, metadata
 
 
-def redact_sensitive_inputs(inputs: dict[str, Any], canvas_metadata: Any) -> dict[str, Any]:
+def _sensitive_keys_from_schema(schema: Any) -> set[str]:
+    if not isinstance(schema, dict):
+        return set()
+    properties = schema.get("properties")
+    if not isinstance(properties, dict):
+        return set()
+    return {key for key, prop in properties.items() if isinstance(prop, dict) and prop.get("sensitive")}
+
+
+def sensitive_input_keys(canvas_metadata: Any, *, entry_schema: Any = None) -> set[str]:
+    """Conservative sensitive classification: shared contract ∪ all trigger schemas ∪ entry schema."""
+
     metadata, _ = normalize_workflow_data_contract(canvas_metadata)
-    sensitive_keys = {item.get("key") for item in metadata["data_contract"].get("inputs") or [] if isinstance(item, dict) and item.get("sensitive")}
+    keys = {
+        item.get("key")
+        for item in metadata["data_contract"].get("inputs") or []
+        if isinstance(item, dict) and item.get("sensitive") and isinstance(item.get("key"), str)
+    }
+    for node in metadata.get("trigger_nodes") or []:
+        if isinstance(node, dict):
+            keys |= _sensitive_keys_from_schema(node.get("input_schema"))
+    keys |= _sensitive_keys_from_schema(entry_schema)
+    return keys
+
+
+def redact_sensitive_inputs(inputs: dict[str, Any], canvas_metadata: Any, *, entry_schema: Any = None) -> dict[str, Any]:
+    sensitive_keys = sensitive_input_keys(canvas_metadata, entry_schema=entry_schema)
     return {key: ("***" if key in sensitive_keys else copy.deepcopy(value)) for key, value in inputs.items()}
 
 
-def seal_sensitive_inputs(inputs: dict[str, Any], canvas_metadata: Any) -> dict[str, Any]:
-    metadata, _ = normalize_workflow_data_contract(canvas_metadata)
-    sensitive_keys = {item.get("key") for item in metadata["data_contract"].get("inputs") or [] if isinstance(item, dict) and item.get("sensitive")}
+def seal_sensitive_inputs(inputs: dict[str, Any], canvas_metadata: Any, *, entry_schema: Any = None) -> dict[str, Any]:
+    sensitive_keys = sensitive_input_keys(canvas_metadata, entry_schema=entry_schema)
     sealed = copy.deepcopy(inputs)
     cipher = EncryptMixin.get_cipher_suite()
     for key in sensitive_keys:
         if key not in sealed:
             continue
         value = sealed[key]
+        if isinstance(value, str) and value.startswith(SECRET_ENVELOPE_PREFIX):
+            continue
         if not isinstance(value, str):
             raise DefinitionValidationError(f"敏感流程输入 {key} 必须是字符串")
         sealed[key] = f"{SECRET_ENVELOPE_PREFIX}{cipher.encrypt(value.encode('utf-8')).decode('ascii')}"
