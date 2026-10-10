@@ -463,15 +463,16 @@ const PolicyGroupPage: React.FC = () => {
       width: 340,
       render: (_, record) => (
         <Permission requiredPermissions={['Edit']}>
-          <Button type="link" className="px-0" onClick={() => openNotice(record as PolicyGroupRow)}>
-            通知
-          </Button>
           <Button
             type="link"
+            className="px-0"
             disabled={Boolean(record.is_default)}
             onClick={() => void setDefaultPolicyGroup(Number(record.id)).then(() => loadGroups(objectId))}
           >
             默认
+          </Button>
+          <Button type="link" onClick={() => openNotice(record as PolicyGroupRow)}>
+            通知
           </Button>
           <Button
             type="link"
