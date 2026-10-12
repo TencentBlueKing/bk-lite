@@ -5,7 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from apps.opspilot.services.workflow_attachment_service import build_attachment_bytes, normalize_attachment_file_type
+from apps.opspilot.services.workflow_attachment_service import (
+    _iter_markdown_blocks,
+    build_attachment_bytes,
+    normalize_attachment_file_type,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -131,6 +135,82 @@ def test_refresh_attachment_download_urls_resigns_expired_history_link(monkeypat
     resolved = attachment_service.resolve_signed_attachment_token(fresh_token)
     assert resolved is not None
     assert resolved.id == asset.id
+
+
+def test_markdown_paragraph_stops_before_list_or_rule_without_blank_line():
+    blocks = list(_iter_markdown_blocks("介绍\n- 项\n1. 序号\n---\n结尾"))
+    assert blocks == [
+        ("paragraph", "介绍"),
+        ("ul", ["项"]),
+        ("ol", ["序号"]),
+        ("hr",),
+        ("paragraph", "结尾"),
+    ]
+    assert list(_iter_markdown_blocks("介绍\n继续")) == [("paragraph", "介绍 继续")]
+
+
+def test_build_attachment_bytes_pptx_splits_each_h1_into_a_slide():
+    from io import BytesIO
+
+    from pptx import Presentation
+
+    payload = build_attachment_bytes("# 第一页\n\n要点\n\n# 第二页\n\n收尾", "pptx", title="第一页")
+    deck = Presentation(BytesIO(payload))
+    titles = [slide.shapes.title.text for slide in deck.slides]
+    assert len(deck.slides) >= 2
+    assert titles == ["第一页", "第二页"]
+
+
+def test_normalize_attachment_file_type_rewrites_alias_extension():
+    normalized_type, filename, mime_type = normalize_attachment_file_type("ppt", "deck.ppt")
+    assert normalized_type == "ppt"
+    assert filename == "deck.pptx"
+    assert mime_type == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+
+    _, text_name, text_mime = normalize_attachment_file_type("text", "notes.text")
+    assert text_name == "notes.txt"
+    assert text_mime == "text/plain"
+
+    _, word_name, word_mime = normalize_attachment_file_type("word", "memo.doc")
+    assert word_name == "memo.docx"
+    assert word_mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+    _, kept_name, _ = normalize_attachment_file_type("pptx", "deck.pptx")
+    assert kept_name == "deck.pptx"
+
+
+def _pdf_plain_text(payload: bytes) -> str | None:
+    try:
+        import fitz
+    except ImportError:
+        return None
+    document = fitz.open(stream=payload, filetype="pdf")
+    try:
+        return "".join(page.get_text() for page in document)
+    finally:
+        document.close()
+
+
+def test_build_attachment_bytes_pdf_renders_chinese_markdown_table():
+    from apps.opspilot.services.workflow_attachment_service import _resolve_pdf_font
+
+    content = "| 项目 | 内容 |\n| --- | --- |\n| 城市 | 广州 |\n| 备注 | A & B <C> |\n"
+    font_name = _resolve_pdf_font()
+    first = build_attachment_bytes(content, "pdf", title="广州报告")
+    second = build_attachment_bytes(content, "pdf", title="广州报告")
+    for payload in (first, second):
+        assert payload.startswith(b"%PDF")
+        assert len(payload) > 200
+        # Helvetica 没有中文轮廓，fitz 会抽出占位符；有中文字体时必须能读回单元格。
+        if font_name == "Helvetica":
+            continue
+        extracted = _pdf_plain_text(payload)
+        if not extracted:
+            continue
+        assert "广州" in extracted
+        assert "城市" in extracted
+        assert "项目" in extracted
+        assert "A & B" in extracted
 
 
 def test_build_attachment_bytes_xlsx_keeps_header_row():

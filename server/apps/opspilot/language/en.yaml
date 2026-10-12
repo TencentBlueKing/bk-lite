@@ -136,6 +136,7 @@ error:
   training_document_no_retrain: training document can not be retrained
   qa_pair_update_failed: Failed to update QA pair.
   skill_quota_exceeded: Skill count exceeds quota limit.
+  run_model_call_limit_range: Model calls per step must be between 1 and 100.
   pilot_start_failed: Pilot start failed.
   no_delete_permission: User does not have permission to delete this instance
   generate_question_failed: generate question failed
