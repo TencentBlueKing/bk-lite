@@ -3,6 +3,7 @@
 import React from 'react';
 import { ChartData } from '@/app/monitor/types';
 import { Spark } from './signal-bar';
+import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
 export interface StatusCountItem {
@@ -18,7 +19,7 @@ export default function StatusCountRow({ items }: { items: StatusCountItem[] }) 
   return (
     <div className={styles.statusRow}>
       {items.map((item) => (
-        <div key={item.key} className={styles.statusCap}>
+        <div key={item.key} className={`${classic.panel} ${styles.statusCap}`}>
           <div className={styles.statusCapLabel}>{item.label}</div>
           <div className={styles.statusCapValue} style={{ color: item.tone || undefined }}>
             {item.value}

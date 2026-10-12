@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
 export interface CategoryNavItem {
@@ -19,7 +20,7 @@ export default function CategoryNav({
   onChange: (key: string) => void;
 }) {
   return (
-    <nav className={styles.nav} aria-label="分层分类">
+    <nav className={`${classic.panel} ${styles.nav}`} aria-label="分层分类">
       <div className={styles.navLabel}>分类</div>
       {items.map((item) => (
         <button

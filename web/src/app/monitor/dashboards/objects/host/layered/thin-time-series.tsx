@@ -8,6 +8,7 @@ import { formatMetricValue } from '../../../shared/utils/format';
 import type { MetricUnit } from '../../../shared/types';
 import { CHART_COLORS } from '@/app/monitor/constants';
 import { useThemeColors } from './theme-color';
+import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
 export interface ThinLegend {
@@ -133,7 +134,7 @@ export default function ThinTimeSeries({
   const { containerRef } = useECharts(option);
 
   return (
-    <section className={styles.chartPanel}>
+    <section className={`${classic.panel} ${styles.chartPanel}`}>
       <div className={styles.chartHead}>
         <div className={styles.chartTitle}>{title}</div>
         {reading ? <div className={styles.chartReading}>{reading}</div> : null}

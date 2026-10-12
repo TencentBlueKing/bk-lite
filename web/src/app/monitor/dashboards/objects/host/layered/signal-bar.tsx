@@ -4,6 +4,7 @@ import React, { useMemo } from 'react';
 import { useECharts } from '../../../shared/widgets/useECharts';
 import { ChartData } from '@/app/monitor/types';
 import { resolveThemeColor, useThemeColors } from './theme-color';
+import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
 export interface SignalItem {
@@ -58,8 +59,8 @@ export const Spark = ({
     };
   }, [series, stroke]);
   const { containerRef } = useECharts(option);
-  if (!option) return <div className={className || styles.signalSpark} />;
-  return <div ref={containerRef} className={className || styles.signalSpark} />;
+  if (!option) return <div className={className || classic.miniTrend} />;
+  return <div ref={containerRef} className={className || classic.miniTrend} />;
 };
 
 export default function SignalBar({
@@ -77,21 +78,23 @@ export default function SignalBar({
   return (
     <div className={styles.signalBar}>
       {items.map((item) => (
-        <div key={item.key} className={styles.signalPill}>
-          <div>
-            <div className={styles.signalLabel}>{item.label}</div>
-            <div className={styles.signalValue} style={{ color: item.tone || undefined }}>
+        <div key={item.key} className={classic.statCard}>
+          <div className={classic.statLabel}>{item.label}</div>
+          <div className={classic.statBody}>
+            <div className={classic.statValue} style={{ color: item.tone || undefined }}>
               {item.value}
             </div>
-            {item.subtitle ? <div className={styles.signalSub}>{item.subtitle}</div> : null}
+            {item.subtitle ? <div className={classic.statMeta}>{item.subtitle}</div> : null}
           </div>
           <Spark data={item.trend} color={item.color} />
         </div>
       ))}
-      <div className={styles.alertBox}>
-        <div className={styles.alertK}>告警 / 异常</div>
-        <div className={styles.alertValue} style={{ color: alertTone }}>
-          {alertCount == null ? '--' : `${alertCount}个`}
+      <div className={classic.statCard}>
+        <div className={classic.statLabel}>告警 / 异常</div>
+        <div className={classic.statBody}>
+          <div className={classic.statValue} style={{ color: alertTone }}>
+            {alertCount == null ? '--' : `${alertCount}个`}
+          </div>
         </div>
       </div>
     </div>

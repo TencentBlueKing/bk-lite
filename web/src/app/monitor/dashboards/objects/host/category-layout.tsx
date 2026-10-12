@@ -136,7 +136,7 @@ const metricChart = (
   />
 );
 
-/** L1 密度工作台：仅 host_layout=category。禁止复用 KpiSection / 白卡 / 重面积图。 */
+/** 分层概览：仅 host_layout=category。复用经典 panel/statCard 壳体，不复用 KpiSection / 重面积图。 */
 export default function HostCategoryLayout({
   dashboard,
   diskState,

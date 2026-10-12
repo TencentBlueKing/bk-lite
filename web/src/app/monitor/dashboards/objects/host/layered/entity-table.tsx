@@ -6,6 +6,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { formatMetricValue } from '../../../shared/utils/format';
 import type { MetricUnit } from '../../../shared/types';
 import type { EntityTableRow } from '../entity-series';
+import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
 export interface LayeredColumn {
@@ -73,7 +74,7 @@ export default function LayeredEntityTable({
   }));
 
   return (
-    <div className={styles.tableWrap}>
+    <div className={`${classic.panel} ${styles.tableWrap}`}>
       <Table<EntityTableRow>
         size="small"
         rowKey="key"

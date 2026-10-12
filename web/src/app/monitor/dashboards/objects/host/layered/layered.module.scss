@@ -2,119 +2,35 @@
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--color-background-body);
+  gap: 12px;
   color: var(--color-text-1);
 }
 
 .signalBar {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
   flex-shrink: 0;
-  align-items: stretch;
-  gap: 0;
-  margin: 10px 16px 0;
-  overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  background: var(--color-fill-1);
-}
-
-.signalPill {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  padding: 8px 14px;
-  border: 0;
-  border-right: 1px solid var(--color-border);
-  background: transparent;
-}
-
-.signalLabel {
-  font-size: 10px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-text-3);
-}
-
-.signalValue {
-  font-size: 16px;
-  font-weight: 650;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
-  color: var(--color-text-1);
-}
-
-.signalSub {
-  margin-top: 1px;
-  font-size: 10px;
-  color: var(--color-text-3);
-}
-
-.signalSpark {
-  width: 72px;
-  height: 22px;
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
-.alertBox {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-width: 110px;
-  padding: 8px 16px;
-  border-left: 1px solid var(--color-border);
-  background: var(--color-fill-2);
-}
-
-.alertK {
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  color: var(--color-text-3);
-}
-
-.alertValue {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--color-fail);
-  font-variant-numeric: tabular-nums;
-}
-
-.alertHint {
-  margin-top: 1px;
-  font-size: 10px;
-  color: var(--color-text-3);
 }
 
 .body {
   display: grid;
   grid-template-columns: 168px minmax(0, 1fr);
+  gap: 12px;
   flex: 1 1 auto;
   min-height: min-content;
-  margin: 10px 16px 16px;
-  overflow: visible;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  background: var(--color-bg);
+  align-items: start;
 }
 
 .nav {
-  display: flex;
-  flex-direction: column;
   gap: 2px;
-  padding: 8px 0;
-  background: var(--color-fill-1);
-  border-right: 1px solid var(--color-border);
 }
 
 .navLabel {
-  padding: 12px 14px 4px;
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-text-3);
+  padding: 0 2px 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-1);
 }
 
 .navItem {
@@ -122,9 +38,10 @@
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 8px 14px;
+  padding: 8px 10px;
   border: 0;
   border-left: 2px solid transparent;
+  border-radius: 8px;
   background: transparent;
   color: var(--color-text-3);
   font-size: 12px;
@@ -135,7 +52,7 @@
 .navItemActive {
   color: var(--color-text-1);
   font-weight: 600;
-  background: var(--color-fill-2);
+  background: var(--color-fill-1);
   border-left-color: var(--color-primary);
 }
 
@@ -150,21 +67,20 @@
 
 .main {
   min-width: 0;
-  min-height: 0;
-  padding: 12px 14px 16px;
-  background: var(--color-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .mainHead {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 10px;
 }
 
 .paneTitle {
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 600;
   color: var(--color-text-1);
 }
 
@@ -176,17 +92,12 @@
 .chartGrid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 10px;
-  min-height: 336px;
+  gap: 12px;
 }
 
 .chartPanel {
   min-width: 0;
   min-height: 168px;
-  padding: 8px 10px 4px;
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  background: var(--color-bg);
 }
 
 .chartHead {
@@ -194,16 +105,17 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 4px;
+  margin-bottom: 8px;
 }
 
 .chartTitle {
-  font-size: 11px;
-  color: var(--color-text-3);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-1);
 }
 
 .chartReading {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--color-text-2);
 }
 
@@ -211,7 +123,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--color-text-3);
 }
 
@@ -230,38 +142,33 @@
 .statusRow {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
+  gap: 12px;
 }
 
 .statusCap {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-width: 0;
-  padding: 4px 10px;
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  background: var(--color-fill-1);
+  min-width: 160px;
 }
 
 .statusCapLabel {
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--color-text-3);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-1);
 }
 
 .statusCapValue {
-  font-size: 12px;
+  font-size: 16px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
   color: var(--color-text-1);
 }
 
 .statusSpark {
-  width: 40px;
-  height: 16px;
+  width: 48px;
+  height: 20px;
+  margin-left: auto;
   flex-shrink: 0;
 }
 
@@ -288,7 +195,7 @@
 .entityStack {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .processSplit {
@@ -300,8 +207,7 @@
 
 .tableWrap {
   min-width: 0;
-  border: 1px solid var(--color-border);
-  background: var(--color-bg);
+  overflow: hidden;
 }
 
 .note {
