@@ -42,7 +42,7 @@ const usePinnedRow = (rows: EntityTableRow[]) => {
   return { selectedKey, setSelectedKey, setPendingKey };
 };
 
-/** 分层概览：概览 / 系统 / 磁盘 / 网络 / 进程。KPI 只在概览。 */
+/** 分类仪表盘：概览 / 性能 / 磁盘 / 网络 / 进程。KPI 只在概览。 */
 export default function HostCategoryLayout({
   dashboard,
   diskState,
@@ -114,7 +114,7 @@ export default function HostCategoryLayout({
 
   const tabItems = [
     { key: 'overview', label: '概览' },
-    { key: 'system', label: '系统' },
+    { key: 'system', label: '性能' },
     {
       key: 'disk',
       label: (
@@ -134,7 +134,6 @@ export default function HostCategoryLayout({
         <SystemPane
           metrics={metrics}
           loading={dashboard.loading}
-          onOpenProcess={processReady ? () => setActiveTab('process') : undefined}
         />
       );
     }

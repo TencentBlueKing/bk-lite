@@ -5,7 +5,7 @@ import type { MetricSeries } from '../../common/simple-dashboard-core';
 import { HOST_PALETTE } from '../config';
 import { pointsToChartData, type EntityTableRow } from '../entity-series';
 import LayeredEntityTable, { type LayeredColumn } from './entity-table';
-import StatusCountRow, { processStatusItems } from './status-count';
+import StatusCountRow, { processStatusView } from './status-count';
 import ThinTimeSeries from './thin-time-series';
 import { formatPercent, formatUnit, latestNumber, percentTone } from './readings';
 import classic from '../index.module.scss';
@@ -62,15 +62,24 @@ export default function FlatProcessSplit({
     return next;
   }, [loading, sorted]);
 
-  const statusCounts = processStatusItems(
-    latestNumber(metrics?.processes_blocked),
-    latestNumber(metrics?.processes_zombies),
-    metricsLoading
+  const trendSettled = Boolean(
+    metrics && (
+      Object.prototype.hasOwnProperty.call(metrics, 'cpu_usage_user_total')
+      || Object.prototype.hasOwnProperty.call(metrics, 'processes_running')
+      || Object.prototype.hasOwnProperty.call(metrics, 'processes_blocked')
+    )
   );
+  const statusPending = !trendSettled && (metricsLoading || Object.keys(metrics || {}).length > 0);
+  const status = processStatusView({
+    blocked: latestNumber(metrics?.processes_blocked),
+    zombies: latestNumber(metrics?.processes_zombies),
+    running: latestNumber(metrics?.processes_running),
+    sleeping: latestNumber(metrics?.processes_sleeping)
+  }, statusPending);
 
   return (
     <>
-      <StatusCountRow items={statusCounts} />
+      <StatusCountRow items={status.items} layout={status.layout} />
       <div className={styles.sectionHead}>
         <div className={classic.sectionLabel}>趋势</div>
         <div className={styles.hint}>点击下表行切换</div>

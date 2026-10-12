@@ -159,6 +159,24 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       linuxOnly: true
     },
     {
+      name: 'processes_running',
+      display_name: '运行中进程数',
+      description: '当前处于运行状态的进程数量。',
+      unit: 'counts',
+      query: 'processes_running{instance_type="os", __$labels__} or processes_running_gauge{instance_type="os", __$labels__}',
+      color: HOST_PALETTE.neutral,
+      linuxOnly: true
+    },
+    {
+      name: 'processes_sleeping',
+      display_name: '休眠进程数',
+      description: '当前处于休眠或等待状态的进程数量。',
+      unit: 'counts',
+      query: 'processes_sleeping{instance_type="os", __$labels__} or processes_sleeping_gauge{instance_type="os", __$labels__}',
+      color: HOST_PALETTE.neutral,
+      linuxOnly: true
+    },
+    {
       name: 'net_bytes_recv_rate',
       display_name: '网络入流量',
       description: '主机所有网卡接收字节速率合计。计算窗口与时间选择器一致。',

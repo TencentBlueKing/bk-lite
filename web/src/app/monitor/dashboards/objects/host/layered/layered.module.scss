@@ -9,6 +9,56 @@
   :global(.ant-tabs-content-holder) {
     display: none;
   }
+
+  :global(.ant-tabs-nav) {
+    &::before {
+      border-bottom: 0;
+    }
+  }
+
+  :global(.ant-tabs-nav-wrap) {
+    flex: none;
+  }
+
+  :global(.ant-tabs-nav-list) {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 8px;
+    background: var(--color-fill-2);
+  }
+
+  :global(.ant-tabs-tab) {
+    margin: 0 !important;
+    padding: 6px 16px;
+    border-radius: 6px;
+    background: transparent;
+  }
+
+  :global(.ant-tabs-tab-btn) {
+    color: var(--color-text-2);
+    font-weight: 500;
+    text-shadow: none !important;
+  }
+
+  :global(.ant-tabs-tab:hover .ant-tabs-tab-btn) {
+    color: var(--color-text-1);
+  }
+
+  :global(.ant-tabs-tab-active) {
+    background: var(--color-bg);
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--color-text-1) 8%, transparent);
+  }
+
+  :global(.ant-tabs-tab-active .ant-tabs-tab-btn) {
+    color: var(--color-primary);
+    font-weight: 650;
+  }
+
+  :global(.ant-tabs-ink-bar) {
+    display: none;
+  }
 }
 
 .main {
@@ -241,23 +291,36 @@
   gap: 12px;
 }
 
-.statusCards {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
+.statusCardsFill,
+.statusCardsPair {
+  display: grid;
+  gap: 8px;
+}
+
+.statusCardsFill {
+  --status-card-min-height: 72px;
+  --status-value-size: 24px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.statusCardsPair {
+  --status-card-min-height: 60px;
+  --status-value-size: 22px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .statusCard {
   --status-accent: var(--color-success);
+  --status-value: var(--status-accent);
+  --status-unit: var(--status-accent);
   position: relative;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 8px;
-  width: 240px;
-  max-width: 100%;
-  min-height: 88px;
-  padding: 14px 16px 14px 18px;
+  gap: 6px;
+  min-width: 0;
+  min-height: var(--status-card-min-height, 72px);
+  padding: 10px 12px 10px 16px;
   border: 1px solid color-mix(in srgb, var(--status-accent) 28%, var(--color-border));
   border-radius: 12px;
   background: color-mix(in srgb, var(--status-accent) 10%, var(--color-bg));
@@ -269,20 +332,12 @@
 .statusCard::before {
   content: '';
   position: absolute;
-  top: 0;
-  bottom: 0;
+  top: 8px;
+  bottom: 8px;
   left: 0;
   width: 3px;
+  border-radius: 0 2px 2px 0;
   background: var(--status-accent);
-}
-
-.statusCardButton {
-  cursor: pointer;
-  font: inherit;
-}
-
-.statusJump {
-  margin-top: 0;
 }
 
 .statusLabel {
@@ -298,18 +353,18 @@
 }
 
 .statusValue {
-  font-size: 28px;
+  font-size: var(--status-value-size, 24px);
   font-weight: 650;
   line-height: 1;
   font-variant-numeric: tabular-nums;
-  color: var(--status-accent);
+  color: var(--status-value);
 }
 
 .statusUnit {
   font-size: 13px;
   font-weight: 600;
   line-height: 1;
-  color: var(--status-accent);
+  color: var(--status-unit);
 }
 
 .statusCardCalm {
@@ -322,6 +377,14 @@
 
 .statusCardDanger {
   --status-accent: var(--color-fail);
+}
+
+.statusCardNeutral {
+  --status-accent: var(--color-text-4);
+  --status-value: var(--color-text-1);
+  --status-unit: var(--color-text-3);
+  background: var(--color-bg);
+  border-color: var(--color-border);
 }
 
 .processTop {
@@ -463,5 +526,9 @@
   .processSplit,
   .processTop {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .statusCardsFill {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   }
 }

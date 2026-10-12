@@ -4,7 +4,6 @@ import React, { useMemo } from 'react';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import { HOST_PALETTE } from '../config';
 import type { MetricSeries } from '../../common/simple-dashboard-core';
-import StatusCountRow, { processStatusItems } from './status-count';
 import ThinTimeSeries from './thin-time-series';
 import {
   deriveRatioPercent,
@@ -31,12 +30,10 @@ const LOAD_SERIES = [
 
 export default function SystemPane({
   metrics,
-  loading,
-  onOpenProcess
+  loading
 }: {
   metrics: Record<string, MetricSeries | undefined>;
   loading: boolean;
-  onOpenProcess?: () => void;
 }) {
   const breakdown = CPU_BREAKDOWN.filter((item) => metricHasPoints(metrics[item.key]));
   const cpuItems = breakdown.length
@@ -114,19 +111,12 @@ export default function SystemPane({
   ].filter(Boolean);
   const gridClass = charts.length >= 3 ? styles.chartGrid3 : charts.length === 2 ? styles.chartGrid2 : styles.chartGrid;
 
-  const counts = processStatusItems(
-    latestNumber(metrics.processes_blocked),
-    latestNumber(metrics.processes_zombies),
-    loading
-  );
-
   return (
     <>
       <div className={styles.sectionHead}>
-        <div className={classic.sectionLabel}>系统</div>
+        <div className={classic.sectionLabel}>性能</div>
       </div>
       <div className={gridClass}>{charts}</div>
-      <StatusCountRow items={counts} onOpenProcess={onOpenProcess} />
     </>
   );
 }
