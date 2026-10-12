@@ -38,8 +38,9 @@ def generate_attachment_file(
     - filename: Desired file name including extension (e.g. "report.md", "data.xlsx").
     - content:  Complete file content to save. For xlsx/csv pass raw data; for md/txt/pdf
                 pass the full Markdown or plain-text body.
-    - file_type: File format — "txt", "md", "pdf", "docx", "xlsx", or "csv".
-                 Defaults to "md". Use "txt" when the user asks for a text file; do not substitute md.
+    - file_type: File format — "txt", "md", "pdf", "docx", "pptx", "xlsx", or "csv".
+                 Defaults to "md". Use "txt" for a text file; do not substitute md.
+                 Use "pptx" when the user asks for PPT/PowerPoint. Never downgrade pptx to docx.
     - title:    Optional document title used as a header in PDF/Word output.
     """
 

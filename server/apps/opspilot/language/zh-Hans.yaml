@@ -332,10 +332,10 @@ tools:
   attachment_file:
     name: 工作流附件文件
     description: |
-      生成 TXT、Markdown、PDF、Word、Excel 或 CSV 附件。仅当用户明确要求生成、导出或写入新文件时使用；询问已有文件内容时不要使用。
+      生成 TXT、Markdown、PDF、Word、PowerPoint、Excel 或 CSV 附件。仅当用户明确要求生成、导出或写入新文件时使用；询问已有文件内容时不要使用。
     tools:
       generate_attachment_file:
-        description: 生成 txt、md、pdf、docx、xlsx 或 csv 附件并返回下载链接。txt 和 md 用纯文本；xlsx 和 csv 需要带表头的逗号分隔数据。用户要 txt 时不要改成 md。
+        description: 生成 txt、md、pdf、docx、pptx、xlsx 或 csv 附件并返回下载链接。txt 和 md 用纯文本；pptx 按标题分页；xlsx 和 csv 需要带表头的逗号分隔数据。用户要 PPT 时必须用 pptx，禁止降级成 docx。用户要 txt 时不要改成 md。
   kubernetes:
     name: Kubernetes工具
     description: |

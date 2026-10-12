@@ -459,6 +459,7 @@ class BasicLLMRequest(BaseModel):
     # stopWhen 灵活停止配置
     max_steps: int = Field(default=50, description="最大步数限制（0=不限制，由 recursion_limit 兜底）")
     max_model_calls: int = Field(default=0, description="单次请求模型调用硬上限（0=不限制）")
+    run_model_call_limit: int = Field(default=0, description="智能体配置的每步模型调用次数（0=回退环境变量）")
     max_tokens_budget: int = Field(default=0, description="累计 token 预算上限（0=不限制）")
     soft_budget_ratio: float = Field(default=0.8, description="软预算比例（0-1），达到时注入 wrap-up 提示；1.0=禁用软预算")
     stop_when_conditions: List[Any] = Field(default_factory=list, description="自定义停止条件列表", exclude=True)

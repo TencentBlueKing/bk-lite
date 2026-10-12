@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from apps.opspilot.services.workflow_attachment_service import build_attachment_bytes
+from apps.opspilot.services.workflow_attachment_service import build_attachment_bytes, normalize_attachment_file_type
 
 pytestmark = pytest.mark.unit
 
@@ -32,11 +32,52 @@ def test_workflow_attachment_service_defers_docx_and_reportlab():
     names = _top_level_imported_modules(_OPSPILOT_ROOT / "services" / "workflow_attachment_service.py")
     assert "docx" not in names
     assert "openpyxl" not in names
+    assert "pptx" not in names
     assert not any(name == "reportlab" or name.startswith("reportlab.") for name in names)
 
 
 def test_build_attachment_bytes_md_keeps_utf8():
     assert build_attachment_bytes("# 报告", "md", title="日报") == "# 报告".encode("utf-8")
+
+
+def test_build_attachment_bytes_txt_keeps_plain_text():
+    payload = build_attachment_bytes("广州介绍", "txt")
+    assert payload == "广州介绍".encode("utf-8")
+    _, filename, mime_type = normalize_attachment_file_type("txt", "广州介绍.txt")
+    assert filename == "广州介绍.txt"
+    assert mime_type == "text/plain"
+
+
+def test_build_attachment_bytes_docx_renders_markdown_heading_and_table():
+    from io import BytesIO
+
+    from docx import Document
+
+    payload = build_attachment_bytes(
+        "# 主机磁盘资源爆满风险评估报告\n\n## 报告信息\n\n| 项目 | 内容 |\n| --- | --- |\n| 报告日期 | 2026-10-12 |\n",
+        "docx",
+        title="主机磁盘资源爆满风险评估报告",
+    )
+    document = Document(BytesIO(payload))
+    texts = [paragraph.text for paragraph in document.paragraphs]
+    assert "主机磁盘资源爆满风险评估报告" in texts
+    assert not any(text.startswith("#") for text in texts)
+    assert not any("|" in text for text in texts)
+    assert document.tables[0].rows[1].cells[0].text == "报告日期"
+    assert document.tables[0].rows[1].cells[1].text == "2026-10-12"
+
+
+def test_build_attachment_bytes_pptx_is_a_slide_deck():
+    from io import BytesIO
+
+    from pptx import Presentation
+
+    payload = build_attachment_bytes("# 广州旅游\n\n- 珠江\n- 早茶\n", "pptx", title="广州旅游")
+    assert payload[:2] == b"PK"
+    deck = Presentation(BytesIO(payload))
+    assert len(deck.slides) == 1
+    assert deck.slides[0].shapes.title.text == "广州旅游"
+    assert "珠江" in deck.slides[0].placeholders[1].text_frame.text
 
 
 def test_build_attachment_bytes_docx_is_office_zip():

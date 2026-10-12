@@ -562,7 +562,7 @@ class TestSkillConversationHistory:
         body = json.loads(resp.content)
         sessions = {row["session_id"]: row for row in body["data"]}
         assert sessions["web-1"]["channel_type"] == SkillChannelChoices.WEB_CHAT
-        assert sessions["plat-1"]["channel_type"] == SkillChannelChoices.PLATFORM
+        assert "plat-1" not in sessions
         assert "wx-other" not in sessions
 
     def test_messages_and_delete_are_owner_scoped(self):

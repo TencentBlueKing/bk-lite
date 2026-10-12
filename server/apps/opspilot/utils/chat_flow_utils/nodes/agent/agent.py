@@ -257,6 +257,7 @@ class AgentNode(BaseNodeExecutor):
             "chat_history": [{"event": "user", "message": final_message}],
             "user_message": final_message,
             "conversation_window_size": skill.conversation_window_size,
+            "run_model_call_limit": int(getattr(skill, "run_model_call_limit", 0) or 0),
             "show_think": False,
             "tools": skill.tools,
             "skill_type": skill.skill_type,

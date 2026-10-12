@@ -88,6 +88,7 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
             "skill_prompt",
             "enable_conversation_history",
             "conversation_window_size",
+            "run_model_call_limit",
             "introduction",
             "team",
             "usage_team",
@@ -126,6 +127,14 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
             "updated_by_domain",
             "is_builtin",
         ]
+
+    def validate_run_model_call_limit(self, value):
+        if value is None:
+            return 10
+        number = int(value)
+        if not 1 <= number <= 100:
+            raise serializers.ValidationError("每步调用次数须在 1 到 100 之间")
+        return number
 
     def validate_memory_space(self, value):
         if value is None:

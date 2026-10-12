@@ -648,7 +648,7 @@ class DeepAgentAssemblyMixin:
         from apps.opspilot.metis.llm.middleware.context_window import ContextWindowMiddleware
         from apps.opspilot.metis.llm.middleware.planned_execution_limits import (
             PlannedExecutionLimitMiddleware,
-            get_planned_execution_run_model_call_limit,
+            resolve_planned_execution_run_model_call_limit,
             resolve_planned_execution_soft_budget_ratio,
             resolve_planned_execution_token_budget,
         )
@@ -672,7 +672,7 @@ class DeepAgentAssemblyMixin:
             include_always_visible=True,
         )
         limit_middleware = PlannedExecutionLimitMiddleware(
-            run_limit=get_planned_execution_run_model_call_limit(),
+            run_limit=resolve_planned_execution_run_model_call_limit(graph_request),
             token_budget=resolve_planned_execution_token_budget(graph_request),
             soft_budget_ratio=resolve_planned_execution_soft_budget_ratio(graph_request),
             accumulator=(token_usage_accumulator if isinstance(token_usage_accumulator, TokenUsageAccumulator) else None),

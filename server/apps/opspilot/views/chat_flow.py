@@ -243,6 +243,7 @@ def get_skill_and_params(kwargs, team, bot_id=None):
         "chat_history": chat_history,
         "user_message": chat_history[-1]["message"],
         "conversation_window_size": num,
+        "run_model_call_limit": int(getattr(skill_obj, "run_model_call_limit", 0) or 0),
         "show_think": False,
         "tools": skill_obj.tools,
         "skill_type": skill_obj.skill_type,

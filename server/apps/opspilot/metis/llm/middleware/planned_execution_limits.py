@@ -36,6 +36,18 @@ _MAX_CONTINUE_PER_STEP = 3
 _SOFT_WRAP_UP_HINT = "【预算提示】累计 token 已接近上限，请尽快基于已有证据收尾，" "避免继续大量工具调用；证据不足时只补最关键的一次查询。"
 
 
+def resolve_planned_execution_run_model_call_limit(graph_request) -> int:
+    """智能体配置优先；0 或非法时回退环境变量。"""
+    raw = getattr(graph_request, "run_model_call_limit", 0) or 0
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = 0
+    if value > 0:
+        return value
+    return get_planned_execution_run_model_call_limit()
+
+
 def get_planned_execution_run_model_call_limit() -> int:
     """分步执行每步（单次 ainvoke）模型调用上限；默认 10，非法值回退默认。"""
     raw = os.getenv(_RUN_MODEL_CALL_LIMIT_ENV)
