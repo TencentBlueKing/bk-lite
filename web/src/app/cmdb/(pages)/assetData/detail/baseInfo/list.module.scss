@@ -72,6 +72,23 @@
     vertical-align: top !important;
 }
 
+// 嵌入抽屉时按内容区宽度分列，给纵向滚动条留出位置。
+.list.embed :global(.ant-descriptions-view > table) {
+    width: 100% !important;
+    table-layout: fixed;
+}
+
+.list.embed :global(.ant-descriptions-item-label) {
+    width: 18% !important;
+}
+
+.list.embed :global(.ant-descriptions-item-content) {
+    width: 32% !important;
+    min-width: 0 !important;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
 .list :global(.ant-btn-link) {
     margin: 0 !important;
     padding: 0 !important;
