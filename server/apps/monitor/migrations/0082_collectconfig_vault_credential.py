@@ -3,7 +3,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("monitor", "0077_monitorpolicy_compare_span"),
+        ("monitor", "0081_pause_empty_policy_scans"),
     ]
 
     operations = [
