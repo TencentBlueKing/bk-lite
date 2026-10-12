@@ -3,7 +3,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
-from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.utils.current_team_scope import resolve_current_team_data_scope
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.models import (
@@ -35,28 +35,45 @@ def _group_in_scope(scope, group_id):
     return group
 
 
-def _serialize_group(group, default_id, metric_names=None):
+def _optional_positive_id(raw, param_name):
+    if raw in (None, ""):
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as exc:
+        raise ValidationAppException(f"{param_name} 必须为正整数") from exc
+    if value <= 0:
+        raise ValidationAppException(f"{param_name} 必须为正整数")
+    return value
+
+
+def _serialize_rule(rule, metric_names=None):
+    metric_id = PolicyGroupService.metric_id_for_policy(rule.policy)
+    metric_name = ""
+    if metric_id and metric_names is not None:
+        metric_name = metric_names.get(metric_id) or ""
+    plugin = rule.plugin
+    return {
+        "id": rule.id,
+        "name": rule.name,
+        "plugin_id": rule.plugin_id,
+        "plugin_name": plugin.name,
+        "collect_type": plugin.collect_type or rule.policy.collect_type or "",
+        "metric_name": metric_name,
+        "threshold": rule.policy.threshold,
+        "policy_id": rule.policy_id,
+    }
+
+
+def _serialize_group(group, default_id, metric_names=None, plugin_id=None, collect_type=None):
     member_count = getattr(group, "joined_member_count", None)
     if member_count is None:
         member_count = group.memberships.filter(state=PolicyGroupMembership.STATE_MEMBER).count()
     loaded_rules = list(group.rules.select_related("plugin", "policy"))
-    rules = []
-    for rule in loaded_rules:
-        metric_id = PolicyGroupService.metric_id_for_policy(rule.policy)
-        metric_name = ""
-        if metric_id and metric_names is not None:
-            metric_name = metric_names.get(metric_id) or ""
-        rules.append(
-            {
-                "id": rule.id,
-                "name": rule.name,
-                "plugin_id": rule.plugin_id,
-                "plugin_name": rule.plugin.name,
-                "metric_name": metric_name,
-                "threshold": rule.policy.threshold,
-                "policy_id": rule.policy_id,
-            }
-        )
+    visible_rules = PolicyGroupService.filter_rules_for_access(
+        loaded_rules, plugin_id=plugin_id, collect_type=collect_type
+    )
+    rules = [_serialize_rule(rule, metric_names) for rule in visible_rules]
     notice = _group_notice(loaded_rules)
     enable = _group_enable(loaded_rules)
     return {
@@ -108,14 +125,22 @@ def _group_enable(rules):
     return {"enable": flags[0], "enable_uniform": True}
 
 
-def _serialize_groups(groups, default_id):
+def _serialize_groups(groups, default_id, plugin_id=None, collect_type=None):
     policies = [rule.policy for group in groups for rule in group.rules.all()]
     metric_names = PolicyGroupService.metric_names_for_policies(policies)
     data = []
     for group in groups:
         for rule in group.rules.all():
             PolicyGroupService.ensure_scan_task(rule.policy)
-        data.append(_serialize_group(group, default_id, metric_names))
+        data.append(
+            _serialize_group(
+                group,
+                default_id,
+                metric_names,
+                plugin_id=plugin_id,
+                collect_type=collect_type,
+            )
+        )
     return data
 
 
@@ -153,13 +178,22 @@ class PolicyGroupViewSet(viewsets.ViewSet):
         if object_id not in (None, ""):
             pointer = PolicyGroupDefault.objects.filter(organization=organization, monitor_object_id=object_id).first()
             default_id = pointer.policy_group_id if pointer else None
+        plugin_id = _optional_positive_id(request.query_params.get("plugin_id"), "plugin_id")
+        collect_type = str(request.query_params.get("collect_type") or "").strip() or None
         if request.query_params.get("page") not in (None, ""):
             page, page_size = parse_page_params(request.GET, default_page=1, default_page_size=20)
             count = queryset.count()
             start = (page - 1) * page_size
             groups = list(queryset[start : start + page_size])
-            return WebUtils.response_success({"count": count, "items": _serialize_groups(groups, default_id)})
-        return WebUtils.response_success(_serialize_groups(list(queryset), default_id))
+            return WebUtils.response_success(
+                {
+                    "count": count,
+                    "items": _serialize_groups(groups, default_id, plugin_id=plugin_id, collect_type=collect_type),
+                }
+            )
+        return WebUtils.response_success(
+            _serialize_groups(list(queryset), default_id, plugin_id=plugin_id, collect_type=collect_type)
+        )
 
     @action(methods=["post"], detail=False, url_path="create_from_templates")
     @HasPermission("strategy_list-Edit")

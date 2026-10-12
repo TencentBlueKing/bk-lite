@@ -386,6 +386,25 @@ class PolicyGroupService:
         return {row["id"]: row["name"] for row in Metric.objects.filter(id__in=ids).values("id", "name")}
 
     @staticmethod
+    def filter_rules_for_access(rules, *, plugin_id=None, collect_type=None):
+        """接入页只展示当前插件的规则；不传筛选时返回全部，供策略组管理页使用。"""
+        items = list(rules)
+        if plugin_id is not None:
+            return [rule for rule in items if rule.plugin_id == plugin_id]
+        wanted = str(collect_type or "").strip()
+        if not wanted:
+            return items
+        matched = []
+        for rule in items:
+            plugin = getattr(rule, "plugin", None)
+            policy = getattr(rule, "policy", None)
+            plugin_collect = str(getattr(plugin, "collect_type", "") or "").strip()
+            policy_collect = str(getattr(policy, "collect_type", "") or "").strip()
+            if wanted in {plugin_collect, policy_collect}:
+                matched.append(rule)
+        return matched
+
+    @staticmethod
     def copy_group(group, *, name, operator="system"):
         """按当前组内策略整份复制。模板后来的修改，以及模板是否还在，都不参与这次复制。"""
         rules = list(group.rules.select_related("plugin", "source_template", "policy").order_by("id"))

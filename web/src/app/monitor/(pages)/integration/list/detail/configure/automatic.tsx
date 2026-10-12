@@ -34,6 +34,7 @@ import {
   collectionPolicyHabitValue,
   extractCollectInstanceIds,
   isCollectionPolicyUiField,
+  isPolicyGroupRuleApplicable,
   omitCollectionPolicyField,
   parseRememberedPushAlertCenter,
   parseRememberedTemplateKeys,
@@ -273,6 +274,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         name: string;
         plugin_id: number;
         plugin_name: string;
+        collect_type?: string;
         metric_name?: string;
       }>;
     }>
@@ -310,7 +312,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   useEffect(() => {
     if (isLoading || !objectId) return;
     let cancelled = false;
-    getPolicyGroups({ monitor_object_id: objectId })
+    const collectTypeParam = String(currentConfig?.collect_type || '').trim();
+    getPolicyGroups({
+      monitor_object_id: objectId,
+      ...(pluginId ? { plugin_id: pluginId } : {}),
+      ...(collectTypeParam ? { collect_type: collectTypeParam } : {})
+    })
       .then((data) => {
         if (cancelled) return;
         setPolicyGroups(Array.isArray(data) ? data : []);
@@ -319,7 +326,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     return () => {
       cancelled = true;
     };
-  }, [getPolicyGroups, isLoading, objectId]);
+  }, [getPolicyGroups, isLoading, objectId, pluginId, currentConfig?.collect_type]);
 
   useEffect(() => {
     if (!policyGroups.length) return;
@@ -2062,13 +2069,17 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       {policyGroupJoin !== false && policyGroups.some((item) => item.id === policyGroupId) ? (
         <div className="mb-[10px] text-[12px] text-[var(--color-text-3)]">
           {(policyGroups.find((item) => item.id === policyGroupId)?.rules || []).map((rule) => {
-            const otherPlugin = String(rule.plugin_id) !== String(pluginId);
+            const applicable = isPolicyGroupRuleApplicable(
+              rule,
+              pluginId,
+              currentConfig?.collect_type
+            );
             const missingMetric =
-              !otherPlugin &&
+              applicable &&
               Boolean(rule.metric_name) &&
               pluginMetricNames.length > 0 &&
               !pluginMetricNames.includes(rule.metric_name || '');
-            const note = otherPlugin
+            const note = !applicable
               ? ` · ${t(
                 'monitor.integrations.policyGroupNotApplicable',
                 `${rule.plugin_name} 对本次接入不适用`,
@@ -2078,7 +2089,15 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
                 ? ` · ${t('monitor.integrations.policyGroupNoData', '这次没有数据')}`
                 : '';
             return (
-              <div key={`${rule.plugin_id}-${rule.name}`}>
+              <div
+                key={`${rule.plugin_id}-${rule.name}`}
+                aria-disabled={!applicable}
+                className={
+                  applicable
+                    ? undefined
+                    : 'pointer-events-none cursor-not-allowed text-[var(--color-text-4)]'
+                }
+              >
                 {rule.name}
                 {note}
               </div>
