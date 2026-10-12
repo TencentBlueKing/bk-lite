@@ -28,6 +28,7 @@ from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.scheduled_task_authz import ScheduledTaskTeamBoundaryError, validate_scheduled_task_resource_boundary
 from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
+from apps.job_mgmt.services.template_revision import display_revision_label
 from apps.job_mgmt.tasks import distribute_files_task, execute_playbook_task, execute_script_task
 from apps.job_mgmt.utils.i18n import job_message
 from apps.job_mgmt.utils.team_authz import is_team_authorized, normalize_authorized_team_ids
@@ -274,7 +275,7 @@ class ScheduledTaskViewSet(AuthViewSet):
                 enforce_scheduled_team_boundary=True,
                 script=instance.script,
                 playbook=instance.playbook,
-                playbook_version=instance.playbook.version if instance.playbook else "",
+                playbook_version=display_revision_label(instance.playbook) if instance.playbook else "",
                 params=params_str,
                 script_type=script_type,
                 script_content=script_content,

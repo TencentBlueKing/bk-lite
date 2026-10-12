@@ -9,7 +9,9 @@ import {
   LoadingOutlined,
   UploadOutlined
 } from '@ant-design/icons';
+import { useIntl } from 'react-intl';
 import { useTranslation } from '@/utils/i18n';
+import { formatCredentialError } from '@/app/monitor/components/integration/CredentialAccessField';
 import CompactEmptyState from '@/components/compact-empty-state';
 import CustomTable from '@/components/custom-table';
 import { v4 as uuidv4 } from 'uuid';
@@ -204,6 +206,7 @@ interface TableValidationResult {
 const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const [form] = Form.useForm();
   const { t } = useTranslation();
+  const locale = useIntl().locale || 'zh';
   const searchParams = useSearchParams();
   const { get, post, patch, isLoading } = useApiClient();
   const {
@@ -274,6 +277,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         name: string;
         plugin_id: number;
         plugin_name: string;
+        collect_type?: string;
         metric_name?: string;
       }>;
     }>
@@ -311,7 +315,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   useEffect(() => {
     if (isLoading || !objectId) return;
     let cancelled = false;
-    getPolicyGroups({ monitor_object_id: objectId })
+    const collectTypeParam = String(currentConfig?.collect_type || '').trim();
+    getPolicyGroups({
+      monitor_object_id: objectId,
+      ...(pluginId ? { plugin_id: pluginId } : {}),
+      ...(collectTypeParam ? { collect_type: collectTypeParam } : {})
+    })
       .then((data) => {
         if (cancelled) return;
         setPolicyGroups(Array.isArray(data) ? data : []);
@@ -320,7 +329,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     return () => {
       cancelled = true;
     };
-  }, [getPolicyGroups, isLoading, objectId]);
+  }, [getPolicyGroups, isLoading, objectId, pluginId, currentConfig?.collect_type]);
 
   useEffect(() => {
     if (!policyGroups.length) return;
@@ -827,7 +836,17 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (selectedNode?.operating_system && !instance.operating_system) {
       instance.operating_system = selectedNode.operating_system;
     }
-    return applyScriptCollectSubmit(instance, instance.collect_type);
+    const detectInstance = applyScriptCollectSubmit(instance, instance.collect_type);
+    const credentialSource = formValues.credential_source === 'vault' ? 'vault' : 'inline';
+    detectInstance.credential_source = credentialSource;
+    detectInstance.vault_credential_id = credentialSource === 'vault' ? (formValues.vault_credential_id || '') : '';
+    detectInstance.vault_variant = credentialSource === 'vault' ? (formValues.vault_variant || '') : '';
+    Object.keys(detectInstance).forEach((key) => {
+      if (key.startsWith('__credential_')) {
+        delete detectInstance[key];
+      }
+    });
+    return detectInstance;
   };
 
   const ensureCollectFormValid = async () => {
@@ -1815,7 +1834,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         }
         addNodesConfig(params);
       } catch (error: any) {
-        message.error(error?.message || t('common.operationFailed'));
+        message.error(formatCredentialError(error?.message || '', locale) || t('common.operationFailed'));
       }
     });
   };
@@ -1942,7 +1961,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         );
         return;
       }
-      message.error(errorText);
+      message.error(formatCredentialError(errorText, locale) || t('common.operationFailed'));
     } finally {
       saveInFlightRef.current = false;
       setConfirmLoading(false);

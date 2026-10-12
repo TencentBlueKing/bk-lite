@@ -23,4 +23,5 @@ class Credential(MaintainerInfo, TimeInfo):
     )
     group_id = models.PositiveIntegerField(db_index=True)
     disabled = models.BooleanField(default=False)
+    secret_version = models.PositiveIntegerField(default=1)
     fields = models.JSONField(default=dict)

@@ -7,13 +7,16 @@ from apps.job_mgmt.models.playbook import Playbook  # noqa
 from apps.job_mgmt.models.scheduled_task import ScheduledTask  # noqa
 from apps.job_mgmt.models.script import Script  # noqa
 from apps.job_mgmt.models.target import Target, TargetTeamConcurrentUpdateError, TargetTeamMembership  # noqa
+from apps.job_mgmt.models.template_revision import PlaybookRevision, ScriptRevision  # noqa
 
 __all__ = [
     "Target",
     "TargetTeamMembership",
     "TargetTeamConcurrentUpdateError",
     "Script",
+    "ScriptRevision",
     "Playbook",
+    "PlaybookRevision",
     "DangerousRule",
     "DangerousPath",
     "JobCompletionOutbox",

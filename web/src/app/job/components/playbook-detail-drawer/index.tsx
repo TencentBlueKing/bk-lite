@@ -91,7 +91,7 @@ const JobPlaybookDetailDrawer: React.FC<JobPlaybookDetailDrawerProps> = ({
       ...summaryItems,
       { label: t('job.playbookName'), value: playbook.name },
       { label: t('job.playbookDescription'), value: playbook.description || '-' },
-      { label: t('job.currentVersion'), value: playbook.version || '-' },
+      { label: t('job.currentVersion'), value: playbook.current_revision_label || playbook.version || '-' },
       {
         label: t('job.recentUpdateTime'),
         value: formatUpdatedAt ? formatUpdatedAt(playbook.updated_at) : playbook.updated_at || '-',
@@ -191,7 +191,7 @@ const JobPlaybookDetailDrawer: React.FC<JobPlaybookDetailDrawerProps> = ({
         playbook ? (
           <div className="flex items-center gap-3">
             <span>{playbook.name}</span>
-            <VersionBadge value={playbook.version} />
+            <VersionBadge value={playbook.current_revision_label || playbook.version} />
           </div>
         ) : null
       }

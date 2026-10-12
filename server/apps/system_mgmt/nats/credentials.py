@@ -5,11 +5,14 @@ import nats_client
 from apps.system_mgmt.models import Menu, Role
 from apps.system_mgmt.services.credential_service import CredentialServiceError
 from apps.system_mgmt.services.credential_service import create_credential as create_credential_record
-from apps.system_mgmt.services.credential_service import get_credential, page_credentials
+from apps.system_mgmt.services.credential_service import describe_credential as describe_credential_record
+from apps.system_mgmt.services.credential_service import get_credential
+from apps.system_mgmt.services.credential_service import get_credential_versions as get_credential_version_map
+from apps.system_mgmt.services.credential_service import page_credentials
 from apps.system_mgmt.services.credential_service import resolve_credential as resolve_credential_record
 
 from .common import get_user_all_roles
-from .users import _actor_scope_response, _is_persisted_superuser
+from .users import _actor_scope_response, _get_actor_user_scope, _is_persisted_superuser
 
 _CREDENTIAL_APP = "system-manager"
 _CREDENTIAL_ADD = "credential-Add"
@@ -128,3 +131,37 @@ def resolve_credential(actor_context, credential_id):
     except CredentialServiceError as exc:
         return _error_payload(exc)
     return {"result": True, "data": payload}
+
+
+def _version_ids(credential_ids):
+    if not isinstance(credential_ids, list) or not credential_ids or len(credential_ids) > 100:
+        return None
+    if any(not isinstance(item, str) or not item for item in credential_ids):
+        return None
+    return credential_ids
+
+
+@nats_client.register
+def describe_credential(actor_context, credential_id):
+    """Same actor and consume-scope checks as resolve, without decrypting or rejecting disabled credentials."""
+    user_obj, _authorized_groups, error = _get_actor_user_scope(actor_context)
+    if error:
+        return {"result": False, "message": "team_archived"}
+    if not user_obj:
+        return {"result": False, "message": "forbidden"}
+
+    actor = _actor_from_user(user_obj, actor_context)
+    try:
+        payload = describe_credential_record(credential_id, actor["current_team"], actor=actor)
+    except CredentialServiceError as exc:
+        return _error_payload(exc)
+    return {"result": True, "data": payload}
+
+
+@nats_client.register
+def get_credential_versions(credential_ids):
+    """Return secret versions only. Deleted ids are null. No actor."""
+    ids = _version_ids(credential_ids)
+    if ids is None:
+        return {"result": False, "message": "invalid"}
+    return {"result": True, "data": {"versions": get_credential_version_map(ids)}}
