@@ -306,6 +306,20 @@ def is_choice_prompt_text(text: str) -> bool:
     return False
 
 
+def messages_include_terminal_choice(messages: list[Any] | None) -> bool:
+    """本步已经向用户发出选择，外层不应再总结或进入后续步骤。"""
+    for message in messages or []:
+        for call in getattr(message, "tool_calls", None) or []:
+            name = call.get("name") if isinstance(call, dict) else getattr(call, "name", "")
+            if str(name or "") == "request_user_choice":
+                return True
+        if str(getattr(message, "name", "") or "") == "request_user_choice":
+            return True
+        if is_choice_prompt_text(str(getattr(message, "content", "") or "")):
+            return True
+    return False
+
+
 def is_answer_after_choice_prompt(messages: list[Any] | None) -> bool:
     """上一条助手是提问文本，本条用户消息是回答。"""
     items = list(messages or [])

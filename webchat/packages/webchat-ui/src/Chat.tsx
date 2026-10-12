@@ -22,6 +22,7 @@ import {
   type LlmContextUsage,
 } from '@webchat/core';
 import { AGUIHandler, AGUIEvent, type CustomProtocolEvent } from './agui';
+import type { WebchatChoiceValue } from './choiceDisplay';
 import type { ChatProps } from './chatProps';
 import { createAGUIEventHandler, shouldShowAnalyzingIndicator, shouldShowTypingPlaceholder } from './aguiEventHandler';
 import { parseLegacyMessage } from './legacyMessage';
@@ -153,6 +154,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const streamingContentRef = useRef<string>('');
   const currentMessageIdRef = useRef<string | null>(null);
+  const choiceMessageIdRef = useRef<string | null>(null);
   const plannedStateRef = useRef(createPlannedExecutionState());
   const streamingTextBatchingRef = useRef(streamingTextBatching);
   streamingTextBatchingRef.current = streamingTextBatching;
@@ -373,6 +375,15 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
       return;
     }
     if (isBlockingHitlEvent(event)) {
+      if (event.name === 'user_choice_request' && event.value && typeof event.value === 'object') {
+        const messageId = currentMessageIdRef.current;
+        choiceMessageIdRef.current = messageId;
+        setMessages((prev) => prev.map((message) => (
+          message.id === messageId
+            ? { ...message, metadata: { ...message.metadata, userChoice: event.value } }
+            : message
+        )));
+      }
       setHitlEvent(event);
       return;
     }
@@ -631,6 +642,23 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     };
 
     addMessage(userMsg);
+    if (hitlEvent?.name === 'user_choice_request' && hitlEvent.value && typeof hitlEvent.value === 'object') {
+      const choice = hitlEvent.value as WebchatChoiceValue;
+      const answer = value.trim();
+      const matched = choice.options?.find((option) => option.label === answer || option.key === answer);
+      const messageId = choiceMessageIdRef.current;
+      setMessages((prev) => prev.map((message) => (
+        message.id === messageId
+          ? {
+              ...message,
+              metadata: {
+                ...message.metadata,
+                userChoice: { ...choice, answered: true, selected: matched?.key },
+              },
+            }
+          : message
+      )));
+    }
     setInputValue('');
     setHitlEvent(null);
     cancelPendingImageBatches();

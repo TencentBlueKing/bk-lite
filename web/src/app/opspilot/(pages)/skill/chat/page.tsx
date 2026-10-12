@@ -6,7 +6,6 @@ import { Button, Dropdown, List, Popconfirm, Skeleton, Tag } from 'antd';
 import type { MenuProps } from 'antd';
 import CustomChatSSE from '@/app/opspilot/components/custom-chat-sse';
 import { processHistoryMessageWithExtras } from '@/app/opspilot/components/custom-chat-sse/historyMessageProcessor';
-import { applyAnsweredUserChoices } from '@/app/opspilot/components/custom-chat-sse/userChoiceOptions';
 import { parseLlmContextUsage, type LlmContextUsage } from '@/app/opspilot/components/custom-chat-sse/llmContextUsage';
 import Icon from '@/components/icon';
 import { useSkillApi } from '@/app/opspilot/api/skill';
@@ -212,7 +211,7 @@ const SkillWebChatPage: React.FC = () => {
     setOpeningSessionId(id);
     try {
       const payload = await fetchSkillSessionMessages(id);
-      const messages = applyAnsweredUserChoices((payload.messages || []).map((row: any) => {
+      const messages = (payload.messages || []).map((row: any) => {
         const role = row.conversation_role === 'user' ? 'user' : 'bot';
         const processed = processHistoryMessageWithExtras(row.conversation_content, role);
         return {
@@ -236,7 +235,7 @@ const SkillWebChatPage: React.FC = () => {
           reportFileDownloads: processed.reportFileDownloads,
           attachments: Array.isArray(row.attachments) ? row.attachments : [],
         };
-      }));
+      });
       mountChat({
         id,
         initialMessages: messages,

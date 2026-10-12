@@ -429,7 +429,9 @@ def test_deployment_configuration_analysis_reports_operational_risks(
         "使用latest标签",
         "可能以root用户运行",
     }
-    assert analysis._take_cached_k8s_analysis_details("exec-analysis-1")
+    from apps.opspilot.utils.pending_question import take_k8s_analysis_details
+
+    assert take_k8s_analysis_details("exec-analysis-1")
 
 
 @pytest.mark.parametrize(

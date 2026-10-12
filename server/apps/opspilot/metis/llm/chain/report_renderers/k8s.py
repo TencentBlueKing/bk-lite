@@ -590,36 +590,17 @@ def find_pending_k8s_analysis_choice(messages: list[BaseMessage]) -> dict[str, A
 
 
 def find_completed_k8s_analysis_choice(
-    messages: list[BaseMessage],
+    messages: list[BaseMessage] | None = None,
+    pending: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], str] | None:
-    """查找“分析和用户选择已完成，但修复报告尚未生成”的状态。"""
-    latest_analysis: dict[str, Any] | None = None
-    completed_choice = ""
-
-    for message in messages:
-        message_type = getattr(message, "type", "")
-        message_name = getattr(message, "name", "")
-        if message_type == "tool" and message_name == "analyze_deployment_configurations":
-            content = getattr(message, "content", "")
-            try:
-                parsed = json.loads(content) if isinstance(content, str) else content
-            except Exception:
-                continue
-            if isinstance(parsed, dict) and parsed.get("issues_detail"):
-                latest_analysis = parsed
-                completed_choice = ""
-            continue
-
-        if latest_analysis is None:
-            continue
-        if message_type == "tool" and message_name == "generate_repair_report":
-            return None
-        if message_type == "tool" and message_name == "request_user_choice":
-            completed_choice = str(getattr(message, "content", "") or "").strip()
-
-    if latest_analysis is None or not completed_choice:
+    """下一轮续接标记里已经选定修复展示方式时返回分析明细。"""
+    del messages
+    if not isinstance(pending, dict) or pending.get("kind") != "k8s_repair_mode":
         return None
-    return latest_analysis, completed_choice
+    analysis = pending.get("k8s_analysis")
+    if not isinstance(analysis, dict) or not analysis:
+        return None
+    return analysis, str(pending.get("question_text") or "")
 
 
 # ---------------------------------------------------------------------------

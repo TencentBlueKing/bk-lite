@@ -17,7 +17,7 @@ import PlannedExecutionStatus, { isActivePlannedExecutionStatus } from './Planne
 import WikiCitations from './WikiCitations';
 import ApprovalCard from './ApprovalCard';
 import UserChoiceCard from './UserChoiceCard';
-import { applyAnsweredUserChoices } from './userChoiceOptions';
+import { applyAnsweredUserChoices, stripChoicePromptFromContent } from './userChoiceOptions';
 import DiffReportCard from './DiffReportCard';
 import ConfigAnalysisReportCard from './ConfigAnalysisReportCard';
 import ReportDownloadCard from './ReportDownloadCard';
@@ -708,6 +708,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     const isAwaitingAssistant = Boolean(isStreamingTools) && allToolsFinished && !(content || '').trim() && !isThinking;
 
     let replacedContent = parseReferenceLinks(stripPlannedExecutionDumps(content || ''));
+    replacedContent = stripChoicePromptFromContent(replacedContent, userChoiceRequests);
     replacedContent = parseSuggestionLinks(replacedContent);
     replacedContent = rewriteAttachmentDownloadMentions(replacedContent, reportFileDownloads);
 

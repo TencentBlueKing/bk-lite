@@ -5,19 +5,15 @@ import time
 import uuid
 from typing import Literal
 
-from langchain_core.callbacks import adispatch_custom_event, dispatch_custom_event
+from langchain_core.callbacks import dispatch_custom_event
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field as PydanticField
 
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.metis.llm.chain.k8s_report_tools import build_a2ui_report_contract
-from apps.opspilot.metis.llm.chain.nested_stream import publish_owned_custom_event
-from apps.opspilot.metis.llm.tools.common.user_choice_guard import validate_user_choice_options
-from apps.opspilot.metis.llm.tools.kubernetes.user_choice_guard import build_kubernetes_cluster_choice_guard
+from apps.opspilot.metis.llm.middleware.terminal_user_choice import finalize_user_choice, guard_rejection
 from apps.opspilot.services.approval import wait_for_approval
-from apps.opspilot.utils.user_choice import wait_for_choice
 
 
 class ApprovalToolsMixin:
@@ -109,146 +105,24 @@ class ApprovalToolsMixin:
                 configurable = dict(config.get("configurable") or {})
             if not configurable:
                 configurable = dict(getattr(_ask_user, "_configurable", {}) or {})
-            guard = build_kubernetes_cluster_choice_guard(
-                question=question,
-                options=options,
-                configurable=configurable,
+            rejection = guard_rejection(
+                {"name": "request_user_choice", "args": {"question": question, "question_type": question_type, "options": options}},
+                configurable,
             )
-            guard_message = validate_user_choice_options(
+            if rejection:
+                logger.warning("[choice_tool] 已阻止不可信的用户选择请求: %s", rejection)
+                return rejection
+
+            # middleware 已在 after_model 结束本轮时不会走到这里。直接调用时同样发出即结束。
+            question_text, _tool_message = finalize_user_choice(
+                question=question,
                 question_type=question_type,
                 options=options,
-                guard=guard,
+                config=config if isinstance(config, dict) else {"configurable": configurable},
+                messages=[],
+                tool_call_id=str(uuid.uuid4()),
             )
-            if guard_message:
-                logger.warning("[choice_tool] 已阻止不可信的用户选择请求: %s", guard_message)
-                return guard_message
-
-            choice_id = str(uuid.uuid4())[:8]
-            execution_id = (
-                str(configurable.get("execution_id") or "").strip() or getattr(_ask_user, "_execution_id", "") or str(int(time.time() * 1000))
-            )
-            node_id = str(configurable.get("node_id") or "").strip() or getattr(_ask_user, "_node_id", "") or "skill_test"
-
-            # Convert to internal options format based on question_type
-            if question_type == "confirm":
-                options_data = [
-                    {"key": "yes", "label": "是", "description": "", "recommended": False},
-                    {"key": "no", "label": "否", "description": "", "recommended": False},
-                ]
-                multiple = False
-            elif question_type == "text":
-                # Text mode: no predefined options, user types freely
-                options_data = []
-                multiple = False
-            else:
-                # single_select / multi_select
-                options_data = [{"key": opt, "label": opt, "description": "", "recommended": False} for opt in (options or [])]
-                multiple = question_type == "multi_select"
-
-            effective_min_select = 1 if not multiple else 1
-            effective_max_select = 1 if not multiple else len(options_data)
-            default_keys = [options_data[0]["key"]] if options_data else []
-
-            choice_request_data = {
-                "execution_id": execution_id,
-                "node_id": node_id,
-                "choice_id": choice_id,
-                "a2ui": build_a2ui_report_contract(
-                    component="user-choice",
-                    event_name="user_choice_request",
-                    actions=[{"key": "submit_choice", "label": "提交选择"}],
-                ),
-                "title": question,
-                "description": "",
-                "options": options_data,
-                "multiple": multiple,
-                "min_select": effective_min_select,
-                "max_select": effective_max_select,
-                "timeout_seconds": 120,
-                "default_keys": default_keys,
-                "display_hint": "text" if question_type == "text" else "auto",
-            }
-
-            published = publish_owned_custom_event(config, "user_choice_request", choice_request_data)
-            if not published:
-                try:
-                    await adispatch_custom_event("user_choice_request", choice_request_data, config=config)
-                    published = True
-                except Exception:
-                    try:
-                        dispatch_custom_event("user_choice_request", choice_request_data, config=config)
-                        published = True
-                    except Exception:
-                        published = False
-            if published:
-                logger.info("[choice_tool] 提问已发射: question=%s, type=%s, id=%s", question[:50], question_type, choice_id)
-            else:
-                logger.warning("[choice_tool] 提问未送达前端: question=%s, type=%s, id=%s", question[:50], question_type, choice_id)
-
-            # QA batch only: OPSPILOT_QA_AUTO_CHOICE=1 resolves HITL with defaults (prefer Host).
-            import os as _os_qa
-
-            _qa_auto = _os_qa.getenv("OPSPILOT_QA_AUTO_CHOICE", "").strip().lower() in {"1", "true", "yes"}
-            _wait_trigger = "interactive"
-            if _qa_auto:
-                _wait_trigger = "unattended"
-                for _o in options_data:
-                    _k = str(_o.get("key") or "").strip()
-                    _kl = _k.lower()
-                    if _kl in {"host", "主机"} or "host" in _kl:
-                        default_keys = [_k]
-                        break
-                logger.info(
-                    "[choice_tool] QA_AUTO_CHOICE unattended default_keys=%s options=%s",
-                    default_keys,
-                    [o.get("key") for o in options_data],
-                )
-
-            result = await wait_for_choice(
-                execution_id=execution_id,
-                node_id=node_id,
-                choice_id=choice_id,
-                options=options_data,
-                default_keys=default_keys,
-                timeout_seconds=120,
-                poll_interval=1.0,
-                trigger_type=_wait_trigger,
-            )
-
-            selected = result["selected"]
-            source = result["source"]
-
-            # Dispatch result event to notify frontend
-            result_payload = {
-                "execution_id": execution_id,
-                "node_id": node_id,
-                "choice_id": choice_id,
-                "selected": selected,
-                "source": source,
-            }
-            if not publish_owned_custom_event(config, "user_choice_result", result_payload):
-                try:
-                    await adispatch_custom_event("user_choice_result", result_payload, config=config)
-                except Exception:
-                    try:
-                        dispatch_custom_event("user_choice_result", result_payload, config=config)
-                    except Exception:
-                        pass
-
-            # Build response text for LLM
-            if question_type == "text":
-                # For text mode, selected[0] is the raw user input
-                answer_text = selected[0] if selected else ""
-            elif question_type == "confirm":
-                answer_text = "是" if "yes" in selected else "否"
-            else:
-                # single/multi select - selected keys ARE the labels
-                answer_text = ", ".join(selected)
-
-            if source == "user":
-                return f"用户回答: {answer_text}。请根据用户的回答继续执行下一步操作，不要停止。"
-            else:
-                return f"用户未在规定时间内回答，已使用默认选项: {answer_text}。请根据默认值继续操作。"
+            return question_text
 
         choice_tool = StructuredTool.from_function(
             coroutine=_ask_user,
@@ -278,7 +152,8 @@ class ApprovalToolsMixin:
                 "- multi_select: N选若干\n"
                 "- confirm: 是/否（options 设为 None）\n"
                 "- text: 开放式输入（options 设为 None）\n\n"
-                "question 必须是完整问句，脱离上下文也能看懂。选项必须来自实际查询结果，不得编造。"
+                "question 必须是完整问句，脱离上下文也能看懂。选项必须来自实际查询结果，不得编造。\n"
+                "调用后本轮对话结束，用户回答后你会在新一轮带着已有结果继续。不要在同一轮等待结果。"
             ),
             args_schema=AskUserInput,
         )

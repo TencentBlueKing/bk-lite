@@ -33,7 +33,7 @@ from apps.opspilot.utils.bot_utils import insert_skill_log
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 from apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils import EnterpriseWechatAibotChatFlowUtils
 from apps.opspilot.utils.execution_interrupt import request_interrupt
-from apps.opspilot.utils.pending_hitl import try_deliver_to_pending
+from apps.opspilot.utils.pending_question import consume_pending_question, resolve_conversation_key
 from apps.opspilot.utils.sse_chat import create_error_stream_response, generate_stream_error, stream_chat
 from apps.opspilot.utils.wechat_chat_flow_utils import WechatChatFlowUtils
 from apps.rpc.system_mgmt import SystemMgmt
@@ -468,25 +468,18 @@ async def execute_chat_flow(request, bot_id, node_id):  # pragma: no cover
         return JsonResponse({"result": False, "message": loader.get("error.chat_flow_config_empty", "Chat flow configuration is empty.")})
 
     try:
-        # 会话级 pending 拦截：若该 (bot, session) 当前有正在等待用户输入的智能体节点，
-        # 则把本条对话框消息当作答案直接投递回该节点（在原流续跑），不新建执行——
-        # 否则消息会从工作流入口重跑，回复跑回第一个智能体而非正在等待的那个。
-        if not is_test and session_id and message:
-            # NATS 暴露会话参与者授权：当前用户必须为 BotWebChatSession 干系人之一
+        # 续接上一轮终止式提问：读后即删，并把提问节点与证据交给本轮执行。
+        conversation_key = resolve_conversation_key(bot_id=bot_id, session_id=session_id)
+        pending_question = None
+        if conversation_key:
+            pending_question = await sync_to_async(consume_pending_question, thread_sensitive=False)(conversation_key)
+        if session_id and not is_test:
             web_session = await sync_to_async(
                 BotWebChatSession.objects.filter(session_id=session_id).first,
                 thread_sensitive=False,
             )()
             if web_session is not None and not web_session.is_participant(user):
                 return JsonResponse({"result": False, "message": loader.get("error.session_not_participant", "当前用户不在该会话的干系人列表中")}, status=403)
-
-            delivered = await sync_to_async(try_deliver_to_pending, thread_sensitive=False)(bot_id, session_id, message)
-            if delivered:
-                logger.info(
-                    f"[ChatFlow] 消息已投递给待回答节点，跳过新建执行 - bot_id: {bot_id}, session_id: {session_id}, "
-                    f"execution_id: {delivered.get('execution_id')}, node_id: {delivered.get('node_id')}"
-                )
-                return JsonResponse({"result": True, "data": delivered})
 
         # 创建ChatFlow引擎 - 使用数据库中的工作流配置
         engine = create_chat_flow_engine(bot_chat_flow, node_id)
@@ -503,11 +496,14 @@ async def execute_chat_flow(request, bot_id, node_id):  # pragma: no cover
             "bot_id": bot_id,
             "node_id": node_id,
             "session_id": session_id,
+            "conversation_key": conversation_key,
             "execution_id": engine.execution_id,
             "locale": getattr(user, "locale", "en"),  # 用户语言设置，用于 browser-use 输出国际化
             "user_timezone": getattr(user, "timezone", "") or "",
             CALLER_IDENTITY_CONFIG_KEY: caller_snapshot,
         }
+        if isinstance(pending_question, dict):
+            input_data["pending_question"] = pending_question
 
         logger.info(f"开始执行ChatFlow流程，bot_id: {bot_id}, node_id: {node_id}, user: {user.username}, node_type: {node_type}")
 

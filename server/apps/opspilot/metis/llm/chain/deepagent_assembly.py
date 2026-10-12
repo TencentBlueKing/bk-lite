@@ -21,6 +21,8 @@ _LIGHTWEIGHT_NON_BUSINESS_TOOL_NAMES = frozenset({"request_user_choice", "genera
 
 # 步间摘要上限；正文 + 结构化关键字段共享，优先保住关键字段。
 _STEP_SUMMARY_MAX_CHARS = 1200
+_STRUCTURED_RESULT_MARK = "【本步已取得的结构化结果"
+_STRUCTURED_CARRY_MAX_CHARS = 8000
 
 # 只有这些工具的结果会产出后续步要复用的结构化字段，避免把无关工具的 id 当成 instance_id。
 _MONITOR_OBJECT_TOOLS = frozenset({"monitor_list_objects"})
@@ -222,13 +224,31 @@ class DeepAgentAssemblyMixin:
 
     @classmethod
     def _join_step_summary(cls, summary: str, carry_over: str) -> str:
-        """摘要正文 + 结构化关键字段，总长受控且不重复拼接。"""
-        body = (summary or "").strip()
+        """正文单独截断，结构化字段另计额度，避免 ID 被正文挤掉。"""
+        body = (summary or "").strip()[:_STEP_SUMMARY_MAX_CHARS]
         if not carry_over:
             return body
+        facts = carry_over
+        if len(facts) > _STRUCTURED_CARRY_MAX_CHARS:
+            facts = facts[:_STRUCTURED_CARRY_MAX_CHARS] + "\n…结构化结果已截断"
         if not body:
-            return carry_over
-        return f"{body}\n{carry_over}"[:_STEP_SUMMARY_MAX_CHARS]
+            return facts
+        return f"{body}\n{facts}"
+
+    @classmethod
+    def _published_step_result(cls, result: str) -> str:
+        """交给下一步的步骤结果：正文保持短，结构化清单完整保留。"""
+        text = str(result or "")
+        mark_at = text.find(_STRUCTURED_RESULT_MARK)
+        if mark_at < 0:
+            return text[:400]
+        prose = text[:mark_at].strip()[:400]
+        facts = text[mark_at:]
+        if len(facts) > _STRUCTURED_CARRY_MAX_CHARS:
+            facts = facts[:_STRUCTURED_CARRY_MAX_CHARS] + "\n…结构化结果已截断"
+        if not prose:
+            return facts
+        return f"{prose}\n{facts}"
 
     @classmethod
     def _step_structured_carry_over(cls, messages) -> str:
@@ -564,6 +584,8 @@ class DeepAgentAssemblyMixin:
             "用户问 CPU/内存/磁盘时先 list_object_metrics(keyword=用户词) 筛选再查，禁止猜测 cpu.util，列表非空不要让用户手填指标名。"
             "monitor_query_metric_data 的 instance_ids 必须原样复制 list_object_instances 返回记录的 instance_id 字段，"
             "禁止用 name、IP、id、cmdb_id，禁止用 CMDB 的 inst_id、inst_uuid、_id，禁止传负数。"
+            "问全部实例的趋势、未来一段时间会不会超阈值时，用 monitor_summarize_metric_trend，"
+            "它用完整历史算出汇总行；instance_ids 留空表示该对象全部已授权实例，禁止抽样查原始时序。"
             "monitor_query_metric_data 返回空矩阵/无时序是有效结论，禁止改 instance_ids、IP、dimensions、时间窗或 metric 重试。"
             "问「最近 N 分钟哪些主机使用率高/Top N」时用 monitor_get_host_resource_top_by_time，"
             "窗口传 lookback_minutes，返回自带 rank；返回的 host_count/台数即全量台数，"
@@ -600,6 +622,7 @@ class DeepAgentAssemblyMixin:
     def _build_legacy_deep_agent_middleware(self, token_usage_accumulator, graph_request) -> list:
         from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
         from apps.opspilot.metis.llm.middleware.context_window import ContextWindowMiddleware
+        from apps.opspilot.metis.llm.middleware.terminal_user_choice import TerminalUserChoiceMiddleware
         from apps.opspilot.metis.llm.middleware.token_usage import TokenUsageTrackingMiddleware
         from apps.opspilot.metis.llm.middleware.tool_runtime import ToolTimeoutMiddleware
 
@@ -607,6 +630,7 @@ class DeepAgentAssemblyMixin:
         legacy_middleware = [
             ToolTimeoutMiddleware(),
             ContextWindowMiddleware(graph_request=graph_request, isolated_llm=isolated_llm),
+            TerminalUserChoiceMiddleware(),
         ]
         if isinstance(token_usage_accumulator, TokenUsageAccumulator):
             legacy_middleware.append(TokenUsageTrackingMiddleware(token_usage_accumulator))
@@ -652,6 +676,7 @@ class DeepAgentAssemblyMixin:
             resolve_planned_execution_soft_budget_ratio,
             resolve_planned_execution_token_budget,
         )
+        from apps.opspilot.metis.llm.middleware.terminal_user_choice import TerminalUserChoiceMiddleware
         from apps.opspilot.metis.llm.middleware.token_usage import TokenUsageTrackingMiddleware
         from apps.opspilot.metis.llm.middleware.tool_runtime import (
             SkillExecutionGuardMiddleware,
@@ -687,6 +712,7 @@ class DeepAgentAssemblyMixin:
             ToolResultCompactionMiddleware(max_tool_chars=max_tool_chars, max_ai_chars=max_ai_chars),
             ContextWindowMiddleware(graph_request=graph_request, isolated_llm=isolated_llm),
             limit_middleware,
+            TerminalUserChoiceMiddleware(),
         ]
         if isinstance(token_usage_accumulator, TokenUsageAccumulator):
             runtime_middleware.append(TokenUsageTrackingMiddleware(token_usage_accumulator))

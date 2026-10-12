@@ -93,6 +93,29 @@ export const DropdownMode: Story = {
   },
 };
 
+export const Answered: Story = {
+  args: {
+    token: 'mock-token',
+    onSubmit: () => {},
+    request: {
+      ...baseRequest,
+      choice_id: 'choice-answered',
+      title: 'Choose a repair strategy',
+      status: 'submitted',
+      selected: ['by_category'],
+      options: [
+        { key: 'full_fix', label: 'Full Fix', description: 'Patch all issues in one go.' },
+        { key: 'by_category', label: 'By Category', description: 'Fix security, probes, and resources separately.' },
+      ],
+      multiple: false,
+      min_select: 1,
+      max_select: 1,
+      default_keys: [],
+      display_hint: 'buttons' as const,
+    },
+  },
+};
+
 export const TextMode: Story = {
   args: {
     token: 'mock-token',

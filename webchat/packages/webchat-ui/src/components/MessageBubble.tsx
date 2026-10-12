@@ -12,6 +12,7 @@ import { PlannedExecutionPanel } from './PlannedExecutionPanel';
 import { foldUnassignedTools, type PlannedExecutionStepData } from '../plannedExecution';
 import { attachmentDownloadsFromToolCalls } from '../sessionFiles';
 import { ThinkingPanel } from './ThinkingPanel';
+import { stripWebchatChoiceDump, type WebchatChoiceValue } from '../choiceDisplay';
 import { WC } from '../chrome';
 import { useTranslator } from '../useTranslator';
 
@@ -145,6 +146,52 @@ const CodeBlock = ({ inline, className, children, style, ...props }: CodeBlockPr
   );
 };
 
+function AnsweredChoice({ value }: { value: WebchatChoiceValue }) {
+  const options = value.options || [];
+  const selected = value.selected;
+  if (options.length > 8) {
+    return (
+      <div className="max-w-[380px] rounded-xl border border-[var(--color-border-1,#edeff3)] bg-white px-4 py-3.5">
+        {value.title ? <div className="mb-2.5 text-[13px] font-semibold">{value.title}</div> : null}
+        <select
+          className="h-8 w-full rounded-lg px-2 text-xs"
+          disabled
+          value={selected || ''}
+          onChange={() => undefined}
+        >
+          <option value="">{selected || ''}</option>
+          {options.map((option) => (
+            <option key={option.key} value={option.key}>{option.label || option.key}</option>
+          ))}
+        </select>
+      </div>
+    );
+  }
+  return (
+    <div className="max-w-[380px] rounded-xl border border-[var(--color-border-1,#edeff3)] bg-white px-4 py-3.5">
+      {value.title ? <div className="mb-2.5 text-[13px] font-semibold">{value.title}</div> : null}
+      <div className="flex flex-col gap-1.5">
+        {options.map((option) => {
+          const active = option.key === selected || option.label === selected;
+          return (
+            <div
+              key={option.key}
+              className="rounded-lg px-3.5 py-2 text-[13px]"
+              style={{
+                border: active ? '1.5px solid var(--color-primary,#155AEF)' : '1px solid var(--color-border-1,#edeff3)',
+                background: active ? 'var(--color-primary-bg,#e8f3ff)' : '#fff',
+                opacity: active ? 1 : 0.55,
+              }}
+            >
+              {option.label || option.key}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
   ({ message, isLastBotMessage, fillWidth, onRegenerate, onCopy, onDelete, loadAttachment }) => {
     const t = useTranslator();
@@ -248,6 +295,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       );
     };
 
+    const choiceValue = message.metadata?.userChoice as WebchatChoiceValue | undefined;
+    const visibleText = (source: string) => stripWebchatChoiceDump(source, choiceValue);
     const columnClass = isBot
       ? 'min-w-0 flex-1'
       : fillWidth
@@ -299,7 +348,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
         {groupedChunks.length > 0
           ? groupedChunks.map((chunk, index) => {
               if (chunk.type === 'text') {
-                return renderBotAnswer(renderMarkdown(chunk.content), `text-${index}`);
+                return renderBotAnswer(renderMarkdown(visibleText(chunk.content)), `text-${index}`);
               }
               if (chunk.type === 'toolCalls') {
                 const visible = plannedSteps.length > 0
@@ -311,9 +360,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
               return null;
             })
           : hasContent
-            ? renderBotAnswer(renderMarkdown(message.content as string))
+            ? renderBotAnswer(renderMarkdown(visibleText(message.content as string)))
             : null}
         <AttachmentDownloadCards files={downloads} />
+        {choiceValue?.answered ? <AnsweredChoice value={choiceValue} /> : null}
       </div>
     );
 

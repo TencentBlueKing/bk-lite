@@ -30,7 +30,14 @@ def test_classify_llm_error_detects_api_connection_error_by_type_name():
     assert result["unreachable"] is True
 
 
-def test_classify_llm_error_detects_timeout():
+def test_classify_llm_error_detects_provider_503():
+    class InternalServerError(Exception):
+        status_code = 503
+
+    result = classify_llm_error(InternalServerError("Error code: 503"))
+    assert result["code"] == LLM_ERROR_UNREACHABLE
+    assert result["status_code"] == 503
+    assert "无法连接" in result["user_message"]
     result = classify_llm_error(TimeoutError("Request timed out after 300s"))
     assert result["code"] == LLM_ERROR_TIMEOUT
     assert result["unreachable"] is False

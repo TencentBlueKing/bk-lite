@@ -768,7 +768,6 @@ class TestPublishedWebSkillApis:
             patch.object(opspilot_views, "extract_api_token", return_value="tok"),
             patch.object(opspilot_views.WorkFlowTaskResult.objects, "filter", return_value=qs_mock),
             patch("apps.opspilot.services.approval.submit_approval_decision") as submit_approval,
-            patch("apps.opspilot.utils.user_choice.submit_user_choice") as submit_choice,
             patch.object(opspilot_views, "request_interrupt") as interrupt,
         ):
             approval_req = factory.post(
@@ -779,15 +778,6 @@ class TestPublishedWebSkillApis:
             approval_resp = opspilot_views.submit_approval(approval_req)
             assert approval_resp.status_code == 200
             submit_approval.assert_called_once()
-
-            choice_req = factory.post(
-                "/bot_mgmt/submit_choice/",
-                {"execution_id": "exec-skill", "node_id": "skill_test", "choice_id": "c1", "selected": ["opt1"]},
-                format="json",
-            )
-            choice_resp = opspilot_views.submit_choice(choice_req)
-            assert choice_resp.status_code == 200
-            submit_choice.assert_called_once()
 
             interrupt_req = factory.post(
                 "/bot_mgmt/interrupt_chat_flow_execution/",
