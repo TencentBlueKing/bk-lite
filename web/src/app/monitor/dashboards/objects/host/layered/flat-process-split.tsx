@@ -20,8 +20,7 @@ export default function FlatProcessSplit({
   loading,
   selectedKey,
   onSelect,
-  metrics,
-  metricsLoading = false
+  metrics
 }: {
   rows: EntityTableRow[];
   loading: boolean;
@@ -62,20 +61,25 @@ export default function FlatProcessSplit({
     return next;
   }, [loading, sorted]);
 
-  const trendSettled = Boolean(
-    metrics && (
-      Object.prototype.hasOwnProperty.call(metrics, 'cpu_usage_user_total')
-      || Object.prototype.hasOwnProperty.call(metrics, 'processes_running')
-      || Object.prototype.hasOwnProperty.call(metrics, 'processes_blocked')
-    )
-  );
-  const statusPending = !trendSettled && (metricsLoading || Object.keys(metrics || {}).length > 0);
+  const sumRows = (key: string) => {
+    let total = 0;
+    let seen = false;
+    sorted.forEach((row) => {
+      const value = numberOrNull(row.values[key]);
+      if (value == null) return;
+      total += value;
+      seen = true;
+    });
+    return seen ? total : null;
+  };
   const statusItems = processStatusView({
     blocked: latestNumber(metrics?.processes_blocked),
     zombies: latestNumber(metrics?.processes_zombies),
     running: latestNumber(metrics?.processes_running),
-    sleeping: latestNumber(metrics?.processes_sleeping)
-  }, statusPending);
+    sleeping: latestNumber(metrics?.processes_sleeping),
+    threads: loading ? null : sumRows('process_num_threads'),
+    fds: loading ? null : sumRows('process_num_fds')
+  });
 
   return (
     <>

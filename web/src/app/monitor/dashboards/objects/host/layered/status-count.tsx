@@ -19,6 +19,10 @@ export interface ProcessStatusCounts {
   zombies: number | null;
   running: number | null;
   sleeping: number | null;
+  /** 进程表 procstat 线程数合计。 */
+  threads: number | null;
+  /** 进程表 procstat 打开文件数合计。 */
+  fds: number | null;
 }
 
 const TONE_CLASS: Record<ProcessStatusTone, string> = {
@@ -55,46 +59,27 @@ const neutralItem = (key: string, label: string, value: number | null): StatusCo
 });
 
 /**
- * 有读数的状态各出一张窄卡。四项都齐时补进程总数（四项之和）。
- * 采集侧没有单独的总数序列；运行中/休眠都没有时只留阻塞/僵尸。
+ * 固定七张卡铺满一行。进程总数是运行中/休眠/阻塞/僵尸之和；
+ * 线程、句柄来自进程表合计。缺读数留在原位显示 --，不把行收成两张宽卡。
  */
-export const processStatusView = (
-  counts: ProcessStatusCounts,
-  pending: boolean
-): StatusCountItem[] => {
+export const processStatusView = (counts: ProcessStatusCounts): StatusCountItem[] => {
   const blocked = roundCount(counts.blocked);
   const zombies = roundCount(counts.zombies);
   const running = roundCount(counts.running);
   const sleeping = roundCount(counts.sleeping);
   const states = [running, sleeping, blocked, zombies];
-  const allReady = states.every((value) => value != null);
-  if (pending) {
-    const total = allReady
-      ? (running as number) + (sleeping as number) + (blocked as number) + (zombies as number)
-      : null;
-    return [
-      neutralItem('running', '运行中', running),
-      neutralItem('sleeping', '休眠', sleeping),
-      semanticItem('blocked', '阻塞', blocked, true),
-      semanticItem('zombies', '僵尸', zombies, true),
-      neutralItem('total', '进程总数', total)
-    ].filter((item): item is StatusCountItem => item != null);
-  }
-  const items: StatusCountItem[] = [];
-  if (running != null) items.push(neutralItem('running', '运行中', running));
-  if (sleeping != null) items.push(neutralItem('sleeping', '休眠', sleeping));
-  const blockedItem = semanticItem('blocked', '阻塞', blocked, false);
-  const zombiesItem = semanticItem('zombies', '僵尸', zombies, false);
-  if (blockedItem) items.push(blockedItem);
-  if (zombiesItem) items.push(zombiesItem);
-  if (allReady) {
-    items.push(neutralItem(
-      'total',
-      '进程总数',
-      (running as number) + (sleeping as number) + (blocked as number) + (zombies as number)
-    ));
-  }
-  return items;
+  const total = states.every((value) => value != null)
+    ? (running as number) + (sleeping as number) + (blocked as number) + (zombies as number)
+    : null;
+  return [
+    neutralItem('running', '运行中', running),
+    neutralItem('sleeping', '休眠', sleeping),
+    semanticItem('blocked', '阻塞', blocked, true),
+    semanticItem('zombies', '僵尸', zombies, true),
+    neutralItem('total', '进程总数', total),
+    neutralItem('threads', '线程', roundCount(counts.threads)),
+    neutralItem('fds', '句柄', roundCount(counts.fds))
+  ].filter((item): item is StatusCountItem => item != null);
 };
 
 /** 进程状态：标签在上，整数 +「个」，左侧色条。不画涨跌箭头。 */
