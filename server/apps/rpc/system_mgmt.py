@@ -119,6 +119,12 @@ class SystemMgmt(object):
     def resolve_credential(self, actor_context, credential_id):
         return self.client.run("resolve_credential", actor_context=actor_context, credential_id=credential_id)
 
+    def describe_credential(self, actor_context, credential_id):
+        return self.client.run("describe_credential", actor_context=actor_context, credential_id=credential_id)
+
+    def get_credential_versions(self, credential_ids):
+        return self.client.run("get_credential_versions", credential_ids=credential_ids)
+
     def get_client(self, client_id, username="", domain="domain.com"):
         return_data = self.client.run("get_client", client_id=client_id, username=username, domain=domain)
         return return_data

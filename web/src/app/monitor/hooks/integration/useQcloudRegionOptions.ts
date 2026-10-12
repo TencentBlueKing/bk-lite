@@ -97,6 +97,7 @@ export interface CloudRegionRequestInput {
   password?: unknown;
   cloudRegionId?: number | string;
   preferFormCredentials?: boolean;
+  vaultCredentialId?: unknown;
 }
 
 export interface CloudRegionRequestPayload {
@@ -105,6 +106,7 @@ export interface CloudRegionRequestPayload {
   username?: string;
   password?: string;
   cloud_region_id?: number | string;
+  vault_credential_id?: string;
 }
 
 function isUsableSecret(value: unknown): value is string {
@@ -171,6 +173,7 @@ export function shouldAutoFetchCloudRegions(
   request: CloudRegionRequestPayload | null
 ): boolean {
   if (!request) return false;
+  if (request.vault_credential_id) return true;
   if (credentialSource === 'stored') return false;
   if (looksLikeStoredCloudSecret(request.password)) return false;
   return true;
@@ -185,6 +188,11 @@ export function buildCloudRegionRequest(
   input: CloudRegionRequestInput
 ): CloudRegionRequestPayload | null {
   const ids = normalizeCollectConfigIds(input.collectConfigId);
+  const vaultId = String(input.vaultCredentialId || '').trim();
+  const storedPath = input.credentialSource === 'stored' || ids.length > 0;
+  if (!storedPath && vaultId) {
+    return withCloudRegionId({ vault_credential_id: vaultId }, input.cloudRegionId);
+  }
   const formReady = isUsableSecret(input.username) && isUsableSecret(input.password);
   const preferForm =
     Boolean(input.preferFormCredentials) &&
@@ -339,6 +347,11 @@ export function useCloudRegionOptions(options: {
   const username = Form.useWatch('username', form);
   const password = Form.useWatch('ENV_PASSWORD', form);
   const regionValue = Form.useWatch('region', form);
+  const formCredentialSource = Form.useWatch('credential_source', form);
+  const formVaultCredentialId = Form.useWatch('vault_credential_id', form);
+  const vaultCredentialId = credentialSource === 'stored' || formCredentialSource !== 'vault'
+    ? undefined
+    : formVaultCredentialId;
 
   useEffect(() => {
     if (!enabled) {
@@ -367,6 +380,7 @@ export function useCloudRegionOptions(options: {
         password,
         cloudRegionId,
         preferFormCredentials,
+        vaultCredentialId,
       });
       if (!request) {
         seedSelectedRegionOptions(form, setRegionOptions);
@@ -465,6 +479,7 @@ export function useCloudRegionOptions(options: {
       provider,
       t,
       username,
+      vaultCredentialId,
     ]
   );
 
@@ -481,16 +496,19 @@ export function useCloudRegionOptions(options: {
       password,
       cloudRegionId,
       preferFormCredentials,
+      vaultCredentialId,
     });
     if (!request) {
       seedSelectedRegionOptions(form, setRegionOptions);
       return;
     }
-    const autoKey = request.collect_config_id
-      ? `stored::${provider}::${request.collect_config_id}::${request.cloud_region_id ?? ''}`
-      : request.collect_config_ids
-        ? `stored::${provider}::${request.collect_config_ids.join(',')}::${request.cloud_region_id ?? ''}`
-        : `${provider}::${request.username}::${request.password}::${request.cloud_region_id ?? ''}`;
+    const autoKey = request.vault_credential_id
+      ? `vault::${provider}::${request.vault_credential_id}::${request.cloud_region_id ?? ''}`
+      : request.collect_config_id
+        ? `stored::${provider}::${request.collect_config_id}::${request.cloud_region_id ?? ''}`
+        : request.collect_config_ids
+          ? `stored::${provider}::${request.collect_config_ids.join(',')}::${request.cloud_region_id ?? ''}`
+          : `${provider}::${request.username}::${request.password}::${request.cloud_region_id ?? ''}`;
     if (lastAutoKey.current === autoKey) {
       return;
     }
@@ -512,6 +530,7 @@ export function useCloudRegionOptions(options: {
     preferFormCredentials,
     provider,
     username,
+    vaultCredentialId,
   ]);
 
   useEffect(() => {

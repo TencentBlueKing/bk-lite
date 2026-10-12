@@ -39,10 +39,7 @@
         "placeholder": "用户名（可选）"
       },
       "transform_on_edit": {
-        "origin_path": "child.content.config.servers[0]",
-        "to_form": {
-          "regex": "://([^:/@]+):[^@]*@"
-        }
+        "origin_path": "child.content.config.username"
       },
       "label_en": "Username"
     },

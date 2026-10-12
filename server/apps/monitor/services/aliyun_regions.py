@@ -71,10 +71,15 @@ class AliyunRegionService:
         cloud_region_id=None,
         collect_config_id=None,
         actor_context=None,
+        vault_credential_id=None,
     ) -> list[dict]:
         config_ids = _normalize_collect_config_ids(collect_config_id)
         if config_ids:
             username, password = resolve_stored_cloud_credentials(config_ids, actor_context)
+        elif vault_credential_id:
+            from apps.monitor.services.qcloud_regions import resolve_vault_cloud_credentials
+
+            username, password = resolve_vault_cloud_credentials(vault_credential_id, actor_context)
         access_key = str(username or "").strip()
         access_secret = maybe_decrypt_posted_cloud_secret(password)
         if not access_key or not access_secret:
