@@ -508,6 +508,7 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
   const historyOpenRef = useRef(historyOpen);
   historyOpenRef.current = historyOpen;
   const resizingRef = useRef(false);
+  const resizeCleanupRef = useRef<(() => void) | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const loadedSessionIdRef = useRef<string | null>(null);
   const appsLoadGenerationRef = useRef(0);
@@ -864,11 +865,14 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
     setChatWidth((current) => clampPlatformDockChatWidth(current, window.innerWidth, historyOpen));
   }, [historyOpen]);
 
+  useEffect(() => () => resizeCleanupRef.current?.(), []);
+
   const onResizePointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (isFullscreen || event.button !== 0) return;
       event.preventDefault();
       event.stopPropagation();
+      resizeCleanupRef.current?.();
       const startX = event.clientX;
       const startWidth = chatWidthRef.current;
       resizingRef.current = true;
@@ -880,12 +884,16 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
           nextPlatformDockChatWidth(startWidth, ev.clientX - startX, window.innerWidth, historyOpenRef.current)
         );
       };
-      const stop = (ev: PointerEvent) => {
+      const cleanup = () => {
         window.removeEventListener('pointermove', move);
         window.removeEventListener('pointerup', stop);
         window.removeEventListener('pointercancel', stop);
         document.body.style.cursor = previousCursor;
         resizingRef.current = false;
+        resizeCleanupRef.current = null;
+      };
+      const stop = (ev: PointerEvent) => {
+        cleanup();
         setResizing(false);
         const next = nextPlatformDockChatWidth(
           startWidth,
@@ -896,6 +904,7 @@ const PlatformChatInner = React.memo(React.forwardRef<HTMLDivElement, PlatformCh
         setChatWidth(next);
         void savePlatformWebchatWidth(platform, next, requestInit).catch(() => undefined);
       };
+      resizeCleanupRef.current = cleanup;
       window.addEventListener('pointermove', move);
       window.addEventListener('pointerup', stop);
       window.addEventListener('pointercancel', stop);
