@@ -60,10 +60,17 @@ class Playbook(TimeInfo, MaintainerInfo):
     def __str__(self):
         return f"{self.name} ({self.version})"
 
-    def delete(self, *args, **kwargs):
-        """删除时同时删除 MinIO 中的文件"""
+    def delete_storage_files(self):
+        """删除当前包和历史快照包，不删除数据库行。"""
+        for revision in self.revisions.all():
+            if revision.file:
+                revision.file.delete(save=False)
         if self.file:
             self.file.delete(save=False)
+
+    def delete(self, *args, **kwargs):
+        """删除时同时删除 MinIO 中的当前包和历史包。"""
+        self.delete_storage_files()
         super().delete(*args, **kwargs)
 
     @property

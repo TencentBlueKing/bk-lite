@@ -1,0 +1,44 @@
+Access Calix E5 SNMP:
+  name: Calix E5 (Telegraf)
+  desc: SNMP monitoring template for Calix E5-111 Ethernet access / MSAN devices (enterprise PEN 6321,
+    E5-111-IESCOMMON-MIB). It reports uptime, system temperature sensors, fan speed, sensor voltages,
+    and interface traffic.
+monitor_object:
+  Access: Access
+monitor_object_type:
+  Network Device: Network Equipment
+monitor_object_metric:
+  Access:
+    snmp_uptime:
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime.
+        Monitoring uptime helps administrators understand device stability and identify unexpected reboots
+        or failures.
+    device_temperature_celsius:
+      name: Device Temperature
+      desc: Device temperature of the access device in degrees Celsius. Persistently high values may indicate
+        cooling problems, high ambient temperature, or excessive device load.
+    device_fan_rpm:
+      name: Fan Speed
+      desc: Fan rotation speed of the access device in revolutions per minute. Persistently low or zero
+        RPM may indicate a stalled fan or cooling failure.
+    device_voltage_volts:
+      name: Board Voltage
+      desc: Board voltage of the access device in volts, converted from millivolt channel readings. Values
+        outside the expected rail range may indicate power or hardware risk.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured
+        in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in
+        bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter
+        avoids the rapid wrap of the 32-bit ifOutOctets on high-speed ports, keeping the rate accurate.
+monitor_object_metric_group:
+  Access:
+    Base: Base
+    Traffic: Traffic
+    Temperature: Temperature
+    Hardware Status: Hardware Status

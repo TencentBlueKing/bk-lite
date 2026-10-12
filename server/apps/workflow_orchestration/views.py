@@ -58,7 +58,7 @@ from apps.workflow_orchestration.services.agent_knowledge_inputs import store_up
 from apps.workflow_orchestration.services.atom_registry import available_atom_catalog, ensure_platform_atom, task_definition_from_catalog_item
 from apps.workflow_orchestration.services.atoms import TASK_DEFINITIONS, atom_catalog_payload, system_node_catalog_payload
 from apps.workflow_orchestration.services.capability_profiles import capability_resource_snapshot
-from apps.workflow_orchestration.services.conductor import ConductorClient, ConductorUnavailable
+from apps.workflow_orchestration.services.conductor import ConductorClient, ConductorConflict, ConductorUnavailable
 from apps.workflow_orchestration.services.data_contracts import validate_and_compile_workflow_data_contract
 from apps.workflow_orchestration.services.definitions import (
     DefinitionValidationError,
@@ -71,7 +71,9 @@ from apps.workflow_orchestration.services.definitions import (
     validate_conductor_definition,
     validate_workflow_inputs,
 )
+from apps.workflow_orchestration.services.demo_templates import SAMPLE_TEMPLATE_CONTENT_TYPES, builtin_health_template_path
 from apps.workflow_orchestration.services.execution_details import build_execution_node_detail, build_execution_node_summary
+from apps.workflow_orchestration.services.execution_job_cancellation import cancel_linked_job_tasks
 from apps.workflow_orchestration.services.executions import apply_remote_execution
 from apps.workflow_orchestration.services.graph_compiler import compile_canvas_graph
 from apps.workflow_orchestration.services.interactions import InteractionConflict, InteractionForbidden, decide_interaction
@@ -326,6 +328,11 @@ class WorkflowViewSet(AuthViewSet):
             if trigger_type not in WorkflowTrigger.Type.values:
                 return Response({"detail": "trigger_type 非法"}, status=status.HTTP_400_BAD_REQUEST)
             queryset = queryset.filter(build_json_membership_query(queryset, "trigger_types", [trigger_type]))
+        builtin_filter = str(request.query_params.get("is_builtin") or "").strip().lower()
+        if builtin_filter in {"true", "false"}:
+            queryset = queryset.filter(is_builtin=builtin_filter == "true")
+        elif builtin_filter:
+            return Response({"detail": "is_builtin 非法"}, status=status.HTTP_400_BAD_REQUEST)
         page = self.paginate_queryset(queryset)
         return self.get_paginated_response(self.get_serializer(page, many=True).data)
 
@@ -363,6 +370,11 @@ class WorkflowViewSet(AuthViewSet):
     @HasPermission("workflow-Edit", app_name=APP_NAME)
     def partial_update(self, request, *args, **kwargs):
         scoped = self._scoped_object(request, require_operate=True)
+        if scoped.is_builtin:
+            return Response(
+                {"detail": "内置流程不可保存草稿，请复制后再编辑", "code": "BUILTIN_WORKFLOW_READONLY"},
+                status=status.HTTP_409_CONFLICT,
+            )
         supplied_revision = request.data.get("draft_revision")
         try:
             with transaction.atomic():
@@ -439,6 +451,11 @@ class WorkflowViewSet(AuthViewSet):
     @HasPermission("workflow-Delete", app_name=APP_NAME)
     def destroy(self, request, *args, **kwargs):
         workflow = self._scoped_object(request, require_operate=True)
+        if workflow.is_builtin:
+            return Response(
+                {"detail": "内置流程不可删除，可停用或复制后自定义", "code": "BUILTIN_WORKFLOW_READONLY"},
+                status=status.HTTP_409_CONFLICT,
+            )
         username, domain = _identity(request)
         try:
             deleted, audit_detail = soft_delete_workflow(
@@ -478,6 +495,7 @@ class WorkflowViewSet(AuthViewSet):
                 team=source.team,
                 definition=copy.deepcopy(source.definition),
                 canvas_metadata=copy.deepcopy(source.canvas_metadata),
+                is_builtin=False,
                 created_by=username,
                 updated_by=username,
                 domain=domain,
@@ -525,6 +543,11 @@ class WorkflowViewSet(AuthViewSet):
     @HasPermission("workflow-Publish", app_name=APP_NAME)
     def publish(self, request, pk=None):
         workflow = self._scoped_object(request, require_operate=True)
+        if workflow.is_builtin:
+            return Response(
+                {"detail": "内置流程不可发布，请复制后再编辑发布", "code": "BUILTIN_WORKFLOW_READONLY"},
+                status=status.HTTP_409_CONFLICT,
+            )
         supplied_revision = request.data.get("draft_revision")
         if supplied_revision is not None and supplied_revision != workflow.draft_revision:
             return Response(
@@ -540,7 +563,23 @@ class WorkflowViewSet(AuthViewSet):
             workflow,
             include_metadata=True,
         )
-        next_version = workflow.current_version + 1
+        # Reserve the next immutable version number under the workflow row lock before
+        # compiling/registering, so concurrent publishers cannot share the same version.
+        with transaction.atomic():
+            locked_workflow = Workflow.all_objects.select_for_update().get(pk=workflow.pk)
+            if locked_workflow.deleted_at is not None:
+                return Response({"detail": "流程已删除"}, status=status.HTTP_409_CONFLICT)
+            if supplied_revision is not None and supplied_revision != locked_workflow.draft_revision:
+                return Response(
+                    {
+                        "detail": "草稿已经被其他修改更新，请重新载入后再发布",
+                        "code": "DRAFT_REVISION_CONFLICT",
+                        "draft_revision": locked_workflow.draft_revision,
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            next_version = locked_workflow.current_version + 1
+            reserved_draft_revision = locked_workflow.draft_revision
         team = _team_id(request)
         catalog = available_atom_catalog(team)
         try:
@@ -602,6 +641,9 @@ class WorkflowViewSet(AuthViewSet):
             custom_task_definitions = [task_definition_from_catalog_item(catalog[key]) for key in atom_keys if key not in static_task_names]
             client.register_task_definitions([*TASK_DEFINITIONS, *custom_task_definitions])
             client.register_workflow(definition)
+        except ConductorConflict as error:
+            logger.warning("Conductor publish conflict workflow_id=%s", workflow.pk)
+            return Response({"detail": str(error), "code": "ENGINE_DEFINITION_CONFLICT"}, status=status.HTTP_409_CONFLICT)
         except ConductorUnavailable as error:
             logger.warning("Conductor publish unavailable workflow_id=%s", workflow.pk)
             return Response({"detail": str(error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
@@ -609,9 +651,14 @@ class WorkflowViewSet(AuthViewSet):
             workflow = Workflow.all_objects.select_for_update().get(pk=workflow.pk)
             if workflow.deleted_at is not None:
                 return Response({"detail": "流程已删除"}, status=status.HTTP_409_CONFLICT)
-            if supplied_revision is not None and supplied_revision != workflow.draft_revision:
+            if workflow.draft_revision != reserved_draft_revision:
                 return Response(
                     {"detail": "草稿版本已变化，本次发布已取消", "code": "DRAFT_REVISION_CONFLICT"},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            if workflow.current_version + 1 != next_version:
+                return Response(
+                    {"detail": "流程版本已被其他发布占用，请刷新后重试", "code": "PUBLISH_VERSION_CONFLICT"},
                     status=status.HTTP_409_CONFLICT,
                 )
             package_keys = atom_keys
@@ -1004,6 +1051,11 @@ class WorkflowViewSet(AuthViewSet):
     @HasPermission("workflow-Edit", app_name=APP_NAME)
     def restore_version_draft(self, request, pk=None, version=None):
         scoped = self._scoped_object(request, require_operate=True)
+        if scoped.is_builtin:
+            return Response(
+                {"detail": "内置流程不可恢复草稿", "code": "BUILTIN_WORKFLOW_READONLY"},
+                status=status.HTTP_409_CONFLICT,
+            )
         supplied_revision = request.data.get("draft_revision")
         username, domain = _identity(request)
         with transaction.atomic():
@@ -1052,6 +1104,20 @@ class WorkflowViewSet(AuthViewSet):
         if len(payload) > 100:
             return Response({"detail": "当前组织可用原子超过 100 个上限"}, status=status.HTTP_409_CONFLICT)
         return Response(payload)
+
+    @action(methods=["GET"], detail=False, url_path=r"sample-templates/(?P<fmt>docx|xlsx)")
+    @HasPermission("workflow-View", app_name=APP_NAME)
+    def sample_templates(self, request, fmt=None):
+        """下载后端维护的内置巡检示例模板（docx/xlsx）。"""
+        _team_id(request)
+        try:
+            path = builtin_health_template_path(str(fmt or ""))
+        except ValueError:
+            return Response({"detail": "格式非法"}, status=status.HTTP_400_BAD_REQUEST)
+        except FileNotFoundError:
+            return Response({"detail": "示例模板不存在"}, status=status.HTTP_404_NOT_FOUND)
+        content_type = SAMPLE_TEMPLATE_CONTENT_TYPES[str(fmt)]
+        return FileResponse(BytesIO(path.read_bytes()), content_type=content_type, as_attachment=True, filename=path.name)
 
     @action(methods=["GET"], detail=False)
     @HasPermission("workflow-View", app_name=APP_NAME)
@@ -1638,13 +1704,21 @@ class WorkflowExecutionViewSet(AuthViewSet):
             ConductorClient().terminate_workflow(execution.conductor_workflow_id, reason=reason)
         except ConductorUnavailable as error:
             return Response({"detail": str(error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        username, domain = _identity(request)
+        cancel_results = cancel_linked_job_tasks(
+            execution,
+            actor={"username": username, "domain": domain or "domain.com"},
+        )
+        output = dict(execution.output or {})
+        output["termination_job_cancels"] = cancel_results
         execution.status = WorkflowExecution.Status.TERMINATING
         execution.termination_reason = reason
+        execution.output = output
         execution.interactions.filter(status=WorkflowInteraction.Status.PENDING).update(
             status=WorkflowInteraction.Status.CANCELLED,
             handled_at=timezone.now(),
         )
-        execution.save(update_fields=("status", "termination_reason", "updated_at"))
+        execution.save(update_fields=("status", "termination_reason", "output", "updated_at"))
         _audit(request, "terminate", "终止流程执行", target_type="execution", target_id=execution.id)
         return Response(self.get_serializer(execution).data)
 

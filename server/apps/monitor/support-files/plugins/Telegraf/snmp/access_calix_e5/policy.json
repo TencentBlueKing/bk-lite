@@ -1,0 +1,31 @@
+{
+  "object": "Access",
+  "plugin": "Access Calix E5 SNMP",
+  "templates": [
+    {
+      "name": "Calix E5设备温度过高",
+      "alert_name": "接入设备${resource_name} ${metric__sensor} 温度过高",
+      "description": "监控 Calix E5-111 各系统温度传感器，持续高于阈值时提示机箱散热异常或环境温度过高。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 60,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

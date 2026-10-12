@@ -95,6 +95,29 @@ def should_refresh_host_inst_name(existing: dict[str, Any] | None, desired: dict
     return host_record_lookup_key(existing) != host_record_lookup_key(desired)
 
 
+def align_collected_host_inst_names(existing_rows: list[dict[str, Any]], metrics: list[dict[str, Any]]) -> None:
+    """同一 IP+云区域只命中一台时，采集行沿用库里的实例名。"""
+    grouped: dict[tuple[str, int], list[dict[str, Any]]] = {}
+    for row in existing_rows:
+        if not isinstance(row, dict):
+            continue
+        ip, cloud_id = host_record_lookup_key(row)
+        if not ip or cloud_id is None:
+            continue
+        grouped.setdefault((ip, cloud_id), []).append(row)
+
+    for metric in metrics:
+        if not isinstance(metric, dict):
+            continue
+        ip, cloud_id = host_record_lookup_key(metric)
+        matches = grouped.get((ip, cloud_id), [])
+        if len(matches) != 1 or should_refresh_host_inst_name(matches[0], metric):
+            continue
+        name = str(matches[0].get("inst_name") or "").strip()
+        if name:
+            metric["inst_name"] = name
+
+
 @dataclass
 class HostIdentityMatch:
     instance: dict[str, Any] | None = None

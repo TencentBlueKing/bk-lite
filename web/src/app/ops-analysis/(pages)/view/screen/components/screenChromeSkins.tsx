@@ -4,6 +4,7 @@ import React, { useLayoutEffect, useRef, useState } from 'react';
 import type {
   ScreenDecorationItem,
   ScreenPanelFramePresetId,
+  ScreenTextColorToken,
   ScreenTextStyleConfig,
   ScreenTitleFrameItem,
   ScreenTitleFramePresetId,
@@ -54,10 +55,22 @@ type ImageAsset = string | { src: string };
 const assetSrc = (asset: ImageAsset) =>
   typeof asset === 'string' ? asset : asset.src;
 
-const colorVar = (token?: ScreenTextStyleConfig['color']) => {
-  if (token === 'muted') return 'var(--screen-clock-color)';
-  if (token === 'accent') return 'var(--screen-chrome-accent)';
-  return 'var(--screen-title-color)';
+const TEXT_COLOR_VAR: Record<ScreenTextColorToken, string> = {
+  canvas: 'var(--screen-title-color)',
+  muted: 'var(--screen-clock-color)',
+  accent: 'var(--screen-chrome-accent)',
+};
+
+const isScreenTextColorToken = (value: unknown): value is ScreenTextColorToken =>
+  value === 'canvas' || value === 'muted' || value === 'accent';
+
+export const isScreenTextHexColor = (value: unknown): value is string =>
+  typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value);
+
+const screenChromeTextColor = (color?: ScreenTextStyleConfig['color']) => {
+  if (isScreenTextColorToken(color)) return TEXT_COLOR_VAR[color];
+  if (isScreenTextHexColor(color)) return color.toLowerCase();
+  return TEXT_COLOR_VAR.canvas;
 };
 
 export const screenChromeTextStyle = (
@@ -66,12 +79,11 @@ export const screenChromeTextStyle = (
 ): React.CSSProperties => ({
   fontSize: style?.fontSize ?? fallback?.fontSize ?? 20,
   fontWeight: style?.fontWeight ?? fallback?.fontWeight ?? 600,
-  color: colorVar(style?.color ?? fallback?.color),
+  color: screenChromeTextColor(style?.color ?? fallback?.color),
   textAlign: style?.align ?? fallback?.align ?? 'left',
   lineHeight: 1.2,
   whiteSpace: 'pre-wrap',
   wordBreak: 'break-word',
-  textShadow: 'var(--screen-title-text-shadow)',
 });
 
 const VisionImg: React.FC<{

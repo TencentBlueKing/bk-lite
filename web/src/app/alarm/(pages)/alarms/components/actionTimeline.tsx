@@ -75,20 +75,21 @@ const ActionTimeline: React.FC<ActionTimelineProps> = ({ alertId, allowRerun = t
 
   const getTriggerLabel = (item: ActionExecutionItem): string => {
     if (item.trigger_type === 'manual') {
-      const base = '手动触发';
+      const base = t('settings.actionTriggerManual');
       return item.operator ? `${base} ${item.operator}` : base;
     }
-    return '自动触发';
+    return t('settings.actionTriggerAuto');
   };
 
   const getTriggerEventLabel = (item: ActionExecutionItem): string => {
-    if (item.trigger_type === 'manual') return '手动';
+    if (item.trigger_type === 'manual') return t('settings.actionManual');
     const found = ACTION_TRIGGER_EVENTS.find((e) => e.value === item.trigger_event);
-    return found ? found.label : item.trigger_event;
+    return found ? t(found.labelKey) : item.trigger_event;
   };
 
   const timelineItems = items.map((item) => {
-    const statusInfo = ACTION_EXEC_STATUS[item.status] || { text: item.status, color: 'default' };
+    const statusInfo = ACTION_EXEC_STATUS[item.status];
+    const statusText = statusInfo ? t(statusInfo.textKey) : item.status;
     const dotColor = STATUS_COLOR_MAP[item.status] || 'gray';
     const isFailed = item.status === 'failed' || item.status === 'config_error';
     const errorMsg = isFailed && item.result?.message ? String(item.result.message) : null;
@@ -99,9 +100,9 @@ const ActionTimeline: React.FC<ActionTimelineProps> = ({ alertId, allowRerun = t
       children: (
         <div className="text-sm pb-2">
           <div className="flex items-center gap-2 font-medium">
-            <span>{item.rule_name || '动作'}</span>
+            <span>{item.rule_name || t('settings.actionFallbackName')}</span>
             <span className="text-[var(--color-text-3)]">·</span>
-            <span className="text-[var(--color-text-3)]">作业</span>
+            <span className="text-[var(--color-text-3)]">{t('settings.actionTypeJob')}</span>
             <span
               className="ml-1 px-1.5 py-0.5 rounded text-xs"
               style={{
@@ -109,7 +110,7 @@ const ActionTimeline: React.FC<ActionTimelineProps> = ({ alertId, allowRerun = t
                 background: dotColor === 'green' ? '#f6ffed' : dotColor === 'red' ? '#fff2f0' : dotColor === 'blue' ? '#e6f4ff' : '#f5f5f5',
               }}
             >
-              {statusInfo.text}
+              {statusText}
             </span>
           </div>
           <div className="text-[var(--color-text-3)] mt-0.5">
@@ -121,14 +122,14 @@ const ActionTimeline: React.FC<ActionTimelineProps> = ({ alertId, allowRerun = t
           </div>
           {targetIp && (
             <div className="text-[var(--color-text-3)] mt-0.5">
-              <span className="mr-1">目标主机</span>
+              <span className="mr-1">{t('settings.actionTargetHost')}</span>
               <span className="font-mono">{targetIp}</span>
             </div>
           )}
           {item.job_detail_url && (
             <div className="mt-1">
               <a href={item.job_detail_url} target="_blank" rel="noopener noreferrer" className="text-[var(--color-primary)]">
-                查看作业
+                {t('settings.actionViewJob')}
               </a>
             </div>
           )}

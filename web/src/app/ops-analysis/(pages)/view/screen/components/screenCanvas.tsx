@@ -23,6 +23,7 @@ import { getScreenRndNodeClassName } from "../utils/classNames";
 import { calculateScreenVisualMetrics } from "../utils/metrics";
 import { resolveScreenCanvasBackgroundStyle } from "../utils/screenBackground";
 import {
+  isScreenDecorationItem,
   isScreenWidgetItem,
   readScreenChromeDrag,
   SCREEN_CHROME_DRAG_MIME,
@@ -115,6 +116,7 @@ interface ScreenRndItemProps {
   onResizeItem?: (itemId: string, size: { w: number; h: number }) => void;
   onEditItem?: (itemId: string) => void;
   onOpenItemMenu?: (itemId: string, point: { x: number; y: number }) => void;
+  passThroughPointerEvents?: boolean;
 }
 
 const getWidgetGeometry = (item: ScreenItemGeometry): WidgetGeometry => ({
@@ -161,6 +163,7 @@ const ScreenRndItem: React.FC<ScreenRndItemProps> = React.memo(
     onResizeItem,
     onEditItem,
     onOpenItemMenu,
+    passThroughPointerEvents = false,
   }) => {
     const rndRef = useRef<any>(null);
     const interactingRef = useRef(false);
@@ -358,7 +361,10 @@ const ScreenRndItem: React.FC<ScreenRndItemProps> = React.memo(
         }}
         className={getScreenRndNodeClassName(editable && selected)}
         data-screen-item-id={item.id}
-        style={{ zIndex: item.zIndex }}
+        style={{
+          zIndex: item.zIndex,
+          pointerEvents: passThroughPointerEvents ? "none" : undefined,
+        }}
         onClick={
           editable
             ? (event: React.MouseEvent) => {
@@ -547,6 +553,7 @@ const ScreenCanvasNode = React.memo(function ScreenCanvasNode({
       onResizeItem={onResizeItem}
       onEditItem={isWidget ? onEditItem : undefined}
       onOpenItemMenu={onOpenItemMenu}
+      passThroughPointerEvents={!editable && isScreenDecorationItem(item)}
     >
       {content}
     </ScreenRndItem>

@@ -14,6 +14,7 @@ from apps.alerts.filters import IncidentModelFilter
 from apps.alerts.models.models import Alert, Incident
 from apps.alerts.serializers import AlertModelSerializer, IncidentModelSerializer
 from apps.alerts.service.incident_operator import IncidentOperator
+from apps.alerts.utils.i18n import alerts_message
 from apps.alerts.utils.operator_log import record_operator_log
 from apps.alerts.utils.operator_scope import normalize_usernames
 from apps.alerts.utils.permission_scope import normalize_team_ids
@@ -64,7 +65,7 @@ class IncidentModelViewSet(AuthViewSet):
             return None
         return Response(
             {
-                "detail": "告警ID列表中包含您没有权限访问的告警。",
+                "detail": alerts_message(getattr(self, "request", None), "error.incident_alert_access_denied"),
                 "unauthorized_alert_ids": sorted(unauthorized_alert_ids),
             },
             status=status.HTTP_400_BAD_REQUEST,

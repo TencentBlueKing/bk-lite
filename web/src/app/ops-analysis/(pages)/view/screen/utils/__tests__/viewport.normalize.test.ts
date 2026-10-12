@@ -10,6 +10,63 @@ import {
 import type { ScreenItem } from '@/app/ops-analysis/types/screen';
 
 describe('normalizeScreenViewSets', () => {
+  it('keeps a saved custom image instead of resetting the default preset', () => {
+    const src = 'data:image/png;base64,iVBORw0KGgo=';
+    const normalized = normalizeScreenViewSets({
+      viewport: {
+        width: 1920,
+        height: 1080,
+        background: { type: 'image', src },
+      },
+      items: [],
+      decorations: {},
+    });
+
+    expect(normalized.viewport.background).toEqual({ type: 'image', src });
+
+    const resized = updateScreenViewport(normalized, {
+      ...normalized.viewport,
+      width: 1280,
+    });
+    expect(resized.viewport.background).toEqual({ type: 'image', src });
+  });
+
+  it('falls back when a custom image source is missing', () => {
+    const normalized = normalizeScreenViewSets({
+      viewport: {
+        width: 1920,
+        height: 1080,
+        theme: 'screen-light',
+        background: { type: 'image' },
+      },
+      items: [],
+      decorations: {},
+    });
+
+    expect(normalized.viewport.background).toEqual({
+      type: 'preset',
+      key: 'light-mist',
+    });
+  });
+
+  it('falls back when a custom image has no usable source', () => {
+    const normalized = normalizeScreenViewSets({
+      viewport: {
+        width: 1920,
+        height: 1080,
+        theme: 'screen-light',
+        background: { type: 'image', src: 'https://example.com/bg.png' },
+      },
+      items: [],
+      decorations: {},
+    });
+
+    expect(normalized.viewport.background).toEqual({
+      type: 'preset',
+      key: 'light-mist',
+    });
+  });
+
   it('keeps a saved color background instead of resetting the default preset', () => {
     const normalized = normalizeScreenViewSets({
       viewport: {

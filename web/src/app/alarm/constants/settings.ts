@@ -108,19 +108,22 @@ export const weekList = [
 ];
 
 export const ACTION_TRIGGER_EVENTS = [
-  { value: 'created', label: '创建' },
-  { value: 'assigned', label: '分派' },
-  { value: 'acknowledged', label: '认领' },
-  { value: 'resolved', label: '恢复' },
-  { value: 'closed', label: '关闭' },
+  { value: 'created', labelKey: 'settings.actionTriggerCreated' },
+  { value: 'assigned', labelKey: 'settings.actionTriggerAssigned' },
+  { value: 'acknowledged', labelKey: 'settings.actionTriggerAcknowledged' },
+  { value: 'resolved', labelKey: 'settings.actionTriggerResolved' },
+  { value: 'closed', labelKey: 'settings.actionTriggerClosed' },
 ];
 export const ACTION_TYPES = [
-  { value: 'job', label: '作业', disabled: false },
-  { value: 'itsm', label: 'ITSM', disabled: true },
-  { value: 'webhook', label: 'Webhook', disabled: true },
+  { value: 'job', labelKey: 'settings.actionTypeJob', disabled: false },
+  { value: 'itsm', labelKey: 'settings.actionTypeItsm', disabled: true },
+  { value: 'webhook', labelKey: 'settings.actionTypeWebhook', disabled: true },
 ];
-export const ACTION_EXEC_STATUS: Record<string, { text: string; color: string }> = {
-  pending: { text: '等待', color: 'default' }, running: { text: '执行中', color: 'processing' },
-  success: { text: '成功', color: 'success' }, failed: { text: '失败', color: 'error' },
-  skipped: { text: '已跳过', color: 'warning' }, config_error: { text: '未执行', color: 'warning' },
+export const ACTION_EXEC_STATUS: Record<string, { textKey: string; color: string }> = {
+  pending: { textKey: 'settings.actionExecPending', color: 'default' },
+  running: { textKey: 'settings.actionExecRunning', color: 'processing' },
+  success: { textKey: 'settings.actionExecSuccess', color: 'success' },
+  failed: { textKey: 'settings.actionExecFailed', color: 'error' },
+  skipped: { textKey: 'settings.actionExecSkipped', color: 'warning' },
+  config_error: { textKey: 'settings.actionExecConfigError', color: 'warning' },
 };

@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from django.db import connection, transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
@@ -193,13 +194,24 @@ def apply_remote_execution(execution: WorkflowExecution, remote: dict[str, Any])
 
 
 def sync_active_executions(*, client: ConductorClient | None = None, limit: int = 100) -> dict[str, int]:
+    from apps.workflow_orchestration.services.runtime import reconcile_unknown_execution
+
     conductor = client or ConductorClient()
     active_statuses = {
         WorkflowExecution.Status.QUEUED,
         WorkflowExecution.Status.RUNNING,
         WorkflowExecution.Status.WAITING_APPROVAL,
         WorkflowExecution.Status.TERMINATING,
+        WorkflowExecution.Status.UNKNOWN,
     }
+    budget = max(1, min(int(limit), 100))
+    unknown_ids = list(
+        WorkflowExecution.objects.filter(status=WorkflowExecution.Status.UNKNOWN)
+        .filter(Q(conductor_workflow_id__isnull=True) | Q(conductor_workflow_id=""))
+        .order_by("updated_at", "id")
+        .values_list("id", flat=True)[:budget]
+    )
+    remaining = max(0, budget - len(unknown_ids))
     execution_ids = list(
         WorkflowExecution.objects.filter(
             status__in=active_statuses,
@@ -207,9 +219,28 @@ def sync_active_executions(*, client: ConductorClient | None = None, limit: int 
         )
         .exclude(conductor_workflow_id="")
         .order_by("updated_at", "id")
-        .values_list("id", flat=True)[: max(1, min(int(limit), 100))]
+        .values_list("id", flat=True)[:remaining]
     )
-    summary = {"synchronized": 0, "failed": 0}
+    summary = {"synchronized": 0, "failed": 0, "reconciled": 0}
+    for execution_id in unknown_ids:
+        try:
+            execution = WorkflowExecution.objects.get(pk=execution_id)
+            before = execution.conductor_workflow_id
+            execution = reconcile_unknown_execution(execution, client=conductor)
+            if execution.conductor_workflow_id and execution.conductor_workflow_id != before:
+                summary["reconciled"] += 1
+                remote = conductor.get_execution(execution.conductor_workflow_id)
+                apply_remote_execution(execution, remote)
+                summary["synchronized"] += 1
+        except Exception as error:
+            summary["failed"] += 1
+            safe_error = RuntimeError("workflow execution synchronization failed")
+            logger.error(
+                "event=workflow_execution_sync_failed execution_id=%s failed_stage=unknown_reconcile error_type=%s",
+                execution_id,
+                type(error).__name__,
+                exc_info=(type(safe_error), safe_error, error.__traceback__),
+            )
     for execution_id in execution_ids:
         try:
             execution = WorkflowExecution.objects.get(pk=execution_id)

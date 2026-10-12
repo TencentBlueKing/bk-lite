@@ -114,6 +114,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     onFullscreenChange,
     onStreamingStop,
     onCustomEvent,
+    onToolResult,
     platform,
     kickoffMessage,
     onKickoffConsumed,
@@ -264,6 +265,8 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     onMessageReceivedRef.current?.(message);
   }, []);
 
+  const onToolResultRef = useRef(onToolResult);
+  onToolResultRef.current = onToolResult;
   const handleAGUIEvent = useMemo(
     () =>
       createAGUIEventHandler({
@@ -276,6 +279,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
         setIsLoading,
         setIsThinking,
         addMessage,
+        onToolResultRef,
         streamingTextBatchingRef,
         plannedStateRef,
       }),

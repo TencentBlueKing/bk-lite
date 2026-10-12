@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 from io import BytesIO
-from pathlib import Path
 
 import pytest
 from docx import Document
 from openpyxl import load_workbook
 
+from apps.workflow_orchestration.services.demo_templates import BUILTIN_TEMPLATE_DIR
 from apps.workflow_orchestration.services.reports import parse_report_template, render_report
 
-TEMPLATE_DIR = Path(__file__).resolve().parents[4] / "web/public/workflow-orchestration/templates"
+TEMPLATE_DIR = BUILTIN_TEMPLATE_DIR
 
 
 def _metric(
@@ -47,6 +47,7 @@ def _host_result(
     conclusion: str,
     metrics: list[dict],
     collected_at: str,
+    hostname: str | None = None,
 ) -> dict:
     critical = [item for item in metrics if item["health_status"] == "CRITICAL"]
     warning = [item for item in metrics if item["health_status"] == "WARNING"]
@@ -61,6 +62,16 @@ def _host_result(
         "data": {
             "collected_at": collected_at,
             "conclusion": conclusion,
+            "host": {
+                "hostname": hostname or name,
+                "os_version": "Windows Server 2022" if operating_system == "windows" else "Ubuntu 22.04 LTS",
+                "architecture": "x86_64",
+                "uptime_hours": 100,
+                "cpu_cores": 4,
+                "memory_total_gb": 16,
+                "top_cpu": "python=10%",
+                "top_memory": "java=20%",
+            },
             "metric_count": len(metrics),
             "critical_count": len(critical),
             "warning_count": len(warning),
@@ -85,7 +96,7 @@ HEALTH_REPORT_DATA = {
             collected_at="2026-09-18 10:30:00",
             metrics=[
                 _metric(
-                    category="CPU",
+                    category="计算",
                     object_name="CPU Total",
                     metric_name="usage_percent",
                     value=42.3,
@@ -131,7 +142,7 @@ MULTI_HOST_REPORT_DATA = {
             collected_at="2026-09-23 18:00:00",
             metrics=[
                 _metric(
-                    category="CPU",
+                    category="计算",
                     object_name="CPU Total",
                     metric_name="usage_percent",
                     value=12.0,
@@ -191,7 +202,8 @@ def test_builtin_health_report_template_matches_job_output_contract_and_renders_
     assert "summary.total" in parsed.placeholders
     assert any(item.endswith("target.ip") for item in parsed.placeholders)
     assert any(item.endswith("target.operating_system") for item in parsed.placeholders)
-    assert any("metric_name" in item for item in parsed.placeholders)
+    assert any("host.hostname" in item for item in parsed.placeholders)
+    assert any("display_name" in item for item in parsed.placeholders)
     template_text = _rendered_text(fmt, content)
     assert "{{" in template_text or "{%" in template_text
     assert "{d." not in template_text
@@ -199,11 +211,14 @@ def test_builtin_health_report_template_matches_job_output_contract_and_renders_
     assert "共 {{ summary.total }} 台主机" in template_text
     assert "主机健康巡检报告" in template_text
     assert "严重问题" in template_text
+    assert "系统健康" in template_text
+    assert "更新账龄" in template_text
     assert "作业平台健康巡检报告" not in template_text
     text = _rendered_text(fmt, rendered)
     assert "10.10.90.120" in text
     assert "CPU Total" in text
     assert "Ethernet0" in text
+    assert "job-web3" in text
     assert "{{" not in text
 
 

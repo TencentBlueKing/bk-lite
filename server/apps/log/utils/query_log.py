@@ -16,6 +16,10 @@ from apps.core.logger import log_logger as logger
 from apps.log.constants.victoriametrics import VictoriaLogsConstants
 
 
+TAIL_IDLE = object()
+TAIL_IDLE_INTERVAL_SECONDS = 3.0
+
+
 class VictoriaMetricsAPI:
     REQUEST_TIMEOUT = 10
 
@@ -282,6 +286,7 @@ class VictoriaMetricsAPI:
         logger.info("发送VictoriaLogs tail查询", extra={"query": query})
         data = {"query": query}
         response = None
+        iter_thread = None
 
         try:
             logger.info(
@@ -302,9 +307,10 @@ class VictoriaMetricsAPI:
                     auth=self.auth,
                     verify=self.ssl_verify,
                     stream=True,
-                    timeout=(10, 120),  # 连接超时10秒，读取超时120秒
+                    timeout=(10, VictoriaLogsConstants.MAX_CONNECTION_TIME),
                     headers={
                         "Accept": "application/x-ndjson, text/plain",
+                        "Accept-Encoding": "identity",
                         "Connection": "keep-alive",
                         "Cache-Control": "no-cache",
                     },
@@ -346,6 +352,14 @@ class VictoriaMetricsAPI:
                             put_future.cancel()
                             return False
 
+            def _shutdown_tail_socket():
+                """打断真实套接字读。没有套接字时返回 False，交给调用方 close。"""
+                try:
+                    response.raw._connection.sock.shutdown(2)
+                except Exception:
+                    return False
+                return True
+
             def _iter_lines_in_thread():
                 """在独立线程中消费流式响应，结果放入 Queue 供异步生成器读取。"""
                 try:
@@ -356,6 +370,10 @@ class VictoriaMetricsAPI:
                     if not stop_event.is_set():
                         _put_unless_stopped(exc)
                 finally:
+                    try:
+                        response.close()
+                    except Exception:
+                        pass
                     if not stop_event.is_set():
                         _put_unless_stopped(_SENTINEL)
 
@@ -370,7 +388,11 @@ class VictoriaMetricsAPI:
                 iter_thread.start()
 
                 while True:
-                    item = await line_queue.get()
+                    try:
+                        item = await asyncio.wait_for(line_queue.get(), timeout=TAIL_IDLE_INTERVAL_SECONDS)
+                    except asyncio.TimeoutError:
+                        yield TAIL_IDLE
+                        continue
 
                     if item is _SENTINEL:
                         break
@@ -414,12 +436,14 @@ class VictoriaMetricsAPI:
 
             finally:
                 stop_event.set()
-                if response:
-                    response.close()
-                    logger.debug("VictoriaLogs响应连接已关闭")
+                if not _shutdown_tail_socket():
+                    try:
+                        response.close()
+                    except Exception:
+                        pass
 
-                # 不在事件循环中阻塞 join；response.close() 会中断正在等待的
-                # iter_lines，而满队列上的 put 最多 0.1 秒后观察到 stop_event。
+                # 不在事件循环中调用 response.close()。读取线程持有响应缓冲锁时，
+                # 这里 close 会一直等锁。先关掉套接字让 iter_lines 退出，由读取线程关闭响应。
                 join_deadline = loop.time() + 1.0
                 while iter_thread.is_alive() and loop.time() < join_deadline:
                     await asyncio.sleep(0.01)
@@ -432,7 +456,7 @@ class VictoriaMetricsAPI:
         except requests.exceptions.ReadTimeout:
             logger.error(
                 "异步VictoriaLogs读取超时",
-                extra={"host": self.host, "timeout": "120秒"},
+                extra={"host": self.host, "timeout": VictoriaLogsConstants.MAX_CONNECTION_TIME},
             )
             raise
         except Exception as e:
@@ -442,8 +466,8 @@ class VictoriaMetricsAPI:
             )
             raise
         finally:
-            # 双重保险：确保响应对象被关闭
-            if response:
+            # 读取线程还在时，不能在事件循环里 close。线程已退出或尚未启动时再补关一次。
+            if response is not None and (iter_thread is None or not iter_thread.is_alive()):
                 try:
                     response.close()
                 except Exception:

@@ -187,4 +187,54 @@ describe('screen element palette', () => {
     expect(line?.className).toContain('h-0.5');
     expect(line?.className).not.toContain('rounded');
   });
+
+  it('scrolls the element list until the selected row is visible', () => {
+    const items = [0, 1, 2].map((index) =>
+      createScreenTextItem([], {
+        id: `text-${index}`,
+        content: `项${index}`,
+        zIndex: 3 - index,
+      }),
+    );
+    const props = {
+      items,
+      onSelectItem: () => undefined,
+      onAddText: () => undefined,
+      onAddClock: () => undefined,
+      onAddTitleFrame: () => undefined,
+      onAddDecoration: () => undefined,
+      onAddShape: () => undefined,
+      onOpenChartSelector: () => undefined,
+      onOpenItemMenu: () => undefined,
+      onReorderItem: () => undefined,
+    };
+    const box = (top: number, bottom: number) =>
+      ({
+        x: 0,
+        y: top,
+        width: 160,
+        height: bottom - top,
+        left: 0,
+        right: 160,
+        top,
+        bottom,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    const view = render(<ScreenElementPalette {...props} selectedItemId={null} />);
+    const list = document.querySelector('[data-screen-element-list]') as HTMLElement;
+    const row = document.querySelector('[data-screen-list-item="text-2"]') as HTMLElement;
+    const listRect = vi.spyOn(list, 'getBoundingClientRect').mockReturnValue(box(0, 100));
+    const rowRect = vi.spyOn(row, 'getBoundingClientRect').mockReturnValue(box(240, 270));
+
+    view.rerender(<ScreenElementPalette {...props} selectedItemId="text-2" />);
+    expect(list.scrollTop).toBe(170);
+
+    rowRect.mockReturnValue(box(20, 50));
+    view.rerender(<ScreenElementPalette {...props} selectedItemId={null} />);
+    view.rerender(<ScreenElementPalette {...props} selectedItemId="text-2" />);
+    expect(list.scrollTop).toBe(170);
+
+    listRect.mockRestore();
+    rowRect.mockRestore();
+  });
 });

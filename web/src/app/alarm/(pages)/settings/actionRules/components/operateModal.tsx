@@ -358,9 +358,9 @@ const OperateModal: React.FC<OperateModalProps> = ({
           rules={[{ required: true, message: t('common.selectTip') }]}
         >
           <Checkbox.Group
-            options={ACTION_TRIGGER_EVENTS.map(({ value, label }) => ({
+            options={ACTION_TRIGGER_EVENTS.map(({ value, labelKey }) => ({
               value,
-              label,
+              label: t(labelKey),
             }))}
           />
         </Form.Item>
@@ -395,14 +395,14 @@ const OperateModal: React.FC<OperateModalProps> = ({
           rules={[{ required: true, message: t('common.selectTip') }]}
         >
           <Select
-            options={ACTION_TYPES.map(({ value, label, disabled }) => ({
+            options={ACTION_TYPES.map(({ value, labelKey, disabled }) => ({
               value,
               label: disabled ? (
-                <Tooltip title="即将支持">
-                  <span>{label}</span>
+                <Tooltip title={t('settings.actionComingSoon')}>
+                  <span>{t(labelKey)}</span>
                 </Tooltip>
               ) : (
-                label
+                t(labelKey)
               ),
               disabled,
             }))}

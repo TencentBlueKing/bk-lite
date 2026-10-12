@@ -14,7 +14,15 @@ from apps.core.utils.web_utils import WebUtils
 from apps.monitor.constants.permission import PermissionConstants
 from apps.monitor.filters.id_filters import filter_positive_int_field
 from apps.monitor.filters.monitor_alert import MonitorAlertFilter
-from apps.monitor.models import MonitorAlert, MonitorAlertMetricSnapshot, MonitorEvent, MonitorEventRawData, MonitorPolicy, PolicyInstanceBaseline
+from apps.monitor.models import (
+    MonitorAlert,
+    MonitorAlertMetricSnapshot,
+    MonitorEvent,
+    MonitorEventRawData,
+    MonitorPolicy,
+    PolicyGroupRule,
+    PolicyInstanceBaseline,
+)
 from apps.monitor.serializers.monitor_alert import (
     AssignHandlersSerializer,
     MonitorAlertSerializer,
@@ -245,6 +253,10 @@ class MonitorAlertViewSet(
         _policy_ids = [alert["policy_id"] for alert in results if alert["policy_id"]]
         policies = list(MonitorPolicy.objects.filter(id__in=_policy_ids).prefetch_related("policyorganization_set"))
         policy_dict = {policy.id: policy for policy in policies}
+        group_by_policy = {
+            rule.policy_id: rule.group
+            for rule in PolicyGroupRule.objects.filter(policy_id__in=_policy_ids).select_related("group")
+        }
         policy_permission_map = self._build_policy_permission_map(request, policies)
         data_team_ids = self._get_data_scope(request).data_team_ids
 
@@ -270,6 +282,11 @@ class MonitorAlertViewSet(
                 if policy_obj
                 else None
             )
+            if alert["policy"] is not None:
+                group = group_by_policy.get(policy_id)
+                alert["policy"]["policy_group"] = (
+                    {"id": group.id, "name": group.name} if group is not None else None
+                )
 
         enrich_alerts_notice_users_display(results)
         enrich_alerts_handlers_display(results)

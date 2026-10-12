@@ -227,6 +227,71 @@ def builtin_fields_for_key(type_key: str):
     return deepcopy(definition["fields"])
 
 
+# Field ids whose kind must match the built-in definition before a key is usable.
+_USABLE_CORE_FIELD_IDS = frozenset(
+    {
+        "username",
+        "user",
+        "password",
+        "auth_method",
+        "authType",
+        "private_key",
+        "passphrase",
+        "access_key",
+        "secret_key",
+        "accessKey",
+        "accessSecret",
+        "access_secret",
+        "secret_id",
+        "client_id",
+        "client_secret",
+        "tenant_id",
+        "token",
+        "community",
+        "security_level",
+        "level",
+        "auth_protocol",
+        "auth_password",
+        "priv_protocol",
+        "priv_password",
+        "integrity",
+        "authkey",
+        "privacy",
+        "privkey",
+        "enable_password",
+        "user_domain_name",
+        "extra",
+        "secret",
+        "version",
+    }
+)
+
+
+def usable_builtin_type_keys(preferred_key, category):
+    """Return catalog keys that are really usable for this preferred key and category."""
+    if preferred_key not in BUILTIN_TYPES or not category:
+        return []
+    candidate_keys = [preferred_key]
+    fallback_key = BUILTIN_KEY_FALLBACKS.get(preferred_key)
+    if fallback_key:
+        candidate_keys.append(fallback_key)
+    from apps.system_mgmt.models.credential import CredentialType
+
+    rows = list(CredentialType.objects.filter(key__in=candidate_keys, is_builtin=True))
+    expected_auth = {field["id"]: field.get("kind") for field in BUILTIN_TYPES[preferred_key]["fields"] if field["id"] in _USABLE_CORE_FIELD_IDS}
+    usable = []
+    for row in rows:
+        if not row.is_builtin or row.key not in candidate_keys or category not in (row.categories or []):
+            continue
+        actual_auth = {field.get("id"): field.get("kind") for field in (row.fields or [])}
+        if any(actual_auth.get(field_id) != kind for field_id, kind in expected_auth.items()):
+            continue
+        usable.append(row.key)
+    order = {key: index for index, key in enumerate(candidate_keys)}
+    usable.sort(key=lambda key: order.get(key, len(order)))
+    return usable
+
+
 def effective_type_fields(credential_type):
     """Schema used to list, validate, encrypt and decrypt a credential type.
 

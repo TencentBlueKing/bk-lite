@@ -33,6 +33,12 @@ make tidy
 make test-controller test-maintainer
 make build          # gateway + controller + maintainer
 make validate-config
+make image          # bklite/rum-collector:0.1.0-bklite.1 (override RUM_COLLECTOR_IMAGE)
 ```
+
+The image ships all three binaries under `/usr/local/bin/` and the production gateway
+config at `/etc/bklite-rum/rum.gateway.yaml`; select the process via entrypoint. Runtime
+wiring (secrets, volumes, flags) is in `../OPS-DEPLOY.md` and the `dataplane` profile of
+`../compose.yaml`.
 
 Do not point APM OTLP 4318 at this gateway. See `docs/adr/0009-rum-public-gateway.md`.

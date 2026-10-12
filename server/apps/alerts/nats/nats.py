@@ -20,6 +20,7 @@ from django.utils import timezone
 import nats_client
 from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
 from apps.alerts.constants.constants import PERMISSION_ALERT, AlertsSourceTypes, AlertStatus, EventLevel, LevelType, SessionStatus
+from apps.alerts.error import AuthenticationSourceError
 from apps.alerts.models.alert_operator import AlarmStrategy, NotifyResult
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.models.models import Alert, Event, Incident, Level
@@ -722,13 +723,14 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
     """
     通过 NATS 接收告警事件数据
 
-    内部 NATS 传递数据，无需认证。记录推送来源以便追踪。
+    内部事件组织沿用签名认证；缺少事件组织时按有效组织密钥归属。
 
     Args:
         kwargs: 包含以下字段
             - source_id: 告警源ID（可选 默认nats）
             - events: 事件列表（必填）
             - pusher: 推送者标识，如系统名称或服务名（必填）如 lite-monitor、lite-log
+            - secret: 告警源组织密钥（可选），用于事件组织缺失时的归属回退
 
     Returns:
         {
@@ -794,6 +796,10 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
         pusher = kwargs.pop("pusher", None)
         ack_mode = kwargs.pop("ack_mode", "")
         ack_token = kwargs.pop("ack_token", "")
+        secret = kwargs.pop("secret", "")
+
+        if not isinstance(secret, str):
+            return {"result": False, "data": {}, "message": "Invalid organization secret."}
 
         # 参数校验
         if not source_id:
@@ -859,7 +865,7 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
             internal_auth,
             caller=pusher,
         )
-        if pusher in TRUSTED_INTERNAL_PUSHERS and has_internal_organizations and not authenticated_internal:
+        if pusher in TRUSTED_INTERNAL_PUSHERS and (has_internal_organizations or internal_auth is not None) and not authenticated_internal:
             if internal_auth is None and legacy_internal_event_auth_allowed():
                 logger.warning(
                     "[AlertEvent] legacy 无签名内部组织归属暂时放行: source_id=%s pusher=%s",
@@ -881,12 +887,15 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
                 }
 
         # 内部约定：NATS 生效源（event_source 已校验）+ 明确允许的内部推送方，双重判断为可信内部推送。
-        # 此时采信每个 event 自带的 organizations 作为归属组织，无需走组织级 secret。
+        # 非空事件组织优先；缺少事件组织时由 NATS 适配器回退到已校验的组织密钥。
         trusted_internal = pusher in TRUSTED_INTERNAL_PUSHERS
-        # 创建适配器（内部调用无需密钥验证）
         adapter_class = AlertSourceAdapterFactory.get_adapter(event_source)
-        # 传递空密钥，因为不需要认证
-        adapter = adapter_class(alert_source=event_source, secret="", events=normalized_events, trusted_internal=trusted_internal)
+        adapter = adapter_class(alert_source=event_source, secret=secret, events=normalized_events, trusted_internal=trusted_internal)
+        if secret:
+            try:
+                adapter.authenticate()
+            except AuthenticationSourceError:
+                return {"result": False, "data": {}, "message": "Invalid organization secret."}
 
         # 记录推送来源信息
         logger.info("[AlertEvent] 开始处理 %s 条事件 source_id=%s pusher=%s", len(events), source_id, pusher)
@@ -904,7 +913,7 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
                 normalized_event.pop("delivery_id", None)
                 single_adapter = adapter_class(
                     alert_source=event_source,
-                    secret="",
+                    secret=secret,
                     events=[normalized_event],
                     trusted_internal=trusted_internal,
                 )

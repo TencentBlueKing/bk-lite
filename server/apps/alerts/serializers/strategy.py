@@ -6,6 +6,7 @@ from rest_framework import serializers
 from apps.alerts.constants import AlarmStrategyType, HeartbeatActivationMode, HeartbeatCheckMode, HeartbeatStatus
 from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.utils.enrichment import is_enrichment_path
+from apps.alerts.utils.i18n import serializer_message
 from apps.alerts.utils.permission_scope import get_authorized_group_ids, normalize_team_ids
 from apps.alerts.utils.rule_catalog import validate_rules_for_serializer
 from apps.alerts.utils.util import parse_aggregation_window_size
@@ -159,7 +160,7 @@ class AlarmStrategySerializer(serializers.ModelSerializer):
         match_rules = attrs.get("match_rules", getattr(self.instance, "match_rules", []) or [])
 
         if not match_rules or not any(group for group in match_rules):
-            raise serializers.ValidationError({"match_rules": "即时告警必须配置筛选条件，且不支持全部（ALL）匹配。"})
+            raise serializers.ValidationError({"match_rules": serializer_message(self, "error.instant_match_rules_required")})
 
         params = dict(attrs.get("params") or {})
         alert_template = dict(params.get("alert_template") or {})
@@ -191,7 +192,7 @@ class AlarmStrategySerializer(serializers.ModelSerializer):
         params_errors = {}
 
         if not match_rules:
-            raise serializers.ValidationError({"match_rules": "缺失检查必须配置监听目标，且不支持全部（ALL）监听。"})
+            raise serializers.ValidationError({"match_rules": serializer_message(self, "error.missing_check_targets_required")})
 
         check_mode = params.get("check_mode")
         cron_expr = (params.get("cron_expr") or "").strip()

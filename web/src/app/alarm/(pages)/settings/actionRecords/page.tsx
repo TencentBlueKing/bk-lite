@@ -29,19 +29,19 @@ const ActionRecords: React.FC = () => {
   });
 
   const triggerEventLabelMap = useMemo(
-    () => Object.fromEntries(ACTION_TRIGGER_EVENTS.map(({ value, label }) => [value, label])),
-    []
+    () => Object.fromEntries(ACTION_TRIGGER_EVENTS.map(({ value, labelKey }) => [value, t(labelKey)])),
+    [t]
   );
 
   const statusOptions = useMemo(
     () => [
-      { label: '全部', value: '' },
-      ...Object.entries(ACTION_EXEC_STATUS).map(([key, { text }]) => ({
-        label: text,
+      { label: t('settings.actionRecordsAll'), value: '' },
+      ...Object.entries(ACTION_EXEC_STATUS).map(([key, { textKey }]) => ({
+        label: t(textKey),
         value: key,
       })),
     ],
-    []
+    [t]
   );
 
   const fetchList = useCallback(
@@ -99,32 +99,32 @@ const ActionRecords: React.FC = () => {
   const columns = useMemo(
     () => [
       {
-        title: '规则名',
+        title: t('settings.actionRecordsRuleName'),
         dataIndex: 'rule_name',
         key: 'rule_name',
         width: 160,
         render: (val: string | null) => val || '-',
       },
       {
-        title: '告警',
+        title: t('settings.actionRecordsAlert'),
         dataIndex: 'alert_title',
         key: 'alert_title',
         width: 200,
         render: (val: string | null) => val || '-',
       },
       {
-        title: '触发方式',
+        title: t('settings.actionRecordsTriggerType'),
         dataIndex: 'trigger_type',
         key: 'trigger_type',
         width: 100,
         render: (val: ActionExecutionItem['trigger_type']) => (
           <Tag color={val === 'auto' ? 'blue' : 'default'}>
-            {val === 'auto' ? '自动' : '手动'}
+            {val === 'auto' ? t('settings.actionAuto') : t('settings.actionManual')}
           </Tag>
         ),
       },
       {
-        title: '触发事件',
+        title: t('settings.actionTriggerEvent'),
         dataIndex: 'trigger_event',
         key: 'trigger_event',
         width: 120,
@@ -132,34 +132,34 @@ const ActionRecords: React.FC = () => {
           triggerEventLabelMap[val] ?? val ?? '-',
       },
       {
-        title: '状态',
+        title: t('settings.actionRecordsStatus'),
         dataIndex: 'status',
         key: 'status',
         width: 100,
         render: (val: ActionExecutionItem['status']) => {
           const statusConf = ACTION_EXEC_STATUS[val];
           if (statusConf) {
-            return <Tag color={statusConf.color}>{statusConf.text}</Tag>;
+            return <Tag color={statusConf.color}>{t(statusConf.textKey)}</Tag>;
           }
           return <Tag>{val}</Tag>;
         },
       },
       {
-        title: '作业',
+        title: t('settings.actionTypeJob'),
         dataIndex: 'job_detail_url',
         key: 'job_detail_url',
         width: 100,
         render: (url: string | null) =>
           url ? (
             <a href={url} target="_blank" rel="noopener noreferrer">
-              查看作业
+              {t('settings.actionViewJob')}
             </a>
           ) : (
             '-'
           ),
       },
       {
-        title: '时间',
+        title: t('settings.actionRecordsTime'),
         dataIndex: 'created_at',
         key: 'created_at',
         width: 180,
@@ -168,7 +168,7 @@ const ActionRecords: React.FC = () => {
         // 注意：告警详情 actionTimeline.tsx 对同一数据源已用 convertToLocalizedTime，两处显示路径不同。
       },
     ],
-    [triggerEventLabelMap]
+    [t, triggerEventLabelMap]
   );
 
   return (

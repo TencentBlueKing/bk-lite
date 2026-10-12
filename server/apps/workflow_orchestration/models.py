@@ -27,6 +27,7 @@ class Workflow(TimeInfo, MaintainerInfo):
     engine_name = models.CharField(max_length=100, unique=True, blank=True)
     current_version = models.PositiveIntegerField(default=0)
     enabled = models.BooleanField(default=False, db_index=True)
+    is_builtin = models.BooleanField(default=False, db_index=True)
     has_draft = models.BooleanField(default=True, db_index=True)
     draft_revision = models.PositiveIntegerField(default=0)
     draft_base_version = models.PositiveIntegerField(default=0)
@@ -126,6 +127,7 @@ class WorkflowExecution(TimeInfo):
         RUNNING = "RUNNING", "执行中"
         WAITING_APPROVAL = "WAITING_APPROVAL", "等待审批"
         TERMINATING = "TERMINATING", "终止中"
+        UNKNOWN = "UNKNOWN", "结果未知"
         SUCCEEDED = "SUCCEEDED", "成功"
         FAILED = "FAILED", "失败"
         TIMED_OUT = "TIMED_OUT", "已超时"

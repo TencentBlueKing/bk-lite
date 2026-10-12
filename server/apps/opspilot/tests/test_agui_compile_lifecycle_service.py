@@ -125,3 +125,34 @@ async def test_编译终态保持原有事件与取消语义(outcome):
         assert ("RUN_ERROR" in event_types) == (outcome == "failure")
     assert finalized.is_set()
     await stream.aclose()
+
+
+async def test_重复请求关闭后每次编译均完成清理(monkeypatch):
+    monkeypatch.setattr(graph_module, "SSE_KEEPALIVE_INTERVAL_SECONDS", 0.001)
+    finalized = []
+
+    class ReusedGraph(BasicGraph):
+        async def compile_graph(self, request):
+            try:
+                await asyncio.sleep(30)
+            finally:
+                await asyncio.sleep(0)
+                finalized.append(request.thread_id)
+
+    graph = ReusedGraph()
+    baseline = set(asyncio.all_tasks())
+    try:
+        for index in range(3):
+            stream = graph.agui_stream(BasicLLMRequest(thread_id=f"fixture-{index}", extra_config={}))
+            async with asyncio.timeout(1):
+                async for frame in stream:
+                    if "compile_graph" in frame:
+                        break
+            await asyncio.wait_for(stream.aclose(), timeout=1)
+            await stream.aclose()
+            assert finalized == [f"fixture-{item}" for item in range(index + 1)]
+    finally:
+        tasks = [task for task in asyncio.all_tasks() - baseline if not task.done()]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)

@@ -41,6 +41,13 @@ export const buildResetFilterValues = (
       return values;
     }
 
+    if (definition.type === 'timeRange') {
+      values[definition.id] = definition.defaultValue == null
+        ? null
+        : normalizeTimeRangeFilterValue(definition.defaultValue);
+      return values;
+    }
+
     values[definition.id] = definition.defaultValue ?? null;
     return values;
   },
@@ -391,11 +398,32 @@ const materializeDefaultValue = (
   return raw;
 };
 
+export const recomputeTimeRangeValuesFromDefaults = (
+  definitions: UnifiedFilterDefinition[],
+  values: Record<string, FilterValue>,
+): Record<string, FilterValue> => {
+  const nextValues = { ...values };
+  definitions.forEach((definition) => {
+    if (definition.type !== 'timeRange' || !definition.enabled) {
+      return;
+    }
+    if (definition.defaultValue == null) {
+      nextValues[definition.id] = null;
+      return;
+    }
+    const normalized = normalizeTimeRangeFilterValue(definition.defaultValue);
+    if (normalized) {
+      nextValues[definition.id] = normalized;
+    }
+  });
+  return nextValues;
+};
+
 /**
  * 确认配置时：仅当某项默认值语义变化，且顶部筛选仍停在旧默认上，才写入新默认。
  * 相对时间只比 selectValue，避免 start/end 毫秒差误判；组织项不覆盖。
  */
-const applyChangedDefaultsIfStillOnPrevious = (
+export const applyChangedDefaultsIfStillOnPrevious = (
   previousDefinitions: UnifiedFilterDefinition[],
   nextDefinitions: UnifiedFilterDefinition[],
   values: Record<string, FilterValue>,

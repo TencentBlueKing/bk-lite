@@ -1,0 +1,98 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_calix_e5"
+        config_type = "calix_e5"
+        brand = "calix_e5"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+# @bk_include_ifmib_table
+    # ---- Calix E5-111（PEN 6321，e5x111 1.3.6.1.4.1.6321.1.2.3.2）：E5-111-IESCOMMON-MIB iesHWMonitor 1.3.6.1.4.1.6321.1.2.3.2.98.2 ----
+    # table.field 不带 .0；多级 INDEX 以点分形式落在 index 标签。
+    # iesFanRpmTable .1（INDEX iesChassisId, iesFanRpmIndex）：iesFanRpmCurValue .1.1.2（rpm），iesFanRpmDescr .1.1.6 作 fan 标签。
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6321.1.2.3.2.98.2.1.1.2"
+        name = "rpm"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6321.1.2.3.2.98.2.1.1.6"
+        name = "fan"
+        is_tag = true
+    # iesVoltageTable .2（INDEX iesChassisId, iesSlotId, iesVoltageIndex）：iesVoltageCurValue .2.1.2（毫伏），iesVoltageDescr .2.1.7 作 sensor 标签。
+    [[inputs.snmp.table]]
+        name = "device_voltage"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6321.1.2.3.2.98.2.2.1.2"
+        name = "volts"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6321.1.2.3.2.98.2.2.1.7"
+        name = "sensor"
+        is_tag = true
+    # iesSysTempTable .3（INDEX iesChassisId, iesSlotId, iesSysTempIndex）：iesSysTempCurValue .3.1.2（摄氏度），iesSysTempDescr .3.1.6 作 sensor 标签。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+        index_as_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6321.1.2.3.2.98.2.3.1.2"
+        name = "celsius"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6321.1.2.3.2.98.2.3.1.6"
+        name = "sensor"
+        is_tag = true
+# ---- CPU/内存/电源状态：E5-111 MIB 无机箱级对象，不采集。----
+
+# ---- 合法性与换算：风扇转速需为非负整数；电压毫伏 → 伏（÷1000），原始值需为整数；温度需为 -50~150 整数。无效行丢弃。----
+[[processors.starlark]]
+    namepass = ["device_fan", "device_voltage", "device_temperature"]
+    source = '''
+def apply(metric):
+    if metric.name == "device_fan":
+        value = metric.fields.get("rpm")
+        if type(value) != "int" or value < 0 or value > 100000:
+            return None
+        return metric
+    if metric.name == "device_voltage":
+        value = metric.fields.get("volts")
+        if type(value) != "int" or value < -1000000 or value > 1000000:
+            return None
+        metric.fields["volts"] = value / 1000.0
+        return metric
+    value = metric.fields.get("celsius")
+    if type(value) != "int" or value < -50 or value > 150:
+        return None
+    return metric
+'''
+    [processors.starlark.tagpass]
+        brand = ["calix_e5"]

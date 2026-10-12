@@ -23,6 +23,7 @@ import { WorkflowTablePanel } from './workflow-table-panel';
 const API = '/workflow_orchestration/api';
 type ListStatus = 'DRAFT' | 'PUBLISHED';
 type EnabledFilter = 'true' | 'false';
+type BuiltinFilter = 'true' | 'false';
 
 export function WorkflowListPage() {
   const router = useRouter();
@@ -41,6 +42,7 @@ export function WorkflowListPage() {
     return initial === 'DRAFT' || initial === 'PUBLISHED' ? initial : undefined;
   });
   const [enabledFilter, setEnabledFilter] = useState<EnabledFilter>();
+  const [builtinFilter, setBuiltinFilter] = useState<BuiltinFilter>();
   const [triggerType, setTriggerType] = useState<WorkflowTriggerType>();
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20 });
   const [busyId, setBusyId] = useState<number>();
@@ -63,6 +65,7 @@ export function WorkflowListPage() {
       if (query.trim()) params.set('query', query.trim());
       if (status) params.set('status', status);
       if (enabledFilter) params.set('enabled', enabledFilter);
+      if (builtinFilter) params.set('is_builtin', builtinFilter);
       if (triggerType) params.set('trigger_type', triggerType);
       const response = await get<PaginatedResponse<WorkflowRecord>>(`${API}/workflows/?${params.toString()}`, { signal: ticket.signal });
       if (!requestCoordinator.shouldApply(ticket)) return;
@@ -72,9 +75,12 @@ export function WorkflowListPage() {
       setRecords([]);
       setCount(0);
     } finally { requestCoordinator.finish(ticket); }
-  }, [enabledFilter, get, pagination.current, pagination.pageSize, query, requestCoordinator, status, triggerType]);
+  }, [builtinFilter, enabledFilter, get, pagination.current, pagination.pageSize, query, requestCoordinator, status, triggerType]);
 
-  const requestKey = useMemo(() => JSON.stringify([pagination.current, pagination.pageSize, query, status, enabledFilter, triggerType]), [enabledFilter, pagination.current, pagination.pageSize, query, status, triggerType]);
+  const requestKey = useMemo(
+    () => JSON.stringify([pagination.current, pagination.pageSize, query, status, enabledFilter, builtinFilter, triggerType]),
+    [builtinFilter, enabledFilter, pagination.current, pagination.pageSize, query, status, triggerType],
+  );
   useAutoRequest(requestKey, load);
 
   const create = () => {
@@ -144,8 +150,20 @@ export function WorkflowListPage() {
   const moreActions = (record: WorkflowRecord): MenuProps['items'] => [
     { key: 'executions', label: <WorkflowPermission operation="View"><span>{t('workflowOrchestration.execution.records', '执行记录')}</span></WorkflowPermission> },
     { key: 'duplicate', label: <WorkflowPermission operation="Add"><span>{t('common.copy', '复制')}</span></WorkflowPermission> },
-    { type: 'divider' },
-    { key: 'delete', label: <WorkflowPermission operation="Delete" instancePermissions={record.permission}><span>{t('common.delete', '删除')}</span></WorkflowPermission>, danger: true },
+    ...(record.is_builtin
+      ? []
+      : [
+        { type: 'divider' as const },
+        {
+          key: 'delete',
+          label: (
+              <WorkflowPermission operation="Delete" instancePermissions={record.permission}>
+                <span>{t('common.delete', '删除')}</span>
+              </WorkflowPermission>
+          ),
+          danger: true,
+        },
+      ]),
   ];
 
   const runDisabledReason = (record: WorkflowRecord) => {
@@ -172,6 +190,22 @@ export function WorkflowListPage() {
       key: 'name',
       width: 220,
       render: (value: string) => <EllipsisWithTooltip text={value || '--'} className="w-full overflow-hidden text-ellipsis whitespace-nowrap" />,
+    },
+    {
+      title: t('workflowOrchestration.workflow.builtin', '是否内置'),
+      key: 'is_builtin',
+      width: 96,
+      filters: [
+        { value: 'true', text: t('common.builtin', '内置') },
+        { value: 'false', text: t('workflowOrchestration.workflow.custom', '自定义') },
+      ],
+      filterMultiple: false,
+      filteredValue: builtinFilter ? [builtinFilter] : null,
+      render: (_, record) => (
+        record.is_builtin
+          ? <Tag color="purple">{t('common.builtin', '内置')}</Tag>
+          : <Tag>{t('workflowOrchestration.workflow.custom', '自定义')}</Tag>
+      ),
     },
     {
       title: t('workflowOrchestration.workflow.publishStatus', '发布状态'),
@@ -265,7 +299,15 @@ export function WorkflowListPage() {
       fixed: 'right',
       render: (_, record) => (
         <div className="flex items-center gap-1 whitespace-nowrap">
-          <WorkflowPermission operation="Edit" instancePermissions={record.permission}><Button type="link" size="small" onClick={() => router.push(`/workflow-orchestration/workflows/${record.id}?mode=edit`)}>{t('common.edit', '编辑')}</Button></WorkflowPermission>
+          <WorkflowPermission operation={record.is_builtin ? 'View' : 'Edit'} instancePermissions={record.permission}>
+            <Button
+              type="link"
+              size="small"
+              onClick={() => router.push(`/workflow-orchestration/workflows/${record.id}?mode=${record.is_builtin ? 'view' : 'edit'}`)}
+            >
+              {record.is_builtin ? t('common.view', '查看') : t('common.edit', '编辑')}
+            </Button>
+          </WorkflowPermission>
           <WorkflowPermission operation="Execute" instancePermissions={record.permission}>
             <Tooltip title={runDisabledReason(record) || undefined}>
               <span><Button type="link" size="small" disabled={Boolean(runDisabledReason(record))} onClick={() => void execute(record)}>{t('workflowOrchestration.action.run', '运行')}</Button></span>
@@ -299,6 +341,7 @@ export function WorkflowListPage() {
         if (extra.action !== 'filter') return;
         setStatus(tableFilters.status?.[0] as ListStatus | undefined);
         setEnabledFilter(tableFilters.enabled?.[0] as EnabledFilter | undefined);
+        setBuiltinFilter(tableFilters.is_builtin?.[0] as BuiltinFilter | undefined);
         setTriggerType(tableFilters.trigger_type?.[0] as WorkflowTriggerType | undefined);
         setPagination((item) => ({ ...item, current: 1 }));
       }} />

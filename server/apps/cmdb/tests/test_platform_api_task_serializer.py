@@ -101,6 +101,20 @@ def test_platform_api_accepts_username_password_and_tls(model_id, port):
     assert serializer.validated_data["credential"][0]["username"] == "collector"
 
 
+@pytest.mark.parametrize("model_id,port", [("fusioninsight", 443), ("storage", 8088), ("sangforhci", 443)])
+def test_platform_api_accepts_server_generated_credential_metadata(model_id, port):
+    # 与创建服务顺序一致：请求无需携带版本，凭据池在 serializer 前生成 ID 和版本。
+    pool = CollectCredentialPoolService.normalize_pool(
+        {"credential_source": "inline", "username": "collector", "password": "test-secret", "port": port, "verify_tls": True}
+    )
+    pool = CollectCredentialPoolService.assign_versions([], pool)
+    CollectCredentialPoolService.validate_pool_shape(pool)
+    serializer = _serializer(model_id, pool[0])
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["credential"] == pool
+
+
 def test_platform_api_converts_legacy_aksk_to_username_password():
     serializer = _serializer(
         "fusioninsight",

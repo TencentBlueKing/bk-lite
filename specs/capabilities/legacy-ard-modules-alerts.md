@@ -34,6 +34,7 @@ path 端点（urls.py:57-63）：`api/test/`（request_test，receiver.py:107）
 
 ## 4. 接入与富化【已实现/已存在】
 - 适配器 `common/source_adapter/`：Prometheus / Zabbix / NATS / webhook / monitor / restful；基类 `base.py` 负责字段映射、恢复检测、屏蔽校验、富化开关（`enable_rich_event`）。
+- NATS 组织归属：保留内部签名认证边界，可信内部事件的非空 `organizations` 优先；字段缺失、`null` 或 `[]` 时回退到经过校验的告警源组织密钥。NATS RPC 通过顶层 `secret` 传递组织密钥，批量与逐事件 ACK 使用相同规则；该凭据不进入事件原始数据。外部调用（含 NATS 告警源的 Webhook）仍按组织密钥归属，不能用事件组织覆盖；其他告警源的规则不变。内部签名密钥和 ACK token 均不能代替组织密钥。
 - `main()` 执行顺序【已实现/已存在】（`base.py:552-568`）：① `event_operator(bulk_events)`（屏蔽写入） → ② `InstantAlertDispatcher.dispatch(bulk_events)`（即时旁路） → ③ `handle_recovery_events()`（聚合/恢复）。屏蔽必须先于即时旁路执行，确保即时旁路按库内最新屏蔽状态过滤；本次调整将 `event_operator` 从即时旁路之后前移至之前（`base.py:557`）。
 - 聚合主路径显式排除已屏蔽事件【已实现/已存在】：`AggregationProcessor.get_events_for_strategy()` 查询时追加 `.exclude(status=EventStatus.SHIELD)`（`aggregation/processor/aggregation_processor.py:136`），被屏蔽事件不参与指纹聚合也不产出告警。
 - 即时旁路新增前置屏蔽过滤【已实现/已存在】：`InstantAlertDispatcher.dispatch()` 在收集命中规则之前调用 `_exclude_shielded(events)` 静态方法（`instant_dispatcher.py:273,310`），该方法按 `event_id` 查库过滤 `status=SHIELD` 的事件；内存中 `Event` 对象的状态可能滞后，故以库内当前值为准。

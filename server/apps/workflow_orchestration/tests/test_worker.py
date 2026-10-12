@@ -101,6 +101,99 @@ def test_worker_rejects_trusted_atom_task_after_its_local_execution_context_was_
 
 
 @pytest.mark.django_db
+def test_worker_failure_path_is_fenced_when_lease_was_taken_over(mocker):
+    workflow = Workflow.objects.create(name="失主失败回报", team=[7], definition={})
+    execution = WorkflowExecution.objects.create(
+        workflow=workflow,
+        workflow_version=1,
+        conductor_workflow_id="workflow-fenced-fail",
+        team=[7],
+    )
+    client = mocker.Mock()
+    real_filter = AtomExecution.objects.filter
+
+    def filter_proxy(*args, **kwargs):
+        qs = real_filter(*args, **kwargs)
+        if "claim_token" in kwargs and kwargs.get("status") == AtomExecution.Status.RUNNING:
+            real_update = qs.update
+
+            def update_proxy(**update_kwargs):
+                # Simulate lost ownership only for the failure terminal write.
+                if update_kwargs.get("status") == AtomExecution.Status.FAILED:
+                    return 0
+                return real_update(**update_kwargs)
+
+            qs.update = update_proxy
+        return qs
+
+    mocker.patch(
+        "apps.workflow_orchestration.management.commands.run_workflow_worker.AtomExecution.objects.filter",
+        side_effect=filter_proxy,
+    )
+
+    Command._execute_task(
+        client,
+        "worker-stale",
+        "bklite_job_execute",
+        {
+            "taskId": "fenced-fail-task",
+            "workflowInstanceId": "workflow-fenced-fail",
+            "referenceTaskName": "job",
+            "inputData": {"execution_id": str(execution.id)},
+        },
+        handler=mocker.Mock(side_effect=RuntimeError("stale owner boom")),
+    )
+
+    # Stale owner must not force FAILED onto Conductor after losing the lease.
+    assert not any(call.args[0].get("status") == "FAILED" for call in client.update_task.call_args_list)
+    assert AtomExecution.objects.get(execution=execution).status == AtomExecution.Status.RUNNING
+
+
+@pytest.mark.django_db
+def test_worker_rejects_client_execution_id_that_does_not_match_engine_instance(mocker):
+    victim_workflow = Workflow.objects.create(name="被借用身份流程", team=[99], definition={})
+    victim = WorkflowExecution.objects.create(
+        workflow=victim_workflow,
+        workflow_version=1,
+        conductor_workflow_id="workflow-victim",
+        team=[99],
+        started_by="victim",
+        domain="victim.example",
+    )
+    real_workflow = Workflow.objects.create(name="真实流程", team=[7], definition={})
+    real = WorkflowExecution.objects.create(
+        workflow=real_workflow,
+        workflow_version=1,
+        conductor_workflow_id="workflow-real",
+        team=[7],
+        started_by="alice",
+        domain="example.com",
+    )
+    client = mocker.Mock()
+    handler = mocker.Mock(return_value={"should_not": "run"})
+
+    Command._execute_task(
+        client,
+        "worker-1",
+        "bklite_job_execute",
+        {
+            "taskId": "spoofed-task",
+            "workflowInstanceId": "workflow-real",
+            "referenceTaskName": "job",
+            "inputData": {"execution_id": str(victim.id), "action": "restart"},
+        },
+        handler=handler,
+    )
+
+    handler.assert_not_called()
+    result = client.update_task.call_args.args[0]
+    assert result["status"] == "FAILED"
+    assert result["reasonForIncompletion"] == "ValueError: atom execution failed"
+    assert AtomExecution.objects.filter(execution=real).count() == 0
+    assert AtomExecution.objects.filter(execution=victim).count() == 0
+
+
+@pytest.mark.django_db
 def test_redelivery_does_not_steal_an_active_atom_execution_lease(mocker):
     workflow = Workflow.objects.create(name="租约中流程", team=[7], definition={})
     execution = WorkflowExecution.objects.create(
@@ -374,19 +467,17 @@ def test_redelivered_conductor_task_reuses_terminal_result_without_repeating_ato
     Command._execute_task(client, "worker-1", "bklite_job_execute", task, handler=handler)
     Command._execute_task(client, "worker-2", "bklite_job_execute", task, handler=handler)
 
-    handler.assert_called_once_with(
-        {
-            "action": "restart",
-            "__bklite_context": {
-                "execution_id": str(WorkflowExecution.objects.get(conductor_workflow_id="workflow-1").id),
-                "workflow_id": str(workflow.id),
-                "workflow_version": 1,
-                "organization_id": 7,
-                "actor": {"username": "", "domain": "domain.com"},
-                "trigger_type": "FORM",
-            },
-        }
-    )
+    payload = handler.call_args.args[0]
+    assert payload["action"] == "restart"
+    assert payload["__bklite_context"] == {
+        "execution_id": str(WorkflowExecution.objects.get(conductor_workflow_id="workflow-1").id),
+        "workflow_id": str(workflow.id),
+        "workflow_version": 1,
+        "organization_id": 7,
+        "actor": {"username": "", "domain": "domain.com"},
+        "trigger_type": "FORM",
+    }
+    assert payload["__atom_execution_id"] == AtomExecution.objects.get(execution__conductor_workflow_id="workflow-1").pk
     assert AtomExecution.objects.count() == 1
     assert [call.args[0]["status"] for call in client.update_task.call_args_list] == ["COMPLETED", "COMPLETED"]
 

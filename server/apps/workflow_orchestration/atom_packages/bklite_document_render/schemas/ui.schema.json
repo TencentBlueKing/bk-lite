@@ -8,7 +8,7 @@
     "ui:help": "拖入上游节点输出，或直接填写用于填充模板的 JSON 数据"
   },
   "examples": {
-    "docx": "/workflow-orchestration/templates/health-inspection-example.docx",
-    "xlsx": "/workflow-orchestration/templates/health-inspection-example.xlsx"
+    "docx": "/workflow_orchestration/api/workflows/sample-templates/docx/",
+    "xlsx": "/workflow_orchestration/api/workflows/sample-templates/xlsx/"
   }
 }

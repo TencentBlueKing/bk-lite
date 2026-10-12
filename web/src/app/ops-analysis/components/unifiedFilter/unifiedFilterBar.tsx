@@ -29,6 +29,7 @@ import {
   useShareOrganization,
   useShareOrganizationSeed,
 } from '@/app/ops-analysis/context/shareOrganization';
+import { getUnifiedFilterTimeSelectorDefaultValue } from '@/app/ops-analysis/utils/filterValue';
 import {
   buildResetFilterValues,
   fillMissingOrganizationFilterValues,
@@ -133,28 +134,6 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
     handleLocalValueChange(filterId, null);
   };
 
-  const getTimeSelectorDefaultValue = (
-    value: FilterValue,
-  ): {
-    selectValue: number;
-    rangePickerVaule: [dayjs.Dayjs, dayjs.Dayjs] | null;
-  } => {
-    const timeValue = value as TimeRangeValue | null | undefined;
-    if (!timeValue || !timeValue.start || !timeValue.end) {
-      return { selectValue: 15, rangePickerVaule: null };
-    }
-
-    const selectVal = timeValue.selectValue ?? 0;
-    if (selectVal > 0) {
-      return { selectValue: selectVal, rangePickerVaule: null };
-    }
-
-    return {
-      selectValue: 0,
-      rangePickerVaule: [dayjs(timeValue.start), dayjs(timeValue.end)],
-    };
-  };
-
   const publishValues = (
     next: Record<string, FilterValue>,
     notify: 'search' | 'reset' = 'search',
@@ -251,7 +230,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
 
     switch (definition.type) {
       case 'timeRange': {
-        const defaultValue = getTimeSelectorDefaultValue(value);
+        const defaultValue = getUnifiedFilterTimeSelectorDefaultValue(value);
 
         return (
           <TimeSelector
@@ -360,6 +339,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
       theme={popupTheme}
     >
       <div
+        data-ops-analysis-filter-bar=""
         className={
           isEmbedded
             ? `border-b border-(--color-border-2) bg-transparent px-4 py-3 ${containerClassName ?? ''}`

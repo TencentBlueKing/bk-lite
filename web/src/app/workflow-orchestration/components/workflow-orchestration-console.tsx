@@ -29,10 +29,11 @@ import { defaultTriggerRuntimeInputs, WorkflowTriggerRuntimeForm } from './workf
 import { OPSPILOT_ATOM_KEYS, OpsPilotAtomForm } from './opspilot-atom-form';
 import { approvalDecisionReference, configureApprovalTask } from '../lib/approval-dsl';
 import { localizeAtom } from '../lib/atom-localization';
+import { BUILTIN_SAMPLE_TEMPLATE_URLS } from '../lib/sample-templates';
 import { buildWorkflowFlow, commonTriggerInputSchema, expandApprovalCanvasEdges, flattenTasks, projectApprovalCanvasEdges, workflowTriggerNodes, type WorkflowCanvasMetadata, type WorkflowReturnNode, type WorkflowTriggerNode } from '../lib/canvas-dsl';
 import { configureConditionTask, type ConditionConfiguration, type ConditionOperator } from '../lib/condition-dsl';
 import { layoutWorkflowCanvas } from '../lib/canvas-layout';
-import { buildDataReferenceOptions, buildWorkflowOutputReferenceOptions, dataReferencePreview, resolveNodeTestInputs, type DataReferenceOption } from '../lib/data-references';
+import { buildDataReferenceOptions, buildWorkflowOutputReferenceOptions, dataReferencePreview, resolveNodeTestInputs, resolveTriggerGroupLabel, type DataReferenceOption } from '../lib/data-references';
 import { buildNodeTestInputContract, materializeNodeTestInputs } from '../lib/node-test-input-contract';
 import type { AtomCatalogItem, ConductorDefinition, ConductorTask, ExecutionRecord, JsonSchema, PaginatedResponse, WorkflowRecord, WorkflowTriggerType, WorkflowVersionRecord } from '../lib/types';
 import { useAutoRequest, useRequestCoordinator } from '../lib/use-request-coordinator';
@@ -272,7 +273,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   const { convertToLocalizedTime } = useLocalizedTime();
   const effectiveInitialName = initialName || t('workflowOrchestration.editor.newWorkflow', '新建流程');
   const [workflow, setWorkflow] = useState<WorkflowRecord>();
-  const readOnly = mode === 'view' || (workflow?.permission !== undefined && !workflow.permission.includes('Operate'));
+  const readOnly = mode === 'view' || Boolean(workflow?.is_builtin) || (workflow?.permission !== undefined && !workflow.permission.includes('Operate'));
   const [definition, setDefinition] = useState<ConductorDefinition>();
   const [metadata, setMetadata] = useState<WorkflowCanvasMetadata>({});
   const [atoms, setAtoms] = useState<AtomCatalogItem[]>([]);
@@ -280,6 +281,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedId, setSelectedId] = useState<string>();
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [atomDetail, setAtomDetail] = useState<AtomCatalogItem>();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pendingSource, setPendingSource] = useState<{ id: string; handle?: string }>();
   const [query, setQuery] = useState('');
@@ -390,10 +392,28 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   const isOpsPilotStyleAtom = Boolean(selectedTask?.type === 'SIMPLE' && OPSPILOT_ATOM_KEYS.has(selectedTask.name));
   const referenceLabels = useMemo(() => ({
     triggerInput: t('workflowOrchestration.editor.triggerInput', '触发输入'),
-    systemContext: t('workflowOrchestration.editor.systemContext', '系统上下文'),
+    systemContext: t('workflowOrchestration.editor.systemContext', '运行信息'),
     allOutputs: t('workflowOrchestration.editor.allOutputs', '全部输出'),
+    systemFields: {
+      execution_id: t('workflowOrchestration.editor.systemField.execution_id', '执行号'),
+      workflow_id: t('workflowOrchestration.editor.systemField.workflow_id', '流程'),
+      workflow_version: t('workflowOrchestration.editor.systemField.workflow_version', '流程版本'),
+      organization_id: t('workflowOrchestration.editor.systemField.organization_id', '组织'),
+      trigger_id: t('workflowOrchestration.editor.systemField.trigger_id', '触发器'),
+      trigger_type: t('workflowOrchestration.editor.systemField.trigger_type', '触发类型'),
+      actor_id: t('workflowOrchestration.editor.systemField.actor_id', '发起人标识'),
+      actor_name: t('workflowOrchestration.editor.systemField.actor_name', '发起人'),
+      started_at: t('workflowOrchestration.editor.systemField.started_at', '开始时间'),
+      trace_id: t('workflowOrchestration.editor.systemField.trace_id', '追踪号'),
+    },
   }), [t]);
-  const references = useMemo(() => selectedTask && definition ? buildDataReferenceOptions(definition, selectedTask.taskReferenceName, localizedAtoms, commonTriggerInputSchema(metadata), referenceLabels, metadata.edges) : [], [definition, localizedAtoms, metadata, referenceLabels, selectedTask]);
+  const triggerGroupLabel = useMemo(() => resolveTriggerGroupLabel(
+    selectedTask?.taskReferenceName || '',
+    workflowTriggerNodes(metadata).map((item) => ({ id: item.id, name: item.name })),
+    metadata.edges,
+    referenceLabels.triggerInput,
+  ), [metadata, referenceLabels.triggerInput, selectedTask?.taskReferenceName]);
+  const references = useMemo(() => selectedTask && definition ? buildDataReferenceOptions(definition, selectedTask.taskReferenceName, localizedAtoms, commonTriggerInputSchema(metadata), referenceLabels, metadata.edges, metadata.node_titles, triggerGroupLabel) : [], [definition, localizedAtoms, metadata, referenceLabels, selectedTask, triggerGroupLabel]);
   const inspectorTriggers = useMemo(() => workflowTriggerNodes(metadata), [metadata]);
   const inspectorTestTrigger = inspectorTriggers.find((item) => item.id === nodeTestTriggerId) || inspectorTriggers.find((item) => item.trigger_type === 'FORM') || inspectorTriggers[0];
   const nodeTestInputContract = useMemo(() => buildNodeTestInputContract(selectedTask, selectedAtom?.input_schema, inspectorTestTrigger?.input_schema), [inspectorTestTrigger, selectedAtom?.input_schema, selectedTask]);
@@ -406,11 +426,14 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     label: item.label,
     value: item.value,
     type: item.type,
-    source: item.source,
+    source: item.sourceLabel || item.source,
+    sourceKey: item.sourceReference || item.source,
+    displayName: item.displayName || item.path || item.label,
+    jsonPath: item.jsonPath || item.path,
     path: item.path,
     preview: dataReferencePreview(item, inspectorTestInputs, inspectorTestData),
   })), [inspectorTestData, inspectorTestInputs, references]);
-  const returnReferences = useMemo(() => definition ? buildWorkflowOutputReferenceOptions(definition, localizedAtoms) : [], [definition, localizedAtoms]);
+  const returnReferences = useMemo(() => definition ? buildWorkflowOutputReferenceOptions(definition, localizedAtoms, { allOutputs: referenceLabels.allOutputs }, metadata.node_titles) : [], [definition, localizedAtoms, metadata.node_titles, referenceLabels.allOutputs]);
   const selectedCondition = selectedTask?.type === 'SWITCH' && selectedTask.name === 'condition'
     ? metadata.condition_nodes?.[selectedTask.taskReferenceName] || { logic: 'ALL' as const, rules: [{ left: '${system.execution_id}', operator: 'EQ' as const, rightKind: 'literal' as const, right: '' }] }
     : undefined;
@@ -502,7 +525,11 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     if (!definition) return;
     const reference = uniqueId(atom.key.replace(/^bklite_/, '').replace(/[^a-z0-9_]/gi, '_'), new Set(tasks.map((item) => item.taskReferenceName)));
     const next = { ...definition, tasks: [...definition.tasks, { name: atom.key, taskReferenceName: reference, type: 'SIMPLE' as const, inputParameters: defaultNodeInputValues(atom.input_schema, atom.ui_schema) }] };
-    addNodeToCanvas(reference, next, snapshotMetadata());
+    const current = snapshotMetadata();
+    addNodeToCanvas(reference, next, {
+      ...current,
+      node_titles: { ...(current.node_titles || {}), [reference]: atom.name },
+    });
   };
 
   const addControl = (type: 'SWITCH' | 'HUMAN') => {
@@ -1123,6 +1150,15 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       setPickerOpen(true);
     }
     if (kind === 'configure') setInspectorOpen(true);
+    if (kind === 'detail') {
+      const task = flattenTasks(definition?.tasks || []).find((item) => item.taskReferenceName === id);
+      const atom = localizedAtoms.find((item) => item.key === task?.name);
+      if (!atom) {
+        message.warning(t('workflowOrchestration.editor.atomDetailMissing', '未找到该原子的目录信息'));
+        return;
+      }
+      setAtomDetail(atom);
+    }
     if (kind === 'test' && definition) {
       const trigger = workflowTriggerNodes(metadata).find((item) => item.id === id);
       if (trigger?.trigger_type === 'FORM') withPersistedDraft(() => prepareFormTriggerTest(trigger));
@@ -1291,7 +1327,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
         hideUpstreamInput={Boolean(selectedTrigger)}
       >
         <div className="flex flex-col gap-5">
-          {selectedTrigger && <Form className="flex flex-col gap-5" layout="vertical"><Form.Item className="mb-0" label={t('workflowOrchestration.editor.nodeName', '节点名称')}><Input disabled={readOnly} value={selectedTrigger.name} onChange={(event) => changeTrigger({ name: event.target.value })} /></Form.Item>
+          {selectedTrigger && <Form className="flex flex-col gap-5" layout="vertical"><Form.Item className="mb-0" label={t('workflowOrchestration.editor.nodeName', '节点名称')} required><Input disabled={readOnly} value={selectedTrigger.name} placeholder={t('workflowOrchestration.editor.enterNodeName', '请输入节点名称')} onChange={(event) => changeTrigger({ name: event.target.value })} /></Form.Item>
             {selectedTrigger.trigger_type === 'FORM' && <section className="flex flex-col gap-4"><Alert type="info" showIcon message={t('workflowOrchestration.editor.triggerInputHint', '{trigger} 定义本入口的运行输入', { trigger: triggerLabels[selectedTrigger.trigger_type] })} /><FormSchemaEditor context="form" readOnly={readOnly} value={selectedTrigger.input_schema} onChange={(inputSchema) => changeTrigger({ input_schema: inputSchema })} /></section>}
             {selectedTrigger.trigger_type === 'SCHEDULE' && <ScheduleTriggerEditor
               value={selectedTrigger.config}
@@ -1358,15 +1394,17 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                   schema={selectedAtom?.input_schema}
                   value={selectedTask.inputParameters || {}}
                   references={references}
+                  nodeTitle={selectedNode?.data.title || selectedAtom?.name || selectedTask.name}
                   readOnly={readOnly}
                   targetRecords={jobTargetRecords}
                   fieldActions={readOnly ? {} : {
                     targets: <Button onClick={() => {
                       setJobTargetSelectorPurpose('params');
                       setJobTargetSelectorOpen(true);
-                    }}>{t('workflowOrchestration.editor.selectJobPlatformHosts', '选择作业平台主机')}</Button>,
+                    }}>{t('workflowOrchestration.launch.selectTarget', '选择主机')}</Button>,
                   }}
                   onChange={changeTaskInputs}
+                  onNodeTitleChange={changeTaskTitle}
                 />
                 : OPSPILOT_ATOM_KEYS.has(selectedTask.name)
                   ? <OpsPilotAtomForm
@@ -1385,7 +1423,10 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                     uiSchema={selectedAtom?.ui_schema}
                     value={selectedTask.inputParameters || {}}
                     references={references}
+                    nodeTitle={selectedNode?.data.title || selectedAtom?.name || selectedTask.name}
+                    readOnly={readOnly}
                     onChange={changeTaskInputs}
+                    onNodeTitleChange={changeTaskTitle}
                   />)}
             {selectedCondition && <ConditionEditor
               value={selectedCondition}
@@ -1412,7 +1453,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
               </Form.Item>
             </Form>}
           </section>}
-          {selectedReturn && <Form className="flex flex-col gap-5" layout="vertical"><Form.Item className="mb-0" label={t('workflowOrchestration.editor.nodeName', '节点名称')}><Input disabled={readOnly} value={selectedReturn.name} onChange={(event) => changeReturn({ name: event.target.value })} /></Form.Item><Form.Item className="mb-0" label={t('workflowOrchestration.editor.returnReference', '返回数据引用')} tooltip={t('workflowOrchestration.editor.returnReferenceHint', '从可用节点输出中选择，不支持自由表达式')}><Select showSearch optionFilterProp="label" disabled={readOnly} value={String(selectedReturn.config.body || '') || undefined} placeholder={t('workflowOrchestration.editor.selectNodeOutput', '选择节点输出')} options={returnReferences.map((item) => ({ value: item.value, label: item.label }))} onChange={(body) => changeReturn({ config: { ...selectedReturn.config, body } })} /></Form.Item></Form>}
+          {selectedReturn && <Form className="flex flex-col gap-5" layout="vertical"><Form.Item className="mb-0" label={t('workflowOrchestration.editor.nodeName', '节点名称')} required><Input disabled={readOnly} value={selectedReturn.name} placeholder={t('workflowOrchestration.editor.enterNodeName', '请输入节点名称')} onChange={(event) => changeReturn({ name: event.target.value })} /></Form.Item><Form.Item className="mb-0" label={t('workflowOrchestration.editor.returnReference', '返回数据引用')} tooltip={t('workflowOrchestration.editor.returnReferenceHint', '从可用节点输出中选择，不支持自由表达式')}><Select showSearch optionFilterProp="label" disabled={readOnly} value={String(selectedReturn.config.body || '') || undefined} placeholder={t('workflowOrchestration.editor.selectNodeOutput', '选择节点输出')} options={returnReferences.map((item) => ({ value: item.value, label: item.label }))} onChange={(body) => changeReturn({ config: { ...selectedReturn.config, body } })} /></Form.Item></Form>}
         </div>
       </WorkflowNodeInspector>}
     </div>
@@ -1420,6 +1461,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     <OperateModal
       title={t('workflowOrchestration.editor.testCurrentNode', '测试当前节点')}
       open={nodeTestOpen}
+      destroyOnHidden
       zIndex={WORKFLOW_OVERLAY_MODAL_Z_INDEX}
       confirmLoading={nodeTestBusy}
       okText={t('workflowOrchestration.editor.executeNode', '执行节点')}
@@ -1479,8 +1521,8 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                   maxCount: 1,
                   sourceModes: ['upload'],
                   sampleFiles: [
-                    { name: 'Word', url: '/workflow-orchestration/templates/health-inspection-example.docx' },
-                    { name: 'Excel', url: '/workflow-orchestration/templates/health-inspection-example.xlsx' },
+                    { name: 'Word', url: BUILTIN_SAMPLE_TEMPLATE_URLS.docx },
+                    { name: 'Excel', url: BUILTIN_SAMPLE_TEMPLATE_URLS.xlsx },
                   ],
                 },
               }} />
@@ -1555,7 +1597,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                     </span>
                   </span>
                   <span className="shrink-0 text-sm text-[var(--color-primary)]">
-                    {t('workflowOrchestration.editor.selectJobPlatformHosts', '选择作业平台主机')}
+                    {t('workflowOrchestration.launch.selectTarget', '选择主机')}
                   </span>
                 </button>
               </Form.Item>
@@ -1600,6 +1642,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
     <OperateModal
       title={t('workflowOrchestration.editor.debugCurrentDraft', '调试当前草稿')}
       open={debugOpen}
+      destroyOnHidden
       zIndex={WORKFLOW_OVERLAY_MODAL_Z_INDEX}
       okText={t('workflowOrchestration.editor.startDebug', '开始调试')}
       okButtonProps={{ disabled: !debugTrigger }}
@@ -1614,6 +1657,61 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
       }} /></Form.Item></Form> : null}
       {debugTrigger && workflow.id ? <WorkflowTriggerRuntimeForm workflowId={workflow.id} schema={debugTrigger.input_schema} value={debugInputs} onChange={setDebugInputs} /> : <Empty description={t('workflowOrchestration.editor.noTriggers', '当前流程没有触发器')} />}
     </OperateModal>
+    {atomDetail ? (
+      <OperateModal
+        title={t('workflowOrchestration.editor.viewAtomDetails', '查看原子详情')}
+        open
+        footer={null}
+        destroyOnHidden
+        width={560}
+        onCancel={() => setAtomDetail(undefined)}
+      >
+        <Descriptions
+          size="small"
+          column={1}
+          items={[
+            { key: 'name', label: t('workflowOrchestration.atom.name', '原子名称'), children: atomDetail.name },
+            { key: 'key', label: t('workflowOrchestration.atom.key', '原子标识'), children: atomDetail.key },
+            { key: 'category', label: t('workflowOrchestration.atom.category', '分类'), children: atomDetail.category },
+            { key: 'description', label: t('workflowOrchestration.atom.description', '说明'), children: atomDetail.description || '--' },
+            {
+              key: 'safety',
+              label: t('workflowOrchestration.atom.safetyLevel', '安全级别'),
+              children: atomDetail.safety_level === 'READ_ONLY'
+                ? t('workflowOrchestration.atom.safetyReadOnly', '只读')
+                : atomDetail.safety_level === 'MUTATION'
+                  ? t('workflowOrchestration.atom.safetyMutation', '变更')
+                  : '--',
+            },
+            {
+              key: 'timeout',
+              label: t('workflowOrchestration.editor.effectiveTimeout', '生效超时'),
+              children: atomDetail.default_timeout_seconds
+                ? t('workflowOrchestration.editor.effectiveTimeoutValue', '{seconds} 秒（由原子契约固定）', { seconds: atomDetail.default_timeout_seconds })
+                : '--',
+            },
+            {
+              key: 'retry',
+              label: t('workflowOrchestration.editor.effectiveRetry', '失败重试'),
+              children: atomDetail.retry_count === undefined
+                ? '--'
+                : atomDetail.retry_count
+                  ? t('workflowOrchestration.editor.effectiveRetryValue', '{count} 次，间隔 {seconds} 秒', { count: atomDetail.retry_count, seconds: atomDetail.retry_delay_seconds || 0 })
+                  : t('workflowOrchestration.editor.noAutomaticRetry', '不自动重试'),
+            },
+            {
+              key: 'idempotent',
+              label: t('workflowOrchestration.atom.idempotent', '幂等'),
+              children: atomDetail.idempotent === undefined
+                ? '--'
+                : atomDetail.idempotent
+                  ? t('common.yes', '是')
+                  : t('common.no', '否'),
+            },
+          ]}
+        />
+      </OperateModal>
+    ) : null}
     <Drawer
       title={t('workflowOrchestration.editor.versionRecordsPlain', '流程版本记录')}
       width={660}

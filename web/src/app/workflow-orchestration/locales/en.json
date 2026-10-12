@@ -26,6 +26,8 @@
       "status": "Workflow Status",
       "publishStatus": "Publish Status",
       "enableStatus": "Enabled",
+      "builtin": "Built-in",
+      "custom": "Custom",
       "create": "New Workflow",
       "duplicate": "Duplicate Workflow",
       "runTitle": "Run Workflow · {name}",
@@ -208,9 +210,69 @@
             "memory_id": "Memory ID",
             "event_id": "Async Event ID"
           }
+        },
+        "bklite_document_render": {
+          "name": "Document",
+          "category": "Report",
+          "description": "Generate a controlled download from a Word or Excel template and structured data",
+          "output": {
+            "artifact": "Generated File",
+            "artifact.id": "File ID",
+            "artifact.filename": "File Name",
+            "artifact.format": "Format",
+            "artifact.size": "Size",
+            "field_warnings": "Template Field Warnings"
+          }
+        },
+        "bklite_job_execute": {
+          "name": "Job Execution",
+          "category": "Job",
+          "description": "Run a user-written Linux or Windows script on authorized targets and return a uniform JSON result",
+          "output": {
+            "results": "Target Results",
+            "results.target": "Target",
+            "results.status": "Status",
+            "results.exit_code": "Exit Code",
+            "results.stdout": "Standard Output",
+            "results.stderr": "Error Output",
+            "results.data": "Business JSON",
+            "results.error": "Error",
+            "summary": "Summary",
+            "summary.total": "Total",
+            "summary.succeeded": "Succeeded",
+            "summary.failed": "Failed",
+            "job_task_ids": "Job Instances"
+          }
+        },
+        "bklite_http_request": {
+          "name": "HTTP Request",
+          "category": "Integration",
+          "description": "Send an HTTP request with a method and full URL, with runtime SSRF and size limits",
+          "output": {
+            "status_code": "Status Code",
+            "content_type": "Content Type",
+            "body": "Body",
+            "size": "Size"
+          }
+        },
+        "bklite_notification": {
+          "name": "Notification",
+          "category": "Notification",
+          "description": "Deliver through an email, WeCom, Feishu, DingTalk, or webhook channel configured in System Management",
+          "output": {
+            "delivery": "Delivery Result"
+          }
         }
       },
-      "nodeTypeLabel": "Node Type"
+      "nodeTypeLabel": "Node Type",
+      "name": "Atom Name",
+      "key": "Atom Key",
+      "category": "Category",
+      "description": "Description",
+      "safetyLevel": "Safety Level",
+      "safetyReadOnly": "Read-only",
+      "safetyMutation": "Mutation",
+      "idempotent": "Idempotent"
     },
     "launch": {
       "enterAndPressReturn": "Type and press Enter to add",
@@ -375,7 +437,7 @@
       "searchNodes": "Search nodes…",
       "noMatchingNodes": "No matching nodes",
       "nodeInput": "Node input",
-      "inputHint": "Shows upstream data and system context available to this node. Select references in the parameters.",
+      "inputHint": "Shows upstream data and run info available to this node. Select references in the parameters.",
       "noInputs": "This node has no available inputs",
       "nodeParameters": "Node Parameters",
       "parameters": "Parameters",
@@ -609,6 +671,7 @@
       "singleStep": "Single-step Run",
       "configure": "Configure",
       "viewAtomDetails": "View Atom Details",
+      "atomDetailMissing": "Atom catalog details were not found",
       "deleteNode": "Delete Node",
       "newWorkflow": "New Workflow",
       "enterAndPressReturn": "Type and press Enter to add",
@@ -672,7 +735,19 @@
       "noSchemaFields": "This atom has no declared Schema fields",
       "noSchemaFieldsHint": "Add an input Schema to the atom package first. Unconstrained raw JSON is unavailable for regular nodes.",
       "triggerInput": "Trigger Input",
-      "systemContext": "System Context",
+      "systemContext": "Run Info",
+      "systemField": {
+        "execution_id": "Execution ID",
+        "workflow_id": "Workflow",
+        "workflow_version": "Workflow Version",
+        "organization_id": "Organization",
+        "trigger_id": "Trigger",
+        "trigger_type": "Trigger Type",
+        "actor_id": "Actor ID",
+        "actor_name": "Actor",
+        "started_at": "Started At",
+        "trace_id": "Trace ID"
+      },
       "advancedSettings": "Advanced settings",
       "selectItems": "Select items",
       "inputData": "Input",

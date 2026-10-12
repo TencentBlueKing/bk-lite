@@ -27,6 +27,35 @@ PLANNED_TOOL_STEPS_KEY = "planned_tool_steps"
 PLANNED_STEP_HOLDER_KEY = "planned_step_holder"
 
 
+class OwnedEventQueue(asyncio.Queue):
+    """请求关闭时终止阻塞入队，包括 LangChain shield 保护的回调。"""
+
+    def __init__(self, maxsize: int) -> None:
+        super().__init__(maxsize=maxsize)
+        self._closed = False
+        self._pending_puts: set[asyncio.Task] = set()
+
+    async def put(self, item: Any) -> None:
+        if self._closed:
+            raise asyncio.CancelledError("owned event stream closed")
+        if not self.full():
+            self.put_nowait(item)
+            return
+        pending = asyncio.create_task(super().put(item))
+        self._pending_puts.add(pending)
+        try:
+            await pending
+        finally:
+            self._pending_puts.discard(pending)
+
+    async def aclose(self) -> None:
+        self._closed = True
+        pending = tuple(self._pending_puts)
+        for task in pending:
+            task.cancel()
+        await asyncio.gather(*pending, return_exceptions=True)
+
+
 @dataclass
 class OwnedStreamContext:
     """本轮 SSE / 节点共用的队列与步骤表。挂在 configurable，不进进程全局。"""
@@ -106,17 +135,14 @@ class OwnedEventBridge(AsyncCallbackHandler):
         # 只读本桥持有的 request-scoped holder，不回退进程全局。
         return _step_index_from_holder(self._step_holder)
 
-    def _send(self, event: dict) -> None:
+    async def _send(self, event: dict) -> None:
         step_index = self._current_step_index()
         if step_index is not None:
             metadata = dict(event.get("metadata") or {})
             metadata["opspilot_step_index"] = step_index
             event = {**event, "metadata": metadata}
         event = {**event, "_enqueued_at": time.monotonic()}
-        try:
-            self._queue.put_nowait(event)
-        except Exception:
-            return
+        await self._queue.put(event)
 
     async def on_llm_new_token(
         self,
@@ -132,7 +158,7 @@ class OwnedEventBridge(AsyncCallbackHandler):
         tool_chunks = getattr(message, "tool_call_chunks", None) or []
         if tool_chunks and not str(getattr(message, "content", "") or "").strip():
             return
-        self._send(
+        await self._send(
             {
                 "event": "on_chat_model_stream",
                 "data": {"chunk": message},
@@ -151,7 +177,7 @@ class OwnedEventBridge(AsyncCallbackHandler):
             message = getattr(generations[0][0], "message", None)
         if message is None or getattr(message, "tool_calls", None):
             return
-        self._send(
+        await self._send(
             {
                 "event": "on_chat_model_end",
                 "data": {"output": message},
@@ -174,7 +200,7 @@ class OwnedEventBridge(AsyncCallbackHandler):
         **kwargs: Any,
     ) -> None:
         tool_name = name or serialized.get("name") or "unknown"
-        self._send(
+        await self._send(
             {
                 "event": "on_tool_start",
                 "data": {"input": inputs or {}},
@@ -194,10 +220,10 @@ class OwnedEventBridge(AsyncCallbackHandler):
         run_id: UUID,
         **kwargs: Any,
     ) -> None:
-        publish_owned_custom_event(self._queue, name, data)
+        await publish_owned_custom_event(self._queue, name, data)
 
     async def on_tool_end(self, output: Any, *, run_id: UUID, name: str | None = None, **kwargs: Any) -> None:
-        self._send(
+        await self._send(
             {
                 "event": "on_tool_end",
                 "data": {"output": output},
@@ -236,7 +262,7 @@ def nested_agent_callbacks(config: dict | None) -> list:
     return [OwnedEventBridge(queue, planned_step_holder(config))]
 
 
-def publish_owned_custom_event(queue_or_config: Any, name: str, data: Any) -> bool:
+async def publish_owned_custom_event(queue_or_config: Any, name: str, data: Any) -> bool:
     """把自定义事件写进本请求队列。计划步骤里父级 astream 回调已被摘掉。"""
     if isinstance(queue_or_config, asyncio.Queue):
         queue = queue_or_config
@@ -246,7 +272,7 @@ def publish_owned_custom_event(queue_or_config: Any, name: str, data: Any) -> bo
     if queue is None or not name:
         return False
     try:
-        queue.put_nowait(
+        await queue.put(
             {
                 "event": "on_custom_event",
                 "name": name,
@@ -262,13 +288,13 @@ def publish_owned_custom_event(queue_or_config: Any, name: str, data: Any) -> bo
     return True
 
 
-def publish_node_finished(config: dict | None) -> None:
+async def publish_node_finished(config: dict | None) -> None:
     """节点返回即视为本轮回答完成，不依赖 astream_events 收尾。"""
     queue = owned_event_queue(config)
     if queue is None:
         return
     try:
-        queue.put_nowait({"event": NODE_FINISHED_EVENT, "_enqueued_at": time.monotonic()})
+        await queue.put({"event": NODE_FINISHED_EVENT, "_enqueued_at": time.monotonic()})
     except Exception:
         return
 

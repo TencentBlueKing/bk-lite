@@ -13,6 +13,8 @@ type ObjectConfigLoader = () => Promise<ObjectConfigFactory>;
 const COMMUNITY_OBJECT_CONFIG_LOADERS: Record<string, ObjectConfigLoader> = {
   'Hardware Server': () =>
     import('./objects/hardwareDevice/hardware').then((m) => m.useHardwareConfig),
+  Storage: () =>
+    import('./objects/hardwareDevice/storage').then((m) => m.useStorageConfig),
   Oracle: () => import('./objects/database/oracle').then((m) => m.useOracleConfig),
   ElasticSearch: () =>
     import('./objects/database/elasticSearch').then((m) => m.useElasticSearchConfig),

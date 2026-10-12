@@ -13,6 +13,10 @@ def test_openapi_trigger_uses_trusted_team_and_rejects_other_tenant(mocker):
     invoke = mocker.patch("apps.workflow_orchestration.openapi_api.invoke_trigger")
     execution = WorkflowExecution.objects.create(workflow=workflow, workflow_version=1, team=[7])
     invoke.return_value = (execution, True)
+    mocker.patch(
+        "apps.workflow_orchestration.permissions.get_permission_rules",
+        return_value={"team": [], "instance": [{"id": workflow.id, "permission": ["View", "Operate"]}]},
+    )
 
     allowed = openapi_workflow_trigger(
         str(trigger.id),
@@ -32,6 +36,28 @@ def test_openapi_trigger_uses_trusted_team_and_rejects_other_tenant(mocker):
     assert allowed["execution_id"] == str(execution.id)
     assert denied == {"result": False, "message": "触发器不存在或不属于调用方组织"}
     assert invoke.call_count == 1
+
+
+@pytest.mark.django_db
+def test_openapi_trigger_requires_instance_operate_like_rest(mocker):
+    workflow = Workflow.objects.create(name="只读流程", team=[7], definition={"tasks": []}, current_version=1, status=Workflow.Status.PUBLISHED)
+    trigger = WorkflowTrigger.objects.create(workflow=workflow, name="API", trigger_type=WorkflowTrigger.Type.WEBHOOK, enabled=True, team=[7])
+    invoke = mocker.patch("apps.workflow_orchestration.openapi_api.invoke_trigger")
+    mocker.patch(
+        "apps.workflow_orchestration.permissions.get_permission_rules",
+        return_value={"team": [], "instance": [{"id": workflow.id, "permission": ["View"]}]},
+    )
+
+    denied = openapi_workflow_trigger(
+        str(trigger.id),
+        "evt-view-only",
+        {"message": "no"},
+        team=[7],
+        user_info={"user": "alice", "domain": "example.com"},
+    )
+
+    assert denied == {"result": False, "message": "缺少流程实例操作权限"}
+    invoke.assert_not_called()
 
 
 @pytest.mark.django_db
@@ -63,6 +89,10 @@ def test_openapi_wait_webhook_returns_selected_task_output(mocker):
         team=[7],
     )
     mocker.patch("apps.workflow_orchestration.openapi_api.invoke_trigger", return_value=(execution, True))
+    mocker.patch(
+        "apps.workflow_orchestration.permissions.get_permission_rules",
+        return_value={"team": [], "instance": [{"id": workflow.id, "permission": ["View", "Operate"]}]},
+    )
     conductor = mocker.patch("apps.workflow_orchestration.openapi_api.ConductorClient").return_value
     conductor.get_execution.return_value = {
         "status": "COMPLETED",
@@ -84,6 +114,36 @@ def test_openapi_wait_webhook_returns_selected_task_output(mocker):
         "status": "SUCCEEDED",
         "response": {"download_url": "/reports/1"},
     }
+
+
+@pytest.mark.django_db
+def test_openapi_wait_webhook_also_requires_instance_operate(mocker):
+    workflow = Workflow.objects.create(name="WAIT 只读", team=[7], definition={"tasks": []}, current_version=1, status=Workflow.Status.PUBLISHED)
+    trigger = WorkflowTrigger.objects.create(
+        workflow=workflow,
+        node_key="trigger_webhook",
+        name="API",
+        trigger_type=WorkflowTrigger.Type.WEBHOOK,
+        enabled=True,
+        team=[7],
+        config={"response_mode": "WAIT"},
+    )
+    invoke = mocker.patch("apps.workflow_orchestration.openapi_api.invoke_trigger")
+    mocker.patch(
+        "apps.workflow_orchestration.permissions.get_permission_rules",
+        return_value={"team": [], "instance": [{"id": workflow.id, "permission": ["View"]}]},
+    )
+
+    denied = openapi_workflow_trigger(
+        str(trigger.id),
+        "evt-wait-view-only",
+        {"body": {"host": "10.0.0.8"}},
+        team=[7],
+        user_info={"user": "alice", "domain": "example.com"},
+    )
+
+    assert denied == {"result": False, "message": "缺少流程实例操作权限"}
+    invoke.assert_not_called()
 
 
 @override_settings(CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache", "LOCATION": "webhook-test-sessions"}})

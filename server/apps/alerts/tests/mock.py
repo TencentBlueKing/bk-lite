@@ -4,11 +4,10 @@
 # @Author: windyzhao
 
 
+import json
 import random
 import time
 import uuid
-import json
-
 
 # 告警处理(动作引擎)测试：把它设成你「节点管理」里已纳管主机的真实 IP，
 # mock 会以 MANAGED_HOST_IP_RATIO 的概率用它，方便测「真跑作业」那一段；
@@ -87,7 +86,7 @@ def generate_mock_events(num_events=100):
 
         # 服务器名称
         server_type = random.choice(server_prefixes)
-        server_num = random.randint(1, 20)
+        server_num = random.randint(1, 2000)
 
         # 更新事件数据
         region = random.choice(["us-east", "us-west", "eu-central", "ap-southeast"])
@@ -114,7 +113,7 @@ def generate_mock_events(num_events=100):
         # event["action"] = "created" if event["status"] == "firing" else "resolved"
         event["action"] = "created"
         event["rule_id"] = "cpu_threshold_rule"
-        event["push_source_id"] = random.choice([ "prometheus", "zabbix", "lite-monitor"])
+        event["push_source_id"] = random.choice(["prometheus", "zabbix", "lite-monitor"])
         event["event_id"] = f"EVENT-{uuid.uuid4().hex}"
         event["assignee"] = []
 

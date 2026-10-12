@@ -696,7 +696,11 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
         <Collapse
           style={{ background: 'var(--color-bg-1) ' }}
           bordered={false}
-          className={informationList.list}
+          className={
+            readOnly
+              ? `${informationList.list} ${informationList.embed}`
+              : informationList.list
+          }
           defaultActiveKey={displayGroups
             .filter((item: any) => !item.is_collapsed)
             .map((item: any) => String(item.id))}

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from typing import Any
 from urllib.parse import urlsplit
@@ -17,6 +19,38 @@ class ConductorUnavailable(RuntimeError):
 
 class ConductorConflict(RuntimeError):
     pass
+
+
+class ExecutionStartUnknown(ConductorUnavailable):
+    """Engine start outcome is unknown; local execution must be reconciled, not retried blindly."""
+
+    def __init__(self, execution, message: str = "Conductor 启动结果未知，禁止盲重试"):
+        self.execution = execution
+        super().__init__(message)
+
+
+def workflow_definition_digest(definition: dict[str, Any]) -> str:
+    """Stable digest for immutable publish conflict checks."""
+
+    payload = json.dumps(definition, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _comparable_workflow_definition(definition: dict[str, Any]) -> dict[str, Any]:
+    """Keep fields that identify an immutable published workflow body."""
+
+    return {
+        "name": definition.get("name"),
+        "version": definition.get("version"),
+        "tasks": definition.get("tasks") or [],
+        "inputParameters": definition.get("inputParameters") or [],
+        "outputParameters": definition.get("outputParameters") or {},
+        "variables": definition.get("variables") or {},
+        "timeoutSeconds": definition.get("timeoutSeconds"),
+        "timeoutPolicy": definition.get("timeoutPolicy"),
+        "restartable": definition.get("restartable"),
+        "workflowStatusListenerEnabled": definition.get("workflowStatusListenerEnabled"),
+    }
 
 
 class ConductorClient:
@@ -60,12 +94,27 @@ class ConductorClient:
     def register_task_definitions(self, definitions: list[dict[str, Any]]) -> None:
         self._request("POST", "/metadata/taskdefs", json=definitions)
 
+    def get_workflow_definition(self, name: str, version: int) -> dict[str, Any] | None:
+        try:
+            return self._request("GET", f"/metadata/workflow/{name}", params={"version": version}).json()
+        except ConductorUnavailable:
+            return None
+
     def register_workflow(self, definition: dict[str, Any]) -> None:
         try:
             self._request("POST", "/metadata/workflow", json=definition)
+            return
         except ConductorConflict:
-            # 允许补偿「Conductor 已登记、BK-Lite 版本事务未落库」的部分成功。
-            self._request("PUT", "/metadata/workflow", json=[definition])
+            pass
+        # Compensate only when the existing engine definition matches our immutable digest.
+        # Never PUT-overwrite a same name/version that carries different content.
+        existing = self.get_workflow_definition(str(definition.get("name") or ""), int(definition.get("version") or 0))
+        if existing is None:
+            raise ConductorConflict("Conductor 流程版本已存在，但无法核对内容摘要")
+        expected = workflow_definition_digest(_comparable_workflow_definition(definition))
+        actual = workflow_definition_digest(_comparable_workflow_definition(existing))
+        if expected != actual:
+            raise ConductorConflict("Conductor 流程版本已存在且内容不一致，禁止覆盖")
 
     def start_workflow(self, name: str, *, version: int, inputs: dict[str, Any], correlation_id: str = "") -> str:
         response = self._request(
@@ -78,6 +127,32 @@ class ConductorClient:
 
     def get_execution(self, workflow_id: str) -> dict[str, Any]:
         return self._request("GET", f"/workflow/{workflow_id}", params={"includeTasks": "true"}).json()
+
+    def find_workflow_ids_by_correlation_id(self, correlation_id: str) -> list[str]:
+        """Best-effort lookup for start reconciliation; empty when the engine cannot confirm."""
+
+        correlation_id = str(correlation_id or "").strip()
+        if not correlation_id:
+            return []
+        try:
+            payload = self._request(
+                "GET",
+                "/workflow/search",
+                params={"query": f'correlationId="{correlation_id}"', "size": 5},
+            ).json()
+        except ConductorUnavailable:
+            return []
+        results = payload.get("results") if isinstance(payload, dict) else None
+        if not isinstance(results, list):
+            return []
+        workflow_ids: list[str] = []
+        for item in results:
+            if not isinstance(item, dict):
+                continue
+            workflow_id = item.get("workflowId") or item.get("workflowID")
+            if workflow_id not in (None, ""):
+                workflow_ids.append(str(workflow_id))
+        return workflow_ids
 
     def retry_workflow(self, workflow_id: str) -> None:
         self._request("POST", f"/workflow/{workflow_id}/retry")

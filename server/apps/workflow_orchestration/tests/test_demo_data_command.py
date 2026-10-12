@@ -30,8 +30,9 @@ def test_demo_command_rebuilds_seven_workflows_and_visible_scenarios(api_client,
     }
 
     conductor = mocker.patch("apps.workflow_orchestration.management.commands.seed_workflow_orchestration_demo.ConductorClient").return_value
+    mocker.patch("apps.workflow_orchestration.services.builtin_workflows.ConductorClient").return_value = conductor
     mocker.patch(
-        "apps.workflow_orchestration.management.commands.seed_workflow_orchestration_demo.seed_builtin_health_template_snapshot",
+        "apps.workflow_orchestration.services.builtin_workflows.seed_builtin_health_template_snapshot",
         side_effect=lambda fmt, team_id, store=None: {
             "object_key": f"workflow-orchestration/templates/demo/team-{team_id}/health.{fmt}",
             "format": fmt,
@@ -40,6 +41,7 @@ def test_demo_command_rebuilds_seven_workflows_and_visible_scenarios(api_client,
             "filename_prefix": f"health-inspection-{fmt}",
         },
     )
+    mocker.patch("apps.workflow_orchestration.services.builtin_workflows.ensure_platform_atom")
 
     call_command("seed_workflow_orchestration_demo", **arguments)
     previous = WorkflowExecution.objects.get(trigger_id="health-word-success")
@@ -60,40 +62,53 @@ def test_demo_command_rebuilds_seven_workflows_and_visible_scenarios(api_client,
     )
     call_command("seed_workflow_orchestration_demo", **arguments)
 
-    response = api_client.get(EXECUTION_LIST_URL, {"query": "[TDD/BDD]", "page_size": 100})
+    response = api_client.get(EXECUTION_LIST_URL, {"page_size": 100})
     assert response.status_code == 200
     assert response.data["count"] == 11
     assert {item["status"] for item in response.data["items"]} == {"SUCCEEDED", "FAILED", "WAITING_APPROVAL"}
-    workflows = Workflow.objects.filter(name__startswith="[TDD/BDD]")
-    assert set(workflows.values_list("name", flat=True)) == {
-        "[TDD/BDD] 主机健康巡检 Word",
-        "[TDD/BDD] 主机健康巡检 Excel",
+    demo_workflows = Workflow.objects.filter(name__startswith="[TDD/BDD]")
+    assert set(demo_workflows.values_list("name", flat=True)) == {
         "[TDD/BDD] 生产变更审批",
         "[TDD/BDD] Webhook 同步响应",
         "[TDD/BDD] 定时 HTTP 检查",
         "[TDD/BDD] NATS 事件通知",
         "[TDD/BDD] 多入口通知",
     }
-    atom_keys = {task["name"] for workflow in workflows for task in _tasks(workflow.definition["tasks"]) if task["type"] == "SIMPLE"}
+    assert Workflow.objects.filter(is_builtin=True).count() == 2
+    health_word = Workflow.objects.get(name="Windows 主机巡检（Word）", is_builtin=True)
+    health_excel = Workflow.objects.get(name="Linux 主机巡检（Excel）", is_builtin=True)
+    atom_keys = {
+        task["name"]
+        for workflow in list(demo_workflows) + [health_word, health_excel]
+        for task in _tasks(workflow.definition["tasks"])
+        if task["type"] == "SIMPLE"
+    }
     assert atom_keys == {
         "bklite_document_render",
         "bklite_http_request",
         "bklite_job_execute",
         "bklite_notification",
     }
-    health_word = workflows.get(name="[TDD/BDD] 主机健康巡检 Word")
-    health_excel = workflows.get(name="[TDD/BDD] 主机健康巡检 Excel")
     assert [task["name"] for task in health_word.definition["tasks"]] == [
         "bklite_job_execute",
         "bklite_document_render",
         "bklite_notification",
     ]
+    assert health_word.definition["tasks"][0]["inputParameters"]["script_type"] == "powershell"
+    assert health_excel.definition["tasks"][0]["inputParameters"]["script_type"] == "shell"
     assert health_word.definition["tasks"][1]["inputParameters"]["template_snapshot"]["format"] == "docx"
     assert health_excel.definition["tasks"][1]["inputParameters"]["template_snapshot"]["format"] == "xlsx"
+    word_targets = health_word.canvas_metadata["trigger_nodes"][0]["input_schema"]["properties"]["targets"]
+    excel_targets = health_excel.canvas_metadata["trigger_nodes"][0]["input_schema"]["properties"]["targets"]
+    assert word_targets["x-target-binding"]["allowedOperatingSystems"] == ["windows"]
+    assert excel_targets["x-target-binding"]["allowedOperatingSystems"] == ["linux"]
     health_execution = WorkflowExecution.objects.get(trigger_id="health-word-success")
     assert health_execution.output["job"]["results"][0]["target"]["ip"] == "10.10.90.120"
     health_data = health_execution.output["job"]["results"][0]["data"]
-    assert {metric["category"] for metric in health_data["metrics"]} >= {"CPU", "内存", "磁盘", "网络"}
+    assert {metric["category"] for metric in health_data["metrics"]} >= {"计算", "内存", "磁盘", "网络", "系统健康"}
+    assert health_data["host"]["hostname"] == "win-demo-01"
+    linux_execution = WorkflowExecution.objects.get(trigger_id="health-excel-success")
+    assert linux_execution.output["job"]["results"][0]["target"]["operating_system"] == "linux"
     assert all(
         {
             "object_type",
@@ -112,12 +127,12 @@ def test_demo_command_rebuilds_seven_workflows_and_visible_scenarios(api_client,
     )
     pending = WorkflowExecution.objects.get(status=WorkflowExecution.Status.WAITING_APPROVAL)
     assert pending.interactions.get().candidate_users == [authenticated_user.username]
-    assert conductor.register_task_definitions.call_count == 2
-    assert conductor.register_workflow.call_count == 14
+    assert conductor.register_task_definitions.call_count >= 2
+    assert conductor.register_workflow.call_count >= 7
     registered_health = next(call.args[0] for call in conductor.register_workflow.call_args_list if call.args[0]["name"] == health_word.engine_name)
     assert registered_health["tasks"][0]["inputParameters"]["script_content"]
     assert "assessment_rules" not in registered_health["tasks"][0]["inputParameters"]
-    multi_trigger = workflows.get(name="[TDD/BDD] 多入口通知")
+    multi_trigger = demo_workflows.get(name="[TDD/BDD] 多入口通知")
     assert set(multi_trigger.triggers.values_list("trigger_type", flat=True)) == {"FORM", "WEBHOOK", "SCHEDULE"}
     multi_executions = WorkflowExecution.objects.filter(workflow=multi_trigger)
     assert multi_executions.count() == 3

@@ -27,23 +27,31 @@ RUM 公网入口独立于 APM ADR 0008（4318 受信内网）。见
 
 ## 目录
 
-| 路径 | 说明 |
-| --- | --- |
-| `collector/` | Go 数据面（gateway / controller / maintainer） |
-| `packages/bklite-rum-sdk` | 浏览器 Faro transport（由上游 `core-rum-sdk` 重命名） |
-| `compose.yaml` + `.env.example` | 本地依赖夹具（Redis ACL、NATS、VL、VT、MinIO） |
-| `redis/` / `nats/` | 本地最小权限示例，**不是**生产凭据 |
-| `ACCEPTANCE.md` | 上线验收与回滚约束 |
-| `Makefile` | `up` / `down` / `validate` / `test` |
+| 路径 | 归属 | 说明 |
+| --- | --- | --- |
+| `collector/` | 研发（产品组件） | Go 数据面（gateway / controller / maintainer） |
+| `collector/Dockerfile` | 研发（产品组件） | 单镜像 `bklite/rum-collector`，内含三个二进制与生产 gateway 配置 |
+| `collector/otel/rum.gateway.yaml` | 研发（契约参考配置） | 生产 gateway 配置，已打进镜像 `/etc/bklite-rum/` |
+| `packages/bklite-rum-sdk` | 研发 | 浏览器 Faro transport（由上游 `core-rum-sdk` 重命名） |
+| `compose.yaml` + `.env.example` | 契约夹具 | 本地依赖（Redis ACL、NATS、VL、VT、MinIO）；`dataplane` profile 追加三个进程 |
+| `redis/` / `nats/` | 契约夹具 | 本地最小权限示例，**不是**生产凭据 |
+| `OPS-DEPLOY.md` | 运维 | 服务、镜像、进程参数、密钥文件、Server 变量清单 |
+| `ACCEPTANCE.md` | 运维 | 上线验收与回滚约束 |
+| `Makefile` | 契约夹具 | `up` / `up-all` / `down` / `validate` / `test` / `image` |
 
 ## 本地验证
 
 ```bash
 cd deploy/rum
-make up          # 拉起依赖夹具
+make up          # 仅拉起依赖夹具（宿主机跑二进制时用）
+make up-all      # 构建镜像并拉起依赖 + gateway / controller / maintainer
 make validate    # compose config + gateway validate-config + builds
 make test        # collector unit tests
+make image       # 仅构建 bklite/rum-collector 镜像
 make down
 ```
+
+`up-all` 会占用宿主机 4319 / 4320 / 13135；本机已有 gateway 进程时先停掉，或用
+`RUM_GATEWAY_COLLECT_PORT` 等变量改端口（见 `.env.example`）。
 
 通过夹具不等于完成生产上线。生产编排、镜像流水线、容量与值班由运维自有平台落地，但必须满足 [ACCEPTANCE.md](./ACCEPTANCE.md)。

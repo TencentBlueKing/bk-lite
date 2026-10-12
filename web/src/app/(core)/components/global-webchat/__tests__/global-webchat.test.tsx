@@ -163,6 +163,7 @@ describe('GlobalWebChat', () => {
           storageKey: 'webchat:platform:alice:7',
         }),
         collectContext: expect.any(Function),
+        onToolResult: expect.any(Function),
         placeholder: '请输入消息...',
         locale: expect.any(String),
       }),

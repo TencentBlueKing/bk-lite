@@ -565,6 +565,28 @@ def test_host_credentials_inventory_can_disable_winrm_certificate_validation(tmp
     assert "ansible_winrm_server_cert_validation=ignore" in inventory
 
 
+def test_host_credentials_inventory_sets_winrm_timeouts_and_disables_pipelining(tmp_path):
+    inventory = _build_host_credentials_inventory(
+        tmp_path,
+        [
+            {
+                "host": "10.0.0.8",
+                "user": "Administrator",
+                "password": "credential",
+                "connection": "winrm",
+                "port": 5986,
+                "winrm_scheme": "https",
+                "winrm_transport": "ntlm",
+            }
+        ],
+    )
+
+    assert "ansible_winrm_operation_timeout_sec=60" in inventory
+    assert "ansible_winrm_read_timeout_sec=70" in inventory
+    assert "ansible_winrm_connection_timeout=60" in inventory
+    assert "ansible_pipelining=False" in inventory
+
+
 def test_prepare_adhoc_execution_restricts_credential_inventory_permissions(tmp_path, monkeypatch):
     monkeypatch.setattr(ansible_runner, "BASE_TASK_DIR", tmp_path / "work")
     _, workspace = prepare_adhoc_execution(

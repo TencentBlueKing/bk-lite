@@ -68,6 +68,7 @@ class AlertLifecycleNotifier:
     def __init__(self, policy=None, policies_by_id=None):
         self.policy = policy
         self.policies_by_id = policies_by_id or {}
+        self._alert_center_metric_names = None
 
     def notify_assigned(self, alerts, *, action="assigned"):
         if not alerts:
@@ -637,6 +638,30 @@ class AlertLifecycleNotifier:
             return list(policy.organizations)
         return []
 
+    def _resolve_alert_center_item(self, policy):
+        query = getattr(policy, "query_condition", None) or {}
+        if not isinstance(query, dict) or query.get("type", "metric") != "metric":
+            return ""
+        metric_name = str(query.get("metric_name") or "").strip()
+        if metric_name:
+            return metric_name
+        metric_id = query.get("metric_id")
+        if not str(metric_id).isdigit():
+            return ""
+        if self._alert_center_metric_names is None:
+            from apps.monitor.models import Metric
+
+            # 兼容仅保存 metric_id 的策略；一个通知批次只查一次指标表。
+            metric_ids = set()
+            for candidate in [self.policy, *self.policies_by_id.values()]:
+                condition = getattr(candidate, "query_condition", None) or {}
+                if isinstance(condition, dict) and condition.get("type", "metric") == "metric":
+                    candidate_id = condition.get("metric_id")
+                    if str(candidate_id).isdigit():
+                        metric_ids.add(int(candidate_id))
+            self._alert_center_metric_names = dict(Metric.objects.filter(id__in=metric_ids).values_list("id", "name"))
+        return self._alert_center_metric_names.get(int(metric_id), "")
+
     def _build_alert_center_payload(
         self,
         alert,
@@ -665,6 +690,7 @@ class AlertLifecycleNotifier:
             "title": alert.content,
             "description": alert.content,
             "level": LEVEL_TO_ALERT_CENTER.get(alert.level, "3"),
+            "item": self._resolve_alert_center_item(policy),
             "value": float(alert.value) if alert.value is not None else None,
             "action": alert_center_action,
             # 接收端用该字段区分同一业务 action 的生命周期代次；旧接收端忽略未知字段。

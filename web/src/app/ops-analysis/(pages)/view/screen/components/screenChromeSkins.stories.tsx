@@ -48,13 +48,13 @@ export const LockedVisionSkins: StoryObj = {
           <TitleFrameSkin item={{ preset: 'hero-1', content: '运营大屏' }} />
         </div>
         <div className="flex h-[56px] shrink-0 items-center gap-2">
-          <span className="text-[13px] text-(--screen-clock-color) [text-shadow:0_0_12px_var(--screen-chrome-glow)]">
+          <span className="text-[13px] text-(--screen-clock-color)">
             {clock.date}
           </span>
-          <span className="text-[13px] text-(--screen-clock-color) [text-shadow:0_0_12px_var(--screen-chrome-glow)]">
+          <span className="text-[13px] text-(--screen-clock-color)">
             {clock.week}
           </span>
-          <span className="text-[28px] font-semibold tracking-[0.12em] tabular-nums [text-shadow:0_0_12px_var(--screen-chrome-glow)]">
+          <span className="text-[28px] font-semibold tracking-[0.12em] tabular-nums">
             {clock.primary}
           </span>
         </div>

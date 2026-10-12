@@ -9,7 +9,7 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.models import MonitorPolicy
 from apps.core.logger import celery_logger as logger
 from apps.monitor.tasks.services.policy_scan import MonitorPolicyScan
-from apps.monitor.tasks.utils.policy_methods import period_to_seconds
+from apps.monitor.tasks.utils.policy_methods import period_to_seconds, source_has_dispatch_targets
 from apps.monitor.constants.alert_policy import AlertConstants
 
 
@@ -54,6 +54,15 @@ def scan_policy_task(policy_id):
                 f"监控策略 [{policy_id}] 未启用，跳过执行，耗时: {duration:.2f}s"
             )
             return {"success": True, "duration": duration, "message": "策略未启用"}
+
+        if not source_has_dispatch_targets(policy_obj.source):
+            duration = time.time() - start_time
+            logger.info(
+                "event=policy_scan_skipped policy_id=%s reason=no_instances duration=%.2fs",
+                policy_id,
+                duration,
+            )
+            return {"success": True, "duration": duration, "message": "没有可扫描实例"}
 
         current_time = datetime.now(timezone.utc)
 

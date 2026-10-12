@@ -50,6 +50,9 @@ class JobMgmt:
     def get_automation_execution_detail(self, data, actor_context):
         return self._run_local_automation("get_automation_execution_detail_local", data, actor_context)
 
+    def cancel_automation_execution(self, data, actor_context):
+        return self._run_local_automation("cancel_automation_execution_local", data, actor_context)
+
     def list_automation_targets(self, data, actor_context):
         return self._run_local_automation("list_automation_targets_local", data, actor_context)
 

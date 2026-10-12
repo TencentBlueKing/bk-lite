@@ -104,6 +104,7 @@ describe('流程列表', () => {
     expect(screen.queryByPlaceholderText('触发器')).toBeNull();
     expect(screen.getByRole('columnheader', { name: /^发布状态/ }).querySelector('.ant-table-filter-trigger')).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: /^启用状态/ }).querySelector('.ant-table-filter-trigger')).not.toBeNull();
+    expect(screen.getByRole('columnheader', { name: /^是否内置/ }).querySelector('.ant-table-filter-trigger')).not.toBeNull();
     expect(screen.getByRole('columnheader', { name: /^触发器/ }).querySelector('.ant-table-filter-trigger')).not.toBeNull();
   });
 
@@ -150,6 +151,39 @@ describe('流程列表', () => {
       expect.stringContaining('status=PUBLISHED'),
       expect.anything(),
     ));
+  });
+
+  it('是否内置表头筛选使用服务端列表查询', async () => {
+    renderPage();
+    await screen.findByText(workflow.name);
+    mocks.get.mockClear();
+
+    const filterTrigger = screen.getByRole('columnheader', { name: /^是否内置/ }).querySelector<HTMLElement>('.ant-table-filter-trigger');
+    expect(filterTrigger).not.toBeNull();
+    fireEvent.click(filterTrigger!);
+
+    const dropdown = await waitFor(() => {
+      const element = document.querySelector<HTMLElement>('.ant-table-filter-dropdown');
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    fireEvent.click(within(dropdown).getByText('内置'));
+    fireEvent.click(within(dropdown).getByRole('button', { name: /OK|确定/ }));
+
+    await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
+      expect.stringContaining('is_builtin=true'),
+      expect.anything(),
+    ));
+  });
+
+  it('内置流程操作列展示查看并进入只读模式', async () => {
+    mocks.get.mockResolvedValue({ count: 1, items: [{ ...workflow, is_builtin: true }] });
+    renderPage();
+    await screen.findByText(workflow.name);
+
+    expect(screen.queryByRole('button', { name: /编辑/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /查看/ }));
+    expect(mocks.push).toHaveBeenCalledWith('/workflow-orchestration/workflows/1?mode=view');
   });
 
   it('启停状态使用独立开关并在变更前确认', async () => {

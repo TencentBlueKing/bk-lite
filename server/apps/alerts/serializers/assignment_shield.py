@@ -6,6 +6,7 @@ from rest_framework import serializers
 from apps.alerts.common.notification_target import ORGANIZATION_TARGET, USER_TARGET, VALID_TARGET_TYPES, normalize_notification_target
 from apps.alerts.models.alert_operator import AlertAssignment, AlertShield
 from apps.alerts.notification_templates.binding import sync_assignment_template_references, validate_assignment_template_bindings
+from apps.alerts.utils.i18n import serializer_message
 from apps.alerts.utils.rule_catalog import validate_rules_for_serializer
 from apps.system_mgmt.models import Group, User
 from apps.system_mgmt.utils.group_filter_mixin import get_unauthorized_group_ids, get_user_group_ids, normalize_group_id_set
@@ -29,12 +30,15 @@ class AlertAssignmentModelSerializer(serializers.ModelSerializer):
         if not block or not block.get("enabled"):
             return value
         if EscalationService.parse_escalation_config(value) is None:
-            raise serializers.ValidationError("升级链配置无效：模式须为 append/替换，至少一层，每层须有处理人且等待时长大于 0")
+            raise serializers.ValidationError(serializer_message(self, "error.escalation_config_invalid"))
         return value
+
+    def _label(self, key, **values):
+        return serializer_message(self, key, **values)
 
     def _validate_user_target(self, usernames, field_label):
         if not usernames:
-            raise serializers.ValidationError({"config": f"{field_label}的用户模式至少选择一个用户"})
+            raise serializers.ValidationError({"config": serializer_message(self, "error.target_user_required", field_label=field_label)})
 
         active_users = {
             item["username"]: normalize_group_id_set(item["group_list"])
@@ -45,7 +49,9 @@ class AlertAssignmentModelSerializer(serializers.ModelSerializer):
         }
         invalid_usernames = [username for username in usernames if username not in active_users]
         if invalid_usernames:
-            raise serializers.ValidationError({"config": (f"{field_label}包含不存在或已禁用的用户: " f"{invalid_usernames}")})
+            raise serializers.ValidationError(
+                {"config": serializer_message(self, "error.target_users_invalid", field_label=field_label, usernames=invalid_usernames)}
+            )
 
         request = self.context.get("request")
         if request is None or getattr(request.user, "is_superuser", False):
@@ -57,17 +63,19 @@ class AlertAssignmentModelSerializer(serializers.ModelSerializer):
             accessible_group_ids = set(GroupUtils.get_group_with_descendants(accessible_group_ids))
         unauthorized_usernames = [username for username in usernames if not active_users[username].intersection(accessible_group_ids)]
         if unauthorized_usernames:
-            raise serializers.ValidationError({"config": (f"{field_label}包含无权选择的用户: " f"{unauthorized_usernames}")})
+            raise serializers.ValidationError(
+                {"config": serializer_message(self, "error.target_users_unauthorized", field_label=field_label, usernames=unauthorized_usernames)}
+            )
 
     def _normalize_and_validate_target(self, raw_target, legacy_personnel, field_label):
         if not isinstance(raw_target, dict) or raw_target.get("type") not in VALID_TARGET_TYPES:
-            raise serializers.ValidationError({"config": f"{field_label}类型必须为用户或组织"})
+            raise serializers.ValidationError({"config": serializer_message(self, "error.target_type_invalid", field_label=field_label)})
         if "include_children" in raw_target and not isinstance(raw_target.get("include_children"), bool):
-            raise serializers.ValidationError({"config": f"{field_label}的包含子组织配置必须为布尔值"})
+            raise serializers.ValidationError({"config": serializer_message(self, "error.target_include_children_bool", field_label=field_label)})
         if raw_target["type"] == USER_TARGET and raw_target.get("organization_ids"):
-            raise serializers.ValidationError({"config": f"{field_label}不能同时配置用户和组织"})
+            raise serializers.ValidationError({"config": serializer_message(self, "error.target_user_and_org_exclusive", field_label=field_label)})
         if raw_target["type"] == ORGANIZATION_TARGET and raw_target.get("usernames"):
-            raise serializers.ValidationError({"config": f"{field_label}不能同时配置用户和组织"})
+            raise serializers.ValidationError({"config": serializer_message(self, "error.target_user_and_org_exclusive", field_label=field_label)})
 
         normalized = normalize_notification_target(
             raw_target,
@@ -78,17 +86,28 @@ class AlertAssignmentModelSerializer(serializers.ModelSerializer):
         elif normalized["type"] == ORGANIZATION_TARGET:
             organization_ids = normalized["organization_ids"]
             if not organization_ids:
-                raise serializers.ValidationError({"config": f"{field_label}的组织模式至少选择一个组织"})
+                raise serializers.ValidationError({"config": serializer_message(self, "error.target_org_required", field_label=field_label)})
             existing_ids = set(Group.objects.filter(id__in=organization_ids).values_list("id", flat=True))
             missing_ids = [group_id for group_id in organization_ids if group_id not in existing_ids]
             if missing_ids:
-                raise serializers.ValidationError({"config": f"{field_label}中的组织不存在: {missing_ids}"})
+                raise serializers.ValidationError(
+                    {"config": serializer_message(self, "error.target_org_missing", field_label=field_label, missing_ids=missing_ids)}
+                )
 
             request = self.context.get("request")
             if request is not None:
                 unauthorized_ids = get_unauthorized_group_ids(request.user, organization_ids)
                 if unauthorized_ids:
-                    raise serializers.ValidationError({"config": f"{field_label}包含无权选择的组织: {unauthorized_ids}"})
+                    raise serializers.ValidationError(
+                        {
+                            "config": serializer_message(
+                                self,
+                                "error.target_org_unauthorized",
+                                field_label=field_label,
+                                unauthorized_ids=unauthorized_ids,
+                            )
+                        }
+                    )
         return normalized
 
     def validate(self, attrs):
@@ -96,7 +115,7 @@ class AlertAssignmentModelSerializer(serializers.ModelSerializer):
         config = attrs.get("config")
         if not isinstance(config, dict):
             if attrs.get("personnel") and self.context.get("request") is not None:
-                self._validate_user_target(attrs.get("personnel"), "分派对象")
+                self._validate_user_target(attrs.get("personnel"), self._label("label.assignment_target"))
             validate_assignment_template_bindings(
                 attrs.get("notify_channels", getattr(self.instance, "notify_channels", [])),
                 attrs.get("config", getattr(self.instance, "config", {})),
@@ -110,13 +129,13 @@ class AlertAssignmentModelSerializer(serializers.ModelSerializer):
             normalized = self._normalize_and_validate_target(
                 normalized_config.get("notification_target"),
                 attrs.get("personnel"),
-                "分派对象",
+                self._label("label.assignment_target"),
             )
             normalized_config["notification_target"] = normalized
             attrs["personnel"] = normalized["usernames"] if normalized["type"] == USER_TARGET else []
             changed = True
         elif attrs.get("personnel") and self.context.get("request") is not None:
-            self._validate_user_target(attrs.get("personnel"), "分派对象")
+            self._validate_user_target(attrs.get("personnel"), self._label("label.assignment_target"))
 
         escalation = normalized_config.get("escalation")
         if isinstance(escalation, dict) and isinstance(escalation.get("layers"), list):
@@ -130,7 +149,7 @@ class AlertAssignmentModelSerializer(serializers.ModelSerializer):
                     normalized = self._normalize_and_validate_target(
                         normalized_layer.get("notification_target"),
                         normalized_layer.get("personnel"),
-                        f"升级层级 {index + 1} 的处理对象",
+                        self._label("label.escalation_layer_target", index=index + 1),
                     )
                     normalized_layer["notification_target"] = normalized
                     normalized_layer["personnel"] = normalized["usernames"] if normalized["type"] == USER_TARGET else []
@@ -138,7 +157,7 @@ class AlertAssignmentModelSerializer(serializers.ModelSerializer):
                 elif normalized_layer.get("personnel") and self.context.get("request") is not None:
                     self._validate_user_target(
                         normalized_layer.get("personnel"),
-                        f"升级层级 {index + 1} 的处理对象",
+                        self._label("label.escalation_layer_target", index=index + 1),
                     )
                 normalized_layers.append(normalized_layer)
             if changed:

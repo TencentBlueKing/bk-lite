@@ -7,6 +7,7 @@ from apps.monitor.views.monitor_condition import MonitorConditionViewSet
 from apps.monitor.views.monitor_metrics import MetricGroupViewSet, MetricViewSet
 from apps.monitor.views.monitor_object import MonitorObjectTypeViewSet, MonitorObjectViewSet
 from apps.monitor.views.monitor_policy import MonitorPolicyViewSet
+from apps.monitor.views.policy_group import PolicyGroupViewSet
 
 pytestmark = pytest.mark.unit
 
@@ -44,6 +45,14 @@ WRITE_ACTION_CASES = [
     pytest.param(MonitorPolicyViewSet, "post", "bulk_create_from_templates", {}, "strategy_list-Add", id="strategy-template-bulk-create"),
     pytest.param(MonitorPolicyViewSet, "post", "preview", {}, "strategy_list-Add", id="strategy-preview"),
     pytest.param(MonitorPolicyViewSet, "post", "dry_run", {}, "strategy_list-Add", id="strategy-dry-run"),
+    pytest.param(PolicyGroupViewSet, "post", "create_from_templates", {}, "strategy_list-Edit", id="policy-group-create"),
+    pytest.param(PolicyGroupViewSet, "post", "join", {}, "strategy_list-Edit", id="policy-group-join"),
+    pytest.param(PolicyGroupViewSet, "post", "leave", {}, "strategy_list-Edit", id="policy-group-leave"),
+    pytest.param(PolicyGroupViewSet, "post", "update_rule", {}, "strategy_list-Edit", id="policy-group-update-rule"),
+    pytest.param(PolicyGroupViewSet, "post", "copy_group", {}, "strategy_list-Edit", id="policy-group-copy"),
+    pytest.param(PolicyGroupViewSet, "post", "set_default", {}, "strategy_list-Edit", id="policy-group-default"),
+    pytest.param(PolicyGroupViewSet, "post", "delete_group", {}, "strategy_list-Edit", id="policy-group-delete"),
+    pytest.param(PolicyGroupViewSet, "post", "create_standalone", {}, "strategy_list-Edit", id="policy-group-standalone"),
     pytest.param(MonitorConditionViewSet, "post", "create", {}, "search-View", id="condition-create"),
     pytest.param(MonitorConditionViewSet, "put", "update", {"pk": "missing"}, "search-View", id="condition-update"),
     pytest.param(MonitorConditionViewSet, "patch", "partial_update", {"pk": "missing"}, "search-View", id="condition-partial"),

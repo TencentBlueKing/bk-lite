@@ -1,6 +1,6 @@
 'use client';
 import React, { useRef } from 'react';
-import { Button, Descriptions } from 'antd';
+import { Button, Descriptions, Tag, Tooltip } from 'antd';
 import { TableDataItem, Organization } from '@/app/monitor/types';
 import { useTranslation } from '@/utils/i18n';
 import informationStyle from './index.module.scss';
@@ -191,10 +191,14 @@ const Information: React.FC<InformationProps> = ({
               ...formData.policy,
               monitor_object_display_name: monitorObj?.display_name || monitorObj?.name
             });
+            const policyGroup = formData.policy?.policy_group;
             return (
               <div className="flex justify-between items-start gap-2">
                 <div className="min-w-0 flex-1">
-                  <div>{formData.policy?.name || '--'}</div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>{formData.policy?.name || '--'}</span>
+                    {policyGroup?.name ? <Tag className="mr-0">组策略</Tag> : null}
+                  </div>
                   {secondary ? (
                     <div className="mt-0.5 text-[12px] leading-4 text-[var(--color-text-3)]">
                       {secondary}
@@ -207,13 +211,18 @@ const Information: React.FC<InformationProps> = ({
                     permissionPath="/monitor/event/strategy"
                     instPermissions={formData.policy_permission ?? []}
                   >
-                    <Button
-                      type="link"
-                      className="shrink-0 ml-2 p-0 h-auto"
-                      onClick={() => openPolicyEdit(formData)}
-                    >
-                      {t('common.edit')}
-                    </Button>
+                    <Tooltip title={policyGroup?.name ? '在策略组中修改' : undefined}>
+                      <span className="inline-flex">
+                        <Button
+                          type="link"
+                          className="shrink-0 ml-2 p-0 h-auto"
+                          disabled={Boolean(policyGroup?.name)}
+                          onClick={() => openPolicyEdit(formData)}
+                        >
+                          {t('common.edit')}
+                        </Button>
+                      </span>
+                    </Tooltip>
                   </Permission>
                 ) : null}
               </div>

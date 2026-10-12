@@ -19,7 +19,9 @@
     "summary": {
       "type": "object", "title": "执行汇总",
       "properties": {
-        "total": {"type": "integer"}, "succeeded": {"type": "integer"}, "failed": {"type": "integer"}
+        "total": {"type": "integer", "title": "总数"},
+        "succeeded": {"type": "integer", "title": "成功数"},
+        "failed": {"type": "integer", "title": "失败数"}
       },
       "required": ["total", "succeeded", "failed"]
     },

@@ -14,6 +14,7 @@
     "cpu_core":         {"type": "integer", "minimum": 0},
     "memory":           {"type": "integer", "minimum": 0},
     "disk":             {"type": "integer", "minimum": 0},
-    "mac_address":      {"type": "string"}
+    "mac_address":      {"type": "string"},
+    "machine_type":     {"type": "string", "enum": ["unknown", "virtual", "physical_server"]}
   }
 }

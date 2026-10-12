@@ -105,3 +105,27 @@ class TestUpdateGrouping:
         assert MonitorInstanceOrganization.objects.filter(
             monitor_instance_id="('h1',)", organization=11
         ).exists()
+
+    def test_keeps_existing_relation_and_does_not_duplicate(self, mocker):
+        obj = _make_obj()
+        metric = _make_metric(obj)
+        MonitorInstance.objects.create(id="('h1',)", name="h1", monitor_object=obj)
+        MonitorInstanceOrganization.objects.create(monitor_instance_id="('h1',)", organization=11)
+        other = _make_obj("RGOther")
+        MonitorInstance.objects.create(id="('other',)", name="other", monitor_object=other)
+        MonitorInstanceOrganization.objects.create(monitor_instance_id="('other',)", organization=99)
+        MonitorObjectOrganizationRule.objects.create(
+            monitor_object=obj, name="r3", organizations=[11],
+            rule={"metric_id": metric.id, "filter": []},
+        )
+        vm = mocker.patch("apps.monitor.tasks.services.rule_group.VictoriaMetricsAPI")
+        vm.return_value.query.return_value = {"data": {"result": [
+            {"metric": {"instance_id": "h1"}},
+        ]}}
+        RuleGrouping().update_grouping()
+        assert MonitorInstanceOrganization.objects.filter(
+            monitor_instance_id="('h1',)", organization=11
+        ).count() == 1
+        assert MonitorInstanceOrganization.objects.filter(
+            monitor_instance_id="('other',)", organization=99
+        ).exists()

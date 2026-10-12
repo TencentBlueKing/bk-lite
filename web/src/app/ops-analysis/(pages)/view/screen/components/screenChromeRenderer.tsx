@@ -50,7 +50,6 @@ const ClockSkin: React.FC<{
         fontSize: style.fontSize,
         fontWeight: style.fontWeight,
         color: style.color,
-        textShadow: style.textShadow,
       }}
     >
       {parts.date ? <span className={partClassName}>{parts.date}</span> : null}

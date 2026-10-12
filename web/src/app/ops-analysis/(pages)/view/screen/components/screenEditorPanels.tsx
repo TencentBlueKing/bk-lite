@@ -12,6 +12,7 @@ import {
   Switch,
   Tag,
   Tooltip,
+  Upload,
 } from 'antd';
 import {
   AppstoreOutlined,
@@ -33,9 +34,11 @@ import {
   QuestionCircleOutlined,
   RightOutlined,
   SwapOutlined,
+  UploadOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { SCREEN_LAYER_DRAG_MIME } from '../utils/screenLayer';
+import type { ScreenGeometryField } from '../utils/screenEditHistory';
 import type {
   ScreenClockFormatId,
   ScreenDecorationPresetId,
@@ -45,7 +48,7 @@ import type {
   ScreenShapeKind,
   ScreenShapeStyle,
   ScreenTextAlign,
-  ScreenTextColorToken,
+  ScreenThemeId,
   ScreenTextStyleConfig,
   ScreenTitleFramePresetId,
   ScreenViewportConfig,
@@ -64,7 +67,10 @@ import {
 import {
   SCREEN_WALLPAPER_PRESETS,
   defaultWallpaperKeyForTheme,
+  SCREEN_BACKGROUND_IMAGE_MIME_TYPES,
+  isScreenImageBackgroundSrc,
   resolveScreenCanvasBackgroundStyle,
+  screenBackgroundImageRejection,
 } from '../utils/screenBackground';
 import { buildScreenElementList } from '../utils/screenElementList';
 import {
@@ -93,6 +99,7 @@ import { resolveScreenWidgetAppearance } from '../utils/layoutUtils';
 import {
   DecorationSkin,
   ScreenChromeSkinStyles,
+  isScreenTextHexColor,
   screenChromeTextStyle,
   titleFrameThumbSrc,
 } from './screenChromeSkins';
@@ -186,11 +193,14 @@ const InspectorHeader: React.FC<{
 const CompactGeometryGrid: React.FC<{
   item: ScreenItem;
   viewport: ScreenViewportConfig;
-  onChange: (next: ScreenItem) => void;
+  onChange: (next: ScreenItem, editedKey?: ScreenGeometryField) => void;
 }> = ({ item, viewport, onChange }) => {
   const { t } = useTranslation();
 
-  const patch = (patchValue: Partial<Pick<ScreenItem, 'x' | 'y' | 'w' | 'h'>>) => {
+  const patch = (
+    patchValue: Partial<Pick<ScreenItem, 'x' | 'y' | 'w' | 'h'>>,
+    editedKey: ScreenGeometryField,
+  ) => {
     const next = { ...item, ...patchValue };
     const w = Math.max(GEOMETRY_MIN, Math.min(next.w, viewport.width - next.x));
     const h = Math.max(GEOMETRY_MIN, Math.min(next.h, viewport.height - next.y));
@@ -200,7 +210,7 @@ const CompactGeometryGrid: React.FC<{
       h,
       x: Math.max(0, Math.min(next.x, viewport.width - w)),
       y: Math.max(0, Math.min(next.y, viewport.height - h)),
-    });
+    }, editedKey);
   };
 
   const centerHorizontal = () => {
@@ -253,7 +263,7 @@ const CompactGeometryGrid: React.FC<{
             suffix={<span className="text-[10px] text-(--color-text-3)">px</span>}
             value={item.x}
             onChange={(val) => {
-              if (typeof val === 'number') patch({ x: val });
+              if (typeof val === 'number') patch({ x: val }, 'x');
             }}
           />
         </label>
@@ -267,7 +277,7 @@ const CompactGeometryGrid: React.FC<{
             suffix={<span className="text-[10px] text-(--color-text-3)">px</span>}
             value={item.y}
             onChange={(val) => {
-              if (typeof val === 'number') patch({ y: val });
+              if (typeof val === 'number') patch({ y: val }, 'y');
             }}
           />
         </label>
@@ -282,7 +292,7 @@ const CompactGeometryGrid: React.FC<{
             suffix={<span className="text-[10px] text-(--color-text-3)">px</span>}
             value={item.w}
             onChange={(val) => {
-              if (typeof val === 'number') patch({ w: val });
+              if (typeof val === 'number') patch({ w: val }, 'w');
             }}
           />
         </label>
@@ -297,7 +307,7 @@ const CompactGeometryGrid: React.FC<{
             suffix={<span className="text-[10px] text-(--color-text-3)">px</span>}
             value={item.h}
             onChange={(val) => {
-              if (typeof val === 'number') patch({ h: val });
+              if (typeof val === 'number') patch({ h: val }, 'h');
             }}
           />
         </label>
@@ -404,6 +414,7 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
 }) => {
   const { t } = useTranslation();
   const rootRef = useRef<HTMLElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const draggingIdRef = useRef<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
@@ -511,7 +522,7 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
             <div className="flex h-full items-center justify-center">
               <span
                 className="font-semibold leading-none tabular-nums tracking-[0.14em] text-(--screen-title-color)"
-                style={{ fontSize: 16, textShadow: '0 0 12px var(--screen-chrome-glow)' }}
+                style={{ fontSize: 16 }}
               >
                 12:00:00
               </span>
@@ -612,6 +623,25 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
     return null;
   })();
 
+  useEffect(() => {
+    if (!selectedItemId || collapsed) return;
+    const list = listRef.current;
+    if (!list) return;
+    const row = list.querySelector(
+      `[data-screen-list-item="${CSS.escape(selectedItemId)}"]`,
+    );
+    if (!(row instanceof HTMLElement)) return;
+    const listRect = list.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    const delta =
+      rowRect.top < listRect.top
+        ? rowRect.top - listRect.top
+        : rowRect.bottom > listRect.bottom
+          ? rowRect.bottom - listRect.bottom
+          : 0;
+    if (delta !== 0) list.scrollTop += delta;
+  }, [collapsed, listed, selectedItemId]);
+
   const activeGroup = paletteGroups.find((group) => group.id === paletteGroup);
 
   return (
@@ -698,7 +728,11 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
             );
           })}
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+        <div
+          ref={listRef}
+          data-screen-element-list=""
+          className="min-h-0 flex-1 overflow-y-auto px-2 py-2"
+        >
           <div className="mb-1 px-1 text-xs font-semibold text-(--color-text-1)">
             {t('opsAnalysis.screen.elementList')}
           </div>
@@ -815,15 +849,30 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
 
 type TextStyleFieldKey = 'fontSize' | 'fontWeight' | 'color' | 'align';
 
+const textColorSwatch = (
+  color: ScreenTextStyleConfig['color'],
+  theme: ScreenThemeId,
+) => {
+  if (isScreenTextHexColor(color)) return color;
+  const variables = getScreenTheme(theme).variables;
+  if (color === 'muted') return String(variables['--screen-clock-color']);
+  if (color === 'accent') return String(variables['--screen-chrome-accent']);
+  return String(variables['--screen-title-color']);
+};
+
 const TextStyleFields: React.FC<{
   value?: ScreenTextStyleConfig;
+  theme?: ScreenThemeId;
   onChange: (next: ScreenTextStyleConfig) => void;
+  onFieldEditEnd?: () => void;
   fields?: TextStyleFieldKey[];
   minFontSize?: number;
   maxFontSize?: number;
 }> = ({
   value,
+  theme = 'screen-dark',
   onChange,
+  onFieldEditEnd,
   fields = ['fontSize', 'fontWeight', 'color', 'align'],
   minFontSize = 12,
   maxFontSize = 72,
@@ -851,6 +900,7 @@ const TextStyleFields: React.FC<{
               onChange={(fontSize) =>
                 onChange({ ...style, fontSize: Number(fontSize) || 20 })
               }
+              onChangeComplete={() => onFieldEditEnd?.()}
             />
             <InputNumber
               size="small"
@@ -885,44 +935,18 @@ const TextStyleFields: React.FC<{
       ) : null}
 
       {show('color') ? (
-        <div className="space-y-1.5">
-          <div className="text-xs text-(--color-text-2)">{t('opsAnalysis.screen.textColor')}</div>
-          <Segmented
-            block
-            size="small"
-            value={style.color ?? 'canvas'}
-            onChange={(color) =>
-              onChange({ ...style, color: color as ScreenTextColorToken })
-            }
-            options={[
-              {
-                label: (
-                  <span className="flex items-center justify-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full border border-black/25 bg-[#f4fbff] shadow-xs" />
-                    <span>{t('opsAnalysis.screen.colorCanvas')}</span>
-                  </span>
-                ),
-                value: 'canvas',
-              },
-              {
-                label: (
-                  <span className="flex items-center justify-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full border border-black/15 bg-[#bae6fd]" />
-                    <span>{t('opsAnalysis.screen.colorMuted')}</span>
-                  </span>
-                ),
-                value: 'muted',
-              },
-              {
-                label: (
-                  <span className="flex items-center justify-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-[#00e5ff] shadow-xs" />
-                    <span>{t('opsAnalysis.screen.colorAccent')}</span>
-                  </span>
-                ),
-                value: 'accent',
-              },
-            ]}
+        <div className="flex items-center justify-between text-xs text-(--color-text-2)">
+          <span>{t('opsAnalysis.screen.textColor')}</span>
+          <ColorPicker
+            disabledAlpha
+            showText
+            value={textColorSwatch(style.color, resolveScreenThemeId(theme))}
+            onChangeComplete={(color) => {
+              const hex = `#${color.toHexString().replace('#', '').slice(0, 6)}`;
+              if (!isScreenTextHexColor(hex)) return;
+              onChange({ ...style, color: hex });
+              onFieldEditEnd?.();
+            }}
           />
         </div>
       ) : null}
@@ -956,11 +980,13 @@ const TextStyleFields: React.FC<{
 interface ScreenCanvasSettingsProps {
   viewport: ScreenViewportConfig;
   onChange: (viewport: ScreenViewportConfig) => void;
+  onFieldEditEnd?: () => void;
 }
 
 export const ScreenCanvasSettings: React.FC<ScreenCanvasSettingsProps> = ({
   viewport,
   onChange,
+  onFieldEditEnd,
 }) => {
   const { t } = useTranslation();
   const theme = resolveScreenThemeId(viewport.theme);
@@ -979,9 +1005,79 @@ export const ScreenCanvasSettings: React.FC<ScreenCanvasSettingsProps> = ({
     )?.key || 'custom';
 
   const wallpapers = SCREEN_WALLPAPER_PRESETS.filter((item) => item.theme === theme);
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
+  const backgroundModeRef = useRef<'preset' | 'color' | 'image'>('preset');
+  const [imageError, setImageError] = useState<'type' | 'size' | null>(null);
+  const [backgroundMode, setBackgroundMode] = useState<'preset' | 'color' | 'image'>(
+    viewport.background?.type === 'image'
+      ? 'image'
+      : viewport.background?.type === 'color'
+        ? 'color'
+        : 'preset',
+  );
+  backgroundModeRef.current = backgroundMode;
+
+  const selectBackgroundMode = (mode: 'preset' | 'color' | 'image') => {
+    backgroundModeRef.current = mode;
+    setBackgroundMode(mode);
+  };
+
+  const backgroundType = viewport.background?.type;
+  useEffect(() => {
+    const mode =
+      backgroundType === 'image' ? 'image' : backgroundType === 'color' ? 'color' : 'preset';
+    backgroundModeRef.current = mode;
+    setBackgroundMode(mode);
+  }, [backgroundType]);
 
   const applyViewport = (next: ScreenViewportConfig) => {
     onChange(next);
+  };
+
+  const resetToThemePreset = () => {
+    setImageError(null);
+    selectBackgroundMode('preset');
+    applyViewport({
+      ...viewportRef.current,
+      background: {
+        type: 'preset',
+        key: defaultWallpaperKeyForTheme(theme),
+      },
+    });
+  };
+
+  const acceptBackgroundImage = (file: File) => {
+    const rejection = screenBackgroundImageRejection(file);
+    if (rejection) {
+      setImageError(rejection);
+      return;
+    }
+    const reader = new FileReader();
+    const fail = () => setImageError('type');
+    reader.onload = () => {
+      if (backgroundModeRef.current !== 'image') return;
+      const result = reader.result;
+      if (!isScreenImageBackgroundSrc(result)) {
+        fail();
+        return;
+      }
+      setImageError(null);
+      applyViewport({
+        ...viewportRef.current,
+        background: { type: 'image', src: result },
+      });
+    };
+    reader.onerror = fail;
+    reader.onabort = fail;
+    reader.readAsDataURL(file);
+  };
+
+  const writeViewportAxis = (axis: 'width' | 'height', value: number) => {
+    if (axis === 'width') setWidthDraft(value);
+    else setHeightDraft(value);
+    if (!isValidViewportSize(value) || value === viewportRef.current[axis]) return;
+    applyViewport({ ...viewportRef.current, [axis]: value });
   };
 
   const commitSize = () => {
@@ -1039,11 +1135,13 @@ export const ScreenCanvasSettings: React.FC<ScreenCanvasSettingsProps> = ({
           }))}
           onChange={(nextTheme) => {
             const themeId = resolveScreenThemeId(nextTheme);
-            const keepColor = viewport.background?.type === 'color';
+            const keepBackground =
+              viewport.background?.type === 'color' ||
+              viewport.background?.type === 'image';
             applyViewport({
               ...viewport,
               theme: themeId,
-              background: keepColor
+              background: keepBackground
                 ? viewport.background
                 : { type: 'preset', key: defaultWallpaperKeyForTheme(themeId) },
             });
@@ -1110,9 +1208,7 @@ export const ScreenCanvasSettings: React.FC<ScreenCanvasSettingsProps> = ({
               suffix={<span className="text-[10px] text-(--color-text-3)">px</span>}
               value={widthDraft}
               onChange={(width) => {
-                if (typeof width === 'number') {
-                  setWidthDraft(width);
-                }
+                if (typeof width === 'number') writeViewportAxis('width', width);
               }}
               onBlur={commitSize}
               onPressEnter={commitSize}
@@ -1128,9 +1224,7 @@ export const ScreenCanvasSettings: React.FC<ScreenCanvasSettingsProps> = ({
               suffix={<span className="text-[10px] text-(--color-text-3)">px</span>}
               value={heightDraft}
               onChange={(height) => {
-                if (typeof height === 'number') {
-                  setHeightDraft(height);
-                }
+                if (typeof height === 'number') writeViewportAxis('height', height);
               }}
               onBlur={commitSize}
               onPressEnter={commitSize}
@@ -1146,30 +1240,74 @@ export const ScreenCanvasSettings: React.FC<ScreenCanvasSettingsProps> = ({
       >
         <Segmented
           block
-          value={viewport.background?.type === 'color' ? 'color' : 'preset'}
+          value={backgroundMode}
           options={[
             { label: t('opsAnalysis.screen.backgroundTypePreset'), value: 'preset' },
             { label: t('opsAnalysis.screen.backgroundTypeColor'), value: 'color' },
+            { label: t('opsAnalysis.screen.backgroundTypeImage'), value: 'image' },
           ]}
           onChange={(mode) => {
+            setImageError(null);
+            if (mode === 'image') {
+              selectBackgroundMode('image');
+              return;
+            }
             if (mode === 'color') {
+              selectBackgroundMode('color');
               applyViewport({
-                ...viewport,
+                ...viewportRef.current,
                 background: { type: 'color', color: '#071422' },
               });
-            } else {
-              applyViewport({
-                ...viewport,
-                background: {
-                  type: 'preset',
-                  key: defaultWallpaperKeyForTheme(theme),
-                },
-              });
+              return;
             }
+            resetToThemePreset();
           }}
         />
 
-        {viewport.background?.type === 'color' ? (
+        {backgroundMode === 'image' ? (
+          <div className="space-y-2 pt-1">
+            <div className="flex items-center justify-between gap-2">
+              <span className="shrink-0 text-xs text-(--color-text-2)">
+                {t('opsAnalysis.screen.backgroundTypeImage')}
+              </span>
+              <div className="flex min-w-0 items-center gap-2">
+                {viewport.background?.type === 'image' ? (
+                  <img
+                    alt=""
+                    src={viewport.background.src}
+                    className="h-9 w-14 shrink-0 rounded border border-(--color-border-1) object-cover"
+                  />
+                ) : null}
+                <Upload
+                  accept={SCREEN_BACKGROUND_IMAGE_MIME_TYPES.join(',')}
+                  showUploadList={false}
+                  beforeUpload={(file) => {
+                    acceptBackgroundImage(file);
+                    return false;
+                  }}
+                >
+                  <Button size="small" icon={<UploadOutlined />}>
+                    {t('opsAnalysis.screen.backgroundImageUpload')}
+                  </Button>
+                </Upload>
+                {viewport.background?.type === 'image' ? (
+                  <Button size="small" type="link" onClick={resetToThemePreset}>
+                    {t('opsAnalysis.screen.backgroundImageClear')}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+            {imageError ? (
+              <div className="text-xs text-(--color-error)">
+                {t(
+                  imageError === 'size'
+                    ? 'opsAnalysis.screen.backgroundImageTooLarge'
+                    : 'opsAnalysis.screen.backgroundImageBadType',
+                )}
+              </div>
+            ) : null}
+          </div>
+        ) : viewport.background?.type === 'color' ? (
           <div className="flex items-center justify-between pt-1">
             <span className="text-xs text-(--color-text-2)">
               {t('opsAnalysis.screen.customColor')}
@@ -1183,6 +1321,7 @@ export const ScreenCanvasSettings: React.FC<ScreenCanvasSettingsProps> = ({
                   background: { type: 'color', color: color.toHexString() },
                 })
               }
+              onChangeComplete={() => onFieldEditEnd?.()}
             />
           </div>
         ) : (
@@ -1271,7 +1410,8 @@ const ShapeStyleFields: React.FC<{
   shape: ScreenShapeKind;
   value?: ScreenShapeStyle;
   onChange: (next: { shape: ScreenShapeKind; shapeStyle: ScreenShapeStyle }) => void;
-}> = ({ shape, value, onChange }) => {
+  onFieldEditEnd?: () => void;
+}> = ({ shape, value, onChange, onFieldEditEnd }) => {
   const { t } = useTranslation();
   const style = resolveScreenShapeStyle(value);
   const patch = (next: Partial<ScreenShapeStyle>) => {
@@ -1326,6 +1466,7 @@ const ShapeStyleFields: React.FC<{
               showText
               value={style.backgroundColor}
               onChange={(nextColor) => patch({ backgroundColor: nextColor.toRgbString() })}
+              onChangeComplete={() => onFieldEditEnd?.()}
             />
           </div>
         )}
@@ -1354,6 +1495,7 @@ const ShapeStyleFields: React.FC<{
                 showText
                 value={style.gradientStart}
                 onChange={(c) => patch({ gradientStart: c.toRgbString() })}
+                onChangeComplete={() => onFieldEditEnd?.()}
               />
             </div>
             <div className="flex items-center justify-between text-(--color-text-2)">
@@ -1362,6 +1504,7 @@ const ShapeStyleFields: React.FC<{
                 showText
                 value={style.gradientEnd}
                 onChange={(c) => patch({ gradientEnd: c.toRgbString() })}
+                onChangeComplete={() => onFieldEditEnd?.()}
               />
             </div>
           </div>
@@ -1389,6 +1532,7 @@ const ShapeStyleFields: React.FC<{
                 showText
                 value={style.borderColor}
                 onChange={(nextColor) => patch({ borderColor: nextColor.toRgbString() })}
+                onChangeComplete={() => onFieldEditEnd?.()}
               />
             </div>
             <div className="space-y-1">
@@ -1404,6 +1548,7 @@ const ShapeStyleFields: React.FC<{
                 value={style.borderWidth}
                 className="m-0"
                 onChange={(borderWidth) => patch({ borderWidth })}
+                onChangeComplete={() => onFieldEditEnd?.()}
               />
             </div>
           </>
@@ -1428,6 +1573,7 @@ const ShapeStyleFields: React.FC<{
             value={style.shadow}
             className="m-0"
             onChange={(shadow) => patch({ shadow })}
+            onChangeComplete={() => onFieldEditEnd?.()}
           />
         </div>
       </InspectorSection>
@@ -1442,13 +1588,15 @@ const ShapeStyleFields: React.FC<{
 interface ScreenStyleInspectorProps {
   item: ScreenItem;
   viewport: ScreenViewportConfig;
-  onChange: (next: ScreenItem) => void;
+  onChange: (next: ScreenItem, editedKey?: ScreenGeometryField) => void;
+  onFieldEditEnd?: () => void;
 }
 
 export const ScreenStyleInspector: React.FC<ScreenStyleInspectorProps> = ({
   item,
   viewport,
   onChange,
+  onFieldEditEnd,
 }) => {
   const { t } = useTranslation();
   const [changingTitlePreset, setChangingTitlePreset] = useState(false);
@@ -1547,7 +1695,9 @@ export const ScreenStyleInspector: React.FC<ScreenStyleInspectorProps> = ({
           >
             <TextStyleFields
               value={item.textStyle}
+              theme={viewport.theme}
               onChange={(textStyle) => onChange({ ...item, textStyle })}
+              onFieldEditEnd={onFieldEditEnd}
             />
           </InspectorSection>
         </>
@@ -1626,9 +1776,11 @@ export const ScreenStyleInspector: React.FC<ScreenStyleInspectorProps> = ({
           >
             <TextStyleFields
               value={item.textStyle}
+              theme={viewport.theme}
               minFontSize={14}
               maxFontSize={64}
               onChange={(textStyle) => onChange({ ...item, textStyle })}
+              onFieldEditEnd={onFieldEditEnd}
             />
           </InspectorSection>
         </>
@@ -1674,10 +1826,12 @@ export const ScreenStyleInspector: React.FC<ScreenStyleInspectorProps> = ({
           >
             <TextStyleFields
               value={item.textStyle}
+              theme={viewport.theme}
               fields={['fontSize', 'color']}
               minFontSize={12}
               maxFontSize={48}
               onChange={(textStyle) => onChange({ ...item, textStyle })}
+              onFieldEditEnd={onFieldEditEnd}
             />
           </InspectorSection>
         </>
@@ -1695,6 +1849,7 @@ export const ScreenStyleInspector: React.FC<ScreenStyleInspectorProps> = ({
             shape={item.shape}
             value={item.shapeStyle}
             onChange={(next) => onChange({ ...item, ...next })}
+            onFieldEditEnd={onFieldEditEnd}
           />
         </>
       )}

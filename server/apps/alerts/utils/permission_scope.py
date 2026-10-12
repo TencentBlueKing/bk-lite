@@ -3,6 +3,7 @@ from rest_framework.exceptions import PermissionDenied
 
 from apps.alerts.constants.constants import LogTargetType
 from apps.alerts.models.models import Alert, Incident
+from apps.alerts.utils.i18n import alerts_message
 from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.viewset_utils import build_json_membership_query
@@ -31,7 +32,7 @@ def get_query_group_ids(request):
     if not getattr(user, "is_superuser", False):
         user_group_ids = set(normalize_user_group_ids(getattr(user, "group_list", [])))
         if current_team not in user_group_ids:
-            raise PermissionDenied("无权访问该团队数据")
+            raise PermissionDenied(alerts_message(request, "error.team_access_denied"))
 
     include_children = request.COOKIES.get("include_children", "0") == "1"
     if include_children:

@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 import { message } from 'antd';
 
 import { installPageContextBridge } from '@/components/ai-page-context/registry';
+import { dispatchCompletedToolResult } from '@/components/ai-tool-results/registry';
 import {
   APP_VIEW_FULLSCREEN_EVENT,
   isAppViewFullscreenActive,
@@ -53,6 +54,7 @@ interface WebChatPlatformConfig {
   canManageAgents?: boolean;
   manageAgentsUrl?: string;
   collectContext?: (hint?: { message?: string }) => Promise<unknown>;
+  onToolResult?: (result: { toolCallId: string; toolCallName: string; content: string }) => void;
 }
 
 interface WebChatBrowserApi {
@@ -186,6 +188,9 @@ const GlobalWebchat = () => {
           collectContext: async (hint) => {
             installPageContextBridge();
             return window.__BK_AI_PAGE_CONTEXT__?.collect(hint) ?? null;
+          },
+          onToolResult: (result) => {
+            dispatchCompletedToolResult(result);
           },
         },
         null,

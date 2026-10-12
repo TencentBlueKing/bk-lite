@@ -15,7 +15,8 @@ const clampWidth = (value: number) =>
 export const ScreenInspectorPane: React.FC<{
   label: string;
   children: React.ReactNode;
-}> = ({ label, children }) => {
+  onBlur?: (event: React.FocusEvent<HTMLElement>) => void;
+}> = ({ label, children, onBlur }) => {
   const [width, setWidth] = useState(SCREEN_INSPECTOR_DEFAULT_WIDTH);
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
@@ -68,6 +69,7 @@ export const ScreenInspectorPane: React.FC<{
         dragging ? 'select-none' : ''
       }`}
       style={{ width }}
+      onBlur={onBlur}
     >
       <div
         role="separator"
