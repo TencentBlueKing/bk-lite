@@ -142,6 +142,34 @@ json_from_nic_rows() {
     '
 }
 
+# 三次 ps 快照，块之间用单独一行 --- 分隔。出现不少于 2 次的 pid 视为稳定进程。
+stable_pids() {
+    awk '
+        $0 == "---" {
+            sample++
+            next
+        }
+        {
+            pid = $1
+            if (pid == "" || pid + 0 != pid) {
+                next
+            }
+            key = sample SUBSEP pid
+            if (!(key in seen)) {
+                seen[key] = 1
+                count[pid]++
+            }
+        }
+        END {
+            for (pid in count) {
+                if (count[pid] >= 2) {
+                    print pid
+                }
+            }
+        }
+    '
+}
+
 if [ "${HOST_DISCOVER_SOURCE_ONLY:-}" = "1" ]; then
     return 0 2>/dev/null || exit 0
 fi
@@ -357,17 +385,52 @@ collect_proc_ports() {
     '
 }
 
+collect_ps_snapshot() {
+    dest="$1"
+    safe ps -e -o pid= -o comm= -o args= > "$dest"
+    if [ ! -s "$dest" ]; then
+        safe ps -eo pid,comm,args > "$dest"
+    fi
+}
+
 collect_proc_list() {
     ports_file="$(make_temp_file host_proc_ports)"
     ps_file="$(make_temp_file host_proc_ps)"
+    snap1="$(make_temp_file host_proc_snap1)"
+    snap2="$(make_temp_file host_proc_snap2)"
+    snap3="$(make_temp_file host_proc_snap3)"
+    stable_file="$(make_temp_file host_proc_stable)"
 
     collect_proc_ports > "$ports_file"
-    safe ps -e -o pid= -o comm= -o args= > "$ps_file"
-    if [ ! -s "$ps_file" ]; then
-        safe ps -eo pid,comm,args > "$ps_file"
+    collect_ps_snapshot "$snap1"
+    sleep 3
+    collect_ps_snapshot "$snap2"
+    sleep 3
+    collect_ps_snapshot "$snap3"
+
+    nonempty=0
+    [ -s "$snap1" ] && nonempty=$((nonempty + 1))
+    [ -s "$snap2" ] && nonempty=$((nonempty + 1))
+    [ -s "$snap3" ] && nonempty=$((nonempty + 1))
+    if [ "$nonempty" -ge 2 ]; then
+        {
+            cat "$snap1"
+            echo "---"
+            cat "$snap2"
+            echo "---"
+            cat "$snap3"
+        } | stable_pids > "$stable_file"
+        cp "$snap3" "$ps_file"
+        [ -s "$ps_file" ] || cp "$snap2" "$ps_file"
+        [ -s "$ps_file" ] || cp "$snap1" "$ps_file"
+    else
+        cp "$snap1" "$ps_file"
+        [ -s "$ps_file" ] || cp "$snap2" "$ps_file"
+        [ -s "$ps_file" ] || cp "$snap3" "$ps_file"
+        awk '{ if ($1+0 == $1) print $1 }' "$ps_file" > "$stable_file"
     fi
 
-    proc_json="$(awk -v excludes="$PROC_EXCLUDE_FINGERPRINTS" -v ports_file="$ports_file" '
+    proc_json="$(awk -v excludes="$PROC_EXCLUDE_FINGERPRINTS" -v ports_file="$ports_file" -v stable_file="$stable_file" '
         function esc(s) {
             gsub(/\\/, "\\\\", s)
             gsub(/"/, "\\\"", s)
@@ -385,6 +448,12 @@ collect_proc_list() {
                 }
             }
             close(ports_file)
+            while ((getline line < stable_file) > 0) {
+                if (line != "") {
+                    stable[line] = 1
+                }
+            }
+            close(stable_file)
             first = 1
             printf "["
         }
@@ -400,6 +469,9 @@ collect_proc_list() {
                 next
             }
             if (pid + 0 != pid) {
+                next
+            }
+            if (!(pid in stable)) {
                 next
             }
             # Linux 内核线程：ps 显示为 [kthreadd]
@@ -440,7 +512,7 @@ collect_proc_list() {
         }
     ' "$ps_file")"
 
-    rm -f "$ports_file" "$ps_file"
+    rm -f "$ports_file" "$ps_file" "$snap1" "$snap2" "$snap3" "$stable_file"
     printf '%s' "${proc_json:-[]}"
 }
 

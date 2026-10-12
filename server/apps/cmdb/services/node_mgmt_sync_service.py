@@ -1113,7 +1113,7 @@ class NodeMgmtSyncService:
             "task_type": "host",
             "driver_type": "job",
             "model_id": "host",
-            "timeout": 10,
+            "timeout": 30,
             "input_method": 0,
             "team": team,
             "instances": instances,

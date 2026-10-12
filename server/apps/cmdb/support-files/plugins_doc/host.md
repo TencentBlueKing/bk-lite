@@ -111,4 +111,4 @@
 | mac | MAC 地址 |
 | ip | IPv4 地址，多地址用逗号连接 |
 
-> 补充说明：`cpu_model`、`cpu_core` 在 `lscpu`/`/proc/cpuinfo` 权限不足时会被置为 `unknown`；`memory`、`disk` 在统计命令异常时退化为 `0.0`；`inner_mac` 在容器等无法解析首块网卡的环境下置为 `unknown`。`cpu_arch` 源自 `uname -m`，龙芯/申威/RISC-V 等国产架构可正常采集，但 `os_bit` 仅识别 `x86_64`/`aarch64`/`i386`/`i686`，其余架构会标记为 `unknown`。`proc` 中其他用户进程的 `exe`/`cwd`/`ports` 需 root 才能采全。`mounts` 按 1K 块换算容量，不含 tmpfs、overlay 和 `/proc`、`/sys`、`/dev`、`/run`。`nics` 不含回环和 veth、docker、bridge 这类虚拟网卡。同一挂载点或同一网卡名只保留一行。
+> 补充说明：`cpu_model`、`cpu_core` 在 `lscpu`/`/proc/cpuinfo` 权限不足时会被置为 `unknown`；`memory`、`disk` 在统计命令异常时退化为 `0.0`；`inner_mac` 在容器等无法解析首块网卡的环境下置为 `unknown`。`cpu_arch` 源自 `uname -m`，龙芯/申威/RISC-V 等国产架构可正常采集，但 `os_bit` 仅识别 `x86_64`/`aarch64`/`i386`/`i686`，其余架构会标记为 `unknown`。`proc` 先按固定指纹去掉内核线程和常驻系统进程，再在约 6 秒内采 3 次进程表，只出现 1 次的进程视为临时进程丢掉；至少出现 2 次才写入。快照不足 2 份时不做这次对比，避免一次 `ps` 失败把进程表清空。`mounts` 按 1K 块换算容量，不含 tmpfs、overlay 和 `/proc`、`/sys`、`/dev`、`/run`。`nics` 不含回环和 veth、docker、bridge 这类虚拟网卡。同一挂载点或同一网卡名只保留一行。

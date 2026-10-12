@@ -127,6 +127,21 @@ ADDR ens192 10.1.1.8/24
     assert rows == [{"name": "ens192", "mac": "aa:bb:cc:dd:ee:03", "ip": "10.1.1.8"}]
 
 
+def test_stable_pids_drops_processes_seen_once():
+    raw = """1 nginx
+2 curl
+---
+1 nginx
+3 bash
+---
+1 nginx
+3 bash
+4 ls
+"""
+    got = _script_function("stable_pids", raw)
+    assert sorted(got.split()) == ["1", "3"]
+
+
 def test_windows_discover_script_emits_machine_type():
     text = WINDOWS_SCRIPT.read_text(encoding="utf-8")
     assert "Get-HostMachineType" in text
