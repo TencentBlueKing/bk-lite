@@ -50,6 +50,7 @@ export default function FunnelsWorkspace() {
   const [editing, setEditing] = useState<RumFunnelItem | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [reached, setReached] = useState<number[]>([]);
+  const [reachTruncated, setReachTruncated] = useState(false);
   const [reachPending, setReachPending] = useState(false);
   const [reachDegrade, setReachDegrade] = useState<ReturnType<typeof degradationReason>>(null);
 
@@ -96,9 +97,11 @@ export default function FunnelsWorkspace() {
         if (funnel.application) query.application = funnel.application;
         const result = await funnelReach(funnel.id, query);
         setReached(result.reached);
+        setReachTruncated(Boolean(result.truncated));
         setReachDegrade(degradationReason(result));
       } catch {
         setReached([]);
+        setReachTruncated(false);
         setReachDegrade(null);
       } finally {
         setReachPending(false);
@@ -110,7 +113,10 @@ export default function FunnelsWorkspace() {
   useEffect(() => {
     if (!authReady) return;
     if (activeFunnel) void runReach(activeFunnel);
-    else setReached([]);
+    else {
+      setReached([]);
+      setReachTruncated(false);
+    }
   }, [authReady, activeFunnel, runReach]);
 
   function selectFunnel(id: string) {
@@ -500,6 +506,11 @@ export default function FunnelsWorkspace() {
                   </div>
 
                   {reachDegrade ? <PipelineDegradedBanner reason={reachDegrade} /> : null}
+                  {reachTruncated ? (
+                    <p className="m-0 text-sm text-[var(--color-warning)]" role="status">
+                      {t('rum.funnels.truncated', '步骤组合已达到统计上限，转化结果不完整')}
+                    </p>
+                  ) : null}
 
                   {reachPending ? (
                     <RumFunnelsReachSkeleton columns={rumSkeletonColumns(stepColumns)} />

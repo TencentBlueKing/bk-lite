@@ -89,6 +89,8 @@ class SessionsService:
             "offset": int(params.get("offset") or 0),
         }
         try:
+            if opts["hasReplay"] and self.replay_index.available():
+                return self._list_replay_sessions(opts)
             page = self.analytics.list_sessions(self.settings.tenant_id, opts)
         except Exception as exc:  # noqa: BLE001 — degrade; do not 500 the BFF
             logger.warning(
@@ -104,8 +106,53 @@ class SessionsService:
                 if has:
                     replayed += 1
             page.setdefault("summary", {})["replayed"] = replayed
-            if opts["hasReplay"]:
-                page["sessions"] = [row for row in page["sessions"] if row.get("hasReplay")]
+        return page
+
+    def _list_replay_sessions(self, opts: dict) -> dict:
+        page_limit = int(opts.get("limit") or 0) or 200
+        page_offset = max(0, int(opts.get("offset") or 0))
+        needed = page_offset + page_limit
+        matched: list[dict] = []
+        scanned = 0
+        truncated = False
+        exhausted = False
+        while scanned < 2000 and len(matched) < needed:
+            chunk = self.analytics.list_sessions(
+                self.settings.tenant_id,
+                {**opts, "hasReplay": False, "includeSummary": False, "limit": 200, "offset": scanned},
+            )
+            rows = chunk.get("sessions") or []
+            if not rows:
+                exhausted = True
+                break
+            for row in rows:
+                if scanned >= 2000:
+                    truncated = True
+                    break
+                if len(matched) >= needed:
+                    break
+                scanned += 1
+                has = self.replay_index.has_ready(row.get("application", ""), row.get("sessionId", ""))
+                row["hasReplay"] = bool(has)
+                if has:
+                    matched.append(row)
+            if truncated:
+                break
+            if len(rows) < 200:
+                exhausted = True
+                break
+        if scanned >= 2000 and not exhausted:
+            truncated = True
+        visible = matched[page_offset : page_offset + page_limit]
+        page = {"sessions": visible, "replayScanTruncated": truncated}
+        if not truncated and exhausted:
+            errored = sum(1 for row in matched if int(row.get("errorCount") or 0) > 0)
+            page["summary"] = {
+                "total": len(matched),
+                "errored": errored,
+                "replayed": len(matched),
+                "medianDurationMs": 0,
+            }
         return page
 
     def session_trend(self, actor: str, params: dict[str, Any]) -> dict:

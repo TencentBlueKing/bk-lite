@@ -72,10 +72,13 @@ class VictoriaClient:
             },
         )
         with urlopen(req, timeout=self.timeout_seconds) as resp:  # noqa: S310
-            body = resp.read(8 << 20)
-            if resp.status >= 300:
-                raise RuntimeError(f"logsql status {resp.status}: {body[:200]!r}")
-        rows: list[dict[str, str]] = []
+            raw_body = resp.read(_MAX_RESPONSE_BYTES + 1)
+            status = resp.status
+        body_truncated = len(raw_body) > _MAX_RESPONSE_BYTES
+        body = raw_body[:_MAX_RESPONSE_BYTES]
+        if status >= 300:
+            raise RuntimeError(f"logsql status {status}: {body[:200]!r}")
+        rows = LogRows()
         for line in body.decode("utf-8", errors="replace").splitlines():
             line = line.strip()
             if not line:
@@ -87,7 +90,21 @@ class VictoriaClient:
             if not isinstance(raw, dict):
                 continue
             rows.append({str(key): _stringify(value) for key, value in raw.items()})
+        rows.truncated = body_truncated or (limit > 0 and len(rows) >= limit)
         return rows
+
+
+_MAX_RESPONSE_BYTES = 8 << 20
+
+
+class LogRows(list):
+    """LogsQL rows plus whether the response hit the body cap or the requested limit."""
+
+    truncated: bool
+
+    def __init__(self, iterable=()):
+        super().__init__(iterable)
+        self.truncated = False
 
 
 def _absolute_url(raw: str, label: str) -> str:
@@ -408,9 +425,6 @@ def _accepted_session_id(event: dict, opts: dict) -> str:
         return ""
     session_id = (opts.get("sessionId") or "").strip()
     if session_id and sid != session_id:
-        return ""
-    session_pref = (opts.get("sessionIdPref") or "").strip()
-    if session_pref and not sid.startswith(session_pref):
         return ""
     user_id = (opts.get("userId") or "").strip()
     if user_id and (event.get("userId") or "") != user_id:

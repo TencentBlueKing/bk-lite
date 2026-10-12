@@ -173,6 +173,7 @@
       "tabCdn": "CDN",
       "tabGeneric": "通用框架",
       "deployHint": "部署后访问一次应用，再运行接入自检。",
+      "projectionPending": "配置正在同步到网关",
       "disable": "禁用",
       "enable": "启用",
       "disableConfirm": "确认禁用？准入将立即拒绝该应用的所有上报。",
@@ -249,6 +250,7 @@
         "errored": "错误会话",
         "medianDuration": "中位时长"
       },
+      "replayScanTruncated": "含回放筛选已达到扫描上限，总数暂不可用",
       "kind": {
         "view": "浏览",
         "action": "操作",
@@ -437,6 +439,7 @@
       "delete": "删除",
       "deleteConfirm": "确认删除漏斗「{name}」？",
       "conversionRate": "整体转化率",
+      "truncated": "步骤组合已达到统计上限，转化结果不完整",
       "topDropoff": "流失最多步骤",
       "overall": "首步→末步",
       "step": "步骤",
