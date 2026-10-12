@@ -10,6 +10,7 @@ from celery import current_app
 from celery.exceptions import SoftTimeLimitExceeded
 from django.core.files.base import ContentFile
 from django.utils import timezone
+from django.utils.http import content_disposition_header
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.token_utils import count_text_tokens, get_encoding
@@ -19,6 +20,8 @@ from apps.opspilot.services.llm_context_budget import DEFAULT_CHAT_SCENE_OUTPUT_
 MAX_ATTACHMENTS = 5
 DOCUMENT_MAX_BYTES = 20 * 1024 * 1024
 IMAGE_MAX_BYTES = 5 * 1024 * 1024
+# multipart 边界与字段头的余量。超过文档上限加这段的 Content-Length 直接拒绝，不再读正文。
+UPLOAD_CONTENT_LENGTH_SLACK = 64 * 1024
 ORPHAN_AGE = timedelta(hours=24)
 PENDING_STALE_AGE = timedelta(minutes=10)
 PARSE_QUEUE = "opspilot_chat_parse"
@@ -85,6 +88,61 @@ def normalize_attachment_ids(raw) -> list[int]:
             raise ChatAttachmentError("附件 ID 无效", code="invalid_attachment_id")
         ids.append(value)
     return ids
+
+
+def upload_byte_limit(filename: str) -> int:
+    """按扩展名给出分配上限。未知类型也先卡在文档上限，再由分类拒绝。"""
+    if _extension(filename) in IMAGE_EXTENSIONS:
+        return IMAGE_MAX_BYTES
+    return DOCUMENT_MAX_BYTES
+
+
+def _reject_too_large() -> None:
+    logger.warning(UPLOAD_REJECTED_TEMPLATE, "validate", "file_too_large")
+    raise ChatAttachmentError("文件大小超出限制", code="file_too_large")
+
+
+def _content_length_over_limit(content_length) -> bool:
+    if content_length in (None, ""):
+        return False
+    try:
+        length = int(content_length)
+    except (TypeError, ValueError):
+        return False
+    return length < 0 or length > DOCUMENT_MAX_BYTES + UPLOAD_CONTENT_LENGTH_SLACK
+
+
+def read_bounded_upload(upload, *, content_length=None) -> bytes:
+    """在拼出完整字节前拒绝超限正文。已知 size 或 Content-Length 超限时不读取。"""
+    if _content_length_over_limit(content_length):
+        _reject_too_large()
+    limit = upload_byte_limit(getattr(upload, "name", "") or "")
+    declared = getattr(upload, "size", None)
+    if declared is not None:
+        try:
+            if int(declared) > limit:
+                _reject_too_large()
+        except (TypeError, ValueError):
+            pass
+    parts: list[bytes] = []
+    total = 0
+    chunks = getattr(upload, "chunks", None)
+    stream = chunks() if callable(chunks) else iter([upload.read(limit + 1)])
+    for chunk in stream:
+        if not chunk:
+            continue
+        size = len(chunk)
+        if size > limit or total > limit - size:
+            _reject_too_large()
+        parts.append(chunk)
+        total += size
+    return b"".join(parts)
+
+
+def attachment_content_disposition(filename: str, *, as_attachment: bool) -> str | None:
+    """用已去掉换行和引号的文件名生成 Content-Disposition。"""
+    extension = _extension(filename)
+    return content_disposition_header(as_attachment, _safe_filename(filename, extension))
 
 
 def store_upload(*, filename: str, data: bytes, owner_key: str, team_id: str) -> ChatAttachment:
@@ -379,8 +437,15 @@ def _extension(filename: str) -> str:
 
 
 def _safe_filename(filename: str, extension: str) -> str:
-    base = os.path.basename(filename or "").replace("\\", "/").split("/")[-1]
-    base = base.strip() or f"attachment.{extension}"
+    base = os.path.basename(str(filename or "")).replace("\\", "/").split("/")[-1]
+    cleaned = []
+    for char in base:
+        if char in {'"', "'", "\\", ";"} or ord(char) < 32 or ord(char) == 127:
+            continue
+        cleaned.append(char)
+    base = "".join(cleaned).strip().strip(".")
+    if not base:
+        base = f"attachment.{extension}" if extension else "attachment"
     return base[-255:]
 
 

@@ -466,3 +466,106 @@ test('browser initializer 将预算配置原样传给嵌入式 Chat', async () =
   assert.equal(globals.__webchatRendered?.props.maxTotalImagePixels, 88);
   assert.equal(globals.__webchatRendered?.props.allowUnknownImagePreview, true);
 });
+
+const SSE_URL = 'https://console.example/api/proxy/opspilot/skill_channel/embedded/1/2/';
+
+const headerMap = (headers: HeadersInit | undefined): Record<string, string> => {
+  const mapped: Record<string, string> = {};
+  new Headers(headers).forEach((value, key) => {
+    mapped[key] = value;
+  });
+  return mapped;
+};
+
+const installAttachmentFetch = () => {
+  const uploads: string[] = [];
+  const chatBodies: Array<{ attachment_ids?: number[] }> = [];
+  const headers: Record<string, string>[] = [];
+  let nextId = 41;
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    headers.push(headerMap(init?.headers));
+    if (url.includes('/chat_attachment/upload/')) {
+      const form = init?.body;
+      const file = form instanceof FormData ? form.get('file') : null;
+      const name = file && typeof file === 'object' && 'name' in file ? String(file.name) : '';
+      uploads.push(name);
+      const id = nextId;
+      nextId += 1;
+      return new Response(JSON.stringify({
+        result: true,
+        data: { id, name, mime: 'image/png', size: 8, status: 'ready' },
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    chatBodies.push(JSON.parse(String(init?.body || '{}')));
+    return new Response(new ReadableStream({
+      start(controller) {
+        controller.close();
+      },
+    }), { status: 200, headers: { 'content-type': 'text/event-stream' } });
+  }) as typeof fetch;
+  return {
+    chatBodies,
+    headers,
+    uploads,
+    restore: () => {
+      globalThis.fetch = original;
+    },
+  };
+};
+
+const submitAndWait = async (root: ReactTestInstance, text: string, seen: () => boolean) => {
+  const sender = root.find((node) => typeof node.props.onSubmit === 'function');
+  await act(async () => {
+    sender.props.onSubmit(text);
+  });
+  for (let attempt = 0; attempt < 20 && !seen(); attempt += 1) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+  }
+};
+
+test('粘贴图片发送时写入 attachment_ids，移除的图片不会被上传', async () => {
+  const network = installAttachmentFetch();
+  try {
+    const pasted = new File([new Uint8Array(pngHeader(1, 1))], 'paste.png', { type: 'image/png' });
+    const renderer = renderChat({ apiKey: 'embedded-secret', sseUrl: SSE_URL });
+    await pasteFiles(renderer.root, [pasted]);
+    assert.equal(ControlledFileReader.pending.length, 1);
+    await finishReaders([ControlledFileReader.pending[0]]);
+    assert.equal(previews(renderer.root).length, 1);
+
+    await submitAndWait(renderer.root, '看这张图', () => network.chatBodies.length > 0);
+    assert.deepEqual(network.uploads, ['paste.png']);
+    assert.deepEqual(network.chatBodies[0]?.attachment_ids, [41]);
+    assert.ok(network.headers.every((item) => item['api-authorization'] === 'embedded-secret'));
+    assert.ok(network.headers.every((item) => item.authorization === undefined));
+    renderer.unmount();
+
+    const kept = new File([new Uint8Array(pngHeader(1, 1))], 'kept.png', { type: 'image/png' });
+    const dropped = new File([new Uint8Array(pngHeader(1, 1))], 'dropped.png', { type: 'image/png' });
+    const removed = renderChat({
+      requestHeaders: { Authorization: 'Bearer existing' },
+      sseUrl: SSE_URL,
+      apiKey: 'should-not-replace',
+    });
+    await selectFiles(removed.root, [dropped, kept]);
+    assert.equal(ControlledFileReader.pending.length, 2);
+    await finishReaders([...ControlledFileReader.pending]);
+    act(() => {
+      removed.root.findAll((node) => node.type === 'button' && node.children.includes('×'))[0].props.onClick();
+    });
+    const chatCount = network.chatBodies.length;
+    await submitAndWait(removed.root, '只留一张', () => network.chatBodies.length > chatCount);
+    assert.deepEqual(network.uploads.slice(1), ['kept.png']);
+    assert.deepEqual(network.chatBodies.at(-1)?.attachment_ids, [42]);
+    const sentHeaders = network.headers.slice(-2);
+    assert.ok(sentHeaders.every((item) => item.authorization === 'Bearer existing'));
+    assert.ok(sentHeaders.every((item) => item['api-authorization'] === undefined));
+    removed.unmount();
+  } finally {
+    network.restore();
+  }
+});

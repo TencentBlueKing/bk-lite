@@ -1,9 +1,85 @@
+const API_V1_PREFIX = '/api/v1/';
+const API_PROXY_PREFIX = '/api/proxy/';
+
 export type SessionAttachmentFile = {
   id: string;
   filename: string;
   fileUrl: string;
   ext: string;
 };
+
+const hasUnsafeCharacters = (url: string) => /[\u0000-\u001F\u007F\\]/.test(url);
+
+const hasParentSegment = (url: string) => url.split(/[?#]/, 1)[0].split('/').some((part) => {
+  try {
+    return decodeURIComponent(part) === '..';
+  } catch {
+    return true;
+  }
+});
+
+const currentPageOrigin = () => {
+  if (typeof window === 'undefined' || !window.location) {
+    return '';
+  }
+  return window.location.origin || '';
+};
+
+/** 只放行同源地址，或已知的 `/api/proxy/`（含 `/api/v1/` 改写）路径。 */
+export function normalizeSafeDownloadUrl(url?: string, currentOrigin?: string): string {
+  const trimmed = url?.trim() ?? '';
+  if (!trimmed || hasUnsafeCharacters(trimmed) || trimmed.startsWith('//')) {
+    return '';
+  }
+
+  const normalized = trimmed.startsWith(API_V1_PREFIX)
+    ? `${API_PROXY_PREFIX}${trimmed.slice(API_V1_PREFIX.length)}`
+    : trimmed;
+  if (
+    (normalized.startsWith(API_PROXY_PREFIX) || normalized === '/api/proxy')
+    && !hasParentSegment(normalized)
+  ) {
+    return normalized;
+  }
+
+  const origin = (currentOrigin ?? currentPageOrigin()).trim();
+  if (!origin || !/^(https?:\/\/|blob:)/i.test(normalized)) {
+    return '';
+  }
+
+  try {
+    const allowedOrigin = new URL(origin).origin;
+    const parsed = new URL(normalized);
+    if (parsed.username || parsed.password || parsed.origin !== allowedOrigin) {
+      return '';
+    }
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:' && parsed.protocol !== 'blob:') {
+      return '';
+    }
+    return normalized;
+  } catch {
+    return '';
+  }
+}
+
+/** 非白名单地址不创建链接、不导航。 */
+export function openSafeDownload(
+  file: Pick<SessionAttachmentFile, 'fileUrl' | 'filename'>,
+  currentOrigin?: string,
+): boolean {
+  const safeUrl = normalizeSafeDownloadUrl(file.fileUrl, currentOrigin);
+  if (!safeUrl || typeof document === 'undefined' || !document.body) {
+    return false;
+  }
+  const link = document.createElement('a');
+  link.setAttribute('href', safeUrl);
+  link.setAttribute('download', file.filename);
+  link.rel = 'noopener noreferrer';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  return true;
+}
 
 type ToolCallLike = {
   id?: string;
@@ -72,7 +148,7 @@ export function collectSessionAttachmentFiles(messages: MessageLike[]): SessionA
           continue;
         }
         const parsed = parseAttachmentResult(tool.result);
-        const fileUrl = parsed?.file_url || '';
+        const fileUrl = normalizeSafeDownloadUrl(parsed?.file_url || '');
         const filename = parsed?.filename || '';
         if (!fileUrl || !filename || seen.has(fileUrl)) {
           continue;
