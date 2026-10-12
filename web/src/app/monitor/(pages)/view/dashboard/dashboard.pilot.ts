@@ -188,12 +188,20 @@ export const dashboardPresentationLabel = (): '全量指标' | '经典仪表盘'
   if (
     /分层概览/.test(label)
     || /分类视图/.test(label)
+    || /分类仪表盘/.test(label)
     || /layered\s*overview/i.test(label)
     || /category\s*view/i.test(label)
+    || /category\s*dashboard/i.test(label)
     || /分类\s*Tab/.test(label)
     || /category tabs/i.test(label)
   ) return '分层概览';
-  if (/经典仪表盘/.test(label) || /classic\s*dashboard/i.test(label) || /监控仪表盘/.test(label)) {
+  if (
+    /传统视图/.test(label)
+    || /经典仪表盘/.test(label)
+    || /classic\s*dashboard/i.test(label)
+    || /traditional\s*view/i.test(label)
+    || /监控仪表盘/.test(label)
+  ) {
     return '经典仪表盘';
   }
   const heading = cleanLabel(

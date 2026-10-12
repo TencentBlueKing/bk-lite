@@ -757,9 +757,11 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
               setSeries((prev) => ({ ...prev, ...Object.fromEntries(trendResults) }));
             });
         }
-      } else if (!silent) {
-        // 切到全量指标时不擦掉已画出的序列，主机详情来回切换还能对上刚才的图。
-        setLoading(false);
+      } else {
+        setSeries({});
+        setPreviousSeries({});
+        setCollectionStatusMetric(null);
+        if (!silent) setLoading(false);
       }
     } catch {
       if (loadSequence.isCurrent(loadSeq) && !silent) setLoading(false);

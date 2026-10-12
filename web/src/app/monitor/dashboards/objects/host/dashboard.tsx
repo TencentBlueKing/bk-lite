@@ -8,7 +8,6 @@ import { useSimpleDashboardData } from '../common/simple-dashboard-core';
 import { HOST_DASHBOARD_CONFIG } from './config';
 import {
   HOST_DISK_ENTITY_QUERIES,
-  HOST_GPU_ENTITY_QUERIES,
   HOST_NET_ENTITY_QUERIES,
   HOST_PROCESS_ENTITY_QUERIES
 } from './queries';
@@ -48,7 +47,6 @@ export default function HostDashboardPage() {
     instanceId
   } = dashboard;
 
-  const entityOnClassic = layout === 'dashboard';
   const entityOnCategory = layout === 'category';
   const categoryDisk = entityOnCategory && (categoryTab === 'overview' || categoryTab === 'disk');
   const categoryNet = entityOnCategory && (categoryTab === 'overview' || categoryTab === 'net');
@@ -64,18 +62,13 @@ export default function HostDashboardPage() {
   };
   const diskState = useHostEntityMetrics({
     ...entityArgs,
-    enabled: entityOnClassic || categoryDisk,
+    enabled: categoryDisk,
     queries: HOST_DISK_ENTITY_QUERIES
   });
   const netState = useHostEntityMetrics({
     ...entityArgs,
-    enabled: entityOnClassic || categoryNet,
+    enabled: categoryNet,
     queries: HOST_NET_ENTITY_QUERIES
-  });
-  const gpuState = useHostEntityMetrics({
-    ...entityArgs,
-    enabled: entityOnClassic,
-    queries: HOST_GPU_ENTITY_QUERIES
   });
   const processState = useHostEntityMetrics({
     ...entityArgs,
@@ -114,7 +107,6 @@ export default function HostDashboardPage() {
     instanceIdKeys,
     diskState,
     netState,
-    gpuState,
     processReady,
     processState,
     layout,

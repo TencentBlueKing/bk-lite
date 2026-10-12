@@ -124,35 +124,7 @@ export const HOST_NET_ENTITY_QUERIES: HostEntityMetricQuery[] = [
   }
 ];
 
-/** GPU 仅使用 inventory 已定义的 nvidia_smi_*；无 utilization_gpu 指标，不另造。 */
-export const HOST_GPU_ENTITY_QUERIES: HostEntityMetricQuery[] = [
-  {
-    key: 'nvidia_smi_utilization_memory',
-    unit: 'percent',
-    labelKeys: ['index'],
-    query: '100 * (nvidia_smi_memory_used{instance_type="os", __$labels__} / nvidia_smi_memory_total{instance_type="os", __$labels__})'
-  },
-  {
-    key: 'nvidia_smi_temperature_gpu',
-    unit: 'celsius',
-    labelKeys: ['index'],
-    query: 'nvidia_smi_temperature_gpu{instance_type="os", __$labels__}'
-  },
-  {
-    key: 'nvidia_smi_power_draw',
-    unit: 'watts',
-    labelKeys: ['index'],
-    query: 'nvidia_smi_power_draw{instance_type="os", __$labels__}'
-  },
-  {
-    key: 'nvidia_smi_fan_speed_avg',
-    unit: 'percent',
-    labelKeys: ['index'],
-    query: 'avg without(pstate) (nvidia_smi_fan_speed{instance_type="os", __$labels__})'
-  }
-];
-
-/** 主机分层概览进程层：查询与 Process 对象 inventory 一致，按 process_name 聚合。 */
+/** 主机分类仪表盘进程层：查询与 Process 对象 inventory 一致，按 process_name 聚合。 */
 export const HOST_PROCESS_ENTITY_QUERIES: HostEntityMetricQuery[] = [
   {
     key: 'process_cpu_usage',

@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import useViewApi from '@/app/monitor/api/view';
-import MetricViews from '@/app/monitor/components/metric-views';
 import {
   DashboardSectionLabel,
   FlexiblePanelSection,
@@ -19,33 +18,22 @@ import {
 } from '../../shared/widgets';
 import type { BarItem } from '../../shared/widgets';
 import { buildSearchParams, runWithConcurrency, topLabelBars } from '../../shared/utils';
-import { HOST_PALETTE } from './config';
 import { HOST_TOP_QUERIES } from './queries';
-import { buildDiskRows, buildLabelRows, seriesHasAnyLabel } from './entity-series';
-import HostEntityLayer from './entity-layer';
-import { HOST_PROCESS_METRICS_TAB } from './host-process-metrics-tab';
 import type { HostDetailLayoutProps } from './detail-layout';
 
 const TOP_CHART_TITLES = ['资源使用趋势', '系统负载趋势'];
 const NETWORK_CHART_TITLES = ['网络吞吐趋势', '网络错误速率'];
 const DISK_PROCESS_CHART_TITLES = ['磁盘吞吐趋势', '进程异常趋势'];
 const RING_TITLES = ['CPU 时间分布'];
-const DISK_DIMENSIONS = ['path', 'device', 'mount', 'name', 'fstype'];
 const TOP_CONCURRENCY = 1;
 
-/** 整页折线：健康概览、性能与分布、网络观察、磁盘与进程，明细跟在折线下面。 */
+/** 传统视图：健康概览、性能与分布、网络观察、磁盘与进程。 */
 export default function HostLegacyLayout({
   styles,
   dashboard,
-  instanceIdKeys,
-  diskState,
-  netState,
-  gpuState,
-  processReady
+  instanceIdKeys
 }: HostDetailLayoutProps) {
   const { getInstanceQuery } = useViewApi();
-  const queryRef = useRef(getInstanceQuery);
-  queryRef.current = getInstanceQuery;
   const [topBars, setTopBars] = useState<Record<string, BarItem[]>>({});
   const topCharts = useFilteredChartPanels(dashboard.chartPanels, TOP_CHART_TITLES);
   const networkCharts = useFilteredChartPanels(dashboard.chartPanels, NETWORK_CHART_TITLES);
@@ -56,24 +44,18 @@ export default function HostLegacyLayout({
   const [diskChart, processAnomalyChart] = diskProcessCharts;
   const [cpuRing] = rings;
 
-  const {
-    idValues,
-    timeValues,
-    isDashboardMode,
-    loadTick,
-    currentInstanceInterval,
-    monitorObjectId,
-    instanceId
-  } = dashboard;
+  const { idValues, timeValues, isDashboardMode, loadTick, currentInstanceInterval } = dashboard;
+  const idValuesKey = JSON.stringify(idValues);
+  const timeKey = JSON.stringify(timeValues);
+
   useEffect(() => {
-    if (!idValues.length) {
+    if (!isDashboardMode || !idValues.length) {
       setTopBars({});
       return;
     }
-    if (!isDashboardMode) return;
     let active = true;
     runWithConcurrency(HOST_TOP_QUERIES, TOP_CONCURRENCY, async (query) =>
-      queryRef.current(
+      getInstanceQuery(
         buildSearchParams(
           query.query,
           query.unit,
@@ -83,7 +65,7 @@ export default function HostLegacyLayout({
           undefined,
           false,
           currentInstanceInterval,
-          { monitorObjectId, instanceId }
+          { monitorObjectId: dashboard.monitorObjectId, instanceId: dashboard.instanceId }
         )
       )
         .then((result) => [query.key, topLabelBars(result, query.unit, query.color, query.labelKeys)] as const)
@@ -96,33 +78,17 @@ export default function HostLegacyLayout({
     };
   }, [
     currentInstanceInterval,
+    dashboard.instanceId,
+    dashboard.monitorObjectId,
+    getInstanceQuery,
     idValues,
-    instanceId,
+    idValuesKey,
     instanceIdKeys,
     isDashboardMode,
     loadTick,
-    monitorObjectId,
+    timeKey,
     timeValues
   ]);
-
-  const diskSeries = useMemo(() => Object.values(diskState.byMetric).flat(), [diskState.byMetric]);
-  const netSeries = useMemo(() => Object.values(netState.byMetric).flat(), [netState.byMetric]);
-  const gpuSeries = useMemo(() => Object.values(gpuState.byMetric).flat(), [gpuState.byMetric]);
-  const diskRows = useMemo(() => buildDiskRows(diskState.byMetric), [diskState.byMetric]);
-  const netRows = useMemo(
-    () => buildLabelRows(netState.byMetric, 'interface', 'net_bytes_recv_rate'),
-    [netState.byMetric]
-  );
-  const gpuRows = useMemo(
-    () => buildLabelRows(gpuState.byMetric, 'index', 'nvidia_smi_utilization_memory'),
-    [gpuState.byMetric]
-  );
-  const diskHasDimension = seriesHasAnyLabel(diskSeries, DISK_DIMENSIONS);
-  const netHasInterface = seriesHasAnyLabel(netSeries, ['interface']);
-  const gpuHasIndex = seriesHasAnyLabel(gpuSeries, ['index']);
-  const showDisk = diskState.status === 'error' || (diskState.status === 'ready' && diskSeries.length > 0);
-  const showNet = netState.status === 'error' || (netState.status === 'ready' && netSeries.length > 0);
-  const showGpu = gpuState.status === 'ready' && gpuSeries.length > 0;
 
   const renderTrend = (chart: PreparedChartPanel | undefined, className: string) => chart ? (
     <TrendChartPanel
@@ -194,126 +160,6 @@ export default function HostLegacyLayout({
         ))}
         {renderTrend(processAnomalyChart, `${styles.span4} ${styles.compactTrend}`)}
       </FlexiblePanelSection>
-
-      {showDisk ? (
-        <>
-          <DashboardSectionLabel styles={styles}>磁盘明细</DashboardSectionLabel>
-          {diskState.status === 'error' ? (
-            <div className={styles.layerNote}>磁盘维度查询失败，请稍后重试。</div>
-          ) : diskHasDimension ? (
-            <HostEntityLayer
-              styles={styles}
-              loading={diskState.status === 'loading'}
-              rows={diskRows}
-              onXRangeChange={dashboard.onXRangeChange}
-              columns={[
-                { key: 'path', title: 'path', labelKey: 'path' },
-                { key: 'mount', title: 'mount', labelKey: 'mount' },
-                { key: 'device', title: 'device', labelKey: 'device' },
-                { key: 'disk_used_percent', title: 'used%', unit: 'percent' },
-                { key: 'disk_inodes_used_percent', title: 'inodes%', unit: 'percent' },
-                { key: 'diskio_io_util', title: 'IO util', unit: 'percent' },
-                { key: 'diskio_read_bytes_rate', title: '读字节率', unit: 'byteps' },
-                { key: 'diskio_write_bytes_rate', title: '写字节率', unit: 'byteps' }
-              ]}
-              chartMetrics={[
-                { key: 'disk_used_percent', label: 'used%', unit: 'percent', color: HOST_PALETTE.amber },
-                { key: 'disk_inodes_used_percent', label: 'inodes%', unit: 'percent', color: HOST_PALETTE.neutral },
-                { key: 'diskio_io_util', label: 'IO util', unit: 'percent', color: HOST_PALETTE.orange },
-                { key: 'diskio_read_bytes_rate', label: '读', unit: 'byteps', color: HOST_PALETTE.cyan },
-                { key: 'diskio_write_bytes_rate', label: '写', unit: 'byteps', color: HOST_PALETTE.rose }
-              ]}
-            />
-          ) : (
-            <div className={styles.layerNote}>当前磁盘序列没有 path/device/mount 维度，上方保留主机合计吞吐，这里不展开挂载点表。</div>
-          )}
-        </>
-      ) : null}
-
-      {showNet ? (
-        <>
-          <DashboardSectionLabel styles={styles}>网卡明细</DashboardSectionLabel>
-          {netState.status === 'error' ? (
-            <div className={styles.layerNote}>网卡维度查询失败，请稍后重试。</div>
-          ) : netHasInterface ? (
-            <HostEntityLayer
-              styles={styles}
-              loading={netState.status === 'loading'}
-              rows={netRows}
-              onXRangeChange={dashboard.onXRangeChange}
-              columns={[
-                { key: 'interface', title: 'interface', labelKey: 'interface' },
-                { key: 'net_bytes_recv_rate', title: 'bytes in', unit: 'byteps' },
-                { key: 'net_bytes_sent_rate', title: 'bytes out', unit: 'byteps' },
-                { key: 'net_err_in_rate', title: 'err in', unit: 'cps' },
-                { key: 'net_err_out_rate', title: 'err out', unit: 'cps' },
-                { key: 'net_drop_in_rate', title: 'drop in', unit: 'cps' },
-                { key: 'net_drop_out_rate', title: 'drop out', unit: 'cps' }
-              ]}
-              chartMetrics={[
-                { key: 'net_bytes_recv_rate', label: 'bytes in', unit: 'byteps', color: HOST_PALETTE.blue },
-                { key: 'net_bytes_sent_rate', label: 'bytes out', unit: 'byteps', color: HOST_PALETTE.emerald },
-                { key: 'net_err_in_rate', label: 'err in', unit: 'cps', color: HOST_PALETTE.orange },
-                { key: 'net_err_out_rate', label: 'err out', unit: 'cps', color: HOST_PALETTE.rose },
-                { key: 'net_drop_in_rate', label: 'drop in', unit: 'cps', color: HOST_PALETTE.indigo },
-                { key: 'net_drop_out_rate', label: 'drop out', unit: 'cps', color: HOST_PALETTE.neutral }
-              ]}
-            />
-          ) : (
-            <div className={styles.layerNote}>当前网络序列没有 interface 维度。上方网络图是全接口合计，不是单网卡明细。</div>
-          )}
-        </>
-      ) : null}
-
-      {processReady ? (
-        <>
-          <DashboardSectionLabel styles={styles}>进程</DashboardSectionLabel>
-          <MetricViews
-            monitorObjectId={dashboard.monitorObjectId}
-            monitorObjectName={dashboard.monitorObjectName}
-            instanceId={String(dashboard.instanceId || '')}
-            instanceName={dashboard.resolvedInstanceName}
-            idValues={dashboard.idValues}
-            externalTimeValues={dashboard.timeValues}
-            externalTimeDefaultValue={dashboard.timeDefaultValue}
-            externalFrequence={dashboard.frequence}
-            externalRefreshSignal={dashboard.metricsRefreshSignal}
-            collectionInterval={dashboard.currentInstanceInterval}
-            hideTimeSelector
-            onExternalXRangeChange={dashboard.onXRangeChange}
-            lockedPluginTab={HOST_PROCESS_METRICS_TAB}
-          />
-        </>
-      ) : null}
-
-      {showGpu ? (
-        <>
-          <DashboardSectionLabel styles={styles}>GPU</DashboardSectionLabel>
-          {gpuHasIndex ? (
-            <HostEntityLayer
-              styles={styles}
-              loading={gpuState.status === 'loading'}
-              rows={gpuRows}
-              onXRangeChange={dashboard.onXRangeChange}
-              columns={[
-                { key: 'index', title: 'index', labelKey: 'index' },
-                { key: 'nvidia_smi_utilization_memory', title: '显存%', unit: 'percent' },
-                { key: 'nvidia_smi_temperature_gpu', title: '温度', unit: 'celsius' },
-                { key: 'nvidia_smi_power_draw', title: '功耗', unit: 'watts' },
-                { key: 'nvidia_smi_fan_speed_avg', title: '风扇%', unit: 'percent' }
-              ]}
-              chartMetrics={[
-                { key: 'nvidia_smi_utilization_memory', label: '显存%', unit: 'percent', color: HOST_PALETTE.blue },
-                { key: 'nvidia_smi_temperature_gpu', label: '温度', unit: 'celsius', color: HOST_PALETTE.rose },
-                { key: 'nvidia_smi_power_draw', label: '功耗', unit: 'watts', color: HOST_PALETTE.amber },
-                { key: 'nvidia_smi_fan_speed_avg', label: '风扇%', unit: 'percent', color: HOST_PALETTE.cyan }
-              ]}
-            />
-          ) : (
-            <div className={styles.layerNote}>已采到 GPU 序列，但没有 index 维度，因此不展开单卡表。</div>
-          )}
-        </>
-      ) : null}
     </>
   );
 }

@@ -42,7 +42,7 @@ export interface DashboardPageHeaderProps {
 }
 
 const DISPLAY_MODE_OPTIONS = [
-  { labelKey: 'dashboardMode', fallback: '经典仪表盘', value: 'dashboard' },
+  { labelKey: 'dashboardMode', fallback: '传统视图', value: 'dashboard' },
   { labelKey: 'metricsMode', fallback: '全量指标', value: 'metrics' }
 ] as const;
 
