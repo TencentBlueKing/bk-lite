@@ -23,7 +23,7 @@
         background: var(--color-bg-1);
         height: 100%;
         min-height: 0;
-        // Host 舰队概览加高后，右侧必须可纵向滚动，否则表格被 overflow:hidden 裁切。
+        // 列表过长时由右侧滚动，避免表格被 overflow:hidden 裁切。
         overflow-x: hidden;
         overflow-y: auto;
     }
