@@ -9,7 +9,20 @@ import pytest
 
 from apps.rum.services.control import MemoryControl
 from apps.rum.services.evaluator import AlertEvaluator
-from apps.rum.services.logsql_stats import ERROR_SORTS, SESSION_SORTS, error_list_query, session_page_query
+from apps.rum.services.logsql_stats import (
+    ERROR_SORTS,
+    SESSION_SORTS,
+    error_detail_query,
+    error_list_query,
+    journey_stats_query,
+    map_error_issue,
+    map_session_row,
+    map_session_summary,
+    release_first_issue_query,
+    sample_text,
+    session_page_query,
+    view_stats_query,
+)
 from apps.rum.services.monitors import MemoryEventStore, MemoryPolicyStore
 from apps.rum.services.notify import MemoryNotifier
 from apps.rum.services.replay import MemoryReplayIndex
@@ -373,3 +386,64 @@ def test_monitor_metric_zero_is_an_empty_window_not_a_failure():
 )
 def test_session_order_mapping(order, fragment):
     assert fragment in session_page_query("core", _opts(orderBy=order))
+
+
+def test_stats_queries_use_v138_functions():
+    opts = _opts()
+    queries = [
+        session_page_query("core", opts),
+        error_list_query("core", opts),
+        error_detail_query("core", "fp-1", opts),
+        journey_stats_query("core", "storefront", "abc"),
+        view_stats_query("core", opts),
+        release_first_issue_query("core", opts),
+    ]
+    for query in queries:
+        assert "any(" not in query
+        assert ":(," not in query
+    view = queries[4]
+    assert "`rum.vital.lcp`:<=2500" in view
+    assert "`rum.vital.lcp`:>2500 AND `rum.vital.lcp`:<=4000" in view
+    assert "`rum.vital.lcp`:>4000" in view
+    assert "values(`user_agent.original`)" in queries[0]
+
+
+def test_sample_text_reads_one_values_element():
+    row = map_session_row(
+        {
+            "rum.application": "storefront",
+            "rum.session.key": "abc",
+            "user_agent": '["Mozilla/5.0", "Other"]',
+            "entry_route": '["/home", "/cart"]',
+            "country": "[]",
+            "city": "not-json[",
+            "release": "1.2.3",
+        }
+    )
+    assert row["userAgent"] == "Mozilla/5.0"
+    assert row["entryRoute"] == "/home"
+    assert row["geoCountry"] == ""
+    assert row["geoCity"] == "not-json["
+    assert row["release"] == "1.2.3"
+    issue = map_error_issue(
+        {
+            "rum.error.fingerprint": "fp",
+            "message": '["Error: a", "Error: a again"]',
+            "error_type": "Error",
+            "application": "storefront",
+            "count": "2",
+        }
+    )
+    assert issue["sampleMessage"] == "Error: a"
+    assert issue["normalizedMessage"] == "Error: a"
+    assert issue["errorType"] == "Error"
+    assert issue["application"] == "storefront"
+    assert sample_text({"release": ["1.2.3", ""]}, "release") == "1.2.3"
+
+
+def test_session_summary_converts_logsql_nanoseconds_to_milliseconds():
+    summary = map_session_summary({"total": "8", "errored": "1", "median": "232403000064"})
+    assert summary["total"] == 8
+    assert summary["errored"] == 1
+    assert summary["medianDurationMs"] == 232403
+    assert map_session_summary({"total": "0", "errored": "0", "median": "0"})["medianDurationMs"] == 0

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Protocol
 
+from apps.core.logger import rum_logger as logger
 from apps.rum.constants import SUBJECT_APPLICATION_LIST
 from apps.rum.services.analytics import Analytics, get_analytics
 from apps.rum.services.control import ControlError, ControlPlane, control_unavailable, get_control_plane
@@ -293,19 +294,26 @@ class ErrorsService:
         display_limit = min(display_limit, 500)
         status_filter = params.get("status")
         query_limit = 500 if status_filter and status_filter != "all" else display_limit
-        page = self.analytics.list_error_issues(
-            self.settings.tenant_id,
-            {
-                "from": start,
-                "to": end,
-                "applications": apps,
-                "userId": params.get("userId") or "",
-                "release": params.get("release") or "",
-                "traffic": params.get("traffic") or "visitors",
-                "orderBy": params.get("orderBy") or "count",
-                "limit": query_limit,
-            },
-        )
+        try:
+            page = self.analytics.list_error_issues(
+                self.settings.tenant_id,
+                {
+                    "from": start,
+                    "to": end,
+                    "applications": apps,
+                    "userId": params.get("userId") or "",
+                    "release": params.get("release") or "",
+                    "traffic": params.get("traffic") or "visitors",
+                    "orderBy": params.get("orderBy") or "count",
+                    "limit": query_limit,
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 — degrade; do not 500 the BFF
+            logger.warning(
+                "rum errors list analytics failed failed_stage=list_errors error_type=%s",
+                type(exc).__name__,
+            )
+            return empty_error_list(reason="analytics")
         rows = page.get("issues") or []
         kept = []
         for row in rows:
@@ -335,17 +343,24 @@ class ErrorsService:
         apps = [name for name in requested if name in enabled] if requested else enabled
         if not self.analytics.available():
             return empty_error_detail(reason="analytics")
-        detail = self.analytics.error_detail(
-            self.settings.tenant_id,
-            fingerprint,
-            {
-                "from": start,
-                "to": end,
-                "applications": apps,
-                "traffic": params.get("traffic") or "visitors",
-                "limit": int(params.get("limit") or 0),
-            },
-        )
+        try:
+            detail = self.analytics.error_detail(
+                self.settings.tenant_id,
+                fingerprint,
+                {
+                    "from": start,
+                    "to": end,
+                    "applications": apps,
+                    "traffic": params.get("traffic") or "visitors",
+                    "limit": int(params.get("limit") or 0),
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 — degrade; do not 500 the BFF
+            logger.warning(
+                "rum error detail analytics failed failed_stage=error_detail error_type=%s",
+                type(exc).__name__,
+            )
+            return empty_error_detail(reason="analytics")
         if not detail.get("fingerprint"):
             raise ControlError("not_found", "error issue not found")
         stored = self.issues.get(fingerprint)

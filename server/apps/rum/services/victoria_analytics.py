@@ -326,10 +326,10 @@ class VictoriaAnalytics:
         row = rows[0]
         detail.update(
             {
-                "fingerprint": (row.get("fingerprint") or fingerprint),
-                "sampleMessage": row.get("message") or "",
-                "normalizedMessage": row.get("message") or "",
-                "errorType": row.get("error_type") or "",
+                "fingerprint": logsql_stats.sample_text(row, "fingerprint") or fingerprint,
+                "sampleMessage": logsql_stats.sample_text(row, "message"),
+                "normalizedMessage": logsql_stats.sample_text(row, "message"),
+                "errorType": logsql_stats.sample_text(row, "error_type"),
                 "count": int(float(row.get("count") or 0)),
                 "affectedSessions": int(float(row.get("sessions") or 0)),
                 "affectedUsers": int(float(row.get("users") or 0)),
@@ -377,7 +377,7 @@ class VictoriaAnalytics:
         first_seen = self._stats(tenant, logsql_stats.release_first_issue_query(tenant, opts), opts, limit=5000)
         new_by_release: dict[str, int] = {}
         for row in first_seen:
-            release = (row.get("release") or "").strip()
+            release = logsql_stats.sample_text(row, "release")
             if release:
                 new_by_release[release] = new_by_release.get(release, 0) + 1
         releases = [logsql_stats.map_release_row(row, new_by_release.get(row.get("rum.release") or "", 0)) for row in rows]

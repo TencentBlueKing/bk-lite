@@ -25,6 +25,8 @@ ERROR_SORTS = {
     "relevance": "sort by (count desc, duration desc, start_time desc)",
 }
 
+# victoria-logs:v1.38.0 has no stats any(). values() returns a JSON array;
+# sample_text keeps one element. The picked element is not time-ordered.
 _SESSION_STATS = (
     "stats by (`rum.application`, `rum.session.key`, `rum.session.id`) "
     "count() as event_count, "
@@ -35,16 +37,16 @@ _SESSION_STATS = (
     'count() if ("rum.event.type":error) as error_count, '
     'count() if ("rum.event.type":action) as action_count, '
     'count() if ("rum.event.type":vital) as vital_count, '
-    "any(`user_agent.original`) as user_agent, "
-    "any(`geo.country.iso_code`) as country, "
-    "any(`geo.locality.name`) as city, "
-    "any(`rum.user.id`) as user_id, "
-    "any(`rum.environment`) as environment, "
-    "any(`rum.release`) as release, "
-    "any(`rum.sdk.name`) as sdk_name, "
-    "any(`rum.sdk.version`) as sdk_version, "
-    "any(`rum.traffic.class`) as traffic_class, "
-    "any(`rum.view.name`) as entry_route"
+    "values(`user_agent.original`) as user_agent, "
+    "values(`geo.country.iso_code`) as country, "
+    "values(`geo.locality.name`) as city, "
+    "values(`rum.user.id`) as user_id, "
+    "values(`rum.environment`) as environment, "
+    "values(`rum.release`) as release, "
+    "values(`rum.sdk.name`) as sdk_name, "
+    "values(`rum.sdk.version`) as sdk_version, "
+    "values(`rum.traffic.class`) as traffic_class, "
+    "values(`rum.view.name`) as entry_route"
 )
 
 
@@ -92,9 +94,9 @@ def view_stats_query(tenant_id: str, opts: dict) -> str:
         "quantile(0.75, `rum.vital.inp`) as inp_p75, "
         "quantile(0.75, `rum.vital.cls`) as cls_p75, "
         "quantile(0.75, `rum.context.loading_time_ms`) as loading_p75, "
-        "count() if (`rum.vital.lcp`:(,2500]) as lcp_good, "
-        "count() if (`rum.vital.lcp`:(2500,4000]) as lcp_needs, "
-        "count() if (`rum.vital.lcp`:(4000,)) as lcp_poor, "
+        "count() if (`rum.vital.lcp`:<=2500) as lcp_good, "
+        "count() if (`rum.vital.lcp`:>2500 AND `rum.vital.lcp`:<=4000) as lcp_needs, "
+        "count() if (`rum.vital.lcp`:>4000) as lcp_poor, "
         'count() if ("user_agent.original":Mobile OR "user_agent.original":Android OR "user_agent.original":iPhone) as mobile, '
         'count() if ("rum.event.type":view) as view_events '
         "| sort by (views desc) | offset 0 | limit 500"
@@ -120,9 +122,9 @@ def error_list_query(tenant_id: str, opts: dict) -> str:
         "count_uniq(`rum.user.id`) as users, "
         "min(_time) as start_time, "
         "max(_time) as end_time, "
-        "any(`rum.error.message`) as message, "
-        "any(`rum.error.type`) as error_type, "
-        "any(`rum.application`) as application "
+        "values(`rum.error.message`) as message, "
+        "values(`rum.error.type`) as error_type, "
+        "values(`rum.application`) as application "
         "| math (end_time - start_time) as duration "
         f"| {order} | offset {offset} | limit {limit}"
     )
@@ -141,9 +143,9 @@ def error_detail_query(tenant_id: str, fingerprint: str, opts: dict) -> str:
         "count_uniq(`rum.user.id`) as users, "
         "min(_time) as start_time, "
         "max(_time) as end_time, "
-        "any(`rum.error.message`) as message, "
-        "any(`rum.error.type`) as error_type, "
-        "any(`rum.error.fingerprint`) as fingerprint"
+        "values(`rum.error.message`) as message, "
+        "values(`rum.error.type`) as error_type, "
+        "values(`rum.error.fingerprint`) as fingerprint"
     )
 
 
@@ -168,7 +170,7 @@ def release_first_issue_query(tenant_id: str, opts: dict) -> str:
     base = _filtered(tenant_id, opts, '"rum.event.type":error "rum.error.fingerprint":*')
     return (
         f"{base} | stats by (`rum.error.fingerprint`) "
-        "min(_time) as first_seen, any(`rum.release`) as release "
+        "min(_time) as first_seen, values(`rum.release`) as release "
         "| sort by (first_seen) | offset 0 | limit 5000"
     )
 
@@ -191,12 +193,12 @@ def journey_stats_query(tenant_id: str, application: str, session_id: str) -> st
         'count() if ("rum.event.type":error) as error_count, '
         'count() if ("rum.event.type":action) as action_count, '
         "count_uniq(`rum.event.id`) as events, "
-        "any(`rum.view.name`) as entry_route, "
-        "any(`user_agent.original`) as user_agent, "
-        "any(`rum.user.id`) as user_id, "
-        "any(`rum.release`) as release, "
-        "any(`rum.environment`) as environment, "
-        "any(`rum.traffic.class`) as traffic_class"
+        "values(`rum.view.name`) as entry_route, "
+        "values(`user_agent.original`) as user_agent, "
+        "values(`rum.user.id`) as user_id, "
+        "values(`rum.release`) as release, "
+        "values(`rum.environment`) as environment, "
+        "values(`rum.traffic.class`) as traffic_class"
     )
 
 
@@ -247,35 +249,35 @@ def map_session_row(row: dict) -> dict:
         "sessionId": session_id,
         "startTime": _fmt_dt(start),
         "endTime": _fmt_dt(end),
-        "entryRoute": _text(row, "entry_route"),
+        "entryRoute": sample_text(row, "entry_route"),
         "viewCount": int(_num(row, "view_count")),
         "errorCount": int(_num(row, "error_count")),
         "actionCount": int(_num(row, "action_count")),
         "vitalCount": int(_num(row, "vital_count")),
         "eventCount": int(_num(row, "events") or _num(row, "event_count")),
-        "userAgent": _text(row, "user_agent"),
-        "geoCountry": _text(row, "country"),
-        "geoCity": _text(row, "city"),
-        "userId": _text(row, "user_id"),
-        "environment": _text(row, "environment"),
-        "release": _text(row, "release"),
-        "sdkName": _text(row, "sdk_name"),
-        "sdkVersion": _text(row, "sdk_version"),
-        "trafficClass": _text(row, "traffic_class"),
+        "userAgent": sample_text(row, "user_agent"),
+        "geoCountry": sample_text(row, "country"),
+        "geoCity": sample_text(row, "city"),
+        "userId": sample_text(row, "user_id"),
+        "environment": sample_text(row, "environment"),
+        "release": sample_text(row, "release"),
+        "sdkName": sample_text(row, "sdk_name"),
+        "sdkVersion": sample_text(row, "sdk_version"),
+        "trafficClass": sample_text(row, "traffic_class"),
     }
 
 
 def map_session_summary(row: dict | None) -> dict:
     if not row:
         return {"total": 0, "errored": 0, "replayed": 0, "medianDurationMs": 0}
-    median = _num(row, "median")
-    if median > 1_000_000_000_000:
-        median = median / 1_000_000
+    # LogsQL `end_time - start_time` is nanoseconds. A 4-minute session is
+    # ~2.4e11, below the old 1e12 cutoff, so the KPI was shown as hours.
+    median_ns = _num(row, "median")
     return {
         "total": int(_num(row, "total")),
         "errored": int(_num(row, "errored")),
         "replayed": 0,
-        "medianDurationMs": int(median),
+        "medianDurationMs": int(median_ns / 1_000_000),
     }
 
 
@@ -316,10 +318,10 @@ def map_error_issue(row: dict) -> dict:
     end = _fmt_dt(_parse_time(_text(row, "end_time")))
     return {
         "fingerprint": _text(row, "rum.error.fingerprint"),
-        "sampleMessage": _text(row, "message"),
-        "normalizedMessage": _text(row, "message"),
-        "errorType": _text(row, "error_type"),
-        "application": _text(row, "application"),
+        "sampleMessage": sample_text(row, "message"),
+        "normalizedMessage": sample_text(row, "message"),
+        "errorType": sample_text(row, "error_type"),
+        "application": sample_text(row, "application"),
         "count": int(_num(row, "count")),
         "affectedSessions": int(_num(row, "sessions")),
         "affectedUsers": int(_num(row, "users")),
@@ -429,6 +431,33 @@ def _positive(value, default: int) -> int:
 
 def _text(row: dict, key: str) -> str:
     return str(row.get(key) or "").strip()
+
+
+def sample_text(row: dict, key: str) -> str:
+    """Read one sample from a values() cell.
+
+    v1.38.0 encodes values() as a JSON array string. A plain string is returned
+    unchanged so callers that already collapsed the sample keep working.
+    """
+    value = row.get(key)
+    if isinstance(value, list):
+        items = value
+    else:
+        text = str(value or "").strip()
+        if not text.startswith("["):
+            return text
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return text
+        if not isinstance(parsed, list):
+            return text
+        items = parsed
+    for item in items:
+        sample = str(item or "").strip()
+        if sample:
+            return sample
+    return ""
 
 
 def _num(row: dict, key: str) -> float:

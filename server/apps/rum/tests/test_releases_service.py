@@ -1,3 +1,7 @@
+import io
+import logging
+from urllib.error import HTTPError
+
 import pytest
 
 from apps.rum.services.analytics import UnavailableAnalytics
@@ -59,6 +63,35 @@ def test_list_releases_degrades_without_analytics():
     page = _service(control, analytics=UnavailableAnalytics()).list_releases("tester", {"range": "24h", "application": "checkout"})
     assert page["releases"] == []
     assert page["analyticsUnavailable"] is True
+
+
+def test_list_releases_degrades_when_query_fails(caplog):
+    class QueryFailureAnalytics(UnavailableAnalytics):
+        def available(self):
+            return True
+
+        def list_releases(self, tenant_id, opts):
+            raise HTTPError(
+                "http://127.0.0.1:19428/select/logsql/query",
+                400,
+                "secret-query-body",
+                hdrs=None,
+                fp=io.BytesIO(b"secret-query-body"),
+            )
+
+    control = MemoryControl()
+    _seed_app(control)
+    with caplog.at_level(logging.WARNING, logger="rum"):
+        page = _service(control, analytics=QueryFailureAnalytics()).list_releases(
+            "tester",
+            {"range": "24h", "application": "checkout"},
+        )
+    assert page["releases"] == []
+    assert page["analyticsUnavailable"] is True
+    record = next(item for item in caplog.records if item.name == "rum")
+    assert record.exc_info is None
+    assert record.getMessage() == "rum releases list analytics failed failed_stage=list_releases error_type=HTTPError"
+    assert "secret-query-body" not in record.getMessage()
 
 
 def test_list_releases_degrades_without_control():
