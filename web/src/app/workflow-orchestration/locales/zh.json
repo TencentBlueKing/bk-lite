@@ -210,6 +210,58 @@
             "memory_id": "记忆标识",
             "event_id": "异步事件标识"
           }
+        },
+        "bklite_document_render": {
+          "name": "文档生成",
+          "category": "报告",
+          "description": "根据 Word 或 Excel 模板和结构化数据生成受控下载文件",
+          "output": {
+            "artifact": "生成文件",
+            "artifact.id": "文件标识",
+            "artifact.filename": "文件名",
+            "artifact.format": "格式",
+            "artifact.size": "大小",
+            "field_warnings": "模板字段警告"
+          }
+        },
+        "bklite_job_execute": {
+          "name": "作业执行",
+          "category": "作业平台",
+          "description": "在授权目标上执行用户编写的 Linux 或 Windows 脚本，输出统一 JSON 结果信封",
+          "output": {
+            "results": "目标执行结果",
+            "results.target": "目标",
+            "results.status": "状态",
+            "results.exit_code": "退出码",
+            "results.stdout": "标准输出",
+            "results.stderr": "错误输出",
+            "results.data": "业务 JSON",
+            "results.error": "错误",
+            "summary": "执行汇总",
+            "summary.total": "总数",
+            "summary.succeeded": "成功数",
+            "summary.failed": "失败数",
+            "job_task_ids": "作业实例"
+          }
+        },
+        "bklite_http_request": {
+          "name": "HTTP 请求",
+          "category": "集成",
+          "description": "按 Method 与完整 URL 发起 HTTP 请求，运行时做 SSRF 与大小限制",
+          "output": {
+            "status_code": "状态码",
+            "content_type": "内容类型",
+            "body": "响应体",
+            "size": "大小"
+          }
+        },
+        "bklite_notification": {
+          "name": "对外通知",
+          "category": "通知",
+          "description": "通过系统管理已配置的邮件、企微、飞书、钉钉或 Webhook 渠道投递",
+          "output": {
+            "delivery": "投递结果"
+          }
         }
       },
       "nodeTypeLabel": "节点类型",
@@ -385,7 +437,7 @@
       "searchNodes": "搜索节点…",
       "noMatchingNodes": "没有匹配的节点",
       "nodeInput": "节点输入",
-      "inputHint": "展示当前节点可引用的上游数据和系统上下文，请在参数中选择引用。",
+      "inputHint": "展示当前节点可引用的上游数据和运行信息，请在参数中选择引用。",
       "noInputs": "当前节点没有可用输入",
       "nodeParameters": "节点参数",
       "parameters": "参数",
@@ -692,7 +744,19 @@
       "noSchemaFields": "该原子没有可声明的 Schema 字段",
       "noSchemaFieldsHint": "请先在原子包中补充输入 Schema；普通节点不开放未约束的原始 JSON。",
       "triggerInput": "触发输入",
-      "systemContext": "系统上下文",
+      "systemContext": "运行信息",
+      "systemField": {
+        "execution_id": "执行号",
+        "workflow_id": "流程",
+        "workflow_version": "流程版本",
+        "organization_id": "组织",
+        "trigger_id": "触发器",
+        "trigger_type": "触发类型",
+        "actor_id": "发起人标识",
+        "actor_name": "发起人",
+        "started_at": "开始时间",
+        "trace_id": "追踪号"
+      },
       "advancedSettings": "高级设置",
       "selectItems": "请选择",
       "inputData": "输入",

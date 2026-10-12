@@ -4,6 +4,7 @@ import {
   AppstoreOutlined,
   BranchesOutlined,
   CheckCircleOutlined,
+  CaretRightOutlined,
   FormOutlined,
   PlayCircleOutlined,
   PlusOutlined,
@@ -203,6 +204,9 @@ export interface WorkflowInspectorReference {
   value: string;
   type?: string;
   source?: string;
+  sourceKey?: string;
+  displayName?: string;
+  jsonPath?: string;
   path?: string;
   preview?: unknown;
 }
@@ -286,21 +290,25 @@ export function WorkflowNodeInspector({
 }) {
   const { t } = useTranslation();
   const [inputQuery, setInputQuery] = useState('');
+  const [collapsedGroups, setCollapsedGroups] = useState<string[]>([]);
   const [inputView, setInputView] = useState<DataViewMode>('schema');
   const [outputView, setOutputView] = useState<DataViewMode>('schema');
-  const filteredReferences = useMemo(() => references.filter((item) => `${item.label} ${item.value}`.toLowerCase().includes(inputQuery.trim().toLowerCase())), [inputQuery, references]);
+  const filteredReferences = useMemo(() => references.filter((item) => `${item.displayName || ''} ${item.label} ${item.path || ''} ${item.value}`.toLowerCase().includes(inputQuery.trim().toLowerCase())), [inputQuery, references]);
   const groupedReferences = useMemo(() => {
-    const groups = new Map<string, WorkflowInspectorReference[]>();
+    const groups = new Map<string, { source: string; sourceKey: string; items: WorkflowInspectorReference[] }>();
     filteredReferences.forEach((item) => {
-      const source = item.source || t('workflowOrchestration.editor.otherInputs', '其他输入');
-      groups.set(source, [...(groups.get(source) || []), item]);
+      const sourceKey = item.sourceKey || item.source || t('workflowOrchestration.editor.otherInputs', '其他输入');
+      const source = item.source || sourceKey;
+      const current = groups.get(sourceKey);
+      if (current) current.items.push(item);
+      else groups.set(sourceKey, { source, sourceKey, items: [item] });
     });
-    return [...groups.entries()].map(([source, items]) => ({ source, items }));
+    return [...groups.values()];
   }, [filteredReferences, t]);
-  const inputPreview = useMemo(() => Object.fromEntries(groupedReferences.map(({ source, items }) => {
+  const inputPreview = useMemo(() => Object.fromEntries(groupedReferences.map(({ sourceKey, items }) => {
     const value: Record<string, unknown> = {};
-    items.forEach((item) => setPreviewPath(value, item.path || item.label, item.preview === undefined ? item.value : item.preview));
-    return [source, value];
+    items.forEach((item) => setPreviewPath(value, item.jsonPath || item.path || 'output', item.preview === undefined ? item.value : item.preview));
+    return [sourceKey, value];
   })), [groupedReferences]);
   const outputFields = useMemo(() => outputData === undefined ? [] : valueFields(outputData), [outputData]);
   const declaredOutputFields = useMemo(() => schemaFields(outputSchema), [outputSchema]);
@@ -356,24 +364,35 @@ export function WorkflowNodeInspector({
           <div className="min-h-0 flex-1 overflow-y-auto p-4">
             {filteredReferences.length ? inputView === 'json'
               ? <pre className="m-0 overflow-x-auto whitespace-pre-wrap break-all rounded-md bg-[var(--color-bg)] p-3 font-mono text-[11px] text-[var(--color-text-2)]">{JSON.stringify(inputPreview, null, 2)}</pre>
-              : <div className="space-y-4">{groupedReferences.map(({ source, items }) => <section key={source}>
-                <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-[var(--color-text-2)]"><span className="h-1.5 w-1.5 rounded-full bg-[var(--color-primary)]" />{source}</div>
-                <div className="space-y-1.5">{items.map((item) => <button
-                  key={item.key}
-                  type="button"
-                  draggable={!readOnly}
-                  aria-label={t('workflowOrchestration.editor.dragField', '拖拽字段 {field}', { field: item.label })}
-                  className="group w-full cursor-grab rounded-md bg-[var(--color-bg)] px-3 py-2 text-left outline-none transition hover:ring-1 hover:ring-[var(--color-primary)] focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] active:cursor-grabbing"
-                  onDragStart={(event) => {
-                    event.dataTransfer.effectAllowed = 'copy';
-                    event.dataTransfer.setData(WORKFLOW_REFERENCE_MIME, item.value);
-                    event.dataTransfer.setData('text/plain', item.value);
-                  }}
-                >
-                  <div className="flex items-start justify-between gap-2"><span className="break-words text-xs font-medium text-[var(--color-text-1)]">{item.path || item.label}</span>{item.type ? <Tag bordered={false}>{item.type}</Tag> : null}</div>
-                  {inputView === 'table' ? <div className="mt-1 truncate text-[11px] text-[var(--color-text-3)]">{compactValue(item.preview)}</div> : <div className="mt-1 overflow-x-auto font-mono text-[11px] text-[var(--color-text-4)]">{item.value}</div>}
-                </button>)}</div>
-              </section>)}</div>
+              : <div className="space-y-4">{groupedReferences.map(({ source, sourceKey, items }) => {
+                const expanded = Boolean(inputQuery.trim()) || !collapsedGroups.includes(sourceKey);
+                return <section key={sourceKey}>
+                  <button
+                    type="button"
+                    className="mb-2 flex w-full items-center gap-2 text-left text-xs font-semibold text-[var(--color-text-2)]"
+                    aria-expanded={expanded}
+                    onClick={() => setCollapsedGroups((current) => current.includes(sourceKey) ? current.filter((item) => item !== sourceKey) : [...current, sourceKey])}
+                  >
+                    <CaretRightOutlined className={`text-[10px] transition-transform ${expanded ? 'rotate-90' : ''}`} />
+                    {source}
+                  </button>
+                  {expanded ? <div className="space-y-1.5">{items.map((item) => <button
+                    key={item.key}
+                    type="button"
+                    draggable={!readOnly}
+                    aria-label={t('workflowOrchestration.editor.dragField', '拖拽字段 {field}', { field: item.displayName || item.label })}
+                    className="group w-full cursor-grab rounded-md bg-[var(--color-bg)] px-3 py-2 text-left outline-none transition hover:ring-1 hover:ring-[var(--color-primary)] focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] active:cursor-grabbing"
+                    onDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = 'copy';
+                      event.dataTransfer.setData(WORKFLOW_REFERENCE_MIME, item.value);
+                      event.dataTransfer.setData('text/plain', item.value);
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-2"><span className="break-words text-xs font-medium text-[var(--color-text-1)]">{item.displayName || item.path || item.label}</span>{item.type ? <Tag bordered={false}>{item.type}</Tag> : null}</div>
+                    {inputView === 'table' ? <div className="mt-1 truncate text-[11px] text-[var(--color-text-3)]">{compactValue(item.preview)}</div> : <div className="mt-1 overflow-x-auto font-mono text-[11px] text-[var(--color-text-4)]">{item.value}</div>}
+                  </button>)}</div> : null}
+                </section>;
+              })}</div>
             : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('workflowOrchestration.editor.noInputs', '当前节点没有可用输入')} />}
           </div>
         </section>}

@@ -49,4 +49,28 @@ describe('编排中心双语契约', () => {
     expect(atom.input_schema?.properties?.query.title).toBe('Query');
     expect(atom.output_schema?.properties?.memory_context.title).toBe('Memory Context');
   });
+
+  it('嵌套输出字段按路径切换为英文，字段名本身不拼接', () => {
+    const messages = flatten(english);
+    const atom = localizeAtom({
+      key: 'bklite_document_render',
+      name: '文档生成',
+      category: '报告',
+      description: '生成文件',
+      output_schema: {
+        type: 'object',
+        properties: {
+          artifact: {
+            type: 'object',
+            title: '生成文件',
+            properties: { id: { type: 'string', title: '文件标识' } },
+          },
+        },
+      },
+    }, (key, fallback) => messages.get(key) || fallback || key);
+
+    expect(atom.name).toBe('Document');
+    expect(atom.output_schema?.properties?.artifact.title).toBe('Generated File');
+    expect(atom.output_schema?.properties?.artifact.properties?.id.title).toBe('File ID');
+  });
 });
