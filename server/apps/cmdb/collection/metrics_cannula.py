@@ -6,6 +6,7 @@ from django.utils import timezone
 from apps.cmdb.collection.common import Management
 from apps.cmdb.constants.constants import INSTANCE, DataCleanupStrategy
 from apps.cmdb.graph.drivers.graph_client import GraphClient
+from apps.cmdb.services.host_sync_identity import align_collected_host_inst_names
 
 
 class MetricsCannula:
@@ -83,6 +84,9 @@ class MetricsCannula:
         for field_type, task_id in (("str=", self.task_id), ("int=", int(self.task_id))):
             rows, _ = ag.query_entity(INSTANCE, base_params + [{"field": "collect_task", "type": field_type, "value": task_id}])
             old_by_id.update((row["_id"], row) for row in rows)
+
+        if model_id == "host":
+            align_collected_host_inst_names(list(old_by_id.values()), metrics)
 
         organizations = {str(value) for value in (self.organization or [])}
         conflicts = {}

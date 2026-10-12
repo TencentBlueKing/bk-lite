@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 
 from apps.cmdb.services.host_sync_identity import (
+    align_collected_host_inst_names,
     apply_model_cloud_id,
     build_host_inst_name,
     heal_legacy_cloud_id,
@@ -55,6 +56,32 @@ def test_build_host_inst_name_prefers_cloud_name():
 
 def test_build_host_inst_name_falls_back_to_cloud_id():
     assert build_host_inst_name(ip="10.0.0.1", cloud_name="", cloud_id=7) == "10.0.0.1[7]"
+
+
+def test_align_collected_host_inst_name_keeps_business_name():
+    existing = {"ip_addr": "10.0.0.1", "cloud": 2, "inst_name": "订单服务"}
+    metric = {"ip_addr": "10.0.0.1", "cloud": "2", "inst_name": "10.0.0.1[生产云]"}
+    align_collected_host_inst_names([existing], [metric])
+    assert metric["inst_name"] == "订单服务"
+
+
+def test_align_collected_host_inst_name_keeps_generated_name_when_unmatched():
+    existing = {"ip_addr": "10.0.0.1", "cloud": 2, "inst_name": "订单服务"}
+    metric = {"ip_addr": "10.0.0.8", "cloud": 2, "inst_name": "10.0.0.8[生产云]"}
+    align_collected_host_inst_names([existing], [metric])
+    assert metric["inst_name"] == "10.0.0.8[生产云]"
+
+
+def test_align_collected_host_inst_name_skips_ambiguous_or_empty_name():
+    shared = {"ip_addr": "10.0.0.1", "cloud": 2}
+    ambiguous = {"ip_addr": "10.0.0.1", "cloud": 2, "inst_name": "10.0.0.1[生产云]"}
+    blank = {"ip_addr": "10.0.0.3", "cloud": 2, "inst_name": "10.0.0.3[生产云]"}
+    align_collected_host_inst_names(
+        [{**shared, "inst_name": "订单服务"}, {**shared, "inst_name": "库存服务"}, {"ip_addr": "10.0.0.3", "cloud": 2, "inst_name": "  "}],
+        [ambiguous, blank],
+    )
+    assert ambiguous["inst_name"] == "10.0.0.1[生产云]"
+    assert blank["inst_name"] == "10.0.0.3[生产云]"
 
 
 def test_should_refresh_host_inst_name_only_when_identity_changes():
