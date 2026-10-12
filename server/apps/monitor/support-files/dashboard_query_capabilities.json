@@ -4343,13 +4343,6 @@
       "template": "avg without (database) (avg_over_time(sqlserver_database_io_write_latency_ms{__$labels__}[__$window__]))"
     },
     {
-      "id": "dashboard:v1:aceeb867",
-      "object_names": [
-        "Host"
-      ],
-      "template": "(sum by (instance_id) (rate(net_err_in{instance_type=\"os\", __$labels__}[__$window__]) or rate(net_err_in_gauge{instance_type=\"os\", __$labels__}[__$window__]) or rate(net_err_in_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__]))) + (sum by (instance_id) (rate(net_err_out{instance_type=\"os\", __$labels__}[__$window__]) or rate(net_err_out_gauge{instance_type=\"os\", __$labels__}[__$window__]) or rate(net_err_out_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__])))"
-    },
-    {
       "id": "dashboard:v1:ad73cb81",
       "object_names": [
         "Minio"
