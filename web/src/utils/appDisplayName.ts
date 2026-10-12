@@ -24,6 +24,7 @@ const BUILTIN_APP_IDS = new Set([
   'mlops',
   'patch',
   'apm',
+  'rum',
   'playground',
   'workflow-orchestration',
 ]);
