@@ -4,7 +4,7 @@ import React, { useMemo } from 'react';
 import Link from 'next/link';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import { HOST_PALETTE } from '../config';
-import { pointsToChartData, type EntityTableRow } from '../entity-series';
+import { latestPreferSignal, maxFinite, pointsToChartData, type EntityTableRow } from '../entity-series';
 import type { MetricSeries } from '../../common/simple-dashboard-core';
 import { KpiStrip, type KpiCardModel } from './signal-bar';
 import ThinTimeSeries from './thin-time-series';
@@ -38,6 +38,19 @@ const latestOfRow = (row: EntityTableRow | undefined, key: string) => {
   return value == null || !Number.isFinite(value) ? null : value;
 };
 
+/** 快捷卡：优先用序列防末段掉零；无序列时回退 values。 */
+const readingOfRow = (row: EntityTableRow | undefined, key: string) => {
+  const fromSeries = latestPreferSignal(row?.series[key]);
+  if (fromSeries != null) return fromSeries;
+  return latestOfRow(row, key);
+};
+
+const peakOfRow = (row: EntityTableRow | undefined, key: string) => {
+  const fromSeries = maxFinite(row?.series[key]);
+  if (fromSeries != null) return fromSeries;
+  return latestOfRow(row, key);
+};
+
 export default function OverviewPane({
   metrics,
   loading,
@@ -58,7 +71,8 @@ export default function OverviewPane({
   const load = latestNumber(metrics.system_load1);
   const cores = latestNumber(metrics.cpu_n);
   const showLoad = metricHasPoints(metrics.system_load1);
-  const diskValue = latestOfRow(worst, 'disk_used_percent');
+  const diskValue = peakOfRow(worst, 'disk_used_percent');
+  const diskCurrent = readingOfRow(worst, 'disk_used_percent');
   const mountName = worst?.labels.path || worst?.labels.mount || '';
 
   const cards = useMemo<KpiCardModel[]>(() => {
@@ -159,10 +173,19 @@ export default function OverviewPane({
             <div className={styles.shortcutMain}>
               {mountName || '—'}
               {' · '}
-              <span style={{ color: percentTone(diskValue) }}>{formatPercent(diskValue)}</span>
+              <span style={{ color: percentTone(diskCurrent) }}>{formatPercent(diskCurrent)}</span>
             </div>
             <div className={styles.shortcutSub}>
-              {formatBytesPair(worst.values.disk_used, worst.values.disk_total)}
+              {formatBytesPair(
+                (() => {
+                  const total = readingOfRow(worst, 'disk_total') ?? worst.values.disk_total;
+                  const used = readingOfRow(worst, 'disk_used');
+                  if (used != null) return used;
+                  if (total != null && diskCurrent != null) return total * diskCurrent / 100;
+                  return worst.values.disk_used ?? null;
+                })(),
+                readingOfRow(worst, 'disk_total') ?? worst.values.disk_total ?? null
+              )}
             </div>
             <button type="button" className={styles.jumpBtn} onClick={() => onJump('disk', worst.key)}>
               查看磁盘
@@ -174,7 +197,7 @@ export default function OverviewPane({
             <div className={styles.shortcutLabel}>流量最高网卡</div>
             <div className={styles.shortcutMain}>{busiest.labels.interface || '—'}</div>
             <div className={styles.shortcutSub}>
-              {`入 ${formatUnit(latestOfRow(busiest, 'net_bytes_recv_rate'), 'byteps')}`}
+              {`入 ${formatUnit(readingOfRow(busiest, 'net_bytes_recv_rate'), 'byteps')}`}
             </div>
             <button type="button" className={styles.jumpBtn} onClick={() => onJump('net', busiest.key)}>
               查看网络
@@ -188,9 +211,9 @@ export default function OverviewPane({
               {topProcess.labels.process_name || '—'}
             </div>
             <div className={styles.shortcutSub}>
-              {`CPU ${formatPercent(latestOfRow(topProcess, 'process_cpu_usage'))}`}
-              {latestOfRow(topProcess, 'process_mem_usage') != null
-                ? ` · 内存 ${formatPercent(latestOfRow(topProcess, 'process_mem_usage'))}`
+              {`CPU ${formatPercent(readingOfRow(topProcess, 'process_cpu_usage'))}`}
+              {readingOfRow(topProcess, 'process_mem_usage') != null
+                ? ` · 内存 ${formatPercent(readingOfRow(topProcess, 'process_mem_usage'))}`
                 : ''}
             </div>
             <button type="button" className={styles.jumpBtn} onClick={() => onJump('process', topProcess.key)}>
@@ -224,8 +247,8 @@ export default function OverviewPane({
         />
         <ThinTimeSeries
           title={mountName ? `磁盘使用率 · ${mountName}` : '磁盘使用率'}
-          reading={formatPercent(diskValue)}
-          readingTone={percentTone(diskValue)}
+          reading={formatPercent(diskCurrent)}
+          readingTone={percentTone(diskCurrent)}
           loading={diskLoading}
           unit="percent"
           emptyText="暂无挂载数据"

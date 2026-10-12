@@ -40,6 +40,33 @@ export const latestFinite = (points: RangePoint[] | undefined): number | null =>
   return null;
 };
 
+/** 窗口内最大 finite，供「磁盘峰值」等 KPI。 */
+export const maxFinite = (points: RangePoint[] | undefined): number | null => {
+  if (!points?.length) return null;
+  let max: number | null = null;
+  for (const point of points) {
+    const value = point?.value;
+    if (!Number.isFinite(value)) continue;
+    if (max == null || value > max) max = value;
+  }
+  return max;
+};
+
+/**
+ * 概览快捷卡读数：末点为 0 且窗内存在更高值时取窗内末个非 0（抗 scrape 末段掉零），
+ * 否则与 latestFinite 相同。真实长期为 0 的序列仍显示 0。
+ */
+export const latestPreferSignal = (points: RangePoint[] | undefined): number | null => {
+  const latest = latestFinite(points);
+  if (latest == null) return null;
+  if (latest !== 0) return latest;
+  for (let index = (points?.length || 0) - 1; index >= 0; index -= 1) {
+    const value = points![index]?.value;
+    if (Number.isFinite(value) && value !== 0) return value;
+  }
+  return latest;
+};
+
 const preferPoints = (current: RangePoint[] | undefined, next: RangePoint[]) => {
   if (!current?.length) return next;
   return next.length > current.length ? next : current;
@@ -207,6 +234,24 @@ export const buildMountDiskRows = (byMetric: Record<string, LabeledSeries[]>): E
     }
   });
 
+  rows.forEach((row) => {
+    const peakOrLatest = latestPreferSignal(row.series.disk_used_percent);
+    if (peakOrLatest != null) row.values.disk_used_percent = peakOrLatest;
+    const total = latestPreferSignal(row.series.disk_total);
+    if (total != null) row.values.disk_total = total;
+    const free = latestPreferSignal(row.series.disk_free);
+    if (free != null) row.values.disk_free = free;
+    if (row.values.disk_total != null && row.values.disk_free != null) {
+      row.values.disk_used = Math.max(0, row.values.disk_total - row.values.disk_free);
+    } else if (
+      row.values.disk_used == null
+      && row.values.disk_total != null
+      && row.values.disk_used_percent != null
+    ) {
+      row.values.disk_used = Math.max(0, row.values.disk_total * row.values.disk_used_percent / 100);
+    }
+  });
+
   return Array.from(rows.values()).sort((left, right) => (
     (right.values.disk_used_percent ?? -1) - (left.values.disk_used_percent ?? -1)
   ));
@@ -241,6 +286,13 @@ export const buildLabelRows = (
       writeMetric(row, metricKey, series.points);
     });
   });
+  rows.forEach((row) => {
+    Object.keys(row.series).forEach((metricKey) => {
+      const preferred = latestPreferSignal(row.series[metricKey]);
+      if (preferred != null) row.values[metricKey] = preferred;
+    });
+  });
+
   return Array.from(rows.values()).sort((left, right) => {
     const leftNumber = Number(left.labels[identityKey]);
     const rightNumber = Number(right.labels[identityKey]);
