@@ -204,6 +204,24 @@ function normalizeRecipientIds(value: unknown, items?: JsonSchema): string[] {
   });
 }
 
+const NOTIFICATION_CHANNEL_TYPE: Record<string, string> = {
+  EMAIL: 'email',
+  WECOM_BOT: 'enterprise_wechat_bot',
+  FEISHU_BOT: 'feishu_bot',
+  DINGTALK_BOT: 'dingtalk_bot',
+  CUSTOM_WEBHOOK: 'custom_webhook',
+};
+
+function notificationChannelOptions(schema: JsonSchema, notificationType: string) {
+  const channelTypes = schema['x-enum-channel-types'];
+  const expectedType = NOTIFICATION_CHANNEL_TYPE[notificationType];
+  return (schema.enum || []).flatMap((item) => {
+    const id = String(item);
+    if (channelTypes && channelTypes[id] !== expectedType) return [];
+    return [{ value: item as string | number, label: schema['x-enum-labels']?.[id] || id }];
+  });
+}
+
 function NotificationFields({ schema, value, references, readOnly, onChange }: Pick<Props, 'schema' | 'value' | 'references' | 'readOnly' | 'onChange'>) {
   const { t } = useTranslation();
   const setField = (key: string, next: unknown) => onChange({ ...value, [key]: next });
@@ -213,7 +231,7 @@ function NotificationFields({ schema, value, references, readOnly, onChange }: P
   const reportArtifactSchema = field(schema, 'report_artifact');
   const notificationType = String(value.notification_type || typeSchema.default || 'EMAIL');
   const typeOptions = (typeSchema.enum || ['EMAIL', 'WECOM_BOT', 'FEISHU_BOT', 'DINGTALK_BOT', 'CUSTOM_WEBHOOK']).map((item) => ({ value: item, label: typeSchema['x-enum-labels']?.[String(item)] || String(item) }));
-  const channelOptions = (channelSchema.enum || []).map((item) => ({ value: item as string | number, label: channelSchema['x-enum-labels']?.[String(item)] || String(item) }));
+  const channelOptions = notificationChannelOptions(channelSchema, notificationType);
   const recipientItems = recipientSchema.items;
   const normalizedRecipients = useMemo(
     () => normalizeRecipientIds(value.recipients, recipientItems),
