@@ -1,0 +1,828 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_storage_sangfor_eds",
+  "plugin": "Storage Sangfor EDS SNMP",
+  "plugin_desc": "Sangfor EDS / aStor distributed storage SNMP collection. Collects cluster host and disk counts, management/public/private NIC health, physical capacity, block and capacity pool usage and recovery tasks, disk/LUN/host tables. OID root 1.3.6.1.4.1.35047.2.12. Does not reuse firewall snmp_sangfor collect_type or network device_* metrics. Evidence is vendor MIB alignment; live SNMP collection is not claimed.",
+  "support_collect_detect": true,
+  "status_query": "any({instance_type='storage', collect_type='snmp_storage_sangfor_eds'}) by (instance_id)",
+  "instance_fact_bindings": [
+    {
+      "fact": "asset.ip",
+      "value_type": "ip",
+      "resolver": "input",
+      "options": {
+        "field": "ip"
+      }
+    }
+  ],
+  "instance_summary_columns": [
+    {
+      "fact": "asset.ip",
+      "title": "monitor.views.assetIp",
+      "order": 10
+    }
+  ],
+  "name": "Storage",
+  "icon": "mm-storage_储存设备",
+  "type": "Hardware Device",
+  "description": "",
+  "default_metric": "any({instance_type='storage'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "sangfor_eds_cluster_host_num",
+    "sangfor_eds_cluster_physical_usage_percent",
+    "sangfor_eds_cluster_total_physical_bytes",
+    "sangfor_eds_cluster_used_physical_bytes",
+    "sangfor_eds_block_pool_usage_rate",
+    "sangfor_eds_capacity_pool_usage_rate",
+    "sangfor_eds_cluster_abnormal_manage_nic_num"
+  ],
+  "display_fields": [
+    {
+      "name": "集群主机数",
+      "sort_order": 0,
+      "metrics": [
+        {
+          "plugin": "Storage Sangfor EDS SNMP",
+          "metric": "sangfor_eds_cluster_host_num"
+        }
+      ]
+    },
+    {
+      "name": "物理容量使用率",
+      "sort_order": 1,
+      "metrics": [
+        {
+          "plugin": "Storage Sangfor EDS SNMP",
+          "metric": "sangfor_eds_cluster_physical_usage_percent"
+        }
+      ]
+    },
+    {
+      "name": "物理总容量",
+      "sort_order": 2,
+      "metrics": [
+        {
+          "plugin": "Storage Sangfor EDS SNMP",
+          "metric": "sangfor_eds_cluster_total_physical_bytes"
+        }
+      ]
+    },
+    {
+      "name": "管理网异常网卡数",
+      "sort_order": 3,
+      "metrics": [
+        {
+          "plugin": "Storage Sangfor EDS SNMP",
+          "metric": "sangfor_eds_cluster_abnormal_manage_nic_num"
+        }
+      ]
+    }
+  ],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='storage', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Device uptime since the last restart, from MIB-II sysUpTime. Helps identify unexpected reboots."
+    },
+    {
+      "metric_group": "Cluster",
+      "name": "sangfor_eds_cluster_host_num",
+      "query": "sangfor_eds_cluster_host_num{instance_type='storage', __$labels__}",
+      "display_name": "Cluster Host Count",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of hosts in the Sangfor EDS / aStor distributed storage cluster (SANGFOR-EDS-MIB hostNum, 1.3.6.1.4.1.35047.2.12.1.2)."
+    },
+    {
+      "metric_group": "Cluster",
+      "name": "sangfor_eds_cluster_used_ssd_num",
+      "query": "sangfor_eds_cluster_used_ssd_num{instance_type='storage', __$labels__}",
+      "display_name": "Used SSD Count",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of SSDs currently in use in the cluster (usedSSDNum, 1.3.6.1.4.1.35047.2.12.1.3.1)."
+    },
+    {
+      "metric_group": "Cluster",
+      "name": "sangfor_eds_cluster_free_ssd_num",
+      "query": "sangfor_eds_cluster_free_ssd_num{instance_type='storage', __$labels__}",
+      "display_name": "Free SSD Count",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of free SSDs in the cluster (freeSSDNum, 1.3.6.1.4.1.35047.2.12.1.3.2)."
+    },
+    {
+      "metric_group": "Cluster",
+      "name": "sangfor_eds_cluster_used_hdd_num",
+      "query": "sangfor_eds_cluster_used_hdd_num{instance_type='storage', __$labels__}",
+      "display_name": "Used HDD Count",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of HDDs currently in use in the cluster (usedHddNum, 1.3.6.1.4.1.35047.2.12.1.4.1)."
+    },
+    {
+      "metric_group": "Cluster",
+      "name": "sangfor_eds_cluster_free_hdd_num",
+      "query": "sangfor_eds_cluster_free_hdd_num{instance_type='storage', __$labels__}",
+      "display_name": "Free HDD Count",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of free HDDs in the cluster (freeHddNum, 1.3.6.1.4.1.35047.2.12.1.4.2)."
+    },
+    {
+      "metric_group": "Network Health",
+      "name": "sangfor_eds_cluster_normal_manage_nic_num",
+      "query": "sangfor_eds_cluster_normal_manage_nic_num{instance_type='storage', __$labels__}",
+      "display_name": "Normal Management NICs",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Count of management-plane NICs in normal state (normalManageNetworkAdapterNum, 1.3.6.1.4.1.35047.2.12.1.5.1)."
+    },
+    {
+      "metric_group": "Network Health",
+      "name": "sangfor_eds_cluster_abnormal_manage_nic_num",
+      "query": "sangfor_eds_cluster_abnormal_manage_nic_num{instance_type='storage', __$labels__}",
+      "display_name": "Abnormal Management NICs",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Count of management-plane NICs in abnormal state (abnormalManageNetworkAdapterNum, 1.3.6.1.4.1.35047.2.12.1.5.2). A value greater than 0 indicates management-network faults."
+    },
+    {
+      "metric_group": "Network Health",
+      "name": "sangfor_eds_cluster_normal_public_nic_num",
+      "query": "sangfor_eds_cluster_normal_public_nic_num{instance_type='storage', __$labels__}",
+      "display_name": "Normal Public NICs",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Count of public-plane NICs in normal state (normalPublicNetworkAdapterNum, 1.3.6.1.4.1.35047.2.12.1.5.3)."
+    },
+    {
+      "metric_group": "Network Health",
+      "name": "sangfor_eds_cluster_abnormal_public_nic_num",
+      "query": "sangfor_eds_cluster_abnormal_public_nic_num{instance_type='storage', __$labels__}",
+      "display_name": "Abnormal Public NICs",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Count of public-plane NICs in abnormal state (abnormalPublicNetworkAdapterNum, 1.3.6.1.4.1.35047.2.12.1.5.4). A value greater than 0 indicates public-network faults."
+    },
+    {
+      "metric_group": "Network Health",
+      "name": "sangfor_eds_cluster_normal_private_nic_num",
+      "query": "sangfor_eds_cluster_normal_private_nic_num{instance_type='storage', __$labels__}",
+      "display_name": "Normal Private NICs",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Count of private-plane NICs in normal state (normalPrivateNetworkAdapterNum, 1.3.6.1.4.1.35047.2.12.1.5.5)."
+    },
+    {
+      "metric_group": "Network Health",
+      "name": "sangfor_eds_cluster_abnormal_private_nic_num",
+      "query": "sangfor_eds_cluster_abnormal_private_nic_num{instance_type='storage', __$labels__}",
+      "display_name": "Abnormal Private NICs",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Count of private-plane NICs in abnormal state (abnormalPrivateNetworkAdapterNum, 1.3.6.1.4.1.35047.2.12.1.5.6). A value greater than 0 indicates storage-backend network faults."
+    },
+    {
+      "metric_group": "Capacity",
+      "name": "sangfor_eds_cluster_total_physical_bytes",
+      "query": "sangfor_eds_cluster_total_physical_bytes{instance_type='storage', __$labels__}",
+      "display_name": "Total Physical Capacity",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total physical capacity of the cluster in bytes (totalPhysicalBytes, 1.3.6.1.4.1.35047.2.12.1.6.1)."
+    },
+    {
+      "metric_group": "Capacity",
+      "name": "sangfor_eds_cluster_used_physical_bytes",
+      "query": "sangfor_eds_cluster_used_physical_bytes{instance_type='storage', __$labels__}",
+      "display_name": "Used Physical Capacity",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Used physical capacity of the cluster in bytes (usedPhysicalBytes, 1.3.6.1.4.1.35047.2.12.1.6.2)."
+    },
+    {
+      "metric_group": "Capacity",
+      "name": "sangfor_eds_cluster_free_physical_bytes",
+      "query": "sangfor_eds_cluster_free_physical_bytes{instance_type='storage', __$labels__}",
+      "display_name": "Free Physical Capacity",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Free physical capacity of the cluster in bytes (freePhyicalBytes, 1.3.6.1.4.1.35047.2.12.1.6.3)."
+    },
+    {
+      "metric_group": "Capacity",
+      "name": "sangfor_eds_cluster_physical_usage_percent",
+      "query": "sangfor_eds_cluster_used_physical_bytes{instance_type='storage', __$labels__} / sangfor_eds_cluster_total_physical_bytes{instance_type='storage', __$labels__} * 100",
+      "display_name": "Physical Capacity Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Physical capacity usage of the cluster as a percentage, derived from usedPhysicalBytes / totalPhysicalBytes."
+    },
+    {
+      "metric_group": "Cluster",
+      "name": "sangfor_eds_cluster_block_pool_num",
+      "query": "sangfor_eds_cluster_block_pool_num{instance_type='storage', __$labels__}",
+      "display_name": "Block Storage Pool Count",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of block storage pools (blockStoragePoolNum, 1.3.6.1.4.1.35047.2.12.1.7.1)."
+    },
+    {
+      "metric_group": "Cluster",
+      "name": "sangfor_eds_cluster_capacity_pool_num",
+      "query": "sangfor_eds_cluster_capacity_pool_num{instance_type='storage', __$labels__}",
+      "display_name": "Capacity Pool Count",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of capacity storage pools (capacityStoragePoolNum, 1.3.6.1.4.1.35047.2.12.1.7.2)."
+    },
+    {
+      "metric_group": "Block Pool",
+      "name": "sangfor_eds_block_pool_total_bytes",
+      "query": "sangfor_eds_block_pool_total_bytes{instance_type='storage', __$labels__}",
+      "display_name": "Block Pool Total Capacity",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total capacity of the block storage pool in bytes (blockStorageTotalCapacityBytes, 1.3.6.1.4.1.35047.2.12.2.1.1)."
+    },
+    {
+      "metric_group": "Block Pool",
+      "name": "sangfor_eds_block_pool_used_bytes",
+      "query": "sangfor_eds_block_pool_used_bytes{instance_type='storage', __$labels__}",
+      "display_name": "Block Pool Used Capacity",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Used capacity of the block storage pool in bytes (blockStorageUsedCapacityBytes, 1.3.6.1.4.1.35047.2.12.2.1.2)."
+    },
+    {
+      "metric_group": "Block Pool",
+      "name": "sangfor_eds_block_pool_available_bytes",
+      "query": "sangfor_eds_block_pool_available_bytes{instance_type='storage', __$labels__}",
+      "display_name": "Block Pool Available Capacity",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Available capacity of the block storage pool in bytes (blockStorageAvailableCapacityBytes, 1.3.6.1.4.1.35047.2.12.2.1.3)."
+    },
+    {
+      "metric_group": "Block Pool",
+      "name": "sangfor_eds_block_pool_usage_rate",
+      "query": "sangfor_eds_block_pool_usage_rate{instance_type='storage', __$labels__}",
+      "display_name": "Block Pool Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Block storage pool usage converted from the vendor DisplayString ratio 0..1 to a 0-100 percentage (blockStorageCapacityUsageRate, 1.3.6.1.4.1.35047.2.12.2.1.4)."
+    },
+    {
+      "metric_group": "Block Pool",
+      "name": "sangfor_eds_block_pool_recovery_task_num",
+      "query": "sangfor_eds_block_pool_recovery_task_num{instance_type='storage', __$labels__}",
+      "display_name": "Block Pool Recovery Tasks",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of data-recovery / rebuild tasks on the block storage pool (blockStorageDataRecoveryTaskNum, 1.3.6.1.4.1.35047.2.12.2.2.1)."
+    },
+    {
+      "metric_group": "Block Pool",
+      "name": "sangfor_eds_block_pool_sync_task_num",
+      "query": "sangfor_eds_block_pool_sync_task_num{instance_type='storage', __$labels__}",
+      "display_name": "Block Pool Sync Tasks",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of syncing / heal tasks on the block storage pool (blockStorageSyncingTaskNum, 1.3.6.1.4.1.35047.2.12.2.2.2)."
+    },
+    {
+      "metric_group": "Block Pool",
+      "name": "sangfor_eds_block_pool_rebalance_task_num",
+      "query": "sangfor_eds_block_pool_rebalance_task_num{instance_type='storage', __$labels__}",
+      "display_name": "Block Pool Rebalance Tasks",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of rebalance / migrate tasks on the block storage pool (blockStorageDataRebalanceTaskNum, 1.3.6.1.4.1.35047.2.12.2.2.3)."
+    },
+    {
+      "metric_group": "Block Pool",
+      "name": "sangfor_eds_block_pool_subhealth_task_num",
+      "query": "sangfor_eds_block_pool_subhealth_task_num{instance_type='storage', __$labels__}",
+      "display_name": "Block Pool Sub-health Tasks",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of sub-health recovery tasks on the block storage pool (blockStorageSubHealthRecoveryTaskNum, 1.3.6.1.4.1.35047.2.12.2.2.4)."
+    },
+    {
+      "metric_group": "Block Pool",
+      "name": "sangfor_eds_block_pool_status",
+      "query": "sangfor_eds_block_pool_status{instance_type='storage', __$labels__}",
+      "display_name": "Block Pool Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Block storage pool status mapped to 1=normal, 2=abnormal, 3=unknown. Empty or notPresent maps to 1; vendor-literal unknown maps to 3 and does not alert. Alert only on =2."
+    },
+    {
+      "metric_group": "Capacity Pool",
+      "name": "sangfor_eds_capacity_pool_total_bytes",
+      "query": "sangfor_eds_capacity_pool_total_bytes{instance_type='storage', __$labels__}",
+      "display_name": "Capacity Pool Total Capacity",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total capacity of the capacity storage pool in bytes (capacityTotalBytes, 1.3.6.1.4.1.35047.2.12.3.1.1)."
+    },
+    {
+      "metric_group": "Capacity Pool",
+      "name": "sangfor_eds_capacity_pool_used_bytes",
+      "query": "sangfor_eds_capacity_pool_used_bytes{instance_type='storage', __$labels__}",
+      "display_name": "Capacity Pool Used Capacity",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Used capacity of the capacity storage pool in bytes (usedCapacityBytes, 1.3.6.1.4.1.35047.2.12.3.1.2)."
+    },
+    {
+      "metric_group": "Capacity Pool",
+      "name": "sangfor_eds_capacity_pool_available_bytes",
+      "query": "sangfor_eds_capacity_pool_available_bytes{instance_type='storage', __$labels__}",
+      "display_name": "Capacity Pool Available Capacity",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Available capacity of the capacity storage pool in bytes (availableCapacityBytes, 1.3.6.1.4.1.35047.2.12.3.1.3)."
+    },
+    {
+      "metric_group": "Capacity Pool",
+      "name": "sangfor_eds_capacity_pool_usage_rate",
+      "query": "sangfor_eds_capacity_pool_usage_rate{instance_type='storage', __$labels__}",
+      "display_name": "Capacity Pool Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Capacity pool usage converted from the vendor DisplayString ratio 0..1 to a 0-100 percentage (capacityUsageRate, 1.3.6.1.4.1.35047.2.12.3.1.4)."
+    },
+    {
+      "metric_group": "Capacity Pool",
+      "name": "sangfor_eds_capacity_pool_recovery_task_num",
+      "query": "sangfor_eds_capacity_pool_recovery_task_num{instance_type='storage', __$labels__}",
+      "display_name": "Capacity Pool Recovery Tasks",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of rebuild tasks on the capacity pool (dataRecoveryTaskNum, 1.3.6.1.4.1.35047.2.12.3.2.1)."
+    },
+    {
+      "metric_group": "Capacity Pool",
+      "name": "sangfor_eds_capacity_pool_rebalance_task_num",
+      "query": "sangfor_eds_capacity_pool_rebalance_task_num{instance_type='storage', __$labels__}",
+      "display_name": "Capacity Pool Rebalance Tasks",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of migrate / rebalance tasks on the capacity pool (dataRebalanceTaskNum, 1.3.6.1.4.1.35047.2.12.3.2.2)."
+    },
+    {
+      "metric_group": "Capacity Pool",
+      "name": "sangfor_eds_capacity_pool_subhealth_task_num",
+      "query": "sangfor_eds_capacity_pool_subhealth_task_num{instance_type='storage', __$labels__}",
+      "display_name": "Capacity Pool Sub-health Tasks",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of sub-health recovery tasks on the capacity pool (subHealthRecoveryTaskNum, 1.3.6.1.4.1.35047.2.12.3.2.3)."
+    },
+    {
+      "metric_group": "Capacity Pool",
+      "name": "sangfor_eds_capacity_pool_daemon_status",
+      "query": "sangfor_eds_capacity_pool_daemon_status{instance_type='storage', __$labels__}",
+      "display_name": "Storage Daemon Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "OSD / storage daemon status (storageDaemonStatus, 1.3.6.1.4.1.35047.2.12.3.3). Vendor strings normal/error map to 1/2; empty maps to 1; unknown maps to 3. Alert only on =2."
+    },
+    {
+      "metric_group": "Capacity Pool",
+      "name": "sangfor_eds_capacity_pool_pg_status",
+      "query": "sangfor_eds_capacity_pool_pg_status{instance_type='storage', __$labels__}",
+      "display_name": "Replicated Group Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Placement-group / replicated-group status (replicatedGroupStatus, 1.3.6.1.4.1.35047.2.12.3.4). Vendor strings normal/error map to 1/2; empty maps to 1; unknown maps to 3. Alert only on =2."
+    },
+    {
+      "metric_group": "Capacity Pool",
+      "name": "sangfor_eds_capacity_pool_status",
+      "query": "sangfor_eds_capacity_pool_status{instance_type='storage', __$labels__}",
+      "display_name": "Capacity Pool Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Capacity pool status mapped to 1=normal, 2=abnormal, 3=unknown. Empty or notPresent maps to 1; vendor-literal unknown maps to 3 and does not alert. Alert only on =2."
+    },
+    {
+      "metric_group": "File Protocol",
+      "name": "sangfor_eds_fs_nfs_con_num",
+      "query": "sangfor_eds_fs_nfs_con_num{instance_type='storage', __$labels__}",
+      "display_name": "NFS Connections",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current NFS connection count (nfsConNum, 1.3.6.1.4.1.35047.2.12.5.1.1)."
+    },
+    {
+      "metric_group": "File Protocol",
+      "name": "sangfor_eds_fs_cifs_con_num",
+      "query": "sangfor_eds_fs_cifs_con_num{instance_type='storage', __$labels__}",
+      "display_name": "CIFS Connections",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current CIFS connection count (cifsConNum, 1.3.6.1.4.1.35047.2.12.5.2.1)."
+    },
+    {
+      "metric_group": "File Protocol",
+      "name": "sangfor_eds_fs_ftp_con_num",
+      "query": "sangfor_eds_fs_ftp_con_num{instance_type='storage', __$labels__}",
+      "display_name": "FTP Connections",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current FTP connection count (ftpConNum, 1.3.6.1.4.1.35047.2.12.5.3.1)."
+    },
+    {
+      "metric_group": "LUN",
+      "name": "sangfor_eds_lun_usage_rate",
+      "query": "sangfor_eds_lun_usage_rate{instance_type='storage', __$labels__}",
+      "display_name": "LUN Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "lun_name",
+          "description": "lun_name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "LUN usage converted from the vendor DisplayString ratio 0..1 to a 0-100 percentage (lunUsageRate, 1.3.6.1.4.1.35047.2.12.4.3.1.2). Indexed by lunName."
+    },
+    {
+      "metric_group": "Disk",
+      "name": "sangfor_eds_disk_status",
+      "query": "sangfor_eds_disk_status{instance_type='storage', __$labels__}",
+      "display_name": "Disk Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [
+        {
+          "name": "disk_name",
+          "description": "disk_name"
+        },
+        {
+          "name": "disk_host",
+          "description": "disk_host"
+        },
+        {
+          "name": "disk_type",
+          "description": "disk_type"
+        },
+        {
+          "name": "disk_category",
+          "description": "disk_category"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Disk status (diskStatus, 1.3.6.1.4.1.35047.2.12.7.1.1.3). Vendor strings online/offline map to 1/2; empty or notPresent maps to 1; unknown maps to 3. Alert only on =2. Indexed by diskName."
+    },
+    {
+      "metric_group": "Disk",
+      "name": "sangfor_eds_disk_size_bytes",
+      "query": "sangfor_eds_disk_size_bytes{instance_type='storage', __$labels__}",
+      "display_name": "Disk Size",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "disk_name",
+          "description": "disk_name"
+        },
+        {
+          "name": "disk_host",
+          "description": "disk_host"
+        },
+        {
+          "name": "disk_type",
+          "description": "disk_type"
+        },
+        {
+          "name": "disk_category",
+          "description": "disk_category"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Disk size in bytes (diskSize, 1.3.6.1.4.1.35047.2.12.7.1.1.6). Indexed by diskName."
+    },
+    {
+      "metric_group": "Disk",
+      "name": "sangfor_eds_disk_usage_rate",
+      "query": "sangfor_eds_disk_usage_rate{instance_type='storage', __$labels__}",
+      "display_name": "Disk Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "disk_name",
+          "description": "disk_name"
+        },
+        {
+          "name": "disk_host",
+          "description": "disk_host"
+        },
+        {
+          "name": "disk_type",
+          "description": "disk_type"
+        },
+        {
+          "name": "disk_category",
+          "description": "disk_category"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Disk usage converted from the vendor DisplayString ratio 0..1 to a 0-100 percentage (diskUsageRate, 1.3.6.1.4.1.35047.2.12.7.1.1.7). Indexed by diskName."
+    },
+    {
+      "metric_group": "Disk",
+      "name": "sangfor_eds_disk_bad_sector",
+      "query": "sangfor_eds_disk_bad_sector{instance_type='storage', __$labels__}",
+      "display_name": "Disk Bad Sector Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [
+        {
+          "name": "disk_name",
+          "description": "disk_name"
+        },
+        {
+          "name": "disk_host",
+          "description": "disk_host"
+        },
+        {
+          "name": "disk_type",
+          "description": "disk_type"
+        },
+        {
+          "name": "disk_category",
+          "description": "disk_category"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "HDD bad-sector status (diskBadSector, 1.3.6.1.4.1.35047.2.12.7.1.1.9). Vendor strings normal map to 1; warn/error map to 2; empty maps to 1; unknown maps to 3. Alert only on =2."
+    },
+    {
+      "metric_group": "Disk",
+      "name": "sangfor_eds_disk_life_percent",
+      "query": "sangfor_eds_disk_life_percent{instance_type='storage', __$labels__}",
+      "display_name": "Disk Remaining Life",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "disk_name",
+          "description": "disk_name"
+        },
+        {
+          "name": "disk_host",
+          "description": "disk_host"
+        },
+        {
+          "name": "disk_type",
+          "description": "disk_type"
+        },
+        {
+          "name": "disk_category",
+          "description": "disk_category"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "SSD remaining life percentage (diskLifePre, 1.3.6.1.4.1.35047.2.12.7.1.1.10). Indexed by diskName."
+    },
+    {
+      "metric_group": "Host",
+      "name": "sangfor_eds_host_online_status",
+      "query": "sangfor_eds_host_online_status{instance_type='storage', __$labels__}",
+      "display_name": "Host Online Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"未知\",\"id\":3,\"color\":\"#8c8c8c\"}]",
+      "dimensions": [
+        {
+          "name": "host_name",
+          "description": "host_name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Storage host online status (hostOnlineStatus, 1.3.6.1.4.1.35047.2.12.7.3.1.3). Parsed from vendor strings when possible: online/up→1, offline/down→2, empty→1, unknown→3. Alert only on =2. Indexed by hostName."
+    },
+    {
+      "metric_group": "Host",
+      "name": "sangfor_eds_host_cpu_usage",
+      "query": "sangfor_eds_host_cpu_usage{instance_type='storage', __$labels__}",
+      "display_name": "Host CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "host_name",
+          "description": "host_name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Storage host CPU usage (cpuUsageRate, 1.3.6.1.4.1.35047.2.12.7.3.1.5). Converted to a 0-100 percentage when the vendor string or number is parseable. Indexed by hostName."
+    },
+    {
+      "metric_group": "Host",
+      "name": "sangfor_eds_host_mem_usage",
+      "query": "sangfor_eds_host_mem_usage{instance_type='storage', __$labels__}",
+      "display_name": "Host Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "host_name",
+          "description": "host_name"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Storage host memory usage (memUsageRate, 1.3.6.1.4.1.35047.2.12.7.3.1.6). Treated as 0-100 when greater than 1, otherwise converted from a 0..1 ratio. Indexed by hostName."
+    }
+  ]
+}

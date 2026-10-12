@@ -1,0 +1,311 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_storage_sangfor_eds"
+        config_type = "storage_sangfor_eds"
+        brand = "sangfor"
+
+    # MIB-II 运行时长：标量 GET，OID 带实例 .0。
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+
+    # ---- 集群概况 / 盘计数 / 三网健康 / 物理容量 / 池数量（SANGFOR-EDS-MIB cluster）----
+    # 厂商 MIB 对齐：标量走 table.field，OID 不含末尾 .0，避免 Telegraf 漏采。
+    [[inputs.snmp.table]]
+        name = "sangfor_eds_cluster"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.1.1"
+        name = "software_version"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.1.2"
+        name = "host_num"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.1.3.1"
+        name = "used_ssd_num"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.1.3.2"
+        name = "free_ssd_num"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.1.4.1"
+        name = "used_hdd_num"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.1.4.2"
+        name = "free_hdd_num"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.1.5.1"
+        name = "normal_manage_nic_num"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.1.5.2"
+        name = "abnormal_manage_nic_num"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.1.5.3"
+        name = "normal_public_nic_num"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.1.5.4"
+        name = "abnormal_public_nic_num"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.1.5.5"
+        name = "normal_private_nic_num"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.1.5.6"
+        name = "abnormal_private_nic_num"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.1.6.1"
+        name = "total_physical_bytes"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.1.6.2"
+        name = "used_physical_bytes"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.1.6.3"
+        name = "free_physical_bytes"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.1.7.1"
+        name = "block_pool_num"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.1.7.2"
+        name = "capacity_pool_num"
+
+    # ---- 块存储池容量 / 任务 / 状态 ----
+    [[inputs.snmp.table]]
+        name = "sangfor_eds_block_pool"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.2.1.1"
+        name = "total_bytes"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.2.1.2"
+        name = "used_bytes"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.2.1.3"
+        name = "available_bytes"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.2.1.4"
+        name = "usage_rate"
+        conversion = "float"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.2.2.1"
+        name = "recovery_task_num"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.2.2.2"
+        name = "sync_task_num"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.2.2.3"
+        name = "rebalance_task_num"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.2.2.4"
+        name = "subhealth_task_num"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.2.3"
+        name = "status"
+
+    # ---- 容量池容量 / 任务 / daemon / PG / 池状态 ----
+    [[inputs.snmp.table]]
+        name = "sangfor_eds_capacity_pool"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.3.1.1"
+        name = "total_bytes"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.3.1.2"
+        name = "used_bytes"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.3.1.3"
+        name = "available_bytes"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.3.1.4"
+        name = "usage_rate"
+        conversion = "float"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.3.2.1"
+        name = "recovery_task_num"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.3.2.2"
+        name = "rebalance_task_num"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.3.2.3"
+        name = "subhealth_task_num"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.3.3"
+        name = "daemon_status"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.3.4"
+        name = "pg_status"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.3.5"
+        name = "status"
+
+    # ---- 文件协议连接数（最小可选）----
+    [[inputs.snmp.table]]
+        name = "sangfor_eds_fs"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.5.1.1"
+        name = "nfs_con_num"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.5.2.1"
+        name = "cifs_con_num"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.5.3.1"
+        name = "ftp_con_num"
+
+    # ---- LUN 使用率，INDEX=lunName ----
+    [[inputs.snmp.table]]
+        name = "sangfor_eds_lun"
+        inherit_tags = ["source"]
+        oid = "1.3.6.1.4.1.35047.2.12.4.3"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.4.3.1.1"
+        name = "lun_name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.4.3.1.2"
+        name = "usage_rate"
+        conversion = "float"
+
+    # ---- 磁盘表，INDEX=diskName ----
+    [[inputs.snmp.table]]
+        name = "sangfor_eds_disk"
+        inherit_tags = ["source"]
+        oid = "1.3.6.1.4.1.35047.2.12.7.1"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.7.1.1.1"
+        name = "disk_name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.7.1.1.2"
+        name = "disk_host"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.7.1.1.3"
+        name = "status"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.7.1.1.4"
+        name = "disk_type"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.7.1.1.5"
+        name = "disk_category"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.7.1.1.6"
+        name = "size_bytes"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.7.1.1.7"
+        name = "usage_rate"
+        conversion = "float"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.7.1.1.9"
+        name = "bad_sector"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.7.1.1.10"
+        name = "life_percent"
+
+    # ---- 主机表，INDEX=hostName；在线/CPU/内存在可解析时转换 ----
+    [[inputs.snmp.table]]
+        name = "sangfor_eds_host"
+        inherit_tags = ["source"]
+        oid = "1.3.6.1.4.1.35047.2.12.7.3"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.7.3.1.1"
+        name = "host_name"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.7.3.1.3"
+        name = "online_status"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.7.3.1.5"
+        name = "cpu_usage"
+        conversion = "float"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.35047.2.12.7.3.1.6"
+        name = "mem_usage"
+
+# DisplayString 比率 0..1 → 百分比；字符串状态 → 1 正常 / 2 异常 / 3 未知。
+# 空值与 notPresent 映射为 1；厂商字面 unknown 映射为 3 且不告警；告警策略仅匹配 =2。
+[[processors.starlark]]
+    namepass = ["sangfor_eds_block_pool", "sangfor_eds_capacity_pool", "sangfor_eds_disk", "sangfor_eds_lun", "sangfor_eds_host"]
+    [processors.starlark.tagpass]
+        config_type = ["storage_sangfor_eds"]
+    source = '''
+def in_list(value, items):
+    for item in items:
+        if value == item:
+            return True
+    return False
+
+def to_percent(metric, field):
+    v = metric.fields.get(field)
+    if v == None:
+        return
+    t = type(v)
+    if t != "int" and t != "float":
+        return
+    n = float(v)
+    if n < 0:
+        return
+    if n <= 1.0:
+        metric.fields[field] = n * 100.0
+    else:
+        metric.fields[field] = n
+
+def map_status(v, good, bad):
+    if v == None:
+        return 1
+    s = str(v).strip().lower()
+    if s == "" or s == "notpresent" or s == "not present" or s == "none":
+        return 1
+    if in_list(s, good):
+        return 1
+    if in_list(s, bad):
+        return 2
+    return 3
+
+def apply(metric):
+    name = metric.name
+    if name == "sangfor_eds_block_pool":
+        to_percent(metric, "usage_rate")
+        metric.fields["status"] = map_status(metric.fields.get("status"), ["normal", "ok", "healthy", "up"], ["error", "abnormal", "fault", "failed", "down", "warn", "warning"])
+    if name == "sangfor_eds_capacity_pool":
+        to_percent(metric, "usage_rate")
+        metric.fields["status"] = map_status(metric.fields.get("status"), ["normal", "ok", "healthy", "up"], ["error", "abnormal", "fault", "failed", "down", "warn", "warning"])
+        metric.fields["daemon_status"] = map_status(metric.fields.get("daemon_status"), ["normal"], ["error"])
+        metric.fields["pg_status"] = map_status(metric.fields.get("pg_status"), ["normal"], ["error"])
+    if name == "sangfor_eds_disk":
+        to_percent(metric, "usage_rate")
+        metric.fields["status"] = map_status(metric.fields.get("status"), ["online"], ["offline"])
+        metric.fields["bad_sector"] = map_status(metric.fields.get("bad_sector"), ["normal"], ["warn", "warning", "error"])
+    if name == "sangfor_eds_lun":
+        to_percent(metric, "usage_rate")
+    if name == "sangfor_eds_host":
+        to_percent(metric, "cpu_usage")
+        to_percent(metric, "mem_usage")
+        metric.fields["online_status"] = map_status(metric.fields.get("online_status"), ["online", "up", "true", "1", "normal"], ["offline", "down", "false", "0", "error", "abnormal"])
+    return metric
+'''

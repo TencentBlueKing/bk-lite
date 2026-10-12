@@ -1,0 +1,336 @@
+{
+  "object": "Storage",
+  "plugin": "Storage Sangfor EDS SNMP",
+  "templates": [
+    {
+      "name": "管理网异常网卡数大于0",
+      "alert_name": "存储${resource_name} 管理网异常网卡数大于 0",
+      "description": "监控深信服 EDS 分布式存储管理网异常网卡数量，大于 0 时触发告警。未知状态不告警。",
+      "metric_name": "sangfor_eds_cluster_abnormal_manage_nic_num",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 1,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 1,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "业务网异常网卡数大于0",
+      "alert_name": "存储${resource_name} 业务网异常网卡数大于 0",
+      "description": "监控深信服 EDS 分布式存储业务网异常网卡数量，大于 0 时触发告警。",
+      "metric_name": "sangfor_eds_cluster_abnormal_public_nic_num",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 1,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 1,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "存储网异常网卡数大于0",
+      "alert_name": "存储${resource_name} 存储网异常网卡数大于 0",
+      "description": "监控深信服 EDS 分布式存储后端网络异常网卡数量，大于 0 时触发告警。",
+      "metric_name": "sangfor_eds_cluster_abnormal_private_nic_num",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 1,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 1,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "物理容量使用率过高",
+      "alert_name": "存储${resource_name} 物理容量使用率过高",
+      "description": "监控集群物理容量使用率，持续高于阈值时告警，便于提前扩容。",
+      "metric_name": "sangfor_eds_cluster_physical_usage_percent",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "块存储池使用率过高",
+      "alert_name": "存储${resource_name} 块存储池使用率过高",
+      "description": "监控块存储池容量使用率，持续高于阈值时告警。",
+      "metric_name": "sangfor_eds_block_pool_usage_rate",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "容量池使用率过高",
+      "alert_name": "存储${resource_name} 容量池使用率过高",
+      "description": "监控容量池使用率，持续高于阈值时告警。",
+      "metric_name": "sangfor_eds_capacity_pool_usage_rate",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "块存储池状态异常",
+      "alert_name": "存储${resource_name} 块存储池状态异常",
+      "description": "块存储池状态映射为 1 正常 / 2 异常 / 3 未知；仅当值为 2 时告警，未知不告警。",
+      "metric_name": "sangfor_eds_block_pool_status",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "容量池状态异常",
+      "alert_name": "存储${resource_name} 容量池状态异常",
+      "description": "容量池状态映射为 1 正常 / 2 异常 / 3 未知；仅当值为 2 时告警，未知不告警。",
+      "metric_name": "sangfor_eds_capacity_pool_status",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "存储守护进程状态异常",
+      "alert_name": "存储${resource_name} 存储守护进程状态异常",
+      "description": "容量池 daemon 状态映射为 1 正常 / 2 异常 / 3 未知；仅当值为 2 时告警。",
+      "metric_name": "sangfor_eds_capacity_pool_daemon_status",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "副本组状态异常",
+      "alert_name": "存储${resource_name} 副本组状态异常",
+      "description": "容量池 PG/副本组状态映射为 1 正常 / 2 异常 / 3 未知；仅当值为 2 时告警。",
+      "metric_name": "sangfor_eds_capacity_pool_pg_status",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "磁盘状态异常",
+      "alert_name": "存储${resource_name} 磁盘 ${metric_disk_name} 状态异常",
+      "description": "磁盘状态 online→1、offline→2、未知→3；仅当值为 2 时告警。",
+      "metric_name": "sangfor_eds_disk_status",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "磁盘坏道状态异常",
+      "alert_name": "存储${resource_name} 磁盘 ${metric_disk_name} 坏道状态异常",
+      "description": "磁盘坏道 normal→1、warn/error→2、未知→3；仅当值为 2 时告警。",
+      "metric_name": "sangfor_eds_disk_bad_sector",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "LUN使用率过高",
+      "alert_name": "存储${resource_name} LUN ${metric_lun_name} 使用率过高",
+      "description": "监控 LUN 使用率，持续高于阈值时告警。",
+      "metric_name": "sangfor_eds_lun_usage_rate",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "存储主机离线",
+      "alert_name": "存储${resource_name} 主机 ${metric_host_name} 离线",
+      "description": "主机在线状态 online→1、offline→2、未知→3；仅当值为 2 时告警。",
+      "metric_name": "sangfor_eds_host_online_status",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "块存储池亚健康恢复任务",
+      "alert_name": "存储${resource_name} 块存储池存在亚健康恢复任务",
+      "description": "块存储池亚健康恢复任务数大于 0 时告警，提示数据修复进行中。",
+      "metric_name": "sangfor_eds_block_pool_subhealth_task_num",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 1,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 1,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "容量池亚健康恢复任务",
+      "alert_name": "存储${resource_name} 容量池存在亚健康恢复任务",
+      "description": "容量池亚健康恢复任务数大于 0 时告警，提示数据修复进行中。",
+      "metric_name": "sangfor_eds_capacity_pool_subhealth_task_num",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 1,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 1,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}
