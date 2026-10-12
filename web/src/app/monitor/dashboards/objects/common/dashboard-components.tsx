@@ -9,7 +9,7 @@
  * data-filtering logic (titles arrays, span overrides) in its own file.
  */
 
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ApiOutlined,
   ClockCircleOutlined,
@@ -694,12 +694,31 @@ export const MetricsSection = ({ dashboard, styles }: MetricsSectionProps) => {
 
 // ─── DashboardShell ───────────────────────────────────────────────────────────
 
+export interface DashboardViewSwitcher {
+  mode: string;
+  onChange: (mode: string) => void;
+  control?: 'segmented' | 'select';
+  options: ReadonlyArray<{
+    labelKey: string;
+    fallback: string;
+    value: string;
+  }>;
+}
+
 export interface DashboardShellProps {
   dashboard: ReturnType<typeof useSimpleDashboardData>;
   /** Dashboard content (only shown in dashboard display mode). */
   dashboardContent: React.ReactNode;
+  /** 第三视图。未提供时，未知模式仍回落到仪表盘内容。 */
+  categoryContent?: React.ReactNode;
   /** 覆盖默认全量指标区（如主机需叠加进程指标页签）。 */
   metricsContent?: React.ReactNode;
+  /** 主机详情用下拉切换多套布局，其它对象保持分段按钮。 */
+  viewSwitcher?: DashboardViewSwitcher;
+  /**
+   * 打开过的布局保持挂载，只隐藏。来回切换时不拆掉另一套页面。
+   */
+  preserveLayouts?: boolean;
   /** 可选品牌标签（如 'Cisco'）：共享对象仪表盘按实例品牌在头部高亮显示，便于辨认当前盘属于哪个品牌。 */
   brandLabel?: string;
   styles: DashboardStyles;
@@ -712,21 +731,50 @@ export interface DashboardShellProps {
 export const DashboardShell = ({
   dashboard,
   dashboardContent,
+  categoryContent,
   metricsContent,
+  viewSwitcher,
+  preserveLayouts = false,
   brandLabel,
   styles
 }: DashboardShellProps) => {
   const { dt } = useDashboardText();
   const showProtocolBar = FLOW_VIEW_SWITCH_ROUTE_KEYS.has(dashboard.routeKey);
+  const activeMode = viewSwitcher?.mode ?? dashboard.displayMode;
+  const showsDashboardChrome = viewSwitcher ? activeMode !== 'metrics' : dashboard.isDashboardMode;
+  const [visitedModes, setVisitedModes] = useState<string[]>(() => [activeMode]);
+  useEffect(() => {
+    if (!preserveLayouts) return;
+    setVisitedModes((prev) => (prev.includes(activeMode) ? prev : [...prev, activeMode]));
+  }, [activeMode, preserveLayouts]);
+  const mountedModes = preserveLayouts && !visitedModes.includes(activeMode)
+    ? [...visitedModes, activeMode]
+    : visitedModes;
+  const onDisplayModeChange = (mode: 'dashboard' | 'metrics') => {
+    if (viewSwitcher) {
+      viewSwitcher.onChange(mode);
+      return;
+    }
+    dashboard.setDisplayMode(mode);
+  };
+  const metricsNode = metricsContent || <MetricsSection dashboard={dashboard} styles={styles} />;
+  const renderLayout = (mode: string, node: React.ReactNode) => {
+    if (!node) return null;
+    if (!preserveLayouts) return activeMode === mode ? node : null;
+    if (!mountedModes.includes(mode)) return null;
+    return <div hidden={activeMode !== mode}>{node}</div>;
+  };
 
   return (
   <div className={styles.page}>
-    <div className={styles.shell}>
+    <div className={styles.shell} data-view-mode={activeMode}>
       <div className={styles.pageHeader}>
         <DashboardPageHeader
           title={dashboard.pageTitle}
-          displayMode={dashboard.displayMode}
-          onDisplayModeChange={dashboard.setDisplayMode}
+          displayMode={activeMode}
+          onDisplayModeChange={onDisplayModeChange}
+          modeControl={viewSwitcher?.control}
+          modeOptions={viewSwitcher?.options}
           timeDefaultValue={dashboard.timeDefaultValue}
           onTimeChange={dashboard.onTimeChange}
           onFrequenceChange={dashboard.setFrequence}
@@ -758,7 +806,7 @@ export const DashboardShell = ({
             dashboard.resolvedInstanceName !== '--' ? dashboard.resolvedInstanceName : dt('选择实例')
           }
           selectorTitle={dashboard.currentInstanceLabel}
-          isDashboardMode={dashboard.isDashboardMode}
+          isDashboardMode={showsDashboardChrome}
           timeSelectorProps={{
             timeDefaultValue: dashboard.timeDefaultValue,
             onTimeChange: dashboard.onTimeChange,
@@ -769,13 +817,11 @@ export const DashboardShell = ({
         />
       </div>
 
-      {showProtocolBar && dashboard.isDashboardMode ? <DashboardProtocolBarSlot /> : null}
+      {showProtocolBar && showsDashboardChrome ? <DashboardProtocolBarSlot /> : null}
 
-      {dashboard.displayMode === 'dashboard' ? (
-        <>{dashboardContent}</>
-      ) : (
-        metricsContent || <MetricsSection dashboard={dashboard} styles={styles} />
-      )}
+      {renderLayout('dashboard', dashboardContent)}
+      {renderLayout('category', categoryContent)}
+      {renderLayout('metrics', metricsNode)}
     </div>
   </div>
   );

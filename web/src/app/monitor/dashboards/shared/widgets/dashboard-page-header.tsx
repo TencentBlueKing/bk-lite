@@ -1,5 +1,5 @@
 import React from 'react';
-import { Breadcrumb, Button, Segmented } from 'antd';
+import { Breadcrumb, Button, Segmented, Select } from 'antd';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import TimeSelector from '@/components/time-selector';
@@ -15,9 +15,16 @@ export interface DashboardPageHeaderStyles {
   readonly [key: string]: string | undefined;
 }
 
+export interface DashboardModeOption {
+  labelKey: string;
+  fallback: string;
+  value: string;
+}
+
 export interface DashboardPageHeaderProps {
   title: string;
-  displayMode: 'dashboard' | 'metrics';
+  /** 主机详情会多一个分类页签值，其它对象仍是 dashboard / metrics。 */
+  displayMode: string;
   onDisplayModeChange: (mode: 'dashboard' | 'metrics') => void;
   timeDefaultValue: TimeSelectorDefaultValue;
   frequencyList?: ListItem[];
@@ -26,8 +33,11 @@ export interface DashboardPageHeaderProps {
   onRefresh: () => void;
   /** 是否在标题行内渲染时间选择器；置 false 时由调用方自行放置（默认 true，保持原行为）。 */
   showTimeSelector?: boolean;
-  /** SNMP / NetFlow / sFlow 跨路由切换（与展示模式 Segmented 并列）。 */
+  /** SNMP / NetFlow / sFlow 跨路由切换（与展示模式控件并列）。 */
   viewSwitchSlot?: React.ReactNode;
+  /** 默认两档分段按钮。选项变多时改用下拉，避免把标题行撑满。 */
+  modeControl?: 'segmented' | 'select';
+  modeOptions?: readonly DashboardModeOption[];
   styles: DashboardPageHeaderStyles;
 }
 
@@ -47,6 +57,8 @@ export function DashboardPageHeader({
   onRefresh,
   showTimeSelector = true,
   viewSwitchSlot,
+  modeControl = 'segmented',
+  modeOptions,
   styles
 }: DashboardPageHeaderProps) {
   const { t, common } = useDashboardText();
@@ -62,6 +74,11 @@ export function DashboardPageHeader({
     title: typeof item.title === 'string' ? tDashboardText(t, item.title) : item.title
   }));
   const onBack = () => router.push(returnNavigation.href);
+  const resolvedModeOptions = modeOptions ?? DISPLAY_MODE_OPTIONS;
+  const modeItems = resolvedModeOptions.map((item) => ({
+    value: item.value,
+    label: common(item.labelKey, item.fallback)
+  }));
 
   const backButton = (
     <Button
@@ -84,16 +101,25 @@ export function DashboardPageHeader({
         <h1 className={styles.title}>{localizedTitle}</h1>
         <div className={styles.controlsWrap}>
           {viewSwitchSlot}
-          <Segmented
-            size="middle"
-            className={styles.modeSegmented}
-            value={displayMode}
-            options={DISPLAY_MODE_OPTIONS.map((item) => ({
-              value: item.value,
-              label: common(item.labelKey, item.fallback)
-            }))}
-            onChange={(value) => onDisplayModeChange(value as 'dashboard' | 'metrics')}
-          />
+          {modeControl === 'select' ? (
+            <Select
+              size="middle"
+              className={[styles.modeSelect, 'min-w-[280px] max-md:w-full max-md:min-w-0'].filter(Boolean).join(' ')}
+              value={displayMode}
+              options={modeItems}
+              aria-label={common('viewSwitcher', '视图')}
+              popupMatchSelectWidth
+              onChange={(value) => onDisplayModeChange(value as 'dashboard' | 'metrics')}
+            />
+          ) : (
+            <Segmented
+              size="middle"
+              className={styles.modeSegmented}
+              value={displayMode}
+              options={modeItems}
+              onChange={(value) => onDisplayModeChange(value as 'dashboard' | 'metrics')}
+            />
+          )}
           {showTimeSelector ? (
             <div className={styles.toolbarTimeSelector}>
               <TimeSelector

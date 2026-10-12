@@ -49,10 +49,12 @@ export function useHostEntityMetrics(options: {
   const queryKey = queries.map((item) => item.key).join(',');
 
   useEffect(() => {
-    if (!enabled || !isDashboardMode || !idValues.length || !monitorObjectId || !instanceId) {
+    if (!idValues.length || !monitorObjectId || !instanceId) {
       setState(EMPTY);
       return;
     }
+    // 切到全量指标时保留维度表，切回仪表盘或分类页签时布局还在。
+    if (!enabled || !isDashboardMode) return;
     let active = true;
     setState((prev) => ({ ...prev, status: 'loading' }));
     runWithConcurrency(queries, 4, async (query) => {

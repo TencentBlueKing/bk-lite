@@ -173,17 +173,30 @@ const applyDashboardLabel = async (
   };
 };
 
-export const isDashboardMetricsMode = (): boolean => {
-  const selected = document.querySelector('[class*="modeSegmented"] .ant-segmented-item-selected');
-  const label = cleanLabel(selected?.textContent || '');
-  if (/全量指标/.test(label) || /full\s*metrics/i.test(label)) return true;
-  if (/监控仪表盘/.test(label)) return false;
+const selectedModeLabel = (): string => {
+  const segmented = document.querySelector('[class*="modeSegmented"] .ant-segmented-item-selected');
+  if (segmented?.textContent) return cleanLabel(segmented.textContent);
+  const selectItem = document.querySelector('[class*="modeSelect"] .ant-select-selection-item');
+  return cleanLabel(selectItem?.textContent || '');
+};
+
+export const dashboardPresentationLabel = (): '全量指标' | '监控仪表盘' | '概览→分类 Tab→再下钻' => {
+  const label = selectedModeLabel();
+  if (/全量指标/.test(label) || /full\s*metrics/i.test(label)) return '全量指标';
+  if (/分类\s*Tab/.test(label) || /category tabs/i.test(label)) return '概览→分类 Tab→再下钻';
+  if (/监控仪表盘/.test(label)) return '监控仪表盘';
   const heading = cleanLabel(
     document.querySelector('[class*="pageTitleRow"] h1, [class*="titleControlsRow"] h1')?.textContent
     || document.title,
   );
-  return /全量指标/.test(heading);
+  if (/全量指标/.test(heading)) return '全量指标';
+  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('host_layout') === 'category') {
+    return '概览→分类 Tab→再下钻';
+  }
+  return '监控仪表盘';
 };
+
+export const isDashboardMetricsMode = (): boolean => dashboardPresentationLabel() === '全量指标';
 
 const dashboardIdentity = () => {
   const params = new URLSearchParams(window.location.search);
@@ -284,7 +297,7 @@ const dashboardTextSections = (
     identity.monitorObjId ? `monitorObjId: ${identity.monitorObjId}` : '',
     identity.instanceName ? `实例: ${identity.instanceName}` : '',
     `视图: ${identity.view}`,
-    `展示模式: ${isDashboardMetricsMode() ? '全量指标' : '监控仪表盘'}`,
+    `展示模式: ${dashboardPresentationLabel()}`,
     stamp.timeRangeLabel ? `时间筛选: ${stamp.timeRangeLabel}` : '',
     dataUpdatedAt ? `页面数据指纹: ${dataUpdatedAt}` : '',
   ].filter(Boolean);

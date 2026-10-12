@@ -1415,6 +1415,8 @@
       "common": {
         "dashboardMode": "监控仪表盘",
         "metricsMode": "全量指标",
+        "categoryTabMode": "概览→分类 Tab→再下钻",
+        "viewSwitcher": "视图",
         "fullMetrics": "全量指标",
         "justNow": "刚刚",
         "backToObjectViewList": "返回{objectName}视图列表",

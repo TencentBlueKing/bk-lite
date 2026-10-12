@@ -1415,6 +1415,8 @@
       "common": {
         "dashboardMode": "Dashboard",
         "metricsMode": "All Metrics",
+        "categoryTabMode": "Overview → Category Tabs → Drill-down",
+        "viewSwitcher": "View",
         "fullMetrics": "All Metrics",
         "justNow": "Just now",
         "backToObjectViewList": "Back to {objectName} View",
