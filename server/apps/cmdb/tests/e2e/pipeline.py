@@ -20,7 +20,6 @@
 """
 from typing import Any, Optional
 
-
 # ============================================================================
 # Step 1: Stargazer 标准化（通用版本：包装单/多对象）
 # ============================================================================
@@ -88,11 +87,7 @@ def step2_push_to_vm(
     result_data = stargazer_payload.get("result", {})
     instance_id = f"cmdb_{task_id}"
     vector_results = []
-    snapshot_labels = {
-        key: str(stargazer_payload[key])
-        for key in ("snapshot_id", "snapshot_status")
-        if stargazer_payload.get(key)
-    }
+    snapshot_labels = {key: str(stargazer_payload[key]) for key in ("snapshot_id", "snapshot_status") if stargazer_payload.get(key)}
 
     for raw_metric_key, items in result_data.items():
         # host_proc_usage 这种"附加流"对应 metric 名带 _info_gauge
@@ -166,10 +161,7 @@ def step3_cmdb_consume_generic(
         lambda self, sql, timeout=60: vm_response,
     )
 
-    # ---- Mock plugin 注册表 ----
     # 不同 runner 取 plugin 时调的是不同的 plugin_type；统一拦截 get_collection_plugin
-    import apps.cmdb.collection.plugins as plugins_module
-
     # 找到 runner 模块里 import 的 get_collection_plugin 函数所在模块
     runner_module = runner_cls.__module__
     monkeypatch.setattr(
@@ -205,8 +197,13 @@ def run_full_pipeline_generic(
     p2 = step1_stargazer_normalize_generic(raw_items, model_id=model_id, proc_items=proc_items)
     p3 = step2_push_to_vm(p2, task_id=task_id, extra_payload_keys=extra_payload_keys)
     p4 = step3_cmdb_consume_generic(
-        p3, runner_cls=runner_cls, plugin_cls=plugin_cls, model_id=model_id,
-        task_id=task_id, instances=instances, monkeypatch=monkeypatch,
+        p3,
+        runner_cls=runner_cls,
+        plugin_cls=plugin_cls,
+        model_id=model_id,
+        task_id=task_id,
+        instances=instances,
+        monkeypatch=monkeypatch,
     )
     return {"raw": p1, "stargazer_payload": p2, "vm_response": p3, "cmdb_result": p4}
 
@@ -231,10 +228,14 @@ def step3_cmdb_consume_host(vm_response: dict, task_id: int = 1001, model_id: st
     """
     from apps.cmdb.collection.collect_plugin.host import HostCollectMetrics
 
-    fake_task = type("FakeTask", (), {
-        "id": task_id,
-        "instances": [{"inst_name": "web01.prod.example.com", "ip_addr": "10.0.0.11"}],
-    })()
+    fake_task = type(
+        "FakeTask",
+        (),
+        {
+            "id": task_id,
+            "instances": [{"inst_name": "web01.prod.example.com", "ip_addr": "10.0.0.11"}],
+        },
+    )()
 
     monkeypatch.setattr(HostCollectMetrics, "get_collect_inst", lambda self: fake_task)
     monkeypatch.setattr(HostCollectMetrics, "model_id", property(lambda self: model_id))
@@ -244,27 +245,32 @@ def step3_cmdb_consume_host(vm_response: dict, task_id: int = 1001, model_id: st
     )
 
     runner = HostCollectMetrics(
-        inst_name="web01.prod.example.com", inst_id=10001, task_id=task_id,
+        inst_name="web01.prod.example.com",
+        inst_id=10001,
+        task_id=task_id,
     )
 
     mapping_for_host = {
-        "inst_name":   "hostname",
-        "ip_addr":     "ip_addr",
-        "os_name":     "os_name",
-        "os_version":  "os_version",
+        "inst_name": "hostname",
+        "ip_addr": "ip_addr",
+        "os_name": "os_name",
+        "os_version": "os_version",
         "mac_address": lambda data, model_id=None: HostCollectMetrics.format_mac(data.get("mac_address", "")),
-        "os_type":     lambda data, model_id=None: runner.set_os_type(data),
-        "cpu_arch":    lambda data, model_id=None: runner.set_cpu_arch(data),
-        "cpu_core":    (int, "cpu_cores"),
-        "memory":      (lambda v: int(float(v)), "mem_total_mb"),
-        "disk":        (lambda v: int(float(v)), "disk_total_gb"),
+        "os_type": lambda data, model_id=None: runner.set_os_type(data),
+        "cpu_arch": lambda data, model_id=None: runner.set_cpu_arch(data),
+        "machine_type": lambda data, model_id=None: runner.set_machine_type(data),
+        "cpu_core": (int, "cpu_cores"),
+        "memory": (lambda v: int(float(v)), "mem_total_mb"),
+        "disk": (lambda v: int(float(v)), "disk_total_gb"),
     }
     monkeypatch.setattr(
-        HostCollectMetrics, "model_field_mapping",
+        HostCollectMetrics,
+        "model_field_mapping",
         property(lambda self: {model_id: mapping_for_host}),
     )
     monkeypatch.setattr(
-        HostCollectMetrics, "_metrics",
+        HostCollectMetrics,
+        "_metrics",
         property(lambda self: ["host_info_gauge", "host_proc_usage_info_gauge"]),
     )
     runner.collection_metrics_dict = {m: [] for m in runner._metrics}

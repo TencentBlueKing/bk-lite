@@ -1,6 +1,30 @@
 # Windows System Info Collector
 # PowerShell script for collecting Windows host information
 
+function Get-HostMachineType {
+    param(
+        $HypervisorPresent,
+        [string]$Manufacturer = "",
+        [string]$Model = ""
+    )
+    $blob = "$Manufacturer $Model"
+    if ($blob -match 'VMware|VirtualBox|KVM|QEMU|Xen|Virtual Machine|Hyper-V|Bochs|Parallels|AHV|Nutanix|Amazon EC2|Alibaba Cloud|OpenStack|BHYVE|oVirt') {
+        return "virtual"
+    }
+    $hasIdentity = -not [string]::IsNullOrWhiteSpace($Manufacturer) -or -not [string]::IsNullOrWhiteSpace($Model)
+    if ($HypervisorPresent -eq $true) {
+        return "virtual"
+    }
+    if ($hasIdentity) {
+        return "physical_server"
+    }
+    return "unknown"
+}
+
+if ($env:HOST_DISCOVER_SOURCE_ONLY -eq '1') {
+    return
+}
+
 # Error handling
 $ErrorActionPreference = "SilentlyContinue"
 
@@ -67,6 +91,15 @@ if ($adapters) {
     }
 }
 
+$hypervisorPresent = $null
+if ($cs -and ($cs.PSObject.Properties.Name -contains "HypervisorPresent")) {
+    $hypervisorPresent = $cs.HypervisorPresent
+}
+$machineType = Get-HostMachineType `
+    -HypervisorPresent $hypervisorPresent `
+    -Manufacturer $(if ($cs) { $cs.Manufacturer } else { "" }) `
+    -Model $(if ($cs) { $cs.Model } else { "" })
+
 # Build JSON output
 $json = @{
     hostname = Get-ValueOrUnknown $hostname
@@ -80,6 +113,7 @@ $json = @{
     memory_gb = $memory_gb
     disk_gb = [math]::Round($disk_gb, 1)
     mac_address = Get-ValueOrUnknown $mac_address
+    machine_type = $machineType
 } | ConvertTo-Json -Compress
 
 # Output JSON

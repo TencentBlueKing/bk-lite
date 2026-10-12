@@ -1,6 +1,6 @@
 #!/bin/sh
 # System Info Collector - POSIX sh, CentOS/RHEL 6+ compatible
-# JSON contract unchanged. Rollback: host_default_discover.sh.bak
+# Rollback: host_default_discover.sh.bak
 #
 # EL6 兼容：
 # - /etc/os-release 可能不存在，回退 /etc/centos-release|/etc/redhat-release|/etc/system-release
@@ -8,6 +8,51 @@
 # - ip 可能缺失，回退 ifconfig
 # - df --exclude-type 失败时回退 df -kP
 # - 过滤内核线程（arg 形如 [kthreadd]）
+
+classify_host_machine_type() {
+    virt_type=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+    vendor=$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')
+    product=$(printf '%s' "$3" | tr '[:upper:]' '[:lower:]')
+    cpuinfo=$(printf '%s' "$4" | tr '[:upper:]' '[:lower:]')
+    identity="$vendor $product"
+
+    case "$virt_type" in
+        ""|none|unknown) ;;
+        *)
+            printf 'virtual'
+            return 0
+            ;;
+    esac
+
+    case " $cpuinfo " in
+        *" hypervisor "*)
+            printf 'virtual'
+            return 0
+            ;;
+    esac
+
+    if printf '%s' "$identity" | grep -qE 'vmware|virtualbox|qemu|kvm|xen|parallels|bochs|bhyve|hyper-v|virtual machine|openstack|amazon ec2|google compute engine|alibaba cloud|tencent cloud|huawei cloud|nutanix|ahv|innotek|ovirt'; then
+        printf 'virtual'
+        return 0
+    fi
+
+    if [ "$virt_type" = "none" ]; then
+        printf 'physical_server'
+        return 0
+    fi
+
+    trimmed=$(printf '%s' "$identity" | tr -d '[:space:]')
+    if [ -n "$trimmed" ]; then
+        printf 'physical_server'
+        return 0
+    fi
+
+    printf 'unknown'
+}
+
+if [ "${HOST_DISCOVER_SOURCE_ONLY:-}" = "1" ]; then
+    return 0 2>/dev/null || exit 0
+fi
 
 set -e
 
@@ -410,6 +455,31 @@ mac_address="$(
 [ -n "$mac_address" ] || mac_address="unknown"
 
 # -----------------------------
+# Machine type: virtual / physical_server / unknown
+# -----------------------------
+virt_type=""
+if command -v systemd-detect-virt >/dev/null 2>&1; then
+    virt_type="$(systemd-detect-virt 2>/dev/null || true)"
+fi
+
+sys_vendor=""
+product_name=""
+if [ -r /sys/class/dmi/id/sys_vendor ]; then
+    sys_vendor="$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null || true)"
+fi
+if [ -r /sys/class/dmi/id/product_name ]; then
+    product_name="$(cat /sys/class/dmi/id/product_name 2>/dev/null || true)"
+fi
+
+cpu_flags=""
+if [ -r /proc/cpuinfo ]; then
+    cpu_flags="$(awk -F: '/^flags/{gsub(/^[ \t]+/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null || true)"
+fi
+
+machine_type="$(classify_host_machine_type "$virt_type" "$sys_vendor" "$product_name" "$cpu_flags")"
+[ -n "$machine_type" ] || machine_type="unknown"
+
+# -----------------------------
 # Process
 # -----------------------------
 proc_json="$(collect_proc_list)"
@@ -431,6 +501,7 @@ cat >&3 <<EOF
   "memory_gb": "$memory_gb",
   "disk_gb": "$disk_gb",
   "mac_address": "$(json_escape "$mac_address")",
+  "machine_type": "$(json_escape "$machine_type")",
   "proc": $proc_json
 }
 EOF

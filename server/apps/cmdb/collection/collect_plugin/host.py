@@ -302,6 +302,12 @@ class HostCollectMetrics(CollectBase):
                 return os["id"]
         return "other"
 
+    @staticmethod
+    def set_machine_type(data, *args, **kwargs):
+        from apps.cmdb.collection.host_machine_type import normalize_machine_type
+
+        return normalize_machine_type(data.get("machine_type") if isinstance(data, dict) else None)
+
     def set_serverarch_type(self, data, *args, **kwargs):
         cpu_arch = data.get("cpu_arch", "")
         if not cpu_arch:

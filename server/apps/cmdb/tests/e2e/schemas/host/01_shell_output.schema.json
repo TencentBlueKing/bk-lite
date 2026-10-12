@@ -16,6 +16,7 @@
     "mem_total_mb":     {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?$"},
     "disk_total_gb":    {"type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?$"},
     "mac_address":      {"type": "string"},
+    "machine_type":     {"type": "string", "enum": ["unknown", "virtual", "physical_server"]},
     "ip_addr":          {"type": "string", "format": "ipv4"},
     "proc": {
       "type": "array",

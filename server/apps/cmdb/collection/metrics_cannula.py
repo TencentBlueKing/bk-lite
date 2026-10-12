@@ -4,6 +4,7 @@ from typing import Type
 from django.utils import timezone
 
 from apps.cmdb.collection.common import Management
+from apps.cmdb.collection.host_machine_type import preserve_collected_host_machine_type
 from apps.cmdb.constants.constants import INSTANCE, DataCleanupStrategy
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.services.host_sync_identity import align_collected_host_inst_names
@@ -138,6 +139,8 @@ class MetricsCannula:
                     already_data, metrics, conflicts = self._query_task_assets(ag, model_id, metrics)
                 else:
                     already_data, _ = ag.query_entity(INSTANCE, params)
+                if model_id == "host":
+                    preserve_collected_host_machine_type(already_data, metrics)
                 management = Management(
                     self.organization,
                     self.inst_name,

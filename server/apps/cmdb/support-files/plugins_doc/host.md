@@ -78,6 +78,7 @@
 | memory | 物理内存总量（GB） |
 | disk | 汇总磁盘容量（GB） |
 | inner_mac | 首块网卡 MAC 地址（`ip link`） |
+| machine_type | 机器类型：`unknown` 未知、`virtual` 虚拟机、`physical_server` 物理服务器。采集识别得出后写入；识别不出时为未知，且不把已识别结果改回未知 |
 | proc | 运行进程清单（含监听端口），写入关联模型 host_proc_usage |
 
 **进程（host_proc_usage，host 的关联子项）**

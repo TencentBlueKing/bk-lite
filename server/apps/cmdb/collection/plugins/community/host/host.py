@@ -19,6 +19,7 @@ class HostCollectionPlugin(BaseHostCollectionPlugin):
         "memory": (HostCollectMetrics.transform_int, "memory_gb"),
         "disk": (HostCollectMetrics.transform_int, "disk_gb"),
         "cpu_arch": HostCollectMetrics.set_cpu_arch,
+        "machine_type": HostCollectMetrics.set_machine_type,
         "inner_mac": (HostCollectMetrics.format_mac, "mac_address"),
         "proc": HostCollectMetrics.get_host_proc,
     }

@@ -78,6 +78,7 @@ Pass criterion: the port is reachable.
 | memory | Total physical memory (GB) |
 | disk | Aggregated disk capacity (GB) |
 | inner_mac | First NIC MAC address (`ip link`) |
+| machine_type | Machine type: `unknown`, `virtual`, or `physical_server`. A successful detection overwrites the field. An unrecognized result stays `unknown` and does not replace an earlier virtual or physical result |
 | proc | Running process inventory (including listen ports), written to related model host_proc_usage |
 
 **Process (host_proc_usage, related child of host)**
