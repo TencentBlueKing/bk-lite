@@ -40,8 +40,7 @@ const Spark = ({ data, color }: { data: ChartData[]; color: string }) => {
           data: series,
           showSymbol: false,
           symbol: 'none',
-          lineStyle: { width: 1.4, color },
-          areaStyle: { opacity: 0 }
+          lineStyle: { width: 1.4, color }
         }
       ]
     };

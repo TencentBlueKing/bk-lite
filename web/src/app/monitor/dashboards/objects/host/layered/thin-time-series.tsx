@@ -82,20 +82,7 @@ export default function ThinTimeSeries({
             const value = point[key];
             return [point.time, typeof value === 'number' ? value : null];
           }),
-          lineStyle: { width: 1.6, color },
-          areaStyle: {
-            color: {
-              type: 'linear' as const,
-              x: 0,
-              y: 0,
-              x2: 0,
-              y2: 1,
-              colorStops: [
-                { offset: 0, color: `${color}0f` },
-                { offset: 1, color: `${color}00` }
-              ]
-            }
-          }
+          lineStyle: { width: 1.6, color }
         };
       })
     };

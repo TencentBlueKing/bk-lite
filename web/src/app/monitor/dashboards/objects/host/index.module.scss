@@ -1,16 +1,12 @@
 @use '../common/simple-dashboard.module.scss';
 
-// 分层概览自带深色工具条，隐藏经典页头，避免两套皮肤叠在同一屏。
-.page:has(.shell[data-view-mode='category']) {
+// 分层概览：DashboardShell hideHeader 时去掉经典外壳留白与浅底。
+.pageFlush {
   background: #12151c;
 }
 
-.shell[data-view-mode='category'] {
+.shellFlush {
   padding: 0;
-
-  .pageHeader {
-    display: none;
-  }
 }
 
 // sectionLabel 已上收到共享壳；此处仅保留主机趋势图高度微调。

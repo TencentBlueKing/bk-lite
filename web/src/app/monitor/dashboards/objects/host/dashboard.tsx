@@ -125,6 +125,7 @@ export default function HostDashboardPage() {
       dashboard={dashboard}
       styles={styles}
       preserveLayouts
+      hideHeader={layout === 'category'}
       viewSwitcher={{
         mode: layout,
         onChange: onLayoutChange,
