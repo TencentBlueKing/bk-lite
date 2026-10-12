@@ -23,7 +23,7 @@
         background: var(--color-bg-1);
         height: 100%;
         min-height: 0;
-        // 外层 .view 是 overflow:hidden。右侧保持纵向滚动，避免表格和筛选被裁切。
+        // Host 舰队概览加高后，右侧必须可纵向滚动，否则表格被 overflow:hidden 裁切。
         overflow-x: hidden;
         overflow-y: auto;
     }

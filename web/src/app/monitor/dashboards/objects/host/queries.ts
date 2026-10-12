@@ -1,4 +1,4 @@
-/** Host 磁盘挂载点 TopN，单机盘「磁盘与进程」区沿用。 */
+/** Host 磁盘挂载点 TopN（单机旧排行；舰队 Top N 不复用这条，见 fleet-overview）。 */
 export const HOST_DISK_TOP_N = 8;
 
 interface GuideItem {
@@ -139,3 +139,9 @@ export const HOST_GPU_ENTITY_QUERIES: HostEntityMetricQuery[] = [
     query: 'avg without(pstate) (nvidia_smi_fan_speed{instance_type="os", __$labels__})'
   }
 ];
+
+/**
+ * 舰队网卡错误：各实例 interface 合计后的 cps（收+发）。
+ * 单位是速率，不是百分比。get_host_resource_top 不含此项，由列表页客户端排序。
+ */
+export const HOST_FLEET_NIC_ERROR_QUERY = '(sum by (instance_id) (rate(net_err_in{instance_type="os", __$labels__}[__$window__]) or rate(net_err_in_gauge{instance_type="os", __$labels__}[__$window__]) or rate(net_err_in_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__]))) + (sum by (instance_id) (rate(net_err_out{instance_type="os", __$labels__}[__$window__]) or rate(net_err_out_gauge{instance_type="os", __$labels__}[__$window__]) or rate(net_err_out_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__])))';

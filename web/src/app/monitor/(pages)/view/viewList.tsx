@@ -48,6 +48,7 @@ import {
   displayFieldKey,
   displayFieldParamKey
 } from './instanceViewColumns';
+import HostFleetOverview from '@/app/monitor/dashboards/objects/host/fleet-overview';
 import {
   readUrlColonyIds,
   readUrlTableSort,
@@ -960,6 +961,7 @@ const ViewList: React.FC<ViewListProps> = ({
 
   return (
     <div className="w-full">
+      {currentObjectName === 'Host' ? <HostFleetOverview objectId={objectId} /> : null}
       <div className="mb-[10px] flex justify-between">
         <div className="flex items-center gap-2">
           {showTopFilterBar && (
