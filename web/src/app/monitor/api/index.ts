@@ -8,6 +8,10 @@ import {
   MetricItem
 } from '@/app/monitor/types';
 import { filterVisibleMonitorObjects } from '@/app/monitor/utils/monitorObject';
+import {
+  demoMonitorAlerts,
+  withMonitorUiDemoFallback,
+} from '@/app/monitor/utils/uiDemoMock';
 
 export interface MetricsParam {
   monitor_object_id?: React.Key;
@@ -122,10 +126,13 @@ const useMonitorApi = () => {
     } = {},
     config?: AxiosRequestConfig
   ) => {
-    return await get(`/monitor/api/monitor_alert/`, {
-      params,
-      ...config
-    });
+    return await withMonitorUiDemoFallback(
+      () => get(`/monitor/api/monitor_alert/`, {
+        params,
+        ...config
+      }),
+      () => demoMonitorAlerts(params as Record<string, unknown>)
+    );
   }, [get]);
 
   const getInstanceList = useCallback(async (

@@ -2,15 +2,15 @@
 import './register-alert-pilot';
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import {
-  Input,
   Button,
   Select,
-  Tag,
   Tabs,
   Spin,
   Tooltip,
   Checkbox
 } from 'antd';
+import SearchActionBar from '@/components/search-action-bar';
+import { StatusToneBadge, type StatusTone } from '@/app/monitor/utils/statusTone';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
@@ -27,7 +27,6 @@ import {
   TreeItem,
   ObjectItem
 } from '@/app/monitor/types';
-import { AlertOutlined } from '@ant-design/icons';
 import { FiltersConfig } from '@/app/monitor/types/event';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
@@ -61,8 +60,20 @@ import {
   resolveMonitorObjectQueryId,
   resolveMonitorObjectTreeKey
 } from '@/app/monitor/utils/monitorObjectQuery';
-const { Search } = Input;
 const { Option } = Select;
+
+const alertLevelTone = (level: string): StatusTone => {
+  if (level === 'critical' || level === 'error') return 'fail';
+  if (level === 'warning') return 'warning';
+  if (level === 'info') return 'primary';
+  return 'neutral';
+};
+
+const alertStatusTone = (status: string): StatusTone => {
+  if (status === 'new') return 'primary';
+  if (status === 'recovered') return 'success';
+  return 'neutral';
+};
 
 const Alert: React.FC = () => {
   const { isLoading } = useApiClient();
@@ -136,9 +147,10 @@ const Alert: React.FC = () => {
       dataIndex: 'level',
       key: 'level',
       render: (_, { level }) => (
-        <Tag icon={<AlertOutlined />} color={LEVEL_MAP[level] as string}>
-          {LEVEL_LIST.find((item) => item.value === level)?.label || '--'}
-        </Tag>
+        <StatusToneBadge
+          tone={alertLevelTone(level)}
+          label={LEVEL_LIST.find((item) => item.value === level)?.label || '--'}
+        />
       )
     },
     {
@@ -160,7 +172,7 @@ const Alert: React.FC = () => {
       dataIndex: 'alert_type',
       key: 'alert_type',
       render: (_, { alert_type }) => (
-        <Tag color="default">{ALERT_TYPE_MAP[alert_type] || '--'}</Tag>
+        <StatusToneBadge tone="neutral" label={ALERT_TYPE_MAP[alert_type] || '--'} />
       )
     },
     {
@@ -179,9 +191,7 @@ const Alert: React.FC = () => {
       dataIndex: 'status',
       key: 'status',
       render: (_, { status }) => (
-        <Tag color={status === 'new' ? 'blue' : 'var(--color-text-4)'}>
-          {STATE_MAP[status]}
-        </Tag>
+        <StatusToneBadge tone={alertStatusTone(status)} label={STATE_MAP[status]} />
       )
     },
     {
@@ -641,13 +651,13 @@ const Alert: React.FC = () => {
                         value={item.value}
                         label={item.label}
                       >
-                        <Tag
-                          icon={<AlertOutlined />}
-                          color={LEVEL_MAP[item.value as string] as string}
-                        >
-                          {LEVEL_LIST.find((tex) => tex.value === item.value)
-                            ?.label || '--'}
-                        </Tag>
+                        <StatusToneBadge
+                          tone={alertLevelTone(String(item.value))}
+                          label={
+                            LEVEL_LIST.find((tex) => tex.value === item.value)
+                              ?.label || '--'
+                          }
+                        />
                       </Option>
                     ))}
                   </Select>
@@ -705,28 +715,30 @@ const Alert: React.FC = () => {
             </div>
           </Spin>
           <div className={alertStyle.table}>
-            <div className="mb-[10px] flex shrink-0 items-center gap-3">
-              <Search
-                allowClear
-                className="w-[240px]"
-                placeholder={t('common.searchPlaceHolder')}
-                value={searchText}
-                enterButton
-                onChange={(e) => setSearchText(e.target.value)}
-                onSearch={handleSearch}
-              />
-              <Checkbox
-                checked={myAlert}
-                onChange={(event) => {
-                  const checked = event.target.checked;
-                  setMyAlert(checked);
-                  getAssetInsts('refresh', { myAlert: checked });
-                  getChartData('refresh', { myAlert: checked });
-                }}
-              >
-                {t('monitor.events.myAlert')}
-              </Checkbox>
-            </div>
+            <SearchActionBar
+              spacing="flush"
+              className="mb-[10px]"
+              searchProps={{
+                allowClear: true,
+                placeholder: t('common.searchPlaceHolder'),
+                value: searchText,
+                onChange: (e) => setSearchText(e.target.value),
+                onSearch: handleSearch,
+              }}
+              filters={(
+                <Checkbox
+                  checked={myAlert}
+                  onChange={(event) => {
+                    const checked = event.target.checked;
+                    setMyAlert(checked);
+                    getAssetInsts('refresh', { myAlert: checked });
+                    getChartData('refresh', { myAlert: checked });
+                  }}
+                >
+                  {t('monitor.events.myAlert')}
+                </Checkbox>
+              )}
+            />
             <div className="min-h-0 flex-1 overflow-hidden">
             <CustomTable
               className="w-full"
