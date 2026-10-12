@@ -20,8 +20,6 @@ from apps.opspilot.services.llm_context_budget import DEFAULT_CHAT_SCENE_OUTPUT_
 MAX_ATTACHMENTS = 5
 DOCUMENT_MAX_BYTES = 20 * 1024 * 1024
 IMAGE_MAX_BYTES = 5 * 1024 * 1024
-# multipart 边界与字段头的余量。超过文档上限加这段的 Content-Length 直接拒绝，不再读正文。
-UPLOAD_CONTENT_LENGTH_SLACK = 64 * 1024
 ORPHAN_AGE = timedelta(hours=24)
 PENDING_STALE_AGE = timedelta(minutes=10)
 PARSE_QUEUE = "opspilot_chat_parse"
@@ -102,28 +100,25 @@ def _reject_too_large() -> None:
     raise ChatAttachmentError("文件大小超出限制", code="file_too_large")
 
 
-def _content_length_over_limit(content_length) -> bool:
-    if content_length in (None, ""):
-        return False
-    try:
-        length = int(content_length)
-    except (TypeError, ValueError):
-        return False
-    return length < 0 or length > DOCUMENT_MAX_BYTES + UPLOAD_CONTENT_LENGTH_SLACK
-
-
-def read_bounded_upload(upload, *, content_length=None) -> bytes:
-    """在拼出完整字节前拒绝超限正文。已知 size 或 Content-Length 超限时不读取。"""
-    if _content_length_over_limit(content_length):
-        _reject_too_large()
-    limit = upload_byte_limit(getattr(upload, "name", "") or "")
+def _declared_size(upload) -> int | None:
     declared = getattr(upload, "size", None)
-    if declared is not None:
-        try:
-            if int(declared) > limit:
-                _reject_too_large()
-        except (TypeError, ValueError):
-            pass
+    if declared is None:
+        return None
+    try:
+        size = int(declared)
+    except (TypeError, ValueError):
+        return None
+    if size < 0:
+        return None
+    return size
+
+
+def read_bounded_upload(upload) -> bytes:
+    """声明大小超限时不读正文。大小缺失或与正文不符时按块累加，超过上限即中止。"""
+    limit = upload_byte_limit(getattr(upload, "name", "") or "")
+    declared = _declared_size(upload)
+    if declared is not None and declared > limit:
+        _reject_too_large()
     parts: list[bytes] = []
     total = 0
     chunks = getattr(upload, "chunks", None)

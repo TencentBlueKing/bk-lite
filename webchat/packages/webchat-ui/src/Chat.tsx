@@ -69,14 +69,14 @@ const MAX_IMAGE_SIZE =
     ? parseInt(process.env.NEXT_PUBLIC_MAX_IMAGE_SIZE, 10)
     : 0) || 4 * 1024 * 1024;
 
-/** 仅有 apiKey 时写入嵌入式对话要求的 Api-Authorization，不覆盖调用方已给的鉴权头。 */
-function embeddedRequestHeaders(
+/** 已有 Api-Authorization 或 Authorization 时不改写。仅有 apiKey 时按平台约定补 Bearer。 */
+function chatAuthHeaders(
   requestHeaders: Record<string, string> | undefined,
   apiKey?: string,
 ): Record<string, string> {
   const headers: Record<string, string> = { ...(requestHeaders || {}) };
   if (apiKey && !headers['Api-Authorization'] && !headers.Authorization) {
-    headers['Api-Authorization'] = apiKey;
+    headers.Authorization = `Bearer ${apiKey}`;
   }
   return headers;
 }
@@ -507,7 +507,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
       reportImageError(new Error(t('file.uploadUnavailable', '当前对话不能上传文件')));
       return;
     }
-    const headers = embeddedRequestHeaders(requestHeaders, apiKey);
+    const headers = chatAuthHeaders(requestHeaders, apiKey);
     for (const file of files) {
       const localKey = `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       setDocumentChips((current) => [...current, {
@@ -673,7 +673,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
           }
         }
 
-        const uploadHeaders = embeddedRequestHeaders(requestHeaders, apiKey);
+        const uploadHeaders = chatAuthHeaders(requestHeaders, apiKey);
         const uploadedAttachments: StoredChatAttachment[] = [];
         for (const file of draftFiles) {
           uploadedAttachments.push(await uploadChatFile(file, sseUrl, uploadHeaders));
@@ -704,7 +704,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
 
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
-          ...embeddedRequestHeaders(requestHeaders, apiKey),
+          ...chatAuthHeaders(requestHeaders, apiKey),
         };
         
         const decoder = new TextDecoder();
@@ -962,7 +962,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
                 loadAttachment={sseUrl ? async (id) => {
                   const endpoints = chatAttachmentEndpoints(sseUrl);
                   if (!endpoints) throw new Error('缺少附件下载地址');
-                  const headers = embeddedRequestHeaders(requestHeaders, apiKey);
+                  const headers = chatAuthHeaders(requestHeaders, apiKey);
                   const response = await fetch(endpoints.download(id), { headers, credentials: 'include' });
                   if (!response.ok) throw new Error('下载失败');
                   return response.blob();

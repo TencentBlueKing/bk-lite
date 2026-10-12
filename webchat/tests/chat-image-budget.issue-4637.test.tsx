@@ -531,7 +531,10 @@ test('粘贴图片发送时写入 attachment_ids，移除的图片不会被上�
   const network = installAttachmentFetch();
   try {
     const pasted = new File([new Uint8Array(pngHeader(1, 1))], 'paste.png', { type: 'image/png' });
-    const renderer = renderChat({ apiKey: 'embedded-secret', sseUrl: SSE_URL });
+    const renderer = renderChat({
+      requestHeaders: { 'Api-Authorization': 'embedded-secret' },
+      sseUrl: SSE_URL,
+    });
     await pasteFiles(renderer.root, [pasted]);
     assert.equal(ControlledFileReader.pending.length, 1);
     await finishReaders([ControlledFileReader.pending[0]]);
@@ -565,6 +568,14 @@ test('粘贴图片发送时写入 attachment_ids，移除的图片不会被上�
     assert.ok(sentHeaders.every((item) => item.authorization === 'Bearer existing'));
     assert.ok(sentHeaders.every((item) => item['api-authorization'] === undefined));
     removed.unmount();
+
+    const platform = renderChat({ apiKey: 'platform-token', sseUrl: SSE_URL });
+    const platformCount = network.chatBodies.length;
+    await submitAndWait(platform.root, '仅有令牌', () => network.chatBodies.length > platformCount);
+    const platformHeaders = network.headers.at(-1);
+    assert.equal(platformHeaders?.authorization, 'Bearer platform-token');
+    assert.equal(platformHeaders?.['api-authorization'], undefined);
+    platform.unmount();
   } finally {
     network.restore();
   }

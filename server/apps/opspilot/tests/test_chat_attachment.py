@@ -505,9 +505,9 @@ class TrackingUpload:
         raise AssertionError("read called")
 
 
-def test_upload_rejects_oversized_content_length_without_reading(local_storage, caplog):
-    user = _user("size-user")
-    upload = TrackingUpload("notes.txt", 4)
+def test_upload_rejects_declared_image_size_without_reading(local_storage, caplog):
+    user = _user("image-size-user")
+    upload = TrackingUpload("shot.png", 5 * 1024 * 1024 + 1)
     request = APIRequestFactory().post("/upload")
     request.user = user
     request.COOKIES["current_team"] = "1"
@@ -521,22 +521,7 @@ def test_upload_rejects_oversized_content_length_without_reading(local_storage, 
     assert upload.read_calls == 0
     assert ChatAttachment.objects.count() == 0
     assert "file_too_large" in caplog.text
-    assert "notes.txt" not in caplog.text
-
-
-def test_upload_rejects_declared_image_size_without_reading(local_storage):
-    user = _user("image-size-user")
-    upload = TrackingUpload("shot.png", 5 * 1024 * 1024 + 1)
-    request = APIRequestFactory().post("/upload")
-    request.user = user
-    request.COOKIES["current_team"] = "1"
-    request.META["CONTENT_LENGTH"] = "128"
-    request._files = MultiValueDict({"file": [upload]})
-    response = upload_chat_attachment(request)
-    assert response.status_code == 400
-    assert json.loads(response.content)["code"] == "file_too_large"
-    assert upload.chunk_calls == 0
-    assert upload.read_calls == 0
+    assert "SECRET" not in caplog.text
 
 
 def test_stream_read_aborts_when_body_exceeds_limit(monkeypatch, caplog):
@@ -544,8 +529,9 @@ def test_stream_read_aborts_when_body_exceeds_limit(monkeypatch, caplog):
     upload = TrackingUpload("notes.txt", 4, chunks=[b"x" * 20, b"SECRET_OVERSIZE"])
     with caplog.at_level(logging.WARNING, logger="opspilot"):
         with pytest.raises(ChatAttachmentError) as exc:
-            read_bounded_upload(upload, content_length="32")
+            read_bounded_upload(upload)
     assert exc.value.code == "file_too_large"
+    assert upload.chunk_calls == 1
     assert upload.read_calls == 0
     assert "SECRET_OVERSIZE" not in caplog.text
 

@@ -52,7 +52,7 @@ def upload_chat_attachment(request):
     if upload is None:
         return JsonResponse({"result": False, "message": "file 必填", "code": "file_required"}, status=400)
     try:
-        data = read_bounded_upload(upload, content_length=request.META.get("CONTENT_LENGTH"))
+        data = read_bounded_upload(upload)
         owner_key, team_id = resolve_chat_actor(request)
         attachment = store_upload(filename=upload.name, data=data, owner_key=owner_key, team_id=team_id)
     except ChatAttachmentError as exc:
