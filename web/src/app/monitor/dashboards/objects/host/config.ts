@@ -185,11 +185,10 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'processes_running',
       display_name: '运行中进程数',
-      description: '当前处于运行状态的进程数量。',
+      description: '当前处于运行状态的进程数量（Linux Telegraf processes；Windows WMI 为进程总数近似）。',
       unit: 'counts',
-      query: 'processes_running{instance_type="os", __$labels__} or processes_running_gauge{instance_type="os", __$labels__}',
-      color: HOST_PALETTE.neutral,
-      linuxOnly: true
+      query: 'processes_running{instance_type="os", __$labels__} or processes_running_gauge{instance_type="os", __$labels__} or processes_running_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
+      color: HOST_PALETTE.neutral
     },
     {
       name: 'processes_sleeping',

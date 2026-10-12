@@ -36,6 +36,29 @@ export const metricHasPoints = (
   series: Pick<MetricSeries, 'loadState' | 'viewData'> | undefined
 ) => latestNumber(series) != null;
 
+/**
+ * 进程状态等计数卡：末点为 0 且窗内有非 0 时取末个非 0（抗 scrape 末段掉零）；
+ * 全程为 0 仍显示 0；无读数返回 null。
+ */
+export const latestPreferCount = (
+  series: Pick<MetricSeries, 'loadState' | 'viewData'> | undefined
+): number | null => {
+  if (!series || series.loadState !== 'success' || !series.viewData?.length) return null;
+  const latest = latestNumber(series);
+  if (latest == null) return null;
+  if (latest !== 0) return latest;
+  for (let index = series.viewData.length - 1; index >= 0; index -= 1) {
+    const value = numericValue(series.viewData[index]);
+    if (value != null && value !== 0) return value;
+  }
+  return latest;
+};
+
+/** 指标序列是否已进入 metricMap（成功或失败），用于状态卡等待 trend 批次。 */
+export const metricSettled = (
+  series: Pick<MetricSeries, 'loadState'> | undefined
+) => series != null && (series.loadState === 'success' || series.loadState === 'error');
+
 export const formatPercent = (value: number | null) => (
   value == null ? '--' : `${value.toFixed(1)}%`
 );

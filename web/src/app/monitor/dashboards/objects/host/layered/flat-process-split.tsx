@@ -7,7 +7,7 @@ import { pointsToChartData, type EntityTableRow } from '../entity-series';
 import LayeredEntityTable, { type LayeredColumn } from './entity-table';
 import StatusCountRow, { processStatusView } from './status-count';
 import ThinTimeSeries from './thin-time-series';
-import { formatPercent, formatUnit, latestNumber, percentTone } from './readings';
+import { formatPercent, formatUnit, latestPreferCount, metricSettled, percentTone } from './readings';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
@@ -20,7 +20,8 @@ export default function FlatProcessSplit({
   loading,
   selectedKey,
   onSelect,
-  metrics
+  metrics,
+  metricsLoading = false
 }: {
   rows: EntityTableRow[];
   loading: boolean;
@@ -72,14 +73,25 @@ export default function FlatProcessSplit({
     });
     return seen ? total : null;
   };
+  // trend 批次未齐时不把缺序列当成「无数据」；齐了仍缺则显示 --（不可采集），不造假数。
+  const statusMetricsSettled = Boolean(
+    metrics && (
+      metricSettled(metrics.processes_running)
+      || metricSettled(metrics.processes_sleeping)
+      || metricSettled(metrics.processes_blocked)
+      || metricSettled(metrics.processes_zombies)
+      || metricSettled(metrics.cpu_usage_user_total)
+    )
+  );
+  const statusPending = !statusMetricsSettled && (metricsLoading || Object.keys(metrics || {}).length > 0);
   const statusItems = processStatusView({
-    blocked: latestNumber(metrics?.processes_blocked),
-    zombies: latestNumber(metrics?.processes_zombies),
-    running: latestNumber(metrics?.processes_running),
-    sleeping: latestNumber(metrics?.processes_sleeping),
-    threads: loading ? null : sumRows('process_num_threads'),
-    fds: loading ? null : sumRows('process_num_fds')
-  });
+    blocked: statusPending ? null : latestPreferCount(metrics?.processes_blocked),
+    zombies: statusPending ? null : latestPreferCount(metrics?.processes_zombies),
+    running: statusPending ? null : latestPreferCount(metrics?.processes_running),
+    sleeping: statusPending ? null : latestPreferCount(metrics?.processes_sleeping),
+    threads: loading || statusPending ? null : sumRows('process_num_threads'),
+    fds: loading || statusPending ? null : sumRows('process_num_fds')
+  }, { settled: !statusPending && !loading });
 
   return (
     <>

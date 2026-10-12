@@ -60,15 +60,20 @@ const neutralItem = (key: string, label: string, value: number | null): StatusCo
 
 /**
  * 固定七张卡铺满一行。进程总数是运行中/休眠/阻塞/僵尸之和；
- * 线程、句柄来自进程表合计。缺读数留在原位显示 --，不把行收成两张宽卡。
+ * 线程、句柄来自进程表合计。
+ * settled=false 时缺读数仍占位显示 --；settled=true 且某卡不可采集时仍占位 --（不造假数、不画箭头）。
  */
-export const processStatusView = (counts: ProcessStatusCounts): StatusCountItem[] => {
+export const processStatusView = (
+  counts: ProcessStatusCounts,
+  options?: { settled?: boolean }
+): StatusCountItem[] => {
+  const settled = options?.settled !== false;
   const blocked = roundCount(counts.blocked);
   const zombies = roundCount(counts.zombies);
   const running = roundCount(counts.running);
   const sleeping = roundCount(counts.sleeping);
   const states = [running, sleeping, blocked, zombies];
-  const total = states.every((value) => value != null)
+  const total = settled && states.every((value) => value != null)
     ? (running as number) + (sleeping as number) + (blocked as number) + (zombies as number)
     : null;
   return [
@@ -82,7 +87,7 @@ export const processStatusView = (counts: ProcessStatusCounts): StatusCountItem[
   ].filter((item): item is StatusCountItem => item != null);
 };
 
-/** 进程状态：标签在上，整数 +「个」，左侧色条。不画涨跌箭头。 */
+/** 进程状态：标签在上，整数 +「个」，左侧色条。不画涨跌箭头、不画 spark。 */
 export default function StatusCountRow({
   items
 }: {
