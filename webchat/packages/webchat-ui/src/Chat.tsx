@@ -69,6 +69,18 @@ const MAX_IMAGE_SIZE =
     ? parseInt(process.env.NEXT_PUBLIC_MAX_IMAGE_SIZE, 10)
     : 0) || 4 * 1024 * 1024;
 
+/** 已有 Api-Authorization 或 Authorization 时不改写。仅有 apiKey 时按平台约定补 Bearer。 */
+function chatAuthHeaders(
+  requestHeaders: Record<string, string> | undefined,
+  apiKey?: string,
+): Record<string, string> {
+  const headers: Record<string, string> = { ...(requestHeaders || {}) };
+  if (apiKey && !headers['Api-Authorization'] && !headers.Authorization) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
+  return headers;
+}
+
 const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
   const t = useTranslator();
   const {
@@ -479,6 +491,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
           return;
         }
         setImageSelectionError(null);
+        selectedFilesRef.current.push(...files);
         updateUploadedImages({ images, type: 'append' });
       } catch (error) {
         if (generation !== imageSelectionGenerationRef.current) return;
@@ -494,8 +507,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
       reportImageError(new Error(t('file.uploadUnavailable', '当前对话不能上传文件')));
       return;
     }
-    const headers: Record<string, string> = { ...(requestHeaders as Record<string, string> | undefined) };
-    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+    const headers = chatAuthHeaders(requestHeaders, apiKey);
     for (const file of files) {
       const localKey = `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       setDocumentChips((current) => [...current, {
@@ -545,7 +557,6 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
       }
 
       imageFiles.push(file);
-      selectedFilesRef.current.push(file);
     }
     if (documentFiles.length > 0) {
       void uploadDocumentFiles(documentFiles);
@@ -558,6 +569,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
 
   // Remove uploaded image
   const handleRemoveImage = useCallback((index: number) => {
+    selectedFilesRef.current.splice(index, 1);
     updateUploadedImages({ index, type: 'remove' });
   }, [updateUploadedImages]);
 
@@ -634,6 +646,8 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     setInputValue('');
     setHitlEvent(null);
     cancelPendingImageBatches();
+    const draftFiles = selectedFilesRef.current.slice();
+    selectedFilesRef.current = [];
     setImageSelectionError(null);
     updateUploadedImages({ type: 'clear' });
     setIsLoading(true);
@@ -659,10 +673,9 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
           }
         }
 
-        const uploadHeaders: Record<string, string> = { ...(requestHeaders as Record<string, string> | undefined) };
-        if (apiKey) uploadHeaders.Authorization = `Bearer ${apiKey}`;
+        const uploadHeaders = chatAuthHeaders(requestHeaders, apiKey);
         const uploadedAttachments: StoredChatAttachment[] = [];
-        for (const file of selectedFilesRef.current) {
+        for (const file of draftFiles) {
           uploadedAttachments.push(await uploadChatFile(file, sseUrl, uploadHeaders));
         }
         if (uploadedAttachments.some((item) => item.status !== 'ready') || documentChips.some((item) => item.status !== 'ready')) {
@@ -678,7 +691,6 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
           ...customData,
           ...(pageContext ? { page_context: pageContext } : {}),
         };
-        selectedFilesRef.current = [];
         setDocumentChips([]);
         const stored = sessionManagerRef.current?.getSession()?.messages.find((item) => item.id === userMsg.id);
         if (stored) {
@@ -690,13 +702,10 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
           sessionManagerRef.current?.saveSession();
         }
 
-        const headers: HeadersInit = {
+        const headers: Record<string, string> = {
           'Content-Type': 'application/json',
-          ...(requestHeaders || {}),
+          ...chatAuthHeaders(requestHeaders, apiKey),
         };
-        if (apiKey) {
-          headers.Authorization = `Bearer ${apiKey}`;
-        }
         
         const decoder = new TextDecoder();
         const sseParser = new SSEStreamParser();
@@ -799,6 +808,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     void streamLifecycleRef.current?.cancel('session-cleared');
     setMessages([]);
     cancelPendingImageBatches();
+    selectedFilesRef.current = [];
     setImageSelectionError(null);
     updateUploadedImages({ type: 'clear' });
     // Clear and reinitialize session
@@ -952,8 +962,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
                 loadAttachment={sseUrl ? async (id) => {
                   const endpoints = chatAttachmentEndpoints(sseUrl);
                   if (!endpoints) throw new Error('缺少附件下载地址');
-                  const headers: Record<string, string> = { ...(requestHeaders as Record<string, string> | undefined) };
-                  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+                  const headers = chatAuthHeaders(requestHeaders, apiKey);
                   const response = await fetch(endpoints.download(id), { headers, credentials: 'include' });
                   if (!response.ok) throw new Error('下载失败');
                   return response.blob();

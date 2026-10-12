@@ -12,6 +12,7 @@ from django.core.files.storage import FileSystemStorage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.http import StreamingHttpResponse
 from django.utils import timezone
+from django.utils.datastructures import MultiValueDict
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.base.models import User, UserAPISecret
@@ -28,11 +29,13 @@ from apps.opspilot.services.chat_attachment_service import (
     history_document_suffixes,
     load_sendable_attachments,
     parse_chat_attachment,
+    read_bounded_upload,
     store_upload,
 )
 from apps.opspilot.services.skill_channel_chat_service import SkillChannelChatError, serialize_skill_session_messages, stream_skill_channel_chat
 from apps.opspilot.tasks.chat_attachment import parse_chat_attachment_task
 from apps.opspilot.views.chat_attachment import chat_attachment_status, download_chat_attachment, upload_chat_attachment
+from apps.opspilot.views.skill_channel import execute_skill_embedded_chat
 
 pytestmark = pytest.mark.django_db
 
@@ -483,3 +486,126 @@ def test_debug_apply_does_not_bind_message(local_storage):
     assert "body" in text
     attachment.refresh_from_db()
     assert attachment.message_id is None
+
+
+class TrackingUpload:
+    def __init__(self, name, size, chunks=None):
+        self.name = name
+        self.size = size
+        self._chunks = chunks or []
+        self.chunk_calls = 0
+        self.read_calls = 0
+
+    def chunks(self, chunk_size=None):
+        self.chunk_calls += 1
+        yield from self._chunks
+
+    def read(self, size=-1):
+        self.read_calls += 1
+        raise AssertionError("read called")
+
+
+def test_upload_rejects_declared_image_size_without_reading(local_storage, caplog):
+    user = _user("image-size-user")
+    upload = TrackingUpload("shot.png", 5 * 1024 * 1024 + 1)
+    request = APIRequestFactory().post("/upload")
+    request.user = user
+    request.COOKIES["current_team"] = "1"
+    request.META["CONTENT_LENGTH"] = str(21 * 1024 * 1024)
+    request._files = MultiValueDict({"file": [upload]})
+    with caplog.at_level(logging.WARNING, logger="opspilot"):
+        response = upload_chat_attachment(request)
+    assert response.status_code == 400
+    assert json.loads(response.content)["code"] == "file_too_large"
+    assert upload.chunk_calls == 0
+    assert upload.read_calls == 0
+    assert ChatAttachment.objects.count() == 0
+    assert "file_too_large" in caplog.text
+    assert "SECRET" not in caplog.text
+
+
+def test_stream_read_aborts_when_body_exceeds_limit(monkeypatch, caplog):
+    monkeypatch.setattr("apps.opspilot.services.chat_attachment_service.DOCUMENT_MAX_BYTES", 16)
+    upload = TrackingUpload("notes.txt", 4, chunks=[b"x" * 20, b"SECRET_OVERSIZE"])
+    with caplog.at_level(logging.WARNING, logger="opspilot"):
+        with pytest.raises(ChatAttachmentError) as exc:
+            read_bounded_upload(upload)
+    assert exc.value.code == "file_too_large"
+    assert upload.chunk_calls == 1
+    assert upload.read_calls == 0
+    assert "SECRET_OVERSIZE" not in caplog.text
+
+
+def test_download_disposition_strips_header_injection(local_storage):
+    user = _user("disp-user")
+    stored = store_upload(filename='report\r\n";.txt', data=b"hello file", owner_key="disp-user@domain.com", team_id="1")
+    assert stored.original_name == "report.txt"
+    assert "\r" not in stored.original_name and '"' not in stored.original_name
+    attachment = _attachment(
+        local_storage,
+        name="notes.txt",
+        data=b"alpha",
+        mime="text/plain",
+        status=ChatAttachment.STATUS_READY,
+        owner="disp-user@domain.com",
+    )
+    attachment.original_name = 'notes\r\nSet-Cookie: injected=1";.txt'
+    attachment.save(update_fields=["original_name"])
+    request = APIRequestFactory().get("/download")
+    force_authenticate(request, user=user)
+    request.user = user
+    request.COOKIES["current_team"] = "1"
+    response = download_chat_attachment(request, attachment.id)
+    disposition = response["Content-Disposition"]
+    assert "\r" not in disposition
+    assert "\n" not in disposition
+    assert disposition.count('"') == 2
+    assert "Set-Cookie" not in disposition.split("filename=")[0]
+
+
+def test_embedded_stream_injects_attachment(local_storage, monkeypatch):
+    skill = _skill()
+    channel = SkillChannel.objects.create(
+        skill=skill,
+        channel_type=SkillChannelChoices.EMBEDDED_CHAT,
+        enabled=True,
+        usage_team=[1],
+    )
+    plain = UserAPISecret.generate_api_secret()
+    UserAPISecret.objects.create(
+        username="apiuser",
+        domain="domain.com",
+        team=1,
+        api_secret=UserAPISecret.hash_api_secret(plain),
+    )
+    attachment = _attachment(
+        local_storage,
+        name="notes.txt",
+        data=b"disk is 90 percent",
+        mime="text/plain",
+        status=ChatAttachment.STATUS_READY,
+        owner="apiuser@domain.com",
+        parsed="disk is 90 percent",
+    )
+    captured = {}
+
+    def fake_stream(params, *args, **kwargs):
+        captured["params"] = params
+        return StreamingHttpResponse(iter([b"ok"]), content_type="text/event-stream")
+
+    monkeypatch.setattr("apps.opspilot.services.skill_channel_chat_service.stream_agui_chat", fake_stream)
+    monkeypatch.setattr(
+        "apps.opspilot.services.skill_channel_chat_service.capture_caller_identity",
+        lambda request, user: {"username": "apiuser", "domain": "domain.com", "team_id": 1},
+    )
+    request = APIRequestFactory().post(
+        "/embedded",
+        {"message": "看一下", "attachment_ids": [attachment.id]},
+        format="json",
+        HTTP_API_AUTHORIZATION=plain,
+    )
+    response = execute_skill_embedded_chat(request, skill.id, channel.id)
+    assert response.status_code == 200
+    assert "disk is 90 percent" in captured["params"]["user_message"]
+    attachment.refresh_from_db()
+    assert attachment.message_id is not None
