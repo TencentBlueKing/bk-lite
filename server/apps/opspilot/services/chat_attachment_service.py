@@ -10,6 +10,7 @@ from celery import current_app
 from celery.exceptions import SoftTimeLimitExceeded
 from django.core.files.base import ContentFile
 from django.utils import timezone
+from django.utils.http import content_disposition_header
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.token_utils import count_text_tokens, get_encoding
@@ -85,6 +86,58 @@ def normalize_attachment_ids(raw) -> list[int]:
             raise ChatAttachmentError("附件 ID 无效", code="invalid_attachment_id")
         ids.append(value)
     return ids
+
+
+def upload_byte_limit(filename: str) -> int:
+    """按扩展名给出分配上限。未知类型也先卡在文档上限，再由分类拒绝。"""
+    if _extension(filename) in IMAGE_EXTENSIONS:
+        return IMAGE_MAX_BYTES
+    return DOCUMENT_MAX_BYTES
+
+
+def _reject_too_large() -> None:
+    logger.warning(UPLOAD_REJECTED_TEMPLATE, "validate", "file_too_large")
+    raise ChatAttachmentError("文件大小超出限制", code="file_too_large")
+
+
+def _declared_size(upload) -> int | None:
+    declared = getattr(upload, "size", None)
+    if declared is None:
+        return None
+    try:
+        size = int(declared)
+    except (TypeError, ValueError):
+        return None
+    if size < 0:
+        return None
+    return size
+
+
+def read_bounded_upload(upload) -> bytes:
+    """声明大小超限时不读正文。大小缺失或与正文不符时按块累加，超过上限即中止。"""
+    limit = upload_byte_limit(getattr(upload, "name", "") or "")
+    declared = _declared_size(upload)
+    if declared is not None and declared > limit:
+        _reject_too_large()
+    parts: list[bytes] = []
+    total = 0
+    chunks = getattr(upload, "chunks", None)
+    stream = chunks() if callable(chunks) else iter([upload.read(limit + 1)])
+    for chunk in stream:
+        if not chunk:
+            continue
+        size = len(chunk)
+        if size > limit or total > limit - size:
+            _reject_too_large()
+        parts.append(chunk)
+        total += size
+    return b"".join(parts)
+
+
+def attachment_content_disposition(filename: str, *, as_attachment: bool) -> str | None:
+    """用已去掉换行和引号的文件名生成 Content-Disposition。"""
+    extension = _extension(filename)
+    return content_disposition_header(as_attachment, _safe_filename(filename, extension))
 
 
 def store_upload(*, filename: str, data: bytes, owner_key: str, team_id: str) -> ChatAttachment:
@@ -379,8 +432,15 @@ def _extension(filename: str) -> str:
 
 
 def _safe_filename(filename: str, extension: str) -> str:
-    base = os.path.basename(filename or "").replace("\\", "/").split("/")[-1]
-    base = base.strip() or f"attachment.{extension}"
+    base = os.path.basename(str(filename or "")).replace("\\", "/").split("/")[-1]
+    cleaned = []
+    for char in base:
+        if char in {'"', "'", "\\", ";"} or ord(char) < 32 or ord(char) == 127:
+            continue
+        cleaned.append(char)
+    base = "".join(cleaned).strip().strip(".")
+    if not base:
+        base = f"attachment.{extension}" if extension else "attachment"
     return base[-255:]
 
 
