@@ -1415,7 +1415,7 @@
       "common": {
         "dashboardMode": "Classic Dashboard",
         "metricsMode": "All Metrics",
-        "categoryTabMode": "Layered Overview",
+        "categoryTabMode": "Category View",
         "viewSwitcher": "View",
         "fullMetrics": "All Metrics",
         "justNow": "Just now",

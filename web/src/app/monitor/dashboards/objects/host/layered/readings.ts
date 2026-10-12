@@ -56,9 +56,9 @@ export const formatUnit = (value: number | null, unit: MetricUnit) => {
 export const formatBytesPair = (used: number | null | undefined, total: number | null | undefined) => {
   const left = used != null && Number.isFinite(used) ? formatUnit(used, 'bytes') : null;
   const right = total != null && Number.isFinite(total) ? formatUnit(total, 'bytes') : null;
-  if (left && right) return `${left}/${right}`;
-  if (right) return `—/${right}`;
-  if (left) return `${left}/—`;
+  if (left && right) return `${left} / ${right}`;
+  if (right) return `— / ${right}`;
+  if (left) return `${left} / —`;
   return '—';
 };
 

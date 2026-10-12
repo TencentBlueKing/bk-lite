@@ -20,7 +20,7 @@ import styles from './layered.module.scss';
 
 const CPU_BREAKDOWN = [
   { key: 'cpu_usage_user_total', label: 'user', color: HOST_PALETTE.emerald },
-  { key: 'cpu_usage_system_total', label: 'sys', color: HOST_PALETTE.neutral },
+  { key: 'cpu_usage_system_total', label: 'system', color: HOST_PALETTE.neutral },
   { key: 'cpu_usage_iowait_total', label: 'iowait', color: HOST_PALETTE.orange }
 ];
 
@@ -50,10 +50,10 @@ export default function SystemPane({
   );
   const memItems = [
     ...(metricHasPoints(metrics.mem_used_percent)
-      ? [{ key: 'used', label: 'used%', color: HOST_PALETTE.blue, data: metrics.mem_used_percent?.viewData || [] }]
+      ? [{ key: 'used', label: '已用', color: HOST_PALETTE.blue, data: metrics.mem_used_percent?.viewData || [] }]
       : []),
     ...(available.length
-      ? [{ key: 'available', label: 'available%', color: HOST_PALETTE.emerald, data: available }]
+      ? [{ key: 'available', label: '可用', color: HOST_PALETTE.emerald, data: available }]
       : [])
   ];
   const load = latestNumber(metrics.system_load1);
@@ -63,7 +63,7 @@ export default function SystemPane({
   const charts = [
     <ThinTimeSeries
       key="cpu"
-      title="CPU 分项"
+      title={breakdown.length ? 'CPU 分项' : 'CPU 使用率'}
       loading={loading}
       unit="percent"
       data={mergeChartSeries(cpuItems.map((item) => ({
@@ -76,14 +76,14 @@ export default function SystemPane({
     loadItems.length ? (
       <ThinTimeSeries
         key="load"
-        title="Load"
+        title="系统负载"
         loading={loading}
         unit="none"
-        reading={load == null ? undefined : `${formatPlain(load)}${cores != null && cores > 0 ? ` · ${Math.round(cores)}C` : ''}`}
+        reading={load == null ? undefined : `${formatPlain(load)}${cores != null && cores > 0 ? ` · ${Math.round(cores)} 核` : ''}`}
         readingTone={load != null && cores != null && cores > 0 && load > cores ? 'var(--color-warning)' : undefined}
         reference={cores != null && cores > 0 ? {
           value: cores,
-          label: `=核数 ${Math.round(cores)}`,
+          label: `核数（${Math.round(cores)}）`,
           color: HOST_PALETTE.orange
         } : null}
         data={mergeChartSeries(loadItems.map((item) => ({
@@ -100,8 +100,8 @@ export default function SystemPane({
       loading={loading}
       unit="percent"
       reading={[
-        used == null ? null : `used ${formatPercent(used)}`,
-        availLatest == null ? null : `avail ${formatPercent(availLatest)}`
+        used == null ? null : `已用 ${formatPercent(used)}`,
+        availLatest == null ? null : `可用 ${formatPercent(availLatest)}`
       ].filter(Boolean).join(' · ') || undefined}
       data={mergeChartSeries(memItems.map((item) => ({
         key: item.key,
@@ -120,23 +120,20 @@ export default function SystemPane({
       ? [{
         key,
         label,
-        value: value == null ? '--' : `${Math.round(value)}个`,
+        value: value == null ? '--' : `${Math.round(value)} 个`,
         tone: countTone(value)
       }]
       : []
   );
   const counts = [
-    ...countItem('blocked', 'blocked', blocked),
-    ...countItem('zombies', 'zombies', zombies)
+    ...countItem('blocked', '阻塞', blocked),
+    ...countItem('zombies', '僵尸', zombies)
   ];
 
   return (
     <>
       <div className={styles.sectionHead}>
-        <div className={classic.sectionLabel}>系统解剖</div>
-        <div className={styles.hint}>
-          {loadItems.length ? '三细折线 · 仅 blocked / zombies' : '无 load · 仅 blocked / zombies'}
-        </div>
+        <div className={classic.sectionLabel}>系统</div>
       </div>
       <div className={gridClass}>{charts}</div>
       <StatusCountRow items={counts} />

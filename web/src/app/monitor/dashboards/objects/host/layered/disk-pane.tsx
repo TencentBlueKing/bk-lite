@@ -42,59 +42,58 @@ export default function DiskPane({
     <>
       {errorText ? <div className={styles.note}>{errorText}</div> : null}
       <div className={styles.sectionHead}>
-        <div className={classic.sectionLabel}>Metrics</div>
+        <div className={classic.sectionLabel}>趋势</div>
         <div className={styles.hint}>
-          {ioDevice || !selected
-            ? '选中行驱动 · 默认最差挂载'
-            : `选中 ${path || '挂载'} · 无 IO 设备`}
+          {ioDevice || !selected ? '点击下表行切换' : '该挂载无关联磁盘设备'}
         </div>
       </div>
       <div className={styles.chartGrid3}>
         <ThinTimeSeries
           key={`used-${selected?.key || 'none'}`}
-          title={path ? `挂载用量% · ${path}` : '挂载用量%'}
+          title={path ? `使用率 · ${path}` : '使用率'}
           reading={formatPercent(usedValue)}
           readingTone={percentTone(usedValue)}
           loading={loading}
           unit="percent"
           data={pointsToChartData([{ points: selected?.series.disk_used_percent || [] }])}
-          legends={[{ label: path || 'used%', color: HOST_PALETTE.orange }]}
+          legends={[{ label: path || '使用率', color: HOST_PALETTE.orange }]}
         />
         <ThinTimeSeries
           key={`read-${selected?.key || 'none'}-${ioDevice || 'empty'}`}
-          title={ioDevice ? `设备读 · ${ioDevice}` : '设备读'}
+          title={ioDevice ? `读取 · ${ioDevice}` : '读取'}
           reading={ioDevice ? formatUnit(readLatest ?? null, 'byteps') : undefined}
           loading={loading && !selected}
           unit="byteps"
-          emptyText={ioDevice ? '当前时间窗没有序列' : '无 IO 设备'}
+          emptyText={ioDevice ? '暂无数据' : '无关联磁盘设备'}
           data={pointsToChartData([{ points: readPoints }])}
-          legends={[{ label: '读', color: HOST_PALETTE.blue }]}
+          legends={[{ label: '读取', color: HOST_PALETTE.blue }]}
         />
         <ThinTimeSeries
           key={`write-${selected?.key || 'none'}-${ioDevice || 'empty'}`}
-          title={ioDevice ? `设备写 · ${ioDevice}` : '设备写'}
+          title={ioDevice ? `写入 · ${ioDevice}` : '写入'}
           reading={ioDevice ? formatUnit(writeLatest ?? null, 'byteps') : undefined}
           loading={loading && !selected}
           unit="byteps"
-          emptyText={ioDevice ? '当前时间窗没有序列' : '无 IO 设备'}
+          emptyText={ioDevice ? '暂无数据' : '无关联磁盘设备'}
           data={pointsToChartData([{ points: writePoints }])}
-          legends={[{ label: '写', color: HOST_PALETTE.cyan }]}
+          legends={[{ label: '写入', color: HOST_PALETTE.cyan }]}
         />
       </div>
 
       <div className={styles.sectionHead}>
-        <div className={classic.sectionLabel}>磁盘</div>
-        <div className={styles.hint}>选中行驱动上图 · 用量跟挂载 · IO 跟该行设备 · 无设备则 IO 空态</div>
+        <div className={classic.sectionLabel}>挂载点</div>
+        <div className={styles.hint}>按使用率排序；选中后上方显示对应趋势</div>
       </div>
       <LayeredEntityTable
         rows={rows}
         loading={loading}
         selectedKey={selected?.key || ''}
         onSelect={onSelect}
+        emptyText="暂无挂载数据"
         columns={[
           {
             key: 'path',
-            title: '挂载',
+            title: '挂载点',
             labelKey: 'path',
             render: (row, index) => (
               <span className={styles.nameCell}>
@@ -103,7 +102,7 @@ export default function DiskPane({
               </span>
             )
           },
-          { key: 'disk_used_percent', title: '用量', unit: 'percent', bar: true, emptyDash: true },
+          { key: 'disk_used_percent', title: '使用率', unit: 'percent', bar: true, emptyDash: true },
           {
             key: 'disk_used',
             title: '已用/总量',
@@ -111,14 +110,13 @@ export default function DiskPane({
           },
           {
             key: 'io_device',
-            title: 'IO 设备',
+            title: '磁盘设备',
             render: (row) => row.labels.io_device || '—'
           },
-          { key: 'diskio_read_bytes_rate', title: '读', unit: 'byteps', emptyDash: true },
-          { key: 'diskio_write_bytes_rate', title: '写', unit: 'byteps', emptyDash: true }
+          { key: 'diskio_read_bytes_rate', title: '读取', unit: 'byteps', emptyDash: true },
+          { key: 'diskio_write_bytes_rate', title: '写入', unit: 'byteps', emptyDash: true }
         ]}
       />
-      <div className={styles.footnote}>用量跟挂载，IO 跟设备；对不上时 IO 为 —，读/写图留空。角标只统计 used%≥80 的挂载，为 0 不显示。</div>
     </>
   );
 }

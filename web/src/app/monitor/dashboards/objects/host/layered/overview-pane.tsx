@@ -84,9 +84,9 @@ export default function OverviewPane({
       const hot = load != null && cores != null && cores > 0 && load > cores;
       items.push({
         key: 'load',
-        label: 'load1',
+        label: 'Load1',
         value: formatPlain(load),
-        subtitle: cores != null && cores > 0 ? `· ${Math.round(cores)}C` : undefined,
+        subtitle: cores != null && cores > 0 ? `· ${Math.round(cores)} 核` : undefined,
         tone: hot ? 'var(--color-warning)' : load == null ? undefined : 'var(--color-success)',
         color: HOST_PALETTE.orange,
         trend: metrics.system_load1?.viewData || []
@@ -94,9 +94,9 @@ export default function OverviewPane({
     }
     items.push({
       key: 'disk',
-      label: '磁盘 MAX',
+      label: '磁盘峰值',
       value: diskLoading && diskValue == null ? '--' : formatPercent(diskValue),
-      detail: mountName || undefined,
+      detail: mountName ? `挂载 ${mountName}` : '—',
       tone: percentTone(diskValue),
       color: HOST_PALETTE.orange,
       trend: worst ? pointsToChartData([{ points: worst.series.disk_used_percent || [] }]) : []
@@ -108,17 +108,17 @@ export default function OverviewPane({
         : 'var(--color-success)';
     items.push({
       key: 'alert',
-      label: '告警 · bk-lite',
+      label: '告警',
       value: alertCount == null ? '--' : String(alertCount),
       tone: alertTone,
       color: 'var(--color-text-3)',
       flat: alertCount != null,
       extra: typeof monitorObjectId === 'string' || typeof monitorObjectId === 'number' ? (
         <Link className={styles.policyLink} href={`/monitor/event/alert?objId=${monitorObjectId}`}>
-          策略命中 →
+          查看策略
         </Link>
       ) : (
-        <span className={styles.policyLink}>策略命中 →</span>
+        <span className={styles.policyLink}>查看策略</span>
       )
     });
     return items;
@@ -145,20 +145,14 @@ export default function OverviewPane({
   return (
     <>
       <KpiStrip items={cards} />
-      <div className={styles.sectionHead}>
-        <span />
-        <div className={styles.hint}>
-          {`跳 Tab 预选 · Metrics 固定整机${processReady ? '' : ' · 无 Process 对象'}`}
-        </div>
-      </div>
 
       <div className={styles.sectionHead}>
-        <div className={classic.sectionLabel}>关注捷径</div>
+        <div className={classic.sectionLabel}>重点关注</div>
       </div>
       <div className={styles.shortcutGrid}>
         {worst ? (
           <div className={`${classic.panel} ${styles.shortcutCard}`}>
-            <div className={styles.shortcutLabel}>最差磁盘</div>
+            <div className={styles.shortcutLabel}>用量最高挂载</div>
             <div className={styles.shortcutMain}>
               {mountName || '—'}
               {' · '}
@@ -166,46 +160,49 @@ export default function OverviewPane({
             </div>
             <div className={styles.shortcutSub}>
               {formatBytesPair(worst.values.disk_used, worst.values.disk_total)}
-              {diskValue != null && diskValue >= 80 ? ' · used%≥80' : ''}
             </div>
             <button type="button" className={styles.jumpBtn} onClick={() => onJump('disk', worst.key)}>
-              → 磁盘
+              查看磁盘
             </button>
           </div>
         ) : null}
         {busiest ? (
           <div className={`${classic.panel} ${styles.shortcutCard}`}>
-            <div className={styles.shortcutLabel}>最忙网卡</div>
+            <div className={styles.shortcutLabel}>流量最高网卡</div>
             <div className={styles.shortcutMain}>{busiest.labels.interface || '—'}</div>
             <div className={styles.shortcutSub}>
-              {`${formatUnit(latestOfRow(busiest, 'net_bytes_recv_rate'), 'byteps')} in · 只跳 Tab`}
+              {`入 ${formatUnit(latestOfRow(busiest, 'net_bytes_recv_rate'), 'byteps')}`}
             </div>
             <button type="button" className={styles.jumpBtn} onClick={() => onJump('net', busiest.key)}>
-              → 网络
+              查看网络
             </button>
           </div>
         ) : null}
         {processReady && topProcess ? (
           <div className={`${classic.panel} ${styles.shortcutCard}`}>
-            <div className={styles.shortcutLabel}>Top 进程</div>
+            <div className={styles.shortcutLabel}>CPU 占用最高</div>
             <div className={styles.shortcutMain}>
-              {`${topProcess.labels.process_name || '—'} ${formatPercent(latestOfRow(topProcess, 'process_cpu_usage'))}`}
+              {topProcess.labels.process_name || '—'}
             </div>
-            <div className={styles.shortcutSub}>cpu · mem</div>
+            <div className={styles.shortcutSub}>
+              {`CPU ${formatPercent(latestOfRow(topProcess, 'process_cpu_usage'))}`}
+              {latestOfRow(topProcess, 'process_mem_usage') != null
+                ? ` · 内存 ${formatPercent(latestOfRow(topProcess, 'process_mem_usage'))}`
+                : ''}
+            </div>
             <button type="button" className={styles.jumpBtn} onClick={() => onJump('process', topProcess.key)}>
-              → 进程
+              查看进程
             </button>
           </div>
         ) : null}
       </div>
 
       <div className={styles.sectionHead}>
-        <div className={classic.sectionLabel}>Metrics · 整机合计（固定）</div>
-        <div className={styles.hint}>不跟捷径/表互动</div>
+        <div className={classic.sectionLabel}>本机趋势</div>
       </div>
       <div className={styles.chartGrid4}>
         <ThinTimeSeries
-          title="CPU %"
+          title="CPU 使用率"
           reading={formatPercent(cpu)}
           readingTone={percentTone(cpu)}
           loading={loading}
@@ -214,7 +211,7 @@ export default function OverviewPane({
           legends={[{ label: 'CPU', color: HOST_PALETTE.emerald }]}
         />
         <ThinTimeSeries
-          title="内存 %"
+          title="内存使用率"
           reading={formatPercent(mem)}
           readingTone={percentTone(mem)}
           loading={loading}
@@ -223,17 +220,17 @@ export default function OverviewPane({
           legends={[{ label: '内存', color: HOST_PALETTE.blue }]}
         />
         <ThinTimeSeries
-          title={mountName ? `磁盘 used% · ${mountName}` : '磁盘 used%'}
+          title={mountName ? `磁盘使用率 · ${mountName}` : '磁盘使用率'}
           reading={formatPercent(diskValue)}
           readingTone={percentTone(diskValue)}
           loading={diskLoading}
           unit="percent"
-          emptyText="当前时间窗没有挂载用量"
+          emptyText="暂无挂载数据"
           data={worst ? pointsToChartData([{ points: worst.series.disk_used_percent || [] }]) : []}
-          legends={[{ label: mountName || 'used%', color: HOST_PALETTE.orange }]}
+          legends={[{ label: mountName || '使用率', color: HOST_PALETTE.orange }]}
         />
         <ThinTimeSeries
-          title="网络 入+出 · 整机合计"
+          title="网络吞吐 · 入/出"
           reading={`${formatUnit(netIn, 'byteps')} / ${formatUnit(netOut, 'byteps')}`}
           loading={loading}
           unit="byteps"

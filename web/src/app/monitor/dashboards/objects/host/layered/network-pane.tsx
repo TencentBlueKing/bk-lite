@@ -49,16 +49,16 @@ export default function NetworkPane({
   const errLatest = selected?.values.err ?? null;
   const dropLatest = selected?.values.drop ?? null;
   const errorSeries = [
-    ...(hasErr ? [{ points: selected?.series.err || [], label: 'err', color: HOST_PALETTE.rose }] : []),
-    ...(hasDrop ? [{ points: selected?.series.drop || [], label: 'drop', color: HOST_PALETTE.orange }] : [])
+    ...(hasErr ? [{ points: selected?.series.err || [], label: '错误', color: HOST_PALETTE.rose }] : []),
+    ...(hasDrop ? [{ points: selected?.series.drop || [], label: '丢包', color: HOST_PALETTE.orange }] : [])
   ];
 
   return (
     <>
       {errorText ? <div className={styles.note}>{errorText}</div> : null}
       <div className={styles.sectionHead}>
-        <div className={classic.sectionLabel}>Metrics · 选中网卡</div>
-        <div className={styles.hint}>{`选中行驱动上图 · 默认最忙${name ? ` ${name}` : ''} · 非整机合计`}</div>
+        <div className={classic.sectionLabel}>趋势</div>
+        <div className={styles.hint}>点击下表行切换</div>
       </div>
       <div className={showErrors ? styles.chartGrid3 : styles.chartGrid2}>
         <ThinTimeSeries
@@ -93,18 +93,18 @@ export default function NetworkPane({
       </div>
 
       <div className={styles.sectionHead}>
-        <div className={classic.sectionLabel}>网络</div>
-        <div className={styles.hint}>选中行驱动上图 · 可采列</div>
+        <div className={classic.sectionLabel}>网卡</div>
       </div>
       <LayeredEntityTable
         rows={viewRows}
         loading={loading}
         selectedKey={selected?.key || ''}
         onSelect={onSelect}
+        emptyText="暂无网卡数据"
         columns={[
           {
             key: 'interface',
-            title: '网卡名',
+            title: '网卡',
             labelKey: 'interface',
             render: (row, index) => (
               <span className={styles.nameCell}>
@@ -115,11 +115,10 @@ export default function NetworkPane({
           },
           { key: 'net_bytes_recv_rate', title: '入', unit: 'byteps', emptyDash: true },
           { key: 'net_bytes_sent_rate', title: '出', unit: 'byteps', emptyDash: true },
-          ...(hasErr ? [{ key: 'err', title: 'err', unit: 'cps' as const, emptyDash: true }] : []),
-          ...(hasDrop ? [{ key: 'drop', title: 'drop', unit: 'cps' as const, emptyDash: true }] : [])
+          ...(hasErr ? [{ key: 'err', title: '错误', unit: 'cps' as const, emptyDash: true }] : []),
+          ...(hasDrop ? [{ key: 'drop', title: '丢包', unit: 'cps' as const, emptyDash: true }] : [])
         ]}
       />
-      <div className={styles.footnote}>可采：网卡名 / 入 / 出 / err / drop。本页是选中网卡，与概览「整机合计」不是同一条序列。</div>
     </>
   );
 }

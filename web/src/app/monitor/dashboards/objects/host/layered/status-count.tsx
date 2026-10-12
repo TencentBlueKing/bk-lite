@@ -17,8 +17,7 @@ export default function StatusCountRow({ items }: { items: StatusCountItem[] }) 
   return (
     <section className={`${classic.panel} ${styles.statusPanel}`}>
       <div className={styles.sectionHead}>
-        <div className={classic.sectionLabel}>状态计数</div>
-        <div className={styles.hint}>语义色 · 单位「个」无箭头</div>
+        <div className={classic.sectionLabel}>进程状态</div>
       </div>
       <div className={styles.pillRow}>
         {items.map((item) => (

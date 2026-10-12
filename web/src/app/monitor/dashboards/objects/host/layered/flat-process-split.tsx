@@ -35,17 +35,17 @@ export default function FlatProcessSplit({
   const columns = useMemo<LayeredColumn[]>(() => {
     const present = (key: string) => sorted.some((row) => numberOrNull(row.values[key]) != null);
     const next: LayeredColumn[] = [
-      { key: 'process_name', title: 'process_name', labelKey: 'process_name' }
+      { key: 'process_name', title: '进程名', labelKey: 'process_name' }
     ];
-    if (loading || present('process_cpu_usage')) next.push({ key: 'process_cpu_usage', title: 'cpu', unit: 'percent', emptyDash: true });
-    if (loading || present('process_mem_usage')) next.push({ key: 'process_mem_usage', title: 'mem', unit: 'percent', emptyDash: true });
-    if (loading || present('process_memory_rss')) next.push({ key: 'process_memory_rss', title: 'rss', unit: 'bytes', emptyDash: true });
-    if (loading || present('process_num_threads')) next.push({ key: 'process_num_threads', title: 'threads', unit: 'counts', emptyDash: true });
-    if (loading || present('process_num_fds')) next.push({ key: 'process_num_fds', title: 'fds', unit: 'counts', emptyDash: true });
+    if (loading || present('process_cpu_usage')) next.push({ key: 'process_cpu_usage', title: 'CPU', unit: 'percent', emptyDash: true });
+    if (loading || present('process_mem_usage')) next.push({ key: 'process_mem_usage', title: '内存', unit: 'percent', emptyDash: true });
+    if (loading || present('process_memory_rss')) next.push({ key: 'process_memory_rss', title: 'RSS', unit: 'bytes', emptyDash: true });
+    if (loading || present('process_num_threads')) next.push({ key: 'process_num_threads', title: '线程', unit: 'counts', emptyDash: true });
+    if (loading || present('process_num_fds')) next.push({ key: 'process_num_fds', title: '句柄', unit: 'counts', emptyDash: true });
     if (loading || present('process_alive')) {
       next.push({
         key: 'process_alive',
-        title: 'alive',
+        title: '存活',
         render: (row) => {
           const value = numberOrNull(row.values.process_alive);
           if (value == null) return '—';
@@ -59,13 +59,13 @@ export default function FlatProcessSplit({
   return (
     <>
       <div className={styles.sectionHead}>
-        <div className={classic.sectionLabel}>Metrics · 选中进程</div>
-        <div className={styles.hint}>{`选中行驱动上图 · 默认 Top${name ? ` ${name}` : ''}`}</div>
+        <div className={classic.sectionLabel}>趋势</div>
+        <div className={styles.hint}>点击下表行切换</div>
       </div>
       <div className={styles.processTop}>
         <ThinTimeSeries
           key={selected?.key || 'none'}
-          title={name ? `cpu / mem · ${name}` : 'cpu / mem'}
+          title={name ? `CPU / 内存 · ${name}` : 'CPU / 内存'}
           reading={`${formatPercent(cpu)} / ${formatPercent(mem)}`}
           loading={loading}
           unit="percent"
@@ -74,24 +74,24 @@ export default function FlatProcessSplit({
             { points: selected?.series.process_mem_usage || [] }
           ])}
           legends={[
-            { label: 'cpu', color: HOST_PALETTE.emerald },
-            { label: 'mem', color: HOST_PALETTE.blue }
+            { label: 'CPU', color: HOST_PALETTE.emerald },
+            { label: '内存', color: HOST_PALETTE.blue }
           ]}
         />
         <section className={`${classic.panel} ${styles.currentCard}`}>
-          <div className={styles.currentKicker}>当前</div>
+          <div className={styles.currentKicker}>当前进程</div>
           <div className={styles.currentName}>{name || '—'}</div>
           <div className={styles.currentMetric}>
-            cpu
+            CPU
             <b style={{ color: percentTone(cpu) }}>{formatPercent(cpu)}</b>
           </div>
           <div className={styles.currentMetric}>
-            mem
+            内存
             <b style={{ color: percentTone(mem) }}>{formatPercent(mem)}</b>
           </div>
           {numberOrNull(selected?.values.process_memory_rss) != null ? (
             <div className={styles.currentMetric}>
-              rss
+              RSS
               <b>{formatUnit(numberOrNull(selected?.values.process_memory_rss), 'bytes')}</b>
             </div>
           ) : null}
@@ -99,7 +99,7 @@ export default function FlatProcessSplit({
       </div>
 
       <div className={styles.sectionHead}>
-        <div className={classic.sectionLabel}>Top 进程</div>
+        <div className={classic.sectionLabel}>进程列表</div>
       </div>
       <LayeredEntityTable
         rows={sorted}
@@ -107,8 +107,8 @@ export default function FlatProcessSplit({
         loading={loading}
         selectedKey={selected?.key || ''}
         onSelect={onSelect}
+        emptyText="暂无进程数据"
       />
-      <div className={styles.footnote}>可采列：process_name / cpu / mem / rss / threads / fds / alive。无 PID / User / virt / 进程 IO。</div>
     </>
   );
 }

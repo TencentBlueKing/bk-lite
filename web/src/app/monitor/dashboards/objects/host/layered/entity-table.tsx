@@ -38,13 +38,15 @@ export default function LayeredEntityTable({
   columns,
   loading,
   selectedKey,
-  onSelect
+  onSelect,
+  emptyText = '暂无数据'
 }: {
   rows: EntityTableRow[];
   columns: LayeredColumn[];
   loading: boolean;
   selectedKey: string;
   onSelect: (key: string) => void;
+  emptyText?: string;
 }) {
   const tableColumns: ColumnsType<EntityTableRow> = columns.map((column) => ({
     title: column.title,
@@ -89,7 +91,7 @@ export default function LayeredEntityTable({
         columns={tableColumns}
         dataSource={rows}
         scroll={{ x: 'max-content', y: 280 }}
-        locale={{ emptyText: loading ? '加载中' : '当前时间窗没有数据' }}
+        locale={{ emptyText: loading ? '加载中' : emptyText }}
         rowClassName={(row) => (row.key === selectedKey ? styles.rowActive : styles.rowIdle)}
         onRow={(row) => ({ onClick: () => onSelect(row.key) })}
       />

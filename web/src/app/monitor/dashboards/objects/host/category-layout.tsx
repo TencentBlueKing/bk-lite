@@ -137,7 +137,7 @@ export default function HostCategoryLayout({
         <DiskPane
           rows={diskRows}
           loading={diskLoading}
-          errorText={diskState.status === 'error' ? '磁盘维度查询失败，请稍后重试。' : undefined}
+          errorText={diskState.status === 'error' ? '磁盘数据加载失败，请稍后重试。' : undefined}
           selectedKey={diskSelection.selectedKey}
           onSelect={diskSelection.setSelectedKey}
         />
@@ -148,7 +148,7 @@ export default function HostCategoryLayout({
         <NetworkPane
           rows={netRows}
           loading={netLoading}
-          errorText={netState.status === 'error' ? '网卡维度查询失败，请稍后重试。' : undefined}
+          errorText={netState.status === 'error' ? '网卡数据加载失败，请稍后重试。' : undefined}
           selectedKey={netSelection.selectedKey}
           onSelect={netSelection.setSelectedKey}
         />

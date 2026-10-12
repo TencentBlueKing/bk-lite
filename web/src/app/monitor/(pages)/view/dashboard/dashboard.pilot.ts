@@ -187,7 +187,9 @@ export const dashboardPresentationLabel = (): '全量指标' | '经典仪表盘'
   if (/全量指标/.test(label) || /all\s*metrics/i.test(label) || /full\s*metrics/i.test(label)) return '全量指标';
   if (
     /分层概览/.test(label)
+    || /分类视图/.test(label)
     || /layered\s*overview/i.test(label)
+    || /category\s*view/i.test(label)
     || /分类\s*Tab/.test(label)
     || /category tabs/i.test(label)
   ) return '分层概览';

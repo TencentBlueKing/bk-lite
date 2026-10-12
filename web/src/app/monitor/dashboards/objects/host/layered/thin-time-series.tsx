@@ -61,7 +61,7 @@ export default function ThinTimeSeries({
   loading = false,
   reading,
   readingTone,
-  emptyText = '当前时间窗没有序列',
+  emptyText = '暂无数据',
   reference
 }: ThinTimeSeriesProps) {
   const theme = useThemeColors();
