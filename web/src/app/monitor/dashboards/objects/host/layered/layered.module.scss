@@ -288,25 +288,20 @@
 }
 
 .statusPanel {
+  align-self: flex-start;
+  width: fit-content;
+  max-width: 100%;
   gap: 12px;
 }
 
-.statusCardsFill,
-.statusCardsPair {
-  display: grid;
-  gap: 8px;
-}
-
-.statusCardsFill {
-  --status-card-min-height: 72px;
-  --status-value-size: 24px;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-}
-
-.statusCardsPair {
-  --status-card-min-height: 60px;
+.statusCards {
   --status-value-size: 22px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
 }
 
 .statusCard {
@@ -315,12 +310,14 @@
   --status-unit: var(--status-accent);
   position: relative;
   display: flex;
+  flex: 0 0 180px;
   flex-direction: column;
   justify-content: center;
   gap: 6px;
-  min-width: 0;
-  min-height: var(--status-card-min-height, 72px);
-  padding: 10px 12px 10px 16px;
+  width: 180px;
+  max-width: 100%;
+  min-height: 64px;
+  padding: 8px 12px 8px 14px;
   border: 1px solid color-mix(in srgb, var(--status-accent) 28%, var(--color-border));
   border-radius: 12px;
   background: color-mix(in srgb, var(--status-accent) 10%, var(--color-bg));
@@ -526,9 +523,5 @@
   .processSplit,
   .processTop {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .statusCardsFill {
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   }
 }

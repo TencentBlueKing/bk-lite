@@ -5,7 +5,6 @@ import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
 export type ProcessStatusTone = 'calm' | 'warning' | 'danger' | 'neutral';
-export type ProcessStatusLayout = 'fill' | 'pair';
 
 export interface StatusCountItem {
   key: string;
@@ -56,49 +55,53 @@ const neutralItem = (key: string, label: string, value: number | null): StatusCo
 });
 
 /**
- * 运行中、休眠、阻塞、僵尸都能读到时横排五卡，进程总数是这四项之和。
- * 采集侧没有单独的总数序列；任一项没有读数则只留阻塞/僵尸两张等宽卡。
+ * 有读数的状态各出一张窄卡。四项都齐时补进程总数（四项之和）。
+ * 采集侧没有单独的总数序列；运行中/休眠都没有时只留阻塞/僵尸。
  */
 export const processStatusView = (
   counts: ProcessStatusCounts,
   pending: boolean
-): { layout: ProcessStatusLayout; items: StatusCountItem[] } => {
+): StatusCountItem[] => {
   const blocked = roundCount(counts.blocked);
   const zombies = roundCount(counts.zombies);
   const running = roundCount(counts.running);
   const sleeping = roundCount(counts.sleeping);
-  const fillReady = [blocked, zombies, running, sleeping].every((value) => value != null);
-  if (pending || fillReady) {
-    const total = fillReady
-      ? (blocked as number) + (zombies as number) + (running as number) + (sleeping as number)
+  const states = [running, sleeping, blocked, zombies];
+  const allReady = states.every((value) => value != null);
+  if (pending) {
+    const total = allReady
+      ? (running as number) + (sleeping as number) + (blocked as number) + (zombies as number)
       : null;
-    return {
-      layout: 'fill',
-      items: [
-        semanticItem('blocked', '阻塞', blocked, true),
-        semanticItem('zombies', '僵尸', zombies, true),
-        neutralItem('running', '运行中', running),
-        neutralItem('sleeping', '休眠', sleeping),
-        neutralItem('total', '进程总数', total)
-      ].filter((item): item is StatusCountItem => item != null)
-    };
+    return [
+      neutralItem('running', '运行中', running),
+      neutralItem('sleeping', '休眠', sleeping),
+      semanticItem('blocked', '阻塞', blocked, true),
+      semanticItem('zombies', '僵尸', zombies, true),
+      neutralItem('total', '进程总数', total)
+    ].filter((item): item is StatusCountItem => item != null);
   }
-  return {
-    layout: 'pair',
-    items: [
-      semanticItem('blocked', '阻塞', blocked, false),
-      semanticItem('zombies', '僵尸', zombies, false)
-    ].filter((item): item is StatusCountItem => item != null)
-  };
+  const items: StatusCountItem[] = [];
+  if (running != null) items.push(neutralItem('running', '运行中', running));
+  if (sleeping != null) items.push(neutralItem('sleeping', '休眠', sleeping));
+  const blockedItem = semanticItem('blocked', '阻塞', blocked, false);
+  const zombiesItem = semanticItem('zombies', '僵尸', zombies, false);
+  if (blockedItem) items.push(blockedItem);
+  if (zombiesItem) items.push(zombiesItem);
+  if (allReady) {
+    items.push(neutralItem(
+      'total',
+      '进程总数',
+      (running as number) + (sleeping as number) + (blocked as number) + (zombies as number)
+    ));
+  }
+  return items;
 };
 
 /** 进程状态：标签在上，整数 +「个」，左侧色条。不画涨跌箭头。 */
 export default function StatusCountRow({
-  items,
-  layout
+  items
 }: {
   items: StatusCountItem[];
-  layout: ProcessStatusLayout;
 }) {
   if (!items.length) return null;
   return (
@@ -106,7 +109,7 @@ export default function StatusCountRow({
       <div className={styles.sectionHead}>
         <div className={classic.sectionLabel}>进程状态</div>
       </div>
-      <div className={layout === 'fill' ? styles.statusCardsFill : styles.statusCardsPair}>
+      <div className={styles.statusCards}>
         {items.map((item) => (
           <div key={item.key} className={`${styles.statusCard} ${TONE_CLASS[item.tone]}`}>
             <span className={styles.statusLabel}>{item.label}</span>

@@ -70,7 +70,7 @@ export default function FlatProcessSplit({
     )
   );
   const statusPending = !trendSettled && (metricsLoading || Object.keys(metrics || {}).length > 0);
-  const status = processStatusView({
+  const statusItems = processStatusView({
     blocked: latestNumber(metrics?.processes_blocked),
     zombies: latestNumber(metrics?.processes_zombies),
     running: latestNumber(metrics?.processes_running),
@@ -79,7 +79,7 @@ export default function FlatProcessSplit({
 
   return (
     <>
-      <StatusCountRow items={status.items} layout={status.layout} />
+      <StatusCountRow items={statusItems} />
       <div className={styles.sectionHead}>
         <div className={classic.sectionLabel}>趋势</div>
         <div className={styles.hint}>点击下表行切换</div>

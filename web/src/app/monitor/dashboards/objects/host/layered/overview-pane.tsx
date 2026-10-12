@@ -144,6 +144,9 @@ export default function OverviewPane({
 
   return (
     <>
+      <div className={styles.sectionHead}>
+        <div className={classic.sectionLabel}>健康概览</div>
+      </div>
       <KpiStrip items={cards} />
 
       <div className={styles.sectionHead}>
