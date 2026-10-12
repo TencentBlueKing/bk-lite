@@ -1,4 +1,8 @@
+import pytest
+
 from apps.rum.services.analytics import UnavailableAnalytics
+
+pytestmark = pytest.mark.django_db
 from apps.rum.services.applications import ApplicationsService
 from apps.rum.services.control import ControlError, MemoryControl, UnavailableControl
 from apps.rum.services.settings import RumRuntimeSettings

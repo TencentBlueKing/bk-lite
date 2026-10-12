@@ -1,4 +1,8 @@
+import pytest
+
 from apps.rum.constants import DEFAULT_BUDGETS
+
+pytestmark = pytest.mark.django_db
 from apps.rum.services.analytics import UnavailableAnalytics
 from apps.rum.services.applications import ApplicationsService
 from apps.rum.services.control import MemoryControl, UnavailableControl
@@ -72,7 +76,10 @@ def test_create_ignores_client_supplied_org_id():
 
 
 def test_status_degrades_when_controller_unavailable():
-    service = ApplicationsService(UnavailableControl(), _settings())
+    control = MemoryControl()
+    service = ApplicationsService(control, _settings())
+    service.create_application("tester", {"application": "checkout", "origins": ["https://shop.example.test"]})
+    service.control = UnavailableControl()
     payload = service.status("tester", "checkout")
     assert payload["controllerUnreachable"] is True
     assert payload["status"] == "waiting"
