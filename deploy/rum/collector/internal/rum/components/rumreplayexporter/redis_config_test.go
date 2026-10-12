@@ -28,12 +28,30 @@ func TestRedisPasswordFileKeepsProductionSecretOutOfURL(t *testing.T) {
 	require.NotContains(t, cfg.RedisURL, secret)
 }
 
+func TestRedisConfigAcceptsPasswordWithoutACLUser(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.MinIOAccessKey = "access"
+	cfg.MinIOSecretKey = "secret"
+	cfg.RedisURL = "redis://:" + strings.Repeat("b", 48) + "@rum-redis:6379"
+	require.NoError(t, cfg.Validate())
+}
+
+func TestRedisConfigRequiresMatchingACLUserWhenEnabled(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.MinIOAccessKey = "access"
+	cfg.MinIOSecretKey = "secret"
+	cfg.RedisRequireACLIdentity = true
+	cfg.RedisURL = "redis://other:" + strings.Repeat("b", 48) + "@rum-redis:6379"
+	require.ErrorContains(t, cfg.Validate(), "ACL username must be rum-replay-exporter")
+
+	cfg.RedisACLUsername = "shared-rum"
+	cfg.RedisURL = "redis://shared-rum:" + strings.Repeat("b", 48) + "@rum-redis:6379"
+	require.NoError(t, cfg.Validate())
+}
+
 func TestRedisConfigRejectsSharedOrLeakyAuthorities(t *testing.T) {
 	for name, mutate := range map[string]func(*Config){
-		"missing user":        func(cfg *Config) { cfg.RedisURL = "redis://rum-redis:6379" },
-		"legacy broad user":   func(cfg *Config) { cfg.RedisURL = "redis://rum:" + strings.Repeat("b", 48) + "@rum-redis:6379" },
-		"web user":            func(cfg *Config) { cfg.RedisURL = "redis://rum-web:" + strings.Repeat("b", 48) + "@rum-redis:6379" },
-		"worker user":         func(cfg *Config) { cfg.RedisURL = "redis://rum-worker:" + strings.Repeat("b", 48) + "@rum-redis:6379" },
+		"missing password":    func(cfg *Config) { cfg.RedisURL = "redis://rum-redis:6379" },
 		"shared default user": func(cfg *Config) { cfg.RedisURL = "redis://redis:6379" },
 		"passwordless dev":    func(cfg *Config) { cfg.RedisURL = "redis://rum-replay-exporter@rum-redis:6379" },
 		"password plus file": func(cfg *Config) {

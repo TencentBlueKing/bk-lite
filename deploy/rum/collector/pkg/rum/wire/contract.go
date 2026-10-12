@@ -17,17 +17,20 @@ import (
 const APIVersion = "rum.control/v1"
 
 const (
-	SubjectApplicationApply   = "rum.v1.control.application.apply"
-	SubjectApplicationGet     = "rum.v1.control.application.get"
-	SubjectApplicationList    = "rum.v1.control.application.list"
-	SubjectApplicationRotate  = "rum.v1.control.application.rotate"
-	SubjectApplicationRetire  = "rum.v1.control.application.retire"
-	SubjectApplicationDisable = "rum.v1.control.application.disable"
-	SubjectErasureSubmit      = "rum.v1.control.erasure.submit"
-	SubjectReconcileSubmit    = "rum.v1.control.reconcile.submit"
-	SubjectOperationGet       = "rum.v1.control.operation.get"
-	SubjectStatusGet          = "rum.v1.control.status.get"
-	QueueGroupController      = "rum-controller"
+	SubjectApplicationApply    = "rum.v1.control.application.apply"
+	SubjectApplicationGet      = "rum.v1.control.application.get"
+	SubjectApplicationList     = "rum.v1.control.application.list"
+	SubjectApplicationRotate   = "rum.v1.control.application.rotate"
+	SubjectApplicationRetire   = "rum.v1.control.application.retire"
+	SubjectApplicationDisable  = "rum.v1.control.application.disable"
+	SubjectErasureSubmit       = "rum.v1.control.erasure.submit"
+	SubjectErasureFenceRelease = "rum.v1.control.erasure.fence.release"
+	SubjectProjectionApply     = "rum.v1.control.projection.apply"
+	SubjectProjectionReconcile = "rum.v1.control.projection.reconcile"
+	SubjectReconcileSubmit     = "rum.v1.control.reconcile.submit"
+	SubjectOperationGet        = "rum.v1.control.operation.get"
+	SubjectStatusGet           = "rum.v1.control.status.get"
+	QueueGroupController       = "rum-controller"
 )
 
 var AllSubjects = []string{
@@ -38,6 +41,9 @@ var AllSubjects = []string{
 	SubjectApplicationRetire,
 	SubjectApplicationDisable,
 	SubjectErasureSubmit,
+	SubjectErasureFenceRelease,
+	SubjectProjectionApply,
+	SubjectProjectionReconcile,
 	SubjectReconcileSubmit,
 	SubjectOperationGet,
 	SubjectStatusGet,
@@ -46,6 +52,7 @@ var AllSubjects = []string{
 var (
 	envelopeIDPattern  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,255}$`)
 	browserKeyPattern  = regexp.MustCompile(`^[A-Za-z0-9._:-]{16,256}$`)
+	digestPattern      = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	applicationPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$`)
 	stableIDPattern    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 )
@@ -94,7 +101,7 @@ type Budgets struct {
 }
 
 type ApplicationApplyPayload struct {
-	Application string   `json:"application"`
+	Application string `json:"application"`
 	// OrgID scopes application identity to one organization. The deployment
 	// registry is shared, so the controller rejects an apply that would move
 	// an existing name to a different organization.
@@ -203,6 +210,84 @@ type ErasureIdentity struct {
 type ErasureSubmitPayload struct {
 	Application string            `json:"application"`
 	Identities  []ErasureIdentity `json:"identities"`
+}
+
+type ProjectionApplyPayload struct {
+	Application       string   `json:"application"`
+	TenantID          string   `json:"tenantId"`
+	OrgID             string   `json:"orgId"`
+	Enabled           bool     `json:"enabled"`
+	Revision          int64    `json:"revision"`
+	Budgets           Budgets  `json:"budgets"`
+	Origins           []string `json:"origins"`
+	BrowserKeyDigests []string `json:"browserKeyDigests"`
+	// Force lets reconcile replace a Redis revision that is ahead of the
+	// database, for example after a database restore. Ordinary publishes omit it.
+	Force bool `json:"force,omitempty"`
+}
+
+func (payload ProjectionApplyPayload) Validate() error {
+	if !applicationPattern.MatchString(payload.Application) {
+		return errors.New("application name must be a stable identifier")
+	}
+	if !applicationPattern.MatchString(payload.TenantID) {
+		return errors.New("tenant id must be a stable identifier")
+	}
+	if !applicationPattern.MatchString(payload.OrgID) {
+		return errors.New("organization id must be a stable identifier")
+	}
+	if payload.Revision <= 0 {
+		return errors.New("revision must be positive")
+	}
+	if payload.Budgets.RequestsPerMinute <= 0 ||
+		payload.Budgets.CompressedBytesPerMinute <= 0 ||
+		payload.Budgets.DecompressedBytesPerMinute <= 0 ||
+		payload.Budgets.EventsPerMinute <= 0 {
+		return errors.New("budgets: all application budgets must be explicit and positive")
+	}
+	if len(payload.BrowserKeyDigests) == 0 || len(payload.BrowserKeyDigests) > 2 {
+		return errors.New("browser key digests: application must have between one and two active digests")
+	}
+	seenDigests := make(map[string]struct{}, len(payload.BrowserKeyDigests))
+	for _, digest := range payload.BrowserKeyDigests {
+		if !digestPattern.MatchString(digest) {
+			return errors.New("browser key digest must be lowercase SHA-256")
+		}
+		if _, duplicate := seenDigests[digest]; duplicate {
+			return errors.New("browser key digests must be unique")
+		}
+		seenDigests[digest] = struct{}{}
+	}
+	if len(payload.Origins) == 0 || len(payload.Origins) > 20 {
+		return errors.New("origins: application must have between one and twenty exact origins")
+	}
+	seenOrigins := make(map[string]struct{}, len(payload.Origins))
+	for _, origin := range payload.Origins {
+		canonical, err := canonicalOrigin(origin)
+		if err != nil || canonical != origin {
+			return errors.New("origin: origin must be an exact canonical HTTP or HTTPS origin")
+		}
+		if _, duplicate := seenOrigins[canonical]; duplicate {
+			return errors.New("origins must be unique")
+		}
+		seenOrigins[canonical] = struct{}{}
+	}
+	return nil
+}
+
+type ProjectionRevision struct {
+	Application string `json:"application"`
+	Revision    int64  `json:"revision"`
+}
+
+type ProjectionFence struct {
+	Application string            `json:"application"`
+	Identities  []ErasureIdentity `json:"identities"`
+}
+
+type ProjectionReconcilePayload struct {
+	Applications []ProjectionRevision `json:"applications"`
+	Fences       []ProjectionFence    `json:"fences"`
 }
 
 type ReconcileSubmitPayload struct {

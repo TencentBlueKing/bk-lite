@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/bk-lite/rum-collector/internal/rum/authority"
 	"github.com/bk-lite/rum-collector/internal/rum/ingress"
 	"github.com/bk-lite/rum-collector/internal/rum/state"
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -26,7 +26,6 @@ const (
 	OperationKeyPrefix    = state.OperationKeyPrefix
 	CommandKeyPrefix      = state.CommandKeyPrefix
 	defaultOperationTTL   = 30 * 24 * time.Hour
-	defaultAOFTimeout     = 5 * time.Second
 )
 
 const applyApplicationScript = `
@@ -125,13 +124,46 @@ redis.call("EXPIRE", command, tonumber(ARGV[2]))
 return {"ok", ARGV[4]}
 `
 
+const applyProjectionScript = `
+local current = tonumber(redis.call("HGET", KEYS[1], "revision") or "0")
+local incoming = tonumber(ARGV[1])
+local overwrite = ARGV[11] == "1" and incoming < current
+if incoming <= current and not overwrite then
+  return {"stale", tostring(current)}
+end
+local accepted = redis.call("HGET", KEYS[1], "last_accepted_at") or "0"
+local stored = redis.call("HGET", KEYS[1], "last_stored_at") or "0"
+redis.call("DEL", KEYS[1], KEYS[2], KEYS[3], KEYS[4])
+redis.call("HSET", KEYS[1],
+  "tenant_id", ARGV[2],
+  "org_id", ARGV[3],
+  "enabled", ARGV[4],
+  "revision", ARGV[1],
+  "requests_per_minute", ARGV[5],
+  "compressed_bytes_per_minute", ARGV[6],
+  "decompressed_bytes_per_minute", ARGV[7],
+  "events_per_minute", ARGV[8],
+  "last_accepted_at", accepted,
+  "last_stored_at", stored)
+local digests = cjson.decode(ARGV[9])
+for _, digest in ipairs(digests) do
+  redis.call("SADD", KEYS[2], digest)
+end
+local origins = cjson.decode(ARGV[10])
+for _, origin in ipairs(origins) do
+  redis.call("SADD", KEYS[3], origin)
+end
+return {"ok"}
+`
+
 type StoreConfig struct {
 	RedisURL            string
 	RedisPasswordFile   string
 	CommandTTL          time.Duration
 	OperationTTL        time.Duration
 	FenceTTL            time.Duration
-	AOFTimeout          time.Duration
+	RequireACLIdentity  bool
+	ACLUsername         string
 	CurrentHMACSecret   string
 	CurrentHMACVersion  string
 	PreviousHMACSecret  string
@@ -145,14 +177,12 @@ type Store struct {
 	commandTTL          time.Duration
 	operationTTL        time.Duration
 	fenceTTL            time.Duration
-	aofTimeout          time.Duration
 	currentHMACSecret   string
 	currentHMACVersion  string
 	previousHMACSecret  string
 	previousHMACVersion string
 	now                 func() time.Time
 	newOperationID      func() string
-	waitDurable         func(context.Context) error
 }
 
 type commandResult struct {
@@ -198,7 +228,7 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 			return nil, errors.New("previous identity HMAC version must be valid and distinct")
 		}
 	}
-	options, err := controlRedisOptions(cfg.RedisURL, cfg.RedisPasswordFile)
+	options, err := controlRedisOptions(cfg.RedisURL, cfg.RedisPasswordFile, cfg.RequireACLIdentity, cfg.ACLUsername)
 	if err != nil {
 		return nil, err
 	}
@@ -215,9 +245,6 @@ func newStoreWithClient(client *redis.Client, cfg StoreConfig) *Store {
 	if cfg.FenceTTL <= 0 {
 		cfg.FenceTTL = 17 * 24 * time.Hour
 	}
-	if cfg.AOFTimeout <= 0 {
-		cfg.AOFTimeout = defaultAOFTimeout
-	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
@@ -229,7 +256,6 @@ func newStoreWithClient(client *redis.Client, cfg StoreConfig) *Store {
 		commandTTL:          cfg.CommandTTL,
 		operationTTL:        cfg.OperationTTL,
 		fenceTTL:            cfg.FenceTTL,
-		aofTimeout:          cfg.AOFTimeout,
 		currentHMACSecret:   cfg.CurrentHMACSecret,
 		currentHMACVersion:  cfg.CurrentHMACVersion,
 		previousHMACSecret:  cfg.PreviousHMACSecret,
@@ -237,7 +263,6 @@ func newStoreWithClient(client *redis.Client, cfg StoreConfig) *Store {
 		now:                 cfg.Now,
 		newOperationID:      cfg.NewOperationID,
 	}
-	store.waitDurable = store.waitAOF
 	return store
 }
 
@@ -315,9 +340,6 @@ func (store *Store) ApplyApplication(
 	resolved, err := parseMutationResult(values)
 	if err != nil {
 		return commandResult{}, err
-	}
-	if err := store.waitDurable(ctx); err != nil {
-		return commandResult{}, &storeError{code: ErrorUnavailable, err: err}
 	}
 	return resolved, nil
 }
@@ -421,9 +443,6 @@ func (store *Store) ResolveIdempotent(
 	if err := json.Unmarshal([]byte(values["result"]), &result); err != nil {
 		return commandResult{}, true, &storeError{code: ErrorInternal, err: errors.New("cached command result is invalid")}
 	}
-	if err := store.waitDurable(ctx); err != nil {
-		return commandResult{}, true, &storeError{code: ErrorUnavailable, err: err}
-	}
 	return result, true, nil
 }
 
@@ -502,10 +521,197 @@ func (store *Store) SubmitOperation(
 	if err != nil {
 		return commandResult{}, err
 	}
-	if err := store.waitDurable(ctx); err != nil {
-		return commandResult{}, &storeError{code: ErrorUnavailable, err: err}
-	}
 	return resolved, nil
+}
+
+func (store *Store) ApplyProjection(ctx context.Context, payload ProjectionApplyPayload) (string, error) {
+	digests, err := json.Marshal(payload.BrowserKeyDigests)
+	if err != nil {
+		return "", err
+	}
+	origins, err := json.Marshal(payload.Origins)
+	if err != nil {
+		return "", err
+	}
+	enabled := "0"
+	if payload.Enabled {
+		enabled = "1"
+	}
+	force := "0"
+	if payload.Force {
+		force = "1"
+	}
+	values, err := store.client.Eval(
+		ctx,
+		applyProjectionScript,
+		[]string{
+			ingress.ApplicationKey(payload.Application),
+			ingress.ApplicationKeysKey(payload.Application),
+			ingress.ApplicationOriginsKey(payload.Application),
+			ingress.ApplicationKeyMaterialKey(payload.Application),
+		},
+		payload.Revision,
+		payload.TenantID,
+		payload.OrgID,
+		enabled,
+		payload.Budgets.RequestsPerMinute,
+		payload.Budgets.CompressedBytesPerMinute,
+		payload.Budgets.DecompressedBytesPerMinute,
+		payload.Budgets.EventsPerMinute,
+		string(digests),
+		string(origins),
+		force,
+	).Slice()
+	if err != nil {
+		return "", &storeError{code: ErrorUnavailable, err: err}
+	}
+	if len(values) == 0 {
+		return "", &storeError{code: ErrorInternal, err: errors.New("empty Redis command response")}
+	}
+	switch values[0] {
+	case "ok":
+		return "applied", nil
+	case "stale":
+		return "stale", nil
+	default:
+		return "", &storeError{code: ErrorInternal, err: fmt.Errorf("unknown Redis command result %q", values[0])}
+	}
+}
+
+func (store *Store) ReconcileProjection(ctx context.Context, payload ProjectionReconcilePayload) ([]string, error) {
+	wanted := make(map[string]int64, len(payload.Applications))
+	for _, item := range payload.Applications {
+		wanted[item.Application] = item.Revision
+	}
+	// An empty catalog is the upgrade window: Redis still holds the previous
+	// projection and the database has not been refilled. Do not prune it.
+	if len(wanted) > 0 {
+		if err := store.pruneUnknownApplications(ctx, wanted); err != nil {
+			return nil, err
+		}
+	}
+	var stale []string
+	for name, revision := range wanted {
+		current, err := store.client.HGet(ctx, ingress.ApplicationKey(name), "revision").Result()
+		if err != nil && err != redis.Nil {
+			return nil, &storeError{code: ErrorUnavailable, err: err}
+		}
+		if err == redis.Nil || parseInt64(current) != revision {
+			stale = append(stale, name)
+		}
+	}
+	sort.Strings(stale)
+	if err := store.reconcileFences(ctx, payload.Fences); err != nil {
+		return nil, err
+	}
+	return stale, nil
+}
+
+func (store *Store) pruneUnknownApplications(ctx context.Context, wanted map[string]int64) error {
+	var cursor uint64
+	for {
+		keys, next, err := store.client.Scan(ctx, cursor, ingress.KeyPrefix+"app:*", 200).Result()
+		if err != nil {
+			return &storeError{code: ErrorUnavailable, err: err}
+		}
+		for _, key := range keys {
+			name := strings.TrimPrefix(key, ingress.KeyPrefix+"app:")
+			if name == "" || strings.Contains(name, ":") {
+				continue
+			}
+			kind, err := store.client.Type(ctx, key).Result()
+			if err != nil {
+				return &storeError{code: ErrorUnavailable, err: err}
+			}
+			if kind != "hash" {
+				continue
+			}
+			if _, ok := wanted[name]; ok {
+				continue
+			}
+			if err := store.client.Del(
+				ctx,
+				ingress.ApplicationKey(name),
+				ingress.ApplicationKeysKey(name),
+				ingress.ApplicationOriginsKey(name),
+				ingress.ApplicationKeyMaterialKey(name),
+			).Err(); err != nil {
+				return &storeError{code: ErrorUnavailable, err: err}
+			}
+		}
+		cursor = next
+		if cursor == 0 {
+			break
+		}
+	}
+	return nil
+}
+
+func (store *Store) reconcileFences(ctx context.Context, fences []ProjectionFence) error {
+	desired := map[string]struct{}{}
+	for _, fence := range fences {
+		tenantID, err := store.client.HGet(ctx, ingress.ApplicationKey(fence.Application), "tenant_id").Result()
+		if err == redis.Nil || tenantID == "" {
+			continue
+		}
+		if err != nil {
+			return &storeError{code: ErrorUnavailable, err: err}
+		}
+		for _, identity := range store.DeriveIdentities(ingress.Application{TenantID: tenantID}, fence.Identities) {
+			desired[ingress.ErasureFenceKey(identity.Version, identity.Digest)] = struct{}{}
+		}
+	}
+	var cursor uint64
+	for {
+		keys, next, err := store.client.Scan(ctx, cursor, ingress.KeyPrefix+"erasure:fence:*", 200).Result()
+		if err != nil {
+			return &storeError{code: ErrorUnavailable, err: err}
+		}
+		for _, key := range keys {
+			if _, ok := desired[key]; ok {
+				delete(desired, key)
+				continue
+			}
+			if err := store.client.Del(ctx, key).Err(); err != nil {
+				return &storeError{code: ErrorUnavailable, err: err}
+			}
+		}
+		cursor = next
+		if cursor == 0 {
+			break
+		}
+	}
+	ttl := int64(store.fenceTTL / time.Second)
+	for key := range desired {
+		if err := store.client.ZAdd(ctx, key, redis.Z{Score: 0, Member: "fence"}).Err(); err != nil {
+			return &storeError{code: ErrorUnavailable, err: err}
+		}
+		if err := store.client.Expire(ctx, key, time.Duration(ttl)*time.Second).Err(); err != nil {
+			return &storeError{code: ErrorUnavailable, err: err}
+		}
+	}
+	return nil
+}
+
+func (store *Store) ReleaseFence(ctx context.Context, application string, identities []ErasureIdentity) error {
+	tenantID, err := store.client.HGet(ctx, ingress.ApplicationKey(application), "tenant_id").Result()
+	if err == redis.Nil || tenantID == "" {
+		return &storeError{code: ErrorNotFound}
+	}
+	if err != nil {
+		return &storeError{code: ErrorUnavailable, err: err}
+	}
+	var keys []string
+	for _, identity := range store.DeriveIdentities(ingress.Application{TenantID: tenantID}, identities) {
+		keys = append(keys, ingress.ErasureFenceKey(identity.Version, identity.Digest))
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	if err := store.client.Del(ctx, keys...).Err(); err != nil {
+		return &storeError{code: ErrorUnavailable, err: err}
+	}
+	return nil
 }
 
 func (store *Store) DeriveIdentities(application ingress.Application, identities []ErasureIdentity) []derivedIdentity {
@@ -561,17 +767,6 @@ func (store *Store) GetOperation(ctx context.Context, operationID string) (Opera
 
 func (store *Store) Ping(ctx context.Context) error {
 	return store.client.Ping(ctx).Err()
-}
-
-func (store *Store) waitAOF(ctx context.Context) error {
-	result, err := store.client.Do(ctx, "WAITAOF", 1, 0, store.aofTimeout.Milliseconds()).Slice()
-	if err != nil {
-		return fmt.Errorf("Redis WAITAOF: %w", err)
-	}
-	if len(result) == 0 || parseAnyInt64(result[0]) < 1 {
-		return errors.New("Redis WAITAOF returned no local durability acknowledgement")
-	}
-	return nil
 }
 
 func parseMutationResult(values []any) (commandResult, error) {
@@ -662,12 +857,7 @@ func parseInt64(value string) int64 {
 	return parsed
 }
 
-func parseAnyInt64(value any) int64 {
-	parsed, _ := strconv.ParseInt(fmt.Sprint(value), 10, 64)
-	return parsed
-}
-
-func controlRedisOptions(redisURL, passwordFile string) (*redis.Options, error) {
+func controlRedisOptions(redisURL, passwordFile string, requireACL bool, aclUsername string) (*redis.Options, error) {
 	parsed, err := url.Parse(strings.TrimSpace(redisURL))
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "redis" && parsed.Scheme != "rediss") {
 		return nil, errors.New("redis_url must be a redis:// or rediss:// URL")
@@ -675,8 +865,18 @@ func controlRedisOptions(redisURL, passwordFile string) (*redis.Options, error) 
 	if parsed.RawQuery != "" || parsed.Fragment != "" {
 		return nil, errors.New("redis_url must not contain query or fragment data")
 	}
-	if parsed.User == nil || parsed.User.Username() != "rum-controller" {
-		return nil, errors.New("controller Redis URL must use the rum-controller ACL identity")
+	username := ""
+	if parsed.User != nil {
+		username = parsed.User.Username()
+	}
+	if requireACL {
+		expected := strings.TrimSpace(aclUsername)
+		if expected == "" {
+			expected = "rum-controller"
+		}
+		if username == "" || username != expected {
+			return nil, errors.New("controller Redis URL ACL username must be " + expected)
+		}
 	}
 	options, err := redis.ParseURL(redisURL)
 	if err != nil {

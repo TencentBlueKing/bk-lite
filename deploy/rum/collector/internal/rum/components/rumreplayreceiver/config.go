@@ -21,23 +21,25 @@ const (
 
 // Config duplicates all public-edge limits at the collector boundary.
 type Config struct {
-	Endpoint             string        `mapstructure:"endpoint"`
-	TenantID             string        `mapstructure:"tenant_id"`
-	IdentityHMACSecret   string        `mapstructure:"identity_hmac_secret"`
-	IdentityHMACVersion  string        `mapstructure:"identity_hmac_version"`
-	IdentityHMACPrevious string        `mapstructure:"identity_hmac_previous_secret"`
-	IdentityHMACPrevVer  string        `mapstructure:"identity_hmac_previous_version"`
-	AdmissionRedisURL    string        `mapstructure:"admission_redis_url"`
-	AdmissionRedisPass   string        `mapstructure:"admission_redis_password_file"`
-	MaxCompressedBytes   int64         `mapstructure:"max_compressed_bytes"`
-	MaxDecompressedBytes int64         `mapstructure:"max_decompressed_bytes"`
-	MaxCompressionRatio  float64       `mapstructure:"max_compression_ratio"`
-	MaxEvents            int           `mapstructure:"max_events"`
-	MaxEventBytes        int           `mapstructure:"max_event_bytes"`
-	MaxJSONDepth         int           `mapstructure:"max_json_depth"`
-	ReadHeaderTimeout    time.Duration `mapstructure:"read_header_timeout"`
-	ReadTimeout          time.Duration `mapstructure:"read_timeout"`
-	IdleTimeout          time.Duration `mapstructure:"idle_timeout"`
+	Endpoint                string        `mapstructure:"endpoint"`
+	TenantID                string        `mapstructure:"tenant_id"`
+	IdentityHMACSecret      string        `mapstructure:"identity_hmac_secret"`
+	IdentityHMACVersion     string        `mapstructure:"identity_hmac_version"`
+	IdentityHMACPrevious    string        `mapstructure:"identity_hmac_previous_secret"`
+	IdentityHMACPrevVer     string        `mapstructure:"identity_hmac_previous_version"`
+	AdmissionRedisURL       string        `mapstructure:"admission_redis_url"`
+	AdmissionRedisPass      string        `mapstructure:"admission_redis_password_file"`
+	RedisRequireACLIdentity bool          `mapstructure:"redis_require_acl_identity"`
+	RedisACLUsername        string        `mapstructure:"redis_acl_username"`
+	MaxCompressedBytes      int64         `mapstructure:"max_compressed_bytes"`
+	MaxDecompressedBytes    int64         `mapstructure:"max_decompressed_bytes"`
+	MaxCompressionRatio     float64       `mapstructure:"max_compression_ratio"`
+	MaxEvents               int           `mapstructure:"max_events"`
+	MaxEventBytes           int           `mapstructure:"max_event_bytes"`
+	MaxJSONDepth            int           `mapstructure:"max_json_depth"`
+	ReadHeaderTimeout       time.Duration `mapstructure:"read_header_timeout"`
+	ReadTimeout             time.Duration `mapstructure:"read_timeout"`
+	IdleTimeout             time.Duration `mapstructure:"idle_timeout"`
 }
 
 func defaultConfig() *Config {
@@ -83,10 +85,7 @@ func (cfg *Config) Validate() error {
 	if strings.TrimSpace(cfg.AdmissionRedisURL) == "" {
 		return errors.New("admission_redis_url is required")
 	}
-	if err := ingress.ValidateConfig(ingress.Config{
-		RedisURL:          cfg.AdmissionRedisURL,
-		RedisPasswordFile: cfg.AdmissionRedisPass,
-	}); err != nil {
+	if err := ingress.ValidateConfig(cfg.admissionRedis()); err != nil {
 		return err
 	}
 	if cfg.MaxCompressedBytes <= 0 || cfg.MaxDecompressedBytes <= 0 {
@@ -105,4 +104,13 @@ func (cfg *Config) Validate() error {
 		return errors.New("HTTP timeouts must be positive")
 	}
 	return nil
+}
+
+func (cfg *Config) admissionRedis() ingress.Config {
+	return ingress.Config{
+		RedisURL:           cfg.AdmissionRedisURL,
+		RedisPasswordFile:  cfg.AdmissionRedisPass,
+		RequireACLIdentity: cfg.RedisRequireACLIdentity,
+		ACLUsername:        cfg.RedisACLUsername,
+	}
 }
