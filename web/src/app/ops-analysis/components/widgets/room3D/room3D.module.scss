@@ -12,6 +12,12 @@
   --room3d-shadow: var(--screen-room3d-shadow, 0 10px 26px rgba(0, 0, 0, 0.26));
   --room3d-accent-soft: var(--screen-room3d-accent-soft, rgba(94, 234, 212, 0.32));
   --room3d-accent-border: var(--screen-room3d-accent-border, rgba(94, 234, 212, 0.48));
+  --room3d-overview-scale: 1;
+  --room3d-overview-fit: 1;
+  --room3d-overview-ui-scale: min(
+    var(--room3d-readable-scale) * var(--room3d-overview-scale),
+    var(--room3d-overview-fit)
+  );
   position: relative;
   width: 100%;
   height: 100%;
@@ -505,4 +511,372 @@
   color: var(--room3d-strong-text);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.overviewShell {
+  --room3d-overview-alarm: var(--color-application3d-metric-marker, #ff4d4f);
+  position: absolute;
+  top: calc(46px * var(--room3d-readable-scale));
+  left: calc(10px * var(--room3d-readable-scale));
+  z-index: 6;
+  display: grid;
+  width: calc(240px * var(--room3d-overview-ui-scale));
+  max-height: calc(100% - (56px * var(--room3d-readable-scale)));
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  pointer-events: none;
+}
+
+.overviewExpanded,
+.overviewCollapsed {
+  grid-area: 1 / 1;
+  align-self: start;
+  justify-self: start;
+  min-width: 0;
+  min-height: 0;
+  transition:
+    opacity 300ms cubic-bezier(0.33, 1, 0.68, 1),
+    visibility 0s linear 300ms;
+}
+
+.overviewExpanded {
+  display: flex;
+  flex-direction: column;
+  gap: calc(8px * var(--room3d-overview-ui-scale));
+  width: 100%;
+  min-width: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.overviewExpanded * {
+  pointer-events: none;
+}
+
+.overviewShell:not(.overviewShellCollapsed) .overviewExpanded {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition:
+    opacity 300ms cubic-bezier(0.33, 1, 0.68, 1),
+    visibility 0s linear 0s;
+}
+
+.overviewShell:not(.overviewShellCollapsed) .overviewExpanded * {
+  pointer-events: auto;
+}
+
+.overviewCollapsed {
+  display: flex;
+  align-items: center;
+  gap: calc(8px * var(--room3d-overview-ui-scale));
+  box-sizing: border-box;
+  width: calc(
+    var(--room3d-switcher-width, calc(168px * var(--room3d-readable-scale))) *
+      var(--room3d-overview-scale)
+  );
+  min-width: calc(176px * var(--room3d-overview-ui-scale));
+  max-width: calc(260px * var(--room3d-overview-ui-scale));
+  white-space: nowrap;
+  font-family: inherit;
+  appearance: none;
+  height: calc(28px * var(--room3d-overview-ui-scale));
+  margin: 0;
+  padding: 0 calc(10px * var(--room3d-overview-ui-scale));
+  overflow: hidden;
+  font-size: calc(13px * var(--room3d-overview-ui-scale));
+  line-height: calc(26px * var(--room3d-overview-ui-scale));
+  color: var(--room3d-strong-text);
+  text-align: left;
+  cursor: pointer;
+  background: var(--room3d-surface);
+  border: 1px solid var(--room3d-border);
+  border-radius: calc(6px * var(--room3d-overview-ui-scale));
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.overviewShellCollapsed .overviewCollapsed {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition:
+    opacity 300ms cubic-bezier(0.33, 1, 0.68, 1),
+    visibility 0s linear 0s;
+}
+
+.overviewCollapsed:hover {
+  border-color: var(--room3d-accent);
+}
+
+.overviewCollapsed:focus-visible {
+  outline: 1px solid var(--room3d-accent);
+  outline-offset: calc(2px * var(--room3d-overview-ui-scale));
+}
+
+.overviewHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(8px * var(--room3d-overview-ui-scale));
+  min-width: 0;
+}
+
+.overviewTitle {
+  min-width: 0;
+  overflow: hidden;
+  font-size: calc(14px * var(--room3d-overview-ui-scale));
+  font-weight: 600;
+  line-height: calc(28px * var(--room3d-overview-ui-scale));
+  color: var(--room3d-strong-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overviewHeader :global(.ant-btn) {
+  flex: 0 0 auto;
+  width: calc(28px * var(--room3d-overview-ui-scale));
+  min-width: calc(28px * var(--room3d-overview-ui-scale));
+  height: calc(28px * var(--room3d-overview-ui-scale));
+  padding: 0;
+  color: var(--room3d-text);
+  background: var(--room3d-surface);
+  border: 1px solid var(--room3d-accent-border);
+  border-radius: calc(6px * var(--room3d-overview-ui-scale));
+}
+
+.overviewHeader :global(.ant-btn:hover) {
+  color: var(--room3d-strong-text);
+  background: var(--room3d-strong-surface);
+  border-color: var(--room3d-accent-border);
+}
+
+.overviewCard {
+  display: flex;
+  flex-direction: column;
+  gap: calc(8px * var(--room3d-overview-ui-scale));
+  min-width: 0;
+  padding: calc(10px * var(--room3d-overview-ui-scale))
+    calc(12px * var(--room3d-overview-ui-scale));
+  background: var(--room3d-surface);
+  border: 1px solid var(--room3d-accent-border);
+  border-radius: calc(8px * var(--room3d-overview-ui-scale));
+  box-shadow: var(--room3d-shadow);
+  backdrop-filter: blur(14px);
+}
+
+.overviewCardTitle {
+  font-size: calc(12px * var(--room3d-overview-ui-scale));
+  line-height: calc(16px * var(--room3d-overview-ui-scale));
+  color: var(--room3d-muted-text);
+}
+
+.assetMetrics {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+}
+
+.assetMetric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(2px * var(--room3d-overview-ui-scale));
+  min-width: 0;
+}
+
+.assetMetric strong,
+.usagePercent,
+.alarmLine strong {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--room3d-strong-text);
+}
+
+.assetMetric strong {
+  font-size: calc(28px * var(--room3d-overview-ui-scale));
+  line-height: calc(32px * var(--room3d-overview-ui-scale));
+}
+
+.assetMetric span {
+  font-size: calc(12px * var(--room3d-overview-ui-scale));
+  line-height: calc(16px * var(--room3d-overview-ui-scale));
+  color: var(--room3d-accent);
+}
+
+.assetDivider {
+  width: 1px;
+  height: calc(48px * var(--room3d-overview-ui-scale));
+  background: var(--room3d-accent-border);
+}
+
+.capacityBody {
+  display: flex;
+  align-items: center;
+  gap: calc(12px * var(--room3d-overview-ui-scale));
+  min-width: 0;
+}
+
+.usageRingWrap {
+  position: relative;
+  flex: 0 0 auto;
+  width: calc(64px * var(--room3d-overview-ui-scale));
+  height: calc(64px * var(--room3d-overview-ui-scale));
+}
+
+.usageRing {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.usageRingTrack,
+.usageRingValue {
+  fill: none;
+  stroke-width: 5;
+}
+
+.usageRingTrack {
+  stroke: color-mix(in srgb, var(--room3d-accent) 22%, transparent);
+}
+
+.usageRingValue {
+  stroke: var(--room3d-accent);
+  stroke-linecap: butt;
+}
+
+.usagePercent {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(16px * var(--room3d-overview-ui-scale));
+  line-height: 1;
+  color: var(--room3d-accent);
+}
+
+.capacityText {
+  display: flex;
+  flex-direction: column;
+  gap: calc(4px * var(--room3d-overview-ui-scale));
+  min-width: 0;
+  font-size: calc(13px * var(--room3d-overview-ui-scale));
+  line-height: calc(18px * var(--room3d-overview-ui-scale));
+  color: var(--room3d-text);
+}
+
+.capacityText span {
+  white-space: nowrap;
+}
+
+.monitorLine {
+  font-size: calc(13px * var(--room3d-overview-ui-scale));
+  line-height: calc(18px * var(--room3d-overview-ui-scale));
+  color: var(--room3d-text);
+  overflow-wrap: anywhere;
+}
+
+.coverageTrack {
+  height: calc(4px * var(--room3d-overview-ui-scale));
+  overflow: hidden;
+  background: color-mix(in srgb, var(--room3d-accent) 22%, transparent);
+  border-radius: 999px;
+}
+
+.coverageFill {
+  display: block;
+  height: 100%;
+  background: var(--room3d-accent);
+  border-radius: inherit;
+}
+
+.alarmLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(8px * var(--room3d-overview-ui-scale));
+  font-size: calc(13px * var(--room3d-overview-ui-scale));
+  line-height: calc(18px * var(--room3d-overview-ui-scale));
+}
+
+.alarmLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(6px * var(--room3d-overview-ui-scale));
+  min-width: 0;
+  color: var(--room3d-text);
+}
+
+.alarmDot {
+  flex: 0 0 auto;
+  width: calc(8px * var(--room3d-overview-ui-scale));
+  height: calc(8px * var(--room3d-overview-ui-scale));
+  background: currentColor;
+  border-radius: 50%;
+}
+
+.alarmLineIdle .alarmDot,
+.alarmLineIdle strong {
+  color: var(--room3d-muted-text);
+}
+
+.alarmLineActive .alarmDot,
+.alarmLineActive strong,
+.overviewCollapsedAlarm,
+.overviewCollapsedAlarm strong,
+.overviewCollapsedAlarm .alarmDot {
+  color: var(--room3d-overview-alarm);
+}
+
+.overviewCollapsedTitle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overviewCollapsedAlarm {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: calc(4px * var(--room3d-overview-ui-scale));
+  font-size: calc(13px * var(--room3d-overview-ui-scale));
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.overviewCollapsedAlarm .alarmDot {
+  width: calc(8px * var(--room3d-overview-ui-scale));
+  height: calc(8px * var(--room3d-overview-ui-scale));
+}
+
+.overviewCollapsedAlarm strong {
+  font-weight: 600;
+}
+
+.overviewCollapsedArrow {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: calc(12px * var(--room3d-overview-ui-scale));
+  line-height: 1;
+  color: var(--room3d-muted-text);
+}
+
+.room3D:has(.overviewShell:not(.overviewShellCollapsed)) .noticePanelWithOverview {
+  left: calc((10px * var(--room3d-readable-scale)) + (248px * var(--room3d-overview-ui-scale)));
+  width: min(
+    calc(460px * var(--room3d-readable-scale)),
+    calc(100% - (20px * var(--room3d-readable-scale)) - (248px * var(--room3d-overview-ui-scale)))
+  );
+}
+
+.room3D:has(.overviewShellCollapsed) .noticePanelWithOverview {
+  top: calc(
+    (46px * var(--room3d-readable-scale)) + (36px * var(--room3d-overview-ui-scale))
+  );
 }
