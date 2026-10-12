@@ -259,6 +259,8 @@ def step3_cmdb_consume_host(vm_response: dict, task_id: int = 1001, model_id: st
         "os_type": lambda data, model_id=None: runner.set_os_type(data),
         "cpu_arch": lambda data, model_id=None: runner.set_cpu_arch(data),
         "machine_type": lambda data, model_id=None: runner.set_machine_type(data),
+        "mounts": lambda data, model_id=None: runner.get_host_mounts(data),
+        "nics": lambda data, model_id=None: runner.get_host_nics(data),
         "cpu_core": (int, "cpu_cores"),
         "memory": (lambda v: int(float(v)), "mem_total_mb"),
         "disk": (lambda v: int(float(v)), "disk_total_gb"),

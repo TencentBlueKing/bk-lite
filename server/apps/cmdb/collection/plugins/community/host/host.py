@@ -4,7 +4,12 @@ from apps.cmdb.collection.plugins.community.host.base import BaseHostCollectionP
 
 class HostCollectionPlugin(BaseHostCollectionPlugin):
     supported_model_id = "host"
-    metric_names = ("host_info_gauge", "host_proc_usage_info_gauge")
+    metric_names = (
+        "host_info_gauge",
+        "host_proc_usage_info_gauge",
+        "host_mount_info_gauge",
+        "host_nic_info_gauge",
+    )
     field_mapping = {
         "inst_name": HostCollectMetrics.set_display_inst_name,
         "ip_addr": HostCollectMetrics.set_ip_addr,
@@ -22,4 +27,6 @@ class HostCollectionPlugin(BaseHostCollectionPlugin):
         "machine_type": HostCollectMetrics.set_machine_type,
         "inner_mac": (HostCollectMetrics.format_mac, "mac_address"),
         "proc": HostCollectMetrics.get_host_proc,
+        "mounts": HostCollectMetrics.get_host_mounts,
+        "nics": HostCollectMetrics.get_host_nics,
     }

@@ -45,6 +45,25 @@ class HostCollectMetrics(CollectBase):
             {"id": "other", "name": "Other"},
         ]
         self.host_proc_map = {}
+        self.host_mount_map = {}
+        self.host_nic_map = {}
+
+    _HOST_TABLES = {
+        "host_proc_usage_info_gauge": {
+            "store": "host_proc_map",
+            "fields": ("pid", "name", "arg", "exe", "cwd", "ports"),
+        },
+        "host_mount_info_gauge": {
+            "store": "host_mount_map",
+            "fields": ("device", "mount", "fstype", "size_gb"),
+            "identity": "mount",
+        },
+        "host_nic_info_gauge": {
+            "store": "host_nic_map",
+            "fields": ("name", "mac", "ip"),
+            "identity": "name",
+        },
+    }
 
     @property
     def _metrics(self):
@@ -325,19 +344,50 @@ class HostCollectMetrics(CollectBase):
     def get_host_proc_key(data):
         return data.get("ip_addr") or data.get("host") or data.get("instance_id") or ""
 
-    def add_host_proc(self, data):
+    def _table_json(self, store_name, data):
+        host_key = self.get_host_proc_key(data)
+        rows = getattr(self, store_name).get(host_key, [])
+        return json.dumps(rows)
+
+    def _append_table_row(self, spec, data):
         host_key = self.get_host_proc_key(data)
         if not host_key:
             return
-        proc_item = {
-            "pid": data.get("pid", ""),
-            "name": data.get("name", ""),
-            "arg": data.get("arg", ""),
-            "exe": data.get("exe", ""),
-            "cwd": data.get("cwd", ""),
-            "ports": data.get("ports", ""),
-        }
-        self.host_proc_map.setdefault(host_key, []).append(proc_item)
+        row = {}
+        for field in spec["fields"]:
+            value = data.get(field, "")
+            if value is None:
+                value = ""
+            else:
+                value = str(value)
+            if field == "mac" and value:
+                value = self.format_mac(value)
+            row[field] = value
+        identity = spec.get("identity")
+        if identity and not str(row.get(identity) or "").strip():
+            return
+        bucket = getattr(self, spec["store"]).setdefault(host_key, [])
+        if identity:
+            for existing in bucket:
+                if existing.get(identity) == row[identity]:
+                    existing.update(row)
+                    return
+        bucket.append(row)
+
+    def add_host_proc(self, data):
+        self._append_table_row(self._HOST_TABLES["host_proc_usage_info_gauge"], data)
+
+    def get_host_mounts(self, data, *args, **kwargs):
+        return self._table_json("host_mount_map", data)
+
+    def add_host_mount(self, data):
+        self._append_table_row(self._HOST_TABLES["host_mount_info_gauge"], data)
+
+    def get_host_nics(self, data, *args, **kwargs):
+        return self._table_json("host_nic_map", data)
+
+    def add_host_nic(self, data):
+        self._append_table_row(self._HOST_TABLES["host_nic_info_gauge"], data)
 
     def format_data(self, data):
         """格式化数据"""
@@ -363,8 +413,9 @@ class HostCollectMetrics(CollectBase):
                 **index_data["metric"],
                 **result_data,  # 将解析后的JSON数据合并到index_dict中
             )
-            if metric_name == "host_proc_usage_info_gauge":
-                self.add_host_proc(index_dict)
+            table_spec = self._HOST_TABLES.get(metric_name)
+            if table_spec:
+                self._append_table_row(table_spec, index_dict)
                 continue
             self.collection_metrics_dict[metric_name].append(index_dict)
 

@@ -79,7 +79,9 @@ Pass criterion: the port is reachable.
 | disk | Aggregated disk capacity (GB) |
 | inner_mac | First NIC MAC address (`ip link`) |
 | machine_type | Machine type: `unknown`, `virtual`, or `physical_server`. A successful detection overwrites the field. An unrecognized result stays `unknown` and does not replace an earlier virtual or physical result |
-| proc | Running process inventory (including listen ports), written to related model host_proc_usage |
+| proc | Running process inventory (including listen ports), folded into host table field `proc` |
+| mounts | Disk mount points, folded into host table field `mounts` |
+| nics | Network interfaces, folded into host table field `nics` |
 
 **Process (host_proc_usage, related child of host)**
 
@@ -92,4 +94,21 @@ Pass criterion: the port is reachable.
 | cwd | Working directory (`readlink /proc/<pid>/cwd`) |
 | ports | Listen port set of this process (`ss -lntp`) |
 
-> Note: `cpu_model` and `cpu_core` are set to `unknown` when `lscpu`/`/proc/cpuinfo` permission is insufficient; `memory` and `disk` fall back to `0.0` when the statistics command fails; `inner_mac` is set to `unknown` in environments such as containers where the first NIC cannot be resolved. `cpu_arch` comes from `uname -m`; domestic architectures such as Loongson/Sunway/RISC-V can be collected normally, but `os_bit` only recognizes `x86_64`/`aarch64`/`i386`/`i686`; other architectures are marked `unknown`. For other users' processes in `proc`, `exe`/`cwd`/`ports` require root to collect fully.
+**Mounts (mounts)**
+
+| Key | Description |
+| :--- | :--- |
+| device | Device name, such as `/dev/sda1`; drive letter on Windows |
+| mount | Mount point; same as the drive letter on Windows |
+| fstype | Filesystem type |
+| size_gb | Capacity in GB |
+
+**NICs (nics)**
+
+| Key | Description |
+| :--- | :--- |
+| name | Interface name; Windows network connection name |
+| mac | MAC address |
+| ip | IPv4 addresses, comma-separated |
+
+> Note: `cpu_model` and `cpu_core` are set to `unknown` when `lscpu`/`/proc/cpuinfo` permission is insufficient; `memory` and `disk` fall back to `0.0` when the statistics command fails; `inner_mac` is set to `unknown` in environments such as containers where the first NIC cannot be resolved. `cpu_arch` comes from `uname -m`; domestic architectures such as Loongson/Sunway/RISC-V can be collected normally, but `os_bit` only recognizes `x86_64`/`aarch64`/`i386`/`i686`; other architectures are marked `unknown`. For other users' processes in `proc`, `exe`/`cwd`/`ports` require root to collect fully. `mounts` convert capacity from 1K blocks and omit tmpfs, overlay, and `/proc`, `/sys`, `/dev`, `/run`. `nics` omit loopback and virtual interfaces such as veth, docker, and bridge. One mount point or interface name keeps a single row.

@@ -49,3 +49,18 @@ def test_host_connects_physical_server_one_to_one_without_auto_rule():
     assert len(matched) == 1
     assert str(matched[0]["mapping"]).strip() == "1:1"
     assert str(matched[0].get("auto_relation_rule") or "").strip() == ""
+
+
+def test_host_mount_and_nic_are_tables():
+    rows = _records("attr-host")
+    by_id = {str(row.get("attr_id")).strip(): row for row in rows}
+
+    mounts = json.loads(by_id["mounts"]["option"])
+    nics = json.loads(by_id["nics"]["option"])
+
+    assert by_id["mounts"]["attr_type"] == "table"
+    assert by_id["mounts"]["attr_name"] == "挂载点"
+    assert [item["column_id"] for item in mounts] == ["mount", "device", "fstype", "size_gb"]
+    assert by_id["nics"]["attr_type"] == "table"
+    assert by_id["nics"]["attr_name"] == "网卡"
+    assert [item["column_id"] for item in nics] == ["name", "mac", "ip"]

@@ -79,7 +79,9 @@
 | disk | 汇总磁盘容量（GB） |
 | inner_mac | 首块网卡 MAC 地址（`ip link`） |
 | machine_type | 机器类型：`unknown` 未知、`virtual` 虚拟机、`physical_server` 物理服务器。采集识别得出后写入；识别不出时为未知，且不把已识别结果改回未知 |
-| proc | 运行进程清单（含监听端口），写入关联模型 host_proc_usage |
+| proc | 运行进程清单（含监听端口），汇总进主机 Table 字段 `proc` |
+| mounts | 磁盘挂载点，汇总进主机 Table 字段 `mounts` |
+| nics | 网卡，汇总进主机 Table 字段 `nics` |
 
 **进程（host_proc_usage，host 的关联子项）**
 
@@ -92,4 +94,21 @@
 | cwd | 工作目录（`readlink /proc/<pid>/cwd`） |
 | ports | 该进程监听端口集合（`ss -lntp`） |
 
-> 补充说明：`cpu_model`、`cpu_core` 在 `lscpu`/`/proc/cpuinfo` 权限不足时会被置为 `unknown`；`memory`、`disk` 在统计命令异常时退化为 `0.0`；`inner_mac` 在容器等无法解析首块网卡的环境下置为 `unknown`。`cpu_arch` 源自 `uname -m`，龙芯/申威/RISC-V 等国产架构可正常采集，但 `os_bit` 仅识别 `x86_64`/`aarch64`/`i386`/`i686`，其余架构会标记为 `unknown`。`proc` 中其他用户进程的 `exe`/`cwd`/`ports` 需 root 才能采全。
+**挂载点（mounts）**
+
+| Key 名称 | 含义 |
+| :--- | :--- |
+| device | 设备名，如 `/dev/sda1`；Windows 为盘符 |
+| mount | 挂载点；Windows 与盘符相同 |
+| fstype | 文件系统类型 |
+| size_gb | 容量（GB） |
+
+**网卡（nics）**
+
+| Key 名称 | 含义 |
+| :--- | :--- |
+| name | 网卡名；Windows 取网络连接名 |
+| mac | MAC 地址 |
+| ip | IPv4 地址，多地址用逗号连接 |
+
+> 补充说明：`cpu_model`、`cpu_core` 在 `lscpu`/`/proc/cpuinfo` 权限不足时会被置为 `unknown`；`memory`、`disk` 在统计命令异常时退化为 `0.0`；`inner_mac` 在容器等无法解析首块网卡的环境下置为 `unknown`。`cpu_arch` 源自 `uname -m`，龙芯/申威/RISC-V 等国产架构可正常采集，但 `os_bit` 仅识别 `x86_64`/`aarch64`/`i386`/`i686`，其余架构会标记为 `unknown`。`proc` 中其他用户进程的 `exe`/`cwd`/`ports` 需 root 才能采全。`mounts` 按 1K 块换算容量，不含 tmpfs、overlay 和 `/proc`、`/sys`、`/dev`、`/run`。`nics` 不含回环和 veth、docker、bridge 这类虚拟网卡。同一挂载点或同一网卡名只保留一行。
