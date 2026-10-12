@@ -593,6 +593,28 @@ def test_get_skill_params_handles_none():
     assert LLMSerializer.get_skill_params(instance) == []
 
 
+def test_validate_run_model_call_limit_accepts_range_and_rejects_bounds():
+    from rest_framework import serializers
+
+    serializer = LLMSerializer.__new__(LLMSerializer)
+    serializer.context = {}
+    assert serializer.validate_run_model_call_limit(1) == 1
+    assert serializer.validate_run_model_call_limit(100) == 100
+    assert serializer.validate_run_model_call_limit(None) == 10
+
+    for invalid in (0, 101):
+        with pytest.raises(serializers.ValidationError) as caught:
+            serializer.validate_run_model_call_limit(invalid)
+        assert "每步调用次数" in str(caught.value.detail[0])
+
+    serializer.context = {"request": SimpleNamespace(user=SimpleNamespace(locale="en"))}
+    with pytest.raises(serializers.ValidationError) as caught:
+        serializer.validate_run_model_call_limit(0)
+    message = str(caught.value.detail[0])
+    assert "1" in message
+    assert "100" in message
+
+
 def test_skill_package_cleanup_storage_path_removes_directory(tmp_path, mocker):
     """_cleanup_storage_path:storage_path 落在 root 之下时,rmtree 掉。"""
     from apps.opspilot.viewsets.llm_view import SkillPackageViewSet

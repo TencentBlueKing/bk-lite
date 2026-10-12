@@ -142,9 +142,14 @@ def normalize_attachment_file_type(file_type: str, filename: str = "") -> tuple[
         raise ValueError(f"不支持的附件类型: {file_type or extension or 'unknown'}")
 
     config = ATTACHMENT_FILE_TYPE_CONFIG[normalized_type]
-    normalized_filename = filename or f"attachment.{config['extension']}"
+    expected_extension = config["extension"]
+    normalized_filename = filename or f"attachment.{expected_extension}"
     if "." not in normalized_filename:
-        normalized_filename = f"{normalized_filename}.{config['extension']}"
+        normalized_filename = f"{normalized_filename}.{expected_extension}"
+    else:
+        stem, current_extension = normalized_filename.rsplit(".", 1)
+        if current_extension.lower() != expected_extension:
+            normalized_filename = f"{stem}.{expected_extension}"
 
     return normalized_type, normalized_filename, config["mime_type"]
 
@@ -286,6 +291,14 @@ def _split_markdown_row(line: str) -> list[str]:
     return [_plain_markdown_inline(cell) for cell in cells]
 
 
+def _breaks_markdown_paragraph(line: str) -> bool:
+    """无空行时，列表和分隔线也不能再并进上一段。"""
+    stripped = line.strip()
+    if not stripped or stripped in {"---", "***", "___"} or stripped.startswith("|"):
+        return True
+    return bool(_HEADING_RE.match(stripped) or _UL_RE.match(stripped) or _OL_RE.match(stripped))
+
+
 def _iter_markdown_blocks(content: str):
     """把 Markdown 收成标题、列表、表格和段落，供 docx/pdf 按版式渲染。"""
     lines = (content or "").splitlines()
@@ -329,9 +342,7 @@ def _iter_markdown_blocks(content: str):
             continue
         paragraph = [stripped]
         index += 1
-        while (
-            index < len(lines) and lines[index].strip() and not _HEADING_RE.match(lines[index].strip()) and not lines[index].strip().startswith("|")
-        ):
+        while index < len(lines) and not _breaks_markdown_paragraph(lines[index]):
             paragraph.append(lines[index].strip())
             index += 1
         yield ("paragraph", _plain_markdown_inline(" ".join(paragraph)))
@@ -440,7 +451,7 @@ def _build_pdf_bytes(content: str, title: str) -> bytes:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import cm
-    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table
 
     font_name = _resolve_pdf_font()
     buffer = BytesIO()
@@ -482,6 +493,27 @@ def _build_pdf_bytes(content: str, title: str) -> bytes:
         )
         for level in range(1, 5)
     }
+    cell_style = ParagraphStyle(
+        "AttachmentTableCell",
+        parent=body_style,
+        fontName=font_name,
+        fontSize=10,
+        leading=14,
+        spaceBefore=0,
+        spaceAfter=0,
+    )
+    usable_width = A4[0] - 4 * cm
+
+    def render_table(header: list[str], rows: list[list[str]]) -> Table:
+        column_count = max([len(header), *[len(row) for row in rows]] or [1])
+
+        def render_row(row: list[str]) -> list[Paragraph]:
+            padded = list(row) + [""] * (column_count - len(row))
+            return [Paragraph(_escape_pdf_text(cell), cell_style) for cell in padded[:column_count]]
+
+        data = [render_row(header), *[render_row(row) for row in rows]]
+        return Table(data, colWidths=[usable_width / column_count] * column_count)
+
     story = []
     if _should_prefix_title(content, title):
         story.extend([Paragraph(_escape_pdf_text(title), title_style), Spacer(1, 0.4 * cm)])
@@ -493,11 +525,7 @@ def _build_pdf_bytes(content: str, title: str) -> bytes:
             for item in block[1]:
                 story.append(Paragraph(_escape_pdf_text(f"• {item}"), body_style))
         elif kind == "table":
-            from reportlab.platypus import Table
-
-            header, rows = block[1], block[2]
-            data = [header, *rows]
-            story.append(Table(data))
+            story.append(render_table(block[1], block[2]))
             story.append(Spacer(1, 0.2 * cm))
         elif kind == "paragraph":
             story.append(Paragraph(_escape_pdf_text(block[1]), body_style))
@@ -520,8 +548,13 @@ def _resolve_pdf_font() -> str:
         ("微软雅黑", "C:/Windows/Fonts/msyh.ttc"),
         ("黑体", "C:/Windows/Fonts/simhei.ttf"),
         ("宋体", "C:/Windows/Fonts/simsun.ttc"),
+        ("文泉驿微米黑", "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"),
+        ("DroidSansFallback", "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf"),
     ]
+    registered = set(pdfmetrics.getRegisteredFontNames())
     for font_name, font_path in font_candidates:
+        if font_name in registered:
+            return font_name
         try:
             pdfmetrics.registerFont(TTFont(font_name, font_path))
             return font_name
