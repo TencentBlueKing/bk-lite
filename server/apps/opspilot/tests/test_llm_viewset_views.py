@@ -597,7 +597,8 @@ def test_validate_run_model_call_limit_accepts_range_and_rejects_bounds():
     from rest_framework import serializers
 
     serializer = LLMSerializer.__new__(LLMSerializer)
-    serializer.context = {}
+    serializer.parent = None
+    serializer._context = {}
     assert serializer.validate_run_model_call_limit(1) == 1
     assert serializer.validate_run_model_call_limit(100) == 100
     assert serializer.validate_run_model_call_limit(None) == 10
@@ -607,7 +608,7 @@ def test_validate_run_model_call_limit_accepts_range_and_rejects_bounds():
             serializer.validate_run_model_call_limit(invalid)
         assert "每步调用次数" in str(caught.value.detail[0])
 
-    serializer.context = {"request": SimpleNamespace(user=SimpleNamespace(locale="en"))}
+    serializer._context = {"request": SimpleNamespace(user=SimpleNamespace(locale="en"))}
     with pytest.raises(serializers.ValidationError) as caught:
         serializer.validate_run_model_call_limit(0)
     message = str(caught.value.detail[0])
