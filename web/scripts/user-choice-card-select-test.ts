@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { isUserChoiceRequestClosed, normalizeUserChoiceOptions } from '../src/app/opspilot/components/custom-chat-sse/userChoiceOptions';
+import { applyAnsweredUserChoices, choiceRequestFromVisibleText, isUserChoiceRequestClosed, normalizeUserChoiceOptions, stripChoicePromptFromContent } from '../src/app/opspilot/components/custom-chat-sse/userChoiceOptions';
 
 const source = readFileSync(
   new URL('../src/app/opspilot/components/custom-chat-sse/UserChoiceCard.tsx', import.meta.url),
@@ -59,6 +59,58 @@ assert.doesNotMatch(
   assert.ok(options.every((item) => item.key && item.label));
 }
 
+assert.doesNotMatch(source, /postUserChoice/);
+assert.match(source, /onSendMessage\?\.\(labels\.join/);
+assert.doesNotMatch(source, /if \(isCompleted\) \{\s*return null/);
+
+{
+  const request = {
+    choice_id: 'c1',
+    title: '选一个',
+    options: [{ key: 'host', label: '主机' }, { key: 'pod', label: 'Pod' }],
+    status: 'pending' as const,
+    selected: [],
+  };
+  const clicked = applyAnsweredUserChoices([
+    { role: 'bot', content: '', userChoiceRequests: [request] },
+    { role: 'user', content: '主机' },
+  ]);
+  assert.equal(clicked[0].userChoiceRequests?.[0].status, 'submitted');
+  assert.deepEqual(clicked[0].userChoiceRequests?.[0].selected, ['host']);
+
+  const typed = applyAnsweredUserChoices([
+    { role: 'bot', content: '', userChoiceRequests: [{ ...request, choice_id: 'c2' }] },
+    { role: 'user', content: '我想自己说' },
+  ]);
+  assert.equal(typed[0].userChoiceRequests?.[0].status, 'submitted');
+  assert.deepEqual(typed[0].userChoiceRequests?.[0].selected, []);
+
+  const open = applyAnsweredUserChoices([
+    { role: 'bot', content: '', userChoiceRequests: [{ ...request, choice_id: 'c3' }] },
+  ]);
+assert.equal(open[0].userChoiceRequests?.[0].status, 'pending');
+}
+
+{
+  const stripped = stripChoicePromptFromContent(
+    'web-01 是哪种类型？\n\n1. JVM\n2. Kafka\n3. Oracle',
+    [{
+      choice_id: 'c',
+      title: 'web-01 是哪种类型？',
+      options: [
+        { key: 'JVM', label: 'JVM' },
+        { key: 'Kafka', label: 'Kafka' },
+        { key: 'Oracle', label: 'Oracle' },
+      ],
+      status: 'pending',
+      selected: [],
+    }],
+  );
+  assert.equal(stripped, '');
+}
+
+assert.equal(choiceRequestFromVisibleText('这通常意味着：\n\n1. 采集未上报\n2. 仅完成纳管'), null);
+assert.ok(choiceRequestFromVisibleText('web-01 属于哪种类型？\n\n1. 主机\n2. Pod'));
 assert.equal(isUserChoiceRequestClosed('pending'), false);
 assert.equal(isUserChoiceRequestClosed('submitted'), true);
 assert.equal(isUserChoiceRequestClosed('timeout'), true);

@@ -13,6 +13,7 @@ from apps.opspilot.tasks.channel import (
     process_wechat_message,
     process_wechat_official_message,
 )
+from apps.opspilot.tasks.chat_attachment import cleanup_chat_attachments_task, parse_chat_attachment_task
 from apps.opspilot.tasks.chatflow import chat_flow_celery_task, chat_flow_test_execute_task
 from apps.opspilot.tasks.memory import (
     MemoryWriteLlmUnavailable,
@@ -89,12 +90,14 @@ __all__ = [
     "_summarize_memory_batch_content",
     "_wiki_running_build_has_identity",
     "chat_flow_celery_task",
+    "cleanup_chat_attachments_task",
     "chat_flow_test_execute_task",
     "cleanup_expired_workflow_attachments",
     "cleanup_expired_workflow_attachments_task",
     "flush_all_pending_memory_write_cache",
     "flush_idle_skill_conversation_memory",
     "flush_memory_write_cache_for_node",
+    "parse_chat_attachment_task",
     "process_dingtalk_message",
     "process_enterprise_wechat_aibot_message",
     "process_enterprise_wechat_aibot_reply",

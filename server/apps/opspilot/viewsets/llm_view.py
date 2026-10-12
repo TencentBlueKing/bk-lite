@@ -21,6 +21,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
+from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet
 from apps.opspilot.metis.llm.common.llm_client_factory import DEFAULT_CHAT_TEMPERATURE
 from apps.opspilot.metis.llm.tools.elasticsearch.connection import normalize_es_instance, test_es_instance
@@ -65,8 +66,10 @@ from apps.opspilot.services.builtin_tools import (
     build_builtin_redis_tool,
 )
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, CallerIdentityError, capture_caller_identity
+from apps.opspilot.services.chat_attachment_service import ChatAttachmentError, apply_current_turn_attachments
 from apps.opspilot.services.llm_context_budget import parse_context_window_tokens
 from apps.opspilot.services.mcp_client import MCPClient
+from apps.opspilot.services.skill_channel_chat_service import saas_external_user_id
 from apps.opspilot.services.skill_channel_service import sync_skill_channel_usage_teams
 from apps.opspilot.services.skill_memory_service import (
     SkillMemoryConfigError,
@@ -527,8 +530,21 @@ class LLMViewSet(PinMixin, AuthViewSet):
             # 合并前端传入的 skill_params 和 DB 中的值（处理 ****** 掩码）
 
             params["skill_params"] = merge_skill_params(params.get("skill_params", []), skill_obj.skill_params or [])
+            raw_attachment_ids = params.pop("attachment_ids", None)
+            if raw_attachment_ids:
+                llm_model = LLMModel.objects.filter(id=params.get("llm_model")).first()
+                try:
+                    params["user_message"] = apply_current_turn_attachments(
+                        params.get("user_message") or "",
+                        raw_attachment_ids,
+                        owner_key=saas_external_user_id(request.user),
+                        team_id=str(get_current_team(request, "0")),
+                        llm_model=llm_model,
+                    )
+                except ChatAttachmentError as exc:
+                    return self.create_error_stream_response(exc.message)
 
-            # 调用AGUI协议的流式响应
+            # 调用AGUI协议的流式响应。调试聊天不回填附件消息，历史不回显。
             return stream_agui_chat(
                 params,
                 skill_obj.name,

@@ -228,8 +228,20 @@ def _message_is_tool_result(message: Any) -> bool:
     return type(message).__name__ == "ToolMessage"
 
 
-def step_has_unasked_missing_params(messages: list[Any] | tuple[Any, ...] | None) -> bool:
-    """步骤里出现查询缺参，且尚未调用 request_user_choice。"""
+def step_has_unasked_missing_params(
+    messages: list[Any] | tuple[Any, ...] | None,
+    *,
+    conversation_messages: list[Any] | tuple[Any, ...] | None = None,
+) -> bool:
+    """步骤里出现查询缺参，且尚未调用 request_user_choice。
+
+    上一条助手已是提问文本、本条是用户回答时，不再要求再次提问。
+    """
+    # pending_question 依赖 LangChain；本模块被无 LangChain 的技能执行器导入，故延迟到调用时。
+    from apps.opspilot.utils.pending_question import is_answer_after_choice_prompt
+
+    if is_answer_after_choice_prompt(conversation_messages):
+        return False
     saw_missing = False
     saw_choice = False
     for message in messages or ():

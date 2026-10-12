@@ -1,7 +1,6 @@
 import React, {ReactNode, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Button, ButtonProps, Flex, Image, Input, message as antMessage, Popconfirm, Tooltip, Upload} from 'antd';
-import {DeleteOutlined, FullscreenExitOutlined, FullscreenOutlined, LoadingOutlined, PictureOutlined, RightOutlined, SendOutlined} from '@ant-design/icons';
-import type {UploadFile} from 'antd/es/upload/interface';
+import {DeleteOutlined, DownloadOutlined, FullscreenExitOutlined, FullscreenOutlined, LoadingOutlined, PaperClipOutlined, RightOutlined, SendOutlined} from '@ant-design/icons';
 import DOMPurify from 'dompurify';
 import Icon from '@/components/icon';
 import {useTranslation} from '@/utils/i18n';
@@ -18,7 +17,7 @@ import PlannedExecutionStatus, { isActivePlannedExecutionStatus } from './Planne
 import WikiCitations from './WikiCitations';
 import ApprovalCard from './ApprovalCard';
 import UserChoiceCard from './UserChoiceCard';
-import {postUserChoice} from './submitUserChoice';
+import { applyAnsweredUserChoices, stripChoicePromptFromContent } from './userChoiceOptions';
 import DiffReportCard from './DiffReportCard';
 import ConfigAnalysisReportCard from './ConfigAnalysisReportCard';
 import ReportDownloadCard from './ReportDownloadCard';
@@ -39,8 +38,16 @@ import ContextUsageRing from './ContextUsageRing';
 import SessionFileBar from './SessionFileBar';
 import { collectSessionFiles } from './sessionFiles';
 import type { LlmContextUsage } from './llmContextUsage';
-import ImageBlobPreview from './ImageBlobPreview';
 import { useImeEnterGuard } from '@/app/opspilot/utils/imeKeyboard';
+import {
+  CHAT_ATTACHMENT_ACCEPT,
+  ChatAttachmentMeta,
+  clientFileError,
+  downloadChatAttachmentBlob,
+  fetchChatAttachmentStatus,
+  isImageMime,
+  uploadChatAttachment,
+} from './chatAttachments';
 
 const normalizeThinkingText = (value?: string) => {
   if (!value) return '';
@@ -144,6 +151,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   removePendingBotMessageOnCancel = false,
   conversationHistoryEnabled = true,
   initialContextUsage = null,
+  onConversationCleared,
 }) => {
   const { t } = useTranslation();
   const imeEnterGuard = useImeEnterGuard();
@@ -162,7 +170,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [value, setValue] = useState('');
   const [loading, setLoading] = useState(false);
-  const [imageList, setImageList] = useState<UploadFile[]>([]);
+  const [drafts, setDrafts] = useState<Array<ChatAttachmentMeta & { localId: string; file?: File }>>([]);
   const [markdownPreview, setMarkdownPreview] = useState<{ src: string; alt: string } | null>(null);
   const [messages, setMessages] = useState<CustomChatMessage[]>(
     initialMessages.length ? initialMessages : []
@@ -303,6 +311,8 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     }
     return null;
   }, [messages]);
+
+  const displayMessages = useMemo(() => applyAnsweredUserChoices(messages), [messages]);
 
   // Parse guide with proper HTML escaping
   const parseGuideItems = useCallback((guideText: string): GuideParseResult => {
@@ -495,7 +505,38 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     updateMessages([]);
     currentBotMessageRef.current = null;
     setContextUsage(null);
+    onConversationCleared?.();
   };
+
+  const hydratedAttachmentIds = useRef(new Set<number>());
+
+  useEffect(() => {
+    if (!token) return undefined;
+    messages.forEach((msg) => {
+      (msg.attachments || []).forEach((attachment) => {
+        if (!isImageMime(attachment.mime) || attachment.previewUrl || hydratedAttachmentIds.current.has(attachment.id)) {
+          return;
+        }
+        hydratedAttachmentIds.current.add(attachment.id);
+        downloadChatAttachmentBlob(attachment.id, token)
+          .then((blob) => {
+            const previewUrl = URL.createObjectURL(blob);
+            updateMessages((prev) => prev.map((item) => (
+              item.id === msg.id
+                ? {
+                  ...item,
+                  attachments: item.attachments?.map((current) => (
+                    current.id === attachment.id ? { ...current, previewUrl } : current
+                  )),
+                }
+                : item
+            )));
+          })
+          .catch(() => undefined);
+      });
+    });
+    return undefined;
+  }, [messages, token, updateMessages]);
 
   useEffect(() => {
     if (!conversationHistoryEnabled) {
@@ -505,80 +546,75 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     setContextUsage(initialContextUsage ?? null);
   }, [conversationHistoryEnabled, initialContextUsage]);
 
+  const hasPendingDraft = drafts.some((item) => item.status === 'pending');
+  const readyDrafts = drafts.filter((item) => item.status === 'ready' && item.id);
+
   const handleSend = useCallback(
-    async (msg: string, images?: UploadFile[]) => {
-      if (pendingChoice && msg.trim() && token) {
-        const answer = msg.trim();
-        // 乐观关闭，避免后台慢时用户重复发送
-        updateMessages(prev => prev.map(message => {
-          if (!message.userChoiceRequests) return message;
-          return {
-            ...message,
-            userChoiceRequests: message.userChoiceRequests.map(request =>
-              request.choice_id === pendingChoice.choice_id
-                ? { ...request, status: 'submitted' as const, selected: [answer] }
-                : request
-            ),
-          };
-        }));
-        const hideLoading = antMessage.loading(t('chat.choiceSubmitting', '正在提交选择...'), 0);
-        try {
-          await postUserChoice(token, {
-            execution_id: pendingChoice.execution_id,
-            node_id: pendingChoice.node_id,
-            choice_id: pendingChoice.choice_id,
-            selected: [answer],
-          });
-        } catch {
-          antMessage.error(t('chat.choiceSubmitFailed'));
-          updateMessages(prev => prev.map(message => {
-            if (!message.userChoiceRequests) return message;
-            return {
-              ...message,
-              userChoiceRequests: message.userChoiceRequests.map(request =>
-                request.choice_id === pendingChoice.choice_id
-                  ? { ...request, status: 'pending' as const, selected: undefined }
-                  : request
-              ),
-            };
-          }));
-        } finally {
-          hideLoading();
-        }
-        return;
-      }
-
-      if ((msg.trim() || (images && images.length > 0)) && !loading && token) {
+    async (msg: string, attachments?: ChatAttachmentMeta[]) => {
+      const ready = (attachments || []).filter((item) => item.status === 'ready' && item.id);
+      if ((msg.trim() || ready.length > 0) && !loading && token && !hasPendingDraft) {
         currentBotMessageRef.current = null;
-
-        // Convert images to base64
-        let imageData: any[] | undefined;
-        if (images && images.length > 0) {
-          imageData = await Promise.all(
-            images.map(async (file) => {
-              if (file.originFileObj) {
-                const base64 = await new Promise<string>((resolve) => {
-                  const reader = new FileReader();
-                  reader.onloadend = () => resolve(reader.result as string);
-                  reader.readAsDataURL(file.originFileObj as File);
-                });
-                return {
-                  id: file.uid,
-                  url: base64,
-                  name: file.name,
-                  status: 'done'
-                };
-              }
-              return null;
-            })
-          ).then(results => results.filter(Boolean));
-        }
-
-        await sendMessage(msg, messages, imageData);
+        await sendMessage(msg, messages, ready.map((item) => ({
+          id: item.id,
+          name: item.name,
+          mime: item.mime,
+          size: item.size,
+          status: item.status,
+          previewUrl: item.previewUrl,
+        })));
       }
     },
-    [pendingChoice, loading, token, sendMessage, messages, updateMessages, t]
+    [hasPendingDraft, loading, token, sendMessage, messages]
   );
+
+  useEffect(() => {
+    const pending = drafts.filter((item) => item.status === 'pending' && item.id);
+    if (!pending.length || !token) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => {
+      pending.forEach((item) => {
+        fetchChatAttachmentStatus(item.id, token)
+          .then((next) => {
+            setDrafts((current) => current.map((draft) => (
+              draft.id === item.id ? { ...draft, status: next.status, failure_reason: next.failure_reason } : draft
+            )));
+          })
+          .catch(() => undefined);
+      });
+    }, 1500);
+    return () => window.clearInterval(timer);
+  }, [drafts, token]);
+
+  const enqueueFile = useCallback(async (file: File) => {
+    const error = clientFileError(file, drafts.length);
+    if (error) {
+      antMessage.error(error);
+      return;
+    }
+    const localId = `${file.name}-${Date.now()}`;
+    const previewUrl = isImageMime(file.type) ? URL.createObjectURL(file) : undefined;
+    setDrafts((current) => [...current, {
+      localId,
+      id: 0,
+      name: file.name,
+      mime: file.type || 'application/octet-stream',
+      size: file.size,
+      status: 'pending',
+      previewUrl,
+      file,
+    }]);
+    try {
+      const uploaded = await uploadChatAttachment(file, token);
+      setDrafts((current) => current.map((draft) => (
+        draft.localId === localId ? { ...draft, ...uploaded, previewUrl: draft.previewUrl } : draft
+      )));
+    } catch (uploadError) {
+      setDrafts((current) => current.map((draft) => (
+        draft.localId === localId ? { ...draft, status: 'failed', failure_reason: uploadError instanceof Error ? uploadError.message : '上传失败' } : draft
+      )));
+    }
+  }, [drafts.length, token]);
 
   const handleCopyMessage = (content: string) => {
     // 移除 HTML 标签，保留纯文本
@@ -633,7 +669,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
       const userMessage = messages[userIndex];
       // 保留全部对话记录，仅用被点击消息对应的问题重新生成（在末尾追加新答案）
-      await sendMessage(userMessage.content, messages, userMessage.images);
+      await sendMessage(userMessage.content, messages, userMessage.attachments);
     },
     [messages, token, sendMessage]
   );
@@ -661,7 +697,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   }, [updateMessages]);
 
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews, plannedExecutionSteps, plannedExecutionStatus, toolCalls, isStreamingTools } = msg;
+    const { content, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews, plannedExecutionSteps, plannedExecutionStatus, toolCalls, isStreamingTools } = msg;
     const visibleReportFileDownloads = Array.isArray(reportFileDownloads)
       ? reportFileDownloads.filter(isRenderableReportDownload)
       : [];
@@ -672,6 +708,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     const isAwaitingAssistant = Boolean(isStreamingTools) && allToolsFinished && !(content || '').trim() && !isThinking;
 
     let replacedContent = parseReferenceLinks(stripPlannedExecutionDumps(content || ''));
+    replacedContent = stripChoicePromptFromContent(replacedContent, userChoiceRequests);
     replacedContent = parseSuggestionLinks(replacedContent);
     replacedContent = rewriteAttachmentDownloadMentions(replacedContent, reportFileDownloads);
 
@@ -743,6 +780,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                     request={req}
                     token={token || ''}
                     onSubmit={handleUserChoiceSubmit}
+                    onSendMessage={(text) => { void handleSend(text); }}
                     readOnly={mode === 'display'}
                   />
                 ))}
@@ -805,6 +843,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                   request={req}
                   token={token || ''}
                   onSubmit={handleUserChoiceSubmit}
+                  onSendMessage={(text) => { void handleSend(text); }}
                   readOnly={mode === 'display'}
                 />
               );
@@ -880,6 +919,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                 request={req}
                 token={token || ''}
                 onSubmit={handleUserChoiceSubmit}
+                onSendMessage={(text) => { void handleSend(text); }}
                 readOnly={mode === 'display'}
               />
             ))}
@@ -892,20 +932,35 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
     return (
       <>
-        {images && images.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-2">
-            <Image.PreviewGroup>
-              {images.map((img) => (
-                <Image
-                  key={img.id}
-                  src={img.url}
-                  alt={img.name || 'image'}
-                  width={120}
-                  height={120}
-                  className="rounded object-cover"
-                />
-              ))}
-            </Image.PreviewGroup>
+        {Array.isArray(msg.attachments) && msg.attachments.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {msg.attachments.map((item) => (
+              isImageMime(item.mime) && item.previewUrl ? (
+                <img key={item.id} src={item.previewUrl} alt={item.name} className="h-[120px] w-[120px] rounded object-cover" />
+              ) : (
+                <button
+                  key={item.id}
+                  type="button"
+                  title={t('chat.downloadFile', '点击下载')}
+                  className="group inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] px-3 py-1.5 text-xs text-[var(--color-text-1)] shadow-xs transition-all hover:border-[var(--color-primary)] hover:bg-[var(--color-primary-bg)] hover:text-[var(--color-primary)]"
+                  onClick={() => {
+                    downloadChatAttachmentBlob(item.id, token)
+                      .then((blob) => {
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = item.name;
+                        link.click();
+                        URL.revokeObjectURL(url);
+                      })
+                      .catch(() => antMessage.error(t('chat.downloadFailed', '下载失败')));
+                  }}
+                >
+                  <span>{item.name}</span>
+                  <DownloadOutlined className="text-[11px] opacity-0 transition-opacity group-hover:opacity-100" />
+                </button>
+              )
+            ))}
           </div>
         )}
         <ThinkingPanel thinking={thinking} isThinking={isThinking} />
@@ -947,15 +1002,23 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
     const composerComponent = (
       <div className="relative rounded-xl border border-[var(--color-border-1)] bg-[var(--color-bg)] transition-all focus-within:border-[var(--color-primary)] focus-within:ring-2 focus-within:ring-[var(--color-primary-bg-active)]">
-        {imageList.length > 0 && (
+        {drafts.length > 0 && (
           <div className="flex flex-wrap gap-2 p-2.5 pb-0">
-            {imageList.map((file) => (
-              <div key={file.uid} className="relative group rounded-lg overflow-hidden border border-[var(--color-border-1)] bg-[var(--color-bg)]">
-                <ImageBlobPreview file={file} />
+            {drafts.map((draft) => (
+              <div key={draft.localId} className="flex items-center gap-1 rounded-md border border-[var(--color-border-1)] px-2 py-1 text-xs" data-testid="attachment-chip">
+                {draft.status === 'pending' ? <LoadingOutlined spin /> : null}
+                {draft.previewUrl ? <img src={draft.previewUrl} alt={draft.name} className="h-8 w-8 rounded object-cover" /> : null}
+                <span className={draft.status === 'failed' ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-2)]'}>
+                  {draft.name}
+                  {draft.status === 'pending' ? ` · ${t('chat.fileParsing', '文件解析中')}` : ''}
+                  {draft.status === 'failed' ? ` · ${draft.failure_reason || t('chat.fileFailed', '解析失败')}` : ''}
+                </span>
                 <button
                   type="button"
-                  className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-black/60 text-white text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={() => setImageList(imageList.filter(item => item.uid !== file.uid))}
+                  onClick={() => {
+                    if (draft.previewUrl) URL.revokeObjectURL(draft.previewUrl);
+                    setDrafts((current) => current.filter((item) => item.localId !== draft.localId));
+                  }}
                   aria-label={t('chat.deleteImage', '删除图片')}
                 >
                   ×
@@ -979,36 +1042,24 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               if (!imeEnterGuard.handleEnterKey(e)) {
                 return;
               }
-              if ((value.trim() || imageList.length > 0) && !loading) {
-                const currentImages = [...imageList];
-                setImageList([]);
+              if ((value.trim() || readyDrafts.length > 0) && !loading && !hasPendingDraft) {
+                const currentDrafts = [...readyDrafts];
+                currentDrafts.forEach((draft) => {
+                  if (draft.previewUrl) URL.revokeObjectURL(draft.previewUrl);
+                });
+                setDrafts([]);
                 setValue('');
-                handleSend(value, currentImages);
+                handleSend(value, currentDrafts);
               }
             }}
             onPaste={(event: React.ClipboardEvent) => {
               const items = event.clipboardData?.items;
               if (!items) return;
-
               for (let i = 0; i < items.length; i++) {
-                const item = items[i];
-                if (item.type.startsWith('image/')) {
-                  event.preventDefault();
-                  const file = item.getAsFile();
-                  if (file) {
-                    const isLt5M = file.size / 1024 / 1024 < 5;
-                    if (!isLt5M) {
-                      antMessage.error(t('chat.imageTooLarge', '图片大小不能超过 5MB'));
-                      continue;
-                    }
-                    setImageList(prev => [...prev, {
-                      uid: `paste-${Date.now()}-${i}`,
-                      name: file.name || `pasted-image-${Date.now()}.png`,
-                      status: 'done',
-                      originFileObj: file
-                    } as any]);
-                  }
-                }
+                const file = items[i].getAsFile();
+                if (!file) continue;
+                event.preventDefault();
+                void enqueueFile(file);
               }
             }}
           />
@@ -1017,37 +1068,22 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         <div className="flex items-center justify-between px-3 pb-2 pt-1 border-t border-[var(--color-fill-2)]/60 mt-1">
           <div className="flex items-center gap-1.5">
             <Upload
-              accept="image/*"
+              accept={CHAT_ATTACHMENT_ACCEPT}
               fileList={[]}
               beforeUpload={(file) => {
-                const isImage = file.type.startsWith('image/');
-                if (!isImage) {
-                  antMessage.error(t('chat.onlyImageAllowed', '只能上传图片文件'));
-                  return Upload.LIST_IGNORE;
-                }
-                const isLt5M = file.size / 1024 / 1024 < 5;
-                if (!isLt5M) {
-                  antMessage.error(t('chat.imageTooLarge', '图片大小不能超过 5MB'));
-                  return Upload.LIST_IGNORE;
-                }
-                setImageList(prev => [...prev, {
-                  uid: file.uid,
-                  name: file.name,
-                  status: 'done',
-                  originFileObj: file
-                } as any]);
+                void enqueueFile(file);
                 return Upload.LIST_IGNORE;
               }}
               showUploadList={false}
             >
-              <Tooltip title={t('chat.uploadImage', '上传图片')}>
+              <Tooltip title={t('chat.uploadFile', '上传文件')}>
                 <button
                   type="button"
                   disabled={loading}
                   className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--color-text-3)] hover:bg-[var(--color-fill-2)] hover:text-[var(--color-text-1)] transition-colors disabled:opacity-40"
-                  aria-label={t('chat.uploadImage', '上传图片')}
+                  aria-label={t('chat.uploadFile', '上传文件')}
                 >
-                  <PictureOutlined className="text-sm" />
+                  <PaperClipOutlined className="text-sm" />
                 </button>
               </Tooltip>
             </Upload>
@@ -1095,20 +1131,24 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                 </button>
               </Tooltip>
             ) : (
-              <Tooltip title={value.trim() || imageList.length > 0 ? `${t('chat.send')} ↵` : t('chat.inputMessage')}>
+              <Tooltip title={hasPendingDraft ? t('chat.fileParsing', '文件解析中') : (value.trim() || readyDrafts.length > 0 ? `${t('chat.send')} ↵` : t('chat.inputMessage'))}>
                 <button
                   type="button"
-                  disabled={!value.trim() && imageList.length === 0}
+                  disabled={hasPendingDraft || (!value.trim() && readyDrafts.length === 0)}
                   onClick={() => {
-                    if (value.trim() || imageList.length > 0) {
-                      const currentImages = [...imageList];
-                      setImageList([]);
+                    if (hasPendingDraft) return;
+                    if (value.trim() || readyDrafts.length > 0) {
+                      const currentDrafts = [...readyDrafts];
+                      currentDrafts.forEach((draft) => {
+                        if (draft.previewUrl) URL.revokeObjectURL(draft.previewUrl);
+                      });
+                      setDrafts([]);
                       setValue('');
-                      handleSend(value, currentImages);
+                      handleSend(value, currentDrafts);
                     }
                   }}
                   className={`flex h-7 w-7 items-center justify-center rounded-full shadow-xs transition-all ${
-                    (value.trim() || imageList.length > 0)
+                    (!hasPendingDraft && (value.trim() || readyDrafts.length > 0))
                       ? 'bg-[var(--color-primary)] text-white hover:scale-105 active:scale-95 cursor-pointer'
                       : 'bg-[var(--color-fill-2)] text-[var(--color-text-4)] cursor-not-allowed'
                   }`}
@@ -1212,7 +1252,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             </div>
           )}
           <div className="space-y-4">
-            {messages.map(msg => {
+            {displayMessages.map(msg => {
               const isUser = msg.role === 'user';
               const hasBrowserSteps = msg.browserStepsHistory && msg.browserStepsHistory.steps.length > 0;
               const hasThinking = Boolean(normalizeThinkingText(msg.thinking)) || Boolean(msg.isThinking);

@@ -252,6 +252,7 @@ class LLMSkill(MaintainerInfo):
 
     enable_conversation_history = models.BooleanField(default=False, verbose_name="启用对话历史")
     conversation_window_size = models.IntegerField(default=10, verbose_name="对话窗口大小")
+    run_model_call_limit = models.PositiveIntegerField(default=10, verbose_name="每步模型调用次数")
 
     introduction = models.TextField(blank=True, null=True, default="", verbose_name="介绍")
     team = models.JSONField(default=list, verbose_name="分组")

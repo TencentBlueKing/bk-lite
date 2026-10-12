@@ -18,6 +18,7 @@ import {
 } from '@/app/opspilot/types/global';
 import { initToolCallTooltips, renderErrorMessage, ToolCallInfo } from './toolCallRenderer';
 import { getOpspilotTranslate } from './i18n';
+import { choiceRequestFromVisibleText, stripChoicePromptFromContent } from './userChoiceOptions';
 import {
   applyPlannedExecutionStep,
   attachToolCallToCurrentStep,
@@ -724,7 +725,7 @@ export const processHistoryMessageContent = (content: string, role: string): str
   return buildFromEvents(parsedContent, true).content;
 };
 
-export const processHistoryMessageWithExtras = (
+const buildHistoryMessageExtras = (
   content: unknown,
   role: string
 ): {
@@ -797,6 +798,21 @@ export const processHistoryMessageWithExtras = (
   }
 
   return buildFromEvents(parsedContent, true);
+};
+
+export const processHistoryMessageWithExtras = (
+  content: unknown,
+  role: string,
+) => {
+  const result = buildHistoryMessageExtras(content, role);
+  if (role !== 'bot' && role !== 'assistant') return result;
+  const recovered = choiceRequestFromVisibleText(result.content || '');
+  if (!recovered) return result;
+  return {
+    ...result,
+    content: stripChoicePromptFromContent(result.content || '', [recovered]),
+    userChoiceRequests: [...(result.userChoiceRequests || []), recovered],
+  };
 };
 
 /**

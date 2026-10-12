@@ -269,8 +269,7 @@ async def test_choice_tool_blocks_single_k8s_instance_fabricated_cluster_options
         ]
     }
 
-    dispatch_mock = mocker.patch("apps.opspilot.metis.llm.chain.approval_tools.dispatch_custom_event")
-    wait_mock = mocker.patch("apps.opspilot.metis.llm.chain.approval_tools.wait_for_choice")
+    finalize_mock = mocker.patch("apps.opspilot.metis.llm.chain.approval_tools.finalize_user_choice")
 
     result = await choice_func(
         question="当前环境下有多个 Kubernetes 集群，请选择需要检查配置健康的集群：",
@@ -281,8 +280,7 @@ async def test_choice_tool_blocks_single_k8s_instance_fabricated_cluster_options
     assert "当前仅配置 1 个 Kubernetes 集群" in result
     assert "禁止向用户询问选择集群" in result
     assert "Kubernetes - 1" in result
-    dispatch_mock.assert_not_called()
-    wait_mock.assert_not_called()
+    finalize_mock.assert_not_called()
 
 
 def test_choice_tool_type_hints_resolve_for_langgraph_toolnode():

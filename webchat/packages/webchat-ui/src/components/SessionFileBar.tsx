@@ -2,20 +2,11 @@
 
 import React, { useState } from 'react';
 import { WC } from '../chrome';
-import { fileExtension, type SessionAttachmentFile } from '../sessionFiles';
+import { fileExtension, openSafeDownload, type SessionAttachmentFile } from '../sessionFiles';
 import { useTranslator } from '../useTranslator';
 
-function downloadFile(file: SessionAttachmentFile) {
-  const link = document.createElement('a');
-  link.href = file.fileUrl;
-  link.setAttribute('download', file.filename);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-}
-
 export const SessionFileBar: React.FC<{ files: SessionAttachmentFile[] }> = ({ files }) => {
-  const { t } = useTranslator();
+  const t = useTranslator();
   const [open, setOpen] = useState(true);
   if (files.length === 0) {
     return null;
@@ -59,7 +50,7 @@ export const SessionFileBar: React.FC<{ files: SessionAttachmentFile[] }> = ({ f
                 type="button"
                 className="shrink-0 text-xs"
                 style={{ color: WC.indigo }}
-                onClick={() => downloadFile(file)}
+                onClick={() => openSafeDownload(file)}
               >
                 {t('chat.downloadFile', '下载')}
               </button>
