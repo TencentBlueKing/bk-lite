@@ -56,3 +56,6 @@ monitor_object_metric:
     WanInpkg_gauge:
       name: 公网入包速率
       desc: 公网网卡的平均入向数据包速率。
+    Outratio_gauge:
+      name: 公网出带宽利用率
+      desc: 云服务器公网出带宽利用率。
