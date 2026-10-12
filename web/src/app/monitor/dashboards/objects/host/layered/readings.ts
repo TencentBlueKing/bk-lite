@@ -69,13 +69,6 @@ export const percentTone = (value: number | null) => {
   return 'var(--color-success)';
 };
 
-export const countTone = (value: number | null) => {
-  if (value == null) return undefined;
-  if (value <= 0) return 'var(--color-success)';
-  if (value >= 10) return 'var(--color-fail)';
-  return 'var(--color-warning)';
-};
-
 /** 可用内存占比：同一时间点 available / total。对不齐的点丢掉，不补假序列。 */
 export const deriveRatioPercent = (
   part: ChartData[] | undefined,

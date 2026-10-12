@@ -241,34 +241,87 @@
   gap: 12px;
 }
 
-.pillRow {
+.statusCards {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
 }
 
-.pill {
-  display: inline-flex;
-  align-items: baseline;
+.statusCard {
+  --status-accent: var(--color-success);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   gap: 8px;
-  min-width: 132px;
-  padding: 8px 14px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  background: var(--color-bg);
+  width: 240px;
+  max-width: 100%;
+  min-height: 88px;
+  padding: 14px 16px 14px 18px;
+  border: 1px solid color-mix(in srgb, var(--status-accent) 28%, var(--color-border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--status-accent) 10%, var(--color-bg));
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-text-1) 4%, transparent);
+  text-align: left;
+  overflow: hidden;
 }
 
-.pillLabel {
+.statusCard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: var(--status-accent);
+}
+
+.statusCardButton {
+  cursor: pointer;
+  font: inherit;
+}
+
+.statusJump {
+  margin-top: 0;
+}
+
+.statusLabel {
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--color-text-3);
+}
+
+.statusValueRow {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.statusValue {
+  font-size: 28px;
+  font-weight: 650;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--status-accent);
+}
+
+.statusUnit {
   font-size: 13px;
   font-weight: 600;
-  color: var(--color-text-1);
+  line-height: 1;
+  color: var(--status-accent);
 }
 
-.pillValue {
-  font-size: 16px;
-  font-weight: 650;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-text-1);
+.statusCardCalm {
+  --status-accent: var(--color-success);
+}
+
+.statusCardWarning {
+  --status-accent: var(--color-warning);
+}
+
+.statusCardDanger {
+  --status-accent: var(--color-fail);
 }
 
 .processTop {

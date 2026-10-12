@@ -130,7 +130,13 @@ export default function HostCategoryLayout({
 
   const renderPane = () => {
     if (activeTab === 'system') {
-      return <SystemPane metrics={metrics} loading={dashboard.loading} />;
+      return (
+        <SystemPane
+          metrics={metrics}
+          loading={dashboard.loading}
+          onOpenProcess={processReady ? () => setActiveTab('process') : undefined}
+        />
+      );
     }
     if (activeTab === 'disk') {
       return (
@@ -161,6 +167,8 @@ export default function HostCategoryLayout({
           loading={processLoading}
           selectedKey={processSelection.selectedKey}
           onSelect={processSelection.setSelectedKey}
+          metrics={metrics}
+          metricsLoading={dashboard.loading}
         />
       );
     }

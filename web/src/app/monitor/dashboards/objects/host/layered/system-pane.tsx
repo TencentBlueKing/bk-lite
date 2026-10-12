@@ -4,10 +4,9 @@ import React, { useMemo } from 'react';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import { HOST_PALETTE } from '../config';
 import type { MetricSeries } from '../../common/simple-dashboard-core';
-import StatusCountRow from './status-count';
+import StatusCountRow, { processStatusItems } from './status-count';
 import ThinTimeSeries from './thin-time-series';
 import {
-  countTone,
   deriveRatioPercent,
   formatPercent,
   formatPlain,
@@ -32,10 +31,12 @@ const LOAD_SERIES = [
 
 export default function SystemPane({
   metrics,
-  loading
+  loading,
+  onOpenProcess
 }: {
   metrics: Record<string, MetricSeries | undefined>;
   loading: boolean;
+  onOpenProcess?: () => void;
 }) {
   const breakdown = CPU_BREAKDOWN.filter((item) => metricHasPoints(metrics[item.key]));
   const cpuItems = breakdown.length
@@ -113,22 +114,11 @@ export default function SystemPane({
   ].filter(Boolean);
   const gridClass = charts.length >= 3 ? styles.chartGrid3 : charts.length === 2 ? styles.chartGrid2 : styles.chartGrid;
 
-  const blocked = latestNumber(metrics.processes_blocked);
-  const zombies = latestNumber(metrics.processes_zombies);
-  const countItem = (key: string, label: string, value: number | null) => (
-    value != null || loading
-      ? [{
-        key,
-        label,
-        value: value == null ? '--' : `${Math.round(value)} 个`,
-        tone: countTone(value)
-      }]
-      : []
+  const counts = processStatusItems(
+    latestNumber(metrics.processes_blocked),
+    latestNumber(metrics.processes_zombies),
+    loading
   );
-  const counts = [
-    ...countItem('blocked', '阻塞', blocked),
-    ...countItem('zombies', '僵尸', zombies)
-  ];
 
   return (
     <>
@@ -136,7 +126,7 @@ export default function SystemPane({
         <div className={classic.sectionLabel}>系统</div>
       </div>
       <div className={gridClass}>{charts}</div>
-      <StatusCountRow items={counts} />
+      <StatusCountRow items={counts} onOpenProcess={onOpenProcess} />
     </>
   );
 }

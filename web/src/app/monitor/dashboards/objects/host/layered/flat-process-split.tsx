@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import type { MetricSeries } from '../../common/simple-dashboard-core';
 import { HOST_PALETTE } from '../config';
 import { pointsToChartData, type EntityTableRow } from '../entity-series';
 import LayeredEntityTable, { type LayeredColumn } from './entity-table';
+import StatusCountRow, { processStatusItems } from './status-count';
 import ThinTimeSeries from './thin-time-series';
-import { formatPercent, formatUnit, percentTone } from './readings';
+import { formatPercent, formatUnit, latestNumber, percentTone } from './readings';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
@@ -17,12 +19,16 @@ export default function FlatProcessSplit({
   rows,
   loading,
   selectedKey,
-  onSelect
+  onSelect,
+  metrics,
+  metricsLoading = false
 }: {
   rows: EntityTableRow[];
   loading: boolean;
   selectedKey: string;
   onSelect: (key: string) => void;
+  metrics?: Record<string, MetricSeries | undefined>;
+  metricsLoading?: boolean;
 }) {
   const sorted = useMemo(
     () => [...rows].sort((left, right) => (right.values.process_cpu_usage ?? -1) - (left.values.process_cpu_usage ?? -1)),
@@ -56,8 +62,15 @@ export default function FlatProcessSplit({
     return next;
   }, [loading, sorted]);
 
+  const statusCounts = processStatusItems(
+    latestNumber(metrics?.processes_blocked),
+    latestNumber(metrics?.processes_zombies),
+    metricsLoading
+  );
+
   return (
     <>
+      <StatusCountRow items={statusCounts} />
       <div className={styles.sectionHead}>
         <div className={classic.sectionLabel}>趋势</div>
         <div className={styles.hint}>点击下表行切换</div>
