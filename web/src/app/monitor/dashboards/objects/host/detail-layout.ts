@@ -15,9 +15,9 @@ export interface HostDetailLayoutOption {
 }
 
 export const HOST_DETAIL_LAYOUT_OPTIONS: readonly HostDetailLayoutOption[] = [
-  { labelKey: 'dashboardMode', fallback: '监控仪表盘', value: 'dashboard' },
+  { labelKey: 'dashboardMode', fallback: '经典仪表盘', value: 'dashboard' },
   { labelKey: 'metricsMode', fallback: '全量指标', value: 'metrics' },
-  { labelKey: 'categoryTabMode', fallback: '概览→分类 Tab→再下钻', value: 'category' }
+  { labelKey: 'categoryTabMode', fallback: '分层概览', value: 'category' }
 ];
 
 export const isHostDetailLayout = (value: string): value is HostDetailLayout => (
@@ -47,4 +47,9 @@ export interface HostDetailLayoutProps {
   netState: EntityLoadState;
   gpuState: EntityLoadState;
   processReady: boolean;
+  processState?: EntityLoadState;
+  layout?: HostDetailLayout;
+  onLayoutChange?: (mode: string) => void;
+  categoryTab?: string;
+  onCategoryTabChange?: (tab: string) => void;
 }

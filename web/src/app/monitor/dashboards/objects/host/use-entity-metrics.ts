@@ -25,7 +25,6 @@ export function useHostEntityMetrics(options: {
   monitorObjectId: React.Key;
   instanceId: React.Key;
   minStepSeconds?: unknown;
-  loadTick: number;
   isDashboardMode: boolean;
 }): EntityLoadState {
   const { getInstanceQuery } = useViewApi();
@@ -41,7 +40,6 @@ export function useHostEntityMetrics(options: {
     monitorObjectId,
     instanceId,
     minStepSeconds,
-    loadTick,
     isDashboardMode
   } = options;
   const idKey = JSON.stringify(idValues);
@@ -53,8 +51,12 @@ export function useHostEntityMetrics(options: {
       setState(EMPTY);
       return;
     }
-    // 切到全量指标时保留维度表，切回仪表盘或分类页签时布局还在。
+    // 切到全量指标或未激活的分类页签时保留维度表，切回后再用。
     if (!enabled || !isDashboardMode) return;
+    if (!queries.length) {
+      setState(EMPTY);
+      return;
+    }
     let active = true;
     setState((prev) => ({ ...prev, status: 'loading' }));
     runWithConcurrency(queries, 4, async (query) => {
@@ -93,7 +95,8 @@ export function useHostEntityMetrics(options: {
       active = false;
     };
     // idValues 由 idKey 锁定；query 引用用 ref，避免 hook 返回新函数导致重复请求。
-  }, [enabled, isDashboardMode, idKey, timeKey, queryKey, monitorObjectId, instanceId, minStepSeconds, loadTick]);
+    // 不跟 loadTick：核心盘刷新不再连带重打维度表。
+  }, [enabled, isDashboardMode, idKey, timeKey, queryKey, monitorObjectId, instanceId, minStepSeconds]);
 
   return state;
 }

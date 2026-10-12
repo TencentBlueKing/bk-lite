@@ -531,6 +531,7 @@
     {
       "id": "dashboard:v1:13365ed8",
       "object_names": [
+        "Host",
         "Process"
       ],
       "template": "sum(procstat_memory_usage{instance_type=\"process\", __$labels__}) by (instance_id, process_name)"
@@ -2579,6 +2580,7 @@
     {
       "id": "dashboard:v1:619c6393",
       "object_names": [
+        "Host",
         "Process"
       ],
       "template": "sum(procstat_num_threads{instance_type=\"process\", __$labels__}) by (instance_id, process_name)"
@@ -3121,6 +3123,7 @@
     {
       "id": "dashboard:v1:7a11ebe7",
       "object_names": [
+        "Host",
         "Process"
       ],
       "template": "clamp_max(count(procstat_cpu_usage{instance_type=\"process\", __$labels__}) by (instance_id, process_name), 1)"
@@ -4343,13 +4346,6 @@
       "template": "avg without (database) (avg_over_time(sqlserver_database_io_write_latency_ms{__$labels__}[__$window__]))"
     },
     {
-      "id": "dashboard:v1:aceeb867",
-      "object_names": [
-        "Host"
-      ],
-      "template": "(sum by (instance_id) (rate(net_err_in{instance_type=\"os\", __$labels__}[__$window__]) or rate(net_err_in_gauge{instance_type=\"os\", __$labels__}[__$window__]) or rate(net_err_in_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__]))) + (sum by (instance_id) (rate(net_err_out{instance_type=\"os\", __$labels__}[__$window__]) or rate(net_err_out_gauge{instance_type=\"os\", __$labels__}[__$window__]) or rate(net_err_out_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__])))"
-    },
-    {
       "id": "dashboard:v1:ad73cb81",
       "object_names": [
         "Minio"
@@ -4629,6 +4625,7 @@
     {
       "id": "dashboard:v1:b8d124d3",
       "object_names": [
+        "Host",
         "Process"
       ],
       "template": "sum(procstat_cpu_usage{instance_type=\"process\", __$labels__}) by (instance_id, process_name)"
@@ -5561,6 +5558,7 @@
     {
       "id": "dashboard:v1:dda9ff8d",
       "object_names": [
+        "Host",
         "Process"
       ],
       "template": "sum(procstat_num_fds{instance_type=\"process\", __$labels__}) by (instance_id, process_name)"
@@ -6258,6 +6256,7 @@
     {
       "id": "dashboard:v1:fe286723",
       "object_names": [
+        "Host",
         "Process"
       ],
       "template": "sum(procstat_memory_rss{instance_type=\"process\", __$labels__}) by (instance_id, process_name)"

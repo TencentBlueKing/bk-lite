@@ -1413,9 +1413,9 @@
     "source": "资产",
     "dashboards": {
       "common": {
-        "dashboardMode": "监控仪表盘",
+        "dashboardMode": "经典仪表盘",
         "metricsMode": "全量指标",
-        "categoryTabMode": "概览→分类 Tab→再下钻",
+        "categoryTabMode": "分层概览",
         "viewSwitcher": "视图",
         "fullMetrics": "全量指标",
         "justNow": "刚刚",

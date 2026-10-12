@@ -1,4 +1,4 @@
-/** Host 磁盘挂载点 TopN（单机旧排行；舰队 Top N 不复用这条，见 fleet-overview）。 */
+/** Host 磁盘挂载点 TopN，单机盘「磁盘与进程」区沿用。 */
 export const HOST_DISK_TOP_N = 8;
 
 interface GuideItem {
@@ -32,7 +32,7 @@ export const HOST_TOP_QUERIES: HostTopQuery[] = [
 
 export interface HostEntityMetricQuery {
   key: string;
-  unit: 'percent' | 'byteps' | 'cps' | 'celsius' | 'watts' | 'mebibytes';
+  unit: 'percent' | 'byteps' | 'cps' | 'celsius' | 'watts' | 'mebibytes' | 'bytes' | 'counts' | 'none';
   /** 行身份与展示优先使用的标签，不发明 inventory 之外的指标名。 */
   labelKeys: string[];
   query: string;
@@ -140,8 +140,42 @@ export const HOST_GPU_ENTITY_QUERIES: HostEntityMetricQuery[] = [
   }
 ];
 
-/**
- * 舰队网卡错误：各实例 interface 合计后的 cps（收+发）。
- * 单位是速率，不是百分比。get_host_resource_top 不含此项，由列表页客户端排序。
- */
-export const HOST_FLEET_NIC_ERROR_QUERY = '(sum by (instance_id) (rate(net_err_in{instance_type="os", __$labels__}[__$window__]) or rate(net_err_in_gauge{instance_type="os", __$labels__}[__$window__]) or rate(net_err_in_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__]))) + (sum by (instance_id) (rate(net_err_out{instance_type="os", __$labels__}[__$window__]) or rate(net_err_out_gauge{instance_type="os", __$labels__}[__$window__]) or rate(net_err_out_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__])))';
+/** 主机分层概览进程层：查询与 Process 对象 inventory 一致，按 process_name 聚合。 */
+export const HOST_PROCESS_ENTITY_QUERIES: HostEntityMetricQuery[] = [
+  {
+    key: 'process_cpu_usage',
+    unit: 'percent',
+    labelKeys: ['process_name'],
+    query: 'sum(procstat_cpu_usage{instance_type="process", __$labels__}) by (instance_id, process_name)'
+  },
+  {
+    key: 'process_mem_usage',
+    unit: 'percent',
+    labelKeys: ['process_name'],
+    query: 'sum(procstat_memory_usage{instance_type="process", __$labels__}) by (instance_id, process_name)'
+  },
+  {
+    key: 'process_memory_rss',
+    unit: 'bytes',
+    labelKeys: ['process_name'],
+    query: 'sum(procstat_memory_rss{instance_type="process", __$labels__}) by (instance_id, process_name)'
+  },
+  {
+    key: 'process_num_threads',
+    unit: 'counts',
+    labelKeys: ['process_name'],
+    query: 'sum(procstat_num_threads{instance_type="process", __$labels__}) by (instance_id, process_name)'
+  },
+  {
+    key: 'process_num_fds',
+    unit: 'counts',
+    labelKeys: ['process_name'],
+    query: 'sum(procstat_num_fds{instance_type="process", __$labels__}) by (instance_id, process_name)'
+  },
+  {
+    key: 'process_alive',
+    unit: 'none',
+    labelKeys: ['process_name'],
+    query: 'clamp_max(count(procstat_cpu_usage{instance_type="process", __$labels__}) by (instance_id, process_name), 1)'
+  }
+];

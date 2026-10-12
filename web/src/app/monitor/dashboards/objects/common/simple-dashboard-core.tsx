@@ -1236,5 +1236,6 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     onInstanceChange,
     onClusterFilterChange,
     routeKey: config.routeKey,
+    metricSeries: metricMap
   };
 }

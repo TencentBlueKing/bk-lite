@@ -9,7 +9,8 @@ import { HOST_DASHBOARD_CONFIG } from './config';
 import {
   HOST_DISK_ENTITY_QUERIES,
   HOST_GPU_ENTITY_QUERIES,
-  HOST_NET_ENTITY_QUERIES
+  HOST_NET_ENTITY_QUERIES,
+  HOST_PROCESS_ENTITY_QUERIES
 } from './queries';
 import { useHostEntityMetrics } from './use-entity-metrics';
 import { resolveHostProcessMetricsTarget } from './host-process-metrics-tab';
@@ -35,18 +36,20 @@ export default function HostDashboardPage() {
     [searchParams]
   );
   const [processReady, setProcessReady] = useState(false);
+  const [categoryTab, setCategoryTab] = useState('system');
   const layout = readHostDetailLayout(new URLSearchParams(searchParams.toString()));
 
   const {
     idValues,
     timeValues,
     isDashboardMode,
-    loadTick,
     currentInstanceInterval,
     monitorObjectId,
     instanceId
   } = dashboard;
 
+  const entityOnClassic = layout === 'dashboard';
+  const entityOnCategory = layout === 'category';
   const entityArgs = {
     idValues,
     instanceIdKeys,
@@ -54,12 +57,28 @@ export default function HostDashboardPage() {
     monitorObjectId,
     instanceId,
     minStepSeconds: currentInstanceInterval,
-    loadTick,
     isDashboardMode
   };
-  const diskState = useHostEntityMetrics({ ...entityArgs, enabled: true, queries: HOST_DISK_ENTITY_QUERIES });
-  const netState = useHostEntityMetrics({ ...entityArgs, enabled: true, queries: HOST_NET_ENTITY_QUERIES });
-  const gpuState = useHostEntityMetrics({ ...entityArgs, enabled: true, queries: HOST_GPU_ENTITY_QUERIES });
+  const diskState = useHostEntityMetrics({
+    ...entityArgs,
+    enabled: entityOnClassic || (entityOnCategory && categoryTab === 'disk'),
+    queries: HOST_DISK_ENTITY_QUERIES
+  });
+  const netState = useHostEntityMetrics({
+    ...entityArgs,
+    enabled: entityOnClassic || (entityOnCategory && categoryTab === 'net'),
+    queries: HOST_NET_ENTITY_QUERIES
+  });
+  const gpuState = useHostEntityMetrics({
+    ...entityArgs,
+    enabled: entityOnClassic || (entityOnCategory && categoryTab === 'gpu'),
+    queries: HOST_GPU_ENTITY_QUERIES
+  });
+  const processState = useHostEntityMetrics({
+    ...entityArgs,
+    enabled: entityOnCategory && categoryTab === 'process' && processReady,
+    queries: processReady ? HOST_PROCESS_ENTITY_QUERIES : []
+  });
 
   useEffect(() => {
     let active = true;
@@ -80,6 +99,12 @@ export default function HostDashboardPage() {
     router.replace(`?${params.toString()}`, { scroll: false });
   };
 
+  useEffect(() => {
+    if (layout === 'category' && categoryTab === 'process' && !processReady) {
+      setCategoryTab('system');
+    }
+  }, [layout, categoryTab, processReady]);
+
   const layoutProps = {
     styles,
     dashboard,
@@ -87,7 +112,12 @@ export default function HostDashboardPage() {
     diskState,
     netState,
     gpuState,
-    processReady
+    processReady,
+    processState,
+    layout,
+    onLayoutChange,
+    categoryTab,
+    onCategoryTabChange: setCategoryTab
   };
 
   return (

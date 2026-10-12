@@ -176,24 +176,33 @@ const applyDashboardLabel = async (
 const selectedModeLabel = (): string => {
   const segmented = document.querySelector('[class*="modeSegmented"] .ant-segmented-item-selected');
   if (segmented?.textContent) return cleanLabel(segmented.textContent);
-  const selectItem = document.querySelector('[class*="modeSelect"] .ant-select-selection-item');
+  const selectItem = document.querySelector(
+    '[class*="modeSelect"] .ant-select-selection-item, [class*="viewSelect"] .ant-select-selection-item'
+  );
   return cleanLabel(selectItem?.textContent || '');
 };
 
-export const dashboardPresentationLabel = (): '全量指标' | '监控仪表盘' | '概览→分类 Tab→再下钻' => {
+export const dashboardPresentationLabel = (): '全量指标' | '经典仪表盘' | '分层概览' => {
   const label = selectedModeLabel();
-  if (/全量指标/.test(label) || /full\s*metrics/i.test(label)) return '全量指标';
-  if (/分类\s*Tab/.test(label) || /category tabs/i.test(label)) return '概览→分类 Tab→再下钻';
-  if (/监控仪表盘/.test(label)) return '监控仪表盘';
+  if (/全量指标/.test(label) || /all\s*metrics/i.test(label) || /full\s*metrics/i.test(label)) return '全量指标';
+  if (
+    /分层概览/.test(label)
+    || /layered\s*overview/i.test(label)
+    || /分类\s*Tab/.test(label)
+    || /category tabs/i.test(label)
+  ) return '分层概览';
+  if (/经典仪表盘/.test(label) || /classic\s*dashboard/i.test(label) || /监控仪表盘/.test(label)) {
+    return '经典仪表盘';
+  }
   const heading = cleanLabel(
     document.querySelector('[class*="pageTitleRow"] h1, [class*="titleControlsRow"] h1')?.textContent
     || document.title,
   );
   if (/全量指标/.test(heading)) return '全量指标';
   if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('host_layout') === 'category') {
-    return '概览→分类 Tab→再下钻';
+    return '分层概览';
   }
-  return '监控仪表盘';
+  return '经典仪表盘';
 };
 
 export const isDashboardMetricsMode = (): boolean => dashboardPresentationLabel() === '全量指标';

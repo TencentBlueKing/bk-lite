@@ -1413,9 +1413,9 @@
     "source": "Asset",
     "dashboards": {
       "common": {
-        "dashboardMode": "Dashboard",
+        "dashboardMode": "Classic Dashboard",
         "metricsMode": "All Metrics",
-        "categoryTabMode": "Overview → Category Tabs → Drill-down",
+        "categoryTabMode": "Layered Overview",
         "viewSwitcher": "View",
         "fullMetrics": "All Metrics",
         "justNow": "Just now",

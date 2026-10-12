@@ -1,0 +1,349 @@
+.root {
+  --l1-bg-app: #12151c;
+  --l1-bg-panel: #141820;
+  --l1-border: #232a38;
+  --l1-text: #eef2f8;
+  --l1-muted: #8b98a8;
+  --l1-accent: #2dd4bf;
+  --l1-crit: #f87171;
+  --l1-warn: #fb923c;
+  --l1-ok: #4ade80;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--l1-bg-app);
+  color: var(--l1-text);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--l1-border);
+}
+
+.toolbarMeta {
+  min-width: 0;
+}
+
+.toolbarLead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.backBtn {
+  color: var(--l1-muted) !important;
+  border: 0;
+  background: transparent !important;
+}
+
+.toolbarName {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--l1-text);
+}
+
+.toolbarSub {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--l1-muted);
+}
+
+.toolbarControls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.viewSelect {
+  min-width: 148px;
+}
+
+.dropdown {
+  background: #141820 !important;
+  border: 1px solid #232a38 !important;
+
+  :global(.ant-select-item) {
+    color: #eef2f8;
+  }
+
+  :global(.ant-select-item-option-selected) {
+    color: #2dd4bf;
+  }
+}
+
+.signalBar {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--l1-border);
+  overflow-x: auto;
+}
+
+.signalPill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 132px;
+  padding: 6px 10px;
+  border: 1px solid var(--l1-border);
+  background: var(--l1-bg-panel);
+}
+
+.signalLabel {
+  font-size: 11px;
+  color: var(--l1-muted);
+}
+
+.signalValue {
+  font-size: 16px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.signalSpark {
+  width: 72px;
+  height: 28px;
+  flex-shrink: 0;
+}
+
+.alertPill {
+  margin-left: auto;
+  min-width: 88px;
+  padding: 6px 10px;
+  border: 1px solid color-mix(in srgb, var(--l1-crit) 45%, var(--l1-border));
+  background: color-mix(in srgb, var(--l1-crit) 12%, var(--l1-bg-panel));
+}
+
+.alertValue {
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--l1-crit);
+  font-variant-numeric: tabular-nums;
+}
+
+.alertHint {
+  font-size: 11px;
+  color: var(--l1-muted);
+}
+
+.body {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  min-height: 0;
+  flex: 1;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 8px;
+  border-right: 1px solid var(--l1-border);
+}
+
+.navLabel {
+  padding: 0 8px 8px;
+  font-size: 11px;
+  color: var(--l1-muted);
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--l1-muted);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.navItemActive {
+  color: var(--l1-text);
+  background: color-mix(in srgb, var(--l1-accent) 12%, transparent);
+  box-shadow: inset 2px 0 0 var(--l1-accent);
+}
+
+.navCount {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--l1-accent);
+}
+
+.main {
+  min-width: 0;
+  padding: 12px 16px 20px;
+}
+
+.paneTitle {
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.chartGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.chartPanel {
+  min-width: 0;
+  padding: 8px 10px 6px;
+  border: 1px solid var(--l1-border);
+  background: var(--l1-bg-panel);
+}
+
+.chartHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.chartTitle {
+  font-size: 12px;
+  color: var(--l1-muted);
+}
+
+.chartLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--l1-muted);
+}
+
+.legendSwatch {
+  display: inline-block;
+  width: 10px;
+  height: 2px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.chartBody {
+  height: 168px;
+}
+
+.statusTable {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+  border: 1px solid var(--l1-border);
+  background: var(--l1-bg-panel);
+  font-size: 12px;
+
+  td {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--l1-border);
+  }
+
+  td:first-child {
+    color: var(--l1-muted);
+    width: 120px;
+  }
+
+  tr:last-child td {
+    border-bottom: 0;
+  }
+}
+
+.entityStack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.processSplit {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.tableWrap {
+  min-width: 0;
+  border: 1px solid var(--l1-border);
+  background: var(--l1-bg-panel);
+}
+
+.note {
+  font-size: 12px;
+  color: var(--l1-muted);
+}
+
+.rowActive {
+  cursor: pointer;
+
+  :global(td) {
+    background: transparent !important;
+    box-shadow: inset 2px 0 0 var(--l1-accent);
+  }
+}
+
+.rowIdle {
+  cursor: pointer;
+}
+
+.root :global(.ant-table) {
+  background: transparent;
+  color: var(--l1-text);
+  font-size: 12px;
+}
+
+.root :global(.ant-table-thead > tr > th) {
+  background: transparent;
+  color: var(--l1-muted);
+  border-bottom-color: var(--l1-border);
+}
+
+.root :global(.ant-table-tbody > tr > td) {
+  background: transparent;
+  color: var(--l1-text);
+  border-bottom-color: var(--l1-border);
+  font-variant-numeric: tabular-nums;
+}
+
+.root :global(.ant-table-tbody > tr:hover > td) {
+  background: color-mix(in srgb, var(--l1-accent) 8%, transparent) !important;
+}
+
+.root :global(.ant-empty-description) {
+  color: var(--l1-muted);
+}
+
+.root :global(.ant-select-selector),
+.root :global(.time-selector .ant-select-selector) {
+  background: var(--l1-bg-panel) !important;
+  border-color: var(--l1-border) !important;
+  color: var(--l1-text) !important;
+}
+
+.root :global(.ant-select-selection-item),
+.root :global(.ant-select-arrow),
+.root :global(.ant-table-column-sorter) {
+  color: var(--l1-muted) !important;
+}
+
+@media (max-width: 1100px) {
+  .body,
+  .chartGrid,
+  .processSplit {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
