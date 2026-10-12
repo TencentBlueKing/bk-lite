@@ -71,21 +71,6 @@ export const useStorageConfig = () => {
           height: '200px',
           width: '24%'
         }
-      },
-      {
-        indexId: 'sangfor_eds_disk_status',
-        displayType: 'multipleIndexsTable',
-        sortIndex: 7,
-        displayDimension: [
-          'sangfor_eds_disk_usage_rate',
-          'sangfor_eds_disk_life_percent',
-          'sangfor_eds_disk_bad_sector',
-          'sangfor_eds_disk_size_bytes'
-        ],
-        style: {
-          height: '400px',
-          width: '100%'
-        }
       }
     ],
     groupIds: {

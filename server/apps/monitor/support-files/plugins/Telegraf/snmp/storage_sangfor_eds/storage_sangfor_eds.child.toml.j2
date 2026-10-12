@@ -226,6 +226,7 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.35047.2.12.7.1.1.10"
         name = "life_percent"
+        conversion = "float"
 
     # ---- 主机表，INDEX=hostName；在线/CPU/内存在可解析时转换 ----
     [[inputs.snmp.table]]
@@ -246,6 +247,7 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.35047.2.12.7.3.1.6"
         name = "mem_usage"
+        conversion = "float"
 
 # DisplayString 比率 0..1 → 百分比；字符串状态 → 1 正常 / 2 异常 / 3 未知。
 # 空值与 notPresent 映射为 1；厂商字面 unknown 映射为 3 且不告警；告警策略仅匹配 =2。
