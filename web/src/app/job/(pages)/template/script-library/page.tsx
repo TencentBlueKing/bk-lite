@@ -35,6 +35,8 @@ import GroupTreeSelect from '@/components/group-tree-select';
 import SearchCombination from '@/components/search-combination';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
 import ScriptEditor from '@/app/job/components/script-editor';
+import TemplateVersionDrawer from '@/app/job/components/template-version-drawer';
+import VersionBadge from '@/components/version-badge';
 import OrganizationTags, { getOrganizationColumnWidth } from '@/app/job/components/organization-tags';
 import { useRouter } from 'next/navigation';
 import styles from './page.module.scss';
@@ -137,6 +139,7 @@ const ScriptLibraryPage = () => {
   const [confirmLoading, setConfirmLoading] = useState(false);
 
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [versionScriptId, setVersionScriptId] = useState<number | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importConfirmLoading, setImportConfirmLoading] = useState(false);
 
@@ -626,6 +629,13 @@ const ScriptLibraryPage = () => {
       width: 120,
     },
     {
+      title: t('job.version'),
+      dataIndex: 'current_revision_label',
+      key: 'current_revision_label',
+      width: 160,
+      render: (value: string) => <VersionBadge value={value} fallback="--" />,
+    },
+    {
       title: t('job.updateTime'),
       dataIndex: 'updated_at',
       key: 'updated_at',
@@ -643,7 +653,7 @@ const ScriptLibraryPage = () => {
       title: t('job.operation'),
       dataIndex: 'action',
       key: 'action',
-      width: 220,
+      width: 260,
       fixed: 'right',
       render: (_: unknown, record: Script) => (
         <div className="flex items-center gap-3">
@@ -664,6 +674,12 @@ const ScriptLibraryPage = () => {
             onClick={() => router.push(`/job/execution/quick-exec?script_id=${record.id}`)}
           >
             {t('job.executeScript')}
+          </a>
+          <a
+            className="text-[var(--color-primary)] cursor-pointer"
+            onClick={() => setVersionScriptId(record.id)}
+          >
+            {t('job.version')}
           </a>
           <Popconfirm
             title={t('job.deleteScript')}
@@ -1016,6 +1032,13 @@ const ScriptLibraryPage = () => {
             </Form.Item>
           </Form>
         }
+      />
+      <TemplateVersionDrawer
+        open={versionScriptId !== null}
+        kind="script"
+        targetId={versionScriptId}
+        onClose={() => setVersionScriptId(null)}
+        onRestored={() => fetchData()}
       />
     </div>
   );

@@ -18,6 +18,9 @@ import {
   Playbook,
   PlaybookFormData,
   PlaybookFilePreview,
+  ScriptRevisionCompare,
+  PlaybookRevisionCompare,
+  TemplateRevisionList,
   ScheduledTaskParams,
   ScheduledTaskListResponse,
   ScheduledTask,
@@ -238,6 +241,27 @@ const useJobApi = () => {
     return await get(`/job_mgmt/api/script/${id}/`, config);
   };
 
+  const getScriptRevisions = async (
+    id: number,
+    params: { page?: number; page_size?: number } = {}
+  ): Promise<TemplateRevisionList> => {
+    return await get(`/job_mgmt/api/script/${id}/revisions/`, { params });
+  };
+
+  const compareScriptRevision = async (
+    id: number,
+    revisionId: number
+  ): Promise<ScriptRevisionCompare> => {
+    return await get(`/job_mgmt/api/script/${id}/revisions/${revisionId}/compare/`);
+  };
+
+  const restoreScriptRevision = async (
+    id: number,
+    revisionId: number
+  ): Promise<Script> => {
+    return await post(`/job_mgmt/api/script/${id}/revisions/${revisionId}/restore/`);
+  };
+
   const createScript = async (
     data: ScriptFormData
   ): Promise<Script> => {
@@ -323,6 +347,27 @@ const useJobApi = () => {
     return await post(`/job_mgmt/api/playbook/${id}/upgrade/`, data, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
+  };
+
+  const getPlaybookRevisions = async (
+    id: number,
+    params: { page?: number; page_size?: number } = {}
+  ): Promise<TemplateRevisionList> => {
+    return await get(`/job_mgmt/api/playbook/${id}/revisions/`, { params });
+  };
+
+  const comparePlaybookRevision = async (
+    id: number,
+    revisionId: number
+  ): Promise<PlaybookRevisionCompare> => {
+    return await get(`/job_mgmt/api/playbook/${id}/revisions/${revisionId}/compare/`);
+  };
+
+  const restorePlaybookRevision = async (
+    id: number,
+    revisionId: number
+  ): Promise<Playbook> => {
+    return await post(`/job_mgmt/api/playbook/${id}/revisions/${revisionId}/restore/`);
   };
 
   const downloadPlaybook = async (id: number): Promise<Blob> => {
@@ -574,6 +619,9 @@ const useJobApi = () => {
     queryNodes,
     getScriptList,
     getScriptDetail,
+    getScriptRevisions,
+    compareScriptRevision,
+    restoreScriptRevision,
     createScript,
     updateScript,
     deleteScript,
@@ -585,6 +633,9 @@ const useJobApi = () => {
     updatePlaybook,
     deletePlaybook,
     upgradePlaybook,
+    getPlaybookRevisions,
+    comparePlaybookRevision,
+    restorePlaybookRevision,
     downloadPlaybook,
     downloadPlaybookTemplate,
     batchDeletePlaybook,

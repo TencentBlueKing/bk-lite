@@ -714,7 +714,7 @@ const JobRecordPage = () => {
       { label: t('job.executionVersion'), value: detail?.playbook ? (detail.playbook_version || '-') : null },
       { label: t('job.playbookName'), value: viewingPlaybook.name },
       { label: t('job.playbookDescription'), value: viewingPlaybook.description || '-' },
-      { label: t('job.currentVersion'), value: viewingPlaybook.version || '-' },
+      { label: t('job.currentVersion'), value: viewingPlaybook.current_revision_label || '--' },
       { label: t('job.recentUpdateTime'), value: viewingPlaybook.updated_at ? dayjs(viewingPlaybook.updated_at).format('YYYY-MM-DD HH:mm:ss') : '-' },
       { label: t('job.uploader'), value: viewingPlaybook.created_by || '-' },
     ].filter((item): item is { label: string; value: string | null } => item.value !== null);
@@ -1258,7 +1258,7 @@ const JobRecordPage = () => {
             viewingPlaybook ? (
               <div className="flex items-center gap-3">
                 <span>{viewingPlaybook.name}</span>
-                <VersionBadge value={viewingPlaybook.version} />
+                <VersionBadge value={viewingPlaybook.current_revision_label} fallback="--" />
               </div>
             ) : null
           }
