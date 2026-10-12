@@ -4,26 +4,16 @@ import React, { useState, useCallback, useEffect } from 'react';
 import dayjs from 'dayjs';
 import {
   AppstoreOutlined,
-  CheckCircleOutlined,
-  ClockCircleOutlined,
   DownOutlined,
   DoubleRightOutlined,
-  ExclamationCircleOutlined,
-  ProfileOutlined,
-  WarningOutlined,
 } from '@ant-design/icons';
 import { Tooltip } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useCollectApi } from '@/app/cmdb/api';
 
 const AppstoreIcon = AppstoreOutlined as any;
-const CheckCircleIcon = CheckCircleOutlined as any;
-const ClockCircleIcon = ClockCircleOutlined as any;
 const DownIcon = DownOutlined as any;
 const DoubleRightIcon = DoubleRightOutlined as any;
-const ExclamationCircleIcon = ExclamationCircleOutlined as any;
-const ProfileIcon = ProfileOutlined as any;
-const WarningIcon = WarningOutlined as any;
 
 interface TaskOverview {
   total: number;
@@ -112,58 +102,50 @@ const CollectionStats: React.FC = () => {
     key: string;
     label: string;
     value: number | string;
-    iconBg: string;
-    iconColor: string;
-    icon: React.ReactNode;
-    valueClassName?: string;
+    hue: string;
+    valueClassName: string;
   }> = [
     {
       key: 'total',
       label: t('Collection.stats.totalTasks'),
       value: o.total,
-      iconBg: '#E8F0FF',
-      iconColor: '#155AEF',
-      icon: <ProfileIcon />,
+      hue: 'var(--color-primary)',
+      valueClassName: 'text-[var(--color-text-1)]',
     },
     {
       key: 'normal',
       label: t('Collection.stats.normalTasks'),
       value: o.normal,
-      iconBg: '#E8FFEA',
-      iconColor: '#00B42A',
-      icon: <CheckCircleIcon />,
+      hue: 'var(--color-success)',
+      valueClassName: 'text-[var(--color-success)]',
     },
     {
       key: 'error',
       label: t('Collection.stats.errorTasks'),
       value: o.error,
-      iconBg: '#FFECE8',
-      iconColor: '#F53F3F',
-      icon: <ExclamationCircleIcon />,
+      hue: 'var(--color-fail)',
+      valueClassName: 'text-[var(--color-fail)]',
     },
     {
       key: 'partial',
       label: t('Collection.stats.partialTasks'),
       value: o.partial,
-      iconBg: '#FFF7E6',
-      iconColor: '#F7BA1E',
-      icon: <WarningIcon />,
+      hue: 'var(--color-warning)',
+      valueClassName: 'text-[var(--color-warning)]',
     },
     {
       key: 'coveredModels',
       label: t('Collection.stats.coveredModels'),
       value: o.covered_models,
-      iconBg: '#E8FFEA',
-      iconColor: '#00B42A',
-      icon: <AppstoreIcon />,
+      hue: 'var(--color-success)',
+      valueClassName: 'text-[var(--color-success)]',
     },
     {
       key: 'recent',
       label: t('Collection.stats.recentSync'),
       value: formatRelative(o.recent_sync_at, t),
-      iconBg: '#E8F0FF',
-      iconColor: '#155AEF',
-      icon: <ClockCircleIcon />,
+      hue: 'var(--color-primary)',
+      valueClassName: 'text-[var(--color-text-1)]',
     },
   ];
 
@@ -176,25 +158,33 @@ const CollectionStats: React.FC = () => {
       {expanded && (
         <div className="relative pb-4">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-            {cards.map((c) => (
-              <div
-                key={c.key}
-                className="flex min-h-[78px] items-center gap-2.5 rounded-md border border-[#d6deea] bg-white px-3 py-3 transition-colors hover:border-[#c5d0df] xl:gap-3.5 xl:px-4"
-              >
+            {cards.map((c) => {
+              const isLong = typeof c.value === 'string' && c.value.length > 8;
+              return (
                 <div
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] text-[16px] xl:h-10 xl:w-10 xl:text-[18px]"
-                  style={{ background: c.iconBg, color: c.iconColor }}
+                  key={c.key}
+                  className="min-w-0 cursor-default rounded-lg border border-[var(--color-border-1)] p-3 shadow-[0_1px_3px_rgba(0,0,0,0.03)] sm:px-3.5 sm:py-3"
+                  style={{
+                    background: `linear-gradient(180deg, color-mix(in srgb, ${c.hue} 1.5%, var(--color-bg)) 0%, var(--color-bg) 32%)`,
+                  }}
                 >
-                  {c.icon}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-xs font-medium text-[#5f6f86]">{c.label}</div>
-                  <div className={`mt-1 whitespace-nowrap text-sm font-bold leading-none tracking-tight tabular-nums text-[#0f172a] ${c.valueClassName || ''}`}>
-                    {c.value}
+                  <div className="flex h-full flex-col justify-between gap-1.5">
+                    <span className="truncate text-xs font-medium text-[var(--color-text-3)]">
+                      {c.label}
+                    </span>
+                    <div
+                      className={`font-mono tracking-tight tabular-nums ${
+                        isLong
+                          ? `whitespace-normal break-words text-sm font-medium leading-snug sm:text-base ${c.valueClassName}`
+                          : `truncate text-xl font-bold sm:text-2xl ${c.valueClassName}`
+                      }`}
+                    >
+                      {c.value}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <Tooltip title={toggleLabel}>
             <button
@@ -202,7 +192,7 @@ const CollectionStats: React.FC = () => {
               aria-expanded={expanded}
               aria-label={toggleLabel}
               onClick={toggleExpanded}
-              className="absolute bottom-[-6px] left-1/2 flex h-5 w-8 -translate-x-1/2 cursor-pointer items-center justify-center rounded-md bg-white/60 text-blue-400 transition-colors hover:bg-blue-50/70 hover:text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              className="absolute bottom-[-6px] left-1/2 flex h-5 w-8 -translate-x-1/2 cursor-pointer items-center justify-center rounded-md bg-[var(--color-bg)] text-[var(--color-primary)] transition-colors hover:bg-[var(--color-primary-bg-active)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
             >
               <DoubleRightIcon aria-hidden="true" className="-rotate-90 text-xs" />
             </button>
@@ -211,19 +201,19 @@ const CollectionStats: React.FC = () => {
       )}
       {!expanded && (
         <div className="flex items-center pb-0 pt-1">
-          <div className="h-px flex-1 bg-slate-200/50" />
+          <div className="h-px flex-1 bg-[var(--color-border)]" />
           <button
             type="button"
             aria-expanded={expanded}
             aria-label={toggleLabel}
             onClick={toggleExpanded}
-            className="mx-3 flex h-6 cursor-pointer items-center gap-1.5 rounded-full border border-slate-200/60 bg-white/75 px-2.5 text-[11px] font-normal text-slate-400 transition-colors hover:border-blue-200 hover:bg-blue-50/80 hover:text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+            className="mx-3 flex h-6 cursor-pointer items-center gap-1.5 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2.5 text-xs font-normal text-[var(--color-text-3)] transition-colors hover:border-[var(--color-primary)] hover:bg-[var(--color-primary-bg-active)] hover:text-[var(--color-primary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
           >
             <AppstoreIcon aria-hidden="true" className="text-xs" />
             <span>{toggleLabel}</span>
-            <DownIcon aria-hidden="true" className="text-[9px]" />
+            <DownIcon aria-hidden="true" className="text-xs" />
           </button>
-          <div className="h-px flex-1 bg-slate-200/50" />
+          <div className="h-px flex-1 bg-[var(--color-border)]" />
         </div>
       )}
     </div>

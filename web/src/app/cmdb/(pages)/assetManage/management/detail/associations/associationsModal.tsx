@@ -116,9 +116,8 @@ const AssociationsModal = forwardRef<AssoModalRef, AssoModalProps>(
             guardClose(!!formRef.current?.isFieldsTouched(), handleCancel)
           }
           footer={
-            <div>
+            <div className="flex justify-end gap-2">
               <Button
-                className="mr-[10px]"
                 type="primary"
                 loading={confirmLoading}
                 disabled={assoType === 'edit'}

@@ -2,7 +2,7 @@
 
 import { useSearchParams } from 'next/navigation';
 import { getAssetColumns } from '@/app/cmdb/utils/common';
-import { Spin, Collapse, Button, Modal, message } from 'antd';
+import { Collapse, Button, Modal, message } from 'antd';
 import { CaretRightOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { AssoListProps } from '@/app/cmdb/types/assetData';
@@ -239,7 +239,7 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
         label: showConnectName(item, config),
         model_asst_id: item.model_asst_id,
         extra: (
-          <span className="inline-flex min-w-6 justify-center rounded-full bg-[var(--color-fill-3)] px-2 py-0.5 text-xs font-normal text-[var(--color-text-2)]">
+          <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--color-primary)_12%,var(--color-bg))] px-1.5 text-xs font-semibold tabular-nums text-[var(--color-primary)]">
             {instanceCount}
           </span>
         ),
@@ -380,13 +380,28 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
     };
 
     return (
-      <Spin
-        spinning={!loading && pageLoading}
-      >
+      <>
         <div className={assoListStyle.relationships}>
-          {assoCredentials.length ? (
+          {(loading || pageLoading) && !assoCredentials.length ? (
+            <div className="space-y-4" aria-busy="true" aria-label="loading">
+              {[0, 1, 2].map((index) => (
+                <section
+                  key={index}
+                  className="overflow-hidden rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] shadow-[0_1px_3px_rgba(0,0,0,0.03)]"
+                >
+                  <div className="h-10 border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)]/35" />
+                  <div className="space-y-2 p-3">
+                    <div className="h-8 animate-pulse rounded-md bg-[var(--color-fill-1)]" />
+                    <div className="h-8 animate-pulse rounded-md bg-[var(--color-fill-1)]" />
+                    <div className="h-8 animate-pulse rounded-md bg-[var(--color-fill-1)]" />
+                  </div>
+                </section>
+              ))}
+            </div>
+          ) : assoCredentials.length ? (
             <Collapse
               bordered={false}
+              className="bg-transparent [&_.ant-collapse-item]:mb-4 [&_.ant-collapse-item]:overflow-hidden [&_.ant-collapse-item]:rounded-lg [&_.ant-collapse-item]:border [&_.ant-collapse-item]:border-[var(--color-border-1)] [&_.ant-collapse-item]:bg-[var(--color-bg)] [&_.ant-collapse-item]:shadow-[0_1px_3px_rgba(0,0,0,0.03)] [&_.ant-collapse-header]:!bg-[var(--color-fill-1)]/35 [&_.ant-collapse-header]:!text-[13px] [&_.ant-collapse-header]:!font-semibold [&_.ant-collapse-header]:!text-[var(--color-text-1)] [&_.ant-collapse-content-box]:!p-0"
               activeKey={activeKey}
               expandIcon={({ isActive }) => (
                 <CaretRightOutlined rotate={isActive ? 90 : 0} />
@@ -408,7 +423,7 @@ const AssoList = forwardRef<AssoListRef, AssoListProps>(
           assoTypes={assoTypeList}
           onSuccess={confirmRelate}
         />
-      </Spin>
+      </>
     );
   }
 );

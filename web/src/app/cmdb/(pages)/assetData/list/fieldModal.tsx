@@ -206,7 +206,7 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
           )}
           {item.user_prompt && (
             <Tooltip title={item.user_prompt}>
-              <QuestionCircleOutlined className="ml-1 text-gray-400 cursor-help" />
+              <QuestionCircleOutlined className="ml-1 text-[var(--color-text-4)] cursor-help" />
             </Tooltip>
           )}
         </div>
@@ -396,9 +396,8 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
           width={730}
           onCancel={handleCancel}
           footer={
-            <div>
+            <div className="flex justify-end gap-2">
               <Button
-                className="mr-[10px]"
                 type="primary"
                 loading={confirmLoading}
                 onClick={() => handleSubmit()}
@@ -407,7 +406,6 @@ const FieldMoadal = forwardRef<FieldModalRef, FieldModalProps>(
               </Button>
               {type === 'add' && !hideAssociate && (
                 <Button
-                  className="mr-[10px]"
                   loading={confirmLoading}
                   onClick={() => handleSubmit('associate')}
                 >

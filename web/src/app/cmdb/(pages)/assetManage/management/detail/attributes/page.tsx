@@ -1,16 +1,16 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Button, Modal, message, Space, Form, Spin, Input } from 'antd';
+import { Button, Modal, message, Space, Form, Input, Tag } from 'antd';
 import {
-  EditOutlined,
-  ArrowUpOutlined,
   ArrowDownOutlined,
+  ArrowUpOutlined,
+  EditOutlined,
+  FolderOutlined,
 } from '@ant-design/icons';
 import Icon from '@/components/icon';
 import AttributesModal from './attributesModal';
 import PublicEnumLibraryModal, { PublicEnumLibraryModalRef } from '../../list/publicEnumLibraryModal';
-import { Tag } from 'antd';
 import CustomTable from '@/components/custom-table';
 import OperateModal from '@/components/operate-modal';
 import SearchActionBar from '@/components/search-action-bar';
@@ -27,18 +27,19 @@ import type {
   FullInfoUniqueRuleItem,
   UniqueDisplayType,
 } from '@/app/cmdb/types/assetManage';
+import { StatusToneBadge, YesNoBadge } from '@/app/cmdb/utils/statusTone';
 
 const useAttributeEnterpriseExtension = loadAttributeEnterpriseExtension();
 
 const getUniqueTagMeta = (uniqueType?: string, isOnly?: boolean) => {
   if (uniqueType === 'joint') {
-    return { color: 'purple', textKey: 'Model.jointUnique' };
+    return { tone: 'primary' as const, textKey: 'Model.jointUnique' };
   }
   if (uniqueType === 'single' || isOnly) {
-    return { color: 'green', textKey: 'Model.singleUnique' };
+    return { tone: 'success' as const, textKey: 'Model.singleUnique' };
   }
-  return { color: 'default', textKey: 'no' };
-}
+  return { tone: 'neutral' as const, textKey: 'no' };
+};
 
 const getAttrUniqueDisplayType = (
   attr: AttrItem,
@@ -131,9 +132,7 @@ const attrRef = useRef<any>(null);
       dataIndex: 'editable',
       width: 100,
       render: (editable: unknown) => (
-        <Tag color={editable ? 'green' : 'geekblue'}>
-          {editable ? 'YES' : 'NO'}
-        </Tag>
+        <YesNoBadge value={Boolean(editable)} />
       ),
     },
     {
@@ -142,12 +141,13 @@ const attrRef = useRef<any>(null);
       dataIndex: 'unique_display_type',
       width: 100,
       render: (_: unknown, record: AttrItem) => {
-        const meta = getUniqueTagMeta(record.unique_display_type, record.is_only)
+        const meta = getUniqueTagMeta(record.unique_display_type, record.is_only);
         return (
-          <Tag color={meta.color}>
-            {meta.textKey === 'no' ? t('no') : t(meta.textKey)}
-          </Tag>
-        )
+          <StatusToneBadge
+            tone={meta.tone}
+            label={meta.textKey === 'no' ? t('no') : t(meta.textKey)}
+          />
+        );
       },
     },
     {
@@ -156,9 +156,7 @@ const attrRef = useRef<any>(null);
       dataIndex: 'is_required',
       width: 100,
       render: (is_required: unknown) => (
-        <Tag color={is_required ? 'green' : 'geekblue'}>
-          {is_required ? 'YES' : 'NO'}
-        </Tag>
+        <YesNoBadge value={Boolean(is_required)} />
       ),
     },
     {
@@ -174,7 +172,7 @@ const attrRef = useRef<any>(null);
           >
             <Button
               type="link"
-              className="mr-[10px]"
+              size="small"
               onClick={() => showAttrModal('edit', record)}
             >
               {t('common.edit')}
@@ -186,6 +184,7 @@ const attrRef = useRef<any>(null);
           >
             <Button
               type="link"
+              size="small"
               danger
               onClick={() => showDeleteConfirm({ attr_id: record.attr_id })}
             >
@@ -561,11 +560,29 @@ const attrRef = useRef<any>(null);
       />
 
       <div className="flex-1 overflow-y-auto">
-        <Spin spinning={loading && groups.length === 0} className="mt-30">
-          {groups.map((group, groupIndex) => (
-            <div
+        {loading && groups.length === 0 ? (
+          <div className="space-y-4" aria-busy="true" aria-label="loading">
+            {[0, 1].map((index) => (
+              <section
+                key={index}
+                className="overflow-hidden rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] shadow-[0_1px_3px_rgba(0,0,0,0.03)]"
+              >
+                <div className="h-10 border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)]/35" />
+                <div className="space-y-2 p-3">
+                  <div className="h-8 animate-pulse rounded-md bg-[var(--color-fill-1)]" />
+                  <div className="h-8 animate-pulse rounded-md bg-[var(--color-fill-1)]" />
+                  <div className="h-8 w-3/4 animate-pulse rounded-md bg-[var(--color-fill-1)]" />
+                </div>
+              </section>
+            ))}
+          </div>
+        ) : (
+          groups.map((group, groupIndex) => {
+            const groupAttrCount = (groupedAttrs[String(group.id)] || []).length;
+            return (
+            <section
               key={group.id}
-              className="border border-gray-200 mb-4 border-b-0 bg-white"
+              className="mb-4 overflow-hidden rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] shadow-[0_1px_3px_rgba(0,0,0,0.03)]"
               onDragOver={handleDragOver}
               onDrop={(e) => {
                 e.preventDefault();
@@ -577,12 +594,19 @@ const attrRef = useRef<any>(null);
                 }
               }}
             >
-              <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-100">
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium text-gray-900">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)]/35 px-4 py-2.5">
+                <div className="flex items-center gap-2">
+                  <FolderOutlined className="text-sm text-[var(--color-primary)]" />
+                  <h2 className="m-0 text-[13px] font-semibold text-[var(--color-text-1)]">
                     {group.display_name || group.group_name}
-                  </span>
-                  <div className="flex items-center gap-2 ml-2">
+                  </h2>
+                  {groupAttrCount > 0 && (
+                    <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--color-primary)_12%,var(--color-bg))] px-1.5 text-xs font-semibold tabular-nums text-[var(--color-primary)]">
+                      {groupAttrCount}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
                     <PermissionWrapper
                       requiredPermissions={['Edit Model']}
                       instPermissions={modelPermission}
@@ -590,10 +614,10 @@ const attrRef = useRef<any>(null);
                       <Button
                         type="text"
                         size="small"
-                        icon={<EditOutlined style={{ fontSize: '14px' }} />}
+                        aria-label={t('common.edit')}
+                        icon={<EditOutlined aria-hidden="true" style={{ fontSize: '14px' }} />}
                         onClick={() => showGroupModal(group)}
-                        className="text-blue-500 hover:text-blue-600"
-                      ></Button>
+                      />
                     </PermissionWrapper>
                     <PermissionWrapper
                       requiredPermissions={['Edit Model']}
@@ -602,15 +626,17 @@ const attrRef = useRef<any>(null);
                       <Button
                         type="text"
                         size="small"
+                        danger
+                        aria-label={t('common.delete')}
                         icon={
                           <Icon
                             type="shanchu"
+                            aria-hidden="true"
                             style={{ fontSize: '18px', marginTop: '3px' }}
                           />
                         }
                         onClick={() => showDeleteGroupConfirm(group)}
-                        className="text-red-500 hover:text-red-600"
-                      ></Button>
+                      />
                     </PermissionWrapper>
                     <PermissionWrapper
                       requiredPermissions={['Edit Model']}
@@ -620,8 +646,10 @@ const attrRef = useRef<any>(null);
                         type="text"
                         size="small"
                         className="!px-1"
+                        aria-label="Move up"
                         icon={
                           <ArrowUpOutlined
+                            aria-hidden="true"
                             style={{ fontSize: '14px', fontWeight: 'bold' }}
                           />
                         }
@@ -637,8 +665,10 @@ const attrRef = useRef<any>(null);
                         type="text"
                         size="small"
                         className="!px-1"
+                        aria-label="Move down"
                         icon={
                           <ArrowDownOutlined
+                            aria-hidden="true"
                             style={{ fontSize: '14px', fontWeight: 'bold' }}
                           />
                         }
@@ -646,7 +676,6 @@ const attrRef = useRef<any>(null);
                         onClick={() => moveGroupDown(group, groupIndex)}
                       />
                     </PermissionWrapper>
-                  </div>
                 </div>
               </div>
 
@@ -672,9 +701,10 @@ const attrRef = useRef<any>(null);
                   )
                 }
               />
-            </div>
-          ))}
-        </Spin>
+            </section>
+            );
+          })
+        )}
       </div>
 
       <AttributesModal

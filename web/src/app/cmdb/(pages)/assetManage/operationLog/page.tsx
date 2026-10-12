@@ -5,9 +5,10 @@ import styles from './index.module.scss';
 import type { Dayjs } from 'dayjs';
 import dayjs from 'dayjs';
 import CustomTable from '@/components/custom-table';
-import Introduction from '@/components/introduction';
+import TopSection from '@/components/top-section';
+import SearchActionBar from '@/components/search-action-bar';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import { Input, Select, DatePicker, message, Button } from 'antd';
+import { Select, DatePicker, message, Button } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useCmdbUserList } from '@/app/cmdb/context/common';
@@ -262,22 +263,19 @@ const OperationLog: React.FC = () => {
 
   return (
     <div className={styles.container}>
-      <Introduction
+      <TopSection
         title={t('OperationLog.title')}
-        message={t('OperationLog.description')}
+        content={t('OperationLog.description')}
       />
       <div className={styles.content}>
-        <div className={`${styles.filterWrapper} mb-[20px]`}>
-          <div className="flex items-center gap-4 flex-wrap">
-            <div className="flex items-center">
-              <label className="mr-2 whitespace-nowrap">
-                {t('OperationLog.operator')}:
-              </label>
+        <SearchActionBar
+          filters={(
+            <>
               <Select
                 allowClear
                 showSearch
                 style={{ width: 180 }}
-                placeholder={t('common.selectTip')}
+                placeholder={t('OperationLog.operator')}
                 options={operators}
                 value={filters.operator}
                 onChange={(value) => handleFilterChange('operator', value)}
@@ -290,28 +288,18 @@ const OperationLog: React.FC = () => {
                   return true;
                 }}
               />
-            </div>
-            <div className="flex items-center">
-              <label className="mr-2 whitespace-nowrap">
-                {t('OperationLog.operationType')}:
-              </label>
               <Select
                 style={{ width: 160 }}
-                placeholder={t('common.selectTip')}
+                placeholder={t('OperationLog.operationType')}
                 options={operationTypes}
                 value={filters.type}
                 onChange={(value) => handleFilterChange('type', value)}
                 allowClear
               />
-            </div>
-            <div className="flex items-center">
-              <label className="mr-2 whitespace-nowrap">
-                {t('OperationLog.scenario')}:
-              </label>
               <Select
                 mode="multiple"
                 style={{ minWidth: 220, maxWidth: 360 }}
-                placeholder={t('common.selectTip')}
+                placeholder={t('OperationLog.scenario')}
                 options={scenarioOptions}
                 value={filters.scenarios}
                 onChange={(value) =>
@@ -320,43 +308,32 @@ const OperationLog: React.FC = () => {
                 allowClear
                 maxTagCount="responsive"
               />
-            </div>
-            <div className="flex items-center">
-              <label className="mr-2 whitespace-nowrap">
-                {t('OperationLog.summary')}:
-              </label>
-              <Input
-                style={{ width: 220 }}
-                placeholder={t('common.inputTip')}
-                value={inputValue}
-                onChange={handleInputChange}
-                onPressEnter={handleInputSearch}
-                onClear={handleInputClear}
-                allowClear
-              />
-            </div>
-            <div className="flex items-center">
-              <label className="mr-2 whitespace-nowrap">
-                {t('OperationLog.timeRange')}:
-              </label>
               <DatePicker.RangePicker
                 style={{ width: 380 }}
                 showTime
                 value={filters.dateRange}
                 onChange={(dates) => handleFilterChange('dateRange', dates)}
               />
-            </div>
-            <div className="flex items-center ml-auto">
-              <Button
-                icon={<DownloadOutlined />}
-                loading={exporting}
-                onClick={handleExport}
-              >
-                {t('OperationLog.export')}
-              </Button>
-            </div>
-          </div>
-        </div>
+            </>
+          )}
+          searchProps={{
+            allowClear: true,
+            placeholder: t('OperationLog.summary'),
+            value: inputValue,
+            onChange: handleInputChange,
+            onSearch: handleInputSearch,
+            onClear: handleInputClear,
+          }}
+          actions={(
+            <Button
+              icon={<DownloadOutlined />}
+              loading={exporting}
+              onClick={handleExport}
+            >
+              {t('OperationLog.export')}
+            </Button>
+          )}
+        />
         <CustomTable
           size="middle"
           rowKey="id"

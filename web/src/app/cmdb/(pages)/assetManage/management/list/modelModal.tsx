@@ -177,10 +177,9 @@ const ModelModal = forwardRef<ModelModalRef, ModelModalProps>(
           visible={modelVisible}
           onCancel={handleCancel}
           footer={
-            <div>
+            <div className="flex justify-end gap-2">
               <Button
                 type="primary"
-                className="mr-[10px]"
                 loading={confirmLoading}
                 onClick={handleSubmit}
               >

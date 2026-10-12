@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import { Alert, Button, Modal, Space, message } from 'antd'
+import { PlusOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import CustomTable from '@/components/custom-table'
 import PermissionWrapper from '@/components/permission'
@@ -127,10 +128,11 @@ const UniqueRulesPage: React.FC = () => {
         <PermissionWrapper requiredPermissions={['Edit Model']} instPermissions={modelPermission}>
           <Button
             type="primary"
+            icon={<PlusOutlined />}
             disabled={rules.length >= 3}
             onClick={openCreateModal}
           >
-            {t('Model.addUniqueRule')}
+            {t('common.new')}
           </Button>
         </PermissionWrapper>
       </div>

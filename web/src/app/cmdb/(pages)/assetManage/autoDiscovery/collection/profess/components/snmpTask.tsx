@@ -317,7 +317,7 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
                             aria-label={t(
                               'Collection.SNMPTask.topologyIntervalHelp'
                             )}
-                            className="ml-1 cursor-help text-gray-400"
+                            className="ml-1 cursor-help text-[var(--color-text-4)]"
                             tabIndex={0}
                           />
                         </Tooltip>
@@ -422,7 +422,7 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
                             aria-label={t(
                               'Collection.SNMPTask.topologyTimeoutHelp'
                             )}
-                            className="ml-1 cursor-help text-gray-400"
+                            className="ml-1 cursor-help text-[var(--color-text-4)]"
                             tabIndex={0}
                           />
                         </Tooltip>
@@ -470,7 +470,7 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
                           overlayStyle={LONG_TOOLTIP_OVERLAY_STYLE}
                           title={t('Collection.SNMPTask.topologyProtocolsHelp')}
                         >
-                          <QuestionCircleOutlined className="ml-1 cursor-help text-gray-400" />
+                          <QuestionCircleOutlined className="ml-1 cursor-help text-[var(--color-text-4)]" />
                         </Tooltip>
                       </span>
                     }
@@ -495,7 +495,7 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
                             'Collection.SNMPTask.topologyFallbackStrategyHelp'
                           )}
                         >
-                          <QuestionCircleOutlined className="ml-1 cursor-help text-gray-400" />
+                          <QuestionCircleOutlined className="ml-1 cursor-help text-[var(--color-text-4)]" />
                         </Tooltip>
                       </span>
                     }
@@ -517,7 +517,7 @@ const SNMPTask: React.FC<SNMPTaskFormProps> = ({
                           overlayStyle={LONG_TOOLTIP_OVERLAY_STYLE}
                           title={t('Collection.SNMPTask.minConfidenceHelp')}
                         >
-                          <QuestionCircleOutlined className="ml-1 cursor-help text-gray-400" />
+                          <QuestionCircleOutlined className="ml-1 cursor-help text-[var(--color-text-4)]" />
                         </Tooltip>
                       </span>
                     }

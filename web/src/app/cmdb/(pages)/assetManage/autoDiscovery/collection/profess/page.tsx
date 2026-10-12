@@ -23,6 +23,7 @@ import PluginCard from './components/pluginCard';
 import TaskDetail from './components/taskDetail';
 import NodeMgmtSyncDetail from './components/nodeMgmtSyncDetail';
 import CollectionStats from './components/collectionStats';
+import { StatusToneBadge } from '@/app/cmdb/utils/statusTone';
 import {
   getCredentialDescriptor,
   type CredentialFormKind,
@@ -36,7 +37,7 @@ import type { TableColumnType, TablePaginationConfig } from 'antd';
 import type { ColumnItem } from '@/app/cmdb/types/assetManage';
 import type { ColumnType } from 'antd/es/table';
 import type { FilterValue } from 'antd/es/table/interface';
-import { Alert, Button, Drawer, Modal, Spin, Tag, Tabs, Tooltip, message } from 'antd';
+import { Alert, Button, Drawer, Modal, Spin, Tabs, Tooltip, message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useLocale } from '@/context/locale';
 import {
@@ -914,7 +915,7 @@ const ProfessionalCollection: React.FC = () => {
             return (
               <div className="flex flex-col items-start gap-1">
                 <Tooltip title={digest.message}>
-                  <div className={`${styles.ellipsis2Lines} text-gray-500`}>
+                  <div className={`${styles.ellipsis2Lines} text-[var(--color-text-3)]`}>
                     {digest.message}
                   </div>
                 </Tooltip>
@@ -931,22 +932,23 @@ const ProfessionalCollection: React.FC = () => {
           return Object.keys(digest).length > 0 ? (
             <div className="flex flex-col items-start gap-1">
               <div className="flex flex-wrap gap-2">
-                <Tag color="blue">
-                  {t('Collection.overviewLabel.add')}:{' '}
-                  {digest.add_success ?? '--'}
-                </Tag>
-                <Tag color="orange">
-                  {t('Collection.overviewLabel.update')}:{' '}
-                  {digest.update_success ?? '--'}
-                </Tag>
-                <Tag color="volcano">
-                  {t('Collection.overviewLabel.delete')}:{' '}
-                  {digest.delete_success ?? '--'}
-                </Tag>
+                <StatusToneBadge
+                  tone="primary"
+                  label={`${t('Collection.overviewLabel.add')}: ${digest.add_success ?? '--'}`}
+                />
+                <StatusToneBadge
+                  tone="warning"
+                  label={`${t('Collection.overviewLabel.update')}: ${digest.update_success ?? '--'}`}
+                />
+                <StatusToneBadge
+                  tone="fail"
+                  label={`${t('Collection.overviewLabel.delete')}: ${digest.delete_success ?? '--'}`}
+                />
                 {errorTotal > 0 && (
-                  <Tag color="red">
-                    {t('Collection.overviewLabel.error')}: {errorTotal}
-                  </Tag>
+                  <StatusToneBadge
+                    tone="fail"
+                    label={`${t('Collection.overviewLabel.error')}: ${errorTotal}`}
+                  />
                 )}
               </div>
               {collectToolLink}
@@ -1110,7 +1112,7 @@ const ProfessionalCollection: React.FC = () => {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <CollectionStats />
-      <div className="bg-white border-b border-gray-200 ml-2">
+      <div className="bg-[var(--color-bg)] border-b border-[var(--color-border)] ml-2">
         {categoryLoading ? (
           <div className="flex items-center justify-center py-2">
             <Spin size="small" />
@@ -1172,12 +1174,12 @@ const ProfessionalCollection: React.FC = () => {
         ></div>
 
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto pb-1 pr-1">
-          <div className="flex min-h-[360px] min-w-0 flex-1 flex-col overflow-hidden rounded border border-gray-200 bg-white shadow-sm">
-            <div className="px-4 py-2 border-b border-gray-100 flex items-center gap-2">
-              <span className="text-base font-semibold text-gray-900">
+          <div className="flex min-h-[360px] min-w-0 flex-1 flex-col overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-bg)]">
+            <div className="px-4 py-2 border-b border-[var(--color-border-1)] flex items-center gap-2">
+              <span className="text-base font-semibold text-[var(--color-text-1)]">
                 {currentPlugin?.name || ''}
               </span>
-              <span className="text-sm text-gray-400">
+              <span className="text-sm text-[var(--color-text-4)]">
                 {currentPlugin?.desc || ''}
               </span>
               <Button
@@ -1204,7 +1206,7 @@ const ProfessionalCollection: React.FC = () => {
               actions={(
                 <PermissionWrapper requiredPermissions={['Add']}>
                   <Button type="primary" onClick={handleCreate}>
-                    {t('Collection.addTaskTitle')}
+                    {t('common.new')}
                   </Button>
                 </PermissionWrapper>
               )}
