@@ -64,7 +64,7 @@ export default function SystemPane({
   const charts = [
     <ThinTimeSeries
       key="cpu"
-      title={breakdown.length ? 'CPU 分项' : 'CPU 使用率'}
+      title={breakdown.length ? 'CPU 使用（user/system/iowait）' : 'CPU 使用率'}
       loading={loading}
       unit="percent"
       data={mergeChartSeries(cpuItems.map((item) => ({
