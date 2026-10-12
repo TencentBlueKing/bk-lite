@@ -1,7 +1,6 @@
 "use client";
 
 import React, {
-  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -41,8 +40,6 @@ import {
 } from "./room3DData";
 import { createRoom3DScene } from "./room3DScene";
 import { loadRoom3DScene } from "./room3DSceneSource";
-import Room3DOverviewPanel from "./room3DOverviewPanel";
-import { resolveRoom3DOverviewScale, resolveRoom3DOverviewFit } from "./room3DOverview";
 import styles from "./room3D.module.scss";
 
 interface Room3DProps {
@@ -115,7 +112,6 @@ const Room3D: React.FC<Room3DProps> = ({
   const [rooms, setRooms] = useState<Room3DRoomOption[]>([]);
   const [runtimeRoomId, setRuntimeRoomId] = useState("");
   const [fetchedLayout, setFetchedLayout] = useState<unknown>(null);
-  const fetchedLayoutRef = useRef<unknown>(null);
   const [fetchLoading, setFetchLoading] = useState(!injected);
   const [fetchError, setFetchError] = useState("");
   const effectiveRawData = injected ? rawData : fetchedLayout;
@@ -148,11 +144,6 @@ const Room3D: React.FC<Room3DProps> = ({
     height: 0,
   });
   const [sceneRenderVersion, setSceneRenderVersion] = useState(0);
-  const [overviewExpanded, setOverviewExpanded] = useState(true);
-  const switcherOverlayRef = useRef<HTMLDivElement | null>(null);
-  const switcherObserverRef = useRef<ResizeObserver | null>(null);
-  const overviewSizeObserverRef = useRef<ResizeObserver | null>(null);
-  fetchedLayoutRef.current = fetchedLayout;
 
   const isCompact = (screenRenderContext?.widgetDensity || 0) > 0.5;
   const readableOverlayScale = useMemo(() => {
@@ -182,11 +173,7 @@ const Room3D: React.FC<Room3DProps> = ({
       return undefined;
     }
     const abort = new AbortController();
-    // Keep the current room on screen while the next layout loads so overview
-    // figures can roll from the previous values instead of flashing empty zeros.
-    if (fetchedLayoutRef.current == null) {
-      setFetchLoading(true);
-    }
+    setFetchLoading(true);
     setFetchError("");
     loadRoom3DScene({
       api,
@@ -295,75 +282,6 @@ const Room3D: React.FC<Room3DProps> = ({
       resizeSceneRef.current = () => undefined;
     };
   }, [errorMessage, loading, rackTopLines, roomData]);
-
-  const bindRoom = useCallback((node: HTMLDivElement | null) => {
-    overviewSizeObserverRef.current?.disconnect();
-    overviewSizeObserverRef.current = null;
-    roomRef.current = node;
-    if (!node || typeof ResizeObserver === "undefined") {
-      return;
-    }
-    const apply = () => {
-      node.style.setProperty(
-        "--room3d-overview-scale",
-        String(resolveRoom3DOverviewScale(node.clientWidth, node.clientHeight)),
-      );
-      node.style.setProperty(
-        "--room3d-overview-fit",
-        String(resolveRoom3DOverviewFit(node.clientWidth, node.clientHeight)),
-      );
-    };
-    apply();
-    const observer = new ResizeObserver(apply);
-    observer.observe(node);
-    overviewSizeObserverRef.current = observer;
-  }, []);
-
-  const bindSwitcherOverlay = useCallback((node: HTMLDivElement | null) => {
-    switcherObserverRef.current?.disconnect();
-    switcherObserverRef.current = null;
-    switcherOverlayRef.current = node;
-    if (!node) {
-      return;
-    }
-    const apply = () => {
-      const room = roomRef.current;
-      if (!room) {
-        return;
-      }
-      const width = node.getBoundingClientRect().width;
-      if (width > 0) {
-        room.style.setProperty("--room3d-switcher-width", `${width}px`);
-      }
-    };
-    apply();
-    const observer = new ResizeObserver(apply);
-    observer.observe(node);
-    switcherObserverRef.current = observer;
-  }, []);
-
-  useLayoutEffect(() => {
-    const room = roomRef.current;
-    if (!room) {
-      return;
-    }
-    room.style.setProperty(
-      "--room3d-overview-scale",
-      String(resolveRoom3DOverviewScale(room.clientWidth, room.clientHeight)),
-    );
-    room.style.setProperty(
-      "--room3d-overview-fit",
-      String(resolveRoom3DOverviewFit(room.clientWidth, room.clientHeight)),
-    );
-    const node = switcherOverlayRef.current;
-    if (!node) {
-      return;
-    }
-    const width = node.getBoundingClientRect().width;
-    if (width > 0) {
-      room.style.setProperty("--room3d-switcher-width", `${width}px`);
-    }
-  });
 
   useEffect(() => {
     if (loading) {
@@ -705,7 +623,7 @@ const Room3D: React.FC<Room3DProps> = ({
 
   return (
     <div
-      ref={bindRoom}
+      ref={roomRef}
       className={[
         styles.room3D,
         displayOptions.immersive ? styles.room3DImmersive : "",
@@ -721,15 +639,8 @@ const Room3D: React.FC<Room3DProps> = ({
     >
       <div ref={mountRef} className={styles.canvas} />
       {roomSwitcher && (
-        <div className={styles.roomSwitchOverlay} ref={bindSwitcherOverlay}>
-          {roomSwitcher}
-        </div>
+        <div className={styles.roomSwitchOverlay}>{roomSwitcher}</div>
       )}
-      <Room3DOverviewPanel
-        racks={roomData.racks}
-        expanded={overviewExpanded}
-        onToggle={() => setOverviewExpanded((open) => !open)}
-      />
       <div className={styles.topBar}>
         {showRoomSummary && (
           <div className={styles.roomTitle} title={roomSummaryText}>
@@ -752,7 +663,7 @@ const Room3D: React.FC<Room3DProps> = ({
         />
       </div>
       {visibleNotice && (
-        <div className={`${styles.noticePanel} ${styles.noticePanelWithOverview}`}>
+        <div className={styles.noticePanel}>
           <Alert
             type="warning"
             showIcon
