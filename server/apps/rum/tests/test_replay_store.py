@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import io
 import json
+import logging
+
+from django.test import override_settings
 
 from apps.rum.services.replay import UnavailableReplayIndex, build_replay_index_from_settings, get_replay_index, set_replay_index
 
@@ -108,6 +112,74 @@ def test_manifest_not_recorded_when_session_missing():
     manifest = index.replay_manifest("core", "local-demo", "missing")
     assert manifest["state"] == "not-recorded"
     assert manifest["recordings"] == []
+
+
+def test_replay_bucket_is_registered_with_platform_minio():
+    from django.conf import settings
+
+    assert "rum-replay" in settings.MINIO_PRIVATE_BUCKETS
+
+
+@override_settings(
+    MINIO_ENDPOINT="minio.internal:9000",
+    MINIO_ACCESS_KEY="platform-access",
+    MINIO_SECRET_KEY="platform-secret",
+    MINIO_USE_HTTPS=False,
+    MINIO_PRIVATE_BUCKETS=["rum-replay"],
+    MINIO_PUBLIC_BUCKETS=[],
+)
+def test_connect_minio_store_uses_platform_credentials(monkeypatch):
+    from apps.rum.services.replay_store import MinioObjectStore, connect_minio_store
+
+    monkeypatch.setenv("RUM_MINIO_ENDPOINT", "127.0.0.1:19000")
+    monkeypatch.setenv("RUM_MINIO_ACCESS_KEY", "rum-only-key")
+    monkeypatch.setenv("RUM_MINIO_SECRET_KEY", "rum-only-secret")
+    store = connect_minio_store()
+
+    assert isinstance(store, MinioObjectStore)
+    backend = store._storage
+    assert backend.bucket == "rum-replay"
+    assert backend._MinioBackend__MINIO_ENDPOINT == "minio.internal:9000"
+    assert backend._MinioBackend__MINIO_ACCESS_KEY == "platform-access"
+    assert backend._MinioBackend__MINIO_SECRET_KEY == "platform-secret"
+    assert "rum-only-key" not in {
+        backend._MinioBackend__MINIO_ENDPOINT,
+        backend._MinioBackend__MINIO_ACCESS_KEY,
+        backend._MinioBackend__MINIO_SECRET_KEY,
+    }
+
+
+@override_settings(
+    MINIO_ENDPOINT="minio.internal:9000",
+    MINIO_ACCESS_KEY="",
+    MINIO_SECRET_KEY="",
+)
+def test_connect_minio_store_without_platform_credentials_is_null(monkeypatch):
+    from apps.rum.services.replay_store import NullObjectStore, connect_minio_store
+
+    monkeypatch.setenv("RUM_MINIO_ENDPOINT", "127.0.0.1:19000")
+    monkeypatch.setenv("RUM_MINIO_ACCESS_KEY", "rum-only-key")
+    monkeypatch.setenv("RUM_MINIO_SECRET_KEY", "rum-only-secret")
+    assert isinstance(connect_minio_store(), NullObjectStore)
+
+
+def test_minio_object_store_reads_open_and_hides_failures(caplog):
+    from apps.rum.services.replay_store import MinioObjectStore
+
+    class Storage:
+        def open(self, name, mode="rb"):
+            assert mode == "rb"
+            if name == "missing":
+                raise RuntimeError("secret-object-body")
+            return io.BytesIO(b"segment")
+
+    store = MinioObjectStore(Storage())
+    assert store.get_bytes("  ") is None
+    assert store.get_bytes("v1/app/sess/0.json.gz") == b"segment"
+    with caplog.at_level(logging.DEBUG, logger="rum"):
+        assert store.get_bytes("missing") is None
+    assert "RuntimeError" in caplog.text
+    assert "secret-object-body" not in caplog.text
 
 
 def test_get_replay_index_caches_built_instance(monkeypatch):

@@ -96,16 +96,13 @@ Maintainer 必填 `-replay-index-epoch`（RFC3339 格式的回放索引切换时
 | `RUM_SDK_CDN_URL` | 必须 | SDK 地址 |
 | `RUM_REPLAY_SIGNING_SECRET` | 回放要 | ≥32 字符 |
 | `RUM_REPLAY_INDEX_REDIS_URL` | 回放要 | 一般 Redis DB2 |
-| `RUM_MINIO_ENDPOINT` | 回放要 | |
-| `RUM_MINIO_ACCESS_KEY` | 回放要 | |
-| `RUM_MINIO_SECRET_KEY` | 回放要 | |
-| `RUM_MINIO_SECURE` | 建议 | 生产 `true` |
-| `RUM_MINIO_BUCKET` | 可选 | 默认 `rum-replay` |
 | `RUM_TENANT_ID` | 可选 | 默认 `core` |
 | `RUM_NATS_TIMEOUT_SECONDS` | 可选 | 默认 `5` |
 | `RUM_VICTORIA_ACCOUNT_ID` | 可选 | 默认 `0` |
 | `RUM_VICTORIA_PROJECT_ID` | 可选 | 默认 `0` |
 | `RUM_VICTORIA_TIMEOUT_SECONDS` | 可选 | 默认 `15` |
+
+回放对象不另设 `RUM_MINIO_*`。Django 用平台 `MINIO_*` 读取 `rum-replay`。Gateway 和 Maintainer 仍用各自的 `RUM_MINIO_*`。
 
 ## 数据面进程配置（摘要）
 
