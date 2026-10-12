@@ -21,6 +21,7 @@ import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { deepClone } from '@/app/alarm/utils/common';
 import { useCommon } from '@/app/alarm/context/common';
 import { baseStates, allStates } from '@/app/alarm/constants/alarm';
+import { withAlarmSearchCondition } from './alarmListQuery';
 import { Checkbox, Tabs, Spin, Tooltip, Switch } from 'antd';
 import { processDataForStackedBarChart } from '@/app/alarm/utils/alarmChart';
 import {
@@ -251,9 +252,8 @@ const Alert: React.FC = () => {
         : isActiveAlarms ? (myAlarms ? 1 : '') : undefined,
       has_incident: '',
       resource_type: initialResourceType,
-      [conditionValue?.field as string]: conditionValue?.value,
     };
-    return params;
+    return withAlarmSearchCondition(params, conditionValue);
   };
 
   const handleTableChange = useCallback((pag: any) => {
@@ -386,7 +386,13 @@ const Alert: React.FC = () => {
       attr_type: 'str',
       option: [],
     },
-  ], [t]);
+    {
+      attr_id: 'status',
+      attr_name: t('alarms.state'),
+      attr_type: 'enum',
+      option: stateOptions.map((item) => ({ id: item.value, name: item.label })),
+    },
+  ], [t, stateOptions]);
 
   const selectedRowData = useMemo(() =>
     tableData?.filter((item) => selectedRowKeys.includes(item.id)) || [],

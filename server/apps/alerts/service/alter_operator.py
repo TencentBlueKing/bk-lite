@@ -13,6 +13,28 @@ from apps.alerts.utils.operator_log import record_operator_log
 from apps.alerts.utils.operator_scope import validate_alert_assignees, validate_usernames_in_groups
 from apps.core.logger import alert_logger as logger
 
+_CLOSE_REASON_MAX_LENGTH = 500
+_DEFAULT_CLOSE_REASON = "告警已处理完成"
+
+
+def _result_for_log(result):
+    """日志只保留关闭原因是否存在，原文留在变更记录概述。"""
+    if not isinstance(result, dict):
+        return result
+    data = result.get("data")
+    if not isinstance(data, dict) or "close_reason" not in data:
+        return result
+    redacted = dict(data)
+    redacted["close_reason"] = bool(data.get("close_reason"))
+    return {**result, "data": redacted}
+
+
+def normalize_close_reason(raw) -> str:
+    """把手动关闭原因收成单行，供变更记录概述保存。空值和非法类型视为未填写。"""
+    if not isinstance(raw, str):
+        return ""
+    return " ".join(raw.split())[:_CLOSE_REASON_MAX_LENGTH]
+
 
 class AlertOperator(object):
     """
@@ -68,7 +90,7 @@ class AlertOperator(object):
                 "[AlertOperator] 告警操作执行成功: action=%s, alert_id=%s, result=%s",
                 action,
                 alert_id,
-                result,
+                _result_for_log(result),
             )
             return result
         except Exception as e:
@@ -513,7 +535,8 @@ class AlertOperator(object):
                 )
                 return {"result": False, "message": "您没有权限关闭此告警", "data": {}}
 
-            close_reason = data.get("reason", "告警已处理完成")
+            provided_reason = normalize_close_reason(data.get("reason"))
+            close_reason = provided_reason or _DEFAULT_CLOSE_REASON
             previous_status = alert.status
 
             # 更新告警状态
@@ -528,21 +551,24 @@ class AlertOperator(object):
             transaction.on_commit(lambda aid=alert.alert_id: ActionEngine.dispatch_async(aid, "closed"))
 
             logger.info(
-                "[AlertOperator] 告警关闭成功: alert_id=%s, user=%s, reason=%s, 状态变更: %s -> %s",
+                "[AlertOperator] 告警关闭成功: alert_id=%s, user=%s, has_close_reason=%s, 状态变更: %s -> %s",
                 alert_id,
                 self.user,
-                close_reason,
+                bool(provided_reason),
                 previous_status,
                 AlertStatus.CLOSED,
             )
 
+            overview = f"告警关闭成功, 告警[{alert.title}]" f"状态变更: {self.status_map[previous_status]} -> {self.status_map[AlertStatus.CLOSED]}"
+            if provided_reason:
+                overview = f"{overview}, 关闭原因：{provided_reason}"
             log_data = {
                 "action": LogAction.MODIFY,
                 "target_type": LogTargetType.ALERT,
                 "operator": self.user,
                 "operator_object": "告警处理-关闭",
                 "target_id": alert.alert_id,
-                "overview": (f"告警关闭成功, 告警[{alert.title}]" f"状态变更: {self.status_map[previous_status]} -> {self.status_map[AlertStatus.CLOSED]}"),
+                "overview": overview,
             }
             self.operator_log(log_data)
 
