@@ -51,6 +51,20 @@ describe('原子 Schema 参数表单', () => {
     expect(screen.getByRole('switch').classList.contains('self-start')).toBe(true);
   });
 
+  it('传入节点名称回调时展示名称输入', () => {
+    const onNodeTitleChange = vi.fn();
+    render(<App><SchemaNodeForm
+      schema={{ type: 'object', properties: { owner: { type: 'string', title: '负责人' } } }}
+      value={{}}
+      nodeTitle="HTTP 请求"
+      onChange={vi.fn()}
+      onNodeTitleChange={onNodeTitleChange}
+    /></App>);
+
+    fireEvent.change(screen.getByDisplayValue('HTTP 请求'), { target: { value: '查询状态' } });
+    expect(onNodeTitleChange).toHaveBeenCalledWith('查询状态');
+  });
+
   it('根据注册项选择解析对应的参数 Schema', () => {
     const schema: JsonSchema = {
       type: 'object',

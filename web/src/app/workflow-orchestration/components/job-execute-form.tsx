@@ -1,6 +1,6 @@
 'use client';
 
-import { Form, InputNumber, Select } from 'antd';
+import { Form, Input, InputNumber, Select } from 'antd';
 import { useEffect, useMemo, useState, type DragEvent, type ReactNode } from 'react';
 
 import ScriptEditor from '@/app/job/components/script-editor';
@@ -112,18 +112,22 @@ export function JobExecuteForm({
   schema,
   value,
   references,
+  nodeTitle,
   readOnly,
   fieldActions = {},
   targetRecords,
   onChange,
+  onNodeTitleChange,
 }: {
   schema?: JsonSchema;
   value: Record<string, unknown>;
   references: DataReferenceOption[];
+  nodeTitle?: string;
   readOnly: boolean;
   fieldActions?: Record<string, ReactNode>;
   targetRecords?: Record<string, NodeTarget>;
   onChange: (value: Record<string, unknown>) => void;
+  onNodeTitleChange?: (value: string) => void;
 }) {
   const { t } = useTranslation();
   const lang = scriptLang(value.script_type);
@@ -168,6 +172,9 @@ export function JobExecuteForm({
   />;
 
   return <Form className="flex flex-col gap-5" layout="vertical">
+    {onNodeTitleChange ? <Form.Item className="mb-0" label={t('workflowOrchestration.editor.nodeName', '节点名称')} required>
+      <Input disabled={readOnly} value={nodeTitle} placeholder={t('workflowOrchestration.editor.enterNodeName', '请输入节点名称')} onChange={(event) => onNodeTitleChange(event.target.value)} />
+    </Form.Item> : null}
     <Form.Item
       className="mb-0"
       label={targetSchema.title || t('workflowOrchestration.editor.targetHosts', '目标主机')}

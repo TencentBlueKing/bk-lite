@@ -70,6 +70,21 @@ describe('作业执行脚本本地暂存', () => {
     expect(screen.getByRole('button', { name: '脚本输出说明' })).not.toBeNull();
   });
 
+  it('参数区可以修改节点名称', () => {
+    const onNodeTitleChange = vi.fn();
+    render(<IntlProvider locale="zh-CN" messages={{}}><App><JobExecuteForm
+      value={{ script_type: 'shell', script_content: '', targets: [] }}
+      references={[]}
+      nodeTitle="作业执行"
+      readOnly={false}
+      onChange={vi.fn()}
+      onNodeTitleChange={onNodeTitleChange}
+    /></App></IntlProvider>);
+
+    fireEvent.change(screen.getByDisplayValue('作业执行'), { target: { value: '巡检脚本' } });
+    expect(onNodeTitleChange).toHaveBeenCalledWith('巡检脚本');
+  });
+
   it('执行参数用 tag 输入，空格拆成多个参数', async () => {
     let value: Record<string, unknown> = {
       script_type: 'shell',
