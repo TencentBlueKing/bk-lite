@@ -14,6 +14,7 @@ export interface JobPlaybookDetailLike {
   name: string;
   description?: string;
   version?: string;
+  current_revision_label?: string;
   updated_at: string;
   created_by?: string;
   params?: JobPlaybookParameterItem[];
