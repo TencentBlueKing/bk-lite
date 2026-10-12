@@ -23,7 +23,7 @@ export default function StatusCountRow({ items }: { items: StatusCountItem[] }) 
           <div className={styles.statusCapValue} style={{ color: item.tone || undefined }}>
             {item.value}
           </div>
-          <Spark data={item.trend} color={item.tone || '#8b98a8'} className={styles.statusSpark} />
+          <Spark data={item.trend} color={item.tone || 'var(--color-text-3)'} className={styles.statusSpark} />
         </div>
       ))}
     </div>

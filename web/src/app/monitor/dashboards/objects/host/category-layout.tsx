@@ -63,9 +63,9 @@ const countTone = (
 ) => {
   const latest = latestOf(series);
   if (!Number.isFinite(latest)) return undefined;
-  if (latest <= 0) return 'var(--l1-ok)';
-  if (latest >= 10) return 'var(--l1-crit)';
-  return 'var(--l1-warn)';
+  if (latest <= 0) return 'var(--color-success)';
+  if (latest >= 10) return 'var(--color-fail)';
+  return 'var(--color-warning)';
 };
 
 const formatLoad = (
@@ -88,18 +88,18 @@ const loadTone = (
   const load = latestOf(loadSeries);
   const cores = latestOf(cpuNSeries);
   if (!Number.isFinite(load) || !Number.isFinite(cores) || cores <= 0) return undefined;
-  if (load >= cores * 1.5) return 'var(--l1-crit)';
-  if (load >= cores) return 'var(--l1-warn)';
-  return 'var(--l1-ok)';
+  if (load >= cores * 1.5) return 'var(--color-fail)';
+  if (load >= cores) return 'var(--color-warning)';
+  return 'var(--color-success)';
 };
 
 const percentTone = (series: { loadState?: string; viewData?: Parameters<typeof getLatestChartValue>[0] } | undefined) => {
   if (!series || series.loadState !== 'success' || !series.viewData?.length) return undefined;
   const latest = getLatestChartValue(series.viewData);
   if (!Number.isFinite(latest)) return undefined;
-  if (latest >= 90) return 'var(--l1-crit)';
-  if (latest >= 80) return 'var(--l1-warn)';
-  return 'var(--l1-ok)';
+  if (latest >= 90) return 'var(--color-fail)';
+  if (latest >= 80) return 'var(--color-warning)';
+  return 'var(--color-success)';
 };
 
 const renderThinChart = (chart: PreparedChartPanel | undefined, loading: boolean) => (

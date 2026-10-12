@@ -1,22 +1,9 @@
 .root {
-  --l1-bg-app: #12151c;
-  --l1-bg-nav: #0e1117;
-  --l1-bg-signal: #161a22;
-  --l1-bg-main: #141820;
-  --l1-bg-chart: #12151c;
-  --l1-border: #232a38;
-  --l1-control-border: #2a3344;
-  --l1-text: #eef2f8;
-  --l1-muted: #8b98a8;
-  --l1-accent: #2dd4bf;
-  --l1-crit: #f87171;
-  --l1-warn: #fb923c;
-  --l1-ok: #4ade80;
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--l1-bg-app);
-  color: var(--l1-text);
+  background: var(--color-background-body);
+  color: var(--color-text-1);
 }
 
 .signalBar {
@@ -26,9 +13,9 @@
   gap: 0;
   margin: 10px 16px 0;
   overflow: hidden;
-  border: 1px solid var(--l1-border);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
-  background: var(--l1-bg-signal);
+  background: var(--color-fill-1);
 }
 
 .signalPill {
@@ -39,7 +26,7 @@
   min-width: 0;
   padding: 8px 14px;
   border: 0;
-  border-right: 1px solid var(--l1-border);
+  border-right: 1px solid var(--color-border);
   background: transparent;
 }
 
@@ -47,7 +34,7 @@
   font-size: 10px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #7a8799;
+  color: var(--color-text-3);
 }
 
 .signalValue {
@@ -56,13 +43,13 @@
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
   letter-spacing: -0.02em;
-  color: var(--l1-text);
+  color: var(--color-text-1);
 }
 
 .signalSub {
   margin-top: 1px;
   font-size: 10px;
-  color: var(--l1-muted);
+  color: var(--color-text-3);
 }
 
 .signalSpark {
@@ -78,27 +65,27 @@
   justify-content: center;
   min-width: 110px;
   padding: 8px 16px;
-  border-left: 1px solid #3a2528;
-  background: #1a1518;
+  border-left: 1px solid var(--color-border);
+  background: var(--color-fill-2);
 }
 
 .alertK {
   font-size: 10px;
   letter-spacing: 0.04em;
-  color: #9a6b6b;
+  color: var(--color-text-3);
 }
 
 .alertValue {
   font-size: 18px;
   font-weight: 700;
-  color: var(--l1-crit);
+  color: var(--color-fail);
   font-variant-numeric: tabular-nums;
 }
 
 .alertHint {
   margin-top: 1px;
   font-size: 10px;
-  color: #7a8799;
+  color: var(--color-text-3);
 }
 
 .body {
@@ -108,9 +95,9 @@
   min-height: min-content;
   margin: 10px 16px 16px;
   overflow: visible;
-  border: 1px solid var(--l1-border);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
-  background: var(--l1-bg-main);
+  background: var(--color-bg);
 }
 
 .nav {
@@ -118,8 +105,8 @@
   flex-direction: column;
   gap: 2px;
   padding: 8px 0;
-  background: var(--l1-bg-nav);
-  border-right: 1px solid var(--l1-border);
+  background: var(--color-fill-1);
+  border-right: 1px solid var(--color-border);
 }
 
 .navLabel {
@@ -127,7 +114,7 @@
   font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--l1-muted);
+  color: var(--color-text-3);
 }
 
 .navItem {
@@ -139,24 +126,24 @@
   border: 0;
   border-left: 2px solid transparent;
   background: transparent;
-  color: var(--l1-muted);
+  color: var(--color-text-3);
   font-size: 12px;
   text-align: left;
   cursor: pointer;
 }
 
 .navItemActive {
-  color: #e2e8f0;
+  color: var(--color-text-1);
   font-weight: 600;
-  background: #1a2230;
-  border-left-color: var(--l1-accent);
+  background: var(--color-fill-2);
+  border-left-color: var(--color-primary);
 }
 
 .navCount {
   font-size: 10px;
   font-variant-numeric: tabular-nums;
-  color: #5eead4;
-  background: #134e4a;
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-fill-1));
   padding: 1px 6px;
   border-radius: 8px;
 }
@@ -165,7 +152,7 @@
   min-width: 0;
   min-height: 0;
   padding: 12px 14px 16px;
-  background: var(--l1-bg-main);
+  background: var(--color-bg);
 }
 
 .mainHead {
@@ -178,12 +165,12 @@
 .paneTitle {
   font-size: 13px;
   font-weight: 650;
-  color: var(--l1-text);
+  color: var(--color-text-1);
 }
 
 .hint {
   font-size: 11px;
-  color: #6b7789;
+  color: var(--color-text-3);
 }
 
 .chartGrid {
@@ -197,9 +184,9 @@
   min-width: 0;
   min-height: 168px;
   padding: 8px 10px 4px;
-  border: 1px solid var(--l1-border);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
-  background: var(--l1-bg-chart);
+  background: var(--color-bg);
 }
 
 .chartHead {
@@ -212,12 +199,12 @@
 
 .chartTitle {
   font-size: 11px;
-  color: var(--l1-muted);
+  color: var(--color-text-3);
 }
 
 .chartReading {
   font-size: 11px;
-  color: #c5cedb;
+  color: var(--color-text-2);
 }
 
 .chartLegend {
@@ -225,7 +212,7 @@
   flex-wrap: wrap;
   gap: 12px;
   font-size: 11px;
-  color: #7a8799;
+  color: var(--color-text-3);
 }
 
 .legendSwatch {
@@ -253,23 +240,23 @@
   gap: 8px;
   min-width: 0;
   padding: 4px 10px;
-  border: 1px solid var(--l1-border);
+  border: 1px solid var(--color-border);
   border-radius: 4px;
-  background: var(--l1-bg-chart);
+  background: var(--color-fill-1);
 }
 
 .statusCapLabel {
   font-size: 10px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--l1-muted);
+  color: var(--color-text-3);
 }
 
 .statusCapValue {
   font-size: 12px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
-  color: var(--l1-text);
+  color: var(--color-text-1);
 }
 
 .statusSpark {
@@ -290,7 +277,7 @@
   height: 4px;
   overflow: hidden;
   border-radius: 2px;
-  background: #1c2230;
+  background: var(--color-fill-2);
 }
 
 .miniBarFill {
@@ -313,22 +300,22 @@
 
 .tableWrap {
   min-width: 0;
-  border: 1px solid var(--l1-border);
-  background: var(--l1-bg-chart);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
 }
 
 .note {
   font-size: 12px;
-  color: var(--l1-muted);
+  color: var(--color-text-3);
 }
 
 .rowActive {
   cursor: pointer;
 
   :global(td) {
-    background: #1a2838 !important;
-    color: var(--l1-text);
-    box-shadow: inset 3px 0 0 var(--l1-accent);
+    background: color-mix(in srgb, var(--color-primary) 12%, transparent) !important;
+    color: var(--color-text-1);
+    box-shadow: inset 3px 0 0 var(--color-primary);
   }
 }
 
@@ -338,33 +325,33 @@
 
 .root :global(.ant-table) {
   background: transparent;
-  color: var(--l1-text);
+  color: var(--color-text-1);
   font-size: 12px;
 }
 
 .root :global(.ant-table-thead > tr > th) {
-  background: var(--l1-bg-chart);
-  color: #6b7789;
-  border-bottom-color: var(--l1-border);
+  background: var(--color-fill-1);
+  color: var(--color-text-3);
+  border-bottom-color: var(--color-border);
 }
 
 .root :global(.ant-table-tbody > tr > td) {
   background: transparent;
-  color: #c5cedb;
-  border-bottom-color: #1c2230;
+  color: var(--color-text-2);
+  border-bottom-color: var(--color-border-1);
   font-variant-numeric: tabular-nums;
 }
 
 .root :global(.ant-table-tbody > tr:hover > td) {
-  background: #181e28 !important;
+  background: var(--color-fill-1) !important;
 }
 
 .root :global(.ant-empty-description) {
-  color: var(--l1-muted);
+  color: var(--color-text-3);
 }
 
 .root :global(.ant-table-column-sorter) {
-  color: var(--l1-muted) !important;
+  color: var(--color-text-3) !important;
 }
 
 @media (max-width: 1100px) {

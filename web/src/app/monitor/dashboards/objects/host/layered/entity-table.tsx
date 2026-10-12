@@ -24,9 +24,9 @@ const formatCell = (value: number | null | undefined, unit?: MetricUnit) => {
 };
 
 const toneForPercent = (value: number) => {
-  if (value >= 90) return 'var(--l1-crit)';
-  if (value >= 80) return 'var(--l1-warn)';
-  return 'var(--l1-ok)';
+  if (value >= 90) return 'var(--color-fail)';
+  if (value >= 80) return 'var(--color-warning)';
+  return 'var(--color-success)';
 };
 
 export default function LayeredEntityTable({
@@ -61,7 +61,7 @@ export default function LayeredEntityTable({
                 className={styles.miniBarFill}
                 style={{
                   width: `${Math.min(100, Math.max(0, value))}%`,
-                  background: color || 'var(--l1-muted)'
+                  background: color || 'var(--color-text-3)'
                 }}
               />
             </span>

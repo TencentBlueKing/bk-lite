@@ -3,6 +3,7 @@
 import React, { useMemo } from 'react';
 import { useECharts } from '../../../shared/widgets/useECharts';
 import { ChartData } from '@/app/monitor/types';
+import { resolveThemeColor, useThemeColors } from './theme-color';
 import styles from './layered.module.scss';
 
 export interface SignalItem {
@@ -24,6 +25,8 @@ export const Spark = ({
   color: string;
   className?: string;
 }) => {
+  const theme = useThemeColors();
+  const stroke = resolveThemeColor(color, theme) || theme['--color-text-3'];
   const series = useMemo(
     () =>
       data
@@ -49,11 +52,11 @@ export const Spark = ({
           data: series,
           showSymbol: false,
           symbol: 'none',
-          lineStyle: { width: 1.4, color }
+          lineStyle: { width: 1.4, color: stroke }
         }
       ]
     };
-  }, [color, series]);
+  }, [series, stroke]);
   const { containerRef } = useECharts(option);
   if (!option) return <div className={className || styles.signalSpark} />;
   return <div ref={containerRef} className={className || styles.signalSpark} />;
@@ -69,8 +72,8 @@ export default function SignalBar({
   const alertTone = alertCount == null
     ? undefined
     : alertCount === 0
-      ? 'var(--l1-ok)'
-      : 'var(--l1-crit)';
+      ? 'var(--color-success)'
+      : 'var(--color-fail)';
   return (
     <div className={styles.signalBar}>
       {items.map((item) => (
@@ -82,7 +85,7 @@ export default function SignalBar({
             </div>
             {item.subtitle ? <div className={styles.signalSub}>{item.subtitle}</div> : null}
           </div>
-          <Spark data={item.trend} color={item.tone || item.color} />
+          <Spark data={item.trend} color={item.color} />
         </div>
       ))}
       <div className={styles.alertBox}>
