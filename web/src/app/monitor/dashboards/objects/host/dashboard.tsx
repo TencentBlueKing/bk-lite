@@ -36,7 +36,7 @@ export default function HostDashboardPage() {
     [searchParams]
   );
   const [processReady, setProcessReady] = useState(false);
-  const [categoryTab, setCategoryTab] = useState('system');
+  const [categoryTab, setCategoryTab] = useState('overview');
   const layout = readHostDetailLayout(new URLSearchParams(searchParams.toString()));
 
   const {
@@ -50,6 +50,9 @@ export default function HostDashboardPage() {
 
   const entityOnClassic = layout === 'dashboard';
   const entityOnCategory = layout === 'category';
+  const categoryDisk = entityOnCategory && (categoryTab === 'overview' || categoryTab === 'disk');
+  const categoryNet = entityOnCategory && (categoryTab === 'overview' || categoryTab === 'net');
+  const categoryProcess = entityOnCategory && processReady && (categoryTab === 'overview' || categoryTab === 'process');
   const entityArgs = {
     idValues,
     instanceIdKeys,
@@ -61,22 +64,22 @@ export default function HostDashboardPage() {
   };
   const diskState = useHostEntityMetrics({
     ...entityArgs,
-    enabled: entityOnClassic || (entityOnCategory && categoryTab === 'disk'),
+    enabled: entityOnClassic || categoryDisk,
     queries: HOST_DISK_ENTITY_QUERIES
   });
   const netState = useHostEntityMetrics({
     ...entityArgs,
-    enabled: entityOnClassic || (entityOnCategory && categoryTab === 'net'),
+    enabled: entityOnClassic || categoryNet,
     queries: HOST_NET_ENTITY_QUERIES
   });
   const gpuState = useHostEntityMetrics({
     ...entityArgs,
-    enabled: entityOnClassic || (entityOnCategory && categoryTab === 'gpu'),
+    enabled: entityOnClassic,
     queries: HOST_GPU_ENTITY_QUERIES
   });
   const processState = useHostEntityMetrics({
     ...entityArgs,
-    enabled: entityOnCategory && categoryTab === 'process' && processReady,
+    enabled: categoryProcess,
     queries: processReady ? HOST_PROCESS_ENTITY_QUERIES : []
   });
 
@@ -101,7 +104,7 @@ export default function HostDashboardPage() {
 
   useEffect(() => {
     if (layout === 'category' && categoryTab === 'process' && !processReady) {
-      setCategoryTab('system');
+      setCategoryTab('overview');
     }
   }, [layout, categoryTab, processReady]);
 

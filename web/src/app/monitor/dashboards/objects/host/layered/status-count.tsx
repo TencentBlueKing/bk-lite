@@ -1,8 +1,6 @@
 'use client';
 
 import React from 'react';
-import { ChartData } from '@/app/monitor/types';
-import { Spark } from './signal-bar';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
@@ -11,22 +9,27 @@ export interface StatusCountItem {
   label: string;
   value: string;
   tone?: string;
-  trend: ChartData[];
 }
 
-/** 进程态小计数：整数 + 个 + 语义色，可选极短 sparkline，不得做成与 CPU 同尺寸数字墙。 */
+/** 进程态计数：整数 +「个」+ 语义色。不画箭头，也不把计数做成趋势图。 */
 export default function StatusCountRow({ items }: { items: StatusCountItem[] }) {
+  if (!items.length) return null;
   return (
-    <div className={styles.statusRow}>
-      {items.map((item) => (
-        <div key={item.key} className={`${classic.panel} ${styles.statusCap}`}>
-          <div className={styles.statusCapLabel}>{item.label}</div>
-          <div className={styles.statusCapValue} style={{ color: item.tone || undefined }}>
-            {item.value}
+    <section className={`${classic.panel} ${styles.statusPanel}`}>
+      <div className={styles.sectionHead}>
+        <div className={classic.sectionLabel}>状态计数</div>
+        <div className={styles.hint}>语义色 · 单位「个」无箭头</div>
+      </div>
+      <div className={styles.pillRow}>
+        {items.map((item) => (
+          <div key={item.key} className={styles.pill}>
+            <span className={styles.pillLabel}>{item.label}</span>
+            <span className={styles.pillValue} style={item.tone ? { color: item.tone } : undefined}>
+              {item.value}
+            </span>
           </div>
-          <Spark data={item.trend} color={item.tone || 'var(--color-text-3)'} className={styles.statusSpark} />
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+    </section>
   );
 }

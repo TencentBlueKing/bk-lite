@@ -1,87 +1,114 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
+import { HOST_PALETTE } from '../config';
 import { pointsToChartData, type EntityTableRow } from '../entity-series';
-import LayeredEntityTable from './entity-table';
+import LayeredEntityTable, { type LayeredColumn } from './entity-table';
 import ThinTimeSeries from './thin-time-series';
+import { formatPercent, formatUnit, percentTone } from './readings';
+import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
-const PROCESS_COLUMNS = [
-  { key: 'process_name', title: 'PROCESS', labelKey: 'process_name' },
-  { key: 'process_cpu_usage', title: 'CPU%', unit: 'percent' as const, bar: true },
-  { key: 'process_mem_usage', title: 'MEM%', unit: 'percent' as const, bar: true },
-  { key: 'process_memory_rss', title: 'RSS', unit: 'bytes' as const },
-  { key: 'process_num_threads', title: 'THREADS', unit: 'counts' as const },
-  { key: 'process_num_fds', title: 'FDS', unit: 'counts' as const },
-  { key: 'process_alive', title: '状态', unit: 'none' as const }
-];
+const numberOrNull = (value: number | null | undefined) => (
+  value == null || !Number.isFinite(value) ? null : value
+);
 
 export default function FlatProcessSplit({
   rows,
-  loading
+  loading,
+  selectedKey,
+  onSelect
 }: {
   rows: EntityTableRow[];
   loading: boolean;
+  selectedKey: string;
+  onSelect: (key: string) => void;
 }) {
   const sorted = useMemo(
     () => [...rows].sort((left, right) => (right.values.process_cpu_usage ?? -1) - (left.values.process_cpu_usage ?? -1)),
     [rows]
   );
-  const [selectedKey, setSelectedKey] = useState('');
-  useEffect(() => {
-    if (!sorted.length) {
-      setSelectedKey('');
-      return;
-    }
-    if (!sorted.some((row) => row.key === selectedKey)) setSelectedKey(sorted[0].key);
-  }, [selectedKey, sorted]);
   const selected = sorted.find((row) => row.key === selectedKey) || sorted[0];
-  const chartSeries = useMemo(() => {
-    if (!selected) return [];
-    return [
-      { label: 'cpu', color: '#2dd4bf', points: selected.series.process_cpu_usage || [] },
-      { label: 'mem', color: '#a78bfa', points: selected.series.process_mem_usage || [] }
-    ].filter((item) => item.points.length);
-  }, [selected]);
-  const chartData = useMemo(
-    () => pointsToChartData(chartSeries.map((item) => ({ points: item.points }))),
-    [chartSeries]
-  );
-  const displayRows = useMemo(
-    () =>
-      sorted.map((row) => ({
-        ...row,
-        values: {
-          ...row.values,
-          process_alive: row.values.process_alive
-        },
-        labels: {
-          ...row.labels,
-          process_alive: row.values.process_alive === 1 ? '存活' : row.values.process_alive === 0 ? '失活' : '--'
+  const name = selected?.labels.process_name || '';
+  const cpu = numberOrNull(selected?.values.process_cpu_usage);
+  const mem = numberOrNull(selected?.values.process_mem_usage);
+  const columns = useMemo<LayeredColumn[]>(() => {
+    const present = (key: string) => sorted.some((row) => numberOrNull(row.values[key]) != null);
+    const next: LayeredColumn[] = [
+      { key: 'process_name', title: 'process_name', labelKey: 'process_name' }
+    ];
+    if (loading || present('process_cpu_usage')) next.push({ key: 'process_cpu_usage', title: 'cpu', unit: 'percent', emptyDash: true });
+    if (loading || present('process_mem_usage')) next.push({ key: 'process_mem_usage', title: 'mem', unit: 'percent', emptyDash: true });
+    if (loading || present('process_memory_rss')) next.push({ key: 'process_memory_rss', title: 'rss', unit: 'bytes', emptyDash: true });
+    if (loading || present('process_num_threads')) next.push({ key: 'process_num_threads', title: 'threads', unit: 'counts', emptyDash: true });
+    if (loading || present('process_num_fds')) next.push({ key: 'process_num_fds', title: 'fds', unit: 'counts', emptyDash: true });
+    if (loading || present('process_alive')) {
+      next.push({
+        key: 'process_alive',
+        title: 'alive',
+        render: (row) => {
+          const value = numberOrNull(row.values.process_alive);
+          if (value == null) return '—';
+          return value >= 1 ? '是' : '否';
         }
-      })),
-    [sorted]
-  );
-  const columns = PROCESS_COLUMNS.map((column) =>
-    column.key === 'process_alive' ? { ...column, labelKey: 'process_alive' } : column
-  );
+      });
+    }
+    return next;
+  }, [loading, sorted]);
 
   return (
-    <div className={styles.processSplit}>
+    <>
+      <div className={styles.sectionHead}>
+        <div className={classic.sectionLabel}>Metrics · 选中进程</div>
+        <div className={styles.hint}>{`选中行驱动上图 · 默认 Top${name ? ` ${name}` : ''}`}</div>
+      </div>
+      <div className={styles.processTop}>
+        <ThinTimeSeries
+          key={selected?.key || 'none'}
+          title={name ? `cpu / mem · ${name}` : 'cpu / mem'}
+          reading={`${formatPercent(cpu)} / ${formatPercent(mem)}`}
+          loading={loading}
+          unit="percent"
+          data={pointsToChartData([
+            { points: selected?.series.process_cpu_usage || [] },
+            { points: selected?.series.process_mem_usage || [] }
+          ])}
+          legends={[
+            { label: 'cpu', color: HOST_PALETTE.emerald },
+            { label: 'mem', color: HOST_PALETTE.blue }
+          ]}
+        />
+        <section className={`${classic.panel} ${styles.currentCard}`}>
+          <div className={styles.currentKicker}>当前</div>
+          <div className={styles.currentName}>{name || '—'}</div>
+          <div className={styles.currentMetric}>
+            cpu
+            <b style={{ color: percentTone(cpu) }}>{formatPercent(cpu)}</b>
+          </div>
+          <div className={styles.currentMetric}>
+            mem
+            <b style={{ color: percentTone(mem) }}>{formatPercent(mem)}</b>
+          </div>
+          {numberOrNull(selected?.values.process_memory_rss) != null ? (
+            <div className={styles.currentMetric}>
+              rss
+              <b>{formatUnit(numberOrNull(selected?.values.process_memory_rss), 'bytes')}</b>
+            </div>
+          ) : null}
+        </section>
+      </div>
+
+      <div className={styles.sectionHead}>
+        <div className={classic.sectionLabel}>Top 进程</div>
+      </div>
       <LayeredEntityTable
-        rows={displayRows}
+        rows={sorted}
         columns={columns}
         loading={loading}
-        selectedKey={selectedKey}
-        onSelect={setSelectedKey}
+        selectedKey={selected?.key || ''}
+        onSelect={onSelect}
       />
-      <ThinTimeSeries
-        title={selected ? `选中 ${selected.labels.process_name || ''}` : '选中进程'}
-        data={chartData}
-        legends={chartSeries.map((item) => ({ label: item.label, color: item.color }))}
-        unit="percent"
-        loading={loading}
-      />
-    </div>
+      <div className={styles.footnote}>可采列：process_name / cpu / mem / rss / threads / fds / alive。无 PID / User / virt / 进程 IO。</div>
+    </>
   );
 }

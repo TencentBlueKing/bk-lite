@@ -149,6 +149,84 @@ export const buildDiskRows = (byMetric: Record<string, LabeledSeries[]>): Entity
   });
 };
 
+const IO_METRIC_KEYS = ['diskio_read_bytes_rate', 'diskio_write_bytes_rate', 'diskio_io_util'];
+
+/**
+ * 挂载表：一行一个 path。IO 只在 diskio 的 name（没有 name 时用 device）
+ * 与该挂载的 device/name 完全一致时写入，并记到 labels.io_device。
+ * 不去掉分区号、不补 /dev 前缀；对不上就不填 IO，也不另造无挂载行。
+ */
+export const buildMountDiskRows = (byMetric: Record<string, LabeledSeries[]>): EntityTableRow[] => {
+  const rows = new Map<string, EntityTableRow>();
+  const usageKeys = ['disk_used_percent', 'disk_inodes_used_percent', 'disk_total', 'disk_free'];
+  const keep = ['path', 'mount', 'device', 'name', 'fstype'];
+
+  usageKeys.forEach((metricKey) => {
+    (byMetric[metricKey] || []).forEach((series) => {
+      const path = labelText(series.labels, 'path') || labelText(series.labels, 'mount');
+      if (!path) return;
+      const row = ensureRow(rows, `path:${path}`, series.labels, keep);
+      if (!row.labels.path) row.labels.path = path;
+      writeMetric(row, metricKey, series.points);
+    });
+  });
+
+  const ioByName = new Map<string, Array<{ metricKey: string; points: RangePoint[] }>>();
+  IO_METRIC_KEYS.forEach((metricKey) => {
+    (byMetric[metricKey] || []).forEach((series) => {
+      const name = labelText(series.labels, 'name') || labelText(series.labels, 'device');
+      if (!name) return;
+      const list = ioByName.get(name) || [];
+      list.push({ metricKey, points: series.points });
+      ioByName.set(name, list);
+    });
+  });
+
+  rows.forEach((row) => {
+    const candidates = [row.labels.device, row.labels.name].filter((value): value is string => Boolean(value));
+    const matched = candidates.find((name) => ioByName.has(name));
+    if (!matched) return;
+    row.labels.io_device = matched;
+    (ioByName.get(matched) || []).forEach((item) => writeMetric(row, item.metricKey, item.points));
+  });
+
+  rows.forEach((row) => {
+    const total = row.values.disk_total;
+    const free = row.values.disk_free;
+    const percent = row.values.disk_used_percent;
+    if (total != null && free != null && Number.isFinite(total) && Number.isFinite(free)) {
+      row.values.disk_used = Math.max(0, total - free);
+    } else if (
+      row.values.disk_used == null
+      && total != null
+      && percent != null
+      && Number.isFinite(total)
+      && Number.isFinite(percent)
+    ) {
+      row.values.disk_used = Math.max(0, total * percent / 100);
+    }
+  });
+
+  return Array.from(rows.values()).sort((left, right) => (
+    (right.values.disk_used_percent ?? -1) - (left.values.disk_used_percent ?? -1)
+  ));
+};
+
+export const sumPoints = (left: RangePoint[] = [], right: RangePoint[] = []): RangePoint[] => {
+  if (!left.length) return right.slice();
+  if (!right.length) return left.slice();
+  const map = new Map<number, number>();
+  left.forEach((point) => {
+    map.set(point.time, (map.get(point.time) || 0) + point.value);
+  });
+  right.forEach((point) => {
+    map.set(point.time, (map.get(point.time) || 0) + point.value);
+  });
+  return Array.from(map.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([time, value]) => ({ time, value }));
+};
+
 export const buildLabelRows = (
   byMetric: Record<string, LabeledSeries[]>,
   identityKey: string,

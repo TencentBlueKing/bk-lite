@@ -15,10 +15,13 @@ export interface LayeredColumn {
   labelKey?: string;
   unit?: MetricUnit;
   bar?: boolean;
+  /** 缺失值用「—」，表示没有这项采集或对不上，而不是 0。 */
+  emptyDash?: boolean;
+  render?: (row: EntityTableRow, index: number) => React.ReactNode;
 }
 
-const formatCell = (value: number | null | undefined, unit?: MetricUnit) => {
-  if (value == null || !Number.isFinite(value)) return '--';
+const formatCell = (value: number | null | undefined, unit?: MetricUnit, emptyDash?: boolean) => {
+  if (value == null || !Number.isFinite(value)) return emptyDash ? '—' : '--';
   if (!unit || unit === 'none') return String(value);
   const formatted = formatMetricValue(value, unit);
   return `${formatted.value}${formatted.unit || ''}`;
@@ -49,9 +52,12 @@ export default function LayeredEntityTable({
     ellipsis: true,
     sorter: column.labelKey
       ? (left, right) => (left.labels[column.labelKey!] || '').localeCompare(right.labels[column.labelKey!] || '')
-      : (left, right) => (left.values[column.key] ?? Number.NEGATIVE_INFINITY) - (right.values[column.key] ?? Number.NEGATIVE_INFINITY),
-    render: (_, row) => {
-      if (column.labelKey) return row.labels[column.labelKey] || '--';
+      : column.render && !column.unit
+        ? undefined
+        : (left, right) => (left.values[column.key] ?? Number.NEGATIVE_INFINITY) - (right.values[column.key] ?? Number.NEGATIVE_INFINITY),
+    render: (_, row, index) => {
+      if (column.render) return column.render(row, index);
+      if (column.labelKey) return row.labels[column.labelKey] || (column.emptyDash ? '—' : '--');
       const value = row.values[column.key];
       const color = column.unit === 'percent' && value != null ? toneForPercent(value) : undefined;
       return (
@@ -67,7 +73,7 @@ export default function LayeredEntityTable({
               />
             </span>
           ) : null}
-          {formatCell(value, column.unit)}
+          {formatCell(value, column.unit, column.emptyDash)}
         </span>
       );
     }
@@ -83,7 +89,7 @@ export default function LayeredEntityTable({
         columns={tableColumns}
         dataSource={rows}
         scroll={{ x: 'max-content', y: 280 }}
-        locale={{ emptyText: loading ? '加载中' : '当前时间窗没有维度序列' }}
+        locale={{ emptyText: loading ? '加载中' : '当前时间窗没有数据' }}
         rowClassName={(row) => (row.key === selectedKey ? styles.rowActive : styles.rowIdle)}
         onRow={(row) => ({ onClick: () => onSelect(row.key) })}
       />

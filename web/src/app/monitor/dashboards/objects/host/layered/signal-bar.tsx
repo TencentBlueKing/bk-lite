@@ -5,16 +5,7 @@ import { useECharts } from '../../../shared/widgets/useECharts';
 import { ChartData } from '@/app/monitor/types';
 import { resolveThemeColor, useThemeColors } from './theme-color';
 import classic from '../index.module.scss';
-
-export interface SignalItem {
-  key: string;
-  label: string;
-  value: string;
-  color: string;
-  tone?: string;
-  subtitle?: string;
-  trend: ChartData[];
-}
+import styles from './layered.module.scss';
 
 export const Spark = ({
   data,
@@ -62,40 +53,43 @@ export const Spark = ({
   return <div ref={containerRef} className={className || classic.miniTrend} />;
 };
 
-export default function SignalBar({
-  items,
-  alertCount
-}: {
-  items: SignalItem[];
-  alertCount: number | null;
-}) {
-  const alertTone = alertCount == null
-    ? undefined
-    : alertCount === 0
-      ? 'var(--color-success)'
-      : 'var(--color-fail)';
+export const FlatSpark = ({ className }: { className?: string }) => (
+  <div className={className || styles.flatSpark} aria-hidden="true">
+    <span className={styles.flatSparkLine} />
+  </div>
+);
+
+export interface KpiCardModel {
+  key: string;
+  label: string;
+  value: string;
+  color: string;
+  tone?: string;
+  subtitle?: string;
+  detail?: string;
+  trend?: ChartData[];
+  flat?: boolean;
+  extra?: React.ReactNode;
+}
+
+/** 概览 KPI：值 + 细 spark。告警没有历史时序时只画平线。 */
+export function KpiStrip({ items }: { items: KpiCardModel[] }) {
   return (
-    <div className={classic.primaryGrid}>
+    <div className={styles.kpiGrid}>
       {items.map((item) => (
         <div key={item.key} className={classic.statCard}>
           <div className={classic.statLabel}>{item.label}</div>
           <div className={classic.statBody}>
-            <div className={classic.statValue} style={{ color: item.tone || undefined }}>
+            <div className={classic.statValue} style={item.tone ? { color: item.tone } : undefined}>
               {item.value}
+              {item.subtitle ? <span className={classic.statUnit}>{item.subtitle}</span> : null}
             </div>
-            {item.subtitle ? <div className={classic.statMeta}>{item.subtitle}</div> : null}
+            {item.detail ? <div className={classic.statMeta}>{item.detail}</div> : null}
+            {item.extra}
           </div>
-          <Spark data={item.trend} color={item.color} />
+          {item.flat ? <FlatSpark /> : <Spark data={item.trend || []} color={item.color} />}
         </div>
       ))}
-      <div className={classic.statCard}>
-        <div className={classic.statLabel}>告警 / 异常</div>
-        <div className={classic.statBody}>
-          <div className={classic.statValue} style={{ color: alertTone }}>
-            {alertCount == null ? '--' : `${alertCount}个`}
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

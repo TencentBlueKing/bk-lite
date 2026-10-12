@@ -14,6 +14,13 @@ import styles from './layered.module.scss';
 export interface ThinLegend {
   label: string;
   color: string;
+  dashed?: boolean;
+}
+
+export interface ThinReferenceLine {
+  value: number;
+  label: string;
+  color: string;
 }
 
 interface ThinTimeSeriesProps {
@@ -23,6 +30,9 @@ interface ThinTimeSeriesProps {
   unit?: MetricUnit;
   loading?: boolean;
   reading?: string;
+  readingTone?: string;
+  emptyText?: string;
+  reference?: ThinReferenceLine | null;
 }
 
 const areaKeys = (data: ChartData[]) => {
@@ -49,7 +59,10 @@ export default function ThinTimeSeries({
   legends,
   unit = 'none',
   loading = false,
-  reading
+  reading,
+  readingTone,
+  emptyText = '当前时间窗没有序列',
+  reference
 }: ThinTimeSeriesProps) {
   const theme = useThemeColors();
   const axisColor = theme['--color-border'];
@@ -57,8 +70,13 @@ export default function ThinTimeSeries({
   const textColor = theme['--color-text-1'];
   const panelColor = theme['--color-bg'];
   const keys = useMemo(() => areaKeys(data), [data]);
+  const legendItems = useMemo(
+    () => (reference ? [...legends, { label: reference.label, color: reference.color, dashed: true }] : legends),
+    [legends, reference]
+  );
   const option = useMemo(() => {
     if (!data.length || !keys.length) return null;
+    const referenceValue = reference && Number.isFinite(reference.value) ? reference.value : null;
     return {
       animation: false,
       backgroundColor: 'transparent',
@@ -74,6 +92,13 @@ export default function ThinTimeSeries({
       },
       yAxis: {
         type: 'value' as const,
+        ...(referenceValue != null ? {
+          max: (extent: { max: number }) => {
+            const top = Math.max(extent.max, referenceValue);
+            if (!Number.isFinite(top)) return extent.max;
+            return top <= 0 ? 1 : top * 1.08;
+          }
+        } : {}),
         axisLabel: {
           color: mutedColor,
           fontSize: 10,
@@ -126,23 +151,43 @@ export default function ThinTimeSeries({
             const value = point[key];
             return [point.time, typeof value === 'number' ? value : null];
           }),
-          lineStyle: { width: 1.6, color }
+          lineStyle: { width: 1.6, color },
+          markLine: index === 0 && referenceValue != null ? {
+            silent: true,
+            symbol: ['none', 'none'],
+            lineStyle: { type: 'dashed' as const, color: reference?.color, width: 1.2 },
+            label: {
+              show: true,
+              formatter: reference?.label || '',
+              color: mutedColor,
+              fontSize: 10,
+              position: 'insideEndTop' as const
+            },
+            data: [{ yAxis: referenceValue }]
+          } : undefined
         };
       })
     };
-  }, [axisColor, data, keys, legends, mutedColor, panelColor, textColor, unit]);
+  }, [axisColor, data, keys, legends, mutedColor, panelColor, reference, textColor, unit]);
   const { containerRef } = useECharts(option);
 
   return (
     <section className={`${classic.panel} ${styles.chartPanel}`}>
       <div className={styles.chartHead}>
         <div className={styles.chartTitle}>{title}</div>
-        {reading ? <div className={styles.chartReading}>{reading}</div> : null}
-        {legends.length > 1 ? (
+        {reading ? (
+          <div className={styles.chartReading} style={readingTone ? { color: readingTone } : undefined}>
+            {reading}
+          </div>
+        ) : null}
+        {legendItems.length > 1 ? (
           <div className={styles.chartLegend}>
-            {legends.map((item) => (
+            {legendItems.map((item) => (
               <span key={item.label}>
-                <span className={styles.legendSwatch} style={{ background: item.color }} />
+                <span
+                  className={item.dashed ? styles.legendDashed : styles.legendSwatch}
+                  style={item.dashed ? { borderTopColor: item.color } : { background: item.color }}
+                />
                 {item.label}
               </span>
             ))}
@@ -151,7 +196,7 @@ export default function ThinTimeSeries({
       </div>
       <div className={styles.chartBody}>
         {loading || !data.length ? (
-          <div className={`${styles.note} flex h-full items-center`}>{loading ? '加载中' : '当前时间窗没有序列'}</div>
+          <div className={styles.chartEmpty}>{loading ? '加载中' : emptyText}</div>
         ) : (
           <div ref={containerRef} className="h-full w-full" />
         )}

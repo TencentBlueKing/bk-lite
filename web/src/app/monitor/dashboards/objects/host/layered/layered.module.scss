@@ -18,10 +18,157 @@
   gap: 12px;
 }
 
-.chartGrid {
+.chartGrid,
+.chartGrid2 {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.chartGrid3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.chartGrid4 {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.kpiGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  gap: 12px;
+}
+
+.shortcutGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.sectionHead > :first-child {
+  margin: 0;
+  min-width: 0;
+}
+
+.hint,
+.footnote {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-text-3);
+}
+
+.hint {
+  margin-left: auto;
+  text-align: right;
+}
+
+.footnote {
+  margin-top: 8px;
+}
+
+.shortcutCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 112px;
+}
+
+.shortcutLabel {
+  font-size: 12px;
+  color: var(--color-text-3);
+}
+
+.shortcutMain {
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--color-text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.shortcutSub {
+  font-size: 12px;
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.jumpBtn {
+  margin-top: auto;
+  width: fit-content;
+  border: 0;
+  border-radius: 6px;
+  padding: 2px 8px;
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  color: var(--color-primary);
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.policyLink {
+  width: fit-content;
+  color: var(--color-primary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.flatSpark {
+  height: 52px;
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+}
+
+.flatSparkLine {
+  width: 100%;
+  border-top: 1.5px solid var(--color-text-3);
+  opacity: 0.55;
+}
+
+.tabLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tabBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--color-warning);
+  color: var(--color-bg);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1;
+}
+
+.nameCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.rowDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .chartPanel {
@@ -31,21 +178,25 @@
 
 .chartHead {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 4px 8px;
   margin-bottom: 8px;
 }
 
 .chartTitle {
+  min-width: 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text-1);
 }
 
 .chartReading {
+  flex-shrink: 0;
   font-size: 12px;
   color: var(--color-text-2);
+  font-variant-numeric: tabular-nums;
 }
 
 .chartLegend {
@@ -58,47 +209,106 @@
 
 .legendSwatch {
   display: inline-block;
-  width: 10px;
-  height: 2px;
+  width: 8px;
+  height: 8px;
   margin-right: 4px;
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
+.legendDashed {
+  display: inline-block;
+  width: 14px;
+  margin-right: 4px;
+  border-top: 1.5px dashed;
   vertical-align: middle;
 }
 
 .chartBody {
-  height: 148px;
+  height: 156px;
 }
 
-.statusRow {
+.chartEmpty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-3);
+  font-size: 13px;
+}
+
+.statusPanel {
+  gap: 12px;
+}
+
+.pillRow {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
 }
 
-.statusCap {
-  display: flex;
-  align-items: center;
+.pill {
+  display: inline-flex;
+  align-items: baseline;
   gap: 8px;
-  min-width: 160px;
+  min-width: 132px;
+  padding: 8px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg);
 }
 
-.statusCapLabel {
+.pillLabel {
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text-1);
 }
 
-.statusCapValue {
+.pillValue {
   font-size: 16px;
   font-weight: 650;
   font-variant-numeric: tabular-nums;
   color: var(--color-text-1);
 }
 
-.statusSpark {
-  width: 48px;
-  height: 20px;
-  margin-left: auto;
-  flex-shrink: 0;
+.processTop {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(180px, 0.8fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.currentCard {
+  justify-content: flex-start;
+  gap: 4px;
+}
+
+.currentKicker {
+  font-size: 12px;
+  color: var(--color-text-3);
+}
+
+.currentName {
+  margin: 4px 0 12px;
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--color-text-1);
+}
+
+.currentMetric {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+  color: var(--color-text-3);
+  font-size: 13px;
+}
+
+.currentMetric b {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .quotaCell {
@@ -150,6 +360,9 @@
   :global(td) {
     background: color-mix(in srgb, var(--color-primary) 12%, transparent) !important;
     color: var(--color-text-1);
+  }
+
+  :global(td:first-child) {
     box-shadow: inset 3px 0 0 var(--color-primary);
   }
 }
@@ -191,7 +404,11 @@
 
 @media (max-width: 1100px) {
   .chartGrid,
-  .processSplit {
+  .chartGrid2,
+  .chartGrid3,
+  .chartGrid4,
+  .processSplit,
+  .processTop {
     grid-template-columns: minmax(0, 1fr);
   }
 }

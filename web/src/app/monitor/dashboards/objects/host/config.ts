@@ -133,6 +133,14 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: HOST_PALETTE.cyan
     },
     {
+      name: 'mem_total',
+      display_name: '内存总量',
+      description: '主机物理内存总量，用于把可用内存换算成占比。',
+      unit: 'bytes',
+      query: 'mem_total{instance_type="os", __$labels__} or host_mem_total_bytes_gauge{instance_type="os", __$labels__} or mem_total_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or mem_total_gauge{instance_type="os", config_type=~"host_(aix|freebsd|hpux|solaris)_remote", __$labels__}',
+      color: HOST_PALETTE.neutral
+    },
+    {
       name: 'processes_blocked',
       display_name: '阻塞进程数',
       description: '当前处于不可中断等待（常与慢 I/O 相关）的进程数量。',
