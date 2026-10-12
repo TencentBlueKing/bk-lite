@@ -47,6 +47,18 @@ export const HOST_DISK_ENTITY_QUERIES: HostEntityMetricQuery[] = [
     query: `disk_used_percent{instance_type="os", __$labels__} or host_disk_used_percent_gauge{instance_type="os", __$labels__} or disk_used_percent_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or disk_used_percent_gauge{instance_type="os", ${UNIX_REMOTE}, __$labels__}`
   },
   {
+    key: 'disk_total',
+    unit: 'bytes',
+    labelKeys: ['path', 'mount', 'device', 'fstype'],
+    query: `disk_total{instance_type="os", __$labels__} or host_disk_total_bytes{instance_type="os", __$labels__} or disk_total_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or disk_total_gauge{instance_type="os", ${UNIX_REMOTE}, __$labels__}`
+  },
+  {
+    key: 'disk_free',
+    unit: 'bytes',
+    labelKeys: ['path', 'mount', 'device', 'fstype'],
+    query: `disk_free{instance_type="os", __$labels__} or host_disk_free_bytes{instance_type="os", __$labels__} or disk_free_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or disk_free_gauge{instance_type="os", ${UNIX_REMOTE}, __$labels__}`
+  },
+  {
     key: 'disk_inodes_used_percent',
     unit: 'percent',
     labelKeys: ['path', 'mount', 'device', 'fstype'],

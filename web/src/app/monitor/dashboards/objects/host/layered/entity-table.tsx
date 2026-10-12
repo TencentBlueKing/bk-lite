@@ -13,6 +13,7 @@ export interface LayeredColumn {
   title: string;
   labelKey?: string;
   unit?: MetricUnit;
+  bar?: boolean;
 }
 
 const formatCell = (value: number | null | undefined, unit?: MetricUnit) => {
@@ -52,7 +53,22 @@ export default function LayeredEntityTable({
       if (column.labelKey) return row.labels[column.labelKey] || '--';
       const value = row.values[column.key];
       const color = column.unit === 'percent' && value != null ? toneForPercent(value) : undefined;
-      return <span style={color ? { color } : undefined}>{formatCell(value, column.unit)}</span>;
+      return (
+        <span className={column.bar ? styles.quotaCell : undefined} style={color ? { color } : undefined}>
+          {column.bar && value != null && Number.isFinite(value) ? (
+            <span className={styles.miniBar} aria-hidden="true">
+              <span
+                className={styles.miniBarFill}
+                style={{
+                  width: `${Math.min(100, Math.max(0, value))}%`,
+                  background: color || 'var(--l1-muted)'
+                }}
+              />
+            </span>
+          ) : null}
+          {formatCell(value, column.unit)}
+        </span>
+      );
     }
   }));
 

@@ -99,7 +99,7 @@ const writeMetric = (row: EntityTableRow, metricKey: string, points: RangePoint[
 /** 磁盘：用量按 path/mount，IO 按 name/device 对齐到同一行。 */
 export const buildDiskRows = (byMetric: Record<string, LabeledSeries[]>): EntityTableRow[] => {
   const rows = new Map<string, EntityTableRow>();
-  const usageKeys = ['disk_used_percent', 'disk_inodes_used_percent'];
+  const usageKeys = ['disk_used_percent', 'disk_inodes_used_percent', 'disk_total', 'disk_free'];
   const ioKeys = ['diskio_io_util', 'diskio_read_bytes_rate', 'diskio_write_bytes_rate'];
   const keep = ['path', 'mount', 'device', 'name', 'fstype'];
 
@@ -135,6 +135,11 @@ export const buildDiskRows = (byMetric: Record<string, LabeledSeries[]>): Entity
   rows.forEach((row) => {
     if (!row.labels.path && row.labels.mount) row.labels.path = row.labels.mount;
     if (!row.labels.device && row.labels.name) row.labels.device = row.labels.name;
+    const total = row.values.disk_total;
+    const free = row.values.disk_free;
+    if (total != null && free != null && Number.isFinite(total) && Number.isFinite(free)) {
+      row.values.disk_used = Math.max(0, total - free);
+    }
   });
 
   return Array.from(rows.values()).sort((left, right) => {

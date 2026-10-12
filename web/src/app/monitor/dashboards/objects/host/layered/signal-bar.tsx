@@ -11,10 +11,19 @@ export interface SignalItem {
   value: string;
   color: string;
   tone?: string;
+  subtitle?: string;
   trend: ChartData[];
 }
 
-const Spark = ({ data, color }: { data: ChartData[]; color: string }) => {
+export const Spark = ({
+  data,
+  color,
+  className
+}: {
+  data: ChartData[];
+  color: string;
+  className?: string;
+}) => {
   const series = useMemo(
     () =>
       data
@@ -46,8 +55,8 @@ const Spark = ({ data, color }: { data: ChartData[]; color: string }) => {
     };
   }, [color, series]);
   const { containerRef } = useECharts(option);
-  if (!option) return <div className={styles.signalSpark} />;
-  return <div ref={containerRef} className={styles.signalSpark} />;
+  if (!option) return <div className={className || styles.signalSpark} />;
+  return <div ref={containerRef} className={className || styles.signalSpark} />;
 };
 
 export default function SignalBar({
@@ -57,27 +66,31 @@ export default function SignalBar({
   items: SignalItem[];
   alertCount: number | null;
 }) {
+  const alertTone = alertCount == null
+    ? undefined
+    : alertCount === 0
+      ? 'var(--l1-ok)'
+      : 'var(--l1-crit)';
   return (
     <div className={styles.signalBar}>
       {items.map((item) => (
         <div key={item.key} className={styles.signalPill}>
           <div>
             <div className={styles.signalLabel}>{item.label}</div>
-            <div className={styles.signalValue} style={{ color: item.tone || item.color }}>
+            <div className={styles.signalValue} style={{ color: item.tone || undefined }}>
               {item.value}
             </div>
+            {item.subtitle ? <div className={styles.signalSub}>{item.subtitle}</div> : null}
           </div>
-          <Spark data={item.trend} color={item.color} />
+          <Spark data={item.trend} color={item.tone || item.color} />
         </div>
       ))}
-      {alertCount != null ? (
-        <div className={`${styles.signalPill} ${styles.alertPill}`}>
-          <div>
-            <div className={styles.alertValue}>{alertCount}</div>
-            <div className={styles.alertHint}>告警 / 异常</div>
-          </div>
+      <div className={styles.alertBox}>
+        <div className={styles.alertK}>告警 / 异常</div>
+        <div className={styles.alertValue} style={{ color: alertTone }}>
+          {alertCount == null ? '--' : `${alertCount}个`}
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }

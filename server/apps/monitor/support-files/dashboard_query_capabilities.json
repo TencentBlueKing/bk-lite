@@ -955,6 +955,13 @@
       "template": "topk(5, sum by (namespace) (label_replace(prometheus_remote_write_container_memory_working_set_bytes{instance_type=\"k8s\",__$labels__}, \"namespace\", \"$1\", \"container_label_io_kubernetes_pod_namespace\", \"(.+)\")))"
     },
     {
+      "id": "dashboard:v1:1fcb3a9e",
+      "object_names": [
+        "Host"
+      ],
+      "template": "disk_total{instance_type=\"os\", __$labels__} or host_disk_total_bytes{instance_type=\"os\", __$labels__} or disk_total_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__} or disk_total_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__}"
+    },
+    {
       "id": "dashboard:v1:20114010",
       "object_names": [
         "VLLM"
@@ -1816,6 +1823,13 @@
         "RabbitMQ"
       ],
       "template": "rabbitmq_node_run_queue{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:43365ad6",
+      "object_names": [
+        "Host"
+      ],
+      "template": "disk_free{instance_type=\"os\", __$labels__} or host_disk_free_bytes{instance_type=\"os\", __$labels__} or disk_free_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__} or disk_free_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__}"
     },
     {
       "id": "dashboard:v1:43a22b11",
@@ -3063,6 +3077,13 @@
         "Haproxy"
       ],
       "template": "sum by (instance_id) (rate(haproxy_hrsp_4xx{svname=\"BACKEND\",__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:7825f8a8",
+      "object_names": [
+        "Host"
+      ],
+      "template": "count by (instance_id) (cpu_usage_idle{cpu!=\"cpu-total\", instance_type=\"os\", __$labels__})"
     },
     {
       "id": "dashboard:v1:78470004",

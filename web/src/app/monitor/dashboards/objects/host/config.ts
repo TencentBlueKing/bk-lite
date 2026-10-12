@@ -91,6 +91,14 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       linuxOnly: true
     },
     {
+      name: 'cpu_n',
+      display_name: 'CPU 核数',
+      description: '按非 cpu-total 的 CPU 序列计数，供负载相对核数副标使用。',
+      unit: 'counts',
+      query: 'count by (instance_id) (cpu_usage_idle{cpu!="cpu-total", instance_type="os", __$labels__})',
+      color: HOST_PALETTE.neutral
+    },
+    {
       name: 'system_uptime',
       display_name: '运行时长',
       description: '主机自上次启动以来的持续运行时间，反映主机稳定性。',

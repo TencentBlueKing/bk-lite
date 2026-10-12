@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import dayjs from 'dayjs';
 import { useECharts } from '../../../shared/widgets/useECharts';
 import { ChartData } from '@/app/monitor/types';
 import { formatMetricValue } from '../../../shared/utils/format';
@@ -19,6 +20,7 @@ interface ThinTimeSeriesProps {
   legends: ThinLegend[];
   unit?: MetricUnit;
   loading?: boolean;
+  reading?: string;
 }
 
 const areaKeys = (data: ChartData[]) => {
@@ -31,12 +33,21 @@ const areaKeys = (data: ChartData[]) => {
   return Array.from(keys).sort();
 };
 
+const formatTooltipReading = (raw: unknown, unit: MetricUnit) => {
+  const value = typeof raw === 'number' ? raw : Number.NaN;
+  if (!Number.isFinite(value)) return '--';
+  if (unit === 'none') return String(Number(value.toFixed(2)));
+  const formatted = formatMetricValue(value, unit);
+  return `${formatted.value}${formatted.unit || ''}`;
+};
+
 export default function ThinTimeSeries({
   title,
   data,
   legends,
   unit = 'none',
-  loading = false
+  loading = false,
+  reading
 }: ThinTimeSeriesProps) {
   const keys = useMemo(() => areaKeys(data), [data]);
   const option = useMemo(() => {
@@ -68,7 +79,33 @@ export default function ThinTimeSeries({
         axisLine: { show: false },
         splitLine: { lineStyle: { color: '#232a38', width: 1 } }
       },
-      tooltip: { show: false },
+      tooltip: {
+        show: true,
+        trigger: 'axis' as const,
+        appendToBody: true,
+        confine: false,
+        backgroundColor: '#161a22',
+        borderColor: '#232a38',
+        borderWidth: 1,
+        textStyle: { fontSize: 12, color: '#eef2f8' },
+        axisPointer: {
+          type: 'line' as const,
+          lineStyle: { color: '#8b98a8', width: 1, type: 'dashed' as const }
+        },
+        formatter: (params: any[]) => {
+          if (!params.length) return '';
+          const time = dayjs(Number(params[0].axisValue) * 1000).format('YYYY-MM-DD HH:mm:ss');
+          const rows = params
+            .map((item) => {
+              const raw = Array.isArray(item.value) ? item.value[1] : item.value;
+              const color = typeof item.color === 'string' ? item.color : '#8b98a8';
+              const name = item.seriesName || '';
+              return `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px"><span style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span><span>${name}</span></span><span style="font-variant-numeric:tabular-nums;font-weight:600">${formatTooltipReading(raw, unit)}</span></div>`;
+            })
+            .join('');
+          return `<div style="min-width:160px"><div style="margin-bottom:6px;color:#8b98a8">${time}</div>${rows}</div>`;
+        }
+      },
       series: keys.map((key, index) => {
         const color = legends[index]?.color || CHART_COLORS[index % CHART_COLORS.length];
         return {
@@ -93,14 +130,17 @@ export default function ThinTimeSeries({
     <section className={styles.chartPanel}>
       <div className={styles.chartHead}>
         <div className={styles.chartTitle}>{title}</div>
-        <div className={styles.chartLegend}>
-          {legends.map((item) => (
-            <span key={item.label}>
-              <span className={styles.legendSwatch} style={{ background: item.color }} />
-              {item.label}
-            </span>
-          ))}
-        </div>
+        {reading ? <div className={styles.chartReading}>{reading}</div> : null}
+        {legends.length > 1 ? (
+          <div className={styles.chartLegend}>
+            {legends.map((item) => (
+              <span key={item.label}>
+                <span className={styles.legendSwatch} style={{ background: item.color }} />
+                {item.label}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </div>
       <div className={styles.chartBody}>
         {loading || !data.length ? (

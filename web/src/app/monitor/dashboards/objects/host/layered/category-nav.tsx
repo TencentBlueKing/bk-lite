@@ -20,7 +20,7 @@ export default function CategoryNav({
 }) {
   return (
     <nav className={styles.nav} aria-label="分层分类">
-      <div className={styles.navLabel}>分层</div>
+      <div className={styles.navLabel}>分类</div>
       {items.map((item) => (
         <button
           key={item.key}

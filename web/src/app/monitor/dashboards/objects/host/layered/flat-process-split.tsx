@@ -8,8 +8,8 @@ import styles from './layered.module.scss';
 
 const PROCESS_COLUMNS = [
   { key: 'process_name', title: 'PROCESS', labelKey: 'process_name' },
-  { key: 'process_cpu_usage', title: 'CPU%', unit: 'percent' as const },
-  { key: 'process_mem_usage', title: 'MEM%', unit: 'percent' as const },
+  { key: 'process_cpu_usage', title: 'CPU%', unit: 'percent' as const, bar: true },
+  { key: 'process_mem_usage', title: 'MEM%', unit: 'percent' as const, bar: true },
   { key: 'process_memory_rss', title: 'RSS', unit: 'bytes' as const },
   { key: 'process_num_threads', title: 'THREADS', unit: 'counts' as const },
   { key: 'process_num_fds', title: 'FDS', unit: 'counts' as const },

@@ -1,14 +1,5 @@
 @use '../common/simple-dashboard.module.scss';
 
-// 分层概览：DashboardShell hideHeader 时去掉经典外壳留白与浅底。
-.pageFlush {
-  background: #12151c;
-}
-
-.shellFlush {
-  padding: 0;
-}
-
 // sectionLabel 已上收到共享壳；此处仅保留主机趋势图高度微调。
 
 .chartLegendHeader {

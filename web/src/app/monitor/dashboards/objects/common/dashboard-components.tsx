@@ -719,11 +719,6 @@ export interface DashboardShellProps {
    * 打开过的布局保持挂载，只隐藏。来回切换时不拆掉另一套页面。
    */
   preserveLayouts?: boolean;
-  /**
-   * 分层概览自带工具条时不渲染经典 PageHeader / InstanceCard，
-   * 避免与 LayeredToolbar 叠出两套页头。默认 false，经典盘与全量指标不变。
-   */
-  hideHeader?: boolean;
   /** 可选品牌标签（如 'Cisco'）：共享对象仪表盘按实例品牌在头部高亮显示，便于辨认当前盘属于哪个品牌。 */
   brandLabel?: string;
   styles: DashboardStyles;
@@ -740,7 +735,6 @@ export const DashboardShell = ({
   metricsContent,
   viewSwitcher,
   preserveLayouts = false,
-  hideHeader = false,
   brandLabel,
   styles
 }: DashboardShellProps) => {
@@ -772,61 +766,56 @@ export const DashboardShell = ({
   };
 
   return (
-  <div className={[styles.page, hideHeader ? styles.pageFlush : ''].filter(Boolean).join(' ')}>
-    <div
-      className={[styles.shell, hideHeader ? styles.shellFlush : ''].filter(Boolean).join(' ')}
-      data-view-mode={activeMode}
-    >
-      {hideHeader ? null : (
-        <div className={styles.pageHeader}>
-          <DashboardPageHeader
-            title={dashboard.pageTitle}
-            displayMode={activeMode}
-            onDisplayModeChange={onDisplayModeChange}
-            modeControl={viewSwitcher?.control}
-            modeOptions={viewSwitcher?.options}
-            timeDefaultValue={dashboard.timeDefaultValue}
-            onTimeChange={dashboard.onTimeChange}
-            onFrequenceChange={dashboard.setFrequence}
-            onRefresh={dashboard.onRefresh}
-            showTimeSelector={false}
-            styles={styles}
-          />
-          <DashboardInstanceCard
-            instanceName={dashboard.resolvedInstanceName}
-            metaItems={[
-              ...(brandLabel
-                ? [
-                  <span key="brand" className={styles.instanceMetaInline}>{dt(brandLabel)}</span>
-                ]
-                : []),
-              ...dashboard.objectMetaItems.map((item, index) => (
-                <span key={index} className={styles.instanceMetaInline}>{typeof item === 'string' ? dt(item) : item}</span>
-              ))
-            ]}
-            icon={<DatabaseOutlined />}
-            selectorValue={dashboard.instanceSelectValue}
-            selectorLoading={dashboard.instanceLoading}
-            selectorOptions={dashboard.instanceSelectOptions}
-            onInstanceChange={dashboard.onInstanceChange}
-            clusterOptions={dashboard.clusterFilterEnabled ? dashboard.clusterFilterOptions : undefined}
-            clusterValue={dashboard.clusterFilterValue}
-            onClusterChange={dashboard.onClusterFilterChange}
-            selectorPlaceholder={
-              dashboard.resolvedInstanceName !== '--' ? dashboard.resolvedInstanceName : dt('选择实例')
-            }
-            selectorTitle={dashboard.currentInstanceLabel}
-            isDashboardMode={showsDashboardChrome}
-            timeSelectorProps={{
-              timeDefaultValue: dashboard.timeDefaultValue,
-              onTimeChange: dashboard.onTimeChange,
-              onFrequenceChange: dashboard.setFrequence,
-              onRefresh: dashboard.onRefresh
-            }}
-            styles={styles}
-          />
-        </div>
-      )}
+  <div className={styles.page}>
+    <div className={styles.shell} data-view-mode={activeMode}>
+      <div className={styles.pageHeader}>
+        <DashboardPageHeader
+          title={dashboard.pageTitle}
+          displayMode={activeMode}
+          onDisplayModeChange={onDisplayModeChange}
+          modeControl={viewSwitcher?.control}
+          modeOptions={viewSwitcher?.options}
+          timeDefaultValue={dashboard.timeDefaultValue}
+          onTimeChange={dashboard.onTimeChange}
+          onFrequenceChange={dashboard.setFrequence}
+          onRefresh={dashboard.onRefresh}
+          showTimeSelector={false}
+          styles={styles}
+        />
+        <DashboardInstanceCard
+          instanceName={dashboard.resolvedInstanceName}
+          metaItems={[
+            ...(brandLabel
+              ? [
+                <span key="brand" className={styles.instanceMetaInline}>{dt(brandLabel)}</span>
+              ]
+              : []),
+            ...dashboard.objectMetaItems.map((item, index) => (
+              <span key={index} className={styles.instanceMetaInline}>{typeof item === 'string' ? dt(item) : item}</span>
+            ))
+          ]}
+          icon={<DatabaseOutlined />}
+          selectorValue={dashboard.instanceSelectValue}
+          selectorLoading={dashboard.instanceLoading}
+          selectorOptions={dashboard.instanceSelectOptions}
+          onInstanceChange={dashboard.onInstanceChange}
+          clusterOptions={dashboard.clusterFilterEnabled ? dashboard.clusterFilterOptions : undefined}
+          clusterValue={dashboard.clusterFilterValue}
+          onClusterChange={dashboard.onClusterFilterChange}
+          selectorPlaceholder={
+            dashboard.resolvedInstanceName !== '--' ? dashboard.resolvedInstanceName : dt('选择实例')
+          }
+          selectorTitle={dashboard.currentInstanceLabel}
+          isDashboardMode={showsDashboardChrome}
+          timeSelectorProps={{
+            timeDefaultValue: dashboard.timeDefaultValue,
+            onTimeChange: dashboard.onTimeChange,
+            onFrequenceChange: dashboard.setFrequence,
+            onRefresh: dashboard.onRefresh
+          }}
+          styles={styles}
+        />
+      </div>
 
       {showProtocolBar && showsDashboardChrome ? <DashboardProtocolBarSlot /> : null}
 

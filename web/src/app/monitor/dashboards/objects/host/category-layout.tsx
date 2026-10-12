@@ -3,8 +3,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import useMonitorApi from '@/app/monitor/api';
 import { useFilteredChartPanels } from '../common/dashboard-components';
-import { formatDuration, type PreparedChartPanel } from '../common/simple-dashboard-core';
-import { formatMetricValue, getLatestChartValue } from '../../shared/utils';
+import { formatDuration, type MetricSeries, type PreparedChartPanel } from '../common/simple-dashboard-core';
+import { formatMetricValue, getLatestChartValue, mergeChartSeries } from '../../shared/utils';
 import type { MetricUnit } from '../../shared/types';
 import { buildDiskRows, buildLabelRows, seriesHasAnyLabel } from './entity-series';
 import type { HostDetailLayoutProps } from './detail-layout';
@@ -13,11 +13,10 @@ import CategoryNav from './layered/category-nav';
 import LayeredEntityStack from './layered/entity-stack';
 import FlatProcessSplit from './layered/flat-process-split';
 import SignalBar, { type SignalItem } from './layered/signal-bar';
+import StatusCountRow from './layered/status-count';
 import ThinTimeSeries from './layered/thin-time-series';
-import LayeredToolbar from './layered/toolbar';
 import styles from './layered/layered.module.scss';
 
-const TOP_CHART_TITLES = ['资源使用趋势', '系统负载趋势'];
 const NETWORK_CHART_TITLES = ['网络吞吐趋势', '网络错误速率'];
 const DISK_CHART_TITLES = ['磁盘吞吐趋势'];
 const DISK_DIMENSIONS = ['path', 'device', 'mount', 'name', 'fstype'];
@@ -31,17 +30,67 @@ const L1 = {
   muted: '#8b98a8'
 } as const;
 
+const latestOf = (
+  series: { loadState?: string; viewData?: Parameters<typeof getLatestChartValue>[0] } | undefined
+) => {
+  if (!series || series.loadState !== 'success' || !series.viewData?.length) return Number.NaN;
+  return getLatestChartValue(series.viewData);
+};
+
 const formatReading = (
   series: { loadState?: string; viewData?: Parameters<typeof getLatestChartValue>[0] } | undefined,
   unit: MetricUnit
 ) => {
-  if (!series || series.loadState !== 'success' || !series.viewData?.length) return '--';
-  const latest = getLatestChartValue(series.viewData);
+  const latest = latestOf(series);
   if (!Number.isFinite(latest)) return '--';
   if (unit === 'none') return String(Number(latest.toFixed(2)));
   if (unit === 's') return formatDuration(latest);
   const formatted = formatMetricValue(latest, unit);
   return `${formatted.value}${formatted.unit || ''}`;
+};
+
+/** 进程态必须是整数「个」，禁止走 percent / toFixed(1) 变成 94.9。 */
+const formatCountGe = (
+  series: { loadState?: string; viewData?: Parameters<typeof getLatestChartValue>[0] } | undefined
+) => {
+  const latest = latestOf(series);
+  if (!Number.isFinite(latest)) return '--';
+  return `${Math.round(latest)}个`;
+};
+
+const countTone = (
+  series: { loadState?: string; viewData?: Parameters<typeof getLatestChartValue>[0] } | undefined
+) => {
+  const latest = latestOf(series);
+  if (!Number.isFinite(latest)) return undefined;
+  if (latest <= 0) return 'var(--l1-ok)';
+  if (latest >= 10) return 'var(--l1-crit)';
+  return 'var(--l1-warn)';
+};
+
+const formatLoad = (
+  loadSeries: { loadState?: string; viewData?: Parameters<typeof getLatestChartValue>[0] } | undefined,
+  cpuNSeries: { loadState?: string; viewData?: Parameters<typeof getLatestChartValue>[0] } | undefined
+) => {
+  const load = latestOf(loadSeries);
+  if (!Number.isFinite(load)) return '--';
+  const cores = latestOf(cpuNSeries);
+  if (Number.isFinite(cores) && cores > 0) {
+    return `${Number(load.toFixed(2))} · ${Math.round(cores)}C`;
+  }
+  return Number(load.toFixed(2)).toString();
+};
+
+const loadTone = (
+  loadSeries: { loadState?: string; viewData?: Parameters<typeof getLatestChartValue>[0] } | undefined,
+  cpuNSeries: { loadState?: string; viewData?: Parameters<typeof getLatestChartValue>[0] } | undefined
+) => {
+  const load = latestOf(loadSeries);
+  const cores = latestOf(cpuNSeries);
+  if (!Number.isFinite(load) || !Number.isFinite(cores) || cores <= 0) return undefined;
+  if (load >= cores * 1.5) return 'var(--l1-crit)';
+  if (load >= cores) return 'var(--l1-warn)';
+  return 'var(--l1-ok)';
 };
 
 const percentTone = (series: { loadState?: string; viewData?: Parameters<typeof getLatestChartValue>[0] } | undefined) => {
@@ -54,15 +103,37 @@ const percentTone = (series: { loadState?: string; viewData?: Parameters<typeof 
 };
 
 const renderThinChart = (chart: PreparedChartPanel | undefined, loading: boolean) => (
-  chart ? (
-    <ThinTimeSeries
-      title={chart.chart.title}
-      data={chart.data}
-      legends={chart.legends.map((item) => ({ label: item.label, color: item.color }))}
-      unit={chart.unit}
-      loading={loading}
-    />
-  ) : null
+  <ThinTimeSeries
+    title={chart?.chart.title || '时序'}
+    data={chart?.data || []}
+    legends={(chart?.legends || []).map((item) => ({ label: item.label, color: item.color }))}
+    unit={chart?.unit || 'none'}
+    loading={loading}
+  />
+);
+
+const metricChart = (
+  metrics: Record<string, MetricSeries>,
+  items: Array<{ key: string; label: string; color: string }>,
+  title: string,
+  unit: MetricUnit,
+  loading: boolean,
+  reading?: string
+) => (
+  <ThinTimeSeries
+    title={title}
+    data={mergeChartSeries(
+      items.map((item) => ({
+        key: item.key,
+        label: item.label,
+        data: metrics[item.key]?.viewData || []
+      }))
+    )}
+    legends={items.map((item) => ({ label: item.label, color: item.color }))}
+    unit={unit}
+    loading={loading}
+    reading={reading}
+  />
 );
 
 /** L1 密度工作台：仅 host_layout=category。禁止复用 KpiSection / 白卡 / 重面积图。 */
@@ -73,8 +144,6 @@ export default function HostCategoryLayout({
   gpuState,
   processReady,
   processState = EMPTY_ENTITY,
-  layout = 'category',
-  onLayoutChange,
   categoryTab = 'system',
   onCategoryTabChange
 }: HostDetailLayoutProps) {
@@ -84,10 +153,8 @@ export default function HostCategoryLayout({
   const activeTab = onCategoryTabChange ? categoryTab : uncontrolledTab;
   const setActiveTab = onCategoryTabChange || setUncontrolledTab;
   const metrics = dashboard.metricSeries;
-  const topCharts = useFilteredChartPanels(dashboard.chartPanels, TOP_CHART_TITLES);
   const networkCharts = useFilteredChartPanels(dashboard.chartPanels, NETWORK_CHART_TITLES);
   const diskCharts = useFilteredChartPanels(dashboard.chartPanels, DISK_CHART_TITLES);
-  const [resourceChart, loadChart] = topCharts;
   const [networkChart, networkErrorChart] = networkCharts;
   const [diskChart] = diskCharts;
 
@@ -170,27 +237,26 @@ export default function HostCategoryLayout({
       },
       {
         key: 'disk',
-        label: '磁盘',
+        label: '磁盘 MAX',
         value: formatReading(disk, 'percent'),
         color: L1.amber,
         tone: percentTone(disk),
         trend: disk?.viewData || []
       }
     ];
-    if (load?.loadState === 'success' && load.viewData?.length) {
-      items.push({
-        key: 'load',
-        label: 'Load',
-        value: formatReading(load, 'none'),
-        color: L1.violet,
-        trend: load.viewData
-      });
-    }
+    items.push({
+      key: 'load',
+      label: 'load1',
+      value: formatLoad(load, metrics.cpu_n),
+      color: L1.amber,
+      tone: loadTone(load, metrics.cpu_n),
+      trend: load?.viewData || []
+    });
     items.push({
       key: 'net',
-      label: '网络入',
+      label: '网络',
       value: formatReading(netIn, 'byteps'),
-      color: L1.rose,
+      color: L1.sky,
       trend: netIn?.viewData || []
     });
     return items;
@@ -208,12 +274,6 @@ export default function HostCategoryLayout({
       : [])
   ];
 
-  const statusRows = [
-    { key: 'uptime', label: '运行时长', value: formatReading(metrics.system_uptime, 's') },
-    { key: 'blocked', label: '阻塞进程', value: formatReading(metrics.processes_blocked, 'counts') },
-    { key: 'zombies', label: '僵尸进程', value: formatReading(metrics.processes_zombies, 'counts') }
-  ].filter((row) => row.value !== '--' || row.key === 'uptime');
-
   const renderPane = () => {
     if (activeTab === 'disk') {
       if (diskState.status === 'error') {
@@ -227,7 +287,9 @@ export default function HostCategoryLayout({
             columns={[
               { key: 'path', title: 'path', labelKey: 'path' },
               { key: 'device', title: 'device', labelKey: 'device' },
-              { key: 'disk_used_percent', title: 'used%', unit: 'percent' },
+              { key: 'disk_used', title: '已用', unit: 'bytes' },
+              { key: 'disk_total', title: '总量', unit: 'bytes' },
+              { key: 'disk_used_percent', title: 'used%', unit: 'percent', bar: true },
               { key: 'disk_inodes_used_percent', title: 'inodes%', unit: 'percent' },
               { key: 'diskio_io_util', title: 'IO util', unit: 'percent' },
               { key: 'diskio_read_bytes_rate', title: '读字节率', unit: 'byteps' },
@@ -245,7 +307,9 @@ export default function HostCategoryLayout({
       }
       return (
         <>
-          <div className={styles.note}>当前磁盘序列没有 path/device 维度，仅保留主机合计吞吐。</div>
+          <div className={styles.note}>
+            当前磁盘序列没有 path/device 维度，无法按挂载点展示已用/总量。下面只保留主机合计吞吐，不用整机平均磁盘%当主卡。
+          </div>
           {renderThinChart(diskChart, dashboard.loading)}
         </>
       );
@@ -319,36 +383,75 @@ export default function HostCategoryLayout({
     return (
       <>
         <div className={styles.chartGrid}>
-          {renderThinChart(resourceChart, dashboard.loading)}
-          {renderThinChart(loadChart, dashboard.loading)}
+          {metricChart(
+            metrics,
+            [
+              { key: 'cpu_usage_user_total', label: 'user', color: L1.teal },
+              { key: 'cpu_usage_system_total', label: 'sys', color: L1.sky },
+              { key: 'cpu_usage_iowait_total', label: 'iowait', color: L1.amber }
+            ],
+            'CPU 分项 user / system / iowait',
+            'percent',
+            dashboard.loading
+          )}
+          {metricChart(
+            metrics,
+            [{ key: 'mem_used_percent', label: 'mem', color: L1.violet }],
+            '内存 mem_used_percent',
+            'percent',
+            dashboard.loading,
+            formatReading(metrics.mem_used_percent, 'percent')
+          )}
+          {metricChart(
+            metrics,
+            [{ key: 'system_load1', label: 'load1', color: L1.amber }],
+            '负载 system_load1',
+            'none',
+            dashboard.loading,
+            formatReading(metrics.system_load1, 'none')
+          )}
+          {metricChart(
+            metrics,
+            [{ key: 'cpu_usage_total', label: 'cpu', color: L1.rose }],
+            'CPU 总计 cpu_usage_total',
+            'percent',
+            dashboard.loading,
+            formatReading(metrics.cpu_usage_total, 'percent')
+          )}
         </div>
-        <table className={styles.statusTable}>
-          <tbody>
-            {statusRows.map((row) => (
-              <tr key={row.key}>
-                <td>{row.label}</td>
-                <td>{row.value}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <StatusCountRow
+          items={[
+            {
+              key: 'blocked',
+              label: 'blocked',
+              value: formatCountGe(metrics.processes_blocked),
+              tone: countTone(metrics.processes_blocked),
+              trend: metrics.processes_blocked?.viewData || []
+            },
+            {
+              key: 'zombies',
+              label: 'zombies',
+              value: formatCountGe(metrics.processes_zombies),
+              tone: countTone(metrics.processes_zombies),
+              trend: metrics.processes_zombies?.viewData || []
+            }
+          ]}
+        />
       </>
     );
   };
 
   return (
     <div className={styles.root}>
-      <LayeredToolbar
-        dashboard={dashboard}
-        layout={layout}
-        onLayoutChange={onLayoutChange || (() => undefined)}
-      />
       <SignalBar items={signalItems} alertCount={alertCount} />
       <div className={styles.body}>
         <CategoryNav items={navItems} activeKey={activeTab} onChange={setActiveTab} />
         <div className={styles.main}>
-          <div className={styles.paneTitle}>
-            {navItems.find((item) => item.key === activeTab)?.label || '系统'}
+          <div className={styles.mainHead}>
+            <div className={styles.paneTitle}>
+              {navItems.find((item) => item.key === activeTab)?.label || '系统'}
+            </div>
+            <span className={styles.hint}>整机指标 · 同时间窗</span>
           </div>
           {renderPane()}
         </div>
