@@ -10,6 +10,7 @@ from apps.opspilot.views.analytics import (
     get_total_token_consumption,
     set_channel_type_line,
 )
+from apps.opspilot.views.chat_attachment import chat_attachment_status, download_chat_attachment, upload_chat_attachment
 from apps.opspilot.views.chat_flow import (
     _build_chat_completion_service,
     _enrich_openai_params,
@@ -36,7 +37,7 @@ from apps.opspilot.views.chat_flow import (
     skill_execute,
     validate_openai_token,
 )
-from apps.opspilot.views.hitl import LOCAL_SKILL_HITL_NODES, submit_approval, submit_choice
+from apps.opspilot.views.hitl import LOCAL_SKILL_HITL_NODES, submit_approval
 from apps.opspilot.views.skill_channel import (
     _require_login_and_web_channel,
     _serialize_published_web_skills,
@@ -67,7 +68,9 @@ __all__ = [
     "_serialize_saas_skill_channels",
     "_token_consumption_queryset",
     "_user_team_ids",
+    "chat_attachment_status",
     "delete_skill_channel_session",
+    "download_chat_attachment",
     "download_workflow_attachment",
     "execute_chat_flow",
     "execute_chat_flow_dingtalk",
@@ -104,6 +107,6 @@ __all__ = [
     "set_channel_type_line",
     "skill_execute",
     "submit_approval",
-    "submit_choice",
+    "upload_chat_attachment",
     "validate_openai_token",
 ]

@@ -45,6 +45,16 @@ export function fileExtension(filename: string): string {
   return filename.slice(dot + 1).toLowerCase();
 }
 
+export function attachmentDownloadsFromToolCalls(toolCalls: Array<{ id?: string; name?: string; result?: string }>): SessionAttachmentFile[] {
+  return collectSessionAttachmentFiles([
+    {
+      metadata: {
+        contentChunks: [{ type: 'toolCalls', toolCalls }],
+      },
+    },
+  ]);
+}
+
 export function collectSessionAttachmentFiles(messages: MessageLike[]): SessionAttachmentFile[] {
   const seen = new Set<string>();
   const files: SessionAttachmentFile[] = [];

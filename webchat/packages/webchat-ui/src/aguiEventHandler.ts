@@ -1,4 +1,6 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react';
+import type { PlannedExecutionState } from './plannedExecution';
+import { attachToolCallToCurrentStep, finalizePlannedExecutionSteps } from './plannedExecution';
 import {
   generateId,
   translate,
@@ -36,6 +38,7 @@ export interface AGUIEventHandlerDeps {
   addMessage: (message: Message) => void;
   frameScheduler?: FrameScheduler;
   streamingTextBatchingRef?: MutableRefObject<boolean>;
+  plannedStateRef?: MutableRefObject<PlannedExecutionState>;
 }
 
 export interface AGUIEventDispatcher {
@@ -102,6 +105,7 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
     addMessage,
     frameScheduler,
     streamingTextBatchingRef,
+    plannedStateRef,
   } = deps;
   let streamingSegmentContent = '';
 
@@ -335,6 +339,17 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
         syncSessionChunks(sessionManagerRef.current?.getSession(), messageId, (chunks) =>
           appendToolCallChunk(chunks, newToolCall)
         );
+        if (plannedStateRef) {
+          const raw = (event as { rawEvent?: { step_index?: unknown } }).rawEvent;
+          const stamped = typeof raw?.step_index === 'number' ? raw.step_index : null;
+          plannedStateRef.current = attachToolCallToCurrentStep(plannedStateRef.current, newToolCall.id, stamped);
+          const steps = plannedStateRef.current.steps;
+          setMessages((prev) => prev.map((message) => (
+            message.id === messageId
+              ? { ...message, metadata: { ...message.metadata, plannedSteps: steps } }
+              : message
+          )));
+        }
         break;
       }
 
@@ -364,6 +379,16 @@ export function createAGUIEventHandler(deps: AGUIEventHandlerDeps): AGUIEventDis
 
       case 'RUN_FINISHED':
         flushAndPersistPendingText();
+        if (plannedStateRef) {
+          plannedStateRef.current = finalizePlannedExecutionSteps(plannedStateRef.current);
+          const steps = plannedStateRef.current.steps;
+          const messageId = currentMessageIdRef.current;
+          setMessages((prev) => prev.map((message) => (
+            message.id === messageId
+              ? { ...message, metadata: { ...message.metadata, plannedSteps: steps } }
+              : message
+          )));
+        }
         setIsThinking(false);
         setMessageThinking(false);
         setIsLoading(false);

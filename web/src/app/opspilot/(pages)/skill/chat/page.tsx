@@ -6,6 +6,7 @@ import { Button, Dropdown, List, Popconfirm, Skeleton, Tag } from 'antd';
 import type { MenuProps } from 'antd';
 import CustomChatSSE from '@/app/opspilot/components/custom-chat-sse';
 import { processHistoryMessageWithExtras } from '@/app/opspilot/components/custom-chat-sse/historyMessageProcessor';
+import { applyAnsweredUserChoices } from '@/app/opspilot/components/custom-chat-sse/userChoiceOptions';
 import { parseLlmContextUsage, type LlmContextUsage } from '@/app/opspilot/components/custom-chat-sse/llmContextUsage';
 import Icon from '@/components/icon';
 import { useSkillApi } from '@/app/opspilot/api/skill';
@@ -211,7 +212,7 @@ const SkillWebChatPage: React.FC = () => {
     setOpeningSessionId(id);
     try {
       const payload = await fetchSkillSessionMessages(id);
-      const messages = (payload.messages || []).map((row: any) => {
+      const messages = applyAnsweredUserChoices((payload.messages || []).map((row: any) => {
         const role = row.conversation_role === 'user' ? 'user' : 'bot';
         const processed = processHistoryMessageWithExtras(row.conversation_content, role);
         return {
@@ -233,8 +234,9 @@ const SkillWebChatPage: React.FC = () => {
           approvalRequests: processed.approvalRequests,
           repairCommands: processed.repairCommands,
           reportFileDownloads: processed.reportFileDownloads,
+          attachments: Array.isArray(row.attachments) ? row.attachments : [],
         };
-      });
+      }));
       mountChat({
         id,
         initialMessages: messages,
@@ -281,7 +283,7 @@ const SkillWebChatPage: React.FC = () => {
     }
   };
 
-  const handleSendMessage = (panelSessionId: string) => async (message: string) => {
+  const handleSendMessage = (panelSessionId: string) => async (message: string, _currentMessages?: unknown, userMessage?: { attachments?: Array<{ id: number; status?: string }> }) => {
     if (!currentAgent?.id) return null;
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
     const url = `${baseUrl}/api/proxy/opspilot/skill_channel/${currentAgent.id}/chat/`;
@@ -311,7 +313,11 @@ const SkillWebChatPage: React.FC = () => {
     });
     return {
       url,
-      payload: { message, session_id: panelSessionId },
+      payload: {
+        message,
+        session_id: panelSessionId,
+        attachment_ids: (userMessage?.attachments || []).filter((item) => item.status === 'ready' || item.status === undefined).map((item) => item.id),
+      },
       interruptRequest: {
         enabled: true,
         url: '/api/proxy/opspilot/bot_mgmt/interrupt_chat_flow_execution/',

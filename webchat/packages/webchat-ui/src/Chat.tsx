@@ -33,6 +33,8 @@ import { PillComposer } from './components/PillComposer';
 import ContextUsageRing from './components/ContextUsageRing';
 import { SessionFileBar } from './components/SessionFileBar';
 import { collectSessionAttachmentFiles } from './sessionFiles';
+import { applyPlannedExecutionStep, createPlannedExecutionState } from './plannedExecution';
+import { attachmentMetadata, chatAttachmentEndpoints, isAllowedChatFile, uploadChatFile, type StoredChatAttachment } from './chatAttachments';
 import {
   pendingImagesReducer,
   readFileAsDataUrl,
@@ -139,6 +141,8 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [imageSelectionError, setImageSelectionError] = useState<string | null>(null);
   const [uploadedImages, setUploadedImages] = useState<PendingImage[]>([]);
+  const [documentChips, setDocumentChips] = useState<Array<StoredChatAttachment & { localKey: string }>>([]);
+  const selectedFilesRef = useRef<File[]>([]);
   const [hitlEvent, setHitlEvent] = useState<CustomProtocolEvent | null>(null);
   const [contextUsage, setContextUsage] = useState<LlmContextUsage | null>(null);
 
@@ -149,6 +153,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const streamingContentRef = useRef<string>('');
   const currentMessageIdRef = useRef<string | null>(null);
+  const plannedStateRef = useRef(createPlannedExecutionState());
   const streamingTextBatchingRef = useRef(streamingTextBatching);
   streamingTextBatchingRef.current = streamingTextBatching;
   const streamLifecycleRef = useRef<StreamLifecycle | null>(null);
@@ -258,6 +263,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
         setIsThinking,
         addMessage,
         streamingTextBatchingRef,
+        plannedStateRef,
       }),
     [addMessage]
   );
@@ -342,6 +348,19 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
 
   const applyCustomEvent = (event: CustomProtocolEvent) => {
     onCustomEvent?.(event);
+    if (event.name === 'planned_execution_step' && event.value && typeof event.value === 'object') {
+      plannedStateRef.current = applyPlannedExecutionStep(
+        plannedStateRef.current,
+        event.value as Record<string, unknown>,
+      );
+      const steps = plannedStateRef.current.steps;
+      const messageId = currentMessageIdRef.current;
+      setMessages((prev) => prev.map((message) => (
+        message.id === messageId
+          ? { ...message, metadata: { ...message.metadata, plannedSteps: steps } }
+          : message
+      )));
+    }
     if (event.name === 'assistant_text_retract') {
       handleAGUIEvent.retractLiveText();
       return;
@@ -470,16 +489,53 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     });
   }, [imageBudget, reportImageBudgetViolation, reportImageError, updateUploadedImages]);
 
+  const uploadDocumentFiles = useCallback(async (files: readonly File[]) => {
+    if (!sseUrl) {
+      reportImageError(new Error(t('file.uploadUnavailable', '当前对话不能上传文件')));
+      return;
+    }
+    const headers: Record<string, string> = { ...(requestHeaders as Record<string, string> | undefined) };
+    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+    for (const file of files) {
+      const localKey = `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      setDocumentChips((current) => [...current, {
+        localKey,
+        id: 0,
+        name: file.name,
+        mime: file.type || 'application/octet-stream',
+        size: file.size,
+        status: 'pending',
+      }].slice(0, 5));
+      try {
+        const uploaded = await uploadChatFile(file, sseUrl, headers);
+        setDocumentChips((current) => current.map((item) => (
+          item.localKey === localKey ? { ...uploaded, localKey } : item
+        )));
+      } catch (error) {
+        setDocumentChips((current) => current.map((item) => (
+          item.localKey === localKey ? { ...item, status: 'failed' } : item
+        )));
+        reportImageError(toError(error));
+      }
+    }
+  }, [apiKey, reportImageError, requestHeaders, sseUrl, t]);
+
   // Handle image upload
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     const imageFiles: File[] = [];
+    const documentFiles: File[] = [];
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      if (!file.type.startsWith('image/')) continue;
+      if (!file.type.startsWith('image/')) {
+        if (isAllowedChatFile(file)) {
+          documentFiles.push(file);
+        }
+        continue;
+      }
       if (file.size > MAX_IMAGE_SIZE) {
         const limitMB = MAX_IMAGE_SIZE / (1024 * 1024);
         reportImageError(
@@ -489,12 +545,16 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
       }
 
       imageFiles.push(file);
+      selectedFilesRef.current.push(file);
+    }
+    if (documentFiles.length > 0) {
+      void uploadDocumentFiles(documentFiles);
     }
     queueImageFiles(imageFiles);
 
     // Reset input
     e.target.value = '';
-  }, [queueImageFiles, reportImageError, t]);
+  }, [queueImageFiles, reportImageError, t, uploadDocumentFiles]);
 
   // Remove uploaded image
   const handleRemoveImage = useCallback((index: number) => {
@@ -532,7 +592,9 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
 
   // Send message
   const handleSendMessage = useCallback(async (value: string) => {
-    if ((!value.trim() && uploadedImages.length === 0) || isLoading) return;
+    if ((!value.trim() && uploadedImages.length === 0 && documentChips.length === 0) || isLoading) return;
+    if (documentChips.some((item) => item.status !== 'ready')) return;
+    plannedStateRef.current = createPlannedExecutionState();
 
     // Build message content
     let messageContent: string | MessageContent[];
@@ -597,22 +659,43 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
           }
         }
 
+        const uploadHeaders: Record<string, string> = { ...(requestHeaders as Record<string, string> | undefined) };
+        if (apiKey) uploadHeaders.Authorization = `Bearer ${apiKey}`;
+        const uploadedAttachments: StoredChatAttachment[] = [];
+        for (const file of selectedFilesRef.current) {
+          uploadedAttachments.push(await uploadChatFile(file, sseUrl, uploadHeaders));
+        }
+        if (uploadedAttachments.some((item) => item.status !== 'ready') || documentChips.some((item) => item.status !== 'ready')) {
+          reportImageError(new Error(t('file.notReady', '文件解析中，请稍后再发送')));
+          setIsLoading(false);
+          return;
+        }
+        const readyAttachments = [...documentChips, ...uploadedAttachments].filter((item) => item.status === 'ready');
         const requestBody = {
-          message: messageType === 'multimodal' ? messageContent : value.trim(),
+          message: value.trim(),
+          attachment_ids: readyAttachments.map((item) => item.id),
           sessionId: currentSession?.sessionId,
           ...customData,
           ...(pageContext ? { page_context: pageContext } : {}),
         };
-        
-        // Use fetch with POST to send message and stream response
+        selectedFilesRef.current = [];
+        setDocumentChips([]);
+        const stored = sessionManagerRef.current?.getSession()?.messages.find((item) => item.id === userMsg.id);
+        if (stored) {
+          stored.content = value.trim();
+          stored.metadata = {
+            ...(stored.metadata || {}),
+            attachments: attachmentMetadata(readyAttachments),
+          };
+          sessionManagerRef.current?.saveSession();
+        }
+
         const headers: HeadersInit = {
           'Content-Type': 'application/json',
           ...(requestHeaders || {}),
         };
-        
-        // Add Authorization header if apiKey is provided
         if (apiKey) {
-          headers['Authorization'] = `Bearer ${apiKey}`;
+          headers.Authorization = `Bearer ${apiKey}`;
         }
         
         const decoder = new TextDecoder();
@@ -697,6 +780,9 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     credentials,
     requestHeaders,
     collectContext,
+    documentChips,
+    reportImageError,
+    t,
   ]);
 
   const handleStopStreaming = useCallback(() => {
@@ -863,6 +949,15 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
                 onRegenerate={handleRegenerate}
                 onCopy={handleCopy}
                 onDelete={handleDelete}
+                loadAttachment={sseUrl ? async (id) => {
+                  const endpoints = chatAttachmentEndpoints(sseUrl);
+                  if (!endpoints) throw new Error('缺少附件下载地址');
+                  const headers: Record<string, string> = { ...(requestHeaders as Record<string, string> | undefined) };
+                  if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+                  const response = await fetch(endpoints.download(id), { headers, credentials: 'include' });
+                  if (!response.ok) throw new Error('下载失败');
+                  return response.blob();
+                } : undefined}
               />
             );
               })}
@@ -906,6 +1001,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
           apiKey={apiKey}
           credentials={credentials}
           headers={requestHeaders}
+          onSendMessage={handleSendMessage}
           onResolved={() => setHitlEvent(null)}
         />
         
@@ -923,6 +1019,22 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
           <p role="alert" className="px-4 pt-2 text-xs" style={{ color: 'var(--color-fail)' }}>
             {imageSelectionError}
           </p>
+        )}
+        {documentChips.length > 0 && (
+          <div className="flex flex-wrap gap-2 px-4 pb-1 pt-2">
+            {documentChips.map((chip) => (
+              <div key={chip.localKey} className="flex items-center gap-1 rounded-md border px-2 py-1 text-xs" style={{ borderColor: 'var(--color-border-1,#e8eaf0)' }}>
+                <span>{chip.name}{chip.status === 'pending' ? ` · ${t('file.parsing', '解析中')}` : ''}{chip.status === 'failed' ? ` · ${t('file.failed', '失败')}` : ''}</span>
+                <button
+                  type="button"
+                  aria-label={t('file.remove', '移除文件')}
+                  onClick={() => setDocumentChips((current) => current.filter((item) => item.localKey !== chip.localKey))}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
         )}
         {uploadedImages.length > 0 && (
           <div className="px-4 pt-2 pb-1 flex flex-wrap gap-2">
@@ -986,6 +1098,8 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
                 }
                 imageSlot={
                   <label
+                    title={t('file.upload', '上传文件')}
+                    aria-label={t('file.upload', '上传文件')}
                     style={{
                       display: 'flex',
                       width: 28,
@@ -1000,7 +1114,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
                   >
                     <input
                       type="file"
-                      accept="image/*"
+                      accept=".pdf,.docx,.pptx,.xlsx,.csv,.txt,.md,.jpg,.jpeg,.png,.gif,.webp"
                       multiple
                       onChange={handleImageUpload}
                       style={{ display: 'none' }}
@@ -1016,10 +1130,9 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       style={{ display: 'block' }}
+                      aria-hidden="true"
                     >
-                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                      <circle cx="8.5" cy="8.5" r="1.5"/>
-                      <polyline points="21 15 16 10 5 21"/>
+                      <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
                     </svg>
                   </label>
                 }

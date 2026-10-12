@@ -186,13 +186,14 @@ def _require_login_and_web_channel(request):
 
 
 def list_skill_channel_conversations(request):
-    """当前用户在该智能体下的会话列表（含各通道，供 Web 对话页历史）。"""
+    """当前用户在当前渠道下的会话列表。Web 对话不混入 Web 发布等其它渠道。"""
     channel, error = _require_login_and_web_channel(request)
     if error:
         return error
     data = list_skill_conversations_for_user(
         skill_id=channel.skill_id,
         external_user_id=saas_external_user_id(request.user),
+        channel_id=channel.id,
     )
     return JsonResponse({"result": True, "data": data})
 
@@ -252,7 +253,8 @@ def execute_skill_channel_chat(request, channel_id):
     if parse_error:
         return create_error_stream_response(parse_error)
     message = kwargs.get("message", "") or kwargs.get("user_message", "")
-    if not message:
+    attachment_ids = kwargs.get("attachment_ids") or []
+    if not message and not attachment_ids:
         return create_error_stream_response("message 必填")
     session_id = kwargs.get("session_id") or ""
     page_context = kwargs.get("page_context")
@@ -268,6 +270,7 @@ def execute_skill_channel_chat(request, channel_id):
             external_user_id=external_user_id,
             session_id=session_id or None,
             page_context=page_context,
+            attachment_ids=attachment_ids,
         )
     except SkillChannelChatError as e:
         return create_error_stream_response(e.message)
@@ -280,7 +283,8 @@ def execute_skill_embedded_chat(request, skill_id, channel_id=None, public_id=No
     if parse_error:
         return JsonResponse({"result": False, "message": parse_error}, status=400)
     message = (kwargs or {}).get("message", "") or (kwargs or {}).get("user_message", "")
-    if not message:
+    attachment_ids = (kwargs or {}).get("attachment_ids") or []
+    if not message and not attachment_ids:
         return create_error_stream_response("message 必填")
     session_id = (kwargs or {}).get("session_id") or (kwargs or {}).get("sessionId") or ""
     try:
@@ -299,6 +303,7 @@ def execute_skill_embedded_chat(request, skill_id, channel_id=None, public_id=No
             external_user_id=f"{user_secret.username}@{user_secret.domain}",
             session_id=session_id or None,
             identity_user=user_secret,
+            attachment_ids=attachment_ids,
         )
     except SkillChannelChatError as e:
         return create_error_stream_response(e.message)

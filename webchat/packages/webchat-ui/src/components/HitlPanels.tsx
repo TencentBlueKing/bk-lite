@@ -35,6 +35,7 @@ interface HitlPanelsProps extends HitlSubmitContext {
   event: CustomProtocolEvent | null;
   approvalUrl?: string;
   choiceUrl?: string;
+  onSendMessage?: (text: string) => void;
   onResolved: () => void;
 }
 
@@ -77,7 +78,7 @@ export function formatDegradedCustomEvent(event: CustomProtocolEvent): string {
 export const HitlPanels: React.FC<HitlPanelsProps> = ({
   event,
   approvalUrl,
-  choiceUrl,
+  onSendMessage,
   apiKey,
   credentials,
   headers,
@@ -162,7 +163,7 @@ export const HitlPanels: React.FC<HitlPanelsProps> = ({
     );
   }
 
-  if (event.name === 'user_choice_request' && choiceUrl) {
+  if (event.name === 'user_choice_request' && onSendMessage) {
     const value = (event.value || {}) as ChoiceHitlValue;
     const options = value.options || [];
     return (
@@ -185,14 +186,10 @@ export const HitlPanels: React.FC<HitlPanelsProps> = ({
               disabled={busy || option.disabled}
               className="h-7 rounded-lg px-3 text-xs disabled:opacity-50"
               style={{ background: WC.white, border: `1px solid ${WC.botBorder}`, color: WC.botText }}
-              onClick={() =>
-                submit(choiceUrl, {
-                  execution_id: value.execution_id,
-                  node_id: value.node_id,
-                  choice_id: value.choice_id,
-                  selected: [option.key],
-                })
-              }
+              onClick={() => {
+                onSendMessage(option.label || option.key);
+                onResolved();
+              }}
             >
               {option.label}
             </button>

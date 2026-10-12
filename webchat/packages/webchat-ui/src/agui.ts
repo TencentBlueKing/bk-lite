@@ -132,6 +132,9 @@ function normalizeLegacyEvent(data: Record<string, unknown>): Record<string, unk
     };
   }
 
+  if (data.rawEvent == null && data.raw_event != null) {
+    return { ...data, rawEvent: data.raw_event };
+  }
   return data;
 }
 

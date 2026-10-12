@@ -250,6 +250,8 @@ tools:
         description: 列出某实例已采集的指标。
       monitor_query_metric_data:
         description: 查询指定指标的时序数据。
+      monitor_summarize_metric_trend:
+        description: 用完整历史汇总指标趋势，只返回会在预测跨度内到达阈值的序列。
       monitor_list_active_alerts:
         description: 查询监控策略产生的实例活跃告警（监控详情页告警列表，非告警中心工单）。
       monitor_query_alert_segments:
@@ -330,10 +332,10 @@ tools:
   attachment_file:
     name: 工作流附件文件
     description: |
-      生成 Markdown、PDF、Word、Excel 或 CSV 附件。仅当用户明确要求生成文件时使用。
+      生成 TXT、Markdown、PDF、Word、Excel 或 CSV 附件。仅当用户明确要求生成、导出或写入新文件时使用；询问已有文件内容时不要使用。
     tools:
       generate_attachment_file:
-        description: 生成 md、pdf、docx、xlsx 或 csv 附件并返回下载链接。xlsx 和 csv 需要带表头的逗号分隔数据。
+        description: 生成 txt、md、pdf、docx、xlsx 或 csv 附件并返回下载链接。txt 和 md 用纯文本；xlsx 和 csv 需要带表头的逗号分隔数据。用户要 txt 时不要改成 md。
   kubernetes:
     name: Kubernetes工具
     description: |

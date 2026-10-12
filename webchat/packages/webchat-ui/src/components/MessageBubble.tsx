@@ -6,7 +6,11 @@ import { Message, type MessageContent } from '@webchat/core';
 import { MessageActions } from './MessageActions';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ImagePreview } from './ImagePreview';
-import { ToolCallDisplay, type ToolCall } from './ToolCallDisplay';
+import { ToolCallGroup, type ToolCall } from './ToolCallGroup';
+import { AttachmentDownloadCards } from './AttachmentDownloadCard';
+import { PlannedExecutionPanel } from './PlannedExecutionPanel';
+import { foldUnassignedTools, type PlannedExecutionStepData } from '../plannedExecution';
+import { attachmentDownloadsFromToolCalls } from '../sessionFiles';
 import { ThinkingPanel } from './ThinkingPanel';
 import { WC } from '../chrome';
 import { useTranslator } from '../useTranslator';
@@ -27,8 +31,83 @@ const userBubbleStyle: React.CSSProperties = {
   borderBottomRightRadius: 4,
 };
 
+function StoredAttachmentCards({
+  attachments,
+  loadAttachment,
+}: {
+  attachments: Array<Record<string, unknown>>;
+  loadAttachment?: (id: number) => Promise<Blob>;
+}) {
+  const [urls, setUrls] = React.useState<Record<number, string>>({});
+  const started = React.useRef(new Set<number>());
+  React.useEffect(() => {
+    attachments.forEach((item) => {
+      const id = Number(item.id);
+      const mime = String(item.mime || '');
+      if (!mime.startsWith('image/') || !loadAttachment || !id || started.current.has(id)) return;
+      started.current.add(id);
+      loadAttachment(id)
+        .then((blob) => {
+          const url = URL.createObjectURL(blob);
+          setUrls((current) => ({ ...current, [id]: url }));
+        })
+        .catch(() => undefined);
+    });
+  }, [attachments, loadAttachment]);
+  return (
+    <div className="mb-1 flex flex-wrap gap-1">
+      {attachments.map((item) => {
+        const id = Number(item.id);
+        const name = String(item.name || 'file');
+        if (urls[id]) {
+          return <img key={id} src={urls[id]} alt={name} className="h-16 w-16 rounded object-cover" />;
+        }
+        return (
+          <button
+            key={name + String(id)}
+            type="button"
+            title="点击下载"
+            className="group inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[var(--color-border-1,#e8eaf0)] bg-[var(--color-bg,#fff)] px-3 py-1.5 text-xs text-[var(--color-text-1,#1e252e)] transition-all hover:border-[var(--color-primary,#155AEF)] hover:bg-[var(--color-primary-bg,#e8f3ff)] hover:text-[var(--color-primary,#155AEF)]"
+            onClick={() => {
+              if (!loadAttachment || !id) return;
+              loadAttachment(id).then((blob) => {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = name;
+                link.click();
+                URL.revokeObjectURL(url);
+              }).catch(() => undefined);
+            }}
+          >
+            <span>{name}</span>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="opacity-0 transition-opacity group-hover:opacity-100"
+              aria-hidden="true"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 interface MessageBubbleProps {
   message: Message;
+  loadAttachment?: (id: number) => Promise<Blob>;
   isLastBotMessage?: boolean;
   fillWidth?: boolean;
   onRegenerate?: (messageId: string) => void;
@@ -67,7 +146,7 @@ const CodeBlock = ({ inline, className, children, style, ...props }: CodeBlockPr
 };
 
 export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
-  ({ message, isLastBotMessage, fillWidth, onRegenerate, onCopy, onDelete }) => {
+  ({ message, isLastBotMessage, fillWidth, onRegenerate, onCopy, onDelete, loadAttachment }) => {
     const t = useTranslator();
     const isBot = message.sender === 'bot';
     const [showActions, setShowActions] = useState(false);
@@ -198,11 +277,24 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
       </div>
     );
 
+    const rawPlannedSteps = Array.isArray(message.metadata?.plannedSteps)
+      ? message.metadata.plannedSteps as PlannedExecutionStepData[]
+      : [];
+    const allToolCalls = groupedChunks.flatMap((chunk) => chunk.type === 'toolCalls' ? chunk.toolCalls : []);
+    const plannedSteps = foldUnassignedTools(rawPlannedSteps, allToolCalls.map((tool) => tool.id));
+    const plannedToolIds = new Set(plannedSteps.flatMap((step) => step.toolCallIds));
+    const downloads = attachmentDownloadsFromToolCalls(allToolCalls);
+
     const botColumn = (
       <div className={`flex min-w-0 flex-col gap-2 ${columnClass}`}>
         <ThinkingPanel
           thinking={typeof message.metadata?.thinking === 'string' ? message.metadata.thinking : undefined}
           isThinking={Boolean(message.metadata?.isThinking)}
+        />
+        <PlannedExecutionPanel
+          steps={plannedSteps}
+          toolCalls={allToolCalls}
+          isStreaming={plannedSteps.some((step) => step.status === 'running')}
         />
         {groupedChunks.length > 0
           ? groupedChunks.map((chunk, index) => {
@@ -210,13 +302,18 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
                 return renderBotAnswer(renderMarkdown(chunk.content), `text-${index}`);
               }
               if (chunk.type === 'toolCalls') {
-                return <ToolCallDisplay key={`tool-${index}`} toolCalls={chunk.toolCalls} />;
+                const visible = plannedSteps.length > 0
+                  ? chunk.toolCalls.filter((tool) => !plannedToolIds.has(tool.id))
+                  : chunk.toolCalls.filter((tool) => tool.name !== 'generate_attachment_file');
+                if (visible.length === 0) return null;
+                return <ToolCallGroup key={`tool-${index}`} toolCalls={visible} />;
               }
               return null;
             })
           : hasContent
             ? renderBotAnswer(renderMarkdown(message.content as string))
             : null}
+        <AttachmentDownloadCards files={downloads} />
       </div>
     );
 
@@ -240,6 +337,12 @@ export const MessageBubble: React.FC<MessageBubbleProps> = React.memo(
                 className={`px-3.5 py-2 text-sm leading-[1.55] ${columnClass}`}
                 style={userBubbleStyle}
               >
+                {Array.isArray(message.metadata?.attachments) && message.metadata.attachments.length > 0 ? (
+                  <StoredAttachmentCards
+                    attachments={message.metadata.attachments as Array<Record<string, unknown>>}
+                    loadAttachment={loadAttachment}
+                  />
+                ) : null}
                 {message.type === 'multimodal' ? (
                   renderMultimodalContent()
                 ) : (

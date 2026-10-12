@@ -20,26 +20,26 @@ def generate_attachment_file(
     title: str = "",
     config: RunnableConfig = None,
 ) -> dict:
-    """Generate a downloadable file attachment and return its download URL.
+    """Generate a new downloadable file and return its download URL.
 
-    **IMPORTANT: You MUST call this tool whenever the user asks to generate, create, produce,
-    save, or export any file, document, report, or attachment — regardless of file format.**
+    Call this tool only when the user explicitly asks to generate, export, save, or write
+    a new file, document, or report. Do not call it because the user mentioned a file,
+    uploaded a file, or asked what an existing file contains. Answer those in text.
 
-    Do NOT output file content as plain text in your response. Always use this tool so the
-    user receives a downloadable file. After calling this tool, briefly summarize what was
-    generated. Do NOT paste the download URL, file:// links, /api/proxy paths, or placeholder
-    tokens such as "加密token" into the chat or the file body; the UI renders the download button.
+    After a successful call, briefly summarize what was generated. Do NOT paste the download
+    URL, file:// links, /api/proxy paths, or placeholder tokens such as "加密token" into the
+    chat or the file body; the UI renders the download button.
 
     When to call this tool:
-    - User says "generate a report / create a file / export data / save as PDF" etc.
-    - User wants any content delivered as a downloadable file rather than inline text.
+    - User says "generate a report / write a file / export data / save as PDF" etc.
+    - User wants new content delivered as a downloadable file rather than inline text.
 
     Parameters:
     - filename: Desired file name including extension (e.g. "report.md", "data.xlsx").
     - content:  Complete file content to save. For xlsx/csv pass raw data; for md/txt/pdf
                 pass the full Markdown or plain-text body.
-    - file_type: File format — "md", "pdf", "xlsx", "docx", "txt", "csv", "html", etc.
-                 Defaults to "md" (Markdown).
+    - file_type: File format — "txt", "md", "pdf", "docx", "xlsx", or "csv".
+                 Defaults to "md". Use "txt" when the user asks for a text file; do not substitute md.
     - title:    Optional document title used as a header in PDF/Word output.
     """
 

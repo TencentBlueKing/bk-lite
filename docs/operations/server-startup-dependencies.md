@@ -39,7 +39,7 @@
    的 Conductor Worker、触发调度器与产物清理调度器；它们只在运行期访问 Conductor，
    不进入 `batch_init`，也不创建编排专属 Celery 队列。未安装时启动脚本删除对应配置。
    若 `INSTALL_APPS` 为空（全装）或包含 `opspilot`，另有独立 OpsPilot Celery
-   Worker 消费 `opspilot_channel` / `opspilot_wiki` / `opspilot_maintenance`；
+   Worker 消费 `opspilot_channel` / `opspilot_wiki` / `opspilot_maintenance` / `opspilot_chat_parse`；
    未安装 opspilot 时 `startup.sh` 删除该 supervisor 配置，不拉起该进程。
    默认 Celery Worker 只听默认队列，不消费上述 OpsPilot 队列。
 

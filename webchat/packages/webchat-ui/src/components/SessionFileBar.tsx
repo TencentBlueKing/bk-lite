@@ -15,7 +15,7 @@ function downloadFile(file: SessionAttachmentFile) {
 }
 
 export const SessionFileBar: React.FC<{ files: SessionAttachmentFile[] }> = ({ files }) => {
-  const { t } = useTranslator();
+  const t = useTranslator();
   const [open, setOpen] = useState(true);
   if (files.length === 0) {
     return null;

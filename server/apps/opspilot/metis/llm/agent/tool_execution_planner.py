@@ -35,6 +35,7 @@ from apps.opspilot.metis.llm.common.tool_failure import (  # noqa: F401
     tool_graph_failure_plain_text,
     tool_graph_failure_user_prompt,
 )
+from apps.opspilot.utils.pending_question import is_answer_after_choice_prompt
 
 
 class ToolExecutionStep(BaseModel):
@@ -76,6 +77,8 @@ _MONITOR_CATALOG_HINT = (
     "instance_ids 必须原样复制 list_object_instances 返回记录的 instance_id 字段，"
     "禁止用 name、IP、id、cmdb_id，禁止用 CMDB 的 inst_id、inst_uuid、_id，禁止传负数；"
     "query_metric_data 空矩阵是有效结论，禁止换 ID/IP/维度/时间窗/指标名重试；"
+    "问全部实例的趋势或未来一段时间会不会超阈值时，规划 monitor_summarize_metric_trend，"
+    "不要抽样调用 monitor_query_metric_data；该工具 instance_ids 留空即覆盖全部已授权实例；"
     "主机使用率排行/Top N（问「最近 N 分钟哪些主机磁盘高」「使用率最高的前 M 台」）必须规划 "
     "monitor_get_host_resource_top_by_time，它自带时间窗且直接返回排行，"
     "不要用 monitor_get_host_resource_snapshot（只出全局聚合、不排名、不接受时间窗），"
@@ -320,15 +323,18 @@ _DEFAULT_CAPABILITY_SOURCE_TOOLS = {
 }
 _DECLARED_SOURCE_TOOL_HINT = "能力导读：当前技能包已声明报告 source_tool；规划时优先用该业务工具拿事实数据，" f"不要用 {USE_SKILLS_TOOL_NAME}/execute 代替（例如去探 ~/.kube）。"
 
-# 工作流附件：弱模型常把「写报告」当成纯文本直出；目录含该工具时必须规划落盘。
+# 工作流附件常驻。只有用户本轮明确要文件时才规划落盘。
 GENERATE_ATTACHMENT_FILE_TOOL_NAME = "generate_attachment_file"
 _ATTACHMENT_CATALOG_HINT = (
-    "能力导读：目录含 generate_attachment_file 时，凡任务涉及生成/创建/导出报告、月报、文档、"
-    "Markdown/.md 或任何可下载附件，必须规划至少一步且 tools 含 generate_attachment_file；"
-    "禁止返回空 steps 后在对话中直接渲染全文；寒暄问候除外。"
+    "能力导读：目录含 generate_attachment_file。仅当用户本轮明确要求生成、导出、保存或写入"
+    "一份新的报告、文档或可下载附件时，才规划 generate_attachment_file；"
+    "只是提到文件，或询问已有、已上传文件的内容时，不要规划该工具。寒暄问候返回空 steps。"
 )
 _FILE_GENERATION_INTENT_RE = re.compile(
-    r"月报|报告|\.md\b|markdown|附件|导出|下载|文档|文件|notion|" r"report|document|attachment|" r"放在\.?md|生成一份|产出.*文件",
+    r"(?:生成|导出|保存|写入|写成|输出成|做成|整理成|产出|写一份|写个|写一个|出一份|另存为|下载成)"
+    r".{0,24}"
+    r"(?:文件|文档|报告|月报|附件|表格|txt|md\b|pdf|docx|xlsx|csv|markdown|\.md)"
+    r"|(?:write|export|save|generate).{0,24}(?:file|report|document|attachment|\.md\b|markdown|pdf|docx|xlsx|csv)",
     re.IGNORECASE,
 )
 _ATTACHMENT_CHITCHAT_RE = re.compile(
@@ -940,13 +946,19 @@ def rewrite_cmdb_search_for_declared_model(
     return ToolExecutionPlan(goal=plan.goal, steps=cleaned)
 
 
-def drop_type_choice_when_declared(plan: ToolExecutionPlan, user_message: str) -> ToolExecutionPlan:
-    """已声明监控对象类型时，去掉计划里的类型询问步，避免再弹 request_user_choice。"""
-    if not user_declared_monitor_object_type(user_message):
+def drop_type_choice_when_declared(
+    plan: ToolExecutionPlan,
+    user_message: str,
+    conversation_messages: Sequence[Any] | None = None,
+) -> ToolExecutionPlan:
+    """已声明监控对象类型，或用户正在回答上一轮提问时，去掉类型询问步。"""
+    answering = is_answer_after_choice_prompt(conversation_messages)
+    if not answering and not user_declared_monitor_object_type(user_message):
         return plan
-    planned = {tool for step in plan.steps for tool in (step.tools or [])}
-    if planned.isdisjoint(_MONITOR_INSTANCE_LOOKUP_TOOLS):
-        return plan
+    if not answering:
+        planned = {tool for step in plan.steps for tool in (step.tools or [])}
+        if planned.isdisjoint(_MONITOR_INSTANCE_LOOKUP_TOOLS):
+            return plan
     cleaned: list[ToolExecutionStep] = []
     changed = False
     for step in plan.steps:
@@ -961,7 +973,7 @@ def drop_type_choice_when_declared(plan: ToolExecutionPlan, user_message: str) -
             cleaned.append(step)
     if not changed:
         return plan
-    logger.info("DeepAgent 规划硬校验：已声明对象类型，去掉类型询问")
+    logger.info("DeepAgent 规划硬校验：已声明对象类型或正在回答提问，去掉类型询问")
     return ToolExecutionPlan(goal=plan.goal, steps=cleaned)
 
 
@@ -1344,16 +1356,16 @@ def _agent_task_brief(agent_system_prompt: str, *, limit: int = _DEFAULT_AGENT_P
 
 
 def looks_like_attachment_file_task(user_message: str = "", agent_system_prompt: str = "") -> bool:
-    """判断是否应强制走附件落盘（结合用户输入与智能体 system prompt）。
+    """是否应落盘。只看用户本轮原话，不看智能体提示词。
 
-    不把 chat_service 注入的「附件生成强制规则」模板当作意图信号，
-    否则启用附件工具时几乎所有非寒暄轮次都会被硬注入该工具。
+    附件工具常驻后，提示词里的「月报 / 报告 / 文件」不能单独触发落盘。
+    agent_system_prompt 保留是为了兼容既有调用签名。
     """
-    if _ATTACHMENT_CHITCHAT_RE.match((user_message or "").strip()):
+    del agent_system_prompt
+    text = (user_message or "").strip()
+    if _ATTACHMENT_CHITCHAT_RE.match(text):
         return False
-    system_prompt = _ATTACHMENT_FORCE_RULE_BLOCK_RE.sub("", agent_system_prompt or "")
-    blob = f"{user_message or ''}\n{system_prompt}"
-    return bool(_FILE_GENERATION_INTENT_RE.search(blob))
+    return bool(_FILE_GENERATION_INTENT_RE.search(text))
 
 
 def declared_report_source_tools(skill_packages: Sequence[Any] = ()) -> list[str]:
@@ -1770,6 +1782,7 @@ class ToolExecutionPlanner:
         *,
         user_message: str = "",
         agent_system_prompt: str = "",
+        conversation_messages: Sequence[Any] | None = None,
     ) -> ToolExecutionPlan:
         if not isinstance(payload, dict):
             raise ToolPlanningError("规划模型未返回 JSON 对象")
@@ -1812,7 +1825,7 @@ class ToolExecutionPlanner:
         plan = enforce_list_metrics_with_query(plan, available_names, max_tools_per_step=self._max_tools_per_step)
         plan = rewrite_generic_alert_query_to_alerts_center(plan, available_names, user_message=user_message)
         plan = rewrite_cmdb_search_for_declared_model(plan, available_names, user_message=user_message)
-        plan = drop_type_choice_when_declared(plan, user_message)
+        plan = drop_type_choice_when_declared(plan, user_message, conversation_messages)
         plan = drop_cluster_scan_tools_for_known_pod_diagnose(plan)
         plan = collapse_known_pod_restart_to_evidence_tool(
             plan,
@@ -1856,8 +1869,8 @@ class ToolExecutionPlanner:
             "若用户点名 nginx/mysql/redis 等中间件且规划 cmdb_search_instances，"
             "步骤目标须写明 model_id 用该模型，禁止默认 host。"
             "禁止把尚未发生的兜底（查不到再换数据源）写成后续步骤；只规划现在必须执行的步骤。"
-            "若目录含 generate_attachment_file，且任务是生成报告/月报/文档/Markdown/.md 文件，"
-            "必须规划 generate_attachment_file 步骤，禁止空 steps 后在对话里直接输出全文。"
+            "若目录含 generate_attachment_file，仅当用户本轮明确要求生成、导出、保存或写入新文件时才规划该步骤；"
+            "询问已有或上传文件的内容时不要规划 generate_attachment_file。"
             "若能力导读列出了技能包声明的 source_tool，优先规划这些业务工具。"
             f"若任务需要技能运行时且无对应业务工具，tools 可含 {USE_SKILLS_TOOL_NAME}；"
             "若给出了近期会话，必须同时依据窗口内的历史和本轮用户话规划，禁止只看本轮短句。"
@@ -1994,6 +2007,7 @@ class ToolExecutionPlanner:
                 packages,
                 user_message=user_message,
                 agent_system_prompt=agent_system_prompt,
+                conversation_messages=conversation_messages,
             )
             if not plan.steps and conversation and is_history_continuation(user_message):
                 retry_count += 1
@@ -2023,6 +2037,7 @@ class ToolExecutionPlanner:
                         packages,
                         user_message=user_message,
                         agent_system_prompt=agent_system_prompt,
+                        conversation_messages=conversation_messages,
                     )
             log_stage_timing(
                 "planning",
