@@ -24,6 +24,8 @@ const useIntegrationApi = () => {
         params: {
           monitor_object_id?: React.Key;
           create_default?: boolean;
+          plugin_id?: React.Key;
+          collect_type?: string;
           name?: string;
           page?: number;
           page_size?: number;
