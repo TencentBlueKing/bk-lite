@@ -141,6 +141,30 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: HOST_PALETTE.neutral
     },
     {
+      name: 'host_mem_swap_used_bytes',
+      display_name: '交换已用',
+      description: '主机已用交换空间。',
+      unit: 'bytes',
+      query: 'host_mem_swap_used_bytes{instance_type="os", __$labels__} or host_mem_swap_used_bytes_gauge{instance_type="os", __$labels__}',
+      color: HOST_PALETTE.neutral
+    },
+    {
+      name: 'host_mem_swap_total_bytes',
+      display_name: '交换总量',
+      description: '主机交换空间总量，用于换算交换已用占比。',
+      unit: 'bytes',
+      query: 'host_mem_swap_total_bytes{instance_type="os", __$labels__} or host_mem_swap_total_bytes_gauge{instance_type="os", __$labels__} or mem_swap_total_gauge{instance_type="os", __$labels__}',
+      color: HOST_PALETTE.neutral
+    },
+    {
+      name: 'mem_swap_free',
+      display_name: '交换空闲',
+      description: '主机空闲交换空间。没有已用字节时，用总量减空闲推算交换已用占比。',
+      unit: 'bytes',
+      query: 'mem_swap_free{instance_type="os", __$labels__} or mem_swap_free_gauge{instance_type="os", __$labels__}',
+      color: HOST_PALETTE.neutral
+    },
+    {
       name: 'processes_blocked',
       display_name: '阻塞进程数',
       description: '当前处于不可中断等待（常与慢 I/O 相关）的进程数量。',

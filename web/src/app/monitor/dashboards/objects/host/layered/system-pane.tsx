@@ -2,8 +2,10 @@
 
 import React, { useMemo } from 'react';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
+import { formatMetricValue } from '../../../shared/utils/format';
+import type { MetricUnit } from '../../../shared/types';
 import { HOST_PALETTE } from '../config';
-import type { MetricSeries } from '../../common/simple-dashboard-core';
+import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
 import ThinTimeSeries from './thin-time-series';
 import {
   deriveRatioPercent,
@@ -27,6 +29,12 @@ const LOAD_SERIES = [
   { key: 'system_load5', label: 'load5', color: HOST_PALETTE.blue },
   { key: 'system_load15', label: 'load15', color: HOST_PALETTE.cyan }
 ];
+
+const splitMetric = (value: number | null, unit: MetricUnit) => {
+  if (value == null) return { value: '--', unit: '' };
+  const formatted = formatMetricValue(value, unit);
+  return { value: formatted.value, unit: formatted.unit };
+};
 
 export default function SystemPane({
   metrics,
@@ -58,6 +66,33 @@ export default function SystemPane({
   const cores = latestNumber(metrics.cpu_n);
   const used = latestNumber(metrics.mem_used_percent);
   const availLatest = available.length ? numericValue(available[available.length - 1]) : null;
+  const cpuNow = latestNumber(metrics.cpu_usage_total);
+  const memNow = latestNumber(metrics.mem_used_percent);
+  const availNow = latestNumber(metrics.mem_available);
+  const uptimeNow = latestNumber(metrics.system_uptime);
+  const swapUsed = latestNumber(metrics.host_mem_swap_used_bytes);
+  const swapTotal = latestNumber(metrics.host_mem_swap_total_bytes);
+  const swapFree = latestNumber(metrics.mem_swap_free);
+  const swapRaw = swapTotal != null && swapTotal > 0
+    ? swapUsed != null
+      ? (100 * swapUsed) / swapTotal
+      : swapFree != null
+        ? (100 * (swapTotal - swapFree)) / swapTotal
+        : null
+    : null;
+  const swapNow = swapRaw == null ? null : Math.min(100, Math.max(0, swapRaw));
+  const instantCards = [
+    { key: 'cpu', label: 'CPU 使用', ...splitMetric(cpuNow, 'percent') },
+    { key: 'mem', label: '内存已用', ...splitMetric(memNow, 'percent') },
+    { key: 'avail', label: '可用内存', ...splitMetric(availNow, 'bytes') },
+    { key: 'swap', label: '交换已用', ...splitMetric(swapNow, 'percent') },
+    {
+      key: 'uptime',
+      label: '运行时长',
+      value: uptimeNow == null ? '--' : formatDuration(uptimeNow),
+      unit: ''
+    }
+  ];
   const charts = [
     <ThinTimeSeries
       key="cpu"
@@ -115,6 +150,17 @@ export default function SystemPane({
     <>
       <div className={styles.sectionHead}>
         <div className={classic.sectionLabel}>性能</div>
+      </div>
+      <div className={styles.instantKpiRow}>
+        {instantCards.map((card) => (
+          <section key={card.key} className={`${classic.panel} ${styles.instantKpi}`}>
+            <div className={styles.instantKpiLabel}>{card.label}</div>
+            <div className={styles.instantKpiValue}>
+              {card.value}
+              {card.unit ? <span className={styles.instantKpiUnit}>{card.unit}</span> : null}
+            </div>
+          </section>
+        ))}
       </div>
       <div className={gridClass}>{charts}</div>
     </>

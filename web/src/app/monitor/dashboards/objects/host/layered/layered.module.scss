@@ -87,6 +87,41 @@
   gap: 12px;
 }
 
+.instantKpiRow {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.instantKpiRow .instantKpi {
+  min-height: 58px;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px 12px;
+}
+
+.instantKpiLabel {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--color-text-3);
+}
+
+.instantKpiValue {
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 1.15;
+  color: var(--color-text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.instantKpiUnit {
+  margin-left: 3px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-3);
+}
+
 .kpiGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
@@ -517,6 +552,10 @@
   .processSplit,
   .processTop {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .instantKpiRow {
+    grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
   }
 
   .statusCards {
