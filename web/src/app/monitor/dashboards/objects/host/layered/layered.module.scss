@@ -2,67 +2,13 @@
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 12px;
   color: var(--color-text-1);
 }
 
-.signalBar {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 12px;
-  flex-shrink: 0;
-}
-
-.body {
-  display: grid;
-  grid-template-columns: 168px minmax(0, 1fr);
-  gap: 12px;
-  flex: 1 1 auto;
-  min-height: min-content;
-  align-items: start;
-}
-
-.nav {
-  gap: 2px;
-}
-
-.navLabel {
-  padding: 0 2px 8px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text-1);
-}
-
-.navItem {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  padding: 8px 10px;
-  border: 0;
-  border-left: 2px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--color-text-3);
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.navItemActive {
-  color: var(--color-text-1);
-  font-weight: 600;
-  background: var(--color-fill-1);
-  border-left-color: var(--color-primary);
-}
-
-.navCount {
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-primary);
-  background: color-mix(in srgb, var(--color-primary) 14%, var(--color-fill-1));
-  padding: 1px 6px;
-  border-radius: 8px;
+.partitionTabs {
+  :global(.ant-tabs-content-holder) {
+    display: none;
+  }
 }
 
 .main {
@@ -70,23 +16,6 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-
-.mainHead {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.paneTitle {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text-1);
-}
-
-.hint {
-  font-size: 11px;
-  color: var(--color-text-3);
 }
 
 .chartGrid {
@@ -261,7 +190,6 @@
 }
 
 @media (max-width: 1100px) {
-  .body,
   .chartGrid,
   .processSplit {
     grid-template-columns: minmax(0, 1fr);

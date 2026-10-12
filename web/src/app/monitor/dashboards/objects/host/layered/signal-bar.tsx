@@ -5,7 +5,6 @@ import { useECharts } from '../../../shared/widgets/useECharts';
 import { ChartData } from '@/app/monitor/types';
 import { resolveThemeColor, useThemeColors } from './theme-color';
 import classic from '../index.module.scss';
-import styles from './layered.module.scss';
 
 export interface SignalItem {
   key: string;
@@ -76,7 +75,7 @@ export default function SignalBar({
       ? 'var(--color-success)'
       : 'var(--color-fail)';
   return (
-    <div className={styles.signalBar}>
+    <div className={classic.primaryGrid}>
       {items.map((item) => (
         <div key={item.key} className={classic.statCard}>
           <div className={classic.statLabel}>{item.label}</div>

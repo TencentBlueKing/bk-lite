@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { Tabs } from 'antd';
 import useMonitorApi from '@/app/monitor/api';
 import { useFilteredChartPanels } from '../common/dashboard-components';
 import { formatDuration, type MetricSeries, type PreparedChartPanel } from '../common/simple-dashboard-core';
@@ -9,12 +10,12 @@ import type { MetricUnit } from '../../shared/types';
 import { buildDiskRows, buildLabelRows, seriesHasAnyLabel } from './entity-series';
 import type { HostDetailLayoutProps } from './detail-layout';
 import type { EntityLoadState } from './use-entity-metrics';
-import CategoryNav from './layered/category-nav';
 import LayeredEntityStack from './layered/entity-stack';
 import FlatProcessSplit from './layered/flat-process-split';
 import SignalBar, { type SignalItem } from './layered/signal-bar';
 import StatusCountRow from './layered/status-count';
 import ThinTimeSeries from './layered/thin-time-series';
+import classic from './index.module.scss';
 import styles from './layered/layered.module.scss';
 
 const NETWORK_CHART_TITLES = ['网络吞吐趋势', '网络错误速率'];
@@ -69,16 +70,19 @@ const countTone = (
 };
 
 const formatLoad = (
-  loadSeries: { loadState?: string; viewData?: Parameters<typeof getLatestChartValue>[0] } | undefined,
-  cpuNSeries: { loadState?: string; viewData?: Parameters<typeof getLatestChartValue>[0] } | undefined
+  loadSeries: { loadState?: string; viewData?: Parameters<typeof getLatestChartValue>[0] } | undefined
 ) => {
   const load = latestOf(loadSeries);
   if (!Number.isFinite(load)) return '--';
-  const cores = latestOf(cpuNSeries);
-  if (Number.isFinite(cores) && cores > 0) {
-    return `${Number(load.toFixed(2))} · ${Math.round(cores)}C`;
-  }
   return Number(load.toFixed(2)).toString();
+};
+
+const loadCoresSubtitle = (
+  cpuNSeries: { loadState?: string; viewData?: Parameters<typeof getLatestChartValue>[0] } | undefined
+) => {
+  const cores = latestOf(cpuNSeries);
+  if (!Number.isFinite(cores) || cores <= 0) return undefined;
+  return `${Math.round(cores)}C`;
 };
 
 const loadTone = (
@@ -247,14 +251,15 @@ export default function HostCategoryLayout({
     items.push({
       key: 'load',
       label: 'load1',
-      value: formatLoad(load, metrics.cpu_n),
+      value: formatLoad(load),
+      subtitle: loadCoresSubtitle(metrics.cpu_n),
       color: L1.amber,
       tone: loadTone(load, metrics.cpu_n),
       trend: load?.viewData || []
     });
     items.push({
       key: 'net',
-      label: '网络',
+      label: '网络入',
       value: formatReading(netIn, 'byteps'),
       color: L1.sky,
       trend: netIn?.viewData || []
@@ -262,16 +267,12 @@ export default function HostCategoryLayout({
     return items;
   }, [metrics]);
 
-  const navItems = [
+  const tabItems = [
     { key: 'system', label: '系统' },
-    { key: 'disk', label: '磁盘', count: diskState.status === 'ready' ? diskRows.length : undefined },
-    { key: 'net', label: '网络', count: netState.status === 'ready' ? netRows.length : undefined },
-    ...(processReady
-      ? [{ key: 'process', label: '进程', count: processState.status === 'ready' ? processRows.length : undefined }]
-      : []),
-    ...(showGpu
-      ? [{ key: 'gpu', label: 'GPU', count: gpuState.status === 'ready' ? gpuRows.length : undefined }]
-      : [])
+    { key: 'disk', label: '磁盘' },
+    { key: 'net', label: '网络' },
+    ...(processReady ? [{ key: 'process', label: '进程' }] : []),
+    ...(showGpu ? [{ key: 'gpu', label: 'GPU' }] : [])
   ];
 
   const renderPane = () => {
@@ -444,18 +445,13 @@ export default function HostCategoryLayout({
   return (
     <div className={styles.root}>
       <SignalBar items={signalItems} alertCount={alertCount} />
-      <div className={styles.body}>
-        <CategoryNav items={navItems} activeKey={activeTab} onChange={setActiveTab} />
-        <div className={styles.main}>
-          <div className={styles.mainHead}>
-            <div className={styles.paneTitle}>
-              {navItems.find((item) => item.key === activeTab)?.label || '系统'}
-            </div>
-            <span className={styles.hint}>整机指标 · 同时间窗</span>
-          </div>
-          {renderPane()}
-        </div>
-      </div>
+      <Tabs
+        className={`${classic.hostTabs} ${styles.partitionTabs}`}
+        activeKey={activeTab}
+        onChange={setActiveTab}
+        items={tabItems.map((item) => ({ key: item.key, label: item.label }))}
+      />
+      <div className={styles.main}>{renderPane()}</div>
     </div>
   );
 }
