@@ -2477,3 +2477,66 @@ def test_token_usage_middleware_records_each_model_call_and_visible_tools():
             ],
         },
     ]
+
+
+@pytest.mark.asyncio
+async def test_planner_confirmation_uses_conversation_window_instead_of_current_utterance_only():
+    """启用对话窗口后，确认承接必须按历史任务重新规划，不能只看本轮「确认」。"""
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlanner, render_planning_conversation
+
+    tools = [_tool("monitor_list_object_instances", "列出主机"), _tool("monitor_query_metric_data", "查时序")]
+    history = [
+        HumanMessage(content="基于历史监控数据分析所有主机未来7天磁盘会不会爆满"),
+        AIMessage(content="需要重新调用 monitor_list_object_instances 获取全部 instance_id 后再查 disk_used_percent。"),
+        HumanMessage(content="确认"),
+    ]
+    rendered = render_planning_conversation(history, current_user_message="确认")
+    assert "未来7天" in rendered
+    assert "monitor_list_object_instances" in rendered
+    assert "用户: 确认" not in rendered
+
+    class FakeLLM:
+        def __init__(self):
+            self.prompts = []
+
+        async def ainvoke(self, messages, config=None):
+            prompt = "\n".join(str(message.content) for message in messages)
+            self.prompts.append(prompt)
+            if len(self.prompts) == 1:
+                return AIMessage(content=json.dumps({"goal": "确认", "steps": []}, ensure_ascii=False))
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "goal": "继续查磁盘风险",
+                        "steps": [
+                            {"objective": "列出主机实例", "tools": ["monitor_list_object_instances"]},
+                            {"objective": "查询磁盘使用率", "tools": ["monitor_query_metric_data"]},
+                        ],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
+    llm = FakeLLM()
+    plan = await ToolExecutionPlanner(llm).plan("确认", tools, conversation_messages=history)
+    assert [step.tools for step in plan.steps] == [
+        ["monitor_list_object_instances"],
+        ["monitor_query_metric_data"],
+    ]
+    assert "近期会话" in llm.prompts[0]
+    assert "未来7天" in llm.prompts[0]
+    assert "禁止空 steps" in llm.prompts[1]
+
+
+@pytest.mark.asyncio
+async def test_planner_without_history_still_treats_bare_confirmation_as_empty():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlanner
+
+    tools = [_tool("monitor_query_metric_data", "查时序")]
+
+    class FakeLLM:
+        async def ainvoke(self, messages, config=None):
+            return AIMessage(content=json.dumps({"goal": "确认", "steps": []}, ensure_ascii=False))
+
+    plan = await ToolExecutionPlanner(FakeLLM()).plan("确认", tools)
+    assert plan.steps == []

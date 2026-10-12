@@ -37,7 +37,7 @@ from apps.opspilot.services.wiki.material_build_queue_service import (
     unstick_material_for_cancelled_build,
 )
 from apps.opspilot.services.wiki.page_service import PageServiceError, create_manual_page, diff_versions, edit_page, restore_version, save_answer_page
-from apps.opspilot.utils.user_message import build_conflict_message, user_message
+from apps.opspilot.utils.user_message import BUILD_CONFLICT_CODE, BUILD_CONFLICT_RETRY, build_conflict_message, queue_error_message, user_message
 from apps.opspilot.viewsets.wiki_team_scope import WikiTeamScopeMixin
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
@@ -114,8 +114,14 @@ def _active_generation_conflict(error):
 
 def _directory_service_error(error, request=None, loader=None):
     message = str(error)
-    if getattr(error, "code", None) == "knowledge_base_build_in_progress":
-        message = build_conflict_message(request, message, loader)
+    if getattr(error, "code", None) == BUILD_CONFLICT_CODE:
+        message = build_conflict_message(
+            request,
+            message,
+            loader,
+            code=error.code,
+            variant=getattr(error, "conflict_variant", None),
+        )
     return JsonResponse(
         {
             "result": False,
@@ -1352,6 +1358,7 @@ class WikiBuildRecordViewSet(WikiTeamScopeMixin, AuthViewSet):
                         "知识库存在运行中的构建任务，请等待完成后再重试",
                         status_code=409,
                         retryable=True,
+                        conflict_variant=BUILD_CONFLICT_RETRY,
                     )
                 release_idle_runner_lease(knowledge_base.pk, operator=operator, kick_if_queued=False)
 
@@ -1448,7 +1455,7 @@ class WikiBuildRecordViewSet(WikiTeamScopeMixin, AuthViewSet):
                     {
                         "result": False,
                         "code": error.code,
-                        "message": build_conflict_message(request, error.message, self.loader),
+                        "message": queue_error_message(request, error, self.loader),
                         "details": error.details,
                         "retryable": error.status_code >= 500,
                     },

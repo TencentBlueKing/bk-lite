@@ -75,6 +75,8 @@ def test_monitor_tool_descriptions_guide_metric_queries():
     assert "禁止" in query and ("重试" in query or "换" in query)
     assert "instance_id" in query
     assert "禁止用" in query or "不要用" in query
+    assert "负数" in query
+    assert "inst_id" in query
 
     instances = tools["monitor_list_object_instances"].description
     assert "主机名" in instances or "名称" in instances
@@ -84,6 +86,8 @@ def test_monitor_tool_descriptions_guide_metric_queries():
     assert "request_user_choice" in instances
     assert "instance_id" in instances
     assert "禁止用 name" in instances or "禁止用实例名" in instances
+    assert "负数" in instances
+    assert "cmdb_id" in instances
 
     metrics = tools["monitor_list_object_metrics"].description
     assert "keyword" in metrics
@@ -120,6 +124,7 @@ def test_monitor_planner_hint_prefers_top_by_time_for_ranking_questions():
     assert "排行" in _MONITOR_CATALOG_HINT
     # 明确禁止用 snapshot 做排行，避免重演 37 台被判成 4 台
     assert "monitor_get_host_resource_snapshot" in _MONITOR_CATALOG_HINT
+    assert "负数" in _MONITOR_CATALOG_HINT
 
 
 def test_monitor_planner_step_guidance_warns_against_snapshot_host_count():
@@ -729,6 +734,9 @@ def test_monitor_list_object_instances_hint_requires_listed_instance_id(mocker):
     assert "instance_id" in hint
     assert "monitor_query_metric_data" in hint
     assert "禁止用 name" in hint or "禁止用实例名" in hint
+    assert "负数" in hint
+    assert "inst_id" in hint
+    assert "不要编造" in hint
 
 
 def test_monitor_list_object_instances_coerces_non_list_payload(mocker):

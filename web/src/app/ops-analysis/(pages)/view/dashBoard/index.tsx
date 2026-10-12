@@ -88,6 +88,25 @@ import {
   type CanvasDraftPayload,
 } from '@/app/ops-analysis/api/canvasDraft';
 import { bindCanvasDraftControls } from '@/app/ops-analysis/components/canvasDraftControls';
+import { useAiPageContext } from '@/components/ai-page-context';
+import { registerToolResultHandler } from '@/components/ai-tool-results/registry';
+import {
+  applyDashboardProposal,
+  proposalTargetsDashboard,
+} from '@/app/ops-analysis/utils/applyDashboardProposal';
+import { buildDashboardEditStateSection, dashboardEditStateAllowsApply } from '@/app/ops-analysis/utils/dashboardEditContext';
+import {
+  claimToolCall,
+  DASHBOARD_APPLY_TOOL,
+  readDashboardApplyAction,
+} from '@/app/ops-analysis/utils/dashboardToolResult';
+import {
+  cloneDashboardUndoEntry,
+  recordDashboardEdit,
+  redoDashboardEdit,
+  undoDashboardEdit,
+  type DashboardUndoEntry,
+} from '@/app/ops-analysis/utils/dashboardAiUndo';
 import {
   applyChangedDefaultsIfStillOnPrevious,
   applySelectedOrganizationToFilterValues,
@@ -206,6 +225,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const [appliedNamespaceId, setAppliedNamespaceId] = useState<
       number | undefined
     >(undefined);
+    const [undoStack, setUndoStack] = useState<DashboardUndoEntry[]>([]);
+    const [redoStack, setRedoStack] = useState<DashboardUndoEntry[]>([]);
     const [filterSearchVersion, setFilterSearchVersion] = useState(0);
     const [namespaceSearchVersion, setNamespaceSearchVersion] = useState(0);
     const exportRef = useRef<HTMLDivElement>(null);
@@ -700,6 +721,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setAppliedFilterValues({});
       setNamespaceDraftId(undefined);
       setAppliedNamespaceId(undefined);
+      setUndoStack([]);
+      setRedoStack([]);
       setPendingNewWidgetGroupId(null);
     }, [selectedDashboard?.data_id]);
 
@@ -828,6 +851,163 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       syncFilterStateAfterLayoutChange,
     };
 
+    const undoEntryRef = useRef<DashboardUndoEntry>({
+      layout,
+      definitions,
+      filterValues,
+      appliedDefinitions: appliedFilterDefinitions,
+      appliedFilterValues,
+      namespaceDraftId,
+      appliedNamespaceId,
+    });
+    undoEntryRef.current = {
+      layout,
+      definitions,
+      filterValues,
+      appliedDefinitions: appliedFilterDefinitions,
+      appliedFilterValues,
+      namespaceDraftId,
+      appliedNamespaceId,
+    };
+    const applyingHistoryRef = useRef(false);
+    const recordUndoRef = useRef<() => void>(() => undefined);
+    recordUndoRef.current = () => {
+      if (applyingHistoryRef.current) return;
+      const snapshot = cloneDashboardUndoEntry(undoEntryRef.current);
+      setUndoStack((stack) => recordDashboardEdit(stack, snapshot).undo);
+      setRedoStack([]);
+    };
+
+    const applyProposalRef = useRef({
+      isEditMode,
+      shareMode,
+      layout,
+      definitions,
+      filterValues,
+      otherConfig,
+      savedRefreshInterval,
+      selectedDashboardId: selectedDashboard?.data_id,
+      dashboardName: selectedDashboard?.name,
+      selectedOrganizationId,
+      appliedNamespaceId,
+      appliedFilterDefinitions,
+      appliedFilterValues,
+      namespaceDraftId,
+    });
+    applyProposalRef.current = {
+      isEditMode,
+      shareMode,
+      layout,
+      definitions,
+      filterValues,
+      otherConfig,
+      savedRefreshInterval,
+      selectedDashboardId: selectedDashboard?.data_id,
+      dashboardName: selectedDashboard?.name,
+      selectedOrganizationId,
+      appliedNamespaceId,
+      appliedFilterDefinitions,
+      appliedFilterValues,
+      namespaceDraftId,
+    };
+    const appliedToolCallsRef = useRef(new Set<string>());
+
+    useEffect(() => {
+      return registerToolResultHandler(DASHBOARD_APPLY_TOOL, (result) => {
+        if (!claimToolCall(appliedToolCallsRef.current, result.toolCallId)) return;
+        const current = applyProposalRef.current;
+        if (current.shareMode) return;
+        const action = readDashboardApplyAction(result.content);
+        if (!action || !proposalTargetsDashboard(action.dashboardId, current.selectedDashboardId)) return;
+        if (!dashboardEditStateAllowsApply({
+          dashboardId: current.selectedDashboardId,
+          name: current.dashboardName,
+          layout: current.layout,
+          filters: current.definitions,
+          filterValues: current.filterValues,
+          otherConfig: current.otherConfig,
+          refreshInterval: current.savedRefreshInterval,
+        })) {
+          message.warning(t('dashboard.editStateTooLarge'));
+          return;
+        }
+        const applied = applyDashboardProposal({
+          layout: current.layout,
+          filters: current.definitions,
+          filterValues: current.filterValues,
+          proposal: action.proposal,
+          allocateId: (preferred, used) => (preferred && !used.has(preferred) ? preferred : uuidv4()),
+        });
+        if (!applied.ok) return;
+        if (!current.isEditMode) {
+          setIsEditMode(true);
+          current.isEditMode = true;
+        }
+        const mergedFilters = buildFiltersFromLayout(applied.layout, applied.filters);
+        const nextValues = fillMissingOrganizationFilterValues(
+          mergedFilters,
+          syncFilterValuesWithDefinitions(mergedFilters, applied.filterValues),
+          current.selectedOrganizationId,
+        );
+        const syncedLayout = syncLayoutFilterBindings(applied.layout, mergedFilters);
+        recordUndoRef.current();
+        setLayout(syncedLayout);
+        syncFilterStateAfterLayoutChange(mergedFilters, nextValues, nextValues);
+        if (applied.otherConfig) {
+          setOtherConfig((current) => ({ ...current, ...applied.otherConfig }));
+        }
+        if (applied.refreshInterval != null) {
+          setSavedRefreshInterval(applied.refreshInterval);
+        }
+        message.success(t('dashboard.aiApplySuccess'));
+        void syncDashboardCanvasResources(syncedLayout).then((canvasDataSources) => {
+          const latest = applyProposalRef.current;
+          if (!latest.isEditMode || latest.shareMode || latest.appliedNamespaceId !== undefined) return;
+          const nextNamespaceId = resolveLayoutNamespaceId(syncedLayout, canvasDataSources);
+          if (nextNamespaceId === undefined) return;
+          setNamespaceDraftId(nextNamespaceId);
+          applyQueryState(mergedFilters, nextValues, nextNamespaceId);
+          setNamespaceSearchVersion((version) => version + 1);
+        }).catch(() => undefined);
+      });
+    }, [
+      applyQueryState,
+      buildFiltersFromLayout,
+      resolveLayoutNamespaceId,
+      syncDashboardCanvasResources,
+      syncFilterStateAfterLayoutChange,
+      syncFilterValuesWithDefinitions,
+      syncLayoutFilterBindings,
+      t,
+    ]);
+
+    useAiPageContext(() => {
+      if (shareMode) return { sections: [] };
+      return {
+        app: 'ops-analysis',
+        sections: [buildDashboardEditStateSection({
+          dashboardId: selectedDashboard?.data_id,
+          name: selectedDashboard?.name,
+          layout,
+          filters: definitions,
+          filterValues,
+          otherConfig,
+          refreshInterval: savedRefreshInterval,
+          mode: isEditMode ? 'edit' : 'view',
+        })],
+      };
+    }, [
+      isEditMode,
+      shareMode,
+      layout,
+      definitions,
+      filterValues,
+      otherConfig,
+      savedRefreshInterval,
+      selectedDashboard?.data_id,
+      selectedDashboard?.name,
+    ]);
+
     const openAddModal = useCallback((groupId?: string) => {
       setIsEditMode(true);
       setPendingNewWidgetGroupId(groupId ?? null);
@@ -937,14 +1117,11 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         if (!isEditMode) {
           return;
         }
-
-        setLayout((prevLayout) => {
-          if (JSON.stringify(prevLayout) === JSON.stringify(newLayout)) {
-            return prevLayout;
-          }
-
-          return newLayout;
-        });
+        if (JSON.stringify(undoEntryRef.current.layout) === JSON.stringify(newLayout)) {
+          return;
+        }
+        recordUndoRef.current();
+        setLayout(newLayout);
       },
       [isEditMode],
     );
@@ -957,6 +1134,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         >,
       ) => {
         if (!isEditMode || shareMode) return;
+        recordUndoRef.current();
         setLayout((prevLayout) =>
           prevLayout.map((item) => {
             if (item.i !== widgetId || !isDashboardWidgetItem(item)) {
@@ -1054,6 +1232,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         appliedFilterValues,
       );
 
+      recordUndoRef.current();
       setLayout(syncedLayout);
       void syncDashboardCanvasResources(syncedLayout).then(
         (canvasDataSources) => {
@@ -1124,6 +1303,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         setOriginalOtherConfig({ ...otherConfig });
         setOriginalDefinitions([...definitions]);
         setIsEditMode(false);
+        setUndoStack([]);
+        setRedoStack([]);
         message.success(t('common.saveSuccess'));
       } catch (error) {
         console.error('保存仪表盘失败:', error);
@@ -1186,8 +1367,77 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         appliedNamespaceId,
       );
       setIsEditMode(false);
+      setUndoStack([]);
+      setRedoStack([]);
       closeGroupNameModal();
     };
+
+    const canUndo = undoStack.length > 0;
+    const canRedo = redoStack.length > 0;
+
+    const restoreHistoryEntry = useCallback((entry: DashboardUndoEntry) => {
+      applyingHistoryRef.current = true;
+      setLayout(entry.layout);
+      setDefinitions(entry.definitions);
+      setFilterValues(entry.filterValues);
+      setAppliedFilterDefinitions(entry.appliedDefinitions);
+      setAppliedFilterValues(entry.appliedFilterValues);
+      setNamespaceDraftId(entry.namespaceDraftId);
+      applyQueryState(
+        entry.appliedDefinitions,
+        entry.appliedFilterValues,
+        entry.appliedNamespaceId,
+      );
+      setFilterSearchVersion((version) => version + 1);
+      setNamespaceSearchVersion((version) => version + 1);
+      void syncDashboardCanvasResources(entry.layout).catch(() => undefined);
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          applyingHistoryRef.current = false;
+        });
+      });
+    }, [applyQueryState, setDefinitions, setFilterValues, syncDashboardCanvasResources]);
+
+    const handleUndo = useCallback(() => {
+      const moved = undoDashboardEdit(undoStack, redoStack, cloneDashboardUndoEntry(undoEntryRef.current));
+      if (!moved.entry) return;
+      setUndoStack(moved.undo);
+      setRedoStack(moved.redo);
+      restoreHistoryEntry(moved.entry);
+      message.success(t('dashboard.undoAiApplySuccess'));
+    }, [undoStack, redoStack, restoreHistoryEntry, t]);
+
+    const handleRedo = useCallback(() => {
+      const moved = redoDashboardEdit(undoStack, redoStack, cloneDashboardUndoEntry(undoEntryRef.current));
+      if (!moved.entry) return;
+      setUndoStack(moved.undo);
+      setRedoStack(moved.redo);
+      restoreHistoryEntry(moved.entry);
+      message.success(t('dashboard.redoSuccess'));
+    }, [undoStack, redoStack, restoreHistoryEntry, t]);
+
+    useEffect(() => {
+      if (!isEditMode || shareMode) return undefined;
+      const handleKeyDown = (event: KeyboardEvent) => {
+        const target = event.target;
+        if (target instanceof HTMLElement) {
+          const tag = target.tagName;
+          if (tag === 'INPUT' || tag === 'TEXTAREA' || target.isContentEditable) return;
+        }
+        if (!(event.ctrlKey || event.metaKey)) return;
+        if (event.key === 'z' && !event.shiftKey) {
+          event.preventDefault();
+          handleUndo();
+          return;
+        }
+        if (event.key === 'y' || (event.key === 'z' && event.shiftKey)) {
+          event.preventDefault();
+          handleRedo();
+        }
+      };
+      document.addEventListener('keydown', handleKeyDown);
+      return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [handleRedo, handleUndo, isEditMode, shareMode]);
 
     const removeLayoutItems = useCallback((idsToRemove: Set<string>) => {
       const {
@@ -1202,6 +1452,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         syncFilterStateAfterLayoutChange: syncFilterState,
       } = canvasActionStateRef.current;
       const nextLayout = currentLayout.filter((item) => !idsToRemove.has(item.i));
+      if (nextLayout.length === currentLayout.length) return;
       const nextDefinitions = buildFilters(nextLayout, currentDefinitions);
       const syncedLayout = syncBindings(
         nextLayout,
@@ -1216,6 +1467,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         currentAppliedFilterValues,
       );
 
+      recordUndoRef.current();
       setLayout(syncedLayout);
       void syncResources(syncedLayout).then(() => {
         syncFilterState(
@@ -1272,6 +1524,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           name: nextName,
         };
 
+        recordUndoRef.current();
         setLayout((prevLayout) => [...prevLayout, newGroup]);
         closeGroupNameModal();
         return;
@@ -1281,6 +1534,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         return;
       }
 
+      recordUndoRef.current();
       setLayout((prevLayout) =>
         prevLayout.map((item) =>
           item.i === editingGroupId && isDashboardGroupItem(item)
@@ -1312,6 +1566,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             syncDashboardCanvasResources: syncResources,
             syncFilterStateAfterLayoutChange: syncFilterState,
           } = canvasActionStateRef.current;
+          recordUndoRef.current();
           const nextLayout = removeDashboardGroupHeader(currentLayout, groupId);
           const nextDefinitions = buildFilters(
             nextLayout,
@@ -1499,6 +1754,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           appliedFilterValues,
         );
 
+        recordUndoRef.current();
         setLayout(syncedLayout);
         void syncDashboardCanvasResources(syncedLayout).then(() => {
           syncFilterStateAfterLayoutChange(
@@ -1552,6 +1808,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const handleFilterConfigConfirm = (
       newDefinitions: UnifiedFilterDefinition[],
     ) => {
+      recordUndoRef.current();
       const snapshot = buildFilterConfigConfirmSnapshot(
         newDefinitions,
         filterValues,
@@ -1583,6 +1840,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         t: canvasActionStateRef.current.t,
       });
       if (nextLayout === currentLayout) return;
+      recordUndoRef.current();
 
       const nextDefinitions = buildFilters(nextLayout, currentDefinitions);
       const syncedLayout = syncBindings(
@@ -1650,6 +1908,10 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         onToggleEditMode={toggleEditMode}
         onCancelEdit={handleCancelEdit}
         onSave={handleSave}
+        canUndo={canUndo}
+        onUndo={handleUndo}
+        canRedo={canRedo}
+        onRedo={handleRedo}
         editExtra={bindCanvasDraftControls(dashboardDraft)}
         shareMode={shareMode}
         shareLoading={shareLoading}
@@ -1730,6 +1992,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
               ? 'w-full min-h-screen overflow-visible'
               : 'h-full flex-1 overflow-auto'
         }`}
+        data-dashboard-edit-mode={isEditMode && !shareMode ? 'true' : 'false'}
         style={{
           backgroundColor: isDarkTheme ? 'var(--color-bg-2)' : '#f7f8fa',
           zIndex: isFullscreen ? 1100 : undefined,

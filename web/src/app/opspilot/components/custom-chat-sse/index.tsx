@@ -36,6 +36,8 @@ import { setOpspilotModuleLocale } from './i18n';
 import { getStoredLocale } from '@/utils/userPreferences';
 import { stripPlannedExecutionDumps } from './plannedExecutionPayload';
 import ContextUsageRing from './ContextUsageRing';
+import SessionFileBar from './SessionFileBar';
+import { collectSessionFiles } from './sessionFiles';
 import type { LlmContextUsage } from './llmContextUsage';
 import ImageBlobPreview from './ImageBlobPreview';
 import { useImeEnterGuard } from '@/app/opspilot/utils/imeKeyboard';
@@ -1269,6 +1271,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
         {mode === 'chat' && (
           <div className="flex-shrink-0 pt-2">
+            <SessionFileBar files={collectSessionFiles(messages)} />
             {renderSend({
               placeholder: t('chat.inputPlaceholder'),
             })}

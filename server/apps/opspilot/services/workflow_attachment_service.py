@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import csv
+import re
 from datetime import timedelta
-from io import BytesIO
+from io import BytesIO, StringIO
 from uuid import uuid4
 
 from django.conf import settings
@@ -54,6 +56,33 @@ def resolve_signed_attachment_token(download_token: str) -> WorkflowAttachmentAs
     return asset
 
 
+_ATTACHMENT_DOWNLOAD_URL_RE = re.compile(r"/api/(?:proxy|v1)/opspilot/bot_mgmt/workflow_attachment/download/([A-Za-z0-9_.:\-]+)/?")
+
+
+def refresh_attachment_download_urls(text: str) -> str:
+    """历史消息里的下载令牌会过期。读会话时按原签名重签，不放宽公开下载接口。"""
+    if not text or "workflow_attachment/download/" not in text:
+        return text
+
+    def _replace(match: re.Match[str]) -> str:
+        try:
+            payload = signing.loads(
+                match.group(1),
+                salt=WORKFLOW_ATTACHMENT_DOWNLOAD_SALT,
+                max_age=None,
+            )
+        except signing.BadSignature:
+            return match.group(0)
+        if not isinstance(payload, dict):
+            return match.group(0)
+        asset = WorkflowAttachmentAsset.objects.filter(id=payload.get("aid")).first()
+        if not asset or asset.execution_id != payload.get("eid"):
+            return match.group(0)
+        return build_signed_attachment_download_url(asset)
+
+    return _ATTACHMENT_DOWNLOAD_URL_RE.sub(_replace, text)
+
+
 ATTACHMENT_FILE_TYPE_CONFIG = {
     "md": {
         "extension": "md",
@@ -70,6 +99,14 @@ ATTACHMENT_FILE_TYPE_CONFIG = {
     "word": {
         "extension": "docx",
         "mime_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    },
+    "xlsx": {
+        "extension": "xlsx",
+        "mime_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    },
+    "csv": {
+        "extension": "csv",
+        "mime_type": "text/csv",
     },
 }
 
@@ -103,6 +140,10 @@ def build_attachment_bytes(content: str, file_type: str, title: str = "") -> byt
         return _build_pdf_bytes(safe_content, safe_title)
     if normalized_type in ("docx", "word"):
         return _build_docx_bytes(safe_content, safe_title)
+    if normalized_type == "xlsx":
+        return _build_xlsx_bytes(safe_content)
+    if normalized_type == "csv":
+        return _build_csv_bytes(safe_content)
 
     raise ValueError(f"不支持的附件类型: {file_type}")
 
@@ -179,6 +220,31 @@ def cleanup_expired_workflow_attachments(*, retention_days: int = 3) -> int:
         deleted_count += 1
 
     return deleted_count
+
+
+def _build_xlsx_bytes(content: str) -> bytes:
+    # 显著启动成本：openpyxl 仅在生成表格附件时需要，不得随 Django setup 加载。
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    sheet = workbook.active
+    for row in _csv_rows(content):
+        sheet.append(row)
+    buffer = BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
+def _build_csv_bytes(content: str) -> bytes:
+    return (content or "").lstrip("\ufeff").encode("utf-8-sig")
+
+
+def _csv_rows(content: str) -> list[list[str]]:
+    rows = []
+    for row in csv.reader(StringIO(content or "")):
+        if any(cell.strip() for cell in row):
+            rows.append(row)
+    return rows or [[""]]
 
 
 def _build_docx_bytes(content: str, title: str) -> bytes:

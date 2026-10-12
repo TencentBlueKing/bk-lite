@@ -214,6 +214,7 @@ export interface SkillTool {
   description_tr?: string;
   icon?: string;
   enabled: boolean;
+  is_build_in?: boolean;
   params: SkillToolParams;
 }
 

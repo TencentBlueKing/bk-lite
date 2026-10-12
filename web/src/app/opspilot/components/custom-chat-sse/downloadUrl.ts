@@ -163,6 +163,36 @@ export const isRenderableReportDownload = (download?: ReportFileDownload): boole
   return Boolean(normalizeSafeDownloadUrl(download.file_url));
 };
 
+export const triggerReportDownload = (download: ReportFileDownload): void => {
+  const normalizedFileUrl = normalizeSafeDownloadUrl(download.file_url);
+  if (normalizedFileUrl) {
+    const link = document.createElement('a');
+    link.setAttribute('href', toAbsoluteDownloadHref(download.file_url) || normalizedFileUrl);
+    link.setAttribute('download', download.filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    return;
+  }
+  if (!download.content_base64) {
+    return;
+  }
+  const byteCharacters = atob(download.content_base64);
+  const byteNumbers = new Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i += 1) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  }
+  const blob = new Blob([new Uint8Array(byteNumbers)], { type: download.mime_type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = download.filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+};
+
 export const toAbsoluteDownloadHref = (
   url?: string,
   options?: NormalizeDownloadUrlOptions,

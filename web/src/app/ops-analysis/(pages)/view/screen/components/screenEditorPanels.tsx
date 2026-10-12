@@ -414,6 +414,7 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
 }) => {
   const { t } = useTranslation();
   const rootRef = useRef<HTMLElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const draggingIdRef = useRef<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropIndex, setDropIndex] = useState<number | null>(null);
@@ -622,6 +623,25 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
     return null;
   })();
 
+  useEffect(() => {
+    if (!selectedItemId || collapsed) return;
+    const list = listRef.current;
+    if (!list) return;
+    const row = list.querySelector(
+      `[data-screen-list-item="${CSS.escape(selectedItemId)}"]`,
+    );
+    if (!(row instanceof HTMLElement)) return;
+    const listRect = list.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    const delta =
+      rowRect.top < listRect.top
+        ? rowRect.top - listRect.top
+        : rowRect.bottom > listRect.bottom
+          ? rowRect.bottom - listRect.bottom
+          : 0;
+    if (delta !== 0) list.scrollTop += delta;
+  }, [collapsed, listed, selectedItemId]);
+
   const activeGroup = paletteGroups.find((group) => group.id === paletteGroup);
 
   return (
@@ -708,7 +728,11 @@ export const ScreenElementPalette: React.FC<ScreenElementPaletteProps> = ({
             );
           })}
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+        <div
+          ref={listRef}
+          data-screen-element-list=""
+          className="min-h-0 flex-1 overflow-y-auto px-2 py-2"
+        >
           <div className="mb-1 px-1 text-xs font-semibold text-(--color-text-1)">
             {t('opsAnalysis.screen.elementList')}
           </div>

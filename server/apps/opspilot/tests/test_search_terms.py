@@ -2,7 +2,7 @@
 
 from langchain_core.messages import ToolMessage
 
-from apps.opspilot.metis.llm.middleware.tool_runtime import repeated_or_search_denial
+from apps.opspilot.metis.llm.middleware.tool_runtime import repeated_or_search_denial, terminal_success_denial
 from apps.opspilot.metis.llm.tools.search_terms import build_search_terms, resolve_search_terms, user_message_from_config, user_question_for_search
 
 
@@ -94,3 +94,39 @@ def test_second_log_search_is_denied_after_success():
     denied = repeated_or_search_denial(request)
     assert denied is not None
     assert "不要换关键字" in denied.content
+
+
+def test_terminal_hint_stops_another_call_even_when_args_change():
+    request = type(
+        "Req",
+        (),
+        {
+            "tool_call": {"id": "call-2", "name": "prepare_dashboard_proposal", "args": {"proposal": {"schemaVersion": "1.0"}}},
+            "messages": [
+                ToolMessage(
+                    content='{"success": true, "_next_step_hint": "方案已校验通过。不要再次调用 prepare_dashboard_proposal。"}',
+                    tool_call_id="call-1",
+                    name="prepare_dashboard_proposal",
+                ),
+            ],
+        },
+    )()
+    denied = terminal_success_denial(request)
+    assert denied is not None
+    assert "不要再调用" in denied.content
+
+    retry = type(
+        "Req",
+        (),
+        {
+            "tool_call": {"id": "call-2", "name": "prepare_dashboard_proposal", "args": {"proposal": {"schemaVersion": "1.0"}}},
+            "messages": [
+                ToolMessage(
+                    content='{"success": true, "_next_step_hint": "按这个结构改完再调用一次，不要原样重试。"}',
+                    tool_call_id="call-1",
+                    name="prepare_dashboard_proposal",
+                ),
+            ],
+        },
+    )()
+    assert terminal_success_denial(retry) is None

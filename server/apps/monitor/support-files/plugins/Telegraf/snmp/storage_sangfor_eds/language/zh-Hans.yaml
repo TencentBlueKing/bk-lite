@@ -1,0 +1,168 @@
+Storage Sangfor EDS SNMP:
+  name: 深信服 aStor/EDS 分布式存储
+  desc: 面向深信服 EDS / aStor 分布式存储的 SNMP 采集模板。采集集群主机与盘计数、三网健康、物理容量、块/容量池使用率与恢复任务、磁盘/LUN/主机表。OID 根 1.3.6.1.4.1.35047.2.12。证据为厂商 MIB 对齐，无真机采集声明。
+monitor_object:
+  Storage: 存储
+monitor_object_type:
+  Hardware Device: 硬件设备
+monitor_object_metric:
+  Storage:
+    snmp_uptime:
+      name: 系统运行时间
+      desc: 设备自上次启动以来的运行时间（MIB-II sysUpTime）。用于识别意外重启。
+    sangfor_eds_cluster_host_num:
+      name: 集群主机数
+      desc: 深信服 EDS / aStor 分布式存储集群中的主机数量。
+    sangfor_eds_cluster_used_ssd_num:
+      name: 已用 SSD 数
+      desc: 集群中正在使用的 SSD 数量。
+    sangfor_eds_cluster_free_ssd_num:
+      name: 空闲 SSD 数
+      desc: 集群中空闲的 SSD 数量。
+    sangfor_eds_cluster_used_hdd_num:
+      name: 已用 HDD 数
+      desc: 集群中正在使用的 HDD 数量。
+    sangfor_eds_cluster_free_hdd_num:
+      name: 空闲 HDD 数
+      desc: 集群中空闲的 HDD 数量。
+    sangfor_eds_cluster_normal_manage_nic_num:
+      name: 管理网正常网卡数
+      desc: 管理平面处于正常状态的网卡数量。
+    sangfor_eds_cluster_abnormal_manage_nic_num:
+      name: 管理网异常网卡数
+      desc: 管理平面处于异常状态的网卡数量。大于 0 表示管理网络故障。
+    sangfor_eds_cluster_normal_public_nic_num:
+      name: 业务网正常网卡数
+      desc: 业务平面处于正常状态的网卡数量。
+    sangfor_eds_cluster_abnormal_public_nic_num:
+      name: 业务网异常网卡数
+      desc: 业务平面处于异常状态的网卡数量。大于 0 表示业务网络故障。
+    sangfor_eds_cluster_normal_private_nic_num:
+      name: 存储网正常网卡数
+      desc: 存储后端平面处于正常状态的网卡数量。
+    sangfor_eds_cluster_abnormal_private_nic_num:
+      name: 存储网异常网卡数
+      desc: 存储后端平面处于异常状态的网卡数量。大于 0 表示存储网络故障。
+    sangfor_eds_cluster_total_physical_bytes:
+      name: 物理总容量
+      desc: 集群物理总容量，单位字节。
+    sangfor_eds_cluster_used_physical_bytes:
+      name: 物理已用容量
+      desc: 集群物理已用容量，单位字节。
+    sangfor_eds_cluster_free_physical_bytes:
+      name: 物理空闲容量
+      desc: 集群物理空闲容量，单位字节。
+    sangfor_eds_cluster_physical_usage_percent:
+      name: 物理容量使用率
+      desc: 由已用物理容量除以总物理容量得到的百分比。
+    sangfor_eds_cluster_block_pool_num:
+      name: 块存储池数量
+      desc: 块存储池个数。
+    sangfor_eds_cluster_capacity_pool_num:
+      name: 容量池数量
+      desc: 容量存储池个数。
+    sangfor_eds_block_pool_total_bytes:
+      name: 块存储池总容量
+      desc: 块存储池总容量，单位字节。
+    sangfor_eds_block_pool_used_bytes:
+      name: 块存储池已用容量
+      desc: 块存储池已用容量，单位字节。
+    sangfor_eds_block_pool_available_bytes:
+      name: 块存储池可用容量
+      desc: 块存储池可用容量，单位字节。
+    sangfor_eds_block_pool_usage_rate:
+      name: 块存储池使用率
+      desc: 块存储池使用率，由厂商 0..1 字符串比率转换为 0-100 百分比。
+    sangfor_eds_block_pool_recovery_task_num:
+      name: 块存储池恢复任务数
+      desc: 块存储池数据恢复 / 重建任务数量。
+    sangfor_eds_block_pool_sync_task_num:
+      name: 块存储池同步任务数
+      desc: 块存储池同步 / 修复任务数量。
+    sangfor_eds_block_pool_rebalance_task_num:
+      name: 块存储池均衡任务数
+      desc: 块存储池再均衡 / 迁移任务数量。
+    sangfor_eds_block_pool_subhealth_task_num:
+      name: 块存储池亚健康任务数
+      desc: 块存储池亚健康恢复任务数量。
+    sangfor_eds_block_pool_status:
+      name: 块存储池状态
+      desc: 块存储池状态：1 正常、2 异常、3 未知。空值/notPresent 为 1；厂商字面 unknown 为 3 且不告警；仅 =2 告警。
+    sangfor_eds_capacity_pool_total_bytes:
+      name: 容量池总容量
+      desc: 容量池总容量，单位字节。
+    sangfor_eds_capacity_pool_used_bytes:
+      name: 容量池已用容量
+      desc: 容量池已用容量，单位字节。
+    sangfor_eds_capacity_pool_available_bytes:
+      name: 容量池可用容量
+      desc: 容量池可用容量，单位字节。
+    sangfor_eds_capacity_pool_usage_rate:
+      name: 容量池使用率
+      desc: 容量池使用率，由厂商 0..1 字符串比率转换为 0-100 百分比。
+    sangfor_eds_capacity_pool_recovery_task_num:
+      name: 容量池恢复任务数
+      desc: 容量池重建任务数量。
+    sangfor_eds_capacity_pool_rebalance_task_num:
+      name: 容量池均衡任务数
+      desc: 容量池再均衡 / 迁移任务数量。
+    sangfor_eds_capacity_pool_subhealth_task_num:
+      name: 容量池亚健康任务数
+      desc: 容量池亚健康恢复任务数量。
+    sangfor_eds_capacity_pool_daemon_status:
+      name: 存储守护进程状态
+      desc: 存储守护进程状态：normal→1、error→2、空→1、未知→3；仅 =2 告警。
+    sangfor_eds_capacity_pool_pg_status:
+      name: 副本组状态
+      desc: 副本组 / PG 状态：normal→1、error→2、空→1、未知→3；仅 =2 告警。
+    sangfor_eds_capacity_pool_status:
+      name: 容量池状态
+      desc: 容量池状态：1 正常、2 异常、3 未知。空值/notPresent 为 1；未知为 3 且不告警；仅 =2 告警。
+    sangfor_eds_fs_nfs_con_num:
+      name: NFS 连接数
+      desc: 当前 NFS 协议连接数。
+    sangfor_eds_fs_cifs_con_num:
+      name: CIFS 连接数
+      desc: 当前 CIFS 协议连接数。
+    sangfor_eds_fs_ftp_con_num:
+      name: FTP 连接数
+      desc: 当前 FTP 协议连接数。
+    sangfor_eds_lun_usage_rate:
+      name: LUN 使用率
+      desc: LUN 使用率，由厂商 0..1 字符串比率转换为 0-100 百分比。维度为 lun_name。
+    sangfor_eds_disk_status:
+      name: 磁盘状态
+      desc: 磁盘状态：online→1、offline→2、空/notPresent→1、未知→3；仅 =2 告警。维度为 disk_name。
+    sangfor_eds_disk_size_bytes:
+      name: 磁盘容量
+      desc: 磁盘容量，单位字节。
+    sangfor_eds_disk_usage_rate:
+      name: 磁盘使用率
+      desc: 磁盘使用率，由厂商 0..1 字符串比率转换为 0-100 百分比。
+    sangfor_eds_disk_bad_sector:
+      name: 磁盘坏道状态
+      desc: HDD 坏道状态：normal→1、warn/error→2、空→1、未知→3；仅 =2 告警。
+    sangfor_eds_disk_life_percent:
+      name: 磁盘剩余寿命
+      desc: SSD 剩余寿命百分比。
+    sangfor_eds_host_online_status:
+      name: 主机在线状态
+      desc: 存储主机在线状态：online/up→1、offline/down→2、空→1、未知→3；仅 =2 告警。维度为 host_name。
+    sangfor_eds_host_cpu_usage:
+      name: 主机 CPU 使用率
+      desc: 存储主机 CPU 使用率；厂商字符串可解析时转换为 0-100 百分比。
+    sangfor_eds_host_mem_usage:
+      name: 主机内存使用率
+      desc: 存储主机内存使用率；大于 1 视为 0-100，否则按 0..1 比率换算。
+monitor_object_metric_group:
+  Storage:
+    Base: 基础
+    Cluster: 集群
+    Network Health: 网络健康
+    Capacity: 容量
+    Block Pool: 块存储池
+    Capacity Pool: 容量池
+    File Protocol: 文件协议
+    LUN: LUN
+    Disk: 磁盘
+    Host: 主机

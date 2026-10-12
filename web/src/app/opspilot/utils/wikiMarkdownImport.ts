@@ -21,13 +21,17 @@ export const markdownImportAccept = (): string => ".zip";
 
 export const markdownImportFilePattern = (): RegExp => /\.zip$/iu;
 
-export const initialCreateDirectoriesFromFolders = (): boolean => true;
+export const initialCreateDirectoriesFromFolders = (): boolean => false;
 
 const OKF_SKIP_REASON_KEYS: Record<string, string> = {
   reserved: "wiki.okfSkipReasonReserved",
   yaml_invalid: "wiki.okfSkipReasonYamlInvalid",
   type_missing: "wiki.okfSkipReasonTypeMissing",
   not_utf8: "wiki.okfSkipReasonNotUtf8",
+  images_missing: "wiki.okfSkipReasonImagesMissing",
+  title_invalid: "wiki.okfSkipReasonTitleInvalid",
+  title_duplicate: "wiki.okfSkipReasonTitleDuplicate",
+  import_failed: "wiki.okfSkipReasonImportFailed",
 };
 
 export const okfSkippedReasonLabel = (

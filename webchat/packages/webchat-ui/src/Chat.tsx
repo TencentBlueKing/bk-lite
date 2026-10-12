@@ -31,6 +31,8 @@ import { formatDegradedCustomEvent, HitlPanels, isBlockingHitlEvent } from './co
 import { ConversationSkeleton } from './components/ConversationSkeleton';
 import { PillComposer } from './components/PillComposer';
 import ContextUsageRing from './components/ContextUsageRing';
+import { SessionFileBar } from './components/SessionFileBar';
+import { collectSessionAttachmentFiles } from './sessionFiles';
 import {
   pendingImagesReducer,
   readFileAsDataUrl,
@@ -97,6 +99,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     onFullscreenChange,
     onStreamingStop,
     onCustomEvent,
+    onToolResult,
     platform,
     kickoffMessage,
     onKickoffConsumed,
@@ -243,6 +246,8 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
     onMessageReceivedRef.current?.(message);
   }, []);
 
+  const onToolResultRef = useRef(onToolResult);
+  onToolResultRef.current = onToolResult;
   const handleAGUIEvent = useMemo(
     () =>
       createAGUIEventHandler({
@@ -255,6 +260,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
         setIsLoading,
         setIsThinking,
         addMessage,
+        onToolResultRef,
         streamingTextBatchingRef,
       }),
     [addMessage]
@@ -951,6 +957,7 @@ const ChatInner = React.forwardRef<HTMLDivElement, ChatProps>((props, ref) => {
           </div>
         )}
         
+              <SessionFileBar files={collectSessionAttachmentFiles(messages)} />
               {conversationHistoryEnabled ? (
                 <div className="mb-1 flex h-8 items-center justify-end">
                   <ContextUsageRing usage={contextUsage} />

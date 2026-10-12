@@ -1375,7 +1375,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                     targets: <Button onClick={() => {
                       setJobTargetSelectorPurpose('params');
                       setJobTargetSelectorOpen(true);
-                    }}>{t('workflowOrchestration.editor.selectJobPlatformHosts', '选择作业平台主机')}</Button>,
+                    }}>{t('workflowOrchestration.launch.selectTarget', '选择主机')}</Button>,
                   }}
                   onChange={changeTaskInputs}
                 />
@@ -1567,7 +1567,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                     </span>
                   </span>
                   <span className="shrink-0 text-sm text-[var(--color-primary)]">
-                    {t('workflowOrchestration.editor.selectJobPlatformHosts', '选择作业平台主机')}
+                    {t('workflowOrchestration.launch.selectTarget', '选择主机')}
                   </span>
                 </button>
               </Form.Item>

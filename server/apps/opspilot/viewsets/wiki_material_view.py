@@ -17,7 +17,7 @@ from apps.opspilot.services.wiki.material_service import load_parsed_markdown
 from apps.opspilot.services.wiki.material_source_service import MaterialSourceError, source_metadata
 from apps.opspilot.services.wiki.parsed_media_service import _bare_media_locator_spans, rewrite_media_urls_for_display, sign_media_locators
 from apps.opspilot.services.wiki.update_service import handle_material_deletion, preview_material_deletion, preview_material_update, propose_update
-from apps.opspilot.utils.user_message import build_conflict_message, user_message
+from apps.opspilot.utils.user_message import queue_error_message, user_message
 from apps.opspilot.viewsets.wiki_team_scope import WikiTeamScopeMixin
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
@@ -342,7 +342,7 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
                     {
                         "result": False,
                         "code": error.code,
-                        "message": build_conflict_message(request, error.message, self.loader),
+                        "message": queue_error_message(request, error, self.loader),
                         "details": error.details,
                         "retryable": error.status_code >= 500,
                     },
@@ -419,7 +419,7 @@ class WikiMaterialViewSet(WikiTeamScopeMixin, AuthViewSet):
                 {
                     "result": False,
                     "code": error.code,
-                    "message": build_conflict_message(request, error.message, self.loader),
+                    "message": queue_error_message(request, error, self.loader),
                     "details": error.details,
                 },
                 status=error.status_code,

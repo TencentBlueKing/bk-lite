@@ -153,8 +153,9 @@ def monitor_list_instance_metrics(
     description=(
         "查询指标时序（任意已纳管指标，含 CPU/内存/磁盘/业务等）。"
         "metric 必须来自本步 monitor_list_object_metrics 返回的 name，禁止猜测 cpu.util。"
-        "必填 monitor_obj_id、metric；instance_ids 必须用 list_object_instances 返回的 instance_id，禁止用实例名或 IP 代替。"
-        "禁止 CMDB 的 inst_uuid/_id。可省略 start/end（默认近1小时）。禁止建议 top/htop/SSH。"
+        "必填 monitor_obj_id、metric；instance_ids 只能原样复制 monitor_list_object_instances 返回记录的 instance_id 字段。"
+        "禁止用 name、IP、id、cmdb_id，禁止用 CMDB 的 inst_id、inst_uuid、_id，禁止传负数，列表里没有的值不要编造。"
+        "可省略 start/end（默认近1小时）。禁止建议 top/htop/SSH。"
         "同一实例同一指标只查一次；空矩阵/无时序是有效结论，禁止改 instance_ids、IP、dimensions、时间窗或 metric 重试。"
     )
 )

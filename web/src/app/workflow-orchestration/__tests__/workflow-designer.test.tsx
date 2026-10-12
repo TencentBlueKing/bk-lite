@@ -107,7 +107,7 @@ const atoms = [
     input_schema: {
       type: 'object',
       properties: {
-        targets: { type: 'array', title: '目标主机', description: '可从左侧拖入兼容字段或手动填写，也可从作业平台选择主机', items: { type: 'string' }, maxItems: 100 },
+        targets: { type: 'array', title: '目标主机', description: '可从左侧拖入兼容字段或手动填写，也可从节点管理或作业平台选择主机；两个来源不能混选', items: { type: 'string' }, maxItems: 100 },
         linux_script_type: { type: 'string', title: 'Linux 脚本类型', enum: ['shell'], default: 'shell' },
         linux_script_content: { type: 'string', title: 'Linux 脚本' },
       },
@@ -448,8 +448,9 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     fireEvent.click(await screen.findByRole('button', { name: /作业执行/ }));
 
     expect(screen.getAllByTestId('workflow-reference-dropzone').length).toBeGreaterThan(0);
-    fireEvent.click(await screen.findByRole('button', { name: /选择作业平台主机/ }));
-    expect(screen.queryByRole('tab', { name: /节点管理/ })).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: /选择主机/ }));
+    expect(screen.getByRole('tab', { name: /节点管理/ })).not.toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: '作业平台' }));
     const row = (await screen.findByText('job-linux-01')).closest('tr');
     expect(row).not.toBeNull();
     fireEvent.click(within(row!).getByRole('checkbox'));
@@ -953,7 +954,7 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
 
     fireEvent.click(within(testDialog!).getByRole('button', { name: /已选择 1 台主机/ }));
     expect(await screen.findByText(/已选 1 台/)).not.toBeNull();
-    expect(screen.queryByRole('tab', { name: /节点管理/ })).toBeNull();
+    expect(screen.getByRole('tab', { name: /节点管理/ })).not.toBeNull();
 
     const otherRow = (await screen.findByText(otherTarget.name)).closest('tr');
     expect(otherRow).not.toBeNull();

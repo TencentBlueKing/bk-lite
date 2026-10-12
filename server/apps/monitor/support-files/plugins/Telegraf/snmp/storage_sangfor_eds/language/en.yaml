@@ -1,0 +1,168 @@
+Storage Sangfor EDS SNMP:
+  name: Sangfor aStor/EDS Distributed Storage
+  desc: SNMP collection template for Sangfor EDS / aStor distributed storage. Collects cluster host and disk counts, three-plane NIC health, physical capacity, block and capacity pool usage and recovery tasks, and disk/LUN/host tables. OID root 1.3.6.1.4.1.35047.2.12. Evidence is vendor MIB alignment; live collection is not claimed.
+monitor_object:
+  Storage: Storage
+monitor_object_type:
+  Hardware Device: Hardware Device
+monitor_object_metric:
+  Storage:
+    snmp_uptime:
+      name: System Uptime
+      desc: Device uptime since the last restart, from MIB-II sysUpTime. Helps identify unexpected reboots.
+    sangfor_eds_cluster_host_num:
+      name: Cluster Host Count
+      desc: Number of hosts in the Sangfor EDS / aStor distributed storage cluster (SANGFOR-EDS-MIB hostNum, 1.3.6.1.4.1.35047.2.12.1.2).
+    sangfor_eds_cluster_used_ssd_num:
+      name: Used SSD Count
+      desc: Number of SSDs currently in use in the cluster (usedSSDNum, 1.3.6.1.4.1.35047.2.12.1.3.1).
+    sangfor_eds_cluster_free_ssd_num:
+      name: Free SSD Count
+      desc: Number of free SSDs in the cluster (freeSSDNum, 1.3.6.1.4.1.35047.2.12.1.3.2).
+    sangfor_eds_cluster_used_hdd_num:
+      name: Used HDD Count
+      desc: Number of HDDs currently in use in the cluster (usedHddNum, 1.3.6.1.4.1.35047.2.12.1.4.1).
+    sangfor_eds_cluster_free_hdd_num:
+      name: Free HDD Count
+      desc: Number of free HDDs in the cluster (freeHddNum, 1.3.6.1.4.1.35047.2.12.1.4.2).
+    sangfor_eds_cluster_normal_manage_nic_num:
+      name: Normal Management NICs
+      desc: Count of management-plane NICs in normal state (normalManageNetworkAdapterNum, 1.3.6.1.4.1.35047.2.12.1.5.1).
+    sangfor_eds_cluster_abnormal_manage_nic_num:
+      name: Abnormal Management NICs
+      desc: Count of management-plane NICs in abnormal state (abnormalManageNetworkAdapterNum, 1.3.6.1.4.1.35047.2.12.1.5.2). A value greater than 0 indicates management-network faults.
+    sangfor_eds_cluster_normal_public_nic_num:
+      name: Normal Public NICs
+      desc: Count of public-plane NICs in normal state (normalPublicNetworkAdapterNum, 1.3.6.1.4.1.35047.2.12.1.5.3).
+    sangfor_eds_cluster_abnormal_public_nic_num:
+      name: Abnormal Public NICs
+      desc: Count of public-plane NICs in abnormal state (abnormalPublicNetworkAdapterNum, 1.3.6.1.4.1.35047.2.12.1.5.4). A value greater than 0 indicates public-network faults.
+    sangfor_eds_cluster_normal_private_nic_num:
+      name: Normal Private NICs
+      desc: Count of private-plane NICs in normal state (normalPrivateNetworkAdapterNum, 1.3.6.1.4.1.35047.2.12.1.5.5).
+    sangfor_eds_cluster_abnormal_private_nic_num:
+      name: Abnormal Private NICs
+      desc: Count of private-plane NICs in abnormal state (abnormalPrivateNetworkAdapterNum, 1.3.6.1.4.1.35047.2.12.1.5.6). A value greater than 0 indicates storage-backend network faults.
+    sangfor_eds_cluster_total_physical_bytes:
+      name: Total Physical Capacity
+      desc: Total physical capacity of the cluster in bytes (totalPhysicalBytes, 1.3.6.1.4.1.35047.2.12.1.6.1).
+    sangfor_eds_cluster_used_physical_bytes:
+      name: Used Physical Capacity
+      desc: Used physical capacity of the cluster in bytes (usedPhysicalBytes, 1.3.6.1.4.1.35047.2.12.1.6.2).
+    sangfor_eds_cluster_free_physical_bytes:
+      name: Free Physical Capacity
+      desc: Free physical capacity of the cluster in bytes (freePhyicalBytes, 1.3.6.1.4.1.35047.2.12.1.6.3).
+    sangfor_eds_cluster_physical_usage_percent:
+      name: Physical Capacity Usage
+      desc: Physical capacity usage of the cluster as a percentage, derived from usedPhysicalBytes / totalPhysicalBytes.
+    sangfor_eds_cluster_block_pool_num:
+      name: Block Storage Pool Count
+      desc: Number of block storage pools (blockStoragePoolNum, 1.3.6.1.4.1.35047.2.12.1.7.1).
+    sangfor_eds_cluster_capacity_pool_num:
+      name: Capacity Pool Count
+      desc: Number of capacity storage pools (capacityStoragePoolNum, 1.3.6.1.4.1.35047.2.12.1.7.2).
+    sangfor_eds_block_pool_total_bytes:
+      name: Block Pool Total Capacity
+      desc: Total capacity of the block storage pool in bytes (blockStorageTotalCapacityBytes, 1.3.6.1.4.1.35047.2.12.2.1.1).
+    sangfor_eds_block_pool_used_bytes:
+      name: Block Pool Used Capacity
+      desc: Used capacity of the block storage pool in bytes (blockStorageUsedCapacityBytes, 1.3.6.1.4.1.35047.2.12.2.1.2).
+    sangfor_eds_block_pool_available_bytes:
+      name: Block Pool Available Capacity
+      desc: Available capacity of the block storage pool in bytes (blockStorageAvailableCapacityBytes, 1.3.6.1.4.1.35047.2.12.2.1.3).
+    sangfor_eds_block_pool_usage_rate:
+      name: Block Pool Usage
+      desc: Block storage pool usage converted from the vendor DisplayString ratio 0..1 to a 0-100 percentage (blockStorageCapacityUsageRate, 1.3.6.1.4.1.35047.2.12.2.1.4).
+    sangfor_eds_block_pool_recovery_task_num:
+      name: Block Pool Recovery Tasks
+      desc: Number of data-recovery / rebuild tasks on the block storage pool (blockStorageDataRecoveryTaskNum, 1.3.6.1.4.1.35047.2.12.2.2.1).
+    sangfor_eds_block_pool_sync_task_num:
+      name: Block Pool Sync Tasks
+      desc: Number of syncing / heal tasks on the block storage pool (blockStorageSyncingTaskNum, 1.3.6.1.4.1.35047.2.12.2.2.2).
+    sangfor_eds_block_pool_rebalance_task_num:
+      name: Block Pool Rebalance Tasks
+      desc: Number of rebalance / migrate tasks on the block storage pool (blockStorageDataRebalanceTaskNum, 1.3.6.1.4.1.35047.2.12.2.2.3).
+    sangfor_eds_block_pool_subhealth_task_num:
+      name: Block Pool Sub-health Tasks
+      desc: Number of sub-health recovery tasks on the block storage pool (blockStorageSubHealthRecoveryTaskNum, 1.3.6.1.4.1.35047.2.12.2.2.4).
+    sangfor_eds_block_pool_status:
+      name: Block Pool Status
+      desc: Block storage pool status mapped to 1=normal, 2=abnormal, 3=unknown. Empty or notPresent maps to 1; vendor-literal unknown maps to 3 and does not alert. Alert only on =2.
+    sangfor_eds_capacity_pool_total_bytes:
+      name: Capacity Pool Total Capacity
+      desc: Total capacity of the capacity storage pool in bytes (capacityTotalBytes, 1.3.6.1.4.1.35047.2.12.3.1.1).
+    sangfor_eds_capacity_pool_used_bytes:
+      name: Capacity Pool Used Capacity
+      desc: Used capacity of the capacity storage pool in bytes (usedCapacityBytes, 1.3.6.1.4.1.35047.2.12.3.1.2).
+    sangfor_eds_capacity_pool_available_bytes:
+      name: Capacity Pool Available Capacity
+      desc: Available capacity of the capacity storage pool in bytes (availableCapacityBytes, 1.3.6.1.4.1.35047.2.12.3.1.3).
+    sangfor_eds_capacity_pool_usage_rate:
+      name: Capacity Pool Usage
+      desc: Capacity pool usage converted from the vendor DisplayString ratio 0..1 to a 0-100 percentage (capacityUsageRate, 1.3.6.1.4.1.35047.2.12.3.1.4).
+    sangfor_eds_capacity_pool_recovery_task_num:
+      name: Capacity Pool Recovery Tasks
+      desc: Number of rebuild tasks on the capacity pool (dataRecoveryTaskNum, 1.3.6.1.4.1.35047.2.12.3.2.1).
+    sangfor_eds_capacity_pool_rebalance_task_num:
+      name: Capacity Pool Rebalance Tasks
+      desc: Number of migrate / rebalance tasks on the capacity pool (dataRebalanceTaskNum, 1.3.6.1.4.1.35047.2.12.3.2.2).
+    sangfor_eds_capacity_pool_subhealth_task_num:
+      name: Capacity Pool Sub-health Tasks
+      desc: Number of sub-health recovery tasks on the capacity pool (subHealthRecoveryTaskNum, 1.3.6.1.4.1.35047.2.12.3.2.3).
+    sangfor_eds_capacity_pool_daemon_status:
+      name: Storage Daemon Status
+      desc: OSD / storage daemon status (storageDaemonStatus, 1.3.6.1.4.1.35047.2.12.3.3). Vendor strings normal/error map to 1/2; empty maps to 1; unknown maps to 3. Alert only on =2.
+    sangfor_eds_capacity_pool_pg_status:
+      name: Replicated Group Status
+      desc: Placement-group / replicated-group status (replicatedGroupStatus, 1.3.6.1.4.1.35047.2.12.3.4). Vendor strings normal/error map to 1/2; empty maps to 1; unknown maps to 3. Alert only on =2.
+    sangfor_eds_capacity_pool_status:
+      name: Capacity Pool Status
+      desc: Capacity pool status mapped to 1=normal, 2=abnormal, 3=unknown. Empty or notPresent maps to 1; vendor-literal unknown maps to 3 and does not alert. Alert only on =2.
+    sangfor_eds_fs_nfs_con_num:
+      name: NFS Connections
+      desc: Current NFS connection count (nfsConNum, 1.3.6.1.4.1.35047.2.12.5.1.1).
+    sangfor_eds_fs_cifs_con_num:
+      name: CIFS Connections
+      desc: Current CIFS connection count (cifsConNum, 1.3.6.1.4.1.35047.2.12.5.2.1).
+    sangfor_eds_fs_ftp_con_num:
+      name: FTP Connections
+      desc: Current FTP connection count (ftpConNum, 1.3.6.1.4.1.35047.2.12.5.3.1).
+    sangfor_eds_lun_usage_rate:
+      name: LUN Usage
+      desc: LUN usage converted from the vendor DisplayString ratio 0..1 to a 0-100 percentage (lunUsageRate, 1.3.6.1.4.1.35047.2.12.4.3.1.2). Indexed by lunName.
+    sangfor_eds_disk_status:
+      name: Disk Status
+      desc: Disk status (diskStatus, 1.3.6.1.4.1.35047.2.12.7.1.1.3). Vendor strings online/offline map to 1/2; empty or notPresent maps to 1; unknown maps to 3. Alert only on =2. Indexed by diskName.
+    sangfor_eds_disk_size_bytes:
+      name: Disk Size
+      desc: Disk size in bytes (diskSize, 1.3.6.1.4.1.35047.2.12.7.1.1.6). Indexed by diskName.
+    sangfor_eds_disk_usage_rate:
+      name: Disk Usage
+      desc: Disk usage converted from the vendor DisplayString ratio 0..1 to a 0-100 percentage (diskUsageRate, 1.3.6.1.4.1.35047.2.12.7.1.1.7). Indexed by diskName.
+    sangfor_eds_disk_bad_sector:
+      name: Disk Bad Sector Status
+      desc: HDD bad-sector status (diskBadSector, 1.3.6.1.4.1.35047.2.12.7.1.1.9). Vendor strings normal map to 1; warn/error map to 2; empty maps to 1; unknown maps to 3. Alert only on =2.
+    sangfor_eds_disk_life_percent:
+      name: Disk Remaining Life
+      desc: SSD remaining life percentage (diskLifePre, 1.3.6.1.4.1.35047.2.12.7.1.1.10). Indexed by diskName.
+    sangfor_eds_host_online_status:
+      name: Host Online Status
+      desc: 'Storage host online status (hostOnlineStatus, 1.3.6.1.4.1.35047.2.12.7.3.1.3). Parsed from vendor strings when possible: online/up→1, offline/down→2, empty→1, unknown→3. Alert only on =2. Indexed by hostName.'
+    sangfor_eds_host_cpu_usage:
+      name: Host CPU Usage
+      desc: Storage host CPU usage (cpuUsageRate, 1.3.6.1.4.1.35047.2.12.7.3.1.5). Converted to a 0-100 percentage when the vendor string or number is parseable. Indexed by hostName.
+    sangfor_eds_host_mem_usage:
+      name: Host Memory Usage
+      desc: Storage host memory usage (memUsageRate, 1.3.6.1.4.1.35047.2.12.7.3.1.6). Treated as 0-100 when greater than 1, otherwise converted from a 0..1 ratio. Indexed by hostName.
+monitor_object_metric_group:
+  Storage:
+    Base: Base
+    Cluster: Cluster
+    Network Health: Network Health
+    Capacity: Capacity
+    Block Pool: Block Pool
+    Capacity Pool: Capacity Pool
+    File Protocol: File Protocol
+    LUN: LUN
+    Disk: Disk
+    Host: Host
