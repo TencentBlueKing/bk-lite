@@ -1,0 +1,207 @@
+# IIS performance counters. Web Service, APP_POOL_WAS, W3SVC_W3WP,
+# HTTP Service Request Queues, and Web Service Cache.
+# win_perf_counters MUST run on the IIS Windows host via local telegraf_windows.
+[[inputs.win_perf_counters]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    [[inputs.win_perf_counters.object]]
+        ObjectName = "Web Service"
+        Instances = ["*"]
+        Counters = [
+      "Service Uptime",
+      "Current Connections",
+      "Maximum Connections",
+      "Current Anonymous Users",
+      "Current NonAnonymous Users",
+      "Current CGI Requests",
+      "Current ISAPI Extension Requests",
+      "Connection Attempts/sec",
+      "Bytes Received/sec",
+      "Bytes Sent/sec",
+      "Bytes Total/sec",
+      "Get Requests/sec",
+      "Post Requests/sec",
+      "Put Requests/sec",
+      "Delete Requests/sec",
+      "Head Requests/sec",
+      "Options Requests/sec",
+      "Trace Requests/sec",
+      "Total Method Requests/sec",
+      "Files Received/sec",
+      "Files Sent/sec",
+      "Files/sec",
+      "Anonymous Users/sec",
+      "NonAnonymous Users/sec",
+      "Not Found Errors/sec",
+      "Locked Errors/sec",
+      "CGI Requests/sec",
+      "ISAPI Extension Requests/sec",
+      "Logon Attempts/sec",
+      "Copy Requests/sec",
+      "Lock Requests/sec",
+      "Mkcol Requests/sec",
+      "Move Requests/sec",
+      "Other Request Methods/sec",
+      "Propfind Requests/sec",
+      "Proppatch Requests/sec",
+      "Search Requests/sec",
+      "Unlock Requests/sec",
+      "Total Bytes Received",
+      "Total Bytes Sent",
+      "Total Bytes Transferred",
+      "Total Anonymous Users",
+      "Total NonAnonymous Users",
+      "Total CGI Requests",
+      "Total Files Received",
+      "Total Files Sent",
+      "Total Files Transferred",
+      "Total Get Requests",
+      "Total Head Requests",
+      "Total Post Requests",
+      "Total Put Requests",
+      "Total Delete Requests",
+      "Total Options Requests",
+      "Total Trace Requests",
+      "Total Method Requests",
+      "Total Not Found Errors",
+      "Total Locked Errors",
+      "Total Logon Attempts",
+      "Total ISAPI Extension Requests",
+      "Total Copy Requests",
+      "Total Lock Requests",
+      "Total Mkcol Requests",
+      "Total Move Requests",
+      "Total Other Request Methods",
+      "Total Propfind Requests",
+      "Total Proppatch Requests",
+      "Total Search Requests",
+      "Total Unlock Requests",
+        ]
+        Measurement = "win_iis_web_service"
+        IncludeTotal = true
+        WarnOnMissing = true
+    [[inputs.win_perf_counters.object]]
+        ObjectName = "APP_POOL_WAS"
+        Instances = ["*"]
+        Counters = [
+      "Current Application Pool State",
+      "Current Application Pool Uptime",
+      "Current Worker Processes",
+      "Maximum Worker Processes",
+      "Recent Worker Process Failures",
+      "Time Since Last Worker Process Failure",
+      "Total Application Pool Recycles",
+      "Total Application Pool Uptime",
+      "Total Worker Processes Created",
+      "Total Worker Process Failures",
+      "Total Worker Process Ping Failures",
+      "Total Worker Process Shutdown Failures",
+      "Total Worker Process Startup Failures",
+        ]
+        Measurement = "win_iis_app_pool_was"
+        IncludeTotal = true
+        WarnOnMissing = true
+    [[inputs.win_perf_counters.object]]
+        ObjectName = "W3SVC_W3WP"
+        Instances = ["*"]
+        Counters = [
+      "Active Threads Count",
+      "Maximum Threads Count",
+      "Total HTTP Requests Served",
+      "Active Requests",
+      "Active Flushed Entries",
+      "Current File Cache Memory Usage",
+      "Maximum File Cache Memory Usage",
+      "File Cache Flushes",
+      "File Cache Hits",
+      "File Cache Misses",
+      "Current Files Cached",
+      "Total Files Cached",
+      "Total Flushed Files",
+      "URI Cache Flushes",
+      "URI Cache Hits",
+      "URI Cache Misses",
+      "Current URIs Cached",
+      "Total URIs Cached",
+      "Total Flushed URIs",
+      "Metadata Cache Hits",
+      "Metadata Cache Misses",
+      "Current Metadata Cached",
+      "Metadata Cache Flushes",
+      "Total Metadata Cached",
+      "Total Flushed Metadata",
+      "Output Cache Current Flushed Items",
+      "Output Cache Current Items",
+      "Output Cache Current Memory Usage",
+      "Output Cache Total Hits",
+      "Output Cache Total Misses",
+      "Output Cache Total Flushed Items",
+      "Output Cache Total Flushes",
+      "% 500 HTTP Response Sent",
+      "% 404 HTTP Response Sent",
+      "% 403 HTTP Response Sent",
+      "% 401 HTTP Response Sent",
+      "WebSocket Active Requests",
+        ]
+        Measurement = "win_iis_w3wp"
+        IncludeTotal = true
+        WarnOnMissing = true
+    [[inputs.win_perf_counters.object]]
+        ObjectName = "HTTP Service Request Queues"
+        Instances = ["*"]
+        Counters = [
+      "CurrentQueueSize",
+      "RejectedRequests",
+      "MaxQueueItemAge",
+      "ArrivalRate",
+        ]
+        Measurement = "win_iis_http_queue"
+        IncludeTotal = true
+        WarnOnMissing = true
+    [[inputs.win_perf_counters.object]]
+        ObjectName = "Web Service Cache"
+        Instances = ["*"]
+        Counters = [
+      "Active Flushed Entries",
+      "Current File Cache Memory Usage",
+      "Maximum File Cache Memory Usage",
+      "File Cache Flushes",
+      "File Cache Hits",
+      "File Cache Misses",
+      "Current Files Cached",
+      "Total Files Cached",
+      "Total Flushed Files",
+      "URI Cache Flushes",
+      "Kernel: URI Cache Flushes",
+      "Kernel: Total Flushed URIs",
+      "URI Cache Hits",
+      "Kernel: URI Cache Hits",
+      "URI Cache Misses",
+      "Kernel: URI Cache Misses",
+      "Current URIs Cached",
+      "Kernel: Current URIs Cached",
+      "Total URIs Cached",
+      "Kernel: Total URIs Cached",
+      "Total Flushed URIs",
+      "Metadata Cache Hits",
+      "Metadata Cache Misses",
+      "Current Metadata Cached",
+      "Metadata Cache Flushes",
+      "Total Metadata Cached",
+      "Total Flushed Metadata",
+      "Output Cache Current Flushed Items",
+      "Output Cache Current Items",
+      "Output Cache Current Memory Usage",
+      "Output Cache Total Hits",
+      "Output Cache Total Misses",
+      "Output Cache Total Flushed Items",
+      "Output Cache Total Flushes",
+        ]
+        Measurement = "win_iis_web_service_cache"
+        IncludeTotal = true
+        WarnOnMissing = true
+    [inputs.win_perf_counters.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "host"
+        config_type = "win_perf_counters"

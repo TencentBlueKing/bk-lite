@@ -1,0 +1,17 @@
+# Site HTTP probe. telegraf_windows must be installed on the IIS host.
+[[inputs.http_response]]
+    startup_error_behavior = "retry"
+    urls = ["{{ site_url | default('http://' ~ (host or '127.0.0.1') ~ '/', true) }}"]
+    interval = "{{ interval }}s"
+    method = "GET"
+    follow_redirects = true
+    insecure_skip_verify = {{ insecure_skip_verify | default(false, true) | lower }}
+    {% if response_timeout %}
+    response_timeout = "{{ response_timeout }}s"
+    {% endif %}
+    [inputs.http_response.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "host"
+        config_type = "http_response"
+        endpoint = "site"

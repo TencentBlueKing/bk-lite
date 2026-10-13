@@ -115,6 +115,7 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "server",
     "server_url",
     "scheme",
+    "site_url",
     "script",
     "script_env",
     "script_name",
