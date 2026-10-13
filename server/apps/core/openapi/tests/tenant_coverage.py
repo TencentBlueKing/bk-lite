@@ -215,6 +215,31 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.monitor.tests.test_openapi_gateway::test_api_tenant_cannot_query_other_org_metric_range",
         "apps.monitor.tests.test_openapi_gateway::test_metric_range_rejects_window_over_six_hours",
     ],
+    "monitor/plugins": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_list_plugins_and_form",
+        "apps.monitor.tests.test_openapi_gateway::test_hidden_object_plugins_are_rejected",
+    ],
+    "monitor/plugins/form": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_list_plugins_and_form",
+    ],
+    "monitor/policy-groups": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_list_own_policy_groups",
+        "apps.monitor.tests.test_openapi_gateway::test_policy_groups_forged_team_is_rejected",
+    ],
+    "monitor/integrations": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_save_integration_for_own_node",
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_cannot_save_integration_for_other_org_node",
+    ],
+    "monitor/cluster-collectors": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_create_kubernetes_collector",
+    ],
+    "monitor/cluster-collectors/install-command": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_cannot_generate_other_org_cluster_command",
+        "apps.monitor.tests.test_openapi_gateway::test_cluster_command_rejects_k3s_tolerations",
+    ],
+    "monitor/cluster-collectors/status": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_cannot_read_other_org_cluster_status",
+    ],
     "node/cloud-regions": [
         "apps.node_mgmt.tests.test_openapi_gateway::test_both_tenants_see_the_same_cloud_regions",
         "apps.node_mgmt.tests.test_openapi_gateway::test_cloud_regions_omit_proxy_address",

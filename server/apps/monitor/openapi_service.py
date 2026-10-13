@@ -1,14 +1,32 @@
-"""监控只读目录查询。组织集合只接受网关注入，不读请求里的组织字段。"""
+"""监控 OpenAPI。组织集合只接受网关注入，不读请求里的组织字段。"""
 
 from datetime import timedelta
 
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.utils import timezone
 
+from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.k8s_daemonset_tolerations import TOLERATIONS_UNSET
 from apps.monitor.filters.monitor_policy import exclude_policy_group_rules
-from apps.monitor.models import Metric, MonitorInstance, MonitorObject, MonitorPolicy, PolicyOrganization
+from apps.monitor.models import (
+    Metric,
+    MonitorInstance,
+    MonitorInstanceOrganization,
+    MonitorObject,
+    MonitorPlugin,
+    MonitorPluginUITemplate,
+    MonitorPolicy,
+    PolicyGroup,
+    PolicyGroupDefault,
+    PolicyGroupMembership,
+    PolicyOrganization,
+)
 from apps.monitor.services.authorized_metric_query import AuthorizedMetricQueryError, _build_query
+from apps.monitor.services.k3s_onboarding import K3SOnboardingService
+from apps.monitor.services.manual_collect import ManualCollectService
 from apps.monitor.services.metrics import Metrics, MetricsQueryBudgetExceeded
+from apps.monitor.services.node_mgmt import InstanceConfigService
+from apps.node_mgmt.models import NodeOrganization
 
 METRIC_RANGE_WINDOW = timedelta(hours=6)
 
@@ -256,3 +274,307 @@ def _aware(value):
     if timezone.is_naive(value):
         return timezone.make_aware(value, timezone.utc)
     return value
+
+
+def _rejected(message):
+    return {"result": False, "message": message}
+
+
+def _public_message(exc, fallback):
+    text = str(exc)
+    lowered = text.lower()
+    if "http" in lowered or "token" in lowered or "password" in lowered or "private_key" in lowered or len(text) > 200:
+        return fallback
+    return text or fallback
+
+
+def _run(action, fallback):
+    try:
+        return action()
+    except BaseAppException as exc:
+        return _rejected(_public_message(exc, fallback))
+    except Exception:
+        return _rejected(fallback)
+
+
+def _actor(team, user_info):
+    ids = team_ids(team)
+    if not ids:
+        return None
+    info = user_info or {}
+    return {
+        "username": info.get("user") or "",
+        "domain": info.get("domain") or "domain.com",
+        "current_team": ids[0],
+        "include_children": False,
+        "is_superuser": False,
+        "group_list": ids,
+        "data_team_ids": ids,
+    }
+
+
+def _visible_object(object_id):
+    return MonitorObject.objects.filter(id=object_id, is_visible=True).first()
+
+
+def _owned_instance(instance_id, ids):
+    return (
+        MonitorInstance.objects.filter(
+            id=instance_id,
+            is_deleted=False,
+            monitorinstanceorganization__organization__in=ids,
+        )
+        .distinct()
+        .first()
+    )
+
+
+def list_plugins(*, team, page, page_size, keyword, monitor_object_id):
+    if not team_ids(team):
+        return page_result(MonitorPlugin.objects.none(), page, page_size, _plugin_item)
+    if _visible_object(monitor_object_id) is None:
+        return _rejected("监控对象不存在")
+    queryset = MonitorPlugin.objects.filter(monitor_object__id=monitor_object_id).distinct().order_by("id")
+    if keyword:
+        queryset = queryset.filter(Q(name__icontains=keyword) | Q(display_name__icontains=keyword))
+    return page_result(queryset, page, page_size, _plugin_item)
+
+
+def get_plugin_form(*, team, plugin_id):
+    if not team_ids(team):
+        return _rejected("插件不存在")
+    plugin = MonitorPlugin.objects.filter(id=plugin_id, monitor_object__is_visible=True).distinct().first()
+    if plugin is None:
+        return _rejected("插件不存在")
+    template = MonitorPluginUITemplate.objects.filter(plugin=plugin).order_by("-id").first()
+    form = template.content if template is not None and isinstance(template.content, dict) else {}
+    return {
+        "plugin_id": plugin.id,
+        "name": plugin.name,
+        "display_name": plugin.display_name,
+        "collect_type": plugin.collect_type,
+        "collector": plugin.collector,
+        "form": form,
+    }
+
+
+def list_policy_groups(*, team, page, page_size, keyword, monitor_object_id, plugin_id=None):
+    ids = team_ids(team)
+    if not ids:
+        return page_result(PolicyGroup.objects.none(), page, page_size, lambda row: row)
+    if _visible_object(monitor_object_id) is None:
+        return _rejected("监控对象不存在")
+    queryset = (
+        PolicyGroup.objects.filter(organization__in=ids, monitor_object_id=monitor_object_id)
+        .annotate(member_count=Count("memberships", filter=Q(memberships__state=PolicyGroupMembership.STATE_MEMBER)))
+        .prefetch_related("rules__plugin", "rules__policy")
+        .order_by("id")
+    )
+    if keyword:
+        queryset = queryset.filter(name__icontains=keyword)
+    default_ids = set(
+        PolicyGroupDefault.objects.filter(organization__in=ids, monitor_object_id=monitor_object_id).values_list("policy_group_id", flat=True)
+    )
+
+    def serialize(group):
+        return _policy_group_item(group, default_ids, plugin_id)
+
+    return page_result(queryset, page, page_size, serialize)
+
+
+def create_integration(
+    *,
+    team,
+    user_info,
+    monitor_object_id,
+    monitor_plugin_id,
+    instances,
+    configs=None,
+    policy_group=None,
+    credential=None,
+):
+    actor = _actor(team, user_info)
+    if actor is None or _visible_object(monitor_object_id) is None:
+        return _rejected("监控对象不存在")
+    plugin = MonitorPlugin.objects.filter(id=monitor_plugin_id, monitor_object__id=monitor_object_id).first()
+    if plugin is None:
+        return _rejected("插件不存在")
+    node_ids = []
+    for instance in instances:
+        for node_id in instance.get("node_ids") or []:
+            if node_id not in (None, ""):
+                node_ids.append(str(node_id))
+    if not node_ids:
+        return _rejected("实例缺少节点")
+    owned = set(
+        NodeOrganization.objects.filter(organization__in=actor["data_team_ids"], node_id__in=node_ids).values_list("node_id", flat=True)
+    )
+    if set(node_ids) - owned:
+        return _rejected("节点不存在")
+    choice = policy_group or {"join": False}
+    if choice.get("join"):
+        group = PolicyGroup.objects.filter(
+            id=choice.get("group_id"),
+            organization__in=actor["data_team_ids"],
+            monitor_object_id=monitor_object_id,
+        ).first()
+        if group is None:
+            return _rejected("策略组不存在")
+    payload = {
+        "monitor_object_id": monitor_object_id,
+        "monitor_plugin_id": plugin.id,
+        "collector": plugin.collector,
+        "collect_type": plugin.collect_type,
+        "instances": [{key: value for key, value in instance.items() if key != "group_ids"} for instance in instances],
+        "configs": configs or [],
+        "policy_group": {"join": bool(choice.get("join")), "group_id": choice.get("group_id")},
+    }
+    if credential:
+        payload["credential"] = credential
+
+    def action():
+        instance_ids = InstanceConfigService.create_monitor_instance_by_node_mgmt(payload, actor)
+        return {"instance_ids": instance_ids or []}
+
+    return _run(action, "监控接入失败")
+
+
+def create_cluster_collector(*, team, user_info, collector_type, monitor_object_id, name, instance_id, interval=None):
+    actor = _actor(team, user_info)
+    if actor is None:
+        return _rejected("监控对象不存在")
+    organizations = actor["data_team_ids"]
+
+    def action():
+        data = {
+            "monitor_object_id": monitor_object_id,
+            "name": name,
+            "organizations": organizations,
+        }
+        if interval is not None:
+            data["interval"] = interval
+        if collector_type == "k3s":
+            data["instance_id"] = instance_id
+            return K3SOnboardingService.create_instance(**data, actor_context=actor)
+        data["id"] = instance_id
+        return ManualCollectService.create_manual_collect_instance(data, actor_context=actor)
+
+    return _run(action, "集群采集实例创建失败")
+
+
+def cluster_install_command(
+    *,
+    team,
+    collector_type,
+    instance_id,
+    cloud_region_id,
+    image_registry_prefix=None,
+    tolerations=None,
+):
+    ids = team_ids(team)
+    instance = _cluster_instance(instance_id, ids)
+    if instance is None:
+        return _rejected("采集实例不存在")
+    if collector_type == "k3s":
+
+        def k3s_action():
+            commands = K3SOnboardingService.generate_install_commands(instance_id=instance.id, cloud_region_id=cloud_region_id)
+            return {
+                "install_command": commands.get("install_command", ""),
+                "uninstall_command": commands.get("uninstall_command", ""),
+            }
+
+        return _run(k3s_action, "安装命令生成失败")
+
+    def kubernetes_action():
+        toleration_value = tolerations if tolerations is not None else TOLERATIONS_UNSET
+        if tolerations is not None:
+            ManualCollectService.persist_k8s_daemonset_tolerations(instance.id, tolerations)
+        command = ManualCollectService.generate_install_command(
+            instance.id,
+            cloud_region_id,
+            image_registry_prefix,
+            toleration_value,
+        )
+        return {"install_command": command}
+
+    return _run(kubernetes_action, "安装命令生成失败")
+
+
+def cluster_status(*, team, collector_type, instance_id, monitor_object_id=None):
+    ids = team_ids(team)
+    if not ids:
+        return _rejected("采集实例不存在")
+    if collector_type == "k3s":
+
+        def k3s_action():
+            instance = K3SOnboardingService._get_cluster_instance(instance_id)
+            if not MonitorInstanceOrganization.objects.filter(monitor_instance=instance, organization__in=ids).exists():
+                return _rejected("采集实例不存在")
+            result = K3SOnboardingService.verify_reporting(instance_id)
+            signals = {
+                name: {"status": item.get("status")}
+                for name, item in (result.get("signals") or {}).items()
+                if isinstance(item, dict)
+            }
+            return {"status": result.get("status"), "signals": signals}
+
+        return _run(k3s_action, "采集状态查询失败")
+
+    instance = _cluster_instance(instance_id, ids)
+    if instance is None or instance.monitor_object_id != monitor_object_id:
+        return _rejected("采集实例不存在")
+
+    def kubernetes_action():
+        reported = ManualCollectService.check_collect_status(monitor_object_id, instance.id)
+        return {"status": "success" if reported else "pending"}
+
+    return _run(kubernetes_action, "采集状态查询失败")
+
+
+def _cluster_instance(instance_id, ids):
+    direct = _owned_instance(instance_id, ids)
+    if direct is not None:
+        return direct
+    stored = _owned_instance(str((str(instance_id),)), ids)
+    return stored
+
+
+def _plugin_item(plugin):
+    return {
+        "id": plugin.id,
+        "name": plugin.name,
+        "display_name": plugin.display_name,
+        "collect_type": plugin.collect_type,
+        "collector": plugin.collector,
+        "description": plugin.description or "",
+    }
+
+
+def _policy_group_item(group, default_ids, plugin_id):
+    rules = []
+    applicable = 0
+    for rule in group.rules.all():
+        matches = plugin_id is None or rule.plugin_id == plugin_id
+        if plugin_id is not None and matches:
+            applicable += 1
+        item = {
+            "id": rule.id,
+            "name": rule.name,
+            "plugin_id": rule.plugin_id,
+            "plugin_name": rule.plugin.name if rule.plugin_id else "",
+            "threshold": rule.policy.threshold if rule.policy_id else None,
+        }
+        if plugin_id is not None:
+            item["applies_to_plugin"] = matches
+        rules.append(item)
+    payload = {
+        "id": group.id,
+        "name": group.name,
+        "is_default": group.id in default_ids,
+        "member_count": group.member_count,
+        "rules": rules,
+    }
+    if plugin_id is not None:
+        payload["has_applicable_rule"] = applicable > 0
+    return payload
