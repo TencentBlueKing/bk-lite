@@ -97,7 +97,7 @@ export default function StatusCountRow({
   return (
     <section className={`${classic.panel} ${styles.statusPanel}`}>
       <div className={styles.sectionHead}>
-        <div className={classic.sectionLabel}>进程状态</div>
+        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>进程状态</div>
       </div>
       <div className={styles.statusCards}>
         {items.map((item) => (

@@ -57,7 +57,7 @@ export default function NetworkPane({
     <>
       {errorText ? <div className={styles.note}>{errorText}</div> : null}
       <div className={styles.sectionHead}>
-        <div className={classic.sectionLabel}>趋势</div>
+        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>趋势</div>
         <div className={styles.hint}>点击下表行切换</div>
       </div>
       <div className={showErrors ? styles.chartGrid3 : styles.chartGrid2}>
@@ -93,7 +93,7 @@ export default function NetworkPane({
       </div>
 
       <div className={styles.sectionHead}>
-        <div className={classic.sectionLabel}>网卡</div>
+        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>网卡</div>
       </div>
       <LayeredEntityTable
         rows={viewRows}

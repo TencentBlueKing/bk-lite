@@ -149,7 +149,7 @@ export default function SystemPane({
   return (
     <>
       <div className={styles.sectionHead}>
-        <div className={classic.sectionLabel}>性能</div>
+        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>性能</div>
       </div>
       <div className={styles.instantKpiRow}>
         {instantCards.map((card) => (

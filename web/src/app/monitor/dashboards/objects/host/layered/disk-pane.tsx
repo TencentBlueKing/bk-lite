@@ -42,7 +42,7 @@ export default function DiskPane({
     <>
       {errorText ? <div className={styles.note}>{errorText}</div> : null}
       <div className={styles.sectionHead}>
-        <div className={classic.sectionLabel}>趋势</div>
+        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>趋势</div>
         <div className={styles.hint}>
           {ioDevice || !selected ? '点击下表行切换' : '该挂载无关联磁盘设备'}
         </div>
@@ -81,7 +81,7 @@ export default function DiskPane({
       </div>
 
       <div className={styles.sectionHead}>
-        <div className={classic.sectionLabel}>挂载点</div>
+        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>挂载点</div>
         <div className={styles.hint}>按使用率排序；选中后上方显示对应趋势</div>
       </div>
       <LayeredEntityTable

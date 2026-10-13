@@ -97,7 +97,7 @@ export default function FlatProcessSplit({
     <>
       <StatusCountRow items={statusItems} />
       <div className={styles.sectionHead}>
-        <div className={classic.sectionLabel}>趋势</div>
+        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>趋势</div>
         <div className={styles.hint}>点击下表行切换</div>
       </div>
       <div className={styles.processTop}>
@@ -137,7 +137,7 @@ export default function FlatProcessSplit({
       </div>
 
       <div className={styles.sectionHead}>
-        <div className={classic.sectionLabel}>进程列表</div>
+        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>进程列表</div>
       </div>
       <LayeredEntityTable
         rows={sorted}

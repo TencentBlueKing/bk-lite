@@ -159,12 +159,12 @@ export default function OverviewPane({
   return (
     <>
       <div className={styles.sectionHead}>
-        <div className={classic.sectionLabel}>健康概览</div>
+        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>健康概览</div>
       </div>
       <KpiStrip items={cards} />
 
       <div className={styles.sectionHead}>
-        <div className={classic.sectionLabel}>重点关注</div>
+        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>重点关注</div>
       </div>
       <div className={styles.shortcutGrid}>
         {worst ? (
@@ -224,7 +224,7 @@ export default function OverviewPane({
       </div>
 
       <div className={styles.sectionHead}>
-        <div className={classic.sectionLabel}>本机趋势</div>
+        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>本机趋势</div>
       </div>
       <div className={styles.chartGrid4}>
         <ThinTimeSeries
