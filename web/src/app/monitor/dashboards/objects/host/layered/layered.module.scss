@@ -6,7 +6,7 @@
 }
 
 .tabBand {
-  padding: 0 8px;
+  padding: 6px 8px 2px;
   // 与下方内容同属白壳，不再铺断开的灰轨或底边。
   background: transparent;
 }
@@ -39,21 +39,24 @@
     color: var(--color-text-1);
   }
 
-  :global(.ant-tabs-tab-active) {
-    position: relative;
-    z-index: 1;
-    margin-bottom: -1px !important;
-    background: var(--color-bg);
+  // 白壳上 --color-bg 与底同色，圆角块等于没有。选中用浅底 token，
+  // 再用主色内边勾出底沿；不要整行灰轨或深灰分割线把页签和内容切开。
+  :global(.ant-tabs-tab-active),
+  :global(.ant-tabs-tab-active:hover) {
+    background: var(--color-primary-bg-active);
     border-radius: 8px;
+    box-shadow: inset 0 -2px 0 var(--color-primary);
   }
 
-  :global(.ant-tabs-tab-active .ant-tabs-tab-btn) {
+  :global(.ant-tabs-tab-active .ant-tabs-tab-btn),
+  :global(.ant-tabs-tab-active:hover .ant-tabs-tab-btn) {
     color: var(--color-primary);
     font-weight: 600;
   }
 
+  // 默认墨条是直角，会压住 8px 圆角。底边改由选中块自己承担。
   :global(.ant-tabs-ink-bar) {
-    background: var(--color-primary);
+    display: none;
   }
 }
 
