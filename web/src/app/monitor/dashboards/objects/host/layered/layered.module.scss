@@ -41,6 +41,7 @@
 
   :global(.ant-tabs-tab-active) {
     background: var(--color-bg);
+    border-radius: 8px;
   }
 
   :global(.ant-tabs-tab-active .ant-tabs-tab-btn) {
@@ -218,6 +219,23 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+.tabLevelDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* 页签达档点。提醒 / 警告用约定色，不跟主题主色走，也不改 Tab 文字色。 */
+.tabLevelWarn {
+  background: #ff7d00;
+}
+
+.tabLevelCritical {
+  background: #f53f3f;
+  box-shadow: 0 0 0 2px rgba(245, 63, 63, 0.18);
 }
 
 .tabBadge {

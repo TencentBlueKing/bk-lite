@@ -7,12 +7,31 @@ import { buildLabelRows, buildMountDiskRows } from './entity-series';
 import type { EntityTableRow } from './entity-series';
 import type { HostDetailLayoutProps } from './detail-layout';
 import type { EntityLoadState } from './use-entity-metrics';
-import DiskPane, { countHotMounts } from './layered/disk-pane';
+import DiskPane from './layered/disk-pane';
 import FlatProcessSplit from './layered/flat-process-split';
 import NetworkPane from './layered/network-pane';
 import OverviewPane from './layered/overview-pane';
 import SystemPane from './layered/system-pane';
+import { latestNumber, latestPreferCount } from './layered/readings';
+import {
+  loadPerCore,
+  resolveHostTabLevel,
+  swapUsedPercent,
+  type HostCategoryTab,
+  type TabAlertLevel
+} from './layered/tab-level';
 import styles from './layered/layered.module.scss';
+
+const TabLevelMark = ({ level }: { level: TabAlertLevel }) => {
+  if (level === 'none') return null;
+  return (
+    <span
+      className={`${styles.tabLevelDot} ${level === 'critical' ? styles.tabLevelCritical : styles.tabLevelWarn}`}
+      role="img"
+      aria-label={level === 'critical' ? '警告' : '提醒'}
+    />
+  );
+};
 
 const EMPTY_ENTITY: EntityLoadState = { status: 'idle', byMetric: {} };
 
@@ -73,7 +92,23 @@ export default function HostCategoryLayout({
   const diskLoading = diskState.status === 'idle' || diskState.status === 'loading';
   const netLoading = netState.status === 'idle' || netState.status === 'loading';
   const processLoading = processState.status === 'idle' || processState.status === 'loading';
-  const hotMounts = diskRows.length ? countHotMounts(diskRows) : 0;
+  const tabReadings = useMemo(() => ({
+    cpu_usage_total: latestNumber(metrics.cpu_usage_total),
+    mem_used_percent: latestNumber(metrics.mem_used_percent),
+    disk_used_percent: latestNumber(metrics.disk_used_percent),
+    system_load1_per_core: loadPerCore(
+      latestNumber(metrics.system_load1),
+      latestNumber(metrics.cpu_n)
+    ),
+    system_uptime: latestNumber(metrics.system_uptime),
+    mem_swap_used_percent: swapUsedPercent(
+      latestNumber(metrics.host_mem_swap_used_bytes),
+      latestNumber(metrics.host_mem_swap_total_bytes),
+      latestNumber(metrics.mem_swap_free)
+    ),
+    processes_blocked: latestPreferCount(metrics.processes_blocked),
+    processes_zombies: latestPreferCount(metrics.processes_zombies)
+  }), [metrics]);
 
   useEffect(() => {
     if (activeTab === 'process' && !processReady) setActiveTab('overview');
@@ -111,20 +146,12 @@ export default function HostCategoryLayout({
     setActiveTab(tab);
   };
 
-  const tabItems = [
+  const tabItems: Array<{ key: HostCategoryTab; label: string }> = [
     { key: 'overview', label: '概览' },
     { key: 'system', label: '性能' },
-    {
-      key: 'disk',
-      label: (
-        <span className={styles.tabLabel}>
-          磁盘
-          {hotMounts > 0 ? <span className={styles.tabBadge}>{hotMounts}</span> : null}
-        </span>
-      )
-    },
+    { key: 'disk', label: '磁盘' },
     { key: 'net', label: '网络' },
-    ...(processReady ? [{ key: 'process', label: '进程' }] : [])
+    ...(processReady ? [{ key: 'process' as const, label: '进程' }] : [])
   ];
 
   const renderPane = () => {
@@ -193,7 +220,15 @@ export default function HostCategoryLayout({
           className={styles.partitionTabs}
           activeKey={activeTab}
           onChange={setActiveTab}
-          items={tabItems.map((item) => ({ key: item.key, label: item.label }))}
+          items={tabItems.map((item) => ({
+            key: item.key,
+            label: (
+              <span className={styles.tabLabel}>
+                {item.label}
+                <TabLevelMark level={resolveHostTabLevel(item.key, tabReadings)} />
+              </span>
+            )
+          }))}
         />
       </div>
       <div className={styles.main}>{renderPane()}</div>
