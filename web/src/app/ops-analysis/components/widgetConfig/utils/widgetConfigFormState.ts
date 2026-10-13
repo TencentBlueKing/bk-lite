@@ -12,10 +12,7 @@ import type {
 } from '@/app/ops-analysis/types/sceneWidget';
 import { isSceneWidgetType } from '@/app/ops-analysis/types/sceneWidgetCapability';
 import { resolveApplication3DWallConfig } from '@/app/ops-analysis/utils/application3DWallConfig';
-import {
-  hydrateRoom3DConfig,
-  readPersistedServerRoomId,
-} from '@/app/ops-analysis/utils/room3DConfig';
+import { hydrateRoom3DConfig } from '@/app/ops-analysis/utils/room3DConfig';
 import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
 import { canEnableCompare } from '@/app/ops-analysis/utils/compareQuery';
 import {
@@ -116,7 +113,6 @@ export const buildDataFetchSignature = (
         linkTrafficDisplays: config.networkStatusTopology.linkTrafficDisplays,
       }
       : undefined,
-    room3D: config.room3D?.serverRoomId || undefined,
   });
 };
 
@@ -284,10 +280,7 @@ export function buildOpenedWidgetFormValues(
     sceneWidgetType: valueConfig?.sceneWidgetType,
     networkStatusTopology: valueConfig?.networkStatusTopology,
     relatedTopology: valueConfig?.relatedTopology,
-    room3D: hydrateRoom3DConfig({
-      ...valueConfig?.room3D,
-      serverRoomId: readPersistedServerRoomId(valueConfig),
-    }),
+    room3D: hydrateRoom3DConfig(valueConfig?.room3D),
     application3DWall: resolveApplication3DWallConfig(valueConfig?.application3DWall),
     chartThemeMode: options.showChartThemeMode
       ? valueConfig?.chartThemeMode || 'default'

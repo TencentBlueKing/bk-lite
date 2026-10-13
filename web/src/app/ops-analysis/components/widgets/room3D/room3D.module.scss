@@ -130,7 +130,7 @@
   pointer-events: none;
 }
 
-.room3DImmersive .topBar,
+.room3DImmersive .topBarActions,
 .room3DImmersive .noticePanel,
 .room3DImmersive .legend {
   opacity: 0;
@@ -140,9 +140,9 @@
     transform 140ms ease;
 }
 
-.room3DImmersive:hover .topBar,
-.room3DImmersive:focus-within .topBar,
-.room3DImmersive.room3DChromeVisible .topBar,
+.room3DImmersive:hover .topBarActions,
+.room3DImmersive:focus-within .topBarActions,
+.room3DImmersive.room3DChromeVisible .topBarActions,
 .room3DImmersive:hover .noticePanel,
 .room3DImmersive:focus-within .noticePanel,
 .room3DImmersive.room3DChromeVisible .noticePanel,
@@ -153,9 +153,13 @@
   transform: translateY(0);
 }
 
+.topBarActions {
+  margin-left: auto;
+  pointer-events: none;
+}
+
 .topBar :global(.ant-btn) {
   pointer-events: auto;
-  margin-left: auto;
   width: calc(28px * var(--room3d-readable-scale));
   min-width: calc(28px * var(--room3d-readable-scale));
   height: calc(28px * var(--room3d-readable-scale));

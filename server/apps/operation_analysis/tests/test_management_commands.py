@@ -252,12 +252,21 @@ def test_init_source_api_data_creates_tags_and_sources(settings):
     assert DataSourceTag.objects.exists()
     assert DataSourceAPIModel.objects.exists()
     assert all(source.groups == [] for source in DataSourceAPIModel.objects.filter(is_build_in=True))
+    room_list = DataSourceAPIModel.objects.get(build_in_key="CMDB 机房列表::cmdb/get_room_list")
+    assert room_list.name == "CMDB 机房列表（选项）"
+    assert room_list.rest_api == "cmdb/get_room_list"
+    assert room_list.is_active is True
+    assert room_list.is_build_in is True
+    assert room_list.chart_type == []
+    assert {field["key"] for field in room_list.field_schema} == {"inst_uuid", "inst_name"}
+    assert not DataSourceAPIModel.objects.filter(rest_api="cmdb/get_room3d_layout", is_build_in=True, is_active=True).exists()
 
 
 _RETIRE_SUMMARY_TEMPLATE = "[SourceApiInit] 已下架内置场景数据源 %s 个"
 _RETIRE_ITEM_TEMPLATE = "[SourceApiInit] 下架内置数据源：%s"
+_RESTORE_ROOM_LIST_TEMPLATE = "[SourceApiInit] 恢复内置数据源：%s"
 _RETIRED_LAYOUT_KEY = "CMDB 3D机房布局::cmdb/get_room3d_layout"
-_RETIRED_ROOMS_KEY = "CMDB 机房列表::cmdb/get_room_list"
+_ROOM_LIST_KEY = "CMDB 机房列表::cmdb/get_room_list"
 _CUSTOM_DATASOURCE_SENTINEL = "custom-room3d-ds-sentinel"
 
 
@@ -284,10 +293,19 @@ def test_init_source_api_data_retires_room3d_builtin_datasources(settings, caplo
         rest_api="cmdb/get_room_list",
         chart_type=[],
         is_build_in=True,
-        is_active=True,
-        build_in_key=_RETIRED_ROOMS_KEY,
+        is_active=False,
+        build_in_key=_ROOM_LIST_KEY,
         created_by="system",
         updated_by="system",
+    )
+    custom_rooms = DataSourceAPIModel.objects.create(
+        name=f"我的机房列表-{_CUSTOM_DATASOURCE_SENTINEL}",
+        rest_api="cmdb/get_room_list",
+        chart_type=["table"],
+        is_build_in=False,
+        is_active=True,
+        created_by="alice",
+        updated_by="alice",
     )
     custom = DataSourceAPIModel.objects.create(
         name=f"我的机房布局-{_CUSTOM_DATASOURCE_SENTINEL}",
@@ -305,37 +323,50 @@ def test_init_source_api_data_retires_room3d_builtin_datasources(settings, caplo
     leftover_layout.refresh_from_db()
     leftover_rooms.refresh_from_db()
     custom.refresh_from_db()
+    custom_rooms.refresh_from_db()
     assert leftover_layout.chart_type == []
     assert leftover_layout.is_active is False
-    assert leftover_rooms.is_active is False
+    assert leftover_rooms.is_active is True
+    assert leftover_rooms.build_in_key == _ROOM_LIST_KEY
     assert custom.chart_type == ["room3D"]
     assert custom.is_active is True
     assert custom.name == f"我的机房布局-{_CUSTOM_DATASOURCE_SENTINEL}"
+    assert custom_rooms.is_active is True
+    assert custom_rooms.is_build_in is False
+    assert custom_rooms.chart_type == ["table"]
+    assert custom_rooms.name == f"我的机房列表-{_CUSTOM_DATASOURCE_SENTINEL}"
     assert not DataSourceAPIModel.objects.filter(name="CMDB 3D机房布局", chart_type=["room3D"]).exists()
 
     summary_records = _retire_log_records(caplog, _RETIRE_SUMMARY_TEMPLATE)
     assert len(summary_records) == 1
     summary = summary_records[0]
     assert summary.levelno == logging.INFO
-    assert summary.args == (2,)
-    assert summary.getMessage() == "[SourceApiInit] 已下架内置场景数据源 2 个"
+    assert summary.args == (1,)
+    assert summary.getMessage() == "[SourceApiInit] 已下架内置场景数据源 1 个"
     formatted_summary = logging.Formatter().format(summary)
-    assert "[SourceApiInit] 已下架内置场景数据源 2 个" in formatted_summary
+    assert "[SourceApiInit] 已下架内置场景数据源 1 个" in formatted_summary
     assert _CUSTOM_DATASOURCE_SENTINEL not in summary.getMessage()
     assert _CUSTOM_DATASOURCE_SENTINEL not in formatted_summary
     assert _CUSTOM_DATASOURCE_SENTINEL not in str(summary.args)
 
     item_records = _retire_log_records(caplog, _RETIRE_ITEM_TEMPLATE)
-    assert len(item_records) == 2
+    assert len(item_records) == 1
     assert {record.levelno for record in item_records} == {logging.DEBUG}
-    assert {record.args for record in item_records} == {
-        (_RETIRED_LAYOUT_KEY,),
-        (_RETIRED_ROOMS_KEY,),
-    }
+    assert {record.args for record in item_records} == {(_RETIRED_LAYOUT_KEY,)}
     assert {record.getMessage() for record in item_records} == {
         f"[SourceApiInit] 下架内置数据源：{_RETIRED_LAYOUT_KEY}",
-        f"[SourceApiInit] 下架内置数据源：{_RETIRED_ROOMS_KEY}",
     }
+    restore_records = _retire_log_records(caplog, _RESTORE_ROOM_LIST_TEMPLATE)
+    assert len(restore_records) == 1
+    restore = restore_records[0]
+    assert restore.levelno == logging.DEBUG
+    assert restore.args == (_ROOM_LIST_KEY,)
+    assert restore.getMessage() == f"[SourceApiInit] 恢复内置数据源：{_ROOM_LIST_KEY}"
+    formatted_restore = logging.Formatter().format(restore)
+    assert restore.getMessage() in formatted_restore
+    assert _CUSTOM_DATASOURCE_SENTINEL not in restore.getMessage()
+    assert _CUSTOM_DATASOURCE_SENTINEL not in formatted_restore
+    assert _CUSTOM_DATASOURCE_SENTINEL not in str(restore.args)
     for record in item_records:
         formatted = logging.Formatter().format(record)
         assert record.getMessage() in formatted
@@ -349,11 +380,15 @@ def test_init_source_api_data_retires_room3d_builtin_datasources(settings, caplo
     leftover_layout.refresh_from_db()
     leftover_rooms.refresh_from_db()
     custom.refresh_from_db()
+    custom_rooms.refresh_from_db()
     assert leftover_layout.is_active is False
-    assert leftover_rooms.is_active is False
+    assert leftover_rooms.is_active is True
     assert custom.is_active is True
+    assert custom_rooms.is_active is True
+    assert custom_rooms.is_build_in is False
     assert not _retire_log_records(caplog, _RETIRE_SUMMARY_TEMPLATE)
     assert not _retire_log_records(caplog, _RETIRE_ITEM_TEMPLATE)
+    assert not _retire_log_records(caplog, _RESTORE_ROOM_LIST_TEMPLATE)
 
 
 @pytest.mark.django_db

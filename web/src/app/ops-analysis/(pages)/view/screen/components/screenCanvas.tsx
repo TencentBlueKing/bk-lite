@@ -546,8 +546,12 @@ const ScreenCanvasNode = React.memo(function ScreenCanvasNode({
       editable={editable}
       selected={editable && selected}
       scale={scale}
-      minWidth={isWidget ? 160 : 24}
-      minHeight={isWidget ? 110 : 16}
+      minWidth={
+        isScreenWidgetItem(item) ? (item.chartType === 'single' ? 72 : 160) : 24
+      }
+      minHeight={
+        isScreenWidgetItem(item) ? (item.chartType === 'single' ? 40 : 110) : 16
+      }
       onSelectItem={onSelectItem}
       onMoveItem={onMoveItem}
       onResizeItem={onResizeItem}

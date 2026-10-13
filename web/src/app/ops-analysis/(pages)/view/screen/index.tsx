@@ -97,6 +97,7 @@ import {
 } from "./utils/screenItems";
 import { copyScreenChromeItem } from "./utils/copyScreenItem";
 import { copyScreenWidget } from "@/app/ops-analysis/utils/widgetCopy";
+import { relabelBuiltinRoom3DFilter } from "@/app/ops-analysis/utils/room3DScreenFilter";
 import {
   closeScreenFieldEdit,
   commitScreenEdit,
@@ -407,7 +408,10 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   const applyScreenDraftPayload = useCallback(
     (payload: CanvasDraftPayload) => {
       restoreDraftRefreshInterval(payload, setSavedRefreshInterval);
-      const normalized = normalizeScreenViewSets(payload.view_sets);
+      const normalized = relabelBuiltinRoom3DFilter(
+        normalizeScreenViewSets(payload.view_sets),
+        t("dashboard.room3DFilterName"),
+      );
       const loadedDefinitions = normalized.filters ?? [];
       historyCommitRef.current({
         viewSets: { ...normalized, filters: loadedDefinitions },
@@ -422,7 +426,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       setRefreshCause("manual");
       void syncScreenCanvasResources(normalized);
     },
-    [queryState, setSavedRefreshInterval, shareOrganizationSeed, syncScreenCanvasResources],
+    [queryState, setSavedRefreshInterval, shareOrganizationSeed, syncScreenCanvasResources, t],
   );
   const screenDraft = useCanvasDraft({
     resourceType: "screen",
@@ -473,7 +477,10 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         const data = await getScreenDetail(screenId);
         if (cancelled) return;
 
-        const normalized = normalizeScreenViewSets(data?.view_sets);
+        const normalized = relabelBuiltinRoom3DFilter(
+          normalizeScreenViewSets(data?.view_sets),
+          t("dashboard.room3DFilterName"),
+        );
         await syncScreenCanvasResources(normalized);
         if (cancelled) return;
 
@@ -521,6 +528,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   }, [
     getScreenDetail,
     queryState.resetQueryState,
+    t,
     selectedScreen?.data_id,
     shareOrganizationSeed,
     syncScreenCanvasResources,
@@ -561,16 +569,21 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   ]);
 
   const projectDocument = useCallback((viewSets: ScreenViewSets): ScreenEditDocument => {
-    const filters = buildFiltersFromScreenItems({
-      viewSets,
-      previousDefinitions: filtersRef.current,
-      dataSources,
-    });
+    const filters = relabelBuiltinRoom3DFilter(
+      {
+        filters: buildFiltersFromScreenItems({
+          viewSets,
+          previousDefinitions: filtersRef.current,
+          dataSources,
+        }),
+      },
+      t("dashboard.room3DFilterName"),
+    ).filters ?? [];
     return {
       filters,
       viewSets: syncScreenFilterBindings(viewSets, filters, dataSources),
     };
-  }, [dataSources]);
+  }, [dataSources, t]);
 
   const rememberSession = useCallback((next: ScreenEditSession) => {
     sessionRef.current = next;

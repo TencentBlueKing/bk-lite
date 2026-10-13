@@ -6,8 +6,6 @@
 
 import re
 
-from apps.cmdb.constants.constants import INSTANCE_ASSOCIATION
-from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.services.instance_identity import optional_inst_uuid
 from apps.core.logger import cmdb_logger as logger
@@ -144,6 +142,19 @@ def free_u_stats(u_count: int, ranges: list) -> tuple:
     return free_u, max_free_u
 
 
+def rack_u_occupancy(u_count, devices) -> tuple[int, int, int]:
+    """已占用、空闲、最大连续空闲。未分配 U 位的设备不计入，重叠只算一次。"""
+    total = _safe_int(u_count) or 0
+    ranges = []
+    for device in devices or []:
+        start = _safe_int(device.get("rack_u_start"))
+        size = _safe_int(device.get("u_size"))
+        if start and size:
+            ranges.append((start, start + size - 1))
+    free_u, max_free_u = free_u_stats(total, ranges)
+    return total - free_u, free_u, max_free_u
+
+
 def _safe_int(value):
     if value in (None, ""):
         return None
@@ -210,12 +221,9 @@ def _rack_device_relations(rack_ids: list[int]) -> tuple[dict[int, list[int]], d
     if not rack_uuids:
         return relation_map, {}
 
-    query_data = [
-        {"field": "src_inst_uuid", "type": "str[]", "value": rack_uuids},
-        {"field": "src_model_id", "type": "str=", "value": "rack"},
-    ]
-    with GraphClient() as ag:
-        edges = ag.query_edge(INSTANCE_ASSOCIATION, query_data)
+    from apps.cmdb.services.instance_scope import query_outgoing_edges
+
+    edges = query_outgoing_edges(rack_uuids, "rack")
 
     device_uuids = sorted({edge.get("dst_inst_uuid") for edge in edges or [] if edge.get("dst_inst_uuid")})
     device_instances = InstanceManage.query_entity_by_uuids(device_uuids) if device_uuids else []
@@ -311,50 +319,41 @@ def get_rack_layout(rack_id, permission_map=None, user=None) -> dict:
 
 
 def get_room_layout(server_room_id, permission_map=None, user=None) -> dict:
-    assocs = InstanceManage.instance_association_instance_list("server_room", int(server_room_id))
-    rack_ids = [item["_id"] for a in assocs if a["src_model_id"] == "server_room" and a["dst_model_id"] == "rack" for item in a["inst_list"]]
+    """机柜平面图。设备和权限过滤走批量范围解析，不再按机柜逐个查关联。"""
+    from apps.cmdb.services.instance_scope import resolve_room_rack_devices
+
+    room = InstanceManage.query_entity_by_id(int(server_room_id)) or {}
+    room_uuid = optional_inst_uuid(room.get("inst_uuid"))
+    if not room_uuid:
+        return build_room_layout([])
+    scope = resolve_room_rack_devices(room_uuid, permission_map=permission_map, user=user)
     racks = []
-    if rack_ids:
-        inst_map = InstanceManage._query_instance_map_by_ids({int(i) for i in rack_ids})
-        for rid in rack_ids:
-            r = inst_map.get(int(rid))
-            if not r:
-                continue
-            if permission_map and not InstanceManage._has_topology_view_permission(r, permission_map, user=user):
-                continue
-            if not r.get("inst_uuid"):
-                continue
-            u_count = _safe_int(r.get("u_count")) or 0
-            ranges = []
-            for d in _rack_device_instances(rid, permission_map, user):
-                us = _safe_int(d.get("rack_u_start"))
-                sz = _safe_int(d.get("u_size"))
-                if us and sz:
-                    ranges.append((us, us + sz - 1))
-            free_u, max_free_u = free_u_stats(u_count, ranges)
-            # 已占用 = 总U - 空闲U（去重计数）：忽略未分配设备、重叠不重复计、永不超 100%，
-            # 与机柜抽屉概览口径一致
-            used_u = u_count - free_u
-            row_col = parse_rack_location(r.get("location"))
-            row, col = row_col if row_col else (None, None)
-            racks.append(
-                {
-                    "inst_uuid": r.get("inst_uuid"),
-                    "inst_name": r.get("inst_name"),
-                    "model_id": r.get("model_id") or "rack",
-                    "row": row,
-                    "col": col,
-                    "location": r.get("location"),
-                    "u_count": u_count,
-                    "datacenter_type": _scalar(r.get("datacenter_type")),
-                    "datacenter_state": _scalar(r.get("datacenter_state")),
-                    "used_u": used_u,
-                    "free_u": free_u,
-                    "max_free_u": max_free_u,
-                    "organization": r.get("organization") or [],
-                    "_creator": r.get("_creator"),
-                }
-            )
+    for rack in scope.racks:
+        if not rack.get("inst_uuid"):
+            continue
+        devices = scope.devices_by_rack_uuid.get(rack["inst_uuid"], [])
+        u_count = _safe_int(rack.get("u_count")) or 0
+        used_u, free_u, max_free_u = rack_u_occupancy(u_count, devices)
+        row_col = parse_rack_location(rack.get("location"))
+        row, col = row_col if row_col else (None, None)
+        racks.append(
+            {
+                "inst_uuid": rack.get("inst_uuid"),
+                "inst_name": rack.get("inst_name"),
+                "model_id": rack.get("model_id") or "rack",
+                "row": row,
+                "col": col,
+                "location": rack.get("location"),
+                "u_count": u_count,
+                "datacenter_type": _scalar(rack.get("datacenter_type")),
+                "datacenter_state": _scalar(rack.get("datacenter_state")),
+                "used_u": used_u,
+                "free_u": free_u,
+                "max_free_u": max_free_u,
+                "organization": rack.get("organization") or [],
+                "_creator": rack.get("_creator"),
+            }
+        )
     return build_room_layout(racks)
 
 

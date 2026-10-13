@@ -186,6 +186,29 @@ describe('resolveRoom3DSelection', () => {
     });
   });
 
+  it('keeps an applied room unavailable when it is not in the visible list', () => {
+    expect(
+      resolveRoom3DSelection({
+        rooms,
+        savedRoomId: ROOM_A,
+        runtimeRoomId: ROOM_C,
+      }),
+    ).toEqual({
+      status: 'unavailable',
+      rooms,
+    });
+    expect(
+      resolveRoom3DSelection({
+        rooms,
+        savedRoomId: '',
+        runtimeRoomId: 'not-a-room',
+      }),
+    ).toEqual({
+      status: 'unavailable',
+      rooms,
+    });
+  });
+
   it('returns empty when the actor cannot see any room', () => {
     expect(resolveRoom3DSelection({ rooms: [], savedRoomId: ROOM_A })).toEqual({
       status: 'empty',

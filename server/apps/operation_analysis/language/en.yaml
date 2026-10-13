@@ -702,12 +702,71 @@ screens:
           time: Time Range
   "screen::3D机房大屏_内置":
     name: 3D Data Center Screen
-    desc: 3D data center screen from CMDB rooms, cabinets, and devices; switch rooms inside the widget
+    desc: 3D data center screen from CMDB rooms, cabinets, and devices. Side capacity and alarm charts follow the canvas room filter.
     decorations:
       title: Cabinet Overview
+    filters:
+      server_room_id: Room
     widgets:
       builtin-room3d-main:
         title: 3D Data Center
+      room-kpi-racks:
+        title: Total Racks
+      room-kpi-devices:
+        title: Total Devices
+      room-kpi-unracked:
+        title: Unplaced
+      room-u-usage:
+        title: U Usage
+      room-u-used:
+        title: Used U
+      room-u-total:
+        title: Total U
+      room-device-types:
+        title: Device Types
+      room-u-top:
+        title: Top 5 Rack U Usage
+      room-coverage:
+        title: Monitoring Status
+      room-alarm-level:
+        title: Alarm Severity
+      room-alarm-top:
+        title: Top 5 Rack Alarms
+      room-alarm-devices:
+        title: Alarming Devices
+        columns:
+          device_name: Device
+          model_name: Model
+          rack_name: Rack
+          u_position: U Position
+          highest_severity: Highest Severity
+          active_alarm_count: Active Alarms
+      title-room-scale:
+        content: Room Scale
+      title-room-u-usage:
+        content: U Usage
+      title-room-device-types:
+        content: Device Types
+      title-room-u-top:
+        content: Top 5 Rack U Usage
+      title-room-coverage:
+        content: Monitoring Status
+      title-room-alarm-level:
+        content: Alarm Severity
+      title-room-alarm-top:
+        content: Top 5 Rack Alarms
+      title-room-alarm-devices:
+        content: Alarming Devices
+      caption-room-racks:
+        content: Total Racks
+      caption-room-devices:
+        content: Total Devices
+      caption-room-unracked:
+        content: Unplaced
+      caption-room-used-u:
+        content: Used U
+      caption-room-total-u:
+        content: Total U
   "screen::3D应用大屏_内置":
     name: 3D Application Screen
     desc: 3D application wall showing health, active alerts, and details of visible applications
@@ -725,6 +784,98 @@ screens:
       network-topology-builtin-main:
         title: Network Status Topology Overview
 datasources:
+  "机房设备类型分布::cmdb/get_room_device_type_distribution":
+    name: Room Device Type Distribution
+    desc: Count visible devices mounted through racks in a room, grouped by model display name. An empty server_room_id uses the first visible room.
+    fields:
+      name:
+        title: Device Type
+        description: Device model display name
+      value:
+        title: Count
+        description: Device count for this model
+    params:
+      server_room_id: Room
+  "机房机柜容量::cmdb/get_room_rack_capacity":
+    name: Room Rack Capacity
+    desc: U capacity of visible racks in a room. summary returns a flat object; rack_top is ordered by usage. An empty server_room_id uses the first visible room.
+    fields:
+      rack_count:
+        title: Rack Count
+        description: Visible rack count
+      device_count:
+        title: Device Count
+        description: Visible devices inside racks
+      unracked_device_count:
+        title: Unracked Devices
+        description: Devices in a rack with empty start U or U height
+      total_u:
+        title: Total U
+        description: Sum of visible rack U capacity
+      used_u:
+        title: Used U
+        description: Occupied U without counting overlaps twice
+      free_u:
+        title: Free U
+        description: Unoccupied U
+      u_usage_percent:
+        title: U Usage
+        description: Used U as a percentage of total U
+      name:
+        title: Rack
+        description: Rack name
+      value:
+        title: Usage
+        description: Rack U usage percentage
+      u_count:
+        title: Rack U Count
+        description: U capacity of one rack
+    params:
+      server_room_id: Room
+      view:
+        name: View
+        options:
+          summary: Summary
+          rack_top: Rack Usage Top
+      limit: Limit
+  "机房活跃告警::cmdb/get_room_active_alarms":
+    name: Room Active Alarms
+    desc: Monitoring coverage, active alarm severity, rack alarms, and alarming devices for visible devices mounted through racks in a room. If monitor fails entirely, coverage counts bound devices as unavailable and other views fail. An empty server_room_id uses the first visible room.
+    fields:
+      name:
+        title: Name
+        description: Category, severity, or rack name
+      value:
+        title: Count
+        description: Device count or alarm count
+      device_name:
+        title: Device
+        description: Device name
+      model_name:
+        title: Model
+        description: Device model display name
+      rack_name:
+        title: Rack
+        description: Rack that holds the device
+      u_position:
+        title: U Position
+        description: Start U through end U
+      highest_severity:
+        title: Highest Severity
+        description: Highest severity among active alarms
+      active_alarm_count:
+        title: Active Alarms
+        description: Active alarm count for the device
+    params:
+      server_room_id: Room
+      view:
+        name: View
+        options:
+          coverage: Monitoring Coverage
+          level_distribution: Alarm Severity
+          rack_top: Rack Alarm Top
+          device_list: Alarming Devices
+      limit: Limit
   "CMDB 变更趋势::cmdb/get_change_trend":
     name: CMDB Change Trend
     desc: Instance create, update, and delete trend in the time range; filterable by model
