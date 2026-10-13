@@ -560,6 +560,27 @@
   cursor: pointer;
 }
 
+.deviceLink {
+  border: 0;
+  margin: 0;
+  padding: 0 2px;
+  background: transparent;
+  color: var(--color-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  text-decoration: underline;
+  text-decoration-style: dashed;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.deviceLinkOn {
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  text-decoration: none;
+}
+
 .root :global(.ant-table) {
   background: transparent;
   color: var(--color-text-1);

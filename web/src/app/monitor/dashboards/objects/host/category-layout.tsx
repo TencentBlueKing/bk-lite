@@ -3,7 +3,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Tabs } from 'antd';
 import useMonitorApi from '@/app/monitor/api';
-import { buildCpuCoreRows, buildLabelRows, buildMountDiskRows, entitySeriesIndicatesWindows } from './entity-series';
+import {
+  buildCpuCoreRows,
+  buildDiskDeviceRows,
+  buildLabelRows,
+  buildMountDiskRows,
+  entitySeriesIndicatesWindows,
+  pickDefaultDiskDeviceKey
+} from './entity-series';
 import type { EntityTableRow } from './entity-series';
 import type { HostDetailLayoutProps } from './detail-layout';
 import type { EntityLoadState } from './use-entity-metrics';
@@ -71,6 +78,66 @@ const usePinnedRow = (rows: EntityTableRow[]) => {
   return { selectedKey, setSelectedKey, setPendingKey };
 };
 
+/** 磁盘双选中：挂载与设备各自保持一行。设备只在首次或当前行失效时按挂载关联名默认。 */
+const useDiskDualSelection = (mountRows: EntityTableRow[], deviceRows: EntityTableRow[]) => {
+  const [mountKey, setMountKey] = useState('');
+  const [deviceKey, setDeviceKey] = useState('');
+  const [pendingMountKey, setPendingMountKey] = useState('');
+  const [devicePinned, setDevicePinned] = useState(false);
+
+  const resolvedMountKey = (
+    (pendingMountKey && mountRows.some((row) => row.key === pendingMountKey) ? pendingMountKey : '')
+    || (mountKey && mountRows.some((row) => row.key === mountKey) ? mountKey : '')
+    || mountRows[0]?.key
+    || ''
+  );
+  const pinnedDeviceKey = devicePinned && deviceRows.some((row) => row.key === deviceKey) ? deviceKey : '';
+  const resolvedDeviceKey = pinnedDeviceKey || pickDefaultDiskDeviceKey(mountRows, deviceRows, resolvedMountKey);
+
+  useEffect(() => {
+    if (pendingMountKey && mountRows.length && !mountRows.some((row) => row.key === pendingMountKey)) {
+      setPendingMountKey('');
+      return;
+    }
+    if (pendingMountKey && mountRows.some((row) => row.key === pendingMountKey)) {
+      if (mountKey !== pendingMountKey) setMountKey(pendingMountKey);
+      setPendingMountKey('');
+      return;
+    }
+    if (resolvedMountKey && resolvedMountKey !== mountKey) setMountKey(resolvedMountKey);
+  }, [mountKey, mountRows, pendingMountKey, resolvedMountKey]);
+
+  useEffect(() => {
+    if (!deviceRows.length) {
+      if (devicePinned) setDevicePinned(false);
+      if (deviceKey) setDeviceKey('');
+      return;
+    }
+    if (devicePinned && deviceRows.some((row) => row.key === deviceKey)) return;
+    if (!resolvedDeviceKey) return;
+    setDeviceKey(resolvedDeviceKey);
+    setDevicePinned(true);
+  }, [deviceKey, devicePinned, deviceRows, resolvedDeviceKey]);
+
+  const selectMount = (key: string) => {
+    setPendingMountKey('');
+    setMountKey(key);
+  };
+
+  const selectDevice = (key: string) => {
+    setDeviceKey(key);
+    setDevicePinned(true);
+  };
+
+  return {
+    mountKey: resolvedMountKey,
+    deviceKey: resolvedDeviceKey,
+    selectMount,
+    selectDevice,
+    setPendingMountKey
+  };
+};
+
 /** 分类仪表盘：概览 / 性能 / 磁盘 / 网络 / 进程。KPI 只在概览。 */
 export default function HostCategoryLayout({
   dashboard,
@@ -93,6 +160,7 @@ export default function HostCategoryLayout({
   );
 
   const diskRows = useMemo(() => buildMountDiskRows(diskState.byMetric), [diskState.byMetric]);
+  const diskDeviceRows = useMemo(() => buildDiskDeviceRows(diskState.byMetric), [diskState.byMetric]);
   const windowsHost = dashboard.operatingSystem === 'windows' || entitySeriesIndicatesWindows(diskState.byMetric);
   const netRows = useMemo(
     () => busiestFirst(buildLabelRows(netState.byMetric, 'interface', 'net_bytes_recv_rate')),
@@ -103,7 +171,7 @@ export default function HostCategoryLayout({
     [processState.byMetric]
   );
   const coreRows = useMemo(() => buildCpuCoreRows(coreState.byMetric), [coreState.byMetric]);
-  const diskSelection = usePinnedRow(diskRows);
+  const diskSelection = useDiskDualSelection(diskRows, diskDeviceRows);
   const netSelection = usePinnedRow(netRows);
   const processSelection = usePinnedRow(processRows);
   const diskLoading = diskState.status === 'idle' || diskState.status === 'loading';
@@ -159,7 +227,7 @@ export default function HostCategoryLayout({
   }, [activeTab, dashboard.instanceId, getMonitorAlert]);
 
   const jump = (tab: 'disk' | 'net' | 'process', key: string) => {
-    if (tab === 'disk') diskSelection.setPendingKey(key);
+    if (tab === 'disk') diskSelection.setPendingMountKey(key);
     if (tab === 'net') netSelection.setPendingKey(key);
     if (tab === 'process') processSelection.setPendingKey(key);
     setActiveTab(tab);
@@ -186,11 +254,14 @@ export default function HostCategoryLayout({
     if (activeTab === 'disk') {
       return (
         <DiskPane
-          rows={diskRows}
+          mountRows={diskRows}
+          deviceRows={diskDeviceRows}
           loading={diskLoading}
           errorText={diskState.status === 'error' ? '磁盘数据加载失败，请稍后重试。' : undefined}
-          selectedKey={diskSelection.selectedKey}
-          onSelect={diskSelection.setSelectedKey}
+          selectedMountKey={diskSelection.mountKey}
+          selectedDeviceKey={diskSelection.deviceKey}
+          onSelectMount={diskSelection.selectMount}
+          onSelectDevice={diskSelection.selectDevice}
           windowsHost={windowsHost}
         />
       );

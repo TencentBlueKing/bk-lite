@@ -131,6 +131,22 @@ const IO_METRIC_KEYS = [
   'disk_write_latency'
 ];
 
+/** diskio 身份：优先 name，没有 name 才用 device。不做去分区号或补 /dev。 */
+const diskIoIdentity = (labels: Record<string, string>) =>
+  labelText(labels, 'name') || labelText(labels, 'device');
+
+/**
+ * 挂载的 device，其次 name，与设备名集合全等才返回。
+ * 对不上返回空串，调用方不得据此估造吞吐。
+ */
+export const matchMountIoDevice = (
+  labels: Record<string, string>,
+  deviceNames: ReadonlySet<string>
+) => {
+  const candidates = [labelText(labels, 'device'), labelText(labels, 'name')].filter(Boolean);
+  return candidates.find((name) => deviceNames.has(name)) || '';
+};
+
 /** 磁盘：用量按 path/mount，IO 按 name/device 对齐到同一行。 */
 export const buildDiskRows = (byMetric: Record<string, LabeledSeries[]>): EntityTableRow[] => {
   const rows = new Map<string, EntityTableRow>();
@@ -184,9 +200,9 @@ export const buildDiskRows = (byMetric: Record<string, LabeledSeries[]>): Entity
 };
 
 /**
- * 挂载表：一行一个 path。IO 只在 diskio 的 name（没有 name 时用 device）
- * 与该挂载的 device/name 完全一致时写入，并记到 labels.io_device。
- * 不去掉分区号、不补 /dev 前缀；对不上就不填 IO，也不另造无挂载行。
+ * 挂载表：一行一个 path，只保留容量。
+ * 关联设备只在 diskio 身份与该挂载的 device/name 完全一致时记到 labels.io_device。
+ * 不把读/写、util、延迟抄进挂载行；对不上就不填关联名，也不另造无挂载行。
  */
 export const buildMountDiskRows = (byMetric: Record<string, LabeledSeries[]>): EntityTableRow[] => {
   const rows = new Map<string, EntityTableRow>();
@@ -203,23 +219,17 @@ export const buildMountDiskRows = (byMetric: Record<string, LabeledSeries[]>): E
     });
   });
 
-  const ioByName = new Map<string, Array<{ metricKey: string; points: RangePoint[] }>>();
+  const deviceNames = new Set<string>();
   IO_METRIC_KEYS.forEach((metricKey) => {
     (byMetric[metricKey] || []).forEach((series) => {
-      const name = labelText(series.labels, 'name') || labelText(series.labels, 'device');
-      if (!name) return;
-      const list = ioByName.get(name) || [];
-      list.push({ metricKey, points: series.points });
-      ioByName.set(name, list);
+      const name = diskIoIdentity(series.labels);
+      if (name) deviceNames.add(name);
     });
   });
 
   rows.forEach((row) => {
-    const candidates = [row.labels.device, row.labels.name].filter((value): value is string => Boolean(value));
-    const matched = candidates.find((name) => ioByName.has(name));
-    if (!matched) return;
-    row.labels.io_device = matched;
-    (ioByName.get(matched) || []).forEach((item) => writeMetric(row, item.metricKey, item.points));
+    const matched = matchMountIoDevice(row.labels, deviceNames);
+    if (matched) row.labels.io_device = matched;
   });
 
   rows.forEach((row) => {
@@ -260,6 +270,55 @@ export const buildMountDiskRows = (byMetric: Record<string, LabeledSeries[]>): E
   return Array.from(rows.values()).sort((left, right) => (
     (right.values.disk_used_percent ?? -1) - (left.values.disk_used_percent ?? -1)
   ));
+};
+
+const deviceThroughput = (row: EntityTableRow) => {
+  const read = row.values.diskio_read_bytes_rate;
+  const write = row.values.diskio_write_bytes_rate;
+  const hasRead = read != null && Number.isFinite(read);
+  const hasWrite = write != null && Number.isFinite(write);
+  if (!hasRead && !hasWrite) return Number.NEGATIVE_INFINITY;
+  return (hasRead ? read : 0) + (hasWrite ? write : 0);
+};
+
+/**
+ * 设备表：一个 diskio 身份一行。只收读/写 bytes、util、延迟，不收 IOPS。
+ * 读+写合计高的在前；没有吞吐的排在后面。
+ */
+export const buildDiskDeviceRows = (byMetric: Record<string, LabeledSeries[]>): EntityTableRow[] => {
+  const rows = new Map<string, EntityTableRow>();
+  IO_METRIC_KEYS.forEach((metricKey) => {
+    (byMetric[metricKey] || []).forEach((series) => {
+      const name = diskIoIdentity(series.labels);
+      if (!name) return;
+      const row = ensureRow(rows, `dev:${name}`, series.labels, ['name', 'device']);
+      row.labels.name = name;
+      row.labels.device = name;
+      writeMetric(row, metricKey, series.points);
+    });
+  });
+
+  return Array.from(rows.values()).sort((left, right) => {
+    const delta = deviceThroughput(right) - deviceThroughput(left);
+    if (delta !== 0) return delta;
+    return (left.labels.name || '').localeCompare(right.labels.name || '', undefined, { numeric: true });
+  });
+};
+
+/** 设备默认：当前挂载的关联设备；没有或对不上时用读+写最忙的设备。 */
+export const pickDefaultDiskDeviceKey = (
+  mountRows: EntityTableRow[],
+  deviceRows: EntityTableRow[],
+  mountKey: string
+) => {
+  if (!deviceRows.length) return '';
+  const mount = mountRows.find((row) => row.key === mountKey) || mountRows[0];
+  const related = mount?.labels.io_device || '';
+  if (related) {
+    const match = deviceRows.find((row) => row.labels.name === related || row.labels.device === related);
+    if (match) return match.key;
+  }
+  return deviceRows[0].key;
 };
 
 export const rowHasSeries = (row: EntityTableRow | undefined, keys: readonly string[]) => (
