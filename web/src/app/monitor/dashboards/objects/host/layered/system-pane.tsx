@@ -71,11 +71,6 @@ export default function SystemPane({
   }, [coreIdentity, coreRows]);
 
   const breakdown = CPU_BREAKDOWN.filter((item) => metricHasPoints(metrics[item.key]));
-  const cpuItems = breakdown.length
-    ? breakdown
-    : metricHasPoints(metrics.cpu_usage_total)
-      ? [{ key: 'cpu_usage_total', label: 'CPU', color: HOST_PALETTE.blue }]
-      : [];
   const loadItems = LOAD_SERIES.filter((item) => metricHasPoints(metrics[item.key]));
   const available = useMemo(
     () => deriveRatioPercent(metrics.mem_available?.viewData, metrics.mem_total?.viewData),
@@ -129,24 +124,15 @@ export default function SystemPane({
   const charts = [
     <ThinTimeSeries
       key="cpu"
-      title={breakdown.length
-        ? hostCategoryText(t, 'cpuTimeBreakdown')
-        : hostCategoryText(t, 'cpuUtilization')}
+      title={hostCategoryText(t, 'cpuUtilization')}
       loading={loading}
       unit="percent"
-      data={mergeChartSeries(cpuItems.map((item) => ({
-        key: item.key,
-        label: item.label,
-        data: metrics[item.key]?.viewData || []
-      })))}
-      legends={cpuItems.map((item) => {
-        const value = latestNumber(metrics[item.key]);
-        return {
-          label: item.label,
-          color: item.color,
-          reading: value == null ? undefined : formatPercent(value)
-        };
-      })}
+      data={metrics.cpu_usage_total?.viewData || []}
+      legends={[{
+        label: 'CPU',
+        color: HOST_PALETTE.blue,
+        reading: cpuNow == null ? undefined : formatPercent(cpuNow)
+      }]}
     />,
     <ThinTimeSeries
       key="mem"
@@ -200,6 +186,27 @@ export default function SystemPane({
   const selectedCoreAvg = selectedCore?.values.cpu_usage_core_avg;
   const corePeak = coreRows.reduce((peak, row) => Math.max(peak, row.values.cpu_usage_core_avg || 0), 0);
   const detailCards = [
+    breakdown.length ? (
+      <ThinTimeSeries
+        key="cpu-breakdown"
+        title={hostCategoryText(t, 'cpuTimeBreakdown')}
+        loading={loading}
+        unit="percent"
+        data={mergeChartSeries(breakdown.map((item) => ({
+          key: item.key,
+          label: item.label,
+          data: metrics[item.key]?.viewData || []
+        })))}
+        legends={breakdown.map((item) => {
+          const value = latestNumber(metrics[item.key]);
+          return {
+            label: item.label,
+            color: item.color,
+            reading: value == null ? undefined : formatPercent(value)
+          };
+        })}
+      />
+    ) : null,
     swapSeries.length ? (
       <ThinTimeSeries
         key="swap"
