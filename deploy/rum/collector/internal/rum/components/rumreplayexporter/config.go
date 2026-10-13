@@ -47,8 +47,10 @@ type Config struct {
 	MinIOSecure    bool                `mapstructure:"minio_secure"`
 	MinIOBucket    string              `mapstructure:"minio_bucket"`
 
-	RedisURL          string `mapstructure:"redis_url"`
-	RedisPasswordFile string `mapstructure:"redis_password_file"`
+	RedisURL                string `mapstructure:"redis_url"`
+	RedisPasswordFile       string `mapstructure:"redis_password_file"`
+	RedisRequireACLIdentity bool   `mapstructure:"redis_require_acl_identity"`
+	RedisACLUsername        string `mapstructure:"redis_acl_username"`
 }
 
 func defaultConfig() *Config {
@@ -95,15 +97,23 @@ func (cfg *Config) Validate() error {
 	if redisErr != nil || redisURL.Host == "" || (redisURL.Scheme != "redis" && redisURL.Scheme != "rediss") {
 		result = errors.Join(result, errors.New("redis_url must be a redis:// or rediss:// URL"))
 	} else {
-		if redisURL.User == nil || redisURL.User.Username() != "rum-replay-exporter" {
-			result = errors.Join(result, errors.New("redis_url must use the dedicated rum-replay-exporter ACL user"))
-		}
 		if redisURL.RawQuery != "" || redisURL.Fragment != "" {
 			result = errors.Join(result, errors.New("redis_url must not contain query or fragment data"))
 		}
+		username := ""
 		password, hasPassword := "", false
 		if redisURL.User != nil {
+			username = redisURL.User.Username()
 			password, hasPassword = redisURL.User.Password()
+		}
+		if cfg.RedisRequireACLIdentity {
+			expected := strings.TrimSpace(cfg.RedisACLUsername)
+			if expected == "" {
+				expected = "rum-replay-exporter"
+			}
+			if username == "" || username != expected {
+				result = errors.Join(result, errors.New("redis_url ACL username must be "+expected))
+			}
 		}
 		passwordFile := strings.TrimSpace(cfg.RedisPasswordFile)
 		if passwordFile != "" {

@@ -6,6 +6,9 @@ SUBJECT_APPLICATION_APPLY = "rum.v1.control.application.apply"
 SUBJECT_APPLICATION_GET = "rum.v1.control.application.get"
 SUBJECT_APPLICATION_LIST = "rum.v1.control.application.list"
 SUBJECT_ERASURE_SUBMIT = "rum.v1.control.erasure.submit"
+SUBJECT_ERASURE_FENCE_RELEASE = "rum.v1.control.erasure.fence.release"
+SUBJECT_PROJECTION_APPLY = "rum.v1.control.projection.apply"
+SUBJECT_PROJECTION_RECONCILE = "rum.v1.control.projection.reconcile"
 SUBJECT_OPERATION_GET = "rum.v1.control.operation.get"
 
 # Controller operation statuses that will not change any more.

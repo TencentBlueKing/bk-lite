@@ -42,6 +42,7 @@ describe('resolveAppDisplayName', () => {
     expect(resolveAppDisplayName({ name: 'opspilot', display_name: 'OpsPilot', is_build_in: true }, tZh)).toBe('OpsPilot');
     expect(resolveAppDisplayName({ name: 'mlops', display_name: 'MLOps', is_build_in: true }, tZh)).toBe('MLOps');
     expect(resolveAppDisplayName({ name: 'apm', display_name: 'APM', is_build_in: true }, tZh)).toBe('APM');
+    expect(resolveAppDisplayName({ name: 'rum', display_name: 'RUM', is_build_in: true }, tZh)).toBe('RUM');
     expect(
       resolveAppDisplayName(
         { name: 'workflow-orchestration', display_name: 'Workflow Orchestration', is_build_in: true },

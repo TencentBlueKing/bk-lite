@@ -196,7 +196,8 @@ export default function ApplicationSetupPage() {
 
   const hasKey = Boolean(app?.browserKeys?.[0]);
   const snippetReady = Boolean(snippets);
-  const connected = app != null && rumIngestStatus(app) === 'connected';
+  const projectionPending = Boolean(app?.projectionPending);
+  const connected = app != null && !projectionPending && rumIngestStatus(app) === 'connected';
   const busy = pending || acting;
 
   const stepApp: SetupStepState = 'complete';
@@ -442,7 +443,13 @@ export default function ApplicationSetupPage() {
             </SetupStep>
 
             <SetupStep n={4} title={t('rum.detail.stepVerify', '验证接入')} state={stepVerify} isLast>
-              <SelfCheck application={name} />
+              {projectionPending ? (
+                <p className="m-0 text-sm text-[var(--color-warning)]" role="status">
+                  {t('rum.detail.projectionPending', '配置正在同步到网关')}
+                </p>
+              ) : (
+                <SelfCheck application={name} />
+              )}
             </SetupStep>
           </ol>
         </div>

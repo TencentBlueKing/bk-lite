@@ -1,6 +1,8 @@
 import pytest
 from django.test import override_settings
 
+pytestmark = pytest.mark.django_db
+
 from apps.rum.services.applications import ApplicationsService
 from apps.rum.services.control import MemoryControl, UnavailableControl
 from apps.rum.services.query import parse_range_params

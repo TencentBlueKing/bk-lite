@@ -29,6 +29,8 @@ type Config struct {
 	MaxQueueAge                  time.Duration                                            `mapstructure:"max_queue_age"`
 	AdmissionRedisURL            string                                                   `mapstructure:"admission_redis_url"`
 	AdmissionRedisPassword       string                                                   `mapstructure:"admission_redis_password_file"`
+	RedisRequireACLIdentity      bool                                                     `mapstructure:"redis_require_acl_identity"`
+	RedisACLUsername             string                                                   `mapstructure:"redis_acl_username"`
 }
 
 func defaultConfig() *Config {
@@ -52,13 +54,19 @@ func (cfg *Config) Validate() error {
 	if cfg.MaxQueueAge <= 0 || cfg.MaxQueueAge > rumgate.MaxPersistentQueueAge {
 		result = errors.Join(result, fmt.Errorf("max_queue_age must be positive and at most %s", rumgate.MaxPersistentQueueAge))
 	}
-	if err := ingress.ValidateConfig(ingress.Config{
-		RedisURL:          cfg.AdmissionRedisURL,
-		RedisPasswordFile: cfg.AdmissionRedisPassword,
-	}); err != nil {
+	if err := ingress.ValidateConfig(cfg.admissionRedis()); err != nil {
 		result = errors.Join(result, fmt.Errorf("invalid exporter erasure fence Redis: %w", err))
 	}
 	return result
+}
+
+func (cfg *Config) admissionRedis() ingress.Config {
+	return ingress.Config{
+		RedisURL:           cfg.AdmissionRedisURL,
+		RedisPasswordFile:  cfg.AdmissionRedisPassword,
+		RequireACLIdentity: cfg.RedisRequireACLIdentity,
+		ACLUsername:        cfg.RedisACLUsername,
+	}
 }
 
 // NewFactory wraps otlphttp with the shared RUM age/fence/marker gate.
@@ -102,17 +110,11 @@ func createLogsExporter(ctx context.Context, settings exporter.Settings, config 
 	if err != nil {
 		return nil, err
 	}
-	fences, err := ingress.NewLeaseManager(ingress.Config{
-		RedisURL:          cfg.AdmissionRedisURL,
-		RedisPasswordFile: cfg.AdmissionRedisPassword,
-	})
+	fences, err := ingress.NewLeaseManager(cfg.admissionRedis())
 	if err != nil {
 		return nil, err
 	}
-	marker, err := rumgate.NewStoredMarker(ingress.Config{
-		RedisURL:          cfg.AdmissionRedisURL,
-		RedisPasswordFile: cfg.AdmissionRedisPassword,
-	}, settings.Logger)
+	marker, err := rumgate.NewStoredMarker(cfg.admissionRedis(), settings.Logger)
 	if err != nil {
 		return nil, err
 	}
@@ -143,17 +145,11 @@ func createTracesExporter(ctx context.Context, settings exporter.Settings, confi
 	if err != nil {
 		return nil, err
 	}
-	fences, err := ingress.NewLeaseManager(ingress.Config{
-		RedisURL:          cfg.AdmissionRedisURL,
-		RedisPasswordFile: cfg.AdmissionRedisPassword,
-	})
+	fences, err := ingress.NewLeaseManager(cfg.admissionRedis())
 	if err != nil {
 		return nil, err
 	}
-	marker, err := rumgate.NewStoredMarker(ingress.Config{
-		RedisURL:          cfg.AdmissionRedisURL,
-		RedisPasswordFile: cfg.AdmissionRedisPassword,
-	}, settings.Logger)
+	marker, err := rumgate.NewStoredMarker(cfg.admissionRedis(), settings.Logger)
 	if err != nil {
 		return nil, err
 	}

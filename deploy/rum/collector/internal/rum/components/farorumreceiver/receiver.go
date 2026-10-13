@@ -15,9 +15,9 @@ import (
 	"sync"
 	"time"
 
-	faro "github.com/grafana/faro/pkg/go"
 	"github.com/bk-lite/rum-collector/internal/rum/authority"
 	"github.com/bk-lite/rum-collector/internal/rum/ingress"
+	faro "github.com/grafana/faro/pkg/go"
 	"go.opentelemetry.io/collector/client"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
@@ -65,10 +65,7 @@ func newFaroReceiver(cfg *Config, settings *receiver.Settings) (*faroReceiver, e
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
-	ingress, err := ingress.New(ingress.Config{
-		RedisURL:          cfg.AdmissionRedisURL,
-		RedisPasswordFile: cfg.AdmissionRedisPass,
-	})
+	ingress, err := ingress.New(cfg.admissionRedis())
 	if err != nil {
 		return nil, err
 	}

@@ -5,17 +5,20 @@ import "github.com/bk-lite/rum-collector/pkg/rum/wire"
 const (
 	APIVersion = wire.APIVersion
 
-	SubjectApplicationApply   = wire.SubjectApplicationApply
-	SubjectApplicationGet     = wire.SubjectApplicationGet
-	SubjectApplicationList    = wire.SubjectApplicationList
-	SubjectApplicationRotate  = wire.SubjectApplicationRotate
-	SubjectApplicationRetire  = wire.SubjectApplicationRetire
-	SubjectApplicationDisable = wire.SubjectApplicationDisable
-	SubjectErasureSubmit      = wire.SubjectErasureSubmit
-	SubjectReconcileSubmit    = wire.SubjectReconcileSubmit
-	SubjectOperationGet       = wire.SubjectOperationGet
-	SubjectStatusGet          = wire.SubjectStatusGet
-	QueueGroupController      = wire.QueueGroupController
+	SubjectApplicationApply    = wire.SubjectApplicationApply
+	SubjectApplicationGet      = wire.SubjectApplicationGet
+	SubjectApplicationList     = wire.SubjectApplicationList
+	SubjectApplicationRotate   = wire.SubjectApplicationRotate
+	SubjectApplicationRetire   = wire.SubjectApplicationRetire
+	SubjectApplicationDisable  = wire.SubjectApplicationDisable
+	SubjectErasureSubmit       = wire.SubjectErasureSubmit
+	SubjectErasureFenceRelease = wire.SubjectErasureFenceRelease
+	SubjectProjectionApply     = wire.SubjectProjectionApply
+	SubjectProjectionReconcile = wire.SubjectProjectionReconcile
+	SubjectReconcileSubmit     = wire.SubjectReconcileSubmit
+	SubjectOperationGet        = wire.SubjectOperationGet
+	SubjectStatusGet           = wire.SubjectStatusGet
+	QueueGroupController       = wire.QueueGroupController
 
 	ErrorInvalidArgument     = wire.ErrorInvalidArgument
 	ErrorNotFound            = wire.ErrorNotFound
@@ -45,6 +48,10 @@ type ApplicationRotatePayload = wire.ApplicationRotatePayload
 type ApplicationRetirePayload = wire.ApplicationRetirePayload
 type ErasureIdentity = wire.ErasureIdentity
 type ErasureSubmitPayload = wire.ErasureSubmitPayload
+type ProjectionApplyPayload = wire.ProjectionApplyPayload
+type ProjectionReconcilePayload = wire.ProjectionReconcilePayload
+type ProjectionRevision = wire.ProjectionRevision
+type ProjectionFence = wire.ProjectionFence
 type ReconcileSubmitPayload = wire.ReconcileSubmitPayload
 type OperationGetPayload = wire.OperationGetPayload
 type ApplicationView = wire.ApplicationView
