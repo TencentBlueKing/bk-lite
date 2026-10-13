@@ -113,7 +113,7 @@ describe('流程列表', () => {
     await screen.findByText(workflow.name);
 
     expect(screen.queryByRole('button', { name: workflow.name })).toBeNull();
-    expect(screen.getByRole('button', { name: /新建流程/ }).closest('[class*="gap-2"]')).not.toBeNull();
+    expect(screen.getByRole('button', { name: /新建/ }).closest('[class*="gap-2"]')).not.toBeNull();
     expect(screen.queryByRole('button', { name: '执行记录' })).toBeNull();
     const editButton = screen.getByRole('button', { name: /编辑/ });
     expect(editButton).not.toBeNull();
@@ -291,7 +291,7 @@ describe('流程列表', () => {
     renderPage();
     await screen.findByText(workflow.name);
 
-    fireEvent.click(screen.getByRole('button', { name: /新建流程/ }));
+    fireEvent.click(screen.getByRole('button', { name: /新建/ }));
 
     expect(screen.queryByRole('dialog', { name: '新建流程' })).toBeNull();
     expect(mocks.post).not.toHaveBeenCalled();
