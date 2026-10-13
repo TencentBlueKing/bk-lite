@@ -304,17 +304,17 @@ MODEL:
   exchange_dag_network: DAG Network
   exchange_database: Mailbox Database
   exchange_mailbox: Mailbox
-  exchange_distribution_group: Distribution Group
+  exchange_dist_group: Distribution Group
   exchange_accepted_domain: Accepted Domain
   exchange_remote_domain: Remote Domain
-  exchange_email_address_policy: Email Address Policy
+  exchange_email_policy: Email Address Policy
   exchange_transport_config: Transport Config
   exchange_transport_rule: Transport Rule
   exchange_send_connector: Send Connector
   exchange_receive_connector: Receive Connector
-  exchange_offline_address_book: Offline Address Book
+  exchange_oab: Offline Address Book
   exchange_address_list: Address List
-  exchange_address_book_policy: Address Book Policy
+  exchange_abp: Address Book Policy
   exchange_activesync_policy: ActiveSync Policy
 ATTR:
   pc:
@@ -4354,7 +4354,7 @@ ATTR:
     database_inst_name: Database Instance
     server_inst_name: Server Instance
     enabled: Enabled
-  exchange_distribution_group:
+  exchange_dist_group:
     inst_name: Instance Name
     organization: Organization
     group_id: Group ID
@@ -4376,7 +4376,7 @@ ATTR:
     domain_name: Domain Name
     allowed_oof_type: Allowed OOF Type
     forest_inst_name: Forest Instance
-  exchange_email_address_policy:
+  exchange_email_policy:
     inst_name: Instance Name
     organization: Organization
     policy_name: Policy Name
@@ -4427,7 +4427,7 @@ ATTR:
     auth_mechanism: Auth Mechanism
     permission_groups: Permission Groups
     server_inst_name: Server Instance
-  exchange_offline_address_book:
+  exchange_oab:
     inst_name: Instance Name
     organization: Organization
     oab_name: OAB Name
@@ -4443,7 +4443,7 @@ ATTR:
     list_type: List Type
     originating_server: Originating Server
     forest_inst_name: Forest Instance
-  exchange_address_book_policy:
+  exchange_abp:
     inst_name: Instance Name
     organization: Organization
     policy_name: Policy Name

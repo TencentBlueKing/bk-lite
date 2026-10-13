@@ -304,17 +304,17 @@ MODEL:
   exchange_dag_network: DAG网络
   exchange_database: 邮箱数据库
   exchange_mailbox: 邮箱
-  exchange_distribution_group: 通讯组
+  exchange_dist_group: 通讯组
   exchange_accepted_domain: 接受域
   exchange_remote_domain: 远程域
-  exchange_email_address_policy: 电子邮件地址策略
+  exchange_email_policy: 电子邮件地址策略
   exchange_transport_config: 传输配置
   exchange_transport_rule: 传输规则
   exchange_send_connector: 发送连接器
   exchange_receive_connector: 接收连接器
-  exchange_offline_address_book: 脱机通讯簿
+  exchange_oab: 脱机通讯簿
   exchange_address_list: 地址列表
-  exchange_address_book_policy: 地址簿策略
+  exchange_abp: 地址簿策略
   exchange_activesync_policy: ActiveSync策略
 ATTR:
   pc:
@@ -4354,7 +4354,7 @@ ATTR:
     database_inst_name: 数据库实例名
     server_inst_name: 服务器实例名
     enabled: 是否启用
-  exchange_distribution_group:
+  exchange_dist_group:
     inst_name: 实例名
     organization: 组织
     group_id: 组ID
@@ -4376,7 +4376,7 @@ ATTR:
     domain_name: 域名
     allowed_oof_type: 允许的外出类型
     forest_inst_name: 林实例名
-  exchange_email_address_policy:
+  exchange_email_policy:
     inst_name: 实例名
     organization: 组织
     policy_name: 策略名称
@@ -4427,7 +4427,7 @@ ATTR:
     auth_mechanism: 认证机制
     permission_groups: 权限组
     server_inst_name: 服务器实例名
-  exchange_offline_address_book:
+  exchange_oab:
     inst_name: 实例名
     organization: 组织
     oab_name: 脱机通讯簿名称
@@ -4443,7 +4443,7 @@ ATTR:
     list_type: 列表类型
     originating_server: 源服务器
     forest_inst_name: 林实例名
-  exchange_address_book_policy:
+  exchange_abp:
     inst_name: 实例名
     organization: 组织
     policy_name: 策略名称
