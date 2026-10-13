@@ -105,7 +105,6 @@ export default function DiskPane({
           <div className={`${classic.sectionLabel} ${styles.sectionTitle} ${styles.diskZoneTitle}`}>
             {hostCategoryText(t, 'mounts')}
           </div>
-          <div className={styles.hint}>{followHint}</div>
         </div>
         {showMountBody ? (
           <>
@@ -121,6 +120,9 @@ export default function DiskPane({
               data={pointsToChartData([{ points: selectedMount?.series.disk_used_percent || [] }])}
               legends={[{ label: path || hostCategoryText(t, 'mountUsed'), color: HOST_PALETTE.orange }]}
             />
+            <div className={styles.sectionHead}>
+              <div className={styles.hint}>{followHint}</div>
+            </div>
             <LayeredEntityTable
               rows={mountRows}
               loading={loading}
@@ -196,7 +198,6 @@ export default function DiskPane({
           <div className={`${classic.sectionLabel} ${styles.sectionTitle} ${styles.diskZoneTitle}`}>
             {hostCategoryText(t, 'blockDevices')}
           </div>
-          <div className={styles.hint}>{followHint}</div>
         </div>
         {showDeviceBody ? (
           <>
@@ -253,6 +254,9 @@ export default function DiskPane({
                 legends={[{ label: hostCategoryText(t, 'ioUtilization'), color: HOST_PALETTE.indigo }]}
               />
             ) : null}
+            <div className={styles.sectionHead}>
+              <div className={styles.hint}>{followHint}</div>
+            </div>
             <LayeredEntityTable
               rows={deviceRows}
               loading={loading}
