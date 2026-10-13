@@ -73,15 +73,16 @@ export function WebhookTriggerPanel({
   );
 
   const endpoint = entry === 'test' ? TEST_PATH : PRODUCTION_PATH;
+  const exampleBody = t('workflowOrchestration.editor.webhookExampleBody', '请替换为真实业务数据');
   const payload = entry === 'test'
     ? {
-      token: testSession?.token || '<点击“监听测试请求”后自动生成>',
-      body: { example: '请替换为真实业务数据' },
+      token: testSession?.token || `<${t('workflowOrchestration.editor.webhookExampleToken', '点击“监听测试请求”后自动生成')}>`,
+      body: { example: exampleBody },
     }
     : {
-      trigger_id: runtimeTrigger?.id || '<发布后自动生成>',
-      idempotency_key: '<请求唯一 ID，例如告警 ID 或 UUID>',
-      inputs: { body: { example: '请替换为真实业务数据' } },
+      trigger_id: runtimeTrigger?.id || `<${t('workflowOrchestration.editor.webhookExampleTriggerId', '发布后自动生成')}>`,
+      idempotency_key: `<${t('workflowOrchestration.editor.webhookExampleIdempotencyKey', '请求唯一 ID，例如告警 ID 或 UUID')}>`,
+      inputs: { body: { example: exampleBody } },
     };
   const payloadText = JSON.stringify(payload, null, 2);
   const parameterNotes = entry === 'test'

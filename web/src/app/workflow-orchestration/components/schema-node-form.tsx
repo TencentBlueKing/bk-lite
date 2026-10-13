@@ -26,6 +26,7 @@ interface Props {
   fieldActions?: Record<string, ReactNode>;
   nodeTitle?: string;
   readOnly?: boolean;
+  atomKey?: string;
   onNodeTitleChange?: (value: string) => void;
 }
 
@@ -349,7 +350,7 @@ export function SchemaNodeField({
   return <BindingEditor schema={schema} value={value} references={references} referenceOnly={referenceOnly} disabled={disabled} valueLabels={valueLabels} onChange={onChange} />;
 }
 
-export function SchemaNodeForm({ schema, uiSchema, value, onChange, references = [], fieldActions = {}, nodeTitle, readOnly = false, onNodeTitleChange }: Props) {
+export function SchemaNodeForm({ schema, uiSchema, value, onChange, references = [], fieldActions = {}, nodeTitle, readOnly = false, atomKey, onNodeTitleChange }: Props) {
   const { t } = useTranslation();
   const nodeNameField = onNodeTitleChange ? <Form.Item className="mb-0" label={t('workflowOrchestration.editor.nodeName', '节点名称')} required>
     <Input disabled={readOnly} value={nodeTitle} placeholder={t('workflowOrchestration.editor.enterNodeName', '请输入节点名称')} onChange={(event) => onNodeTitleChange(event.target.value)} />
@@ -394,9 +395,12 @@ export function SchemaNodeForm({ schema, uiSchema, value, onChange, references =
       ...(codeLanguage ? { 'x-code-language': codeLanguage } : {}),
       ...(uiWidget === 'json' ? { jsonEditorAllowed: true } : {}),
     };
-    const hint = String(ui['ui:help'] || field.description || '') || undefined;
+    const rawLabel = String(ui['ui:label'] || field.title || key);
+    const rawHint = String(ui['ui:help'] || field.description || '');
+    const label = atomKey ? t(`workflowOrchestration.atomUi.${atomKey}.${key}.label`, rawLabel) : rawLabel;
+    const hint = (atomKey ? t(`workflowOrchestration.atomUi.${atomKey}.${key}.help`, rawHint) : rawHint) || undefined;
     const editor = <BindingEditor schema={bindingSchema} value={value[key]} references={references} onChange={(next) => setField(key, next)} />;
-    return <Form.Item className="mb-0" key={key} label={String(ui['ui:label'] || field.title || key)} required={effectiveSchema.required?.includes(key)} tooltip={hint}>
+    return <Form.Item className="mb-0" key={key} label={label} required={effectiveSchema.required?.includes(key)} tooltip={hint}>
       {fieldActions[key] ? <div className="flex items-start gap-2"><div className="min-w-0 flex-1">{editor}</div><div className="shrink-0">{fieldActions[key]}</div></div> : editor}
     </Form.Item>;
   });

@@ -6,6 +6,7 @@ from typing import Any
 from apps.workflow_orchestration.models import WorkflowExecution, WorkflowInteraction
 from apps.workflow_orchestration.services.atoms import ATOM_CATALOG
 from apps.workflow_orchestration.services.data_contracts import mask_secret_envelopes
+from apps.workflow_orchestration.services.validation_messages import render_known_message
 
 START_REFERENCE = "__start__"
 END_REFERENCE = "__end__"
@@ -293,6 +294,12 @@ def _control_summary(task: dict[str, Any]) -> dict[str, Any]:
     return {}
 
 
+def _visible_error(request: Any, message: str) -> str:
+    if not message:
+        return message
+    return render_known_message(request, message)
+
+
 def build_execution_node_detail(
     execution: WorkflowExecution,
     *,
@@ -300,6 +307,7 @@ def build_execution_node_detail(
     username: str,
     instance_id: str | None = None,
     include_technical: bool = False,
+    request: Any = None,
 ) -> dict[str, Any] | None:
     summary = build_execution_node_summary(execution, username=username)
     node = next((item for item in summary["nodes"] if item["reference"] == node_reference), None)
@@ -342,7 +350,7 @@ def build_execution_node_detail(
             "inputs": {},
             "outputs": mask_secret_envelopes(execution.output),
             "system_context": {},
-            "error": {"message": execution.error_message} if execution.error_message else None,
+            "error": {"message": _visible_error(request, execution.error_message)} if execution.error_message else None,
             "audit_events": ([{"type": "END", "at": _iso(execution.finished_at), "actor": ""}] if execution.finished_at else []),
             "artifacts": [_artifact_payload(artifact) for artifact in execution.artifacts.all()],
             "control": {},
@@ -477,7 +485,9 @@ def build_execution_node_detail(
         "outputs": mask_secret_envelopes(selected.get("output") or {}),
         "system_context": {},
         "error": (
-            {"type": selected.get("error_type") or "", "message": selected.get("reason") or ""} if selected_state in {"FAILED", "TIMED_OUT"} else None
+            {"type": selected.get("error_type") or "", "message": _visible_error(request, selected.get("reason") or "")}
+            if selected_state in {"FAILED", "TIMED_OUT"}
+            else None
         ),
         "audit_events": events,
         "artifacts": [_artifact_payload(artifact) for artifact in artifacts],
