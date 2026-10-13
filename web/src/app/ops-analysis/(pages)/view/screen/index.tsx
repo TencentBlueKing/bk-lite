@@ -223,6 +223,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   const [filterConfigOpen, setFilterConfigOpen] = useState(false);
   const [widgetSelectorOpen, setWidgetSelectorOpen] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false);
   const [itemMenu, setItemMenu] = useState<{
     itemId: string;
     x: number;
@@ -929,6 +930,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     });
     setEditMode(true);
     setSelectedItemId(null);
+    setInspectorCollapsed(false);
   }, [
     queryState.appliedFilterValues,
     queryState.appliedNamespaceId,
@@ -1016,6 +1018,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   const handleSelectCanvasItem = useCallback(
     (itemId: string | null) => {
       runAfterDataGuard(() => {
+        setInspectorCollapsed(false);
         setSelectedItemId(itemId);
         setPendingConfigItem(null);
         setInspectorTab("style");
@@ -1029,6 +1032,20 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     },
     [runAfterDataGuard],
   );
+
+  const handleDismissInspector = useCallback(() => {
+    runAfterDataGuard(() => {
+      setSelectedItemId(null);
+      setPendingConfigItem(null);
+      setInspectorCollapsed(true);
+    });
+  }, [runAfterDataGuard]);
+
+  useEffect(() => {
+    if (selectedItemId != null || pendingConfigItem != null) {
+      setInspectorCollapsed(false);
+    }
+  }, [pendingConfigItem, selectedItemId]);
 
   const openItemMenu = useCallback(
     (itemId: string, point: { x: number; y: number }) => {
@@ -1246,6 +1263,9 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         onTopologyLayoutChange={
           editMode && !shareMode ? handleTopologyLayoutChange : undefined
         }
+        onDismissInspector={
+          editMode && !shareMode ? handleDismissInspector : undefined
+        }
       />
     ),
     [
@@ -1258,6 +1278,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       handleMoveItem,
       handleResizeItem,
       handleTopologyLayoutChange,
+      handleDismissInspector,
       queryState.appliedFilterValues,
       queryState.appliedNamespaceId,
       queryState.definitions,
@@ -1418,6 +1439,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
               <div className="min-h-0 min-w-0 flex-1">{screenCanvas}</div>
               <ScreenInspectorPane
                 label={t("opsAnalysis.screen.inspectorResize")}
+                collapsed={inspectorCollapsed}
                 onBlur={(event) => {
                   const currentTarget = event.target instanceof Element ? event.target : null;
                   const field = currentTarget?.closest("input, textarea");

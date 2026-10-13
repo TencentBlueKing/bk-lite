@@ -491,6 +491,8 @@
       "widgetFrameBare": "Bare",
       "dataApplied": "Updated successfully",
       "displayElements": "Display elements",
+      "expandDisplayElements": "Expand display elements",
+      "collapseDisplayElements": "Collapse display elements",
       "addDisplayElement": "Add element",
       "textAndClock": "Text & clock",
       "textPreview": "Caption",
@@ -1567,6 +1569,8 @@
   "opsAnalysisSidebar": {
     "addArch": "Add Architecture",
     "title": "Directory Management",
+    "expandDirectory": "Expand directory",
+    "collapseDirectory": "Collapse directory",
     "editDir": "Edit Directory",
     "editGroup": "Edit Group",
     "editDash": "Edit Dashboard",

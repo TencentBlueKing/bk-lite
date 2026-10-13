@@ -491,6 +491,8 @@
       "widgetFrameBare": "无边框",
       "dataApplied": "修改成功",
       "displayElements": "展示元素",
+      "expandDisplayElements": "展开展示元素",
+      "collapseDisplayElements": "收起展示元素",
       "addDisplayElement": "添加展示元素",
       "textAndClock": "文字与时钟",
       "textPreview": "说明文字",
@@ -1567,6 +1569,8 @@
   "opsAnalysisSidebar": {
     "addArch": "添加架构图",
     "title": "目录管理",
+    "expandDirectory": "展开目录",
+    "collapseDirectory": "收起目录",
     "editDir": "编辑目录",
     "editGroup": "编辑分组",
     "editDash": "编辑仪表盘",

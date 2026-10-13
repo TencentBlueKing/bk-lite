@@ -36,16 +36,22 @@ describe('screen element palette', () => {
     );
 
     expect(screen.getByRole('button', { name: '说明' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'opsAnalysis.screen.collapseDisplayElements' }),
+    ).toBeTruthy();
     expect(screen.queryByText('opsAnalysis.screen.elementCorner')).toBeNull();
     expect(screen.queryByText('opsAnalysis.screen.titleFrame.hero-6')).toBeNull();
     expect(screen.queryByText('opsAnalysis.screen.panelFrame.border-22')).toBeNull();
 
     await user.click(screen.getByRole('button', { name: '说明' }));
     expect(onSelectItem).toHaveBeenCalledWith('text-1');
+    expect(screen.getByRole('button', { name: '说明' }).className).toContain('cursor-pointer');
 
-    await user.click(
-      screen.getByRole('button', { name: 'opsAnalysis.screen.elementPanelFrame' }),
-    );
+    const frameGroup = screen.getByRole('button', {
+      name: 'opsAnalysis.screen.elementPanelFrame',
+    });
+    expect(frameGroup.className).toContain('cursor-pointer');
+    await user.click(frameGroup);
     expect(screen.getByText('opsAnalysis.screen.panelFrame.border-24')).toBeTruthy();
     expect(screen.queryByText('opsAnalysis.screen.titleFrame.hero-6')).toBeNull();
 
@@ -147,9 +153,11 @@ describe('screen element palette', () => {
       />,
     );
 
-    await user.click(
-      screen.getByRole('button', { name: 'opsAnalysis.screen.elementChart' }),
-    );
+    const chartButton = screen.getByRole('button', {
+      name: 'opsAnalysis.screen.elementChart',
+    });
+    expect(chartButton.className).toContain('cursor-pointer');
+    await user.click(chartButton);
     expect(onOpenChartSelector).toHaveBeenCalledTimes(1);
     expect(document.querySelector('[data-screen-catalog-flyout]')).toBeNull();
   });

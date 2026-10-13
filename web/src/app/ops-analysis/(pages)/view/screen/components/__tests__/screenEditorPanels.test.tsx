@@ -56,6 +56,9 @@ describe('ScreenCanvasSettings', () => {
 
     expect(screen.getByText('opsAnalysis.screen.canvasSettings')).toBeTruthy();
     expect(screen.getByText('16:9')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '1920 × 1080' }).className).toContain(
+      'cursor-pointer',
+    );
     expect(screen.getByText('1920 × 1080')).toBeTruthy();
     expect(screen.getByText('3840 × 2160')).toBeTruthy();
   });
@@ -244,6 +247,12 @@ describe('ScreenStyleInspector for Widgets', () => {
     expect(screen.getByText('opsAnalysis.screen.containerStyle')).toBeTruthy();
     expect(screen.getByText('opsAnalysis.screen.widgetFramePanel')).toBeTruthy();
     expect(screen.getByText('opsAnalysis.screen.widgetFrameBare')).toBeTruthy();
+    expect(screen.getByText('opsAnalysis.screen.widgetFramePanel').closest('button')?.className).toContain(
+      'cursor-pointer',
+    );
+    expect(screen.getByText('opsAnalysis.screen.widgetFrameBare').closest('button')?.className).toContain(
+      'cursor-pointer',
+    );
     expect(screen.getByText('opsAnalysis.screen.positionAndSize')).toBeTruthy();
     // Redundant header & headerVisibility should not be displayed
     expect(screen.queryByText('opsAnalysis.screen.headerVisibility')).toBeNull();
