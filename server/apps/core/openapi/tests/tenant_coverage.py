@@ -187,6 +187,21 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.alerts.tests.test_openapi_gateway::test_api_tenant_cannot_delete_other_org_shield",
         "apps.alerts.tests.test_openapi_gateway::test_shield_delete_forged_team_is_rejected",
     ],
+    "monitor/objects": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_list_visible_objects",
+        "apps.monitor.tests.test_openapi_gateway::test_other_tenant_sees_the_same_visible_objects",
+        "apps.monitor.tests.test_openapi_gateway::test_objects_forged_team_is_rejected",
+    ],
+    "monitor/instances": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_list_own_instances",
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_cannot_list_other_org_instances",
+        "apps.monitor.tests.test_openapi_gateway::test_instances_forged_team_is_rejected",
+    ],
+    "monitor/policies": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_list_own_policies",
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_cannot_list_other_org_policies",
+        "apps.monitor.tests.test_openapi_gateway::test_policies_forged_team_is_rejected",
+    ],
     "system-mgmt/users": [
         "apps.system_mgmt.tests.test_openapi_directory::test_system_tenant_can_read_own_org_users",
         "apps.system_mgmt.tests.test_openapi_directory::test_system_tenant_cannot_read_other_org_users",
