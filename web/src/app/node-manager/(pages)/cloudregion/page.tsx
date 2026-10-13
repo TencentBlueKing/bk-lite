@@ -1,12 +1,17 @@
 'use client';
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import useApiClient from '@/utils/request';
-import { Menu, Button, Modal, message } from 'antd';
+import { Button, message, Tag, Tooltip } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 import cloudRegionStyle from './index.module.scss';
 import { useScreenAwareRouter } from '@/console-layout';
 import { useTranslation } from '@/utils/i18n';
 import useNodeManagerApi from '@/app/node-manager/api';
 import EntityList from '@/components/entity-list';
+import GridEntityCard from '@/components/grid-entity-card';
+import CardGridSkeleton from '@/components/card-grid-skeleton';
+import SourceOriginBadge from '@/components/source-origin-badge';
+import Icon from '@/components/icon';
 import PermissionWrapper from '@/components/permission';
 import type {
   CloudRegionItem,
@@ -15,9 +20,8 @@ import type {
 import CloudRegionModal from './cloudregionModal';
 import DeployModal from './deployModal';
 import { ModalRef } from '@/app/node-manager/types';
-import { useMenuItem } from '@/app/node-manager/hooks/node';
 import { cloneDeep } from 'lodash';
-const { confirm } = Modal;
+import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 
 const CloudRegion = () => {
   const { t } = useTranslation();
@@ -29,7 +33,6 @@ const CloudRegion = () => {
   const divRef = useRef(null);
   const [cloudItems, setCloudItems] = useState<CloudRegionItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const menuItem = useMenuItem();
 
   // 获取相关的接口
   const fetchCloudRegions = async () => {
@@ -100,67 +103,50 @@ const CloudRegion = () => {
     fetchCloudRegions();
   };
 
-  const handleDelete = (id: string) => {
-    confirm({
-      title: t(`node-manager.cloudregion.deleteform.title`),
-      content: t(`node-manager.cloudregion.deleteform.deleteInfo`),
-      okText: t('common.confirm'),
-      cancelText: t('common.cancel'),
-      centered: true,
-      onOk() {
-        return new Promise(async (resolve) => {
-          try {
-            await deleteCloudRegion(id);
-            message.success(t('common.successfullyDeleted'));
-            fetchCloudRegions();
-          } finally {
-            return resolve(true);
-          }
-        });
+  const buildCloudRegionMenuItems = (
+    data: CloudRegionItem
+  ): MoreActionsDropdownItem[] | undefined => {
+    if (data?.is_default) return undefined;
+    return [
+      {
+        key: 'edit',
+        label: t('common.edit'),
+        permission: 'Edit',
+        onClick: () =>
+          openModal({ title: 'editform', type: 'edit', form: data }),
       },
-    });
+      {
+        key: 'delete',
+        label: t('common.delete'),
+        permission: 'Delete',
+        danger: true,
+        confirm: {
+          title: t('node-manager.cloudregion.deleteform.title'),
+          content: t('node-manager.cloudregion.deleteform.deleteInfo'),
+        },
+        onClick: async () => {
+          await deleteCloudRegion(data.id);
+          message.success(t('common.successfullyDeleted'));
+          fetchCloudRegions();
+        },
+      },
+    ];
   };
 
-  const menuActions = useCallback(
-    (data: any) => {
-      return (
-        <Menu onClick={(e) => e.domEvent.preventDefault()}>
-          {!data?.is_default && (
-            <>
-              <Menu.Item
-                className="!p-0"
-                onClick={() =>
-                  openModal({ title: 'editform', type: 'edit', form: data })
-                }
-              >
-                <PermissionWrapper
-                  requiredPermissions={['Edit']}
-                  className="!block"
-                >
-                  <Button type="text" className="w-full">
-                    {t(`common.edit`)}
-                  </Button>
-                </PermissionWrapper>
-              </Menu.Item>
-              <Menu.Item
-                className="!p-0"
-                onClick={() => handleDelete(data.id)}
-              >
-                <PermissionWrapper
-                  requiredPermissions={['Delete']}
-                  className="!block"
-                >
-                  <Button type="text" className="w-full">
-                    {t(`common.delete`)}
-                  </Button>
-                </PermissionWrapper>
-              </Menu.Item>
-            </>
-          )}
-        </Menu>
-      );
-    },
-    [menuItem]
+  const renderCloudRegionMeta = (item: CloudRegionItem) => (
+    <>
+      <SourceOriginBadge
+        kind={item.is_default ? 'builtin' : 'external'}
+        className="h-5 px-1.5 text-[11px] leading-5"
+      />
+      {(item.tagList || []).map((tag, idx) => (
+        <Tooltip key={`${tag.name}-${idx}`} title={tag.tooltip}>
+          <Tag color={tag.color} className="mr-0">
+            {tag.name}
+          </Tag>
+        </Tooltip>
+      ))}
+    </>
   );
 
   return (
@@ -171,11 +157,30 @@ const CloudRegion = () => {
       <EntityList
         data={cloudItems}
         loading={loading}
-        menuActions={menuActions}
-        openModal={() => openModal({ title: 'addform', type: 'add', form: {} })}
-        onCardClick={(item: CloudRegionItem) => {
-          navigateToNode(item);
-        }}
+        loadingContent={<CardGridSkeleton count={8} />}
+        renderCard={(item: CloudRegionItem) => (
+          <GridEntityCard
+            name={item.name}
+            description={item.description}
+            icon={<Icon type={item.icon} className="text-2xl" />}
+            meta={renderCloudRegionMeta(item)}
+            menuItems={buildCloudRegionMenuItems(item)}
+            onClick={() => navigateToNode(item)}
+          />
+        )}
+        operateSection={
+          <PermissionWrapper requiredPermissions={['Add']}>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() =>
+                openModal({ title: 'addform', type: 'add', form: {} })
+              }
+            >
+              {t('common.new')}
+            </Button>
+          </PermissionWrapper>
+        }
       />
       <CloudRegionModal ref={modalRef} onSuccess={handleSubmit} />
       <DeployModal ref={deployModalRef} onSuccess={handleSubmit} />
