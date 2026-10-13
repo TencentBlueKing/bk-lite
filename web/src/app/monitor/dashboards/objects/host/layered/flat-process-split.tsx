@@ -1,7 +1,10 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import { Tooltip } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import type { MetricSeries } from '../../common/simple-dashboard-core';
+import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { HOST_PALETTE } from '../config';
 import { pointsToChartData, type EntityTableRow } from '../entity-series';
 import LayeredEntityTable, { type LayeredColumn } from './entity-table';
@@ -10,6 +13,8 @@ import ThinTimeSeries from './thin-time-series';
 import { formatPercent, formatUnit, latestPreferCount, metricSettled } from './readings';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
+
+const PROCESS_LIST_SCOPE_TIP = '列表仅展示 Telegraf `procstat` 已配置监控的进程；主机上未纳入采集的进程不会出现。';
 
 const numberOrNull = (value: number | null | undefined) => (
   value == null || !Number.isFinite(value) ? null : value
@@ -30,6 +35,11 @@ export default function FlatProcessSplit({
   metrics?: Record<string, MetricSeries | undefined>;
   metricsLoading?: boolean;
 }) {
+  const { t } = useDashboardText();
+  const processListScopeTip = t(
+    'monitor.dashboards.text.hostProcessListProcstatScope',
+    PROCESS_LIST_SCOPE_TIP
+  );
   const sorted = useMemo(
     () => [...rows].sort((left, right) => (right.values.process_cpu_usage ?? -1) - (left.values.process_cpu_usage ?? -1)),
     [rows]
@@ -125,7 +135,17 @@ export default function FlatProcessSplit({
       </div>
 
       <div className={styles.sectionHead}>
-        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>进程列表</div>
+        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>
+          <span className="inline-flex items-center gap-1">
+            进程列表
+            <Tooltip title={processListScopeTip} styles={{ body: { maxWidth: 360 } }}>
+              <QuestionCircleOutlined
+                className="cursor-help text-[12px] text-[var(--color-text-3)] hover:text-[var(--color-primary)]"
+                aria-label={processListScopeTip}
+              />
+            </Tooltip>
+          </span>
+        </div>
       </div>
       <LayeredEntityTable
         rows={sorted}

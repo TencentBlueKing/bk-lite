@@ -3887,7 +3887,8 @@
         "lockWaits": "Lock Waits",
         "keyLifecycleAndNetwork": "Key Lifecycle and Network",
         "queueAndThroughput": "Queue and Throughput",
-        "riskSignals": "Risk Signals"
+        "riskSignals": "Risk Signals",
+        "hostProcessListProcstatScope": "This list only shows processes that Telegraf `procstat` is configured to monitor; processes on the host that are not collected do not appear."
       }
     }
   },
