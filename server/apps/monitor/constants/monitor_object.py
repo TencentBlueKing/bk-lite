@@ -24,6 +24,7 @@ class MonitorObjConstants:
                 "Tomcat",
                 "Active Directory",
                 "Exchange",
+                "IIS",
                 "Zookeeper",
                 "ActiveMQ",
                 "MinIO",
@@ -92,4 +93,3 @@ def resolve_default_object_order(obj_name, type_id, catalog=None):
             if default_order_name_matches(obj_name, name):
                 return name_idx
     return None
-

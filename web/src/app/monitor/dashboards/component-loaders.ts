@@ -21,6 +21,7 @@ const COMMUNITY_DASHBOARD_COMPONENT_LOADERS: Record<string, DashboardComponentLo
   zookeeper: () => import('./objects/zookeeper'),
   'active-directory': () => import('./objects/active-directory'),
   exchange: () => import('./objects/exchange'),
+  iis: () => import('./objects/iis'),
   kafka: () => import('./objects/kafka'),
   etcd: () => import('./objects/etcd'),
   haproxy: () => import('./objects/haproxy'),
