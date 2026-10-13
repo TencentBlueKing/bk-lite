@@ -457,6 +457,7 @@
       "apache_BusyWorkers": "忙碌工作进程数",
       "apache_CPULoad": "CPU负载",
       "CvmDiskUsage_gauge": "磁盘利用率",
+      "Outratio_gauge": "公网出带宽利用率",
       "rabbitmq_node_running": "节点运行状态",
       "rabbitmq_overview_messages_ready": "就绪消息数",
       "rabbitmq_node_mem_alarm": "内存告警",
