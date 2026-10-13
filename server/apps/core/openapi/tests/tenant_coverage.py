@@ -292,6 +292,8 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.apm.tests.test_openapi_gateway::test_api_tenant_can_list_own_applications",
         "apps.apm.tests.test_openapi_gateway::test_api_tenant_cannot_list_other_org_applications",
         "apps.apm.tests.test_openapi_gateway::test_applications_forged_team_is_rejected",
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_creates_application_in_own_org",
+        "apps.apm.tests.test_openapi_gateway::test_application_create_forged_team_is_rejected",
     ],
     "apm/services": [
         "apps.apm.tests.test_openapi_gateway::test_api_tenant_can_list_own_services",
@@ -311,6 +313,12 @@ TENANT_ISOLATION_COVERAGE = {
     "apm/traces": [
         "apps.apm.tests.test_openapi_gateway::test_api_tenant_can_list_own_traces",
         "apps.apm.tests.test_openapi_gateway::test_traces_reject_window_over_one_hour",
+    ],
+    "apm/integration-regions": [
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_can_list_integration_regions",
+    ],
+    "apm/integration-configs": [
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_cannot_render_other_org_integration_config",
     ],
     "apm/traces/detail": [
         "apps.apm.tests.test_openapi_gateway::test_api_tenant_cannot_read_other_org_trace",

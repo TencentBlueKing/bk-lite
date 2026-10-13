@@ -1,17 +1,23 @@
 """APM 统一 OpenAPI 网关端点。"""
 
 from apps.apm.openapi_serializers import (
+    ApmApplicationCreateSerializer,
     ApmApplicationQuerySerializer,
     ApmInstanceQuerySerializer,
+    ApmIntegrationConfigSerializer,
+    ApmIntegrationRegionQuerySerializer,
     ApmServiceMetricQuerySerializer,
     ApmServiceQuerySerializer,
     ApmTraceDetailQuerySerializer,
     ApmTraceQuerySerializer,
 )
 from apps.apm.openapi_service import (
+    create_application,
+    create_integration_config,
     get_trace,
     list_applications,
     list_instances,
+    list_integration_regions,
     list_services,
     list_traces,
     query_service_metrics,
@@ -155,3 +161,72 @@ def openapi_list_traces(
 def openapi_get_trace(trace_id, *, team=None, user_info=None):
     del user_info
     return get_trace(team=team, trace_id=trace_id)
+
+
+@openapi_expose(
+    path="apm/applications",
+    method="POST",
+    schema=ApmApplicationCreateSerializer,
+    inject="team_list_with_user",
+    permission="applications-Operate",
+    permission_app="apm",
+    summary=f"在接入页创建应用，并绑定令牌所在组织（{_ORG_SCOPE}）",
+)
+def openapi_create_application(application_id, name, description="", *, team=None, user_info=None):
+    return create_application(
+        team=team,
+        user_info=user_info,
+        application_id=application_id,
+        name=name,
+        description=description,
+    )
+
+
+@openapi_expose(
+    path="apm/integration-regions",
+    method="GET",
+    schema=ApmIntegrationRegionQuerySerializer,
+    inject="team_list_with_user",
+    permission="integration_add-View",
+    permission_app="apm",
+    summary=f"查询接入页可选云区域（{_ORG_SCOPE}）",
+)
+def openapi_list_integration_regions(*, team=None, user_info=None):
+    del user_info
+    return list_integration_regions(team=team)
+
+
+@openapi_expose(
+    path="apm/integration-configs",
+    method="POST",
+    schema=ApmIntegrationConfigSerializer,
+    inject="team_list_with_user",
+    permission="integration_add-View",
+    permission_app="apm",
+    summary=f"按语言、运行时、服务名和云区域生成接入配置，不保存（{_ORG_SCOPE}）",
+)
+def openapi_create_integration_config(
+    application_id,
+    cloud_region_id,
+    language,
+    runtime,
+    service_name,
+    environment,
+    service_version="",
+    sample_rate=100,
+    *,
+    team=None,
+    user_info=None,
+):
+    del user_info
+    return create_integration_config(
+        team=team,
+        application_id=application_id,
+        cloud_region_id=cloud_region_id,
+        language=language,
+        runtime=runtime,
+        service_name=service_name,
+        environment=environment,
+        service_version=service_version,
+        sample_rate=sample_rate,
+    )

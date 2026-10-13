@@ -28,6 +28,9 @@ INSTANCES_URL = "/openapi/v1/apm/instances"
 METRICS_URL = "/openapi/v1/apm/services/metrics"
 TRACES_URL = "/openapi/v1/apm/traces"
 TRACE_DETAIL_URL = "/openapi/v1/apm/traces/detail"
+CREATE_APPLICATION_URL = "/openapi/v1/apm/applications"
+REGIONS_URL = "/openapi/v1/apm/integration-regions"
+CONFIG_URL = "/openapi/v1/apm/integration-configs"
 
 
 def _auth(token):
@@ -35,7 +38,14 @@ def _auth(token):
 
 
 def _grant(system_user):
-    names = ["applications-View", "services-View", "integration_instances-View", "traces-View"]
+    names = [
+        "applications-View",
+        "applications-Operate",
+        "services-View",
+        "integration_instances-View",
+        "traces-View",
+        "integration_add-View",
+    ]
     menu_ids = []
     for name in names:
         menu, _ = Menu.objects.get_or_create(
@@ -365,3 +375,73 @@ def test_api_tenant_cannot_read_other_org_trace(tenants, monkeypatch):
     assert own.json()["data"]["spans"][0]["name"] == "GET /pay"
     assert other.status_code == 400
     assert other.json()["message"] == "调用不存在"
+
+
+def test_api_tenant_creates_application_in_own_org(tenants):
+    application_id = f"pay-{uuid.uuid4().hex[:6]}"
+
+    response = APIClient().post(
+        CREATE_APPLICATION_URL,
+        {"application_id": application_id, "name": "支付"},
+        format="json",
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 200, response.json()
+    created = ApmApplication.objects.get(application_id=application_id)
+    assert list(created.organization_links.values_list("organization", flat=True)) == [tenants.a.team.id]
+
+
+def test_application_create_forged_team_is_rejected(tenants):
+    response = APIClient().post(
+        CREATE_APPLICATION_URL,
+        {"application_id": "pay", "name": "支付", "organization_ids": [tenants.b.team.id]},
+        format="json",
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "SCHEMA_INVALID"
+
+
+def test_api_tenant_can_list_integration_regions(tenants, monkeypatch):
+    monkeypatch.setattr(
+        "apps.apm.services.integration_configuration.DjangoIntegrationConfigurationService.list_regions",
+        staticmethod(lambda node_mgmt: [{"id": 1, "name": "default"}]),
+    )
+
+    response = APIClient().get(REGIONS_URL, **_auth(tenants.a.token))
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["data"]["items"] == [{"id": 1, "name": "default"}]
+
+
+def test_api_tenant_cannot_render_other_org_integration_config(tenants, monkeypatch):
+    application = _application(organization=tenants.b.team.id)
+    called = {"value": False}
+
+    def _resolve(*args, **kwargs):
+        called["value"] = True
+        raise AssertionError("should not resolve")
+
+    monkeypatch.setattr(
+        "apps.apm.services.integration_configuration.DjangoIntegrationConfigurationService.resolve_region",
+        _resolve,
+    )
+    response = APIClient().post(
+        CONFIG_URL,
+        {
+            "application_id": application.application_id,
+            "cloud_region_id": 1,
+            "language": "python",
+            "runtime": "host",
+            "service_name": "pay",
+            "environment": "prod",
+        },
+        format="json",
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["message"] == "应用不存在"
+    assert called["value"] is False

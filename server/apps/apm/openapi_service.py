@@ -290,3 +290,106 @@ def _aware(value):
     if timezone.is_naive(value):
         return timezone.make_aware(value, timezone.utc)
     return value
+
+
+def _rejected(message):
+    return {"result": False, "message": message}
+
+
+def create_application(*, team, user_info, application_id, name, description=""):
+    from apps.apm.models import ApmApplication
+    from apps.apm.services.applications import DjangoApmApplicationService
+    from apps.apm.services.identity import normalize_identity
+
+    ids = team_ids(team)
+    if not ids:
+        return _rejected("应用至少需要一个组织")
+    normalized = normalize_identity(application_id)
+    if ApmApplication.objects.filter(application_id=normalized).exists():
+        return _rejected("应用标识已存在")
+    actor = (user_info or {}).get("user") or ""
+    application = DjangoApmApplicationService().create(
+        application_id=application_id,
+        name=name,
+        description=description or "",
+        organization_ids=ids,
+        actor=actor,
+    )
+    return {
+        "id": str(application.id),
+        "application_id": application.application_id,
+        "name": application.name,
+        "description": application.description,
+    }
+
+
+def list_integration_regions(*, team):
+    from apps.apm.services.integration_configuration import CloudRegionConfigurationError, DjangoIntegrationConfigurationService
+    from apps.rpc.node_mgmt import NodeMgmt
+
+    if not team_ids(team):
+        return _rejected("云区域暂不可用")
+    try:
+        return {"items": DjangoIntegrationConfigurationService.list_regions(NodeMgmt())}
+    except CloudRegionConfigurationError:
+        return _rejected("云区域暂不可用")
+    except Exception:
+        return _rejected("云区域暂不可用")
+
+
+def create_integration_config(
+    *,
+    team,
+    application_id,
+    cloud_region_id,
+    language,
+    runtime,
+    service_name,
+    environment,
+    service_version="",
+    sample_rate=100,
+):
+    from apps.apm.models import ApmApplication
+    from apps.apm.services.contracts import IngestSnippetRequest
+    from apps.apm.services.integration_configuration import CloudRegionConfigurationError, DjangoIntegrationConfigurationService
+    from apps.apm.services.probe_artifacts import LANGUAGE_PROBE_ARTIFACTS, ProbeArtifactNotFound
+    from apps.rpc.node_mgmt import NodeMgmt
+
+    ids = team_ids(team)
+    application = (
+        ApmApplication.objects.filter(application_id=application_id, is_builtin=False, organization_links__organization__in=ids)
+        .distinct()
+        .first()
+    )
+    if application is None:
+        return _rejected("应用不存在")
+    service = DjangoIntegrationConfigurationService()
+    probe_artifact_name = LANGUAGE_PROBE_ARTIFACTS.get(language, "")
+    try:
+        endpoints = service.resolve_region(
+            NodeMgmt(),
+            cloud_region_id,
+            organization_ids=ids,
+            include_probe_download=bool(probe_artifact_name),
+            probe_artifact_name=probe_artifact_name,
+        )
+        snippet = service.render_snippet(
+            IngestSnippetRequest(
+                language=language,
+                runtime=runtime,
+                endpoint=endpoints.http_endpoint,
+                service_namespace=application.application_id,
+                service_name=service_name,
+                service_version=service_version or "",
+                environment=environment,
+                probe_download_url=endpoints.probe_download_url,
+                sample_rate=sample_rate,
+            )
+        )
+    except ProbeArtifactNotFound:
+        return _rejected("探针包不可用")
+    except CloudRegionConfigurationError:
+        return _rejected("云区域不能接收遥测")
+    except Exception:
+        return _rejected("接入配置生成失败")
+    return {"environment": dict(snippet.environment), "code": snippet.code}

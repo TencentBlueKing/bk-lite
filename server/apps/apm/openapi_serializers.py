@@ -51,3 +51,28 @@ class ApmTraceDetailQuerySerializer(OpenAPIRequestSerializer):
     """单条调用。跨组织按不存在处理。"""
 
     trace_id = serializers.RegexField(r"^[0-9a-fA-F]{16}(?:[0-9a-fA-F]{16})?$")
+
+
+class ApmApplicationCreateSerializer(OpenAPIRequestSerializer):
+    """接入页创建应用。组织归属强制为令牌绑定组织。"""
+
+    application_id = serializers.RegexField(regex=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$", max_length=128)
+    name = serializers.CharField(max_length=128)
+    description = serializers.CharField(required=False, allow_blank=True, max_length=512)
+
+
+class ApmIntegrationRegionQuerySerializer(OpenAPIRequestSerializer):
+    """接入页可选云区域，以及该区域能否接收遥测。调用仍须绑定组织。"""
+
+
+class ApmIntegrationConfigSerializer(OpenAPIRequestSerializer):
+    """按语言、运行时和云区域生成接入配置，不保存。"""
+
+    application_id = serializers.CharField(max_length=128)
+    cloud_region_id = serializers.IntegerField(min_value=1)
+    language = serializers.ChoiceField(choices=("python", "nodejs", "java", "go", "dotnet"))
+    runtime = serializers.ChoiceField(choices=("kubernetes", "docker", "host", "other"))
+    service_name = serializers.CharField(max_length=256)
+    service_version = serializers.CharField(required=False, allow_blank=True, max_length=256)
+    environment = serializers.CharField(max_length=256, allow_blank=True)
+    sample_rate = serializers.IntegerField(required=False, default=100, min_value=1, max_value=100)
