@@ -7,6 +7,7 @@ import pytest
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from apps.apm.services.contracts import ServiceRed, SpanDetail, TraceDetail, TracePage, TraceSummary
 from apps.apm.models import (
     ApmApplication,
     ApmApplicationOrganization,
@@ -24,6 +25,9 @@ pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 APPLICATIONS_URL = "/openapi/v1/apm/applications"
 SERVICES_URL = "/openapi/v1/apm/services"
 INSTANCES_URL = "/openapi/v1/apm/instances"
+METRICS_URL = "/openapi/v1/apm/services/metrics"
+TRACES_URL = "/openapi/v1/apm/traces"
+TRACE_DETAIL_URL = "/openapi/v1/apm/traces/detail"
 
 
 def _auth(token):
@@ -31,7 +35,7 @@ def _auth(token):
 
 
 def _grant(system_user):
-    names = ["applications-View", "services-View", "integration_instances-View"]
+    names = ["applications-View", "services-View", "integration_instances-View", "traces-View"]
     menu_ids = []
     for name in names:
         menu, _ = Menu.objects.get_or_create(
@@ -206,3 +210,158 @@ def test_instances_forged_team_is_rejected(tenants):
 
     assert response.status_code == 400
     assert response.json()["code"] == "SCHEMA_INVALID"
+
+
+class _Telemetry:
+    def __init__(self, *, red=None, page=None, detail=None):
+        self.red = red
+        self.page = page or TracePage(items=(), next_cursor=None)
+        self.detail = detail
+
+    def service_red(self, query):
+        return self.red
+
+    def search_traces(self, query):
+        return self.page
+
+    def get_trace(self, trace_id):
+        return self.detail
+
+
+def test_api_tenant_can_query_own_service_metrics(tenants, monkeypatch):
+    application = _application(organization=tenants.a.team.id)
+    service = _service(application, tenants.a.team.id)
+    monkeypatch.setattr(
+        "apps.apm.openapi_service._telemetry",
+        lambda: _Telemetry(red=ServiceRed(request_rate=1.5, error_rate=0.0, p95_ms=12.0, p99_ms=20.0, request_count=10, error_count=0)),
+    )
+
+    response = APIClient().get(
+        METRICS_URL,
+        {"service_id": str(service.id), "start": "2026-01-01T00:00:00Z", "end": "2026-01-02T00:00:00Z"},
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["data"]["request_rate"] == 1.5
+    assert response.json()["data"]["service_id"] == str(service.id)
+
+
+def test_api_tenant_cannot_query_other_org_service_metrics(tenants, monkeypatch):
+    application = _application(organization=tenants.a.team.id)
+    service = _service(application, tenants.a.team.id)
+    monkeypatch.setattr(
+        "apps.apm.openapi_service._telemetry",
+        lambda: (_ for _ in ()).throw(AssertionError("queried")),
+    )
+
+    response = APIClient().get(
+        METRICS_URL,
+        {"service_id": str(service.id), "start": "2026-01-01T00:00:00Z", "end": "2026-01-02T00:00:00Z"},
+        **_auth(tenants.b.token),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["message"] == "服务不存在"
+
+
+def test_service_metrics_reject_window_over_seven_days(tenants):
+    response = APIClient().get(
+        METRICS_URL,
+        {"service_id": str(uuid.uuid4()), "start": "2026-01-01T00:00:00Z", "end": "2026-01-09T00:00:00Z"},
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["message"] == "查询时间范围不能超过 7 天"
+
+
+def test_api_tenant_can_list_own_traces(tenants, monkeypatch):
+    application = _application(organization=tenants.a.team.id)
+    service = _service(application, tenants.a.team.id)
+    now = timezone.now()
+    own = TraceSummary(
+        trace_id="a" * 32,
+        started_at=now,
+        duration_ms=10,
+        service_namespace="",
+        service_name=service.normalized_name,
+        environment="",
+        instance_id=None,
+        status="error",
+        root_span_name="GET /pay",
+        span_count=2,
+    )
+    other = TraceSummary(
+        trace_id="b" * 32,
+        started_at=now,
+        duration_ms=8,
+        service_namespace="",
+        service_name="foreign-service",
+        environment="",
+        instance_id=None,
+        status="ok",
+        root_span_name="GET /other",
+        span_count=1,
+    )
+    monkeypatch.setattr("apps.apm.openapi_service._telemetry", lambda: _Telemetry(page=TracePage(items=(own, other), next_cursor=None)))
+
+    response = APIClient().get(
+        TRACES_URL,
+        {"start": "2026-01-01T00:00:00Z", "end": "2026-01-01T00:30:00Z", "service_id": str(service.id)},
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 200, response.json()
+    ids = [item["trace_id"] for item in response.json()["data"]["items"]]
+    assert ids == ["a" * 32]
+
+
+def test_traces_reject_window_over_one_hour(tenants, monkeypatch):
+    monkeypatch.setattr(
+        "apps.apm.openapi_service._telemetry",
+        lambda: (_ for _ in ()).throw(AssertionError("queried")),
+    )
+
+    response = APIClient().get(
+        TRACES_URL,
+        {"start": "2026-01-01T00:00:00Z", "end": "2026-01-01T02:00:00Z"},
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["message"] == "查询时间范围不能超过 1 小时"
+
+
+def test_api_tenant_cannot_read_other_org_trace(tenants, monkeypatch):
+    application = _application(organization=tenants.a.team.id)
+    service = _service(application, tenants.a.team.id)
+    now = timezone.now()
+    detail = TraceDetail(
+        trace_id="c" * 32,
+        spans=(
+            SpanDetail(
+                span_id="1" * 16,
+                parent_span_id=None,
+                name="GET /pay",
+                started_at=now,
+                duration_ms=4,
+                status="ok",
+                service_namespace="",
+                service_name=service.normalized_name,
+            ),
+        ),
+        service_namespace="",
+        service_name=service.normalized_name,
+        environment="",
+        instance_id=None,
+    )
+    monkeypatch.setattr("apps.apm.openapi_service._telemetry", lambda: _Telemetry(detail=detail))
+
+    own = APIClient().get(TRACE_DETAIL_URL, {"trace_id": "c" * 32}, **_auth(tenants.a.token))
+    other = APIClient().get(TRACE_DETAIL_URL, {"trace_id": "c" * 32}, **_auth(tenants.b.token))
+
+    assert own.status_code == 200, own.json()
+    assert own.json()["data"]["spans"][0]["name"] == "GET /pay"
+    assert other.status_code == 400
+    assert other.json()["message"] == "调用不存在"

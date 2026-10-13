@@ -255,6 +255,18 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.apm.tests.test_openapi_gateway::test_api_tenant_cannot_list_other_org_instances",
         "apps.apm.tests.test_openapi_gateway::test_instances_forged_team_is_rejected",
     ],
+    "apm/services/metrics": [
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_can_query_own_service_metrics",
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_cannot_query_other_org_service_metrics",
+        "apps.apm.tests.test_openapi_gateway::test_service_metrics_reject_window_over_seven_days",
+    ],
+    "apm/traces": [
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_can_list_own_traces",
+        "apps.apm.tests.test_openapi_gateway::test_traces_reject_window_over_one_hour",
+    ],
+    "apm/traces/detail": [
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_cannot_read_other_org_trace",
+    ],
     "system-mgmt/users": [
         "apps.system_mgmt.tests.test_openapi_directory::test_system_tenant_can_read_own_org_users",
         "apps.system_mgmt.tests.test_openapi_directory::test_system_tenant_cannot_read_other_org_users",
