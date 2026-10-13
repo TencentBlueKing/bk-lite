@@ -2253,6 +2253,26 @@ def test_summarize_planned_step_carries_instance_id_into_next_step():
     assert "instance_id=" in summary
 
 
+def test_published_step_result_keeps_instance_ids_beyond_prose_cap():
+    """下一步不能只看前 400 字，否则全部实例会被裁成几条。"""
+    import json
+
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    from apps.opspilot.metis.llm.chain.deepagent_assembly import compact_completed_step_line
+
+    rows = [{"id": f"1_10.10.60.{index}", "name": f"host-{index}", "instance_id": f"1_10.10.60.{index}"} for index in range(11, 41)]
+    messages = [
+        AIMessage(content="", tool_calls=[{"id": "1", "name": "monitor_list_object_instances", "args": {}}]),
+        ToolMessage(content=json.dumps({"success": True, "data": rows}, ensure_ascii=False), tool_call_id="1", name="monitor_list_object_instances"),
+        AIMessage(content="已获取全部主机。" + ("过程说明。" * 80)),
+    ]
+    published = compact_completed_step_line("列出实例", ToolsNodes._summarize_planned_step_messages(messages))
+    assert "1_10.10.60.11" in published
+    assert "1_10.10.60.40" in published
+    assert published.find("1_10.10.60.40") > 400
+
+
 def test_summarize_planned_step_carries_monitor_metric_name():
     import json
 
