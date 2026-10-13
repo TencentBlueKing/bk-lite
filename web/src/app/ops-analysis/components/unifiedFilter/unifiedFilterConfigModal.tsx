@@ -70,6 +70,10 @@ import {
   isBindableDataSourceParamType,
   type BindableDataSourceParamType,
 } from '@/app/ops-analysis/utils/dataSourceParamContract';
+import {
+  includeRoom3DCanvasFilter,
+  layoutDeclaresRoom3D,
+} from '@/app/ops-analysis/utils/room3DScreenFilter';
 
 interface UnifiedFilterConfigModalProps {
   open: boolean;
@@ -318,9 +322,15 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
     });
 
     merged.sort((a, b) => a.order - b.order);
-    setDefinitions(merged);
-    initialSnapshotRef.current = JSON.stringify(merged);
-  }, [open, initialDefinitions, scannedParams]);
+    const withRoomFilter = includeRoom3DCanvasFilter(
+      merged,
+      layoutDeclaresRoom3D(layoutItems),
+      initialDefinitions,
+      t('dashboard.room3DFilterName'),
+    );
+    setDefinitions(withRoomFilter);
+    initialSnapshotRef.current = JSON.stringify(withRoomFilter);
+  }, [open, initialDefinitions, layoutItems, scannedParams, t]);
 
   const handleCancel = () =>
     guardClose(

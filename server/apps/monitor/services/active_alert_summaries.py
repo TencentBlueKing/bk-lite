@@ -142,6 +142,7 @@ def summarize_active_alerts_by_monitor_ids(
     authorized_ordered = [monitor_id for monitor_id in ordered_ids if monitor_id in authorized_ids]
     counts: dict[str, int] = defaultdict(int)
     levels: dict[str, set[str]] = defaultdict(set)
+    level_counts: dict[str, dict[str, int]] = defaultdict(lambda: {level: 0 for level in _SEVERITY_RANK})
 
     if authorized_ordered:
         try:
@@ -160,8 +161,10 @@ def summarize_active_alerts_by_monitor_ids(
                     level = str(row["level"]).strip().lower()
                     if level not in ACTIVE_ALERT_SEVERITY_LEVELS:
                         continue
-                    counts[monitor_id] += int(row["count"] or 0)
+                    row_count = int(row["count"] or 0)
+                    counts[monitor_id] += row_count
                     levels[monitor_id].add(level)
+                    level_counts[monitor_id][level] += row_count
         except Exception as exc:
             logger.exception(
                 "active alert summary query failed monitor_id_count=%s " "failed_stage=aggregate error_type=%s",
@@ -179,6 +182,9 @@ def summarize_active_alerts_by_monitor_ids(
             "monitor_id": monitor_id,
             "active_alarm_count": int(counts.get(monitor_id, 0)),
             "highest_severity": _max_severity(levels.get(monitor_id, set())),
+            "level_counts": {
+                level: int(level_counts[monitor_id][level]) if monitor_id in level_counts else 0 for level in ("critical", "error", "warning")
+            },
         }
         for monitor_id in authorized_ordered
     ]

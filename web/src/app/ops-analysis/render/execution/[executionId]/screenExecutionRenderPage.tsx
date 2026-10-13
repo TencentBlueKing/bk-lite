@@ -219,9 +219,7 @@ export const ScreenExecutionRenderPageContent = ({
         }
         dataSourceResolver={dataSourceResolver}
         onWidgetRenderStatus={handleWidgetRenderStatus}
-        filterDefinitions={
-          (renderInput.render_snapshot.filters as never[]) || []
-        }
+        filterDefinitions={viewSets.filters ?? []}
         unifiedFilterValues={filterValues}
         filterSearchVersion={0}
         namespaceSearchVersion={0}

@@ -2,7 +2,9 @@ import React from 'react';
 import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type {
+  FilterValue,
   ScreenRenderContext,
+  UnifiedFilterDefinition,
   ValueConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import type { CanvasRuntimeRefreshCause } from '@/app/ops-analysis/utils/canvasRefreshTimer';
@@ -35,6 +37,8 @@ interface WidgetRendererProps {
   fallback?: React.ReactNode;
   surface?: OpsAnalysisWidgetSurface;
   onRawData?: (data: unknown) => void;
+  unifiedFilterValues?: Record<string, FilterValue>;
+  filterDefinitions?: UnifiedFilterDefinition[];
 }
 
 const WidgetRenderer: React.FC<WidgetRendererProps> = ({
@@ -60,6 +64,8 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
   fallback = null,
   surface = 'dashboard',
   onRawData,
+  unifiedFilterValues,
+  filterDefinitions,
 }) => {
   const Component = getWidgetComponent(chartType, surface);
   if (!Component) {
@@ -87,6 +93,7 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
       runtimeActive={runtimeActive}
       runtimePriority={runtimePriority}
       onRawData={onRawData}
+      {...(chartType === 'room3D' ? { unifiedFilterValues, filterDefinitions } : {})}
       {...(supportsComponentSwitch(chartType) ? { componentSwitchControl, errorMessage } : {})}
     />
   );
