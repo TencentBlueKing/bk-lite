@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { HOST_PALETTE } from '../config';
+import { hostCategoryText } from './category-copy';
 import { latestFinite, pointsToChartData, rowHasSeries, sumPoints, type EntityTableRow } from '../entity-series';
 import LayeredEntityTable from './entity-table';
 import ThinTimeSeries from './thin-time-series';
@@ -54,9 +56,10 @@ export default function NetworkPane({
     ...(hasErr ? [{ points: selected?.series.err || [], label: '错误', color: HOST_PALETTE.rose, latest: errLatest }] : []),
     ...(hasDrop ? [{ points: selected?.series.drop || [], label: '丢包', color: HOST_PALETTE.orange, latest: dropLatest }] : [])
   ];
+  const { t } = useDashboardText();
   const packetItems = [
-    { key: 'net_packets_recv_rate' as const, label: '入包速率', color: HOST_PALETTE.blue },
-    { key: 'net_packets_sent_rate' as const, label: '出包速率', color: HOST_PALETTE.cyan }
+    { key: 'net_packets_recv_rate' as const, label: hostCategoryText(t, 'inboundPacketRate'), color: HOST_PALETTE.blue },
+    { key: 'net_packets_sent_rate' as const, label: hostCategoryText(t, 'outboundPacketRate'), color: HOST_PALETTE.cyan }
   ].filter((item) => (selected?.series[item.key] || []).length > 0);
   const showPackets = rowHasSeries(selected, PACKET_KEYS);
 
@@ -70,7 +73,9 @@ export default function NetworkPane({
       <div className={showErrors ? styles.chartGrid3 : styles.chartGrid2}>
         <ThinTimeSeries
           key={`in-${selected?.key || 'none'}`}
-          title={name ? `入流量 · ${name}` : '入流量'}
+          title={name
+            ? hostCategoryText(t, 'inboundThroughputNamed', { name })
+            : hostCategoryText(t, 'inboundThroughput')}
           loading={loading}
           unit="byteps"
           data={pointsToChartData([{ points: selected?.series.net_bytes_recv_rate || [] }])}
@@ -82,7 +87,9 @@ export default function NetworkPane({
         />
         <ThinTimeSeries
           key={`out-${selected?.key || 'none'}`}
-          title={name ? `出流量 · ${name}` : '出流量'}
+          title={name
+            ? hostCategoryText(t, 'outboundThroughputNamed', { name })
+            : hostCategoryText(t, 'outboundThroughput')}
           loading={loading}
           unit="byteps"
           data={pointsToChartData([{ points: selected?.series.net_bytes_sent_rate || [] }])}
@@ -111,13 +118,15 @@ export default function NetworkPane({
       {showPackets ? (
         <>
           <div className={styles.sectionHead}>
-            <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>加细</div>
-            <div className={styles.hint}>{name ? `选中网卡 ${name}` : '选中行驱动'}</div>
+            <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>{hostCategoryText(t, 'detailedMetrics')}</div>
+            <div className={styles.hint}>{hostCategoryText(t, 'clickRowToSwitch')}</div>
           </div>
           <div className="grid grid-cols-1 gap-3">
             <ThinTimeSeries
               key={`pps-${selected?.key || 'none'}`}
-              title={name ? `包速率 · 入/出 · ${name}` : '包速率 · 入/出'}
+              title={name
+                ? hostCategoryText(t, 'packetRateInOutNamed', { name })
+                : hostCategoryText(t, 'packetRateInOut')}
               loading={loading && !selected}
               unit="cps"
               data={pointsToChartData(packetItems.map((item) => ({

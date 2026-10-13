@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import { Tooltip } from 'antd';
 import { useECharts } from '../../../shared/widgets/useECharts';
 import { ChartData } from '@/app/monitor/types';
 import { resolveThemeColor, useThemeColors } from './theme-color';
@@ -62,6 +63,8 @@ export const FlatSpark = ({ className }: { className?: string }) => (
 export interface KpiCardModel {
   key: string;
   label: string;
+  /** 窄卡保留短标题时，悬浮展示完整名称。 */
+  hint?: string;
   value: string;
   color: string;
   tone?: string;
@@ -78,7 +81,13 @@ export function KpiStrip({ items }: { items: KpiCardModel[] }) {
     <div className={styles.kpiGrid}>
       {items.map((item) => (
         <div key={item.key} className={classic.statCard}>
-          <div className={classic.statLabel}>{item.label}</div>
+          <div className={classic.statLabel}>
+            {item.hint ? (
+              <Tooltip title={item.hint}>
+                <span>{item.label}</span>
+              </Tooltip>
+            ) : item.label}
+          </div>
           <div className={classic.statBody}>
             <div className={classic.statValue} style={item.tone ? { color: item.tone } : undefined}>
               {item.value}

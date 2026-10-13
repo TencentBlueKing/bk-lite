@@ -1,7 +1,9 @@
 'use client';
 
 import React from 'react';
+import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { HOST_PALETTE } from '../config';
+import { hostCategoryText } from './category-copy';
 import {
   pointsToChartData,
   rowHasSeries,
@@ -56,6 +58,16 @@ export default function DiskPane({
   const showLatency = rowHasSeries(selected, LATENCY_KEYS);
   const showInodes = showDiskInodeColumn(rows, windowsHost);
   const showFsType = showDiskFsTypeColumn(rows);
+  const { t } = useDashboardText();
+  const readTitle = ioDevice
+    ? hostCategoryText(t, 'diskReadThroughputNamed', { name: ioDevice })
+    : hostCategoryText(t, 'diskReadThroughput');
+  const writeTitle = ioDevice
+    ? hostCategoryText(t, 'diskWriteThroughputNamed', { name: ioDevice })
+    : hostCategoryText(t, 'diskWriteThroughput');
+  const ioTitle = ioDevice
+    ? hostCategoryText(t, 'ioUtilizationNamed', { name: ioDevice })
+    : hostCategoryText(t, 'ioUtilization');
 
   return (
     <>
@@ -78,36 +90,34 @@ export default function DiskPane({
         />
         <ThinTimeSeries
           key={`read-${selected?.key || 'none'}-${ioDevice || 'empty'}`}
-          title={ioDevice ? `读取 · ${ioDevice}` : '读取'}
+          title={readTitle}
           reading={ioDevice ? formatUnit(readLatest ?? null, 'byteps') : undefined}
           loading={loading && !selected}
           unit="byteps"
           emptyText={ioDevice ? '暂无数据' : '无关联磁盘设备'}
           data={pointsToChartData([{ points: readPoints }])}
-          legends={[{ label: '读取', color: HOST_PALETTE.blue }]}
+          legends={[{ label: hostCategoryText(t, 'diskReadThroughput'), color: HOST_PALETTE.blue }]}
         />
         <ThinTimeSeries
           key={`write-${selected?.key || 'none'}-${ioDevice || 'empty'}`}
-          title={ioDevice ? `写入 · ${ioDevice}` : '写入'}
+          title={writeTitle}
           reading={ioDevice ? formatUnit(writeLatest ?? null, 'byteps') : undefined}
           loading={loading && !selected}
           unit="byteps"
           emptyText={ioDevice ? '暂无数据' : '无关联磁盘设备'}
           data={pointsToChartData([{ points: writePoints }])}
-          legends={[{ label: '写入', color: HOST_PALETTE.cyan }]}
+          legends={[{ label: hostCategoryText(t, 'diskWriteThroughput'), color: HOST_PALETTE.cyan }]}
         />
       </div>
 
       <div className={styles.sectionHead}>
-        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>加细</div>
-        <div className={styles.hint}>
-          {ioDevice ? `选中设备 ${ioDevice}` : '选中行驱动'}
-        </div>
+        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>{hostCategoryText(t, 'detailedMetrics')}</div>
+        <div className={styles.hint}>{hostCategoryText(t, 'clickRowToSwitch')}</div>
       </div>
       <div className={showLatency ? styles.chartGrid2 : 'grid grid-cols-1 gap-3'}>
         <ThinTimeSeries
           key={`util-${selected?.key || 'none'}-${ioDevice || 'empty'}`}
-          title={ioDevice ? `IO 利用率% · ${ioDevice}` : 'IO 利用率%'}
+          title={ioTitle}
           reading={ioDevice ? formatPercent(utilLatest ?? null) : undefined}
           loading={loading && !selected}
           unit="percent"
@@ -166,12 +176,12 @@ export default function DiskPane({
             title: '磁盘设备',
             render: (row) => row.labels.io_device || '—'
           },
-          { key: 'diskio_read_bytes_rate', title: '读取', unit: 'byteps', emptyDash: true },
-          { key: 'diskio_write_bytes_rate', title: '写入', unit: 'byteps', emptyDash: true },
-          ...(showInodes ? [{ key: 'disk_inodes_used_percent', title: 'inode%', unit: 'percent' as const, emptyDash: true }] : []),
+          { key: 'diskio_read_bytes_rate', title: hostCategoryText(t, 'diskReadThroughput'), unit: 'byteps', emptyDash: true },
+          { key: 'diskio_write_bytes_rate', title: hostCategoryText(t, 'diskWriteThroughput'), unit: 'byteps', emptyDash: true },
+          ...(showInodes ? [{ key: 'disk_inodes_used_percent', title: hostCategoryText(t, 'inodeUsage'), unit: 'percent' as const, emptyDash: true }] : []),
           ...(showFsType ? [{
             key: 'fstype',
-            title: '文件系统',
+            title: hostCategoryText(t, 'filesystemType'),
             labelKey: 'fstype',
             emptyDash: true
           }] : [])

@@ -1,0 +1,52 @@
+type CopyValues = Record<string, string | number>;
+type Translate = (id: string, defaultMessage?: string, values?: CopyValues) => string;
+
+const textId = (suffix: string) => `monitor.dashboards.text.${suffix}`;
+
+/** 分类仪表盘文案。中文是缺词条时的回退，与 locales 中同 key 保持一致。 */
+export const HOST_CATEGORY_COPY = {
+  detailedMetrics: [textId('hostCategoryDetailedMetrics'), '详细指标'],
+  swapUtilization: [textId('hostCategorySwapUtilization'), '交换利用率'],
+  utilization: [textId('hostCategoryUtilization'), '利用率'],
+  cpuUtilization: [textId('hostCategoryCpuUtilization'), 'CPU 利用率'],
+  memoryUtilization: [textId('hostCategoryMemoryUtilization'), '内存利用率'],
+  inboundThroughput: [textId('hostCategoryInboundThroughput'), '入站吞吐'],
+  outboundThroughput: [textId('hostCategoryOutboundThroughput'), '出站吞吐'],
+  inboundThroughputNamed: [textId('hostCategoryInboundThroughputNamed'), '入站吞吐 · {name}'],
+  outboundThroughputNamed: [textId('hostCategoryOutboundThroughputNamed'), '出站吞吐 · {name}'],
+  busiestNic: [textId('hostCategoryBusiestNic'), '吞吐最高网卡'],
+  ioUtilization: [textId('hostCategoryIoUtilization'), 'I/O 利用率'],
+  ioUtilizationNamed: [textId('hostCategoryIoUtilizationNamed'), 'I/O 利用率 · {name}'],
+  perCoreCpuUtilization: [textId('hostCategoryPerCoreCpuUtilization'), 'CPU 分核利用率'],
+  average: [textId('hostCategoryAverage'), '均值'],
+  coreUtilizationNamed: [textId('hostCategoryCoreUtilizationNamed'), '{name} 利用率'],
+  inodeUsage: [textId('hostCategoryInodeUsage'), 'Inode 使用率'],
+  filesystemType: [textId('hostCategoryFilesystemType'), '文件系统类型'],
+  diskPeak: [textId('hostCategoryDiskPeak'), '磁盘峰值'],
+  diskUtilizationPeak: [textId('hostCategoryDiskUtilizationPeak'), '磁盘利用率（最高）'],
+  clickRowToSwitch: [textId('hostCategoryClickRowToSwitch'), '点击下表行切换'],
+  cpuTimeBreakdown: [textId('hostCategoryCpuTimeBreakdown'), 'CPU 时间构成'],
+  diskReadThroughput: [textId('hostCategoryDiskReadThroughput'), '磁盘读吞吐'],
+  diskWriteThroughput: [textId('hostCategoryDiskWriteThroughput'), '磁盘写吞吐'],
+  diskReadThroughputNamed: [textId('hostCategoryDiskReadThroughputNamed'), '磁盘读吞吐 · {name}'],
+  diskWriteThroughputNamed: [textId('hostCategoryDiskWriteThroughputNamed'), '磁盘写吞吐 · {name}'],
+  uptime: [textId('hostCategoryUptime'), '运行时间'],
+  packetRateInOut: [textId('hostCategoryPacketRateInOut'), '包速率（入/出）'],
+  packetRateInOutNamed: [textId('hostCategoryPacketRateInOutNamed'), '包速率（入/出） · {name}'],
+  inboundPacketRate: [textId('hostCategoryInboundPacketRate'), '入站包速率'],
+  outboundPacketRate: [textId('hostCategoryOutboundPacketRate'), '出站包速率'],
+  blockedProcesses: [textId('hostCategoryBlockedProcesses'), '阻塞进程'],
+  zombieProcesses: [textId('hostCategoryZombieProcesses'), '僵尸进程'],
+  busiestMount: [textId('hostCategoryBusiestMount'), '利用率最高挂载点']
+} as const;
+
+export type HostCategoryCopyKey = keyof typeof HOST_CATEGORY_COPY;
+
+export const hostCategoryText = (
+  t: Translate,
+  key: HostCategoryCopyKey,
+  values?: CopyValues
+) => {
+  const [id, fallback] = HOST_CATEGORY_COPY[key];
+  return t(id, fallback, values);
+};

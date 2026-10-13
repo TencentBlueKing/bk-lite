@@ -2,7 +2,9 @@
 
 import React, { useMemo } from 'react';
 import Link from 'next/link';
+import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
+import { hostCategoryText } from './category-copy';
 import { HOST_PALETTE } from '../config';
 import { latestPreferSignal, maxFinite, pointsToChartData, type EntityTableRow } from '../entity-series';
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
@@ -62,6 +64,7 @@ export default function OverviewPane({
   monitorObjectId,
   onJump
 }: OverviewPaneProps) {
+  const { t } = useDashboardText();
   const worst = diskRows[0];
   const busiest = netRows[0];
   const topProcess = processRows[0];
@@ -104,7 +107,8 @@ export default function OverviewPane({
     }
     items.push({
       key: 'disk',
-      label: '磁盘峰值',
+      label: hostCategoryText(t, 'diskPeak'),
+      hint: hostCategoryText(t, 'diskUtilizationPeak'),
       value: diskLoading && diskValue == null ? '--' : formatPercent(diskValue),
       detail: mountName ? `挂载 ${mountName}` : '—',
       color: HOST_PALETTE.orange,
@@ -117,7 +121,7 @@ export default function OverviewPane({
         : 'var(--color-success)';
     items.push({
       key: 'uptime',
-      label: '运行时长',
+      label: hostCategoryText(t, 'uptime'),
       value: uptime == null ? '--' : formatDuration(uptime),
       color: HOST_PALETTE.indigo,
       trend: metrics.system_uptime?.viewData || [],
@@ -155,6 +159,7 @@ export default function OverviewPane({
     mountName,
     showLoad,
     uptime,
+    t,
     worst
   ]);
 
@@ -174,7 +179,7 @@ export default function OverviewPane({
       <div className={styles.shortcutGrid}>
         {worst ? (
           <div className={`${classic.panel} ${styles.shortcutCard}`}>
-            <div className={styles.shortcutLabel}>用量最高挂载</div>
+            <div className={styles.shortcutLabel}>{hostCategoryText(t, 'busiestMount')}</div>
             <div className={styles.shortcutMain}>
               {mountName || '—'}
               {' · '}
@@ -199,7 +204,7 @@ export default function OverviewPane({
         ) : null}
         {busiest ? (
           <div className={`${classic.panel} ${styles.shortcutCard}`}>
-            <div className={styles.shortcutLabel}>流量最高网卡</div>
+            <div className={styles.shortcutLabel}>{hostCategoryText(t, 'busiestNic')}</div>
             <div className={styles.shortcutMain}>{busiest.labels.interface || '—'}</div>
             <div className={styles.shortcutSub}>
               {`入 ${formatUnit(readingOfRow(busiest, 'net_bytes_recv_rate'), 'byteps')}`}
@@ -233,7 +238,7 @@ export default function OverviewPane({
       </div>
       <div className={styles.chartGrid4}>
         <ThinTimeSeries
-          title="CPU使用率"
+          title={hostCategoryText(t, 'cpuUtilization')}
           reading={formatPercent(cpu)}
           loading={loading}
           unit="percent"
@@ -241,7 +246,7 @@ export default function OverviewPane({
           legends={[{ label: 'CPU', color: HOST_PALETTE.emerald }]}
         />
         <ThinTimeSeries
-          title="内存使用率"
+          title={hostCategoryText(t, 'memoryUtilization')}
           reading={formatPercent(mem)}
           loading={loading}
           unit="percent"

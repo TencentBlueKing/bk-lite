@@ -2,6 +2,8 @@
 
 import React from 'react';
 import { Tooltip } from 'antd';
+import { useDashboardText } from '../../../shared/utils/content-i18n';
+import { hostCategoryText } from './category-copy';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
@@ -81,8 +83,8 @@ export const processStatusView = (
   return [
     neutralItem('running', '运行中', running),
     neutralItem('sleeping', '休眠', sleeping, SLEEPING_STATUS_HINT),
-    semanticItem('blocked', '阻塞', blocked, true),
-    semanticItem('zombies', '僵尸', zombies, true),
+    semanticItem('blocked', '阻塞进程', blocked, true),
+    semanticItem('zombies', '僵尸进程', zombies, true),
     neutralItem('total', '进程总数', total)
   ].filter((item): item is StatusCountItem => item != null);
 };
@@ -93,7 +95,13 @@ export default function StatusCountRow({
 }: {
   items: StatusCountItem[];
 }) {
+  const { t } = useDashboardText();
   if (!items.length) return null;
+  const labelOf = (item: StatusCountItem) => {
+    if (item.key === 'blocked') return hostCategoryText(t, 'blockedProcesses');
+    if (item.key === 'zombies') return hostCategoryText(t, 'zombieProcesses');
+    return item.label;
+  };
   return (
     <section className={`${classic.panel} ${styles.statusPanel}`}>
       <div className={styles.sectionHead}>
@@ -103,7 +111,7 @@ export default function StatusCountRow({
         {items.map((item) => {
           const card = (
             <div className={`${styles.statusCard} ${TONE_CLASS[item.tone]}`}>
-              <span className={item.hint ? styles.statusHint : styles.statusLabel}>{item.label}</span>
+              <span className={item.hint ? styles.statusHint : styles.statusLabel}>{labelOf(item)}</span>
               <span className={styles.statusValueRow}>
                 <span className={styles.statusValue}>{item.value == null ? '--' : item.value}</span>
                 {item.value != null ? <span className={styles.statusUnit}>个</span> : null}

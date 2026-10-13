@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
+import { hostCategoryText } from './category-copy';
 import { formatMetricValue } from '../../../shared/utils/format';
 import type { MetricUnit } from '../../../shared/types';
 import { HOST_PALETTE } from '../config';
@@ -55,6 +57,7 @@ export default function SystemPane({
   loading: boolean;
   coreRows?: EntityTableRow[];
 }) {
+  const { t } = useDashboardText();
   const [selectedCoreKey, setSelectedCoreKey] = useState('');
   const coreIdentity = coreRows.map((row) => row.key).join('|');
   useEffect(() => {
@@ -115,10 +118,10 @@ export default function SystemPane({
     { key: 'cpu', label: 'CPU', ...splitMetric(cpuNow, 'percent') },
     { key: 'mem', label: '内存', ...splitMetric(memNow, 'percent') },
     { key: 'avail', label: '可用内存', ...splitMetric(availNow, 'bytes') },
-    { key: 'swap', label: '交换已用', ...splitMetric(swapNow, 'percent') },
+    { key: 'swap', label: hostCategoryText(t, 'swapUtilization'), ...splitMetric(swapNow, 'percent') },
     {
       key: 'uptime',
-      label: '运行时长',
+      label: hostCategoryText(t, 'uptime'),
       value: uptimeNow == null ? '--' : formatDuration(uptimeNow),
       unit: ''
     }
@@ -126,7 +129,9 @@ export default function SystemPane({
   const charts = [
     <ThinTimeSeries
       key="cpu"
-      title={breakdown.length ? 'CPU 分项' : 'CPU使用率'}
+      title={breakdown.length
+        ? hostCategoryText(t, 'cpuTimeBreakdown')
+        : hostCategoryText(t, 'cpuUtilization')}
       loading={loading}
       unit="percent"
       data={mergeChartSeries(cpuItems.map((item) => ({
@@ -145,7 +150,7 @@ export default function SystemPane({
     />,
     <ThinTimeSeries
       key="mem"
-      title="内存使用率"
+      title={hostCategoryText(t, 'memoryUtilization')}
       loading={loading}
       unit="percent"
       data={mergeChartSeries(memItems.map((item) => ({
@@ -198,12 +203,12 @@ export default function SystemPane({
     swapSeries.length ? (
       <ThinTimeSeries
         key="swap"
-        title="交换已用%"
+        title={hostCategoryText(t, 'swapUtilization')}
         loading={loading}
         unit="percent"
         data={swapSeries}
         legends={[{
-          label: '已用%',
+          label: hostCategoryText(t, 'utilization'),
           color: HOST_PALETTE.indigo,
           reading: swapTrendNow == null ? undefined : formatPercent(swapTrendNow)
         }]}
@@ -213,7 +218,7 @@ export default function SystemPane({
       <section key="cores" className={`${classic.panel} ${styles.chartPanel}`}>
         <div className={styles.chartHead}>
           <div className={styles.chartTitleGroup}>
-            <div className={styles.chartTitle}>分核</div>
+            <div className={styles.chartTitle}>{hostCategoryText(t, 'perCoreCpuUtilization')}</div>
             <div className={styles.chartReading}>{`Top ${coreRows.length} · 选中 ${selectedCoreName}`}</div>
           </div>
         </div>
@@ -222,7 +227,7 @@ export default function SystemPane({
             <thead>
               <tr className="text-left font-medium text-[var(--color-text-3)]">
                 <th className="border-b border-[var(--color-border)] px-1 py-1">核</th>
-                <th className="border-b border-[var(--color-border)] px-1 py-1">均值%</th>
+                <th className="border-b border-[var(--color-border)] px-1 py-1">{hostCategoryText(t, 'average')}</th>
                 <th className="border-b border-[var(--color-border)] px-1 py-1" />
               </tr>
             </thead>
@@ -262,7 +267,7 @@ export default function SystemPane({
             unit="percent"
             data={pointsToChartData([{ points: selectedCore.series.cpu_usage_core || [] }])}
             legends={[{
-              label: `${selectedCoreName} 使用%`,
+              label: hostCategoryText(t, 'coreUtilizationNamed', { name: selectedCoreName }),
               color: HOST_PALETTE.blue,
               reading: typeof selectedCoreAvg === 'number' ? formatPercent(selectedCoreAvg) : undefined
             }]}
@@ -295,7 +300,7 @@ export default function SystemPane({
       {detailCards.length ? (
         <>
           <div className={styles.sectionHead}>
-            <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>加细</div>
+            <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>{hostCategoryText(t, 'detailedMetrics')}</div>
           </div>
           <div className={detailCards.length > 1 ? styles.chartGrid2 : 'grid grid-cols-1 gap-3'}>{detailCards}</div>
         </>
