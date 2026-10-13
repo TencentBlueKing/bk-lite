@@ -9,7 +9,7 @@
 .ip-address {
   display: flex;
   align-items: center;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--color-border);
   border-radius: 4px;
   width: 189px;
 
@@ -34,12 +34,12 @@
 }
 
 .focus-input {
-  border-color: #4096ff !important;
+  border-color: var(--color-primary) !important;
   box-shadow: 0 0 4px rgba(58, 132, 255, 0.4);
 }
 
 .error-input {
-  border-color: #ff4d4f;
+  border-color: var(--color-fail);
 }
 
 .point {
@@ -49,7 +49,7 @@
   border-radius: 50%;
   width: 2px;
   height: 2px;
-  background: #595959;
+  background: var(--color-text-3);
 
   li:last-child & {
     display: none;

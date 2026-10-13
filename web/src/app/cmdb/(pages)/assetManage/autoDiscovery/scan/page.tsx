@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PlusOutlined } from '@ant-design/icons';
 import { Button, Modal, Progress, Space, Tag, message } from 'antd';
 import type { TablePaginationConfig } from 'antd';
-import Introduction from '@/components/introduction';
+import TopSection from '@/components/top-section';
 import CustomTable from '@/components/custom-table';
 import ExecutionStatusBadge from '@/components/execution-status-badge';
 import PermissionWrapper from '@/components/permission';
@@ -347,7 +348,7 @@ const ScanPage: React.FC = () => {
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="shrink-0">
-        <Introduction title={t('Scan.title')} message={t('Scan.message')} />
+        <TopSection title={t('Scan.title')} content={t('Scan.message')} />
       </div>
       <div className="min-h-0 flex-1 overflow-hidden px-4 pt-3 flex flex-col">
         <SearchActionBar
@@ -363,12 +364,13 @@ const ScanPage: React.FC = () => {
             <PermissionWrapper requiredPermissions={['Add']} permissionPath="/cmdb/assetManage/autoDiscovery/collection">
               <Button
                 type="primary"
+                icon={<PlusOutlined />}
                 onClick={() => {
                   setEditId(null);
                   setDrawerOpen(true);
                 }}
               >
-                {t('Scan.addTask')}
+                {t('common.new')}
               </Button>
             </PermissionWrapper>
           }

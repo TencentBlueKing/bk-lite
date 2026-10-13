@@ -137,7 +137,7 @@ const CmdbConfigFileCompareDrawer = ({
       hideFooter
     >
       <div className="flex h-full flex-col gap-4">
-        <div className="rounded-2xl border border-[var(--color-border)] bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-4">
           <Flex justify="space-between" align="start" gap={16} wrap="wrap">
             <Space wrap size={12}>
               <Select
@@ -189,7 +189,7 @@ const CmdbConfigFileCompareDrawer = ({
 
         <Spin spinning={loading}>
           <div className="grid h-[calc(100vh-220px)] grid-cols-2 gap-4">
-            <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+            <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]">
               <div className="border-b border-[var(--color-border)] bg-[var(--color-fill-1)] px-4 py-3">
                 <div className="text-xs text-[var(--color-text-secondary)]">
                   {t('ConfigFile.leftVersion')}
@@ -241,7 +241,7 @@ const CmdbConfigFileCompareDrawer = ({
               </div>
             </div>
 
-            <div className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--color-border)] bg-white shadow-[0_8px_24px_rgba(15,23,42,0.04)]">
+            <div className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)]">
               <div className="border-b border-[var(--color-border)] bg-[var(--color-fill-1)] px-4 py-3">
                 <div className="text-xs text-[var(--color-text-secondary)]">
                   {t('ConfigFile.rightVersion')}

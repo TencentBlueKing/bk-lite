@@ -68,27 +68,55 @@ const stripDevicePrefix = (
   return instName;
 };
 
+const KPI_HUE: Record<NonNullable<StatisticCardConfig['tone']>, string> = {
+  neutral: 'var(--color-primary)',
+  info: 'var(--color-primary)',
+  success: 'var(--color-success)',
+  warning: 'var(--color-warning)',
+  danger: 'var(--color-fail)',
+};
+
+const KPI_VALUE_CLASS: Record<NonNullable<StatisticCardConfig['tone']>, string> = {
+  neutral: 'text-[var(--color-text-1)]',
+  info: 'text-[var(--color-primary)]',
+  success: 'text-[var(--color-success)]',
+  warning: 'text-[var(--color-warning)]',
+  danger: 'text-[var(--color-fail)]',
+};
+
 const StatisticCard: React.FC<StatisticCardConfig> = ({
   title,
   value,
-  bgColor,
-  borderColor,
-  valueColor,
+  tone = 'neutral',
   failedCount,
   showFailed = false,
 }) => {
   const { t } = useTranslation();
+  const hue = KPI_HUE[tone];
   return (
-    <Card size="small" className={`${bgColor} ${borderColor}`}>
-      <div className="text-gray-600 text-xs mb-0.5">{title}</div>
-      <div className={`text-sm font-bold tabular-nums ${valueColor} mb-1`}>{value}</div>
-      {showFailed && failedCount !== undefined && (
-        <div className="text-xs font-medium text-red-600">
-          {t('Collection.taskDetail.writeFailed')} {failedCount}{' '}
-          {t('Collection.taskDetail.failedCount')}
+    <div
+      className="min-w-0 cursor-default rounded-lg border border-[var(--color-border-1)] p-3 shadow-[0_1px_3px_rgba(0,0,0,0.03)] sm:px-3.5 sm:py-3"
+      style={{
+        background: `linear-gradient(180deg, color-mix(in srgb, ${hue} 1.5%, var(--color-bg)) 0%, var(--color-bg) 32%)`,
+      }}
+    >
+      <div className="flex h-full flex-col justify-between gap-1.5">
+        <span className="truncate text-xs font-medium text-[var(--color-text-3)]">
+          {title}
+        </span>
+        <div
+          className={`truncate font-mono text-xl font-bold tracking-tight tabular-nums sm:text-2xl ${KPI_VALUE_CLASS[tone]}`}
+        >
+          {value}
         </div>
-      )}
-    </Card>
+        {showFailed && failedCount !== undefined && (
+          <div className="text-xs font-medium text-[var(--color-fail)]">
+            {t('Collection.taskDetail.writeFailed')} {failedCount}{' '}
+            {t('Collection.taskDetail.failedCount')}
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 
@@ -369,7 +397,7 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
           );
         }
         return (
-          <span className="text-red-500">
+          <span className="text-[var(--color-fail)]">
             {t('Collection.syncStatus.error')}
           </span>
         );
@@ -384,7 +412,7 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
       dataIndex: '_error',
       width: 200,
       render: (error: string) =>
-        error ? <span className="text-red-500">{error}</span> : <span>--</span>,
+        error ? <span className="text-[var(--color-fail)]">{error}</span> : <span>--</span>,
     }),
     [t]
   );
@@ -786,34 +814,26 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
       {
         title: t('Collection.taskDetail.totalDiscovered'),
         value: message.all || 0,
-        bgColor: 'bg-slate-100',
-        borderColor: 'border-slate-300',
-        valueColor: 'text-slate-700',
+        tone: 'neutral',
       },
       {
         title: t('Collection.taskDetail.addData'),
         value: message.add || 0,
-        bgColor: 'bg-blue-50',
-        borderColor: 'border-blue-200',
-        valueColor: 'text-blue-600',
+        tone: 'info',
         failedCount: message.add_error || 0,
         showFailed: (message.add_error || 0) > 0,
       },
       {
         title: t('Collection.taskDetail.updateData'),
         value: message.update || 0,
-        bgColor: 'bg-orange-50',
-        borderColor: 'border-orange-300',
-        valueColor: 'text-orange-600',
+        tone: 'warning',
         failedCount: message.update_error || 0,
         showFailed: (message.update_error || 0) > 0,
       },
       {
         title: t('Collection.taskDetail.deleteData'),
         value: message.delete || 0,
-        bgColor: 'bg-red-50',
-        borderColor: 'border-red-300',
-        valueColor: 'text-red-600',
+        tone: 'danger',
         failedCount: message.delete_error || 0,
         showFailed: (message.delete_error || 0) > 0,
       },

@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCollectApi } from '@/app/cmdb/api';
 import { useTranslation } from '@/utils/i18n';
 import { useCollectToolApi } from '@/app/cmdb/api/collectTool';
-import Introduction from '@/components/introduction';
+import TopSection from '@/components/top-section';
 import type { CollectToolPrefillResponse, Protocol } from '@/app/cmdb/types/collectTool';
 import SnmpTool from './components/snmpDebugTool';
 import IpmiTool from './components/ipmiDebugTool';
@@ -200,9 +200,9 @@ const CollectionToolPage: React.FC = () => {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <Introduction
+      <TopSection
         title={t('CollectTool.pageTitle')}
-        message={t('CollectTool.pageDesc')}
+        content={t('CollectTool.pageDesc')}
       />
       <div className="min-h-0 flex-1 overflow-hidden pb-4">
         <Tabs

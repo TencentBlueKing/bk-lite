@@ -3,9 +3,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/context/auth';
 import { useSession } from 'next-auth/react';
-import Introduction from '@/components/introduction';
-import SearchActionBar from '@/components/search-action-bar';
-import { Button, Modal, message, Spin, Tooltip, Dropdown, Space, Switch, Tag } from 'antd';
+import ListPageHeader from '@/components/list-page-header';
+import CardGridSkeleton from '@/components/card-grid-skeleton';
+import SourceOriginBadge from '@/components/source-origin-badge';
+import CustomReportingModeBadge from '@/app/cmdb/components/custom-reporting-mode-badge';
+import { Button, Input, Modal, message, Tooltip, Dropdown, Space, Switch } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 import { deepClone } from '@/app/cmdb/utils/common';
 import { GroupItem, ModelItem } from '@/app/cmdb/types/assetManage';
@@ -494,9 +496,7 @@ const AssetManage = () => {
             {record.model_name}
           </span>
           {record.is_custom_reporting ? (
-            <Tag color="purple" className="ml-[8px] flex-shrink-0 rounded-[4px] px-[6px] text-[12px] font-[400] leading-[20px]">
-              {t('CustomReporting.modeQuick')}
-            </Tag>
+            <CustomReportingModeBadge mode="quick" className="ml-2 shrink-0" />
           ) : null}
         </div>
       ),
@@ -531,13 +531,9 @@ const AssetManage = () => {
       width: 120,
       onCell: compactTableBodyCell,
       render: (_: unknown, record: DraftClassification['models'][number]) => (
-        <Tag
-          color={record.is_pre ? 'blue' : 'default'}
-          className="m-0 rounded-[4px] px-[6px] text-[12px] font-[400] leading-[20px]"
-          style={{ opacity: record.is_visible ? 1 : 0.5 }}
-        >
-          {record.is_pre ? (t('Model.builtin') || '内置') : (t('Model.custom') || '自定义')}
-        </Tag>
+        <span style={{ opacity: record.is_visible ? 1 : 0.5 }}>
+          <SourceOriginBadge kind={record.is_pre ? 'builtin' : 'custom'} />
+        </span>
       ),
     },
     {
@@ -561,86 +557,85 @@ const AssetManage = () => {
 
   return (
     <div className={assetManageStyle.container}>
-      <Introduction title={t('Model.title')} message={t('Model.message')} />
+      <ListPageHeader
+        title={t('Model.title')}
+        description={t('Model.message')}
+        actions={(
+          <>
+            <Input.Search
+              allowClear
+              enterButton
+              className="w-60"
+              placeholder={t('common.search')}
+              onSearch={onSearch}
+              onClear={() => setSearchText('')}
+            />
+            <PermissionWrapper requiredPermissions={['Add Group']}>
+              <Button onClick={() => showGroupModal('add')}>
+                {t('Model.addGroup')}
+              </Button>
+            </PermissionWrapper>
+            {showConfigButtons ? (
+              <Dropdown
+                menu={{
+                  items: [
+                    {
+                      key: 'publicEnumLibrary',
+                      icon: <SettingOutlined />,
+                      label: t('PublicEnumLibrary.manage'),
+                      onClick: showPublicEnumLibraryModal,
+                    },
+                    {
+                      key: 'exportConfig',
+                      icon: <DownloadOutlined />,
+                      label: t('Model.exportModelConfig'),
+                      onClick: handleExportConfig,
+                    },
+                    {
+                      key: 'importConfig',
+                      icon: <UploadOutlined />,
+                      label: t('Model.importModelConfig'),
+                      onClick: showImportModelConfigModal,
+                    },
+                  ] as MenuProps['items'],
+                }}
+                placement="bottomRight"
+              >
+                <Button>
+                  <Space>
+                    {t('seeMore')}
+                    <DownOutlined />
+                  </Space>
+                </Button>
+              </Dropdown>
+            ) : (
+              <Button
+                icon={<SettingOutlined />}
+                onClick={showPublicEnumLibraryModal}
+              >
+                {t('PublicEnumLibrary.manage')}
+              </Button>
+            )}
+            {showConfigButtons && (
+              <ManageToolbar
+                manageMode={manageMode}
+                dirty={layoutDirty}
+                saving={savingLayout}
+                onEnter={() => setManageMode(true)}
+                onCancel={handleCancelLayout}
+                onSave={handleSaveLayout}
+              />
+            )}
+            <PermissionWrapper requiredPermissions={['Add Model']}>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => showModelModal('add')}>
+                {t('common.new')}
+              </Button>
+            </PermissionWrapper>
+          </>
+        )}
+      />
       <div className={assetManageStyle.modelSetting}>
-        <SearchActionBar
-          className="mb-[10px]"
-          spacing="flush"
-          searchClassName="!w-[320px] max-w-full"
-          searchProps={{
-            placeholder: t('common.search'),
-            allowClear: true,
-            onSearch,
-            onClear: () => setSearchText(''),
-          }}
-          actions={(
-            <div className="flex flex-wrap items-center gap-2">
-              <PermissionWrapper requiredPermissions={['Add Model']}>
-                <Button type="primary" onClick={() => showModelModal('add')}>
-                  {t('Model.addModel')}
-                </Button>
-              </PermissionWrapper>
-              <PermissionWrapper requiredPermissions={['Add Group']}>
-                <Button onClick={() => showGroupModal('add')}>
-                  {t('Model.addGroup')}
-                </Button>
-              </PermissionWrapper>
-              {showConfigButtons ? (
-                <Dropdown
-                  menu={{
-                    items: [
-                      {
-                        key: 'publicEnumLibrary',
-                        icon: <SettingOutlined />,
-                        label: t('PublicEnumLibrary.manage'),
-                        onClick: showPublicEnumLibraryModal,
-                      },
-                      {
-                        key: 'exportConfig',
-                        icon: <DownloadOutlined />,
-                        label: t('Model.exportModelConfig'),
-                        onClick: handleExportConfig,
-                      },
-                      {
-                        key: 'importConfig',
-                        icon: <UploadOutlined />,
-                        label: t('Model.importModelConfig'),
-                        onClick: showImportModelConfigModal,
-                      },
-                    ] as MenuProps['items'],
-                  }}
-                  placement="bottomRight"
-                >
-                  <Button>
-                    <Space>
-                      {t('seeMore')}
-                      <DownOutlined />
-                    </Space>
-                  </Button>
-                </Dropdown>
-              ) : (
-                <Button
-                  icon={<SettingOutlined />}
-                  onClick={showPublicEnumLibraryModal}
-                >
-                  {t('PublicEnumLibrary.manage')}
-                </Button>
-              )}
-              {showConfigButtons && (
-                <ManageToolbar
-                  manageMode={manageMode}
-                  dirty={layoutDirty}
-                  saving={savingLayout}
-                  onEnter={() => setManageMode(true)}
-                  onCancel={handleCancelLayout}
-                  onSave={handleSaveLayout}
-                />
-              )}
-            </div>
-          )}
-        />
-        <Spin spinning={loading}>
-          {manageMode ? (
+        {manageMode ? (
             <div className={`${assetManageStyle.managementLayout} mt-1.5`}>
               {/* 左栏：分类（可拖拽 + 选中 + 可见性），独立滚动 */}
               <div className={assetManageStyle.managementSidebar}>
@@ -710,7 +705,9 @@ const AssetManage = () => {
                 )}
               </div>
             </div>
-          ) : (
+        ) : loading ? (
+          <CardGridSkeleton className="grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5" />
+        ) : (
             <div className={assetManageStyle.modelCardsScroll}>
               {modelGroup.length ? (
                 modelGroup.map(item => {
@@ -812,10 +809,16 @@ const AssetManage = () => {
                                   />
                                 </div>
                                 <div className={assetManageStyle.modelMeta}>
-                                  <EllipsisWithTooltip
-                                    text={model.model_name}
-                                    className={assetManageStyle.modelName}
-                                  />
+                                  <div className="flex min-w-0 items-center gap-1.5">
+                                    <EllipsisWithTooltip
+                                      text={model.model_name}
+                                      className={assetManageStyle.modelName}
+                                    />
+                                    <SourceOriginBadge
+                                      kind={model.is_pre ? 'builtin' : 'custom'}
+                                      className="h-5 shrink-0 px-1.5 text-[11px] leading-5"
+                                    />
+                                  </div>
                                   <span className={assetManageStyle.modelId}>
                                     {model.model_id}
                                   </span>
@@ -851,30 +854,6 @@ const AssetManage = () => {
                               </button>
                             </li>
                           ))}
-                          <li
-                            className={`${assetManageStyle.modelListItem} ${assetManageStyle.addModelCard}`}
-                            key={`add-${item.classification_id}`}
-                          >
-                            <PermissionWrapper
-                              requiredPermissions={['Add Model']}
-                              instPermissions={item.permission}
-                              className="block w-full h-full"
-                            >
-                              <Button
-                                type="dashed"
-                                block
-                                icon={<PlusOutlined />}
-                                className={assetManageStyle.addModelButton}
-                                onClick={() =>
-                                  showModelModal('add', {
-                                    classification_id: item.classification_id,
-                                  })
-                                }
-                              >
-                                {t('Model.addModel')}
-                              </Button>
-                            </PermissionWrapper>
-                          </li>
                         </ul>
                       )}
                     </div>
@@ -884,8 +863,7 @@ const AssetManage = () => {
                 <CompactEmptyState description={t('common.noData')} />
               )}
             </div>
-          )}
-        </Spin>
+        )}
       </div>
       <GroupModal ref={groupRef} onSuccess={updateGroupList} />
       <ModelModal
