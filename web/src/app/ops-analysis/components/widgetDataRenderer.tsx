@@ -1206,6 +1206,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           runtimePriority={runtimePriority}
           surface={surface}
           onRawData={onRawData}
+          unifiedFilterValues={unifiedFilterValues}
+          filterDefinitions={filterDefinitions}
           fallback={renderError(
             `${t("dashboard.unknownComponentType")}: ${chartType}`,
           )}

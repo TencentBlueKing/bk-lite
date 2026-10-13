@@ -167,16 +167,8 @@ class TestLoadTools:
             extra_param_prompt={"credential": "MUST_NOT_APPEAR_IN_MONITOR_DESCRIPTION"},
         )
 
-        assert {tool.name for tool in tools} == {
-            "monitor_list_objects",
-            "monitor_list_object_instances",
-            "monitor_list_object_metrics",
-            "monitor_list_instance_metrics",
-            "monitor_query_metric_data",
-            "monitor_list_active_alerts",
-            "monitor_query_alert_segments",
-        }
-        assert len(tools) == 7
+        assert {tool.name for tool in tools} == set(original_descriptions)
+        assert len(tools) == len(original_descriptions)
         assert {tool.name: tool.description for tool in tools} == original_descriptions
 
 

@@ -57,6 +57,7 @@ EXPECTED_MONITOR_NATS_HANDLER_NAMES = frozenset(
         "query_latest_interface_metrics",
         "query_monitor_alert_segments",
         "query_monitor_data_by_metric",
+        "summarize_metric_trend",
         "query_metric_range_scoped",
         "query_metric_series",
         "search_monitor_policies",
@@ -599,6 +600,37 @@ class TestQueryMonitorDataByMetric:
         assert out["result"] is False
         assert out["message"] == "没有权限访问指定的实例"
         vm.assert_not_called()
+
+    def test_mixed_instance_ids_skip_unresolved_and_query_the_rest(self, mocker):
+        obj, _metric = self._setup()
+        MonitorInstance.objects.create(id="('h1',)", name="h1", monitor_object=obj, is_deleted=False)
+        mocker.patch("apps.monitor.nats.monitor.get_permission_rules", return_value={"team": [1]})
+        mocker.patch(
+            "apps.monitor.nats.monitor.permission_filter",
+            side_effect=lambda model, perm, **kw: model.objects.all(),
+        )
+        captured = {}
+
+        def fake_range(query, start, end, step, fill_missing=False):
+            captured["query"] = query
+            return {"data": {"result": [{"metric": {"instance_id": "h1"}, "values": [[0, "1"]]}]}}
+
+        mocker.patch("apps.monitor.nats.monitor.Metrics.get_metrics_range", side_effect=fake_range)
+        out = nm.query_monitor_data_by_metric(
+            {
+                "monitor_obj_id": obj.id,
+                "metric": "cpu",
+                "start": 1,
+                "end": 2,
+                "instance_ids": ["h1", "gz-db-server-04-172.16.178.232"],
+            },
+            user_info={"user": SimpleNamespace(username="u", domain="d"), "team": 1},
+        )
+        assert out["result"] is True
+        assert "h1" in captured["query"]
+        assert "gz-db-server-04-172.16.178.232" not in captured["query"]
+        assert out["data"]["skipped_instance_ids"] == ["gz-db-server-04-172.16.178.232"]
+        assert "已跳过" in out["message"]
 
     def test_cmdb_numeric_instance_id_is_rejected_with_linkage_message(self, mocker):
         from apps.monitor.services.host_dashboard import CMDB_LOCATOR_USED_AS_MONITOR_INSTANCE_MESSAGE

@@ -46,7 +46,8 @@ Vastbase G100（海量数据）B 兼容模式补丁集合。
 
 6. **naive datetime（psycopg2 路径）**：服务端输出 timestamptz **不带时区偏移**，psycopg2
    解析宽松，返回 naive datetime。项目 ``USE_TZ=True``，Django 拿到 naive 值会触发
-   RuntimeWarning 且时间比较可能出偏差 → 在 ``get_db_converters`` 注册转换器补成 UTC aware。
+   RuntimeWarning 且时间比较可能出偏差。建连时将会话设为 UTC（不改库默认时区）；
+   若海量库仍保持 PRC，则按实测会话偏移把裸钟面换算成 UTC，而不是直接贴 ``+00:00``。
 
 7. **timestamptz 解析失败（psycopg3 路径）**：psycopg3 的 ``TimestamptzLoader`` 要求数据带时区
    偏移，缺失时回退连接时区；而 Django 连接上该时区为 unknown，于是直接抛
@@ -191,6 +192,7 @@ def apply_early_patches():
     _patch_on_conflict_ignore()
     _patch_sequence_reset_sql()
     _patch_naive_datetime_converter()
+    _install_session_timezone_hook()
     _patch_psycopg3_timestamptz_missing_tz()
     _patch_aggregate_filter_clause()
 
@@ -300,13 +302,16 @@ def _patch_sequence_reset_sql():
 
 
 def _convert_naive_datetime(value, expression, connection):
-    """把服务端返回的 naive datetime 补成 UTC aware。
+    """把服务端返回的 naive datetime 按会话偏移换算成 UTC。
 
-    连接会话时区由 Django 固定为 UTC，故裸值即 UTC 时刻。
+    海量库的 timestamptz 不带偏移。会话是 UTC 时裸钟面就是 UTC；会话仍是 PRC 时，
+    裸钟面是北京时间，必须先按实测偏移理解再转到 UTC。直接 ``replace(tzinfo=UTC)``
+    会把北京时间标成世界时，读出的时刻早 8 小时。
     """
-    if value is not None and timezone.is_naive(value):
-        return value.replace(tzinfo=datetime.timezone.utc)
-    return value
+    if value is None or not timezone.is_naive(value):
+        return value
+    session_tz = datetime.timezone(datetime.timedelta(seconds=_SESSION_OFFSET_SECONDS))
+    return value.replace(tzinfo=session_tz).astimezone(datetime.timezone.utc)
 
 
 def _patch_naive_datetime_converter():
@@ -331,31 +336,45 @@ def _patch_naive_datetime_converter():
 # ============================================================
 # psycopg3：容忍不带时区偏移的 timestamptz
 # ============================================================
-# 连接会话相对 UTC 的偏移，由 connection_created 时实测填入（形如 b"+00:00"）。
-# 默认值对应 Django 固定的 SET TIME ZONE 'UTC'；实测失败时退回该默认值。
+# 连接会话相对 UTC 的偏移。建连时会先 SET TIME ZONE 'UTC'（只改本会话，不改库默认值），
+# 再实测。海量库若忽略该设置、会话仍是 PRC，这里会是 +08:00，读时间时按它换算。
+# 实测失败时退回 +00:00。
 _SESSION_UTC_OFFSET = b"+00:00"
+_SESSION_OFFSET_SECONDS = 0
 _SESSION_OFFSET_LOGGED = False
 
 
+def _install_session_timezone_hook():
+    """每条连接建立后将会话时区收到 UTC，并记录实际偏移。"""
+    from django.db.backends.signals import connection_created
+
+    connection_created.connect(_capture_session_utc_offset, dispatch_uid="vastbase_session_utc_offset")
+
+
 def _capture_session_utc_offset(sender, connection, **kwargs):
-    """连接建立后实测一次会话时区偏移，供 TimestamptzLoader 兜底解析使用。
+    """连接建立后把会话设为 UTC，再实测偏移。
 
-    ``connection_created`` 在 ``init_connection_state()`` **之后**触发，此时 Django 的
-    ``SET TIME ZONE`` 已生效，测到的就是后续查询实际使用的会话时区。
-
-    刻意用 ``EXTRACT(TIMEZONE FROM now())`` 取偏移**秒数**而不是读 timestamptz 值——
-    前者返回 numeric，不经过 TimestamptzLoader，不会触发正要修复的那个解析错误。
+    ``connection_created`` 在 ``init_connection_state()`` **之后**触发。Django 自己的
+    ``SET TIME ZONE`` 在海量库上可能不生效，会话仍停在库默认的 PRC。这里再设一次，
+    并且用 ``EXTRACT(TIMEZONE FROM now())`` 确认结果。取秒数而不是读 timestamptz，
+    避免走到正在修补的时间解析。
     """
-    global _SESSION_UTC_OFFSET, _SESSION_OFFSET_LOGGED
+    global _SESSION_UTC_OFFSET, _SESSION_OFFSET_SECONDS, _SESSION_OFFSET_LOGGED
 
     if connection.vendor != "postgresql":
         return
     try:
         with connection.cursor() as cursor:
+            try:
+                cursor.execute("SET TIME ZONE %s", ["UTC"])
+            except Exception:
+                logger.warning("Vastbase: SET TIME ZONE UTC failed, keep the database session timezone")
             cursor.execute("SELECT EXTRACT(TIMEZONE FROM now())")
             seconds = int(cursor.fetchone()[0])
+        if hasattr(connection, "get_autocommit") and not connection.get_autocommit():
+            connection.commit()
     except Exception:
-        # 取不到就沿用默认 +00:00；这里不能让诊断动作阻断建连
+        # 取不到就沿用已有偏移；这里不能让诊断动作阻断建连
         logger.warning(
             "Vastbase: failed to detect session UTC offset, assuming %s",
             _SESSION_UTC_OFFSET.decode(),
@@ -363,10 +382,11 @@ def _capture_session_utc_offset(sender, connection, **kwargs):
         return
 
     sign = "+" if seconds >= 0 else "-"
-    seconds = abs(seconds)
-    offset = ("%s%02d:%02d" % (sign, seconds // 3600, (seconds % 3600) // 60)).encode()
-    changed = offset != _SESSION_UTC_OFFSET
+    absolute_seconds = abs(seconds)
+    offset = ("%s%02d:%02d" % (sign, absolute_seconds // 3600, (absolute_seconds % 3600) // 60)).encode()
+    changed = offset != _SESSION_UTC_OFFSET or seconds != _SESSION_OFFSET_SECONDS
     _SESSION_UTC_OFFSET = offset
+    _SESSION_OFFSET_SECONDS = seconds
 
     if changed or not _SESSION_OFFSET_LOGGED:
         _SESSION_OFFSET_LOGGED = True
@@ -400,10 +420,6 @@ def _patch_psycopg3_timestamptz_missing_tz():
         # 纯 psycopg2 环境不需要此补丁
         logger.info("Vastbase: psycopg(v3) not installed, timestamptz loader patch skipped")
         return
-
-    from django.db.backends.signals import connection_created
-
-    connection_created.connect(_capture_session_utc_offset, dispatch_uid="vastbase_session_utc_offset")
 
     original_load = TimestamptzLoader.load
 

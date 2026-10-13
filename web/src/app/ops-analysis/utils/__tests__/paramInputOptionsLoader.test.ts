@@ -127,4 +127,67 @@ describe('paramInputOptionsLoader runtime errors', () => {
     assert.equal(getDataSourceList.mock.calls.length, 0);
     assert.equal(getSourceDataByApiId.mock.calls[0]?.[0], 42);
   });
+
+  it('resolves cmdb/get_room_list from the catalog and maps inst_uuid/inst_name', async () => {
+    const getDataSourceList = vi.fn(async () => ({
+      items: [
+        { id: 17, name: 'CMDB 机房列表（选项）', rest_api: 'cmdb/get_room_list' },
+      ],
+    }));
+    const getSourceDataByApiId = vi.fn<GetSourceDataByApiId>(async () => asSourceData({
+      items: [
+        { inst_uuid: 'room-1', inst_name: '一号机房', _id: 1 },
+        { id: 'legacy', name: '旧字段不会成为选项' },
+      ],
+    }));
+    const loader = createParamInputOptionsLoader({
+      getDataSourceList,
+      getSourceDataByApiId,
+    });
+
+    assert.deepEqual(
+      await loader.load({
+        control: 'select',
+        optionsSource: {
+          type: 'dynamic',
+          sourceRef: { type: 'rest_api', value: 'cmdb/get_room_list' },
+          valueField: 'inst_uuid',
+          labelField: 'inst_name',
+        },
+      }).promise,
+      {
+        status: 'success',
+        options: [{ value: 'room-1', label: '一号机房' }],
+      },
+    );
+    assert.deepEqual(getDataSourceList.mock.calls[0]?.[0], { page_size: -1 });
+    assert.equal(getSourceDataByApiId.mock.calls[0]?.[0], 17);
+  });
+
+  it('maps a room list returned directly as data, matching get_source_data', async () => {
+    const loader = createParamInputOptionsLoader({
+      getDataSourceList: async () => ({
+        items: [{ id: 17, rest_api: 'cmdb/get_room_list' }],
+      }),
+      getSourceDataByApiId: async () => asSourceData([
+        { inst_uuid: 'room-1', inst_name: '一号机房', _id: 1 },
+      ]),
+    });
+
+    assert.deepEqual(
+      await loader.load({
+        control: 'select',
+        optionsSource: {
+          type: 'dynamic',
+          sourceRef: { type: 'rest_api', value: 'cmdb/get_room_list' },
+          valueField: 'inst_uuid',
+          labelField: 'inst_name',
+        },
+      }).promise,
+      {
+        status: 'success',
+        options: [{ value: 'room-1', label: '一号机房' }],
+      },
+    );
+  });
 });

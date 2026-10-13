@@ -16,12 +16,13 @@ RETIRED_BUILTIN_DATASOURCES = (
         "name": "CMDB 3D机房布局",
         "rest_api": "cmdb/get_room3d_layout",
     },
-    {
-        "build_in_key": "CMDB 机房列表::cmdb/get_room_list",
-        "name": "CMDB 机房列表（选项）",
-        "rest_api": "cmdb/get_room_list",
-    },
 )
+
+ROOM_LIST_BUILTIN = {
+    "build_in_key": "CMDB 机房列表::cmdb/get_room_list",
+    "name": "CMDB 机房列表（选项）",
+    "rest_api": "cmdb/get_room_list",
+}
 
 
 class Command(BaseCommand):
@@ -161,6 +162,7 @@ class Command(BaseCommand):
             retired_count = self.retire_scene_internal_datasources()
             if retired_count:
                 logger.info("[SourceApiInit] 已下架内置场景数据源 %s 个", retired_count)
+            self.restore_room_list_datasource()
 
         except Exception as e:
             error_msg = f"初始化源API数据失败: {e}"
@@ -200,3 +202,22 @@ class Command(BaseCommand):
                 retired_count += 1
                 logger.debug("[SourceApiInit] 下架内置数据源：%s", item["build_in_key"])
         return retired_count
+
+    def restore_room_list_datasource(self) -> bool:
+        obj = find_claimable_datasource(
+            DataSourceAPIModel,
+            stable_key=ROOM_LIST_BUILTIN["build_in_key"],
+            name=ROOM_LIST_BUILTIN["name"],
+            rest_api=ROOM_LIST_BUILTIN["rest_api"],
+        )
+        if obj is None:
+            return False
+        if not obj.is_build_in and obj.build_in_key != ROOM_LIST_BUILTIN["build_in_key"]:
+            return False
+        if obj.is_active:
+            return False
+        obj.is_active = True
+        obj.updated_by = "system"
+        obj.save(update_fields=["is_active", "updated_by", "updated_at"])
+        logger.debug("[SourceApiInit] 恢复内置数据源：%s", ROOM_LIST_BUILTIN["build_in_key"])
+        return True

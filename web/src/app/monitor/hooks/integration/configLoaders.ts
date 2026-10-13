@@ -30,6 +30,7 @@ const COMMUNITY_OBJECT_CONFIG_LOADERS: Record<string, ObjectConfigLoader> = {
   'Active Directory': () =>
     import('./objects/middleware/activeDirectory').then((m) => m.useActiveDirectoryConfig),
   Exchange: () => import('./objects/middleware/exchange').then((m) => m.useExchangeConfig),
+  IIS: () => import('./objects/middleware/iis').then((m) => m.useIisConfig),
   Apache: () => import('./objects/middleware/apache').then((m) => m.useApacheConfig),
   Haproxy: () => import('./objects/middleware/haproxy').then((m) => m.useHaproxyConfig),
   Consul: () => import('./objects/middleware/consul').then((m) => m.useConsulConfig),

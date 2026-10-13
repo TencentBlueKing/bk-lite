@@ -38,6 +38,7 @@ MONITOR_NATS_HANDLER_NAMES = frozenset(
         "query_latest_interface_metrics",
         "query_monitor_alert_segments",
         "query_monitor_data_by_metric",
+        "summarize_metric_trend",
         "query_metric_range_scoped",
         "query_metric_series",
         "search_monitor_policies",
