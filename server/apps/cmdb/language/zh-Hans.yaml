@@ -292,30 +292,17 @@ MODEL:
   ad_site: AD站点
   ad_subnet: AD子网
   ad_domain_controller: 域控制器
-  ad_fsmo_role: FSMO角色
   ad_trust: AD信任
-  ad_dns_zone: DNS区域
-  ad_dns_forwarder: DNS转发器
   exchange_server: Exchange服务器
-  exchange_virtual_directory: 虚拟目录
-  exchange_client_protocol: 客户端协议
+  exchange_client_access: 客户端访问
+  exchange_mail_policy: 邮件策略
   exchange_certificate: Exchange证书
   exchange_dag: DAG
-  exchange_dag_network: DAG网络
   exchange_database: 邮箱数据库
   exchange_mailbox: 邮箱
-  exchange_dist_group: 通讯组
   exchange_accepted_domain: 接受域
-  exchange_remote_domain: 远程域
-  exchange_email_policy: 电子邮件地址策略
-  exchange_transport_config: 传输配置
-  exchange_transport_rule: 传输规则
   exchange_send_connector: 发送连接器
   exchange_receive_connector: 接收连接器
-  exchange_oab: 脱机通讯簿
-  exchange_address_list: 地址列表
-  exchange_abp: 地址簿策略
-  exchange_activesync_policy: ActiveSync策略
 ATTR:
   pc:
     inst_name: 实例
@@ -4209,6 +4196,14 @@ ATTR:
     firewall_note: 防火墙备注
     dhcp_note: DHCP备注
     dc_app_note: 域控应用备注
+    schema_holder: 架构主机
+    domain_naming_holder: 域命名主机
+    pdc_holder: PDC主机
+    rid_holder: RID主机
+    infrastructure_holder: 基础结构主机
+    max_send_size: 最大发送大小
+    max_receive_size: 最大接收大小
+    max_recipient_envelope_limit: 最大收件人数
   ad_domain:
     inst_name: 实例名
     organization: 组织
@@ -4242,12 +4237,8 @@ ATTR:
     install_time: 安装时间
     last_boot_time: 最近启动时间
     system_volume_free_gb: 系统卷剩余空间(GB)
-  ad_fsmo_role:
-    inst_name: 实例名
-    organization: 组织
-    role: 角色
-    holder_inst_name: 持有者实例名
-    forest_inst_name: 林实例名
+    dns_zones: DNS区域
+    dns_forwarders: DNS转发器
   ad_trust:
     inst_name: 实例名
     organization: 组织
@@ -4256,20 +4247,6 @@ ATTR:
     direction: 信任方向
     trust_type: 信任类型
     transitive: 是否可传递
-  ad_dns_zone:
-    inst_name: 实例名
-    organization: 组织
-    zone_name: 区域名
-    zone_kind: 区域种类
-    zone_type: 区域类型
-    server_inst_name: 服务器实例名
-  ad_dns_forwarder:
-    inst_name: 实例名
-    organization: 组织
-    server_inst_name: 服务器实例名
-    target: 转发目标
-    is_conditional: 是否条件转发
-    condition_domain: 条件域名
   exchange_server:
     inst_name: 实例名
     organization: 组织
@@ -4283,23 +4260,6 @@ ATTR:
     cpu_cores: CPU核数
     memory_gb: 内存(GB)
     client_access_array_note: 客户端访问阵列备注
-  exchange_virtual_directory:
-    inst_name: 实例名
-    organization: 组织
-    server_inst_name: 服务器实例名
-    protocol: 协议
-    internal_url: 内部URL
-    external_url: 外部URL
-  exchange_client_protocol:
-    inst_name: 实例名
-    organization: 组织
-    server_inst_name: 服务器实例名
-    protocol: 协议
-    external_hostname: 外部主机名
-    auth_method: 认证方式
-    bindings: 绑定
-    login_type: 登录类型
-    certificate_name: 证书名称
   exchange_certificate:
     inst_name: 实例名
     organization: 组织
@@ -4320,13 +4280,7 @@ ATTR:
     members: 成员
     dag_ip: DAG IP
     forest_inst_name: 林实例名
-  exchange_dag_network:
-    inst_name: 实例名
-    organization: 组织
-    dag_inst_name: DAG实例名
-    network_name: 网络名称
-    replication_enabled: 是否启用复制
-    subnets: 子网
+    networks: DAG网络
   exchange_database:
     inst_name: 实例名
     organization: 组织
@@ -4354,12 +4308,6 @@ ATTR:
     database_inst_name: 数据库实例名
     server_inst_name: 服务器实例名
     enabled: 是否启用
-  exchange_dist_group:
-    inst_name: 实例名
-    organization: 组织
-    group_id: 组ID
-    group_name: 组名称
-    member_count: 成员数量
   exchange_accepted_domain:
     inst_name: 实例名
     organization: 组织
@@ -4368,39 +4316,6 @@ ATTR:
     is_default: 是否默认
     is_internal_relay: 是否内部中继
     is_external_relay: 是否外部中继
-    forest_inst_name: 林实例名
-  exchange_remote_domain:
-    inst_name: 实例名
-    organization: 组织
-    remote_name: 远程域名称
-    domain_name: 域名
-    allowed_oof_type: 允许的外出类型
-    forest_inst_name: 林实例名
-  exchange_email_policy:
-    inst_name: 实例名
-    organization: 组织
-    policy_name: 策略名称
-    recipient_filter: 收件人筛选器
-    primary_smtp_template: 主SMTP模板
-    enabled: 是否启用
-    priority: 优先级
-    forest_inst_name: 林实例名
-  exchange_transport_config:
-    inst_name: 实例名
-    organization: 组织
-    max_send_size: 最大发送大小
-    max_receive_size: 最大接收大小
-    max_recipient_envelope_limit: 最大收件人数量
-    max_dumpster_size: 最大垃圾站大小
-    max_dumpster_time: 最大垃圾站时间
-    forest_inst_name: 林实例名
-  exchange_transport_rule:
-    inst_name: 实例名
-    organization: 组织
-    rule_name: 规则名称
-    priority: 优先级
-    state: 状态
-    description: 描述
     forest_inst_name: 林实例名
   exchange_send_connector:
     inst_name: 实例名
@@ -4427,70 +4342,25 @@ ATTR:
     auth_mechanism: 认证机制
     permission_groups: 权限组
     server_inst_name: 服务器实例名
-  exchange_oab:
+  exchange_client_access:
     inst_name: 实例名
     organization: 组织
-    oab_name: 脱机通讯簿名称
-    is_default: 是否默认
-    web_distribution: 是否Web分发
-    virtual_directories: 虚拟目录
-    address_lists: 地址列表
-    forest_inst_name: 林实例名
-  exchange_address_list:
+    server_inst_name: 服务器实例名
+    access_type: 访问类型
+    protocol: 协议
+    internal_url: 内部URL
+    external_url: 外部URL
+    external_hostname: 外部主机名
+    auth_method: 认证方式
+    bindings: 绑定
+    login_type: 登录类型
+    certificate_name: 证书名
+  exchange_mail_policy:
     inst_name: 实例名
     organization: 组织
-    list_name: 列表名称
-    list_type: 列表类型
-    originating_server: 源服务器
-    forest_inst_name: 林实例名
-  exchange_abp:
-    inst_name: 实例名
-    organization: 组织
+    policy_type: 策略类型
     policy_name: 策略名称
-    global_address_list: 全局地址列表
-    offline_address_book: 脱机通讯簿
-    room_list: 会议室列表
-    address_lists: 地址列表
+    summary: 摘要
+    enabled: 是否启用
+    priority: 优先级
     forest_inst_name: 林实例名
-  exchange_activesync_policy:
-    inst_name: 实例名
-    organization: 组织
-    policy_name: 策略名称
-    is_default: 是否默认
-    device_password_enabled: 是否启用设备密码
-    allow_non_provisionable: 是否允许不可预配设备
-    forest_inst_name: 林实例名
-ATTR_GROUP:
-  基本信息: 基本信息
-  归属信息: 归属信息
-  技术信息: 技术信息
-  状态信息: 状态信息
-  管理信息: 管理信息
-  系统内置: 系统内置
-  自动发现信息: 自动发现信息
-  连接信息: 连接信息
-  默认分组: 默认分组
-  采集信息: 采集信息
-  手工备注: 手工备注
-DEFAULT_ATTR:
-  inst_name: 实例名
-  organization: 所属组织
-ASSOCIATION_TYPE:
-  belong: 属于
-  group: 组成
-  run: 运行于
-  install_on: 安装于
-  contains: 包含
-  connect: 关联
-ChangeRecordType:
-  create_entity: 创建
-  delete_entity: 删除
-  update_entity: 修改
-  create_edge: 创建关联
-  delete_edge: 取消关联
-ChangeRecordScenario:
-  device_lifecycle: 设备流转
-  relation_change: 关系变更
-  ordinary_attribute_change: 普通属性变更
-  collect_automation_change: 自动采集
-  model_management_change: 模型管理变更
