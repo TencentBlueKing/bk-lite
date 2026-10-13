@@ -56,6 +56,71 @@
         }
       ],
       "group_algorithm": "max"
+    },
+    {
+      "name": "复制队列过长",
+      "alert_name": "Exchange ${resource_name} 数据库复制队列过长",
+      "description": "被动副本等待复制的事务日志过多，故障切换可能丢日志。滞后副本可忽略。",
+      "metric_name": "exchange_copy_queue_length",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 10,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "重放队列过长",
+      "alert_name": "Exchange ${resource_name} 数据库重放队列过长",
+      "description": "被动副本等待重放的事务日志过多，激活时间会变长。滞后副本可忽略。",
+      "metric_name": "exchange_replay_queue_length",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 10,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "数据库缓存命中率过低",
+      "alert_name": "Exchange ${resource_name} 数据库缓存命中率过低",
+      "description": "Database Cache % Hit 持续低于 90%，数据库缓存可能不足。",
+      "metric_name": "exchange_database_cache_hit_percent",
+      "algorithm": "min_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 90,
+          "method": "<"
+        }
+      ],
+      "group_algorithm": "min"
     }
   ]
 }

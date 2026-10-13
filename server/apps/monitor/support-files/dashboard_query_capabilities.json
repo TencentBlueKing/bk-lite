@@ -6187,6 +6187,76 @@
         "K3SPod"
       ],
       "template": "sum by (instance_id,pod) ( rate(prometheus_remote_write_container_network_receive_bytes_total{instance_type=\"k3s\",__$labels__}[__$window__]) )"
+    },
+    {
+      "id": "dashboard:v1:37f33d8c",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_replication_CopyQueueLength{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:40087132",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_replication_ReplayQueueLength{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:169d0e3c",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_replication_Avg_Log_Copy_Latency_(msec){instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:4ce1716a",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_database_instances_I\\/O_Database_Reads_Average_Latency{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:a6c4170f",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_database_instances_I\\/O_Database_Writes_Average_Latency{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:3e61f930",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_database_IO_Log_Read_Average_Latency{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:02c10cec",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_database_Log_Bytes_Write_persec{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:e7c57391",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_database_Database_Cache_Percent_Hit{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:dc7d93fe",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_DRA_Sync_Failures_on_Schema_Mismatch{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:43ab5f0f",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_dns_Recursive_Query_Failure_persec{instance_type=\"active_directory\", __$labels__}"
     }
   ]
 }
