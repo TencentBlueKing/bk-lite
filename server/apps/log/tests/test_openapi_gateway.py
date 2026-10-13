@@ -7,8 +7,12 @@ import pytest
 from rest_framework.test import APIClient
 
 from apps.base.models import User, UserAPISecret
+from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectType
 from apps.log.models.log_group import LogGroup, LogGroupOrganization
+from apps.log.services.collect_type import CollectTypeService
+from apps.log.services.k8s_collect import K8sLogCollectService
 from apps.log.services.search import SearchService
+from apps.node_mgmt.models import CloudRegion, Node, NodeOrganization
 from apps.system_mgmt.models import Group, Menu, Role
 from apps.system_mgmt.models import User as SystemUser
 
@@ -16,6 +20,12 @@ pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 
 GROUPS_URL = "/openapi/v1/log/groups"
 SEARCH_URL = "/openapi/v1/log/search"
+TYPES_URL = "/openapi/v1/log/collect-types"
+INSTANCES_URL = "/openapi/v1/log/collect-instances"
+CONFIG_URL = "/openapi/v1/log/collect-instances/config"
+K8S_URL = "/openapi/v1/log/k8s-collectors"
+K8S_COMMAND_URL = "/openapi/v1/log/k8s-collectors/install-command"
+K8S_STATUS_URL = "/openapi/v1/log/k8s-collectors/status"
 
 
 def _auth(token):
@@ -24,7 +34,7 @@ def _auth(token):
 
 def _grant(system_user):
     menu_ids = []
-    for name in ("grouping-View", "search-View"):
+    for name in ("grouping-View", "search-View", "integration_list-View", "integration_configure-Add"):
         menu, _ = Menu.objects.get_or_create(
             name=name,
             app="log",
@@ -173,3 +183,179 @@ def test_search_truncates_long_message(tenants, monkeypatch):
     item = response.json()["data"]["items"][0]
     assert len(item["message"]) == 2048
     assert item["truncated"] is True
+
+
+def _collect_type(name="file"):
+    return CollectType.objects.create(name=name, collector="vector", attrs=[{"name": "path"}])
+
+
+def _log_node(organization):
+    region = CloudRegion.objects.create(name=f"region-{uuid.uuid4().hex[:6]}")
+    node = Node.objects.create(
+        id=f"node-{uuid.uuid4().hex[:8]}",
+        name="node",
+        ip="10.0.0.9",
+        operating_system="linux",
+        collector_configuration_directory="/tmp",
+        cloud_region=region,
+    )
+    NodeOrganization.objects.create(node=node, organization=organization)
+    return node
+
+
+def test_api_tenant_can_list_collect_types(tenants):
+    collect_type = _collect_type()
+
+    response = APIClient().get(TYPES_URL, **_auth(tenants.a.token))
+
+    assert response.status_code == 200, response.json()
+    item = next(row for row in response.json()["data"]["items"] if row["id"] == collect_type.id)
+    assert item["fields"] == [{"name": "path"}]
+
+
+def test_api_tenant_can_create_collect_instance_on_own_node(tenants, monkeypatch):
+    collect_type = _collect_type()
+    node = _log_node(tenants.a.team.id)
+    seen = {}
+
+    def _create(data):
+        seen["group_ids"] = data["instances"][0]["group_ids"]
+
+    monkeypatch.setattr(CollectTypeService, "batch_create_collect_configs", staticmethod(_create))
+    response = APIClient().post(
+        INSTANCES_URL,
+        {
+            "collect_type_id": collect_type.id,
+            "instances": [{"instance_id": "log-1", "instance_name": "app", "node_ids": [node.id]}],
+        },
+        format="json",
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 200, response.json()
+    assert seen["group_ids"] == [tenants.a.team.id]
+
+
+def test_api_tenant_cannot_create_collect_instance_on_other_org_node(tenants, monkeypatch):
+    collect_type = _collect_type()
+    node = _log_node(tenants.b.team.id)
+    called = {"value": False}
+
+    def _create(data):
+        called["value"] = True
+
+    monkeypatch.setattr(CollectTypeService, "batch_create_collect_configs", staticmethod(_create))
+    response = APIClient().post(
+        INSTANCES_URL,
+        {
+            "collect_type_id": collect_type.id,
+            "instances": [{"instance_id": "log-1", "instance_name": "app", "node_ids": [node.id]}],
+        },
+        format="json",
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["message"] == "节点不存在"
+    assert called["value"] is False
+
+
+def test_api_tenant_cannot_update_other_org_collect_config(tenants, monkeypatch):
+    collect_type = _collect_type()
+    instance = CollectInstance.objects.create(id=f"log-{uuid.uuid4().hex[:6]}", name="other", collect_type=collect_type)
+    CollectInstanceOrganization.objects.create(collect_instance=instance, organization=tenants.b.team.id)
+    called = {"value": False}
+
+    def _update(*args, **kwargs):
+        called["value"] = True
+
+    monkeypatch.setattr(CollectTypeService, "update_instance_config_v2", staticmethod(_update))
+    response = APIClient().put(
+        CONFIG_URL,
+        {"instance_id": instance.id, "collect_type_id": collect_type.id, "child": {"id": "cfg", "content": {}}},
+        format="json",
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["message"] == "采集实例不存在"
+    assert called["value"] is False
+
+
+def test_api_tenant_can_delete_own_collect_instance(tenants):
+    collect_type = _collect_type()
+    instance = CollectInstance.objects.create(id=f"log-{uuid.uuid4().hex[:6]}", name="own", collect_type=collect_type)
+    CollectInstanceOrganization.objects.create(collect_instance=instance, organization=tenants.a.team.id)
+
+    response = APIClient().delete(INSTANCES_URL, {"instance_ids": [instance.id]}, format="json", **_auth(tenants.a.token))
+
+    assert response.status_code == 200, response.json()
+    assert not CollectInstance.objects.filter(id=instance.id).exists()
+
+
+def test_api_tenant_can_create_log_k8s_collector(tenants):
+    collect_type = _collect_type("kubernetes")
+
+    response = APIClient().post(
+        K8S_URL,
+        {"collect_type_id": collect_type.id, "name": f"cluster-{uuid.uuid4().hex[:6]}"},
+        format="json",
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 200, response.json()
+    instance_id = response.json()["data"]["instance_id"]
+    assert CollectInstanceOrganization.objects.filter(collect_instance_id=instance_id, organization=tenants.a.team.id).exists()
+
+
+def test_api_tenant_cannot_read_other_org_k8s_status(tenants, monkeypatch):
+    collect_type = _collect_type("kubernetes")
+    instance = CollectInstance.objects.create(id=f"k8s-{uuid.uuid4().hex[:6]}", name="other", collect_type=collect_type)
+    CollectInstanceOrganization.objects.create(collect_instance=instance, organization=tenants.b.team.id)
+    called = {"value": False}
+
+    def _status(instance_id):
+        called["value"] = True
+        return True
+
+    monkeypatch.setattr(K8sLogCollectService, "check_collect_status", staticmethod(_status))
+    response = APIClient().get(K8S_STATUS_URL, {"instance_id": instance.id}, **_auth(tenants.a.token))
+
+    assert response.status_code == 400
+    assert response.json()["message"] == "采集实例不存在"
+    assert called["value"] is False
+
+
+def test_api_tenant_cannot_save_other_org_k8s_setting(tenants, monkeypatch):
+    collect_type = _collect_type("kubernetes")
+    instance = CollectInstance.objects.create(id=f"k8s-{uuid.uuid4().hex[:6]}", name="other", collect_type=collect_type)
+    CollectInstanceOrganization.objects.create(collect_instance=instance, organization=tenants.b.team.id)
+    called = {"value": False}
+
+    def _save(instance_id, data):
+        called["value"] = True
+        return {}
+
+    monkeypatch.setattr(K8sLogCollectService, "save_setting", classmethod(lambda cls, instance_id, data: _save(instance_id, data)))
+    response = APIClient().put(
+        "/openapi/v1/log/k8s-collectors/setting",
+        {"instance_id": instance.id, "runtime_profile": "standard"},
+        format="json",
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["message"] == "采集实例不存在"
+    assert called["value"] is False
+
+
+def test_k8s_command_forged_team_is_rejected(tenants):
+    response = APIClient().post(
+        K8S_COMMAND_URL,
+        {"instance_id": "x", "cloud_region_id": 1, "team": 9},
+        format="json",
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "SCHEMA_INVALID"

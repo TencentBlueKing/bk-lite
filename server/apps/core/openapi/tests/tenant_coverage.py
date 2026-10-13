@@ -259,6 +259,29 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.log.tests.test_openapi_gateway::test_api_tenant_can_list_own_groups",
         "apps.log.tests.test_openapi_gateway::test_groups_forged_team_is_rejected",
     ],
+    "log/collect-types": [
+        "apps.log.tests.test_openapi_gateway::test_api_tenant_can_list_collect_types",
+    ],
+    "log/collect-instances": [
+        "apps.log.tests.test_openapi_gateway::test_api_tenant_can_create_collect_instance_on_own_node",
+        "apps.log.tests.test_openapi_gateway::test_api_tenant_cannot_create_collect_instance_on_other_org_node",
+        "apps.log.tests.test_openapi_gateway::test_api_tenant_can_delete_own_collect_instance",
+    ],
+    "log/collect-instances/config": [
+        "apps.log.tests.test_openapi_gateway::test_api_tenant_cannot_update_other_org_collect_config",
+    ],
+    "log/k8s-collectors": [
+        "apps.log.tests.test_openapi_gateway::test_api_tenant_can_create_log_k8s_collector",
+    ],
+    "log/k8s-collectors/setting": [
+        "apps.log.tests.test_openapi_gateway::test_api_tenant_cannot_save_other_org_k8s_setting",
+    ],
+    "log/k8s-collectors/install-command": [
+        "apps.log.tests.test_openapi_gateway::test_k8s_command_forged_team_is_rejected",
+    ],
+    "log/k8s-collectors/status": [
+        "apps.log.tests.test_openapi_gateway::test_api_tenant_cannot_read_other_org_k8s_status",
+    ],
     "log/search": [
         "apps.log.tests.test_openapi_gateway::test_api_tenant_can_search_own_group",
         "apps.log.tests.test_openapi_gateway::test_api_tenant_cannot_search_other_org_group",
