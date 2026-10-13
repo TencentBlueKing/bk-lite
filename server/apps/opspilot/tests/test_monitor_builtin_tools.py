@@ -40,6 +40,7 @@ def test_monitor_language_keys_exist_in_en_and_zh():
         "monitor_list_object_metrics",
         "monitor_list_instance_metrics",
         "monitor_query_metric_data",
+        "monitor_summarize_metric_trend",
         "monitor_list_active_alerts",
         "monitor_query_alert_segments",
         "monitor_get_host_resource_snapshot",
