@@ -111,7 +111,7 @@ export default function DiskPane({
       <div className={styles.sectionHead}>
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>{hostCategoryText(t, 'detailedMetrics')}</div>
       </div>
-      <div className={showLatency ? styles.chartGrid2 : 'grid grid-cols-1 gap-3'}>
+      <div className={styles.chartGrid3}>
         <ThinTimeSeries
           key={`util-${selected?.key || 'none'}-${ioDevice || 'empty'}`}
           title={ioTitle}
