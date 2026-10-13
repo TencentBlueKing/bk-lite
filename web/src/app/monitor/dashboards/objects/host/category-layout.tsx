@@ -12,7 +12,6 @@ import FlatProcessSplit from './layered/flat-process-split';
 import NetworkPane from './layered/network-pane';
 import OverviewPane from './layered/overview-pane';
 import SystemPane from './layered/system-pane';
-import classic from './index.module.scss';
 import styles from './layered/layered.module.scss';
 
 const EMPTY_ENTITY: EntityLoadState = { status: 'idle', byMetric: {} };
@@ -189,12 +188,14 @@ export default function HostCategoryLayout({
 
   return (
     <div className={styles.root}>
-      <Tabs
-        className={`${classic.hostTabs} ${styles.partitionTabs}`}
-        activeKey={activeTab}
-        onChange={setActiveTab}
-        items={tabItems.map((item) => ({ key: item.key, label: item.label }))}
-      />
+      <div className={styles.tabBand}>
+        <Tabs
+          className={styles.partitionTabs}
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          items={tabItems.map((item) => ({ key: item.key, label: item.label }))}
+        />
+      </div>
       <div className={styles.main}>{renderPane()}</div>
     </div>
   );

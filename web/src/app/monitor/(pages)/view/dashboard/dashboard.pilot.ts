@@ -174,6 +174,8 @@ const applyDashboardLabel = async (
 };
 
 const selectedModeLabel = (): string => {
+  const pill = document.querySelector('[data-view-mode-pill]');
+  if (pill?.textContent) return cleanLabel(pill.textContent);
   const segmented = document.querySelector('[class*="modeSegmented"] .ant-segmented-item-selected');
   if (segmented?.textContent) return cleanLabel(segmented.textContent);
   const selectItem = document.querySelector(

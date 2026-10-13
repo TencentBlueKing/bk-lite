@@ -120,10 +120,11 @@ export default function HostDashboardPage() {
       dashboard={dashboard}
       styles={styles}
       preserveLayouts
+      unifiedChrome
       viewSwitcher={{
         mode: layout,
         onChange: onLayoutChange,
-        control: 'select',
+        control: 'pill',
         options: HOST_DETAIL_LAYOUT_OPTIONS
       }}
       dashboardContent={<HostLegacyLayout {...layoutProps} />}

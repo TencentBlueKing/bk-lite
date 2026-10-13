@@ -36,10 +36,81 @@
   }
 }
 
-.hostTabs {
-  margin-top: 4px;
+.pageIntro {
+  margin-bottom: 12px;
+}
 
-  :global(.ant-tabs-nav) {
-    margin-bottom: 12px;
+.pageTitleRowPill {
+  .titleLead {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    min-width: 0;
+    flex: 1 1 auto;
   }
+
+  .titleLead .title {
+    flex: 0 1 auto;
+  }
+}
+
+.viewModePill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  margin: 0;
+  padding: 0 12px;
+  border: 1px solid var(--color-primary);
+  border-radius: 999px;
+  background: var(--color-bg);
+  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.viewModePill:hover {
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg));
+}
+
+.viewModeCaret {
+  font-size: 10px;
+  color: var(--color-primary);
+}
+
+.viewModeHint {
+  margin: 0;
+  color: var(--color-text-3);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.unifiedShell {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-text-1) 4%, transparent);
+  overflow: hidden;
+}
+
+.unifiedHostBar {
+  border-bottom: 1px solid var(--color-border-1);
+
+  .instanceCard {
+    padding: 12px 16px;
+    border-top: none;
+    border-bottom: none;
+  }
+}
+
+.unifiedBody {
+  padding: 14px 16px 16px;
+}
+
+.unifiedCategoryBody {
+  min-width: 0;
 }

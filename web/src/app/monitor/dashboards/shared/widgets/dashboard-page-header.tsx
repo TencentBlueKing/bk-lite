@@ -1,6 +1,6 @@
 import React from 'react';
-import { Breadcrumb, Button, Segmented, Select } from 'antd';
-import { ArrowLeftOutlined } from '@ant-design/icons';
+import { Breadcrumb, Button, Dropdown, Segmented, Select } from 'antd';
+import { ArrowLeftOutlined, DownOutlined } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import TimeSelector from '@/components/time-selector';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
@@ -35,8 +35,8 @@ export interface DashboardPageHeaderProps {
   showTimeSelector?: boolean;
   /** SNMP / NetFlow / sFlow 跨路由切换（与展示模式控件并列）。 */
   viewSwitchSlot?: React.ReactNode;
-  /** 默认两档分段按钮。选项变多时改用下拉，避免把标题行撑满。 */
-  modeControl?: 'segmented' | 'select';
+  /** 默认两档分段按钮。选项变多时改用下拉；主机详情用标题旁 pill。 */
+  modeControl?: 'segmented' | 'select' | 'pill';
   modeOptions?: readonly DashboardModeOption[];
   styles: DashboardPageHeaderStyles;
 }
@@ -79,6 +79,51 @@ export function DashboardPageHeader({
     value: item.value,
     label: common(item.labelKey, item.fallback)
   }));
+  const currentModeLabel = modeItems.find((item) => item.value === displayMode)?.label ?? '';
+  const modeSwitcher = modeControl === 'pill' ? null : modeControl === 'select' ? (
+    <Select
+      size="middle"
+      className={[styles.modeSelect, 'min-w-[280px] max-md:w-full max-md:min-w-0'].filter(Boolean).join(' ')}
+      value={displayMode}
+      options={modeItems}
+      aria-label={common('viewSwitcher', '视图')}
+      popupMatchSelectWidth
+      onChange={(value) => onDisplayModeChange(value as 'dashboard' | 'metrics')}
+    />
+  ) : (
+    <Segmented
+      size="middle"
+      className={styles.modeSegmented}
+      value={displayMode}
+      options={modeItems}
+      onChange={(value) => onDisplayModeChange(value as 'dashboard' | 'metrics')}
+    />
+  );
+  const modePill = modeControl === 'pill' ? (
+    <Dropdown
+      trigger={['click']}
+      menu={{
+        selectable: true,
+        selectedKeys: [displayMode],
+        items: modeItems.map((item) => ({
+          key: item.value,
+          label: item.label
+        })),
+        onClick: ({ key }) => onDisplayModeChange(key as 'dashboard' | 'metrics')
+      }}
+    >
+      <button
+        type="button"
+        className={styles.viewModePill}
+        data-view-mode-pill=""
+        aria-haspopup="menu"
+        aria-label={common('viewSwitcher', '视图')}
+      >
+        <span>{currentModeLabel}</span>
+        <DownOutlined className={styles.viewModeCaret} aria-hidden="true" />
+      </button>
+    </Dropdown>
+  ) : null;
 
   const backButton = (
     <Button
@@ -95,31 +140,20 @@ export function DashboardPageHeader({
   );
 
   return (
-    <div className={styles.pageTitleRow}>
+    <div className={[styles.pageTitleRow, modeControl === 'pill' ? styles.pageTitleRowPill : ''].filter(Boolean).join(' ')}>
       <Breadcrumb className={styles.breadcrumb} items={breadcrumbItems} />
       <div className={styles.titleControlsRow}>
-        <h1 className={styles.title}>{localizedTitle}</h1>
+        {modePill ? (
+          <div className={styles.titleLead}>
+            <h1 className={styles.title}>{localizedTitle}</h1>
+            {modePill}
+          </div>
+        ) : (
+          <h1 className={styles.title}>{localizedTitle}</h1>
+        )}
         <div className={styles.controlsWrap}>
           {viewSwitchSlot}
-          {modeControl === 'select' ? (
-            <Select
-              size="middle"
-              className={[styles.modeSelect, 'min-w-[280px] max-md:w-full max-md:min-w-0'].filter(Boolean).join(' ')}
-              value={displayMode}
-              options={modeItems}
-              aria-label={common('viewSwitcher', '视图')}
-              popupMatchSelectWidth
-              onChange={(value) => onDisplayModeChange(value as 'dashboard' | 'metrics')}
-            />
-          ) : (
-            <Segmented
-              size="middle"
-              className={styles.modeSegmented}
-              value={displayMode}
-              options={modeItems}
-              onChange={(value) => onDisplayModeChange(value as 'dashboard' | 'metrics')}
-            />
-          )}
+          {modeSwitcher}
           {showTimeSelector ? (
             <div className={styles.toolbarTimeSelector}>
               <TimeSelector
@@ -142,6 +176,11 @@ export function DashboardPageHeader({
           )}
         </div>
       </div>
+      {modeControl === 'pill' ? (
+        <p className={styles.viewModeHint}>
+          {`${common('viewModeLabel', '视图模式')}：${modeItems.map((item) => item.label).join(' / ')}`}
+        </p>
+      ) : null}
     </div>
   );
 }

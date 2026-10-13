@@ -697,7 +697,7 @@ export const MetricsSection = ({ dashboard, styles }: MetricsSectionProps) => {
 export interface DashboardViewSwitcher {
   mode: string;
   onChange: (mode: string) => void;
-  control?: 'segmented' | 'select';
+  control?: 'segmented' | 'select' | 'pill';
   options: ReadonlyArray<{
     labelKey: string;
     fallback: string;
@@ -713,8 +713,13 @@ export interface DashboardShellProps {
   categoryContent?: React.ReactNode;
   /** 覆盖默认全量指标区（如主机需叠加进程指标页签）。 */
   metricsContent?: React.ReactNode;
-  /** 主机详情用下拉切换多套布局，其它对象保持分段按钮。 */
+  /** 主机详情用标题旁 pill 切换布局，其它对象保持分段按钮。 */
   viewSwitcher?: DashboardViewSwitcher;
+  /**
+   * 主机详情：标题留在灰底上，实例栏、分类 Tab 与内容收进同一白壳。
+   * 模式入口只出现在标题旁，不进 Tab 行。
+   */
+  unifiedChrome?: boolean;
   /**
    * 打开过的布局保持挂载，只隐藏。来回切换时不拆掉另一套页面。
    */
@@ -735,6 +740,7 @@ export const DashboardShell = ({
   metricsContent,
   viewSwitcher,
   preserveLayouts = false,
+  unifiedChrome = false,
   brandLabel,
   styles
 }: DashboardShellProps) => {
@@ -760,68 +766,103 @@ export const DashboardShell = ({
   const metricsNode = metricsContent || <MetricsSection dashboard={dashboard} styles={styles} />;
   const renderLayout = (mode: string, node: React.ReactNode) => {
     if (!node) return null;
-    if (!preserveLayouts) return activeMode === mode ? node : null;
+    const bodyClass = unifiedChrome
+      ? (mode === 'category' ? styles.unifiedCategoryBody : styles.unifiedBody)
+      : undefined;
+    if (!preserveLayouts) {
+      if (activeMode !== mode) return null;
+      if (!unifiedChrome) return node;
+      return <div className={bodyClass}>{node}</div>;
+    }
     if (!mountedModes.includes(mode)) return null;
-    return <div hidden={activeMode !== mode}>{node}</div>;
+    return (
+      <div className={bodyClass} hidden={activeMode !== mode}>
+        {node}
+      </div>
+    );
   };
+
+  const pageHeader = (
+    <DashboardPageHeader
+      title={dashboard.pageTitle}
+      displayMode={activeMode}
+      onDisplayModeChange={onDisplayModeChange}
+      modeControl={unifiedChrome ? 'pill' : viewSwitcher?.control}
+      modeOptions={viewSwitcher?.options}
+      timeDefaultValue={dashboard.timeDefaultValue}
+      onTimeChange={dashboard.onTimeChange}
+      onFrequenceChange={dashboard.setFrequence}
+      onRefresh={dashboard.onRefresh}
+      showTimeSelector={false}
+      styles={styles}
+    />
+  );
+  const instanceCard = (
+    <DashboardInstanceCard
+      instanceName={dashboard.resolvedInstanceName}
+      metaItems={[
+        ...(brandLabel
+          ? [
+            <span key="brand" className={styles.instanceMetaInline}>{dt(brandLabel)}</span>
+          ]
+          : []),
+        ...dashboard.objectMetaItems.map((item, index) => (
+          <span key={index} className={styles.instanceMetaInline}>{typeof item === 'string' ? dt(item) : item}</span>
+        ))
+      ]}
+      icon={<DatabaseOutlined />}
+      selectorValue={dashboard.instanceSelectValue}
+      selectorLoading={dashboard.instanceLoading}
+      selectorOptions={dashboard.instanceSelectOptions}
+      onInstanceChange={dashboard.onInstanceChange}
+      clusterOptions={dashboard.clusterFilterEnabled ? dashboard.clusterFilterOptions : undefined}
+      clusterValue={dashboard.clusterFilterValue}
+      onClusterChange={dashboard.onClusterFilterChange}
+      selectorPlaceholder={
+        dashboard.resolvedInstanceName !== '--' ? dashboard.resolvedInstanceName : dt('选择实例')
+      }
+      selectorTitle={dashboard.currentInstanceLabel}
+      isDashboardMode={showsDashboardChrome}
+      timeSelectorProps={{
+        timeDefaultValue: dashboard.timeDefaultValue,
+        onTimeChange: dashboard.onTimeChange,
+        onFrequenceChange: dashboard.setFrequence,
+        onRefresh: dashboard.onRefresh
+      }}
+      styles={styles}
+    />
+  );
+  const protocolBar = showProtocolBar && showsDashboardChrome ? <DashboardProtocolBarSlot /> : null;
+  const layouts = (
+    <>
+      {renderLayout('dashboard', dashboardContent)}
+      {renderLayout('category', categoryContent)}
+      {renderLayout('metrics', metricsNode)}
+    </>
+  );
 
   return (
   <div className={styles.page}>
     <div className={styles.shell} data-view-mode={activeMode}>
-      <div className={styles.pageHeader}>
-        <DashboardPageHeader
-          title={dashboard.pageTitle}
-          displayMode={activeMode}
-          onDisplayModeChange={onDisplayModeChange}
-          modeControl={viewSwitcher?.control}
-          modeOptions={viewSwitcher?.options}
-          timeDefaultValue={dashboard.timeDefaultValue}
-          onTimeChange={dashboard.onTimeChange}
-          onFrequenceChange={dashboard.setFrequence}
-          onRefresh={dashboard.onRefresh}
-          showTimeSelector={false}
-          styles={styles}
-        />
-        <DashboardInstanceCard
-          instanceName={dashboard.resolvedInstanceName}
-          metaItems={[
-            ...(brandLabel
-              ? [
-                <span key="brand" className={styles.instanceMetaInline}>{dt(brandLabel)}</span>
-              ]
-              : []),
-            ...dashboard.objectMetaItems.map((item, index) => (
-              <span key={index} className={styles.instanceMetaInline}>{typeof item === 'string' ? dt(item) : item}</span>
-            ))
-          ]}
-          icon={<DatabaseOutlined />}
-          selectorValue={dashboard.instanceSelectValue}
-          selectorLoading={dashboard.instanceLoading}
-          selectorOptions={dashboard.instanceSelectOptions}
-          onInstanceChange={dashboard.onInstanceChange}
-          clusterOptions={dashboard.clusterFilterEnabled ? dashboard.clusterFilterOptions : undefined}
-          clusterValue={dashboard.clusterFilterValue}
-          onClusterChange={dashboard.onClusterFilterChange}
-          selectorPlaceholder={
-            dashboard.resolvedInstanceName !== '--' ? dashboard.resolvedInstanceName : dt('选择实例')
-          }
-          selectorTitle={dashboard.currentInstanceLabel}
-          isDashboardMode={showsDashboardChrome}
-          timeSelectorProps={{
-            timeDefaultValue: dashboard.timeDefaultValue,
-            onTimeChange: dashboard.onTimeChange,
-            onFrequenceChange: dashboard.setFrequence,
-            onRefresh: dashboard.onRefresh
-          }}
-          styles={styles}
-        />
-      </div>
-
-      {showProtocolBar && showsDashboardChrome ? <DashboardProtocolBarSlot /> : null}
-
-      {renderLayout('dashboard', dashboardContent)}
-      {renderLayout('category', categoryContent)}
-      {renderLayout('metrics', metricsNode)}
+      {unifiedChrome ? (
+        <>
+          <div className={styles.pageIntro}>{pageHeader}</div>
+          <div className={styles.unifiedShell} data-dashboard-shell="unified">
+            <div className={styles.unifiedHostBar}>{instanceCard}</div>
+            {protocolBar}
+            {layouts}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className={styles.pageHeader}>
+            {pageHeader}
+            {instanceCard}
+          </div>
+          {protocolBar}
+          {layouts}
+        </>
+      )}
     </div>
   </div>
   );
