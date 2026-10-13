@@ -1063,6 +1063,13 @@
       "template": "avg(http_response_result_code{__$labels__} == bool 5) * 100"
     },
     {
+      "id": "dashboard:v1:24d978b4",
+      "object_names": [
+        "Host"
+      ],
+      "template": "host_mem_swap_total_bytes{instance_type=\"os\", __$labels__} or host_mem_swap_total_bytes_gauge{instance_type=\"os\", __$labels__} or mem_swap_total{instance_type=\"os\", __$labels__} or mem_swap_total_gauge{instance_type=\"os\", __$labels__}"
+    },
+    {
       "id": "dashboard:v1:25277dde",
       "object_names": [
         "Mysql"
@@ -1758,13 +1765,6 @@
         "Firewall"
       ],
       "template": "firewall_vpn_tunnels{__$labels__}"
-    },
-    {
-      "id": "dashboard:v1:417b1754",
-      "object_names": [
-        "Host"
-      ],
-      "template": "nvidia_smi_temperature_gpu{instance_type=\"os\", __$labels__}"
     },
     {
       "id": "dashboard:v1:419611c4",
@@ -2536,13 +2536,6 @@
       "template": "count(prometheus_remote_write_kube_daemonset_status_number_unavailable{instance_type=\"k8s\",__$labels__} > 0)"
     },
     {
-      "id": "dashboard:v1:5e893833",
-      "object_names": [
-        "Host"
-      ],
-      "template": "nvidia_smi_power_draw{instance_type=\"os\", __$labels__}"
-    },
-    {
       "id": "dashboard:v1:5f29a022",
       "object_names": [
         "Zookeeper"
@@ -2562,6 +2555,13 @@
         "Tomcat"
       ],
       "template": "tomcat_connector_bytes_sent{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:5f92da1e",
+      "object_names": [
+        "Host"
+      ],
+      "template": "mem_total{instance_type=\"os\", __$labels__} or host_mem_total_bytes_gauge{instance_type=\"os\", __$labels__} or mem_total_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__} or mem_total_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__}"
     },
     {
       "id": "dashboard:v1:5f9975dc",
@@ -2812,13 +2812,6 @@
       "template": "apache_ParentServerConfigGeneration{__$labels__}"
     },
     {
-      "id": "dashboard:v1:6b57b15d",
-      "object_names": [
-        "Host"
-      ],
-      "template": "100 * (nvidia_smi_memory_used{instance_type=\"os\", __$labels__} / nvidia_smi_memory_total{instance_type=\"os\", __$labels__})"
-    },
-    {
       "id": "dashboard:v1:6b68ac0a",
       "object_names": [
         "Active Directory"
@@ -3056,13 +3049,6 @@
         "Docker"
       ],
       "template": "clamp_max(100 * (docker_n_containers_stopped{__$labels__} / clamp_min(docker_n_containers{__$labels__}, 1)), 100)"
-    },
-    {
-      "id": "dashboard:v1:75023f67",
-      "object_names": [
-        "Host"
-      ],
-      "template": "avg without(pstate) (nvidia_smi_fan_speed{instance_type=\"os\", __$labels__})"
     },
     {
       "id": "dashboard:v1:76ff4618",
@@ -3424,6 +3410,13 @@
         "Mysql"
       ],
       "template": "rate(mysql_innodb_buffer_pool_read_requests{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:842e8c6c",
+      "object_names": [
+        "Host"
+      ],
+      "template": "host_mem_swap_used_bytes{instance_type=\"os\", __$labels__} or host_mem_swap_used_bytes_gauge{instance_type=\"os\", __$labels__}"
     },
     {
       "id": "dashboard:v1:84332c24",
@@ -4374,6 +4367,13 @@
       "template": "max by (instance_id) (minio_cluster_health_capacity_usable_total_bytes_gauge{__$labels__}) or max by (instance_id) (minio_cluster_capacity_usable_total_bytes_gauge{__$labels__})"
     },
     {
+      "id": "dashboard:v1:ad8c7e3b",
+      "object_names": [
+        "Host"
+      ],
+      "template": "processes_running{instance_type=\"os\", __$labels__} or processes_running_gauge{instance_type=\"os\", __$labels__} or processes_running_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}"
+    },
+    {
       "id": "dashboard:v1:ae5d2ac6",
       "object_names": [
         "Host"
@@ -5144,6 +5144,13 @@
         "Exchange"
       ],
       "template": "win_exchange_autodiscover_Requests_persec{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:cd09b066",
+      "object_names": [
+        "Host"
+      ],
+      "template": "mem_swap_free{instance_type=\"os\", __$labels__} or mem_swap_free_gauge{instance_type=\"os\", __$labels__}"
     },
     {
       "id": "dashboard:v1:cd4ce4d6",
@@ -6309,6 +6316,13 @@
         "Redis"
       ],
       "template": "redis_maxmemory{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:ff09dfbe",
+      "object_names": [
+        "Host"
+      ],
+      "template": "processes_sleeping{instance_type=\"os\", __$labels__} or processes_sleeping_gauge{instance_type=\"os\", __$labels__}"
     },
     {
       "id": "dashboard:v1:ff57711c",

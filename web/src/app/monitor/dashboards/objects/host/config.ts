@@ -153,7 +153,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '交换总量',
       description: '主机交换空间总量，用于换算交换已用占比。',
       unit: 'bytes',
-      query: 'host_mem_swap_total_bytes{instance_type="os", __$labels__} or host_mem_swap_total_bytes_gauge{instance_type="os", __$labels__} or mem_swap_total_gauge{instance_type="os", __$labels__}',
+      query: 'host_mem_swap_total_bytes{instance_type="os", __$labels__} or host_mem_swap_total_bytes_gauge{instance_type="os", __$labels__} or mem_swap_total{instance_type="os", __$labels__} or mem_swap_total_gauge{instance_type="os", __$labels__}',
       color: HOST_PALETTE.neutral
     },
     {

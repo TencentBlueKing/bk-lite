@@ -156,13 +156,8 @@ export default function ThinTimeSeries({
             silent: true,
             symbol: ['none', 'none'],
             lineStyle: { type: 'dashed' as const, color: reference?.color, width: 1.2 },
-            label: {
-              show: true,
-              formatter: reference?.label || '',
-              color: mutedColor,
-              fontSize: 10,
-              position: 'insideEndTop' as const
-            },
+            // 核数等参考线：图例已展示文案，图内不再重复标「核数(N)」
+            label: { show: false },
             data: [{ yAxis: referenceValue }]
           } : undefined
         };

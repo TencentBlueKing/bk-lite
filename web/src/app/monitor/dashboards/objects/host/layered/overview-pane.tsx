@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import { HOST_PALETTE } from '../config';
 import { latestPreferSignal, maxFinite, pointsToChartData, type EntityTableRow } from '../entity-series';
-import type { MetricSeries } from '../../common/simple-dashboard-core';
+import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
 import { KpiStrip, type KpiCardModel } from './signal-bar';
 import ThinTimeSeries from './thin-time-series';
 import {
@@ -70,6 +70,7 @@ export default function OverviewPane({
   const mem = latestNumber(metrics.mem_used_percent);
   const load = latestNumber(metrics.system_load1);
   const cores = latestNumber(metrics.cpu_n);
+  const uptime = latestNumber(metrics.system_uptime);
   const showLoad = metricHasPoints(metrics.system_load1);
   const diskValue = peakOfRow(worst, 'disk_used_percent');
   const diskCurrent = readingOfRow(worst, 'disk_used_percent');
@@ -121,6 +122,15 @@ export default function OverviewPane({
         ? 'var(--color-fail)'
         : 'var(--color-success)';
     items.push({
+      key: 'uptime',
+      label: '运行时长',
+      value: uptime == null ? '--' : formatDuration(uptime),
+      tone: uptime == null ? undefined : 'var(--color-success)',
+      color: HOST_PALETTE.indigo,
+      trend: metrics.system_uptime?.viewData || [],
+      flat: true
+    });
+    items.push({
       key: 'alert',
       label: '告警',
       value: alertCount == null ? '--' : String(alertCount),
@@ -147,9 +157,11 @@ export default function OverviewPane({
     metrics.cpu_usage_total?.viewData,
     metrics.mem_used_percent?.viewData,
     metrics.system_load1?.viewData,
+    metrics.system_uptime?.viewData,
     monitorObjectId,
     mountName,
     showLoad,
+    uptime,
     worst
   ]);
 

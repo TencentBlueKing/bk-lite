@@ -112,7 +112,7 @@ export default function SystemPane({
         title="系统负载"
         loading={loading}
         unit="none"
-        reading={load == null ? undefined : `${formatPlain(load)}${cores != null && cores > 0 ? ` · ${Math.round(cores)} 核` : ''}`}
+        reading={load == null ? undefined : formatPlain(load)}
         readingTone={load != null && cores != null && cores > 0 && load > cores ? 'var(--color-warning)' : undefined}
         reference={cores != null && cores > 0 ? {
           value: cores,
