@@ -15,6 +15,7 @@ export interface OpsAnalysisSettingsListShellProps {
   introDescription: React.ReactNode;
   searchValue: string;
   searchPlaceholder: string;
+  filters?: React.ReactNode;
   actions?: React.ReactNode;
   children?: React.ReactNode;
   onSearchValueChange: (value: string) => void;
@@ -36,6 +37,7 @@ const OpsAnalysisSettingsListShell: React.FC<OpsAnalysisSettingsListShellProps> 
   introDescription,
   searchValue,
   searchPlaceholder,
+  filters,
   actions,
   children,
   onSearchValueChange,
@@ -57,20 +59,17 @@ const OpsAnalysisSettingsListShell: React.FC<OpsAnalysisSettingsListShellProps> 
     <div className="flex h-full w-full flex-col bg-[var(--color-bg-1)]">
       <TopSection
         title={introTitle}
-        content={(
-          <div className="text-sm text-[var(--color-text-3)]">
-            {introDescription}
-          </div>
-        )}
+        content={introDescription}
         className="mb-4"
       />
 
       <div className="px-6 pb-0">
         <SearchActionBar
+          filters={filters}
           searchProps={{
             value: searchValue,
             placeholder: searchPlaceholder,
-            enterButton: false,
+            enterButton: true,
             onChange: (event) => onSearchValueChange(event.target.value),
             onSearch,
             onClear: onSearchClear,
