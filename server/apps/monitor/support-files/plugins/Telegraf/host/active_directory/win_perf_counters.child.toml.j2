@@ -156,6 +156,15 @@
         Measurement = "win_ad"
         IncludeTotal = true
         WarnOnMissing = true
+    [[inputs.win_perf_counters.object]]
+        ObjectName = "DNS"
+        Instances = ["*"]
+        Counters = [
+      "Recursive Query Failure/sec",
+        ]
+        Measurement = "win_ad_dns"
+        IncludeTotal = true
+        WarnOnMissing = true
     [inputs.win_perf_counters.tags]
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type }}"

@@ -487,6 +487,150 @@
       "description": "MSExchange WorkloadManagement Workloads queued tasks."
     },
     {
+      "metric_group": "Replication",
+      "name": "exchange_copy_queue_length",
+      "query": "win_exchange_replication_CopyQueueLength{instance_type=\"exchange\", __$labels__}",
+      "display_name": "Copy Queue Length",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange Replication copy queue length: transaction logs waiting to be copied to the passive copy."
+    },
+    {
+      "metric_group": "Replication",
+      "name": "exchange_replay_queue_length",
+      "query": "win_exchange_replication_ReplayQueueLength{instance_type=\"exchange\", __$labels__}",
+      "display_name": "Replay Queue Length",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange Replication replay queue length: transaction logs waiting to be replayed into the passive copy."
+    },
+    {
+      "metric_group": "Replication",
+      "name": "exchange_avg_log_copy_latency",
+      "query": "win_exchange_replication_Avg_Log_Copy_Latency_(msec){instance_type=\"exchange\", __$labels__}",
+      "display_name": "Average Log Copy Latency",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange Replication average log copy latency in milliseconds."
+    },
+    {
+      "metric_group": "Database",
+      "name": "exchange_database_read_latency",
+      "query": "win_exchange_database_instances_I\\/O_Database_Reads_Average_Latency{instance_type=\"exchange\", __$labels__}",
+      "display_name": "Database Read Latency",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange Database Instances average database read latency in milliseconds."
+    },
+    {
+      "metric_group": "Database",
+      "name": "exchange_database_write_latency",
+      "query": "win_exchange_database_instances_I\\/O_Database_Writes_Average_Latency{instance_type=\"exchange\", __$labels__}",
+      "display_name": "Database Write Latency",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange Database Instances average database write latency in milliseconds."
+    },
+    {
+      "metric_group": "Database",
+      "name": "exchange_log_replay_latency",
+      "query": "win_exchange_database_IO_Log_Read_Average_Latency{instance_type=\"exchange\", __$labels__}",
+      "display_name": "Log Replay Latency",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange Database average time to read a log file during replay or recovery, in milliseconds."
+    },
+    {
+      "metric_group": "Database",
+      "name": "exchange_log_bytes_write_persec",
+      "query": "win_exchange_database_Log_Bytes_Write_persec{instance_type=\"exchange\", __$labels__}",
+      "display_name": "Log Bytes Written",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange Database log bytes written per second."
+    },
+    {
+      "metric_group": "Database",
+      "name": "exchange_database_cache_hit_percent",
+      "query": "win_exchange_database_Database_Cache_Percent_Hit{instance_type=\"exchange\", __$labels__}",
+      "display_name": "Database Cache Hit",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "MSExchange Database cache hit percentage. Page requests served from cache without a file read."
+    },
+    {
       "metric_group": "Probe",
       "name": "exchange_owa_probe_result_code",
       "query": "http_response_result_code{instance_type=\"exchange\", endpoint=\"owa\", __$labels__}",
