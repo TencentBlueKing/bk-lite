@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Form, Input, Select, Switch, Button, InputNumber, message, Modal, Checkbox, Space, Tooltip } from 'antd';
 import { PlusOutlined, DeleteOutlined, SendOutlined, SearchOutlined, FullscreenOutlined, FullscreenExitOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
@@ -65,12 +65,14 @@ const SkillSettingsPage: React.FC = () => {
   const hasWikiKb = Array.isArray(wikiKbIds) && wikiKbIds.length > 0;
 
   const [initialMessages] = useState<any[]>([]); // 稳定的空数组引用
+  const debugThreadIdRef = useRef(crypto.randomUUID());
 
   const [chatHistoryEnabled, setChatHistoryEnabled] = useState(true);
   const [llmModels, setLlmModels] = useState<{ id: number, name: string, enabled: boolean, llm_model_type: string, vendor_name?: string }[]>([]);
   const [formDataLoading, setFormDataLoading] = useState(true);
   const [saveLoading, setSaveLoading] = useState(false);
   const [quantity, setQuantity] = useState<number>(10);
+  const [runModelCallLimit, setRunModelCallLimit] = useState<number>(10);
   const [selectedTools, setSelectedTools] = useState<SelectTool[]>([]);
   const [skillPermissions, setSkillPermissions] = useState<string[]>([]);
   const [guideValue, setGuideValue] = useState<string>('');
@@ -158,6 +160,7 @@ const SkillSettingsPage: React.FC = () => {
         setGuideValue(guide);
         setChatHistoryEnabled(data.enable_conversation_history ?? true);
         setQuantity(data.conversation_window_size ?? 10);
+        setRunModelCallLimit(data.run_model_call_limit ?? 10);
         setSelectedTools(normalizeMonitorToolConfigs((data.tools || []) as SelectTool[]));
         const packages = (data.skill_packages || []) as SkillPackage[];
         const resolvedPackages = packages.map(withResolvedVariables);
@@ -231,6 +234,7 @@ const SkillSettingsPage: React.FC = () => {
         skill_prompt: values.prompt,
         enable_conversation_history: chatHistoryEnabled,
         conversation_window_size: chatHistoryEnabled ? quantity : undefined,
+        run_model_call_limit: runModelCallLimit,
         temperature: 1,
         show_think: false,
         guide: values.guide,
@@ -292,30 +296,13 @@ const SkillSettingsPage: React.FC = () => {
         }))
         : [];
 
-      // Build user_message array with images and text
-      let userMessageArray: any[];
-      if (userMessageObj?.images && userMessageObj.images.length > 0) {
-        // Format: [{"type": "image_url", "image_url": "..."}, ..., {"type": "message", "message": "..."}]
-        userMessageArray = [
-          ...userMessageObj.images.map((img: any) => ({
-            type: 'image_url',
-            image_url: img.url
-          })),
-          {
-            type: 'message',
-            message: userMessage
-          }
-        ];
-      } else {
-        // No images, just text message
-        userMessageArray = [{
-          type: 'message',
-          message: userMessage
-        }];
-      }
+      const attachmentIds = (userMessageObj?.attachments || [])
+        .filter((item: { status?: string }) => item.status === 'ready' || item.status === undefined)
+        .map((item: { id: number }) => item.id);
 
       const payload: any = {
-        user_message: userMessageArray,
+        user_message: userMessage,
+        ...(attachmentIds.length ? { attachment_ids: attachmentIds } : {}),
         llm_model: values.llmModel,
         skill_prompt: values.prompt,
         skill_name: values.name,
@@ -336,11 +323,13 @@ const SkillSettingsPage: React.FC = () => {
         })),
         chat_history: chatHistory,
         conversation_window_size: chatHistoryEnabled ? quantity : undefined,
+        run_model_call_limit: runModelCallLimit,
         temperature: 1,
         show_think: false,
         tools: buildStudioRuntimeTools(selectedTools),
         skill_type: 1,
         group: values.group?.[0],
+        thread_id: debugThreadIdRef.current,
       };
 
       return {
@@ -1017,6 +1006,21 @@ const SkillSettingsPage: React.FC = () => {
                     </div>
                   </Form.Item>
 
+                  <Form.Item
+                    label={t('skill.runModelCallLimit', '每步调用次数')}
+                    tooltip={t('skill.runModelCallLimitTip', '每个执行步骤里，模型可以发起调用的次数上限。达到后本步停止。')}
+                    className="!mb-3.5"
+                  >
+                    <InputNumber
+                      min={1}
+                      max={100}
+                      size="small"
+                      className="w-24"
+                      value={runModelCallLimit}
+                      onChange={(value) => setRunModelCallLimit(value ?? 10)}
+                    />
+                  </Form.Item>
+
                   {renderSkillPackageSelector()}
 
                   <div className="mt-4 border-t border-[var(--color-border-1)] pt-4">
@@ -1089,6 +1093,9 @@ const SkillSettingsPage: React.FC = () => {
                   initialMessages={initialMessages}
                   removePendingBotMessageOnCancel={true}
                   conversationHistoryEnabled={chatHistoryEnabled}
+                  onConversationCleared={() => {
+                    debugThreadIdRef.current = crypto.randomUUID();
+                  }}
                 />
               </div>
             </div>

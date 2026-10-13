@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildDataReferenceOptions,
   compileNodeInputBinding,
+  resolveTriggerGroupLabel,
   compatibleDataReferences,
   dataReferenceCompatibility,
   dataReferencePreview,
@@ -175,10 +176,99 @@ describe('节点数据选择器', () => {
       tasks: [{ name: 'target', taskReferenceName: 'current', type: 'SIMPLE', inputParameters: {} }],
     };
 
-    const values = buildDataReferenceOptions(definition, 'current', atoms, {}).map((option) => option.value);
+    const options = buildDataReferenceOptions(definition, 'current', atoms, {});
+    const values = options.map((option) => option.value);
 
     expect(values).not.toContain('${workflow.variables.timeout}');
     expect(values).toContain('${system.execution_id}');
+    expect(options.find((option) => option.value === '${system.trigger_type}')?.displayName).toBe('触发类型');
+    expect(options.find((option) => option.sourceKind === 'system')?.sourceLabel).toBe('运行信息');
+  });
+
+  it('上游分组按流程从前往后排列，字段名只用当前标题', () => {
+    const definition: ConductorDefinition = {
+      name: 'ordered-flow', version: 1, schemaVersion: 2,
+      tasks: [
+        { name: 'source', taskReferenceName: 'job_execute', type: 'SIMPLE', inputParameters: {} },
+        { name: 'source', taskReferenceName: 'document_render', type: 'SIMPLE', inputParameters: {} },
+        { name: 'target', taskReferenceName: 'notification', type: 'SIMPLE', inputParameters: {} },
+      ],
+    };
+    const titledAtoms: AtomCatalogItem[] = [
+      {
+        key: 'source', name: '作业执行', category: '测试', description: '',
+        output_schema: {
+          type: 'object',
+          properties: {
+            artifact: {
+              type: 'object',
+              title: '生成文件',
+              properties: { id: { type: 'string', title: '文件标识' } },
+            },
+          },
+        },
+      },
+      { key: 'target', name: '对外通知', category: '测试', description: '', input_schema: { type: 'object' } },
+    ];
+
+    const options = buildDataReferenceOptions(
+      definition,
+      'notification',
+      titledAtoms,
+      { type: 'object', properties: { file: { type: 'object', title: '模板文件' } } },
+      undefined,
+      [
+        { source: 'trigger_form', target: 'job_execute' },
+        { source: 'job_execute', target: 'document_render' },
+        { source: 'document_render', target: 'notification' },
+      ],
+      { job_execute: '作业执行', document_render: '文档生成' },
+    );
+
+    const sources = options.map((option) => option.sourceLabel);
+    expect(sources.indexOf('触发输入')).toBeLessThan(sources.indexOf('作业执行'));
+    expect(sources.indexOf('作业执行')).toBeLessThan(sources.indexOf('文档生成'));
+    expect(sources.indexOf('文档生成')).toBeLessThan(sources.indexOf('运行信息'));
+    expect(options.find((option) => option.value === '${document_render.output}')?.jsonPath).toBe('output');
+    expect(options.find((option) => option.value === '${document_render.output}')?.displayName).toBe('全部输出');
+    expect(options.find((option) => option.value === '${document_render.output.artifact.id}')?.displayName).toBe('文件标识');
+    expect(options.find((option) => option.value === '${workflow.input.file}')?.displayName).toBe('模板文件');
+  });
+
+  it('同名上游节点在标题后附上引用名', () => {
+    const definition: ConductorDefinition = {
+      name: 'duplicate-names', version: 1, schemaVersion: 2,
+      tasks: [
+        { name: 'source', taskReferenceName: 'first_job', type: 'SIMPLE', inputParameters: {} },
+        { name: 'source', taskReferenceName: 'second_job', type: 'SIMPLE', inputParameters: {} },
+        { name: 'target', taskReferenceName: 'current', type: 'SIMPLE', inputParameters: {} },
+      ],
+    };
+
+    const options = buildDataReferenceOptions(definition, 'current', atoms, {});
+    const labels = options.filter((option) => option.jsonPath === 'output').map((option) => option.sourceLabel);
+
+    expect(labels).toEqual(['来源 · first_job', '来源 · second_job']);
+  });
+
+  it('触发分组使用触发器节点名称，重名时附上引用', () => {
+    const definition: ConductorDefinition = {
+      name: 'named-trigger', version: 1, schemaVersion: 2,
+      tasks: [
+        { name: 'source', taskReferenceName: 'job_execute', type: 'SIMPLE', inputParameters: {} },
+        { name: 'target', taskReferenceName: 'current', type: 'SIMPLE', inputParameters: {} },
+      ],
+    };
+    const edges = [
+      { source: 'trigger_form', target: 'job_execute' },
+      { source: 'job_execute', target: 'current' },
+    ];
+    const schema: JsonSchema = { type: 'object', properties: { file: { type: 'object', title: '模板文件' } } };
+
+    expect(resolveTriggerGroupLabel('current', [{ id: 'trigger_form', name: '表单触发器' }], edges, '触发输入')).toBe('表单触发器');
+    const options = buildDataReferenceOptions(definition, 'current', atoms, schema, undefined, edges, { job_execute: '表单触发器' }, '表单触发器');
+    expect(options.find((option) => option.value === '${workflow.input.file}')?.sourceLabel).toBe('表单触发器 · workflow.input');
+    expect(options.find((option) => option.value === '${job_execute.output}')?.sourceLabel).toBe('表单触发器 · job_execute');
   });
 
   it('固定值、整值引用和文本模板可以确定性往返', () => {

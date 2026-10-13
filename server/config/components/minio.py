@@ -27,6 +27,7 @@ MINIO_PRIVATE_BUCKETS = [
     "patch-mgmt-private",  # 补丁管理 SSH 私钥
     "patch-mgmt-packages",  # 补丁管理手工 Windows 补丁包
     "operation-analysis-private",  # 运营分析 Excel 原文件与物化结果
+    "rum-replay",  # RUM 回放对象；Gateway 写入，Django 用平台凭据读取
 ]
 MINIO_PUBLIC_BUCKETS = ["rewind-public", "munchkin-public"]
 MINIO_POLICY_HOOKS: List[Tuple[str, dict]] = []

@@ -9,6 +9,7 @@ import time
 
 import pydantic.root_model  # noqa: F401  预热
 import pytest
+
 from apps.cmdb.collection.collect_plugin import host as host_module
 from apps.cmdb.collection.collect_plugin.host import HostCollectMetrics
 
@@ -75,14 +76,36 @@ def test_format_data_skips_failed_status(runner):
 
 
 def test_format_data_proc_metric_aggregates_not_appended(runner):
-    proc_row = _metric_row(
-        "host_proc_usage_info_gauge", ip_addr="10.0.0.1", pid="100", proc_name="nginx"
-    )
+    proc_row = _metric_row("host_proc_usage_info_gauge", ip_addr="10.0.0.1", pid="100", proc_name="nginx")
     proc_row["metric"]["name"] = "nginx"
     runner.format_data({"result": [proc_row]})
     # host_proc 指标不进入 collection_metrics_dict，而是聚合到 host_proc_map
     assert runner.collection_metrics_dict["host_proc_usage_info_gauge"] == []
     assert runner.host_proc_map["10.0.0.1"][0]["name"] == "nginx"
+
+
+def test_format_data_mount_and_nic_metrics_fold_into_host_tables(runner):
+    mount_row = _metric_row(
+        "host_mount_info_gauge",
+        ip_addr="10.0.0.1",
+        device="/dev/sda1",
+        mount="/",
+        fstype="ext4",
+        size_gb="40.0",
+    )
+    nic_row = _metric_row(
+        "host_nic_info_gauge",
+        ip_addr="10.0.0.1",
+        mac="aa-bb-cc-dd-ee-ff",
+        ip="10.0.0.1",
+    )
+    nic_row["metric"]["name"] = "eth0"
+    runner.format_data({"result": [mount_row, nic_row]})
+
+    assert runner.collection_metrics_dict["host_mount_info_gauge"] == []
+    assert runner.collection_metrics_dict["host_nic_info_gauge"] == []
+    assert runner.host_mount_map["10.0.0.1"][0]["mount"] == "/"
+    assert runner.host_nic_map["10.0.0.1"][0]["mac"] == "AA:BB:CC:DD:EE:FF"
 
 
 def test_format_data_breaks_on_stale_timestamp(runner):

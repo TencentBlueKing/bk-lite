@@ -31,7 +31,12 @@ CONDITION_TERM = re.compile(
 
 
 class DefinitionValidationError(ValueError):
-    pass
+    """校验失败。str(self) 保留技术句子供日志和既有测试；对用户展示走错误码。"""
+
+    def __init__(self, message: str, *, code: str = "", **params: Any) -> None:
+        super().__init__(message)
+        self.code = code
+        self.params = params
 
 
 def compile_disabled_nodes(definition: Any, canvas_metadata: Any) -> dict[str, Any]:
@@ -200,10 +205,22 @@ def _validate_atom_inputs(task: dict[str, Any], atom_catalog: dict[str, dict[str
     try:
         schema = resolve_capability_input_schema(atom_catalog.get(task["name"]) or {}, inputs)
     except CapabilityProfileError as error:
-        raise DefinitionValidationError(f"节点 {reference} {error}") from error
+        raise DefinitionValidationError(
+            f"节点 {reference} {error}",
+            code="node_detail",
+            node_reference=reference,
+            atom_key=str(task.get("name") or ""),
+            detail=str(error),
+        ) from error
     missing = [field for field in schema.get("required", []) if field not in inputs]
     if missing:
-        raise DefinitionValidationError(f"节点 {reference} 缺少必填输入: {', '.join(missing)}")
+        raise DefinitionValidationError(
+            f"节点 {reference} 缺少必填输入: {', '.join(missing)}",
+            code="node_missing_required_input",
+            node_reference=reference,
+            atom_key=str(task.get("name") or ""),
+            field_keys=missing,
+        )
     for field, value in inputs.items():
         field_schema = (schema.get("properties") or {}).get(field)
         if not isinstance(field_schema, dict):
@@ -212,7 +229,13 @@ def _validate_atom_inputs(task: dict[str, Any], atom_catalog: dict[str, dict[str
             continue
         errors = sorted(Draft202012Validator(field_schema).iter_errors(value), key=lambda item: list(item.path))
         if errors:
-            raise DefinitionValidationError(f"节点 {reference} 输入 {field} 不符合原子 Schema: {errors[0].message}")
+            raise DefinitionValidationError(
+                f"节点 {reference} 输入 {field} 不符合原子 Schema: {errors[0].message}",
+                code="node_input_invalid",
+                node_reference=reference,
+                atom_key=str(task.get("name") or ""),
+                field_key=field,
+            )
 
 
 def _validate_structured_condition(task: dict[str, Any]) -> None:

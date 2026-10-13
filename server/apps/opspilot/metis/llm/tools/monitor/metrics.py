@@ -196,7 +196,48 @@ def monitor_query_metric_data(
         result["_next_step_hint"] = _UNKNOWN_METRIC_HINT
     elif result.get("success") and _metric_query_is_empty(result.get("data")):
         result["_next_step_hint"] = _EMPTY_SERIES_HINT
+    elif result.get("success"):
+        skipped = (result.get("data") or {}).get("skipped_instance_ids") if isinstance(result.get("data"), dict) else None
+        if skipped:
+            result["_next_step_hint"] = "部分实例无法识别或无权限，已跳过并写在 skipped_instance_ids。其余实例的时序仍在结果里，不要逐个重试被跳过的实例。"
     return result
+
+
+@tool(
+    description=(
+        "对监控对象下的指标做趋势汇总。服务端用完整历史计算当前值、每天变化量和到达阈值还要多少天，只返回汇总行。"
+        "用户问全部实例的趋势，或未来一段时间会不会超阈值、会不会耗尽时用本工具。"
+        "不要抽样调用 monitor_query_metric_data 再心算。"
+        "metric 必须来自 monitor_list_object_metrics 返回的 name。"
+        "instance_ids 省略或空列表表示该对象下全部已授权实例。"
+        "lookback_days 默认 14，horizon_days 默认 7，threshold 默认 100。"
+    )
+)
+def monitor_summarize_metric_trend(
+    monitor_obj_id: Optional[str] = None,
+    metric: Optional[str] = None,
+    lookback_days: float = 14,
+    horizon_days: float = 7,
+    threshold: float = 100,
+    instance_ids: Optional[List[str]] = None,
+    config: RunnableConfig = None,
+) -> Dict[str, Any]:
+    if not monitor_obj_id:
+        return wrap_error("monitor_obj_id is required")
+    if not metric:
+        return wrap_error("metric is required")
+    return call_monitor_rpc(
+        "summarize_metric_trend",
+        config,
+        query_data={
+            "monitor_obj_id": monitor_obj_id,
+            "metric": metric,
+            "lookback_days": lookback_days,
+            "horizon_days": horizon_days,
+            "threshold": threshold,
+            "instance_ids": instance_ids or [],
+        },
+    )
 
 
 @tool(description=("按监控 instance_ids 查询主机 CPU/内存/磁盘均值与最高值快照。" "须用监控 instance_id/主机名/IP，禁止 CMDB 的 inst_uuid/_id。"))

@@ -15,6 +15,7 @@ import {
   unwrapPlatformPayload,
   type Message,
 } from '@webchat/core';
+import { attachChoiceHistory } from '../choiceDisplay';
 
 export interface PlatformRequestInit {
   apiKey?: string;
@@ -128,7 +129,7 @@ export async function fetchPlatformMessages(
   const url = fillUrlTemplate(contract.messagesUrl, { sessionId });
   const payload = await fetchPlatformJson(url, init);
   return {
-    messages: mapPlatformMessages(asRecordList(payload)),
+    messages: attachChoiceHistory(mapPlatformMessages(asRecordList(payload))),
     usage: parseLlmContextUsageFromEnvelope(payload),
   };
 }

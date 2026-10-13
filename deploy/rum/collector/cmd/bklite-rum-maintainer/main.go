@@ -29,10 +29,14 @@ func run() error {
 	var minIOConfig maintainer.MinIOConfig
 	var metricsAddress string
 	var indexEpoch string
-	flag.StringVar(&redisConfig.URL, "redis-url", "", "maintainer Redis URL (ACL user rum-maintainer)")
+	flag.StringVar(&redisConfig.URL, "redis-url", "", "maintainer Redis URL")
 	flag.StringVar(&redisConfig.PasswordFile, "redis-password-file", "", "maintainer Redis password file")
-	flag.StringVar(&indexConfig.URL, "replay-index-redis-url", "", "Replay index Redis URL (ACL user rum-replay-index-maintainer)")
+	flag.BoolVar(&redisConfig.RequireACLIdentity, "redis-require-acl-identity", false, "require the maintainer Redis URL username to match redis-acl-username")
+	flag.StringVar(&redisConfig.ACLUsername, "redis-acl-username", "rum-maintainer", "Redis ACL username checked when redis-require-acl-identity is set")
+	flag.StringVar(&indexConfig.URL, "replay-index-redis-url", "", "Replay index Redis URL")
 	flag.StringVar(&indexConfig.PasswordFile, "replay-index-redis-password-file", "", "Replay index Redis password file")
+	flag.BoolVar(&indexConfig.RequireACLIdentity, "replay-index-redis-require-acl-identity", false, "require the Replay index Redis URL username to match replay-index-redis-acl-username")
+	flag.StringVar(&indexConfig.ACLUsername, "replay-index-redis-acl-username", "rum-replay-index-maintainer", "Replay index Redis ACL username checked when replay-index-redis-require-acl-identity is set")
 	flag.StringVar(&indexEpoch, "replay-index-epoch", "", "RFC3339 Replay index cutover; required")
 	flag.StringVar(&victoriaConfig.LogsEndpoint, "victoria-logs-endpoint", "", "VictoriaLogs HTTP endpoint")
 	flag.StringVar(&victoriaConfig.TracesEndpoint, "victoria-traces-endpoint", "", "VictoriaTraces HTTP endpoint")

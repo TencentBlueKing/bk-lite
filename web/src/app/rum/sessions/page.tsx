@@ -155,10 +155,11 @@ export default function RumSessionsPage() {
   );
 
   const sessions = page?.sessions || [];
-  const total = page?.summary.total || 0;
-  const errored = page?.summary.errored || 0;
+  const replayScanTruncated = Boolean(page?.replayScanTruncated);
+  const total = page?.summary?.total || 0;
+  const errored = page?.summary?.errored || 0;
   const medianDuration =
-    page && page.summary.total > 0 ? formatDurationMs(page.summary.medianDurationMs) : '—';
+    page?.summary && page.summary.total > 0 ? formatDurationMs(page.summary.medianDurationMs) : '—';
   const degrade = degradationReason(page);
   const chrome = resolveRumPageState({
     // Refetch (range / filter change) must also enter loading chrome; otherwise
@@ -331,9 +332,15 @@ export default function RumSessionsPage() {
         mainExtra={
           page && !pending ? (
             <>
-              <span className="tabular-nums text-[var(--color-text-2)]">
-                {t('rum.sessions.kpi.total', '全部会话')} {total}
-              </span>
+              {replayScanTruncated ? (
+                <span className="text-sm text-[var(--color-warning)]" role="status">
+                  {t('rum.sessions.replayScanTruncated', '含回放筛选已达到扫描上限，总数暂不可用')}
+                </span>
+              ) : (
+                <span className="tabular-nums text-[var(--color-text-2)]">
+                  {t('rum.sessions.kpi.total', '全部会话')} {total}
+                </span>
+              )}
               <button
                 type="button"
                 className={`tabular-nums ${errored > 0 ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-3)]'}`}

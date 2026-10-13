@@ -229,6 +229,35 @@ def test_add_host_proc_no_key_noop(runner):
     assert json.loads(runner.get_host_proc({})) == []
 
 
+def test_mounts_and_nics_aggregate_like_proc(runner):
+    runner.add_host_mount({"ip_addr": "1.1.1.1", "device": "/dev/sda1", "mount": "/", "fstype": "ext4", "size_gb": "40.0"})
+    runner.add_host_mount({"ip_addr": "1.1.1.1", "device": "/dev/sdb1", "mount": "/data", "fstype": "xfs", "size_gb": "100.0"})
+    runner.add_host_nic({"ip_addr": "1.1.1.1", "name": "eth0", "mac": "aa:bb:cc:dd:ee:ff", "ip": "1.1.1.1"})
+    runner.add_host_mount({"device": "/dev/sdc1", "mount": "/lost"})
+
+    mounts = json.loads(runner.get_host_mounts({"ip_addr": "1.1.1.1"}))
+    nics = json.loads(runner.get_host_nics({"ip_addr": "1.1.1.1"}))
+
+    assert [item["mount"] for item in mounts] == ["/", "/data"]
+    assert mounts[0]["size_gb"] == "40.0"
+    assert nics == [{"name": "eth0", "mac": "AA:BB:CC:DD:EE:FF", "ip": "1.1.1.1"}]
+    assert runner.host_mount_map.get("") is None
+    assert json.loads(runner.get_host_nics({})) == []
+
+
+def test_mount_and_nic_identity_keeps_one_row(runner):
+    runner.add_host_mount({"ip_addr": "1.1.1.1", "device": "/dev/sda1", "mount": "/", "fstype": "ext4", "size_gb": "40.0"})
+    runner.add_host_mount({"ip_addr": "1.1.1.1", "device": "/dev/sda2", "mount": "/", "fstype": "xfs", "size_gb": "80.0"})
+    runner.add_host_nic({"ip_addr": "1.1.1.1", "name": "eth0", "mac": "aa-bb-cc-dd-ee-ff", "ip": "10.0.0.1"})
+    runner.add_host_nic({"ip_addr": "1.1.1.1", "name": "eth0", "mac": "aa:bb:cc:dd:ee:ff", "ip": "10.0.0.1,10.0.0.2"})
+
+    mounts = json.loads(runner.get_host_mounts({"ip_addr": "1.1.1.1"}))
+    nics = json.loads(runner.get_host_nics({"ip_addr": "1.1.1.1"}))
+
+    assert mounts == [{"device": "/dev/sda2", "mount": "/", "fstype": "xfs", "size_gb": "80.0"}]
+    assert nics == [{"name": "eth0", "mac": "AA:BB:CC:DD:EE:FF", "ip": "10.0.0.1,10.0.0.2"}]
+
+
 # --------------------------------------------------------------------------
 # cloud / display 名 / 关联
 # --------------------------------------------------------------------------

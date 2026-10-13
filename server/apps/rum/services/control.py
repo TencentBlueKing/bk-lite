@@ -80,8 +80,11 @@ class MemoryControl:
             SUBJECT_APPLICATION_APPLY,
             SUBJECT_APPLICATION_GET,
             SUBJECT_APPLICATION_LIST,
+            SUBJECT_ERASURE_FENCE_RELEASE,
             SUBJECT_ERASURE_SUBMIT,
             SUBJECT_OPERATION_GET,
+            SUBJECT_PROJECTION_APPLY,
+            SUBJECT_PROJECTION_RECONCILE,
         )
 
         if subject == SUBJECT_APPLICATION_LIST:
@@ -117,6 +120,45 @@ class MemoryControl:
                 view["orgId"] = body["orgId"]
             self._apps[name] = view
             return self._revision, view
+        if subject == SUBJECT_PROJECTION_APPLY:
+            body = payload or {}
+            name = body.get("application") or ""
+            incoming = int(body.get("revision") or 0)
+            current = self._apps.get(name)
+            current_rev = int((current or {}).get("revision") or 0)
+            overwrite = bool(body.get("force")) and current is not None and incoming < current_rev
+            if current is not None and incoming <= current_rev and not overwrite:
+                return current_rev, {"status": "stale", **current}
+            view = {
+                "application": name,
+                "tenantId": body.get("tenantId") or "core",
+                "orgId": body.get("orgId") or "",
+                "enabled": bool(body.get("enabled", True)),
+                "revision": incoming,
+                "browserKeys": [],
+                "browserKeyDigests": list(body.get("browserKeyDigests") or []),
+                "origins": list(body.get("origins") or []),
+                "budgets": body.get("budgets") or {},
+                "lastAcceptedAt": (current or {}).get("lastAcceptedAt", 0),
+                "lastStoredAt": (current or {}).get("lastStoredAt", 0),
+                "status": "applied",
+            }
+            self._apps[name] = view
+            self._revision = max(self._revision, incoming)
+            return incoming, view
+        if subject == SUBJECT_PROJECTION_RECONCILE:
+            body = payload or {}
+            stale = []
+            for item in body.get("applications") or []:
+                name = item.get("application") or ""
+                current = self._apps.get(name)
+                wanted = int(item.get("revision") or 0)
+                current_rev = None if current is None else int(current.get("revision") or 0)
+                if current_rev != wanted:
+                    stale.append(name)
+            return self._revision, {"status": "ok", "staleApplications": stale}
+        if subject == SUBJECT_ERASURE_FENCE_RELEASE:
+            return self._revision, {"status": "released", "application": (payload or {}).get("application") or ""}
         if subject == SUBJECT_ERASURE_SUBMIT:
             body = payload or {}
             application = body.get("application") or ""

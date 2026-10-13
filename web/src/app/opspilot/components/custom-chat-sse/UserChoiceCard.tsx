@@ -5,7 +5,6 @@ import {Input, message as antMessage, Select, Spin} from 'antd';
 import {ClockCircleOutlined, LoadingOutlined} from '@ant-design/icons';
 import {useTranslation} from '@/utils/i18n';
 import {UserChoiceOption, UserChoiceRequest} from '@/app/opspilot/types/global';
-import {postUserChoice} from './submitUserChoice';
 import {isUserChoiceRequestClosed, normalizeUserChoiceOptions} from './userChoiceOptions';
 import { useImeEnterGuard } from '@/app/opspilot/utils/imeKeyboard';
 
@@ -13,10 +12,11 @@ interface UserChoiceCardProps {
   request: UserChoiceRequest;
   token: string;
   onSubmit: (choiceId: string, status: 'pending' | 'submitted' | 'timeout', selected: string[]) => void;
+  onSendMessage?: (text: string) => void;
   readOnly?: boolean;
 }
 
-const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmit, readOnly = false }) => {
+const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, onSubmit, onSendMessage, readOnly = false }) => {
   const { t } = useTranslation();
   const imeEnterGuard = useImeEnterGuard();
   const a2uiComponent = request.a2ui?.component || 'user-choice';
@@ -26,6 +26,7 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const [remainingSeconds, setRemainingSeconds] = useState(() => {
+    if (!request.timeout_seconds) return 0;
     const elapsed = (Date.now() - request.received_at) / 1000;
     return Math.max(0, Math.floor(request.timeout_seconds - elapsed));
   });
@@ -44,7 +45,7 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
   }, [choiceOptions.length, request.display_hint, request.multiple]);
 
   useEffect(() => {
-    if (request.status !== 'pending') return;
+    if (request.status !== 'pending' || !request.timeout_seconds) return;
     const timer = setInterval(() => {
       const elapsed = (Date.now() - request.received_at) / 1000;
       const remaining = Math.max(0, Math.floor(request.timeout_seconds - elapsed));
@@ -60,31 +61,15 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
       antMessage.warning(t('chat.choiceMinSelect', undefined, { min: request.min_select }));
       return;
     }
-    // 防重复：后台慢时按钮可能仍可见一帧，或输入框路径并发提交
     if (submittingRef.current || request.status !== 'pending') return;
     submittingRef.current = true;
     setSubmitting(true);
-
-    // 乐观关闭卡片，避免用户以为没点上而连点
+    const labels = keys.map((key) => choiceOptions.find((option) => option.key === key)?.label || key);
     onSubmit(request.choice_id, 'submitted', keys);
-    const hideLoading = antMessage.loading(t('chat.choiceSubmitting', '正在提交选择...'), 0);
-    try {
-      await postUserChoice(token, {
-        execution_id: request.execution_id,
-        node_id: request.node_id,
-        choice_id: request.choice_id,
-        selected: keys,
-      });
-    } catch {
-      antMessage.error(t('chat.choiceSubmitFailed'));
-      // 失败后恢复为待选，允许重试
-      onSubmit(request.choice_id, 'pending', []);
-    } finally {
-      hideLoading();
-      submittingRef.current = false;
-      setSubmitting(false);
-    }
-  }, [token, request, onSubmit, t, readOnly]);
+    onSendMessage?.(labels.join(', '));
+    submittingRef.current = false;
+    setSubmitting(false);
+  }, [choiceOptions, request, onSubmit, onSendMessage, t, readOnly]);
 
   const handleButtonClick = useCallback((key: string) => {
     handleSubmit([key]);
@@ -116,24 +101,20 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
 
   const isPending = request.status === 'pending';
   const isCompleted = isUserChoiceRequestClosed(request.status);
-
-  // 已提交/后端宣告超时才收起。前端倒计时到 0 仍保持待选，避免卡片消失而后端还在 wait_for_choice。
-  if (isCompleted) {
-    return null;
-  }
+  const selectedKeysOnCard = request.selected || [];
 
   const renderOptionCard = (option: UserChoiceOption, isSelected: boolean, onClick: () => void) => (
     <button
       key={option.key}
       type="button"
-        disabled={option.disabled || submitting || readOnly}
+        disabled={option.disabled || submitting || readOnly || isCompleted}
       onClick={onClick}
       className={[
         'flex w-full items-center gap-2 rounded-lg px-3.5 py-2 text-left text-[13px] text-[var(--color-text-1)] transition-all duration-150',
         isSelected
           ? 'border-[1.5px] border-[var(--color-primary)] bg-[var(--color-primary-light-1)]'
           : 'border border-[var(--color-border-1)] bg-[var(--color-bg-1)] hover:border-[var(--color-primary)] hover:bg-[var(--color-primary-light-1)]',
-        option.disabled || submitting || readOnly ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
+        option.disabled || submitting || readOnly || isCompleted ? 'cursor-not-allowed opacity-50' : 'cursor-pointer',
       ].join(' ')}
     >
       {request.multiple && (
@@ -297,6 +278,32 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
         </div>
       )}
 
+      {isCompleted && displayMode === 'dropdown' && (
+        <Select
+          size="middle"
+          className="w-full"
+          disabled
+          open={false}
+          value={selectedKeysOnCard[0]}
+          options={choiceOptions.map(option => ({
+            value: option.key,
+            label: option.label,
+          }))}
+        />
+      )}
+      {isCompleted && (displayMode === 'buttons' || displayMode === 'checkbox') && choiceOptions.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          {choiceOptions.map((option) => renderOptionCard(
+            option,
+            selectedKeysOnCard.includes(option.key),
+            () => undefined,
+          ))}
+        </div>
+      )}
+      {isCompleted && displayMode === 'text' && selectedKeysOnCard.length > 0 && (
+        <div className="text-[13px] text-[var(--color-text-2)]">{selectedKeysOnCard.join('、')}</div>
+      )}
+
       {/* Options */}
       {isPending && !readOnly && (
         <>
@@ -323,7 +330,7 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
         </div>
       )}
 
-      {isPending && !readOnly && remainingSeconds > 0 && (
+      {isPending && !readOnly && request.timeout_seconds > 0 && remainingSeconds > 0 && (
         <div className={[
           'mt-2.5 flex items-center gap-1 text-[11px]',
           remainingSeconds <= 10 ? 'text-[var(--color-fail)]' : 'text-[var(--color-text-4)]',

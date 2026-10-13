@@ -22,9 +22,9 @@ Django apps.rum
 1. 使用 `deploy/rum/collector` 构建的固定版本镜像（gateway / controller / maintainer）
    已进入生产镜像仓库；tag 存在且非 `latest`。
 2. 已接受 ADR 0009（RUM 公网入口）与 ADR 0010（启用 RUM 时 Redis 硬依赖）。
-3. Redis 已按身份拆分 ACL 用户（至少）：`rum-admission`、`rum-sessionizer`、
-   `rum-replay-exporter`、`rum-controller`、`rum-maintainer`、
-   `rum-replay-index-maintainer`；密钥未进仓库与日志。
+3. Redis 可连通且带密码（Redis 5 单密码即可）。ACL 用户名与 AOF 是可选加固，
+   打开 `redis_require_acl_identity` 时用户名与配置的 `redis_acl_username` 一致；
+   密钥未进仓库与日志。
 4. NATS 控制面身份分离：BFF/ctl 仅可 publish `rum.v1.control.>` + inbox；
    controller 仅可 subscribe `rum.v1.control.>` + publish inbox；与 APM/agents
    subject 隔离。
@@ -39,7 +39,7 @@ Django apps.rum
 
 ## 就绪顺序（逻辑依赖，非流水线步骤）
 
-1. **Redis + ACL 就绪**：`ops:rum:v2:*` 命名空间可写；各运行身份密码/文件注入完成。
+1. **Redis 就绪**：`ops:rum:v2:*` 可写；密码或密码文件已注入。ACL / AOF 按需开启。
 2. **NATS 控制面就绪**：`rum.v1.control.*` subject ACL 生效；controller queue group
    `rum-controller` 可订阅。
 3. **VictoriaLogs / VictoriaTraces / MinIO 就绪**：OTLP/HTTP insert 与对象读写可用。

@@ -262,9 +262,11 @@ export function mapPlatformMessages(rows: Record<string, unknown>[]): Message[] 
       const contentChunks = hasToolCallChunks(parts?.contentChunks)
         ? parts?.contentChunks
         : undefined;
+      const attachments = historyAttachments(item.attachments);
       const metadata = {
         ...(thinking ? { thinking, isThinking: false } : {}),
         ...(contentChunks ? { contentChunks } : {}),
+        ...(attachments.length > 0 ? { attachments } : {}),
       };
       return {
         id: String(item.id ?? `history_${index}`),
@@ -279,8 +281,18 @@ export function mapPlatformMessages(rows: Record<string, unknown>[]): Message[] 
       (item) =>
         String(item.content).trim() !== '' ||
         Boolean(item.metadata?.thinking) ||
-        hasToolCallChunks(item.metadata?.contentChunks as HistoryContentChunk[] | undefined)
+        hasToolCallChunks(item.metadata?.contentChunks as HistoryContentChunk[] | undefined) ||
+        (Array.isArray(item.metadata?.attachments) && item.metadata.attachments.length > 0)
     );
+}
+
+function historyAttachments(value: unknown): Array<Record<string, unknown>> {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is Record<string, unknown> => {
+    if (!isRecord(item)) return false;
+    const id = Number(item.id);
+    return Number.isFinite(id) && id > 0 && typeof item.name === 'string';
+  });
 }
 
 export function lastSessionStorageKey(prefix: string, userId: string, teamId: string): string {

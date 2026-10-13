@@ -1,10 +1,10 @@
 {
   "type": "object",
   "properties": {
-    "status_code": {"type": "integer"},
-    "content_type": {"type": "string"},
-    "body": {},
-    "size": {"type": "integer"}
+    "status_code": {"type": "integer", "title": "状态码"},
+    "content_type": {"type": "string", "title": "内容类型"},
+    "body": {"title": "响应体"},
+    "size": {"type": "integer", "title": "大小"}
   },
   "required": ["status_code", "content_type", "body", "size"]
 }

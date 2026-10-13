@@ -134,11 +134,6 @@ urlpatterns += [
         name="submit_approval",
     ),
     path(
-        r"bot_mgmt/submit_choice/",
-        views.submit_choice,
-        name="submit_choice",
-    ),
-    path(
         r"bot_mgmt/execute_chat_flow_wechat/<int:bot_id>/",
         views.execute_chat_flow_wechat,
         name="execute_chat_flow_wechat",
@@ -198,6 +193,21 @@ urlpatterns += [
         r"skill_channel/conversations/delete/",
         views.delete_skill_channel_session,
         name="delete_skill_channel_session",
+    ),
+    path(
+        r"skill_channel/chat_attachment/upload/",
+        views.upload_chat_attachment,
+        name="upload_chat_attachment",
+    ),
+    path(
+        r"skill_channel/chat_attachment/<int:attachment_id>/download/",
+        views.download_chat_attachment,
+        name="download_chat_attachment",
+    ),
+    path(
+        r"skill_channel/chat_attachment/<int:attachment_id>/",
+        views.chat_attachment_status,
+        name="chat_attachment_status",
     ),
     path(
         r"skill_channel/<int:channel_id>/chat/",

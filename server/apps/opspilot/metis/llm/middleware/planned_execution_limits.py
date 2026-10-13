@@ -7,20 +7,18 @@
 from __future__ import annotations
 
 import os
-import time
-import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
 from langchain.agents.middleware.types import AgentState, hook_config
-from langchain_core.callbacks import dispatch_custom_event
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.channels.untracked_value import UntrackedValue
 from typing_extensions import Annotated, NotRequired
 
-from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.common.token_usage import TokenUsageAccumulator
+from apps.opspilot.metis.llm.middleware.terminal_user_choice import finalize_user_choice
+from apps.opspilot.utils.pending_question import KIND_LIMIT_CONTINUE
 
 LimitKind = Literal["model_calls", "token_budget"]
 
@@ -32,8 +30,19 @@ _RUN_MODEL_CALL_LIMIT_ENV = "OPSPILOT_DEEPAGENT_RUN_MODEL_CALL_LIMIT"
 _DEFAULT_RUN_MODEL_CALL_LIMIT = 10
 _MAX_TOKENS_BUDGET_ENV = "OPSPILOT_DEEPAGENT_MAX_TOKENS_BUDGET"
 _DEFAULT_MAX_TOKENS_BUDGET = 0
-_MAX_CONTINUE_PER_STEP = 3
 _SOFT_WRAP_UP_HINT = "【预算提示】累计 token 已接近上限，请尽快基于已有证据收尾，" "避免继续大量工具调用；证据不足时只补最关键的一次查询。"
+
+
+def resolve_planned_execution_run_model_call_limit(graph_request: Any) -> int:
+    """智能体配置优先；0 或非法时回退环境变量。"""
+    raw = getattr(graph_request, "run_model_call_limit", 0) or 0
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = 0
+    if value > 0:
+        return value
+    return get_planned_execution_run_model_call_limit()
 
 
 def get_planned_execution_run_model_call_limit() -> int:
@@ -128,39 +137,18 @@ class PlannedExecutionLimitMiddleware(AgentMiddleware):
         self.token_budget = max(0, int(token_budget or 0))
         self.soft_budget_ratio = soft_budget_ratio
         self._accumulator = accumulator
-        self._extra_run_allowance = 0
-        self._extra_token_allowance = 0
         self._soft_warned = False
-        self.continue_count = 0
         self.enforce_limits = True
 
     @property
     def effective_run_limit(self) -> int:
-        return self.run_limit + self._extra_run_allowance
+        return self.run_limit
 
     @property
     def effective_token_budget(self) -> int:
         if self.token_budget <= 0:
             return 0
-        return self.token_budget + self._extra_token_allowance
-
-    def grant_continue(self, kind: LimitKind) -> bool:
-        """用户选择继续后放宽额度；超过每步续跑上限则拒绝。"""
-        if self.continue_count >= _MAX_CONTINUE_PER_STEP:
-            return False
-        self.continue_count += 1
-        if kind == "token_budget":
-            # 再给半份原预算，至少 1 万 token，避免立刻再次触顶。
-            grant = max(10_000, self.token_budget // 2) if self.token_budget > 0 else 10_000
-            self._extra_token_allowance += grant
-        else:
-            self._extra_run_allowance += self.run_limit
-        return True
-
-    def reset_step_continues(self) -> None:
-        self.continue_count = 0
-        self._extra_run_allowance = 0
-        self._extra_token_allowance = 0
+        return self.token_budget
 
     def _used_tokens(self) -> int:
         if not isinstance(self._accumulator, TokenUsageAccumulator):
@@ -252,61 +240,23 @@ async def ask_limit_continue(
     kind: LimitKind,
     step_objective: str,
     config: dict[str, Any] | None,
-) -> bool:
-    """向用户确认是否放宽限制继续当前步骤；超时默认结束。"""
-    from apps.opspilot.metis.llm.chain.report_renderers.k8s import build_a2ui_report_contract
-    from apps.opspilot.utils.user_choice import wait_for_choice
-
-    configurable = (config or {}).get("configurable") if isinstance(config, dict) else None
-    if not isinstance(configurable, dict):
-        configurable = {}
-    execution_id = str(configurable.get("execution_id") or "") or str(int(time.time() * 1000))
-    # 与 request_user_choice 一致：技能调试/AGUI 无工作流任务时，submit_choice 仅放行 skill_test。
-    node_id = str(configurable.get("node_id") or "skill_test")
-    choice_id = str(uuid.uuid4())[:8]
-
+    messages: list[Any] | None = None,
+    summary: str = "",
+) -> tuple[str, Any]:
+    """超预算时发出继续/结束卡片并结束本轮。额度随下一轮新 run 重置。"""
     if kind == "token_budget":
         title = f"步骤「{step_objective}」已达 token 预算上限，是否继续执行？"
     else:
         title = f"步骤「{step_objective}」已达模型调用次数上限，是否继续执行？"
-
-    options_data = [
-        {"key": "continue", "label": "继续", "description": "放宽限制后从中断处继续", "recommended": True},
-        {"key": "stop", "label": "结束本步骤", "description": "保留已有证据并进入后续步骤/总结", "recommended": False},
-    ]
-    choice_request_data = {
-        "execution_id": execution_id,
-        "node_id": node_id,
-        "choice_id": choice_id,
-        "a2ui": build_a2ui_report_contract(
-            component="user-choice",
-            event_name="user_choice_request",
-            actions=[{"key": "submit_choice", "label": "提交选择"}],
-        ),
-        "title": title,
-        "description": "继续会再放宽一档额度；结束则基于已有结果进入后续步骤或总结。",
-        "options": options_data,
-        "multiple": False,
-        "min_select": 1,
-        "max_select": 1,
-        "timeout_seconds": 120,
-        "default_keys": ["stop"],
-        "display_hint": "auto",
-    }
-    try:
-        dispatch_custom_event("user_choice_request", choice_request_data, config=config)
-    except Exception as exc:
-        logger.debug("限制续跑选择事件派发跳过: %s", exc)
-
-    result = await wait_for_choice(
-        execution_id=execution_id,
-        node_id=node_id,
-        choice_id=choice_id,
-        options=options_data,
-        default_keys=["stop"],
-        timeout_seconds=120,
-        poll_interval=1.0,
-        trigger_type="interactive",
+    conclusion = str(summary or "").strip() or "已保留当前步骤已经拿到的结果。"
+    question = f"{title}\n\n已有结论：{conclusion}"
+    return finalize_user_choice(
+        question=question,
+        question_type="single_select",
+        options=["继续", "结束本步骤"],
+        config=config,
+        messages=list(messages or []),
+        tool_call_id="",
+        kind=KIND_LIMIT_CONTINUE,
+        description="回复后会开启新一轮，并带着已有结果继续。",
     )
-    selected = result.get("selected") or []
-    return "continue" in selected

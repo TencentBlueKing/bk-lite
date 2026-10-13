@@ -84,6 +84,14 @@ def refresh_attachment_download_urls(text: str) -> str:
 
 
 ATTACHMENT_FILE_TYPE_CONFIG = {
+    "txt": {
+        "extension": "txt",
+        "mime_type": "text/plain",
+    },
+    "text": {
+        "extension": "txt",
+        "mime_type": "text/plain",
+    },
     "md": {
         "extension": "md",
         "mime_type": "text/markdown",
@@ -91,6 +99,18 @@ ATTACHMENT_FILE_TYPE_CONFIG = {
     "pdf": {
         "extension": "pdf",
         "mime_type": "application/pdf",
+    },
+    "pptx": {
+        "extension": "pptx",
+        "mime_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    },
+    "ppt": {
+        "extension": "pptx",
+        "mime_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    },
+    "powerpoint": {
+        "extension": "pptx",
+        "mime_type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     },
     "docx": {
         "extension": "docx",
@@ -122,9 +142,14 @@ def normalize_attachment_file_type(file_type: str, filename: str = "") -> tuple[
         raise ValueError(f"不支持的附件类型: {file_type or extension or 'unknown'}")
 
     config = ATTACHMENT_FILE_TYPE_CONFIG[normalized_type]
-    normalized_filename = filename or f"attachment.{config['extension']}"
+    expected_extension = config["extension"]
+    normalized_filename = filename or f"attachment.{expected_extension}"
     if "." not in normalized_filename:
-        normalized_filename = f"{normalized_filename}.{config['extension']}"
+        normalized_filename = f"{normalized_filename}.{expected_extension}"
+    else:
+        stem, current_extension = normalized_filename.rsplit(".", 1)
+        if current_extension.lower() != expected_extension:
+            normalized_filename = f"{stem}.{expected_extension}"
 
     return normalized_type, normalized_filename, config["mime_type"]
 
@@ -134,12 +159,14 @@ def build_attachment_bytes(content: str, file_type: str, title: str = "") -> byt
     safe_content = content or ""
     safe_title = title or "Attachment"
 
-    if normalized_type == "md":
+    if normalized_type in ("md", "txt", "text"):
         return safe_content.encode("utf-8")
     if normalized_type == "pdf":
         return _build_pdf_bytes(safe_content, safe_title)
     if normalized_type in ("docx", "word"):
         return _build_docx_bytes(safe_content, safe_title)
+    if normalized_type in ("pptx", "ppt", "powerpoint"):
+        return _build_pptx_bytes(safe_content, safe_title)
     if normalized_type == "xlsx":
         return _build_xlsx_bytes(safe_content)
     if normalized_type == "csv":
@@ -247,15 +274,173 @@ def _csv_rows(content: str) -> list[list[str]]:
     return rows or [[""]]
 
 
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*$")
+_UL_RE = re.compile(r"^[-*]\s+(.*)$")
+_OL_RE = re.compile(r"^\d+[.)]\s+(.*)$")
+_TABLE_SEP_RE = re.compile(r"^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$")
+
+
+def _plain_markdown_inline(text: str) -> str:
+    cleaned = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text or "")
+    cleaned = cleaned.replace("**", "").replace("__", "").replace("`", "")
+    return cleaned.strip()
+
+
+def _split_markdown_row(line: str) -> list[str]:
+    cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+    return [_plain_markdown_inline(cell) for cell in cells]
+
+
+def _breaks_markdown_paragraph(line: str) -> bool:
+    """无空行时，列表和分隔线也不能再并进上一段。"""
+    stripped = line.strip()
+    if not stripped or stripped in {"---", "***", "___"} or stripped.startswith("|"):
+        return True
+    return bool(_HEADING_RE.match(stripped) or _UL_RE.match(stripped) or _OL_RE.match(stripped))
+
+
+def _iter_markdown_blocks(content: str):
+    """把 Markdown 收成标题、列表、表格和段落，供 docx/pdf 按版式渲染。"""
+    lines = (content or "").splitlines()
+    index = 0
+    while index < len(lines):
+        stripped = lines[index].strip()
+        if not stripped:
+            index += 1
+            continue
+        heading = _HEADING_RE.match(stripped)
+        if heading:
+            yield ("heading", len(heading.group(1)), _plain_markdown_inline(heading.group(2)))
+            index += 1
+            continue
+        if stripped in {"---", "***", "___"}:
+            yield ("hr",)
+            index += 1
+            continue
+        if stripped.startswith("|") and index + 1 < len(lines) and _TABLE_SEP_RE.match(lines[index + 1].strip()):
+            header = _split_markdown_row(stripped)
+            index += 2
+            rows = []
+            while index < len(lines) and lines[index].strip().startswith("|"):
+                rows.append(_split_markdown_row(lines[index]))
+                index += 1
+            yield ("table", header, rows)
+            continue
+        if _UL_RE.match(stripped):
+            items = []
+            while index < len(lines) and _UL_RE.match(lines[index].strip()):
+                items.append(_plain_markdown_inline(_UL_RE.match(lines[index].strip()).group(1)))
+                index += 1
+            yield ("ul", items)
+            continue
+        if _OL_RE.match(stripped):
+            items = []
+            while index < len(lines) and _OL_RE.match(lines[index].strip()):
+                items.append(_plain_markdown_inline(_OL_RE.match(lines[index].strip()).group(1)))
+                index += 1
+            yield ("ol", items)
+            continue
+        paragraph = [stripped]
+        index += 1
+        while index < len(lines) and not _breaks_markdown_paragraph(lines[index]):
+            paragraph.append(lines[index].strip())
+            index += 1
+        yield ("paragraph", _plain_markdown_inline(" ".join(paragraph)))
+
+
+def _should_prefix_title(content: str, title: str) -> bool:
+    heading = _HEADING_RE.match((content or "").lstrip().splitlines()[0]) if (content or "").strip() else None
+    if not heading:
+        return bool(title)
+    return _plain_markdown_inline(heading.group(2)) != (title or "").strip()
+
+
+def _pptx_slides(content: str, title: str) -> list[dict]:
+    """一级、二级标题各成一页；列表、段落和表格行放进当前页。"""
+    slides: list[dict] = []
+    current: dict | None = None
+
+    def start(slide_title: str) -> None:
+        nonlocal current
+        current = {"title": (slide_title or title or " ").strip() or " ", "bullets": []}
+        slides.append(current)
+
+    if _should_prefix_title(content, title):
+        start(title)
+    for block in _iter_markdown_blocks(content):
+        kind = block[0]
+        if kind == "heading" and block[1] <= 2:
+            start(block[2])
+            continue
+        if current is None:
+            start(title)
+        if kind == "heading":
+            current["bullets"].append(block[2])
+        elif kind in {"ul", "ol"}:
+            current["bullets"].extend(block[1])
+        elif kind == "paragraph":
+            current["bullets"].append(block[1])
+        elif kind == "table":
+            for row in block[2]:
+                left = row[0] if row else ""
+                right = row[1] if len(row) > 1 else ""
+                current["bullets"].append(f"{left}：{right}" if right else left)
+    if not slides:
+        start(title)
+    return slides
+
+
+def _build_pptx_bytes(content: str, title: str) -> bytes:
+    # 显著启动成本：python-pptx 仅在生成幻灯片时需要，不得随 Django setup 加载。
+    from pptx import Presentation
+
+    presentation = Presentation()
+    layout = presentation.slide_layouts[1]
+    for slide_data in _pptx_slides(content, title):
+        slide = presentation.slides.add_slide(layout)
+        slide.shapes.title.text = slide_data["title"][:200]
+        text_frame = slide.placeholders[1].text_frame
+        bullets = slide_data["bullets"] or [""]
+        text_frame.text = bullets[0][:1000]
+        for item in bullets[1:]:
+            paragraph = text_frame.add_paragraph()
+            paragraph.text = item[:1000]
+            paragraph.level = 0
+    buffer = BytesIO()
+    presentation.save(buffer)
+    return buffer.getvalue()
+
+
 def _build_docx_bytes(content: str, title: str) -> bytes:
     # 显著启动成本：python-docx 仅在生成 Word 附件时需要；模块顶层导入会让
     # Django AppConfig.ready() → nats_api → AgentNode 在 migrate 时触发 MemoryError。
     from docx import Document
 
     document = Document()
-    document.add_heading(title, level=1)
-    for line in content.splitlines() or [""]:
-        document.add_paragraph(line)
+    if _should_prefix_title(content, title):
+        document.add_heading(title, level=1)
+    for block in _iter_markdown_blocks(content):
+        kind = block[0]
+        if kind == "heading":
+            document.add_heading(block[2], level=min(block[1], 4))
+        elif kind == "ul":
+            for item in block[1]:
+                document.add_paragraph(item, style="List Bullet")
+        elif kind == "ol":
+            for item in block[1]:
+                document.add_paragraph(item, style="List Number")
+        elif kind == "table":
+            header, rows = block[1], block[2]
+            width = max([len(header), *[len(row) for row in rows]] or [1])
+            table = document.add_table(rows=1 + len(rows), cols=width)
+            table.style = "Table Grid"
+            for column, cell in enumerate(header):
+                table.rows[0].cells[column].text = cell
+            for row_index, row in enumerate(rows, start=1):
+                for column in range(width):
+                    table.rows[row_index].cells[column].text = row[column] if column < len(row) else ""
+        elif kind == "paragraph":
+            document.add_paragraph(block[1])
     buffer = BytesIO()
     document.save(buffer)
     return buffer.getvalue()
@@ -266,7 +451,7 @@ def _build_pdf_bytes(content: str, title: str) -> bytes:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import cm
-    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table
 
     font_name = _resolve_pdf_font()
     buffer = BytesIO()
@@ -296,12 +481,56 @@ def _build_pdf_bytes(content: str, title: str) -> bytes:
         leading=16,
         spaceAfter=8,
     )
-    story = [Paragraph(_escape_pdf_text(title), title_style), Spacer(1, 0.4 * cm)]
-    for line in content.splitlines() or [""]:
-        if line.strip():
-            story.append(Paragraph(_escape_pdf_text(line), body_style))
-        else:
+    heading_styles = {
+        level: ParagraphStyle(
+            f"AttachmentHeading{level}",
+            parent=styles["Heading2"],
+            fontName=font_name,
+            fontSize=16 - level,
+            leading=20,
+            spaceBefore=8,
+            spaceAfter=6,
+        )
+        for level in range(1, 5)
+    }
+    cell_style = ParagraphStyle(
+        "AttachmentTableCell",
+        parent=body_style,
+        fontName=font_name,
+        fontSize=10,
+        leading=14,
+        spaceBefore=0,
+        spaceAfter=0,
+    )
+    usable_width = A4[0] - 4 * cm
+
+    def render_table(header: list[str], rows: list[list[str]]) -> Table:
+        column_count = max([len(header), *[len(row) for row in rows]] or [1])
+
+        def render_row(row: list[str]) -> list[Paragraph]:
+            padded = list(row) + [""] * (column_count - len(row))
+            return [Paragraph(_escape_pdf_text(cell), cell_style) for cell in padded[:column_count]]
+
+        data = [render_row(header), *[render_row(row) for row in rows]]
+        return Table(data, colWidths=[usable_width / column_count] * column_count)
+
+    story = []
+    if _should_prefix_title(content, title):
+        story.extend([Paragraph(_escape_pdf_text(title), title_style), Spacer(1, 0.4 * cm)])
+    for block in _iter_markdown_blocks(content):
+        kind = block[0]
+        if kind == "heading":
+            story.append(Paragraph(_escape_pdf_text(block[2]), heading_styles[min(block[1], 4)]))
+        elif kind in {"ul", "ol"}:
+            for item in block[1]:
+                story.append(Paragraph(_escape_pdf_text(f"• {item}"), body_style))
+        elif kind == "table":
+            story.append(render_table(block[1], block[2]))
             story.append(Spacer(1, 0.2 * cm))
+        elif kind == "paragraph":
+            story.append(Paragraph(_escape_pdf_text(block[1]), body_style))
+    if not story:
+        story.append(Paragraph(_escape_pdf_text(title or content or " "), body_style))
     doc.build(story)
     return buffer.getvalue()
 
@@ -319,8 +548,13 @@ def _resolve_pdf_font() -> str:
         ("微软雅黑", "C:/Windows/Fonts/msyh.ttc"),
         ("黑体", "C:/Windows/Fonts/simhei.ttf"),
         ("宋体", "C:/Windows/Fonts/simsun.ttc"),
+        ("文泉驿微米黑", "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc"),
+        ("DroidSansFallback", "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf"),
     ]
+    registered = set(pdfmetrics.getRegisteredFontNames())
     for font_name, font_path in font_candidates:
+        if font_name in registered:
+            return font_name
         try:
             pdfmetrics.registerFont(TTFont(font_name, font_path))
             return font_name

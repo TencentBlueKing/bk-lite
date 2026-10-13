@@ -18,7 +18,7 @@ collect + Session Replay gateway and control-plane controller.
 | `cmd/bklite-rum-controller` | NATS `rum.v1.control.*` queue consumer |
 | `cmd/bklite-rum-maintainer` | Erase jobs + Replay reconcile / orphan scan |
 | `internal/rum/maintainer` | Maintainer Redis / Victoria / MinIO workers |
-| `env/*.env.example` | Dev env templates (ACL Redis usernames required) |
+| `env/*.env.example` | Dev env templates (Redis password required; ACL username optional) |
 | `VENDOR.md` | Source commit + rewrite rules |
 
 ## Status

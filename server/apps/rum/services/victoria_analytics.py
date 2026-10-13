@@ -2,18 +2,14 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+from apps.rum.services import logsql_stats
 from apps.rum.services.victoria_client import (
     VictoriaClient,
-    aggregate_sessions,
     funnel_reached,
     health_from_events,
     parse_event,
-    percentile,
-    quote_logsql,
     rum_apps_filter,
-    session_trend_points,
     sparkline_layout,
-    traffic_ok,
 )
 
 # Align with web/src/app/rum/lib/cwv.ts good / needs-improvement upper bounds.
@@ -164,57 +160,73 @@ class VictoriaAnalytics:
         }
 
     def list_sessions(self, tenant_id: str, opts: dict) -> dict:
-        events = self._load_events(
+        apps = list(opts.get("applications") or [])
+        if not apps:
+            return {
+                "sessions": [],
+                "summary": {"total": 0, "errored": 0, "replayed": 0, "medianDurationMs": 0},
+                "truncated": False,
+            }
+        page_limit = int(opts.get("limit") or 0) or 200
+        page = self._stats(
             tenant_id,
-            list(opts.get("applications") or []),
-            opts["from"],
-            opts["to"],
-            limit=8000,
+            logsql_stats.session_page_query(self._tenant(tenant_id), opts),
+            opts,
+            limit=page_limit,
         )
-        return aggregate_sessions(events, opts)
+        sessions = []
+        for row in page:
+            item = logsql_stats.map_session_row(row)
+            if item["sessionId"]:
+                sessions.append(item)
+        summary = {"total": 0, "errored": 0, "replayed": 0, "medianDurationMs": 0}
+        truncated = bool(getattr(page, "truncated", False))
+        if opts.get("includeSummary", True):
+            summary_rows = self._stats(tenant_id, logsql_stats.session_summary_query(self._tenant(tenant_id), opts), opts)
+            summary = logsql_stats.map_session_summary(summary_rows[0] if summary_rows else None)
+            truncated = truncated or bool(getattr(summary_rows, "truncated", False))
+        return {"sessions": sessions, "summary": summary, "truncated": truncated}
 
     def session_trend(self, tenant_id: str, opts: dict) -> dict:
-        events = self._load_events(
+        apps = list(opts.get("applications") or [])
+        if not apps:
+            return {"points": []}
+        interval, buckets = sparkline_layout(opts["from"], opts["to"])
+        rows = self._stats(
             tenant_id,
-            list(opts.get("applications") or []),
-            opts["from"],
-            opts["to"],
-            limit=8000,
+            logsql_stats.session_trend_query(self._tenant(tenant_id), opts, interval),
+            opts,
+            limit=max(buckets, 1) + 2,
         )
-        return {"points": session_trend_points(events, opts["from"], opts["to"])}
+        return {"points": _trend_points(rows, opts["from"], interval, buckets), "truncated": bool(getattr(rows, "truncated", False))}
 
     def session_journey(self, tenant_id: str, application: str, session_id: str, opts: dict) -> dict:
-        page = self.list_sessions(
-            tenant_id,
-            {
-                "from": opts["from"],
-                "to": opts["to"],
-                "applications": [application],
-                "sessionId": session_id,
-                "limit": 1,
-                "traffic": "all",
-            },
-        )
+        tenant = self._tenant(tenant_id)
+        header_rows = self._stats(tenant, logsql_stats.journey_stats_query(tenant, application, session_id), opts, limit=1)
         out = {
-            "session": (page.get("sessions") or [{}])[0] if page.get("sessions") else {},
+            "session": {},
             "views": [],
             "actions": [],
             "errors": [],
             "vitals": [],
             "network": [],
             "console": [],
+            "truncated": False,
         }
-        events = self._load_events(
-            tenant_id,
-            [application],
-            opts["from"],
-            opts["to"],
-            extra=(f'("rum.session.key":{quote_logsql(session_id)}' f' OR "rum.session.id":{quote_logsql(session_id)})'),
-            limit=4000,
+        if not header_rows or int(float(header_rows[0].get("event_count") or 0)) <= 0:
+            return out
+        header = dict(header_rows[0])
+        header.setdefault("rum.application", application)
+        header["rum.session.key"] = session_id
+        out["session"] = logsql_stats.map_session_row(header)
+        events = self._stats(
+            tenant,
+            logsql_stats.journey_events_query(tenant, application, session_id),
+            opts,
+            limit=logsql_stats.JOURNEY_EVENT_LIMIT,
         )
-        for event in events:
-            if event.get("sessionId") != session_id:
-                continue
+        out["truncated"] = bool(getattr(events, "truncated", False)) or len(events) >= logsql_stats.JOURNEY_EVENT_LIMIT
+        for event in (parse_event(row) for row in events):
             ts = _fmt(event.get("time"))
             et = event.get("eventType")
             if et == "view":
@@ -265,375 +277,134 @@ class VictoriaAnalytics:
 
     def list_views(self, tenant_id: str, opts: dict) -> dict:
         mode = opts.get("mode") or "route"
-        start = opts["from"]
-        end = opts["to"]
-        events = self._load_events(
-            tenant_id,
-            list(opts.get("applications") or []),
-            start,
-            end,
-            extra='"rum.event.type":in("view","vital")',
-            limit=8000,
-        )
-        by_key: dict[str, dict] = {}
-        release_set: set[str] = set()
-        release_filter = (opts.get("release") or "").strip()
-        bucket_width, bucket_count = sparkline_layout(start, end)
-        all_lcp: list[float] = []
-        all_inp: list[float] = []
-        all_cls: list[float] = []
-
-        def ensure(key: str, route: str, release: str) -> dict:
-            item = by_key.get(key)
-            if item is None:
-                item = {
-                    "key": key if mode == "route" else (release or route or key),
-                    "route": route,
-                    "release": release,
-                    "views": 0,
-                    "sessions": 0,
-                    "lcpP75": 0.0,
-                    "inpP75": 0.0,
-                    "clsP75": 0.0,
-                    "loadingP75": 0.0,
-                    "impact": 0,
-                    "dist": {"good": 0, "needsImprove": 0, "poor": 0, "missing": 0},
-                    "mom": {"hasDelta": False, "spark": [0.0] * bucket_count},
-                    "deviceMix": {"mobile": 0, "desktop": 0},
-                    "_sess": set(),
-                    "_lcp": [],
-                    "_inp": [],
-                    "_cls": [],
-                    "_loading": [],
-                }
-                by_key[key] = item
-            return item
-
-        for event in events:
-            route = event.get("route") or ""
-            release = event.get("release") or ""
-            key = route
-            if mode == "release":
-                key = f"{release}\x00{route}"
-                if release:
-                    release_set.add(release)
-                if release_filter and release != release_filter:
-                    continue
-            item = ensure(key, route, release)
-            event_type = event.get("eventType")
-            if event_type == "view":
-                item["views"] += 1
-                if event.get("sessionId"):
-                    item["_sess"].add(event["sessionId"])
-                ua = event.get("userAgent") or ""
-                if _ua_is_mobile(ua):
-                    item["deviceMix"]["mobile"] += 1
-                else:
-                    item["deviceMix"]["desktop"] += 1
-                loading = float(event.get("durationMs") or 0)
-                if loading > 0:
-                    item["_loading"].append(loading)
-                event_time = event.get("time")
-                if isinstance(event_time, datetime) and bucket_count > 0:
-                    offset = event_time - start
-                    idx = int(offset.total_seconds() // bucket_width.total_seconds())
-                    if idx < 0:
-                        continue
-                    if idx >= bucket_count:
-                        idx = bucket_count - 1
-                    item["mom"]["spark"][idx] += 1.0
-            elif event_type == "vital":
-                name = (event.get("vitalName") or "").lower()
-                value = float(event.get("vitalValue") or 0)
-                if value <= 0:
-                    continue
-                if name == "lcp":
-                    item["_lcp"].append(value)
-                    all_lcp.append(value)
-                    bucket = _cwv_bucket("lcp", value)
-                    item["dist"][bucket] += 1
-                elif name == "inp":
-                    item["_inp"].append(value)
-                    all_inp.append(value)
-                elif name == "cls":
-                    item["_cls"].append(value)
-                    all_cls.append(value)
-
-        rows = []
-        for item in by_key.values():
-            item["sessions"] = len(item["_sess"])
-            item["lcpP75"] = percentile(item["_lcp"], 0.75)
-            item["inpP75"] = percentile(item["_inp"], 0.75)
-            item["clsP75"] = percentile(item["_cls"], 0.75)
-            item["loadingP75"] = percentile(item["_loading"], 0.75)
-            rated = item["dist"]["good"] + item["dist"]["needsImprove"] + item["dist"]["poor"]
-            missing = max(0, item["views"] - rated)
-            item["dist"]["missing"] = missing
-            spark = item["mom"]["spark"]
-            item["mom"]["hasDelta"] = any(v > 0 for v in spark)
-            # Prefer sessions hit by poor LCP; fall back to view volume for sorting.
-            item["impact"] = item["dist"]["poor"] * 10 + item["views"]
-            item.pop("_sess", None)
-            item.pop("_lcp", None)
-            item.pop("_inp", None)
-            item.pop("_cls", None)
-            item.pop("_loading", None)
-            if mode == "release":
-                item["key"] = item["release"] or item["route"] or item["key"]
-            else:
-                item["key"] = item["route"] or item["key"]
-            rows.append(item)
-        rows.sort(key=lambda row: row["impact"], reverse=True)
+        apps = list(opts.get("applications") or [])
+        if not apps:
+            return {"mode": mode, "summary": {"lcpP75": 0.0, "inpP75": 0.0, "clsP75": 0.0}, "releases": [], "rows": [], "truncated": False}
+        rows = self._stats(tenant_id, logsql_stats.view_stats_query(self._tenant(tenant_id), opts), opts, limit=500)
+        mapped = [logsql_stats.map_view_row(row, mode) for row in rows]
+        mapped.sort(key=lambda row: row["impact"], reverse=True)
+        releases = sorted({row["release"] for row in mapped if row.get("release")})
+        def _avg(name: str) -> float:
+            values = [row[name] for row in mapped if row[name]]
+            return sum(values) / len(values) if values else 0.0
         return {
             "mode": mode,
-            "summary": {
-                "lcpP75": percentile(all_lcp, 0.75),
-                "inpP75": percentile(all_inp, 0.75),
-                "clsP75": percentile(all_cls, 0.75),
-            },
-            "releases": sorted(release_set),
-            "rows": rows,
+            "summary": {"lcpP75": _avg("lcpP75"), "inpP75": _avg("inpP75"), "clsP75": _avg("clsP75")},
+            "releases": releases,
+            "rows": mapped,
+            "truncated": bool(getattr(rows, "truncated", False)),
         }
 
     def list_error_issues(self, tenant_id: str, opts: dict) -> dict:
-        events = self._load_events(
-            tenant_id,
-            list(opts.get("applications") or []),
-            opts["from"],
-            opts["to"],
-            extra='"rum.event.type":error',
-            limit=4000,
-        )
-        traffic = opts.get("traffic") or "visitors"
-        release_filter = (opts.get("release") or "").strip()
-        by_key: dict[str, dict] = {}
-        for event in events:
-            if not traffic_ok(event.get("traffic") or "", traffic):
-                continue
-            if release_filter and (event.get("release") or "") != release_filter:
-                continue
-            key = event.get("fingerprint") or event.get("errorMessage") or ""
-            item = by_key.get(key)
-            if item is None:
-                item = {
-                    "fingerprint": key,
-                    "sampleMessage": event.get("errorMessage") or "",
-                    "normalizedMessage": event.get("errorMessage") or "",
-                    "errorType": event.get("errorType") or "",
-                    "application": event.get("application") or "",
-                    "count": 0,
-                    "affectedSessions": 0,
-                    "firstSeen": None,
-                    "lastSeen": None,
-                    "_sess": set(),
-                }
-                by_key[key] = item
-            item["count"] += 1
-            item["sampleMessage"] = event.get("errorMessage") or item["sampleMessage"]
-            item["normalizedMessage"] = item["sampleMessage"]
-            item["application"] = event.get("application") or item["application"]
-            if event.get("sessionId"):
-                item["_sess"].add(event["sessionId"])
-            ts = _fmt(event.get("time"))
-            if ts and (item["lastSeen"] is None or ts > item["lastSeen"]):
-                item["lastSeen"] = ts
-            if ts and (item["firstSeen"] is None or ts < item["firstSeen"]):
-                item["firstSeen"] = ts
+        apps = list(opts.get("applications") or [])
+        if not apps:
+            return {"issues": [], "truncated": False}
+        rows = self._stats(tenant_id, logsql_stats.error_list_query(self._tenant(tenant_id), opts), opts)
         issues = []
-        for item in by_key.values():
-            item["affectedSessions"] = len(item["_sess"])
-            item.pop("_sess", None)
-            issues.append(item)
-        issues.sort(key=lambda row: row["count"], reverse=True)
-        limit = int(opts.get("limit") or 100)
-        if limit > 0:
-            issues = issues[:limit]
-        return {"issues": issues}
+        for row in rows:
+            item = logsql_stats.map_error_issue(row)
+            if item["fingerprint"]:
+                issues.append(item)
+        return {"issues": issues, "truncated": bool(getattr(rows, "truncated", False))}
 
     def error_detail(self, tenant_id: str, fingerprint: str, opts: dict) -> dict:
-        events = self._load_events(
-            tenant_id,
-            list(opts.get("applications") or []),
-            opts["from"],
-            opts["to"],
-            extra='"rum.event.type":error',
-            limit=2000,
-        )
+        apps = list(opts.get("applications") or [])
         detail = {
-            "fingerprint": fingerprint,
+            "fingerprint": "",
             "sampleMessage": "",
             "normalizedMessage": "",
             "errorType": "",
             "occurrences": [],
             "signals": [],
+            "truncated": False,
         }
-        for event in events:
-            if event.get("fingerprint") != fingerprint and event.get("groupKey") != fingerprint:
-                continue
-            detail["occurrences"].append(
-                {
-                    "eventId": event.get("eventId"),
-                    "sessionId": event.get("sessionId"),
-                    "userId": event.get("userId"),
-                    "timestamp": _fmt(event.get("time")),
-                    "traceId": event.get("traceId"),
-                }
-            )
-            if not detail["sampleMessage"]:
-                detail["sampleMessage"] = event.get("errorMessage") or ""
-                detail["normalizedMessage"] = detail["sampleMessage"]
-                detail["errorType"] = event.get("errorType") or ""
-                detail["fingerprint"] = event.get("fingerprint") or fingerprint
+        if not apps:
+            return detail
+        rows = self._stats(tenant_id, logsql_stats.error_detail_query(self._tenant(tenant_id), fingerprint, opts), opts, limit=1)
+        if not rows or int(float(rows[0].get("count") or 0)) <= 0:
+            return detail
+        row = rows[0]
+        detail.update(
+            {
+                "fingerprint": logsql_stats.sample_text(row, "fingerprint") or fingerprint,
+                "sampleMessage": logsql_stats.sample_text(row, "message"),
+                "normalizedMessage": logsql_stats.sample_text(row, "message"),
+                "errorType": logsql_stats.sample_text(row, "error_type"),
+                "count": int(float(row.get("count") or 0)),
+                "affectedSessions": int(float(row.get("sessions") or 0)),
+                "affectedUsers": int(float(row.get("users") or 0)),
+                "firstSeen": row.get("start_time") or None,
+                "lastSeen": row.get("end_time") or None,
+                "truncated": bool(getattr(rows, "truncated", False)),
+            }
+        )
         return detail
 
     def funnel_reach(self, tenant_id: str, steps: list[str], opts: dict) -> dict:
-        events = self._load_events(
+        apps = list(opts.get("applications") or [])
+        if not apps:
+            return {"steps": list(steps), "reached": [0] * len(steps), "truncated": False}
+        rows = self._stats(
             tenant_id,
-            list(opts.get("applications") or []),
-            opts["from"],
-            opts["to"],
-            extra='"rum.event.type":view',
-            limit=8000,
+            logsql_stats.funnel_query(self._tenant(tenant_id), opts),
+            opts,
+            limit=logsql_stats.FUNNEL_GROUP_LIMIT,
         )
         window_sec = int(opts.get("windowSeconds") or 0)
         window = timedelta(seconds=window_sec) if window_sec > 0 else timedelta(hours=1)
-        return {"steps": list(steps), "reached": funnel_reached(events, steps, window)}
+        events = []
+        for row in rows:
+            seen = _parse_stats_time(row.get("first_seen") or "")
+            if seen is None:
+                continue
+            events.append(
+                {
+                    "sessionId": row.get("rum.session.key") or row.get("rum.session.id") or "",
+                    "route": row.get("rum.view.name") or "",
+                    "time": seen,
+                    "eventType": "view",
+                }
+            )
+        truncated = bool(getattr(rows, "truncated", False)) or len(rows) >= logsql_stats.FUNNEL_GROUP_LIMIT
+        return {"steps": list(steps), "reached": funnel_reached(events, steps, window), "truncated": truncated}
 
     def list_releases(self, tenant_id: str, opts: dict) -> dict:
-        events = self._load_events(
-            tenant_id,
-            list(opts.get("applications") or []),
-            opts["from"],
-            opts["to"],
-            limit=8000,
-        )
-        traffic = opts.get("traffic") or "visitors"
-        by_key: dict[str, dict] = {}
-        # fingerprint → (first_seen, release_at_first) within the query window
-        issue_first: dict[str, tuple[datetime, str]] = {}
-
-        def ensure(release: str) -> dict:
-            item = by_key.get(release)
-            if item is None:
-                item = {
-                    "release": release,
-                    "errorCount": 0,
-                    "distinctIssues": 0,
-                    "affectedSessions": 0,
-                    "affectedUsers": 0,
-                    "firstSeen": None,
-                    "lastSeen": None,
-                    "lcpP75": 0.0,
-                    "inpP75": 0.0,
-                    "newIssues": 0,
-                    "suspectedRegression": False,
-                    "_sess": set(),
-                    "_err_sess": set(),
-                    "_users": set(),
-                    "_issues": set(),
-                    "_lcp": [],
-                    "_inp": [],
-                    "_first": None,
-                    "_last": None,
-                }
-                by_key[release] = item
-            return item
-
-        for event in events:
-            release = event.get("release") or ""
-            if not release or not traffic_ok(event.get("traffic") or "", traffic):
-                continue
-            item = ensure(release)
-            event_time = event.get("time")
-            if isinstance(event_time, datetime):
-                if item["_first"] is None or event_time < item["_first"]:
-                    item["_first"] = event_time
-                if item["_last"] is None or event_time > item["_last"]:
-                    item["_last"] = event_time
-            if event.get("sessionId"):
-                item["_sess"].add(event["sessionId"])
-            user_id = (event.get("userId") or "").strip()
-            if user_id:
-                item["_users"].add(user_id)
-            event_type = event.get("eventType")
-            if event_type == "error":
-                if event.get("sessionId"):
-                    item["_err_sess"].add(event["sessionId"])
-                fingerprint = (event.get("fingerprint") or event.get("errorMessage") or "").strip()
-                if fingerprint:
-                    item["_issues"].add(fingerprint)
-                    if isinstance(event_time, datetime):
-                        prev = issue_first.get(fingerprint)
-                        if prev is None or event_time < prev[0]:
-                            issue_first[fingerprint] = (event_time, release)
-            elif event_type == "vital":
-                name = (event.get("vitalName") or "").lower()
-                value = float(event.get("vitalValue") or 0)
-                if value <= 0:
-                    continue
-                if name == "lcp":
-                    item["_lcp"].append(value)
-                elif name == "inp":
-                    item["_inp"].append(value)
-
+        apps = list(opts.get("applications") or [])
+        if not apps:
+            return {"releases": [], "truncated": False}
+        tenant = self._tenant(tenant_id)
+        rows = self._stats(tenant, logsql_stats.release_stats_query(tenant, opts), opts)
+        first_seen = self._stats(tenant, logsql_stats.release_first_issue_query(tenant, opts), opts, limit=5000)
         new_by_release: dict[str, int] = {}
-        for _fp, (_ts, release) in issue_first.items():
-            new_by_release[release] = new_by_release.get(release, 0) + 1
-
-        rows = []
-        for item in by_key.values():
-            item["affectedSessions"] = len(item["_sess"])
-            item["affectedUsers"] = len(item["_users"])
-            item["errorCount"] = len(item["_err_sess"])
-            item["distinctIssues"] = len(item["_issues"])
-            item["newIssues"] = new_by_release.get(item["release"], 0)
-            item["firstSeen"] = _fmt(item["_first"])
-            item["lastSeen"] = _fmt(item["_last"])
-            item["lcpP75"] = percentile(item["_lcp"], 0.75)
-            item["inpP75"] = percentile(item["_inp"], 0.75)
-            for key in (
-                "_sess",
-                "_err_sess",
-                "_users",
-                "_issues",
-                "_lcp",
-                "_inp",
-                "_first",
-                "_last",
-            ):
-                item.pop(key, None)
-            rows.append(item)
-        rows.sort(key=lambda row: row["affectedSessions"], reverse=True)
-        limit = int(opts.get("limit") or 0)
-        if limit > 0:
-            rows = rows[:limit]
-        return {"releases": rows}
+        for row in first_seen:
+            release = logsql_stats.sample_text(row, "release")
+            if release:
+                new_by_release[release] = new_by_release.get(release, 0) + 1
+        releases = [logsql_stats.map_release_row(row, new_by_release.get(row.get("rum.release") or "", 0)) for row in rows]
+        releases = [row for row in releases if row["release"]]
+        return {
+            "releases": releases,
+            "truncated": bool(getattr(rows, "truncated", False)) or bool(getattr(first_seen, "truncated", False)),
+        }
 
     def monitor_metric(self, tenant_id: str, opts: dict) -> float:
+        apps = list(opts.get("applications") or [])
+        if not apps and not (opts.get("application") or "").strip():
+            return 0.0
         metric = (opts.get("metric") or "").strip()
-        if metric in {"lcp_p75", "inp_p75", "cls_p75", "fcp_p75", "ttfb_p75"}:
-            return self._cwv_p75(tenant_id, opts, metric)
-        series = self.metric_series(tenant_id, {**opts, "points": 1})
-        return float(series[0]["value"]) if series else 0.0
-
-    def _cwv_p75(self, tenant_id: str, opts: dict, metric: str) -> float:
-        name = metric[: -len("_p75")] if metric.endswith("_p75") else metric
-        events = self._load_events(
-            tenant_id,
-            [opts.get("application") or ""],
-            opts["from"],
-            opts["to"],
-            extra='"rum.event.type":vital',
-            limit=8000,
-        )
-        values: list[float] = []
-        for event in events:
-            if (event.get("vitalName") or "").lower() != name:
-                continue
-            value = float(event.get("vitalValue") or 0)
-            if value > 0:
-                values.append(value)
-        return percentile(values, 0.75)
+        rows = self._stats(tenant_id, logsql_stats.monitor_metric_query(self._tenant(tenant_id), opts), opts, limit=1)
+        if not rows:
+            return 0.0
+        row = rows[0]
+        if metric == "error_rate":
+            sessions = float(row.get("sessions") or 0)
+            if sessions <= 0:
+                return 0.0
+            return float(row.get("errored") or 0) / sessions
+        value = row.get("value") or ""
+        if value == "":
+            return 0.0
+        return float(value)
 
     def metric_series(self, tenant_id: str, opts: dict) -> list[dict]:
         buckets = int(opts.get("points") or 12)
@@ -641,41 +412,39 @@ class VictoriaAnalytics:
             buckets = 12
         start = opts["from"]
         end = opts["to"]
-        metric = (opts.get("metric") or "").strip()
-        events = self._load_events(tenant_id, [opts.get("application") or ""], start, end, limit=8000)
         width = end - start
         if width.total_seconds() <= 0:
             width = timedelta(hours=1)
         step = width / buckets
         points = [{"atMs": int((start + step * i).timestamp() * 1000), "value": 0.0} for i in range(buckets)]
-        sess = [set() for _ in range(buckets)]
-        err_sess = [set() for _ in range(buckets)]
-        cwv_vals: list[list[float]] = [[] for _ in range(buckets)]
-        cwv_name = metric[: -len("_p75")] if metric.endswith("_p75") else ""
-        for event in events:
-            event_time = event.get("time")
-            if not isinstance(event_time, datetime):
+        apps = list(opts.get("applications") or [])
+        if not apps and not (opts.get("application") or "").strip():
+            return points
+        metric = (opts.get("metric") or "").strip()
+        rows = self._stats(
+            tenant_id,
+            logsql_stats.metric_series_query(self._tenant(tenant_id), opts, step),
+            opts,
+            limit=buckets + 2,
+        )
+        for row in rows:
+            seen = _parse_stats_time(row.get("_time") or "")
+            if seen is None:
                 continue
-            idx = int((event_time - start) / step)
+            idx = int((seen - start) / step)
             if idx < 0 or idx >= buckets:
                 continue
-            if event.get("sessionId"):
-                sess[idx].add(event["sessionId"])
-            if event.get("eventType") == "error" and event.get("sessionId"):
-                err_sess[idx].add(event["sessionId"])
-            if cwv_name and event.get("eventType") == "vital":
-                if (event.get("vitalName") or "").lower() == cwv_name:
-                    value = float(event.get("vitalValue") or 0)
-                    if value > 0:
-                        cwv_vals[idx].append(value)
-        for i, point in enumerate(points):
             if metric == "error_rate":
-                point["value"] = (len(err_sess[i]) / len(sess[i])) if sess[i] else 0.0
-            elif cwv_name:
-                point["value"] = percentile(cwv_vals[i], 0.75)
+                sessions = float(row.get("sessions") or 0)
+                points[idx]["value"] = (float(row.get("errored") or 0) / sessions) if sessions else 0.0
             else:
-                point["value"] = float(len(sess[i]))
+                points[idx]["value"] = float(row.get("value") or 0)
         return points
+
+    def _stats(self, tenant_id: str, query: str, opts: dict, limit: int = 0):
+        if limit <= 0:
+            limit = 0
+        return self.client.query_logs(query, opts.get("from"), opts.get("to"), limit)
 
 
 def _fmt(value: datetime | None) -> str | None:
@@ -684,3 +453,42 @@ def _fmt(value: datetime | None) -> str | None:
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _parse_stats_time(value: str) -> datetime | None:
+    if not value:
+        return None
+    try:
+        if str(value).isdigit():
+            raw = int(value)
+            if raw > 10**15:
+                return datetime.fromtimestamp(raw / 1_000_000_000, tz=timezone.utc)
+            if raw > 10**12:
+                return datetime.fromtimestamp(raw / 1000, tz=timezone.utc)
+            return datetime.fromtimestamp(raw, tz=timezone.utc)
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, OverflowError, OSError):
+        return None
+
+
+def _trend_points(rows, start: datetime, interval: timedelta, buckets: int) -> list[dict]:
+    n = max(buckets, 1)
+    sec = max(60, int(interval.total_seconds()))
+    totals = [0] * n
+    errored = [0] * n
+    start_ts = start.timestamp()
+    for row in rows:
+        seen = _parse_stats_time(row.get("_time") or "")
+        if seen is None:
+            continue
+        idx = int((seen.timestamp() - start_ts) // sec)
+        if idx < 0:
+            continue
+        if idx >= n:
+            idx = n - 1
+        totals[idx] = int(float(row.get("total") or 0))
+        errored[idx] = int(float(row.get("errored") or 0))
+    return [
+        {"atMs": int((start_ts + i * sec) * 1000), "total": totals[i], "errored": errored[i]}
+        for i in range(n)
+    ]

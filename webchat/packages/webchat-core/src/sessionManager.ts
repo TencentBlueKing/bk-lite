@@ -1,4 +1,32 @@
-import { ChatSession, Message, WebChatConfig } from './types';
+import { ChatSession, Message, MessageContent, WebChatConfig } from './types';
+
+function messageForStorage(message: Message): Message {
+  const attachments = Array.isArray(message.metadata?.attachments) ? message.metadata.attachments : [];
+  if (!Array.isArray(message.content) && attachments.length === 0) {
+    return message;
+  }
+  const text = Array.isArray(message.content)
+    ? message.content.find((item: MessageContent) => item.type === 'message' && item.message)?.message || ''
+    : message.content;
+  const storedAttachments = attachments.map((item) => {
+    const record = item as Record<string, unknown>;
+    return {
+      id: record.id,
+      name: record.name,
+      mime: record.mime,
+      size: record.size,
+      status: record.status,
+    };
+  });
+  return {
+    ...message,
+    content: text,
+    metadata: {
+      ...(message.metadata || {}),
+      attachments: storedAttachments,
+    },
+  };
+}
 
 /**
  * SessionManager: Manages chat sessions and persistence
@@ -63,7 +91,7 @@ export class SessionManager {
     if (!this.session) {
       throw new Error('Session not initialized');
     }
-    this.session.messages.push(message);
+    this.session.messages.push(messageForStorage(message));
     this.session.lastActivityTime = Date.now();
     this.saveToStorage();
   }

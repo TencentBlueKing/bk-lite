@@ -21,6 +21,8 @@ export interface RumApplicationView {
   budgets?: Record<string, number>;
   lastAcceptedAt?: number;
   lastStoredAt?: number;
+  projectionPending?: boolean;
+  controlUnavailable?: boolean;
 }
 
 export interface RumApplicationStatus {
@@ -141,7 +143,8 @@ export interface RumSessionRow {
 
 export type RumSessionListPage = PipelineDegradation & {
   sessions: RumSessionRow[];
-  summary: { total: number; errored: number; replayed: number; medianDurationMs: number };
+  summary?: { total: number; errored: number; replayed: number; medianDurationMs: number };
+  replayScanTruncated?: boolean;
 };
 
 export type RumSessionJourney = PipelineDegradation & {
@@ -281,6 +284,7 @@ export interface RumFunnelItem {
 export type RumFunnelReachResult = PipelineDegradation & {
   steps: string[];
   reached: number[];
+  truncated?: boolean;
 };
 
 export interface RumReleaseRow {
@@ -566,7 +570,10 @@ export function useRumQueries() {
       });
       return withDegradation({
         sessions: Array.isArray(data?.sessions) ? data.sessions : [],
-        summary: data?.summary || { total: 0, errored: 0, replayed: 0, medianDurationMs: 0 },
+        summary: data?.replayScanTruncated
+          ? undefined
+          : data?.summary || { total: 0, errored: 0, replayed: 0, medianDurationMs: 0 },
+        replayScanTruncated: Boolean(data?.replayScanTruncated),
         controlUnavailable: data?.controlUnavailable,
         analyticsUnavailable: data?.analyticsUnavailable,
       });
@@ -752,6 +759,7 @@ export function useRumQueries() {
       return withDegradation({
         steps: Array.isArray(data?.steps) ? data.steps : [],
         reached: Array.isArray(data?.reached) ? data.reached.map(Number) : [],
+        truncated: Boolean(data?.truncated),
         controlUnavailable: data?.controlUnavailable,
         analyticsUnavailable: data?.analyticsUnavailable,
       });

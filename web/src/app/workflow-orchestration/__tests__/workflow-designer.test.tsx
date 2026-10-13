@@ -447,6 +447,8 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     fireEvent.click(screen.getByRole('button', { name: '添加节点' }));
     fireEvent.click(await screen.findByRole('button', { name: /作业执行/ }));
 
+    const nodeName = screen.getByDisplayValue('作业执行');
+    expect(nodeName.closest('.ant-form-item')?.querySelector('.ant-form-item-required')).not.toBeNull();
     expect(screen.getAllByTestId('workflow-reference-dropzone').length).toBeGreaterThan(0);
     fireEvent.click(await screen.findByRole('button', { name: /选择主机/ }));
     expect(screen.getByRole('tab', { name: /节点管理/ })).not.toBeNull();
@@ -470,6 +472,8 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
     fireEvent.click(await screen.findByRole('button', { name: /Webhook 触发器/ }));
 
     expect(await screen.findByText('Webhook 接口')).not.toBeNull();
+    const triggerName = screen.getByDisplayValue('Webhook 触发器');
+    expect(triggerName.closest('.ant-form-item')?.querySelector('.ant-form-item-required')).not.toBeNull();
     expect(screen.queryByRole('button', { name: /添加请求输入字段/ })).toBeNull();
     expect(screen.getByText('立即响应（返回 execution_id）')).not.toBeNull();
 

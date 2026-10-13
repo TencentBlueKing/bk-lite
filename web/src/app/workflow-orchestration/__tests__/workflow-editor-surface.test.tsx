@@ -67,7 +67,7 @@ describe('n8n 风格流程画布表现层', () => {
           open
           title="生成巡检报告"
           meta="bklite_report@1.0.0"
-          references={[{ key: 'scan-output', label: '主机扫描 / 输出', value: '${scan.output}', type: 'object', source: '主机扫描', path: 'metrics', preview: { cpu: 42 } }]}
+          references={[{ key: 'scan-output', label: '主机扫描 / 输出', value: '${scan.output}', type: 'object', source: '主机扫描', sourceKey: 'scan', displayName: '指标', jsonPath: 'metrics', path: 'metrics', preview: { cpu: 42 } }]}
           outputSchema={{ type: 'object', properties: { report_url: { type: 'string' } } }}
           readOnly={false}
           onExecute={onExecute}
@@ -94,7 +94,8 @@ describe('n8n 风格流程画布表现层', () => {
     fireEvent.dragStart(reference, { dataTransfer: { effectAllowed: 'none', setData } });
     expect(setData).toHaveBeenCalledWith('application/x-bklite-workflow-reference', '${scan.output}');
     fireEvent.click(screen.getAllByText('JSON')[0]);
-    expect(screen.getByText(/"主机扫描"/)).not.toBeNull();
+    expect(screen.getByText(/"scan"/)).not.toBeNull();
+    expect(screen.queryByText(/主机扫描/)).toBeNull();
     expect(screen.getByText(/"cpu": 42/)).not.toBeNull();
     fireEvent.click(screen.getAllByText('Schema')[1]);
     expect(screen.getByText(/report_url/)).not.toBeNull();
@@ -129,5 +130,29 @@ describe('n8n 风格流程画布表现层', () => {
 
     expect(screen.queryByRole('button', { name: /保\s*存/ })).toBeNull();
     expect(screen.queryByText(/修改会立即保存在当前页面/)).toBeNull();
+  });
+
+  it('输入分组默认可折叠，搜索时自动展开匹配分组', () => {
+    render(
+      <App>
+        <WorkflowNodeInspector
+          open
+          title="通知"
+          meta="SIMPLE"
+          references={[{ key: 'channel', label: '运行信息 · 触发类型', value: '${system.trigger_type}', type: 'string', source: '运行信息', sourceKey: 'system', displayName: '触发类型', jsonPath: 'trigger_type', path: 'trigger_type' }]}
+          outputSchema={{ type: 'object' }}
+          readOnly={false}
+          onClose={vi.fn()}
+        >
+          <div>参数</div>
+        </WorkflowNodeInspector>
+      </App>,
+    );
+
+    expect(screen.getByText('${system.trigger_type}')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /运行信息/, expanded: true }));
+    expect(screen.queryByText('${system.trigger_type}')).toBeNull();
+    fireEvent.change(screen.getByPlaceholderText('搜索上游字段'), { target: { value: '触发' } });
+    expect(screen.getByText('${system.trigger_type}')).not.toBeNull();
   });
 });

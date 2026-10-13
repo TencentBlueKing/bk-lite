@@ -119,7 +119,7 @@ const BaseInfoWidget = ({ instUuid, onHeaderAction }: BaseInfoWidgetProps) => {
   }
 
   return (
-    <div className="flex h-full min-h-[280px] min-w-0 flex-col gap-3">
+    <div className="flex min-h-0 min-w-0 w-full flex-col gap-3">
       {!onHeaderAction && (
         <div className="flex justify-end">
           <Button type="link" href={openHref}>

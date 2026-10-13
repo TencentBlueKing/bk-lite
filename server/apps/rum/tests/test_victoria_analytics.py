@@ -13,7 +13,9 @@ from apps.rum.services.victoria_client import funnel_reached, health_from_events
 
 class _VLHandler(BaseHTTPRequestHandler):
     got_query = ""
+    queries: list[str] = []
     rows: list[dict] = []
+    choose = None
 
     def log_message(self, format, *args):  # noqa: A003
         return
@@ -37,17 +39,24 @@ class _VLHandler(BaseHTTPRequestHandler):
             if part.startswith("query="):
                 from urllib.parse import unquote_plus
 
-                type(self).got_query = unquote_plus(part[len("query=") :])
+                query = unquote_plus(part[len("query=") :])
+                type(self).got_query = query
+                type(self).queries.append(query)
         self.send_response(200)
         self.send_header("Content-Type", "application/x-ndjson")
         self.end_headers()
-        for row in type(self).rows:
+        rows = type(self).rows
+        if type(self).choose is not None:
+            rows = type(self).choose(type(self).got_query)
+        for row in rows:
             self.wfile.write((json.dumps(row) + "\n").encode("utf-8"))
 
 
 def _serve(rows: list[dict]) -> tuple[HTTPServer, str]:
     _VLHandler.rows = rows
     _VLHandler.got_query = ""
+    _VLHandler.queries = []
+    _VLHandler.choose = None
     server = HTTPServer(("127.0.0.1", 0), _VLHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -259,6 +268,13 @@ def test_session_journey_formats_event_timestamps():
         },
     ]
     server, base = _serve(rows)
+
+    def choose(query: str) -> list[dict]:
+        if "| stats" in query:
+            return [{"event_count": "2", "start_time": stamp, "end_time": stamp, "view_count": "1", "error_count": "1"}]
+        return rows
+
+    _VLHandler.choose = choose
     try:
         analytics = VictoriaAnalytics.open(logs_endpoint=base, traces_endpoint=base)
         journey = analytics.session_journey(
@@ -269,8 +285,8 @@ def test_session_journey_formats_event_timestamps():
         )
         assert journey["views"][0]["timestamp"] == "2026-08-18T12:00:00Z"
         assert journey["errors"][0]["timestamp"] == "2026-08-18T12:00:00Z"
-        assert '"rum.session.key":"s1"' in _VLHandler.got_query
-        assert '"rum.session.id":"s1"' in _VLHandler.got_query
+        assert journey["session"]["sessionId"] == "s1"
+        assert any('"rum.session.key":"s1"' in query and '"rum.session.id":"s1"' in query for query in _VLHandler.queries)
     finally:
         server.shutdown()
 
@@ -376,6 +392,20 @@ def test_list_views_fills_cwv_device_and_spark_fields():
         },
     ]
     server, base = _serve(rows)
+    _VLHandler.choose = lambda query: [
+        {
+            "rum.view.name": "/cart",
+            "views": "2",
+            "sessions": "2",
+            "lcp_p75": "1800",
+            "inp_p75": "120",
+            "cls_p75": "0.05",
+            "lcp_good": "1",
+            "lcp_needs": "0",
+            "lcp_poor": "1",
+            "mobile": "1",
+        }
+    ]
     try:
         analytics = VictoriaAnalytics.open(logs_endpoint=base, traces_endpoint=base)
         page = analytics.list_views(
@@ -402,8 +432,8 @@ def test_list_views_fills_cwv_device_and_spark_fields():
         assert row["dist"]["missing"] == 0
         assert row["deviceMix"]["mobile"] == 1
         assert row["deviceMix"]["desktop"] == 1
-        assert row["mom"]["hasDelta"] is True
-        assert sum(row["mom"]["spark"]) == 2
+        assert "quantile(0.75, `rum.vital.lcp`)" in _VLHandler.got_query
+        assert "stats by" in _VLHandler.got_query
         assert page["summary"]["inpP75"] == 120.0
     finally:
         server.shutdown()
@@ -468,6 +498,39 @@ def test_list_releases_fills_first_seen_users_issues_and_cwv():
         },
     ]
     server, base = _serve(rows)
+
+    def choose(query: str) -> list[dict]:
+        if "stats by (`rum.error.fingerprint`)" in query:
+            return [
+                {"rum.error.fingerprint": "fp-checkout", "release": "dev", "first_seen": early},
+                {"rum.error.fingerprint": "fp-new", "release": "1.0.0", "first_seen": late},
+            ]
+        return [
+            {
+                "rum.release": "dev",
+                "affected_sessions": "2",
+                "affected_users": "2",
+                "error_sessions": "1",
+                "distinct_issues": "1",
+                "first_seen": early,
+                "last_seen": late,
+                "lcp_p75": "1800",
+                "inp_p75": "0",
+            },
+            {
+                "rum.release": "1.0.0",
+                "affected_sessions": "2",
+                "affected_users": "2",
+                "error_sessions": "2",
+                "distinct_issues": "2",
+                "first_seen": late,
+                "last_seen": late,
+                "lcp_p75": "0",
+                "inp_p75": "0",
+            },
+        ]
+
+    _VLHandler.choose = choose
     try:
         analytics = VictoriaAnalytics.open(logs_endpoint=base, traces_endpoint=base)
         page = analytics.list_releases(
@@ -532,6 +595,19 @@ def test_list_error_issues_filters_by_release():
         },
     ]
     server, base = _serve(rows)
+    _VLHandler.choose = lambda query: [
+        {
+            "rum.error.fingerprint": "fp-a",
+            "message": "Error: a",
+            "error_type": "Error",
+            "application": "storefront",
+            "count": "2",
+            "sessions": "2",
+            "users": "1",
+            "start_time": now.isoformat().replace("+00:00", "Z"),
+            "end_time": now.isoformat().replace("+00:00", "Z"),
+        }
+    ]
     try:
         analytics = VictoriaAnalytics.open(logs_endpoint=base, traces_endpoint=base)
         page = analytics.list_error_issues(
@@ -550,6 +626,8 @@ def test_list_error_issues_filters_by_release():
         assert issues[0]["fingerprint"] == "fp-a"
         assert issues[0]["count"] == 2
         assert issues[0]["affectedSessions"] == 2
+        assert '"rum.release":"1.0.0"' in _VLHandler.got_query
+        assert "stats by (`rum.error.fingerprint`)" in _VLHandler.got_query
     finally:
         server.shutdown()
 

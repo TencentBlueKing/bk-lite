@@ -173,6 +173,7 @@
       "tabCdn": "CDN",
       "tabGeneric": "Generic",
       "deployHint": "After deploy, visit the app once, then run the self-check.",
+      "projectionPending": "Configuration is syncing to the gateway",
       "disable": "Disable",
       "enable": "Enable",
       "disableConfirm": "Disable this application? Admission rejects all its traffic immediately.",
@@ -249,6 +250,7 @@
         "errored": "Errored",
         "medianDuration": "Median duration"
       },
+      "replayScanTruncated": "Replay filter reached the scan limit, so the total is unavailable",
       "kind": {
         "view": "View",
         "action": "Action",
@@ -437,6 +439,7 @@
       "delete": "Delete",
       "deleteConfirm": "Delete funnel \"{name}\"?",
       "conversionRate": "Overall conversion",
+      "truncated": "Step combinations hit the statistics limit, so conversion is incomplete",
       "topDropoff": "Top drop-off",
       "overall": "First → last",
       "step": "Step",

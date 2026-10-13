@@ -55,11 +55,12 @@ const inspectedImage = (name: string, width: number, height: number): InspectedI
   width,
 });
 
-test('旧调用方默认接受四张共十六 MiB 的图片', () => {
+test('默认接受五张附件，四张共十六 MiB 的图片仍在字节预算内', () => {
   const typedConfig: WebChatConfig = {};
   const budget = resolveImageBudget(typedConfig);
   const files = Array.from({ length: 4 }, (_, index) => imageFile(`${index}.png`, 4 * 1024 * 1024));
 
+  assert.equal(budget.maxImageCount, 5);
   assert.deepEqual(budget, DEFAULT_IMAGE_BUDGET);
   assert.deepEqual(validateImageBatch([], files, budget), { ok: true });
 });
@@ -151,7 +152,7 @@ test('显式配置可以放宽预算，非法值回落为默认值', () => {
 
 test('超过数量时原子拒绝整个新批次', () => {
   const current = [pendingImage('selected.png', 1)];
-  const incoming = Array.from({ length: 4 }, (_, index) => imageFile(`${index}.png`, 1));
+  const incoming = Array.from({ length: 5 }, (_, index) => imageFile(`${index}.png`, 1));
 
   assert.deepEqual(validateImageBatch(current, incoming, DEFAULT_IMAGE_BUDGET), {
     limit: DEFAULT_IMAGE_BUDGET.maxImageCount,

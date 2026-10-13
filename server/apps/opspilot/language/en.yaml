@@ -136,6 +136,7 @@ error:
   training_document_no_retrain: training document can not be retrained
   qa_pair_update_failed: Failed to update QA pair.
   skill_quota_exceeded: Skill count exceeds quota limit.
+  run_model_call_limit_range: Model calls per step must be between 1 and 100.
   pilot_start_failed: Pilot start failed.
   no_delete_permission: User does not have permission to delete this instance
   generate_question_failed: generate question failed
@@ -255,6 +256,8 @@ tools:
         description: List metrics already collected on an instance.
       monitor_query_metric_data:
         description: Query time series for a selected metric.
+      monitor_summarize_metric_trend:
+        description: Summarize a metric trend from full history and return only series that reach the threshold within the horizon.
       monitor_list_active_alerts:
         description: List active instance alerts from monitor policies (host detail alert tab; not alert-center tickets).
       monitor_query_alert_segments:
@@ -344,10 +347,10 @@ tools:
   attachment_file:
     name: Workflow Attachment File
     description: |
-      Generate Markdown, PDF, Word, Excel, or CSV attachments. Use only when the user explicitly asks for a file.
+      Generate TXT, Markdown, PDF, Word, PowerPoint, Excel, or CSV attachments. Use only when the user explicitly asks to create, export, or write a new file. Do not use it to answer questions about an existing file.
     tools:
       generate_attachment_file:
-        description: Generate an md, pdf, docx, xlsx, or csv attachment and return its download link. xlsx and csv require comma-separated data with a header row.
+        description: Generate a txt, md, pdf, docx, pptx, xlsx, or csv attachment and return its download link. txt and md are plain text. pptx becomes slides. xlsx and csv require comma-separated data with a header row. Use pptx when the user asks for a PowerPoint file; do not downgrade it to docx. Keep txt when the user asked for txt.
   kubernetes:
     name: Kubernetes Tools
     description: |

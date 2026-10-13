@@ -1,0 +1,61 @@
+{
+  "object": "IIS",
+  "plugin": "IIS",
+  "templates": [
+    {
+      "name": "HTTP 请求队列积压",
+      "alert_name": "IIS ${resource_name} 请求队列过长",
+      "description": "HTTP Service Request Queues 当前队列长度持续偏高，请求可能排队超时。",
+      "metric_name": "iis_queue_current_size",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 100,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 50,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 20,
+          "method": ">="
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "工作进程近期故障",
+      "alert_name": "IIS ${resource_name} 工作进程发生故障",
+      "description": "APP_POOL_WAS 快速失败保护窗口内出现工作进程故障。",
+      "metric_name": "iis_recent_worker_process_failures",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "站点探测失败",
+      "alert_name": "IIS ${resource_name} 站点探测失败",
+      "description": "本机 http_response 探测站点 URL 失败，网站可能不可用。",
+      "metric_name": "iis_site_probe_result_code",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 0,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

@@ -309,6 +309,33 @@ test('maps history messages to readable text, including object payloads', () => 
   assert.equal(messages[1].content, 'report body');
 });
 
+test('history replay keeps uploaded file metadata on the user message', () => {
+  const messages = mapPlatformMessages([
+    {
+      id: 9,
+      conversation_role: 'user',
+      conversation_content: '文件内容是什么',
+      conversation_time: '2026-01-01T00:00:00Z',
+      attachments: [{ id: 11, name: '1111.txt', mime: 'text/plain', size: 20, status: 'ready' }],
+    },
+    {
+      id: 10,
+      conversation_role: 'user',
+      conversation_content: '',
+      attachments: [{ id: 12, name: 'only.pdf', mime: 'application/pdf', size: 4, status: 'ready' }],
+    },
+  ]);
+
+  assert.equal(messages.length, 2);
+  assert.deepEqual(messages[0].metadata?.attachments, [
+    { id: 11, name: '1111.txt', mime: 'text/plain', size: 20, status: 'ready' },
+  ]);
+  assert.equal(messages[1].content, '');
+  assert.deepEqual(messages[1].metadata?.attachments, [
+    { id: 12, name: 'only.pdf', mime: 'application/pdf', size: 4, status: 'ready' },
+  ]);
+});
+
 test('assembles stored AG-UI event dumps into readable assistant text', () => {
   const pythonish = mapPlatformMessages([
     {

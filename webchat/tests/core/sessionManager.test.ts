@@ -110,10 +110,16 @@ test('restores only the session stored under the same owner and endpoint scope',
     const aliceSession = alice.initSession('alice');
     alice.addMessage({
       id: 'secret-message',
-      type: 'text',
-      content: 'alice only',
+      type: 'multimodal',
+      content: [
+        { type: 'image_url', image_url: 'data:image/png;base64,SECRETDATA' },
+        { type: 'message', message: 'alice only' },
+      ],
       sender: 'user',
       timestamp: Date.now(),
+      metadata: {
+        attachments: [{ id: 7, name: 'shot.png', mime: 'image/png', size: 4, status: 'ready', previewUrl: 'blob:secret' }],
+      },
     });
 
     const restoredAlice = new SessionManager({
@@ -122,6 +128,11 @@ test('restores only the session stored under the same owner and endpoint scope',
     }).initSession('alice');
     assert.equal(restoredAlice.sessionId, aliceSession.sessionId);
     assert.equal(restoredAlice.messages[0]?.id, 'secret-message');
+    assert.equal(restoredAlice.messages[0]?.content, 'alice only');
+    assert.deepEqual(restoredAlice.messages[0]?.metadata?.attachments, [
+      { id: 7, name: 'shot.png', mime: 'image/png', size: 4, status: 'ready' },
+    ]);
+    assert.equal(JSON.stringify(restoredAlice.messages[0]).includes('SECRETDATA'), false);
 
     const bob = new SessionManager({
       enableStorage: true,

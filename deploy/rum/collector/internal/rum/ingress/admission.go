@@ -68,9 +68,11 @@ return {"allow", tenant, tostring(revision)}
 `
 
 type Config struct {
-	RedisURL          string
-	RedisPasswordFile string
-	Now               func() time.Time
+	RedisURL           string
+	RedisPasswordFile  string
+	RequireACLIdentity bool
+	ACLUsername        string
+	Now                func() time.Time
 }
 
 type Admission struct {
@@ -112,8 +114,18 @@ func redisOptions(cfg Config) (*redis.Options, error) {
 	if parsed.RawQuery != "" || parsed.Fragment != "" {
 		return nil, errors.New("redis_url must not contain query or fragment data")
 	}
-	if parsed.User == nil || parsed.User.Username() != "rum-admission" {
-		return nil, errors.New("RUM admission Redis URL must use the rum-admission ACL identity")
+	username := ""
+	if parsed.User != nil {
+		username = parsed.User.Username()
+	}
+	if cfg.RequireACLIdentity {
+		expected := strings.TrimSpace(cfg.ACLUsername)
+		if expected == "" {
+			expected = "rum-admission"
+		}
+		if username == "" || username != expected {
+			return nil, errors.New("RUM admission Redis URL ACL username must be " + expected)
+		}
 	}
 	options, err := redis.ParseURL(cfg.RedisURL)
 	if err != nil {

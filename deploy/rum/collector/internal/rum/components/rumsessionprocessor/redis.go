@@ -62,7 +62,12 @@ func newRedisSessionStore(cfg *Config) (*redisSessionStore, error) {
 		return nil, err
 	}
 	parsed, _ := url.Parse(cfg.RedisURL)
-	password, _ := parsed.User.Password()
+	username := ""
+	password := ""
+	if parsed.User != nil {
+		username = parsed.User.Username()
+		password, _ = parsed.User.Password()
+	}
 	if cfg.RedisPasswordFile != "" {
 		info, err := os.Stat(cfg.RedisPasswordFile)
 		if err != nil {
@@ -88,7 +93,7 @@ func newRedisSessionStore(cfg *Config) (*redisSessionStore, error) {
 	}
 	options := &redis.Options{
 		Addr:     parsed.Host,
-		Username: parsed.User.Username(),
+		Username: username,
 		Password: password,
 		DB:       db,
 	}
@@ -142,17 +147,6 @@ func (store *redisSessionStore) assign(ctx context.Context, input assignment) (a
 	rolled, err := redisInt64(result[2])
 	if err != nil {
 		return assignedSession{}, err
-	}
-	waitResult, err := store.client.Do(ctx, "WAITAOF", 1, 0, store.cfg.AOFTimeout.Milliseconds()).Slice()
-	if err != nil {
-		return assignedSession{}, fmt.Errorf("confirm Redis AOF durability: %w", err)
-	}
-	if len(waitResult) < 1 {
-		return assignedSession{}, errors.New("Redis WAITAOF returned no local durability acknowledgement")
-	}
-	localAOF, err := redisInt64(waitResult[0])
-	if err != nil || localAOF < 1 {
-		return assignedSession{}, errors.New("Redis did not confirm local AOF durability")
 	}
 	return assignedSession{SessionKey: sessionKey, TrafficClass: normalizedTrafficClass(traffic), Rolled: rolled == 1}, nil
 }

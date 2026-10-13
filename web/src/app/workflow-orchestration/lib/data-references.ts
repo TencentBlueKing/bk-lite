@@ -13,6 +13,9 @@ export interface DataReferenceOption {
   value: string;
   type?: string;
   source: string;
+  sourceLabel?: string;
+  displayName?: string;
+  jsonPath?: string;
   sourceKind?: DataReferenceSourceKind;
   sourceReference?: string;
   path?: string;
@@ -30,6 +33,7 @@ export interface DataReferenceLabels {
   triggerInput: string;
   systemContext: string;
   allOutputs: string;
+  systemFields?: Record<string, string>;
 }
 
 export interface DataReferenceEdge {
@@ -39,8 +43,20 @@ export interface DataReferenceEdge {
 
 const DEFAULT_REFERENCE_LABELS: DataReferenceLabels = {
   triggerInput: '触发输入',
-  systemContext: '系统上下文',
+  systemContext: '运行信息',
   allOutputs: '全部输出',
+  systemFields: {
+    execution_id: '执行号',
+    workflow_id: '流程',
+    workflow_version: '流程版本',
+    organization_id: '组织',
+    trigger_id: '触发器',
+    trigger_type: '触发类型',
+    actor_id: '发起人标识',
+    actor_name: '发起人',
+    started_at: '开始时间',
+    trace_id: '追踪号',
+  },
 };
 
 const FULL_REFERENCE_PATTERN = /^\$\{[^{}]+}$/;
@@ -96,9 +112,24 @@ function collectEdgeAncestors(currentReference: string, edges: DataReferenceEdge
   return new Set([...ancestors].filter((reference) => taskReferences.has(reference)));
 }
 
+function definitionOrder(tasks: ConductorTask[]): Map<string, number> {
+  const order = new Map<string, number>();
+  const visit = (items: ConductorTask[]) => {
+    items.forEach((task) => {
+      if (!order.has(task.taskReferenceName)) order.set(task.taskReferenceName, order.size);
+      (task.forkTasks || []).forEach(visit);
+      Object.values(task.decisionCases || {}).forEach(visit);
+      visit(task.defaultCase || []);
+    });
+  };
+  visit(tasks);
+  return order;
+}
+
 function schemaOptions(
   schema: JsonSchema | undefined,
   source: string,
+  sourceLabel: string,
   expressionPrefix: string,
   sourceKind: DataReferenceSourceKind,
   sourceReference: string,
@@ -107,11 +138,15 @@ function schemaOptions(
 ): DataReferenceOption[] {
   return Object.entries(schema?.properties || {}).flatMap(([field, fieldSchema]) => {
     const path = parentPath ? `${parentPath}.${field}` : field;
+    const displayName = fieldSchema.title || path;
     const option: DataReferenceOption = {
-      label: `${source} · ${path} (${normalizedType(fieldSchema) || 'unknown'})`,
+      label: `${sourceLabel} · ${displayName}`,
       value: `${expressionPrefix}${path}}`,
       type: normalizedType(fieldSchema),
       source,
+      sourceLabel,
+      displayName,
+      jsonPath: path,
       sourceKind,
       sourceReference,
       path,
@@ -120,7 +155,7 @@ function schemaOptions(
       widget: fieldSchema['x-widget'],
     };
     if (normalizedType(fieldSchema) !== 'object') return [option];
-    return [option, ...schemaOptions(fieldSchema, source, expressionPrefix, sourceKind, sourceReference, option.sensitive, path)];
+    return [option, ...schemaOptions(fieldSchema, source, sourceLabel, expressionPrefix, sourceKind, sourceReference, option.sensitive, path)];
   });
 }
 
@@ -137,16 +172,57 @@ const SYSTEM_CONTEXT: Array<{ key: string; type: string }> = [
   { key: 'trace_id', type: 'string' },
 ];
 
-function systemContextOptions(systemContextLabel: string): DataReferenceOption[] {
-  return SYSTEM_CONTEXT.map((field) => ({
-    label: `${systemContextLabel} · ${field.key} (${field.type})`,
-    value: `\${system.${field.key}}`,
-    type: field.type,
-    source: systemContextLabel,
-    sourceKind: 'system' as const,
-    sourceReference: 'system',
-    path: field.key,
-  }));
+function systemContextOptions(labels: DataReferenceLabels): DataReferenceOption[] {
+  return SYSTEM_CONTEXT.map((field) => {
+    const displayName = labels.systemFields?.[field.key] || field.key;
+    return {
+      label: `${labels.systemContext} · ${displayName}`,
+      value: `\${system.${field.key}}`,
+      type: field.type,
+      source: labels.systemContext,
+      sourceLabel: labels.systemContext,
+      displayName,
+      jsonPath: field.key,
+      sourceKind: 'system' as const,
+      sourceReference: 'system',
+      path: field.key,
+    };
+  });
+}
+
+export function resolveTriggerGroupLabel(
+  currentReference: string,
+  triggers: Array<{ id: string; name: string }>,
+  edges: DataReferenceEdge[] | undefined,
+  fallback: string,
+): string {
+  const named = triggers.flatMap((item) => {
+    const name = item.name.trim();
+    return name ? [{ id: item.id, name }] : [];
+  });
+  if (!named.length) return fallback;
+  const onlyName = new Set(named.map((item) => item.name));
+  if (!edges?.length) return onlyName.size === 1 ? named[0].name : fallback;
+
+  const triggerIds = new Set(named.map((item) => item.id));
+  const incoming = new Map<string, string[]>();
+  edges.forEach((edge) => incoming.set(edge.target, [...(incoming.get(edge.target) || []), edge.source]));
+  const found = new Set<string>();
+  const pending = [currentReference];
+  const seen = new Set<string>();
+  while (pending.length) {
+    const reference = pending.pop()!;
+    if (seen.has(reference)) continue;
+    seen.add(reference);
+    (incoming.get(reference) || []).forEach((source) => {
+      if (triggerIds.has(source)) found.add(source);
+      else pending.push(source);
+    });
+  }
+  const names = [...new Set([...found].map((id) => named.find((item) => item.id === id)?.name).filter((item): item is string => Boolean(item)))];
+  if (names.length === 1) return names[0];
+  if (!names.length && onlyName.size === 1) return named[0].name;
+  return fallback;
 }
 
 export function buildDataReferenceOptions(
@@ -156,6 +232,8 @@ export function buildDataReferenceOptions(
   workflowInputSchema: JsonSchema,
   labels: DataReferenceLabels = DEFAULT_REFERENCE_LABELS,
   edges?: DataReferenceEdge[],
+  nodeTitles?: Record<string, string>,
+  triggerSourceLabel?: string,
 ): DataReferenceOption[] {
   const taskByReference = new Map<string, ConductorTask>();
   collectTasks(definition.tasks, taskByReference);
@@ -168,24 +246,41 @@ export function buildDataReferenceOptions(
     reachable = new Set(reachability.get(currentReference) || []);
   }
   const atomByKey = new Map(atoms.map((atom) => [atom.key, atom]));
-  const options = schemaOptions(workflowInputSchema, labels.triggerInput, '${workflow.input.', 'trigger', 'workflow.input');
-  for (const reference of reachable) {
+  const order = definitionOrder(definition.tasks);
+  const sorted = [...reachable].sort((left, right) => (order.get(left) ?? 0) - (order.get(right) ?? 0));
+  const baseLabels = sorted.map((reference) => {
+    const task = taskByReference.get(reference);
+    const atomName = task ? atomByKey.get(task.name)?.name : undefined;
+    return { reference, base: nodeTitles?.[reference] || atomName || reference };
+  });
+  const labelCounts = new Map<string, number>();
+  baseLabels.forEach(({ base }) => labelCounts.set(base, (labelCounts.get(base) || 0) + 1));
+  const triggerBase = triggerSourceLabel?.trim() || labels.triggerInput;
+  const hasTriggerFields = Object.keys(workflowInputSchema.properties || {}).length > 0;
+  if (hasTriggerFields) labelCounts.set(triggerBase, (labelCounts.get(triggerBase) || 0) + 1);
+  const triggerLabel = hasTriggerFields && (labelCounts.get(triggerBase) || 0) > 1 ? `${triggerBase} · workflow.input` : triggerBase;
+  const options = schemaOptions(workflowInputSchema, triggerLabel, triggerLabel, '${workflow.input.', 'trigger', 'workflow.input');
+  baseLabels.forEach(({ reference, base }) => {
+    const sourceLabel = (labelCounts.get(base) || 0) > 1 ? `${base} · ${reference}` : base;
     const task = taskByReference.get(reference);
     const schema = task ? atomByKey.get(task.name)?.output_schema : undefined;
     if (schema) {
       options.push({
-        label: `${reference} · ${labels.allOutputs} (${normalizedType(schema) || 'object'})`,
+        label: `${sourceLabel} · ${labels.allOutputs}`,
         value: `\${${reference}.output}`,
         type: normalizedType(schema) || 'object',
         source: reference,
+        sourceLabel,
+        displayName: labels.allOutputs,
+        jsonPath: 'output',
         sourceKind: 'node_output',
         sourceReference: reference,
         path: '',
       });
     }
-    options.push(...schemaOptions(schema, reference, `\${${reference}.output.`, 'node_output', reference));
-  }
-  options.push(...systemContextOptions(labels.systemContext));
+    options.push(...schemaOptions(schema, reference, sourceLabel, `\${${reference}.output.`, 'node_output', reference));
+  });
+  options.push(...systemContextOptions(labels));
   return options;
 }
 
@@ -193,17 +288,22 @@ export function buildWorkflowOutputReferenceOptions(
   definition: ConductorDefinition,
   atoms: AtomCatalogItem[],
   labels: Pick<DataReferenceLabels, 'allOutputs'> = DEFAULT_REFERENCE_LABELS,
+  nodeTitles?: Record<string, string>,
 ): DataReferenceOption[] {
   const atomByKey = new Map(atoms.map((atom) => [atom.key, atom]));
   return definition.tasks.flatMap((task) => {
     const schema = atomByKey.get(task.name)?.output_schema;
     if (!schema) return [];
+    const sourceLabel = nodeTitles?.[task.taskReferenceName] || atomByKey.get(task.name)?.name || task.taskReferenceName;
     return [
       {
-        label: `${task.taskReferenceName} · ${labels.allOutputs} (${normalizedType(schema) || 'object'})`,
+        label: `${sourceLabel} · ${labels.allOutputs}`,
         value: `\${${task.taskReferenceName}.output}`,
         type: normalizedType(schema) || 'object',
         source: task.taskReferenceName,
+        sourceLabel,
+        displayName: labels.allOutputs,
+        jsonPath: 'output',
         sourceKind: 'node_output' as const,
         sourceReference: task.taskReferenceName,
         path: '',
@@ -211,6 +311,7 @@ export function buildWorkflowOutputReferenceOptions(
       ...schemaOptions(
         schema,
         task.taskReferenceName,
+        sourceLabel,
         `\${${task.taskReferenceName}.output.`,
         'node_output',
         task.taskReferenceName,

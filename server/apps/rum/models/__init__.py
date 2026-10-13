@@ -135,6 +135,70 @@ class RumSourcemapCredential(models.Model):
         db_table = "rum_sourcemap_credentials"
 
 
+class RumApplication(models.Model):
+    name = models.CharField(primary_key=True, max_length=128)
+    tenant_id = models.CharField(max_length=128)
+    org_id = models.CharField(max_length=128)
+    enabled = models.BooleanField(default=True)
+    revision = models.BigIntegerField(default=0)
+    requests_per_minute = models.BigIntegerField(default=0)
+    compressed_bytes_per_minute = models.BigIntegerField(default=0)
+    decompressed_bytes_per_minute = models.BigIntegerField(default=0)
+    events_per_minute = models.BigIntegerField(default=0)
+    created_by = models.CharField(max_length=128, blank=True, default="")
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "rum_applications"
+
+
+class RumApplicationOrigin(models.Model):
+    application = models.CharField(max_length=128, db_index=True)
+    origin = models.CharField(max_length=256)
+
+    class Meta:
+        db_table = "rum_application_origins"
+        constraints = [
+            models.UniqueConstraint(fields=["application", "origin"], name="rum_app_origin_uniq"),
+        ]
+
+
+class RumApplicationKey(models.Model):
+    application = models.CharField(max_length=128, db_index=True)
+    key_cipher = models.TextField()
+    key_digest = models.CharField(max_length=64, unique=True)
+    status = models.CharField(max_length=16, default="active")
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "rum_application_keys"
+
+
+class RumProjectionOutbox(models.Model):
+    id = models.CharField(primary_key=True, max_length=36, default=new_id, editable=False)
+    kind = models.CharField(max_length=32)
+    application = models.CharField(max_length=128, db_index=True)
+    revision = models.BigIntegerField(default=0)
+    payload_json = models.JSONField(default=dict)
+    status = models.CharField(max_length=16, default="pending", db_index=True)
+    attempts = models.IntegerField(default=0)
+    last_error_type = models.CharField(max_length=128, blank=True, default="")
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+    published_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "rum_projection_outbox"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["application", "revision"],
+                condition=models.Q(kind="application"),
+                name="rum_outbox_app_rev_uniq",
+            ),
+        ]
+
+
 class RumEraseJob(models.Model):
     """BK-Lite deviation from upstream: durable erase ledger instead of localStorage."""
 

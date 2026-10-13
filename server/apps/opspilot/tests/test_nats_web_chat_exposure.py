@@ -1888,10 +1888,10 @@ def test_views_module_exposes_submit_approval():
 
 
 def test_views_module_exposes_submit_choice():
-    """submit_choice 函数存在。"""
+    """阻塞式 submit_choice 已删除，回复改为普通消息。"""
     from apps.opspilot import views
 
-    assert callable(views.submit_choice)
+    assert not hasattr(views, "submit_choice")
 
 
 def test_views_module_exposes_openai_completions():
@@ -2011,19 +2011,11 @@ def test_submit_approval_rejects_missing_params():
     assert resp.status_code in (400, 401, 403)
 
 
-@pytest.mark.django_db(transaction=True)
 def test_submit_choice_rejects_missing_params():
-    """submit_choice：缺 execution_id 返回错误。"""
-    from django.test import RequestFactory
+    """submit_choice 端点已删除。"""
+    import apps.opspilot.views as views
 
-    from apps.opspilot.views import submit_choice
-
-    user = _make_minimal_user("choice_user")
-    factory = RequestFactory()
-    request = factory.post("/opspilot/bot_mgmt/submit_choice/", data={}, content_type="application/json")
-    request.user = user
-    resp = submit_choice(request)
-    assert resp.status_code in (400, 401, 403)
+    assert not hasattr(views, "submit_choice")
 
 
 @pytest.mark.django_db(transaction=True)
@@ -2257,24 +2249,11 @@ def test_submit_approval_with_execution_id(mocker, bot):
     assert resp is not None
 
 
-@pytest.mark.django_db(transaction=True)
-def test_submit_choice_with_execution_id(mocker, bot):
-    """submit_choice：传 execution_id + choice 时进入主路径。"""
-    from django.test import RequestFactory
+def test_submit_choice_with_execution_id():
+    """submit_choice 端点已删除，不再接收选择提交。"""
+    import apps.opspilot.views as views
 
-    from apps.opspilot.views import submit_choice
-
-    user = _make_minimal_user("sc_user")
-    factory = RequestFactory()
-    request = factory.post(
-        "/opspilot/bot_mgmt/submit_choice/",
-        data={"execution_id": "exec-1", "choice": "yes"},
-        content_type="application/json",
-    )
-    request.user = user
-
-    resp = submit_choice(request)
-    assert resp is not None
+    assert not hasattr(views, "submit_choice")
 
 
 @pytest.mark.django_db(transaction=True)
