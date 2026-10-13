@@ -17,6 +17,8 @@ export interface LayeredColumn {
   bar?: boolean;
   /** 缺失值用「—」，表示没有这项采集或对不上，而不是 0。 */
   emptyDash?: boolean;
+  /** 多行内容列关掉省略，避免 nowrap 把竖排路径挤成一行。 */
+  ellipsis?: boolean;
   render?: (row: EntityTableRow, index: number) => React.ReactNode;
 }
 
@@ -45,7 +47,7 @@ export default function LayeredEntityTable({
   const tableColumns: ColumnsType<EntityTableRow> = columns.map((column) => ({
     title: column.title,
     key: column.key,
-    ellipsis: true,
+    ellipsis: column.ellipsis !== false,
     sorter: column.labelKey
       ? (left, right) => (left.labels[column.labelKey!] || '').localeCompare(right.labels[column.labelKey!] || '')
       : column.render && !column.unit

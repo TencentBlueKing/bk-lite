@@ -32,7 +32,7 @@ export const HOST_CATEGORY_COPY = {
   diskWriteThroughputNamed: [textId('hostCategoryDiskWriteThroughputNamed'), '磁盘写吞吐 · {name}'],
   mountUsed: [textId('hostCategoryMountUsed'), '挂载用量%'],
   mountUsedNamed: [textId('hostCategoryMountUsedNamed'), '挂载用量% · {name}'],
-  mounts: [textId('hostCategoryMounts'), '挂载'],
+  mounts: [textId('hostCategoryMounts'), '挂载点'],
   deviceRead: [textId('hostCategoryDeviceRead'), '设备读'],
   deviceWrite: [textId('hostCategoryDeviceWrite'), '设备写'],
   deviceReadNamed: [textId('hostCategoryDeviceReadNamed'), '设备读 · {name}'],

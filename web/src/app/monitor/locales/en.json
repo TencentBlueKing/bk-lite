@@ -3916,7 +3916,7 @@
         "hostCategoryDiskWriteThroughputNamed": "Disk write throughput · {name}",
         "hostCategoryMountUsed": "Mount usage %",
         "hostCategoryMountUsedNamed": "Mount usage % · {name}",
-        "hostCategoryMounts": "Mounts",
+        "hostCategoryMounts": "Mount points",
         "hostCategoryDeviceRead": "Device read",
         "hostCategoryDeviceWrite": "Device write",
         "hostCategoryDeviceReadNamed": "Device read · {name}",

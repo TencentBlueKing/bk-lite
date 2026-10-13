@@ -3916,7 +3916,7 @@
         "hostCategoryDiskWriteThroughputNamed": "磁盘写吞吐 · {name}",
         "hostCategoryMountUsed": "挂载用量%",
         "hostCategoryMountUsedNamed": "挂载用量% · {name}",
-        "hostCategoryMounts": "挂载",
+        "hostCategoryMounts": "挂载点",
         "hostCategoryDeviceRead": "设备读",
         "hostCategoryDeviceWrite": "设备写",
         "hostCategoryDeviceReadNamed": "设备读 · {name}",

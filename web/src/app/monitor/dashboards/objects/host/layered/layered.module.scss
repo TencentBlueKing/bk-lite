@@ -151,6 +151,40 @@
   min-width: 0;
 }
 
+/* 磁盘页两个分区的大标题。字号字重高于表头，区头仍沿用分类页 section title 的指示条。 */
+.diskZone {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.diskZone + .diskZone {
+  margin-top: 8px;
+  padding-top: 20px;
+  border-top: 1px solid var(--color-border);
+}
+
+.sectionHead .diskZoneTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.35;
+  color: var(--color-text-1);
+}
+
+.sectionHead .diskZoneTitle::before {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--color-primary);
+  flex-shrink: 0;
+}
+
 .hint,
 .footnote {
   font-size: 12px;
@@ -268,6 +302,28 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
+}
+
+.mountPaths {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  white-space: normal;
+}
+
+.mountPath {
+  display: block;
+  max-width: 100%;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.mountCount {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--color-text-3);
 }
 
 .rowDot {
