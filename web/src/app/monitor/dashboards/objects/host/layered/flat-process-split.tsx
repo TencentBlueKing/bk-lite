@@ -7,7 +7,7 @@ import { pointsToChartData, type EntityTableRow } from '../entity-series';
 import LayeredEntityTable, { type LayeredColumn } from './entity-table';
 import StatusCountRow, { processStatusView } from './status-count';
 import ThinTimeSeries from './thin-time-series';
-import { formatPercent, formatUnit, latestPreferCount, metricSettled, percentTone } from './readings';
+import { formatPercent, formatUnit, latestPreferCount, metricSettled } from './readings';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
@@ -109,11 +109,11 @@ export default function FlatProcessSplit({
           <div className={styles.currentName}>{name || '—'}</div>
           <div className={styles.currentMetric}>
             CPU
-            <b style={{ color: percentTone(cpu) }}>{formatPercent(cpu)}</b>
+            <b>{formatPercent(cpu)}</b>
           </div>
           <div className={styles.currentMetric}>
             内存
-            <b style={{ color: percentTone(mem) }}>{formatPercent(mem)}</b>
+            <b>{formatPercent(mem)}</b>
           </div>
           {numberOrNull(selected?.values.process_memory_rss) != null ? (
             <div className={styles.currentMetric}>

@@ -85,13 +85,6 @@ export const formatBytesPair = (used: number | null | undefined, total: number |
   return '—';
 };
 
-export const percentTone = (value: number | null) => {
-  if (value == null) return undefined;
-  if (value >= 90) return 'var(--color-fail)';
-  if (value >= 80) return 'var(--color-warning)';
-  return 'var(--color-success)';
-};
-
 /** 可用内存占比：同一时间点 available / total。对不齐的点丢掉，不补假序列。 */
 export const deriveRatioPercent = (
   part: ChartData[] | undefined,

@@ -55,16 +55,21 @@ const inferBaseValue = (query = '', unit = 'none') => {
   if (query.includes('cpu_usage_user')) return 18;
   if (query.includes('cpu_usage_system')) return 12;
   if (query.includes('cpu_usage_iowait')) return 2;
-  if (query.includes('mem_used_percent')) return 62;
+  if (query.includes('mem_used_percent')) return 72;
   if (query.includes('mem_available')) return 5 * 1024 * 1024 * 1024;
   if (query.includes('mem_cached')) return 2 * 1024 * 1024 * 1024;
   if (query.includes('mem_buffered')) return 512 * 1024 * 1024;
-  if (query.includes('cpu_usage_idle')) return 42;
+  if (query.includes('count by (instance_id)') && query.includes('cpu_usage_idle')) return 8;
+  if (query.includes('100 -') && query.includes('cpu_usage_idle')) return 85;
+  if (query.includes('cpu_usage_idle')) return 15;
+  if (query.includes('host_mem_swap_used')) return 6.8 * 1024 * 1024 * 1024;
+  if (query.includes('host_mem_swap_total') || query.includes('mem_swap_total')) return 8 * 1024 * 1024 * 1024;
+  if (query.includes('mem_swap_free')) return 1.2 * 1024 * 1024 * 1024;
   if (query.includes('disk_used_percent')) return 48;
   if (query.includes('processes_running')) return 9;
   if (query.includes('processes_sleeping')) return 386;
-  if (query.includes('processes_blocked')) return 1;
-  if (query.includes('processes_zombies')) return 0;
+  if (query.includes('processes_blocked')) return 0;
+  if (query.includes('processes_zombies')) return 1;
   if (query.includes('system_load1')) return 1.42;
   if (query.includes('system_load5')) return 1.26;
   if (query.includes('system_load15')) return 1.18;
@@ -248,6 +253,22 @@ const get = async (url: string, config?: AxiosRequestConfig) => {
   }
 
   if (url.includes('/monitor/api/unit/list')) {
+    return [];
+  }
+
+  if (url.includes('/monitor/api/monitor_object/')) {
+    const name = String(config?.params?.name || '').toLowerCase();
+    if (name === 'process') {
+      return [{ id: 9001, name: 'Process', display_name: '进程' }];
+    }
+    return [];
+  }
+
+  if (url.includes('/monitor/api/monitor_plugin/')) {
+    const objectId = String(config?.params?.monitor_object_id || '');
+    if (objectId) {
+      return [{ id: 9002, name: 'host_process', display_name: '进程 (Telegraf)' }];
+    }
     return [];
   }
 

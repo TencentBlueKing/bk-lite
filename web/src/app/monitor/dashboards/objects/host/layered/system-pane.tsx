@@ -62,7 +62,6 @@ export default function SystemPane({
       ? [{ key: 'available', label: '可用', color: HOST_PALETTE.emerald, data: available }]
       : [])
   ];
-  const load = latestNumber(metrics.system_load1);
   const cores = latestNumber(metrics.cpu_n);
   const used = latestNumber(metrics.mem_used_percent);
   const availLatest = available.length ? numericValue(available[available.length - 1]) : null;
@@ -93,7 +92,6 @@ export default function SystemPane({
       unit: ''
     }
   ];
-  const loadHot = load != null && cores != null && cores > 0 && load > cores;
   const charts = [
     <ThinTimeSeries
       key="cpu"
@@ -154,8 +152,7 @@ export default function SystemPane({
           return {
             label: item.label,
             color: item.color,
-            reading: value == null ? undefined : formatPlain(value),
-            readingTone: item.key === 'system_load1' && loadHot ? 'var(--color-warning)' : undefined
+            reading: value == null ? undefined : formatPlain(value)
           };
         })}
       />

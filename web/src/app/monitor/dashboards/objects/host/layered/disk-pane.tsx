@@ -5,7 +5,7 @@ import { HOST_PALETTE } from '../config';
 import { pointsToChartData, type EntityTableRow } from '../entity-series';
 import LayeredEntityTable from './entity-table';
 import ThinTimeSeries from './thin-time-series';
-import { formatBytesPair, formatPercent, formatUnit, percentTone, ROW_ACCENTS } from './readings';
+import { formatBytesPair, formatPercent, formatUnit, ROW_ACCENTS } from './readings';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
@@ -52,7 +52,6 @@ export default function DiskPane({
           key={`used-${selected?.key || 'none'}`}
           title={path ? `使用率 · ${path}` : '使用率'}
           reading={formatPercent(usedValue)}
-          readingTone={percentTone(usedValue)}
           loading={loading}
           unit="percent"
           data={pointsToChartData([{ points: selected?.series.disk_used_percent || [] }])}

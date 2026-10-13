@@ -13,6 +13,7 @@ import NetworkPane from './layered/network-pane';
 import OverviewPane from './layered/overview-pane';
 import SystemPane from './layered/system-pane';
 import { latestNumber, latestPreferCount } from './layered/readings';
+import { applyHostTabDemoSeries } from './layered/host-tab-demo';
 import {
   loadPerCore,
   resolveHostTabLevel,
@@ -34,6 +35,16 @@ const TabLevelMark = ({ level }: { level: TabAlertLevel }) => {
 };
 
 const EMPTY_ENTITY: EntityLoadState = { status: 'idle', byMetric: {} };
+
+const maxRowValue = (rows: EntityTableRow[], key: string) => {
+  let best: number | null = null;
+  for (const row of rows) {
+    const value = row.values[key];
+    if (value == null || !Number.isFinite(value)) continue;
+    if (best == null || value > best) best = value;
+  }
+  return best;
+};
 
 const busiestFirst = (rows: EntityTableRow[]) => [...rows].sort((left, right) => {
   const score = (row: EntityTableRow) => (
@@ -75,7 +86,10 @@ export default function HostCategoryLayout({
   const [alertCount, setAlertCount] = useState<number | null>(null);
   const activeTab = onCategoryTabChange ? categoryTab : uncontrolledTab;
   const setActiveTab = onCategoryTabChange || setUncontrolledTab;
-  const metrics = dashboard.metricSeries;
+  const metrics = useMemo(
+    () => applyHostTabDemoSeries(dashboard.metricSeries),
+    [dashboard.metricSeries]
+  );
 
   const diskRows = useMemo(() => buildMountDiskRows(diskState.byMetric), [diskState.byMetric]);
   const netRows = useMemo(
@@ -107,8 +121,10 @@ export default function HostCategoryLayout({
       latestNumber(metrics.mem_swap_free)
     ),
     processes_blocked: latestPreferCount(metrics.processes_blocked),
-    processes_zombies: latestPreferCount(metrics.processes_zombies)
-  }), [metrics]);
+    processes_zombies: latestPreferCount(metrics.processes_zombies),
+    process_cpu_usage: maxRowValue(processRows, 'process_cpu_usage'),
+    process_mem_usage: maxRowValue(processRows, 'process_mem_usage')
+  }), [metrics, processRows]);
 
   useEffect(() => {
     if (activeTab === 'process' && !processReady) setActiveTab('overview');

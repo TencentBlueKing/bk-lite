@@ -44,12 +44,7 @@ const semanticItem = (
   keepEmpty: boolean
 ): StatusCountItem | null => {
   if (value == null && !keepEmpty) return null;
-  const tone: ProcessStatusTone = value == null || value <= 0
-    ? 'calm'
-    : key === 'zombies'
-      ? 'danger'
-      : 'warning';
-  return { key, label, value, tone };
+  return { key, label, value, tone: 'neutral' };
 };
 
 const neutralItem = (

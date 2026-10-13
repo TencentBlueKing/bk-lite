@@ -27,12 +27,6 @@ const formatCell = (value: number | null | undefined, unit?: MetricUnit, emptyDa
   return `${formatted.value}${formatted.unit || ''}`;
 };
 
-const toneForPercent = (value: number) => {
-  if (value >= 90) return 'var(--color-fail)';
-  if (value >= 80) return 'var(--color-warning)';
-  return 'var(--color-success)';
-};
-
 export default function LayeredEntityTable({
   rows,
   columns,
@@ -61,16 +55,15 @@ export default function LayeredEntityTable({
       if (column.render) return column.render(row, index);
       if (column.labelKey) return row.labels[column.labelKey] || (column.emptyDash ? '—' : '--');
       const value = row.values[column.key];
-      const color = column.unit === 'percent' && value != null ? toneForPercent(value) : undefined;
       return (
-        <span className={column.bar ? styles.quotaCell : undefined} style={color ? { color } : undefined}>
+        <span className={column.bar ? styles.quotaCell : undefined}>
           {column.bar && value != null && Number.isFinite(value) ? (
             <span className={styles.miniBar} aria-hidden="true">
               <span
                 className={styles.miniBarFill}
                 style={{
                   width: `${Math.min(100, Math.max(0, value))}%`,
-                  background: color || 'var(--color-text-3)'
+                  background: 'var(--color-text-3)'
                 }}
               />
             </span>

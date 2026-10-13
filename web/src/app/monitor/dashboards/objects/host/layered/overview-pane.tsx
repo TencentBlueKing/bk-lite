@@ -14,8 +14,7 @@ import {
   formatPlain,
   formatUnit,
   latestNumber,
-  metricHasPoints,
-  percentTone
+  metricHasPoints
 } from './readings';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
@@ -82,7 +81,6 @@ export default function OverviewPane({
         key: 'cpu',
         label: 'CPU',
         value: formatPercent(cpu),
-        tone: percentTone(cpu),
         color: HOST_PALETTE.emerald,
         trend: metrics.cpu_usage_total?.viewData || []
       },
@@ -90,19 +88,16 @@ export default function OverviewPane({
         key: 'mem',
         label: '内存',
         value: formatPercent(mem),
-        tone: percentTone(mem),
         color: HOST_PALETTE.blue,
         trend: metrics.mem_used_percent?.viewData || []
       }
     ];
     if (showLoad) {
-      const hot = load != null && cores != null && cores > 0 && load > cores;
       items.push({
         key: 'load',
         label: 'Load1',
         value: formatPlain(load),
         subtitle: cores != null && cores > 0 ? `· ${Math.round(cores)} 核` : undefined,
-        tone: hot ? 'var(--color-warning)' : load == null ? undefined : 'var(--color-success)',
         color: HOST_PALETTE.orange,
         trend: metrics.system_load1?.viewData || []
       });
@@ -112,7 +107,6 @@ export default function OverviewPane({
       label: '磁盘峰值',
       value: diskLoading && diskValue == null ? '--' : formatPercent(diskValue),
       detail: mountName ? `挂载 ${mountName}` : '—',
-      tone: percentTone(diskValue),
       color: HOST_PALETTE.orange,
       trend: worst ? pointsToChartData([{ points: worst.series.disk_used_percent || [] }]) : []
     });
@@ -125,7 +119,6 @@ export default function OverviewPane({
       key: 'uptime',
       label: '运行时长',
       value: uptime == null ? '--' : formatDuration(uptime),
-      tone: uptime == null ? undefined : 'var(--color-success)',
       color: HOST_PALETTE.indigo,
       trend: metrics.system_uptime?.viewData || [],
       flat: true
@@ -185,7 +178,7 @@ export default function OverviewPane({
             <div className={styles.shortcutMain}>
               {mountName || '—'}
               {' · '}
-              <span style={{ color: percentTone(diskCurrent) }}>{formatPercent(diskCurrent)}</span>
+              <span>{formatPercent(diskCurrent)}</span>
             </div>
             <div className={styles.shortcutSub}>
               {formatBytesPair(
@@ -242,7 +235,6 @@ export default function OverviewPane({
         <ThinTimeSeries
           title="CPU使用率"
           reading={formatPercent(cpu)}
-          readingTone={percentTone(cpu)}
           loading={loading}
           unit="percent"
           data={metrics.cpu_usage_total?.viewData || []}
@@ -251,7 +243,6 @@ export default function OverviewPane({
         <ThinTimeSeries
           title="内存使用率"
           reading={formatPercent(mem)}
-          readingTone={percentTone(mem)}
           loading={loading}
           unit="percent"
           data={metrics.mem_used_percent?.viewData || []}
@@ -260,7 +251,6 @@ export default function OverviewPane({
         <ThinTimeSeries
           title={mountName ? `磁盘使用率 · ${mountName}` : '磁盘使用率'}
           reading={formatPercent(diskCurrent)}
-          readingTone={percentTone(diskCurrent)}
           loading={diskLoading}
           unit="percent"
           emptyText="暂无挂载数据"
