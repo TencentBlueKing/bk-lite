@@ -3908,7 +3908,7 @@
         "hostCategoryFilesystemType": "文件系统类型",
         "hostCategoryDiskPeak": "磁盘峰值",
         "hostCategoryDiskUtilizationPeak": "磁盘利用率（最高）",
-        "hostCategoryClickRowToSwitch": "点击下表行切换",
+        "hostCategoryChartFollowsSelection": "选中后上图跟随",
         "hostCategoryCpuTimeBreakdown": "CPU 时间构成",
         "hostCategoryDiskReadThroughput": "磁盘读吞吐",
         "hostCategoryDiskWriteThroughput": "磁盘写吞吐",

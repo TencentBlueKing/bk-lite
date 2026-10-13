@@ -74,9 +74,7 @@ export default function DiskPane({
       {errorText ? <div className={styles.note}>{errorText}</div> : null}
       <div className={styles.sectionHead}>
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>趋势</div>
-        <div className={styles.hint}>
-          {ioDevice || !selected ? '点击下表行切换' : '该挂载无关联磁盘设备'}
-        </div>
+        {selected && !ioDevice ? <div className={styles.hint}>该挂载无关联磁盘设备</div> : null}
       </div>
       <div className={styles.chartGrid3}>
         <ThinTimeSeries
@@ -112,7 +110,6 @@ export default function DiskPane({
 
       <div className={styles.sectionHead}>
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>{hostCategoryText(t, 'detailedMetrics')}</div>
-        <div className={styles.hint}>{hostCategoryText(t, 'clickRowToSwitch')}</div>
       </div>
       <div className={showLatency ? styles.chartGrid2 : 'grid grid-cols-1 gap-3'}>
         <ThinTimeSeries
@@ -145,7 +142,7 @@ export default function DiskPane({
 
       <div className={styles.sectionHead}>
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>挂载点</div>
-        <div className={styles.hint}>按使用率排序；选中后上方显示对应趋势</div>
+        <div className={styles.hint}>{hostCategoryText(t, 'chartFollowsSelection')}</div>
       </div>
       <LayeredEntityTable
         rows={rows}

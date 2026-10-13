@@ -10,6 +10,7 @@ import { pointsToChartData, type EntityTableRow } from '../entity-series';
 import LayeredEntityTable, { type LayeredColumn } from './entity-table';
 import StatusCountRow, { processStatusView } from './status-count';
 import ThinTimeSeries from './thin-time-series';
+import { hostCategoryText } from './category-copy';
 import { formatPercent, formatUnit, latestPreferCount, metricSettled } from './readings';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
@@ -97,7 +98,6 @@ export default function FlatProcessSplit({
       <StatusCountRow items={statusItems} />
       <div className={styles.sectionHead}>
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>趋势</div>
-        <div className={styles.hint}>点击下表行切换</div>
       </div>
       <div className={styles.processTop}>
         <ThinTimeSeries
@@ -146,6 +146,7 @@ export default function FlatProcessSplit({
             </Tooltip>
           </span>
         </div>
+        <div className={styles.hint}>{hostCategoryText(t, 'chartFollowsSelection')}</div>
       </div>
       <LayeredEntityTable
         rows={sorted}

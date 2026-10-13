@@ -68,7 +68,6 @@ export default function NetworkPane({
       {errorText ? <div className={styles.note}>{errorText}</div> : null}
       <div className={styles.sectionHead}>
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>趋势</div>
-        <div className={styles.hint}>点击下表行切换</div>
       </div>
       <div className={showErrors ? styles.chartGrid3 : styles.chartGrid2}>
         <ThinTimeSeries
@@ -119,7 +118,6 @@ export default function NetworkPane({
         <>
           <div className={styles.sectionHead}>
             <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>{hostCategoryText(t, 'detailedMetrics')}</div>
-            <div className={styles.hint}>{hostCategoryText(t, 'clickRowToSwitch')}</div>
           </div>
           <div className="grid grid-cols-1 gap-3">
             <ThinTimeSeries
@@ -144,6 +142,7 @@ export default function NetworkPane({
 
       <div className={styles.sectionHead}>
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>网卡</div>
+        <div className={styles.hint}>{hostCategoryText(t, 'chartFollowsSelection')}</div>
       </div>
       <LayeredEntityTable
         rows={viewRows}
