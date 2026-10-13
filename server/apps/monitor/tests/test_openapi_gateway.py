@@ -7,7 +7,16 @@ import pytest
 from rest_framework.test import APIClient
 
 from apps.base.models import User, UserAPISecret
-from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorPolicy, PolicyOrganization
+from apps.monitor.models import (
+    Metric,
+    MetricGroup,
+    MonitorInstance,
+    MonitorInstanceOrganization,
+    MonitorObject,
+    MonitorPolicy,
+    PolicyOrganization,
+)
+from apps.monitor.services.metrics import Metrics
 from apps.monitor.openapi_serializers import MonitorObjectQuerySerializer
 from apps.system_mgmt.models import Group, Menu, Role
 from apps.system_mgmt.models import User as SystemUser
@@ -17,6 +26,9 @@ pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 OBJECTS_URL = "/openapi/v1/monitor/objects"
 INSTANCES_URL = "/openapi/v1/monitor/instances"
 POLICIES_URL = "/openapi/v1/monitor/policies"
+METRICS_URL = "/openapi/v1/monitor/metrics"
+INSTANT_URL = "/openapi/v1/monitor/metrics/instant"
+RANGE_URL = "/openapi/v1/monitor/metrics/range"
 
 
 def _auth(token):
@@ -46,7 +58,7 @@ def _make_tenant(*, team_name, username, domain, grant=True):
     user = User.objects.create(username=f"{username}-{uuid.uuid4().hex[:8]}", domain=domain)
     system_user = SystemUser.objects.create(username=user.username, domain=user.domain, group_list=[team.id])
     if grant:
-        _grant(system_user, "monitor", ["object-View", "asset-View", "strategy_list-View"])
+        _grant(system_user, "monitor", ["object-View", "asset-View", "strategy_list-View", "view_list-View"])
     token = UserAPISecret.generate_api_secret()
     UserAPISecret.objects.create(
         username=user.username,
@@ -185,6 +197,136 @@ def test_policies_forged_team_is_rejected(tenants):
 
     assert response.status_code == 400
     assert response.json()["code"] == "SCHEMA_INVALID"
+
+
+def _metric(obj):
+    group = MetricGroup.objects.create(monitor_object=obj, name=f"group-{uuid.uuid4().hex[:6]}")
+    return Metric.objects.create(
+        monitor_object=obj,
+        metric_group=group,
+        name="cpu_usage",
+        display_name="CPU",
+        unit="%",
+        query="cpu_usage{__$labels__}",
+        instance_id_keys=["instance_id"],
+        dimensions=[{"name": "instance_id"}],
+    )
+
+
+def test_api_tenant_can_list_metrics_without_query(tenants):
+    obj = _object(f"obj-{uuid.uuid4().hex[:6]}")
+    metric = _metric(obj)
+    hidden = _object(f"hidden-{uuid.uuid4().hex[:6]}", visible=False)
+    _metric(hidden)
+
+    response = APIClient().get(METRICS_URL, {"monitor_object_id": obj.id}, **_auth(tenants.a.token))
+
+    assert response.status_code == 200, response.json()
+    items = response.json()["data"]["items"]
+    assert [item["id"] for item in items] == [metric.id]
+    assert "query" not in items[0]
+    assert items[0]["dimensions"] == ["instance_id"]
+
+
+def test_hidden_object_metrics_are_rejected(tenants):
+    hidden = _object(f"hidden-{uuid.uuid4().hex[:6]}", visible=False)
+
+    response = APIClient().get(METRICS_URL, {"monitor_object_id": hidden.id}, **_auth(tenants.a.token))
+
+    assert response.status_code == 400
+    assert response.json()["message"] == "监控对象不存在"
+
+
+def test_api_tenant_can_query_own_metric_instant(tenants, monkeypatch):
+    obj = _object(f"obj-{uuid.uuid4().hex[:6]}")
+    metric = _metric(obj)
+    instance = MonitorInstance.objects.create(id=f"inst-{uuid.uuid4().hex[:6]}", name="own", monitor_object=obj)
+    MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=tenants.a.team.id)
+    monkeypatch.setattr(
+        Metrics,
+        "get_metrics",
+        lambda query, time=None: {
+            "status": "success",
+            "data": {"result": [{"metric": {"instance_id": "own", "__name__": "cpu_usage"}, "value": [1, "12"]}]},
+        },
+    )
+
+    response = APIClient().get(
+        INSTANT_URL,
+        {"instance_id": instance.id, "metric_id": metric.id},
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 200, response.json()
+    data = response.json()["data"]
+    assert data["series"] == [{"labels": {"instance_id": "own"}, "point": {"timestamp": 1, "value": "12"}}]
+    assert "query" not in data
+
+
+def test_api_tenant_cannot_query_other_org_metric(tenants, monkeypatch):
+    obj = _object(f"obj-{uuid.uuid4().hex[:6]}")
+    metric = _metric(obj)
+    instance = MonitorInstance.objects.create(id=f"inst-{uuid.uuid4().hex[:6]}", name="other", monitor_object=obj)
+    MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=tenants.a.team.id)
+    monkeypatch.setattr(Metrics, "get_metrics", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("queried")))
+
+    response = APIClient().get(
+        INSTANT_URL,
+        {"instance_id": instance.id, "metric_id": metric.id},
+        **_auth(tenants.b.token),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["message"] == "监控实例不存在"
+
+
+def test_metric_query_rejects_raw_query(tenants):
+    response = APIClient().get(INSTANT_URL, {"instance_id": "x", "metric_id": 1, "query": "up"}, **_auth(tenants.a.token))
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "SCHEMA_INVALID"
+
+
+def test_api_tenant_cannot_query_other_org_metric_range(tenants, monkeypatch):
+    obj = _object(f"obj-{uuid.uuid4().hex[:6]}")
+    metric = _metric(obj)
+    instance = MonitorInstance.objects.create(id=f"inst-{uuid.uuid4().hex[:6]}", name="other", monitor_object=obj)
+    MonitorInstanceOrganization.objects.create(monitor_instance=instance, organization=tenants.a.team.id)
+    monkeypatch.setattr(
+        Metrics,
+        "get_metrics_range",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("queried")),
+    )
+
+    response = APIClient().get(
+        RANGE_URL,
+        {
+            "instance_id": instance.id,
+            "metric_id": metric.id,
+            "start": "2026-01-01T00:00:00Z",
+            "end": "2026-01-01T01:00:00Z",
+        },
+        **_auth(tenants.b.token),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["message"] == "监控实例不存在"
+
+
+def test_metric_range_rejects_window_over_six_hours(tenants):
+    response = APIClient().get(
+        RANGE_URL,
+        {
+            "instance_id": "x",
+            "metric_id": 1,
+            "start": "2026-01-01T00:00:00Z",
+            "end": "2026-01-01T07:00:00Z",
+        },
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["message"] == "查询时间范围不能超过 6 小时"
 
 
 def test_missing_permission_is_denied():

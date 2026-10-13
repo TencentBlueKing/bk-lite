@@ -2,7 +2,7 @@
 
 from rest_framework import serializers
 
-from apps.core.openapi.serializers import PaginatedRequestSerializer
+from apps.core.openapi.serializers import OpenAPIRequestSerializer, PaginatedRequestSerializer
 
 
 class MonitorPageQuerySerializer(PaginatedRequestSerializer):
@@ -25,3 +25,24 @@ class MonitorPolicyQuerySerializer(MonitorPageQuerySerializer):
     """监控策略列表。组织身份只允许由网关注入。"""
 
     monitor_object_id = serializers.IntegerField(required=False, min_value=1)
+
+
+class MonitorMetricQuerySerializer(MonitorPageQuerySerializer):
+    """监控指标目录。组织身份只允许由网关注入。"""
+
+    monitor_object_id = serializers.IntegerField(min_value=1)
+
+
+class MonitorMetricValueQuerySerializer(OpenAPIRequestSerializer):
+    """按指标定义查询实例当前值。不接受原始查询语句。"""
+
+    instance_id = serializers.CharField(max_length=200)
+    metric_id = serializers.IntegerField(min_value=1)
+
+
+class MonitorMetricRangeQuerySerializer(MonitorMetricValueQuerySerializer):
+    """按指标定义查询实例曲线。时间窗最长 6 小时。"""
+
+    start = serializers.DateTimeField()
+    end = serializers.DateTimeField()
+    step = serializers.CharField(required=False, default="5m", max_length=16)

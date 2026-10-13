@@ -202,6 +202,19 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.monitor.tests.test_openapi_gateway::test_api_tenant_cannot_list_other_org_policies",
         "apps.monitor.tests.test_openapi_gateway::test_policies_forged_team_is_rejected",
     ],
+    "monitor/metrics": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_list_metrics_without_query",
+        "apps.monitor.tests.test_openapi_gateway::test_hidden_object_metrics_are_rejected",
+    ],
+    "monitor/metrics/instant": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_query_own_metric_instant",
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_cannot_query_other_org_metric",
+        "apps.monitor.tests.test_openapi_gateway::test_metric_query_rejects_raw_query",
+    ],
+    "monitor/metrics/range": [
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_cannot_query_other_org_metric_range",
+        "apps.monitor.tests.test_openapi_gateway::test_metric_range_rejects_window_over_six_hours",
+    ],
     "node/cloud-regions": [
         "apps.node_mgmt.tests.test_openapi_gateway::test_both_tenants_see_the_same_cloud_regions",
         "apps.node_mgmt.tests.test_openapi_gateway::test_cloud_regions_omit_proxy_address",
