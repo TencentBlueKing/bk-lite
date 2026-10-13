@@ -230,6 +230,16 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_cannot_read_other_org_node_detail",
         "apps.node_mgmt.tests.test_openapi_gateway::test_node_detail_forged_team_is_rejected",
     ],
+    "log/groups": [
+        "apps.log.tests.test_openapi_gateway::test_api_tenant_can_list_own_groups",
+        "apps.log.tests.test_openapi_gateway::test_groups_forged_team_is_rejected",
+    ],
+    "log/search": [
+        "apps.log.tests.test_openapi_gateway::test_api_tenant_can_search_own_group",
+        "apps.log.tests.test_openapi_gateway::test_api_tenant_cannot_search_other_org_group",
+        "apps.log.tests.test_openapi_gateway::test_search_rejects_window_over_one_hour",
+        "apps.log.tests.test_openapi_gateway::test_search_truncates_long_message",
+    ],
     "apm/applications": [
         "apps.apm.tests.test_openapi_gateway::test_api_tenant_can_list_own_applications",
         "apps.apm.tests.test_openapi_gateway::test_api_tenant_cannot_list_other_org_applications",
