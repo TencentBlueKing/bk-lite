@@ -1423,6 +1423,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                     uiSchema={selectedAtom?.ui_schema}
                     value={selectedTask.inputParameters || {}}
                     references={references}
+                    atomKey={selectedTask.name}
                     nodeTitle={selectedNode?.data.title || selectedAtom?.name || selectedTask.name}
                     readOnly={readOnly}
                     onChange={changeTaskInputs}

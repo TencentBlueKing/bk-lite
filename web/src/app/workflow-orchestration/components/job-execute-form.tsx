@@ -160,7 +160,10 @@ export function JobExecuteForm({
     description: t('workflowOrchestration.editor.jobTargetsHint', '可从左侧拖入兼容字段或手动填写，也可从节点管理或作业平台选择主机；两个来源不能混选'),
     items: { type: 'string' },
   };
-  const targetTooltip = String(targetSchema.description || '') || undefined;
+  const targetTooltip = t(
+    'workflowOrchestration.editor.jobTargetsHint',
+    String(targetSchema.description || '可从左侧拖入兼容字段或手动填写，也可从节点管理或作业平台选择主机；两个来源不能混选'),
+  );
 
   const targetsEditor = <SchemaNodeField
     schema={targetSchema}
@@ -177,7 +180,7 @@ export function JobExecuteForm({
     </Form.Item> : null}
     <Form.Item
       className="mb-0"
-      label={targetSchema.title || t('workflowOrchestration.editor.targetHosts', '目标主机')}
+      label={t('workflowOrchestration.editor.targetHosts', String(targetSchema.title || '目标主机'))}
       required
       tooltip={targetTooltip}
     >
