@@ -268,7 +268,7 @@ export default function OverviewPane({
           legends={[{ label: mountName || '使用率', color: HOST_PALETTE.orange }]}
         />
         <ThinTimeSeries
-          title="网络吞吐 · 入/出"
+          title="网络吞吐"
           loading={loading}
           unit="byteps"
           data={mergeChartSeries([
