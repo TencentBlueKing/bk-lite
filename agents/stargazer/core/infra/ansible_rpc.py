@@ -10,11 +10,9 @@ import json
 import uuid
 from typing import Any, Dict, Optional
 
-from nats.errors import NoRespondersError
-
 from core.infra.nats_utils import nats_request
-
 from core.logger import logger
+from nats.errors import NoRespondersError
 
 
 async def ansible_adhoc(
@@ -27,6 +25,7 @@ async def ansible_adhoc(
     extra_vars: Optional[Dict[str, Any]] = None,
     callback: Optional[Dict[str, Any]] = None,
     task_id: Optional[str] = None,
+    stream_remote_type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     通过 NATS RPC 调用 Ansible Executor 执行 adhoc 命令
@@ -67,16 +66,15 @@ async def ansible_adhoc(
         "task_id": task_id,
         "execute_timeout": execute_timeout,
     }
+    if stream_remote_type:
+        request_data["stream_remote_type"] = stream_remote_type
 
     subject = f"ansible.adhoc.{ansible_node_id}"
     payload = json.dumps({"args": [request_data], "kwargs": {}}).encode()
 
     nats_timeout = execute_timeout + 30
 
-    logger.info(
-        f"Ansible adhoc: node={ansible_node_id}, module={module}, "
-        f"hosts={len(host_credentials)}, timeout={execute_timeout}s"
-    )
+    logger.info(f"Ansible adhoc: node={ansible_node_id}, module={module}, " f"hosts={len(host_credentials)}, timeout={execute_timeout}s")
 
     try:
         result = await nats_request(subject, payload=payload, timeout=nats_timeout)
@@ -94,16 +92,10 @@ async def ansible_adhoc(
             f"and that the executor is online"
         )
     except TimeoutError:
-        logger.error(
-            f"Ansible adhoc NATS timeout: node={ansible_node_id}, task_id={task_id}, "
-            f"timeout={nats_timeout}s"
-        )
+        logger.error(f"Ansible adhoc NATS timeout: node={ansible_node_id}, task_id={task_id}, " f"timeout={nats_timeout}s")
         raise
     except Exception as e:
-        logger.error(
-            f"Ansible adhoc NATS error: node={ansible_node_id}, task_id={task_id}, "
-            f"error={type(e).__name__}: {e}"
-        )
+        logger.error(f"Ansible adhoc NATS error: node={ansible_node_id}, task_id={task_id}, " f"error={type(e).__name__}: {e}")
         raise
 
     logger.info(f"Ansible adhoc completed: task_id={task_id}, success={result.get('success')}")

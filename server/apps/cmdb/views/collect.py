@@ -98,6 +98,16 @@ class CollectModelViewSet(AuthViewSet):
             raise ValueError(f"{field_name} 必须大于等于 1")
         return parsed
 
+    @staticmethod
+    def _request_team_ids(request):
+        current_team = get_current_team_from_request(request, required=False)
+        if not current_team:
+            return []
+        if request.COOKIES.get("include_children", "0") == "1":
+            groups = GroupUtils.get_group_with_descendants(current_team)
+            return groups or [current_team]
+        return [current_team]
+
     def get_queryset(self):
         queryset = super().get_queryset()
         request = getattr(self, "request", None)
@@ -108,6 +118,8 @@ class CollectModelViewSet(AuthViewSet):
             queryset = self.get_queryset_by_permission(request, queryset)
         if action in {"list", "task_status", "collect_task_names"}:
             queryset = self.apply_visibility_filter(queryset)
+        if action == "list" and request is not None and not str(request.query_params.get("custom_plugin_pk") or "").strip():
+            queryset = queryset.exclude(task_type=CollectPluginTypes.CUSTOM_SCRIPT)
         return queryset
 
     def _get_authorized_task(self, request, task_id):
@@ -238,7 +250,10 @@ class CollectModelViewSet(AuthViewSet):
     @HasPermission("auto_collection-View")
     @action(methods=["get"], detail=False, url_path="collect_model_tree")
     def tree(self, request, *args, **kwargs):
-        data = apply_collect_tree_translations(get_collect_obj_tree(with_credential_types=True), request.user.locale)
+        data = apply_collect_tree_translations(
+            get_collect_obj_tree(with_credential_types=True, team_ids=self._request_team_ids(request)),
+            request.user.locale,
+        )
         return WebUtils.response_success(data)
 
     @HasPermission("auto_collection-View")
@@ -256,7 +271,10 @@ class CollectModelViewSet(AuthViewSet):
             "driver_type",
             "params__collection_protocol",
         )
-        collect_obj_tree = apply_collect_tree_translations(get_collect_obj_tree(), request.user.locale)
+        collect_obj_tree = apply_collect_tree_translations(
+            get_collect_obj_tree(team_ids=self._request_team_ids(request)),
+            request.user.locale,
+        )
         plugin_meta_map = {
             str(child.get("id")): {
                 "category": str(item.get("id")),
@@ -549,8 +567,10 @@ class CollectModelViewSet(AuthViewSet):
         status_rows = filter_queryset.values(
             "model_id",
             "driver_type",
+            "task_type",
             "exec_status",
             "params__collection_protocol",
+            "params__custom_plugin_pk",
         ).annotate(total=Count("id"))
         data = {}
 
@@ -567,6 +587,11 @@ class CollectModelViewSet(AuthViewSet):
                 data[status_key]["partial_success"] += total
 
         for model_data in status_rows:
+            if model_data.get("task_type") == CollectPluginTypes.CUSTOM_SCRIPT:
+                plugin_pk = model_data.get("params__custom_plugin_pk")
+                if plugin_pk:
+                    increment(f"custom_script__{plugin_pk}", model_data["exec_status"], model_data["total"])
+                continue
             driver_type = model_data.get("driver_type") or ""
             status_key = f"{model_data['model_id']}__{driver_type}" if driver_type else model_data["model_id"]
             increment(status_key, model_data["exec_status"], model_data["total"])

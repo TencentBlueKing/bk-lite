@@ -86,6 +86,33 @@ _RPC_TRANSPORT_KEYS = {"_timeout", "_raw"}
 
 
 @nats_client.register
+def cmdb_get_custom_script(query_data):
+    """按采集任务返回当前自定义脚本。不记录脚本正文。"""
+    from apps.cmdb.constants.constants import CollectPluginTypes
+    from apps.cmdb.models.collect_model import CollectModels
+    from apps.cmdb.models.custom_collect_plugin import CustomCollectPlugin
+    from apps.core.exceptions.base_app_exception import BaseAppException
+
+    if not isinstance(query_data, dict):
+        raise BaseAppException("invalid")
+    task_id = query_data.get("collect_task_id")
+    task = CollectModels.objects.filter(id=task_id, task_type=CollectPluginTypes.CUSTOM_SCRIPT).first()
+    if task is None:
+        raise BaseAppException("not_found")
+    plugin = CustomCollectPlugin.objects.filter(id=(task.params or {}).get("custom_plugin_pk")).first()
+    if plugin is None:
+        raise BaseAppException("plugin_missing")
+    return {
+        "plugin_id": plugin.plugin_id,
+        "content": plugin.content,
+        "shell": plugin.shell,
+        "os_type": plugin.os_type,
+        "version": plugin.version,
+        "checksum": plugin.content_checksum,
+    }
+
+
+@nats_client.register
 def cmdb_count_credential_refs(credential_ids):
     """供系统管理删除/变更凭据前查询 CMDB 任务引用数。"""
     if not isinstance(credential_ids, list) or len(credential_ids) > 100 or any(not isinstance(value, str) or not value for value in credential_ids):

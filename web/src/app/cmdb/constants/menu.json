@@ -154,6 +154,13 @@
               "url": "/cmdb/assetManage/management/detail/autoAssociationRules",
               "name": "model_auto_association_rules",
               "withParentPermission": true
+            },
+            {
+              "title": "自定义采集",
+              "icon": "shujumoxingguanli",
+              "url": "/cmdb/assetManage/management/detail/customCollect",
+              "name": "model_custom_collect",
+              "withParentPermission": true
             }
           ]
         },
@@ -173,6 +180,12 @@
               "title": "采集",
               "icon": "shujumoxingguanli",
               "url": "/cmdb/assetManage/autoDiscovery/collection",
+              "name": "auto_collection"
+            },
+            {
+              "title": "自定义插件",
+              "icon": "shujumoxingguanli",
+              "url": "/cmdb/assetManage/autoDiscovery/customPlugin",
               "name": "auto_collection"
             },
             {
@@ -365,6 +378,13 @@
               "url": "/cmdb/assetManage/management/detail/autoAssociationRules",
               "name": "model_auto_association_rules",
               "withParentPermission": true
+            },
+            {
+              "title": "Custom Collection",
+              "icon": "shujumoxingguanli",
+              "url": "/cmdb/assetManage/management/detail/customCollect",
+              "name": "model_custom_collect",
+              "withParentPermission": true
             }
           ]
         },
@@ -384,6 +404,12 @@
               "title": "Collection",
               "icon": "shujumoxingguanli",
               "url": "/cmdb/assetManage/autoDiscovery/collection",
+              "name": "auto_collection"
+            },
+            {
+              "title": "Custom Plugins",
+              "icon": "shujumoxingguanli",
+              "url": "/cmdb/assetManage/autoDiscovery/customPlugin",
               "name": "auto_collection"
             },
             {

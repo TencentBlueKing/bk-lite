@@ -8,6 +8,7 @@ import posixpath
 from typing import Any, Dict, Optional
 
 from core.collection.contracts import AccessProbeResult, StructuredMetricsPayload
+from core.collection.request_builder import collection_plugin_name
 from core.logger import logger
 from core.plugin.error_logging import log_plugin_exception, should_log_plugin_exception
 from core.plugin.executor import PluginExecutor
@@ -62,6 +63,7 @@ class CollectionService:
         self.params = dict(params or {})
         self.plugin_name = self.params.pop("plugin_name", None)
         self.model_id = self.params["model_id"]
+        self._plugin_model = collection_plugin_name({"plugin_name": self.plugin_name, "model_id": self.model_id}) or self.model_id
         self.host = self.params.get("host")  # 可能为None（云采集）
         self._prepared_executor_factory = prepared_executor_factory
         self._executor = None
@@ -75,18 +77,18 @@ class CollectionService:
     ) -> PreparedCollectionServiceFactory:
         """在目标入队前完成 YAML 来源解析和 Collector 类加载。"""
         run_params = dict(params)
-        model_id = run_params["model_id"]
+        plugin_model = collection_plugin_name(run_params) or run_params["model_id"]
         executor_type = run_params["executor_type"]
         prefer_enterprise = cls._get_bool_param(run_params, "prefer_enterprise", True)
         strict_enterprise = cls._get_bool_param(run_params, "strict_enterprise", False)
         provider = config_provider or yaml_reader
         resolved_executor = await provider.get_executor_config_with_resolution_async(
-            model_id,
+            plugin_model,
             executor_type,
             prefer_enterprise=prefer_enterprise,
         )
         executor_factory = await PluginExecutor.prepare(
-            model_id,
+            plugin_model,
             resolved_executor.executor_config,
             plugin_resolution=resolved_executor.plugin_resolution,
             fallback_executor_config=resolved_executor.fallback_executor_config,
@@ -170,12 +172,12 @@ class CollectionService:
                 # 的顺序选中最终 plugin.yml；若命中 enterprise 且后续 import 失败，executor 会按 strict_enterprise
                 # 决定是直接报错还是回退到同名 oss 插件。
                 resolved_executor = await self.yaml_reader.get_executor_config_with_resolution_async(
-                    self.model_id,
+                    self._plugin_model,
                     executor_type,
                     prefer_enterprise=prefer_enterprise,
                 )
                 executor = PluginExecutor(
-                    self.model_id,
+                    self._plugin_model,
                     resolved_executor.executor_config,
                     self.params,
                     plugin_resolution=resolved_executor.plugin_resolution,
@@ -276,12 +278,12 @@ class CollectionService:
         prefer_enterprise = self._get_bool_param(self.params, "prefer_enterprise", True)
         strict_enterprise = self._get_bool_param(self.params, "strict_enterprise", False)
         resolved_executor = await self.yaml_reader.get_executor_config_with_resolution_async(
-            self.model_id,
+            self._plugin_model,
             executor_type,
             prefer_enterprise=prefer_enterprise,
         )
         self._executor = PluginExecutor(
-            self.model_id,
+            self._plugin_model,
             resolved_executor.executor_config,
             self.params,
             plugin_resolution=resolved_executor.plugin_resolution,

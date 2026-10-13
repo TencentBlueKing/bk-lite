@@ -19,6 +19,7 @@ import NetworkConfigFileTask from './components/networkConfigFileTask';
 import SslCerTask from './components/sslCerTask';
 import IpTask from './components/ipTask';
 import PCTask from './components/pcTask';
+import CustomScriptTask from './components/customScriptTask';
 import PluginCard from './components/pluginCard';
 import TaskDetail from './components/taskDetail';
 import NodeMgmtSyncDetail from './components/nodeMgmtSyncDetail';
@@ -105,7 +106,10 @@ const getCollectToolProtocol = (pluginId?: string | null) => {
   return null;
 };
 
-const getTaskStatusKey = (tab: Pick<TreeNode, 'id' | 'model_id' | 'type'>) => {
+const getTaskStatusKey = (tab: Pick<TreeNode, 'id' | 'model_id' | 'type' | 'task_type' | 'custom_plugin_pk'>) => {
+  if (tab.task_type === 'custom_script' && tab.custom_plugin_pk) {
+    return `custom_script__${tab.custom_plugin_pk}`;
+  }
   if (tab.model_id && tab.type) {
     if (tab.id === 'physcial_server_ipmi') {
       return `${tab.model_id}__${tab.type}__ipmi`;
@@ -120,7 +124,7 @@ const getTaskStatusKey = (tab: Pick<TreeNode, 'id' | 'model_id' | 'type'>) => {
 
 const getTaskStatusStats = (
   statusMap: TaskStatusMap,
-  tab: Pick<TreeNode, 'id' | 'model_id' | 'type'>,
+  tab: Pick<TreeNode, 'id' | 'model_id' | 'type' | 'task_type' | 'custom_plugin_pk'>,
 ) => {
   const specificStats = statusMap[getTaskStatusKey(tab)];
   if (
@@ -298,6 +302,9 @@ const ProfessionalCollection: React.FC = () => {
       ...(plugin?.id === 'physcial_server_redfish' && {
         collection_protocol: 'redfish',
       }),
+      ...(plugin?.task_type === 'custom_script' && plugin.custom_plugin_pk
+        ? { custom_plugin_pk: plugin.custom_plugin_pk }
+        : {}),
       name: stateRef.current.searchText,
       ...(stateRef.current.currentExecStatus !== undefined && {
         exec_status: stateRef.current.currentExecStatus,
@@ -536,6 +543,11 @@ const ProfessionalCollection: React.FC = () => {
       const plugin = selectedCategoryRef.current.category?.tabItems?.find(
         (item) => item.id === pluginId
       );
+      if (plugin?.task_type === 'custom_script') {
+        const data = await collectApi.getCollectModelDoc('custom_script');
+        setPluginDoc(data || '');
+        return;
+      }
       const data = await collectApi.getCollectModelDoc(plugin?.model_id || pluginId);
       setPluginDoc(data || '');
     } catch {
@@ -707,6 +719,10 @@ const ProfessionalCollection: React.FC = () => {
 
     if (currentPlugin.model_id === 'config_file') {
       return <ConfigFileTask {...taskProps} />;
+    }
+
+    if (currentPlugin.task_type === 'custom_script') {
+      return <CustomScriptTask {...taskProps} />;
     }
 
     const credentialDescriptor = getCredentialDescriptor(currentPlugin);

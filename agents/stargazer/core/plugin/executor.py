@@ -147,7 +147,8 @@ class PluginExecutor:
         if not isinstance(trusted_options, Mapping):
             raise ValueError("collector.options must be a mapping")
         collector_params["_collector_options"] = dict(trusted_options)
-        if self.executor_config.is_job:
+        script_source = str(self.executor_config.config.get("script_source") or "")
+        if self.executor_config.is_job and script_source != "remote" and not collector_params.get("script_content"):
             os_type = self._determine_os_type()
             script_path = self.executor_config.get_script_path(os_type)
             if not script_path:
