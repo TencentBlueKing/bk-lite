@@ -24,10 +24,9 @@ import useCloudRegionApi from '@/app/node-manager/api/useCloudRegionApi';
 import { Target, WinRMScheme } from '@/app/job/types';
 import { ColumnItem } from '@/types';
 import GroupTreeSelect from '@/components/group-tree-select';
-import SearchCombinationToolbar from '@/components/search-combination-toolbar';
+import SearchActionBar from '@/components/search-action-bar';
 import TopSection from '@/components/top-section';
 import Password from '@/components/password';
-import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
 import OrganizationTags, { getOrganizationColumnWidth } from '@/app/job/components/organization-tags';
 
 const { Dragger } = Upload;
@@ -52,7 +51,7 @@ const TargetPage = () => {
   const [form] = Form.useForm();
   const [data, setData] = useState<Target[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchFilters, setSearchFilters] = useState<SearchFilters>({});
+  const [searchKey, setSearchKey] = useState('');
   const [pagination, setPagination] = useState({
     current: 1,
     total: 0,
@@ -134,24 +133,16 @@ const TargetPage = () => {
   }, []);
 
   const fetchData = useCallback(
-    async (params: { filters?: SearchFilters; current?: number; pageSize?: number } = {}) => {
+    async (params: { keyword?: string; current?: number; pageSize?: number } = {}) => {
       setLoading(true);
       try {
-        const filters = params.filters ?? searchFilters;
+        const keyword = (params.keyword ?? searchKey).trim();
         const queryParams: Record<string, unknown> = {
           page: params.current ?? pagination.current,
           page_size: params.pageSize ?? pagination.pageSize,
         };
-        if (filters && Object.keys(filters).length > 0) {
-          Object.entries(filters).forEach(([field, conditions]) => {
-            conditions.forEach((condition) => {
-              if (condition.lookup_expr === 'in' && Array.isArray(condition.value)) {
-                queryParams[field] = (condition.value as string[]).join(',');
-              } else {
-                queryParams[field] = condition.value;
-              }
-            });
-          });
+        if (keyword) {
+          queryParams.name = keyword;
         }
         const res = await getTargetList(queryParams as any);
         setData(res.items || []);
@@ -163,7 +154,7 @@ const TargetPage = () => {
         setLoading(false);
       }
     },
-    [searchFilters, pagination.current, pagination.pageSize]
+    [searchKey, pagination.current, pagination.pageSize]
   );
 
   useEffect(() => {
@@ -201,44 +192,11 @@ const TargetPage = () => {
     };
   }, [data.length, loading]);
 
-  const handleSearchChange = useCallback((filters: SearchFilters) => {
-    setSearchFilters(filters);
+  const handleSearch = useCallback((value: string) => {
+    setSearchKey(value);
     setPagination((prev) => ({ ...prev, current: 1 }));
-    fetchData({ filters, current: 1 });
+    fetchData({ keyword: value, current: 1 });
   }, [fetchData]);
-
-  const fieldConfigs: FieldConfig[] = useMemo(() => [
-    {
-      name: 'name',
-      label: t('job.targetName'),
-      lookup_expr: 'icontains',
-    },
-    {
-      name: 'ip',
-      label: t('job.ipAddress'),
-      lookup_expr: 'icontains',
-    },
-    {
-      name: 'cloud_region',
-      label: t('job.cloudRegion'),
-      lookup_expr: 'icontains',
-    },
-    {
-      name: 'driver',
-      label: t('job.executionDriver'),
-      lookup_expr: 'in',
-      options: [
-        { id: 'ansible', name: t('job.driverAnsible') },
-        { id: 'ssh', name: t('job.driverSSH') },
-        { id: 'sidecar', name: 'Sidecar' },
-      ],
-    },
-    {
-      name: 'team',
-      label: t('job.organization'),
-      lookup_expr: 'icontains',
-    },
-  ], [t]);
 
   const handleTableChange = (pag: any) => {
     setPagination(pag);
@@ -540,21 +498,24 @@ const TargetPage = () => {
 
       {/* Table Section */}
       <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-6 py-6">
-        <div className="mb-4 shrink-0">
-          <SearchCombinationToolbar
-            fieldConfigs={fieldConfigs}
-            onSearchChange={handleSearchChange}
-            actions={(
-              <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={openAddModal}
-              >
-                {t('common.new')}
-              </Button>
-            )}
-          />
-        </div>
+        <SearchActionBar
+          searchProps={{
+            placeholder: t('common.search'),
+            allowClear: true,
+            value: searchKey,
+            onChange: (event) => setSearchKey(event.target.value),
+            onSearch: handleSearch,
+          }}
+          actions={(
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={openAddModal}
+            >
+              {t('common.new')}
+            </Button>
+          )}
+        />
 
         {/* Table */}
         <div ref={tableContainerRef} className="flex-1 min-h-0">
