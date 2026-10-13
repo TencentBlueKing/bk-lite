@@ -9,6 +9,7 @@ interface SectionCardProps {
   icon?: ReactNode;
   title: string;
   subtitle?: string;
+  count?: number;
   viewAllHref?: string;
   viewAllLabel?: string;
   failed?: boolean;
@@ -24,6 +25,7 @@ export default function SectionCard({
   icon,
   title,
   subtitle,
+  count,
   viewAllHref,
   viewAllLabel,
   failed = false,
@@ -36,14 +38,19 @@ export default function SectionCard({
   const resolvedViewAllLabel = viewAllLabel ?? t('apm.common.viewAll', '查看全部 →');
   return (
     <div
-      className={`flex h-full min-h-0 flex-col rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] p-4 ${className}`}
+      className={`flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] ${className}`}
     >
-      <div className="mb-3 flex shrink-0 items-center justify-between gap-3">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)]/35 px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
           {icon ? <span className="inline-flex shrink-0 text-base leading-none">{icon}</span> : null}
           <h3 className="m-0 truncate text-sm font-semibold leading-5 text-[var(--color-text-1)]">
             {title}
           </h3>
+          {typeof count === 'number' ? (
+            <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--color-primary)_12%,var(--color-bg))] px-1.5 text-xs font-semibold tabular-nums text-[var(--color-primary)]">
+              {count}
+            </span>
+          ) : null}
           {subtitle ? (
             <span className="shrink-0 text-xs font-normal text-[var(--color-text-3)]">{subtitle}</span>
           ) : null}
@@ -57,7 +64,7 @@ export default function SectionCard({
           </Link>
         ) : null}
       </div>
-      <div className="min-h-0 flex-1" style={{ minHeight: bodyMinHeight }}>
+      <div className="min-h-0 flex-1 p-4" style={{ minHeight: bodyMinHeight }}>
         {failed ? (
           <div className="flex h-full items-center justify-center py-10 text-center">
             <Button type="link" onClick={onRetry}>

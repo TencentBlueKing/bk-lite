@@ -102,8 +102,8 @@ describe('APM 应用管理', () => {
     await screen.findByText('演示应用');
     expect(screen.queryByText('共 1 个应用')).toBeNull();
 
-    const createButton = screen.getByRole('button', { name: '创建应用' });
-    expect(createButton.closest('.ml-auto')).not.toBeNull();
+    const createButton = screen.getByRole('button', { name: '新建' });
+    expect(createButton.closest('.justify-end')).not.toBeNull();
   });
 
   it('直接展示高频行操作并固定在表格右侧', async () => {
@@ -123,7 +123,7 @@ describe('APM 应用管理', () => {
     renderWithApmIntl(<ApmApplicationsPage />);
     await screen.findByText('演示应用');
 
-    await user.click(screen.getByRole('button', { name: '创建应用' }));
+    await user.click(screen.getByRole('button', { name: '新建' }));
 
     await waitFor(() => expect(document.querySelector('.ant-drawer')).not.toBeNull());
     expect(document.querySelector('.ant-modal')).toBeNull();
