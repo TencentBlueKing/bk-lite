@@ -180,11 +180,6 @@ export function DashboardPageHeader({
           )}
         </div>
       </div>
-      {modeControl === 'pill' ? (
-        <p className={styles.viewModeHint}>
-          {modeItems.map((item) => item.label).join(' / ')}
-        </p>
-      ) : null}
     </div>
   );
 }
