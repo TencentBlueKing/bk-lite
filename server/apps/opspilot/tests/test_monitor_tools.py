@@ -26,6 +26,7 @@ def _monitor_tools():
         monitor_list_objects,
         monitor_query_alert_segments,
         monitor_query_metric_data,
+        monitor_summarize_metric_trend,
     )
 
     return [
@@ -34,6 +35,7 @@ def _monitor_tools():
         monitor_list_object_metrics,
         monitor_list_instance_metrics,
         monitor_query_metric_data,
+        monitor_summarize_metric_trend,
         monitor_list_active_alerts,
         monitor_query_alert_segments,
         monitor_get_host_resource_snapshot,
@@ -125,6 +127,7 @@ def test_monitor_planner_hint_prefers_top_by_time_for_ranking_questions():
     # 明确禁止用 snapshot 做排行，避免重演 37 台被判成 4 台
     assert "monitor_get_host_resource_snapshot" in _MONITOR_CATALOG_HINT
     assert "负数" in _MONITOR_CATALOG_HINT
+    assert "monitor_summarize_metric_trend" in _MONITOR_CATALOG_HINT
 
 
 def test_monitor_planner_step_guidance_warns_against_snapshot_host_count():
@@ -737,6 +740,8 @@ def test_monitor_list_object_instances_hint_requires_listed_instance_id(mocker):
     assert "负数" in hint
     assert "inst_id" in hint
     assert "不要编造" in hint
+    assert "monitor_summarize_metric_trend" in hint
+    assert "禁止只抄示例" in hint
 
 
 def test_monitor_list_object_instances_coerces_non_list_payload(mocker):

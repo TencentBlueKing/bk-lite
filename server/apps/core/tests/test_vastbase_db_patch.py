@@ -284,14 +284,25 @@ def test_sequence_reset_sql_is_noop(monkeypatch):
 # ============================================================
 
 
-def test_naive_datetime_is_converted_to_utc():
-    """服务端不带时区偏移，会话时区固定 UTC，故裸值补 UTC 即正确时刻。"""
+def test_naive_datetime_is_converted_to_utc(monkeypatch):
+    """会话时区是 UTC 时，不带偏移的裸钟面就是 UTC。"""
+    monkeypatch.setattr(vastbase, "_SESSION_OFFSET_SECONDS", 0)
     naive = datetime.datetime(2026, 9, 7, 3, 0, 0)
 
     converted = vastbase._convert_naive_datetime(naive, None, None)
 
     assert converted.tzinfo == datetime.timezone.utc
     assert converted.timestamp() == naive.replace(tzinfo=datetime.timezone.utc).timestamp()
+
+
+def test_naive_datetime_in_prc_session_is_shifted_to_utc(monkeypatch):
+    """会话仍是 PRC 时，裸钟面是北京时间，不能直接贴成 UTC。"""
+    monkeypatch.setattr(vastbase, "_SESSION_OFFSET_SECONDS", 8 * 3600)
+    naive = datetime.datetime(2026, 10, 13, 13, 44, 4)
+
+    converted = vastbase._convert_naive_datetime(naive, None, None)
+
+    assert converted == datetime.datetime(2026, 10, 13, 5, 44, 4, tzinfo=datetime.timezone.utc)
 
 
 def test_aware_datetime_is_left_untouched():
@@ -397,6 +408,7 @@ def test_apply_early_patches_is_idempotent(monkeypatch):
     monkeypatch.setattr(vastbase, "_patch_on_conflict_ignore", lambda: calls.append("conflict"))
     monkeypatch.setattr(vastbase, "_patch_sequence_reset_sql", lambda: calls.append("sequence"))
     monkeypatch.setattr(vastbase, "_patch_naive_datetime_converter", lambda: calls.append("datetime"))
+    monkeypatch.setattr(vastbase, "_install_session_timezone_hook", lambda: calls.append("session_tz"))
     monkeypatch.setattr(vastbase, "_patch_psycopg3_timestamptz_missing_tz", lambda: calls.append("loader"))
     monkeypatch.setattr(vastbase, "_patch_aggregate_filter_clause", lambda: calls.append("aggregate_filter"))
 
@@ -410,6 +422,7 @@ def test_apply_early_patches_is_idempotent(monkeypatch):
         "conflict",
         "sequence",
         "datetime",
+        "session_tz",
         "loader",
         "aggregate_filter",
     ]

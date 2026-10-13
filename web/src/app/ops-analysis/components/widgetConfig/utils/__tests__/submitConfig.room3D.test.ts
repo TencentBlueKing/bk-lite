@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ROOM3D_FILTER_ID } from '@/app/ops-analysis/utils/room3DScreenFilter';
 import { buildWidgetSubmitConfig } from '../submitConfig';
 
 const ROOM_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -32,13 +33,14 @@ describe('room3D submit config', () => {
       chartType: 'room3D',
       sceneWidgetType: 'room3D',
       room3D: {},
+      filterBindings: { [ROOM3D_FILTER_ID]: true },
       appearance: { frame: 'bare' },
     });
     expect(result.config).not.toHaveProperty('dataSource');
     expect(result.config).not.toHaveProperty('dataSourceParams');
   });
 
-  it('persists a valid default room id', () => {
+  it('does not persist a widget-level default room', () => {
     const result = buildWidgetSubmitConfig({
       ...baseInput,
       values: {
@@ -49,7 +51,22 @@ describe('room3D submit config', () => {
       },
     });
 
-    expect(result.config?.room3D).toEqual({ serverRoomId: ROOM_A });
+    expect(result.config?.room3D).toEqual({});
+    expect(result.config?.filterBindings).toEqual({ [ROOM3D_FILTER_ID]: true });
+  });
+
+  it('writes the room filter binding on even when stored binding is false', () => {
+    const result = buildWidgetSubmitConfig({
+      ...baseInput,
+      filterBindings: { [ROOM3D_FILTER_ID]: false },
+      values: {
+        name: '3D机房',
+        chartType: 'room3D',
+        sceneWidgetType: 'room3D',
+      },
+    });
+
+    expect(result.config?.filterBindings).toEqual({ [ROOM3D_FILTER_ID]: true });
   });
 
   it('persists rack-top lines only when they leave the default', () => {

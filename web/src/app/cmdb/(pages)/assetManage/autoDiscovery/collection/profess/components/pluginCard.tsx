@@ -4,88 +4,12 @@ import React from 'react';
 import Image from 'next/image';
 import { Tooltip } from 'antd';
 import type { TreeNode } from '@/app/cmdb/types/autoDiscovery';
+import {
+  cleanPluginName,
+  getCollectionIconSrc,
+} from '../pluginCatalog';
 
-const DEFAULT_COLLECTION_ICON = '/assets/icons/cc-default_默认.svg';
-
-const COLLECTION_ICON_MAP: Array<{ keywords: string[]; src: string }> = [
-  {
-    keywords: ['k8s', 'kubernetes'],
-    src: '/assets/icons/cc-k8s-cluster_K8S集群.svg',
-  },
-  {
-    keywords: ['docker'],
-    src: '/assets/icons/cc-docker_Docker.svg',
-  },
-  {
-    keywords: ['vcenter', 'vmware', 'esxi'],
-    src: '/assets/icons/cc-esxi-host_ESXi.svg',
-  },
-  {
-    keywords: ['network', 'snmp', 'switch', 'router'],
-    src: '/assets/icons/cc-router_路由器.svg',
-  },
-  {
-    keywords: ['mssql', 'sql_server', 'sql server'],
-    src: '/assets/icons/cc-sql-server_MSSQL.svg',
-  },
-  {
-    keywords: ['mysql'],
-    src: '/assets/icons/cc-mysql_MySQL.svg',
-  },
-  {
-    keywords: ['postgresql', 'postgres'],
-    src: '/assets/icons/cc-postgresql_PostgreSQL.svg',
-  },
-  {
-    keywords: ['redis'],
-    src: '/assets/icons/cc-redis_REDIS.svg',
-  },
-  {
-    keywords: ['mongodb', 'mongo'],
-    src: '/assets/icons/cc-mongodb_MongoDB.svg',
-  },
-  {
-    keywords: ['rabbitmq'],
-    src: '/assets/icons/cc-rabbitmq_RabbitMQ.svg',
-  },
-  {
-    keywords: ['kafka'],
-    src: '/assets/icons/cc-kafka_Kafka.svg',
-  },
-  {
-    keywords: ['nginx'],
-    src: '/assets/icons/cc-nginx_Nginx.svg',
-  },
-  {
-    keywords: ['oracle'],
-    src: '/assets/icons/cc-oracle_Oracle.svg',
-  },
-  {
-    keywords: ['tidb'],
-    src: '/assets/icons/cc-tidb_TiDB.svg',
-  },
-  {
-    keywords: ['cloud'],
-    src: '/assets/icons/cc-cloud_云.svg',
-  },
-  {
-    keywords: ['host', 'linux', 'windows'],
-    src: '/assets/icons/cc-host_主机.svg',
-  },
-];
-
-const getCollectionIconSrc = (tab: TreeNode) => {
-  const searchText = [tab.model_id, tab.id, tab.name, tab.type, tab.task_type]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-
-  return (
-    COLLECTION_ICON_MAP.find(({ keywords }) =>
-      keywords.some((keyword) => searchText.includes(keyword)),
-    )?.src || DEFAULT_COLLECTION_ICON
-  );
-};
+export { getCollectionIconSrc };
 
 interface ExpandableTextProps {
   text?: string;
@@ -136,6 +60,8 @@ const PluginCard: React.FC<PluginCardProps> = React.memo(
     const tags = tab.tag || [];
     const description = tab.desc || '';
     const iconSrc = getCollectionIconSrc(tab);
+
+    const { cleanName, isBeta } = cleanPluginName(tab.name);
 
     const statusItems = [
       {
@@ -193,9 +119,14 @@ const PluginCard: React.FC<PluginCardProps> = React.memo(
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <div
-                  className={`text-sm font-semibold leading-5 wrap-break-word ${isActive ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-1)]'}`}
+                  className={`text-sm font-semibold leading-5 tracking-[0.01em] wrap-break-word flex items-center gap-1 ${isActive ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-1)]'}`}
                 >
-                  {tab.name}
+                  <span>{cleanName}</span>
+                  {isBeta && (
+                    <span className="scale-90 px-1 py-0.2 text-[9px] font-semibold text-amber-700 bg-amber-50 rounded border border-amber-200/80 leading-none">
+                      BETA
+                    </span>
+                  )}
                 </div>
                 <ExpandableText text={description} collapsedLines={2} />
               </div>

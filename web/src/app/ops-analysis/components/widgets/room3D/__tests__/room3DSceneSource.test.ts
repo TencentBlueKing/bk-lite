@@ -62,6 +62,30 @@ describe('loadRoom3DScene', () => {
     expect(api.getLayout).toHaveBeenCalledWith(ROOM_B, undefined);
   });
 
+  it('does not fetch layout when the applied room is not visible', async () => {
+    const api = createApi();
+    const result = await loadRoom3DScene({
+      api,
+      savedRoomId: ROOM_A,
+      runtimeRoomId: ROOM_C,
+    });
+
+    expect(result).toEqual({ status: 'unavailable', rooms });
+    expect(api.getLayout).not.toHaveBeenCalled();
+  });
+
+  it('loads the applied room instead of the saved default', async () => {
+    const api = createApi();
+    const result = await loadRoom3DScene({
+      api,
+      savedRoomId: ROOM_A,
+      runtimeRoomId: ROOM_B,
+    });
+
+    expect(result).toMatchObject({ status: 'ready', roomId: ROOM_B });
+    expect(api.getLayout).toHaveBeenCalledWith(ROOM_B, undefined);
+  });
+
   it('returns empty without fetching layout when no room is visible', async () => {
     const api = createApi({
       getRooms: vi.fn(async () => ({ items: [] })),

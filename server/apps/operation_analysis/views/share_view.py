@@ -78,13 +78,40 @@ def _walk_data_source_ids(value):
     return found
 
 
+_ROOM3D_ROOM_LIST_FILTER = [
+    {
+        "id": "server_room_id__string",
+        "key": "server_room_id",
+        "type": "string",
+        "inputConfig": {
+            "control": "select",
+            "optionsSource": {
+                "type": "dynamic",
+                "sourceRef": {"type": "rest_api", "value": "cmdb/get_room_list"},
+                "valueField": "inst_uuid",
+                "labelField": "inst_name",
+            },
+        },
+    }
+]
+
+
+def _resource_view_sets(resource):
+    """模型走 view_sets 属性；测试里直接传入的布局列表或字典也认。"""
+    if isinstance(resource, (list, dict)):
+        return resource
+    return getattr(resource, "view_sets", None)
+
+
 def _canvas_data_source_ids(resource):
-    view_sets = getattr(resource, "view_sets", None)
+    view_sets = _resource_view_sets(resource)
     found = _walk_data_source_ids(view_sets)
     if view_sets_has_network_status_topology(view_sets):
         found.update(collect_network_status_topology_overlay_datasource_ids())
     found.update(collect_named_option_datasource_ids(found))
     found.update(collect_named_option_datasource_ids_from_filters(_resource_filter_definitions(resource)))
+    if _view_sets_has_scene_widget(view_sets, "room3D"):
+        found.update(collect_named_option_datasource_ids_from_filters(_ROOM3D_ROOM_LIST_FILTER))
     return found
 
 

@@ -143,6 +143,33 @@ def test_normalize_static_and_dynamic_kinds():
     assert snap["entries"]["custom_period"]["value_kind"] == VALUE_KIND_STATIC
 
 
+def test_normalize_room_filter_snapshot_is_static_string():
+    room_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+    snap = normalize_applied_filter_values(
+        {"server_room_id__string": room_id},
+        dashboard_filters=[
+            {
+                "id": "server_room_id__string",
+                "key": "server_room_id",
+                "type": "string",
+                "inputConfig": {
+                    "control": "select",
+                    "optionsSource": {
+                        "type": "dynamic",
+                        "sourceRef": {"type": "rest_api", "value": "cmdb/get_room_list"},
+                        "valueField": "inst_uuid",
+                        "labelField": "inst_name",
+                    },
+                },
+            }
+        ],
+    )
+    assert snap["entries"]["server_room_id__string"] == {
+        "value_kind": VALUE_KIND_STATIC,
+        "value": room_id,
+    }
+
+
 def test_normalize_string_multiple_filter_values():
     snap = normalize_applied_filter_values(
         {"hosts": ["host-a", "host-b"]},

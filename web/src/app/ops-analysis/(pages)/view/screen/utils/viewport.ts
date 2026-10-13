@@ -10,6 +10,10 @@ import type {
 } from '@/app/ops-analysis/types/screen';
 import { normalizeStoredFilterDefinitions } from '@/app/ops-analysis/utils/unifiedFilterState';
 import {
+  applyRoom3DFilterBindings,
+  ensureRoom3DCanvasFilter,
+} from '@/app/ops-analysis/utils/room3DScreenFilter';
+import {
   DEFAULT_SCREEN_THEME_ID,
   resolveScreenThemeId,
 } from './screenTheme';
@@ -351,6 +355,11 @@ export const normalizeScreenViewSets = (value: unknown): ScreenViewSets => {
       }
       : { ...DEFAULT_SCREEN_DECORATIONS };
 
+  const items = Array.isArray(source.items) ? [...source.items] : [];
+  const filters = ensureRoom3DCanvasFilter(
+    normalizeStoredFilterDefinitions(source.filters),
+    items,
+  );
   const normalized: ScreenViewSets = {
     viewport: {
       width,
@@ -359,9 +368,9 @@ export const normalizeScreenViewSets = (value: unknown): ScreenViewSets => {
       theme,
       adapter: resolveScreenFitAdapter(viewport.adapter),
     },
-    items: Array.isArray(source.items) ? [...source.items] : [],
+    items: applyRoom3DFilterBindings(items, filters),
     decorations,
-    filters: normalizeStoredFilterDefinitions(source.filters),
+    filters,
   };
 
   return migrateLegacyChrome(normalized);

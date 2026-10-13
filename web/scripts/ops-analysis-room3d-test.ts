@@ -606,12 +606,12 @@ const componentSwitchSource = readFileSync(
   ),
   "utf8",
 );
-assert.match(room3DComponentSource, /roomSwitchOverlay/);
+assert.doesNotMatch(room3DComponentSource, /roomSwitchOverlay/);
+assert.doesNotMatch(room3DComponentSource, /showRoomSwitcher/);
 assert.match(room3DComponentSource, /chromeVisible|room3DChromeVisible/);
-assert.match(room3DComponentSource, /showRoomSwitcher/);
-assert.match(room3DComponentSource, /showRoomSummary = !showRoomSwitcher/);
 assert.match(room3DComponentSource, /styles\.roomTitle/);
 assert.match(room3DComponentSource, /roomSummaryText/);
+assert.match(room3DComponentSource, /resolveRoom3DCanvasSelection/);
 assert.doesNotMatch(room3DComponentSource, /componentSwitchControl/);
 assert.match(room3DStyleSource, /\.roomTitle\b/);
 assert.match(room3DStyleSource, /\.room3DImmersive:hover/);

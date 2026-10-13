@@ -14,9 +14,10 @@ const clampWidth = (value: number) =>
 
 export const ScreenInspectorPane: React.FC<{
   label: string;
+  collapsed?: boolean;
   children: React.ReactNode;
   onBlur?: (event: React.FocusEvent<HTMLElement>) => void;
-}> = ({ label, children, onBlur }) => {
+}> = ({ label, collapsed = false, children, onBlur }) => {
   const [width, setWidth] = useState(SCREEN_INSPECTOR_DEFAULT_WIDTH);
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
@@ -68,7 +69,11 @@ export const ScreenInspectorPane: React.FC<{
       className={`relative flex h-full min-h-0 shrink-0 flex-col border-l border-(--color-border-1) bg-(--color-bg-1) ${
         dragging ? 'select-none' : ''
       }`}
-      style={{ width }}
+      style={{
+        width,
+        display: collapsed ? 'none' : undefined,
+      }}
+      aria-hidden={collapsed || undefined}
       onBlur={onBlur}
     >
       <div

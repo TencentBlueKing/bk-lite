@@ -37,13 +37,64 @@ def _template_content(inputs: dict[str, Any], execution: WorkflowExecution, stor
     raise ValueError("请上传 Word 或 Excel 报告模板")
 
 
+_EMPTY_HOST = {
+    "hostname": "",
+    "os_version": "",
+    "architecture": "",
+    "uptime_hours": "",
+    "cpu_cores": "",
+    "memory_total_gb": "",
+    "top_cpu": "",
+    "top_memory": "",
+}
+
+
+def _coerce_result_data(item: Any) -> Any:
+    """作业失败时 data/host 可能为 null；补齐空结构，避免模板访问 .host 崩掉。"""
+    if not isinstance(item, dict):
+        return item
+    row = dict(item)
+    payload = row.get("data")
+    if not isinstance(payload, dict):
+        conclusion = str(row.get("error") or row.get("status") or "无采集数据")
+        row["data"] = {
+            "collected_at": "",
+            "conclusion": conclusion,
+            "host": dict(_EMPTY_HOST),
+            "metrics": [],
+            "metric_count": 0,
+            "critical": [],
+            "warning": [],
+            "normal": [],
+            "critical_count": 0,
+            "warning_count": 0,
+            "normal_count": 0,
+        }
+        return row
+    data = dict(payload)
+    host = data.get("host")
+    if not isinstance(host, dict):
+        data["host"] = dict(_EMPTY_HOST)
+    for key, default in (
+        ("metrics", []),
+        ("critical", []),
+        ("warning", []),
+        ("normal", []),
+    ):
+        if not isinstance(data.get(key), list):
+            data[key] = default
+    row["data"] = data
+    return row
+
+
 def _merge_report_data(primary: dict[str, Any], additional: Any) -> dict[str, Any]:
     """合并多份作业输出，供多主机 / 多操作系统巡检共用同一份报告模板。"""
     if additional in (None, ""):
-        return primary
+        results = [_coerce_result_data(item) for item in list(primary.get("results") or [])]
+        return {**primary, "results": results}
     if not isinstance(additional, dict):
         raise ValueError("追加文档数据必须是 JSON 对象")
-    results = list(primary.get("results") or []) + list(additional.get("results") or [])
+    results = [_coerce_result_data(item) for item in list(primary.get("results") or []) + list(additional.get("results") or [])]
     succeeded = sum(1 for item in results if str(item.get("status") or "").upper() == "SUCCESS")
     job_task_ids = list(primary.get("job_task_ids") or []) + list(additional.get("job_task_ids") or [])
     return {
