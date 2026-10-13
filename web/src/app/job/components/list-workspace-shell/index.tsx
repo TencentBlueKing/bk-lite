@@ -1,7 +1,7 @@
 import React from 'react';
-import type { FieldConfig, SearchFilters } from '@/components/search-combination/types';
-import PageFormHeaderCard from '@/components/page-form-header-card';
-import SearchCombinationToolbar from '@/components/search-combination-toolbar';
+import type { SearchProps } from 'antd/es/input/Search';
+import SearchActionBar from '@/components/search-action-bar';
+import TopSection from '@/components/top-section';
 import WorkspacePanel from '@/components/workspace-panel';
 import CustomTable from '@/components/custom-table';
 
@@ -10,7 +10,8 @@ type CustomTableProps = React.ComponentProps<typeof CustomTable>;
 export interface JobListWorkspaceShellProps {
   title: string;
   description: string;
-  fieldConfigs: FieldConfig[];
+  searchProps: SearchProps;
+  filters?: React.ReactNode;
   actions?: React.ReactNode;
   children?: React.ReactNode;
   tableDataSource?: CustomTableProps['dataSource'];
@@ -30,7 +31,6 @@ export interface JobListWorkspaceShellProps {
     | 'scroll'
     | 'loading'
   >;
-  onSearchChange: (filters: SearchFilters) => void;
   className?: string;
   contentClassName?: string;
 }
@@ -38,7 +38,8 @@ export interface JobListWorkspaceShellProps {
 const JobListWorkspaceShell: React.FC<JobListWorkspaceShellProps> = ({
   title,
   description,
-  fieldConfigs,
+  searchProps,
+  filters,
   actions,
   children,
   tableDataSource,
@@ -49,7 +50,6 @@ const JobListWorkspaceShell: React.FC<JobListWorkspaceShellProps> = ({
   tableScroll,
   tableLoading = false,
   tableProps,
-  onSearchChange,
   className = 'flex h-full w-full flex-col overflow-hidden',
   contentClassName = 'flex-1 min-h-0',
 }) => {
@@ -68,18 +68,19 @@ const JobListWorkspaceShell: React.FC<JobListWorkspaceShellProps> = ({
 
   return (
     <div className={className}>
-      <PageFormHeaderCard
+      <TopSection
         title={title}
-        description={description}
+        content={description}
         className="mb-4 shrink-0"
       />
 
       <WorkspacePanel
         className="flex flex-1 min-h-0 flex-col"
         toolbar={(
-          <SearchCombinationToolbar
-            fieldConfigs={fieldConfigs}
-            onSearchChange={onSearchChange}
+          <SearchActionBar
+            spacing="flush"
+            searchProps={searchProps}
+            filters={filters}
             actions={actions}
           />
         )}

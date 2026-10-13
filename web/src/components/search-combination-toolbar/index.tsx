@@ -25,17 +25,18 @@ const SearchCombinationToolbar: React.FC<SearchCombinationToolbarProps> = ({
   return (
     <ToolbarSplitShell
       className={`mb-0 ${className}`.trim()}
-      leadingClassName="items-center"
       trailingClassName={actionsClassName}
-      leading={(
-        <SearchCombination
-          fieldConfigs={fieldConfigs}
-          onChange={onSearchChange}
-          fieldWidth={fieldWidth}
-          selectWidth={selectWidth}
-        />
+      trailing={(
+        <>
+          <SearchCombination
+            fieldConfigs={fieldConfigs}
+            onChange={onSearchChange}
+            fieldWidth={fieldWidth}
+            selectWidth={selectWidth}
+          />
+          {actions}
+        </>
       )}
-      trailing={actions}
     />
   );
 };
