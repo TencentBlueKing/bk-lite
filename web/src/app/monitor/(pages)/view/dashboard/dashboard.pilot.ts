@@ -199,7 +199,9 @@ export const dashboardPresentationLabel = (): '全量指标' | '经典仪表盘'
   ) return '分层概览';
   if (
     /传统视图/.test(label)
+    || /经典布局/.test(label)
     || /经典仪表盘/.test(label)
+    || /classic\s*layout/i.test(label)
     || /classic\s*dashboard/i.test(label)
     || /traditional\s*view/i.test(label)
     || /监控仪表盘/.test(label)

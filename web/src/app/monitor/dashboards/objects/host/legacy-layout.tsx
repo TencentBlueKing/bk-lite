@@ -27,7 +27,7 @@ const DISK_PROCESS_CHART_TITLES = ['磁盘吞吐趋势', '进程异常趋势'];
 const RING_TITLES = ['CPU 时间分布'];
 const TOP_CONCURRENCY = 1;
 
-/** 传统视图：健康概览、性能与分布、网络观察、磁盘与进程。 */
+/** 经典布局：健康概览、性能与分布、网络观察、磁盘与进程。 */
 export default function HostLegacyLayout({
   styles,
   dashboard,

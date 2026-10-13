@@ -1413,7 +1413,7 @@
     "source": "Asset",
     "dashboards": {
       "common": {
-        "dashboardMode": "Traditional View",
+        "dashboardMode": "Classic Layout",
         "metricsMode": "All Metrics",
         "categoryTabMode": "Category Dashboard",
         "viewSwitcher": "View",

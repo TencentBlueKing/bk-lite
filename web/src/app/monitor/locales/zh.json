@@ -1413,7 +1413,7 @@
     "source": "资产",
     "dashboards": {
       "common": {
-        "dashboardMode": "传统视图",
+        "dashboardMode": "经典布局",
         "metricsMode": "全量指标",
         "categoryTabMode": "分类仪表盘",
         "viewSwitcher": "视图",
