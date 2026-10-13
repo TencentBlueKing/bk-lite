@@ -235,7 +235,7 @@ export function WorkflowDashboardPage() {
           : metrics.map((item) => (
             <WorkflowPermission key={item.label} operation="View" area="home" className="block"><button
               type="button"
-              className="h-full w-full min-w-0 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-1)] p-4 text-left transition-colors hover:border-[var(--color-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
+              className="h-full w-full min-w-0 rounded-xl border border-[var(--color-border)] bg-[image:linear-gradient(180deg,color-mix(in_srgb,var(--color-primary)_1.5%,var(--color-bg))_0%,var(--color-bg)_32%)] p-4 text-left transition-colors hover:border-[var(--color-primary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
               onClick={() => router.push(item.href)}
             >
               <SummaryMetricCard
