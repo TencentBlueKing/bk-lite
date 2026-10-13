@@ -217,6 +217,21 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_cannot_read_other_org_node_detail",
         "apps.node_mgmt.tests.test_openapi_gateway::test_node_detail_forged_team_is_rejected",
     ],
+    "apm/applications": [
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_can_list_own_applications",
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_cannot_list_other_org_applications",
+        "apps.apm.tests.test_openapi_gateway::test_applications_forged_team_is_rejected",
+    ],
+    "apm/services": [
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_can_list_own_services",
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_cannot_list_other_org_services",
+        "apps.apm.tests.test_openapi_gateway::test_services_forged_team_is_rejected",
+    ],
+    "apm/instances": [
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_can_list_own_instances",
+        "apps.apm.tests.test_openapi_gateway::test_api_tenant_cannot_list_other_org_instances",
+        "apps.apm.tests.test_openapi_gateway::test_instances_forged_team_is_rejected",
+    ],
     "system-mgmt/users": [
         "apps.system_mgmt.tests.test_openapi_directory::test_system_tenant_can_read_own_org_users",
         "apps.system_mgmt.tests.test_openapi_directory::test_system_tenant_cannot_read_other_org_users",
