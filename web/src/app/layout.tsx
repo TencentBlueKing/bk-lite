@@ -43,6 +43,7 @@ import { resolveAppDisplayName } from '@/utils/appDisplayName';
 import { isSessionExpiredState } from '@/utils/sessionExpiry';
 import { useUserInfoContext } from '@/context/userInfo';
 import { RouteScopedLayout } from '@/app/routeScopedLayout';
+import RumBootstrap from '@/components/rum-bootstrap';
 import dynamic from 'next/dynamic';
 
 const GlobalWebchat = dynamic(
@@ -466,6 +467,7 @@ export default function RootLayout({
         <AntdRegistry>
           {/* 全局 Context Provider 配置 */}
           <SessionProvider refetchInterval={30 * 60} refetchOnWindowFocus={false}>
+            <RumBootstrap />
             <LocaleProvider>
               <ThemeProvider>
                 <ConsoleLayoutProvider>

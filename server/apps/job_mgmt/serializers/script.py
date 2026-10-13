@@ -1,5 +1,6 @@
 """脚本序列化器"""
 
+from django.db import transaction
 from rest_framework import serializers
 
 from apps.core.utils.serializers import TeamSerializer
@@ -7,6 +8,7 @@ from apps.job_mgmt.models import Script
 from apps.job_mgmt.services.param_crypto import ParamCrypto
 from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
 from apps.job_mgmt.services.script_param_definitions import normalize_script_param_definitions
+from apps.job_mgmt.services.template_revision import TemplateRevisionService, display_revision_label, request_operator, script_payload
 from apps.job_mgmt.utils.i18n import serializer_message
 
 
@@ -27,6 +29,7 @@ class ScriptListSerializer(TeamSerializer):
     """脚本列表序列化器（返回精简字段）"""
 
     script_type_display = serializers.CharField(source="get_script_type_display", read_only=True)
+    current_revision_label = serializers.SerializerMethodField()
 
     class Meta:
         model = Script
@@ -42,7 +45,11 @@ class ScriptListSerializer(TeamSerializer):
             "created_by",
             "is_built_in",
             "updated_at",
+            "current_revision_label",
         ]
+
+    def get_current_revision_label(self, obj):
+        return display_revision_label(obj)
 
 
 class ScriptSerializer(serializers.ModelSerializer):
@@ -115,6 +122,12 @@ class ScriptCreateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(serializer_message(self, "error.organization_required", "Organization is required"))
         return value
 
+    def create(self, validated_data):
+        with transaction.atomic():
+            instance = super().create(validated_data)
+            TemplateRevisionService.capture_script(instance, operator=instance.created_by or request_operator(self))
+            return instance
+
 
 class ScriptUpdateSerializer(serializers.ModelSerializer):
     """脚本更新序列化器"""
@@ -158,6 +171,21 @@ class ScriptUpdateSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError(serializer_message(self, "error.organization_required", "Organization is required"))
         return value
+
+    def update(self, instance, validated_data):
+        before = script_payload(instance)
+        before_at = instance.updated_at
+        before_by = instance.updated_by or ""
+        with transaction.atomic():
+            instance = super().update(instance, validated_data)
+            TemplateRevisionService.capture_script(
+                instance,
+                operator=request_operator(self) or instance.updated_by or "",
+                before=before,
+                before_at=before_at,
+                before_by=before_by,
+            )
+            return instance
 
 
 class ScriptBatchDeleteSerializer(serializers.Serializer):

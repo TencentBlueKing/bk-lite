@@ -7,9 +7,11 @@
 - 危险命令 / 路径检出 → 抛错并附带规则名称。
 """
 
+from datetime import datetime
 from unittest.mock import patch
 
 import pytest
+from django.utils import timezone
 
 from apps.job_mgmt.constants import CredentialSource, ExecutionStatus, JobType, OSType, TargetSource, TriggerSource
 from apps.job_mgmt.models import DistributionFile, JobExecution, Playbook, Script, Target
@@ -254,6 +256,8 @@ class TestCreateQuickExecution:
 
     def test_playbook_mode_creates_playbook_execution(self):
         playbook = Playbook.objects.create(name="p", version="v1.0.0", team=[1])
+        Playbook.objects.filter(pk=playbook.pk).update(updated_at=datetime(2026, 10, 9, 2, 0, tzinfo=timezone.utc))
+        playbook.refresh_from_db()
         with patch(DISPATCH_PATH, return_value="celery-1"):
             execution = ExecutionService.create_quick_execution(
                 data={
@@ -270,7 +274,7 @@ class TestCreateQuickExecution:
             )
         assert execution.job_type == JobType.PLAYBOOK
         assert execution.playbook_id == playbook.id
-        assert execution.playbook_version == "v1.0.0"
+        assert execution.playbook_version == "v2026.10.09"
 
     def test_unauthorized_script_raises_403_before_create(self):
         script = Script.objects.create(name="s", content="echo", script_type="shell", team=[99])

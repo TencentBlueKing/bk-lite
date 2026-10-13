@@ -23,7 +23,8 @@ def materialize_business_options(catalog: dict[str, dict[str, Any]], team: int) 
         )
         if channels:
             channel_schema["enum"] = [item["id"] for item in channels]
-            channel_schema["x-enum-labels"] = {str(item["id"]): f"{item['name']} · {item['channel_type']}" for item in channels}
+            channel_schema["x-enum-labels"] = {str(item["id"]): item["name"] for item in channels}
+            channel_schema["x-enum-channel-types"] = {str(item["id"]): item["channel_type"] for item in channels}
 
     recipient_schema = properties.get("recipients")
     recipient_items = recipient_schema.get("items") if isinstance(recipient_schema, dict) else None

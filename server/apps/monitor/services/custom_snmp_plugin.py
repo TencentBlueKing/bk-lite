@@ -30,6 +30,17 @@ SNMP_TAGS_PATTERN = re.compile(r"^(?P<indent>\s*)\[inputs\.snmp\.tags\]\s*$", re
 SNMP_PLUGIN_ID_TAG_PATTERN = re.compile(r"^\s*plugin_id\s*=", re.M)
 
 
+def _overlay_vault_rendered_content(config_id, original_content, rendered_content):
+    from apps.monitor.services.vault_credential.apply import retain_managed_content
+
+    if not original_content or not rendered_content:
+        return rendered_content
+    original = ConfigFormat.toml_to_dict(original_content)
+    rendered = ConfigFormat.toml_to_dict(rendered_content)
+    retain_managed_content(config_id, original, rendered, only_missing=False)
+    return ConfigFormat.json_to_toml(rendered)
+
+
 class CustomSnmpPluginService:
     @staticmethod
     def get_monitor_object(plugin: MonitorPlugin):
@@ -308,6 +319,7 @@ class CustomSnmpPluginService:
                     "id": config_obj.id,
                     "original_content": child_config.get("content") or "",
                     "rendered_content": rendered_content,
+                    "vault_credential_id": config_obj.vault_credential_id or "",
                 }
             )
 
@@ -352,19 +364,34 @@ class CustomSnmpPluginService:
         if not update_plan:
             return
         node_mgmt = NodeMgmt()
+        local_node = None
         applied_updates = []
+        retry_ids = []
         try:
             for item in update_plan:
-                node_mgmt.update_child_config_content(item["id"], item["rendered_content"])
+                rendered_content = item["rendered_content"]
+                if item.get("vault_credential_id"):
+                    rendered_content = _overlay_vault_rendered_content(item["id"], item.get("original_content") or "", rendered_content)
+                    if local_node is None:
+                        local_node = NodeMgmt(is_local_client=True)
+                    swapped = local_node.compare_and_swap_child_config_content_local(
+                        item["id"],
+                        item.get("original_content") or "",
+                        rendered_content,
+                    )
+                    if not swapped:
+                        retry_ids.append(item["id"])
+                        continue
+                    item = {**item, "rendered_content": rendered_content}
+                else:
+                    node_mgmt.update_child_config_content(item["id"], rendered_content)
                 applied_updates.append(item)
             from apps.monitor.models import CollectConfig as CollectConfigModel
             from apps.monitor.services.collect_config_update import plugin_content_fingerprint, stamp_applied
 
-            config_ids = [item["id"] for item in update_plan]
-            config_map = {
-                config.id: config for config in CollectConfigModel.objects.filter(id__in=config_ids).select_related("monitor_plugin")
-            }
-            for item in update_plan:
+            config_ids = [item["id"] for item in applied_updates]
+            config_map = {config.id: config for config in CollectConfigModel.objects.filter(id__in=config_ids).select_related("monitor_plugin")}
+            for item in applied_updates:
                 config_obj = config_map.get(item["id"])
                 if config_obj is None:
                     continue
@@ -387,6 +414,9 @@ class CustomSnmpPluginService:
             rollback_failures = CustomSnmpPluginService._rollback_propagation(node_mgmt, applied_updates)
             rollback_tip = f"；以下实例回滚可能未完成: {', '.join(rollback_failures)}" if rollback_failures else ""
             raise BaseAppException(f"采集模板同步失败: {exc}{rollback_tip}") from exc
+        if retry_ids:
+            return {"retry_config_ids": retry_ids}
+        return None
 
     @staticmethod
     def update_collect_template(plugin: MonitorPlugin, snippet: str):
@@ -424,8 +454,12 @@ class CustomSnmpPluginService:
 
         try:
             update_plan = CustomSnmpPluginService._build_propagation_plan(plugin, updated_content, child_template)
-            CustomSnmpPluginService.propagate_collect_template(update_plan)
+            propagation = CustomSnmpPluginService.propagate_collect_template(update_plan) or {}
         except Exception:
             MonitorPluginConfigTemplate.objects.filter(id=child_template_id).update(content=original_content)
             raise
-        return CustomSnmpPluginService.get_collect_template(plugin)
+        result = CustomSnmpPluginService.get_collect_template(plugin)
+        retry_ids = propagation.get("retry_config_ids") or []
+        if retry_ids:
+            result["retry_config_ids"] = retry_ids
+        return result

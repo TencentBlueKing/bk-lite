@@ -24,6 +24,10 @@ interface Props {
   onChange: (value: Record<string, unknown>) => void;
   references?: DataReferenceOption[];
   fieldActions?: Record<string, ReactNode>;
+  nodeTitle?: string;
+  readOnly?: boolean;
+  atomKey?: string;
+  onNodeTitleChange?: (value: string) => void;
 }
 
 export const WORKFLOW_REFERENCE_MIME = 'application/x-bklite-workflow-reference';
@@ -346,8 +350,11 @@ export function SchemaNodeField({
   return <BindingEditor schema={schema} value={value} references={references} referenceOnly={referenceOnly} disabled={disabled} valueLabels={valueLabels} onChange={onChange} />;
 }
 
-export function SchemaNodeForm({ schema, uiSchema, value, onChange, references = [], fieldActions = {} }: Props) {
+export function SchemaNodeForm({ schema, uiSchema, value, onChange, references = [], fieldActions = {}, nodeTitle, readOnly = false, atomKey, onNodeTitleChange }: Props) {
   const { t } = useTranslation();
+  const nodeNameField = onNodeTitleChange ? <Form.Item className="mb-0" label={t('workflowOrchestration.editor.nodeName', '节点名称')} required>
+    <Input disabled={readOnly} value={nodeTitle} placeholder={t('workflowOrchestration.editor.enterNodeName', '请输入节点名称')} onChange={(event) => onNodeTitleChange(event.target.value)} />
+  </Form.Item> : null;
   const effectiveSchema = resolveSchemaForNodeInput(schema, uiSchema, value);
   const selector = capabilitySelector(uiSchema);
   const isVisible = (key: string) => {
@@ -359,7 +366,10 @@ export function SchemaNodeForm({ schema, uiSchema, value, onChange, references =
   };
   const properties = Object.entries(effectiveSchema.properties || {}).filter(([key]) => isVisible(key));
   if (properties.length === 0) {
-    return <Alert type="info" showIcon message={t('workflowOrchestration.editor.noSchemaFields', '该原子没有可声明的 Schema 字段')} description={t('workflowOrchestration.editor.noSchemaFieldsHint', '请先在原子包中补充输入 Schema；普通节点不开放未约束的原始 JSON。')} />;
+    return <Form className="flex flex-col gap-5" layout="vertical">
+      {nodeNameField}
+      <Alert type="info" showIcon message={t('workflowOrchestration.editor.noSchemaFields', '该原子没有可声明的 Schema 字段')} description={t('workflowOrchestration.editor.noSchemaFieldsHint', '请先在原子包中补充输入 Schema；普通节点不开放未约束的原始 JSON。')} />
+    </Form>;
   }
   const setField = (key: string, next: unknown) => {
     if (selector?.field === key) {
@@ -385,15 +395,19 @@ export function SchemaNodeForm({ schema, uiSchema, value, onChange, references =
       ...(codeLanguage ? { 'x-code-language': codeLanguage } : {}),
       ...(uiWidget === 'json' ? { jsonEditorAllowed: true } : {}),
     };
-    const hint = String(ui['ui:help'] || field.description || '') || undefined;
+    const rawLabel = String(ui['ui:label'] || field.title || key);
+    const rawHint = String(ui['ui:help'] || field.description || '');
+    const label = atomKey ? t(`workflowOrchestration.atomUi.${atomKey}.${key}.label`, rawLabel) : rawLabel;
+    const hint = (atomKey ? t(`workflowOrchestration.atomUi.${atomKey}.${key}.help`, rawHint) : rawHint) || undefined;
     const editor = <BindingEditor schema={bindingSchema} value={value[key]} references={references} onChange={(next) => setField(key, next)} />;
-    return <Form.Item className="mb-0" key={key} label={String(ui['ui:label'] || field.title || key)} required={effectiveSchema.required?.includes(key)} tooltip={hint}>
+    return <Form.Item className="mb-0" key={key} label={label} required={effectiveSchema.required?.includes(key)} tooltip={hint}>
       {fieldActions[key] ? <div className="flex items-start gap-2"><div className="min-w-0 flex-1">{editor}</div><div className="shrink-0">{fieldActions[key]}</div></div> : editor}
     </Form.Item>;
   });
   const basic = properties.filter(([key]) => !(uiSchema?.[key] as Record<string, unknown> | undefined)?.['ui:advanced']);
   const advanced = properties.filter(([key]) => Boolean((uiSchema?.[key] as Record<string, unknown> | undefined)?.['ui:advanced']));
   return <Form className="flex flex-col gap-5" layout="vertical">
+    {nodeNameField}
     {renderFields(basic)}
     {advanced.length ? <Collapse ghost items={[{ key: 'advanced', label: t('workflowOrchestration.editor.advancedSettings', '高级设置'), children: <div className="flex flex-col gap-5">{renderFields(advanced)}</div> }]} /> : null}
   </Form>;

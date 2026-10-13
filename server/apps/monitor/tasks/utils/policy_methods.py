@@ -196,6 +196,15 @@ def _policy_get(policy_like, name, default=None):
     return getattr(policy_like, name, default)
 
 
+def source_has_dispatch_targets(source):
+    """实例或组织范围为空时不派发扫描。未声明范围的策略仍按原路径派发。"""
+    if not isinstance(source, dict):
+        return True
+    if source.get("type") in {"instance", "organization"}:
+        return bool(source.get("values"))
+    return True
+
+
 def period_to_seconds(period):
     """周期转换为秒"""
     if not period:

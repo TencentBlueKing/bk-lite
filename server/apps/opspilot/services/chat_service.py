@@ -44,6 +44,7 @@ from apps.opspilot.services.wiki.active_generation_query_service import ActiveGe
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, load_wiki_budget_config
 from apps.opspilot.services.wiki.wiki_context_service import augment_prompt_with_trace, should_skip_wiki_retrieval
 from apps.opspilot.utils.agent_factory import create_agent_instance
+from apps.opspilot.utils.pending_question import consume_pending_question, resolve_conversation_key
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
 
 
@@ -554,21 +555,10 @@ class ChatService:
         if kwargs.get("entry_type"):
             extra_config["entry_type"] = kwargs["entry_type"]
 
-        # 当 attachment_file 工具被启用时，向系统提示词末尾注入强制调用指令，
-        # 防止用户 skill_prompt 中的"直接输出"类指令覆盖工具调用意图。
-        if BUILTIN_ATTACHMENT_FILE_TOOL_NAME in selected_builtin_kwargs:
-            attachment_override = (
-                "\n\n【附件生成强制规则 - 最高优先级，不可违反】\n"
-                "当前工作流已配置文件生成工具 generate_attachment_file。\n"
-                "* 如果任务目标涉及生成、创建、导出任何文件、报告、月报或文档，"
-                "必须调用 generate_attachment_file 工具把完整内容写入可下载文件"
-                "（如 .md），绝对不允许将文件全文以纯文字/Markdown 直接渲染在对话中。\n"
-                "* 工具调用成功后，仅输出简短摘要，不要重复输出完整内容。\n"
-                "* 不要在回复或附件正文中粘贴下载 URL、file:// 链接、/api/proxy 路径或「加密token」占位符；"
-                "下载入口由界面提供。\n"
-                "* 以上规则覆盖所有其他'直接输出'类指令。"
-            )
-            chat_kwargs["system_message_prompt"] = chat_kwargs.get("system_message_prompt", "") + attachment_override
+        # 附件工具常驻。知识库类型不进入本函数，因此不会注入。
+        if not any(tool.get("name") == BUILTIN_ATTACHMENT_FILE_TOOL_NAME for tool in tools):
+            tools.append(build_builtin_attachment_file_runtime_tool({}))
+        chat_kwargs["system_message_prompt"] = chat_kwargs.get("system_message_prompt", "") + _ATTACHMENT_GUIDANCE
 
         chat_kwargs.update({"tools_servers": tools})
         chat_kwargs.update({"extra_config": extra_config})
@@ -680,6 +670,10 @@ class ChatService:
                 derived,
                 force_wiki_grounded=force_wiki_grounded,
             )
+        run_model_call_limit = _optional_positive_int(kwargs.get("run_model_call_limit"))
+        if run_model_call_limit:
+            chat_kwargs["run_model_call_limit"] = min(run_model_call_limit, 100)
+
         if kwargs.get("thread_id"):
             chat_kwargs["thread_id"] = str(kwargs["thread_id"])
         elif kwargs.get("execution_id"):
@@ -746,8 +740,46 @@ class ChatService:
             server_caller_identity = kwargs.get(CALLER_IDENTITY_CONFIG_KEY)
             if server_caller_identity is not None:
                 runtime_extra_config[CALLER_IDENTITY_CONFIG_KEY] = server_caller_identity
+
+        _attach_pending_question(chat_kwargs, kwargs)
         return chat_kwargs, doc_map, title_map
 
+
+def _attach_pending_question(chat_kwargs: dict, kwargs: dict) -> None:
+    conversation_key = resolve_conversation_key(
+        conversation_key=kwargs.get("conversation_key"),
+        bot_id=kwargs.get("bot_id"),
+        session_id=kwargs.get("session_id"),
+        skill_session_id=kwargs.get("skill_session_id"),
+        thread_id=kwargs.get("thread_id"),
+    )
+    runtime_extra_config = chat_kwargs.get("extra_config")
+    if not isinstance(runtime_extra_config, dict):
+        runtime_extra_config = {}
+        chat_kwargs["extra_config"] = runtime_extra_config
+    if conversation_key:
+        runtime_extra_config["conversation_key"] = conversation_key
+    pending_question = kwargs.get("pending_question")
+    if isinstance(pending_question, dict):
+        runtime_extra_config["pending_question"] = pending_question
+        return
+    if not conversation_key:
+        return
+    consumed = consume_pending_question(conversation_key)
+    if consumed:
+        runtime_extra_config["pending_question"] = consumed
+
+
+# 常驻附件的弱提示。是否落盘只看用户本轮是否要文件，勾选工具不再强制生成。
+_ATTACHMENT_GUIDANCE = (
+    "\n\n【附件生成】仅当用户本轮明确要求生成、导出、保存或写入一份新的文件、报告或附件时，"
+    "才调用 generate_attachment_file。询问已有或上传文件的内容时直接文字回复，不要生成文件。"
+    "格式支持 txt、md、pdf、docx、pptx、xlsx、csv。用户要 txt 时用 file_type=txt，不要改成 md。"
+    "用户要 PPT 时 file_type 必须是 pptx，文件名用 .pptx，禁止降级成 docx 或 pdf。"
+    "docx 和 pdf 的 content 用 Markdown，生成时会渲染成标题、段落和表格，不要指望原文符号留在文件里。"
+    "xlsx 和 csv 的 content 必须是带表头的逗号分隔数据，不要用 Markdown 表格。"
+    "调用成功后只给简短摘要，不要在回复或正文里粘贴下载 URL、file://、/api/proxy 或加密 token。"
+)
 
 # 创建服务实例
 chat_service = ChatService()

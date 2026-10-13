@@ -137,3 +137,12 @@ All tickets T00–T53 complete. See `tickets.md` and Completion evidence below.
 - **Known residual (non-blocking for Status:implemented)**: LogsQL tests are
   synthetic/shape parity, not upstream BFF golden tolerance; palette/token polish
   and ViewSet error dedupe remain P1 follow-ups.
+- **Config authority (2026-10-12)**: the business database is the authority for
+  RUM applications and erase jobs. Redis keeps rebuildable projections and
+  short-lived hot state. `WAITAOF` is gone. ACL username checks are optional
+  (`redis_require_acl_identity`, default false) and Redis 5 with one password
+  is enough. Analytics aggregates are LogsQL `stats` (`victoria-logs:v1.38.0`).
+  New NATS subjects: `rum.v1.control.projection.apply`,
+  `rum.v1.control.projection.reconcile`,
+  `rum.v1.control.erasure.fence.release`. `application.apply` / `rotate` /
+  `retire` / `disable` return `subject retired`.

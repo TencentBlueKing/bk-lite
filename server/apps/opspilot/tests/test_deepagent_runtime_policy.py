@@ -447,6 +447,18 @@ def test_run_model_call_limit_env(monkeypatch):
     assert get_planned_execution_run_model_call_limit() == 10
 
 
+def test_run_model_call_limit_prefers_skill_config(monkeypatch):
+    from apps.opspilot.metis.llm.middleware.planned_execution_limits import resolve_planned_execution_run_model_call_limit
+
+    monkeypatch.setenv("OPSPILOT_DEEPAGENT_RUN_MODEL_CALL_LIMIT", "12")
+    assert resolve_planned_execution_run_model_call_limit(SimpleNamespace(run_model_call_limit=6)) == 6
+    assert resolve_planned_execution_run_model_call_limit(SimpleNamespace(run_model_call_limit=0)) == 12
+    assert resolve_planned_execution_run_model_call_limit(SimpleNamespace()) == 12
+    monkeypatch.delenv("OPSPILOT_DEEPAGENT_RUN_MODEL_CALL_LIMIT", raising=False)
+    assert resolve_planned_execution_run_model_call_limit(SimpleNamespace(run_model_call_limit=0)) == 10
+    assert resolve_planned_execution_run_model_call_limit(SimpleNamespace(run_model_call_limit=8)) == 8
+
+
 def test_max_tokens_budget_env_and_request(monkeypatch):
     from apps.opspilot.metis.llm.middleware.planned_execution_limits import (
         get_planned_execution_max_tokens_budget,
@@ -506,11 +518,8 @@ def test_planned_execution_limit_middleware_messages_and_continue():
     assert hard2 is not None
     assert LIMIT_MARKER_MODEL_CALLS in hard2["messages"][0].content
 
-    assert middleware2.grant_continue("model_calls") is True
-    assert middleware2.effective_run_limit == 4
-    assert middleware2.grant_continue("model_calls") is True
-    assert middleware2.grant_continue("model_calls") is True
-    assert middleware2.grant_continue("model_calls") is False
+    assert middleware2.effective_run_limit == 2
+    assert not hasattr(middleware2, "grant_continue")
 
 
 @pytest.mark.asyncio
@@ -1213,7 +1222,7 @@ def test_drop_type_choice_when_declared_strips_monitor_type_ask(caplog):
         ["monitor_list_object_instances"],
         ["monitor_list_object_metrics", "monitor_query_metric_data"],
     ]
-    records = [rec for rec in caplog.records if rec.name == "opspilot" and rec.msg == "DeepAgent 规划硬校验：已声明对象类型，去掉类型询问"]
+    records = [rec for rec in caplog.records if rec.name == "opspilot" and rec.msg == "DeepAgent 规划硬校验：已声明对象类型或正在回答提问，去掉类型询问"]
     assert len(records) == 1
     assert records[0].args in ((), None)
     assert "fusion-collector-default" not in records[0].getMessage()
@@ -2276,18 +2285,19 @@ def test_enforce_generate_attachment_file_injects_when_empty_plan():
         looks_like_attachment_file_task,
     )
 
-    assert looks_like_attachment_file_task("RC 数据", "你是月报生成器，输出 .md 文件") is True
+    assert looks_like_attachment_file_task("RC 数据", "你是月报生成器，输出 .md 文件") is False
     assert looks_like_attachment_file_task("你好", "月报生成器") is False
-    # chat_service 注入的强制规则模板不得单独触发硬注入
-    force_rule = "【附件生成强制规则 - 最高优先级，不可违反】\n" "当前工作流已配置文件生成工具 generate_attachment_file。\n" "必须调用 generate_attachment_file 工具把完整内容写入可下载文件"
-    assert looks_like_attachment_file_task("今天天气怎么样", force_rule) is False
-    assert looks_like_attachment_file_task("写一份运维月报", force_rule) is True
+    assert looks_like_attachment_file_task("现在几点了", "【附件生成】才调用 generate_attachment_file") is False
+    assert looks_like_attachment_file_task("写一份运维月报", "普通助手") is True
+    assert looks_like_attachment_file_task("文件内容是什么") is False
+    assert looks_like_attachment_file_task("这个上传的 txt 讲了什么") is False
+    assert looks_like_attachment_file_task("生成一个excel文件") is True
 
     fixed = enforce_generate_attachment_file(
         ToolExecutionPlan(goal="写月报", steps=[]),
         {GENERATE_ATTACHMENT_FILE_TOOL_NAME},
-        user_message='{"root_causes":[]}',
-        agent_system_prompt="生成 K8s 集群运维月报，内容放在 .md 文件",
+        user_message="请把 2026-06 运维月报导出成 md 文件",
+        agent_system_prompt="你是助手",
     )
     assert len(fixed.steps) == 1
     assert fixed.steps[0].tools == [GENERATE_ATTACHMENT_FILE_TOOL_NAME]
@@ -2309,15 +2319,15 @@ async def test_planner_forces_attachment_tool_when_model_returns_empty_steps():
 
     llm = FakeLLM()
     plan = await ToolExecutionPlanner(llm).plan(
-        "month=2026-06 root_causes=[...]",
+        "请把 2026-06 运维月报导出成 md 文件",
         tools,
-        agent_system_prompt="你是 OpsPilot K8s 月报生成器，月报是一个 .md 报告文件。",
+        agent_system_prompt="你是助手",
     )
     assert plan.steps
     assert GENERATE_ATTACHMENT_FILE_TOOL_NAME in plan.steps[0].tools
     prompt = "\n".join(str(message.content) for message in llm.messages)
     assert "generate_attachment_file" in prompt
-    assert "禁止返回空 steps" in prompt or "禁止空 steps" in prompt
+    assert "询问已有或上传文件的内容时不要规划" in prompt
 
 
 @pytest.mark.asyncio
@@ -2477,3 +2487,66 @@ def test_token_usage_middleware_records_each_model_call_and_visible_tools():
             ],
         },
     ]
+
+
+@pytest.mark.asyncio
+async def test_planner_confirmation_uses_conversation_window_instead_of_current_utterance_only():
+    """启用对话窗口后，确认承接必须按历史任务重新规划，不能只看本轮「确认」。"""
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlanner, render_planning_conversation
+
+    tools = [_tool("monitor_list_object_instances", "列出主机"), _tool("monitor_query_metric_data", "查时序")]
+    history = [
+        HumanMessage(content="基于历史监控数据分析所有主机未来7天磁盘会不会爆满"),
+        AIMessage(content="需要重新调用 monitor_list_object_instances 获取全部 instance_id 后再查 disk_used_percent。"),
+        HumanMessage(content="确认"),
+    ]
+    rendered = render_planning_conversation(history, current_user_message="确认")
+    assert "未来7天" in rendered
+    assert "monitor_list_object_instances" in rendered
+    assert "用户: 确认" not in rendered
+
+    class FakeLLM:
+        def __init__(self):
+            self.prompts = []
+
+        async def ainvoke(self, messages, config=None):
+            prompt = "\n".join(str(message.content) for message in messages)
+            self.prompts.append(prompt)
+            if len(self.prompts) == 1:
+                return AIMessage(content=json.dumps({"goal": "确认", "steps": []}, ensure_ascii=False))
+            return AIMessage(
+                content=json.dumps(
+                    {
+                        "goal": "继续查磁盘风险",
+                        "steps": [
+                            {"objective": "列出主机实例", "tools": ["monitor_list_object_instances"]},
+                            {"objective": "查询磁盘使用率", "tools": ["monitor_query_metric_data"]},
+                        ],
+                    },
+                    ensure_ascii=False,
+                )
+            )
+
+    llm = FakeLLM()
+    plan = await ToolExecutionPlanner(llm).plan("确认", tools, conversation_messages=history)
+    assert [step.tools for step in plan.steps] == [
+        ["monitor_list_object_instances"],
+        ["monitor_query_metric_data"],
+    ]
+    assert "近期会话" in llm.prompts[0]
+    assert "未来7天" in llm.prompts[0]
+    assert "禁止空 steps" in llm.prompts[1]
+
+
+@pytest.mark.asyncio
+async def test_planner_without_history_still_treats_bare_confirmation_as_empty():
+    from apps.opspilot.metis.llm.agent.tool_execution_planner import ToolExecutionPlanner
+
+    tools = [_tool("monitor_query_metric_data", "查时序")]
+
+    class FakeLLM:
+        async def ainvoke(self, messages, config=None):
+            return AIMessage(content=json.dumps({"goal": "确认", "steps": []}, ensure_ascii=False))
+
+    plan = await ToolExecutionPlanner(FakeLLM()).plan("确认", tools)
+    assert plan.steps == []

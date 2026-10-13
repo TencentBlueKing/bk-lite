@@ -136,6 +136,7 @@ error:
   training_document_no_retrain: training document can not be retrained
   qa_pair_update_failed: Failed to update QA pair.
   skill_quota_exceeded: Skill count exceeds quota limit.
+  run_model_call_limit_range: Model calls per step must be between 1 and 100.
   pilot_start_failed: Pilot start failed.
   no_delete_permission: User does not have permission to delete this instance
   generate_question_failed: generate question failed
@@ -255,6 +256,8 @@ tools:
         description: List metrics already collected on an instance.
       monitor_query_metric_data:
         description: Query time series for a selected metric.
+      monitor_summarize_metric_trend:
+        description: Summarize a metric trend from full history and return only series that reach the threshold within the horizon.
       monitor_list_active_alerts:
         description: List active instance alerts from monitor policies (host detail alert tab; not alert-center tickets).
       monitor_query_alert_segments:
@@ -332,13 +335,22 @@ tools:
         description: Search logs by keyword and time range.
       log_search_raw:
         description: Search logs with native LogsQL.
+  ops_analysis_dashboard:
+    name: Operations Analytics Dashboard
+    description: |
+      Search operations analytics data sources available to the current team and validate a structured proposal that the dashboard page can apply directly.
+    tools:
+      search_data_sources:
+        description: Search authorized, contract-complete data sources from explicit requirements. Call this before naming any data source. candidates[].id is the only legal dataSource, and fields[].name is the only legal field name. fields[].title is the Chinese widget title and fields[].description is the caption; do not use the English field name as a title. chart_type lists the charts that source allows. Mix the types the catalog actually supports instead of making every widget single. After search, build one flat layout and call prepare_dashboard_proposal once so the page writes the canvas. Do not use row or children, do not repeat the search, and do not ask the user to add cards by hand. single and gauge selectedFields must not be empty. Do not call it to read numbers already on the canvas, or to only delete or rearrange widgets.
+      prepare_dashboard_proposal:
+        description: Validate a proposal and apply it to the current canvas. schemaVersion must be the string "1.0". layout must be a flat widget array; do not use row, children, title, panels, chart_type, or data_source_id. Widget name uses the field title, and description uses the field caption. Choose chartType from that source chart_type and do not make every widget single. dataSource must be a numeric id returned by search; do not invent another number. single and gauge must set selectedFields to one field name from that source, and it must not be empty. pie uses dimensionField and valueField. Call this when the user asks to build or apply a dashboard; a text plan, manual add, or request_user_choice confirmation is insufficient. Success writes an undoable canvas draft; stop calling this tool and let the user save. On failure, correct once using _next_step_hint, sources, or allowedFields; do not probe other ids. Delete or rearrange by editing the current layout, without searching again.
   attachment_file:
     name: Workflow Attachment File
     description: |
-      Generate markdown, PDF, or Word attachment files for workflow execution and return a downloadable link.
+      Generate TXT, Markdown, PDF, Word, PowerPoint, Excel, or CSV attachments. Use only when the user explicitly asks to create, export, or write a new file. Do not use it to answer questions about an existing file.
     tools:
       generate_attachment_file:
-        description: Generate a workflow attachment file, persist it to MinIO-backed storage, and return its download link.
+        description: Generate a txt, md, pdf, docx, pptx, xlsx, or csv attachment and return its download link. txt and md are plain text. pptx becomes slides. xlsx and csv require comma-separated data with a header row. Use pptx when the user asks for a PowerPoint file; do not downgrade it to docx. Keep txt when the user asked for txt.
   kubernetes:
     name: Kubernetes Tools
     description: |

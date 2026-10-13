@@ -506,13 +506,24 @@ export class DataMapper {
       if (!instance_id && context.instance_id) {
         // form_fields（如 qcloud 的 username/region）在顶层表单，不在表格行；
         // 生成 instance_id 时需合并，否则 {{username}}/{{region}} 无法替换。
+        const instanceValues = { ...processedFormData, ...row };
+        if (
+          formData.credential_source === 'vault' &&
+          formData.vault_credential_id &&
+          context.instance_id.includes('{{username}}') &&
+          (instanceValues.username === undefined ||
+            instanceValues.username === null ||
+            instanceValues.username === '')
+        ) {
+          instanceValues.username = String(formData.vault_credential_id);
+        }
         instance_id =
           context.instance_id === '{{uuid}}'
             ? String(row.key).replaceAll('-', '').toLowerCase()
             : this.hashInstanceId(
               this.applyTemplate(
                 context.instance_id,
-                { ...processedFormData, ...row },
+                instanceValues,
                 context
               )
             );

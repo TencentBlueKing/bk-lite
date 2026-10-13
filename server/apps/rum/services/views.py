@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from apps.core.logger import rum_logger as logger
 from apps.rum.constants import SUBJECT_APPLICATION_LIST
 from apps.rum.services.analytics import Analytics, get_analytics
 from apps.rum.services.control import ControlError, ControlPlane, control_unavailable, get_control_plane
@@ -169,18 +170,25 @@ class ViewsService:
         apps = [name for name in requested if name in enabled] if requested else enabled
         if not self.analytics.available():
             return empty_view_list(mode=mode, reason="analytics")
-        return self.analytics.list_views(
-            self.settings.tenant_id,
-            {
-                "from": start,
-                "to": end,
-                "applications": apps,
-                "mode": mode,
-                "traffic": params.get("traffic") or "visitors",
-                "release": params.get("release") or "",
-                "limit": int(params.get("limit") or 0),
-            },
-        )
+        try:
+            return self.analytics.list_views(
+                self.settings.tenant_id,
+                {
+                    "from": start,
+                    "to": end,
+                    "applications": apps,
+                    "mode": mode,
+                    "traffic": params.get("traffic") or "visitors",
+                    "release": params.get("release") or "",
+                    "limit": int(params.get("limit") or 0),
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 — degrade; do not 500 the BFF
+            logger.warning(
+                "rum views list analytics failed failed_stage=list_views error_type=%s",
+                type(exc).__name__,
+            )
+            return empty_view_list(mode=mode, reason="analytics")
 
     def list_saved_views(self, actor: str, screen: str | None) -> list[dict]:
         return self.saved_views.list(actor, screen)

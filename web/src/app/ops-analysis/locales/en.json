@@ -890,6 +890,12 @@
       "contains": "Contains",
       "connect": "Related"
     },
+    "editStateTooLarge": "This dashboard's edit configuration is too long to apply safely. Remove some widgets before describing changes.",
+    "aiApplySuccess": "AI changes were applied. You can undo them before saving",
+    "undoAiApply": "Undo (Ctrl+Z)",
+    "undoAiApplySuccess": "Undone",
+    "redo": "Redo (Ctrl+Y)",
+    "redoSuccess": "Restored",
     "fetchDataFieldsFailed": "Failed to fetch data fields",
     "timeRange": "Time Range",
     "dateRange": "Date Range",

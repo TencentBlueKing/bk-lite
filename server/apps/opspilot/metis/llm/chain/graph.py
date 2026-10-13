@@ -1165,6 +1165,8 @@ class BasicGraph(ABC):
             return ""
         if isinstance(tool_output, ToolMessage):
             return str(getattr(tool_output, "content", "") or "")
+        if isinstance(tool_output, (dict, list)):
+            return json.dumps(tool_output, ensure_ascii=False, default=str)
         # 部分运行时会把 ToolMessage 包在带 content 属性的容器里
         content_attr = getattr(tool_output, "content", None)
         if content_attr is not None and not isinstance(tool_output, (str, bytes, dict, list, tuple, int, float, bool)):

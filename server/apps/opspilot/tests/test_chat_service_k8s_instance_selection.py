@@ -1,3 +1,8 @@
+from types import SimpleNamespace
+
+from django.core.files.base import ContentFile
+
+from apps.opspilot.services.chat_attachment_service import compose_user_message
 from apps.opspilot.services.chat_service import ChatService
 
 
@@ -122,15 +127,28 @@ def test_current_turn_images_go_to_extra_config_not_blank_history(mocker):
     llm_model.protocol_type = "openai"
     llm_model.vendor = None
     llm_model.vendor_id = None
+    llm_model.context_window_tokens = 8000
+    llm_model.pk = 1
 
     mocker.patch("apps.opspilot.services.chat_service.resolve_skill_params", return_value="system")
     mocker.patch("apps.opspilot.services.chat_service.SkillTools.objects.filter", return_value=[])
 
+    png = b"\x89PNG\r\n\x1a\n" + b"pixels"
+    attachment = SimpleNamespace(
+        mime_type="image/png",
+        original_name="shot.png",
+        parsed_text="",
+        file=ContentFile(png),
+    )
+    user_message, _remaining = compose_user_message(
+        "介绍下网络吞吐趋势",
+        [attachment],
+        token_budget=100,
+        per_file_cap=100,
+        include_images=True,
+    )
     kwargs = {
-        "user_message": [
-            {"type": "image_url", "image_url": "data:image/png;base64,abc"},
-            {"type": "message", "message": "介绍下网络吞吐趋势"},
-        ],
+        "user_message": user_message,
         "chat_history": [{"event": "user", "message": "上一问"}, {"event": "bot", "message": "上一答"}],
         "skill_prompt": "system",
         "skill_params": [],
@@ -147,7 +165,7 @@ def test_current_turn_images_go_to_extra_config_not_blank_history(mocker):
     chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(kwargs, llm_model)
 
     assert chat_kwargs["user_message"] == "介绍下网络吞吐趋势"
-    assert chat_kwargs["extra_config"]["current_image_data"] == ["data:image/png;base64,abc"]
+    assert chat_kwargs["extra_config"]["current_image_data"][0].startswith("data:image/png;base64,")
     assert chat_kwargs["chat_history"] == [
         {"event": "user", "message": "上一问"},
         {"event": "bot", "message": "上一答"},

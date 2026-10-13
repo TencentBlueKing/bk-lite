@@ -1427,6 +1427,9 @@ class MonitorModuleIngestService:
         )
         org_ids = cls._normalize_org_ids(raw, allowed_org_ids)
         cls._bind_organizations(instance, org_ids, operator=operator)
+        from apps.monitor.services.policy_group import PolicyGroupService
+
+        PolicyGroupService.consider_auto_join(instance, org_ids, operator=operator)
         instance = cls._notify_host_peers_after_write(
             instance,
             operator=operator,

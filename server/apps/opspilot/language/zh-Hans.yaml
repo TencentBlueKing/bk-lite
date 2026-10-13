@@ -133,6 +133,7 @@ error:
   training_document_no_retrain: 训练文档不可重新训练
   qa_pair_update_failed: 更新 QA 对失败。
   skill_quota_exceeded: 技能数量超过配额限制。
+  run_model_call_limit_range: 每步调用次数须在 1 到 100 之间
   pilot_start_failed: Pilot 启动失败。
   no_delete_permission: 你没有权限删除此实例
   generate_question_failed: 生成问题失败
@@ -250,6 +251,8 @@ tools:
         description: 列出某实例已采集的指标。
       monitor_query_metric_data:
         description: 查询指定指标的时序数据。
+      monitor_summarize_metric_trend:
+        description: 用完整历史汇总指标趋势，只返回会在预测跨度内到达阈值的序列。
       monitor_list_active_alerts:
         description: 查询监控策略产生的实例活跃告警（监控详情页告警列表，非告警中心工单）。
       monitor_query_alert_segments:
@@ -327,13 +330,22 @@ tools:
         description: 按关键词和时间范围查询日志。
       log_search_raw:
         description: 使用原生 LogsQL 查询日志。
+  ops_analysis_dashboard:
+    name: 运营分析仪表盘
+    description: |
+      根据用户需求检索当前组织可用的运营分析数据源，并校验可直接应用到仪表盘页面的结构化方案。
+    tools:
+      search_data_sources:
+        description: 按显式的数据需求检索有权限且契约完整的运营分析数据源。列举数据源前必须调用。candidates[].id 是唯一合法 dataSource，fields[].name 是唯一合法字段名，禁止编造。fields[].title 是中文标题，fields[].description 是说明，不要把英文字段名写成标题。chart_type 是该源允许的图表，一张盘要混用目录里实际支持的类型，不要全部做成 single。检索后构造扁平 layout 并调用一次 prepare_dashboard_proposal，页面会写入画布。禁止 row、children。不要反复检索，不要只写文字，不要让用户手工添加或再确认。single 和 gauge 的 selectedFields 不能为空。询问画布上已显示的数字，或只删除、改行列时不要调用。
+      prepare_dashboard_proposal:
+        description: 用检索候选校验并应用到当前画布。schemaVersion 必须为字符串 "1.0"，layout 必须是扁平组件数组，禁止 row、children、title、panels、chart_type、data_source_id。组件 name 用字段中文 title，description 用字段说明。chartType 从该数据源 chart_type 里选，不要全部做成 single。dataSource 只能填检索返回的数字 id，禁止编造其他数字。single 和 gauge 的 selectedFields 必须填写该数据源 fields 中的一个 name，不能为空。pie 填写 dimensionField 与 valueField。用户要求搭建或应用时必须调用，不能只写文字、让用户手工添加或再用 request_user_choice 确认。通过后页面写入可撤销的编辑草稿，立即结束本轮调用，由用户点击保存。失败时只按 _next_step_hint、sources 或 allowedFields 改一次，禁止换一组 id 再试。删除或改行列时基于当前布局修改后调用，不要重新检索。
   attachment_file:
     name: 工作流附件文件
     description: |
-      为工作流执行生成 Markdown、PDF 或 Word 附件文件，并返回可下载链接。
+      生成 TXT、Markdown、PDF、Word、PowerPoint、Excel 或 CSV 附件。仅当用户明确要求生成、导出或写入新文件时使用；询问已有文件内容时不要使用。
     tools:
       generate_attachment_file:
-        description: 生成工作流附件文件，保存到 MinIO 后端存储，并返回下载链接。
+        description: 生成 txt、md、pdf、docx、pptx、xlsx 或 csv 附件并返回下载链接。txt 和 md 用纯文本；pptx 按标题分页；xlsx 和 csv 需要带表头的逗号分隔数据。用户要 PPT 时必须用 pptx，禁止降级成 docx。用户要 txt 时不要改成 md。
   kubernetes:
     name: Kubernetes工具
     description: |

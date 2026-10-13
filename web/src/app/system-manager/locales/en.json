@@ -991,6 +991,8 @@
           "cmdbDesc": "Build a trusted IT asset map. Comprehensive collection and architecture restoration, providing data foundation for operations decisions and compliance management.",
           "patch": "Patch Management",
           "patchDesc": "Centrally manage system patches with scanning, installation, and patch library maintenance to continuously reduce security risks.",
+          "workflow_orchestration": "Workflow Orchestration",
+          "workflow_orchestrationDesc": "Design visual workflows, automate execution, manage human approvals, and track cross-system operations in one place.",
           "monitor": "Monitor Center",
           "monitorDesc": "Full-domain monitoring system with sub-second collection and precise alerting to ensure stable system operation.",
           "log": "Log Center",

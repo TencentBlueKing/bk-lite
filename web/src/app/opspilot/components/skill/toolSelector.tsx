@@ -70,6 +70,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
   const { fetchSkillTools } = useSkillApi();
   const [loading, setLoading] = useState<boolean>(false);
   const [modalVisible, setModalVisible] = useState(false);
+  const [pickerKind, setPickerKind] = useState<'tool' | 'mcp'>('tool');
   const [tools, setTools] = useState<SelectTool[]>([]);
   const [selectedTools, setSelectedTools] = useState<SelectTool[]>([]);
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -126,6 +127,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
           rawName: tool.name,
           icon: tool.icon || 'gongjuji',
           description: tool.description_tr || tool.description || '',
+          isBuildIn: tool.is_build_in !== false,
           kwargs,
         });
       });
@@ -164,11 +166,18 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
     }
   };
 
-  const openModal = () => setModalVisible(true);
+  const isMcpTool = (tool?: SelectTool | null) => tool?.isBuildIn === false;
+
+  const openModal = (kind: 'tool' | 'mcp') => {
+    setPickerKind(kind);
+    setModalVisible(true);
+  };
 
   const handleModalConfirm = (selectedIds: number[]) => {
-    const updatedSelectedTools = tools.filter((tool) => selectedIds.includes(tool.id));
-    commitSelectedTools(updatedSelectedTools);
+    const pickingMcp = pickerKind === 'mcp';
+    const kept = selectedTools.filter((tool) => isMcpTool(tool) !== pickingMcp);
+    const picked = tools.filter((tool) => selectedIds.includes(tool.id) && isMcpTool(tool) === pickingMcp);
+    commitSelectedTools([...kept, ...picked]);
     setModalVisible(false);
   };
 
@@ -244,73 +253,91 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
     setEditingTool(null);
   };
 
-  return (
-    <div>
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] font-medium text-[var(--color-text-1)]">{t('skill.tool')}</span>
-          {selectedTools.length > 0 && (
-            <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--color-count-alt-bg)] px-1.5 text-[11px] font-medium tabular-nums leading-none text-[var(--color-count-alt)]">
-              {selectedTools.length}
+  const renderToolGroup = (kind: 'tool' | 'mcp') => {
+    const mcp = kind === 'mcp';
+    const groupTools = selectedTools.filter((tool) => isMcpTool(tool) === mcp);
+    return (
+      <div className={mcp ? 'mt-4 border-t border-[var(--color-border-1)] pt-4' : undefined}>
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-[13px] font-medium text-[var(--color-text-1)]">
+              {mcp ? t('skill.mcpSection', 'MCP') : t('skill.tool')}
             </span>
-          )}
+            {groupTools.length > 0 && (
+              <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[var(--color-count-alt-bg)] px-1.5 text-[11px] font-medium tabular-nums leading-none text-[var(--color-count-alt)]">
+                {groupTools.length}
+              </span>
+            )}
+          </div>
+          <Button size="small" type="link" icon={<PlusOutlined />} onClick={() => openModal(kind)} className="px-0 text-xs">
+            {mcp ? t('skill.addMcp', '添加 MCP') : t('skill.addTool')}
+          </Button>
         </div>
-        <Button size="small" type="link" icon={<PlusOutlined />} onClick={openModal} className="px-0 text-xs">
-          {t('skill.addTool')}
-        </Button>
-      </div>
-      <p className="mb-2.5 mt-0 text-xs text-[var(--color-text-3)]">{t('skill.toolMountHint')}</p>
-      {selectedTools.length === 0 ? (
-        <div className="py-1 text-xs text-[var(--color-text-4)]">
-          {t('skill.toolEmpty')}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-2 pt-1">
-          {selectedTools.map((tool) => (
-            <div
-              key={tool.id}
-              className="flex flex-col rounded-lg p-2.5 transition-all bg-[var(--color-fill-1)]/70 hover:bg-[var(--color-fill-2)]"
-            >
-              <div className="flex w-full items-center justify-between">
-                <div className="flex min-w-0 items-center gap-1.5">
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[var(--color-bg)] text-[var(--color-primary)] shadow-2xs">
-                    <Icon className="text-xs" type={tool.icon || 'gongju'} />
-                  </span>
-                  <span className="truncate text-xs font-medium text-[var(--color-text-1)]" title={tool.name}>
-                    {tool.name}
-                  </span>
-                </div>
-                <div className="ml-2 flex shrink-0 items-center gap-1">
-                  <Button
-                    type="link"
-                    size="small"
-                    className="h-6 px-1 text-[11px]"
-                    onClick={() => openEditModal(tool)}
-                  >
-                    <EditOutlined className="text-xs" />
-                    <span className="ml-0.5">{t('skill.configureTool')}</span>
-                  </Button>
-                  <DeleteOutlined
-                    className="cursor-pointer p-1 text-xs text-[var(--color-text-4)] transition-colors hover:text-red-500"
-                    onClick={() => removeSelectedTool(tool.id)}
-                  />
+        <p className="mb-2.5 mt-0 text-xs text-[var(--color-text-3)]">
+          {mcp ? t('skill.mcpMountHint', '挂载已接入的 MCP 服务，由模型按需调用') : t('skill.toolMountHint')}
+        </p>
+        {groupTools.length === 0 ? (
+          <div className="py-1 text-xs text-[var(--color-text-4)]">
+            {mcp ? t('skill.mcpEmpty', '暂未添加 MCP，可点击右上角「添加 MCP」进行选择') : t('skill.toolEmpty')}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-2 pt-1">
+            {groupTools.map((tool) => (
+              <div
+                key={tool.id}
+                className="flex flex-col rounded-lg p-2.5 transition-all bg-[var(--color-fill-1)]/70 hover:bg-[var(--color-fill-2)]"
+              >
+                <div className="flex w-full items-center justify-between">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[var(--color-bg)] text-[var(--color-primary)] shadow-2xs">
+                      <Icon className="text-xs" type={tool.icon || 'gongju'} />
+                    </span>
+                    <span className="truncate text-xs font-medium text-[var(--color-text-1)]" title={tool.name}>
+                      {tool.name}
+                    </span>
+                  </div>
+                  <div className="ml-2 flex shrink-0 items-center gap-1">
+                    <Button
+                      type="link"
+                      size="small"
+                      className="h-6 px-1 text-[11px]"
+                      onClick={() => openEditModal(tool)}
+                    >
+                      <EditOutlined className="text-xs" />
+                      <span className="ml-0.5">{t('skill.configureTool')}</span>
+                    </Button>
+                    <DeleteOutlined
+                      className="cursor-pointer p-1 text-xs text-[var(--color-text-4)] transition-colors hover:text-red-500"
+                      onClick={() => removeSelectedTool(tool.id)}
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const pickerMcp = pickerKind === 'mcp';
+  const pickerTools = tools.filter((tool) => isMcpTool(tool) === pickerMcp);
+
+  return (
+    <div>
+      {renderToolGroup('tool')}
+      {renderToolGroup('mcp')}
 
       <SelectorOperateModal
-        title={t('skill.selecteTool')}
+        title={pickerMcp ? t('skill.selectMcp', '选择 MCP') : t('skill.selecteTool')}
         visible={modalVisible}
         okText={t('common.confirm')}
         cancelText={t('common.cancel')}
         loading={loading}
-        options={tools}
+        options={pickerTools}
         isNeedGuide={false}
         showToolDetail={true}
-        selectedOptions={selectedTools.map((tool) => tool.id)}
+        selectedOptions={selectedTools.filter((tool) => isMcpTool(tool) === pickerMcp).map((tool) => tool.id)}
         onOk={handleModalConfirm}
         onCancel={handleModalCancel}
       />

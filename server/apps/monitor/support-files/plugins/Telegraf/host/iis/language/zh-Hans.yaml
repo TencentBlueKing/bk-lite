@@ -1,0 +1,149 @@
+"IIS":
+  desc: >-
+    必须在 IIS Windows 主机本机安装 telegraf_windows，通过 win_perf_counters 采集 Web Service、APP_POOL_WAS、W3SVC_W3WP、HTTP 请求队列和缓存计数器，并用 http_response 探测站点 URL。
+  name: IIS（Telegraf）
+monitor_object:
+  "IIS": IIS
+monitor_object_type:
+  Middleware: 中间件
+monitor_object_metric:
+  "IIS":
+    iis_current_connections:
+      name: 当前连接数
+      desc: >-
+        Web Service 当前连接数。_Total 为全部站点合计。
+    iis_maximum_connections:
+      name: 最大连接数
+      desc: >-
+        Web Service 观察到的最大并发连接数。
+    iis_service_uptime:
+      name: 服务运行时间
+      desc: >-
+        Web Service 运行时间（秒）。
+    iis_connection_attempts_persec:
+      name: 连接尝试速率
+      desc: >-
+        Web Service 每秒连接尝试次数。
+    iis_bytes_received_persec:
+      name: 接收字节速率
+      desc: >-
+        Web Service 每秒接收字节数。
+    iis_bytes_sent_persec:
+      name: 发送字节速率
+      desc: >-
+        Web Service 每秒发送字节数。
+    iis_bytes_total_persec:
+      name: 总吞吐速率
+      desc: >-
+        Web Service 每秒传输字节总数。
+    iis_get_requests_persec:
+      name: GET 请求速率
+      desc: >-
+        Web Service 每秒 GET 请求数。
+    iis_post_requests_persec:
+      name: POST 请求速率
+      desc: >-
+        Web Service 每秒 POST 请求数。
+    iis_total_method_requests_persec:
+      name: 请求速率
+      desc: >-
+        Web Service 全部 HTTP 方法的每秒请求数。
+    iis_not_found_errors_persec:
+      name: 404 错误速率
+      desc: >-
+        Web Service 每秒 HTTP 404 响应数。
+    iis_locked_errors_persec:
+      name: 锁定错误速率
+      desc: >-
+        Web Service 每秒锁定错误响应数。
+    iis_current_anonymous_users:
+      name: 匿名用户数
+      desc: >-
+        Web Service 当前匿名用户数。
+    iis_current_nonanonymous_users:
+      name: 认证用户数
+      desc: >-
+        Web Service 当前已认证用户数。
+    iis_app_pool_state:
+      name: 应用程序池状态
+      desc: >-
+        APP_POOL_WAS 当前应用程序池状态。3 表示运行中。
+    iis_app_pool_uptime:
+      name: 应用程序池运行时间
+      desc: >-
+        APP_POOL_WAS 当前应用程序池运行时间（秒）。
+    iis_current_worker_processes:
+      name: 工作进程数
+      desc: >-
+        APP_POOL_WAS 当前工作进程数。
+    iis_recent_worker_process_failures:
+      name: 近期工作进程故障
+      desc: >-
+        APP_POOL_WAS 快速失败保护窗口内的工作进程故障次数。
+    iis_app_pool_recycles:
+      name: 应用程序池回收次数
+      desc: >-
+        APP_POOL_WAS 应用程序池累计回收次数。
+    iis_worker_process_failures:
+      name: 工作进程故障次数
+      desc: >-
+        APP_POOL_WAS 工作进程累计故障次数。
+    iis_worker_process_ping_failures:
+      name: 工作进程 Ping 失败
+      desc: >-
+        APP_POOL_WAS 工作进程 Ping 累计失败次数。
+    iis_worker_process_startup_failures:
+      name: 工作进程启动失败
+      desc: >-
+        APP_POOL_WAS 工作进程启动累计失败次数。
+    iis_active_requests:
+      name: 活动请求数
+      desc: >-
+        W3SVC_W3WP 工作进程中正在执行的请求数。
+    iis_active_threads:
+      name: 活动线程数
+      desc: >-
+        W3SVC_W3WP 活动线程数。
+    iis_http_500_percent:
+      name: HTTP 500 占比
+      desc: >-
+        W3SVC_W3WP 已发送响应中 HTTP 500 的百分比。
+    iis_http_404_percent:
+      name: HTTP 404 占比
+      desc: >-
+        W3SVC_W3WP 已发送响应中 HTTP 404 的百分比。
+    iis_queue_current_size:
+      name: 请求队列长度
+      desc: >-
+        HTTP Service Request Queues 当前队列长度。
+    iis_queue_rejected_requests:
+      name: 拒绝请求数
+      desc: >-
+        HTTP Service Request Queues 被拒绝的请求数。
+    iis_queue_max_item_age:
+      name: 最老排队请求年龄
+      desc: >-
+        HTTP Service Request Queues 队列中最老请求的年龄（毫秒）。
+    iis_queue_arrival_rate:
+      name: 队列到达速率
+      desc: >-
+        HTTP Service Request Queues 请求到达速率。
+    iis_site_probe_result_code:
+      name: 站点探测结果
+      desc: >-
+        本机 Telegraf http_response 对站点 URL 的探测结果。0 表示成功。
+    iis_site_probe_response_time:
+      name: 站点探测耗时
+      desc: >-
+        站点 HTTP 探测响应时间（秒）。
+    iis_site_http_response_code:
+      name: 站点 HTTP 状态码
+      desc: >-
+        站点探测返回的 HTTP 状态码。
+monitor_object_metric_group:
+  "IIS":
+    Web Service: 网站服务
+    Application Pool: 应用程序池
+    Worker Process: 工作进程
+    Request Queue: 请求队列
+    Probe: 探测

@@ -2,9 +2,11 @@ from apps.core.openapi.decorators import openapi_expose
 from apps.core.utils.viewset_utils import build_json_membership_query
 from apps.workflow_orchestration.models import WorkflowTrigger
 from apps.workflow_orchestration.openapi_serializers import WorkflowTriggerInvokeRequestSerializer, WorkflowWebhookTestRequestSerializer
+from apps.workflow_orchestration.permissions import actor_can_operate_workflow_for_teams
 from apps.workflow_orchestration.services.conductor import ConductorClient, ConductorUnavailable
 from apps.workflow_orchestration.services.definitions import DefinitionValidationError
 from apps.workflow_orchestration.services.triggers import TriggerConflict, invoke_trigger
+from apps.workflow_orchestration.services.validation_messages import render_definition_error, render_known_message, render_workflow_error
 from apps.workflow_orchestration.services.webhook_contracts import WebhookResponseError, wait_for_webhook_response
 from apps.workflow_orchestration.services.webhook_test_sessions import WebhookTestSessionError, capture_webhook_test_event
 
@@ -27,22 +29,39 @@ def openapi_workflow_trigger(trigger_id, idempotency_key, inputs=None, *, team=N
     )
     trigger = queryset.filter(build_json_membership_query(queryset, "team", teams), pk=trigger_id).first()
     if trigger is None:
-        return {"result": False, "message": "触发器不存在或不属于调用方组织"}
+        return {"result": False, "message": render_known_message(None, "触发器不存在或不属于调用方组织")}
+    username = str((user_info or {}).get("user") or "openapi")[:32]
+    domain = str((user_info or {}).get("domain") or "domain.com")[:100]
+    if not actor_can_operate_workflow_for_teams(
+        username=username,
+        domain=domain,
+        team_ids=teams,
+        workflow=trigger.workflow,
+    ):
+        return {"result": False, "message": render_known_message(None, "缺少流程实例操作权限")}
     client = ConductorClient()
     try:
         execution, created = invoke_trigger(
             trigger,
             inputs=inputs or {},
             idempotency_key=idempotency_key,
-            started_by=str((user_info or {}).get("user") or "openapi")[:32],
-            domain=str((user_info or {}).get("domain") or "domain.com")[:100],
+            started_by=username,
+            domain=domain,
             client=client,
         )
         if trigger.config.get("response_mode", "IMMEDIATE") == "WAIT":
             response = wait_for_webhook_response(execution, trigger, client=client)
             return {"execution_id": str(execution.id), "created": created, "status": "SUCCEEDED", "response": response}
     except (DefinitionValidationError, TriggerConflict, ConductorUnavailable, WebhookResponseError) as error:
-        return {"result": False, "message": str(error)}
+        return {
+            "result": False,
+            "message": render_definition_error(
+                None,
+                error,
+                definition=trigger.workflow.definition,
+                metadata=trigger.workflow.canvas_metadata,
+            ),
+        }
     return {"execution_id": str(execution.id), "created": created, "status": "ACCEPTED"}
 
 
@@ -59,5 +78,5 @@ def openapi_workflow_webhook_test(token, body=None, *, team=None, user_info=None
     try:
         capture_webhook_test_event(token, body or {}, team_ids=list(team or []))
     except WebhookTestSessionError as error:
-        return {"result": False, "message": str(error)}
+        return {"result": False, "message": render_workflow_error(None, error)}
     return {"captured": True}

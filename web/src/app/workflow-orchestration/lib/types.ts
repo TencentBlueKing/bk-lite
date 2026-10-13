@@ -87,6 +87,7 @@ export interface WorkflowRecord {
   status: WorkflowStatus;
   current_version: number;
   enabled: boolean;
+  is_builtin?: boolean;
   has_draft: boolean;
   draft_revision: number;
   draft_base_version: number;
@@ -269,6 +270,7 @@ export interface JsonSchema {
   'x-target-binding'?: TargetFieldBinding;
   'x-file-options'?: FileFieldOptions;
   'x-enum-labels'?: Record<string, string>;
+  'x-enum-channel-types'?: Record<string, string>;
   'x-enum-usernames'?: Record<string, string>;
   'x-enum-metadata'?: Record<string, { scope?: 'personal' | 'team'; default_model?: string }>;
   'x-binding'?: 'literal-only';

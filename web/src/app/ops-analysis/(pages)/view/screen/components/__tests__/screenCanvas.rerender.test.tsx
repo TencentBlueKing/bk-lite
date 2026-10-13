@@ -4,6 +4,7 @@ import { cleanup, render } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import ScreenCanvas from '../screenCanvas';
 import { createScreenWidgetItem } from '../../utils/layoutUtils';
+import { createScreenDecorationItem, createScreenShapeItem } from '../../utils/screenItems';
 import { buildDefaultScreenViewSets } from '../../utils/viewport';
 import * as metrics from '../../utils/metrics';
 
@@ -16,7 +17,19 @@ vi.mock('@/utils/i18n', () => ({
 }));
 
 vi.mock('react-rnd', () => ({
-  Rnd: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  Rnd: ({
+    children,
+    style,
+    ...rest
+  }: {
+    children: React.ReactNode;
+    style?: React.CSSProperties;
+    'data-screen-item-id'?: string;
+  }) => (
+    <div data-screen-item-id={rest['data-screen-item-id']} style={style}>
+      {children}
+    </div>
+  ),
 }));
 
 vi.mock('../screenWidgetRenderer', () => ({
@@ -134,5 +147,25 @@ describe('ScreenCanvas item updates', () => {
 
     expect(view.getByTestId(`widget-${first.id}`).getAttribute('data-fit-scale')).toBe('0.5');
     spy.mockRestore();
+  });
+
+  it('lets decoration borders pass pointer events outside edit mode', () => {
+    const base = buildDefaultScreenViewSets();
+    const border = createScreenDecorationItem([], 'panelFrame', 'border-22');
+    const shape = createScreenShapeItem([], 'rect');
+    const viewSets = { ...base, items: [border, shape] };
+    const view = render(<ScreenCanvas viewSets={viewSets} />);
+    const borderSelector = `[data-screen-item-id="${border.id}"]`;
+    const pointerEvents = (selector: string) =>
+      (view.container.querySelector(selector) as HTMLElement | null)?.style.pointerEvents;
+
+    expect(pointerEvents(borderSelector)).toBe('none');
+    expect(pointerEvents(`[data-screen-item-id="${shape.id}"]`)).toBe('');
+
+    view.rerender(<ScreenCanvas viewSets={viewSets} editMode />);
+    expect(pointerEvents(borderSelector)).toBe('');
+
+    view.rerender(<ScreenCanvas viewSets={viewSets} editMode fullscreen />);
+    expect(pointerEvents(borderSelector)).toBe('none');
   });
 });

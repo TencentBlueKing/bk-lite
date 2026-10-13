@@ -43,8 +43,8 @@ export const useSendMessage = ({
 }: UseSendMessageProps) => {
   
   const sendMessage = useCallback(
-    async (content: string, currentMessages?: CustomChatMessage[], images?: any[]) => {
-      if ((!content && !images?.length) || loading || !token) {
+    async (content: string, currentMessages?: CustomChatMessage[], attachments?: any[]) => {
+      if ((!content && !attachments?.length) || loading || !token) {
         return;
       }
 
@@ -56,7 +56,7 @@ export const useSendMessage = ({
         role: 'user',
         createAt: new Date().toISOString(),
         updateAt: new Date().toISOString(),
-        ...(images && images.length > 0 && { images })
+        ...(attachments && attachments.length > 0 && { attachments })
       };
 
       const botLoadingMessage: CustomChatMessage = {

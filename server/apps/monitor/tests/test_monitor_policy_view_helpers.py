@@ -251,6 +251,22 @@ class TestHandlePolicyEnableChange:
         vs.handle_policy_enable_change(policy.id, False, True)
         assert PeriodicTask.objects.get(name=task_name).enabled is True
 
+    def test_enable_without_instances_stays_undispatched(self, mocker):
+        from django_celery_beat.models import PeriodicTask
+
+        mocker.patch("apps.monitor.views.monitor_policy.AlertLifecycleNotifier")
+        obj = MonitorObject.objects.create(name="HPECObj4", level="base")
+        policy = MonitorPolicy.objects.create(
+            monitor_object=obj, name="p", algorithm="max",
+            query_condition={}, source={"type": "instance", "values": []}, group_by=[], enable=False,
+        )
+        vs = _vs()
+        vs.update_or_create_task(policy.id, {"type": "min", "value": 5})
+        PeriodicTask.objects.filter(name=f"scan_policy_task_{policy.id}").update(enabled=False)
+        MonitorPolicy.objects.filter(id=policy.id).update(enable=True)
+        vs.handle_policy_enable_change(policy.id, False, True)
+        assert PeriodicTask.objects.get(name=f"scan_policy_task_{policy.id}").enabled is False
+
 
 class TestGetBulkPolicyAssets:
     def test_empty_ids(self):

@@ -187,4 +187,21 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.alerts.tests.test_openapi_gateway::test_api_tenant_cannot_delete_other_org_shield",
         "apps.alerts.tests.test_openapi_gateway::test_shield_delete_forged_team_is_rejected",
     ],
+    "system-mgmt/users": [
+        "apps.system_mgmt.tests.test_openapi_directory::test_system_tenant_can_read_own_org_users",
+        "apps.system_mgmt.tests.test_openapi_directory::test_system_tenant_cannot_read_other_org_users",
+        "apps.system_mgmt.tests.test_openapi_directory::test_system_tenant_forged_acting_team_is_rejected",
+        "apps.system_mgmt.tests.test_openapi_directory::test_group_id_out_of_scope_is_forbidden",
+        "apps.system_mgmt.tests.test_openapi_directory::test_missing_group_id_is_business_rejected",
+        "apps.system_mgmt.tests.test_openapi_directory::test_users_exact_query_does_not_leak_invisible_user",
+        "apps.system_mgmt.tests.test_openapi_directory::test_users_batch_query_does_not_leak_invisible_users",
+    ],
+    "system-mgmt/groups": [
+        "apps.system_mgmt.tests.test_openapi_directory::test_system_tenant_can_read_own_org_groups",
+        "apps.system_mgmt.tests.test_openapi_directory::test_system_tenant_cannot_read_other_org_groups",
+        "apps.system_mgmt.tests.test_openapi_directory::test_system_tenant_groups_forged_acting_team_is_rejected",
+        "apps.system_mgmt.tests.test_openapi_directory::test_archived_group_id_is_business_rejected",
+        "apps.system_mgmt.tests.test_openapi_directory::test_scope_root_parent_id_null_and_preserved_across_pages",
+        "apps.system_mgmt.tests.test_openapi_directory::test_include_children_does_not_expand_unauthorized_child",
+    ],
 }

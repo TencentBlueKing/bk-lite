@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { isSilentCustomEvent } from '@webchat/core';
 import type { CustomProtocolEvent } from '../agui';
 import { WC } from '../chrome';
+import { type WebchatChoiceOption, type WebchatChoiceValue } from '../choiceDisplay';
 import { useTranslator } from '../useTranslator';
 
 interface HitlSubmitContext {
@@ -35,6 +36,7 @@ interface HitlPanelsProps extends HitlSubmitContext {
   event: CustomProtocolEvent | null;
   approvalUrl?: string;
   choiceUrl?: string;
+  onSendMessage?: (text: string) => void;
   onResolved: () => void;
 }
 
@@ -77,7 +79,7 @@ export function formatDegradedCustomEvent(event: CustomProtocolEvent): string {
 export const HitlPanels: React.FC<HitlPanelsProps> = ({
   event,
   approvalUrl,
-  choiceUrl,
+  onSendMessage,
   apiKey,
   credentials,
   headers,
@@ -162,9 +164,13 @@ export const HitlPanels: React.FC<HitlPanelsProps> = ({
     );
   }
 
-  if (event.name === 'user_choice_request' && choiceUrl) {
-    const value = (event.value || {}) as ChoiceHitlValue;
-    const options = value.options || [];
+  if (event.name === 'user_choice_request' && onSendMessage) {
+    const value = (event.value || {}) as WebchatChoiceValue;
+    const options = (value.options || []) as WebchatChoiceOption[];
+    const pick = (option: WebchatChoiceOption) => {
+      onSendMessage(option.label || option.key);
+      onResolved();
+    };
     return (
       <div
         className="mt-2.5 rounded-[10px] p-2.5 text-sm"
@@ -177,27 +183,42 @@ export const HitlPanels: React.FC<HitlPanelsProps> = ({
           </p>
         )}
         {error && <p className="mt-2 text-xs" style={{ color: WC.fail }}>{error}</p>}
-        <div className="mt-2 flex flex-wrap gap-2">
-          {options.map((option) => (
-            <button
-              key={option.key}
-              type="button"
-              disabled={busy || option.disabled}
-              className="h-7 rounded-lg px-3 text-xs disabled:opacity-50"
-              style={{ background: WC.white, border: `1px solid ${WC.botBorder}`, color: WC.botText }}
-              onClick={() =>
-                submit(choiceUrl, {
-                  execution_id: value.execution_id,
-                  node_id: value.node_id,
-                  choice_id: value.choice_id,
-                  selected: [option.key],
-                })
+        {options.length > 8 ? (
+          <select
+            className="mt-2 h-8 w-full rounded-lg px-2 text-xs"
+            style={{ background: WC.white, border: `1px solid ${WC.botBorder}`, color: WC.botText }}
+            defaultValue=""
+            disabled={busy}
+            onChange={(changeEvent) => {
+              const option = options.find((item) => item.key === changeEvent.target.value);
+              if (option) {
+                pick(option);
               }
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+            }}
+          >
+            <option value="">{t('hitl.pleaseSelect', '请选择')}</option>
+            {options.map((option) => (
+              <option key={option.key} value={option.key} disabled={option.disabled}>
+                {option.label || option.key}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {options.map((option) => (
+              <button
+                key={option.key}
+                type="button"
+                disabled={busy || option.disabled}
+                className="h-7 rounded-lg px-3 text-xs disabled:opacity-50"
+                style={{ background: WC.white, border: `1px solid ${WC.botBorder}`, color: WC.botText }}
+                onClick={() => pick(option)}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     );
   }

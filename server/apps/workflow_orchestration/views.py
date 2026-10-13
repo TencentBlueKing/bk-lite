@@ -58,7 +58,7 @@ from apps.workflow_orchestration.services.agent_knowledge_inputs import store_up
 from apps.workflow_orchestration.services.atom_registry import available_atom_catalog, ensure_platform_atom, task_definition_from_catalog_item
 from apps.workflow_orchestration.services.atoms import TASK_DEFINITIONS, atom_catalog_payload, system_node_catalog_payload
 from apps.workflow_orchestration.services.capability_profiles import capability_resource_snapshot
-from apps.workflow_orchestration.services.conductor import ConductorClient, ConductorUnavailable
+from apps.workflow_orchestration.services.conductor import ConductorClient, ConductorConflict, ConductorUnavailable
 from apps.workflow_orchestration.services.data_contracts import validate_and_compile_workflow_data_contract
 from apps.workflow_orchestration.services.definitions import (
     DefinitionValidationError,
@@ -71,7 +71,9 @@ from apps.workflow_orchestration.services.definitions import (
     validate_conductor_definition,
     validate_workflow_inputs,
 )
+from apps.workflow_orchestration.services.demo_templates import SAMPLE_TEMPLATE_CONTENT_TYPES, builtin_health_template_path
 from apps.workflow_orchestration.services.execution_details import build_execution_node_detail, build_execution_node_summary
+from apps.workflow_orchestration.services.execution_job_cancellation import cancel_linked_job_tasks
 from apps.workflow_orchestration.services.executions import apply_remote_execution
 from apps.workflow_orchestration.services.graph_compiler import compile_canvas_graph
 from apps.workflow_orchestration.services.interactions import InteractionConflict, InteractionForbidden, decide_interaction
@@ -104,6 +106,7 @@ from apps.workflow_orchestration.services.target_resolver import (
     resolve_target_fields,
 )
 from apps.workflow_orchestration.services.triggers import TriggerConflict, invoke_trigger, sync_published_triggers
+from apps.workflow_orchestration.services.validation_messages import render_definition_error, render_known_message, render_workflow_error
 from apps.workflow_orchestration.services.webhook_test_sessions import (
     WebhookTestSessionError,
     WebhookTestTimeout,
@@ -315,17 +318,22 @@ class WorkflowViewSet(AuthViewSet):
         elif list_status == "PUBLISHED":
             queryset = queryset.filter(current_version__gt=0)
         elif list_status:
-            return Response({"detail": "status 非法"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_known_message(request, "status 非法")}, status=status.HTTP_400_BAD_REQUEST)
         enabled_filter = str(request.query_params.get("enabled") or "").strip().lower()
         if enabled_filter in {"true", "false"}:
             queryset = queryset.filter(current_version__gt=0, enabled=enabled_filter == "true")
         elif enabled_filter:
-            return Response({"detail": "enabled 非法"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_known_message(request, "enabled 非法")}, status=status.HTTP_400_BAD_REQUEST)
         trigger_type = str(request.query_params.get("trigger_type") or "").upper()
         if trigger_type:
             if trigger_type not in WorkflowTrigger.Type.values:
-                return Response({"detail": "trigger_type 非法"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"detail": render_known_message(request, "trigger_type 非法")}, status=status.HTTP_400_BAD_REQUEST)
             queryset = queryset.filter(build_json_membership_query(queryset, "trigger_types", [trigger_type]))
+        builtin_filter = str(request.query_params.get("is_builtin") or "").strip().lower()
+        if builtin_filter in {"true", "false"}:
+            queryset = queryset.filter(is_builtin=builtin_filter == "true")
+        elif builtin_filter:
+            return Response({"detail": render_known_message(request, "is_builtin 非法")}, status=status.HTTP_400_BAD_REQUEST)
         page = self.paginate_queryset(queryset)
         return self.get_paginated_response(self.get_serializer(page, many=True).data)
 
@@ -363,6 +371,11 @@ class WorkflowViewSet(AuthViewSet):
     @HasPermission("workflow-Edit", app_name=APP_NAME)
     def partial_update(self, request, *args, **kwargs):
         scoped = self._scoped_object(request, require_operate=True)
+        if scoped.is_builtin:
+            return Response(
+                {"detail": render_known_message(request, "内置流程不可保存草稿，请复制后再编辑"), "code": "BUILTIN_WORKFLOW_READONLY"},
+                status=status.HTTP_409_CONFLICT,
+            )
         supplied_revision = request.data.get("draft_revision")
         try:
             with transaction.atomic():
@@ -370,7 +383,7 @@ class WorkflowViewSet(AuthViewSet):
                 if supplied_revision is not None and supplied_revision != workflow.draft_revision:
                     return Response(
                         {
-                            "detail": "草稿已经被其他修改更新，请重新载入后再保存",
+                            "detail": render_known_message(request, "草稿已经被其他修改更新，请重新载入后再保存"),
                             "code": "DRAFT_REVISION_CONFLICT",
                             "draft_revision": workflow.draft_revision,
                         },
@@ -400,20 +413,28 @@ class WorkflowViewSet(AuthViewSet):
         scoped = self._scoped_object(request, require_operate=True)
         enabled = request.data.get("enabled")
         if not isinstance(enabled, bool):
-            return Response({"detail": "enabled 必须是布尔值"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_known_message(request, "enabled 必须是布尔值")}, status=status.HTTP_400_BAD_REQUEST)
         if enabled and not scoped.current_version:
-            return Response({"detail": "请先发布流程"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_known_message(request, "请先发布流程")}, status=status.HTTP_409_CONFLICT)
         if enabled:
             version = scoped.versions.filter(version=scoped.current_version).first()
             if version is None:
-                return Response({"detail": "当前发布版本不存在"}, status=status.HTTP_409_CONFLICT)
+                return Response({"detail": render_known_message(request, "当前发布版本不存在")}, status=status.HTTP_409_CONFLICT)
+            catalog = available_atom_catalog(_team_id(request))
             try:
                 validate_conductor_definition(
                     version.definition,
-                    atom_catalog=available_atom_catalog(_team_id(request)),
+                    atom_catalog=catalog,
                 )
             except DefinitionValidationError as error:
-                return Response({"detail": str(error)}, status=status.HTTP_409_CONFLICT)
+                return Response(
+                    {
+                        "detail": render_definition_error(
+                            request, error, definition=version.definition, metadata=version.canvas_metadata, atom_catalog=catalog
+                        )
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
         username, domain = _identity(request)
         scoped.enabled = enabled
         scoped.updated_by = username
@@ -439,6 +460,11 @@ class WorkflowViewSet(AuthViewSet):
     @HasPermission("workflow-Delete", app_name=APP_NAME)
     def destroy(self, request, *args, **kwargs):
         workflow = self._scoped_object(request, require_operate=True)
+        if workflow.is_builtin:
+            return Response(
+                {"detail": render_known_message(request, "内置流程不可删除，可停用或复制后自定义"), "code": "BUILTIN_WORKFLOW_READONLY"},
+                status=status.HTTP_409_CONFLICT,
+            )
         username, domain = _identity(request)
         try:
             deleted, audit_detail = soft_delete_workflow(
@@ -447,9 +473,9 @@ class WorkflowViewSet(AuthViewSet):
                 deleted_by_domain=domain,
             )
         except WorkflowDeleteConflict as error:
-            return Response({"detail": str(error)}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_409_CONFLICT)
         except Workflow.DoesNotExist:
-            return Response({"detail": "流程不存在"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": render_known_message(request, "流程不存在")}, status=status.HTTP_404_NOT_FOUND)
         transaction.on_commit(lambda workflow_id=workflow.pk: delete_workflow_nats_channels(workflow_id))
         _audit(
             request,
@@ -478,6 +504,7 @@ class WorkflowViewSet(AuthViewSet):
                 team=source.team,
                 definition=copy.deepcopy(source.definition),
                 canvas_metadata=copy.deepcopy(source.canvas_metadata),
+                is_builtin=False,
                 created_by=username,
                 updated_by=username,
                 domain=domain,
@@ -517,19 +544,32 @@ class WorkflowViewSet(AuthViewSet):
                 atom_catalog=catalog,
             )
         except (DefinitionValidationError, ValueError) as error:
-            issue = {"message": str(error), "code": "workflow_invalid"}
-            return Response({"valid": False, "errors": [str(error)], "issues": [issue]}, status=status.HTTP_400_BAD_REQUEST)
+            scope = locals()
+            message = render_definition_error(
+                request,
+                error,
+                definition=scope.get("draft_definition"),
+                metadata=scope.get("draft_metadata"),
+                atom_catalog=scope.get("catalog"),
+            )
+            issue = {"message": message, "code": "workflow_invalid"}
+            return Response({"valid": False, "errors": [message], "issues": [issue]}, status=status.HTTP_400_BAD_REQUEST)
         return Response({"valid": True, "errors": [], "issues": []})
 
     @action(methods=["POST"], detail=True)
     @HasPermission("workflow-Publish", app_name=APP_NAME)
     def publish(self, request, pk=None):
         workflow = self._scoped_object(request, require_operate=True)
+        if workflow.is_builtin:
+            return Response(
+                {"detail": render_known_message(request, "内置流程不可发布，请复制后再编辑发布"), "code": "BUILTIN_WORKFLOW_READONLY"},
+                status=status.HTTP_409_CONFLICT,
+            )
         supplied_revision = request.data.get("draft_revision")
         if supplied_revision is not None and supplied_revision != workflow.draft_revision:
             return Response(
                 {
-                    "detail": "草稿已经被其他修改更新，请重新载入后再发布",
+                    "detail": render_known_message(request, "草稿已经被其他修改更新，请重新载入后再发布"),
                     "code": "DRAFT_REVISION_CONFLICT",
                     "draft_revision": workflow.draft_revision,
                 },
@@ -540,7 +580,23 @@ class WorkflowViewSet(AuthViewSet):
             workflow,
             include_metadata=True,
         )
-        next_version = workflow.current_version + 1
+        # Reserve the next immutable version number under the workflow row lock before
+        # compiling/registering, so concurrent publishers cannot share the same version.
+        with transaction.atomic():
+            locked_workflow = Workflow.all_objects.select_for_update().get(pk=workflow.pk)
+            if locked_workflow.deleted_at is not None:
+                return Response({"detail": render_known_message(request, "流程已删除")}, status=status.HTTP_409_CONFLICT)
+            if supplied_revision is not None and supplied_revision != locked_workflow.draft_revision:
+                return Response(
+                    {
+                        "detail": render_known_message(request, "草稿已经被其他修改更新，请重新载入后再发布"),
+                        "code": "DRAFT_REVISION_CONFLICT",
+                        "draft_revision": locked_workflow.draft_revision,
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            next_version = locked_workflow.current_version + 1
+            reserved_draft_revision = locked_workflow.draft_revision
         team = _team_id(request)
         catalog = available_atom_catalog(team)
         try:
@@ -573,7 +629,18 @@ class WorkflowViewSet(AuthViewSet):
                 timezone_name=resolve_user_timezone(request.user),
             )
         except (DefinitionValidationError, ValueError) as error:
-            return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {
+                    "detail": render_definition_error(
+                        request,
+                        error,
+                        definition=draft_definition,
+                        metadata=draft_metadata,
+                        atom_catalog=catalog,
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         resource_snapshot = {
             "templates": [],
             "required_metrics": [],
@@ -595,30 +662,38 @@ class WorkflowViewSet(AuthViewSet):
                         domain=domain,
                     )
         except ValueError as error:
-            return Response({"detail": str(error)}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_409_CONFLICT)
         static_task_names = {item["name"] for item in TASK_DEFINITIONS}
         client = ConductorClient()
         try:
             custom_task_definitions = [task_definition_from_catalog_item(catalog[key]) for key in atom_keys if key not in static_task_names]
             client.register_task_definitions([*TASK_DEFINITIONS, *custom_task_definitions])
             client.register_workflow(definition)
+        except ConductorConflict as error:
+            logger.warning("Conductor publish conflict workflow_id=%s", workflow.pk)
+            return Response({"detail": render_workflow_error(request, error), "code": "ENGINE_DEFINITION_CONFLICT"}, status=status.HTTP_409_CONFLICT)
         except ConductorUnavailable as error:
             logger.warning("Conductor publish unavailable workflow_id=%s", workflow.pk)
-            return Response({"detail": str(error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         with transaction.atomic():
             workflow = Workflow.all_objects.select_for_update().get(pk=workflow.pk)
             if workflow.deleted_at is not None:
-                return Response({"detail": "流程已删除"}, status=status.HTTP_409_CONFLICT)
-            if supplied_revision is not None and supplied_revision != workflow.draft_revision:
+                return Response({"detail": render_known_message(request, "流程已删除")}, status=status.HTTP_409_CONFLICT)
+            if workflow.draft_revision != reserved_draft_revision:
                 return Response(
-                    {"detail": "草稿版本已变化，本次发布已取消", "code": "DRAFT_REVISION_CONFLICT"},
+                    {"detail": render_known_message(request, "草稿版本已变化，本次发布已取消"), "code": "DRAFT_REVISION_CONFLICT"},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            if workflow.current_version + 1 != next_version:
+                return Response(
+                    {"detail": render_known_message(request, "流程版本已被其他发布占用，请刷新后重试"), "code": "PUBLISH_VERSION_CONFLICT"},
                     status=status.HTTP_409_CONFLICT,
                 )
             package_keys = atom_keys
             locked_package_atoms = {atom.key: atom for atom in AtomDefinition.objects.select_for_update().filter(key__in=package_keys)}
             if set(locked_package_atoms) != set(package_keys):
                 return Response(
-                    {"detail": "流程引用的原子状态或版本已经变化，请刷新后重试"},
+                    {"detail": render_known_message(request, "流程引用的原子状态或版本已经变化，请刷新后重试")},
                     status=status.HTTP_409_CONFLICT,
                 )
             WorkflowVersion.objects.create(
@@ -671,7 +746,7 @@ class WorkflowViewSet(AuthViewSet):
         workflow = self._scoped_object(request, require_operate=True)
         if request.data.get("breakpoint_before"):
             return Response(
-                {"detail": "MVP 不支持断点调试"},
+                {"detail": render_known_message(request, "MVP 不支持断点调试")},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         try:
@@ -736,9 +811,21 @@ class WorkflowViewSet(AuthViewSet):
                 trigger_id=trigger_id,
             )
         except (DefinitionValidationError, ValueError) as error:
-            return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+            scope = locals()
+            return Response(
+                {
+                    "detail": render_definition_error(
+                        request,
+                        error,
+                        definition=scope.get("draft_definition"),
+                        metadata=scope.get("draft_metadata"),
+                        atom_catalog=scope.get("catalog"),
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         except ConductorUnavailable as error:
-            return Response({"detail": str(error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         _audit(request, "debug", "启动流程草稿调试", target_type="execution", target_id=execution.id)
         return Response(
             WorkflowExecutionSerializer(execution, context={"request": request}).data,
@@ -750,17 +837,17 @@ class WorkflowViewSet(AuthViewSet):
     def launch_plan(self, request, pk=None):
         workflow = self._scoped_object(request, require_operate=True)
         if not workflow.enabled:
-            return Response({"detail": "流程已停用"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_known_message(request, "流程已停用")}, status=status.HTTP_409_CONFLICT)
         if not workflow.current_version:
-            return Response({"detail": "请先发布流程"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_known_message(request, "请先发布流程")}, status=status.HTTP_409_CONFLICT)
         version = WorkflowVersion.objects.filter(workflow=workflow, version=workflow.current_version).first()
         if version is None:
-            return Response({"detail": "当前生效版本不存在"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_known_message(request, "当前生效版本不存在")}, status=status.HTTP_409_CONFLICT)
         username, domain = _identity(request)
         try:
             target_fields = extract_target_fields(version.canvas_metadata)
         except ValueError as error:
-            return Response({"detail": str(error)}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_409_CONFLICT)
         return Response(
             build_launch_plan(
                 workflow_id=workflow.pk,
@@ -780,7 +867,7 @@ class WorkflowViewSet(AuthViewSet):
         workflow = self._scoped_object(request, require_operate=True)
         uploaded_file = request.FILES.get("file")
         if uploaded_file is None:
-            return Response({"detail": "请选择要上传的文件"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_known_message(request, "请选择要上传的文件")}, status=status.HTTP_400_BAD_REQUEST)
         try:
             reference = store_uploaded_agent_knowledge(
                 uploaded_file,
@@ -788,7 +875,7 @@ class WorkflowViewSet(AuthViewSet):
                 team=_team_id(request),
             )
         except ValueError as error:
-            return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as error:
             safe_error = RuntimeError("workflow agent knowledge upload failed")
             logger.error(
@@ -797,7 +884,7 @@ class WorkflowViewSet(AuthViewSet):
                 type(error).__name__,
                 exc_info=(type(safe_error), safe_error, error.__traceback__),
             )
-            return Response({"detail": "知识文件存储暂不可用"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response({"detail": render_known_message(request, "知识文件存储暂不可用")}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         _audit(request, "upload", "上传智能体知识文件", target_type="workflow", target_id=workflow.pk)
         return Response(reference, status=status.HTTP_201_CREATED)
 
@@ -806,7 +893,7 @@ class WorkflowViewSet(AuthViewSet):
     def report_template_upload(self, request, pk=None):
         workflow = self._scoped_object(request, require_operate=True)
         if not workflow.enabled or not workflow.current_version:
-            return Response({"detail": "只有已启用的已发布流程可以上传运行模板"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_known_message(request, "只有已启用的已发布流程可以上传运行模板")}, status=status.HTTP_409_CONFLICT)
         team = _team_id(request)
         username, domain = _identity(request)
         try:
@@ -818,28 +905,28 @@ class WorkflowViewSet(AuthViewSet):
                 domain=domain,
             )
         except LaunchPlanTokenError as error:
-            return Response({"detail": str(error)}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_409_CONFLICT)
         if workflow.current_version != launch_context["workflow_version"]:
-            return Response({"detail": "流程生效版本已变化，请重新打开执行窗口"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_known_message(request, "流程生效版本已变化，请重新打开执行窗口")}, status=status.HTTP_409_CONFLICT)
         version = WorkflowVersion.objects.filter(workflow=workflow, version=workflow.current_version).first()
         field_key = str(request.data.get("field_key") or "")
         input_schema = version.canvas_metadata.get("input_schema", {}) if version and isinstance(version.canvas_metadata, dict) else {}
         field_schema = (input_schema.get("properties") or {}).get(field_key) if isinstance(input_schema, dict) else None
         if not isinstance(field_schema, dict) or field_schema.get("x-widget") != "file-upload":
-            return Response({"detail": "上传字段不存在或不是文件上传字段"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_known_message(request, "上传字段不存在或不是文件上传字段")}, status=status.HTTP_400_BAD_REQUEST)
         file_options = field_schema.get("x-file-options") if isinstance(field_schema.get("x-file-options"), dict) else {}
         source_modes = file_options.get("sourceModes") if isinstance(file_options.get("sourceModes"), list) else []
         if "upload" not in source_modes:
-            return Response({"detail": "该字段不允许上传文件"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_known_message(request, "该字段不允许上传文件")}, status=status.HTTP_400_BAD_REQUEST)
         allowed_formats = tuple(str(item).lower() for item in file_options.get("accept", []) if isinstance(item, str))
         if not allowed_formats:
-            return Response({"detail": "该字段没有配置允许的文件类型"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_known_message(request, "该字段没有配置允许的文件类型")}, status=status.HTTP_409_CONFLICT)
         max_size_mib = file_options.get("maxSizeMiB", 5)
         if isinstance(max_size_mib, bool) or not isinstance(max_size_mib, (int, float)) or not 0 < max_size_mib <= 5:
-            return Response({"detail": "该字段的文件大小配置非法"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_known_message(request, "该字段的文件大小配置非法")}, status=status.HTTP_409_CONFLICT)
         uploaded_file = request.FILES.get("file")
         if uploaded_file is None:
-            return Response({"detail": "请选择要上传的文件"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_known_message(request, "请选择要上传的文件")}, status=status.HTTP_400_BAD_REQUEST)
         try:
             reference = store_uploaded_report_template(
                 uploaded_file,
@@ -852,7 +939,7 @@ class WorkflowViewSet(AuthViewSet):
                 max_bytes=int(max_size_mib * 1024 * 1024),
             )
         except (ReportTemplateError, ValueError) as error:
-            return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as error:
             safe_error = RuntimeError("workflow report template upload failed")
             logger.error(
@@ -861,7 +948,7 @@ class WorkflowViewSet(AuthViewSet):
                 type(error).__name__,
                 exc_info=(type(safe_error), safe_error, error.__traceback__),
             )
-            return Response({"detail": "报告模板存储暂不可用"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response({"detail": render_known_message(request, "报告模板存储暂不可用")}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response(reference, status=status.HTTP_201_CREATED)
 
     @action(methods=["POST"], detail=True, url_path="report-template-test-upload")
@@ -870,7 +957,7 @@ class WorkflowViewSet(AuthViewSet):
         workflow = self._scoped_object(request, require_operate=True)
         uploaded_file = request.FILES.get("file")
         if uploaded_file is None:
-            return Response({"detail": "请选择要上传的文件"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_known_message(request, "请选择要上传的文件")}, status=status.HTTP_400_BAD_REQUEST)
         team = _team_id(request)
         username, domain = _identity(request)
         try:
@@ -885,7 +972,7 @@ class WorkflowViewSet(AuthViewSet):
                 max_bytes=5 * 1024 * 1024,
             )
         except (ReportTemplateError, ValueError) as error:
-            return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as error:
             safe_error = RuntimeError("workflow report test template upload failed")
             logger.error(
@@ -894,7 +981,7 @@ class WorkflowViewSet(AuthViewSet):
                 type(error).__name__,
                 exc_info=(type(safe_error), safe_error, error.__traceback__),
             )
-            return Response({"detail": "报告模板存储暂不可用"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response({"detail": render_known_message(request, "报告模板存储暂不可用")}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response(reference, status=status.HTTP_201_CREATED)
 
     @action(methods=["POST"], detail=True)
@@ -902,7 +989,7 @@ class WorkflowViewSet(AuthViewSet):
     def run(self, request, pk=None):
         workflow = self._scoped_object(request, require_operate=True)
         if not workflow.enabled:
-            return Response({"detail": "流程已停用"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_known_message(request, "流程已停用")}, status=status.HTTP_409_CONFLICT)
         team = _team_id(request)
         username, domain = _identity(request)
         launch_token = request.data.get("launch_token")
@@ -915,17 +1002,17 @@ class WorkflowViewSet(AuthViewSet):
                 domain=domain,
             )
         except LaunchPlanTokenError as error:
-            return Response({"detail": str(error)}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_409_CONFLICT)
         if launch_context.get("parent_execution_id") is not None:
-            return Response({"detail": "重新执行凭证不能用于流程列表执行"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_known_message(request, "重新执行凭证不能用于流程列表执行")}, status=status.HTTP_409_CONFLICT)
         if workflow.current_version != launch_context["workflow_version"]:
-            return Response({"detail": "流程生效版本已变化，请重新打开执行窗口"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_known_message(request, "流程生效版本已变化，请重新打开执行窗口")}, status=status.HTTP_409_CONFLICT)
         version = WorkflowVersion.objects.filter(
             workflow=workflow,
             version=launch_context["workflow_version"],
         ).first()
         if version is None:
-            return Response({"detail": "启动凭证对应的流程版本不存在"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_known_message(request, "启动凭证对应的流程版本不存在")}, status=status.HTTP_409_CONFLICT)
         try:
             inputs = validate_workflow_inputs(
                 copy.deepcopy(request.data.get("inputs") or {}),
@@ -947,7 +1034,7 @@ class WorkflowViewSet(AuthViewSet):
                 if resolution.offline_targets and request.data.get("offline_confirmed") is not True:
                     return Response(
                         {
-                            "detail": f"{len(resolution.offline_targets)} 台主机当前离线，需要二次确认",
+                            "detail": render_known_message(request, f"{len(resolution.offline_targets)} 台主机当前离线，需要二次确认"),
                             "code": "OFFLINE_CONFIRMATION_REQUIRED",
                             "offline_targets": resolution.offline_targets,
                         },
@@ -958,11 +1045,11 @@ class WorkflowViewSet(AuthViewSet):
                 target_snapshot["offline_confirmed"] = bool(resolution.offline_targets)
         except TargetResolutionError as error:
             response_status = status.HTTP_403_FORBIDDEN if "不存在或无权访问" in str(error) else status.HTTP_400_BAD_REQUEST
-            return Response({"detail": str(error)}, status=response_status)
+            return Response({"detail": render_workflow_error(request, error)}, status=response_status)
         except ValueError as error:
-            return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_400_BAD_REQUEST)
         except TargetDependencyUnavailable as error:
-            return Response({"detail": str(error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         try:
             execution = start_execution(
                 workflow,
@@ -975,9 +1062,9 @@ class WorkflowViewSet(AuthViewSet):
                 target_snapshot=target_snapshot,
             )
         except (ValueError, WorkflowVersion.DoesNotExist) as error:
-            return Response({"detail": str(error)}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_409_CONFLICT)
         except ConductorUnavailable as error:
-            return Response({"detail": str(error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         reused = bool(getattr(execution, "_launch_reused", False))
         if not reused:
             _audit(request, "execute", "启动已发布流程", target_type="execution", target_id=execution.id)
@@ -1004,13 +1091,18 @@ class WorkflowViewSet(AuthViewSet):
     @HasPermission("workflow-Edit", app_name=APP_NAME)
     def restore_version_draft(self, request, pk=None, version=None):
         scoped = self._scoped_object(request, require_operate=True)
+        if scoped.is_builtin:
+            return Response(
+                {"detail": render_known_message(request, "内置流程不可恢复草稿"), "code": "BUILTIN_WORKFLOW_READONLY"},
+                status=status.HTTP_409_CONFLICT,
+            )
         supplied_revision = request.data.get("draft_revision")
         username, domain = _identity(request)
         with transaction.atomic():
             workflow = Workflow.all_objects.select_for_update().get(pk=scoped.pk)
             if supplied_revision is not None and supplied_revision != workflow.draft_revision:
                 return Response(
-                    {"detail": "草稿已经被其他修改更新，请重新载入后再恢复", "code": "DRAFT_REVISION_CONFLICT"},
+                    {"detail": render_known_message(request, "草稿已经被其他修改更新，请重新载入后再恢复"), "code": "DRAFT_REVISION_CONFLICT"},
                     status=status.HTTP_409_CONFLICT,
                 )
             record = get_object_or_404(workflow.versions.all(), version=version)
@@ -1050,8 +1142,22 @@ class WorkflowViewSet(AuthViewSet):
         payload = [{key: value for key, value in item.items() if key not in {"driver", "execution_config"}} for item in catalog.values()]
         payload.sort(key=lambda item: (item["category"], item["name"], item["key"]))
         if len(payload) > 100:
-            return Response({"detail": "当前组织可用原子超过 100 个上限"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_known_message(request, "当前组织可用原子超过 100 个上限")}, status=status.HTTP_409_CONFLICT)
         return Response(payload)
+
+    @action(methods=["GET"], detail=False, url_path=r"sample-templates/(?P<fmt>docx|xlsx)")
+    @HasPermission("workflow-View", app_name=APP_NAME)
+    def sample_templates(self, request, fmt=None):
+        """下载后端维护的内置巡检示例模板（docx/xlsx）。"""
+        _team_id(request)
+        try:
+            path = builtin_health_template_path(str(fmt or ""))
+        except ValueError:
+            return Response({"detail": render_known_message(request, "格式非法")}, status=status.HTTP_400_BAD_REQUEST)
+        except FileNotFoundError:
+            return Response({"detail": render_known_message(request, "示例模板不存在")}, status=status.HTTP_404_NOT_FOUND)
+        content_type = SAMPLE_TEMPLATE_CONTENT_TYPES[str(fmt)]
+        return FileResponse(BytesIO(path.read_bytes()), content_type=content_type, as_attachment=True, filename=path.name)
 
     @action(methods=["GET"], detail=False)
     @HasPermission("workflow-View", app_name=APP_NAME)
@@ -1059,12 +1165,12 @@ class WorkflowViewSet(AuthViewSet):
         team = _team_id(request)
         source = request.query_params.get("source")
         if source not in {"node_mgmt", "job_mgmt"}:
-            return Response({"detail": "source 必须是 node_mgmt 或 job_mgmt"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_known_message(request, "source 必须是 node_mgmt 或 job_mgmt")}, status=status.HTTP_400_BAD_REQUEST)
         try:
             page = max(1, int(request.query_params.get("page", 1)))
             page_size = min(100, max(1, int(request.query_params.get("page_size", 20))))
         except (TypeError, ValueError):
-            return Response({"detail": "分页参数非法"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_known_message(request, "分页参数非法")}, status=status.HTTP_400_BAD_REQUEST)
         query = str(request.query_params.get("query") or "").strip()[:120]
         if source == "node_mgmt":
             query_data = {
@@ -1079,9 +1185,9 @@ class WorkflowViewSet(AuthViewSet):
                 result = NodeMgmt(is_local_client=True).node_list(query_data)
             except Exception:
                 logger.warning("Target source unavailable source=node_mgmt team=%s", team)
-                return Response({"detail": "节点管理目标暂时不可用"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+                return Response({"detail": render_known_message(request, "节点管理目标暂时不可用")}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
             if not isinstance(result, dict):
-                return Response({"detail": "节点管理目标暂时不可用"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+                return Response({"detail": render_known_message(request, "节点管理目标暂时不可用")}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
             return Response(
                 {
                     "source": source,
@@ -1100,9 +1206,9 @@ class WorkflowViewSet(AuthViewSet):
             )
         except Exception:
             logger.warning("Target source unavailable source=job_mgmt team=%s", team)
-            return Response({"detail": "作业平台目标暂时不可用"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response({"detail": render_known_message(request, "作业平台目标暂时不可用")}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         if not job_response.get("result"):
-            return Response({"detail": "作业平台目标暂时不可用"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response({"detail": render_known_message(request, "作业平台目标暂时不可用")}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         data = job_response.get("data") or {}
         return Response(
             {
@@ -1125,9 +1231,9 @@ class WorkflowViewSet(AuthViewSet):
         else:
             values = []
         if source not in {"node_mgmt", "job_mgmt"}:
-            return Response({"detail": "source 必须是 node_mgmt 或 job_mgmt"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_known_message(request, "source 必须是 node_mgmt 或 job_mgmt")}, status=status.HTTP_400_BAD_REQUEST)
         if not 1 <= len(values) <= 100:
-            return Response({"detail": "values 必须包含 1 到 100 个 IP"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_known_message(request, "values 必须包含 1 到 100 个 IP")}, status=status.HTTP_400_BAD_REQUEST)
         unique_values = list(dict.fromkeys(values))
         try:
             if source == "node_mgmt":
@@ -1149,11 +1255,14 @@ class WorkflowViewSet(AuthViewSet):
                     or {}
                 )
                 if not response.get("result"):
-                    return Response({"detail": "作业平台目标暂时不可用"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+                    return Response({"detail": render_known_message(request, "作业平台目标暂时不可用")}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
                 targets = [_manual_target(item) for item in (response.get("data") or {}).get("items", [])]
         except Exception:
             logger.warning("Target batch match unavailable source=%s team=%s", source, team)
-            return Response({"detail": f"{('节点管理' if source == 'node_mgmt' else '作业平台')}目标暂时不可用"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response(
+                {"detail": render_known_message(request, f"{('节点管理' if source == 'node_mgmt' else '作业平台')}目标暂时不可用")},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         by_ip = {}
         for target in targets:
             by_ip.setdefault(str(target.get("ip") or ""), []).append(target)
@@ -1201,7 +1310,7 @@ class AtomConfigTemplateViewSet(AuthViewSet):
         queryset, _ = self._scoped_queryset(request)
         atom_key = str(request.query_params.get("atom_key") or "").strip()
         if not atom_key:
-            return Response({"detail": "atom_key 必填"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_known_message(request, "atom_key 必填")}, status=status.HTTP_400_BAD_REQUEST)
         queryset = queryset.filter(atom_key=atom_key)
         query = str(request.query_params.get("query") or "").strip()
         if query:
@@ -1231,7 +1340,7 @@ class AtomConfigTemplateViewSet(AuthViewSet):
                 updated_by_domain=domain,
             )
         except IntegrityError:
-            return Response({"name": ["当前原子下已存在同名配置模板"]}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"name": [render_known_message(request, "当前原子下已存在同名配置模板")]}, status=status.HTTP_400_BAD_REQUEST)
         _audit(request, "create", "创建原子配置模板", target_type="atom_config_template", target_id=template.pk)
         return Response(self.get_serializer(template).data, status=status.HTTP_201_CREATED)
 
@@ -1250,7 +1359,7 @@ class AtomConfigTemplateViewSet(AuthViewSet):
         try:
             template = serializer.save(updated_by=username, updated_by_domain=domain)
         except IntegrityError:
-            return Response({"name": ["当前原子下已存在同名配置模板"]}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"name": [render_known_message(request, "当前原子下已存在同名配置模板")]}, status=status.HTTP_400_BAD_REQUEST)
         _audit(request, "manage", "更新原子配置模板", target_type="atom_config_template", target_id=template.pk)
         return Response(self.get_serializer(template).data)
 
@@ -1336,7 +1445,7 @@ class AtomDefinitionViewSet(AuthViewSet):
         if category:
             queryset = queryset.filter(category=category)
         if node_type and node_type not in {"TRIGGER", "ACTION", "CONTROL", "RETURN"}:
-            return Response({"detail": "node_type 非法"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_known_message(request, "node_type 非法")}, status=status.HTTP_400_BAD_REQUEST)
         if node_type and node_type != "ACTION":
             queryset = queryset.none()
         builtins = self._builtin_items(query, category, node_type)
@@ -1344,9 +1453,9 @@ class AtomDefinitionViewSet(AuthViewSet):
             page_number = int(request.query_params.get("page") or 1)
             page_size = int(request.query_params.get("page_size") or self.pagination_class.page_size)
         except (TypeError, ValueError):
-            return Response({"detail": "page 或 page_size 非法"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_known_message(request, "page 或 page_size 非法")}, status=status.HTTP_400_BAD_REQUEST)
         if page_number < 1 or not 1 <= page_size <= self.pagination_class.max_page_size:
-            return Response({"detail": "page 或 page_size 超出范围"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_known_message(request, "page 或 page_size 超出范围")}, status=status.HTTP_400_BAD_REQUEST)
         package_count = queryset.count()
         total = len(builtins) + package_count
         start = (page_number - 1) * page_size
@@ -1372,7 +1481,7 @@ class AtomDefinitionViewSet(AuthViewSet):
     @HasPermission("workflow-Manage", app_name=APP_NAME)
     def create(self, request, *args, **kwargs):
         return Response(
-            {"detail": "MVP 原子由研发注册包同步，页面不支持在线创建"},
+            {"detail": render_known_message(request, "MVP 原子由研发注册包同步，页面不支持在线创建")},
             status=status.HTTP_405_METHOD_NOT_ALLOWED,
         )
 
@@ -1405,7 +1514,7 @@ class WorkflowExecutionViewSet(AuthViewSet):
         )
 
     def create(self, request, *args, **kwargs):
-        return Response({"detail": "执行记录只能由流程或触发器创建"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        return Response({"detail": render_known_message(request, "执行记录只能由流程或触发器创建")}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     @HasPermission("workflow-View", app_name=APP_NAME)
     def list(self, request, *args, **kwargs):
@@ -1444,7 +1553,7 @@ class WorkflowExecutionViewSet(AuthViewSet):
         mode = str(request.query_params.get("mode") or "").upper()
         if mode:
             if mode not in WorkflowExecution.Mode.values:
-                return Response({"detail": "mode 非法"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({"detail": render_known_message(request, "mode 非法")}, status=status.HTTP_400_BAD_REQUEST)
             queryset = queryset.filter(mode=mode)
         if request.query_params.get("mine") == "1":
             queryset = queryset.filter(pk__in=Subquery(actionable.values("execution_id")))
@@ -1598,22 +1707,23 @@ class WorkflowExecutionViewSet(AuthViewSet):
             username=username,
             instance_id=request.query_params.get("instance_id"),
             include_technical=bool(getattr(request.user, "is_superuser", False)),
+            request=request,
         )
         if detail is None:
-            return Response({"detail": "执行节点不存在"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"detail": render_known_message(request, "执行节点不存在")}, status=status.HTTP_404_NOT_FOUND)
         return Response(detail)
 
     def _control(self, request, *, action_name: str, source_statuses: set[str], target_status: str):
         execution = self._scoped_object(request, require_operate=True)
         if execution.status not in source_statuses:
-            return Response({"detail": "当前执行状态不支持该操作"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_known_message(request, "当前执行状态不支持该操作")}, status=status.HTTP_409_CONFLICT)
         if not execution.conductor_workflow_id:
-            return Response({"detail": "执行记录缺少 Conductor Workflow ID"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_known_message(request, "执行记录缺少 Conductor Workflow ID")}, status=status.HTTP_409_CONFLICT)
         conductor = ConductorClient()
         try:
             getattr(conductor, action_name)(execution.conductor_workflow_id)
         except ConductorUnavailable as error:
-            return Response({"detail": str(error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         execution.status = target_status
         execution.save(update_fields=("status", "updated_at"))
         _audit(request, action_name, f"执行控制: {action_name}", target_type="execution", target_id=execution.id)
@@ -1628,23 +1738,31 @@ class WorkflowExecutionViewSet(AuthViewSet):
             WorkflowExecution.Status.RUNNING,
             WorkflowExecution.Status.WAITING_APPROVAL,
         }:
-            return Response({"detail": "当前执行已是终态"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_known_message(request, "当前执行已是终态")}, status=status.HTTP_409_CONFLICT)
         if not execution.conductor_workflow_id:
-            return Response({"detail": "执行记录缺少 Conductor Workflow ID"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_known_message(request, "执行记录缺少 Conductor Workflow ID")}, status=status.HTTP_409_CONFLICT)
         reason = str(request.data.get("reason") or "").strip()[:500]
         if not reason:
-            return Response({"detail": "终止原因必填"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_known_message(request, "终止原因必填")}, status=status.HTTP_400_BAD_REQUEST)
         try:
             ConductorClient().terminate_workflow(execution.conductor_workflow_id, reason=reason)
         except ConductorUnavailable as error:
-            return Response({"detail": str(error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        username, domain = _identity(request)
+        cancel_results = cancel_linked_job_tasks(
+            execution,
+            actor={"username": username, "domain": domain or "domain.com"},
+        )
+        output = dict(execution.output or {})
+        output["termination_job_cancels"] = cancel_results
         execution.status = WorkflowExecution.Status.TERMINATING
         execution.termination_reason = reason
+        execution.output = output
         execution.interactions.filter(status=WorkflowInteraction.Status.PENDING).update(
             status=WorkflowInteraction.Status.CANCELLED,
             handled_at=timezone.now(),
         )
-        execution.save(update_fields=("status", "termination_reason", "updated_at"))
+        execution.save(update_fields=("status", "termination_reason", "output", "updated_at"))
         _audit(request, "terminate", "终止流程执行", target_type="execution", target_id=execution.id)
         return Response(self.get_serializer(execution).data)
 
@@ -1668,18 +1786,18 @@ class WorkflowExecutionViewSet(AuthViewSet):
     def launch_plan(self, request, pk=None):
         original = self._scoped_object(request, require_operate=True)
         if not self._rerunnable(original):
-            return Response({"detail": "只能重新执行已结束的正式版本"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_known_message(request, "只能重新执行已结束的正式版本")}, status=status.HTTP_409_CONFLICT)
         version = WorkflowVersion.objects.filter(
             workflow=original.workflow,
             version=original.workflow_version,
         ).first()
         if version is None:
-            return Response({"detail": "原执行对应的流程版本不存在"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_known_message(request, "原执行对应的流程版本不存在")}, status=status.HTTP_409_CONFLICT)
         username, domain = _identity(request)
         try:
             target_fields = extract_target_fields(version.canvas_metadata)
         except ValueError as error:
-            return Response({"detail": str(error)}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_409_CONFLICT)
         return Response(
             build_launch_plan(
                 workflow_id=original.workflow_id,
@@ -1699,7 +1817,7 @@ class WorkflowExecutionViewSet(AuthViewSet):
     def rerun(self, request, pk=None):
         original = self._scoped_object(request, require_operate=True)
         if not self._rerunnable(original):
-            return Response({"detail": "只能重新执行已结束的正式版本"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_known_message(request, "只能重新执行已结束的正式版本")}, status=status.HTTP_409_CONFLICT)
         team = _team_id(request)
         username, domain = _identity(request)
         launch_token = request.data.get("launch_token")
@@ -1712,17 +1830,17 @@ class WorkflowExecutionViewSet(AuthViewSet):
                 domain=domain,
             )
         except LaunchPlanTokenError as error:
-            return Response({"detail": str(error)}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_409_CONFLICT)
         if launch_context.get("parent_execution_id") != str(original.id):
-            return Response({"detail": "启动凭证与原执行不匹配"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_known_message(request, "启动凭证与原执行不匹配")}, status=status.HTTP_409_CONFLICT)
         if launch_context["workflow_version"] != original.workflow_version:
-            return Response({"detail": "启动凭证与原执行版本不匹配"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_known_message(request, "启动凭证与原执行版本不匹配")}, status=status.HTTP_409_CONFLICT)
         version = WorkflowVersion.objects.filter(
             workflow=original.workflow,
             version=original.workflow_version,
         ).first()
         if version is None:
-            return Response({"detail": "原执行对应的流程版本不存在"}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_known_message(request, "原执行对应的流程版本不存在")}, status=status.HTTP_409_CONFLICT)
         try:
             inputs = validate_workflow_inputs(
                 copy.deepcopy(request.data.get("inputs") or {}),
@@ -1744,7 +1862,7 @@ class WorkflowExecutionViewSet(AuthViewSet):
                 if resolution.offline_targets and request.data.get("offline_confirmed") is not True:
                     return Response(
                         {
-                            "detail": f"{len(resolution.offline_targets)} 台主机当前离线，需要二次确认",
+                            "detail": render_known_message(request, f"{len(resolution.offline_targets)} 台主机当前离线，需要二次确认"),
                             "code": "OFFLINE_CONFIRMATION_REQUIRED",
                             "offline_targets": resolution.offline_targets,
                         },
@@ -1766,13 +1884,13 @@ class WorkflowExecutionViewSet(AuthViewSet):
             )
         except TargetResolutionError as error:
             response_status = status.HTTP_403_FORBIDDEN if "不存在或无权访问" in str(error) else status.HTTP_400_BAD_REQUEST
-            return Response({"detail": str(error)}, status=response_status)
+            return Response({"detail": render_workflow_error(request, error)}, status=response_status)
         except (ValueError, WorkflowVersion.DoesNotExist) as error:
-            return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_400_BAD_REQUEST)
         except TargetDependencyUnavailable as error:
-            return Response({"detail": str(error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         except ConductorUnavailable as error:
-            return Response({"detail": str(error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         reused = bool(getattr(execution, "_launch_reused", False))
         if not reused:
             _audit(request, "rerun", "重新执行冻结流程版本", target_type="execution", target_id=execution.id)
@@ -1806,7 +1924,7 @@ class WorkflowInteractionViewSet(AuthViewSet):
         )
 
     def create(self, request, *args, **kwargs):
-        return Response({"detail": "人工处理项只能由执行引擎产生"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        return Response({"detail": render_known_message(request, "人工处理项只能由执行引擎产生")}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     @HasPermission("workflow-View", app_name=APP_NAME)
     def list(self, request, *args, **kwargs):
@@ -1852,13 +1970,13 @@ class WorkflowInteractionViewSet(AuthViewSet):
                 client=ConductorClient(),
             )
         except InteractionForbidden as error:
-            return Response({"detail": str(error)}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_403_FORBIDDEN)
         except InteractionConflict as error:
-            return Response({"detail": str(error)}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_409_CONFLICT)
         except ValueError as error:
-            return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_400_BAD_REQUEST)
         except ConductorUnavailable as error:
-            return Response({"detail": str(error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         _audit(request, "approve", f"处理审批: {decided.status}", target_type="workflow_interaction", target_id=decided.id)
         return Response(self.get_serializer(decided).data)
 
@@ -1934,15 +2052,15 @@ class WorkflowTriggerViewSet(AuthViewSet):
 
     @HasPermission("workflow-Edit", app_name=APP_NAME)
     def create(self, request, *args, **kwargs):
-        return Response({"detail": "触发器必须在流程画布中创建并随版本发布"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        return Response({"detail": render_known_message(request, "触发器必须在流程画布中创建并随版本发布")}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     @HasPermission("workflow-Edit", app_name=APP_NAME)
     def partial_update(self, request, *args, **kwargs):
-        return Response({"detail": "触发器必须在流程画布中编辑"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        return Response({"detail": render_known_message(request, "触发器必须在流程画布中编辑")}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     @HasPermission("workflow-Edit", app_name=APP_NAME)
     def destroy(self, request, *args, **kwargs):
-        return Response({"detail": "触发器必须在流程画布中删除"}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        return Response({"detail": render_known_message(request, "触发器必须在流程画布中删除")}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     @action(methods=["POST"], detail=False, url_path="schedule-preview")
     @HasPermission("workflow-Execute", app_name=APP_NAME)
@@ -1956,7 +2074,7 @@ class WorkflowTriggerViewSet(AuthViewSet):
                 count=request_serializer.validated_data["count"],
             )
         except DefinitionValidationError as error:
-            return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_definition_error(request, error)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(payload)
 
     @action(methods=["POST"], detail=False, url_path="nats-test-session")
@@ -1967,7 +2085,7 @@ class WorkflowTriggerViewSet(AuthViewSet):
         team, workflow = self._scoped_workflow(request, request_serializer.validated_data["workflow_id"])
         node_key = request_serializer.validated_data["node_key"]
         if self._nats_draft_node(workflow, node_key) is None:
-            return Response({"detail": "NATS 触发节点不存在"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_known_message(request, "NATS 触发节点不存在")}, status=status.HTTP_400_BAD_REQUEST)
         return Response(create_nats_test_session(team_id=int(team), workflow_id=workflow.pk, node_key=node_key))
 
     @action(methods=["POST"], detail=False, url_path="nats-test-listen")
@@ -1978,18 +2096,18 @@ class WorkflowTriggerViewSet(AuthViewSet):
         try:
             session = read_nats_test_session(request_serializer.validated_data["token"])
         except NatsTestSessionError as error:
-            return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_400_BAD_REQUEST)
         team, workflow = self._scoped_workflow(request, session["workflow_id"])
         if int(team) != int(session["team_id"]):
-            return Response({"detail": "NATS 测试会话不属于当前组织"}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": render_known_message(request, "NATS 测试会话不属于当前组织")}, status=status.HTTP_403_FORBIDDEN)
         if self._nats_draft_node(workflow, session["node_key"]) is None:
-            return Response({"detail": "NATS 触发节点不存在"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_known_message(request, "NATS 触发节点不存在")}, status=status.HTTP_400_BAD_REQUEST)
         try:
             result = wait_for_nats_test_event(session["subject"])
         except NatsTestTimeout as error:
-            return Response({"detail": str(error)}, status=status.HTTP_408_REQUEST_TIMEOUT)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_408_REQUEST_TIMEOUT)
         except NatsTestSessionError as error:
-            return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(result)
 
     @action(methods=["POST"], detail=False, url_path="webhook-test-session")
@@ -2000,7 +2118,7 @@ class WorkflowTriggerViewSet(AuthViewSet):
         team, workflow = self._scoped_workflow(request, request_serializer.validated_data["workflow_id"])
         node_key = request_serializer.validated_data["node_key"]
         if self._webhook_draft_node(workflow, node_key) is None:
-            return Response({"detail": "Webhook 触发节点不存在"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_known_message(request, "Webhook 触发节点不存在")}, status=status.HTTP_400_BAD_REQUEST)
         return Response(create_webhook_test_session(team_id=int(team), workflow_id=workflow.pk, node_key=node_key))
 
     @action(methods=["POST"], detail=False, url_path="webhook-test-listen")
@@ -2011,18 +2129,18 @@ class WorkflowTriggerViewSet(AuthViewSet):
         try:
             session = read_webhook_test_session(request_serializer.validated_data["token"])
         except WebhookTestSessionError as error:
-            return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_400_BAD_REQUEST)
         team, workflow = self._scoped_workflow(request, session["workflow_id"])
         if int(team) != int(session["team_id"]):
-            return Response({"detail": "Webhook 测试会话不属于当前组织"}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": render_known_message(request, "Webhook 测试会话不属于当前组织")}, status=status.HTTP_403_FORBIDDEN)
         if self._webhook_draft_node(workflow, session["node_key"]) is None:
-            return Response({"detail": "Webhook 触发节点不存在"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_known_message(request, "Webhook 触发节点不存在")}, status=status.HTTP_400_BAD_REQUEST)
         try:
             result = wait_for_webhook_test_event(request_serializer.validated_data["token"])
         except WebhookTestTimeout as error:
-            return Response({"detail": str(error)}, status=status.HTTP_408_REQUEST_TIMEOUT)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_408_REQUEST_TIMEOUT)
         except WebhookTestSessionError as error:
-            return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(result)
 
     @action(methods=["POST"], detail=True)
@@ -2039,11 +2157,22 @@ class WorkflowTriggerViewSet(AuthViewSet):
                 domain=domain,
             )
         except DefinitionValidationError as error:
-            return Response({"detail": str(error)}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {
+                    "detail": render_definition_error(
+                        request,
+                        error,
+                        definition=trigger.workflow.definition,
+                        metadata=trigger.workflow.canvas_metadata,
+                        atom_catalog=available_atom_catalog(_team_id(request)),
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         except TriggerConflict as error:
-            return Response({"detail": str(error)}, status=status.HTTP_409_CONFLICT)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_409_CONFLICT)
         except ConductorUnavailable as error:
-            return Response({"detail": str(error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         response_status = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         _audit(request, "execute", "手动调用流程触发器", target_type="execution", target_id=execution.id)
         return Response(
@@ -2061,7 +2190,7 @@ class ExecutionArtifactViewSet(AuthViewSet):
         try:
             payload = read_report_download_link(str(request.query_params.get("token") or ""))
         except ValueError as error:
-            return Response({"detail": str(error)}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"detail": render_workflow_error(request, error)}, status=status.HTTP_403_FORBIDDEN)
         artifact = ExecutionArtifact.objects.filter(pk=payload["artifact_id"]).first()
         if artifact is None or artifact.team != [payload["team"]] or str(artifact.execution_id) != str(payload["execution_id"]):
             return Response({"detail": workflow_message(request, "message.report_link_invalid", "报告下载链接无效")}, status=status.HTTP_403_FORBIDDEN)

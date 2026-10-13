@@ -659,7 +659,7 @@ const StrategyOperation = () => {
       let instanceIds: string[] = [];
       if (instanceIdStr) {
         const matches = instanceIdStr.match(/\('[^']*',?\)/g);
-        instanceIds = matches || [];
+        instanceIds = matches?.length ? matches : [instanceIdStr];
       }
       setSource({
         type: 'instance',

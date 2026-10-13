@@ -1,4 +1,8 @@
+import pytest
+
 from apps.rum.constants import SUBJECT_ERASURE_SUBMIT
+
+pytestmark = pytest.mark.django_db
 from apps.rum.services.applications import ApplicationsService
 from apps.rum.services.compliance import ComplianceService, MemoryEraseJobStore
 from apps.rum.services.control import MemoryControl, UnavailableControl
@@ -150,12 +154,13 @@ def test_erase_requires_fields():
 
 
 def test_erase_control_unavailable():
+    control = MemoryControl()
+    _seed_app(control)
     service = ComplianceService(control=UnavailableControl(), store=MemoryEraseJobStore())
-    try:
-        service.erase("tester", {"application": "checkout", "endUserId": "u1"})
-        assert False
-    except Exception as exc:
-        assert getattr(exc, "code", "") == "unavailable"
+    revision, data = service.erase("tester", {"application": "checkout", "endUserId": "u1"})
+    assert revision >= 1
+    assert data["projectionPending"] is True
+    assert data["ledger"]["status"] == "accepted"
 
 
 def test_erasure_subject_constant():

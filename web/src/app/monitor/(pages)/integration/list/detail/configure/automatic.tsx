@@ -9,14 +9,18 @@ import {
   LoadingOutlined,
   UploadOutlined
 } from '@ant-design/icons';
+import { useIntl } from 'react-intl';
 import { useTranslation } from '@/utils/i18n';
+import { formatCredentialError } from '@/app/monitor/components/integration/CredentialAccessField';
 import CompactEmptyState from '@/components/compact-empty-state';
 import CustomTable from '@/components/custom-table';
 import { v4 as uuidv4 } from 'uuid';
 import { useSearchParams, useRouter } from 'next/navigation';
 import useApiClient from '@/utils/request';
 import useIntegrationApi from '@/app/monitor/api/integration';
+import useMonitorApi from '@/app/monitor/api';
 import useEventApi from '@/app/monitor/api/event';
+import { fetchAllMonitorMetrics } from '@/app/monitor/api/fetchMetricCatalogPages';
 import useMonitorUserHabitApi from '@/app/monitor/api/userHabit';
 import FieldGuideTip from '@/components/field-guide-tip';
 import type { PolicyTemplateItem } from '@/app/monitor/(pages)/event/template/templateBulkUtils';
@@ -42,6 +46,7 @@ import {
   selectedPolicyTemplates
 } from './automaticPolicyApply';
 import { COLLECTION_POLICY_BULK_CONFIG_DEFAULTS } from '@/app/monitor/(pages)/event/template/templateBulkUtils';
+import { policyGroupAccessNotes } from './policyGroupAccessNotes';
 import { TableDataItem } from '@/app/monitor/types';
 import {
   IntegrationAccessProps,
@@ -201,12 +206,14 @@ interface TableValidationResult {
 const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const [form] = Form.useForm();
   const { t } = useTranslation();
+  const locale = useIntl().locale || 'zh';
   const searchParams = useSearchParams();
   const { get, post, patch, isLoading } = useApiClient();
   const {
     createCollectDetectTask,
     getCollectDetectTask,
     getMonitorNodeList,
+    getPolicyGroups,
     updateNodeChildConfig,
     getPluginChildConfig
   } = useIntegrationApi();
@@ -216,6 +223,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     getSystemChannelList
   } = useEventApi();
   const { getUserHabit, saveUserHabit } = useMonitorUserHabitApi();
+  const { getMonitorMetrics } = useMonitorApi();
+  const getMonitorMetricsRef = useRef(getMonitorMetrics);
+  getMonitorMetricsRef.current = getMonitorMetrics;
   const router = useRouter();
   const { renderTableColumn } = useConfigRenderer();
   const jsonConfig = usePluginFromJson();
@@ -258,6 +268,23 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const [alertCenterChannels, setAlertCenterChannels] = useState<ChannelItem[]>(
     []
   );
+  const [policyGroups, setPolicyGroups] = useState<
+    Array<{
+      id: number;
+      name: string;
+      is_default?: boolean;
+      rules?: Array<{
+        name: string;
+        plugin_id: number;
+        plugin_name: string;
+        collect_type?: string;
+        metric_name?: string;
+      }>;
+    }>
+  >([]);
+  const [pluginMetricNames, setPluginMetricNames] = useState<string[]>([]);
+  const policyGroupJoin = Form.useWatch('policy_group_join', form);
+  const policyGroupId = Form.useWatch('policy_group_id', form);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [activeTrialRowKey, setActiveTrialRowKey] = useState<string>('');
   const [collectDetectTasks, setCollectDetectTasks] = useState<
@@ -284,6 +311,54 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       setActiveTrialRowKey(data[0].key as string);
     }
   };
+
+  useEffect(() => {
+    if (isLoading || !objectId) return;
+    let cancelled = false;
+    const collectTypeParam = String(currentConfig?.collect_type || '').trim();
+    getPolicyGroups({
+      monitor_object_id: objectId,
+      ...(pluginId ? { plugin_id: pluginId } : {}),
+      ...(collectTypeParam ? { collect_type: collectTypeParam } : {})
+    })
+      .then((data) => {
+        if (cancelled) return;
+        setPolicyGroups(Array.isArray(data) ? data : []);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [getPolicyGroups, isLoading, objectId, pluginId, currentConfig?.collect_type]);
+
+  useEffect(() => {
+    if (!policyGroups.length) return;
+    const current = form.getFieldValue('policy_group_id');
+    if (policyGroups.some((item) => item.id === current)) return;
+    const preferred = policyGroups.find((item) => item.is_default) || policyGroups[0];
+    form.setFieldsValue({
+      policy_group_join: form.getFieldValue('policy_group_join') !== false,
+      policy_group_id: preferred.id
+    });
+  }, [form, policyGroups]);
+
+  useEffect(() => {
+    if (isLoading || !pluginId) return;
+    const abortController = new AbortController();
+    fetchAllMonitorMetrics(
+      (...args) => getMonitorMetricsRef.current(...args),
+      { monitor_plugin_id: pluginId, monitor_object_id: objectId },
+      { signal: abortController.signal }
+    )
+      .then((data) => {
+        if (abortController.signal.aborted) return;
+        setPluginMetricNames((data.items || []).map((item) => item.name).filter(Boolean));
+      })
+      .catch(() => {
+        if (!abortController.signal.aborted) setPluginMetricNames([]);
+      });
+    return () => abortController.abort();
+  }, [isLoading, objectId, pluginId]);
 
   useEffect(() => {
     if (pluginId) {
@@ -761,7 +836,17 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (selectedNode?.operating_system && !instance.operating_system) {
       instance.operating_system = selectedNode.operating_system;
     }
-    return applyScriptCollectSubmit(instance, instance.collect_type);
+    const detectInstance = applyScriptCollectSubmit(instance, instance.collect_type);
+    const credentialSource = formValues.credential_source === 'vault' ? 'vault' : 'inline';
+    detectInstance.credential_source = credentialSource;
+    detectInstance.vault_credential_id = credentialSource === 'vault' ? (formValues.vault_credential_id || '') : '';
+    detectInstance.vault_variant = credentialSource === 'vault' ? (formValues.vault_variant || '') : '';
+    Object.keys(detectInstance).forEach((key) => {
+      if (key.startsWith('__credential_')) {
+        delete detectInstance[key];
+      }
+    });
+    return detectInstance;
   };
 
   const ensureCollectFormValid = async () => {
@@ -1262,7 +1347,16 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         }
       ]
       : [];
-    return [...dataColumns, ...collectDetectStatusColumn, actionColumn];
+    const joining = policyGroupJoin !== false;
+    const selectedGroup = policyGroups.find((item) => item.id === policyGroupId);
+    const policyGroupColumn = {
+      title: t('monitor.integrations.policyGroup', '策略组'),
+      key: 'policy_group',
+      dataIndex: 'policy_group',
+      width: 180,
+      render: () => (joining && selectedGroup?.name ? selectedGroup.name : '--')
+    };
+    return [...dataColumns, policyGroupColumn, ...collectDetectStatusColumn, actionColumn];
   }, [
     configLoading,
     currentConfig,
@@ -1274,6 +1368,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     collectType,
     supportCollectDetect,
     collectDetectTasks,
+    policyGroupJoin,
+    policyGroupId,
+    policyGroups,
     isScriptTemplate
   ]);
 
@@ -1690,27 +1787,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           mutexErrors.forEach((msg) => message.error(msg));
           return;
         }
-        const templatesToApply = selectedPolicyTemplates(
-          policyTemplates,
-          values[COLLECTION_POLICY_FIELD]
-        );
-        const pushAlertCenter = Boolean(
-          values[COLLECTION_POLICY_ALERT_CENTER_FIELD]
-        );
-        const alertCenterChannelIds = pickAlertCenterChannelIds(
-          alertCenterChannels
-        );
-        if (pushAlertCenter && templatesToApply.length && !alertCenterChannelIds.length) {
-          message.error(
-            t(
-              'monitor.integrations.pushToAlertCenterMissing',
-              '未找到告警中心 NATS 通道，请先在系统管理中配置'
-            )
-          );
-          return;
-        }
         const row = omitCollectionPolicyField(cloneDeep(values));
         delete row.nodes;
+        delete row.policy_group_join;
+        delete row.policy_group_id;
         const params =
           configsInfo?.getParams?.(row, {
             dataSource: tableValidation.data,
@@ -1719,6 +1799,10 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           }) || {};
         params.monitor_object_id = Number(objectId);
         params.monitor_plugin_id = Number(pluginId);
+        params.policy_group = {
+          join: values.policy_group_join !== false,
+          group_id: values.policy_group_id
+        };
         if (
           isScriptTemplate &&
           scriptDebugHasBusinessMetrics &&
@@ -1740,25 +1824,17 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           setScriptWriteMode(SCRIPT_METRIC_PERSIST_MODE_ADD);
           setScriptWriteChoice({
             params,
-            templatesToApply,
-            namePrefix: values[COLLECTION_POLICY_NAME_PREFIX_FIELD],
-            pushAlertCenter,
-            alertCenterChannelIds,
+            templatesToApply: [],
+            namePrefix: undefined,
+            pushAlertCenter: false,
+            alertCenterChannelIds: [],
             staleDeletes
           });
           return;
         }
-        addNodesConfig(
-          params,
-          templatesToApply,
-          values[COLLECTION_POLICY_NAME_PREFIX_FIELD],
-          pushAlertCenter,
-          alertCenterChannelIds,
-          [],
-          SCRIPT_METRIC_PERSIST_MODE_ADD
-        );
+        addNodesConfig(params);
       } catch (error: any) {
-        message.error(error?.message || t('common.operationFailed'));
+        message.error(formatCredentialError(error?.message || '', locale) || t('common.operationFailed'));
       }
     });
   };
@@ -1885,7 +1961,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         );
         return;
       }
-      message.error(errorText);
+      message.error(formatCredentialError(errorText, locale) || t('common.operationFailed'));
     } finally {
       saveInFlightRef.current = false;
       setConfirmLoading(false);
@@ -1893,6 +1969,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   };
 
   // 判断是否显示空状态
+  const selectedPolicyGroup = policyGroups.find((item) => item.id === policyGroupId);
+  const policyGroupNote =
+    policyGroupJoin !== false && selectedPolicyGroup
+      ? policyGroupAccessNotes(selectedPolicyGroup.rules, pluginId, pluginMetricNames)
+      : null;
+
   const showEmpty =
     !configLoading && (!currentConfig || !currentConfig.table_columns);
 
@@ -1984,88 +2066,42 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       </div>
       {visibleFormItems}
       <Form.Item
-        name={COLLECTION_POLICY_FIELD}
-        label={
-          <span className="inline-flex items-center">
-            {t('monitor.integrations.monitoringPolicy')}
-            <FieldGuideTip
-              short={t('monitor.integrations.monitoringPolicyDes')}
-              title={t('monitor.integrations.fieldGuideTip')}
-            />
-          </span>
-        }
-      >
-        <Select
-          mode="multiple"
-          allowClear
-          showSearch
-          optionFilterProp="label"
-          maxTagCount="responsive"
-          loading={policyTemplatesLoading}
-          options={policyTemplateSelectOptions(policyTemplates, {
-            builtin: t('monitor.events.templateTypeBuiltin', '内置'),
-            custom: t('monitor.events.templateTypeCustom', '自定义')
-          })}
-          placeholder={t(
-            'monitor.integrations.monitoringPolicyPlaceholder'
-          )}
-          style={{ width: COLLECTION_POLICY_CONTROL_WIDTH }}
-        />
-      </Form.Item>
-      <Form.Item
-        noStyle
-        shouldUpdate={(prev, next) =>
-          prev[COLLECTION_POLICY_FIELD] !== next[COLLECTION_POLICY_FIELD]
-        }
-      >
-        {() => {
-          const selectedKeys = form.getFieldValue(COLLECTION_POLICY_FIELD);
-          const hasSelectedTemplates =
-            Array.isArray(selectedKeys) && selectedKeys.length > 0;
-          return (
-            <Form.Item
-              name={COLLECTION_POLICY_NAME_PREFIX_FIELD}
-              label={t('monitor.events.namePrefix', '策略名称前缀')}
-              rules={
-                hasSelectedTemplates
-                  ? [
-                    {
-                      required: true,
-                      message: t(
-                        'monitor.events.namePrefixRequired',
-                        '请输入策略名称前缀'
-                      )
-                    }
-                  ]
-                  : []
-              }
-            >
-              <Input
-                placeholder={t(
-                  'monitor.events.namePrefixPlaceholder',
-                  '例如：生产环境-'
-                )}
-                style={{ width: COLLECTION_POLICY_CONTROL_WIDTH }}
-              />
-            </Form.Item>
-          );
-        }}
-      </Form.Item>
-      <Form.Item
-        name={COLLECTION_POLICY_ALERT_CENTER_FIELD}
+        name="policy_group_join"
         valuePropName="checked"
-        label={
-          <span className="inline-flex items-center">
-            {t('monitor.integrations.pushToAlertCenter', '推送告警中心')}
-            <FieldGuideTip
-              short={t('monitor.integrations.pushToAlertCenterDes')}
-              title={t('monitor.integrations.fieldGuideTip')}
-            />
-          </span>
-        }
+        label={t('monitor.integrations.policyGroupJoin', '加入策略组')}
       >
         <Switch />
       </Form.Item>
+      <Form.Item
+        name="policy_group_id"
+        label={t('monitor.integrations.policyGroup', '策略组')}
+      >
+        <Select
+          style={{ width: COLLECTION_POLICY_CONTROL_WIDTH }}
+          disabled={policyGroupJoin === false}
+          options={policyGroups.map((item) => ({
+            value: item.id,
+            label: item.is_default ? `${item.name}（默认）` : item.name
+          }))}
+        />
+      </Form.Item>
+      {policyGroupNote?.kind === 'no-plugin-rules' ? (
+        <div className="mb-[10px] text-[12px] text-[var(--color-text-3)]">
+          {t(
+            'monitor.integrations.policyGroupNoPluginRules',
+            '这个策略组没有适用于本次采集的规则，加入后这批实例不会按这个组告警'
+          )}
+        </div>
+      ) : null}
+      {policyGroupNote?.kind === 'missing' ? (
+        <div className="mb-[10px] text-[12px] text-[var(--color-text-3)]">
+          {policyGroupNote.names.map((name) => (
+            <div key={name}>
+              {`${name} · ${t('monitor.integrations.policyGroupNoData', '这次没有数据')}`}
+            </div>
+          ))}
+        </div>
+      ) : null}
       <b className="text-[14px] flex mb-[10px] ml-[-10px]">
         {t('monitor.integrations.basicInformation')}
       </b>

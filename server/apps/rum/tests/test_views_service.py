@@ -1,4 +1,12 @@
+import io
+import logging
+from urllib.error import HTTPError
+
+import pytest
+
 from apps.rum.services.analytics import UnavailableAnalytics
+
+pytestmark = pytest.mark.django_db
 from apps.rum.services.applications import ApplicationsService
 from apps.rum.services.control import ControlError, MemoryControl, UnavailableControl
 from apps.rum.services.settings import RumRuntimeSettings
@@ -40,6 +48,37 @@ def test_list_views_degrades_when_analytics_unavailable():
     assert page["analyticsUnavailable"] is True
     assert page["rows"] == []
     assert page["mode"] == "route"
+
+
+def test_list_views_degrades_when_query_fails(caplog):
+    class QueryFailureAnalytics(UnavailableAnalytics):
+        def available(self):
+            return True
+
+        def list_views(self, tenant_id, opts):
+            raise HTTPError(
+                "http://127.0.0.1:19428/select/logsql/query",
+                400,
+                "secret-query-body",
+                hdrs=None,
+                fp=io.BytesIO(b"secret-query-body"),
+            )
+
+    control = MemoryControl()
+    _seed_app(control)
+    with caplog.at_level(logging.WARNING, logger="rum"):
+        page = ViewsService(
+            control=control,
+            analytics=QueryFailureAnalytics(),
+            saved_views=MemorySavedViewStore(),
+        ).list_views("tester", {"range": "24h", "mode": "route"})
+    assert page["analyticsUnavailable"] is True
+    assert page["rows"] == []
+    assert page["mode"] == "route"
+    record = next(item for item in caplog.records if item.name == "rum")
+    assert record.exc_info is None
+    assert record.getMessage() == "rum views list analytics failed failed_stage=list_views error_type=HTTPError"
+    assert "secret-query-body" not in record.getMessage()
 
 
 def test_list_views_degrades_when_control_unavailable():

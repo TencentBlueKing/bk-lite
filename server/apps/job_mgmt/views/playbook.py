@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.filters.playbook import PlaybookFilter
-from apps.job_mgmt.models import Playbook
+from apps.job_mgmt.models import Playbook, PlaybookRevision
 from apps.job_mgmt.serializers.playbook import (
     PlaybookBatchDeleteSerializer,
     PlaybookCreateSerializer,
@@ -22,8 +22,17 @@ from apps.job_mgmt.serializers.playbook import (
     extract_file_from_archive,
 )
 from apps.job_mgmt.services.error_response import exception_to_response
+from apps.job_mgmt.services.template_revision import (
+    DEFAULT_PAGE_SIZE,
+    RevisionAlreadyCurrent,
+    RevisionNotFound,
+    TemplateRevisionService,
+    annotate_current_revision_label,
+    parse_page,
+)
 from apps.job_mgmt.utils.i18n import job_message
 from apps.job_mgmt.views.mixins import BatchDeleteMixin
+from apps.job_mgmt.views.script import authorize_job_template
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -41,10 +50,15 @@ class PlaybookViewSet(BatchDeleteMixin, AuthViewSet):
     batch_delete_log_label = "作业"
 
     def pre_batch_delete(self, instances):
-        """删除前先清理 MinIO 上的 Playbook 文件，避免数据库记录消失后存储残留。"""
+        """删除前先清理当前包和历史包，避免数据库记录消失后存储残留。"""
         for playbook in instances:
-            if playbook.file:
-                playbook.file.delete(save=False)
+            playbook.delete_storage_files()
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.action in ("list", "retrieve"):
+            queryset = annotate_current_revision_label(queryset, PlaybookRevision, "playbook")
+        return queryset
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -210,6 +224,62 @@ class PlaybookViewSet(BatchDeleteMixin, AuthViewSet):
 
         buffer.seek(0)
         return FileResponse(buffer, as_attachment=True, filename="playbook-template.zip", content_type="application/zip")
+
+    @action(detail=True, methods=["get"], url_path="revisions")
+    @HasPermission("playbook_library-View")
+    def revisions(self, request, pk=None):
+        """版本列表。没有历史时用当前内容补一条。"""
+        instance, denied = authorize_job_template(self, request, view_only=True)
+        if denied is not None:
+            return denied
+        try:
+            page, page_size = parse_page(request.query_params.get("page", 1), request.query_params.get("page_size", DEFAULT_PAGE_SIZE))
+        except ValueError:
+            return Response(
+                {"detail": job_message(request, "error.revision_page_invalid", "Invalid pagination parameters")},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(TemplateRevisionService.list_playbook_revisions(instance, page, page_size))
+
+    @action(detail=True, methods=["get"], url_path=r"revisions/(?P<revision_id>[0-9]+)/compare")
+    @HasPermission("playbook_library-View")
+    def compare_revision(self, request, pk=None, revision_id=None):
+        """所选版本与当前版本对比。"""
+        instance, denied = authorize_job_template(self, request, view_only=True)
+        if denied is not None:
+            return denied
+        try:
+            payload = TemplateRevisionService.compare_playbook(instance, int(revision_id))
+        except RevisionNotFound:
+            return Response(
+                {"detail": job_message(request, "error.revision_not_found", "Revision not found")},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(payload)
+
+    @action(detail=True, methods=["post"], url_path=r"revisions/(?P<revision_id>[0-9]+)/restore")
+    @HasPermission("playbook_library-Edit")
+    def restore_revision(self, request, pk=None, revision_id=None):
+        """恢复到所选版本，并追加一条新的日期版本。"""
+        instance, denied = authorize_job_template(self, request, view_only=False)
+        if denied is not None:
+            return denied
+        revision = PlaybookRevision.objects.filter(playbook=instance, pk=revision_id).first()
+        if revision is None:
+            return Response(
+                {"detail": job_message(request, "error.revision_not_found", "Revision not found")},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        operator = getattr(request.user, "username", "") or ""
+        try:
+            instance = TemplateRevisionService.restore_playbook(instance, revision, operator)
+        except RevisionAlreadyCurrent:
+            return Response(
+                {"error": job_message(request, "error.revision_already_current", "This revision is already current")},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        log_operation(request, "update", "job", f"恢复作业版本: {instance.name} -> {revision.label}")
+        return Response(PlaybookDetailSerializer(instance, context={"request": request}).data)
 
     @action(detail=True, methods=["get"])
     @HasPermission("playbook_library-View")

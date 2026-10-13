@@ -949,3 +949,40 @@ def get_automation_execution_detail_local(data: dict, actor_context: dict):
     if execution is None:
         return {"result": False, "message": job_message(None, "error.task_not_found_or_denied", "Task not found or access denied")}
     return {"result": True, "data": _build_job_detail_payload(execution, include_sensitive=True)}
+
+
+def cancel_automation_execution_local(data: dict, actor_context: dict):
+    """同进程取消入口：身份与组织来自已鉴权的调用上下文。"""
+    actor = _automation_actor_context(actor_context)
+    if actor is None:
+        return {"result": False, "message": "缺少可信执行上下文"}
+    try:
+        task_id = int((data or {}).get("task_id"))
+    except (TypeError, ValueError):
+        return {"result": False, "message": "task_id 必须是任务 ID"}
+    try:
+        execution, message = request_execution_cancel(
+            task_id,
+            authorized_team_ids=set(actor["authorized_team_ids"]),
+        )
+    except JobExecution.DoesNotExist:
+        return {"result": False, "message": job_message(None, "error.task_not_found_or_denied", "Task not found or access denied")}
+    except ExecutionCancellationAuthorizationError:
+        return {"result": False, "message": job_message(None, "error.task_not_found_or_denied", "Task not found or access denied")}
+    except ExecutionCancellationError as error:
+        return {
+            "result": True,
+            "data": {
+                "task_id": task_id,
+                "status": "skipped",
+                "message": str(error),
+            },
+        }
+    return {
+        "result": True,
+        "data": {
+            "task_id": execution.id,
+            "status": execution.status,
+            "message": message,
+        },
+    }

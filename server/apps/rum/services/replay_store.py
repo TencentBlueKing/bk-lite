@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import json
-import os
 from typing import Any, Protocol
-from urllib.parse import urlparse
 
 import redis
-from minio import Minio
+from django.conf import settings
 
 from apps.core.logger import rum_logger as logger
 
@@ -16,6 +14,7 @@ READY = "ready"
 PENDING = "pending"
 TOMBSTONE = "tombstone"
 RETENTION_DAYS = 14
+REPLAY_BUCKET = "rum-replay"
 
 
 class ObjectStore(Protocol):
@@ -29,21 +28,21 @@ class NullObjectStore:
 
 
 class MinioObjectStore:
-    def __init__(self, client: Minio, bucket: str):
-        self._client = client
-        self._bucket = bucket
+    """Read replay segments through django-minio-backend and the platform credentials."""
+
+    def __init__(self, storage):
+        self._storage = storage
 
     def get_bytes(self, object_key: str) -> bytes | None:
         key = (object_key or "").strip()
         if not key:
             return None
         try:
-            response = self._client.get_object(self._bucket, key)
+            opened = self._storage.open(key, "rb")
             try:
-                return response.read()
+                return opened.read()
             finally:
-                response.close()
-                response.release_conn()
+                opened.close()
         except Exception as exc:
             logger.debug(
                 "rum replay object get failed object_key=%s error_type=%s",
@@ -58,22 +57,15 @@ def connect_redis(url: str):
 
 
 def connect_minio_store() -> ObjectStore:
-    endpoint = (os.getenv("RUM_MINIO_ENDPOINT") or "").strip()
-    access = (os.getenv("RUM_MINIO_ACCESS_KEY") or "").strip()
-    secret = (os.getenv("RUM_MINIO_SECRET_KEY") or "").strip()
-    bucket = (os.getenv("RUM_MINIO_BUCKET") or "rum-replay").strip() or "rum-replay"
+    """Replay reads use the same MinIO identity as the other Django apps."""
+    endpoint = (getattr(settings, "MINIO_ENDPOINT", "") or "").strip()
+    access = (getattr(settings, "MINIO_ACCESS_KEY", "") or "").strip()
+    secret = (getattr(settings, "MINIO_SECRET_KEY", "") or "").strip()
     if not endpoint or not access or not secret:
         return NullObjectStore()
-    secure = (os.getenv("RUM_MINIO_SECURE") or "false").strip().lower() in {"1", "true", "yes"}
-    host = endpoint
-    # Minio client wants host[:port] without scheme.
-    if "://" in endpoint:
-        parsed = urlparse(endpoint)
-        host = parsed.netloc or parsed.path
-        if parsed.scheme == "https":
-            secure = True
-    client = Minio(host, access_key=access, secret_key=secret, secure=secure)
-    return MinioObjectStore(client, bucket)
+    from django_minio_backend import MinioBackend
+
+    return MinioObjectStore(MinioBackend(bucket_name=REPLAY_BUCKET))
 
 
 def session_set_key(application: str, session_id: str) -> str:

@@ -316,6 +316,9 @@ def test_should_use_lightweight_direct_reply():
     assert ToolsNodes._should_use_lightweight_direct_reply([_tool("shell")], []) is False
     assert ToolsNodes._should_use_lightweight_direct_reply([_tool("shell"), _tool("request_user_choice")], []) is False
     assert ToolsNodes._should_use_lightweight_direct_reply([], ["/skills/"]) is False
+    assert ToolsNodes._attachment_request_needs_planner([_tool("generate_attachment_file")], "生成一个excel文件") is True
+    assert ToolsNodes._attachment_request_needs_planner([_tool("generate_attachment_file")], "你好") is False
+    assert ToolsNodes._should_use_lightweight_direct_reply([_tool("generate_attachment_file")], []) is True
 
 
 def test_should_use_lightweight_after_empty_plan():
@@ -557,6 +560,25 @@ class TestBuildDeepagentNodes:
         assert "当前没有可用工具与技能" not in system_text
         assert "当前可用工具:" in system_text
         assert "get_current_time" in system_text
+
+    def test_empty_plan_does_not_list_resident_attachment_tool(self):
+        node = ToolsNodes()
+        node.all_tools = [_tool("generate_attachment_file")]
+        req = _request(user_message="你好")
+        captured = {}
+
+        with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None):
+            self._run_wrapper(
+                node,
+                req,
+                captured,
+                plan_payload={"goal": "问候", "steps": []},
+                direct_reply_content="你好！",
+            )
+
+        system_text = str(captured["direct_reply_calls"][0][0].content)
+        assert "当前可用工具:" not in system_text
+        assert "generate_attachment_file" not in system_text
 
     def test_use_skills_step_materializes_sandbox_and_enables_fs(self):
         node = ToolsNodes()
@@ -2231,6 +2253,26 @@ def test_summarize_planned_step_carries_instance_id_into_next_step():
     assert "instance_id=" in summary
 
 
+def test_published_step_result_keeps_instance_ids_beyond_prose_cap():
+    """下一步不能只看前 400 字，否则全部实例会被裁成几条。"""
+    import json
+
+    from langchain_core.messages import AIMessage, ToolMessage
+
+    from apps.opspilot.metis.llm.chain.deepagent_assembly import compact_completed_step_line
+
+    rows = [{"id": f"1_10.10.60.{index}", "name": f"host-{index}", "instance_id": f"1_10.10.60.{index}"} for index in range(11, 41)]
+    messages = [
+        AIMessage(content="", tool_calls=[{"id": "1", "name": "monitor_list_object_instances", "args": {}}]),
+        ToolMessage(content=json.dumps({"success": True, "data": rows}, ensure_ascii=False), tool_call_id="1", name="monitor_list_object_instances"),
+        AIMessage(content="已获取全部主机。" + ("过程说明。" * 80)),
+    ]
+    published = compact_completed_step_line("列出实例", ToolsNodes._summarize_planned_step_messages(messages))
+    assert "1_10.10.60.11" in published
+    assert "1_10.10.60.40" in published
+    assert published.find("1_10.10.60.40") > 400
+
+
 def test_summarize_planned_step_carries_monitor_metric_name():
     import json
 
@@ -2378,6 +2420,7 @@ def test_planned_tool_step_guidance_is_policy_not_skill_scan():
     assert "空矩阵" in guidance
     assert "instance_ids" in guidance
     assert "禁止用 name" in guidance or "禁止用实例名" in guidance
+    assert "负数" in guidance
     assert "不要输出 Markdown 表" in guidance
     assert "禁止降低 lines" in guidance
     assert "execute" not in guidance

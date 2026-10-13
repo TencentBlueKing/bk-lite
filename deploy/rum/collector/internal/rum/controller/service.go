@@ -34,18 +34,18 @@ func (service *Service) Handle(ctx context.Context, subject string, data []byte)
 	}
 	var response ResponseEnvelope
 	switch subject {
-	case SubjectApplicationApply:
-		response = service.apply(ctx, subject, request)
+	case SubjectApplicationApply, SubjectApplicationRotate, SubjectApplicationRetire, SubjectApplicationDisable:
+		response = ErrorResponse(request.RequestID, ErrorInvalidArgument, "subject retired", nil)
+	case SubjectProjectionApply:
+		response = service.applyProjection(ctx, request)
+	case SubjectProjectionReconcile:
+		response = service.reconcileProjection(ctx, request)
+	case SubjectErasureFenceRelease:
+		response = service.releaseFence(ctx, request)
 	case SubjectApplicationGet:
 		response = service.get(ctx, request)
 	case SubjectApplicationList:
 		response = service.list(ctx, request)
-	case SubjectApplicationRotate:
-		response = service.rotate(ctx, subject, request)
-	case SubjectApplicationRetire:
-		response = service.retire(ctx, subject, request)
-	case SubjectApplicationDisable:
-		response = service.disable(ctx, subject, request)
 	case SubjectErasureSubmit:
 		response = service.erase(ctx, subject, request)
 	case SubjectReconcileSubmit:
@@ -59,6 +59,67 @@ func (service *Service) Handle(ctx context.Context, subject string, data []byte)
 	}
 	response.RequestID = request.RequestID
 	return marshalResponse(response)
+}
+
+func (service *Service) applyProjection(ctx context.Context, request RequestEnvelope) ResponseEnvelope {
+	payload, err := DecodePayload[ProjectionApplyPayload](request)
+	if err != nil {
+		return invalid(request, err)
+	}
+	if err := payload.Validate(); err != nil {
+		return invalid(request, err)
+	}
+	if payload.TenantID != service.tenantID {
+		return invalid(request, errors.New("tenant mismatch"))
+	}
+	status, err := service.store.ApplyProjection(ctx, payload)
+	if err != nil {
+		return responseFromResult(request.RequestID, commandResult{}, err)
+	}
+	if status == "stale" {
+		return ResponseEnvelope{RequestID: request.RequestID, Data: map[string]any{"status": "stale"}}
+	}
+	application, err := service.store.GetApplication(ctx, payload.Application)
+	if err != nil {
+		return responseFromResult(request.RequestID, commandResult{}, err)
+	}
+	return ResponseEnvelope{
+		RequestID: request.RequestID,
+		Revision:  application.Revision,
+		Data:      applicationView(application),
+	}
+}
+
+func (service *Service) reconcileProjection(ctx context.Context, request RequestEnvelope) ResponseEnvelope {
+	payload, err := DecodePayload[ProjectionReconcilePayload](request)
+	if err != nil {
+		return invalid(request, err)
+	}
+	stale, err := service.store.ReconcileProjection(ctx, payload)
+	if err != nil {
+		return responseFromResult(request.RequestID, commandResult{}, err)
+	}
+	if stale == nil {
+		stale = []string{}
+	}
+	return ResponseEnvelope{
+		RequestID: request.RequestID,
+		Data:      map[string]any{"status": "ok", "staleApplications": stale},
+	}
+}
+
+func (service *Service) releaseFence(ctx context.Context, request RequestEnvelope) ResponseEnvelope {
+	payload, err := DecodePayload[ErasureSubmitPayload](request)
+	if err != nil || !validApplicationName(payload.Application) || len(payload.Identities) == 0 {
+		if err == nil {
+			err = errors.New("application and identities are required")
+		}
+		return invalid(request, err)
+	}
+	if err := service.store.ReleaseFence(ctx, payload.Application, payload.Identities); err != nil {
+		return responseFromResult(request.RequestID, commandResult{}, err)
+	}
+	return ResponseEnvelope{RequestID: request.RequestID, Data: map[string]any{"status": "released"}}
 }
 
 func (service *Service) apply(ctx context.Context, subject string, request RequestEnvelope) ResponseEnvelope {

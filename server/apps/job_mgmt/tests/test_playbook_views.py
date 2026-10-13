@@ -34,8 +34,22 @@ def _zip(files: dict, name="pb.zip") -> SimpleUploadedFile:
 
 
 def _patch_storage_save():
-    storage = Playbook._meta.get_field("file").storage
-    return patch.object(storage, "save", return_value="playbooks/pb.zip")
+    from contextlib import contextmanager
+
+    from django.core.files.storage import InMemoryStorage
+
+    from apps.job_mgmt.models import PlaybookRevision
+
+    @contextmanager
+    def _storage():
+        storage = InMemoryStorage()
+        with (
+            patch.object(Playbook._meta.get_field("file"), "storage", storage),
+            patch.object(PlaybookRevision._meta.get_field("file"), "storage", storage),
+        ):
+            yield storage
+
+    return _storage()
 
 
 class TestPlaybookSimpleActions:

@@ -19,6 +19,7 @@ from apps.job_mgmt.models import DistributionFile, JobExecution, Playbook, Scrip
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
+from apps.job_mgmt.services.template_revision import display_revision_label
 from apps.job_mgmt.utils.team_authz import is_team_authorized
 
 # 快速执行 / 文件分发的默认超时（秒），与序列化器 / 历史行为保持一致
@@ -189,7 +190,7 @@ class ExecutionService:
                 job_type=JobType.PLAYBOOK,
                 status=ExecutionStatus.PENDING,
                 playbook=playbook,
-                playbook_version=playbook.version,
+                playbook_version=display_revision_label(playbook),
                 params=params,
                 timeout=timeout,
                 total_count=len(target_list),
@@ -304,7 +305,7 @@ class ExecutionService:
                 trigger_source=TriggerSource.MANUAL,
                 status=ExecutionStatus.PENDING,
                 playbook=original.playbook,
-                playbook_version=original.playbook.version,
+                playbook_version=display_revision_label(original.playbook),
                 params=original.params,
                 timeout=original.timeout,
                 total_count=len(target_list),

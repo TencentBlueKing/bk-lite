@@ -527,6 +527,7 @@ messages:
   app3d_status_must_be_array: "system_status must be an array of strings"
   app3d_status_illegal: "system_status contains an illegal value"
   app3d_monitor_query_failed: "Failed to query application monitoring data"
+  app3d_cmdb_relation_expand_failed: "Failed to expand application-system CMDB relations"
   app3d_cursor_invalid: "The cursor is invalid"
   app3d_cursor_expired: "The cursor has expired"
   weops_request_failed_detail: "WeOps request failed: {detail}"

@@ -233,6 +233,7 @@ const SkillWebChatPage: React.FC = () => {
           approvalRequests: processed.approvalRequests,
           repairCommands: processed.repairCommands,
           reportFileDownloads: processed.reportFileDownloads,
+          attachments: Array.isArray(row.attachments) ? row.attachments : [],
         };
       });
       mountChat({
@@ -281,7 +282,7 @@ const SkillWebChatPage: React.FC = () => {
     }
   };
 
-  const handleSendMessage = (panelSessionId: string) => async (message: string) => {
+  const handleSendMessage = (panelSessionId: string) => async (message: string, _currentMessages?: unknown, userMessage?: { attachments?: Array<{ id: number; status?: string }> }) => {
     if (!currentAgent?.id) return null;
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
     const url = `${baseUrl}/api/proxy/opspilot/skill_channel/${currentAgent.id}/chat/`;
@@ -311,7 +312,11 @@ const SkillWebChatPage: React.FC = () => {
     });
     return {
       url,
-      payload: { message, session_id: panelSessionId },
+      payload: {
+        message,
+        session_id: panelSessionId,
+        attachment_ids: (userMessage?.attachments || []).filter((item) => item.status === 'ready' || item.status === undefined).map((item) => item.id),
+      },
       interruptRequest: {
         enabled: true,
         url: '/api/proxy/opspilot/bot_mgmt/interrupt_chat_flow_execution/',

@@ -102,6 +102,7 @@ export interface SkillDetail extends Skill {
   enable_query_rewrite?: boolean;
   enable_conversation_history?: boolean;
   conversation_window_size?: number;
+  run_model_call_limit?: number;
   tools?: unknown[];
   wiki_knowledge_bases?: number[];
   force_wiki_grounded?: boolean;
@@ -214,6 +215,7 @@ export interface SkillTool {
   description_tr?: string;
   icon?: string;
   enabled: boolean;
+  is_build_in?: boolean;
   params: SkillToolParams;
 }
 

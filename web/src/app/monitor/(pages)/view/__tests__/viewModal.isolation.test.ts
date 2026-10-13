@@ -53,6 +53,9 @@ describe('viewModal public pane height and toolbar', () => {
     expect(paneSource).toContain('h-full');
     expect(paneSource).toContain('flex-1');
     expect(paneSource).toContain('min-h-0');
+    expect(paneSource).toContain(
+      'flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-auto',
+    );
     expect(paneSource).toContain('onHeaderAction');
     expect(paneSource).toContain('onEmbedToolbar');
     expect(paneSource).toContain('onHeaderAction={setHeaderAction}');
@@ -60,5 +63,29 @@ describe('viewModal public pane height and toolbar', () => {
     expect(paneSource).not.toContain(
       'Widget as React.ComponentType<Record<string, string>>',
     );
+  });
+
+  it('scrolls public tab content so growing widgets are not clipped', () => {
+    const widgetSource = readSource(
+      '../../../../cmdb/components/public/BaseInfoWidget.tsx',
+    );
+    const listSource = readSource(
+      '../../../../cmdb/(pages)/assetData/detail/baseInfo/list.tsx',
+    );
+    const listStyle = readSource(
+      '../../../../cmdb/(pages)/assetData/detail/baseInfo/list.module.scss',
+    );
+
+    expect(paneSource).toContain(
+      'flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-auto',
+    );
+    expect(widgetSource).toContain(
+      'flex min-h-0 min-w-0 w-full flex-col gap-3',
+    );
+    expect(listSource).toContain('informationList.embed');
+    expect(listStyle).toContain('width: 100% !important');
+    expect(listStyle).toContain('width: 18% !important');
+    expect(listStyle).toContain('width: 32% !important');
+    expect(listStyle).not.toMatch(/\.list\.embed[\s\S]*width:\s*150px/);
   });
 });
