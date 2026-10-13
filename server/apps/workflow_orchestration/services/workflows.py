@@ -8,6 +8,8 @@ NON_TERMINAL_EXECUTION_STATUSES = {
     WorkflowExecution.Status.RUNNING,
     WorkflowExecution.Status.WAITING_APPROVAL,
     WorkflowExecution.Status.TERMINATING,
+    # 引擎回执丢失后可能仍在跑；未对账前不得按终态放行删除。
+    WorkflowExecution.Status.UNKNOWN,
 }
 
 
