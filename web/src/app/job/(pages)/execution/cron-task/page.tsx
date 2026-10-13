@@ -15,8 +15,9 @@ import useApiClient from '@/utils/request';
 import useJobApi from '@/app/job/api';
 import { ScheduledTask } from '@/app/job/types';
 import { ColumnItem } from '@/types';
-import SearchCombination from '@/components/search-combination';
+import SearchCombinationToolbar from '@/components/search-combination-toolbar';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
+import TopSection from '@/components/top-section';
 import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';
 
@@ -277,48 +278,28 @@ const CronTaskPage = () => {
 
   return (
     <div className="w-full h-full flex flex-col">
-      {/* Header */}
-      <div
-        className="rounded-lg px-6 py-4 mb-4 flex-shrink-0"
-        style={{
-          background: 'var(--color-bg-1)',
-          border: '1px solid var(--color-border-1)',
-        }}
-      >
-        <h2
-          className="text-base font-medium m-0 mb-1"
-          style={{ color: 'var(--color-text-1)' }}
-        >
-          {t('job.scheduledTask')}
-        </h2>
-        <p className="text-sm m-0" style={{ color: 'var(--color-text-3)' }}>
-          {t('job.scheduledTaskDesc')}
-        </p>
-      </div>
+      <TopSection
+        title={t('job.scheduledTask')}
+        content={t('job.scheduledTaskDesc')}
+        className="mb-4 shrink-0"
+      />
 
       {/* Table Section */}
-      <div
-        className="rounded-lg px-6 py-6 flex-1 flex flex-col min-h-0"
-        style={{
-          background: 'var(--color-bg-1)',
-          border: '1px solid var(--color-border-1)',
-        }}
-      >
-        {/* Toolbar */}
-        <div className="flex justify-between items-center mb-4 flex-shrink-0">
-          <SearchCombination
+      <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-6 py-6">
+        <div className="mb-4 shrink-0">
+          <SearchCombinationToolbar
             fieldConfigs={fieldConfigs}
-            onChange={handleSearchChange}
-            fieldWidth={120}
-            selectWidth={300}
+            onSearchChange={handleSearchChange}
+            actions={(
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={handleCreate}
+              >
+                {t('common.new')}
+              </Button>
+            )}
           />
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={handleCreate}
-          >
-            {t('job.createTask')}
-          </Button>
         </div>
 
         {/* Table */}

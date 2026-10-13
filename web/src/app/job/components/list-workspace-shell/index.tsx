@@ -1,7 +1,7 @@
 import React from 'react';
 import type { FieldConfig, SearchFilters } from '@/components/search-combination/types';
-import PageFormHeaderCard from '@/components/page-form-header-card';
 import SearchCombinationToolbar from '@/components/search-combination-toolbar';
+import TopSection from '@/components/top-section';
 import WorkspacePanel from '@/components/workspace-panel';
 import CustomTable from '@/components/custom-table';
 
@@ -68,9 +68,9 @@ const JobListWorkspaceShell: React.FC<JobListWorkspaceShellProps> = ({
 
   return (
     <div className={className}>
-      <PageFormHeaderCard
+      <TopSection
         title={title}
-        description={description}
+        content={description}
         className="mb-4 shrink-0"
       />
 

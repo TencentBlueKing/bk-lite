@@ -51,6 +51,8 @@ import {
 import { ColumnItem } from '@/types';
 import SearchCombination from '@/components/search-combination';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
+import ToolbarSplitShell from '@/components/toolbar-split-shell';
+import TopSection from '@/components/top-section';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs, { Dayjs } from 'dayjs';
 
@@ -1318,49 +1320,46 @@ const JobRecordPage = () => {
   // Render list view
   return (
     <div className="w-full h-full flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="mb-4 shrink-0 rounded-lg border border-(--color-border-1) bg-(--color-bg-1) px-6 py-4">
-        <h2 className="m-0 mb-1 text-base font-medium text-[var(--color-text-1)]">
-          {t('job.jobRecord')}
-        </h2>
-        <p className="m-0 text-sm text-[var(--color-text-3)]">
-          {t('job.jobRecordDesc')}
-        </p>
-      </div>
+      <TopSection
+        title={t('job.jobRecord')}
+        content={t('job.jobRecordDesc')}
+        className="mb-4 shrink-0"
+      />
 
       {/* Table Section */}
       <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-(--color-border-1) bg-(--color-bg-1) px-6 py-6">
-        {/* Toolbar */}
-        <div className="mb-4 flex items-center justify-between shrink-0">
-          <SearchCombination
-            fieldConfigs={fieldConfigs}
-            onChange={handleSearchChange}
-            fieldWidth={120}
-            selectWidth={300}
-          />
-          <div className="flex items-center gap-3">
-            {timeRange === 'custom' && (
-              <RangePicker
-                value={customRange}
-                onChange={(value) => {
-                  setCustomRange(value ? [value[0] as Dayjs, value[1] as Dayjs] : null);
-                }}
-                allowClear
+        <ToolbarSplitShell
+          trailing={(
+            <>
+              {timeRange === 'custom' && (
+                <RangePicker
+                  value={customRange}
+                  onChange={(value) => {
+                    setCustomRange(value ? [value[0] as Dayjs, value[1] as Dayjs] : null);
+                  }}
+                  allowClear
+                />
+              )}
+              <Segmented
+                className="w-fit"
+                options={[
+                  { label: t('job.today'), value: 'today' },
+                  { label: t('job.last7Days'), value: '7days' },
+                  { label: t('job.last30Days'), value: '30days' },
+                  { label: t('common.timeSelector.custom'), value: 'custom' },
+                ]}
+                value={timeRange}
+                onChange={(value) => setTimeRange(value as 'today' | '7days' | '30days' | 'custom')}
               />
-            )}
-            <Segmented
-              className="w-fit"
-              options={[
-                { label: t('job.today'), value: 'today' },
-                { label: t('job.last7Days'), value: '7days' },
-                { label: t('job.last30Days'), value: '30days' },
-                { label: t('common.timeSelector.custom'), value: 'custom' },
-              ]}
-              value={timeRange}
-              onChange={(value) => setTimeRange(value as 'today' | '7days' | '30days' | 'custom')}
-            />
-          </div>
-        </div>
+              <SearchCombination
+                fieldConfigs={fieldConfigs}
+                onChange={handleSearchChange}
+                fieldWidth={120}
+                selectWidth={300}
+              />
+            </>
+          )}
+        />
 
         {/* Table */}
         <div className="flex-1 min-h-0">

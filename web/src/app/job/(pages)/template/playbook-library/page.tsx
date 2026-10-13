@@ -33,8 +33,9 @@ import useJobApi from '@/app/job/api';
 import { Playbook, FileTreeNode, PlaybookFilePreview } from '@/app/job/types';
 import { ColumnItem } from '@/types';
 import GroupTreeSelect from '@/components/group-tree-select';
-import SearchCombination from '@/components/search-combination';
+import SearchCombinationToolbar from '@/components/search-combination-toolbar';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
+import TopSection from '@/components/top-section';
 import { useRouter } from 'next/navigation';
 import MarkdownRenderer from '@/components/markdown';
 import OrganizationTags, { getOrganizationColumnWidth } from '@/app/job/components/organization-tags';
@@ -592,35 +593,28 @@ const PlaybookLibraryPage = () => {
 
   return (
     <div className="w-full h-full flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="mb-4 shrink-0 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-6 py-4">
-        <h2 className="m-0 mb-1 text-base font-medium text-[var(--color-text-1)]">
-          {t('job.playbookLibrary')}
-        </h2>
-        <p className="m-0 text-sm text-[var(--color-text-3)]">
-          {t('job.playbookLibraryDesc')}
-        </p>
-      </div>
+      <TopSection
+        title={t('job.playbookLibrary')}
+        content={t('job.playbookLibraryDesc')}
+        className="mb-4 shrink-0"
+      />
 
       {/* Table Section */}
       <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-6 py-6">
-        {/* Toolbar */}
-        <div className="flex justify-between mb-4 flex-shrink-0">
-          <SearchCombination
+        <div className="mb-4 shrink-0">
+          <SearchCombinationToolbar
             fieldConfigs={fieldConfigs}
-            onChange={handleSearchChange}
-            fieldWidth={120}
-            selectWidth={300}
+            onSearchChange={handleSearchChange}
+            actions={(
+              <Button
+                type="primary"
+                icon={<CloudUploadOutlined />}
+                onClick={openUploadModal}
+              >
+                {t('job.uploadPlaybook')}
+              </Button>
+            )}
           />
-          <div className="flex gap-2">
-            <Button
-              type="primary"
-              icon={<CloudUploadOutlined />}
-              onClick={openUploadModal}
-            >
-              {t('job.uploadPlaybook')}
-            </Button>
-          </div>
         </div>
 
         {/* Table */}

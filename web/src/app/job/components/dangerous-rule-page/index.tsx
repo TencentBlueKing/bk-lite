@@ -477,7 +477,7 @@ const JobDangerousRulePage: React.FC<JobDangerousRulePageProps> = ({
         onSearchChange={handleSearchChange}
         actions={(
           <Button type="primary" icon={<PlusOutlined />} onClick={openAddModal}>
-            {t('job.addRule')}
+            {t('common.new')}
           </Button>
         )}
         contentClassName="flex-1 overflow-hidden"

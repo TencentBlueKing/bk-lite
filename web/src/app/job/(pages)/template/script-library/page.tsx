@@ -32,8 +32,9 @@ import useJobApi from '@/app/job/api';
 import { Script, ScriptFormData, ScriptParam, ScriptParamType, ScriptType } from '@/app/job/types';
 import { ColumnItem } from '@/types';
 import GroupTreeSelect from '@/components/group-tree-select';
-import SearchCombination from '@/components/search-combination';
+import SearchCombinationToolbar from '@/components/search-combination-toolbar';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
+import TopSection from '@/components/top-section';
 import ScriptEditor from '@/app/job/components/script-editor';
 import TemplateVersionDrawer from '@/app/job/components/template-version-drawer';
 import VersionBadge from '@/components/version-badge';
@@ -702,47 +703,38 @@ const ScriptLibraryPage = () => {
 
   return (
     <div className="w-full h-full flex flex-col overflow-hidden">
-      {/* Header */}
-      <div
-        className="rounded-lg px-6 py-4 mb-4 flex-shrink-0 bg-[var(--color-bg-1)] border border-[var(--color-border-1)]"
-      >
-        <h2
-          className="text-base font-medium m-0 mb-1 text-[var(--color-text-1)]"
-        >
-          {t('job.scriptLibraryTitle')}
-        </h2>
-        <p className="text-sm m-0 text-[var(--color-text-3)]">
-          {t('job.scriptLibraryDesc')}
-        </p>
-      </div>
+      <TopSection
+        title={t('job.scriptLibraryTitle')}
+        content={t('job.scriptLibraryDesc')}
+        className="mb-4 shrink-0"
+      />
 
       {/* Table Section */}
       <div
         className="rounded-lg px-6 py-6 flex-1 min-h-0 flex flex-col bg-[var(--color-bg-1)] border border-[var(--color-border-1)]"
       >
-        {/* Toolbar */}
-        <div className="flex justify-between mb-4 flex-shrink-0">
-          <SearchCombination
-            fieldConfigs={fieldConfigs}
-            onChange={handleSearchChange}
-            fieldWidth={120}
-            selectWidth={300}
-          />
-          <div className="flex gap-2">
-            <Button icon={<ExportOutlined />} onClick={handleExportScripts}>
-              {t('job.batchExportScripts')}
-            </Button>
-            <Button icon={<ImportOutlined />} onClick={openImportModal}>
-              {t('job.batchImportScripts')}
-            </Button>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={openAddModal}
-            >
-              {t('job.addScript')}
-            </Button>
-          </div>
+        <div className="mb-4 shrink-0">
+        <SearchCombinationToolbar
+          fieldConfigs={fieldConfigs}
+          onSearchChange={handleSearchChange}
+          actions={(
+            <>
+              <Button icon={<ExportOutlined />} onClick={handleExportScripts}>
+                {t('job.batchExportScripts')}
+              </Button>
+              <Button icon={<ImportOutlined />} onClick={openImportModal}>
+                {t('job.batchImportScripts')}
+              </Button>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={openAddModal}
+              >
+                {t('common.new')}
+              </Button>
+            </>
+          )}
+        />
         </div>
 
         {/* Table */}

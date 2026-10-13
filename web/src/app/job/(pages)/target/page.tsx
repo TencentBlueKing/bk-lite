@@ -24,7 +24,8 @@ import useCloudRegionApi from '@/app/node-manager/api/useCloudRegionApi';
 import { Target, WinRMScheme } from '@/app/job/types';
 import { ColumnItem } from '@/types';
 import GroupTreeSelect from '@/components/group-tree-select';
-import SearchCombination from '@/components/search-combination';
+import SearchCombinationToolbar from '@/components/search-combination-toolbar';
+import TopSection from '@/components/top-section';
 import Password from '@/components/password';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
 import OrganizationTags, { getOrganizationColumnWidth } from '@/app/job/components/organization-tags';
@@ -531,35 +532,28 @@ const TargetPage = () => {
 
   return (
     <div className="w-full h-full flex flex-col">
-      {/* Header */}
-      <div className="mb-4 shrink-0 rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-6 py-4">
-        <h2 className="m-0 mb-1 text-base font-medium text-[var(--color-text-1)]">
-          {t('job.targetManagement')}
-        </h2>
-        <p className="m-0 text-sm text-[var(--color-text-3)]">
-          {t('job.targetManagementDesc')}
-        </p>
-      </div>
+      <TopSection
+        title={t('job.targetManagement')}
+        content={t('job.targetManagementDesc')}
+        className="mb-4 shrink-0"
+      />
 
       {/* Table Section */}
       <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-6 py-6">
-        {/* Toolbar */}
-        <div className="mb-4 flex items-center justify-between shrink-0">
-          <SearchCombination
+        <div className="mb-4 shrink-0">
+          <SearchCombinationToolbar
             fieldConfigs={fieldConfigs}
-            onChange={handleSearchChange}
-            fieldWidth={120}
-            selectWidth={300}
+            onSearchChange={handleSearchChange}
+            actions={(
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={openAddModal}
+              >
+                {t('common.new')}
+              </Button>
+            )}
           />
-          <div className="flex gap-2">
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={openAddModal}
-            >
-              {t('job.addTarget')}
-            </Button>
-          </div>
         </div>
 
         {/* Table */}
