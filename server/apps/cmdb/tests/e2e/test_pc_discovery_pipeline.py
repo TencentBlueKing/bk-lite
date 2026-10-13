@@ -19,7 +19,6 @@
 import copy
 import json
 import types
-
 from importlib import import_module
 
 import pytest
@@ -346,9 +345,9 @@ def test_macos_vm_query_writes_pc_software_and_install_on(load_fixture, graph, m
     assert requests[0]["url"].endswith("/prometheus/api/v1/query")
     assert requests[0]["timeout"] == 60
     query = requests[0]["data"]["query"]
-    assert query.startswith("last_over_time((pc_info{")
+    assert query.startswith("last_over_time((pc_info_gauge{")
     assert f"instance_id='cmdb_{task.id}'" in query
-    assert "pc_software_info" in query
+    assert "pc_software_info_gauge" in query
     assert query.endswith(")[1h:])")
 
     assert expected["pc_inst_name"] in graph.store

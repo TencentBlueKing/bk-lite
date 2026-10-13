@@ -1,7 +1,7 @@
 # -- coding: utf-8 --
 """PC 发现采集的 Server 侧服务：VM 快照解析与逐 PC 对账。
 
-- parse_pc_vm_rows：把 pc_info / pc_software_info 指标行解析为逐 PC 的不可变快照，
+- parse_pc_vm_rows：把 pc_info_gauge / pc_software_info_gauge 指标行解析为逐 PC 的不可变快照，
   任何完整性条件不满足都降级 partial（绝不伪装 complete）；
 - PCSnapshotReconciler：严格白名单写入 PC 资产，人工字段绝不被采集覆盖；
 - apply_pc_snapshots：逐 PC 独立对账，单台失败不影响其他目标。
@@ -18,8 +18,22 @@ from apps.cmdb.services.instance_identity import prepare_new_instance_identity
 from apps.cmdb.utils.change_record import batch_create_change_record
 from apps.core.logger import cmdb_logger as logger
 
-PC_METRIC_NAME = "pc_info"
-PC_SOFTWARE_METRIC_NAME = "pc_software_info"
+# VictoriaMetrics 按 Influx 测量名 + 字段名 gauge 落库，序列名带 _gauge。
+# 查询必须用落库名；解析仍接受未加后缀的旧名。
+PC_METRIC_NAME = "pc_info_gauge"
+PC_SOFTWARE_METRIC_NAME = "pc_software_info_gauge"
+PC_QUERY_METRIC_NAMES = {
+    "pc_info": PC_METRIC_NAME,
+    "pc_software_info": PC_SOFTWARE_METRIC_NAME,
+}
+_PC_METRIC_NAMES = frozenset({PC_METRIC_NAME, "pc_info"})
+_PC_SOFTWARE_METRIC_NAMES = frozenset({PC_SOFTWARE_METRIC_NAME, "pc_software_info"})
+
+
+def vm_query_metric_name(name: str) -> str:
+    """把逻辑指标名换成 VictoriaMetrics 中的序列名。"""
+    return PC_QUERY_METRIC_NAMES.get(name, name)
+
 
 # 采集允许写入的 PC 字段（与 model_config.xlsx attr-pc 自动发现信息组一致）。
 # 人工资产字段（asset_code/user/location 等）和组织字段绝不出现在更新 payload。
@@ -162,26 +176,32 @@ def _build_snapshot(pc_row, software_rows, metadata):
     )
 
 
+def _partial_round_metadata():
+    """没有完成标记时仍收下已上报的 PC，但禁止差集删除。"""
+    return {"snapshot_status": "partial", "snapshot_id": "", "details": {}}
+
+
 def parse_pc_vm_rows(rows, metadata_by_round):
-    """把 pc_info / pc_software_info 的 VM label 行解析为逐 PC 快照列表。
+    """把 pc_info_gauge / pc_software_info_gauge 的 VM label 行解析为逐 PC 快照列表。
 
     安全门：计数一致、错误计数为零、软件归属当前 PC、轮次元数据完整、无重复身份；
     任一不满足都降级 partial。同一 PC 多轮快照只保留指标时间最新的一轮。
+    批量里部分目标失败时没有完成标记，已上报的目标仍生成 partial 快照。
     """
-    if not isinstance(metadata_by_round, dict) or not metadata_by_round:
+    if not isinstance(metadata_by_round, dict):
         raise RoundMetadataProtocolError("metadata_missing")
     pc_rows = {}
     software_rows = {}
     for row in rows or []:
         if not isinstance(row, dict):
             continue
-        if row.get("__name__") == PC_METRIC_NAME or row.get("bk_obj_id") == "pc":
+        if row.get("__name__") in _PC_METRIC_NAMES or row.get("bk_obj_id") == "pc":
             round_key = (row.get("collection_target", ""), _metric_timestamp_ms(row))
             key = (*round_key, row.get("inst_name", ""))
             if key in pc_rows:
                 raise RoundMetadataProtocolError("duplicate_pc_root")
             pc_rows[key] = row
-        elif row.get("__name__") == PC_SOFTWARE_METRIC_NAME or row.get("bk_obj_id") == "pc_software":
+        elif row.get("__name__") in _PC_SOFTWARE_METRIC_NAMES or row.get("bk_obj_id") == "pc_software":
             key = (
                 row.get("collection_target", ""),
                 _metric_timestamp_ms(row),
@@ -193,9 +213,7 @@ def parse_pc_vm_rows(rows, metadata_by_round):
     for key, pc_row in pc_rows.items():
         inst_name = pc_row.get("inst_name", "")
         round_key = key[:2]
-        metadata = metadata_by_round.get(round_key)
-        if metadata is None:
-            raise RoundMetadataProtocolError("metadata_missing")
+        metadata = metadata_by_round.get(round_key) or _partial_round_metadata()
         snapshot = _build_snapshot(pc_row, software_rows.get(key, []), metadata)
         existing = snapshots_by_pc.get(inst_name)
         if existing is None or snapshot.collected_at > existing.collected_at:
