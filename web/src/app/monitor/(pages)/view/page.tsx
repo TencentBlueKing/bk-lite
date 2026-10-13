@@ -1,7 +1,7 @@
 'use client';
 import './register-view-pilot';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Segmented, Spin } from 'antd';
+import { Segmented } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 import { useSearchParams } from 'next/navigation';
 import useApiClient from '@/utils/request';
@@ -169,8 +169,12 @@ const Integration = () => {
           />
         )}
         {treeLoading ? (
-          <div className="flex h-full min-h-[240px] items-center justify-center">
-            <Spin />
+          <div className="space-y-3 p-1" aria-busy="true" aria-label="loading">
+            <div className="h-10 animate-pulse rounded-md bg-[var(--color-fill-2)]" />
+            <div className="h-10 animate-pulse rounded-md bg-[var(--color-fill-2)]" />
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div key={index} className="h-8 animate-pulse rounded-md bg-[var(--color-fill-1)]" />
+            ))}
           </div>
         ) : !objects.length ? (
           <CompactEmptyState description="暂无监控对象" className="mt-[80px]" />

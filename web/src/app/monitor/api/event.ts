@@ -1,6 +1,10 @@
 import useApiClient from '@/utils/request';
 import { SourceFeild } from '@/app/monitor/types/event';
 import { AxiosRequestConfig } from 'axios';
+import {
+  demoMonitorPolicies,
+  withMonitorUiDemoFallback,
+} from '@/app/monitor/utils/uiDemoMock';
 
 const useEventApi = () => {
   const { get, post, patch, del } = useApiClient();
@@ -32,10 +36,15 @@ const useEventApi = () => {
     } = {},
     config?: AxiosRequestConfig
   ) => {
-    return await get(`/monitor/api/monitor_policy/${id}`, {
-      params,
-      ...config,
-    });
+    const request = () =>
+      get(`/monitor/api/monitor_policy/${id}`, {
+        params,
+        ...config,
+      });
+    if (id) return await request();
+    return await withMonitorUiDemoFallback(request, () =>
+      demoMonitorPolicies(params)
+    );
   };
 
   const getPolicyTemplate = async (
