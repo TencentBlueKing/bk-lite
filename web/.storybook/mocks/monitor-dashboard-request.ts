@@ -55,6 +55,8 @@ const inferBaseValue = (query = '', unit = 'none') => {
   if (query.includes('cpu_usage_user')) return 18;
   if (query.includes('cpu_usage_system')) return 12;
   if (query.includes('cpu_usage_iowait')) return 2;
+  if (query.includes('cpu_usage_irq')) return 1.2;
+  if (query.includes('cpu_usage_steal')) return 0.4;
   if (query.includes('mem_used_percent')) return 72;
   if (query.includes('mem_available')) return 5 * 1024 * 1024 * 1024;
   if (query.includes('mem_cached')) return 2 * 1024 * 1024 * 1024;
@@ -172,6 +174,20 @@ const queryRange = (params: QueryRangeParams = {}) => {
           metricSeries({ ...baseLabels, phase: 'Pending' }, 1, 'none'),
           metricSeries({ ...baseLabels, phase: 'Succeeded' }, 2, 'none')
         ]
+      }
+    };
+  }
+
+  if (query.includes('100 -') && query.includes('cpu!="cpu-total"') && !query.includes('count')) {
+    const cores = ['cpu3', 'cpu7', 'cpu1', 'cpu0', 'cpu5', 'cpu2', 'cpu6', 'cpu4', 'cpu8'];
+    const bases = [98.2, 96.4, 94.1, 91.8, 88.3, 85, 72.4, 61.2, 40];
+    return {
+      data: {
+        result: cores.map((cpu, index) => metricSeries(
+          { ...baseLabels, cpu },
+          bases[index],
+          unit
+        ))
       }
     };
   }

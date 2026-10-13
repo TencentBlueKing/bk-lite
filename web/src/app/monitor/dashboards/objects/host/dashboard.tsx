@@ -7,6 +7,7 @@ import { DashboardShell } from '../common/dashboard-components';
 import { useSimpleDashboardData } from '../common/simple-dashboard-core';
 import { HOST_DASHBOARD_CONFIG } from './config';
 import {
+  HOST_CPU_CORE_ENTITY_QUERIES,
   HOST_DISK_ENTITY_QUERIES,
   HOST_NET_ENTITY_QUERIES,
   HOST_PROCESS_ENTITY_QUERIES
@@ -51,6 +52,7 @@ export default function HostDashboardPage() {
   const categoryDisk = entityOnCategory && (categoryTab === 'overview' || categoryTab === 'disk');
   const categoryNet = entityOnCategory && (categoryTab === 'overview' || categoryTab === 'net');
   const categoryProcess = entityOnCategory && processReady && (categoryTab === 'overview' || categoryTab === 'process');
+  const categoryCore = entityOnCategory && categoryTab === 'system';
   const entityArgs = {
     idValues,
     instanceIdKeys,
@@ -74,6 +76,11 @@ export default function HostDashboardPage() {
     ...entityArgs,
     enabled: categoryProcess,
     queries: processReady ? HOST_PROCESS_ENTITY_QUERIES : []
+  });
+  const coreState = useHostEntityMetrics({
+    ...entityArgs,
+    enabled: categoryCore,
+    queries: HOST_CPU_CORE_ENTITY_QUERIES
   });
 
   useEffect(() => {
@@ -107,6 +114,7 @@ export default function HostDashboardPage() {
     instanceIdKeys,
     diskState,
     netState,
+    coreState,
     processReady,
     processState,
     layout,

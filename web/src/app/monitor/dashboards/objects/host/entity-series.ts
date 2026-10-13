@@ -303,6 +303,49 @@ export const buildLabelRows = (
   });
 };
 
+export const CPU_CORE_TOP_LIMIT = 8;
+
+/** 窗口内有限样本的算术平均。空序列返回 null，不把缺失当成 0。 */
+export const windowAverage = (points: RangePoint[] | undefined): number | null => {
+  if (!points?.length) return null;
+  let sum = 0;
+  let count = 0;
+  for (const point of points) {
+    if (!Number.isFinite(point.value)) continue;
+    sum += point.value;
+    count += 1;
+  }
+  return count ? sum / count : null;
+};
+
+/**
+ * 分核 Top：只保留带 cpu 维、且不是 cpu-total 的序列。
+ * 按窗口平均从高到低取至多 8 核，均值写在 cpu_usage_core_avg。
+ */
+export const buildCpuCoreRows = (byMetric: Record<string, LabeledSeries[]>): EntityTableRow[] => {
+  const rows = buildLabelRows(byMetric, 'cpu', 'cpu_usage_core');
+  return rows
+    .map((row) => ({
+      row,
+      cpu: row.labels.cpu || '',
+      average: windowAverage(row.series.cpu_usage_core)
+    }))
+    .filter((item) => item.cpu && item.cpu !== 'cpu-total' && item.average != null)
+    .sort((left, right) => {
+      const delta = (right.average as number) - (left.average as number);
+      if (delta !== 0) return delta;
+      return left.cpu.localeCompare(right.cpu, undefined, { numeric: true });
+    })
+    .slice(0, CPU_CORE_TOP_LIMIT)
+    .map((item) => ({
+      ...item.row,
+      values: {
+        ...item.row.values,
+        cpu_usage_core_avg: item.average as number
+      }
+    }));
+};
+
 export const pointsToChartData = (
   seriesList: Array<{ points: RangePoint[] }>
 ): ChartData[] => {

@@ -36,6 +36,8 @@ interface ThinTimeSeriesProps {
   readingTone?: string;
   emptyText?: string;
   reference?: ThinReferenceLine | null;
+  /** 嵌进已有卡片时不再套一层 panel。 */
+  bare?: boolean;
 }
 
 const areaKeys = (data: ChartData[]) => {
@@ -65,7 +67,8 @@ export default function ThinTimeSeries({
   reading,
   readingTone,
   emptyText = '暂无数据',
-  reference
+  reference,
+  bare = false
 }: ThinTimeSeriesProps) {
   const theme = useThemeColors();
   const axisColor = theme['--color-border'];
@@ -168,40 +171,44 @@ export default function ThinTimeSeries({
     };
   }, [axisColor, data, keys, legends, mutedColor, panelColor, reference, textColor, unit]);
   const { containerRef } = useECharts(option);
-
-  return (
-    <section className={`${classic.panel} ${styles.chartPanel}`}>
-      <div className={styles.chartHead}>
-        <div className={styles.chartTitleGroup}>
-          <div className={styles.chartTitle}>{title}</div>
-          {reading ? (
-            <div className={styles.chartReading} style={readingTone ? { color: readingTone } : undefined}>
-              {reading}
+  const showLegend = legendItems.length > 1 || legendItems.some((item) => item.reading);
+  const chart = (
+    <>
+      {title || reading || showLegend ? (
+        <div className={styles.chartHead}>
+          {title || reading ? (
+            <div className={styles.chartTitleGroup}>
+              {title ? <div className={styles.chartTitle}>{title}</div> : null}
+              {reading ? (
+                <div className={styles.chartReading} style={readingTone ? { color: readingTone } : undefined}>
+                  {reading}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {showLegend ? (
+            <div className={styles.chartLegend}>
+              {legendItems.map((item) => (
+                <span key={item.label}>
+                  <span
+                    className={item.dashed ? styles.legendDashed : styles.legendSwatch}
+                    style={item.dashed ? { borderTopColor: item.color } : { background: item.color }}
+                  />
+                  {item.label}
+                  {item.reading ? (
+                    <span
+                      className={styles.legendReading}
+                      style={item.readingTone ? { color: item.readingTone } : undefined}
+                    >
+                      {item.reading}
+                    </span>
+                  ) : null}
+                </span>
+              ))}
             </div>
           ) : null}
         </div>
-        {legendItems.length > 1 || legendItems.some((item) => item.reading) ? (
-          <div className={styles.chartLegend}>
-            {legendItems.map((item) => (
-              <span key={item.label}>
-                <span
-                  className={item.dashed ? styles.legendDashed : styles.legendSwatch}
-                  style={item.dashed ? { borderTopColor: item.color } : { background: item.color }}
-                />
-                {item.label}
-                {item.reading ? (
-                  <span
-                    className={styles.legendReading}
-                    style={item.readingTone ? { color: item.readingTone } : undefined}
-                  >
-                    {item.reading}
-                  </span>
-                ) : null}
-              </span>
-            ))}
-          </div>
-        ) : null}
-      </div>
+      ) : null}
       <div className={styles.chartBody}>
         {loading || !data.length ? (
           <div className={styles.chartEmpty}>{loading ? '加载中' : emptyText}</div>
@@ -209,6 +216,9 @@ export default function ThinTimeSeries({
           <div ref={containerRef} className="h-full w-full" />
         )}
       </div>
-    </section>
+    </>
   );
+
+  if (bare) return <div className="min-w-0">{chart}</div>;
+  return <section className={`${classic.panel} ${styles.chartPanel}`}>{chart}</section>;
 }

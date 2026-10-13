@@ -56,6 +56,23 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       linuxOnly: true
     },
     {
+      name: 'cpu_usage_irq_total',
+      display_name: 'IRQ 占比',
+      description: 'CPU 处理硬件中断的时间占比。没有序列时不画。',
+      unit: 'percent',
+      query: 'cpu_usage_irq{cpu="cpu-total", instance_type="os", __$labels__} or cpu_usage_irq_total_gauge{instance_type="os", __$labels__}',
+      color: HOST_PALETTE.indigo
+    },
+    {
+      name: 'cpu_usage_steal_total',
+      display_name: 'Steal 占比',
+      description: '虚拟化环境中被宿主机抢占的 CPU 时间占比。没有序列时不画。',
+      unit: 'percent',
+      query: 'cpu_usage_steal{cpu="cpu-total", instance_type="os", __$labels__} or cpu_usage_steal_total_gauge{instance_type="os", __$labels__}',
+      color: HOST_PALETTE.rose,
+      linuxOnly: true
+    },
+    {
       name: 'cpu_usage_other_total',
       display_name: '其他 CPU 占比',
       description: '除用户态、内核态和 I/O Wait 以外的 CPU 占比。',

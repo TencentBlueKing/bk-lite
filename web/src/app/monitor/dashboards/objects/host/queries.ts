@@ -124,6 +124,16 @@ export const HOST_NET_ENTITY_QUERIES: HostEntityMetricQuery[] = [
   }
 ];
 
+/** 分核：保留 cpu 维。无该维时性能页不画分核卡。 */
+export const HOST_CPU_CORE_ENTITY_QUERIES: HostEntityMetricQuery[] = [
+  {
+    key: 'cpu_usage_core',
+    unit: 'percent',
+    labelKeys: ['cpu'],
+    query: '100 - cpu_usage_idle{cpu!="cpu-total", instance_type="os", __$labels__}'
+  }
+];
+
 /** 主机分类仪表盘进程层：查询与 Process 对象 inventory 一致，按 process_name 聚合。 */
 export const HOST_PROCESS_ENTITY_QUERIES: HostEntityMetricQuery[] = [
   {

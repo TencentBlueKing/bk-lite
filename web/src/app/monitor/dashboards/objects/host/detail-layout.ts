@@ -45,6 +45,7 @@ export interface HostDetailLayoutProps {
   instanceIdKeys: string[];
   diskState: EntityLoadState;
   netState: EntityLoadState;
+  coreState?: EntityLoadState;
   processReady: boolean;
   processState?: EntityLoadState;
   layout?: HostDetailLayout;

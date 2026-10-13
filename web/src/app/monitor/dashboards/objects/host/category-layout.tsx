@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Tabs } from 'antd';
 import useMonitorApi from '@/app/monitor/api';
-import { buildLabelRows, buildMountDiskRows } from './entity-series';
+import { buildCpuCoreRows, buildLabelRows, buildMountDiskRows } from './entity-series';
 import type { EntityTableRow } from './entity-series';
 import type { HostDetailLayoutProps } from './detail-layout';
 import type { EntityLoadState } from './use-entity-metrics';
@@ -76,6 +76,7 @@ export default function HostCategoryLayout({
   dashboard,
   diskState,
   netState,
+  coreState = EMPTY_ENTITY,
   processReady,
   processState = EMPTY_ENTITY,
   categoryTab = 'overview',
@@ -100,6 +101,7 @@ export default function HostCategoryLayout({
     () => buildLabelRows(processState.byMetric, 'process_name', 'process_cpu_usage'),
     [processState.byMetric]
   );
+  const coreRows = useMemo(() => buildCpuCoreRows(coreState.byMetric), [coreState.byMetric]);
   const diskSelection = usePinnedRow(diskRows);
   const netSelection = usePinnedRow(netRows);
   const processSelection = usePinnedRow(processRows);
@@ -176,6 +178,7 @@ export default function HostCategoryLayout({
         <SystemPane
           metrics={metrics}
           loading={dashboard.loading}
+          coreRows={coreRows}
         />
       );
     }
