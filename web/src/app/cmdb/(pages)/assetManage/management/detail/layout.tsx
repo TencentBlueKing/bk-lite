@@ -9,6 +9,7 @@ import useApiClient from '@/utils/request';
 import PermissionWrapper from '@/components/permission';
 import { Button, Modal, message, Tooltip } from 'antd';
 import { useScreenAwareRouter } from '@/console-layout';
+import TopSection from '@/components/top-section';
 import ModelIcon from '@/app/cmdb/components/model-icon';
 import SourceOriginBadge from '@/components/source-origin-badge';
 import { CopyOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
@@ -188,39 +189,38 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
   return (
     <ModelDetailContext.Provider value={modelDetail}>
       <div className={`${attrLayoutStyle.attrLayout} flex h-full min-h-0 min-w-0 w-full flex-col`}>
-        <header className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-[var(--color-fill-1)]">
-              <ModelIcon
-                icon={modelDetail.icn}
-                modelId={modelId}
-                className="block"
-                alt={t('picture')}
-                width={28}
-                height={28}
-              />
-            </div>
-            <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-2">
-                <div className="truncate text-base font-semibold text-[var(--color-text-1)]">
-                  {modelDetail.model_name || ''}
-                </div>
+        <div className="mb-4 flex shrink-0 items-center rounded-md bg-[var(--color-bg)]">
+          <TopSection
+            className="min-w-0 flex-1"
+            title={(
+              <span className="inline-flex max-w-full items-center gap-2">
+                <span className="min-w-0 truncate">{modelDetail.model_name || ''}</span>
                 <SourceOriginBadge
-                  kind={
-                    (modelDetail.is_pre ?? isPre) ? 'builtin' : 'custom'
-                  }
+                  kind={(modelDetail.is_pre ?? isPre) ? 'builtin' : 'custom'}
                 />
-              </div>
-              <div className="mt-1 break-all text-xs text-[var(--color-text-3)]">
+              </span>
+            )}
+            content={(
+              <span>
                 {modelId}
                 <span className="ml-2">
                   {t('associatedOrganization')}：
                   <OrganizationField value={modelDetail.group} />
                 </span>
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
+              </span>
+            )}
+            icon={(
+              <ModelIcon
+                icon={modelDetail.icn}
+                modelId={modelId}
+                className="block"
+                alt={t('picture')}
+                width={40}
+                height={40}
+              />
+            )}
+          />
+          <div className="flex shrink-0 items-center gap-1 pr-4">
             <PermissionWrapper
               requiredPermissions={['Edit Model']}
               instPermissions={modelDetail.permission || []}
@@ -282,7 +282,7 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
               </Tooltip>
             </PermissionWrapper>
           </div>
-        </header>
+        </div>
         <div
           className={`${attrLayoutStyle.attrLayout} min-h-0 min-w-0 flex-1`}
           style={{ ['--custom-height' as string]: '100%' }}
