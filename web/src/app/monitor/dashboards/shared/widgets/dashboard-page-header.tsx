@@ -125,9 +125,13 @@ export function DashboardPageHeader({
     </Dropdown>
   ) : null;
 
+  const backIsLink = modeControl === 'pill';
   const backButton = (
     <Button
-      className={`${styles.toolbarBackBtn ?? ''} inline-flex max-w-[260px] items-center`}
+      type={backIsLink ? 'link' : 'default'}
+      className={backIsLink
+        ? [styles.backLink, 'inline-flex max-w-[260px] items-center'].filter(Boolean).join(' ')
+        : `${styles.toolbarBackBtn ?? ''} inline-flex max-w-[260px] items-center`}
       icon={<ArrowLeftOutlined aria-hidden="true" />}
       onClick={onBack}
       aria-label={backLabel}
@@ -178,7 +182,7 @@ export function DashboardPageHeader({
       </div>
       {modeControl === 'pill' ? (
         <p className={styles.viewModeHint}>
-          {`${common('viewModeLabel', '视图模式')}：${modeItems.map((item) => item.label).join(' / ')}`}
+          {modeItems.map((item) => item.label).join(' / ')}
         </p>
       ) : null}
     </div>
