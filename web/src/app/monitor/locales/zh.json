@@ -3921,7 +3921,8 @@
         "hostCategoryOutboundPacketRate": "出站包速率",
         "hostCategoryBlockedProcesses": "阻塞进程",
         "hostCategoryZombieProcesses": "僵尸进程",
-        "hostCategoryBusiestMount": "利用率最高挂载点"
+        "hostCategoryBusiestMount": "最满挂载点",
+        "hostCategoryMountUsedOfTotal": "已用 {used} / 总量 {total}"
       }
     }
   },

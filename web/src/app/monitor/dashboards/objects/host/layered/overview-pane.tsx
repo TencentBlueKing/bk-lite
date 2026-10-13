@@ -11,7 +11,6 @@ import { formatDuration, type MetricSeries } from '../../common/simple-dashboard
 import { KpiStrip, type KpiCardModel } from './signal-bar';
 import ThinTimeSeries from './thin-time-series';
 import {
-  formatBytesPair,
   formatPercent,
   formatPlain,
   formatUnit,
@@ -186,16 +185,23 @@ export default function OverviewPane({
               <span>{formatPercent(diskCurrent)}</span>
             </div>
             <div className={styles.shortcutSub}>
-              {formatBytesPair(
-                (() => {
-                  const total = readingOfRow(worst, 'disk_total') ?? worst.values.disk_total;
-                  const used = readingOfRow(worst, 'disk_used');
-                  if (used != null) return used;
-                  if (total != null && diskCurrent != null) return total * diskCurrent / 100;
+              {(() => {
+                const total = readingOfRow(worst, 'disk_total') ?? worst.values.disk_total ?? null;
+                const used = (() => {
+                  const totalBytes = readingOfRow(worst, 'disk_total') ?? worst.values.disk_total;
+                  const usedBytes = readingOfRow(worst, 'disk_used');
+                  if (usedBytes != null) return usedBytes;
+                  if (totalBytes != null && diskCurrent != null) return totalBytes * diskCurrent / 100;
                   return worst.values.disk_used ?? null;
-                })(),
-                readingOfRow(worst, 'disk_total') ?? worst.values.disk_total ?? null
-              )}
+                })();
+                const usedText = used != null && Number.isFinite(used) ? formatUnit(used, 'bytes') : null;
+                const totalText = total != null && Number.isFinite(total) ? formatUnit(total, 'bytes') : null;
+                if (usedText == null && totalText == null) return '—';
+                return hostCategoryText(t, 'mountUsedOfTotal', {
+                  used: usedText ?? '—',
+                  total: totalText ?? '—'
+                });
+              })()}
             </div>
             <button type="button" className={styles.jumpBtn} onClick={() => onJump('disk', worst.key)}>
               查看磁盘

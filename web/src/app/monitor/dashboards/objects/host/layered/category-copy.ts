@@ -37,7 +37,8 @@ export const HOST_CATEGORY_COPY = {
   outboundPacketRate: [textId('hostCategoryOutboundPacketRate'), '出站包速率'],
   blockedProcesses: [textId('hostCategoryBlockedProcesses'), '阻塞进程'],
   zombieProcesses: [textId('hostCategoryZombieProcesses'), '僵尸进程'],
-  busiestMount: [textId('hostCategoryBusiestMount'), '利用率最高挂载点']
+  busiestMount: [textId('hostCategoryBusiestMount'), '最满挂载点'],
+  mountUsedOfTotal: [textId('hostCategoryMountUsedOfTotal'), '已用 {used} / 总量 {total}']
 } as const;
 
 export type HostCategoryCopyKey = keyof typeof HOST_CATEGORY_COPY;

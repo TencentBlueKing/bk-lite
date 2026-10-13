@@ -3921,7 +3921,8 @@
         "hostCategoryOutboundPacketRate": "Outbound packet rate",
         "hostCategoryBlockedProcesses": "Blocked processes",
         "hostCategoryZombieProcesses": "Zombie processes",
-        "hostCategoryBusiestMount": "Highest-utilization mount"
+        "hostCategoryBusiestMount": "Fullest mount",
+        "hostCategoryMountUsedOfTotal": "Used {used} / Total {total}"
       }
     }
   },
