@@ -1,12 +1,17 @@
 'use client';
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { Menu, Input, Button, message, Modal, Tag, Segmented } from 'antd';
+import { useEffect, useState, useRef } from 'react';
+import { Input, Button, message, Modal, Tag, Segmented, Tooltip } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 import useApiClient from '@/utils/request';
 import useNodeManagerApi from '@/app/node-manager/api';
 import EntityList from '@/components/entity-list/index';
+import GridEntityCard from '@/components/grid-entity-card';
+import CardGridSkeleton from '@/components/card-grid-skeleton';
+import SourceOriginBadge from '@/components/source-origin-badge';
+import Icon from '@/components/icon';
 import { useScreenAwareRouter } from '@/console-layout';
 import { useTranslation } from '@/utils/i18n';
-import type { CardItem } from '@/app/node-manager/types';
+import type { CardItem, CardTag } from '@/app/node-manager/types';
 import CollectorModal from '@/app/node-manager/components/sidecar/collectorModal';
 import CollectorReleaseImportModal from '@/app/node-manager/components/collectorReleaseImportModal';
 import { ModalRef } from '@/app/node-manager/types';
@@ -16,8 +21,62 @@ import { useCommon } from '@/app/node-manager/context/common';
 import { buildCollectorPackStatusTag } from '@/app/node-manager/utils/collectorConfig';
 import { buildCollectNeedUpdateAssetUrl } from '@/app/monitor/utils/collectNeedUpdate';
 import { cloneDeep } from 'lodash';
+import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 const { Search } = Input;
 const { confirm } = Modal;
+
+type CollectorCard = CardItem & {
+  is_pre?: boolean;
+  is_build_in?: boolean;
+};
+
+function collectorOrigin(item: CollectorCard) {
+  if (typeof item.is_pre === 'boolean') {
+    return item.is_pre ? 'builtin' : 'external';
+  }
+  if (typeof item.is_build_in === 'boolean') {
+    return item.is_build_in ? 'builtin' : 'external';
+  }
+  return undefined;
+}
+
+function collectorCardMeta(item: CollectorCard) {
+  const origin = collectorOrigin(item);
+  const labels: string[] = [];
+  const statusTags: Array<{ name: string; color?: string; tooltip?: string }> = [];
+  (item.tagList || []).forEach((tag: CardTag) => {
+    if (typeof tag === 'object' && tag?.name) {
+      statusTags.push(tag);
+    } else if (tag) {
+      labels.push(String(tag));
+    }
+  });
+  return (
+    <>
+      {origin ? (
+        <SourceOriginBadge
+          kind={origin}
+          className="h-5 px-1.5 text-[11px] leading-5"
+        />
+      ) : null}
+      {labels.map((label) => (
+        <span
+          key={label}
+          className="inline-flex h-5 items-center rounded-md bg-[var(--color-fill-1)] px-1.5 text-[11px] font-normal text-[var(--color-text-3)]"
+        >
+          {label}
+        </span>
+      ))}
+      {statusTags.map((tag, idx) => (
+        <Tooltip key={`${tag.name}-${idx}`} title={tag.tooltip}>
+          <Tag color={tag.color} className="mr-0">
+            {tag.name}
+          </Tag>
+        </Tooltip>
+      ))}
+    </>
+  );
+}
 
 const Collector = () => {
   const router = useScreenAwareRouter();
@@ -266,81 +325,39 @@ const Collector = () => {
     });
   };
 
-  const handleDelete = (id: string) => {
-    confirm({
-      title: t(`common.delete`),
-      content: t(`node-manager.packetManage.deleteInfo`),
-      okText: t('common.confirm'),
-      cancelText: t('common.cancel'),
-      centered: true,
-      onOk() {
-        return new Promise(async (resolve) => {
-          try {
-            await deleteCollector({ id });
-            message.success(t('common.successfullyDeleted'));
-            fetchCollectorData({ searchValue: search });
-          } finally {
-            return resolve(true);
-          }
-        });
-      }
+  const buildCollectorMenuItems = (data: any): MoreActionsDropdownItem[] => {
+    const items: MoreActionsDropdownItem[] = menuItem.map((item) => ({
+      key: item.key,
+      label: item.title,
+      permission: item.role,
+      onClick: () =>
+        openModal({ ...item.config, form: data, key: 'collector' }),
+    }));
+    items.push({
+      key: 'delete',
+      label: t('common.delete'),
+      permission: 'Delete',
+      danger: true,
+      confirm: {
+        title: t('common.delete'),
+        content: t('node-manager.packetManage.deleteInfo'),
+      },
+      onClick: async () => {
+        await deleteCollector({ id: data.id });
+        message.success(t('common.successfullyDeleted'));
+        fetchCollectorData({ searchValue: search });
+      },
     });
+    if (data.pack_version) {
+      items.push({
+        key: 'restore',
+        label: t('node-manager.packetManage.restoreBuiltin'),
+        permission: 'AddPacket',
+        onClick: () => handleRestoreBuiltin(data.original_name),
+      });
+    }
+    return items;
   };
-
-  const menuActions = useCallback(
-    (data: any) => {
-      return (
-        <Menu onClick={(e) => e.domEvent.preventDefault()}>
-          {menuItem.map((item) => {
-            return (
-              <Menu.Item
-                key={item.key}
-                className="!p-0"
-                onClick={() =>
-                  openModal({ ...item.config, form: data, key: 'collector' })
-                }
-              >
-                <PermissionWrapper
-                  requiredPermissions={[item.role]}
-                  className="!block"
-                >
-                  <Button type="text" className="w-full">
-                    {item.title}
-                  </Button>
-                </PermissionWrapper>
-              </Menu.Item>
-            );
-          })}
-          <Menu.Item className="!p-0" onClick={() => handleDelete(data.id)}>
-            <PermissionWrapper
-              requiredPermissions={['Delete']}
-              className="!block"
-            >
-              <Button type="text" className="w-full">
-                {t(`common.delete`)}
-              </Button>
-            </PermissionWrapper>
-          </Menu.Item>
-          {data.pack_version ? (
-            <Menu.Item
-              className="!p-0"
-              onClick={() => handleRestoreBuiltin(data.original_name)}
-            >
-              <PermissionWrapper
-                requiredPermissions={['AddPacket']}
-                className="!block"
-              >
-                <Button type="text" className="w-full">
-                  {t('node-manager.packetManage.restoreBuiltin')}
-                </Button>
-              </PermissionWrapper>
-            </Menu.Item>
-          ) : null}
-        </Menu>
-      );
-    },
-    [menuItem]
-  );
 
   const handleOsTagClick = (tag: string) => {
     const newSelectedTags = selectedOsTags.includes(tag)
@@ -394,17 +411,6 @@ const Collector = () => {
     });
   };
 
-  const ifOpenAddModal = () => {
-    return {
-      openModal: () =>
-        openModal({
-          title: t('node-manager.collector.addCollector'),
-          type: 'add',
-          form: {}
-        })
-    };
-  };
-
   const onSearch = (searchValue: string) => {
     setSearch(searchValue);
     fetchCollectorData({ searchValue });
@@ -415,9 +421,19 @@ const Collector = () => {
       <EntityList
         data={collectorCards}
         loading={loading}
-        menuActions={(value) => menuActions(value)}
         filter={false}
         search={false}
+        loadingContent={<CardGridSkeleton count={8} />}
+        renderCard={(item: CollectorCard) => (
+          <GridEntityCard
+            name={item.name}
+            description={item.description}
+            icon={<Icon type={item.icon} className="text-2xl" />}
+            meta={collectorCardMeta(item)}
+            menuItems={buildCollectorMenuItems(item)}
+            onClick={() => navigateToCollectorDetail(item)}
+          />
+        )}
         toolbarPrefix={
           <div className="flex flex-col gap-2">
             {appTags.length > 0 && (
@@ -474,11 +490,6 @@ const Collector = () => {
         }
         operateSection={
           <div className="flex items-center gap-2">
-            <PermissionWrapper requiredPermissions={['AddPacket']}>
-              <Button type="primary" onClick={() => setImportOpen(true)}>
-                {t('node-manager.packetManage.importPack')}
-              </Button>
-            </PermissionWrapper>
             <Search
               allowClear
               enterButton
@@ -488,10 +499,28 @@ const Collector = () => {
               onChange={(e) => setSearch(e.target.value)}
               onSearch={onSearch}
             />
+            <PermissionWrapper requiredPermissions={['AddPacket']}>
+              <Button type="primary" onClick={() => setImportOpen(true)}>
+                {t('node-manager.packetManage.importPack')}
+              </Button>
+            </PermissionWrapper>
+            <PermissionWrapper requiredPermissions={['Add']}>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() =>
+                  openModal({
+                    title: t('node-manager.collector.addCollector'),
+                    type: 'add',
+                    form: {},
+                  })
+                }
+              >
+                {t('common.new')}
+              </Button>
+            </PermissionWrapper>
           </div>
         }
-        {...ifOpenAddModal()}
-        onCardClick={(item: CardItem) => navigateToCollectorDetail(item)}
       ></EntityList>
       <CollectorModal ref={modalRef} onSuccess={handleSubmit} />
       <CollectorReleaseImportModal

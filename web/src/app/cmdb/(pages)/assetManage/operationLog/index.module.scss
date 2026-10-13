@@ -9,7 +9,7 @@
 }
 
 .content {
-  background-color: #fff;
+  background-color: var(--color-bg);
   padding: 16px;
   border-radius: 8px;
   border: 1px solid var(--color-border-1);
@@ -17,7 +17,7 @@
 
 .filterWrapper {
   padding: 16px 0;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid var(--color-border);
 }
 
 .wrapper :global(.ant-select-single:not(.ant-select-customize-input) .ant-select-selector) {

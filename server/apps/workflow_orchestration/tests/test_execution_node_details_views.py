@@ -226,3 +226,73 @@ def test_node_endpoints_are_team_scoped(viewer):
 
     assert nodes_response.status_code == 404
     assert detail_response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_terminated_execution_settles_inflight_node_instead_of_running(viewer):
+    execution = _execution()
+    execution.status = WorkflowExecution.Status.TERMINATED
+    execution.tasks = [
+        {
+            "task_id": "task-group",
+            "reference": "group_targets",
+            "status": "COMPLETED",
+            "finished_at": "2026-09-02T01:00:01Z",
+            "input": {},
+            "output": {},
+        },
+        {
+            "task_id": "task-report",
+            "reference": "report",
+            "status": "IN_PROGRESS",
+            "started_at": "2026-09-02T01:00:02Z",
+            "input": {"format": "docx"},
+            "output": {},
+        },
+    ]
+    execution.save(update_fields=["status", "tasks", "updated_at"])
+    nodes = WorkflowExecutionViewSet.as_view({"get": "nodes"})
+    detail = WorkflowExecutionViewSet.as_view({"get": "node_detail"})
+
+    summary = nodes(_request(f"/executions/{execution.id}/nodes/", viewer), pk=execution.id)
+    report = detail(
+        _request(f"/executions/{execution.id}/nodes/report/", viewer),
+        pk=execution.id,
+        node_reference="report",
+    )
+
+    assert summary.status_code == 200
+    by_reference = {item["reference"]: item for item in summary.data["nodes"]}
+    assert by_reference["group_targets"]["state"] == "SUCCESS"
+    assert by_reference["report"]["state"] == "SKIPPED"
+    assert by_reference["report"]["state_counts"] == {"SKIPPED": 1}
+    assert by_reference["__end__"]["state"] == "SKIPPED"
+    assert summary.data["default_node_reference"] != "report"
+    assert report.status_code == 200
+    assert report.data["node"]["state"] == "SKIPPED"
+    assert report.data["instances"][0]["state"] == "SKIPPED"
+    assert report.data["execution_info"]["status"] == "SKIPPED"
+
+
+@pytest.mark.django_db
+def test_running_execution_keeps_inflight_node_running(viewer):
+    execution = _execution()
+    execution.status = WorkflowExecution.Status.RUNNING
+    execution.tasks = [
+        {
+            "task_id": "task-report",
+            "reference": "report",
+            "status": "IN_PROGRESS",
+            "input": {},
+            "output": {},
+        }
+    ]
+    execution.save(update_fields=["status", "tasks", "updated_at"])
+    nodes = WorkflowExecutionViewSet.as_view({"get": "nodes"})
+
+    summary = nodes(_request(f"/executions/{execution.id}/nodes/", viewer), pk=execution.id)
+
+    assert summary.status_code == 200
+    by_reference = {item["reference"]: item for item in summary.data["nodes"]}
+    assert by_reference["report"]["state"] == "RUNNING"
+    assert by_reference["report"]["state_counts"] == {"RUNNING": 1}

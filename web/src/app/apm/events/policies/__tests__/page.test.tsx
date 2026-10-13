@@ -124,7 +124,7 @@ describe('APM 策略列表', () => {
   it('新建和编辑使用独立路由，启停只保留在列表', async () => {
     renderWithApmIntl(<ApmPoliciesPage />);
     expect(await screen.findByText('结账接口 P95 过慢')).not.toBeNull();
-    expect(screen.getByRole('link', { name: /新建策略/ }).getAttribute('href')).toBe('/apm/events/policies/new');
+    expect(screen.getByRole('link', { name: /新建/ }).getAttribute('href')).toBe('/apm/events/policies/new');
     expect(screen.getByRole('button', { name: '结账接口 P95 过慢：编辑策略' }).closest('a')?.getAttribute('href')).toBe(
       '/apm/events/policies/policy-1',
     );
@@ -136,9 +136,9 @@ describe('APM 策略列表', () => {
     await screen.findByText('结账接口 P95 过慢');
 
     expect(container.querySelector('.ant-table-body')).toBeNull();
-    const search = screen.getByPlaceholderText('搜索策略、服务、环境或端点').parentElement;
-    expect(search?.className).toContain('w-full');
-    expect(search?.className).toContain('sm:w-80');
+    const search = screen.getByPlaceholderText('搜索策略、服务、环境或端点');
+    expect(search.closest('.justify-end')).not.toBeNull();
+    expect(screen.getByRole('link', { name: /新建/ }).closest('.justify-end')).not.toBeNull();
   });
 
   it('列表启停调用专用操作接口', async () => {

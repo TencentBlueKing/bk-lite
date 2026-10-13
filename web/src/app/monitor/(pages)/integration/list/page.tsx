@@ -2,16 +2,17 @@
 import './register-list-pilot';
 import React, { useEffect, useState, useRef } from 'react';
 import {
-  Spin,
-  Input,
   Button,
-  Tag,
   Tooltip,
   message,
   Modal,
   Pagination as AntPagination
 } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
+import SearchActionBar from '@/components/search-action-bar';
+import CardGridSkeleton from '@/components/card-grid-skeleton';
+import SourceOriginBadge from '@/components/source-origin-badge';
+import { StatusToneBadge } from '@/app/monitor/utils/statusTone';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
@@ -483,49 +484,37 @@ const Integration = () => {
         </div>
       </ResizableSidebar>
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg-1)] p-5">
-        <div className="mb-4 flex min-w-0 shrink-0 items-start justify-between gap-3">
-          <div className="flex flex-1 items-start">
-            <Input
-              className="w-[400px]"
-              placeholder={t('common.searchPlaceHolder')}
-              value={searchText}
-              allowClear
-              onChange={onSearchTxtChange}
-              onPressEnter={onTxtPressEnter}
-              onClear={onTxtClear}
-            />
-            <div className="hidden">
-              <Button
-                className="mx-[8px]"
-                type="primary"
-                onClick={openImportModal}
-              >
-                {t('common.import')}
+        <SearchActionBar
+          searchProps={{
+            placeholder: t('common.searchPlaceHolder'),
+            value: searchText,
+            allowClear: true,
+            onChange: onSearchTxtChange,
+            onSearch: onTxtPressEnter,
+            onClear: onTxtClear,
+          }}
+          searchClassName="w-80"
+          actions={(
+            <Permission requiredPermissions={['Setting']}>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => openCreateTemplateModal()}>
+                {t('common.new')}
               </Button>
-              <Button
-                disabled={exportDisabled}
-                loading={exportLoading}
-                onClick={exportMetric}
-              >
-                {t('common.export')}
-              </Button>
-            </div>
-          </div>
-          <Permission requiredPermissions={['Setting']}>
-            <Button type="primary" onClick={() => openCreateTemplateModal()}>
-              {t('monitor.integrations.createTemplate')}
-            </Button>
-          </Permission>
+            </Permission>
+          )}
+        />
+        <div className="hidden">
+          <Button className="mx-[8px]" type="primary" onClick={openImportModal}>
+            {t('common.import')}
+          </Button>
+          <Button disabled={exportDisabled} loading={exportLoading} onClick={exportMetric}>
+            {t('common.export')}
+          </Button>
         </div>
-        <Spin
-          spinning={pageLoading}
-          wrapperClassName="flex min-h-0 flex-1 flex-col [&>.ant-spin-container]:flex [&>.ant-spin-container]:h-full [&>.ant-spin-container]:min-h-0 [&>.ant-spin-container]:flex-1 [&>.ant-spin-container]:flex-col"
-        >
-          {!pluginList.length && !pageLoading ? (
-            <CompactEmptyState description={t('common.noData')} />
-          ) : !pluginList.length ? (
-            <div className="min-h-0 flex-1" />
-          ) : (
+        {pageLoading && !pluginList.length ? (
+          <CardGridSkeleton className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4" />
+        ) : !pluginList.length ? (
+          <CompactEmptyState description={t('common.noData')} />
+        ) : (
             <div className="flex min-h-0 flex-1 flex-col">
               <div
                 className="grid min-h-0 w-full flex-1 gap-4 overflow-y-auto"
@@ -552,121 +541,123 @@ const Integration = () => {
                       className="p-2"
                       onClick={() => onAppClick(app)}
                     >
-                      <div className="bg-[var(--color-bg-1)] shadow-sm hover:shadow-md transition-shadow duration-300 ease-in-out rounded-lg p-4 relative cursor-pointer group border">
-                        <div className="flex items-center space-x-4 my-2">
-                          <div className="w-14 h-14 min-w-[56px] rounded-lg flex items-center justify-center bg-[var(--color-fill-1)]">
+                      <div className="relative cursor-pointer rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] transition-shadow duration-300 ease-in-out hover:shadow-md group">
+                        <div className="my-2 flex items-center gap-3">
+                          <div className="grid h-10 w-10 min-w-10 shrink-0 place-items-center rounded-md bg-[var(--color-fill-1)]">
                             <img
                               src={`/assets/icons/${getPluginBrandIcon(app.name) || getIconByObjectName(objectName, objects)}.svg`}
                               alt={objectName}
-                              className="w-12 h-12"
+                              className="h-7 w-7"
                               onError={(e) => {
                                 (e.target as HTMLImageElement).src =
                                   '/assets/icons/cc-default_默认.svg';
                               }}
                             />
                           </div>
-                          <div
-                            style={{
-                              width: 'calc(100% - 60px)'
-                            }}
-                          >
+                          <div className="min-w-0 flex-1">
                             <h2
                               title={app.display_name}
-                              className="text-xl font-bold m-0 hide-text"
+                              className="m-0 truncate text-base font-semibold text-[var(--color-text-1)]"
                             >
                               {app.display_name || '--'}
                             </h2>
-                            <Tag className="mt-[4px]">
-                              {parentObject?.display_name ||
-                                app.parent_monitor_object_display_name ||
-                                app.collect_type ||
-                                '--'}
-                            </Tag>
-                            {sourceBadge.showPackTag && (
-                              <Tooltip
-                                title={
-                                  staleCount > 0
-                                    ? t('monitor.integrations.staleInstanceHint', '', {
-                                      count: staleCount,
-                                      version: packVersionText
-                                    })
-                                    : sourceBadge.packKind === 'pinned'
-                                      ? t('monitor.integrations.pinnedPackHint', '', {
-                                        version: sourceBadge.packVersion
-                                      })
-                                      : t('monitor.integrations.builtinPackHint')
-                                }
-                              >
-                                <Tag
-                                  color={staleCount > 0 ? 'warning' : undefined}
-                                  className={`mt-[4px] ml-[6px]${staleCount > 0 ? ' cursor-pointer' : ''}`}
-                                  onClick={
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                              <span className="text-xs text-[var(--color-text-3)]">
+                                {parentObject?.display_name ||
+                                  app.parent_monitor_object_display_name ||
+                                  app.collect_type ||
+                                  '--'}
+                              </span>
+                              {sourceBadge.showPackTag && (
+                                <Tooltip
+                                  title={
                                     staleCount > 0
-                                      ? (e) => {
-                                        e.stopPropagation();
-                                        const result =
-                                          resolveIntegrationEntryContext(
-                                            app,
-                                            objects
-                                          );
-                                        router.push(
-                                          buildCollectNeedUpdateAssetUrl({
-                                            monitorObjectId: result.ok
-                                              ? result.context.objectId
-                                              : app.parent_monitor_object ||
-                                                String(objectId),
-                                            pluginId: app.id,
-                                            needUpdate: true
-                                          })
-                                        );
-                                      }
-                                      : undefined
+                                      ? t('monitor.integrations.staleInstanceHint', '', {
+                                        count: staleCount,
+                                        version: packVersionText
+                                      })
+                                      : sourceBadge.packKind === 'pinned'
+                                        ? t('monitor.integrations.pinnedPackHint', '', {
+                                          version: sourceBadge.packVersion
+                                        })
+                                        : t('monitor.integrations.builtinPackHint')
                                   }
                                 >
-                                  {packVersionText}
-                                  {staleCount > 0
-                                    ? ` · ${t('monitor.integrations.needUpdate')} ${staleCount}`
-                                    : ''}
-                                </Tag>
-                              </Tooltip>
-                            )}
-                            {staleCount > 0 && !sourceBadge.showPackTag && (
-                              <Tooltip
-                                title={t('monitor.integrations.staleInstanceHint', '', {
-                                  count: staleCount,
-                                  version: packVersionText
-                                })}
-                              >
-                                <Tag
-                                  color="warning"
-                                  className="mt-[4px] ml-[6px] cursor-pointer"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const result = resolveIntegrationEntryContext(
-                                      app,
-                                      objects
-                                    );
-                                    router.push(
-                                      buildCollectNeedUpdateAssetUrl({
-                                        monitorObjectId: result.ok
-                                          ? result.context.objectId
-                                          : app.parent_monitor_object ||
-                                            String(objectId),
-                                        pluginId: app.id,
-                                        needUpdate: true
-                                      })
-                                    );
-                                  }}
+                                  <button
+                                    type="button"
+                                    className={staleCount > 0 ? 'cursor-pointer' : 'cursor-default'}
+                                    onClick={
+                                      staleCount > 0
+                                        ? (e) => {
+                                          e.stopPropagation();
+                                          const result =
+                                            resolveIntegrationEntryContext(
+                                              app,
+                                              objects
+                                            );
+                                          router.push(
+                                            buildCollectNeedUpdateAssetUrl({
+                                              monitorObjectId: result.ok
+                                                ? result.context.objectId
+                                                : app.parent_monitor_object ||
+                                                  String(objectId),
+                                              pluginId: app.id,
+                                              needUpdate: true
+                                            })
+                                          );
+                                        }
+                                        : undefined
+                                    }
+                                  >
+                                    <SourceOriginBadge
+                                      kind={sourceBadge.packKind === 'pinned' ? 'imported' : 'builtin'}
+                                      label={packVersionText}
+                                    />
+                                  </button>
+                                </Tooltip>
+                              )}
+                              {staleCount > 0 && (
+                                <Tooltip
+                                  title={t('monitor.integrations.staleInstanceHint', '', {
+                                    count: staleCount,
+                                    version: packVersionText
+                                  })}
                                 >
-                                  {`${t('monitor.integrations.needUpdate')} ${staleCount}`}
-                                </Tag>
-                              </Tooltip>
-                            )}
-                            {sourceBadge.showSelfBuilt && (
-                              <Tag className="mt-[4px] ml-[6px]">
-                                {t('monitor.integrations.selfBuilt')}
-                              </Tag>
-                            )}
+                                  <button
+                                    type="button"
+                                    className="cursor-pointer"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const result = resolveIntegrationEntryContext(
+                                        app,
+                                        objects
+                                      );
+                                      router.push(
+                                        buildCollectNeedUpdateAssetUrl({
+                                          monitorObjectId: result.ok
+                                            ? result.context.objectId
+                                            : app.parent_monitor_object ||
+                                              String(objectId),
+                                          pluginId: app.id,
+                                          needUpdate: true
+                                        })
+                                      );
+                                    }}
+                                  >
+                                    <StatusToneBadge
+                                      tone="warning"
+                                      label={`${t('monitor.integrations.needUpdate')} ${staleCount}`}
+                                    />
+                                  </button>
+                                </Tooltip>
+                              )}
+                              {sourceBadge.showSelfBuilt && (
+                                <SourceOriginBadge
+                                  kind="custom"
+                                  label={t('monitor.integrations.selfBuilt')}
+                                />
+                              )}
+                            </div>
                           </div>
                         </div>
                         <p
@@ -738,8 +729,7 @@ const Integration = () => {
                 />
               </div>
             </div>
-          )}
-        </Spin>
+        )}
       </div>
       <ImportModal ref={importRef} onSuccess={onTxtClear} />
       <CreateTemplateModal

@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react';
 import List from './list';
 import { useModelApi, useInstanceApi, useCollectApi } from '@/app/cmdb/api';
 import { useSearchParams } from 'next/navigation';
-import { Spin, Modal, Button, Space, Empty, message } from 'antd';
+import { Modal, Button, Empty, message } from 'antd';
 import { useCmdbUserList } from '@/app/cmdb/context/common';
 import {
   ensureCollectTaskMap,
@@ -112,9 +112,25 @@ const BaseInfo = () => {
   };
 
   return (
-    <Spin spinning={pageLoading} className="min-h-[calc(100vh-180px)]">
+    <div className="min-h-0">
       {uuidMissing ? (
         <Empty description="实例缺少合法 inst_uuid，请先完成 UUID 存量清洗" />
+      ) : pageLoading ? (
+        <div className="space-y-4" aria-busy="true" aria-label="loading">
+          {[0, 1, 2].map((index) => (
+            <section
+              key={index}
+              className="overflow-hidden rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] shadow-[0_1px_3px_rgba(0,0,0,0.03)]"
+            >
+              <div className="h-10 border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)]/35" />
+              <div className="space-y-2 p-3">
+                <div className="h-8 animate-pulse rounded-md bg-[var(--color-fill-1)]" />
+                <div className="h-8 animate-pulse rounded-md bg-[var(--color-fill-1)]" />
+                <div className="h-8 w-2/3 animate-pulse rounded-md bg-[var(--color-fill-1)]" />
+              </div>
+            </section>
+          ))}
+        </div>
       ) : (
         <>
       {/* propertyList是模型属性列表+值 */}
@@ -141,7 +157,7 @@ const BaseInfo = () => {
         centered
         onCancel={() => setQuickSubscribeModalOpen(false)}
         footer={(
-          <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+          <div className="flex justify-end gap-2">
             <Button
               type="primary"
               loading={quickSubscribeSubmitting}
@@ -158,7 +174,7 @@ const BaseInfo = () => {
             <Button onClick={() => setQuickSubscribeModalOpen(false)}>
               {t('subscription.cancel')}
             </Button>
-          </Space>
+          </div>
         )}
         destroyOnHidden
         styles={{
@@ -180,7 +196,7 @@ const BaseInfo = () => {
           onSubmitOnly={(data) => handleQuickSubscribeSubmit(data, false)}
         />
       </Modal>
-    </Spin>
+    </div>
   );
 };
 export default BaseInfo;

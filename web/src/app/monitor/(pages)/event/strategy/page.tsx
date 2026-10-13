@@ -1,8 +1,9 @@
 'use client';
 import './register-strategy-pilot';
 import React, { useEffect, useState, useRef } from 'react';
-import { Spin, Input, Button, message, Switch, Popconfirm } from 'antd';
+import { Button, message, Switch, Popconfirm } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
+import SearchActionBar from '@/components/search-action-bar';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useEventApi from '@/app/monitor/api/event';
@@ -395,10 +396,6 @@ const Strategy: React.FC = () => {
   };
 
   return (
-    <Spin
-      spinning={treeLoading}
-      wrapperClassName="flex h-full min-h-0 w-full min-w-0 max-w-full flex-1 flex-col [&>.ant-spin-container]:flex [&>.ant-spin-container]:h-full [&>.ant-spin-container]:min-h-0 [&>.ant-spin-container]:flex-1 [&>.ant-spin-container]:flex-col"
-    >
       <div className={assetStyle.asset}>
         <ResizableSidebar collapseStorageKey="monitor.event.strategy.sidebarCollapsed">
           <div className={assetStyle.assetTree}>
@@ -411,23 +408,24 @@ const Strategy: React.FC = () => {
           </div>
         </ResizableSidebar>
         <div className={assetStyle.table}>
-          <div className={assetStyle.search}>
-            <div className="min-w-0 flex-1">
-              <Input
-                className="w-full max-w-[320px]"
-                placeholder={t('common.searchPlaceHolder')}
-                allowClear
-                onPressEnter={enterText}
-                onClear={clearText}
-                onChange={(e) => setSearchText(e.target.value)}
-              ></Input>
-            </div>
-            <Permission requiredPermissions={['Add']}>
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => linkToStrategyDetail('add')}>
-                {t('common.add')}
-              </Button>
-            </Permission>
-          </div>
+          <SearchActionBar
+            searchProps={{
+              placeholder: t('common.searchPlaceHolder'),
+              allowClear: true,
+              value: searchText,
+              onPressEnter: enterText,
+              onSearch: enterText,
+              onClear: clearText,
+              onChange: (e) => setSearchText(e.target.value),
+            }}
+            actions={(
+              <Permission requiredPermissions={['Add']}>
+                <Button type="primary" icon={<PlusOutlined />} onClick={() => linkToStrategyDetail('add')}>
+                  {t('common.new')}
+                </Button>
+              </Permission>
+            )}
+          />
           <div className="min-h-0 min-w-0 flex-1">
             <CustomTable
               scroll={{ x: 'max-content' }}
@@ -447,7 +445,6 @@ const Strategy: React.FC = () => {
           onSuccess={onChooseAssets}
         />
       </div>
-    </Spin>
   );
 };
 export default Strategy;

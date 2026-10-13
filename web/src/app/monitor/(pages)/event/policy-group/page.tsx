@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Button, Checkbox, Drawer, Dropdown, Input, Modal, Popconfirm, Select, Spin, Switch, Tag, Tooltip, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import SearchActionBar from '@/components/search-action-bar';
+import { StatusToneBadge } from '@/app/monitor/utils/statusTone';
 import { useSearchParams } from 'next/navigation';
 import { cloneDeep } from 'lodash';
 import useApiClient from '@/utils/request';
@@ -441,7 +442,7 @@ const PolicyGroupPage: React.FC = () => {
       dataIndex: 'is_default',
       key: 'is_default',
       width: 90,
-      render: (_, record) => (record.is_default ? <Tag color="blue">默认</Tag> : <span>--</span>),
+      render: (_, record) => (record.is_default ? <StatusToneBadge tone="primary" label="默认" /> : <span>--</span>),
     },
     {
       title: '规则',
@@ -571,10 +572,7 @@ const PolicyGroupPage: React.FC = () => {
   };
 
   return (
-    <Spin
-      spinning={treeLoading}
-      wrapperClassName="flex h-full min-h-0 w-full min-w-0 max-w-full flex-1 flex-col [&>.ant-spin-container]:flex [&>.ant-spin-container]:h-full [&>.ant-spin-container]:min-h-0 [&>.ant-spin-container]:flex-1 [&>.ant-spin-container]:flex-col"
-    >
+    <div className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-1 flex-col">
       <div className={assetStyle.asset}>
         <ResizableSidebar collapseStorageKey="monitor.event.policyGroup.sidebarCollapsed">
           <div className={assetStyle.assetTree}>
@@ -591,31 +589,34 @@ const PolicyGroupPage: React.FC = () => {
           </div>
         </ResizableSidebar>
         <div className={assetStyle.table}>
-          <div className={assetStyle.search}>
-            <div className="min-w-0 flex-1">
-              <Input
-                className="w-full max-w-[320px]"
-                placeholder={t('common.searchPlaceHolder')}
-                allowClear
-                value={searchText}
-                onPressEnter={() => {
-                  setAppliedSearch(searchText.trim());
-                  setPagination((prev) => (prev.current === 1 ? prev : { ...prev, current: 1 }));
-                }}
-                onClear={() => {
-                  setSearchText('');
-                  setAppliedSearch('');
-                  setPagination((prev) => (prev.current === 1 ? prev : { ...prev, current: 1 }));
-                }}
-                onChange={(event) => setSearchText(event.target.value)}
-              />
-            </div>
-            <Permission requiredPermissions={['Edit']}>
-              <Button type="primary" icon={<PlusOutlined />} disabled={!objectId} onClick={() => void openCreate()}>
-                {t('common.add')}
-              </Button>
-            </Permission>
-          </div>
+          <SearchActionBar
+            searchProps={{
+              placeholder: t('common.searchPlaceHolder'),
+              allowClear: true,
+              value: searchText,
+              onPressEnter: () => {
+                setAppliedSearch(searchText.trim());
+                setPagination((prev) => (prev.current === 1 ? prev : { ...prev, current: 1 }));
+              },
+              onSearch: () => {
+                setAppliedSearch(searchText.trim());
+                setPagination((prev) => (prev.current === 1 ? prev : { ...prev, current: 1 }));
+              },
+              onClear: () => {
+                setSearchText('');
+                setAppliedSearch('');
+                setPagination((prev) => (prev.current === 1 ? prev : { ...prev, current: 1 }));
+              },
+              onChange: (event) => setSearchText(event.target.value),
+            }}
+            actions={(
+              <Permission requiredPermissions={['Edit']}>
+                <Button type="primary" icon={<PlusOutlined />} disabled={!objectId} onClick={() => void openCreate()}>
+                  {t('common.new')}
+                </Button>
+              </Permission>
+            )}
+          />
           <div className="min-h-0 min-w-0 flex-1">
             <CustomTable
               rowKey="id"
@@ -773,7 +774,12 @@ const PolicyGroupPage: React.FC = () => {
               dataIndex: 'state',
               key: 'state',
               width: 110,
-              render: (_, record) => <Tag>{MEMBER_STATE[record.state] || record.state}</Tag>,
+              render: (_, record) => (
+                <StatusToneBadge
+                  tone={record.state === 'member' ? 'success' : record.state === 'declined' ? 'warning' : 'neutral'}
+                  label={MEMBER_STATE[record.state] || record.state}
+                />
+              ),
             },
             {
               title: '旧策略',
@@ -1093,7 +1099,7 @@ const PolicyGroupPage: React.FC = () => {
       >
         <Input value={copyName} onChange={(event) => setCopyName(event.target.value)} />
       </Modal>
-    </Spin>
+    </div>
   );
 };
 

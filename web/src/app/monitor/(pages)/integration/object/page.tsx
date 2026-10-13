@@ -2,8 +2,10 @@
 
 import './register-object-pilot';
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { Input, Button, Switch, Popconfirm, message, Tag } from 'antd';
+import { Button, Switch, Popconfirm, message } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import SearchActionBar from '@/components/search-action-bar';
+import SourceOriginBadge from '@/components/source-origin-badge';
 import useApiClient from '@/utils/request';
 import { useTranslation } from '@/utils/i18n';
 import {
@@ -117,7 +119,11 @@ const ObjectPage = () => {
         width: 100,
         render: (_: unknown, record: TableDataItem) => {
           const count = (record as MonitorObjectItem).children_count ?? 0;
-          return <Tag color="blue">{count}</Tag>;
+          return (
+            <span className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--color-primary)_12%,var(--color-bg))] px-1.5 text-xs font-semibold tabular-nums text-[var(--color-primary)]">
+              {count}
+            </span>
+          );
         }
       },
       {
@@ -128,11 +134,14 @@ const ObjectPage = () => {
         render: (_: unknown, record: TableDataItem) => {
           const isBuiltin = (record as MonitorObjectItem).is_builtin;
           return (
-            <Tag color={isBuiltin ? 'default' : 'blue'}>
-              {isBuiltin
-                ? t('monitor.object.builtin')
-                : t('monitor.object.custom')}
-            </Tag>
+            <SourceOriginBadge
+              kind={isBuiltin ? 'builtin' : 'custom'}
+              label={
+                isBuiltin
+                  ? t('monitor.object.builtin')
+                  : t('monitor.object.custom')
+              }
+            />
           );
         }
       },
@@ -531,14 +540,45 @@ const ObjectPage = () => {
             <span className="font-semibold">
               {t('monitor.object.objectType')}
             </span>
-            <Permission requiredPermissions={['Add']}>
-              <Button
-                size="small"
-                icon={<PlusOutlined />}
-                onClick={() => openTypeModal('add')}
-                title={t('monitor.object.addType')}
-              />
-            </Permission>
+            <div className="flex items-center gap-1">
+              {selectedType && !selectedType.is_builtin ? (
+                <>
+                  <Permission requiredPermissions={['Edit']}>
+                    <Button
+                      size="small"
+                      type="text"
+                      icon={<EditOutlined />}
+                      onClick={() => openTypeModal('edit', selectedType)}
+                      title={t('monitor.object.editType')}
+                    />
+                  </Permission>
+                  <Permission requiredPermissions={['Delete']}>
+                    <Popconfirm
+                      title={t('common.delConfirm')}
+                      description={t('monitor.object.deleteTypeConfirm')}
+                      okText={t('common.confirm')}
+                      cancelText={t('common.cancel')}
+                      onConfirm={handleDeleteType}
+                    >
+                      <Button
+                        size="small"
+                        type="text"
+                        icon={<DeleteOutlined />}
+                        title={t('monitor.object.deleteType')}
+                      />
+                    </Popconfirm>
+                  </Permission>
+                </>
+              ) : null}
+              <Permission requiredPermissions={['Add']}>
+                <Button
+                  size="small"
+                  icon={<PlusOutlined />}
+                  onClick={() => openTypeModal('add')}
+                  title={t('monitor.object.addType')}
+                />
+              </Permission>
+            </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             <TreeSelector
@@ -555,68 +595,28 @@ const ObjectPage = () => {
 
       {/* 右侧对象列表 */}
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg-1)] p-5">
-        {/* 标题栏 */}
-        <div className="mb-4 flex shrink-0 items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h2 className="text-lg font-semibold m-0">
-              {selectedType?.name || ''}
-            </h2>
-            {/* 非内置类型才显示编辑和删除按钮 */}
-            {selectedType && !selectedType.is_builtin && (
-              <div className="flex gap-1">
-                <Permission requiredPermissions={['Edit']}>
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<EditOutlined />}
-                    className="text-[var(--color-primary)]"
-                    onClick={() => openTypeModal('edit', selectedType)}
-                    title={t('monitor.object.editType')}
-                  />
-                </Permission>
-                <Permission requiredPermissions={['Delete']}>
-                  <Popconfirm
-                    title={t('common.delConfirm')}
-                    description={t('monitor.object.deleteTypeConfirm')}
-                    okText={t('common.confirm')}
-                    cancelText={t('common.cancel')}
-                    onConfirm={handleDeleteType}
-                  >
-                    <Button
-                      type="text"
-                      size="small"
-                      icon={<DeleteOutlined />}
-                      className="text-[var(--color-primary)]"
-                      title={t('monitor.object.deleteType')}
-                    />
-                  </Popconfirm>
-                </Permission>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* 工具栏 */}
-        <div className="mb-4 flex min-w-0 shrink-0 items-center justify-between gap-3">
-          <Input
-            allowClear
-            className="w-80"
-            placeholder={t('monitor.object.searchObjectId')}
-            value={objectSearchText}
-            onChange={(e) => setObjectSearchText(e.target.value)}
-            onPressEnter={handleSearchObject}
-            onClear={handleClearSearch}
-          />
-          <Permission requiredPermissions={['Add']}>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => openObjectModal('add')}
-            >
-              {t('monitor.object.addObject')}
-            </Button>
-          </Permission>
-        </div>
+        <SearchActionBar
+          searchProps={{
+            placeholder: t('monitor.object.searchObjectId'),
+            value: objectSearchText,
+            allowClear: true,
+            onChange: (e) => setObjectSearchText(e.target.value),
+            onSearch: handleSearchObject,
+            onClear: handleClearSearch,
+          }}
+          searchClassName="w-80"
+          actions={(
+            <Permission requiredPermissions={['Add']}>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => openObjectModal('add')}
+              >
+                {t('common.new')}
+              </Button>
+            </Permission>
+          )}
+        />
 
         {/* 对象表格 */}
         <div className="min-h-0 min-w-0 flex-1">

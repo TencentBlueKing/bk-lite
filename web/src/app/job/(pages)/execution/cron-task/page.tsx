@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   Button,
   Switch,
@@ -15,8 +15,8 @@ import useApiClient from '@/utils/request';
 import useJobApi from '@/app/job/api';
 import { ScheduledTask } from '@/app/job/types';
 import { ColumnItem } from '@/types';
-import SearchCombination from '@/components/search-combination';
-import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
+import SearchActionBar from '@/components/search-action-bar';
+import TopSection from '@/components/top-section';
 import { useRouter } from 'next/navigation';
 import dayjs from 'dayjs';
 
@@ -33,7 +33,7 @@ const CronTaskPage = () => {
 
   const [data, setData] = useState<ScheduledTask[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchFilters, setSearchFilters] = useState<SearchFilters>({});
+  const [searchKey, setSearchKey] = useState('');
   const [togglingIds, setTogglingIds] = useState<Set<number>>(new Set());
   const [pagination, setPagination] = useState({
     current: 1,
@@ -42,24 +42,16 @@ const CronTaskPage = () => {
   });
 
   const fetchData = useCallback(
-    async (fetchParams: { filters?: SearchFilters; current?: number; pageSize?: number } = {}) => {
+    async (fetchParams: { keyword?: string; current?: number; pageSize?: number } = {}) => {
       setLoading(true);
       try {
-        const filters = fetchParams.filters ?? searchFilters;
+        const keyword = (fetchParams.keyword ?? searchKey).trim();
         const queryParams: Record<string, unknown> = {
           page: fetchParams.current ?? pagination.current,
           page_size: fetchParams.pageSize ?? pagination.pageSize,
         };
-        if (filters && Object.keys(filters).length > 0) {
-          Object.entries(filters).forEach(([field, conditions]) => {
-            conditions.forEach((condition) => {
-              if (condition.lookup_expr === 'in' && Array.isArray(condition.value)) {
-                queryParams[field] = (condition.value as string[]).join(',');
-              } else {
-                queryParams[field] = condition.value;
-              }
-            });
-          });
+        if (keyword) {
+          queryParams.name = keyword;
         }
         const res = await getScheduledTaskList(queryParams as any);
         setData(res.items || []);
@@ -71,7 +63,7 @@ const CronTaskPage = () => {
         setLoading(false);
       }
     },
-    [searchFilters, pagination.current, pagination.pageSize]
+    [searchKey, pagination.current, pagination.pageSize]
   );
 
   useEffect(() => {
@@ -86,51 +78,15 @@ const CronTaskPage = () => {
     }
   }, [pagination.current, pagination.pageSize]);
 
-  const handleSearchChange = useCallback((filters: SearchFilters) => {
-    setSearchFilters(filters);
+  const handleSearch = useCallback((value: string) => {
+    setSearchKey(value);
     setPagination((prev) => ({ ...prev, current: 1 }));
-    fetchData({ filters, current: 1 });
+    fetchData({ keyword: value, current: 1 });
   }, [fetchData]);
 
   const handleTableChange = (pag: any) => {
     setPagination(pag);
   };
-
-  const fieldConfigs: FieldConfig[] = useMemo(() => [
-    {
-      name: 'name',
-      label: t('job.taskName'),
-      lookup_expr: 'icontains',
-    },
-    {
-      name: 'job_type',
-      label: t('job.jobType'),
-      lookup_expr: 'in',
-      options: [
-        { id: 'script', name: t('job.scriptExecution') },
-        { id: 'playbook', name: t('job.playbook') },
-        { id: 'file', name: t('job.fileDistribution') },
-      ],
-    },
-    {
-      name: 'schedule_type',
-      label: t('job.executionStrategy'),
-      lookup_expr: 'in',
-      options: [
-        { id: 'once', name: t('job.executeOnce') },
-        { id: 'cron', name: t('job.cronExpression') },
-      ],
-    },
-    {
-      name: 'is_enabled',
-      label: t('job.enableStatus'),
-      lookup_expr: 'bool',
-      options: [
-        { id: 'true', name: t('common.enabled') },
-        { id: 'false', name: t('common.disabled') },
-      ],
-    },
-  ], [t]);
 
   const handleToggleStatus = async (record: ScheduledTask) => {
     setTogglingIds((prev) => new Set(prev).add(record.id));
@@ -277,49 +233,32 @@ const CronTaskPage = () => {
 
   return (
     <div className="w-full h-full flex flex-col">
-      {/* Header */}
-      <div
-        className="rounded-lg px-6 py-4 mb-4 flex-shrink-0"
-        style={{
-          background: 'var(--color-bg-1)',
-          border: '1px solid var(--color-border-1)',
-        }}
-      >
-        <h2
-          className="text-base font-medium m-0 mb-1"
-          style={{ color: 'var(--color-text-1)' }}
-        >
-          {t('job.scheduledTask')}
-        </h2>
-        <p className="text-sm m-0" style={{ color: 'var(--color-text-3)' }}>
-          {t('job.scheduledTaskDesc')}
-        </p>
-      </div>
+      <TopSection
+        title={t('job.scheduledTask')}
+        content={t('job.scheduledTaskDesc')}
+        className="mb-4 shrink-0"
+      />
 
       {/* Table Section */}
-      <div
-        className="rounded-lg px-6 py-6 flex-1 flex flex-col min-h-0"
-        style={{
-          background: 'var(--color-bg-1)',
-          border: '1px solid var(--color-border-1)',
-        }}
-      >
-        {/* Toolbar */}
-        <div className="flex justify-between items-center mb-4 flex-shrink-0">
-          <SearchCombination
-            fieldConfigs={fieldConfigs}
-            onChange={handleSearchChange}
-            fieldWidth={120}
-            selectWidth={300}
-          />
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={handleCreate}
-          >
-            {t('job.createTask')}
-          </Button>
-        </div>
+      <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-6 py-6">
+        <SearchActionBar
+          searchProps={{
+            placeholder: t('common.search'),
+            allowClear: true,
+            value: searchKey,
+            onChange: (event) => setSearchKey(event.target.value),
+            onSearch: handleSearch,
+          }}
+          actions={(
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={handleCreate}
+            >
+              {t('common.new')}
+            </Button>
+          )}
+        />
 
         {/* Table */}
         <div className="flex-1 min-h-0">

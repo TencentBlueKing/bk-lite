@@ -649,7 +649,7 @@ export default function LibraryContent({ activeTab }: { activeTab: LibraryTabKey
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['Edit']} permissionPath="/patch-manager/settings/sources"><Button icon={<CloudDownloadOutlined />} onClick={handleImportSearch}>{t('patchManager.libraryPage.syncIngest')}</Button></PermissionWrapper>
           {activeTab === 'win' && (
-            <PermissionWrapper requiredPermissions={['Add']} permissionPath={LIBRARY_PERMISSION_PATH}><Button icon={<PlusOutlined />} onClick={() => { createForm.resetFields(); setCreateOpen(true); }}>{t('patchManager.libraryPage.addPatch')}</Button></PermissionWrapper>
+            <PermissionWrapper requiredPermissions={['Add']} permissionPath={LIBRARY_PERMISSION_PATH}><Button type="primary" icon={<PlusOutlined />} onClick={() => { createForm.resetFields(); setCreateOpen(true); }}>{t('common.new')}</Button></PermissionWrapper>
           )}
         </Space>
       </FilterToolbar>

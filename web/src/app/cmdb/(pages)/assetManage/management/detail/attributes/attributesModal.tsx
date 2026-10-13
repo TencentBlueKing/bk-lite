@@ -687,10 +687,9 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
           visible={modelVisible}
           onCancel={handleCancel}
           footer={
-            <div>
+            <div className="flex justify-end gap-2">
               <Button
                 type="primary"
-                className="mr-[10px]"
                 loading={confirmLoading}
                 onClick={handleSubmit}
               >
@@ -1367,7 +1366,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                             placeholder={t('Model.tagBatchPlaceholder')}
                           />
                           {tagBatchError && (
-                            <div className="text-red-500 text-xs mt-1">
+                            <div className="text-[var(--color-fail)] text-xs mt-1">
                               {tagBatchError}
                             </div>
                           )}

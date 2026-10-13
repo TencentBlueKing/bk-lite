@@ -519,6 +519,41 @@ describe('执行记录统一详情入口', () => {
     ));
   });
 
+  it('表头筛选后翻页仍请求下一页并保留筛选', async () => {
+    mocks.get.mockImplementation((url: string) => {
+      if (String(url).includes('/executions/?')) return Promise.resolve({ count: 40, items: [execution] });
+      return Promise.resolve({ count: 0, items: [] });
+    });
+    renderPage();
+    await screen.findByText(execution.workflow_name);
+    mocks.get.mockClear();
+
+    const filterTrigger = screen.getByRole('columnheader', { name: /^状态/ }).querySelector<HTMLElement>('.ant-table-filter-trigger');
+    expect(filterTrigger).not.toBeNull();
+    fireEvent.click(filterTrigger!);
+    const dropdown = await waitFor(() => {
+      const element = document.querySelector<HTMLElement>('.ant-table-filter-dropdown');
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    fireEvent.click(within(dropdown).getByText('已终止'));
+    fireEvent.click(within(dropdown).getByRole('button', { name: /OK|确定/ }));
+    await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
+      expect.stringContaining('status=TERMINATED'),
+      expect.anything(),
+    ));
+    mocks.get.mockClear();
+
+    const pageTwo = document.querySelector<HTMLElement>('.ant-pagination-item-2');
+    expect(pageTwo).not.toBeNull();
+    fireEvent.click(pageTwo!);
+
+    await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
+      expect.stringMatching(/page=2.*status=TERMINATED|status=TERMINATED.*page=2/),
+      expect.anything(),
+    ));
+  });
+
   it('严格模式初始化时列表和详情接口均只请求一次', async () => {
     render(<StrictMode><IntlProvider locale="zh-CN" messages={{ 'common.confirm': '确定', 'common.cancel': '取消', 'common.selectAll': '全选', 'common.selected': '已选', 'common.items': '项', 'common.clear': '清除', 'common.total': '共' }}><App><ExecutionListPage initialExecutionId="execution-1" /></App></IntlProvider></StrictMode>);
 

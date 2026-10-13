@@ -1,18 +1,21 @@
 'use client';
-import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { Menu, Input, Button, Tag } from 'antd';
+import React, { useEffect, useState, useRef } from 'react';
+import { Input, Tag } from 'antd';
 import useApiClient from '@/utils/request';
 import useNodeManagerApi from '@/app/node-manager/api';
 import EntityList from '@/components/entity-list/index';
+import GridEntityCard from '@/components/grid-entity-card';
+import CardGridSkeleton from '@/components/card-grid-skeleton';
+import Icon from '@/components/icon';
 import { useScreenAwareRouter } from '@/console-layout';
 import { useTranslation } from '@/utils/i18n';
 import type { CardItem } from '@/app/node-manager/types';
 import { OPERATE_SYSTEMS } from '@/app/node-manager/constants/cloudregion';
 import CollectorModal from '@/app/node-manager/components/sidecar/collectorModal';
 import { ModalRef } from '@/app/node-manager/types';
-import PermissionWrapper from '@/components/permission';
 import { useControllerMenuItem } from '@/app/node-manager/hooks/controller';
 import { cloneDeep } from 'lodash';
+import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
 const { Search } = Input;
 
 const Controller = () => {
@@ -134,36 +137,16 @@ const Controller = () => {
     fetchCollectorlist(search);
   };
 
-  const menuActions = useCallback(
-    (data: any) => {
-      return (
-        <Menu onClick={(e) => e.domEvent.preventDefault()}>
-          {menuItem.map((item) => {
-            if (['delete', 'edit'].includes(item.key)) return;
-            return (
-              <Menu.Item
-                key={item.key}
-                onClick={() =>
-                  openModal({ ...item.config, form: data, key: 'controller' })
-                }
-                className="!p-0"
-              >
-                <PermissionWrapper
-                  requiredPermissions={[item.role]}
-                  className="!block"
-                >
-                  <Button type="text" className="w-full">
-                    {item.title}
-                  </Button>
-                </PermissionWrapper>
-              </Menu.Item>
-            );
-          })}
-        </Menu>
-      );
-    },
-    [menuItem]
-  );
+  const buildControllerMenuItems = (data: any): MoreActionsDropdownItem[] =>
+    menuItem
+      .filter((item) => !['delete', 'edit'].includes(item.key))
+      .map((item) => ({
+        key: item.key,
+        label: item.title,
+        permission: item.role,
+        onClick: () =>
+          openModal({ ...item.config, form: data, key: 'controller' }),
+      }));
 
   const handleTagClick = (tag: string) => {
     const newSelectedTags = selectedTags.includes(tag)
@@ -186,35 +169,51 @@ const Controller = () => {
       <EntityList
         data={controllerCards}
         loading={loading}
-        menuActions={(value) => menuActions(value)}
         filter={false}
         search={false}
-        operateSection={
-          <div className="flex items-center w-full">
-            <div className="flex items-center flex-1 mr-[10px] overflow-x-auto">
-              {(allTags || []).map((tag) => (
-                <Tag
-                  key={tag}
-                  color={selectedTags.includes(tag) ? 'blue' : 'default'}
-                  className="cursor-pointer transition-all duration-200 hover:scale-105 select-none"
-                  onClick={() => handleTagClick(tag)}
-                >
-                  {tag}
-                </Tag>
-              ))}
-            </div>
-            <Search
-              allowClear
-              enterButton
-              placeholder={`${t('common.search')}...`}
-              className="w-60"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onSearch={onSearch}
-            />
+        loadingContent={<CardGridSkeleton count={8} />}
+        renderCard={(item: CardItem & { is_pre?: boolean }) => (
+          <GridEntityCard
+            name={item.name}
+            description={item.description}
+            icon={<Icon type={item.icon} className="text-2xl" />}
+            origin={
+              typeof item.is_pre === 'boolean'
+                ? item.is_pre
+                  ? 'builtin'
+                  : 'external'
+                : undefined
+            }
+            metaLabels={(item.tagList || []).map((tag) => String(tag))}
+            menuItems={buildControllerMenuItems(item)}
+            onClick={() => navigateToCollectorDetail(item)}
+          />
+        )}
+        toolbarPrefix={
+          <div className="flex items-center overflow-x-auto">
+            {(allTags || []).map((tag) => (
+              <Tag
+                key={tag}
+                color={selectedTags.includes(tag) ? 'blue' : 'default'}
+                className="cursor-pointer transition-all duration-200 hover:scale-105 select-none"
+                onClick={() => handleTagClick(tag)}
+              >
+                {tag}
+              </Tag>
+            ))}
           </div>
         }
-        onCardClick={(item: CardItem) => navigateToCollectorDetail(item)}
+        operateSection={
+          <Search
+            allowClear
+            enterButton
+            placeholder={`${t('common.search')}...`}
+            className="w-60"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onSearch={onSearch}
+          />
+        }
       ></EntityList>
       <CollectorModal ref={modalRef} onSuccess={handleSubmit} />
     </div>

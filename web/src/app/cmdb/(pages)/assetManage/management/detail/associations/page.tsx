@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Input, Button, Modal, message } from 'antd';
+import { Button, Modal, message } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
+import SearchActionBar from '@/components/search-action-bar';
 import type { TableRowSelection } from 'antd/es/table/interface';
 import CustomTable from '@/components/custom-table';
 import AssociationsModal from './associationsModal';
-import { Tag } from 'antd';
 import type { TableColumnsType } from 'antd';
+import { StatusToneBadge } from '@/app/cmdb/utils/statusTone';
 import { CONSTRAINT_List } from '@/app/cmdb/constants/asset';
 import {
   ModelItem,
@@ -107,14 +108,13 @@ const Associations: React.FC = () => {
       render: (_, { asst_id }) => {
         return (
           <>
-            {
-              <Tag color="green">
-                {(() => {
-                  const matched = assoTypeList.find((item) => item.asst_id === asst_id);
-                  return matched ? `${matched.asst_name}(${asst_id})` : '--';
-                })()}
-              </Tag>
-            }
+            <StatusToneBadge
+              tone="primary"
+              label={(() => {
+                const matched = assoTypeList.find((item) => item.asst_id === asst_id);
+                return matched ? `${matched.asst_name}(${asst_id})` : '--';
+              })()}
+            />
           </>
         );
       },
@@ -322,43 +322,44 @@ const Associations: React.FC = () => {
   return (
     <div className="min-w-0 w-full">
       <div>
-        <div className="nav-box flex justify-end mb-[16px]">
-          <div className="left-side w-[240px] mr-[8px]">
-            <Input
-              placeholder={t('common.search')}
-              value={searchText}
-              allowClear
-              onChange={onSearchTxtChange}
-              onPressEnter={onTxtPressEnter}
-              onClear={onTxtClear}
-            />
-          </div>
-          <div className="right-side">
+        <SearchActionBar
+          className="mb-4"
+          spacing="flush"
+          searchClassName="!w-[240px]"
+          searchProps={{
+            placeholder: t('common.search'),
+            value: searchText,
+            allowClear: true,
+            onChange: onSearchTxtChange,
+            onSearch: onTxtPressEnter,
+            onClear: onTxtClear,
+          }}
+          actions={(
             <PermissionWrapper
               requiredPermissions={['Edit Model']}
               instPermissions={modelPermission}
             >
-              <Button
-                danger
-                className="mr-[8px]"
-                disabled={!selectedRowKeys.length}
-                loading={batchDeleting}
-                onClick={showBatchDeleteConfirm}
-              >
-                {t('common.batchDelete')}
-                {selectedRowKeys.length > 0 ? `(${selectedRowKeys.length})` : ''}
-              </Button>
-              <Button
-                type="primary"
-                className="mr-[8px]"
-                icon={<PlusOutlined />}
-                onClick={() => showAssoModal('add')}
-              >
-                {t('common.addNew')}
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  danger
+                  disabled={!selectedRowKeys.length}
+                  loading={batchDeleting}
+                  onClick={showBatchDeleteConfirm}
+                >
+                  {t('common.batchDelete')}
+                  {selectedRowKeys.length > 0 ? `(${selectedRowKeys.length})` : ''}
+                </Button>
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={() => showAssoModal('add')}
+                >
+                  {t('common.new')}
+                </Button>
+              </div>
             </PermissionWrapper>
-          </div>
-        </div>
+          )}
+        />
         <CustomTable
           size="middle"
           scroll={{ y: 'calc(100vh - 340px)' }}

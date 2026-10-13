@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import styles from './index.module.scss';
 import OperateOid from './components/operateOid';
 import CustomTable from '@/components/custom-table';
-import Introduction from '@/components/introduction';
+import TopSection from '@/components/top-section';
+import SearchActionBar from '@/components/search-action-bar';
 import PermissionWrapper from '@/components/permission';
+import { PlusOutlined } from '@ant-design/icons';
 import { getNetworkDeviceOptions } from '@/app/cmdb/constants/professCollection';
-import { Button, Input, Select, Modal, message, Space } from 'antd';
+import { Button, Select, Modal, message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useOidApi } from '@/app/cmdb/api';
 import { useSearchParams } from 'next/navigation';
@@ -319,42 +320,39 @@ const OidLibrary: React.FC = () => {
   return (
     <div className="oid-library-container flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div className="shrink-0 overflow-x-auto">
-        <Introduction
+        <TopSection
           title={t('OidLibrary.soidTitle')}
-          message={t('OidLibrary.soidMessage')}
+          content={t('OidLibrary.soidMessage')}
         />
       </div>
-      <div className="nav-box mb-[20px] flex shrink-0 flex-wrap items-center justify-between gap-3">
-        <div className={`flex items-center ${styles.wrapper}`}>
-          <Space.Compact>
-            <Select
-              value={filterType}
-              style={{ width: 90 }}
-              onChange={handleFilterTypeChange}
-              className="!rounded-r-none"
-            >
-              <Option value="version">{t('OidLibrary.model')}</Option>
-              <Option value="oid">OID</Option>
-              <Option value="brand">{t('OidLibrary.brand')}</Option>
-            </Select>
-            <Input
-              allowClear
-              value={searchKey}
-              placeholder={t('common.search')}
-              style={{ width: 250 }}
-              onChange={(e) => setSearchKey(e.target.value)}
-              onPressEnter={handleFilterChange}
-              onClear={handleFilterClear}
-              className="!rounded-l-none"
-            />
-          </Space.Compact>
-        </div>
-        <PermissionWrapper requiredPermissions={['Add']}>
-          <Button type="primary" onClick={() => operateMap('add')}>
-            {t('OidLibrary.newMapping')}
-          </Button>
-        </PermissionWrapper>
-      </div>
+      <SearchActionBar
+        filters={(
+          <Select
+            value={filterType}
+            style={{ width: 90 }}
+            onChange={handleFilterTypeChange}
+          >
+            <Option value="version">{t('OidLibrary.model')}</Option>
+            <Option value="oid">OID</Option>
+            <Option value="brand">{t('OidLibrary.brand')}</Option>
+          </Select>
+        )}
+        searchProps={{
+          allowClear: true,
+          value: searchKey,
+          placeholder: t('common.search'),
+          onChange: (e) => setSearchKey(e.target.value),
+          onSearch: handleFilterChange,
+          onClear: handleFilterClear,
+        }}
+        actions={(
+          <PermissionWrapper requiredPermissions={['Add']}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => operateMap('add')}>
+              {t('common.new')}
+            </Button>
+          </PermissionWrapper>
+        )}
+      />
       <div className="min-h-0 h-full flex-1 overflow-hidden">
         <CustomTable
           size="middle"

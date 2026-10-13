@@ -10,6 +10,7 @@ import { useCallback, useMemo, useState } from 'react';
 import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import OperateModal from '@/components/operate-modal';
+import SourceOriginBadge from '@/components/source-origin-badge';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
@@ -203,8 +204,8 @@ export function WorkflowListPage() {
       filteredValue: builtinFilter ? [builtinFilter] : null,
       render: (_, record) => (
         record.is_builtin
-          ? <Tag color="purple">{t('common.builtin', '内置')}</Tag>
-          : <Tag>{t('workflowOrchestration.workflow.custom', '自定义')}</Tag>
+          ? <SourceOriginBadge kind="builtin" />
+          : <SourceOriginBadge kind="custom" label={t('workflowOrchestration.workflow.custom', '自定义')} />
       ),
     },
     {
@@ -335,7 +336,7 @@ export function WorkflowListPage() {
   return <main className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg-1)] p-4">
     <WorkflowTablePanel
       filters={<Input.Search className="w-[220px]" allowClear enterButton placeholder={t('workflowOrchestration.workflow.searchPlaceholder', '搜索流程名称')} value={queryDraft} onChange={(event) => { const value = event.target.value; setQueryDraft(value); if (!value) { setPagination((item) => ({ ...item, current: 1 })); setQuery(''); } }} onSearch={(value) => { setPagination((item) => ({ ...item, current: 1 })); setQuery(value.trim()); }} />}
-      actions={<><WorkflowPermission operation="Add"><Button type="primary" icon={<PlusOutlined />} onClick={create}>{t('workflowOrchestration.workflow.create', '新建流程')}</Button></WorkflowPermission><WorkflowPermission operation="View"><Button aria-label={t('workflowOrchestration.workflow.refresh', '刷新流程列表')} icon={<ReloadOutlined />} onClick={() => void load()} /></WorkflowPermission></>}
+      actions={<><WorkflowPermission operation="View"><Button aria-label={t('workflowOrchestration.workflow.refresh', '刷新流程列表')} icon={<ReloadOutlined />} onClick={() => void load()} /></WorkflowPermission><WorkflowPermission operation="Add"><Button type="primary" icon={<PlusOutlined />} onClick={create}>{t('common.new', '新建')}</Button></WorkflowPermission></>}
     >
       <CustomTable rowKey="id" loading={loading} columns={columns} dataSource={records} className="[&_.ant-table-cell]:whitespace-nowrap" locale={{ emptyText: <Empty description={t('workflowOrchestration.workflow.empty', '当前组织还没有流程')} /> }} pagination={{ current: pagination.current, pageSize: pagination.pageSize, total: count, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100], onChange: (current, pageSize) => setPagination({ current, pageSize }) }} onChange={(_, tableFilters, __, extra) => {
         if (extra.action !== 'filter') return;

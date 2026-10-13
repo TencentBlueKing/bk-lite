@@ -1,5 +1,6 @@
 'use client';
 import SubLayout from '@/components/sub-layout';
+import TopSection from '@/components/top-section';
 import React, { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
@@ -29,17 +30,12 @@ const ControllerLayout = ({ children }: { children: React.ReactNode }) => {
     setDetaildata(info);
   }, [pathname]);
 
-  //顶部的组件
-  const Topsection = () => {
-    return (
-      <div className="flex flex-col h-[90px] p-4 overflow-hidden">
-        <h1 className="text-lg">{t('node-manager.packetManage.title')}</h1>
-        <p className="text-sm overflow-hidden w-full mt-[8px]">
-          {detaildata.introduction}
-        </p>
-      </div>
-    );
-  };
+  const topSection = (
+    <TopSection
+      title={t('node-manager.packetManage.title')}
+      content={detaildata.introduction}
+    />
+  );
 
   const CollectorIntro = () => {
     return (
@@ -64,7 +60,7 @@ const ControllerLayout = ({ children }: { children: React.ReactNode }) => {
     <div className="flex h-full min-h-0 w-full flex-col">
       <SubLayout
         layoutType={'sideMenu'}
-        topSection={<Topsection></Topsection>}
+        topSection={topSection}
         showBackButton={true}
         intro={<CollectorIntro></CollectorIntro>}
         onBackButtonClick={() => {

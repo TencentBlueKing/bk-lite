@@ -2,17 +2,17 @@
 import './register-asset-pilot';
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import {
-  Input,
   Button,
   message,
   Dropdown,
   Space,
   Tooltip,
   Modal,
-  Switch,
-  Tag
+  Switch
 } from 'antd';
 import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
+import SearchActionBar from '@/components/search-action-bar';
+import { StatusToneBadge } from '@/app/monitor/utils/statusTone';
 import useApiClient from '@/utils/request';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import useMonitorApi from '@/app/monitor/api';
@@ -39,7 +39,7 @@ import {
 } from '@/app/monitor/types/integration';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
-import { DownOutlined, PlusOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { DownOutlined, PlusOutlined } from '@ant-design/icons';
 import { useCommon } from '@/app/monitor/context/common';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useAssetMenuItems } from '@/app/monitor/hooks/integration/common/assetMenuItems';
@@ -354,12 +354,14 @@ const Asset = () => {
                       </PluginTooltipTrigger>
                       {plugin.need_update ? (
                         <Tooltip title={needUpdateHint}>
-                          <Tag className="m-0" color="warning">
-                            {getNeedUpdateTagText(
+                          <StatusToneBadge
+                            className="m-0"
+                            tone="warning"
+                            label={getNeedUpdateTagText(
                               upgradeTargetVersion,
                               updateDirection
                             )}
-                          </Tag>
+                          />
                         </Tooltip>
                       ) : null}
                     </span>
@@ -1135,9 +1137,7 @@ const Asset = () => {
                   <span className="text-[var(--color-text-3)]">
                     {targetLabel}
                   </span>
-                  <Tag className="m-0" color="warning">
-                    {item.targetVersion}
-                  </Tag>
+                  <StatusToneBadge className="m-0" tone="warning" label={item.targetVersion} />
                 </div>
               </div>
             );
@@ -1314,32 +1314,36 @@ const Asset = () => {
           </div>
         </ResizableSidebar>
         <div className={assetStyle.table}>
-          <div className={assetStyle.search}>
-            <Input
-              allowClear
-              placeholder={t(getAssetSearchPlaceholderKey(findByMonitorId(objects, objectId)))}
-              className="w-full max-w-[420px] min-w-0"
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              onPressEnter={() => getAssetInsts(objectId)}
-              onClear={clearText}
-            />
-            <div className="flex shrink-0 items-center gap-3">
-              <label className="inline-flex h-8 items-center gap-1.5 text-[var(--color-text-2)]">
-                <Switch
-                  size="small"
-                  checked={needUpdateOnly}
-                  onChange={setNeedUpdateFilter}
-                />
-                {t('monitor.integrations.needUpdateFilter')}
-              </label>
-              <div className="flex items-center gap-2">
+          <SearchActionBar
+            searchProps={{
+              allowClear: true,
+              placeholder: t(getAssetSearchPlaceholderKey(findByMonitorId(objects, objectId))),
+              value: searchText,
+              onChange: (e) => setSearchText(e.target.value),
+              onSearch: () => getAssetInsts(objectId),
+              onClear: clearText,
+            }}
+            searchClassName="w-80"
+            filters={(
+              <>
+                <label className="inline-flex h-8 items-center gap-1.5 text-[var(--color-text-2)]">
+                  <Switch
+                    size="small"
+                    checked={needUpdateOnly}
+                    onChange={setNeedUpdateFilter}
+                  />
+                  {t('monitor.integrations.needUpdateFilter')}
+                </label>
                 <CatalogScopeSegmented
                   unassignedOnly={unassignedOnly}
                   onChange={handleCatalogScopeChange}
                   count={unassignedCount}
                   resourceName={t('monitor.integrations.monitorInstance', '监控实例')}
                 />
+              </>
+            )}
+            actions={(
+              <div className="flex items-center gap-2">
                 <Button
                   type="primary"
                   icon={<PlusOutlined />}
@@ -1366,8 +1370,8 @@ const Asset = () => {
                   onRefresh={onRefresh}
                 />
               </div>
-            </div>
-          </div>
+            )}
+          />
           <div className="min-h-0 min-w-0 flex-1">
             <CustomTable
               key={String(objectId || 'asset-table')}
