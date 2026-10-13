@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Tag, Button, Input, Select, Space, TimePicker, Alert, message, Form, Switch, Modal, InputNumber, Spin, Tooltip } from 'antd';
+import { Tag, Button, Input, Select, Space, TimePicker, Alert, message, Form, Switch, Modal, InputNumber, Skeleton, Tooltip } from 'antd';
 import PermissionWrapper from '@/components/permission';
 import PatchDeletePopconfirm from '@/app/patch-manager/components/delete-popconfirm';
 import Password from '@/components/password';
@@ -375,7 +375,7 @@ export function PatchSourcesSettings() {
           actions={(
             <PermissionWrapper requiredPermissions={['Add']}>
               <Button type="primary" icon={<PlusOutlined />} onClick={() => openSourceModal()}>
-                {t('patchManager.settingsPage.addSource')}
+                {t('common.new')}
               </Button>
             </PermissionWrapper>
           )}
@@ -640,7 +640,7 @@ export function ScanSettings() {
   );
 
   return (
-    <Spin spinning={loading} tip={t('patchManager.settingsPage.loading')}>
+    <Skeleton loading={loading} active paragraph={{ rows: 8 }}>
       <div>
         <div className={styles.assessmentAutomationControl}>
           <div className={styles.assessmentAutomationHeader}>
@@ -763,6 +763,6 @@ export function ScanSettings() {
           <PermissionWrapper requiredPermissions={['Edit']}><Button type="primary" loading={saving} onClick={handleSave}>{t('patchManager.settingsPage.saveSettings')}</Button></PermissionWrapper>
         </div>
       </div>
-    </Spin>
+    </Skeleton>
   );
 }
