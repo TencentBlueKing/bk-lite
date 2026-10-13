@@ -223,6 +223,33 @@ def test_builtin_health_report_template_matches_job_output_contract_and_renders_
 
 
 @pytest.mark.parametrize("fmt", ["docx", "xlsx"])
+def test_builtin_health_report_renders_failed_host_with_null_data(fmt):
+    from apps.workflow_orchestration.atom_packages.bklite_document_render.runtime.handler import _merge_report_data
+
+    template_path = TEMPLATE_DIR / f"health-inspection-example.{fmt}"
+    content = template_path.read_bytes()
+    payload = _merge_report_data(
+        {
+            "summary": {"total": 1, "succeeded": 0, "failed": 1},
+            "results": [
+                {
+                    "target": {"name": "job-web3", "ip": "10.10.90.120", "operating_system": "windows"},
+                    "status": "FAILED",
+                    "data": None,
+                    "error": "command timed out",
+                }
+            ],
+        },
+        None,
+    )
+    rendered = render_report(content, fmt, payload)
+    text = _rendered_text(fmt, rendered)
+    assert "10.10.90.120" in text
+    assert "command timed out" in text or "FAILED" in text
+    assert "{{" not in text
+
+
+@pytest.mark.parametrize("fmt", ["docx", "xlsx"])
 def test_builtin_health_report_template_renders_multi_host_multi_os(fmt):
     template_path = TEMPLATE_DIR / f"health-inspection-example.{fmt}"
     content = template_path.read_bytes()

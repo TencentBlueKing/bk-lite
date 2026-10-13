@@ -1147,6 +1147,7 @@ def test_soft_delete_preserves_terminal_history_and_disables_triggers(superuser)
         WorkflowExecution.Status.RUNNING,
         WorkflowExecution.Status.WAITING_APPROVAL,
         WorkflowExecution.Status.TERMINATING,
+        WorkflowExecution.Status.UNKNOWN,
     ],
 )
 def test_soft_delete_rejects_every_non_terminal_execution(superuser, execution_status):
