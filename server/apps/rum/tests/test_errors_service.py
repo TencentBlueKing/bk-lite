@@ -1,4 +1,12 @@
+import io
+import logging
+from urllib.error import HTTPError
+
+import pytest
+
 from apps.rum.services.analytics import UnavailableAnalytics
+
+pytestmark = pytest.mark.django_db
 from apps.rum.services.applications import ApplicationsService
 from apps.rum.services.control import MemoryControl, UnavailableControl
 from apps.rum.services.errors import ErrorsService, MemoryIssueStore, MemorySourcemapStore, match_issue_status
@@ -45,6 +53,64 @@ def test_list_errors_degrades_without_analytics():
     ).list_errors("tester", {"range": "24h"})
     assert page["analyticsUnavailable"] is True
     assert page["issues"] == []
+
+
+def _query_failure():
+    class QueryFailureAnalytics(UnavailableAnalytics):
+        def available(self):
+            return True
+
+        def list_error_issues(self, tenant_id, opts):
+            raise _http_error()
+
+        def error_detail(self, tenant_id, fingerprint, opts):
+            raise _http_error()
+
+    return QueryFailureAnalytics()
+
+
+def _http_error() -> HTTPError:
+    return HTTPError(
+        "http://127.0.0.1:19428/select/logsql/query",
+        400,
+        "secret-query-body",
+        hdrs=None,
+        fp=io.BytesIO(b"secret-query-body"),
+    )
+
+
+def test_list_errors_degrades_when_query_fails(caplog):
+    control = MemoryControl()
+    _seed_app(control)
+    with caplog.at_level(logging.WARNING, logger="rum"):
+        page = ErrorsService(
+            control=control,
+            analytics=_query_failure(),
+            issues=MemoryIssueStore(),
+        ).list_errors("tester", {"range": "24h"})
+    assert page["analyticsUnavailable"] is True
+    assert page["issues"] == []
+    record = next(item for item in caplog.records if item.name == "rum")
+    assert record.exc_info is None
+    assert record.getMessage() == "rum errors list analytics failed failed_stage=list_errors error_type=HTTPError"
+    assert "secret-query-body" not in record.getMessage()
+
+
+def test_error_detail_degrades_when_query_fails(caplog):
+    control = MemoryControl()
+    _seed_app(control)
+    with caplog.at_level(logging.WARNING, logger="rum"):
+        page = ErrorsService(
+            control=control,
+            analytics=_query_failure(),
+            issues=MemoryIssueStore(),
+        ).error_detail("tester", "fp-1", {"range": "24h"})
+    assert page["analyticsUnavailable"] is True
+    assert page["fingerprint"] == ""
+    record = next(item for item in caplog.records if item.name == "rum")
+    assert record.exc_info is None
+    assert record.getMessage() == "rum error detail analytics failed failed_stage=error_detail error_type=HTTPError"
+    assert "secret-query-body" not in record.getMessage()
 
 
 def test_list_errors_degrades_without_control():

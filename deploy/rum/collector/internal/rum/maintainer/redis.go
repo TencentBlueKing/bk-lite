@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/bk-lite/rum-collector/internal/rum/ingress"
 	rumstate "github.com/bk-lite/rum-collector/internal/rum/state"
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -39,8 +39,10 @@ return {"stored", ARGV[2]}
 `)
 
 type RedisConfig struct {
-	URL          string
-	PasswordFile string
+	URL                string
+	PasswordFile       string
+	RequireACLIdentity bool
+	ACLUsername        string
 }
 
 type RedisState struct {
@@ -578,8 +580,18 @@ func maintainerRedisOptions(cfg RedisConfig) (*redis.Options, error) {
 	if err != nil || parsed.Host == "" || (parsed.Scheme != "redis" && parsed.Scheme != "rediss") {
 		return nil, errors.New("maintainer Redis URL must use redis:// or rediss://")
 	}
-	if parsed.User == nil || parsed.User.Username() != "rum-maintainer" {
-		return nil, errors.New("maintainer Redis URL must use the rum-maintainer ACL identity")
+	username := ""
+	if parsed.User != nil {
+		username = parsed.User.Username()
+	}
+	if cfg.RequireACLIdentity {
+		expected := strings.TrimSpace(cfg.ACLUsername)
+		if expected == "" {
+			expected = "rum-maintainer"
+		}
+		if username == "" || username != expected {
+			return nil, errors.New("maintainer Redis URL ACL username must be " + expected)
+		}
 	}
 	if parsed.RawQuery != "" || parsed.Fragment != "" {
 		return nil, errors.New("maintainer Redis URL must not contain query or fragment")

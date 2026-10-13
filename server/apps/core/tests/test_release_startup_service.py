@@ -178,7 +178,7 @@ def test_opspilot_celery_worker_is_packaged_without_default_worker_exclude():
     assert "--max-memory-per-child=%(ENV_CELERY_MAX_MEMORY_PER_CHILD)s" in celery_conf
     assert "--pool threads" not in celery_conf
     assert "--pool prefork" in opspilot_conf
-    assert "-Q opspilot_channel,opspilot_wiki,opspilot_maintenance" in opspilot_conf
+    assert "-Q opspilot_channel,opspilot_wiki,opspilot_maintenance,opspilot_chat_parse" in opspilot_conf
     assert 'rm -f "$SUPERVISOR_CONF_DIR/opspilot_celery.conf"' in startup
     assert "SUPERVISOR_CONF_DIR=${SUPERVISOR_CONF_DIR:-/etc/supervisor/conf.d}" in startup
 

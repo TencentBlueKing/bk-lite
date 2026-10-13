@@ -4,6 +4,7 @@ import pytest
 
 from apps.opspilot.enum import SkillTypeChoices
 from apps.opspilot.models.model_provider_mgmt import LLMModel, ModelVendor
+from apps.opspilot.services.chat_attachment_service import attachment_token_budget, render_document
 from apps.opspilot.services.chat_service import ChatService
 
 pytestmark = pytest.mark.django_db
@@ -97,3 +98,32 @@ def test_knowledge_chat_does_not_include_attachment_tool():
 
     assert not chat_kwargs.get("tools_servers")
     assert "【附件生成】" not in chat_kwargs["system_message_prompt"]
+
+
+def test_format_chat_server_kwargs_passes_run_model_call_limit():
+    model = LLMModel.objects.create(name="chat-call-limit", vendor=_vendor(), model="gpt-4", context_window_tokens=8_000)
+    kwargs = _kwargs([])
+    kwargs["run_model_call_limit"] = 6
+
+    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(kwargs, model)
+
+    assert chat_kwargs["run_model_call_limit"] == 6
+
+
+def test_file_injection_truncates_inside_knowledge_budget_and_keeps_derived_budget():
+    model = LLMModel.objects.create(name="chat-file-budget", vendor=_vendor(), model="gpt-4", context_window_tokens=200_000)
+    budget = attachment_token_budget(model)
+    assert budget == 27_900
+
+    block, used = render_document("report.pdf", "测" * 80, 40)
+    assert "文件已截断" in block
+    assert used <= 40
+    placeholder, placeholder_tokens = render_document("old.pdf", "字" * 100, 0)
+    assert placeholder == "[文件: old.pdf]"
+    assert placeholder_tokens == 0
+
+    kwargs = _kwargs([])
+    kwargs["user_message"] = block
+    chat_kwargs, _, _ = ChatService.format_chat_server_kwargs(kwargs, model)
+    assert "文件已截断" in chat_kwargs["user_message"]
+    assert chat_kwargs["extra_config"]["input_working_tokens"] == 186_000

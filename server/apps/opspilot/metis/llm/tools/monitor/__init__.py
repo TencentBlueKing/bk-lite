@@ -15,6 +15,7 @@ from apps.opspilot.metis.llm.tools.monitor.metrics import (
     monitor_list_instance_metrics,
     monitor_list_object_metrics,
     monitor_query_metric_data,
+    monitor_summarize_metric_trend,
 )
 from apps.opspilot.metis.llm.tools.monitor.objects import monitor_list_object_instances, monitor_list_objects
 
@@ -27,6 +28,7 @@ __all__ = [
     "monitor_list_object_metrics",
     "monitor_list_instance_metrics",
     "monitor_query_metric_data",
+    "monitor_summarize_metric_trend",
     "monitor_get_host_resource_snapshot",
     "monitor_get_host_resource_top_by_time",
     "monitor_list_active_alerts",

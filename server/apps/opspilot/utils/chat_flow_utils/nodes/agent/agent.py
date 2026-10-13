@@ -257,6 +257,7 @@ class AgentNode(BaseNodeExecutor):
             "chat_history": [{"event": "user", "message": final_message}],
             "user_message": final_message,
             "conversation_window_size": skill.conversation_window_size,
+            "run_model_call_limit": int(getattr(skill, "run_model_call_limit", 0) or 0),
             "show_think": False,
             "tools": skill.tools,
             "skill_type": skill.skill_type,
@@ -269,6 +270,9 @@ class AgentNode(BaseNodeExecutor):
             "thread_id": flow_input.get("execution_id", ""),
             "execution_id": flow_input.get("execution_id", ""),
             "node_id": effective_node_id,
+            "bot_id": flow_input.get("bot_id", ""),
+            "session_id": flow_input.get("session_id", ""),
+            "conversation_key": flow_input.get("conversation_key", ""),
             "flow_id": self.variable_manager.get_variable("flow_id", ""),
             "trigger_type": self._resolve_trigger_type(flow_input),
             "entry_type": flow_input.get("entry_type", ""),
@@ -286,6 +290,8 @@ class AgentNode(BaseNodeExecutor):
             # 只透传 HTTP 入口已经校验并捕获的快照。不要从 Skill 的 team
             # 或其它运行参数推断身份；无快照的非交互入口应由 Monitor 明确拒绝。
             params[CALLER_IDENTITY_CONFIG_KEY] = dict(caller_identity)
+        if isinstance(flow_input.get("pending_question"), dict):
+            params["pending_question"] = flow_input["pending_question"]
         return params
 
     @staticmethod

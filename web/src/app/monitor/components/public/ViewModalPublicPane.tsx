@@ -87,7 +87,7 @@ export function ViewModalPublicPane({
       <div
         className={
           hasContent
-            ? 'flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden'
+            ? 'flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-auto'
             : 'flex min-h-0 min-w-0 flex-1 items-center justify-center'
         }
       >

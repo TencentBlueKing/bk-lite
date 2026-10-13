@@ -61,6 +61,7 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
   const [executeNodeId, setExecuteNodeId] = useState<string>('');
   const [executeNodeName, setExecuteNodeName] = useState<string>('');
   const [executeMessage, setExecuteMessage] = useState<string>('');
+  const testSessionIdRef = useRef('');
   const [executeResult, setExecuteResult] = useState<NodeExecutionResult | null>(null);
   const [executeLoading, setExecuteLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState<string>('');
@@ -161,6 +162,7 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
       const { nodeId, nodeName } = event.detail;
       setExecuteNodeId(nodeId);
       setExecuteNodeName(typeof nodeName === 'string' && nodeName ? nodeName : nodeId);
+      testSessionIdRef.current = crypto.randomUUID();
       setExecuteMessage('');
       setExecuteResult(null);
       setStreamingContent('');
@@ -366,7 +368,11 @@ export const useNodeExecution = (t: any, initialExecutionId?: string | null) => 
       const response = await fetch(url, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ message: msg, is_test: true }),
+        body: JSON.stringify({
+          message: msg,
+          is_test: true,
+          session_id: testSessionIdRef.current || (testSessionIdRef.current = crypto.randomUUID()),
+        }),
         credentials: 'include',
         signal: abortController.signal,
       });

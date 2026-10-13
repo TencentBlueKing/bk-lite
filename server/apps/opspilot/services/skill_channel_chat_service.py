@@ -16,13 +16,23 @@ from django.utils.dateparse import parse_datetime
 
 from apps.base.models import UserAPISecret
 from apps.core.logger import opspilot_logger as logger
+from apps.core.utils.team_utils import get_current_team
 from apps.opspilot.enum import SKILL_CHANNEL_SKIP_ORG_CHECK, SkillChannelChoices
 from apps.opspilot.memory.identity import is_system_user_uuid, resolve_owner_identity, split_external_user_id
 from apps.opspilot.metis.llm.chain.entity import is_ephemeral_agui_custom_event
 from apps.opspilot.metis.llm.chain.token_utils import count_text_tokens
 from apps.opspilot.metis.llm.common.llm_client_factory import DEFAULT_CHAT_TEMPERATURE
-from apps.opspilot.models import LLMSkill, SkillChannel, SkillConversation, SkillConversationMessage
+from apps.opspilot.models import ChatAttachment, LLMSkill, SkillChannel, SkillConversation, SkillConversationMessage
 from apps.opspilot.services.caller_identity import CALLER_IDENTITY_CONFIG_KEY, CallerIdentityError, capture_caller_identity
+from apps.opspilot.services.chat_attachment_service import (
+    ChatAttachmentError,
+    attachment_token_budget,
+    bind_attachments,
+    compose_user_message,
+    history_document_suffixes,
+    load_sendable_attachments,
+    normalize_attachment_ids,
+)
 from apps.opspilot.services.history_service import HistoryService
 from apps.opspilot.services.skill_channel_service import channel_allows_team, resolve_ops_pilot_guest_id
 from apps.opspilot.services.skill_memory_service import (
@@ -1048,8 +1058,22 @@ def refresh_history_message_media(content: str) -> str:
 
 
 def serialize_skill_session_messages(conv: SkillConversation) -> list[dict]:
+    rows = list(conv.messages.order_by("created_at", "id")[:ADMIN_MESSAGE_FETCH_MAX])
+    grouped: dict[int, list[dict]] = {}
+    if rows:
+        attachments = ChatAttachment.objects.filter(message_id__in=[row.id for row in rows]).order_by("id")
+        for attachment in attachments:
+            grouped.setdefault(attachment.message_id, []).append(
+                {
+                    "id": attachment.id,
+                    "name": attachment.original_name,
+                    "mime": attachment.mime_type,
+                    "size": attachment.size,
+                    "status": attachment.status,
+                }
+            )
     messages = []
-    for msg in conv.messages.order_by("created_at", "id")[:ADMIN_MESSAGE_FETCH_MAX]:
+    for msg in rows:
         messages.append(
             {
                 "id": msg.id,
@@ -1058,6 +1082,7 @@ def serialize_skill_session_messages(conv: SkillConversation) -> list[dict]:
                 "conversation_time": msg.created_at.isoformat() if msg.created_at else None,
                 "session_id": conv.session_id,
                 "channel_type": conv.channel.channel_type if conv.channel_id else "",
+                "attachments": grouped.get(msg.id, []),
             }
         )
     return messages
@@ -1122,6 +1147,7 @@ def build_skill_chat_params(skill: LLMSkill, user_message: str, request_user, ex
         "llm_model": skill.llm_model_id,
         "skill_prompt": skill.skill_prompt or "",
         "conversation_window_size": skill.conversation_window_size,
+        "run_model_call_limit": int(getattr(skill, "run_model_call_limit", 0) or 0),
         "show_think": False,
         "enable_suggest": False,
         "enable_query_rewrite": False,
@@ -1233,21 +1259,38 @@ def visible_assistant_text(content: str) -> str:
     return "".join(parts).strip()
 
 
-def _history_from_conversation(conversation: SkillConversation, window: int) -> list[dict]:
+def _history_from_conversation(
+    conversation: SkillConversation,
+    window: int,
+    *,
+    document_budget: int | None = None,
+    per_file_cap: int | None = None,
+) -> list[dict]:
     """从落库会话取出上下文，转成 chat_service 使用的 {event, message}。
 
     当前用户话已作为 user_message 单独传入，最后一条 user 不重复进历史。
     助手 AG-UI 事件数组会先抽成可见正文，避免计划/工具日志进入模型上下文。
+    传入 document_budget 时，历史文档附件按剩余预算重新注入，图片不回放。
     """
     qs = conversation.messages.order_by("-created_at", "-id")[: max(window, 0) * 2]
     items = list(reversed(list(qs)))
     if items and items[-1].role == SkillConversationMessage.ROLE_USER:
         items = items[:-1]
+    suffixes = {}
+    if document_budget is not None:
+        suffixes = history_document_suffixes(
+            [msg.id for msg in items],
+            token_budget=document_budget,
+            per_file_cap=per_file_cap if per_file_cap is not None else document_budget,
+        )
     raw = []
     for msg in items:
         content = msg.content
         if msg.role == SkillConversationMessage.ROLE_ASSISTANT:
             content = visible_assistant_text(content)
+        suffix = suffixes.get(msg.id)
+        if suffix:
+            content = f"{content}\n\n{suffix}" if content else suffix
         raw.append({"role": msg.role, "content": content})
     return normalize_client_chat_history(raw)
 
@@ -1320,6 +1363,7 @@ def execute_skill_channel_im_sync(
     params = build_skill_chat_params(skill, user_message, request_user)
     inject_skill_memory_prompt(params, skill, external_user_id, user_message)
     params["chat_history"] = _history_from_conversation(conversation, skill.conversation_window_size or 10)
+    params["skill_session_id"] = conversation.session_id
     result = chat_service.chat(params)
     content = ""
     if isinstance(result, dict):
@@ -1342,20 +1386,50 @@ def stream_skill_channel_chat(
     session_id: str | None = None,
     identity_user=None,
     page_context=None,
+    attachment_ids=None,
 ) -> StreamingHttpResponse:
     skill = channel.skill
-    conversation = get_or_create_conversation(channel, external_user_id, session_id)
     persist_text = persistable_user_message_text(user_message)
-    append_message(conversation, SkillConversationMessage.ROLE_USER, persist_text)
+    try:
+        ids = normalize_attachment_ids(attachment_ids)
+        attachments = []
+        if ids:
+            attachments = load_sendable_attachments(ids, external_user_id, str(get_current_team(request, "0")))
+    except ChatAttachmentError as exc:
+        raise SkillChannelChatError(exc.message, status=exc.status) from exc
+    if not (persist_text or "").strip() and not attachments:
+        raise SkillChannelChatError("message 必填", status=400)
+    conversation = get_or_create_conversation(channel, external_user_id, session_id)
+    user_row = append_message(conversation, SkillConversationMessage.ROLE_USER, persist_text)
+    if attachments:
+        bind_attachments(attachments, conversation=conversation, message=user_row)
+        if not (conversation.title or "").strip() and not (persist_text or "").strip():
+            conversation.title = attachments[0].original_name[:50]
+            conversation.save(update_fields=["title", "updated_at"])
 
     user = identity_user or request.user
     params = build_skill_chat_params(skill, persist_text, user)
     inject_skill_memory_prompt(params, skill, external_user_id, persist_text)
-    params["chat_history"] = _history_from_conversation(conversation, skill.conversation_window_size or 10)
+    llm_model = getattr(skill, "llm_model", None)
+    token_budget = attachment_token_budget(llm_model)
+    include_images = llm_model is None or getattr(llm_model, "is_multimodal", True)
+    injected_message, remaining_budget = compose_user_message(
+        user_message,
+        attachments,
+        token_budget=token_budget,
+        per_file_cap=token_budget,
+        include_images=include_images,
+    )
+    params["chat_history"] = _history_from_conversation(
+        conversation,
+        skill.conversation_window_size or 10,
+        document_budget=remaining_budget,
+        per_file_cap=token_budget,
+    )
+    params["skill_session_id"] = conversation.session_id
     focused_titles = _focused_titles_from_page_context(persist_text, page_context)
     params["chat_history"] = _history_for_focused_charts(params["chat_history"], focused_titles)
-    params["user_message"] = inject_page_context(user_message, page_context, mode="inline")
-    llm_model = getattr(skill, "llm_model", None)
+    params["user_message"] = inject_page_context(injected_message, page_context, mode="inline")
     report_context = page_context
     if llm_model is not None and not getattr(llm_model, "is_multimodal", True):
         params["user_message"] = drop_images_from_user_message(params["user_message"])

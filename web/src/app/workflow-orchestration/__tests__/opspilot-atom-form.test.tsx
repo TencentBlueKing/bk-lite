@@ -212,6 +212,57 @@ describe('OpsPilot 风格原子表单', () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ recipients: ['1'] }));
   });
 
+  it('通知方式只列出当前类别的渠道，并且名称不带渠道类型', async () => {
+    const user = userEvent.setup();
+    const notificationSchema: JsonSchema = {
+      type: 'object',
+      required: ['notification_type', 'channel_id', 'body'],
+      properties: {
+        notification_type: {
+          type: 'string',
+          enum: ['EMAIL', 'WECOM_BOT'],
+          default: 'EMAIL',
+          'x-enum-labels': { EMAIL: '邮件', WECOM_BOT: '企业微信机器人' },
+        },
+        channel_id: {
+          type: 'integer',
+          enum: [3, 4, 5],
+          'x-enum-labels': { '3': '邮件服务器', '4': '告警中心', '5': '可观测群' },
+          'x-enum-channel-types': { '3': 'email', '4': 'nats', '5': 'enterprise_wechat_bot' },
+        },
+        body: { type: 'string', title: '通知内容' },
+      },
+    };
+    function NotificationHarness() {
+      const [value, setValue] = useState<Record<string, unknown>>({ notification_type: 'EMAIL', body: '已完成' });
+      return <App><OpsPilotAtomForm
+        atomKey="bklite_notification"
+        schema={notificationSchema}
+        value={value}
+        references={[]}
+        workflowId={1}
+        nodeTitle="对外通知"
+        readOnly={false}
+        onChange={setValue}
+        onNodeTitleChange={vi.fn()}
+      /></App>;
+    }
+
+    render(<NotificationHarness />);
+
+    await user.click(screen.getByRole('combobox'));
+    expect(await screen.findByText('邮件服务器')).not.toBeNull();
+    expect(screen.queryByText('告警中心')).toBeNull();
+    expect(screen.queryByText('可观测群')).toBeNull();
+    expect(screen.queryByText(/nats|enterprise_wechat_bot/)).toBeNull();
+
+    await user.click(screen.getByText('企业微信机器人'));
+    await user.click(screen.getByRole('combobox'));
+    expect(await screen.findByText('可观测群')).not.toBeNull();
+    expect(screen.queryByText('邮件服务器')).toBeNull();
+    expect(screen.queryByText('告警中心')).toBeNull();
+  });
+
   it('HTTP 请求参数与请求头采用 OpsPilot 键值行布局', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();

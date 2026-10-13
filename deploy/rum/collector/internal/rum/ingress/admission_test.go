@@ -274,3 +274,28 @@ func boolInt(value bool) int {
 	}
 	return 0
 }
+
+func TestAdmissionRedisAcceptsPasswordWithoutUsername(t *testing.T) {
+	options, err := redisOptions(Config{
+		RedisURL: "redis://:" + testRedisPassword + "@rum-redis:6379",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "", options.Username)
+	require.Equal(t, testRedisPassword, options.Password)
+}
+
+func TestAdmissionRedisRejectsACLUsernameMismatch(t *testing.T) {
+	_, err := redisOptions(Config{
+		RedisURL:           "redis://other:" + testRedisPassword + "@rum-redis:6379",
+		RequireACLIdentity: true,
+	})
+	require.ErrorContains(t, err, "ACL username must be rum-admission")
+
+	options, err := redisOptions(Config{
+		RedisURL:           "redis://shared-rum:" + testRedisPassword + "@rum-redis:6379",
+		RequireACLIdentity: true,
+		ACLUsername:        "shared-rum",
+	})
+	require.NoError(t, err)
+	require.Equal(t, "shared-rum", options.Username)
+}

@@ -204,6 +204,32 @@ function normalizeRecipientIds(value: unknown, items?: JsonSchema): string[] {
   });
 }
 
+const NOTIFICATION_CHANNEL_TYPE: Record<string, string> = {
+  EMAIL: 'email',
+  WECOM_BOT: 'enterprise_wechat_bot',
+  FEISHU_BOT: 'feishu_bot',
+  DINGTALK_BOT: 'dingtalk_bot',
+  CUSTOM_WEBHOOK: 'custom_webhook',
+};
+
+const NOTIFICATION_TYPE_TEXT: Record<string, { id: string; defaultMessage: string }> = {
+  EMAIL: { id: 'workflowOrchestration.editor.notificationTypeEmail', defaultMessage: '邮件' },
+  WECOM_BOT: { id: 'workflowOrchestration.editor.notificationTypeWecomBot', defaultMessage: '企业微信机器人' },
+  FEISHU_BOT: { id: 'workflowOrchestration.editor.notificationTypeFeishuBot', defaultMessage: '飞书机器人' },
+  DINGTALK_BOT: { id: 'workflowOrchestration.editor.notificationTypeDingtalkBot', defaultMessage: '钉钉机器人' },
+  CUSTOM_WEBHOOK: { id: 'workflowOrchestration.editor.notificationTypeCustomWebhook', defaultMessage: '自定义 Webhook' },
+};
+
+function notificationChannelOptions(schema: JsonSchema, notificationType: string) {
+  const channelTypes = schema['x-enum-channel-types'];
+  const expectedType = NOTIFICATION_CHANNEL_TYPE[notificationType];
+  return (schema.enum || []).flatMap((item) => {
+    const id = String(item);
+    if (channelTypes && channelTypes[id] !== expectedType) return [];
+    return [{ value: item as string | number, label: schema['x-enum-labels']?.[id] || id }];
+  });
+}
+
 function NotificationFields({ schema, value, references, readOnly, onChange }: Pick<Props, 'schema' | 'value' | 'references' | 'readOnly' | 'onChange'>) {
   const { t } = useTranslation();
   const setField = (key: string, next: unknown) => onChange({ ...value, [key]: next });
@@ -212,8 +238,15 @@ function NotificationFields({ schema, value, references, readOnly, onChange }: P
   const recipientSchema = field(schema, 'recipients');
   const reportArtifactSchema = field(schema, 'report_artifact');
   const notificationType = String(value.notification_type || typeSchema.default || 'EMAIL');
-  const typeOptions = (typeSchema.enum || ['EMAIL', 'WECOM_BOT', 'FEISHU_BOT', 'DINGTALK_BOT', 'CUSTOM_WEBHOOK']).map((item) => ({ value: item, label: typeSchema['x-enum-labels']?.[String(item)] || String(item) }));
-  const channelOptions = (channelSchema.enum || []).map((item) => ({ value: item as string | number, label: channelSchema['x-enum-labels']?.[String(item)] || String(item) }));
+  const typeOptions = (typeSchema.enum || ['EMAIL', 'WECOM_BOT', 'FEISHU_BOT', 'DINGTALK_BOT', 'CUSTOM_WEBHOOK']).map((item) => {
+    const code = String(item);
+    const known = NOTIFICATION_TYPE_TEXT[code];
+    return {
+      value: item,
+      label: known ? t(known.id, known.defaultMessage) : (typeSchema['x-enum-labels']?.[code] || code),
+    };
+  });
+  const channelOptions = notificationChannelOptions(channelSchema, notificationType);
   const recipientItems = recipientSchema.items;
   const normalizedRecipients = useMemo(
     () => normalizeRecipientIds(value.recipients, recipientItems),

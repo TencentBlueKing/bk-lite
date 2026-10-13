@@ -220,6 +220,7 @@ export interface CustomChatSSEProps {
   removePendingBotMessageOnCancel?: boolean;
   conversationHistoryEnabled?: boolean;
   initialContextUsage?: LlmContextUsage | null;
+  onConversationCleared?: () => void;
 }
 
 export type ActionRender = (

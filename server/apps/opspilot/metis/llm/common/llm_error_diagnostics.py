@@ -148,6 +148,10 @@ def classify_llm_error(exc: BaseException | None) -> dict[str, Any]:
             code = LLM_ERROR_UNREACHABLE
         else:
             code = LLM_ERROR_BAD_REQUEST
+    elif status in {500, 502, 503, 504} or any(
+        n in text for n in ("error code: 503", "error code: 502", "error code: 504", "service unavailable", "bad gateway")
+    ):
+        code = LLM_ERROR_UNREACHABLE
     elif any(n in text for n in _UNREACHABLE_NEEDLES) or type_name in {
         "APIConnectionError",
         "ConnectError",

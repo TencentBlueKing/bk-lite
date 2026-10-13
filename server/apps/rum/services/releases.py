@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Protocol
 
+from apps.core.logger import rum_logger as logger
 from apps.rum.constants import SUBJECT_APPLICATION_LIST
 from apps.rum.services.analytics import Analytics, get_analytics
 from apps.rum.services.control import ControlError, ControlPlane, control_unavailable, get_control_plane
@@ -247,16 +248,23 @@ class ReleasesService:
         if not self.analytics.available():
             return empty_release_list(reason="analytics")
         limit = int(params.get("limit") or 0)
-        page = self.analytics.list_releases(
-            self.settings.tenant_id,
-            {
-                "from": start,
-                "to": end,
-                "applications": apps,
-                "traffic": params.get("traffic") or "visitors",
-                "limit": limit,
-            },
-        )
+        try:
+            page = self.analytics.list_releases(
+                self.settings.tenant_id,
+                {
+                    "from": start,
+                    "to": end,
+                    "applications": apps,
+                    "traffic": params.get("traffic") or "visitors",
+                    "limit": limit,
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 — degrade; do not 500 the BFF
+            logger.warning(
+                "rum releases list analytics failed failed_stage=list_releases error_type=%s",
+                type(exc).__name__,
+            )
+            return empty_release_list(reason="analytics")
         rows = list(page.get("releases") or [])
         if len(apps) == 1:
             baselines = {item["application"]: item["baselineRelease"] for item in self.baselines.list() if item.get("application") == apps[0]}
