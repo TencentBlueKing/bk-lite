@@ -202,6 +202,21 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.monitor.tests.test_openapi_gateway::test_api_tenant_cannot_list_other_org_policies",
         "apps.monitor.tests.test_openapi_gateway::test_policies_forged_team_is_rejected",
     ],
+    "node/cloud-regions": [
+        "apps.node_mgmt.tests.test_openapi_gateway::test_both_tenants_see_the_same_cloud_regions",
+        "apps.node_mgmt.tests.test_openapi_gateway::test_cloud_regions_omit_proxy_address",
+        "apps.node_mgmt.tests.test_openapi_gateway::test_cloud_regions_forged_team_is_rejected",
+    ],
+    "node/nodes": [
+        "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_can_list_own_nodes",
+        "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_cannot_list_other_org_nodes",
+        "apps.node_mgmt.tests.test_openapi_gateway::test_nodes_forged_team_is_rejected",
+    ],
+    "node/nodes/detail": [
+        "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_can_read_own_node_detail",
+        "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_cannot_read_other_org_node_detail",
+        "apps.node_mgmt.tests.test_openapi_gateway::test_node_detail_forged_team_is_rejected",
+    ],
     "system-mgmt/users": [
         "apps.system_mgmt.tests.test_openapi_directory::test_system_tenant_can_read_own_org_users",
         "apps.system_mgmt.tests.test_openapi_directory::test_system_tenant_cannot_read_other_org_users",
