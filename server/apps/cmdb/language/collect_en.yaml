@@ -9,6 +9,7 @@ COLLECT_GROUP:
   host_manage: Logical Host
   middleware: Middleware
   certificate: Certificate
+  directory_mail: Directory and Mail
 COLLECT_PLUGIN:
   k8s_cluster:
     name: K8S
@@ -375,6 +376,9 @@ COLLECT_PLUGIN:
   ssl_cer:
     name: SSL Certificate
     desc: Handshake the domain of existing SSL certificate instances and collect issuer and validity
+  ad_exchange:
+    name: AD and Exchange
+    desc: Collect directory and mail configuration from one domain controller and one Exchange server
 COLLECT_TAG:
   国产: Domestic
   配置中心: Config Center
