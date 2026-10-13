@@ -274,6 +274,11 @@ export default function SystemPane({
       </section>
     ) : null
   ].filter(Boolean);
+  const detailGridClass = detailCards.length >= 3
+    ? styles.chartGrid3
+    : detailCards.length > 1
+      ? styles.chartGrid2
+      : 'grid grid-cols-1 gap-3';
 
   return (
     <>
@@ -300,7 +305,7 @@ export default function SystemPane({
           <div className={styles.sectionHead}>
             <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>{hostCategoryText(t, 'detailedMetrics')}</div>
           </div>
-          <div className={detailCards.length > 1 ? styles.chartGrid2 : 'grid grid-cols-1 gap-3'}>{detailCards}</div>
+          <div className={detailGridClass}>{detailCards}</div>
         </>
       ) : null}
     </>
