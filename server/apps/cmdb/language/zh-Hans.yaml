@@ -32,6 +32,7 @@ CLASSIFICATION:
   nutanixhci: 路坦力超融合
   zstack: ZStack
   winsphere: 云宏 WinSphere
+  directory_mail: 目录与邮件
 MODEL:
   biz: 应用
   module: 模块
@@ -286,6 +287,35 @@ MODEL:
   winsphere_port_group: WinSphere端口组
   sangforhci: HCI平台
   sangforhci_vm: HCI虚拟机
+  ad_exchange: 目录与邮件范围
+  ad_domain: AD域
+  ad_site: AD站点
+  ad_subnet: AD子网
+  ad_domain_controller: 域控制器
+  ad_fsmo_role: FSMO角色
+  ad_trust: AD信任
+  ad_dns_zone: DNS区域
+  ad_dns_forwarder: DNS转发器
+  exchange_server: Exchange服务器
+  exchange_virtual_directory: 虚拟目录
+  exchange_client_protocol: 客户端协议
+  exchange_certificate: Exchange证书
+  exchange_dag: DAG
+  exchange_dag_network: DAG网络
+  exchange_database: 邮箱数据库
+  exchange_mailbox: 邮箱
+  exchange_distribution_group: 通讯组
+  exchange_accepted_domain: 接受域
+  exchange_remote_domain: 远程域
+  exchange_email_address_policy: 电子邮件地址策略
+  exchange_transport_config: 传输配置
+  exchange_transport_rule: 传输规则
+  exchange_send_connector: 发送连接器
+  exchange_receive_connector: 接收连接器
+  exchange_offline_address_book: 脱机通讯簿
+  exchange_address_list: 地址列表
+  exchange_address_book_policy: 地址簿策略
+  exchange_activesync_policy: ActiveSync策略
 ATTR:
   pc:
     inst_name: 实例
@@ -4166,6 +4196,270 @@ ATTR:
     auto_collect: 是否自动发现
     collect_time: 上次更新时间
     collect_task: 采集任务
+  ad_exchange:
+    inst_name: 实例名
+    organization: 组织
+    forest_name: 林名称
+    organization_name: 组织名称
+    forest_level: 林功能级别
+    collect_scope: 采集范围
+    last_collect_time: 最近采集时间
+    nlb_note: NLB备注
+    public_dns_note: 公网DNS备注
+    firewall_note: 防火墙备注
+    dhcp_note: DHCP备注
+    dc_app_note: 域控应用备注
+  ad_domain:
+    inst_name: 实例名
+    organization: 组织
+    domain_name: 域名
+    domain_level: 域功能级别
+    parent_domain: 父域
+    is_root: 是否根域
+    forest_inst_name: 林实例名
+  ad_site:
+    inst_name: 实例名
+    organization: 组织
+    site_name: 站点名
+    forest_inst_name: 林实例名
+  ad_subnet:
+    inst_name: 实例名
+    organization: 组织
+    prefix: 子网前缀
+    site_inst_name: 站点实例名
+  ad_domain_controller:
+    inst_name: 实例名
+    organization: 组织
+    fqdn: FQDN
+    ip_addr: IP地址
+    site_inst_name: 站点实例名
+    domain_inst_name: 域实例名
+    os_name: 操作系统
+    is_gc: 是否全局编录
+    is_rodc: 是否只读域控
+    cpu_cores: CPU核数
+    memory_gb: 内存(GB)
+    install_time: 安装时间
+    last_boot_time: 最近启动时间
+    system_volume_free_gb: 系统卷剩余空间(GB)
+  ad_fsmo_role:
+    inst_name: 实例名
+    organization: 组织
+    role: 角色
+    holder_inst_name: 持有者实例名
+    forest_inst_name: 林实例名
+  ad_trust:
+    inst_name: 实例名
+    organization: 组织
+    domain_inst_name: 域实例名
+    trusted_domain: 受信任域
+    direction: 信任方向
+    trust_type: 信任类型
+    transitive: 是否可传递
+  ad_dns_zone:
+    inst_name: 实例名
+    organization: 组织
+    zone_name: 区域名
+    zone_kind: 区域种类
+    zone_type: 区域类型
+    server_inst_name: 服务器实例名
+  ad_dns_forwarder:
+    inst_name: 实例名
+    organization: 组织
+    server_inst_name: 服务器实例名
+    target: 转发目标
+    is_conditional: 是否条件转发
+    condition_domain: 条件域名
+  exchange_server:
+    inst_name: 实例名
+    organization: 组织
+    fqdn: FQDN
+    ip_addr: IP地址
+    role: 角色
+    edition: 版本类型
+    version: 版本
+    domain_inst_name: 域实例名
+    site_inst_name: 站点实例名
+    cpu_cores: CPU核数
+    memory_gb: 内存(GB)
+    client_access_array_note: 客户端访问阵列备注
+  exchange_virtual_directory:
+    inst_name: 实例名
+    organization: 组织
+    server_inst_name: 服务器实例名
+    protocol: 协议
+    internal_url: 内部URL
+    external_url: 外部URL
+  exchange_client_protocol:
+    inst_name: 实例名
+    organization: 组织
+    server_inst_name: 服务器实例名
+    protocol: 协议
+    external_hostname: 外部主机名
+    auth_method: 认证方式
+    bindings: 绑定
+    login_type: 登录类型
+    certificate_name: 证书名称
+  exchange_certificate:
+    inst_name: 实例名
+    organization: 组织
+    thumbprint: 指纹
+    subject: 使用者
+    not_after: 过期时间
+    self_signed: 是否自签名
+    issuer: 颁发者
+    services: 服务
+    status: 状态
+    server_inst_name: 服务器实例名
+  exchange_dag:
+    inst_name: 实例名
+    organization: 组织
+    dag_name: DAG名称
+    witness_server: 见证服务器
+    witness_directory: 见证目录
+    members: 成员
+    dag_ip: DAG IP
+    forest_inst_name: 林实例名
+  exchange_dag_network:
+    inst_name: 实例名
+    organization: 组织
+    dag_inst_name: DAG实例名
+    network_name: 网络名称
+    replication_enabled: 是否启用复制
+    subnets: 子网
+  exchange_database:
+    inst_name: 实例名
+    organization: 组织
+    database_guid: 数据库GUID
+    database_name: 数据库名称
+    active_server_inst_name: 活动服务器实例名
+    dag_inst_name: DAG实例名
+    copies: 副本
+    mailbox_retention: 邮箱保留期
+    deleted_item_retention: 已删除项目保留期
+    quota_warning: 警告配额
+    quota_prohibit_send: 禁止发送配额
+    quota_prohibit_send_receive: 禁止发送接收配额
+    journal_recipient: 日记收件人
+    circular_logging: 循环日志
+    size_gb: 大小(GB)
+    whitespace_gb: 空白空间(GB)
+    mailbox_count: 邮箱数量
+  exchange_mailbox:
+    inst_name: 实例名
+    organization: 组织
+    mailbox_guid: 邮箱GUID
+    size_gb: 大小(GB)
+    last_logon_time: 最近登录时间
+    database_inst_name: 数据库实例名
+    server_inst_name: 服务器实例名
+    enabled: 是否启用
+  exchange_distribution_group:
+    inst_name: 实例名
+    organization: 组织
+    group_id: 组ID
+    group_name: 组名称
+    member_count: 成员数量
+  exchange_accepted_domain:
+    inst_name: 实例名
+    organization: 组织
+    domain_name: 域名
+    domain_type: 域类型
+    is_default: 是否默认
+    is_internal_relay: 是否内部中继
+    is_external_relay: 是否外部中继
+    forest_inst_name: 林实例名
+  exchange_remote_domain:
+    inst_name: 实例名
+    organization: 组织
+    remote_name: 远程域名称
+    domain_name: 域名
+    allowed_oof_type: 允许的外出类型
+    forest_inst_name: 林实例名
+  exchange_email_address_policy:
+    inst_name: 实例名
+    organization: 组织
+    policy_name: 策略名称
+    recipient_filter: 收件人筛选器
+    primary_smtp_template: 主SMTP模板
+    enabled: 是否启用
+    priority: 优先级
+    forest_inst_name: 林实例名
+  exchange_transport_config:
+    inst_name: 实例名
+    organization: 组织
+    max_send_size: 最大发送大小
+    max_receive_size: 最大接收大小
+    max_recipient_envelope_limit: 最大收件人数量
+    max_dumpster_size: 最大垃圾站大小
+    max_dumpster_time: 最大垃圾站时间
+    forest_inst_name: 林实例名
+  exchange_transport_rule:
+    inst_name: 实例名
+    organization: 组织
+    rule_name: 规则名称
+    priority: 优先级
+    state: 状态
+    description: 描述
+    forest_inst_name: 林实例名
+  exchange_send_connector:
+    inst_name: 实例名
+    organization: 组织
+    connector_name: 连接器名称
+    enabled: 是否启用
+    max_message_size: 最大邮件大小
+    address_spaces: 地址空间
+    dns_routing_enabled: 是否启用DNS路由
+    smart_hosts: 智能主机
+    source_server_inst_names: 源服务器实例名
+    forest_inst_name: 林实例名
+  exchange_receive_connector:
+    inst_name: 实例名
+    organization: 组织
+    identity: 标识
+    connector_name: 连接器名称
+    enabled: 是否启用
+    max_message_size: 最大邮件大小
+    message_rate_limit: 邮件速率限制
+    fqdn: FQDN
+    bindings: 绑定
+    remote_ip_ranges: 远程IP范围
+    auth_mechanism: 认证机制
+    permission_groups: 权限组
+    server_inst_name: 服务器实例名
+  exchange_offline_address_book:
+    inst_name: 实例名
+    organization: 组织
+    oab_name: 脱机通讯簿名称
+    is_default: 是否默认
+    web_distribution: 是否Web分发
+    virtual_directories: 虚拟目录
+    address_lists: 地址列表
+    forest_inst_name: 林实例名
+  exchange_address_list:
+    inst_name: 实例名
+    organization: 组织
+    list_name: 列表名称
+    list_type: 列表类型
+    originating_server: 源服务器
+    forest_inst_name: 林实例名
+  exchange_address_book_policy:
+    inst_name: 实例名
+    organization: 组织
+    policy_name: 策略名称
+    global_address_list: 全局地址列表
+    offline_address_book: 脱机通讯簿
+    room_list: 会议室列表
+    address_lists: 地址列表
+    forest_inst_name: 林实例名
+  exchange_activesync_policy:
+    inst_name: 实例名
+    organization: 组织
+    policy_name: 策略名称
+    is_default: 是否默认
+    device_password_enabled: 是否启用设备密码
+    allow_non_provisionable: 是否允许不可预配设备
+    forest_inst_name: 林实例名
 ATTR_GROUP:
   基本信息: 基本信息
   归属信息: 归属信息
@@ -4176,6 +4470,8 @@ ATTR_GROUP:
   自动发现信息: 自动发现信息
   连接信息: 连接信息
   默认分组: 默认分组
+  采集信息: 采集信息
+  手工备注: 手工备注
 DEFAULT_ATTR:
   inst_name: 实例名
   organization: 所属组织

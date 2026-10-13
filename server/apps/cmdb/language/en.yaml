@@ -32,6 +32,7 @@ CLASSIFICATION:
   nutanixhci: Nutanix HCI
   zstack: ZStack
   winsphere: WinSphere
+  directory_mail: Directory and Mail
 MODEL:
   biz: Biz
   module: Module
@@ -286,6 +287,35 @@ MODEL:
   winsphere_port_group: WinSphere Port Group
   sangforhci: Sangfor HCI
   sangforhci_vm: Sangfor HCI VM
+  ad_exchange: Directory and Mail Scope
+  ad_domain: AD Domain
+  ad_site: AD Site
+  ad_subnet: AD Subnet
+  ad_domain_controller: Domain Controller
+  ad_fsmo_role: FSMO Role
+  ad_trust: AD Trust
+  ad_dns_zone: DNS Zone
+  ad_dns_forwarder: DNS Forwarder
+  exchange_server: Exchange Server
+  exchange_virtual_directory: Virtual Directory
+  exchange_client_protocol: Client Protocol
+  exchange_certificate: Exchange Certificate
+  exchange_dag: DAG
+  exchange_dag_network: DAG Network
+  exchange_database: Mailbox Database
+  exchange_mailbox: Mailbox
+  exchange_distribution_group: Distribution Group
+  exchange_accepted_domain: Accepted Domain
+  exchange_remote_domain: Remote Domain
+  exchange_email_address_policy: Email Address Policy
+  exchange_transport_config: Transport Config
+  exchange_transport_rule: Transport Rule
+  exchange_send_connector: Send Connector
+  exchange_receive_connector: Receive Connector
+  exchange_offline_address_book: Offline Address Book
+  exchange_address_list: Address List
+  exchange_address_book_policy: Address Book Policy
+  exchange_activesync_policy: ActiveSync Policy
 ATTR:
   pc:
     inst_name: Name
@@ -4166,6 +4196,270 @@ ATTR:
     auto_collect: Auto Collect
     collect_time: Last Updated Time
     collect_task: Collect Task
+  ad_exchange:
+    inst_name: Instance Name
+    organization: Organization
+    forest_name: Forest Name
+    organization_name: Organization Name
+    forest_level: Forest Level
+    collect_scope: Collect Scope
+    last_collect_time: Last Collect Time
+    nlb_note: NLB Note
+    public_dns_note: Public DNS Note
+    firewall_note: Firewall Note
+    dhcp_note: DHCP Note
+    dc_app_note: Domain Controller App Note
+  ad_domain:
+    inst_name: Instance Name
+    organization: Organization
+    domain_name: Domain Name
+    domain_level: Domain Level
+    parent_domain: Parent Domain
+    is_root: Is Root
+    forest_inst_name: Forest Instance
+  ad_site:
+    inst_name: Instance Name
+    organization: Organization
+    site_name: Site Name
+    forest_inst_name: Forest Instance
+  ad_subnet:
+    inst_name: Instance Name
+    organization: Organization
+    prefix: Prefix
+    site_inst_name: Site Instance
+  ad_domain_controller:
+    inst_name: Instance Name
+    organization: Organization
+    fqdn: FQDN
+    ip_addr: IP Address
+    site_inst_name: Site Instance
+    domain_inst_name: Domain Instance
+    os_name: OS Name
+    is_gc: Is Global Catalog
+    is_rodc: Is RODC
+    cpu_cores: CPU Cores
+    memory_gb: Memory (GB)
+    install_time: Install Time
+    last_boot_time: Last Boot Time
+    system_volume_free_gb: System Volume Free (GB)
+  ad_fsmo_role:
+    inst_name: Instance Name
+    organization: Organization
+    role: Role
+    holder_inst_name: Holder Instance
+    forest_inst_name: Forest Instance
+  ad_trust:
+    inst_name: Instance Name
+    organization: Organization
+    domain_inst_name: Domain Instance
+    trusted_domain: Trusted Domain
+    direction: Direction
+    trust_type: Trust Type
+    transitive: Transitive
+  ad_dns_zone:
+    inst_name: Instance Name
+    organization: Organization
+    zone_name: Zone Name
+    zone_kind: Zone Kind
+    zone_type: Zone Type
+    server_inst_name: Server Instance
+  ad_dns_forwarder:
+    inst_name: Instance Name
+    organization: Organization
+    server_inst_name: Server Instance
+    target: Target
+    is_conditional: Is Conditional
+    condition_domain: Condition Domain
+  exchange_server:
+    inst_name: Instance Name
+    organization: Organization
+    fqdn: FQDN
+    ip_addr: IP Address
+    role: Role
+    edition: Edition
+    version: Version
+    domain_inst_name: Domain Instance
+    site_inst_name: Site Instance
+    cpu_cores: CPU Cores
+    memory_gb: Memory (GB)
+    client_access_array_note: Client Access Array Note
+  exchange_virtual_directory:
+    inst_name: Instance Name
+    organization: Organization
+    server_inst_name: Server Instance
+    protocol: Protocol
+    internal_url: Internal URL
+    external_url: External URL
+  exchange_client_protocol:
+    inst_name: Instance Name
+    organization: Organization
+    server_inst_name: Server Instance
+    protocol: Protocol
+    external_hostname: External Hostname
+    auth_method: Auth Method
+    bindings: Bindings
+    login_type: Login Type
+    certificate_name: Certificate Name
+  exchange_certificate:
+    inst_name: Instance Name
+    organization: Organization
+    thumbprint: Thumbprint
+    subject: Subject
+    not_after: Not After
+    self_signed: Self Signed
+    issuer: Issuer
+    services: Services
+    status: Status
+    server_inst_name: Server Instance
+  exchange_dag:
+    inst_name: Instance Name
+    organization: Organization
+    dag_name: DAG Name
+    witness_server: Witness Server
+    witness_directory: Witness Directory
+    members: Members
+    dag_ip: DAG IP
+    forest_inst_name: Forest Instance
+  exchange_dag_network:
+    inst_name: Instance Name
+    organization: Organization
+    dag_inst_name: DAG Instance
+    network_name: Network Name
+    replication_enabled: Replication Enabled
+    subnets: Subnets
+  exchange_database:
+    inst_name: Instance Name
+    organization: Organization
+    database_guid: Database GUID
+    database_name: Database Name
+    active_server_inst_name: Active Server Instance
+    dag_inst_name: DAG Instance
+    copies: Copies
+    mailbox_retention: Mailbox Retention
+    deleted_item_retention: Deleted Item Retention
+    quota_warning: Quota Warning
+    quota_prohibit_send: Prohibit Send Quota
+    quota_prohibit_send_receive: Prohibit Send Receive Quota
+    journal_recipient: Journal Recipient
+    circular_logging: Circular Logging
+    size_gb: Size (GB)
+    whitespace_gb: Whitespace (GB)
+    mailbox_count: Mailbox Count
+  exchange_mailbox:
+    inst_name: Instance Name
+    organization: Organization
+    mailbox_guid: Mailbox GUID
+    size_gb: Size (GB)
+    last_logon_time: Last Logon Time
+    database_inst_name: Database Instance
+    server_inst_name: Server Instance
+    enabled: Enabled
+  exchange_distribution_group:
+    inst_name: Instance Name
+    organization: Organization
+    group_id: Group ID
+    group_name: Group Name
+    member_count: Member Count
+  exchange_accepted_domain:
+    inst_name: Instance Name
+    organization: Organization
+    domain_name: Domain Name
+    domain_type: Domain Type
+    is_default: Is Default
+    is_internal_relay: Is Internal Relay
+    is_external_relay: Is External Relay
+    forest_inst_name: Forest Instance
+  exchange_remote_domain:
+    inst_name: Instance Name
+    organization: Organization
+    remote_name: Remote Name
+    domain_name: Domain Name
+    allowed_oof_type: Allowed OOF Type
+    forest_inst_name: Forest Instance
+  exchange_email_address_policy:
+    inst_name: Instance Name
+    organization: Organization
+    policy_name: Policy Name
+    recipient_filter: Recipient Filter
+    primary_smtp_template: Primary SMTP Template
+    enabled: Enabled
+    priority: Priority
+    forest_inst_name: Forest Instance
+  exchange_transport_config:
+    inst_name: Instance Name
+    organization: Organization
+    max_send_size: Max Send Size
+    max_receive_size: Max Receive Size
+    max_recipient_envelope_limit: Max Recipient Envelope Limit
+    max_dumpster_size: Max Dumpster Size
+    max_dumpster_time: Max Dumpster Time
+    forest_inst_name: Forest Instance
+  exchange_transport_rule:
+    inst_name: Instance Name
+    organization: Organization
+    rule_name: Rule Name
+    priority: Priority
+    state: State
+    description: Description
+    forest_inst_name: Forest Instance
+  exchange_send_connector:
+    inst_name: Instance Name
+    organization: Organization
+    connector_name: Connector Name
+    enabled: Enabled
+    max_message_size: Max Message Size
+    address_spaces: Address Spaces
+    dns_routing_enabled: DNS Routing Enabled
+    smart_hosts: Smart Hosts
+    source_server_inst_names: Source Server Instances
+    forest_inst_name: Forest Instance
+  exchange_receive_connector:
+    inst_name: Instance Name
+    organization: Organization
+    identity: Identity
+    connector_name: Connector Name
+    enabled: Enabled
+    max_message_size: Max Message Size
+    message_rate_limit: Message Rate Limit
+    fqdn: FQDN
+    bindings: Bindings
+    remote_ip_ranges: Remote IP Ranges
+    auth_mechanism: Auth Mechanism
+    permission_groups: Permission Groups
+    server_inst_name: Server Instance
+  exchange_offline_address_book:
+    inst_name: Instance Name
+    organization: Organization
+    oab_name: OAB Name
+    is_default: Is Default
+    web_distribution: Web Distribution
+    virtual_directories: Virtual Directories
+    address_lists: Address Lists
+    forest_inst_name: Forest Instance
+  exchange_address_list:
+    inst_name: Instance Name
+    organization: Organization
+    list_name: List Name
+    list_type: List Type
+    originating_server: Originating Server
+    forest_inst_name: Forest Instance
+  exchange_address_book_policy:
+    inst_name: Instance Name
+    organization: Organization
+    policy_name: Policy Name
+    global_address_list: Global Address List
+    offline_address_book: Offline Address Book
+    room_list: Room List
+    address_lists: Address Lists
+    forest_inst_name: Forest Instance
+  exchange_activesync_policy:
+    inst_name: Instance Name
+    organization: Organization
+    policy_name: Policy Name
+    is_default: Is Default
+    device_password_enabled: Device Password Enabled
+    allow_non_provisionable: Allow Non Provisionable
+    forest_inst_name: Forest Instance
 ATTR_GROUP:
   基本信息: Basic Information
   归属信息: Ownership
@@ -4176,6 +4470,8 @@ ATTR_GROUP:
   自动发现信息: Auto Discovery
   连接信息: Connection
   默认分组: Default Group
+  采集信息: Collected Information
+  手工备注: Manual Notes
 DEFAULT_ATTR:
   inst_name: Name
   organization: Organization
