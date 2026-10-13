@@ -22,6 +22,10 @@ import {
   isDynamicOptionFilter,
   reconcileOptionBackedFilterValue,
 } from '@/app/ops-analysis/utils/optionBackedFilterValue';
+import {
+  ROOM_FILTER_PASSTHROUGH,
+  resolveRoomFilterAppliedValue,
+} from '@/app/ops-analysis/utils/room3DScreenFilter';
 import type { DateRangeValue } from '@/app/ops-analysis/types/dateRange';
 import { useTranslation } from '@/utils/i18n';
 import { useShareMode } from '@/app/ops-analysis/context/shareMode';
@@ -155,11 +159,11 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
     optionsByFilterRef.current.set(filterId, options);
     const definition = definitionsRef.current.find((item) => item.id === filterId);
     if (!definition) return;
-    const nextValue = reconcileOptionBackedFilterValue(
-      definition,
-      localValuesRef.current[filterId],
-      options,
-    );
+    const current = localValuesRef.current[filterId];
+    const roomValue = resolveRoomFilterAppliedValue(definition, current, options);
+    const nextValue = roomValue !== ROOM_FILTER_PASSTHROUGH
+      ? roomValue
+      : reconcileOptionBackedFilterValue(definition, current, options);
     if (nextValue === undefined) return;
     publishValues({
       ...localValuesRef.current,
@@ -179,6 +183,11 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
         if (isDynamicOptionFilter(definition)) {
           resetValues[definition.id] = null;
         }
+        return;
+      }
+      const roomValue = resolveRoomFilterAppliedValue(definition, null, options);
+      if (roomValue !== ROOM_FILTER_PASSTHROUGH) {
+        resetValues[definition.id] = roomValue === undefined ? null : roomValue;
         return;
       }
       const retained = reconcileOptionBackedFilterValue(definition, null, options);

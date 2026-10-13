@@ -22,7 +22,7 @@ import {
   LeftOutlined,
   RightOutlined,
 } from '@ant-design/icons';
-import { Button, Modal, Tooltip } from 'antd';
+import { Modal, Tooltip } from 'antd';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DirItem } from '@/app/ops-analysis/types';
 import {
@@ -169,6 +169,10 @@ const ViewPage: React.FC = () => {
     ));
   };
 
+  const directoryToggleLabel = collapsed
+    ? t('opsAnalysisSidebar.expandDirectory')
+    : t('opsAnalysisSidebar.collapseDirectory');
+
   const handleOpenRecent = (item: RecentCanvasRecord) => {
     const canvasItem: DirItem = {
       id: item.id,
@@ -187,8 +191,8 @@ const ViewPage: React.FC = () => {
     >
       <div
         hidden={screenMode}
-        className={`relative z-20 h-full border-r border-[var(--color-border-1)] transition-all duration-300 ${
-          collapsed ? 'w-0 min-w-0' : 'w-[280px] min-w-[280px]'
+        className={`relative z-30 h-full border-r border-[var(--color-border-1)] transition-all duration-300 ${
+          collapsed ? 'w-0 min-w-0 overflow-visible' : 'w-[280px] min-w-[280px]'
         }`}
         style={{
           width: collapsed ? 0 : 280,
@@ -208,23 +212,21 @@ const ViewPage: React.FC = () => {
           />
         </div>
         {!screenMode && (
-          <Tooltip
-            title={collapsed ? t('common.expand') : t('common.collapse')}
-            placement="right"
-          >
-            <Button
-              type="text"
-              size="small"
+          <Tooltip title={directoryToggleLabel} placement="right">
+            <button
+              type="button"
               onClick={() => setCollapsed(!collapsed)}
-              aria-label={collapsed ? t('common.expand') : t('common.collapse')}
+              aria-label={directoryToggleLabel}
               aria-controls="ops-analysis-sidebar"
               aria-expanded={!collapsed}
-              className={`absolute bottom-6 z-30 flex h-6 w-6 min-w-6 cursor-pointer items-center justify-center rounded-full border border-[var(--color-border-3)] bg-[var(--color-bg-1)] p-0 transition-colors duration-150 ${
-                collapsed ? '-right-4' : '-right-3'
-              }`}
+              className="absolute bottom-6 z-30 flex h-6 w-6 cursor-pointer items-center justify-center border border-[var(--color-border-1)] bg-[var(--color-bg-1)] text-[var(--color-text-2)] shadow-sm hover:bg-[var(--color-fill-2)]"
+              style={{
+                right: collapsed ? -24 : -12,
+                borderRadius: collapsed ? '0 50% 50% 0' : '50%',
+              }}
             >
-              {collapsed ? <RightOutlined /> : <LeftOutlined />}
-            </Button>
+              {collapsed ? <RightOutlined aria-hidden /> : <LeftOutlined aria-hidden />}
+            </button>
           </Tooltip>
         )}
       </div>

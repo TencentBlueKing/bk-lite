@@ -118,6 +118,8 @@ def _overlay_node(node: dict, widgets: dict) -> None:
         _apply_text(node, "name", entry.get("name"))
         _apply_text(node, "description", entry.get("description"))
         _apply_text(node, "title", entry.get("title") or entry.get("name"))
+        if "content" in node:
+            _apply_text(node, "content", entry.get("content"))
         value_config = node.get("valueConfig")
         if isinstance(value_config, dict):
             _apply_text(value_config, "name", entry.get("name"))

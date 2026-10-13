@@ -145,7 +145,9 @@ def _instance_query_hint(items: list) -> str:
     shown = "、".join(ids)
     extra = " 等" if len(items) > len(ids) else ""
     return (
-        f"后续 monitor_query_metric_data / monitor_list_instance_metrics 的 instance_ids 必须原样复制本列表每条记录的 instance_id 字段（{shown}{extra}）。"
+        f"本列表共 {len(items)} 个实例。示例 instance_id：{shown}{extra}。"
+        "示例不是查询范围。查全部实例的趋势或是否超阈值时调用 monitor_summarize_metric_trend，instance_ids 留空。"
+        "若查原始时序，monitor_query_metric_data 的 instance_ids 必须带上本列表全部 instance_id，禁止只抄示例。"
         "禁止用 name、IP、id、cmdb_id，禁止用 CMDB 的 inst_id、inst_uuid、_id，禁止传负数。"
         "列表里没有的值不要编造。"
     )

@@ -1,0 +1,149 @@
+"IIS":
+  desc: >-
+    Collect IIS Web Service, APP_POOL_WAS, W3SVC_W3WP, HTTP request-queue and cache counters with local telegraf_windows win_perf_counters, and probe the site URL with http_response.
+  name: IIS (Telegraf)
+monitor_object:
+  "IIS": IIS
+monitor_object_type:
+  Middleware: Middleware
+monitor_object_metric:
+  "IIS":
+    iis_current_connections:
+      name: Current Connections
+      desc: >-
+        Web Service current connections. _Total covers all sites.
+    iis_maximum_connections:
+      name: Maximum Connections
+      desc: >-
+        Web Service maximum concurrent connections observed.
+    iis_service_uptime:
+      name: Service Uptime
+      desc: >-
+        Web Service uptime in seconds.
+    iis_connection_attempts_persec:
+      name: Connection Attempts
+      desc: >-
+        Web Service connection attempts per second.
+    iis_bytes_received_persec:
+      name: Bytes Received
+      desc: >-
+        Web Service bytes received per second.
+    iis_bytes_sent_persec:
+      name: Bytes Sent
+      desc: >-
+        Web Service bytes sent per second.
+    iis_bytes_total_persec:
+      name: Bytes Total
+      desc: >-
+        Web Service total bytes transferred per second.
+    iis_get_requests_persec:
+      name: GET Requests
+      desc: >-
+        Web Service GET requests per second.
+    iis_post_requests_persec:
+      name: POST Requests
+      desc: >-
+        Web Service POST requests per second.
+    iis_total_method_requests_persec:
+      name: Total Method Requests
+      desc: >-
+        Web Service requests per second across HTTP methods.
+    iis_not_found_errors_persec:
+      name: Not Found Errors
+      desc: >-
+        Web Service HTTP 404 responses per second.
+    iis_locked_errors_persec:
+      name: Locked Errors
+      desc: >-
+        Web Service locked-error responses per second.
+    iis_current_anonymous_users:
+      name: Anonymous Users
+      desc: >-
+        Web Service current anonymous users.
+    iis_current_nonanonymous_users:
+      name: Authenticated Users
+      desc: >-
+        Web Service current non-anonymous users.
+    iis_app_pool_state:
+      name: Application Pool State
+      desc: >-
+        APP_POOL_WAS current application pool state. 3 means Running.
+    iis_app_pool_uptime:
+      name: Application Pool Uptime
+      desc: >-
+        APP_POOL_WAS current application pool uptime in seconds.
+    iis_current_worker_processes:
+      name: Worker Processes
+      desc: >-
+        APP_POOL_WAS current worker process count.
+    iis_recent_worker_process_failures:
+      name: Recent Worker Process Failures
+      desc: >-
+        APP_POOL_WAS worker process failures inside the rapid-fail window.
+    iis_app_pool_recycles:
+      name: Application Pool Recycles
+      desc: >-
+        APP_POOL_WAS total application pool recycles.
+    iis_worker_process_failures:
+      name: Worker Process Failures
+      desc: >-
+        APP_POOL_WAS total worker process failures.
+    iis_worker_process_ping_failures:
+      name: Worker Process Ping Failures
+      desc: >-
+        APP_POOL_WAS total worker process ping failures.
+    iis_worker_process_startup_failures:
+      name: Worker Process Startup Failures
+      desc: >-
+        APP_POOL_WAS total worker process startup failures.
+    iis_active_requests:
+      name: Active Requests
+      desc: >-
+        W3SVC_W3WP requests currently executing.
+    iis_active_threads:
+      name: Active Threads
+      desc: >-
+        W3SVC_W3WP active thread count.
+    iis_http_500_percent:
+      name: HTTP 500 Percent
+      desc: >-
+        W3SVC_W3WP percentage of sent responses with HTTP 500.
+    iis_http_404_percent:
+      name: HTTP 404 Percent
+      desc: >-
+        W3SVC_W3WP percentage of sent responses with HTTP 404.
+    iis_queue_current_size:
+      name: Queue Size
+      desc: >-
+        HTTP Service Request Queues current queue length.
+    iis_queue_rejected_requests:
+      name: Rejected Requests
+      desc: >-
+        HTTP Service Request Queues rejected requests.
+    iis_queue_max_item_age:
+      name: Oldest Queued Request
+      desc: >-
+        Age of the oldest queued request in milliseconds.
+    iis_queue_arrival_rate:
+      name: Queue Arrival Rate
+      desc: >-
+        HTTP Service Request Queues request arrival rate.
+    iis_site_probe_result_code:
+      name: Site Probe Result
+      desc: >-
+        Local Telegraf http_response probe of the site URL. 0 means success.
+    iis_site_probe_response_time:
+      name: Site Probe Response Time
+      desc: >-
+        Site HTTP probe response time in seconds.
+    iis_site_http_response_code:
+      name: Site HTTP Status Code
+      desc: >-
+        HTTP status code returned by the site probe.
+monitor_object_metric_group:
+  "IIS":
+    Web Service: Web Service
+    Application Pool: Application Pool
+    Worker Process: Worker Process
+    Request Queue: Request Queue
+    Probe: Probe

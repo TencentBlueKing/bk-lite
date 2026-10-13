@@ -115,9 +115,13 @@ export const resolveRoom3DSelection = ({
   }
 
   const visibleIds = new Set(visible.map((item) => item.id));
-  const runtimeId = normalizeRoomId(runtimeRoomId);
-  if (runtimeId && visibleIds.has(runtimeId)) {
-    return { status: 'ready', roomId: runtimeId, rooms: visible };
+  const runtimeRaw = typeof runtimeRoomId === 'string' ? runtimeRoomId.trim() : '';
+  if (runtimeRaw) {
+    const runtimeId = normalizeRoomId(runtimeRaw);
+    if (runtimeId && visibleIds.has(runtimeId)) {
+      return { status: 'ready', roomId: runtimeId, rooms: visible };
+    }
+    return { status: 'unavailable', rooms: visible };
   }
 
   const savedId = normalizeRoomId(savedRoomId);

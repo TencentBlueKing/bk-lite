@@ -515,6 +515,108 @@ def test_get_source_data_rejects_nonstandard_downstream_result(
 
 
 @pytest.mark.django_db
+def test_get_room_list_source_data_unwraps_nats_listener_envelope(authenticated_user, monkeypatch):
+    """get_source_data 走真实 request_v2 解包，只把 NATS 传输换成监听器信封。"""
+    from apps.cmdb.nats import nats as cmdb_nats
+    from nats_client import clients as nats_clients
+
+    room = {
+        "_id": 287,
+        "inst_uuid": "836b1d62-1111-4111-8111-111111111111",
+        "inst_name": "Room3D-华北机房",
+        "model_id": "server_room",
+        "organization": [1],
+    }
+    monkeypatch.setattr(cmdb_nats.rack_room, "list_server_rooms", lambda **kwargs: [room])
+    monkeypatch.setattr(cmdb_nats, "_build_nats_permission_map", lambda *args, **kwargs: {})
+
+    class _Message:
+        def __init__(self, payload):
+            self.data = json.dumps(payload).encode()
+
+    class _Connection:
+        async def request(self, subject, payload, timeout=None):
+            body = json.loads(payload.decode())
+            handler_return = cmdb_nats.get_room_list(**(body.get("kwargs") or {}))
+            return _Message({"success": True, "result": handler_return})
+
+        async def close(self):
+            return None
+
+    async def _connect(*args, **kwargs):
+        return _Connection()
+
+    monkeypatch.setattr(nats_clients, "get_nc_client", _connect)
+
+    authenticated_user.is_superuser = True
+    request = _build_request(authenticated_user, data={})
+    namespace = _build_namespace(1)
+    instance = _build_instance(rest_api="cmdb/get_room_list", params=[])
+    instance.namespaces = SimpleNamespace(all=lambda: [namespace])
+    monkeypatch.setattr(
+        datasource_view.DataSourceAPIModelViewSet,
+        "get_object",
+        lambda self: instance,
+    )
+
+    response = datasource_view.DataSourceAPIModelViewSet.as_view({"post": "get_source_data"})(request, pk="116")
+    response.render()
+    payload = json.loads(response.rendered_content)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert payload["result"] is True
+    assert payload["message"] == "success"
+    rows = payload["data"]["data"]
+    assert rows == [room]
+    assert rows[0]["inst_uuid"] == room["inst_uuid"]
+    assert rows[0]["inst_name"] == room["inst_name"]
+
+
+@pytest.mark.django_db
+def test_get_room_list_bare_items_is_rejected_as_nonstandard(authenticated_user, monkeypatch):
+    """监听器若仍返回旧的裸 items，判定点就是 _normalize_downstream_result。"""
+    from nats_client import clients as nats_clients
+
+    room = {"inst_uuid": "836b1d62-1111-4111-8111-111111111111", "inst_name": "Room3D-华北机房"}
+
+    class _Message:
+        def __init__(self, payload):
+            self.data = json.dumps(payload).encode()
+
+    class _Connection:
+        async def request(self, subject, payload, timeout=None):
+            return _Message({"success": True, "result": {"items": [room]}})
+
+        async def close(self):
+            return None
+
+    async def _connect(*args, **kwargs):
+        return _Connection()
+
+    monkeypatch.setattr(nats_clients, "get_nc_client", _connect)
+    authenticated_user.is_superuser = True
+    request = _build_request(authenticated_user, data={})
+    namespace = _build_namespace(1)
+    instance = _build_instance(rest_api="cmdb/get_room_list", params=[])
+    instance.namespaces = SimpleNamespace(all=lambda: [namespace])
+    monkeypatch.setattr(
+        datasource_view.DataSourceAPIModelViewSet,
+        "get_object",
+        lambda self: instance,
+    )
+
+    response = datasource_view.DataSourceAPIModelViewSet.as_view({"post": "get_source_data"})(request, pk="116")
+    response.render()
+    payload = json.loads(response.rendered_content)
+
+    assert response.status_code == status.HTTP_502_BAD_GATEWAY
+    assert payload["result"] is False
+    assert payload["code"] == "50200"
+    assert payload["message"] == "下游返回非标准结果"
+    assert payload["data"] == {"items": [room]}
+
+
+@pytest.mark.django_db
 def test_get_source_data_nonstandard_downstream_logs_payload_type_only(authenticated_user, monkeypatch, caplog):
     secret = "super-secret-token-do-not-log"
     authenticated_user.is_superuser = True

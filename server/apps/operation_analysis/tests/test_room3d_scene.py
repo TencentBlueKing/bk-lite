@@ -115,6 +115,21 @@ def test_list_rooms_maps_visible_cmdb_rooms(monkeypatch):
     assert cmdb.room_calls[0]["user_info"]["user"] == "testuser"
 
 
+def test_list_rooms_reads_standard_nats_envelope(monkeypatch):
+    cmdb = _FakeCMDB(
+        rooms_result={
+            "result": True,
+            "data": [{"inst_uuid": ROOM_A, "inst_name": "机房 A"}],
+            "message": "",
+        }
+    )
+    _install(monkeypatch, cmdb)
+
+    assert Room3DService.list_rooms(request=_service_request()) == {
+        "items": [{"id": ROOM_A, "name": "机房 A"}],
+    }
+
+
 def test_layout_returns_nats_payload(monkeypatch):
     layout = {"room": {"id": ROOM_A, "name": "机房 A"}, "racks": [{"rack_id": "r1"}]}
     cmdb = _FakeCMDB(layout=layout)

@@ -39,69 +39,57 @@ class TestGetRackLayout:
         assert [d["inst_uuid"] for d in out["placed"]] == [_uuid(10)]
 
 
+def _room_scope(racks, devices_by_rack=None):
+    from apps.cmdb.services.instance_scope import RoomRackDevices
+
+    return RoomRackDevices(
+        racks=racks,
+        devices_by_rack_uuid=devices_by_rack or {rack["inst_uuid"]: [] for rack in racks},
+    )
+
+
 @pytest.mark.unit
 class TestGetRoomLayout:
-    @patch.object(rack_room.InstanceManage, "_has_topology_view_permission", return_value=True)
-    @patch.object(rack_room.InstanceManage, "_query_instance_map_by_ids")
-    @patch.object(rack_room.InstanceManage, "instance_association_instance_list")
-    def test_assemble_racks_with_usage(self, q_assoc, q_map, _perm):
-        def assoc_side_effect(model_id, inst_id):
-            if model_id == "server_room":
-                return [_assoc("server_room", "rack", "run", [5])]
-            return [_assoc("rack", "switch", "contains", [10])]
-
-        q_assoc.side_effect = assoc_side_effect
-
-        def map_side_effect(ids):
-            full = {
-                5: {
-                    "_id": 5,
-                    "inst_uuid": _uuid(5),
-                    "inst_name": "A03",
-                    "model_id": "rack",
-                    "row": 1,
-                    "col": 1,
-                    "location": "A01",
-                    "u_count": 42,
-                    "datacenter_type": "1",
-                    "datacenter_state": "1",
-                },
-                10: {"_id": 10, "inst_name": "sw", "model_id": "switch", "rack_u_start": 1, "u_size": 21},
-            }
-            return {i: full[i] for i in ids if i in full}
-
-        q_map.side_effect = map_side_effect
+    @patch("apps.cmdb.services.instance_scope.resolve_room_rack_devices")
+    @patch.object(rack_room.InstanceManage, "query_entity_by_id")
+    def test_assemble_racks_with_usage(self, q_room, q_scope):
+        rack = {
+            "_id": 5,
+            "inst_uuid": _uuid(5),
+            "inst_name": "A03",
+            "model_id": "rack",
+            "location": "A01",
+            "u_count": 42,
+            "datacenter_type": "1",
+            "datacenter_state": "1",
+        }
+        q_room.return_value = {"_id": 7, "inst_uuid": _uuid(7), "model_id": "server_room"}
+        q_scope.return_value = _room_scope([rack], {_uuid(5): [{"inst_uuid": _uuid(10), "rack_u_start": 1, "u_size": 21}]})
 
         out = rack_room.get_room_layout(7, permission_map={"x": 1}, user=None)
+
+        q_scope.assert_called_once()
         assert len(out["racks"]) == 1
         # 占 U1-21 → 已用 21、利用率 50%、最大连续空闲 = U22-42 = 21
         assert out["racks"][0]["used_u"] == 21
         assert out["racks"][0]["usage"] == 50
         assert out["racks"][0]["max_free_u"] == 21
 
-    @patch.object(rack_room.InstanceManage, "_has_topology_view_permission", return_value=True)
-    @patch.object(rack_room.InstanceManage, "_query_instance_map_by_ids")
-    @patch.object(rack_room.InstanceManage, "instance_association_instance_list")
-    def test_room_position_uses_location_instead_of_legacy_row_col(self, q_assoc, q_map, _perm):
-        # row/col 可能是历史残留属性，当前 rack 模型只维护 location；布局应以 location 为准。
-        def assoc_side_effect(model_id, inst_id):
-            if model_id == "server_room":
-                return [_assoc("server_room", "rack", "run", [5])]
-            return []
-
-        q_assoc.side_effect = assoc_side_effect
-        q_map.return_value = {
-            5: {
-                "_id": 5,
-                "inst_uuid": _uuid(5),
-                "inst_name": "ROOM3D-SHOT-RACK-C03",
-                "model_id": "rack",
-                "row": 3,
-                "col": 3,
-                "location": "A09",
-                "u_count": 42,
-            }
+    @patch("apps.cmdb.services.instance_scope.resolve_room_rack_devices")
+    @patch.object(rack_room.InstanceManage, "query_entity_by_id")
+    def test_room_position_uses_location_instead_of_legacy_row_col(self, q_room, q_scope):
+        rack = {
+            "_id": 5,
+            "inst_uuid": _uuid(5),
+            "inst_name": "ROOM3D-SHOT-RACK-C03",
+            "model_id": "rack",
+            "row": 3,
+            "col": 3,
+            "location": "A09",
+            "u_count": 42,
         }
+        q_room.return_value = {"_id": 7, "inst_uuid": _uuid(7), "model_id": "server_room"}
+        q_scope.return_value = _room_scope([rack])
 
         out = rack_room.get_room_layout(7, permission_map={"x": 1}, user=None)
 
@@ -112,83 +100,62 @@ class TestGetRoomLayout:
         assert out["racks"][0]["location"] == "A09"
         assert out["grid"] == {"max_row": 9, "max_col": 1}
 
-    @patch.object(rack_room.InstanceManage, "_has_topology_view_permission", return_value=True)
-    @patch.object(rack_room.InstanceManage, "_query_instance_map_by_ids")
-    @patch.object(rack_room.InstanceManage, "instance_association_instance_list")
-    def test_used_u_is_distinct_occupied_not_sum(self, q_assoc, q_map, _perm):
+    @patch("apps.cmdb.services.instance_scope.resolve_room_rack_devices")
+    @patch.object(rack_room.InstanceManage, "query_entity_by_id")
+    def test_used_u_is_distinct_occupied_not_sum(self, q_room, q_scope):
         # 一台落位 U1-2、一台未分配 U 位（有 u_size 无 rack_u_start）：
         # used_u 应为去重占用数 2（= u_count - free_u），不被未分配设备抬高，利用率不超 100%
-        def assoc_side_effect(model_id, inst_id):
-            if model_id == "server_room":
-                return [_assoc("server_room", "rack", "run", [5])]
-            return [_assoc("rack", "switch", "contains", [10, 11])]
-
-        q_assoc.side_effect = assoc_side_effect
-
-        def map_side_effect(ids):
-            full = {
-                5: {
-                    "_id": 5,
-                    "inst_uuid": _uuid(5),
-                    "inst_name": "R",
-                    "model_id": "rack",
-                    "row": 1,
-                    "col": 1,
-                    "location": "A01",
-                    "u_count": 10,
-                    "datacenter_type": "1",
-                },
-                10: {"_id": 10, "inst_name": "sw1", "model_id": "switch", "rack_u_start": 1, "u_size": 2},
-                11: {"_id": 11, "inst_name": "sw2", "model_id": "switch", "rack_u_start": None, "u_size": 2},
-            }
-            return {i: full[i] for i in ids if i in full}
-
-        q_map.side_effect = map_side_effect
+        rack = {
+            "_id": 5,
+            "inst_uuid": _uuid(5),
+            "inst_name": "R",
+            "model_id": "rack",
+            "location": "A01",
+            "u_count": 10,
+            "datacenter_type": "1",
+        }
+        q_room.return_value = {"_id": 7, "inst_uuid": _uuid(7), "model_id": "server_room"}
+        q_scope.return_value = _room_scope(
+            [rack],
+            {
+                _uuid(5): [
+                    {"inst_uuid": _uuid(10), "rack_u_start": 1, "u_size": 2},
+                    {"inst_uuid": _uuid(11), "rack_u_start": None, "u_size": 2},
+                ]
+            },
+        )
 
         out = rack_room.get_room_layout(7, permission_map={"x": 1}, user=None)
-        rack = out["racks"][0]
-        assert rack["used_u"] == 2  # 不是 2+2=4
-        assert rack["free_u"] == 8
-        assert rack["usage"] == 20
+        placed = out["racks"][0]
+        assert placed["used_u"] == 2  # 不是 2+2=4
+        assert placed["free_u"] == 8
+        assert placed["usage"] == 20
 
-    @patch.object(rack_room.InstanceManage, "_has_topology_view_permission", return_value=False)
-    @patch.object(rack_room.InstanceManage, "_query_instance_map_by_ids")
-    @patch.object(rack_room.InstanceManage, "instance_association_instance_list")
-    def test_denied_rack_is_pruned(self, q_assoc, q_map, _perm):
-        # 无权限的机柜应被剔除，不出现在平面图，也不悬空
-        q_assoc.return_value = [_assoc("server_room", "rack", "run", [5])]
-        q_map.return_value = {
-            5: {"_id": 5, "inst_name": "A03", "model_id": "rack", "row": 1, "col": 1, "u_count": 42, "datacenter_type": "1", "datacenter_state": "1"}
-        }
+    @patch("apps.cmdb.services.instance_scope.resolve_room_rack_devices")
+    @patch.object(rack_room.InstanceManage, "query_entity_by_id")
+    def test_denied_rack_is_pruned(self, q_room, q_scope):
+        # 权限过滤发生在共用范围解析里；无可见机柜时平面图为空。
+        q_room.return_value = {"_id": 7, "inst_uuid": _uuid(7), "model_id": "server_room"}
+        q_scope.return_value = _room_scope([])
         out = rack_room.get_room_layout(7, permission_map={"x": 1}, user=None)
         assert out["racks"] == []
         assert out["unplaced"] == []
 
-    @patch.object(rack_room.InstanceManage, "_has_topology_view_permission", return_value=True)
-    @patch.object(rack_room.InstanceManage, "_query_instance_map_by_ids")
-    @patch.object(rack_room.InstanceManage, "instance_association_instance_list")
-    def test_enum_list_value_is_scalarized(self, q_assoc, q_map, _perm):
-        # CMDB 枚举以列表存储（单选也是 ['3']），需归一为标量供前端按枚举 id 着色
-        def assoc_side_effect(model_id, inst_id):
-            if model_id == "server_room":
-                return [_assoc("server_room", "rack", "run", [5])]
-            return []
-
-        q_assoc.side_effect = assoc_side_effect
-        q_map.return_value = {
-            5: {
-                "_id": 5,
-                "inst_uuid": _uuid(5),
-                "inst_name": "A03",
-                "model_id": "rack",
-                "row": 1,
-                "col": 1,
-                "location": "A01",
-                "u_count": 42,
-                "datacenter_type": ["3"],
-                "datacenter_state": ["1"],
-            }
+    @patch("apps.cmdb.services.instance_scope.resolve_room_rack_devices")
+    @patch.object(rack_room.InstanceManage, "query_entity_by_id")
+    def test_enum_list_value_is_scalarized(self, q_room, q_scope):
+        rack = {
+            "_id": 5,
+            "inst_uuid": _uuid(5),
+            "inst_name": "A03",
+            "model_id": "rack",
+            "location": "A01",
+            "u_count": 42,
+            "datacenter_type": ["3"],
+            "datacenter_state": ["1"],
         }
+        q_room.return_value = {"_id": 7, "inst_uuid": _uuid(7), "model_id": "server_room"}
+        q_scope.return_value = _room_scope([rack])
         out = rack_room.get_room_layout(7, permission_map={"x": 1}, user=None)
         assert out["racks"][0]["datacenter_type"] == "3"
         assert out["racks"][0]["datacenter_state"] == "1"
@@ -263,7 +230,7 @@ class TestRoom3DRackDeviceSummaries:
         q_devices.side_effect = [q_racks.return_value, device_rows]
         q_perm.side_effect = lambda inst, *a, **k: inst["_id"] != 12
 
-        with patch("apps.cmdb.services.rack_room.GraphClient", return_value=graph_context):
+        with patch("apps.cmdb.services.instance_scope.GraphClient", return_value=graph_context):
             out = rack_room.get_room3d_rack_device_summaries(
                 [rack_5_uuid, rack_6_uuid],
                 permission_map={"x": 1},
@@ -280,6 +247,7 @@ class TestRoom3DRackDeviceSummaries:
                         "rack_u_start": 1,
                         "u_size": 2,
                         "status": "running",
+                        "monitor_id": "",
                     }
                 ],
                 "device_count": 2,
@@ -335,13 +303,14 @@ class TestRoom3DRackDeviceSummaries:
         ]
 
         q_devices.side_effect = [q_racks.return_value, device_rows]
-        with patch("apps.cmdb.services.rack_room.GraphClient", return_value=graph_context):
+        with patch("apps.cmdb.services.instance_scope.GraphClient", return_value=graph_context):
             out = rack_room.get_room3d_rack_device_summaries([rack_uuid], permission_map={"x": 1})
 
         assert out[rack_uuid]["device_count"] == 1
         q_racks.assert_called_once_with([5])
         assert q_devices.call_args_list[0].args == ([rack_uuid],)
-        assert q_devices.call_args_list[1].args == ([device_uuid, other_device_uuid],)
+        # 查询已经限定源机柜，返回里夹带的其他机柜出边不再拿去查设备。
+        assert q_devices.call_args_list[1].args == ([device_uuid],)
         graph_client.query_edge.assert_called_once_with(
             "instance_association",
             [
@@ -366,7 +335,7 @@ class TestRoom3DRackDeviceSummaries:
             [{"_id": 10, "model_id": "switch", "rack_u_start": 1, "u_size": 1}],
         ]
 
-        with patch("apps.cmdb.services.rack_room.GraphClient", return_value=graph_context):
+        with patch("apps.cmdb.services.instance_scope.GraphClient", return_value=graph_context):
             out = rack_room.get_room3d_rack_device_summaries([rack_uuid], permission_map={"x": 1})
 
         assert out[rack_uuid] == {
@@ -570,7 +539,7 @@ class TestListServerRooms:
 @pytest.mark.unit
 class TestGetRoomListNatsHandler:
     """NATS handler ``get_room_list`` 应：
-    1. 返回 ``{"items": [...]}`` 信封
+    1. 返回与其他选项源一致的信封 ``{"result": True, "data": [...]}``
     2. 走 ``_build_nats_permission_map`` 构造 permission_map 并透传给 list_server_rooms
     """
 
@@ -589,14 +558,16 @@ class TestGetRoomListNatsHandler:
         ]
         result = nats.get_room_list(user_info={"team": 1, "user": "alice"})
         assert result == {
-            "items": [
+            "result": True,
+            "message": "",
+            "data": [
                 {
                     "_id": 1,
                     "inst_uuid": "11111111-1111-4111-8111-111111111111",
                     "inst_name": "机房A",
                     "model_id": "server_room",
                 }
-            ]
+            ],
         }
 
     @patch("apps.cmdb.nats.nats.rack_room.list_server_rooms")

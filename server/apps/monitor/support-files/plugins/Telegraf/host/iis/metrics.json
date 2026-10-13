@@ -1,0 +1,689 @@
+{
+  "plugin": "IIS",
+  "plugin_desc": "Collects IIS Web Service, APP_POOL_WAS, W3SVC_W3WP, HTTP request-queue and cache counters with local Telegraf win_perf_counters, plus an http_response probe of the site URL. Install telegraf_windows on the IIS Windows host.",
+  "collector": "Telegraf",
+  "collect_type": "host",
+  "support_collect_detect": false,
+  "status_query": "any({instance_type='iis', collect_type='host'}) by (instance_id)",
+  "instance_fact_bindings": [
+    {
+      "fact": "asset.ip",
+      "value_type": "ip",
+      "resolver": "selected_node",
+      "options": {
+        "selection_field": "node_ids",
+        "node_field": "ip",
+        "required": true
+      }
+    }
+  ],
+  "instance_summary_columns": [
+    {
+      "fact": "asset.ip",
+      "title": "monitor.views.assetIp",
+      "order": 10
+    }
+  ],
+  "name": "IIS",
+  "icon": "mm-iis_IIS",
+  "type": "Middleware",
+  "description": "IIS monitoring via local telegraf_windows",
+  "default_metric": "any({instance_type='iis'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "iis_current_connections",
+    "iis_total_method_requests_persec",
+    "iis_recent_worker_process_failures",
+    "iis_site_probe_result_code"
+  ],
+  "display_fields": [
+    {
+      "name": "Current Connections",
+      "sort_order": 0,
+      "metrics": [
+        {
+          "plugin": "IIS",
+          "metric": "iis_current_connections"
+        }
+      ]
+    },
+    {
+      "name": "Method Requests",
+      "sort_order": 1,
+      "metrics": [
+        {
+          "plugin": "IIS",
+          "metric": "iis_total_method_requests_persec"
+        }
+      ]
+    },
+    {
+      "name": "Queue Size",
+      "sort_order": 2,
+      "metrics": [
+        {
+          "plugin": "IIS",
+          "metric": "iis_queue_current_size"
+        }
+      ]
+    },
+    {
+      "name": "Worker Failures",
+      "sort_order": 3,
+      "metrics": [
+        {
+          "plugin": "IIS",
+          "metric": "iis_recent_worker_process_failures"
+        }
+      ]
+    },
+    {
+      "name": "Site Probe",
+      "sort_order": 4,
+      "metrics": [
+        {
+          "plugin": "IIS",
+          "metric": "iis_site_probe_result_code"
+        }
+      ]
+    }
+  ],
+  "metrics": [
+    {
+      "metric_group": "Web Service",
+      "name": "iis_current_connections",
+      "query": "win_iis_web_service_Current_Connections{instance_type=\"iis\", __$labels__}",
+      "display_name": "Current Connections",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Web Service current connections for the site instance. _Total is all sites."
+    },
+    {
+      "metric_group": "Web Service",
+      "name": "iis_maximum_connections",
+      "query": "win_iis_web_service_Maximum_Connections{instance_type=\"iis\", __$labels__}",
+      "display_name": "Maximum Connections",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Web Service maximum concurrent connections observed for the site instance."
+    },
+    {
+      "metric_group": "Web Service",
+      "name": "iis_service_uptime",
+      "query": "win_iis_web_service_Service_Uptime{instance_type=\"iis\", __$labels__}",
+      "display_name": "Service Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Web Service uptime in seconds."
+    },
+    {
+      "metric_group": "Web Service",
+      "name": "iis_connection_attempts_persec",
+      "query": "win_iis_web_service_Connection_Attempts_persec{instance_type=\"iis\", __$labels__}",
+      "display_name": "Connection Attempts",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Web Service connection attempts per second."
+    },
+    {
+      "metric_group": "Web Service",
+      "name": "iis_bytes_received_persec",
+      "query": "win_iis_web_service_Bytes_Received_persec{instance_type=\"iis\", __$labels__}",
+      "display_name": "Bytes Received",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Web Service bytes received per second."
+    },
+    {
+      "metric_group": "Web Service",
+      "name": "iis_bytes_sent_persec",
+      "query": "win_iis_web_service_Bytes_Sent_persec{instance_type=\"iis\", __$labels__}",
+      "display_name": "Bytes Sent",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Web Service bytes sent per second."
+    },
+    {
+      "metric_group": "Web Service",
+      "name": "iis_bytes_total_persec",
+      "query": "win_iis_web_service_Bytes_Total_persec{instance_type=\"iis\", __$labels__}",
+      "display_name": "Bytes Total",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Web Service total bytes transferred per second."
+    },
+    {
+      "metric_group": "Web Service",
+      "name": "iis_get_requests_persec",
+      "query": "win_iis_web_service_Get_Requests_persec{instance_type=\"iis\", __$labels__}",
+      "display_name": "GET Requests",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Web Service GET requests per second."
+    },
+    {
+      "metric_group": "Web Service",
+      "name": "iis_post_requests_persec",
+      "query": "win_iis_web_service_Post_Requests_persec{instance_type=\"iis\", __$labels__}",
+      "display_name": "POST Requests",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Web Service POST requests per second."
+    },
+    {
+      "metric_group": "Web Service",
+      "name": "iis_total_method_requests_persec",
+      "query": "win_iis_web_service_Total_Method_Requests_persec{instance_type=\"iis\", __$labels__}",
+      "display_name": "Total Method Requests",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Web Service requests per second across HTTP methods."
+    },
+    {
+      "metric_group": "Web Service",
+      "name": "iis_not_found_errors_persec",
+      "query": "win_iis_web_service_Not_Found_Errors_persec{instance_type=\"iis\", __$labels__}",
+      "display_name": "Not Found Errors",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Web Service HTTP 404 responses per second."
+    },
+    {
+      "metric_group": "Web Service",
+      "name": "iis_locked_errors_persec",
+      "query": "win_iis_web_service_Locked_Errors_persec{instance_type=\"iis\", __$labels__}",
+      "display_name": "Locked Errors",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Web Service locked-error responses per second."
+    },
+    {
+      "metric_group": "Web Service",
+      "name": "iis_current_anonymous_users",
+      "query": "win_iis_web_service_Current_Anonymous_Users{instance_type=\"iis\", __$labels__}",
+      "display_name": "Anonymous Users",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Web Service current anonymous users."
+    },
+    {
+      "metric_group": "Web Service",
+      "name": "iis_current_nonanonymous_users",
+      "query": "win_iis_web_service_Current_NonAnonymous_Users{instance_type=\"iis\", __$labels__}",
+      "display_name": "Authenticated Users",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Web Service current non-anonymous users."
+    },
+    {
+      "metric_group": "Application Pool",
+      "name": "iis_app_pool_state",
+      "query": "win_iis_app_pool_was_Current_Application_Pool_State{instance_type=\"iis\", __$labels__}",
+      "display_name": "Application Pool State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"未初始化\",\"id\":1,\"color\":\"#8c95a8\"},{\"name\":\"已初始化\",\"id\":2,\"color\":\"#597ef7\"},{\"name\":\"运行中\",\"id\":3,\"color\":\"#1ac44a\"},{\"name\":\"正在禁用\",\"id\":4,\"color\":\"#faad14\"},{\"name\":\"已禁用\",\"id\":5,\"color\":\"#ff4d4f\"},{\"name\":\"关闭中\",\"id\":6,\"color\":\"#ff8a1f\"},{\"name\":\"删除中\",\"id\":7,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "APP_POOL_WAS current application pool state. 3 means Running."
+    },
+    {
+      "metric_group": "Application Pool",
+      "name": "iis_app_pool_uptime",
+      "query": "win_iis_app_pool_was_Current_Application_Pool_Uptime{instance_type=\"iis\", __$labels__}",
+      "display_name": "Application Pool Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "APP_POOL_WAS current application pool uptime in seconds."
+    },
+    {
+      "metric_group": "Application Pool",
+      "name": "iis_current_worker_processes",
+      "query": "win_iis_app_pool_was_Current_Worker_Processes{instance_type=\"iis\", __$labels__}",
+      "display_name": "Worker Processes",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "APP_POOL_WAS current worker process count."
+    },
+    {
+      "metric_group": "Application Pool",
+      "name": "iis_recent_worker_process_failures",
+      "query": "win_iis_app_pool_was_Recent_Worker_Process_Failures{instance_type=\"iis\", __$labels__}",
+      "display_name": "Recent Worker Process Failures",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "APP_POOL_WAS worker process failures in the rapid-fail window."
+    },
+    {
+      "metric_group": "Application Pool",
+      "name": "iis_app_pool_recycles",
+      "query": "win_iis_app_pool_was_Total_Application_Pool_Recycles{instance_type=\"iis\", __$labels__}",
+      "display_name": "Application Pool Recycles",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "APP_POOL_WAS total application pool recycles."
+    },
+    {
+      "metric_group": "Application Pool",
+      "name": "iis_worker_process_failures",
+      "query": "win_iis_app_pool_was_Total_Worker_Process_Failures{instance_type=\"iis\", __$labels__}",
+      "display_name": "Worker Process Failures",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "APP_POOL_WAS total worker process failures."
+    },
+    {
+      "metric_group": "Application Pool",
+      "name": "iis_worker_process_ping_failures",
+      "query": "win_iis_app_pool_was_Total_Worker_Process_Ping_Failures{instance_type=\"iis\", __$labels__}",
+      "display_name": "Worker Process Ping Failures",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "APP_POOL_WAS total worker process ping failures."
+    },
+    {
+      "metric_group": "Application Pool",
+      "name": "iis_worker_process_startup_failures",
+      "query": "win_iis_app_pool_was_Total_Worker_Process_Startup_Failures{instance_type=\"iis\", __$labels__}",
+      "display_name": "Worker Process Startup Failures",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "APP_POOL_WAS total worker process startup failures."
+    },
+    {
+      "metric_group": "Worker Process",
+      "name": "iis_active_requests",
+      "query": "win_iis_w3wp_Active_Requests{instance_type=\"iis\", __$labels__}",
+      "display_name": "Active Requests",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "W3SVC_W3WP requests currently executing in the worker process."
+    },
+    {
+      "metric_group": "Worker Process",
+      "name": "iis_active_threads",
+      "query": "win_iis_w3wp_Active_Threads_Count{instance_type=\"iis\", __$labels__}",
+      "display_name": "Active Threads",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "W3SVC_W3WP active thread count."
+    },
+    {
+      "metric_group": "Worker Process",
+      "name": "iis_http_500_percent",
+      "query": "win_iis_w3wp_Percent_500_HTTP_Response_Sent{instance_type=\"iis\", __$labels__}",
+      "display_name": "HTTP 500 Percent",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "W3SVC_W3WP percentage of responses sent with HTTP 500."
+    },
+    {
+      "metric_group": "Worker Process",
+      "name": "iis_http_404_percent",
+      "query": "win_iis_w3wp_Percent_404_HTTP_Response_Sent{instance_type=\"iis\", __$labels__}",
+      "display_name": "HTTP 404 Percent",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "W3SVC_W3WP percentage of responses sent with HTTP 404."
+    },
+    {
+      "metric_group": "Request Queue",
+      "name": "iis_queue_current_size",
+      "query": "win_iis_http_queue_CurrentQueueSize{instance_type=\"iis\", __$labels__}",
+      "display_name": "Queue Size",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "HTTP Service Request Queues current queue length."
+    },
+    {
+      "metric_group": "Request Queue",
+      "name": "iis_queue_rejected_requests",
+      "query": "win_iis_http_queue_RejectedRequests{instance_type=\"iis\", __$labels__}",
+      "display_name": "Rejected Requests",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "HTTP Service Request Queues rejected requests."
+    },
+    {
+      "metric_group": "Request Queue",
+      "name": "iis_queue_max_item_age",
+      "query": "win_iis_http_queue_MaxQueueItemAge{instance_type=\"iis\", __$labels__}",
+      "display_name": "Oldest Queued Request",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "HTTP Service Request Queues age of the oldest queued request in milliseconds."
+    },
+    {
+      "metric_group": "Request Queue",
+      "name": "iis_queue_arrival_rate",
+      "query": "win_iis_http_queue_ArrivalRate{instance_type=\"iis\", __$labels__}",
+      "display_name": "Queue Arrival Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "instance",
+          "description": "instance"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "HTTP Service Request Queues request arrival rate."
+    },
+    {
+      "metric_group": "Probe",
+      "name": "iis_site_probe_result_code",
+      "query": "http_response_result_code{instance_type=\"iis\", endpoint=\"site\", __$labels__}",
+      "display_name": "Site Probe Result",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"成功\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"响应内容不匹配\",\"id\":1,\"color\":\"#faad14\"},{\"name\":\"响应体读取失败\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"连接失败\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"超时\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"DNS错误\",\"id\":5,\"color\":\"#ff4d4f\"},{\"name\":\"响应状态码不匹配\",\"id\":6,\"color\":\"#faad14\"}]",
+      "dimensions": [
+        {
+          "name": "endpoint",
+          "description": "endpoint"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Local Telegraf http_response probe of the IIS site URL. 0 means the probe succeeded."
+    },
+    {
+      "metric_group": "Probe",
+      "name": "iis_site_probe_response_time",
+      "query": "http_response_response_time{instance_type=\"iis\", endpoint=\"site\", __$labels__}",
+      "display_name": "Site Probe Response Time",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {
+          "name": "endpoint",
+          "description": "endpoint"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "IIS site HTTP probe response time in seconds."
+    },
+    {
+      "metric_group": "Probe",
+      "name": "iis_site_http_response_code",
+      "query": "http_response_http_response_code{instance_type=\"iis\", endpoint=\"site\", __$labels__}",
+      "display_name": "Site HTTP Status Code",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [
+        {
+          "name": "endpoint",
+          "description": "endpoint"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "HTTP status code returned by the IIS site probe."
+    }
+  ]
+}
