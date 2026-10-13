@@ -425,7 +425,7 @@
   font-weight: 650;
   line-height: 1;
   font-variant-numeric: tabular-nums;
-  color: var(--status-value);
+  color: var(--status-value, var(--color-text-1));
 }
 
 .statusUnit {
@@ -441,10 +441,14 @@
 
 .statusCardWarning {
   --status-accent: var(--color-warning);
+  --status-value: var(--color-warning);
+  --status-unit: var(--color-warning);
 }
 
 .statusCardDanger {
   --status-accent: var(--color-fail);
+  --status-value: var(--color-fail);
+  --status-unit: var(--color-fail);
 }
 
 .statusCardNeutral {

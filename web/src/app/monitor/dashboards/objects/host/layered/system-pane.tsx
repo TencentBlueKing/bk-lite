@@ -15,7 +15,6 @@ import {
   deriveRatioPercent,
   deriveSwapUsedPercentSeries,
   formatPercent,
-  formatPlain,
   latestNumber,
   metricHasPoints,
   numericValue
@@ -169,14 +168,10 @@ export default function SystemPane({
           label: item.label,
           data: metrics[item.key]?.viewData || []
         })))}
-        legends={loadItems.map((item) => {
-          const value = latestNumber(metrics[item.key]);
-          return {
-            label: item.label,
-            color: item.color,
-            reading: value == null ? undefined : formatPlain(value)
-          };
-        })}
+        legends={loadItems.map((item) => ({
+          label: item.label,
+          color: item.color
+        }))}
       />
     ) : null
   ].filter(Boolean);
@@ -197,14 +192,10 @@ export default function SystemPane({
           label: item.label,
           data: metrics[item.key]?.viewData || []
         })))}
-        legends={breakdown.map((item) => {
-          const value = latestNumber(metrics[item.key]);
-          return {
-            label: item.label,
-            color: item.color,
-            reading: value == null ? undefined : formatPercent(value)
-          };
-        })}
+        legends={breakdown.map((item) => ({
+          label: item.label,
+          color: item.color
+        }))}
       />
     ) : null,
     swapSeries.length ? (
