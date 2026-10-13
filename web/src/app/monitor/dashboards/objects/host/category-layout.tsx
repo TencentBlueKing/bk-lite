@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Tabs } from 'antd';
 import useMonitorApi from '@/app/monitor/api';
-import { buildCpuCoreRows, buildLabelRows, buildMountDiskRows } from './entity-series';
+import { buildCpuCoreRows, buildLabelRows, buildMountDiskRows, entitySeriesIndicatesWindows } from './entity-series';
 import type { EntityTableRow } from './entity-series';
 import type { HostDetailLayoutProps } from './detail-layout';
 import type { EntityLoadState } from './use-entity-metrics';
@@ -93,6 +93,7 @@ export default function HostCategoryLayout({
   );
 
   const diskRows = useMemo(() => buildMountDiskRows(diskState.byMetric), [diskState.byMetric]);
+  const windowsHost = dashboard.operatingSystem === 'windows' || entitySeriesIndicatesWindows(diskState.byMetric);
   const netRows = useMemo(
     () => busiestFirst(buildLabelRows(netState.byMetric, 'interface', 'net_bytes_recv_rate')),
     [netState.byMetric]
@@ -190,6 +191,7 @@ export default function HostCategoryLayout({
           errorText={diskState.status === 'error' ? '磁盘数据加载失败，请稍后重试。' : undefined}
           selectedKey={diskSelection.selectedKey}
           onSelect={diskSelection.setSelectedKey}
+          windowsHost={windowsHost}
         />
       );
     }

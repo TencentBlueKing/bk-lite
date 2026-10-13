@@ -123,11 +123,18 @@ const writeMetric = (row: EntityTableRow, metricKey: string, points: RangePoint[
   row.values[metricKey] = latestFinite(row.series[metricKey]);
 };
 
+const IO_METRIC_KEYS = [
+  'diskio_read_bytes_rate',
+  'diskio_write_bytes_rate',
+  'diskio_io_util',
+  'disk_read_latency',
+  'disk_write_latency'
+];
+
 /** 磁盘：用量按 path/mount，IO 按 name/device 对齐到同一行。 */
 export const buildDiskRows = (byMetric: Record<string, LabeledSeries[]>): EntityTableRow[] => {
   const rows = new Map<string, EntityTableRow>();
   const usageKeys = ['disk_used_percent', 'disk_inodes_used_percent', 'disk_total', 'disk_free'];
-  const ioKeys = ['diskio_io_util', 'diskio_read_bytes_rate', 'diskio_write_bytes_rate'];
   const keep = ['path', 'mount', 'device', 'name', 'fstype'];
 
   usageKeys.forEach((metricKey) => {
@@ -149,7 +156,7 @@ export const buildDiskRows = (byMetric: Record<string, LabeledSeries[]>): Entity
     return null;
   };
 
-  ioKeys.forEach((metricKey) => {
+  IO_METRIC_KEYS.forEach((metricKey) => {
     (byMetric[metricKey] || []).forEach((series) => {
       const matched = matchIoRow(series.labels);
       const device = labelText(series.labels, 'name') || labelText(series.labels, 'device');
@@ -175,8 +182,6 @@ export const buildDiskRows = (byMetric: Record<string, LabeledSeries[]>): Entity
     return rightValue - leftValue;
   });
 };
-
-const IO_METRIC_KEYS = ['diskio_read_bytes_rate', 'diskio_write_bytes_rate', 'diskio_io_util'];
 
 /**
  * 挂载表：一行一个 path。IO 只在 diskio 的 name（没有 name 时用 device）
@@ -256,6 +261,29 @@ export const buildMountDiskRows = (byMetric: Record<string, LabeledSeries[]>): E
     (right.values.disk_used_percent ?? -1) - (left.values.disk_used_percent ?? -1)
   ));
 };
+
+export const rowHasSeries = (row: EntityTableRow | undefined, keys: readonly string[]) => (
+  Boolean(row && keys.some((key) => (row.series[key] || []).length > 0))
+);
+
+/** inode 列：没有任何读数就藏；Windows 即使采到了也不展示。 */
+export const showDiskInodeColumn = (rows: EntityTableRow[], windowsHost: boolean) => {
+  if (windowsHost) return false;
+  return rows.some((row) => {
+    const value = row.values.disk_inodes_used_percent;
+    return value != null && Number.isFinite(value);
+  });
+};
+
+export const showDiskFsTypeColumn = (rows: EntityTableRow[]) => (
+  rows.some((row) => Boolean(row.labels.fstype))
+);
+
+export const entitySeriesIndicatesWindows = (byMetric: Record<string, LabeledSeries[]>) => (
+  Object.values(byMetric).some((seriesList) => (
+    seriesList.some((series) => /windows/i.test(labelText(series.labels, 'config_type')))
+  ))
+);
 
 export const sumPoints = (left: RangePoint[] = [], right: RangePoint[] = []): RangePoint[] => {
   if (!left.length) return right.slice();

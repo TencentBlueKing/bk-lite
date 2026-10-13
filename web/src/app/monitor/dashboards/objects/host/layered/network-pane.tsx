@@ -2,12 +2,14 @@
 
 import React, { useMemo } from 'react';
 import { HOST_PALETTE } from '../config';
-import { latestFinite, pointsToChartData, sumPoints, type EntityTableRow } from '../entity-series';
+import { latestFinite, pointsToChartData, rowHasSeries, sumPoints, type EntityTableRow } from '../entity-series';
 import LayeredEntityTable from './entity-table';
 import ThinTimeSeries from './thin-time-series';
 import { formatUnit, ROW_ACCENTS } from './readings';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
+
+const PACKET_KEYS = ['net_packets_recv_rate', 'net_packets_sent_rate'] as const;
 
 const withRates = (rows: EntityTableRow[]): EntityTableRow[] => rows.map((row) => {
   const err = sumPoints(row.series.net_err_in_rate, row.series.net_err_out_rate);
@@ -52,6 +54,11 @@ export default function NetworkPane({
     ...(hasErr ? [{ points: selected?.series.err || [], label: '错误', color: HOST_PALETTE.rose, latest: errLatest }] : []),
     ...(hasDrop ? [{ points: selected?.series.drop || [], label: '丢包', color: HOST_PALETTE.orange, latest: dropLatest }] : [])
   ];
+  const packetItems = [
+    { key: 'net_packets_recv_rate' as const, label: '入包速率', color: HOST_PALETTE.blue },
+    { key: 'net_packets_sent_rate' as const, label: '出包速率', color: HOST_PALETTE.cyan }
+  ].filter((item) => (selected?.series[item.key] || []).length > 0);
+  const showPackets = rowHasSeries(selected, PACKET_KEYS);
 
   return (
     <>
@@ -100,6 +107,31 @@ export default function NetworkPane({
           />
         ) : null}
       </div>
+
+      {showPackets ? (
+        <>
+          <div className={styles.sectionHead}>
+            <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>加细</div>
+            <div className={styles.hint}>{name ? `选中网卡 ${name}` : '选中行驱动'}</div>
+          </div>
+          <div className="grid grid-cols-1 gap-3">
+            <ThinTimeSeries
+              key={`pps-${selected?.key || 'none'}`}
+              title={name ? `包速率 · 入/出 · ${name}` : '包速率 · 入/出'}
+              loading={loading && !selected}
+              unit="cps"
+              data={pointsToChartData(packetItems.map((item) => ({
+                points: selected?.series[item.key] || []
+              })))}
+              legends={packetItems.map((item) => ({
+                label: item.label,
+                color: item.color,
+                reading: formatUnit(selected?.values[item.key] ?? null, 'cps')
+              }))}
+            />
+          </div>
+        </>
+      ) : null}
 
       <div className={styles.sectionHead}>
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>网卡</div>

@@ -32,11 +32,34 @@ export const HOST_TOP_QUERIES: HostTopQuery[] = [
 
 export interface HostEntityMetricQuery {
   key: string;
-  unit: 'percent' | 'byteps' | 'cps' | 'celsius' | 'watts' | 'mebibytes' | 'bytes' | 'counts' | 'none';
+  unit: 'percent' | 'byteps' | 'cps' | 'ms' | 'celsius' | 'watts' | 'mebibytes' | 'bytes' | 'counts' | 'none';
   /** 行身份与展示优先使用的标签，不发明 inventory 之外的指标名。 */
   labelKeys: string[];
   query: string;
 }
+
+const WIN_LOGICAL_DISK = 'instance=~"[A-Z]:"';
+
+/** 已是毫秒的直出值优先；没有时再用 Telegraf / 远程累计时间除以次数。 */
+const diskLatencyEntityQuery = (kind: 'read' | 'write') => {
+  const windows = `label_replace(win_logicaldisk_${kind}_latency_ms{instance_type="os", ${WIN_LOGICAL_DISK}, __$labels__}, "name", "$1", "instance", "(.*)")`;
+  const telegraf = `(rate(diskio_${kind}_time{instance_type="os", __$labels__}[__$window__]) / rate(diskio_${kind}s{instance_type="os", __$labels__}[__$window__]))`;
+  const remote = `(rate(diskio_${kind}_time_ms_gauge{instance_type="os", __$labels__}[__$window__]) / rate(diskio_${kind}s_total_gauge{instance_type="os", __$labels__}[__$window__]))`;
+  return [
+    `disk_${kind}_latency{instance_type="os", __$labels__}`,
+    `disk_${kind}_latency_gauge{instance_type="os", __$labels__}`,
+    `disk_${kind}_latency_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}`,
+    windows,
+    `(${telegraf} unless on(instance_id, name) ${windows})`,
+    remote
+  ].join(' or ');
+};
+
+const netPacketRateQuery = (direction: 'recv' | 'sent') => (
+  `rate(net_packets_${direction}{instance_type="os", __$labels__}[__$window__])`
+  + ` or rate(net_packets_${direction}_gauge{instance_type="os", __$labels__}[__$window__])`
+  + ` or rate(net_packets_${direction}_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__])`
+);
 
 /** 磁盘表：保留 path/device/name，禁止 sum 成一条主机合计。 */
 export const HOST_DISK_ENTITY_QUERIES: HostEntityMetricQuery[] = [
@@ -81,6 +104,18 @@ export const HOST_DISK_ENTITY_QUERIES: HostEntityMetricQuery[] = [
     unit: 'byteps',
     labelKeys: ['name', 'device'],
     query: `rate(diskio_write_bytes{instance_type="os", __$labels__}[__$window__]) or rate(diskio_write_bytes_total_gauge{instance_type="os", config_type!~"host_(aix|freebsd|hpux|solaris)_remote", __$labels__}[__$window__]) or rate(diskio_write_bytes_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__]) or diskio_write_bytes_gauge{instance_type="os", ${UNIX_REMOTE}, __$labels__}`
+  },
+  {
+    key: 'disk_read_latency',
+    unit: 'ms',
+    labelKeys: ['name', 'device'],
+    query: diskLatencyEntityQuery('read')
+  },
+  {
+    key: 'disk_write_latency',
+    unit: 'ms',
+    labelKeys: ['name', 'device'],
+    query: diskLatencyEntityQuery('write')
   }
 ];
 
@@ -121,6 +156,18 @@ export const HOST_NET_ENTITY_QUERIES: HostEntityMetricQuery[] = [
     unit: 'cps',
     labelKeys: ['interface'],
     query: 'rate(net_drop_out{instance_type="os", __$labels__}[__$window__]) or rate(net_drop_out_gauge{instance_type="os", __$labels__}[__$window__]) or rate(net_drop_out_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__])'
+  },
+  {
+    key: 'net_packets_recv_rate',
+    unit: 'cps',
+    labelKeys: ['interface'],
+    query: netPacketRateQuery('recv')
+  },
+  {
+    key: 'net_packets_sent_rate',
+    unit: 'cps',
+    labelKeys: ['interface'],
+    query: netPacketRateQuery('sent')
   }
 ];
 

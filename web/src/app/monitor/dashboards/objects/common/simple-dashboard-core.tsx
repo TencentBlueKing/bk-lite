@@ -1224,6 +1224,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     clusterFilterValue: activeCluster,
     clusterFilterOptions,
     currentInstanceInterval,
+    operatingSystem: currentOperatingSystem,
     currentInstanceLabel: currentInstanceOption?.label || normalizedInstanceName || resolvedInstanceName,
     isDashboardMode,
     summaryCards,
