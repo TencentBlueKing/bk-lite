@@ -15,6 +15,42 @@ const numberOrNull = (value: number | null | undefined) => (
   value == null || !Number.isFinite(value) ? null : value
 );
 
+const hostCount = (value: number | null) => (
+  value == null || !Number.isFinite(value) ? null : Math.round(value)
+);
+
+const hostSumTone = (kind: 'blocked' | 'zombies', value: number | null) => {
+  if (value == null) return '';
+  if (value <= 0) return styles.hostSumCalm;
+  return kind === 'zombies' ? styles.hostSumDanger : styles.hostSumWarn;
+};
+
+function HostProcessSum({
+  blocked,
+  zombies
+}: {
+  blocked: number | null;
+  zombies: number | null;
+}) {
+  const cells: { key: 'blocked' | 'zombies'; label: string; value: number | null }[] = [
+    { key: 'blocked', label: '阻塞', value: hostCount(blocked) },
+    { key: 'zombies', label: '僵尸', value: hostCount(zombies) }
+  ];
+  return (
+    <div className={styles.hostSum} aria-label="主机合计进程状态">
+      <span className={styles.hostSumLabel}>主机合计</span>
+      {cells.map((cell) => (
+        <span key={cell.key} className={`${styles.hostSumCell} ${hostSumTone(cell.key, cell.value)}`}>
+          <span className={styles.hostSumKey}>{cell.label}</span>
+          <span className={styles.hostSumNum}>{cell.value == null ? '--' : cell.value}</span>
+          {cell.value != null ? <span className={styles.hostSumUnit}>个</span> : null}
+        </span>
+      ))}
+      <span className={styles.hostSumNote}>整机状态 · 非选中进程</span>
+    </div>
+  );
+}
+
 export default function FlatProcessSplit({
   rows,
   loading,
@@ -62,17 +98,6 @@ export default function FlatProcessSplit({
     return next;
   }, [loading, sorted]);
 
-  const sumRows = (key: string) => {
-    let total = 0;
-    let seen = false;
-    sorted.forEach((row) => {
-      const value = numberOrNull(row.values[key]);
-      if (value == null) return;
-      total += value;
-      seen = true;
-    });
-    return seen ? total : null;
-  };
   // trend 批次未齐时不把缺序列当成「无数据」；齐了仍缺则显示 --（不可采集），不造假数。
   const statusMetricsSettled = Boolean(
     metrics && (
@@ -84,13 +109,13 @@ export default function FlatProcessSplit({
     )
   );
   const statusPending = !statusMetricsSettled && (metricsLoading || Object.keys(metrics || {}).length > 0);
+  const blocked = statusPending ? null : latestPreferCount(metrics?.processes_blocked);
+  const zombies = statusPending ? null : latestPreferCount(metrics?.processes_zombies);
   const statusItems = processStatusView({
-    blocked: statusPending ? null : latestPreferCount(metrics?.processes_blocked),
-    zombies: statusPending ? null : latestPreferCount(metrics?.processes_zombies),
+    blocked,
+    zombies,
     running: statusPending ? null : latestPreferCount(metrics?.processes_running),
-    sleeping: statusPending ? null : latestPreferCount(metrics?.processes_sleeping),
-    threads: loading || statusPending ? null : sumRows('process_num_threads'),
-    fds: loading || statusPending ? null : sumRows('process_num_fds')
+    sleeping: statusPending ? null : latestPreferCount(metrics?.processes_sleeping)
   }, { settled: !statusPending && !loading });
 
   return (
@@ -104,7 +129,6 @@ export default function FlatProcessSplit({
         <ThinTimeSeries
           key={selected?.key || 'none'}
           title={name ? `CPU / 内存 · ${name}` : 'CPU / 内存'}
-          reading={`${formatPercent(cpu)} / ${formatPercent(mem)}`}
           loading={loading}
           unit="percent"
           data={pointsToChartData([
@@ -112,8 +136,8 @@ export default function FlatProcessSplit({
             { points: selected?.series.process_mem_usage || [] }
           ])}
           legends={[
-            { label: 'CPU', color: HOST_PALETTE.emerald },
-            { label: '内存', color: HOST_PALETTE.blue }
+            { label: 'CPU', color: HOST_PALETTE.emerald, reading: formatPercent(cpu) },
+            { label: '内存', color: HOST_PALETTE.blue, reading: formatPercent(mem) }
           ]}
         />
         <section className={`${classic.panel} ${styles.currentCard}`}>
@@ -146,6 +170,7 @@ export default function FlatProcessSplit({
         selectedKey={selected?.key || ''}
         onSelect={onSelect}
         emptyText="暂无进程数据"
+        banner={<HostProcessSum blocked={blocked} zombies={zombies} />}
       />
     </>
   );

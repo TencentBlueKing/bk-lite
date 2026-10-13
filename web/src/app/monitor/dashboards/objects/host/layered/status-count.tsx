@@ -1,10 +1,14 @@
 'use client';
 
 import React from 'react';
+import { Tooltip } from 'antd';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
 export type ProcessStatusTone = 'calm' | 'warning' | 'danger' | 'neutral';
+
+/** 休眠卡悬浮说明。指标描述表没有这句 Linux/Windows 语义，按产品口径写在这里。 */
+export const SLEEPING_STATUS_HINT = '休眠：Linux 多为可中断睡眠(S)，含等待 I/O；Windows 为等待态。';
 
 export interface StatusCountItem {
   key: string;
@@ -12,6 +16,7 @@ export interface StatusCountItem {
   /** 整数。没有读数时为 null，卡上显示 --。 */
   value: number | null;
   tone: ProcessStatusTone;
+  hint?: string;
 }
 
 export interface ProcessStatusCounts {
@@ -19,10 +24,6 @@ export interface ProcessStatusCounts {
   zombies: number | null;
   running: number | null;
   sleeping: number | null;
-  /** 进程表 procstat 线程数合计。 */
-  threads: number | null;
-  /** 进程表 procstat 打开文件数合计。 */
-  fds: number | null;
 }
 
 const TONE_CLASS: Record<ProcessStatusTone, string> = {
@@ -51,16 +52,22 @@ const semanticItem = (
   return { key, label, value, tone };
 };
 
-const neutralItem = (key: string, label: string, value: number | null): StatusCountItem => ({
+const neutralItem = (
+  key: string,
+  label: string,
+  value: number | null,
+  hint?: string
+): StatusCountItem => ({
   key,
   label,
   value,
-  tone: 'neutral'
+  tone: 'neutral',
+  hint
 });
 
 /**
- * 固定七张卡铺满一行。进程总数是运行中/休眠/阻塞/僵尸之和；
- * 线程、句柄来自进程表合计。
+ * 固定五张卡铺满一行：运行中、休眠、阻塞、僵尸、进程总数。
+ * 进程总数是前四项之和。句柄、线程不进状态卡。
  * settled=false 时缺读数仍占位显示 --；settled=true 且某卡不可采集时仍占位 --（不造假数、不画箭头）。
  */
 export const processStatusView = (
@@ -78,12 +85,10 @@ export const processStatusView = (
     : null;
   return [
     neutralItem('running', '运行中', running),
-    neutralItem('sleeping', '休眠', sleeping),
+    neutralItem('sleeping', '休眠', sleeping, SLEEPING_STATUS_HINT),
     semanticItem('blocked', '阻塞', blocked, true),
     semanticItem('zombies', '僵尸', zombies, true),
-    neutralItem('total', '进程总数', total),
-    neutralItem('threads', '线程', roundCount(counts.threads)),
-    neutralItem('fds', '句柄', roundCount(counts.fds))
+    neutralItem('total', '进程总数', total)
   ].filter((item): item is StatusCountItem => item != null);
 };
 
@@ -100,15 +105,23 @@ export default function StatusCountRow({
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>进程状态</div>
       </div>
       <div className={styles.statusCards}>
-        {items.map((item) => (
-          <div key={item.key} className={`${styles.statusCard} ${TONE_CLASS[item.tone]}`}>
-            <span className={styles.statusLabel}>{item.label}</span>
-            <span className={styles.statusValueRow}>
-              <span className={styles.statusValue}>{item.value == null ? '--' : item.value}</span>
-              {item.value != null ? <span className={styles.statusUnit}>个</span> : null}
-            </span>
-          </div>
-        ))}
+        {items.map((item) => {
+          const card = (
+            <div className={`${styles.statusCard} ${TONE_CLASS[item.tone]}`}>
+              <span className={item.hint ? styles.statusHint : styles.statusLabel}>{item.label}</span>
+              <span className={styles.statusValueRow}>
+                <span className={styles.statusValue}>{item.value == null ? '--' : item.value}</span>
+                {item.value != null ? <span className={styles.statusUnit}>个</span> : null}
+              </span>
+            </div>
+          );
+          if (!item.hint) return <React.Fragment key={item.key}>{card}</React.Fragment>;
+          return (
+            <Tooltip key={item.key} title={item.hint}>
+              {card}
+            </Tooltip>
+          );
+        })}
       </div>
     </section>
   );

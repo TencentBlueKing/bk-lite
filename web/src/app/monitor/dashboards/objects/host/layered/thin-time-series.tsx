@@ -15,6 +15,9 @@ export interface ThinLegend {
   label: string;
   color: string;
   dashed?: boolean;
+  /** 紧跟维度名的当前读数，例如「CPU 14.1%」「load1 0.88」。 */
+  reading?: string;
+  readingTone?: string;
 }
 
 export interface ThinReferenceLine {
@@ -175,7 +178,7 @@ export default function ThinTimeSeries({
             {reading}
           </div>
         ) : null}
-        {legendItems.length > 1 ? (
+        {legendItems.length > 1 || legendItems.some((item) => item.reading) ? (
           <div className={styles.chartLegend}>
             {legendItems.map((item) => (
               <span key={item.label}>
@@ -184,6 +187,14 @@ export default function ThinTimeSeries({
                   style={item.dashed ? { borderTopColor: item.color } : { background: item.color }}
                 />
                 {item.label}
+                {item.reading ? (
+                  <span
+                    className={styles.legendReading}
+                    style={item.readingTone ? { color: item.readingTone } : undefined}
+                  >
+                    {item.reading}
+                  </span>
+                ) : null}
               </span>
             ))}
           </div>

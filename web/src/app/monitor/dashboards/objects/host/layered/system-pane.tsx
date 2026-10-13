@@ -82,8 +82,8 @@ export default function SystemPane({
     : null;
   const swapNow = swapRaw == null ? null : Math.min(100, Math.max(0, swapRaw));
   const instantCards = [
-    { key: 'cpu', label: 'CPU 使用', ...splitMetric(cpuNow, 'percent') },
-    { key: 'mem', label: '内存已用', ...splitMetric(memNow, 'percent') },
+    { key: 'cpu', label: 'CPU', ...splitMetric(cpuNow, 'percent') },
+    { key: 'mem', label: '内存', ...splitMetric(memNow, 'percent') },
     { key: 'avail', label: '可用内存', ...splitMetric(availNow, 'bytes') },
     { key: 'swap', label: '交换已用', ...splitMetric(swapNow, 'percent') },
     {
@@ -93,10 +93,11 @@ export default function SystemPane({
       unit: ''
     }
   ];
+  const loadHot = load != null && cores != null && cores > 0 && load > cores;
   const charts = [
     <ThinTimeSeries
       key="cpu"
-      title={breakdown.length ? 'CPU 使用（user/system/iowait）' : 'CPU 使用率'}
+      title="CPU使用率"
       loading={loading}
       unit="percent"
       data={mergeChartSeries(cpuItems.map((item) => ({
@@ -104,7 +105,33 @@ export default function SystemPane({
         label: item.label,
         data: metrics[item.key]?.viewData || []
       })))}
-      legends={cpuItems.map((item) => ({ label: item.label, color: item.color }))}
+      legends={cpuItems.map((item) => {
+        const value = latestNumber(metrics[item.key]);
+        return {
+          label: item.label,
+          color: item.color,
+          reading: value == null ? undefined : formatPercent(value)
+        };
+      })}
+    />,
+    <ThinTimeSeries
+      key="mem"
+      title="内存使用率"
+      loading={loading}
+      unit="percent"
+      data={mergeChartSeries(memItems.map((item) => ({
+        key: item.key,
+        label: item.label,
+        data: item.data
+      })))}
+      legends={memItems.map((item) => {
+        const value = item.key === 'used' ? used : availLatest;
+        return {
+          label: item.label,
+          color: item.color,
+          reading: value == null ? undefined : formatPercent(value)
+        };
+      })}
     />,
     loadItems.length ? (
       <ThinTimeSeries
@@ -112,8 +139,6 @@ export default function SystemPane({
         title="系统负载"
         loading={loading}
         unit="none"
-        reading={load == null ? undefined : formatPlain(load)}
-        readingTone={load != null && cores != null && cores > 0 && load > cores ? 'var(--color-warning)' : undefined}
         reference={cores != null && cores > 0 ? {
           value: cores,
           label: `核数（${Math.round(cores)}）`,
@@ -124,32 +149,24 @@ export default function SystemPane({
           label: item.label,
           data: metrics[item.key]?.viewData || []
         })))}
-        legends={loadItems.map((item) => ({ label: item.label, color: item.color }))}
+        legends={loadItems.map((item) => {
+          const value = latestNumber(metrics[item.key]);
+          return {
+            label: item.label,
+            color: item.color,
+            reading: value == null ? undefined : formatPlain(value),
+            readingTone: item.key === 'system_load1' && loadHot ? 'var(--color-warning)' : undefined
+          };
+        })}
       />
-    ) : null,
-    <ThinTimeSeries
-      key="mem"
-      title="内存"
-      loading={loading}
-      unit="percent"
-      reading={[
-        used == null ? null : `已用 ${formatPercent(used)}`,
-        availLatest == null ? null : `可用 ${formatPercent(availLatest)}`
-      ].filter(Boolean).join(' · ') || undefined}
-      data={mergeChartSeries(memItems.map((item) => ({
-        key: item.key,
-        label: item.label,
-        data: item.data
-      })))}
-      legends={memItems.map((item) => ({ label: item.label, color: item.color }))}
-    />
+    ) : null
   ].filter(Boolean);
   const gridClass = charts.length >= 3 ? styles.chartGrid3 : charts.length === 2 ? styles.chartGrid2 : styles.chartGrid;
 
   return (
     <>
       <div className={styles.sectionHead}>
-        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>性能</div>
+        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>关键指标</div>
       </div>
       <div className={styles.instantKpiRow}>
         {instantCards.map((card) => (
@@ -161,6 +178,9 @@ export default function SystemPane({
             </div>
           </section>
         ))}
+      </div>
+      <div className={styles.sectionHead}>
+        <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>本机趋势</div>
       </div>
       <div className={gridClass}>{charts}</div>
     </>

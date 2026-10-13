@@ -240,7 +240,7 @@ export default function OverviewPane({
       </div>
       <div className={styles.chartGrid4}>
         <ThinTimeSeries
-          title="CPU 使用率"
+          title="CPU使用率"
           reading={formatPercent(cpu)}
           readingTone={percentTone(cpu)}
           loading={loading}
