@@ -15,42 +15,6 @@ const numberOrNull = (value: number | null | undefined) => (
   value == null || !Number.isFinite(value) ? null : value
 );
 
-const hostCount = (value: number | null) => (
-  value == null || !Number.isFinite(value) ? null : Math.round(value)
-);
-
-const hostSumTone = (kind: 'blocked' | 'zombies', value: number | null) => {
-  if (value == null) return '';
-  if (value <= 0) return styles.hostSumCalm;
-  return kind === 'zombies' ? styles.hostSumDanger : styles.hostSumWarn;
-};
-
-function HostProcessSum({
-  blocked,
-  zombies
-}: {
-  blocked: number | null;
-  zombies: number | null;
-}) {
-  const cells: { key: 'blocked' | 'zombies'; label: string; value: number | null }[] = [
-    { key: 'blocked', label: '阻塞', value: hostCount(blocked) },
-    { key: 'zombies', label: '僵尸', value: hostCount(zombies) }
-  ];
-  return (
-    <div className={styles.hostSum} aria-label="主机合计进程状态">
-      <span className={styles.hostSumLabel}>主机合计</span>
-      {cells.map((cell) => (
-        <span key={cell.key} className={`${styles.hostSumCell} ${hostSumTone(cell.key, cell.value)}`}>
-          <span className={styles.hostSumKey}>{cell.label}</span>
-          <span className={styles.hostSumNum}>{cell.value == null ? '--' : cell.value}</span>
-          {cell.value != null ? <span className={styles.hostSumUnit}>个</span> : null}
-        </span>
-      ))}
-      <span className={styles.hostSumNote}>整机状态 · 非选中进程</span>
-    </div>
-  );
-}
-
 export default function FlatProcessSplit({
   rows,
   loading,
@@ -170,7 +134,6 @@ export default function FlatProcessSplit({
         selectedKey={selected?.key || ''}
         onSelect={onSelect}
         emptyText="暂无进程数据"
-        banner={<HostProcessSum blocked={blocked} zombies={zombies} />}
       />
     </>
   );

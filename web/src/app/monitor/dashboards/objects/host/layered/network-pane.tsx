@@ -49,8 +49,8 @@ export default function NetworkPane({
   const errLatest = selected?.values.err ?? null;
   const dropLatest = selected?.values.drop ?? null;
   const errorSeries = [
-    ...(hasErr ? [{ points: selected?.series.err || [], label: '错误', color: HOST_PALETTE.rose }] : []),
-    ...(hasDrop ? [{ points: selected?.series.drop || [], label: '丢包', color: HOST_PALETTE.orange }] : [])
+    ...(hasErr ? [{ points: selected?.series.err || [], label: '错误', color: HOST_PALETTE.rose, latest: errLatest }] : []),
+    ...(hasDrop ? [{ points: selected?.series.drop || [], label: '丢包', color: HOST_PALETTE.orange, latest: dropLatest }] : [])
   ];
 
   return (
@@ -64,30 +64,39 @@ export default function NetworkPane({
         <ThinTimeSeries
           key={`in-${selected?.key || 'none'}`}
           title={name ? `入流量 · ${name}` : '入流量'}
-          reading={formatUnit(selected?.values.net_bytes_recv_rate ?? null, 'byteps')}
           loading={loading}
           unit="byteps"
           data={pointsToChartData([{ points: selected?.series.net_bytes_recv_rate || [] }])}
-          legends={[{ label: '入', color: HOST_PALETTE.blue }]}
+          legends={[{
+            label: '入',
+            color: HOST_PALETTE.blue,
+            reading: formatUnit(selected?.values.net_bytes_recv_rate ?? null, 'byteps')
+          }]}
         />
         <ThinTimeSeries
           key={`out-${selected?.key || 'none'}`}
           title={name ? `出流量 · ${name}` : '出流量'}
-          reading={formatUnit(selected?.values.net_bytes_sent_rate ?? null, 'byteps')}
           loading={loading}
           unit="byteps"
           data={pointsToChartData([{ points: selected?.series.net_bytes_sent_rate || [] }])}
-          legends={[{ label: '出', color: HOST_PALETTE.cyan }]}
+          legends={[{
+            label: '出',
+            color: HOST_PALETTE.cyan,
+            reading: formatUnit(selected?.values.net_bytes_sent_rate ?? null, 'byteps')
+          }]}
         />
         {showErrors ? (
           <ThinTimeSeries
             key={`err-${selected?.key || 'none'}`}
             title={name ? `错误 / 丢包 · ${name}` : '错误 / 丢包'}
-            reading={`${formatUnit(errLatest, 'cps')} / ${formatUnit(dropLatest, 'cps')}`}
             loading={loading}
             unit="cps"
             data={pointsToChartData(errorSeries)}
-            legends={errorSeries.map((item) => ({ label: item.label, color: item.color }))}
+            legends={errorSeries.map((item) => ({
+              label: item.label,
+              color: item.color,
+              reading: formatUnit(item.latest, 'cps')
+            }))}
           />
         ) : null}
       </div>

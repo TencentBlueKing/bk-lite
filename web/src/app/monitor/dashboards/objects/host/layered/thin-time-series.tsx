@@ -172,12 +172,14 @@ export default function ThinTimeSeries({
   return (
     <section className={`${classic.panel} ${styles.chartPanel}`}>
       <div className={styles.chartHead}>
-        <div className={styles.chartTitle}>{title}</div>
-        {reading ? (
-          <div className={styles.chartReading} style={readingTone ? { color: readingTone } : undefined}>
-            {reading}
-          </div>
-        ) : null}
+        <div className={styles.chartTitleGroup}>
+          <div className={styles.chartTitle}>{title}</div>
+          {reading ? (
+            <div className={styles.chartReading} style={readingTone ? { color: readingTone } : undefined}>
+              {reading}
+            </div>
+          ) : null}
+        </div>
         {legendItems.length > 1 || legendItems.some((item) => item.reading) ? (
           <div className={styles.chartLegend}>
             {legendItems.map((item) => (

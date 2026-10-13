@@ -269,7 +269,6 @@ export default function OverviewPane({
         />
         <ThinTimeSeries
           title="网络吞吐 · 入/出"
-          reading={`${formatUnit(netIn, 'byteps')} / ${formatUnit(netOut, 'byteps')}`}
           loading={loading}
           unit="byteps"
           data={mergeChartSeries([
@@ -277,8 +276,8 @@ export default function OverviewPane({
             { key: 'out', label: '出', data: metrics.net_bytes_sent_rate?.viewData || [] }
           ])}
           legends={[
-            { label: '入', color: HOST_PALETTE.blue },
-            { label: '出', color: HOST_PALETTE.cyan }
+            { label: '入', color: HOST_PALETTE.blue, reading: formatUnit(netIn, 'byteps') },
+            { label: '出', color: HOST_PALETTE.cyan, reading: formatUnit(netOut, 'byteps') }
           ]}
         />
       </div>

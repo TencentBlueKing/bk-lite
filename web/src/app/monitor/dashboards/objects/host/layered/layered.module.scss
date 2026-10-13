@@ -270,6 +270,14 @@
   margin-bottom: 8px;
 }
 
+.chartTitleGroup {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .chartTitle {
   min-width: 0;
   font-size: 13px;
@@ -288,6 +296,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
+  margin-left: auto;
   font-size: 12px;
   color: var(--color-text-3);
 }
@@ -297,92 +306,6 @@
   font-weight: 650;
   font-variant-numeric: tabular-nums;
   color: var(--color-text-1);
-}
-
-.hostSum {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  position: relative;
-  min-height: 36px;
-  padding: 8px 12px 8px 16px;
-  background: var(--color-fill-1);
-  border-bottom: 1px solid var(--color-border);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-.hostSum::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 3px;
-  background: var(--color-primary);
-}
-
-.hostSumLabel {
-  font-weight: 650;
-  color: var(--color-text-2);
-}
-
-.hostSumCell {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 4px;
-  padding: 2px 8px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-}
-
-.hostSumKey {
-  font-weight: 500;
-  color: var(--color-text-3);
-}
-
-.hostSumNum {
-  font-size: 13px;
-  font-weight: 650;
-  color: var(--color-text-1);
-}
-
-.hostSumUnit {
-  font-size: 11px;
-  color: var(--color-text-3);
-}
-
-.hostSumCalm .hostSumNum,
-.hostSumCalm .hostSumUnit {
-  color: var(--color-success);
-}
-
-.hostSumWarn {
-  background: color-mix(in srgb, var(--color-warning) 12%, var(--color-bg));
-  border-color: color-mix(in srgb, var(--color-warning) 45%, var(--color-border));
-}
-
-.hostSumWarn .hostSumKey,
-.hostSumWarn .hostSumNum,
-.hostSumWarn .hostSumUnit {
-  color: var(--color-warning);
-}
-
-.hostSumDanger {
-  background: color-mix(in srgb, var(--color-fail) 12%, var(--color-bg));
-  border-color: color-mix(in srgb, var(--color-fail) 40%, var(--color-border));
-}
-
-.hostSumDanger .hostSumKey,
-.hostSumDanger .hostSumNum,
-.hostSumDanger .hostSumUnit {
-  color: var(--color-fail);
-}
-
-.hostSumNote {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--color-text-3);
 }
 
 .legendSwatch {
@@ -662,10 +585,5 @@
 
   .statusCards {
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  }
-
-  .hostSum {
-    flex-wrap: wrap;
-    gap: 8px 12px;
   }
 }

@@ -39,8 +39,7 @@ export default function LayeredEntityTable({
   loading,
   selectedKey,
   onSelect,
-  emptyText = '暂无数据',
-  banner
+  emptyText = '暂无数据'
 }: {
   rows: EntityTableRow[];
   columns: LayeredColumn[];
@@ -48,7 +47,6 @@ export default function LayeredEntityTable({
   selectedKey: string;
   onSelect: (key: string) => void;
   emptyText?: string;
-  banner?: React.ReactNode;
 }) {
   const tableColumns: ColumnsType<EntityTableRow> = columns.map((column) => ({
     title: column.title,
@@ -85,7 +83,6 @@ export default function LayeredEntityTable({
 
   return (
     <div className={`${classic.panel} ${styles.tableWrap}`}>
-      {banner}
       <Table<EntityTableRow>
         size="small"
         rowKey="key"
