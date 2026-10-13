@@ -250,6 +250,28 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_cannot_list_other_org_nodes",
         "apps.node_mgmt.tests.test_openapi_gateway::test_nodes_forged_team_is_rejected",
     ],
+    "node/packages": [
+        "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_can_list_packages",
+    ],
+    "node/controllers/install": [
+        "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_can_install_controller_for_own_node",
+        "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_cannot_install_controller_on_other_org_node",
+    ],
+    "node/controllers/install-command": [
+        "apps.node_mgmt.tests.test_openapi_gateway::test_install_command_forged_team_is_rejected",
+    ],
+    "node/install-tasks": [
+        "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_cannot_read_other_org_install_task",
+    ],
+    "node/collectors/install": [
+        "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_can_install_collector_on_own_node",
+    ],
+    "node/collectors/operate": [
+        "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_cannot_operate_other_org_collector",
+    ],
+    "node/configurations/bind": [
+        "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_can_bind_configuration_on_own_node",
+    ],
     "node/nodes/detail": [
         "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_can_read_own_node_detail",
         "apps.node_mgmt.tests.test_openapi_gateway::test_api_tenant_cannot_read_other_org_node_detail",

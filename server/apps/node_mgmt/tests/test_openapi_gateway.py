@@ -10,6 +10,11 @@ from rest_framework.test import APIClient
 
 from apps.base.models import User, UserAPISecret
 from apps.node_mgmt.models import CloudRegion, Collector, Node, NodeComponentVersion, NodeOrganization
+from apps.node_mgmt.models.installer import ControllerTask, ControllerTaskNode
+from apps.node_mgmt.models.package import PackageVersion
+from apps.node_mgmt.serializers.installer import ControllerInstallRequestSerializer
+from apps.node_mgmt.services.installer import InstallerService
+from apps.node_mgmt.services.node import NodeService
 from apps.node_mgmt.openapi_serializers import NodeListQuerySerializer
 from apps.system_mgmt.models import Group, Menu, Role
 from apps.system_mgmt.models import User as SystemUser
@@ -19,6 +24,13 @@ pytestmark = [pytest.mark.integration, pytest.mark.django_db]
 REGIONS_URL = "/openapi/v1/node/cloud-regions"
 NODES_URL = "/openapi/v1/node/nodes"
 DETAIL_URL = "/openapi/v1/node/nodes/detail"
+PACKAGES_URL = "/openapi/v1/node/packages"
+INSTALL_URL = "/openapi/v1/node/controllers/install"
+COMMAND_URL = "/openapi/v1/node/controllers/install-command"
+TASKS_URL = "/openapi/v1/node/install-tasks"
+COLLECTOR_INSTALL_URL = "/openapi/v1/node/collectors/install"
+OPERATE_URL = "/openapi/v1/node/collectors/operate"
+BIND_URL = "/openapi/v1/node/configurations/bind"
 
 
 def _auth(token):
@@ -26,7 +38,13 @@ def _auth(token):
 
 
 def _grant(system_user):
-    names = ["cloud_region_list-View", "cloud_region_node-View"]
+    names = [
+        "cloud_region_list-View",
+        "cloud_region_node-View",
+        "cloud_region_node-Edit",
+        "cloud_region_node-OperateCollector",
+        "cloud_region_node-EditMainConfiguration",
+    ]
     menu_ids = []
     for name in names:
         menu, _ = Menu.objects.get_or_create(
@@ -212,3 +230,185 @@ def test_stale_heartbeat_is_offline(tenants):
     assert response.status_code == 200, response.json()
     item = next(row for row in response.json()["data"]["items"] if row["id"] == node.id)
     assert item["online"] is False
+
+
+def test_api_tenant_can_list_packages(tenants):
+    package = PackageVersion.objects.create(
+        type="controller",
+        os="linux",
+        object="fusion-collector",
+        version=uuid.uuid4().hex[:8],
+        name="controller",
+    )
+
+    response = APIClient().get(PACKAGES_URL, {"package_type": "controller"}, **_auth(tenants.a.token))
+
+    assert response.status_code == 200, response.json()
+    assert package.id in {item["id"] for item in response.json()["data"]["items"]}
+    assert "sha256" not in response.json()["data"]["items"][0]
+
+
+def test_api_tenant_cannot_install_controller_on_other_org_node(tenants, monkeypatch):
+    region = _region()
+    node = _node(region, name="other", organization=tenants.b.team.id)
+    called = {"value": False}
+
+    def _install(*args, **kwargs):
+        called["value"] = True
+        return 1
+
+    monkeypatch.setattr(InstallerService, "install_controller", staticmethod(_install))
+    response = APIClient().post(
+        INSTALL_URL,
+        {
+            "cloud_region_id": region.id,
+            "work_node": "work",
+            "package_id": 1,
+            "cpu_architecture": "x86_64",
+            "nodes": [{"ip": "10.1.1.8", "node_id": node.id, "username": "root", "password": "secret-pass"}],
+        },
+        format="json",
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["message"] == "节点不存在"
+    assert called["value"] is False
+    assert "secret-pass" not in response.content.decode()
+
+
+def test_api_tenant_can_install_controller_for_own_node(tenants, monkeypatch):
+    region = _region()
+    node = _node(region, name="own", organization=tenants.a.team.id)
+
+    def _valid(self, raise_exception=False):
+        self._validated_data = {
+            "cloud_region_id": region.id,
+            "work_node": "work",
+            "package_id": 1,
+            "cpu_architecture": "x86_64",
+            "nodes": [{"ip": "10.1.1.9", "node_id": node.id, "organizations": [tenants.a.team.id]}],
+        }
+        return True
+
+    monkeypatch.setattr(ControllerInstallRequestSerializer, "is_valid", _valid)
+    monkeypatch.setattr(InstallerService, "install_controller", staticmethod(lambda *args, **kwargs: 41))
+    monkeypatch.setattr("apps.node_mgmt.tasks.installer.install_controller", SimpleNamespace(delay=lambda task_id: None))
+    response = APIClient().post(
+        INSTALL_URL,
+        {
+            "cloud_region_id": region.id,
+            "work_node": "work",
+            "package_id": 1,
+            "cpu_architecture": "x86_64",
+            "nodes": [{"ip": "10.1.1.9", "node_id": node.id, "username": "root", "password": "secret-pass"}],
+        },
+        format="json",
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["data"] == {"task_id": 41}
+    assert "secret-pass" not in response.content.decode()
+
+
+def test_install_command_forged_team_is_rejected(tenants):
+    response = APIClient().post(
+        COMMAND_URL,
+        {
+            "ip": "10.0.0.1",
+            "node_id": "node-1",
+            "os": "linux",
+            "cpu_architecture": "x86_64",
+            "package_id": 1,
+            "cloud_region_id": 1,
+            "team": 9,
+        },
+        format="json",
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "SCHEMA_INVALID"
+
+
+def test_api_tenant_cannot_read_other_org_install_task(tenants):
+    region = _region()
+    node = _node(region, name="other", organization=tenants.b.team.id)
+    task = ControllerTask.objects.create(cloud_region=region, type="install", status="waiting")
+    ControllerTaskNode.objects.create(
+        task=task,
+        node_id=node.id,
+        ip=node.ip,
+        os="linux",
+        organizations=[tenants.b.team.id],
+        port=22,
+        username="root",
+        password="secret-pass",
+    )
+
+    response = APIClient().get(TASKS_URL, {"task_type": "controller", "task_id": task.id}, **_auth(tenants.a.token))
+
+    assert response.status_code == 400
+    assert response.json()["message"] == "任务不存在"
+    assert "secret-pass" not in response.content.decode()
+
+
+def test_api_tenant_can_install_collector_on_own_node(tenants, monkeypatch):
+    region = _region()
+    node = _node(region, name="own", organization=tenants.a.team.id)
+    monkeypatch.setattr(InstallerService, "install_collector", staticmethod(lambda package_id, nodes: 7))
+    monkeypatch.setattr("apps.node_mgmt.tasks.installer.install_collector", SimpleNamespace(delay=lambda task_id: None))
+
+    response = APIClient().post(
+        COLLECTOR_INSTALL_URL,
+        {"package_id": 3, "node_ids": [node.id]},
+        format="json",
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["data"]["task_id"] == 7
+
+
+def test_api_tenant_cannot_operate_other_org_collector(tenants, monkeypatch):
+    region = _region()
+    node = _node(region, name="other", organization=tenants.b.team.id)
+    called = {"value": False}
+
+    def _operate(*args, **kwargs):
+        called["value"] = True
+        return 1
+
+    monkeypatch.setattr(NodeService, "batch_operate_node_collector", staticmethod(_operate))
+    response = APIClient().post(
+        OPERATE_URL,
+        {"node_ids": [node.id], "collector_id": "telegraf", "operation": "stop"},
+        format="json",
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["message"] == "节点不存在"
+    assert called["value"] is False
+
+
+def test_api_tenant_can_bind_configuration_on_own_node(tenants, monkeypatch):
+    region = _region()
+    node = _node(region, name="own", organization=tenants.a.team.id)
+    seen = {}
+
+    def _bind(node_ids, configuration_id):
+        seen["node_ids"] = node_ids
+        return True, "ok"
+
+    monkeypatch.setattr(NodeService, "batch_binding_node_configuration", staticmethod(_bind))
+    response = APIClient().post(
+        BIND_URL,
+        {"node_ids": [node.id], "collector_configuration_id": "cfg-1"},
+        format="json",
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 200, response.json()
+    assert seen["node_ids"] == [node.id]
