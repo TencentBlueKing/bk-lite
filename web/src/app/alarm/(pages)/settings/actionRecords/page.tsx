@@ -2,7 +2,8 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import CustomTable from '@/components/custom-table';
-import Introduction from '@/components/introduction';
+import TopSection from '@/components/top-section';
+import ToolbarSplitShell from '@/components/toolbar-split-shell';
 import { ActionExecutionItem } from '@/app/alarm/types/settings';
 import { useSettingApi } from '@/app/alarm/api/settings';
 import { Select, Tag } from 'antd';
@@ -173,21 +174,22 @@ const ActionRecords: React.FC = () => {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col">
-      <Introduction
+      <TopSection
+        className="mb-4"
         title={t('settings.actionRecordsTitle')}
-        message={t('settings.actionRecordsTitle')}
+        content={t('settings.actionRecordsTitle')}
       />
-      <div className="oid-library-container flex min-h-0 flex-1 flex-col rounded-lg bg-[var(--color-bg-1)] p-4 shadow">
-        <div className="nav-box mb-[20px] flex shrink-0 justify-between">
-          <div className="flex items-center">
+      <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] p-4">
+        <ToolbarSplitShell
+          trailing={(
             <Select
-              style={{ width: 160 }}
+              className="w-40"
               value={statusFilter ?? ''}
               options={statusOptions}
               onChange={handleStatusChange}
             />
-          </div>
-        </div>
+          )}
+        />
         <div className="min-h-0 flex-1 overflow-hidden">
           <CustomTable
             size="middle"
