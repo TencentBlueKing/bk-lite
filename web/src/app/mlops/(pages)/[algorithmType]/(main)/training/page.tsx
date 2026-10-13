@@ -5,10 +5,11 @@ import { useLocalizedTime } from "@/hooks/useLocalizedTime";
 import useMlopsTaskApi from '@/app/mlops/api/task';
 import useMlopsManageApi from '@/app/mlops/api/manage';
 import { Button, Input, Popconfirm, message, Tag, Modal } from 'antd';
-import { ReloadOutlined } from '@ant-design/icons';
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import PermissionWrapper from '@/components/permission';
+import ToolbarSplitShell from '@/components/toolbar-split-shell';
 import TrainTaskModal from '@/app/mlops/components/TrainTaskModal';
 import TrainTaskDrawer from '@/app/mlops/components/TrainTaskDrawer';
 import { useTranslation } from '@/utils/i18n';
@@ -373,31 +374,34 @@ const TrainingPage = () => {
 
   return (
     <>
-      <div className="flex justify-between items-center mb-4 gap-2">
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          <Tag color="blue" className="shrink-0">
-            {t(ALGORITHM_TYPE_I18N_KEYS[algorithmType] || algorithmType)}
-          </Tag>
-          <EllipsisWithTooltip className="w-full overflow-hidden text-ellipsis whitespace-nowrap" text={t('traintask.pageDescription')} />
-        </div>
-        <div className="flex items-center shrink-0">
-          <Search
-            className="w-60 mr-1.5"
-            placeholder={t('traintask.searchText')}
-            enterButton
-            onSearch={onSearch}
-            style={{ fontSize: 15 }}
-          />
-          <PermissionWrapper requiredPermissions={['Add']}>
-            <Button type="primary" className="rounded-md text-xs shadow mr-2" onClick={() => handleAdd()}>
-              {t('common.add')}
-            </Button>
-          </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['View']}>
-            <ReloadOutlined onClick={onRefresh} />
-          </PermissionWrapper>
-        </div>
-      </div>
+      <ToolbarSplitShell
+        leading={(
+          <div className="flex min-w-0 items-center gap-2">
+            <Tag color="blue" className="shrink-0">
+              {t(ALGORITHM_TYPE_I18N_KEYS[algorithmType] || algorithmType)}
+            </Tag>
+            <EllipsisWithTooltip className="w-full overflow-hidden text-ellipsis whitespace-nowrap" text={t('traintask.pageDescription')} />
+          </div>
+        )}
+        trailing={(
+          <>
+            <Search
+              className="w-60"
+              placeholder={t('traintask.searchText')}
+              enterButton
+              onSearch={onSearch}
+            />
+            <PermissionWrapper requiredPermissions={['View']}>
+              <Button aria-label={t('common.refresh', '刷新')} icon={<ReloadOutlined />} onClick={onRefresh} />
+            </PermissionWrapper>
+            <PermissionWrapper requiredPermissions={['Add']}>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => handleAdd()}>
+                {t('common.new')}
+              </Button>
+            </PermissionWrapper>
+          </>
+        )}
+      />
       <div className="flex-1 relative">
         <div className='absolute w-full'>
           <CustomTable
