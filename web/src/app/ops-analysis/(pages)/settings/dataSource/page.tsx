@@ -3,10 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import type { TablePaginationConfig } from 'antd/es/table';
 import OperateModal from './operateModal';
-import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
-import { Button, Input, Card, message, Modal, Space, Tag } from 'antd';
-import { SearchOutlined, UploadOutlined } from '@ant-design/icons';
+import { Button, message, Modal, Space, Tag } from 'antd';
+import { PlusOutlined, UploadOutlined } from '@ant-design/icons';
+import OpsAnalysisSettingsListShell from '@/app/ops-analysis/components/ops-analysis-settings-list-shell';
 import { useTranslation } from '@/utils/i18n';
 import {
   DatasourceItem,
@@ -375,108 +375,86 @@ const Datasource: React.FC = () => {
   ];
 
   return (
-    <div className="flex flex-col w-full h-full bg-[var(--color-bg-1)]">
-      <Card
-        style={{
-          borderRadius: 0,
-          marginBottom: '16px',
-          paddingLeft: '12px',
-          borderLeftWidth: '0px',
-          borderTopWidth: '0px',
-        }}
-        styles={{
-          body: { padding: '16px' },
-        }}
-      >
-        <p className="font-extrabold text-base mb-2">
-          {t('dataSource.introTitle')}
-        </p>
-        <p className="text-sm text-[var(--color-text-2)]">
-          {t('dataSource.introMsg')}
-        </p>
-      </Card>
-      <div className="px-6 pb-0">
-        <div className="flex justify-between mb-[20px] gap-4">
-          <div className="flex min-w-0 flex-wrap items-center gap-3">
-            <Input
-              allowClear
-              prefix={<SearchOutlined style={{ color: 'var(--color-text-3)' }} />}
-              value={searchValue}
-              placeholder={t('dataSource.searchPlaceholder')}
-              style={{ width: 260 }}
-              onChange={(e) => setSearchValue(e.target.value)}
-              onPressEnter={(e) => handleFilter(e.currentTarget.value)}
-              onClear={() => {
-                setSearchValue('');
-                handleFilter('');
-              }}
-            />
-            <div className="flex flex-wrap items-center gap-2">
-              {sourceTypeFilterOptions.map((option) => {
-                const active = sourceTypeFilter === option.value;
-                return (
-                  <button
-                    key={option.value || 'all'}
-                    type="button"
-                    className={`inline-flex h-8 items-center rounded px-3 text-sm transition-all duration-150 select-none cursor-pointer ${
-                      active
-                        ? 'border border-[var(--color-primary)] bg-[var(--color-primary-bg)] text-[var(--color-primary)] font-medium shadow-[0_1px_2px_rgba(0,0,0,0.04)]'
-                        : 'border border-[var(--color-border-2)] bg-[var(--color-bg-1)] text-[var(--color-text-2)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] active:scale-[0.98]'
-                    }`}
-                    onClick={() => handleSourceTypeFilter(option.value)}
-                  >
-                    {option.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <Space>
-            <PermissionWrapper requiredPermissions={['Add']}>
-              <Button
-                icon={<UploadOutlined />}
-                onClick={() => setImportModalVisible(true)}
+    <OpsAnalysisSettingsListShell
+      introTitle={t('dataSource.introTitle')}
+      introDescription={t('dataSource.introMsg')}
+      searchValue={searchValue}
+      searchPlaceholder={t('dataSource.searchPlaceholder')}
+      onSearchValueChange={setSearchValue}
+      onSearch={(value) => handleFilter(value)}
+      onSearchClear={() => handleFilter('')}
+      filters={(
+        <div className="flex flex-wrap items-center gap-2">
+          {sourceTypeFilterOptions.map((option) => {
+            const active = sourceTypeFilter === option.value;
+            return (
+              <button
+                key={option.value || 'all'}
+                type="button"
+                className={`inline-flex h-8 items-center rounded px-3 text-sm transition-all duration-150 select-none cursor-pointer ${
+                  active
+                    ? 'border border-[var(--color-primary)] bg-[var(--color-primary-bg)] text-[var(--color-primary)] font-medium shadow-[0_1px_2px_rgba(0,0,0,0.04)]'
+                    : 'border border-[var(--color-border-2)] bg-[var(--color-bg-1)] text-[var(--color-text-2)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] active:scale-[0.98]'
+                }`}
+                onClick={() => handleSourceTypeFilter(option.value)}
               >
-                {t('common.import')}
-              </Button>
-            </PermissionWrapper>
-            <PermissionWrapper requiredPermissions={['Add']}>
-              <Button type="primary" onClick={() => handleEdit('add')}>
-                {t('common.addNew')}
-              </Button>
-            </PermissionWrapper>
-          </Space>
+                {option.label}
+              </button>
+            );
+          })}
         </div>
-        <CustomTable
-          size="middle"
-          rowKey="id"
-          columns={columns}
-          loading={loading}
-          dataSource={filteredList}
-          pagination={pagination}
-          onChange={handleTableChange}
-          scroll={{ y: 'calc(100vh - 430px)' }}
-        />
-        <OperateModal
-          open={modalVisible}
-          mode={modalMode}
-          currentRow={currentRow}
-          onClose={() => setModalVisible(false)}
-          onSuccess={async () => {
-            setModalVisible(false);
-            fetchDataSources();
-          }}
-        />
-        <ImportModal
-          visible={importModalVisible}
-          onCancel={() => setImportModalVisible(false)}
-          targetDirectoryId={null}
-          onSuccess={() => {
-            fetchDataSources();
-          }}
-        />
-      </div>
-    </div>
+      )}
+      actions={(
+        <Space>
+          <PermissionWrapper requiredPermissions={['Add']}>
+            <Button
+              icon={<UploadOutlined />}
+              onClick={() => setImportModalVisible(true)}
+            >
+              {t('common.import')}
+            </Button>
+          </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Add']}>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => handleEdit('add')}
+            >
+              {t('common.new')}
+            </Button>
+          </PermissionWrapper>
+        </Space>
+      )}
+      columns={columns}
+      dataSource={filteredList}
+      rowKey="id"
+      pagination={pagination}
+      tableLoading={loading}
+      scroll={{ y: 'calc(100vh - 430px)' }}
+      tableProps={{ onChange: handleTableChange }}
+      modal={(
+        <>
+          <OperateModal
+            open={modalVisible}
+            mode={modalMode}
+            currentRow={currentRow}
+            onClose={() => setModalVisible(false)}
+            onSuccess={async () => {
+              setModalVisible(false);
+              fetchDataSources();
+            }}
+          />
+          <ImportModal
+            visible={importModalVisible}
+            onCancel={() => setImportModalVisible(false)}
+            targetDirectoryId={null}
+            onSuccess={() => {
+              fetchDataSources();
+            }}
+          />
+        </>
+      )}
+    />
   );
 };
 
