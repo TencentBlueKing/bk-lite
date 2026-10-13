@@ -454,6 +454,9 @@ def test_run_model_call_limit_prefers_skill_config(monkeypatch):
     assert resolve_planned_execution_run_model_call_limit(SimpleNamespace(run_model_call_limit=6)) == 6
     assert resolve_planned_execution_run_model_call_limit(SimpleNamespace(run_model_call_limit=0)) == 12
     assert resolve_planned_execution_run_model_call_limit(SimpleNamespace()) == 12
+    monkeypatch.delenv("OPSPILOT_DEEPAGENT_RUN_MODEL_CALL_LIMIT", raising=False)
+    assert resolve_planned_execution_run_model_call_limit(SimpleNamespace(run_model_call_limit=0)) == 10
+    assert resolve_planned_execution_run_model_call_limit(SimpleNamespace(run_model_call_limit=8)) == 8
 
 
 def test_max_tokens_budget_env_and_request(monkeypatch):

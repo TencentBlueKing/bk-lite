@@ -16,6 +16,7 @@ from apps.workflow_orchestration.permissions import workflow_permissions
 from apps.workflow_orchestration.services.config_templates import AtomConfigTemplateError, sanitize_atom_template_parameters
 from apps.workflow_orchestration.services.data_contracts import normalize_workflow_data_contract
 from apps.workflow_orchestration.services.definitions import DefinitionValidationError, validate_conductor_definition
+from apps.workflow_orchestration.services.validation_messages import render_definition_error, render_known_message, render_workflow_error
 from apps.workflow_orchestration.services.workflow_projections import workflow_trigger_types
 from apps.workflow_orchestration.utils.i18n import serializer_message
 
@@ -45,7 +46,7 @@ class WebhookTestListenRequestSerializer(serializers.Serializer):
     token = serializers.CharField(max_length=2048, trim_whitespace=True)
 
 
-def validate_workflow_name_available(name, *, team, exclude_id=None):
+def validate_workflow_name_available(name, *, team, exclude_id=None, request=None):
     queryset = Workflow.all_objects.filter(
         name__iexact=name,
         team=team,
@@ -54,7 +55,7 @@ def validate_workflow_name_available(name, *, team, exclude_id=None):
     if exclude_id is not None:
         queryset = queryset.exclude(pk=exclude_id)
     if queryset.exists():
-        raise serializers.ValidationError(WORKFLOW_NAME_CONFLICT_MESSAGE)
+        raise serializers.ValidationError(render_known_message(request, WORKFLOW_NAME_CONFLICT_MESSAGE))
     return name
 
 
@@ -62,7 +63,7 @@ class WorkflowDuplicateRequestSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=120, trim_whitespace=True)
 
     def validate_name(self, value):
-        return validate_workflow_name_available(value, team=self.context["team"])
+        return validate_workflow_name_available(value, team=self.context["team"], request=self.context.get("request"))
 
 
 class WorkflowSerializer(serializers.ModelSerializer):
@@ -90,9 +91,9 @@ class WorkflowSerializer(serializers.ModelSerializer):
             try:
                 team = [int(get_current_team(request))]
             except (TypeError, ValueError) as error:
-                raise serializers.ValidationError("缺少或非法的 current_team") from error
+                raise serializers.ValidationError(render_known_message(request, "缺少或非法的 current_team")) from error
             exclude_id = None
-        return validate_workflow_name_available(value, team=team, exclude_id=exclude_id)
+        return validate_workflow_name_available(value, team=team, exclude_id=exclude_id, request=self.context.get("request"))
 
     class Meta:
         model = Workflow
@@ -151,16 +152,22 @@ class WorkflowSerializer(serializers.ModelSerializer):
                 allow_empty_tasks=True,
             )
         except DefinitionValidationError as error:
-            raise serializers.ValidationError(str(error)) from error
+            request = self.context.get("request")
+            metadata = self.initial_data.get("canvas_metadata") if isinstance(self.initial_data, dict) else None
+            raise serializers.ValidationError(
+                render_definition_error(request, error, definition=value, metadata=metadata, atom_catalog=atom_catalog)
+            ) from error
         except (TypeError, ValueError) as error:
-            raise serializers.ValidationError("缺少或非法的 current_team") from error
+            raise serializers.ValidationError(render_known_message(request, "缺少或非法的 current_team")) from error
 
     def validate_canvas_metadata(self, value):
         try:
             metadata, _ = normalize_workflow_data_contract(value)
             return metadata
         except DefinitionValidationError as error:
-            raise serializers.ValidationError(str(error)) from error
+            request = self.context.get("request")
+            definition = self.initial_data.get("definition") if isinstance(self.initial_data, dict) else None
+            raise serializers.ValidationError(render_definition_error(request, error, definition=definition, metadata=value)) from error
 
 
 class WorkflowVersionSerializer(serializers.ModelSerializer):
@@ -247,17 +254,17 @@ class AtomConfigTemplateSerializer(serializers.ModelSerializer):
     def validate_name(self, value):
         name = value.strip()
         if not name:
-            raise serializers.ValidationError("模板名称不能为空")
+            raise serializers.ValidationError(render_known_message(self.context.get("request"), "模板名称不能为空"))
         return name
 
     def validate(self, attrs):
         team = self.context["team"]
         atom_key = attrs.get("atom_key", getattr(self.instance, "atom_key", ""))
         if self.instance is not None and "atom_key" in attrs and atom_key != self.instance.atom_key:
-            raise serializers.ValidationError({"atom_key": "不能修改配置模板所属原子"})
+            raise serializers.ValidationError({"atom_key": render_known_message(self.context.get("request"), "不能修改配置模板所属原子")})
         if "parameters" in attrs:
             if not isinstance(attrs["parameters"], dict):
-                raise serializers.ValidationError({"parameters": "配置模板参数必须是对象"})
+                raise serializers.ValidationError({"parameters": render_known_message(self.context.get("request"), "配置模板参数必须是对象")})
             try:
                 attrs["parameters"] = sanitize_atom_template_parameters(
                     team=team,
@@ -265,7 +272,7 @@ class AtomConfigTemplateSerializer(serializers.ModelSerializer):
                     parameters=attrs["parameters"],
                 )
             except AtomConfigTemplateError as error:
-                raise serializers.ValidationError({"parameters": str(error)}) from error
+                raise serializers.ValidationError({"parameters": render_workflow_error(self.context.get("request"), error)}) from error
         name = attrs.get("name", getattr(self.instance, "name", ""))
         duplicate = AtomConfigTemplate.objects.filter(
             organization_id=team,
@@ -275,11 +282,21 @@ class AtomConfigTemplateSerializer(serializers.ModelSerializer):
         if self.instance is not None:
             duplicate = duplicate.exclude(pk=self.instance.pk)
         if duplicate.exists():
-            raise serializers.ValidationError({"name": "当前原子下已存在同名配置模板"})
+            raise serializers.ValidationError({"name": render_known_message(self.context.get("request"), "当前原子下已存在同名配置模板")})
         return attrs
 
 
+def _localize_error_message(serializer, data):
+    message = data.get("error_message")
+    if isinstance(message, str) and message:
+        data["error_message"] = render_known_message(serializer.context.get("request"), message)
+    return data
+
+
 class AtomExecutionSerializer(serializers.ModelSerializer):
+    def to_representation(self, instance):
+        return _localize_error_message(self, super().to_representation(instance))
+
     class Meta:
         model = AtomExecution
         fields = (
@@ -330,6 +347,9 @@ class ExecutionArtifactSerializer(serializers.ModelSerializer):
 
 
 class WorkflowExecutionSerializer(serializers.ModelSerializer):
+    def to_representation(self, instance):
+        return _localize_error_message(self, super().to_representation(instance))
+
     workflow_name = serializers.CharField(source="workflow.name", read_only=True)
     workflow_enabled = serializers.BooleanField(source="workflow.enabled", read_only=True)
     workflow_deleted = serializers.SerializerMethodField()
@@ -397,6 +417,9 @@ class WorkflowExecutionSerializer(serializers.ModelSerializer):
 
 
 class WorkflowExecutionListSerializer(serializers.ModelSerializer):
+    def to_representation(self, instance):
+        return _localize_error_message(self, super().to_representation(instance))
+
     workflow_name = serializers.CharField(source="workflow.name", read_only=True)
     workflow_enabled = serializers.BooleanField(source="workflow.enabled", read_only=True)
     workflow_deleted = serializers.SerializerMethodField()
@@ -543,10 +566,10 @@ class WorkflowTriggerSerializer(serializers.ModelSerializer):
         try:
             validate_trigger_configuration(trigger_type, config)
         except DefinitionValidationError as error:
-            raise serializers.ValidationError({"config": str(error)}) from error
+            raise serializers.ValidationError({"config": render_definition_error(self.context.get("request"), error)}) from error
         window = attrs.get("idempotency_window_seconds", getattr(self.instance, "idempotency_window_seconds", 3600))
         if not 60 <= window <= 86400:
-            raise serializers.ValidationError({"idempotency_window_seconds": "必须在 60 到 86400 秒之间"})
+            raise serializers.ValidationError({"idempotency_window_seconds": render_known_message(self.context.get("request"), "必须在 60 到 86400 秒之间")})
         workflow = attrs.get("workflow", getattr(self.instance, "workflow", None))
         if workflow is not None:
             version = workflow.versions.filter(version=workflow.current_version).first() if workflow.current_version else None
@@ -554,7 +577,7 @@ class WorkflowTriggerSerializer(serializers.ModelSerializer):
             canonical_schema = (metadata or {}).get("input_schema") or {}
             supplied_schema = attrs.get("input_schema")
             if supplied_schema and supplied_schema != canonical_schema:
-                raise serializers.ValidationError({"input_schema": "触发器必须使用已发布流程的统一输入 Schema"})
+                raise serializers.ValidationError({"input_schema": render_known_message(self.context.get("request"), "触发器必须使用已发布流程的统一输入 Schema")})
             attrs["input_schema"] = canonical_schema
         return attrs
 

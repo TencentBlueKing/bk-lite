@@ -173,6 +173,17 @@
           "dimensions": [],
           "description": "Average inbound packet rate on the external network interface card.",
           "query": "WanInpkg_gauge{__$labels__}"
+        },
+        {
+          "metric_group": "Network",
+          "name": "Outratio_gauge",
+          "display_name": "Public Outbound Bandwidth Utilization",
+          "instance_id_keys": ["instance_id", "resource_id"],
+          "data_type": "Number",
+          "unit": "percent",
+          "dimensions": [],
+          "description": "Public network outbound bandwidth utilization of the CVM instance.",
+          "query": "Outratio_gauge{__$labels__}"
         }
       ]
     }

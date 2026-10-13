@@ -200,6 +200,7 @@ class Qcloud(object):
             "WanIntraffic",
             "WanOutpkg",
             "WanInpkg",
+            "Outratio",
         ],
         "qcloud_mysql": [
             "CpuUseRate",

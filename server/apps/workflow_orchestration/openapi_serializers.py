@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from apps.core.openapi.serializers import OpenAPIRequestSerializer
+from apps.workflow_orchestration.services.validation_messages import render_known_message
 
 
 class WorkflowTriggerInvokeRequestSerializer(OpenAPIRequestSerializer):
@@ -10,7 +11,7 @@ class WorkflowTriggerInvokeRequestSerializer(OpenAPIRequestSerializer):
 
     def validate_inputs(self, value):
         if not isinstance(value, dict):
-            raise serializers.ValidationError("必须是 JSON 对象")
+            raise serializers.ValidationError(render_known_message(self.context.get("request"), "必须是 JSON 对象"))
         return value
 
 
@@ -20,5 +21,5 @@ class WorkflowWebhookTestRequestSerializer(OpenAPIRequestSerializer):
 
     def validate_body(self, value):
         if not isinstance(value, dict):
-            raise serializers.ValidationError("必须是 JSON 对象")
+            raise serializers.ValidationError(render_known_message(self.context.get("request"), "必须是 JSON 对象"))
         return value

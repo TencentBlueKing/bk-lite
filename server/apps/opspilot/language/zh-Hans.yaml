@@ -133,6 +133,7 @@ error:
   training_document_no_retrain: 训练文档不可重新训练
   qa_pair_update_failed: 更新 QA 对失败。
   skill_quota_exceeded: 技能数量超过配额限制。
+  run_model_call_limit_range: 每步调用次数须在 1 到 100 之间
   pilot_start_failed: Pilot 启动失败。
   no_delete_permission: 你没有权限删除此实例
   generate_question_failed: 生成问题失败

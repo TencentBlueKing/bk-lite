@@ -457,6 +457,7 @@
       "apache_BusyWorkers": "Busy Workers",
       "apache_CPULoad": "CPU Load",
       "CvmDiskUsage_gauge": "Disk Utilization",
+      "Outratio_gauge": "Public Outbound Bandwidth Utilization",
       "rabbitmq_node_running": "Node Running Status",
       "rabbitmq_overview_messages_ready": "Ready Messages",
       "rabbitmq_node_mem_alarm": "Memory Alarm",
