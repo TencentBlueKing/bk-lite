@@ -22,6 +22,7 @@ import type {
   DashboardWidgetRenderStatus,
 } from '@/app/ops-analysis/renderContract';
 import type { CanvasRuntimeRefreshCause } from '@/app/ops-analysis/utils/canvasRefreshTimer';
+import { useFilterTemplateText } from '@/app/ops-analysis/context/filterTemplate';
 import { useTranslation } from '@/utils/i18n';
 import {
   buildAnalysisWidgetMenuItems,
@@ -80,6 +81,8 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
   onWidgetRenderStatus,
 }) => {
   const { t } = useTranslation();
+  const title = useFilterTemplateText(section.valueConfig.name);
+  const description = useFilterTemplateText(section.valueConfig.description);
   const csvExportRegistry = useWidgetCsvExportRegistry();
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [runtimeActive, setRuntimeActive] = useState(eagerRuntime);
@@ -147,7 +150,7 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
   });
   const exportCsv = () => {
     void csvExportRegistry?.run(section.id, {
-      title: section.valueConfig.name || '',
+      title: title || '',
     }).then((started) => {
       notifyWidgetCsvExportNotStarted(started, t);
     });
@@ -188,11 +191,11 @@ const ReportWidgetCard: React.FC<ReportWidgetCardProps> = ({
               )}
               <div className="min-w-0 flex-1">
                 <h3 className="m-0 truncate text-sm font-medium text-[var(--color-text-1)]">
-                  {section.valueConfig.name || t('opsAnalysis.report.unnamedComponent')}
+                  {title.trim() ? title : t('opsAnalysis.report.unnamedComponent')}
                 </h3>
                 {section.valueConfig.description?.trim() && (
                   <p className="mt-0.5 mb-0 truncate text-xs text-[var(--color-text-3)]">
-                    {section.valueConfig.description}
+                    {description}
                   </p>
                 )}
               </div>

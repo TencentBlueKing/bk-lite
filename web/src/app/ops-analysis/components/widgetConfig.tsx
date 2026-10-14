@@ -146,6 +146,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   builtinNamespaceId,
   showChartThemeMode = false,
   surface = 'dashboard',
+  filterTemplateTokens = true,
   variant = 'drawer',
   onDirtyChange,
 }) => {
@@ -1303,6 +1304,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           showChartThemeMode={showChartThemeMode}
           isNetworkStatusTopology={isNetworkStatusTopology}
           surface={surface}
+          filterTemplateTokens={filterTemplateTokens}
         />
 
         <Form.Item name="sceneWidgetType" hidden>

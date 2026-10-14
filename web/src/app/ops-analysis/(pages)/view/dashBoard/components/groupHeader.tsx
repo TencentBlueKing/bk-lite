@@ -7,6 +7,7 @@ import {
 import { useTranslation } from '@/utils/i18n';
 import MoreActionsDropdown from '@/components/more-actions-dropdown';
 import type { MoreActionsDropdownItem } from '@/components/more-actions-dropdown';
+import { useFilterTemplateText } from '@/app/ops-analysis/context/filterTemplate';
 import type { DashboardGroupLayoutItem } from '@/app/ops-analysis/types/dashBoard';
 
 interface GroupHeaderProps {
@@ -31,6 +32,7 @@ const GroupHeader: React.FC<GroupHeaderProps> = ({
   onDeleteGroup,
 }) => {
   const { t } = useTranslation();
+  const name = useFilterTemplateText(item.name);
   const menuItems: MoreActionsDropdownItem[] = [
     { key: 'add-view', label: t('dashboard.addView'), onClick: onAddView },
     { key: 'rename', label: t('dashboard.editGroup'), onClick: onRename },
@@ -59,7 +61,7 @@ const GroupHeader: React.FC<GroupHeaderProps> = ({
           </button>
           <div className="min-w-0 flex items-baseline gap-2">
             <span className="truncate text-[14px] font-medium leading-5">
-              {item.name}
+              {name}
             </span>
           </div>
         </div>
@@ -74,7 +76,7 @@ const GroupHeader: React.FC<GroupHeaderProps> = ({
           </span>
           <div className="min-w-0 flex items-baseline gap-2">
             <span className="truncate text-[14px] font-medium leading-5">
-              {item.name}
+              {name}
             </span>
           </div>
         </button>

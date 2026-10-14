@@ -1,8 +1,13 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { Empty } from "antd";
 import { Rnd } from "react-rnd";
+import {
+  FilterTemplateProvider,
+  FilterTemplateTextBridge,
+  FilterTemplateTitleGate,
+} from "@/app/ops-analysis/context/filterTemplate";
 import { useTranslation } from "@/utils/i18n";
 import type {
   FilterValue,
@@ -23,6 +28,7 @@ import { getScreenRndNodeClassName } from "../utils/classNames";
 import { calculateScreenVisualMetrics } from "../utils/metrics";
 import { resolveScreenCanvasBackgroundStyle } from "../utils/screenBackground";
 import {
+  collectScreenFilterTemplateTexts,
   isScreenDecorationItem,
   isScreenWidgetItem,
   readScreenChromeDrag,
@@ -78,6 +84,8 @@ interface ScreenCanvasProps {
     >,
   ) => void;
   onDismissInspector?: () => void;
+  onFilterTemplateSettled?: () => void;
+  resolveFilterTextRef?: MutableRefObject<(text?: string | null) => string>;
 }
 
 interface CanvasSize {
@@ -593,6 +601,8 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
   onDropChrome,
   onTopologyLayoutChange,
   onDismissInspector,
+  onFilterTemplateSettled,
+  resolveFilterTextRef,
   forceContain = false,
 }) => {
   const { t } = useTranslation();
@@ -664,6 +674,12 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
 
   const scale = screenMetrics.scaleX;
   const resolveDataSource = dataSourceResolver ?? unresolvedDataSource;
+  const filterTemplateTexts = useMemo(
+    () => collectScreenFilterTemplateTexts(viewSets.items),
+    [viewSets.items],
+  );
+  const resolveEnabled = !editMode || fullscreen || Boolean(shareMode);
+  const canvasKey = screenId == null ? '' : String(screenId);
   const editable = Boolean(editMode && !fullscreen);
   const workbenchAlign =
     displayAdapter === "fitHeight"
@@ -673,6 +689,20 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
         : "items-center justify-center overflow-hidden";
 
   return (
+    <FilterTemplateProvider
+      definitions={filterDefinitions ?? []}
+      appliedValues={unifiedFilterValues ?? {}}
+      resolveEnabled={resolveEnabled}
+      canvasId={canvasKey}
+    >
+    <FilterTemplateTitleGate
+      texts={filterTemplateTexts}
+      active={resolveEnabled}
+      onSettled={() => onFilterTemplateSettled?.()}
+    />
+    {resolveFilterTextRef ? (
+      <FilterTemplateTextBridge textRef={resolveFilterTextRef} />
+    ) : null}
     <div
       ref={containerRef}
       className={`screen-canvas-workbench flex h-full min-h-0 w-full ${workbenchAlign} ${
@@ -1231,6 +1261,7 @@ const ScreenCanvas: React.FC<ScreenCanvasProps> = ({
         }
       `}</style>
     </div>
+    </FilterTemplateProvider>
   );
 };
 

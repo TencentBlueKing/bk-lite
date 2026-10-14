@@ -6,6 +6,7 @@ import type {
   ScreenItem,
   ScreenTextStyleConfig,
 } from '@/app/ops-analysis/types/screen';
+import { useFilterTemplateText } from '@/app/ops-analysis/context/filterTemplate';
 import { getScreenClockDisplayParts } from '../utils/screenClock';
 import {
   isScreenClockItem,
@@ -68,11 +69,12 @@ interface ScreenChromeRendererProps {
 const ScreenChromeRenderer: React.FC<ScreenChromeRendererProps> = ({
   item,
 }) => {
+  const textContent = useFilterTemplateText(isScreenTextItem(item) ? item.content : '');
   let body: React.ReactNode = null;
   if (isScreenTextItem(item)) {
     body = (
       <div className="h-full w-full px-1 py-1" style={screenChromeTextStyle(item.textStyle)}>
-        {item.content}
+        {textContent}
       </div>
     );
   } else if (isScreenClockItem(item)) {

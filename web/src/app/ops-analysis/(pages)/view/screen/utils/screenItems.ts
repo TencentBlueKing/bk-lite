@@ -54,6 +54,20 @@ export const isScreenTitleFrameItem = (
   item: ScreenItem,
 ): item is ScreenTitleFrameItem => item.kind === 'titleFrame';
 
+export const collectScreenFilterTemplateTexts = (items: ScreenItem[]): string[] => {
+  const texts: string[] = [];
+  items.forEach((item) => {
+    if (isScreenWidgetItem(item)) {
+      texts.push(item.title || '');
+      return;
+    }
+    if (isScreenTextItem(item) || isScreenTitleFrameItem(item)) {
+      texts.push(item.content || '');
+    }
+  });
+  return texts;
+};
+
 export const isScreenDecorationItem = (
   item: ScreenItem,
 ): item is ScreenDecorationItem => item.kind === 'decoration';

@@ -251,6 +251,8 @@ export interface ViewConfigProps {
   builtinNamespaceId?: number;
   showChartThemeMode?: boolean;
   surface?: OpsAnalysisWidgetSurface;
+  /** 拓扑不插入统一筛选变量，名称和描述保持普通输入框。 */
+  filterTemplateTokens?: boolean;
   variant?: 'drawer' | 'panel';
   onDirtyChange?: (dirty: boolean) => void;
 }

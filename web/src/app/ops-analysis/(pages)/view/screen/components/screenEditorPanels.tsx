@@ -4,7 +4,6 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
   ColorPicker,
-  Input,
   InputNumber,
   Segmented,
   Select,
@@ -36,6 +35,7 @@ import {
   SwapOutlined,
   UploadOutlined,
 } from '@ant-design/icons';
+import { FilterTokenInput } from '@/app/ops-analysis/components/filterTokenInput';
 import { useTranslation } from '@/utils/i18n';
 import { SCREEN_LAYER_DRAG_MIME } from '../utils/screenLayer';
 import type { ScreenGeometryField } from '../utils/screenEditHistory';
@@ -1685,12 +1685,14 @@ export const ScreenStyleInspector: React.FC<ScreenStyleInspectorProps> = ({
             title={t('opsAnalysis.screen.textContent')}
             icon={<FontSizeOutlined />}
           >
-            <Input.TextArea
+            <FilterTokenInput
+              t={t}
+              multiline
+              rows={1}
               value={item.content}
-              rows={4}
               placeholder={t('opsAnalysis.screen.textPlaceholder')}
               className="text-xs"
-              onChange={(event) => onChange({ ...item, content: event.target.value })}
+              onChange={(content) => onChange({ ...item, content })}
             />
           </InspectorSection>
 
@@ -1766,12 +1768,13 @@ export const ScreenStyleInspector: React.FC<ScreenStyleInspectorProps> = ({
             title={t('opsAnalysis.screen.textContent')}
             icon={<FontSizeOutlined />}
           >
-            <Input
-              value={item.content}
+            <FilterTokenInput
+              t={t}
               allowClear
+              value={item.content}
               placeholder={t('opsAnalysis.screen.titlePlaceholder')}
               className="text-xs"
-              onChange={(event) => onChange({ ...item, content: event.target.value })}
+              onChange={(content) => onChange({ ...item, content })}
             />
           </InspectorSection>
 

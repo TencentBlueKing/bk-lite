@@ -16,6 +16,7 @@ import type {
   GridStackWidget,
 } from 'gridstack';
 
+import { useFilterTemplateText } from '@/app/ops-analysis/context/filterTemplate';
 import { useTranslation } from '@/utils/i18n';
 import type {
   DashboardLayoutItem,
@@ -152,6 +153,8 @@ const DashboardWidgetCard = React.memo(function DashboardWidgetCard({
   pdfExportPreparing = false,
 }: DashboardWidgetCardProps) {
   const { t } = useTranslation();
+  const title = useFilterTemplateText(item.name);
+  const description = useFilterTemplateText(item.description);
   const csvExportRegistry = useWidgetCsvExportRegistry();
   const [exportRawData, setExportRawData] = useState<unknown>(undefined);
   const chartType = item.valueConfig?.chartType;
@@ -177,7 +180,7 @@ const DashboardWidgetCard = React.memo(function DashboardWidgetCard({
     rawData: exportRawData,
   }) === 'hover';
   const exportCsv = () => {
-    void csvExportRegistry?.run(item.i, { title: item.name || '' }).then((started) => {
+    void csvExportRegistry?.run(item.i, { title: title || '' }).then((started) => {
       notifyWidgetCsvExportNotStarted(started, t);
     });
   };
@@ -203,11 +206,11 @@ const DashboardWidgetCard = React.memo(function DashboardWidgetCard({
           <div className="widget-header mb-2 flex min-w-0 items-start gap-2">
             <div className="min-w-0 flex-1">
               <h4 className="truncate text-[14px] font-medium leading-5 text-(--color-text-2)">
-                {item.name}
+                {title}
               </h4>
               {item.description?.trim() && (
                 <p className="mt-0.5 text-[11px] leading-4 text-(--color-text-3) wrap-break-word whitespace-normal">
-                  {item.description}
+                  {description}
                 </p>
               )}
             </div>

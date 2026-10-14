@@ -13,6 +13,7 @@ import {
 } from "react";
 import { message, Modal, Select, Tabs } from "antd";
 import { WidgetCsvExportRegistryProvider, notifyWidgetCsvExportNotStarted, useWidgetCsvExportRegistryState } from "@/app/ops-analysis/context/widgetCsvExportRegistry";
+import { FilterTemplateProvider } from "@/app/ops-analysis/context/filterTemplate";
 import { useTranslation } from "@/utils/i18n";
 import { useScreenApi } from "@/app/ops-analysis/api/screen";
 import { useDirectoryApi } from "@/app/ops-analysis/api";
@@ -205,6 +206,7 @@ const ScreenDataConfig = memo(
 const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode = false }, ref) => {
   const { t } = useTranslation();
   const csvExportRegistry = useWidgetCsvExportRegistryState();
+  const resolveFilterTextRef = useRef<(text?: string | null) => string>((text) => text ?? '');
   const { getScreenDetail, saveScreen } = useScreenApi();
   const { updateItem } = useDirectoryApi();
   const { hasPermission } = useBtnPermissions();
@@ -1077,7 +1079,8 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       }
       if (key === "exportCsv") {
         const target = draftViewSetsRef.current.items.find((item) => item.id === itemId);
-        const title = target && isScreenWidgetItem(target) ? target.title || "" : "";
+        const rawTitle = target && isScreenWidgetItem(target) ? target.title || "" : "";
+        const title = resolveFilterTextRef.current(rawTitle);
         void csvExportRegistry.run(itemId, { title }).then((started) => {
           notifyWidgetCsvExportNotStarted(started, t);
         });
@@ -1288,6 +1291,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         onDismissInspector={
           editMode && !shareMode ? handleDismissInspector : undefined
         }
+        resolveFilterTextRef={resolveFilterTextRef}
       />
     ),
     [
@@ -1311,6 +1315,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       handleSelectCanvasItem,
       isFullscreen,
       selectedItemId,
+      resolveFilterTextRef,
       selectedScreen?.data_id,
       shareMode,
     ],
@@ -1353,6 +1358,12 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
 
   return (
     <WidgetCsvExportRegistryProvider registry={csvExportRegistry}>
+    <FilterTemplateProvider
+      definitions={queryState.definitions}
+      appliedValues={queryState.appliedFilterValues}
+      resolveEnabled={false}
+      canvasId={selectedScreen?.data_id}
+    >
     <>
       <div
         className={
@@ -1591,6 +1602,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         />
       )}
     </>
+    </FilterTemplateProvider>
     </WidgetCsvExportRegistryProvider>
   );
 });
