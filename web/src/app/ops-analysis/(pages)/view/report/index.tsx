@@ -60,6 +60,7 @@ import {
 import ComponentSelector from '@/app/ops-analysis/components/widgetSelector';
 import ViewConfig from '@/app/ops-analysis/components/widgetConfig';
 import ReportWidgetCard from '@/app/ops-analysis/components/reportWidgetCard';
+import { WidgetCsvExportRegistryProvider } from '@/app/ops-analysis/context/widgetCsvExportRegistry';
 import DashboardSubscriptionModal from '@/app/ops-analysis/components/dashboardSubscriptionModal';
 import {
   AppViewFullscreenExit,
@@ -701,6 +702,9 @@ const Report = forwardRef<ReportRef, ReportProps>(({
                     dataSource={dataSourceManager.findDataSource(section.valueConfig.dataSource)}
                     editing={editing}
                     shareMode={shareMode}
+                    isFullscreen={isFullscreen}
+                    renderMode={renderMode}
+                    pdfExportPreparing={pdfExportPreparing}
                     isBuiltIn={Boolean(selectedReport?.is_build_in)}
                     eagerRuntime={renderMode || pdfExportPreparing}
                     onEdit={editComponent}
@@ -790,61 +794,63 @@ const Report = forwardRef<ReportRef, ReportProps>(({
   );
 
   return (
-    <div
-      className={`flex flex-col ${
-        isFullscreen
-          ? 'fixed inset-0 h-screen w-screen overflow-hidden'
-          : renderMode
-            ? 'w-full min-h-screen overflow-visible'
-            : 'h-full flex-1 overflow-auto'
-      }`}
-      style={{
-        backgroundColor: 'var(--color-bg-2)',
-        zIndex: isFullscreen ? 1100 : undefined,
-      }}
-    >
-      <AppViewFullscreenExit visible={isFullscreen} onExit={exitFullscreen} />
-      {workspace}
-
-      <ComponentSelector
-        visible={selectorOpen}
-        surface="report"
-        onCancel={() => setSelectorOpen(false)}
-        onOpenConfig={openNewComponentConfig}
-      />
-      <ViewConfig
-        open={configOpen}
-        item={configItem}
-        surface="report"
-        dataSourceManager={dataSourceManager}
-        filterDefinitions={draftViewSets.filters}
-        unifiedFilterValues={filterValues}
-        onConfirm={confirmComponentConfig}
-        onClose={() => {
-          setConfigOpen(false);
-          setConfigItem(undefined);
-          setEditingSectionId(undefined);
-          setAddingComponent(false);
+    <WidgetCsvExportRegistryProvider>
+      <div
+        className={`flex flex-col ${
+          isFullscreen
+            ? 'fixed inset-0 h-screen w-screen overflow-hidden'
+            : renderMode
+              ? 'w-full min-h-screen overflow-visible'
+              : 'h-full flex-1 overflow-auto'
+        }`}
+        style={{
+          backgroundColor: 'var(--color-bg-2)',
+          zIndex: isFullscreen ? 1100 : undefined,
         }}
-      />
-      <UnifiedFilterConfigModal
-        open={filterConfigOpen}
-        onCancel={() => setFilterConfigOpen(false)}
-        onConfirm={handleFilterConfigConfirm}
-        definitions={draftViewSets.filters}
-        layoutItems={filterLayoutItems}
-        dataSources={dataSourceManager.dataSources}
-      />
-      {selectedReport?.data_id != null && (
-        <DashboardSubscriptionModal
-          open={subscriptionModalVisible}
-          resourceType="report"
-          resourceId={Number(selectedReport.data_id)}
-          appliedFilterValues={appliedFilterValues}
-          onClose={() => setSubscriptionModalVisible(false)}
+      >
+        <AppViewFullscreenExit visible={isFullscreen} onExit={exitFullscreen} />
+        {workspace}
+
+        <ComponentSelector
+          visible={selectorOpen}
+          surface="report"
+          onCancel={() => setSelectorOpen(false)}
+          onOpenConfig={openNewComponentConfig}
         />
-      )}
-    </div>
+        <ViewConfig
+          open={configOpen}
+          item={configItem}
+          surface="report"
+          dataSourceManager={dataSourceManager}
+          filterDefinitions={draftViewSets.filters}
+          unifiedFilterValues={filterValues}
+          onConfirm={confirmComponentConfig}
+          onClose={() => {
+            setConfigOpen(false);
+            setConfigItem(undefined);
+            setEditingSectionId(undefined);
+            setAddingComponent(false);
+          }}
+        />
+        <UnifiedFilterConfigModal
+          open={filterConfigOpen}
+          onCancel={() => setFilterConfigOpen(false)}
+          onConfirm={handleFilterConfigConfirm}
+          definitions={draftViewSets.filters}
+          layoutItems={filterLayoutItems}
+          dataSources={dataSourceManager.dataSources}
+        />
+        {selectedReport?.data_id != null && (
+          <DashboardSubscriptionModal
+            open={subscriptionModalVisible}
+            resourceType="report"
+            resourceId={Number(selectedReport.data_id)}
+            appliedFilterValues={appliedFilterValues}
+            onClose={() => setSubscriptionModalVisible(false)}
+          />
+        )}
+      </div>
+    </WidgetCsvExportRegistryProvider>
   );
 });
 

@@ -45,11 +45,14 @@ export const parseTableLikeData = <RecordType extends Record<string, any>>(
   ) {
     const response = rawData as Record<string, unknown>;
     const items = response.items as RecordType[];
-    const total = Number(response.count);
+    const rawTotal = response.count !== undefined && response.count !== null && response.count !== ''
+      ? response.count
+      : response.total;
+    const total = Number(rawTotal);
     const hasValidTotal =
-      response.count !== undefined &&
-      response.count !== null &&
-      response.count !== '' &&
+      rawTotal !== undefined &&
+      rawTotal !== null &&
+      rawTotal !== '' &&
       Number.isFinite(total) &&
       total >= 0;
     return {

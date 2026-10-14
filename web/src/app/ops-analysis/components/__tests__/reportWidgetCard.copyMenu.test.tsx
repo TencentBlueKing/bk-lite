@@ -1,10 +1,11 @@
 import React from 'react';
 import '@ant-design/v5-patch-for-react-19';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import ReportWidgetCard from '@/app/ops-analysis/components/reportWidgetCard';
+import { WidgetCsvExportRegistryProvider } from '@/app/ops-analysis/context/widgetCsvExportRegistry';
 
 vi.mock('@dnd-kit/sortable', () => ({
   useSortable: () => ({
@@ -22,8 +23,19 @@ vi.mock('@/utils/i18n', () => ({
   }),
 }));
 
+let failWidgetRender = false;
+
 vi.mock('@/app/ops-analysis/components/widgetDataRenderer', () => ({
-  default: () => <div data-testid="widget-runtime" />,
+  default: function WidgetRuntimeMock(props: {
+    widgetId: string;
+    onRenderStatus?: (result: { widgetId: string; status: string }) => void;
+  }) {
+    React.useEffect(() => {
+      if (!failWidgetRender) return;
+      props.onRenderStatus?.({ widgetId: props.widgetId, status: 'failed' });
+    }, [props]);
+    return <div data-testid="widget-runtime" />;
+  },
 }));
 
 const section = {
@@ -60,6 +72,7 @@ beforeAll(() => {
 });
 
 afterEach(() => {
+  failWidgetRender = false;
   cleanup();
 });
 
@@ -169,5 +182,130 @@ describe('ReportWidgetCard copy menu', () => {
     expect(await screen.findByText('common.edit')).toBeTruthy();
     expect(screen.queryByText('common.copy')).toBeNull();
     expect(screen.getByText('common.delete')).toBeTruthy();
+  });
+});
+
+const renderCard = (
+  props: Partial<React.ComponentProps<typeof ReportWidgetCard>> = {},
+) => render(
+  <ReportWidgetCard
+    section={section as never}
+    index={0}
+    unifiedFilterValues={{}}
+    filterDefinitions={[]}
+    filterSearchVersion={0}
+    editing={false}
+    onEdit={vi.fn()}
+    onDelete={vi.fn()}
+    onCopy={vi.fn()}
+    {...props}
+  />,
+);
+
+describe('ReportWidgetCard csv export', () => {
+  it('shows a hover-only export icon after the runtime slot in view mode', async () => {
+    renderCard();
+    const button = screen.getByRole('button', { name: 'dashboard.exportCsv' });
+    expect(button.getAttribute('data-csv-export-hover')).toBe('true');
+    expect(button.getAttribute('data-export-hidden')).toBe('true');
+    expect(button.className).toContain('opacity-0');
+    expect(button.className).toContain('shrink-0');
+    expect(button.className).toContain('cursor-pointer');
+    expect(button.className).not.toContain('absolute');
+    fireEvent.mouseEnter(button);
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip.textContent).toBe('dashboard.exportCsv');
+    expect(button.closest('.group')?.contains(tooltip)).toBe(false);
+    const slot = button.parentElement?.querySelector('.overflow-x-auto');
+    expect(slot).toBeTruthy();
+    expect(slot!.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'common.more' })).toBeNull();
+    expect(screen.queryByRole('menuitem')).toBeNull();
+  });
+
+  it('keeps retry to the left of the export icon when the widget failed', async () => {
+    failWidgetRender = true;
+    renderCard();
+    const retry = await screen.findByRole('button', { name: 'common.retry' });
+    const exportButton = screen.getByRole('button', { name: 'dashboard.exportCsv' });
+    expect(
+      retry.compareDocumentPosition(exportButton) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('puts export between copy and delete in the edit menu and hides the menu from export', async () => {
+    const user = userEvent.setup();
+    const { container } = renderCard({ editing: true });
+    await user.hover(screen.getByRole('button', { name: 'common.more' }));
+    const items = await screen.findAllByRole('menuitem');
+    expect(items.map((item) => item.textContent)).toEqual([
+      'common.edit',
+      'common.copy',
+      'dashboard.exportCsv',
+      'common.delete',
+    ]);
+    expect(container.querySelector('[data-export-hidden="true"]')).toBeTruthy();
+    expect(container.querySelector('[data-export-expand="true"]')).toBeNull();
+  });
+
+  it('omits export for an unsupported chart and in share, fullscreen, screenshot, and pdf preparation', async () => {
+    const user = userEvent.setup();
+    renderCard({ section: sceneSection as never, editing: true });
+    await user.hover(screen.getByRole('button', { name: 'common.more' }));
+    expect(await screen.findByText('common.edit')).toBeTruthy();
+    expect(screen.queryByText('dashboard.exportCsv')).toBeNull();
+
+    cleanup();
+    renderCard({ shareMode: true });
+    expect(screen.queryByRole('button', { name: 'dashboard.exportCsv' })).toBeNull();
+
+    cleanup();
+    renderCard({ editing: true, shareMode: true });
+    await user.hover(screen.getByRole('button', { name: 'common.more' }));
+    expect(await screen.findByText('common.delete')).toBeTruthy();
+    expect(screen.queryByText('dashboard.exportCsv')).toBeNull();
+
+    cleanup();
+    renderCard({ isFullscreen: true });
+    expect(screen.queryByRole('button', { name: 'dashboard.exportCsv' })).toBeNull();
+
+    cleanup();
+    renderCard({ renderMode: true });
+    expect(screen.queryByRole('button', { name: 'dashboard.exportCsv' })).toBeNull();
+
+    cleanup();
+    renderCard({ editing: true, renderMode: true });
+    await user.hover(screen.getByRole('button', { name: 'common.more' }));
+    expect(screen.queryByText('dashboard.exportCsv')).toBeNull();
+
+    cleanup();
+    renderCard({ pdfExportPreparing: true });
+    expect(screen.queryByRole('button', { name: 'dashboard.exportCsv' })).toBeNull();
+
+    cleanup();
+    renderCard({ editing: true, pdfExportPreparing: true });
+    await user.hover(screen.getByRole('button', { name: 'common.more' }));
+    expect(await screen.findByText('common.edit')).toBeTruthy();
+    expect(screen.queryByText('dashboard.exportCsv')).toBeNull();
+  });
+
+  it('runs the registered exporter for the section', () => {
+    const run = vi.fn().mockResolvedValue(true);
+    render(
+      <WidgetCsvExportRegistryProvider registry={{ register: () => () => undefined, run }}>
+        <ReportWidgetCard
+          section={section as never}
+          index={0}
+          unifiedFilterValues={{}}
+          filterDefinitions={[]}
+          filterSearchVersion={0}
+          editing={false}
+          onEdit={vi.fn()}
+          onDelete={vi.fn()}
+        />
+      </WidgetCsvExportRegistryProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'dashboard.exportCsv' }));
+    expect(run).toHaveBeenCalledWith('section-1', { title: 'CMDB 模型实例明细' });
   });
 });
