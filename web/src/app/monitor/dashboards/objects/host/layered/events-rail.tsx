@@ -4,6 +4,8 @@ import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Popover } from 'antd';
 import { LEVEL_MAP } from '@/app/monitor/constants';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
+import { useDashboardText } from '../../../shared/utils/content-i18n';
+import { hostCategoryText } from './category-copy';
 import styles from './layered.module.scss';
 
 export type HostAlertRailAction = 'triggered' | 'recovered' | 'closed';
@@ -150,6 +152,7 @@ export default function EventsRail({
   mock?: boolean;
 }) {
   const { convertToLocalizedTime } = useLocalizedTime();
+  const { t } = useDashboardText();
   const rowRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   const [visibleCount, setVisibleCount] = useState(events.length);
@@ -207,7 +210,7 @@ export default function EventsRail({
 
   return (
     <div className={styles.eventsRail} data-events-rail="" data-events-mock={mock ? '' : undefined}>
-      <span className={styles.eventsLabel}>Events</span>
+      <span className={styles.eventsLabel}>{hostCategoryText(t, 'events')}</span>
       <div ref={measureRef} className={styles.eventsMeasure} aria-hidden="true">
         {events.map((event) => (
           <span key={event.id} data-event-chip="" className={styles.eventsChip}>

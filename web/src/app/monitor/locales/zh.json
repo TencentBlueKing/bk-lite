@@ -3960,7 +3960,8 @@
         "hostCategoryBlockedProcesses": "阻塞进程",
         "hostCategoryZombieProcesses": "僵尸进程",
         "hostCategoryBusiestMount": "最满挂载点",
-        "hostCategoryMountUsedOfTotal": "已用 {used} / 总量 {total}"
+        "hostCategoryMountUsedOfTotal": "已用 {used} / 总量 {total}",
+        "hostCategoryEvents": "事件"
       }
     }
   },

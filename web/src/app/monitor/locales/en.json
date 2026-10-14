@@ -3960,7 +3960,8 @@
         "hostCategoryBlockedProcesses": "Blocked processes",
         "hostCategoryZombieProcesses": "Zombie processes",
         "hostCategoryBusiestMount": "Fullest mount",
-        "hostCategoryMountUsedOfTotal": "Used {used} / Total {total}"
+        "hostCategoryMountUsedOfTotal": "Used {used} / Total {total}",
+        "hostCategoryEvents": "Events"
       }
     }
   },
