@@ -4,14 +4,12 @@ import React, { useMemo } from 'react';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { HOST_PALETTE } from '../config';
 import { hostCategoryText } from './category-copy';
-import { latestFinite, pointsToChartData, rowHasSeries, sumPoints, type EntityTableRow } from '../entity-series';
+import { latestFinite, pointsToChartData, sumPoints, type EntityTableRow } from '../entity-series';
 import LayeredEntityTable from './entity-table';
 import ThinTimeSeries from './thin-time-series';
 import { formatUnit, ROW_ACCENTS } from './readings';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
-
-const PACKET_KEYS = ['net_packets_recv_rate', 'net_packets_sent_rate'] as const;
 
 const withRates = (rows: EntityTableRow[]): EntityTableRow[] => rows.map((row) => {
   const err = sumPoints(row.series.net_err_in_rate, row.series.net_err_out_rate);
@@ -49,7 +47,6 @@ export default function NetworkPane({
   const name = selected?.labels.interface || '';
   const hasErr = viewRows.some((row) => (row.series.err || []).length > 0);
   const hasDrop = viewRows.some((row) => (row.series.drop || []).length > 0);
-  const showErrors = hasErr || hasDrop;
   const errLatest = selected?.values.err ?? null;
   const dropLatest = selected?.values.drop ?? null;
   const errorSeries = [
@@ -61,7 +58,6 @@ export default function NetworkPane({
     { key: 'net_packets_recv_rate' as const, label: hostCategoryText(t, 'inboundPacketRate'), color: HOST_PALETTE.blue },
     { key: 'net_packets_sent_rate' as const, label: hostCategoryText(t, 'outboundPacketRate'), color: HOST_PALETTE.cyan }
   ].filter((item) => (selected?.series[item.key] || []).length > 0);
-  const showPackets = rowHasSeries(selected, PACKET_KEYS);
 
   return (
     <>
@@ -69,7 +65,7 @@ export default function NetworkPane({
       <div className={styles.sectionHead}>
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>趋势</div>
       </div>
-      <div className={showErrors ? styles.chartGrid3 : styles.chartGrid2}>
+      <div className={styles.netTrendGrid}>
         <ThinTimeSeries
           key={`in-${selected?.key || 'none'}`}
           title={name
@@ -96,47 +92,35 @@ export default function NetworkPane({
             color: HOST_PALETTE.cyan
           }]}
         />
-        {showErrors ? (
-          <ThinTimeSeries
-            key={`err-${selected?.key || 'none'}`}
-            title={name ? `错误 / 丢包 · ${name}` : '错误 / 丢包'}
-            loading={loading}
-            unit="cps"
-            data={pointsToChartData(errorSeries)}
-            legends={errorSeries.map((item) => ({
-              label: item.label,
-              color: item.color,
-              reading: formatUnit(item.latest, 'cps')
-            }))}
-          />
-        ) : null}
+        <ThinTimeSeries
+          key={`err-${selected?.key || 'none'}`}
+          title={name ? `错误 / 丢包 · ${name}` : '错误 / 丢包'}
+          loading={loading}
+          unit="cps"
+          data={pointsToChartData(errorSeries)}
+          legends={errorSeries.map((item) => ({
+            label: item.label,
+            color: item.color,
+            reading: formatUnit(item.latest, 'cps')
+          }))}
+        />
+        <ThinTimeSeries
+          key={`pps-${selected?.key || 'none'}`}
+          title={name
+            ? hostCategoryText(t, 'packetRateInOutNamed', { name })
+            : hostCategoryText(t, 'packetRateInOut')}
+          loading={loading}
+          unit="cps"
+          data={pointsToChartData(packetItems.map((item) => ({
+            points: selected?.series[item.key] || []
+          })))}
+          legends={packetItems.map((item) => ({
+            label: item.label,
+            color: item.color,
+            reading: formatUnit(selected?.values[item.key] ?? null, 'cps')
+          }))}
+        />
       </div>
-
-      {showPackets ? (
-        <>
-          <div className={styles.sectionHead}>
-            <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>{hostCategoryText(t, 'detailedMetrics')}</div>
-          </div>
-          <div className="grid grid-cols-1 gap-3">
-            <ThinTimeSeries
-              key={`pps-${selected?.key || 'none'}`}
-              title={name
-                ? hostCategoryText(t, 'packetRateInOutNamed', { name })
-                : hostCategoryText(t, 'packetRateInOut')}
-              loading={loading && !selected}
-              unit="cps"
-              data={pointsToChartData(packetItems.map((item) => ({
-                points: selected?.series[item.key] || []
-              })))}
-              legends={packetItems.map((item) => ({
-                label: item.label,
-                color: item.color,
-                reading: formatUnit(selected?.values[item.key] ?? null, 'cps')
-              }))}
-            />
-          </div>
-        </>
-      ) : null}
 
       <div className={styles.sectionHead}>
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>网卡</div>

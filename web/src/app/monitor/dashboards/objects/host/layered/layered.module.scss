@@ -91,6 +91,13 @@
   gap: 12px;
 }
 
+/* 网络趋势四卡。窄于 1100 折成 2×2，不跟 chartGrid4 一起收成单列。 */
+.netTrendGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .instantKpiRow {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -766,5 +773,11 @@
 
   .statusCards {
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+}
+
+@media (max-width: 1099px) {
+  .netTrendGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
