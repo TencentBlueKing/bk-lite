@@ -34,15 +34,14 @@ def test_get_client_token_parses_basic_and_rejects_bad_header(caplog):
 
 
 def test_malformed_authorization_log_omits_header_material(caplog):
-    import logging
-
     sentinel = "SENTINEL_AUTH_5952_ZzQ9mK2p"
     header = f"Basic {sentinel}"
     with caplog.at_level(logging.WARNING, logger="node"):
         assert token_auth.get_client_token(SimpleNamespace(META={AUTH_TOKEN_HEADER_NAME: header})) is None
     assert sentinel not in caplog.text
     assert header not in caplog.text
-    assert "格式错误" in caplog.text
+    assert "reason=malformed_header" in caplog.text
+    assert "格式错误" not in caplog.text
 
 
 def test_check_token_auth_rejects_missing_node_token_and_mismatch(monkeypatch):
