@@ -607,6 +607,48 @@ class TestBatchDelete:
         assert in_progress.json()["code"] == "material_delete_in_progress"
         assert Material.objects.filter(id__in=[pending.id, busy.id, outsider.id]).count() == 3
 
+    def test_batch_delete_rechecks_busy_status_inside_lock(self, api_client, monkeypatch):
+        from apps.opspilot.models import Material
+        from apps.opspilot.viewsets.wiki_material_view import WikiMaterialViewSet
+
+        kb = _kb()
+        first = _material(kb, "first")
+        second = _material(kb, "second")
+        real = WikiMaterialViewSet._materials_for_batch_delete
+
+        def become_busy(self, request, knowledge_base, material_ids):
+            materials, error = real(self, request, knowledge_base, material_ids)
+            if materials:
+                Material.objects.filter(pk=materials[0].pk).update(status="building")
+            return materials, error
+
+        monkeypatch.setattr(WikiMaterialViewSet, "_materials_for_batch_delete", become_busy)
+        response = api_client.post(
+            "/api/v1/opspilot/wiki_mgmt/material/batch_delete/",
+            {"knowledge_base": kb.id, "material_ids": [first.id, second.id]},
+            format="json",
+        )
+
+        assert response.status_code == 200, response.content
+        data = response.json()["data"]
+        assert data["deleted"] == []
+        assert data["failed"]["id"] == first.id
+        assert data["failed"]["code"] == "material_delete_in_progress"
+        assert data["not_attempted"] == [second.id]
+        assert Material.objects.filter(id=first.id, status="building").exists()
+        assert Material.objects.filter(id=second.id).exists()
+
+    def test_destroy_rejects_building_material(self, api_client):
+        from apps.opspilot.models import Material
+
+        kb = _kb()
+        busy = Material.objects.create(knowledge_base=kb, name="busy", material_type="text", status="parsing", text_content="x")
+        response = api_client.delete(f"/api/v1/opspilot/wiki_mgmt/material/{busy.id}/")
+
+        assert response.status_code == 409
+        assert response.json()["code"] == "material_delete_in_progress"
+        assert Material.objects.filter(id=busy.id).exists()
+
 
 @pytest.mark.django_db
 def test_deleting_file_material_removes_minio_file(monkeypatch, django_capture_on_commit_callbacks):
