@@ -49,6 +49,9 @@ export default function FlatProcessSplit({
   const name = selected?.labels.process_name || '';
   const cpu = numberOrNull(selected?.values.process_cpu_usage);
   const mem = numberOrNull(selected?.values.process_mem_usage);
+  // 数值色跟左侧折线序列 token 走，换进程也不改色、不跟行色点。
+  const cpuSeries = { label: 'CPU', color: HOST_PALETTE.emerald, reading: formatPercent(cpu) };
+  const memSeries = { label: '内存', color: HOST_PALETTE.blue, reading: formatPercent(mem) };
   const columns = useMemo<LayeredColumn[]>(() => {
     const present = (key: string) => sorted.some((row) => numberOrNull(row.values[key]) != null);
     const next: LayeredColumn[] = [
@@ -109,21 +112,18 @@ export default function FlatProcessSplit({
             { points: selected?.series.process_cpu_usage || [] },
             { points: selected?.series.process_mem_usage || [] }
           ])}
-          legends={[
-            { label: 'CPU', color: HOST_PALETTE.emerald, reading: formatPercent(cpu) },
-            { label: '内存', color: HOST_PALETTE.blue, reading: formatPercent(mem) }
-          ]}
+          legends={[cpuSeries, memSeries]}
         />
         <section className={`${classic.panel} ${styles.currentCard}`}>
           <div className={styles.currentKicker}>当前进程</div>
           <div className={styles.currentName}>{name || '—'}</div>
           <div className={styles.currentMetric}>
             CPU
-            <b>{formatPercent(cpu)}</b>
+            <b style={{ color: cpuSeries.color }}>{cpuSeries.reading}</b>
           </div>
           <div className={styles.currentMetric}>
             内存
-            <b>{formatPercent(mem)}</b>
+            <b style={{ color: memSeries.color }}>{memSeries.reading}</b>
           </div>
           {numberOrNull(selected?.values.process_memory_rss) != null ? (
             <div className={styles.currentMetric}>
