@@ -337,8 +337,10 @@ export default function HostCategoryLayout({
         diskRows={diskRows}
         diskLoading={diskLoading}
         netRows={netRows}
+        netLoading={netLoading}
         processRows={processRows}
         processReady={processReady}
+        processLoading={processLoading}
         alertCount={alertCount}
         alertEvents={alertEvents}
         alertsOpen={alertDrawerOpen}

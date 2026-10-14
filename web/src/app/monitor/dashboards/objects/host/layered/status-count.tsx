@@ -186,7 +186,16 @@ export default function StatusCountRow({
   items: StatusCountItem[];
 }) {
   const { t } = useDashboardText();
-  if (!items.length) return null;
+  if (!items.length) {
+    return (
+      <section className={`${classic.panel} ${styles.statusPanel}`}>
+        <div className={styles.sectionHead}>
+          <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>进程状态</div>
+        </div>
+        <div className={styles.note}>暂无进程数据</div>
+      </section>
+    );
+  }
   const labelOf = (item: StatusCountItem) => {
     if (item.key === 'blocked') return hostCategoryText(t, 'blockedProcesses');
     if (item.key === 'zombies') return hostCategoryText(t, 'zombieProcesses');

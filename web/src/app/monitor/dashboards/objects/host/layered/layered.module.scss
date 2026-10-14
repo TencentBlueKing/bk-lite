@@ -832,6 +832,13 @@
   line-height: 16px;
 }
 
+.eventsEmpty {
+  color: var(--color-text-3);
+  font-size: 12px;
+  line-height: 16px;
+  cursor: default;
+}
+
 .eventsMeasure {
   position: absolute;
   top: 0;

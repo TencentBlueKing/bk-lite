@@ -26,8 +26,10 @@ interface OverviewPaneProps {
   diskRows: EntityTableRow[];
   diskLoading: boolean;
   netRows: EntityTableRow[];
+  netLoading?: boolean;
   processRows: EntityTableRow[];
   processReady: boolean;
+  processLoading?: boolean;
   alertCount: number | null;
   alertEvents?: HostAlertRailEvent[];
   alertsOpen?: boolean;
@@ -60,8 +62,10 @@ export default function OverviewPane({
   diskRows,
   diskLoading,
   netRows,
+  netLoading = false,
   processRows,
   processReady,
+  processLoading = false,
   alertCount,
   alertEvents = [],
   alertsOpen = false,
@@ -198,33 +202,43 @@ export default function OverviewPane({
             </button>
           </div>
         ) : null}
-        {busiest ? (
-          <div className={`${classic.panel} ${styles.shortcutCard}`}>
-            <div className={styles.shortcutLabel}>{hostCategoryText(t, 'busiestNic')}</div>
-            <div className={styles.shortcutMain}>{busiest.labels.interface || '—'}</div>
-            <div className={styles.shortcutSub}>
-              {`入 ${formatUnit(readingOfRow(busiest, 'net_bytes_recv_rate'), 'byteps')}`}
-            </div>
-            <button type="button" className={styles.jumpBtn} onClick={() => onJump('net', busiest.key)}>
-              查看网络
-            </button>
-          </div>
-        ) : null}
-        {processReady && topProcess ? (
+        <div className={`${classic.panel} ${styles.shortcutCard}`}>
+          <div className={styles.shortcutLabel}>{hostCategoryText(t, 'busiestNic')}</div>
+          {busiest ? (
+            <>
+              <div className={styles.shortcutMain}>{busiest.labels.interface || '—'}</div>
+              <div className={styles.shortcutSub}>
+                {`入 ${formatUnit(readingOfRow(busiest, 'net_bytes_recv_rate'), 'byteps')}`}
+              </div>
+              <button type="button" className={styles.jumpBtn} onClick={() => onJump('net', busiest.key)}>
+                查看网络
+              </button>
+            </>
+          ) : (
+            <div className={styles.shortcutSub}>{netLoading ? '加载中' : '暂无网卡数据'}</div>
+          )}
+        </div>
+        {processReady ? (
           <div className={`${classic.panel} ${styles.shortcutCard}`}>
             <div className={styles.shortcutLabel}>CPU 占用最高</div>
-            <div className={styles.shortcutMain}>
-              {topProcess.labels.process_name || '—'}
-            </div>
-            <div className={styles.shortcutSub}>
-              {`CPU ${formatPercent(readingOfRow(topProcess, 'process_cpu_usage'))}`}
-              {readingOfRow(topProcess, 'process_mem_usage') != null
-                ? ` · 内存 ${formatPercent(readingOfRow(topProcess, 'process_mem_usage'))}`
-                : ''}
-            </div>
-            <button type="button" className={styles.jumpBtn} onClick={() => onJump('process', topProcess.key)}>
-              查看进程
-            </button>
+            {topProcess ? (
+              <>
+                <div className={styles.shortcutMain}>
+                  {topProcess.labels.process_name || '—'}
+                </div>
+                <div className={styles.shortcutSub}>
+                  {`CPU ${formatPercent(readingOfRow(topProcess, 'process_cpu_usage'))}`}
+                  {readingOfRow(topProcess, 'process_mem_usage') != null
+                    ? ` · 内存 ${formatPercent(readingOfRow(topProcess, 'process_mem_usage'))}`
+                    : ''}
+                </div>
+                <button type="button" className={styles.jumpBtn} onClick={() => onJump('process', topProcess.key)}>
+                  查看进程
+                </button>
+              </>
+            ) : (
+              <div className={styles.shortcutSub}>{processLoading ? '加载中' : '暂无进程数据'}</div>
+            )}
           </div>
         ) : null}
       </div>
