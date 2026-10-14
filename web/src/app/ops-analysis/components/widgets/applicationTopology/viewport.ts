@@ -4,10 +4,11 @@ export const APPLICATION_TOPOLOGY_SCALE = {
   step: 0.2,
 } as const;
 
-/** 层名与节点标题同一套字号，再乘拓扑缩放。图例留在画布坐标里，不跟拓扑缩放。 */
-export const APPLICATION_TOPOLOGY_LAYER_LABEL_FONT = 16;
+/** 图例留在画布坐标里，不跟拓扑缩放。层级卡片的宽高跟随缩放。 */
 export const APPLICATION_TOPOLOGY_LEGEND_FONT = 15;
-const LAYER_LABEL_RAIL_MIN_PX = 96;
+/** 左侧层级卡片在缩放为 1 时的宽度。要放下图标和「应用服务层」这类五字层名。放大后按比例变宽，缩小时不低于可读宽度。 */
+const LAYER_CARD_WIDTH_PX = 168;
+const LAYER_CARD_MIN_PX = 112;
 
 export function applicationTopologyChromeScale(viewScale: number): number {
   if (!Number.isFinite(viewScale) || viewScale <= 0) return 1;
@@ -15,8 +16,8 @@ export function applicationTopologyChromeScale(viewScale: number): number {
 }
 
 export function applicationTopologyLabelRailWidth(viewScale: number): number {
-  const font = APPLICATION_TOPOLOGY_LAYER_LABEL_FONT * applicationTopologyChromeScale(viewScale);
-  return Math.max(LAYER_LABEL_RAIL_MIN_PX, Math.round(font * 5 + 16));
+  const scale = applicationTopologyChromeScale(viewScale);
+  return Math.max(LAYER_CARD_MIN_PX, Math.round(LAYER_CARD_WIDTH_PX * scale));
 }
 
 export function clampApplicationTopologyScale(scale: number): number {
@@ -27,9 +28,12 @@ export function clampApplicationTopologyScale(scale: number): number {
   );
 }
 
+/** 层名卡片右缘到拓扑色块左缘的间距。 */
+export const APPLICATION_TOPOLOGY_LABEL_GAP = 10;
+
 /**
- * 五带都留在视口里，节点簇相对整个组件居中（扣掉左侧层名栏），
- * 并放大到分层高度或簇宽度先碰到边。
+ * 五带都留在视口里。层名栏和节点簇当成一组居中，
+ * 放大到分层高度或簇宽度先碰到边。
  */
 export function fitApplicationTopologyLayers(input: {
   viewportWidth: number;
@@ -38,24 +42,26 @@ export function fitApplicationTopologyLayers(input: {
   clusterWidth: number;
   layerHeight: number;
   labelRailWidth?: number;
+  labelGap?: number;
   padding?: number;
 }): { scale: number; x: number; y: number } {
   const padding = input.padding ?? 8;
   const rail = Math.max(0, input.labelRailWidth ?? 0);
-  const availW = Math.max(1, input.viewportWidth - padding * 2);
+  const labelGap = rail > 0 ? Math.max(0, input.labelGap ?? APPLICATION_TOPOLOGY_LABEL_GAP) : 0;
+  const availW = Math.max(1, input.viewportWidth - padding * 2 - rail - labelGap);
   const availH = Math.max(1, input.viewportHeight - padding * 2);
   const clusterWidth = Math.max(1, input.clusterWidth);
   const layerHeight = Math.max(1, input.layerHeight);
   const scale = clampApplicationTopologyScale(
     Math.min(availW / clusterWidth, availH / layerHeight),
   );
-  let x =
-    (input.viewportWidth - clusterWidth * scale) / 2
-    - input.clusterX * scale
-    - rail / 2;
+  const groupWidth = rail + labelGap + clusterWidth * scale;
+  let groupLeft = (input.viewportWidth - groupWidth) / 2;
+  if (groupLeft < padding) groupLeft = padding;
+  let x = groupLeft + rail + labelGap - input.clusterX * scale;
   const clusterLeft = x + input.clusterX * scale;
-  if (clusterLeft < padding) {
-    x += padding - clusterLeft;
+  if (clusterLeft < padding + rail + labelGap) {
+    x += padding + rail + labelGap - clusterLeft;
   }
   return {
     scale,

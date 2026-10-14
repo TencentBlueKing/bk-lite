@@ -25,8 +25,9 @@ describe('application topology viewport', () => {
     expect(view.y + 540 * view.scale).toBeLessThanOrEqual(720 + 0.01);
   });
 
-  it('centers the cluster on the whole component when a label rail sits on the left', () => {
+  it('keeps the label rail a short gap from the cluster and centers them together', () => {
     const rail = 96;
+    const gap = 10;
     const view = fitApplicationTopologyLayers({
       viewportWidth: 1600,
       viewportHeight: 720,
@@ -34,9 +35,13 @@ describe('application topology viewport', () => {
       clusterWidth: 480,
       layerHeight: 540,
       labelRailWidth: rail,
+      labelGap: gap,
     });
-    const clusterCenter = view.x + (640 + 240) * view.scale;
-    expect(rail + clusterCenter).toBeCloseTo((rail + 1600) / 2, 0);
+    const clusterLeft = view.x + 640 * view.scale;
+    const groupLeft = clusterLeft - gap - rail;
+    const groupRight = clusterLeft + 480 * view.scale;
+    expect(clusterLeft - (groupLeft + rail)).toBe(gap);
+    expect((groupLeft + groupRight) / 2).toBeCloseTo(800, 0);
   });
 
   it('shrinks a taller layer stack so the last band stays in view', () => {
@@ -72,8 +77,9 @@ describe('application topology viewport', () => {
     expect(applicationTopologyChromeScale(1)).toBe(1);
     expect(applicationTopologyChromeScale(0.4)).toBe(0.4);
     expect(applicationTopologyChromeScale(2)).toBe(2);
-    expect(applicationTopologyLabelRailWidth(1)).toBe(96);
-    expect(applicationTopologyLabelRailWidth(2)).toBeGreaterThan(96);
+    expect(applicationTopologyLabelRailWidth(1)).toBe(168);
+    expect(applicationTopologyLabelRailWidth(2)).toBeGreaterThan(168);
+    expect(applicationTopologyLabelRailWidth(0.4)).toBe(112);
   });
 
   it('clamps the scale', () => {

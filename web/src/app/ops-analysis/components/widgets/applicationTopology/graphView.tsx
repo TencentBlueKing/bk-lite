@@ -3,7 +3,12 @@
 import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Button, Tooltip } from 'antd';
 import {
+  ApiOutlined,
+  AppstoreOutlined,
+  CloudServerOutlined,
+  ClusterOutlined,
   FullscreenOutlined,
+  HddOutlined,
   ReloadOutlined,
   ZoomInOutlined,
   ZoomOutOutlined,
@@ -12,7 +17,6 @@ import { useTranslation } from '@/utils/i18n';
 import { getIconUrl } from '@/app/cmdb/utils/modelIcon';
 import { relatedTopologyCanvasStyle } from '@/app/ops-analysis/components/widgets/relatedTopology/visual';
 import {
-  APPLICATION_TOPOLOGY_LAYOUT,
   APPLICATION_TOPOLOGY_NODE,
   applicationTopologyToneColor,
   buildApplicationTopologyLayout,
@@ -26,7 +30,7 @@ import {
 } from './bandModel';
 import ApplicationTopologyDetailPanel from './detailPanel';
 import {
-  APPLICATION_TOPOLOGY_LAYER_LABEL_FONT,
+  APPLICATION_TOPOLOGY_LABEL_GAP,
   APPLICATION_TOPOLOGY_LEGEND_FONT,
   APPLICATION_TOPOLOGY_SCALE,
   applicationTopologyChromeScale,
@@ -43,10 +47,25 @@ const LAYER_LABEL_KEY: Record<ApplicationTopologyBandNode['layer'], string> = {
   infrastructure: 'dashboard.applicationTopologyLayerInfrastructure',
 };
 
-/** 五字层名靠右排进这一列，避免再压到节点上。 */
-const LAYER_LABEL_RAIL_PX = 96;
+const LAYER_COUNT_KEY: Record<ApplicationTopologyBandNode['layer'], string> = {
+  root: 'dashboard.applicationTopologyLayerCountSystem',
+  service: 'dashboard.applicationTopologyLayerCountService',
+  host: 'dashboard.applicationTopologyLayerCountHost',
+  appService: 'dashboard.applicationTopologyLayerCountAppService',
+  infrastructure: 'dashboard.applicationTopologyLayerCountInfrastructure',
+};
+
+const LAYER_ICON: Record<ApplicationTopologyBandNode['layer'], typeof AppstoreOutlined> = {
+  root: AppstoreOutlined,
+  service: ClusterOutlined,
+  host: CloudServerOutlined,
+  appService: ApiOutlined,
+  infrastructure: HddOutlined,
+};
 
 const HOVER_COLOR = 'color-mix(in srgb, var(--color-primary) 72%, var(--color-bg))';
+/** 悬停时未点亮的节点、线和关系文字只略微退后，仍能辨认。 */
+const HOVER_MUTE_OPACITY = 0.55;
 
 const CATEGORY_LABEL_KEY: Record<string, string> = {
   application: 'dashboard.applicationTopologyGroupApplication',
@@ -142,6 +161,7 @@ const ApplicationTopologyGraphView = ({
     [hover, layout.edges],
   );
   const activeEdges = layout.edges.filter((edge) => hoverFocus.edgeIds.has(edge.id));
+  const muteRest = hover !== null;
 
   const fitView = useCallback(() => {
     const viewport = viewportRef.current;
@@ -155,20 +175,19 @@ const ApplicationTopologyGraphView = ({
       nodeRight,
     );
     const clusterPad = 8;
-    const row = viewport.parentElement;
-    const rowWidth = row?.clientWidth || viewport.clientWidth + LAYER_LABEL_RAIL_PX;
     const clusterX = Math.max(0, nodeLeft - clusterPad);
     const clusterWidth = Math.max(1, nodeRight - nodeLeft + clusterPad * 2);
-    let rail = LAYER_LABEL_RAIL_PX;
+    let rail = applicationTopologyLabelRailWidth(1);
     let next = { scale: 1, x: 0, y: 0 };
     for (let pass = 0; pass < 4; pass += 1) {
       next = fitApplicationTopologyLayers({
-        viewportWidth: Math.max(1, rowWidth - rail),
+        viewportWidth: viewport.clientWidth,
         viewportHeight: viewport.clientHeight,
         clusterX,
         clusterWidth,
         layerHeight: layout.height,
         labelRailWidth: rail,
+        labelGap: APPLICATION_TOPOLOGY_LABEL_GAP,
       });
       const solvedRail = applicationTopologyLabelRailWidth(next.scale);
       if (solvedRail === rail) break;
@@ -245,8 +264,21 @@ const ApplicationTopologyGraphView = ({
 
   const chromeScale = applicationTopologyChromeScale(view.scale);
   const labelRail = applicationTopologyLabelRailWidth(view.scale);
-  const layerFont = APPLICATION_TOPOLOGY_LAYER_LABEL_FONT * chromeScale;
   const legendFont = APPLICATION_TOPOLOGY_LEGEND_FONT;
+  const labelLeft = view.x - labelRail - APPLICATION_TOPOLOGY_LABEL_GAP;
+  const layerCounts = useMemo(() => {
+    const counts: Record<ApplicationTopologyBandNode['layer'], number> = {
+      root: 0,
+      service: 0,
+      host: 0,
+      appService: 0,
+      infrastructure: 0,
+    };
+    layout.nodes.forEach((node) => {
+      counts[node.layer] += 1;
+    });
+    return counts;
+  }, [layout.nodes]);
 
   return (
     <div
@@ -259,7 +291,7 @@ const ApplicationTopologyGraphView = ({
         }`}
         style={{
           fontSize: legendFont,
-          paddingLeft: Math.max(20, labelRail - 8 - layerFont * 5 + 16),
+          paddingLeft: Math.max(12, labelLeft),
         }}
       >
         <Legend tone="critical" label={t('dashboard.applicationTopologyCritical')} scale={1} />
@@ -312,25 +344,51 @@ const ApplicationTopologyGraphView = ({
           ) : null}
         </div>
       </div>
-      <div className="flex min-h-0 flex-1">
-      <div className="relative shrink-0 overflow-hidden" style={{ width: labelRail }}>
-        {layout.bands.map((band) => (
-          <div
-            key={band.key}
-            className="absolute right-2 left-1 text-right font-semibold whitespace-nowrap text-(--color-text-2)"
-            style={{
-              top: view.y + (band.top + band.height / 2) * view.scale,
-              fontSize: layerFont,
-              transform: 'translateY(-50%)',
-            }}
-          >
-            {t(LAYER_LABEL_KEY[band.key])}
-          </div>
-        ))}
+      <div className="relative flex min-h-0 flex-1">
+      <div
+        className="pointer-events-none absolute top-0 bottom-0 z-[3]"
+        style={{ left: labelLeft, width: labelRail }}
+      >
+        {layout.bands.map((band) => {
+          const Icon = LAYER_ICON[band.key];
+          const bandScreenHeight = band.height * view.scale;
+          const cardHeight = Math.min(56 * chromeScale, Math.max(36, bandScreenHeight - 8));
+          return (
+            <div
+              key={band.key}
+              className="pointer-events-none absolute right-1.5 left-1.5 flex items-center gap-2 overflow-hidden rounded-lg border border-(--color-border-2) bg-[color-mix(in_srgb,var(--color-bg-1)_78%,transparent)] px-2"
+              style={{
+                top: view.y + (band.top + band.height / 2) * view.scale - cardHeight / 2,
+                height: cardHeight,
+              }}
+            >
+              <span
+                className="flex shrink-0 items-center justify-center rounded-md bg-[color-mix(in_srgb,var(--color-primary)_18%,transparent)] text-(--color-primary)"
+                style={{ width: 28 * chromeScale, height: 28 * chromeScale }}
+              >
+                <Icon style={{ fontSize: 15 * chromeScale }} />
+              </span>
+              <span className="flex min-w-0 flex-col" style={{ gap: 4 * chromeScale }}>
+                <span
+                  className="block truncate font-semibold text-(--color-text-1)"
+                  style={{ fontSize: 13 * chromeScale, lineHeight: 1.2 }}
+                >
+                  {t(LAYER_LABEL_KEY[band.key])}
+                </span>
+                <span
+                  className="block truncate text-(--color-text-3)"
+                  style={{ fontSize: 11 * chromeScale, lineHeight: 1.3 }}
+                >
+                  {t(LAYER_COUNT_KEY[band.key], undefined, { count: layerCounts[band.key] })}
+                </span>
+              </span>
+            </div>
+          );
+        })}
       </div>
       <div
         ref={viewportRef}
-        className="relative min-h-0 min-w-0 flex-1 cursor-grab overflow-hidden active:cursor-grabbing"
+        className="relative h-full min-w-0 flex-1 cursor-grab overflow-hidden active:cursor-grabbing"
         onPointerDown={(event) => {
           if ((event.target as HTMLElement).closest('button')) return;
           dragRef.current = {
@@ -355,16 +413,6 @@ const ApplicationTopologyGraphView = ({
           dragRef.current = null;
         }}
       >
-        {layout.bands.slice(0, -1).map((band) => (
-          <div
-            key={band.key}
-            className="pointer-events-none absolute right-0 left-0 z-0"
-            style={{
-              top: view.y + (band.top + band.height + APPLICATION_TOPOLOGY_LAYOUT.layerGap / 2) * view.scale,
-              borderTop: '1px dashed color-mix(in srgb, var(--color-text-3) 18%, transparent)',
-            }}
-          />
-        ))}
         <div
           className="relative z-[1] origin-top-left"
           style={{
@@ -373,6 +421,20 @@ const ApplicationTopologyGraphView = ({
             transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
           }}
         >
+          {layout.bands.map((band) => (
+            <div
+              key={band.key}
+              className="pointer-events-none absolute rounded-xl"
+              style={{
+                left: 0,
+                width: layout.width,
+                top: band.top,
+                height: band.height,
+                background: '#10283E',
+                border: '1px solid rgba(90, 124, 156, 0.38)',
+              }}
+            />
+          ))}
           <svg
             className="pointer-events-none absolute inset-0 z-0 overflow-visible"
             width={layout.width}
@@ -402,6 +464,8 @@ const ApplicationTopologyGraphView = ({
                     stroke="color-mix(in srgb, var(--color-text-3) 65%, var(--color-border-3))"
                     strokeWidth={1.35}
                     strokeOpacity={active ? 0.2 : 0.78}
+                    opacity={muteRest && !active ? HOVER_MUTE_OPACITY : 1}
+                    style={{ transition: 'opacity 160ms ease' }}
                     mask={`url(#${markerId}-line-gap)`}
                     markerEnd={edge.markerEnd ? `url(#${markerId}-end)` : undefined}
                     markerStart={edge.markerStart ? `url(#${markerId}-start)` : undefined}
@@ -412,7 +476,15 @@ const ApplicationTopologyGraphView = ({
             {layout.edges.map((edge) => {
               const mid = polylineMidpoint(edge.points);
               if (!edge.label || !mid || hoverFocus.edgeIds.has(edge.id)) return null;
-              return <EdgeLabel key={`label-${edge.id}`} edge={edge} mid={mid} active={false} />;
+              return (
+                <EdgeLabel
+                  key={`label-${edge.id}`}
+                  edge={edge}
+                  mid={mid}
+                  active={false}
+                  muted={muteRest}
+                />
+              );
             })}
           </svg>
           {activeEdges.length ? (
@@ -431,7 +503,6 @@ const ApplicationTopologyGraphView = ({
                   stroke={HOVER_COLOR}
                   strokeWidth={2.1}
                   strokeOpacity={0.88}
-                  mask={`url(#${markerId}-line-gap)`}
                   markerEnd={edge.markerEnd ? `url(#${markerId}-active-end)` : undefined}
                   markerStart={edge.markerStart ? `url(#${markerId}-active-start)` : undefined}
                 />
@@ -441,20 +512,23 @@ const ApplicationTopologyGraphView = ({
           {layout.nodes.map((node) => {
             const pressed = node.id === selectedId;
             const highlighted = hoverFocus.nodeIds.has(node.id);
+            const muted = muteRest && !highlighted;
             return (
               <button
                 key={node.id}
                 type="button"
                 aria-pressed={pressed}
-                className="absolute flex cursor-pointer rounded-md border-2 text-left shadow-sm transition-[border-color,box-shadow] hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                className="absolute flex cursor-pointer rounded-md border-2 text-left shadow-sm transition-[border-color,box-shadow,opacity] hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
                 style={{
                   left: node.x,
                   top: node.y,
                   width: APPLICATION_TOPOLOGY_NODE.width,
                   height: APPLICATION_TOPOLOGY_NODE.height,
                   zIndex: highlighted ? 3 : 1,
-                  outline: highlighted ? `2px solid ${HOVER_COLOR}` : undefined,
-                  outlineColor: NODE_PALETTE.selected,
+                  opacity: muted ? HOVER_MUTE_OPACITY : 1,
+                  outlineWidth: highlighted ? 2 : undefined,
+                  outlineStyle: highlighted ? 'solid' : undefined,
+                  outlineColor: highlighted ? HOVER_COLOR : NODE_PALETTE.selected,
                   outlineOffset: highlighted ? 2 : undefined,
                   boxShadow: [
                     pressed ? `0 0 0 2px ${NODE_PALETTE.selected}` : '',
@@ -610,10 +684,12 @@ const EdgeLabel = ({
   edge,
   mid,
   active,
+  muted = false,
 }: {
   edge: ApplicationTopologyEdge;
   mid: { x: number; y: number };
   active: boolean;
+  muted?: boolean;
 }) => {
   if (!edge.label) return null;
   if (!active) {
@@ -625,6 +701,8 @@ const EdgeLabel = ({
         dominantBaseline="middle"
         fontSize={RELATION_LABEL_FONT}
         fill="var(--color-text-2)"
+        fillOpacity={muted ? HOVER_MUTE_OPACITY : 1}
+        style={{ transition: 'fill-opacity 160ms ease' }}
       >
         {edge.label}
       </text>

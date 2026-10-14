@@ -22,7 +22,7 @@ export const APPLICATION_TOPOLOGY_LAYOUT = {
   gapX: 24,
   gapY: 20,
   bandPadY: 28,
-  layerGap: 32,
+  layerGap: 28,
 } as const;
 
 export type ApplicationTopologyTone =
@@ -96,7 +96,7 @@ export type ApplicationTopologyHover =
   | { kind: 'edge'; id: string }
   | null;
 
-/** 悬停线点亮两端节点和这条关系；悬停节点点亮它连出的线。 */
+/** 悬停线点亮两端节点和这条关系；悬停节点点亮相连的线，以及线另一端的节点。 */
 export function resolveApplicationTopologyHover(
   hover: ApplicationTopologyHover,
   edges: Array<Pick<ApplicationTopologyEdge, 'id' | 'sourceId' | 'targetId'>>,
@@ -116,6 +116,8 @@ export function resolveApplicationTopologyHover(
   edges.forEach((edge) => {
     if (edge.sourceId === hover.id || edge.targetId === hover.id) {
       edgeIds.add(edge.id);
+      nodeIds.add(edge.sourceId);
+      nodeIds.add(edge.targetId);
     }
   });
   return { nodeIds, edgeIds };

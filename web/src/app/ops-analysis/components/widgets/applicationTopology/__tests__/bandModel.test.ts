@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ALERT_LEVEL_COLORS } from '@/constants/observabilityChart';
 import {
   applicationTopologyToneColor,
+  APPLICATION_TOPOLOGY_LAYOUT,
   buildApplicationTopologyLayout,
   formatAlertBadge,
   resolveApplicationTopologyHover,
@@ -122,7 +123,9 @@ describe('application topology bands', () => {
     expect(edge?.targetId).toBe(HOST);
     const service = layout.bands.find((band) => band.key === 'service');
     const host = layout.bands.find((band) => band.key === 'host');
-    expect(host && service ? host.top - (service.top + service.height) : 0).toBe(32);
+    expect(host && service ? host.top - (service.top + service.height) : 0).toBe(
+      APPLICATION_TOPOLOGY_LAYOUT.layerGap,
+    );
   });
 });
 
@@ -138,9 +141,9 @@ describe('application topology hover', () => {
     expect([...focus.edgeIds]).toEqual(['system-service']);
   });
 
-  it('lights the node and only the lines that touch it', () => {
+  it('lights the node, the lines that touch it, and the nodes on the other end', () => {
     const focus = resolveApplicationTopologyHover({ kind: 'node', id: 'service' }, edges);
-    expect([...focus.nodeIds]).toEqual(['service']);
+    expect([...focus.nodeIds].sort()).toEqual(['host', 'service', 'system']);
     expect([...focus.edgeIds].sort()).toEqual(['service-host', 'system-service']);
   });
 });
