@@ -15,6 +15,7 @@ import pydantic.root_model  # noqa
 策略：直接实例化被测类，仅在真实跨进程边界 get_permission_rules 打桩，
 其余分支逻辑全部真实执行并断言真实返回值与对协作者的真实入参契约。
 """
+import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -189,9 +190,13 @@ class TestNormalizeOrgValuesExtra:
 
         assert AuthViewSet._normalize_org_values(_Data(), "team") == []
 
-    def test_single_non_numeric_string_skipped(self):
-        """单个非数字、不含逗号、非 [] 的字符串 -> int() 失败 -> 跳过 (466-467)。"""
-        assert AuthViewSet._normalize_org_values({"team": "abc"}, "team") == []
+    def test_single_non_numeric_string_skipped(self, caplog):
+        """单个非数字、不含逗号、非 [] 的字符串 -> int() 失败 -> 跳过并记 DEBUG。"""
+        with caplog.at_level(logging.DEBUG, logger="app"):
+            assert AuthViewSet._normalize_org_values({"team": "abc"}, "team") == []
+        assert "event=org_value_skipped" in caplog.text
+        assert "failed_stage=scalar" in caplog.text
+        assert "error_type=ValueError" in caplog.text
 
     def test_mixed_list_with_non_numeric_single_string(self):
         assert AuthViewSet._normalize_org_values({"team": ["abc", 4]}, "team") == [4]
