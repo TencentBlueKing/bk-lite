@@ -379,6 +379,78 @@ def test_start_marks_unknown_instead_of_failed_when_conductor_response_is_lost(m
     assert execution.finished_at is None
 
 
+def _published_engine_workflow(*, engine_name: str, definition: dict):
+    workflow = Workflow.objects.create(
+        name=engine_name,
+        team=[7],
+        engine_name=engine_name,
+        definition=definition,
+        current_version=1,
+        status=Workflow.Status.PUBLISHED,
+        enabled=True,
+    )
+    WorkflowVersion.objects.create(workflow=workflow, version=1, definition=definition, canvas_metadata={})
+    return workflow
+
+
+@pytest.mark.django_db
+def test_missing_engine_definition_is_registered_before_start(mocker):
+    definition = {"name": "engine-missing", "version": 1, "tasks": []}
+    workflow = _published_engine_workflow(engine_name="engine-missing", definition=definition)
+    conductor = mocker.Mock()
+    conductor.get_workflow_definition.return_value = None
+    conductor.start_workflow.return_value = "conductor-registered"
+
+    execution = start_execution(
+        workflow,
+        inputs={},
+        started_by="alice",
+        domain="example.com",
+        client=conductor,
+    )
+
+    assert execution.status == WorkflowExecution.Status.RUNNING
+    assert execution.conductor_workflow_id == "conductor-registered"
+    conductor.register_task_definitions.assert_called_once()
+    conductor.register_workflow.assert_called_once_with(definition)
+    conductor.get_workflow_definition.assert_called_once_with("engine-missing", 1)
+
+
+@pytest.mark.django_db
+def test_repeat_launch_retries_unknown_start_instead_of_reporting_success(mocker):
+    definition = {"name": "engine-retry", "version": 1, "tasks": []}
+    workflow = _published_engine_workflow(engine_name="engine-retry", definition=definition)
+    conductor = mocker.Mock()
+    conductor.get_workflow_definition.return_value = None
+    conductor.find_workflow_ids_by_correlation_id.return_value = []
+    conductor.start_workflow.side_effect = [ConductorUnavailable("No such workflow found"), "conductor-retried"]
+
+    with pytest.raises(ExecutionStartUnknown):
+        start_execution(
+            workflow,
+            inputs={},
+            started_by="alice",
+            domain="example.com",
+            client=conductor,
+            launch_token_hash="launch-token-retry",
+        )
+
+    execution = start_execution(
+        workflow,
+        inputs={},
+        started_by="alice",
+        domain="example.com",
+        client=conductor,
+        launch_token_hash="launch-token-retry",
+    )
+
+    assert WorkflowExecution.objects.filter(workflow=workflow).count() == 1
+    assert execution.status == WorkflowExecution.Status.RUNNING
+    assert execution.conductor_workflow_id == "conductor-retried"
+    assert execution._launch_reused is False
+    assert conductor.start_workflow.call_count == 2
+
+
 @pytest.mark.django_db
 def test_reconcile_unknown_execution_attaches_recovered_engine_id(mocker):
     workflow = Workflow.objects.create(

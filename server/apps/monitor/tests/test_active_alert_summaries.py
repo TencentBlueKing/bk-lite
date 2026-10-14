@@ -95,8 +95,10 @@ def test_summarize_excludes_info_and_picks_highest_severity(monkeypatch):
     assert set(by_id) == {MON_A, MON_B}  # MON_C unauthorized → omitted
     assert by_id[MON_A]["active_alarm_count"] == 3
     assert by_id[MON_A]["highest_severity"] == "critical"
+    assert by_id[MON_A]["level_counts"] == {"critical": 2, "error": 0, "warning": 1}
     assert by_id[MON_B]["active_alarm_count"] == 1
     assert by_id[MON_B]["highest_severity"] == "error"
+    assert by_id[MON_B]["level_counts"] == {"critical": 0, "error": 1, "warning": 0}
 
 
 def test_summarize_batches_above_100_keeps_all_authorized_results(monkeypatch):
@@ -199,7 +201,14 @@ def test_summarize_returns_zero_for_authorized_without_alerts(monkeypatch):
         accessible_policy_queryset_loader=lambda user_info: (policy_qs, None),
         accessible_instance_queryset_loader=lambda user_info: (_InstanceQS(), None),
     )
-    assert result["data"]["items"] == [{"monitor_id": MON_A, "active_alarm_count": 0, "highest_severity": None}]
+    assert result["data"]["items"] == [
+        {
+            "monitor_id": MON_A,
+            "active_alarm_count": 0,
+            "highest_severity": None,
+            "level_counts": {"critical": 0, "error": 0, "warning": 0},
+        }
+    ]
 
 
 def test_summarize_propagates_permission_context_error():

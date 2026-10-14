@@ -178,7 +178,23 @@ def _base_metadata(title: str) -> dict[str, Any]:
 
 
 def _sample_job_envelope() -> dict[str, Any]:
+    """显式文档验收数据：字段形状对齐内置健康报告模板（含 data.host）。"""
     collected_at = timezone.now().isoformat()
+    metric = {
+        "category": "计算",
+        "object_type": "processor",
+        "object_name": "CPU Total",
+        "dimensions": "core=all",
+        "metric_name": "usage_percent",
+        "value": 42,
+        "unit": "%",
+        "warning_threshold": 80,
+        "critical_threshold": 90,
+        "health_status": "NORMAL",
+        "collected_at": collected_at,
+        "detail": "CPU 总使用率",
+        "display_name": "CPU 使用率",
+    }
     return {
         "results": [
             {
@@ -196,36 +212,68 @@ def _sample_job_envelope() -> dict[str, Any]:
                 "stderr": "",
                 "data": {
                     "collected_at": collected_at,
-                    "metrics": [
-                        {
-                            "category": "CPU",
-                            "object_type": "processor",
-                            "object_name": "CPU Total",
-                            "dimensions": "core=all",
-                            "metric_name": "usage_percent",
-                            "value": 42,
-                            "unit": "%",
-                            "warning_threshold": 80,
-                            "critical_threshold": 90,
-                            "health_status": "NORMAL",
-                            "collected_at": collected_at,
-                            "detail": "CPU 总使用率",
-                        }
-                    ],
+                    "conclusion": "健康",
+                    "host": {
+                        "hostname": "WIN-SAMPLE",
+                        "os_version": "Microsoft Windows Server 2019",
+                        "architecture": "x64-based PC",
+                        "uptime_hours": 24,
+                        "cpu_cores": 4,
+                        "memory_total_gb": 8,
+                        "top_cpu": "idle=0s",
+                        "top_memory": "idle=0MB",
+                    },
+                    "metrics": [metric],
                     "metric_count": 1,
                     "critical": [],
                     "warning": [],
-                    "normal": [],
+                    "normal": [metric],
                     "critical_count": 0,
                     "warning_count": 0,
                     "normal_count": 1,
-                    "conclusion": "健康",
                 },
                 "error": None,
             }
         ],
         "summary": {"total": 1, "succeeded": 1, "failed": 0},
     }
+
+
+def _resolve_live_email_channel_id(team_id: int, preferred_channel_id: int) -> int:
+    """EMAIL 通知场景必须选用 email 渠道；告警中心 NATS（recipient_mode=none）不能带收件人。"""
+    from apps.system_mgmt.models import Channel, ChannelChoices
+
+    preferred = Channel.objects.filter(id=preferred_channel_id).first()
+    if preferred is not None and preferred.channel_type == ChannelChoices.EMAIL and team_id in list(preferred.team or []):
+        return int(preferred.id)
+    for channel in Channel.objects.filter(channel_type=ChannelChoices.EMAIL).order_by("id"):
+        if team_id in list(channel.team or []):
+            return int(channel.id)
+    raise ValueError(f"团队 {team_id} 下没有可用的邮件通知渠道（不能用告警中心 NATS 渠道做 EMAIL 验收）")
+
+
+def _probe_email_smtp(channel_id: int) -> None:
+    """真实投递前探测 SMTP；本机演示渠道通常指向 127.0.0.1:1025（Mailpit）。"""
+    import smtplib
+
+    from apps.system_mgmt.models import Channel
+
+    channel = Channel.objects.filter(id=channel_id).first()
+    if channel is None:
+        raise ValueError(f"通知渠道不存在: {channel_id}")
+    config = channel.config or {}
+    host = str(config.get("smtp_server") or "").strip()
+    port = int(config.get("port") or 25)
+    if not host:
+        raise ValueError(f"邮件渠道 {channel_id} 未配置 smtp_server")
+    try:
+        with smtplib.SMTP(host, port, timeout=5) as client:
+            client.noop()
+    except OSError as error:
+        raise ValueError(
+            f"邮件渠道 {channel_id} 的 SMTP {host}:{port} 不可达（{error}）。"
+            "本地验收可启动 Mailpit：docker run -d --name mailpit-bklite -p 1025:1025 -p 8025:8025 axllent/mailpit"
+        ) from error
 
 
 def run_document_render_scenario(
@@ -405,6 +453,8 @@ def run_notification_scenario(
     key = "notification"
     title = "对外通知"
     try:
+        resolved_channel_id = _resolve_live_email_channel_id(team_id, channel_id)
+        _probe_email_smtp(resolved_channel_id)
         definition = {
             "name": "live_notification_draft",
             "description": title,
@@ -420,7 +470,7 @@ def run_notification_scenario(
                     "type": "SIMPLE",
                     "inputParameters": {
                         "notification_type": "EMAIL",
-                        "channel_id": channel_id,
+                        "channel_id": resolved_channel_id,
                         "recipients": [username],
                         "title": "编排中心本地真实闭环通知验收",
                         "body": "这是一次真实投递验收，失败会如实记录。",
@@ -469,7 +519,12 @@ def run_notification_scenario(
             workflow_id=workflow.id,
             execution_id=str(execution.id),
             conductor_workflow_id=execution.conductor_workflow_id or "",
-            evidence={"execution_status": execution.status, "channel_id": channel_id, "output": execution.output},
+            evidence={
+                "execution_status": execution.status,
+                "channel_id": resolved_channel_id,
+                "requested_channel_id": channel_id,
+                "output": execution.output,
+            },
         )
     except Exception as error:
         return ScenarioResult(key=key, title=title, status="FAILED", detail=f"{type(error).__name__}: {error}")
@@ -853,6 +908,7 @@ def run_mixed_host_health_chain_scenario(
             evidence={"windows_target": windows_target, "linux_target": linux_target},
         )
     try:
+        resolved_channel_id = _resolve_live_email_channel_id(team_id, channel_id)
         snapshot = seed_builtin_health_template_snapshot(fmt, team_id=team_id)
         job_timeout = min(timeout_seconds, 600)
         definition = {
@@ -912,7 +968,7 @@ def run_mixed_host_health_chain_scenario(
                     "type": "SIMPLE",
                     "inputParameters": {
                         "notification_type": "EMAIL",
-                        "channel_id": channel_id,
+                        "channel_id": resolved_channel_id,
                         "recipients": [username],
                         "title": f"混主机健康巡检（{fmt}/{windows_target}+{linux_target}）",
                         "body": "混主机真实闭环验收通知（Windows + Linux）。",
@@ -978,6 +1034,8 @@ def run_mixed_host_health_chain_scenario(
                 "windows_target": windows_target,
                 "linux_target": linux_target,
                 "format": fmt,
+                "channel_id": resolved_channel_id,
+                "requested_channel_id": channel_id,
                 "output": copy.deepcopy(execution.output or {}),
             },
         )
@@ -1091,6 +1149,7 @@ def run_live_acceptance(
             WorkflowExecution.Status.RUNNING,
             WorkflowExecution.Status.WAITING_APPROVAL,
             WorkflowExecution.Status.TERMINATING,
+            WorkflowExecution.Status.UNKNOWN,
         },
     ):
         if execution.conductor_workflow_id:

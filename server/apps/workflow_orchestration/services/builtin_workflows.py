@@ -22,15 +22,32 @@ logger = logging.getLogger(__name__)
 
 BUILTIN_WINDOWS_KEY = "windows_health_docx"
 BUILTIN_LINUX_KEY = "linux_health_xlsx"
+# 与运行时 __system.actor_name（= started_by 用户名）对齐；通知原子会把用户名解析成收件人。
+BUILTIN_EXECUTOR_RECIPIENT = "${workflow.input.__system.actor_name}"
 
 
 def builtin_engine_name(team_id: int, key: str) -> str:
     return f"bklite_builtin_{key}_team_{team_id}"
 
 
-def _build_builtin_items(*, team_id: int, channel_id: int, username: str) -> list[dict[str, Any]]:
+def resolve_team_email_channel_id(team_id: int, preferred_channel_id: int | None = None) -> int | None:
+    """按与前端下拉相同的 name,id 排序取第一项 email 渠道；没有则返回 None。"""
+    from apps.system_mgmt.models import Channel, ChannelChoices
+
+    if preferred_channel_id is not None:
+        preferred = Channel.objects.filter(id=preferred_channel_id).first()
+        if preferred is not None and preferred.channel_type == ChannelChoices.EMAIL and team_id in list(preferred.team or []):
+            return int(preferred.id)
+    for channel in Channel.objects.filter(channel_type=ChannelChoices.EMAIL).order_by("name", "id"):
+        if team_id in list(channel.team or []):
+            return int(channel.id)
+    return None
+
+
+def _build_builtin_items(*, team_id: int, channel_id: int | None, username: str) -> list[dict[str, Any]]:
     docx_snapshot = seed_builtin_health_template_snapshot("docx", team_id=team_id)
     xlsx_snapshot = seed_builtin_health_template_snapshot("xlsx", team_id=team_id)
+    recipients = [BUILTIN_EXECUTOR_RECIPIENT]
     windows = build_health_inspection_showcase_workflow(
         team_id=team_id,
         channel_id=channel_id,
@@ -40,6 +57,7 @@ def _build_builtin_items(*, team_id: int, channel_id: int, username: str) -> lis
         script_type="powershell",
         script_content=WINDOWS_HEALTH_SCRIPT,
         operating_system="windows",
+        recipients=recipients,
     )
     linux = build_health_inspection_showcase_workflow(
         team_id=team_id,
@@ -50,6 +68,7 @@ def _build_builtin_items(*, team_id: int, channel_id: int, username: str) -> lis
         script_type="shell",
         script_content=LINUX_HEALTH_SCRIPT,
         operating_system="linux",
+        recipients=recipients,
     )
     windows["key"] = BUILTIN_WINDOWS_KEY
     linux["key"] = BUILTIN_LINUX_KEY
@@ -67,7 +86,7 @@ def ensure_builtin_health_workflows(
     team_id: int,
     username: str,
     domain: str = "domain.com",
-    channel_id: int = 1,
+    channel_id: int | None = None,
     register_conductor: bool = True,
 ) -> list[Workflow]:
     """为单个团队幂等确保两条内置巡检流程已发布且启用。"""
@@ -78,8 +97,16 @@ def ensure_builtin_health_workflows(
     if missing:
         raise RuntimeError(f"缺少平台原子: {', '.join(sorted(missing))}")
 
+    resolved_channel_id = resolve_team_email_channel_id(team_id, channel_id)
+    if resolved_channel_id is None:
+        logger.warning("团队 %s 下没有可用的邮件通知渠道，内置巡检通知方式将留空", team_id)
+
     prepared: list[dict[str, Any]] = []
-    for item in _build_builtin_items(team_id=team_id, channel_id=channel_id, username=username):
+    for item in _build_builtin_items(
+        team_id=team_id,
+        channel_id=resolved_channel_id,
+        username=username,
+    ):
         task_references = {
             task["taskReferenceName"] for task in _walk_tasks(item["definition"].get("tasks") or []) if isinstance(task.get("taskReferenceName"), str)
         }

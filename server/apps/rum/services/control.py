@@ -199,9 +199,20 @@ class NatsControlClient:
     call. The connection is re-established lazily after a disconnect or fork.
     """
 
-    def __init__(self, url: str, timeout_seconds: float = 5.0):
+    def __init__(
+        self,
+        url: str,
+        timeout_seconds: float = 5.0,
+        *,
+        user: str = "",
+        password: str = "",
+        tls_ca_file: str = "",
+    ):
         self._url = url.strip()
         self._timeout = timeout_seconds
+        self._user = user.strip()
+        self._password = password
+        self._tls_ca_file = tls_ca_file.strip()
         self._lock = threading.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
@@ -296,9 +307,22 @@ class NatsControlClient:
                     await nc.close()
                 except Exception:  # noqa: BLE001 — stale socket; nothing to recover
                     pass
-            nc = await nats.connect(self._url, connect_timeout=self._timeout)
+            options: dict[str, Any] = {"connect_timeout": self._timeout}
+            if self._user:
+                options["user"] = self._user
+                options["password"] = self._password
+            if self._url.startswith("tls://"):
+                options["tls"] = self._tls_context()
+            nc = await nats.connect(self._url, **options)
             self._nc = nc
             return nc
+
+    def _tls_context(self) -> Any:
+        import ssl
+
+        if self._tls_ca_file and os.path.isfile(self._tls_ca_file):
+            return ssl.create_default_context(cafile=self._tls_ca_file)
+        return ssl.create_default_context()
 
     async def _request(self, subject: str, envelope: dict) -> tuple[int, Any]:
         from nats.errors import NoRespondersError
@@ -325,7 +349,13 @@ def get_control_plane() -> ControlPlane:
         return _control
     settings = load_rum_settings()
     if settings.nats_url:
-        _control = NatsControlClient(settings.nats_url, settings.nats_timeout_seconds)
+        _control = NatsControlClient(
+            settings.nats_url,
+            settings.nats_timeout_seconds,
+            user=settings.nats_user,
+            password=settings.nats_password,
+            tls_ca_file=settings.nats_tls_ca_file,
+        )
     else:
         _control = UnavailableControl()
     return _control

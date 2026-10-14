@@ -1,13 +1,12 @@
 # -*- coding: UTF-8 -*-
 import base64
 import json
-import logging
 import re
 
 import requests
 import rsa
+from core.logger import logger
 
-logger = logging.getLogger("root")
 
 
 class CwTKE:

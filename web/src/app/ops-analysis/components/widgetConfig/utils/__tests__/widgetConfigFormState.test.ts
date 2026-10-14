@@ -168,7 +168,7 @@ describe('opened widget hydrate', () => {
     assert.equal(formValues.compareMode, 'value');
   });
 
-  it('hydrates room3D default from legacy dataSourceParams', () => {
+  it('does not put a legacy room id back into the room3D form', () => {
     const values = buildOpenedWidgetFormValues(
       {
         i: 'room',
@@ -191,7 +191,6 @@ describe('opened widget hydrate', () => {
       { showChartThemeMode: false },
     );
     assert.deepEqual(values.room3D, {
-      serverRoomId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
       rackTopLine1: 'location',
       rackTopLine2: 'type',
     });
@@ -320,7 +319,6 @@ describe('buildDataFetchSignature', () => {
         topNValueField: 'cpu',
         cardListTitleField: undefined,
         networkStatusTopology: undefined,
-        room3D: undefined,
       }),
     );
   });

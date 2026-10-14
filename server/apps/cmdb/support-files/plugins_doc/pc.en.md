@@ -165,8 +165,8 @@ Click "Test Connection" before saving:
 | brand | Device vendor |
 | device_model | Device model |
 | cpu | CPU model |
-| men | Total physical memory (bytes) |
-| disk | Total local disk capacity (bytes) |
+| men | Total physical memory (GB) |
+| disk | Total local disk capacity (GB) |
 | logged_in_user | Currently logged-in user |
 | last_collect_time | Data report time of the latest snapshot |
 

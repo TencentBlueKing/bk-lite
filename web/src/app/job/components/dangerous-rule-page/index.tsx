@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Button, Input, Select, Switch, Popconfirm, message, Form, Radio, Tag } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import OperateFormModal from '@/components/operate-form-modal';
@@ -16,7 +16,6 @@ import {
 } from './types';
 import { ColumnItem } from '@/types';
 import GroupTreeSelect from '@/components/group-tree-select';
-import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
 import { AxiosRequestConfig } from 'axios';
 import JobListWorkspaceShell from '@/app/job/components/list-workspace-shell';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -93,7 +92,9 @@ const JobDangerousRulePage: React.FC<JobDangerousRulePageProps> = ({
   const [form] = Form.useForm();
   const [data, setData] = useState<DangerousRule[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchFilters, setSearchFilters] = useState<SearchFilters>({});
+  const [searchKey, setSearchKey] = useState('');
+  const searchKeyRef = useRef(searchKey);
+  searchKeyRef.current = searchKey;
   const [pagination, setPagination] = useState({
     current: 1,
     total: 0,
@@ -131,33 +132,20 @@ const JobDangerousRulePage: React.FC<JobDangerousRulePageProps> = ({
   const fetchData = useCallback(
     async (
       params: {
-        filters?: SearchFilters;
+        keyword?: string;
         current?: number;
         pageSize?: number;
       } = {},
     ) => {
       setLoading(true);
       try {
-        const filters = params.filters ?? searchFilters;
+        const keyword = (params.keyword ?? searchKeyRef.current).trim();
         const queryParams: Record<string, unknown> = {
           page: params.current ?? pagination.current,
           page_size: params.pageSize ?? pagination.pageSize,
         };
-        if (filters && Object.keys(filters).length > 0) {
-          Object.entries(filters).forEach(([field, conditions]) => {
-            conditions.forEach((condition) => {
-              if (field === 'is_enabled') {
-                queryParams.is_enabled = condition.value;
-              } else if (
-                condition.lookup_expr === 'in' &&
-                Array.isArray(condition.value)
-              ) {
-                queryParams[field] = (condition.value as string[]).join(',');
-              } else {
-                queryParams[field] = condition.value;
-              }
-            });
-          });
+        if (keyword) {
+          queryParams.name = keyword;
         }
         const res = await api.getList(queryParams as any);
         setData(res.items || []);
@@ -169,7 +157,7 @@ const JobDangerousRulePage: React.FC<JobDangerousRulePageProps> = ({
         setLoading(false);
       }
     },
-    [api, pagination.current, pagination.pageSize, searchFilters],
+    [api, pagination.current, pagination.pageSize],
   );
 
   useEffect(() => {
@@ -178,66 +166,13 @@ const JobDangerousRulePage: React.FC<JobDangerousRulePageProps> = ({
     }
   }, [fetchData, isApiReady]);
 
-  const handleSearchChange = useCallback(
-    (filters: SearchFilters) => {
-      setSearchFilters(filters);
+  const handleSearch = useCallback(
+    (value: string) => {
+      setSearchKey(value);
       setPagination((prev) => ({ ...prev, current: 1 }));
+      fetchData({ keyword: value, current: 1 });
     },
-    [],
-  );
-
-  const fieldConfigs: FieldConfig[] = useMemo(
-    () => [
-      {
-        name: 'name',
-        label: t('job.ruleName'),
-        lookup_expr: 'icontains',
-      },
-      {
-        name: 'pattern',
-        label: patternLabel,
-        lookup_expr: 'icontains',
-      },
-      {
-        name: 'level',
-        label: t('job.handleStrategy'),
-        lookup_expr: 'in',
-        options: [
-          { id: 'forbidden', name: forbiddenLabel },
-          { id: 'confirm', name: confirmLabel },
-        ],
-      },
-      ...(matchTypeOptions?.length
-        ? [
-            {
-              name: 'match_type',
-              label: matchTypeLabel || t('job.matchType'),
-              lookup_expr: 'in',
-              options: matchTypeOptions.map((option) => ({
-                id: option.value,
-                name: option.label,
-              })),
-            } satisfies FieldConfig,
-        ]
-        : []),
-      {
-        name: 'is_enabled',
-        label: t('job.enableStatus'),
-        lookup_expr: 'bool',
-        options: [
-          { id: 'true', name: t('common.yes') },
-          { id: 'false', name: t('common.no') },
-        ],
-      },
-    ],
-    [
-      confirmLabel,
-      forbiddenLabel,
-      matchTypeLabel,
-      matchTypeOptions,
-      patternLabel,
-      t,
-    ],
+    [fetchData],
   );
 
   const handleTableChange = (pag: any) => {
@@ -473,11 +408,16 @@ const JobDangerousRulePage: React.FC<JobDangerousRulePageProps> = ({
       <JobListWorkspaceShell
         title={title}
         description={description}
-        fieldConfigs={fieldConfigs}
-        onSearchChange={handleSearchChange}
+        searchProps={{
+          placeholder: t('common.search'),
+          allowClear: true,
+          value: searchKey,
+          onChange: (event) => setSearchKey(event.target.value),
+          onSearch: handleSearch,
+        }}
         actions={(
           <Button type="primary" icon={<PlusOutlined />} onClick={openAddModal}>
-            {t('job.addRule')}
+            {t('common.new')}
           </Button>
         )}
         contentClassName="flex-1 overflow-hidden"

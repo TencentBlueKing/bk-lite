@@ -1,6 +1,6 @@
 import React, { createRef } from 'react';
 import '@ant-design/v5-patch-for-react-19';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -59,6 +59,11 @@ const sceneWidget: DashboardLayoutItem = {
 };
 
 beforeAll(() => {
+  vi.stubGlobal('ResizeObserver', class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  });
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     value: vi.fn().mockImplementation((query: string) => ({
@@ -85,6 +90,9 @@ const renderCanvas = (
     isEditMode?: boolean;
     selectedDashboardLocked?: boolean;
     shareMode?: boolean;
+    renderMode?: boolean;
+    isFullscreen?: boolean;
+    pdfExportPreparing?: boolean;
   } = {},
 ) => {
   const scrollRootRef = createRef<HTMLDivElement | null>();
@@ -108,6 +116,7 @@ const renderCanvas = (
       appliedNamespaceId={undefined}
       selectedDashboardLocked={options.selectedDashboardLocked}
       shareMode={options.shareMode}
+      isFullscreen={options.isFullscreen}
       onLayoutChange={vi.fn()}
       onOpenAddModal={vi.fn()}
       onToggleCollapsedGroup={vi.fn()}
@@ -117,7 +126,8 @@ const renderCanvas = (
       onEditWidget={vi.fn()}
       onCopyWidget={vi.fn()}
       onDeleteWidget={vi.fn()}
-      renderMode
+      renderMode={options.renderMode ?? true}
+      pdfExportPreparing={options.pdfExportPreparing}
       scrollRootRef={scrollRootRef}
     />,
   );
@@ -165,6 +175,84 @@ describe('DashboardCanvas copy menu', () => {
     expect(await screen.findByText('common.edit')).toBeTruthy();
     expect(screen.queryByText('common.copy')).toBeNull();
     expect(screen.getByText('common.delete')).toBeTruthy();
+  });
+
+  it('shows a hover-only csv export icon in the title row for a line chart in view mode and hides it for unsupported charts', async () => {
+    renderCanvas([dataWidget], { isEditMode: false, renderMode: false });
+    const button = await screen.findByRole('button', { name: 'dashboard.exportCsv' });
+    expect(button.getAttribute('data-csv-export-hover')).toBe('true');
+    expect(button.getAttribute('data-export-hidden')).toBe('true');
+    expect(button.className).toContain('opacity-0');
+    expect(button.className).toContain('shrink-0');
+    expect(button.className).toContain('cursor-pointer');
+    expect(button.className).not.toContain('absolute');
+    fireEvent.mouseEnter(button);
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip.textContent).toBe('dashboard.exportCsv');
+    expect(button.closest('.widget')?.contains(tooltip)).toBe(false);
+    const header = button.closest('.widget-header');
+    const slot = header?.querySelector('.overflow-x-auto');
+    expect(slot).toBeTruthy();
+    expect(slot!.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole('menuitem')).toBeNull();
+
+    cleanup();
+    const singleWidget: DashboardLayoutItem = {
+      ...dataWidget,
+      i: 'single',
+      name: '单值',
+      valueConfig: { chartType: 'single' },
+    };
+    renderCanvas([singleWidget], { isEditMode: false, renderMode: false });
+    await waitFor(() => {
+      expect(screen.getByText('单值')).toBeTruthy();
+    });
+    expect(screen.queryByRole('button', { name: 'dashboard.exportCsv' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'common.more' })).toBeNull();
+  });
+
+  it('hides csv export in share, fullscreen, and screenshot modes', async () => {
+    renderCanvas([dataWidget], { isEditMode: false, renderMode: false, shareMode: true });
+    await waitFor(() => {
+      expect(screen.getByText('CPU')).toBeTruthy();
+    });
+    expect(screen.queryByRole('button', { name: 'dashboard.exportCsv' })).toBeNull();
+
+    cleanup();
+    renderCanvas([dataWidget], { isEditMode: false, renderMode: false, isFullscreen: true });
+    await waitFor(() => {
+      expect(screen.getByText('CPU')).toBeTruthy();
+    });
+    expect(screen.queryByRole('button', { name: 'dashboard.exportCsv' })).toBeNull();
+
+    cleanup();
+    renderCanvas([dataWidget], { isEditMode: true, renderMode: false, shareMode: true });
+    await openMoreMenu();
+    expect(screen.queryByText('dashboard.exportCsv')).toBeNull();
+
+    cleanup();
+    renderCanvas([dataWidget], { isEditMode: true, renderMode: true });
+    await openMoreMenu();
+    expect(screen.queryByText('dashboard.exportCsv')).toBeNull();
+
+    cleanup();
+    renderCanvas([dataWidget], { isEditMode: false, renderMode: false, pdfExportPreparing: true });
+    await waitFor(() => {
+      expect(screen.getByText('CPU')).toBeTruthy();
+    });
+    expect(screen.queryByRole('button', { name: 'dashboard.exportCsv' })).toBeNull();
+  });
+
+  it('adds csv export to the edit menu outside render snapshots', async () => {
+    renderCanvas([dataWidget], { isEditMode: true, renderMode: false });
+    await openMoreMenu();
+    const items = await screen.findAllByRole('menuitem');
+    expect(items.map((item) => item.textContent)).toEqual([
+      'common.edit',
+      'common.copy',
+      'dashboard.exportCsv',
+      'common.delete',
+    ]);
   });
 
   it('omits 复制 on a builtin dashboard even if the ⋯ menu is open', async () => {

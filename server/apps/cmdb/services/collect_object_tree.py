@@ -50,7 +50,13 @@ def get_collect_obj_tree(*, with_credential_types=False, team_ids=None):
             continue
         category = category_map.get(category_id)
         if category is None:
-            continue
+            category = {
+                "id": category_id,
+                "name": enterprise_group.get("name") or category_id,
+                "children": [],
+            }
+            tree.append(category)
+            category_map[category_id] = category
 
         existing_children = category.setdefault("children", [])
         existing_model_ids = {child.get("model_id"): index for index, child in enumerate(existing_children)}

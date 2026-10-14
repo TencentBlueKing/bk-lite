@@ -13,6 +13,12 @@ import {
   type RumApplicationView,
   type RumSnippetSet,
 } from '@/app/rum/api';
+import {
+  BudgetFields,
+  budgetFormFromApi,
+  budgetPayload,
+  type BudgetForm,
+} from '@/app/rum/applications/ui/budget-fields';
 import KeyPanel from '@/app/rum/applications/ui/key-panel';
 import { OriginChips, OriginEditor } from '@/app/rum/applications/ui/origin-editor';
 import SelfCheck from '@/app/rum/applications/ui/self-check';
@@ -24,6 +30,7 @@ import RumRefreshButton from '@/app/rum/components/rum-refresh-button';
 import { RumCodeSkeleton, RumSetupSkeleton } from '@/app/rum/components/rum-skeleton';
 import { rumErrorMessage } from '@/app/rum/lib/error-message';
 import { rumIngestStatus } from '@/app/rum/lib/ingest';
+import { rumBrowserEndpoints } from '@/app/rum/lib/public-endpoints';
 import SemanticBadge from '@/components/semantic-badge';
 import { toneSemanticPalette } from '@/app/rum/lib/cwv';
 import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
@@ -47,6 +54,9 @@ export default function ApplicationSetupPage() {
   const [app, setApp] = useState<RumApplicationView | null>(null);
   const [origins, setOrigins] = useState<string[]>([]);
   const [originsEditing, setOriginsEditing] = useState(false);
+  const [budgetForm, setBudgetForm] = useState<BudgetForm>(() => budgetFormFromApi());
+  const [budgetsEditing, setBudgetsEditing] = useState(false);
+  const [budgetError, setBudgetError] = useState('');
   const [reissuePending, setReissuePending] = useState(false);
   const [freshKey, setFreshKey] = useState(false);
   const [acting, setActing] = useState(false);
@@ -69,6 +79,8 @@ export default function ApplicationSetupPage() {
       setApp(view);
       setOrigins(view.origins?.slice() || []);
       setOriginsEditing(false);
+      setBudgetForm(budgetFormFromApi(view.budgets));
+      setBudgetsEditing(false);
       setFreshKey(false);
     } catch {
       setApp(null);
@@ -88,6 +100,8 @@ export default function ApplicationSetupPage() {
           setApp(view);
           setOrigins(view.origins?.slice() || []);
           setOriginsEditing(false);
+          setBudgetForm(budgetFormFromApi(view.budgets));
+          setBudgetsEditing(false);
           setFreshKey(false);
         })
         .catch(() => {
@@ -106,12 +120,20 @@ export default function ApplicationSetupPage() {
       void getMeta()
         .then((meta) => {
           if (isCancelled()) return;
-          setCollectUrl(meta.collectUrl || '');
-          setReplayUrl(meta.replayUrl || '');
-          setSdkCdnUrl(meta.sdkCdnUrl || '');
+          const endpoints = rumBrowserEndpoints(
+            window.location.origin,
+            meta.publicOrigin,
+          );
+          setCollectUrl(endpoints.collectUrl);
+          setReplayUrl(endpoints.replayUrl);
+          setSdkCdnUrl(endpoints.sdkCdnUrl);
         })
         .catch(() => {
-          /* meta soft-fail; snippets stay empty until available */
+          if (isCancelled()) return;
+          const endpoints = rumBrowserEndpoints(window.location.origin);
+          setCollectUrl(endpoints.collectUrl);
+          setReplayUrl(endpoints.replayUrl);
+          setSdkCdnUrl(endpoints.sdkCdnUrl);
         });
     },
     [getMeta],
@@ -164,6 +186,31 @@ export default function ApplicationSetupPage() {
       setActing(false);
     }
   }, [app, origins, updateApplication, t]);
+
+  const saveBudgets = useCallback(async () => {
+    if (!app) return;
+    const payload = budgetPayload(budgetForm);
+    if (payload === 'order') {
+      setBudgetError(t('rum.budgets.order', '解压上限不能小于压缩上限'));
+      return;
+    }
+    if (payload === 'incomplete') {
+      setBudgetError(t('rum.budgets.required', '请填写完整的每分钟预算'));
+      return;
+    }
+    setBudgetError('');
+    setActing(true);
+    try {
+      const view = await updateApplication(app.application, { budgets: payload });
+      setApp(view);
+      setBudgetForm(budgetFormFromApi(view.budgets));
+      setBudgetsEditing(false);
+    } catch {
+      // request toast is handled by useApiClient
+    } finally {
+      setActing(false);
+    }
+  }, [app, budgetForm, t, updateApplication]);
 
   const toggleEnabled = useCallback(async () => {
     if (!app) return;
@@ -349,6 +396,78 @@ export default function ApplicationSetupPage() {
                           onClick={() => {
                             setOrigins(app.origins?.slice() || []);
                             setOriginsEditing(true);
+                          }}
+                        />
+                      </Tooltip>
+                    </RumPermission>
+                  </div>
+                )}
+              </div>
+              <div className="mt-4 space-y-2 border-t border-[var(--color-fill-2)] pt-4">
+                <span className="text-sm font-medium">{t('rum.budgets.title', '每分钟预算')}</span>
+                <p className="text-xs text-[var(--color-text-3)]">
+                  {t(
+                    'rum.budgets.hint',
+                    '超出后网关拒绝这一分钟内的新上报。保存 Origin 不会改动已保存的预算。',
+                  )}
+                </p>
+                {budgetError ? (
+                  <p className="text-xs text-[var(--color-error)]">{budgetError}</p>
+                ) : null}
+                {budgetsEditing ? (
+                  <>
+                    <BudgetFields
+                      value={budgetForm}
+                      onChange={(next) => {
+                        setBudgetError('');
+                        setBudgetForm(next);
+                      }}
+                      disabled={busy}
+                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="primary"
+                        size="small"
+                        disabled={busy}
+                        onClick={() => void saveBudgets()}
+                      >
+                        {t('rum.common.save', '保存')}
+                      </Button>
+                      <Button
+                        size="small"
+                        disabled={busy}
+                        onClick={() => {
+                          setBudgetForm(budgetFormFromApi(app.budgets));
+                          setBudgetError('');
+                          setBudgetsEditing(false);
+                        }}
+                      >
+                        {t('rum.common.cancel', '取消')}
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-[var(--color-text-2)]">
+                      {t('rum.budgets.summary', '{requests} 次请求 · {events} 个事件 · {compressed}/{decompressed} MiB', {
+                        requests: budgetForm.requestsPerMinute ?? 0,
+                        events: budgetForm.eventsPerMinute ?? 0,
+                        compressed: budgetForm.compressedMiB ?? 0,
+                        decompressed: budgetForm.decompressedMiB ?? 0,
+                      })}
+                    </span>
+                    <RumPermission resource="applications" action="Operate">
+                      <Tooltip title={t('rum.common.edit', '编辑')}>
+                        <Button
+                          type="text"
+                          size="small"
+                          className="shrink-0 text-[var(--color-text-3)] hover:!text-[var(--color-primary)]"
+                          icon={<EditOutlined aria-hidden="true" />}
+                          aria-label={t('rum.budgets.edit', '编辑预算')}
+                          onClick={() => {
+                            setBudgetForm(budgetFormFromApi(app.budgets));
+                            setBudgetError('');
+                            setBudgetsEditing(true);
                           }}
                         />
                       </Tooltip>

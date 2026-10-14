@@ -38,7 +38,7 @@ APP_TOPO_LAYER_ALIASES = {
     "无": APP_TOPO_LAYER_NONE,
 }
 
-_APP_SERVICE_CLASSIFICATIONS = frozenset({"database", "middleware"})
+_APP_SERVICE_CLASSIFICATIONS = frozenset({"database", "middleware", "directory_mail"})
 _INFRA_CLASSIFICATIONS = frozenset({"harware", "hardware_components", "network_device", "idc"})
 _HOST_LAYER_EXPLICIT = frozenset({"host", "manageone_server"})
 _HOST_LAYER_SUFFIXES = ("_vm", "_ecs", "_cvm", "_ec2")

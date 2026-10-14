@@ -16,6 +16,34 @@ from apps.workflow_orchestration.services.data_contracts import redact_sensitive
 from apps.workflow_orchestration.services.definitions import prepare_definition_for_publish
 
 
+def _needs_engine_start(execution: WorkflowExecution) -> bool:
+    return not execution.conductor_workflow_id and execution.status in {
+        WorkflowExecution.Status.QUEUED,
+        WorkflowExecution.Status.UNKNOWN,
+    }
+
+
+def _ensure_engine_definition(conductor: ConductorClient, workflow: Workflow, version: WorkflowVersion) -> None:
+    """Publish-time registration can be skipped for builtins or lost when the engine is reset."""
+
+    if conductor.get_workflow_definition(workflow.engine_name, version.version) is not None:
+        return
+    definition = version.definition if isinstance(version.definition, dict) else {}
+    team_id = workflow.team[0] if workflow.team else 0
+    catalog = available_atom_catalog(team_id)
+    atom_keys = {
+        task["name"]
+        for task in _walk_definition_tasks(definition.get("tasks") or [])
+        if task.get("type") == "SIMPLE" and isinstance(task.get("name"), str)
+    }
+    static_task_names = {item["name"] for item in TASK_DEFINITIONS}
+    custom_task_definitions = [
+        task_definition_from_catalog_item(catalog[key]) for key in sorted(atom_keys) if key not in static_task_names and key in catalog
+    ]
+    conductor.register_task_definitions([*TASK_DEFINITIONS, *custom_task_definitions])
+    conductor.register_workflow(definition)
+
+
 def reconcile_unknown_execution(execution: WorkflowExecution, *, client: ConductorClient | None = None) -> WorkflowExecution:
     """Attach a recovered engine id to an UNKNOWN start, or leave it pending reconciliation."""
 
@@ -161,9 +189,16 @@ def start_execution(
         target_snapshot=target_snapshot,
         entry_input_schema=entry_input_schema,
     )
-    execution._launch_reused = not created
-    if not created:
+    conductor = client or ConductorClient()
+    if not created and not _needs_engine_start(execution):
+        execution._launch_reused = True
         return execution
+    if not created:
+        execution = reconcile_unknown_execution(execution, client=conductor)
+        if execution.conductor_workflow_id:
+            execution._launch_reused = True
+            return execution
+    execution._launch_reused = False
     conductor_inputs = {
         **sealed_inputs,
         "execution_id": str(execution.id),
@@ -183,7 +218,7 @@ def start_execution(
         version.canvas_metadata,
         entry_schema=entry_input_schema,
     )
-    conductor = client or ConductorClient()
+    _ensure_engine_definition(conductor, workflow, version)
     try:
         conductor_id = conductor.start_workflow(
             workflow.engine_name,

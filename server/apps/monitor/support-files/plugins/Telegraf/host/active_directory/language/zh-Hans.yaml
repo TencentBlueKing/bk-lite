@@ -108,10 +108,19 @@ monitor_object_metric:
       name: LDAPS 探测耗时
       desc: >-
         本机 LDAPS TCP 探测往返时延（毫秒）。
+    ad_dra_sync_failures_on_schema_mismatch:
+      name: 架构不匹配导致的复制失败
+      desc: >-
+        本域控因架构不匹配而失败的目录复制同步次数。
+    ad_dns_recursive_query_failure_persec:
+      name: DNS 递归查询失败速率
+      desc: >-
+        本域控 DNS 每秒失败的递归查询次数。
 monitor_object_metric_group:
   "Active Directory":
     LDAP: LDAP
     NTDS: NTDS
     Replication: 复制
     ATQ: ATQ
+    DNS: DNS
     Probe: 探测

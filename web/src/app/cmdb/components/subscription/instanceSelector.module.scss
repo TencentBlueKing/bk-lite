@@ -11,7 +11,7 @@
 }
 
 .countText {
-  color: #8c8c8c;
+  color: var(--color-text-3);
   font-size: 12px;
 }
 
@@ -19,18 +19,18 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: #bfbfbf;
+  color: var(--color-text-4);
   font-size: 12px;
   
   .hintIcon {
-    color: #bfbfbf;
+    color: var(--color-text-4);
     font-size: 12px;
   }
 }
 
 .conditionListWrapper {
-  background: #fafafa;
-  border: 1px solid #f0f0f0;
+  background: var(--color-fill-1);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   padding: 12px;
 }
@@ -44,12 +44,12 @@
 }
 
 .headerRow {
-  color: #595959;
+  color: var(--color-text-3);
   font-size: 13px;
   font-weight: 500;
   padding: 0 0 10px;
   margin-bottom: 10px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .rows {
@@ -88,20 +88,20 @@
   min-width: 36px;
   height: 22px;
   border-radius: 4px;
-  background: #e6f4ff;
-  color: #1677ff;
+  background: var(--color-primary-bg-active);
+  color: var(--color-primary);
   font-size: 11px;
   font-weight: 500;
 }
 
 .emptyState {
   padding: 24px 12px;
-  border: 1px dashed #d9d9d9;
+  border: 1px dashed var(--color-border-2);
   border-radius: 6px;
-  color: #bfbfbf;
+  color: var(--color-text-4);
   font-size: 13px;
   text-align: center;
-  background: #fafafa;
+  background: var(--color-fill-1);
 }
 
 .timeRangeWrapper {

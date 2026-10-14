@@ -16,6 +16,7 @@ import type {
   CustomReportingTaskDetail,
 } from '@/app/cmdb/types/customReporting';
 import { buildCustomReportingCurlPayload } from '@/app/cmdb/utils/customReportingDocument';
+import { StatusToneBadge, type StatusTone } from '@/app/cmdb/utils/statusTone';
 
 interface TaskDetailProps {
   open: boolean;
@@ -224,14 +225,14 @@ export default function TaskDetail({
     (item) => groupNameMap[item] || `${item}`,
   );
 
-  const batchStatusColor = (status: string) =>
+  const batchStatusTone = (status: string): StatusTone =>
     status === 'success'
       ? 'success'
       : status === 'failed'
-        ? 'error'
+        ? 'fail'
         : status === 'running'
-          ? 'processing'
-          : 'default';
+          ? 'primary'
+          : 'neutral';
 
   const batchColumns: ColumnsType<CustomReportingBatch> = [
     {
@@ -268,9 +269,10 @@ export default function TaskDetail({
       dataIndex: 'status',
       key: 'status',
       render: (status: string) => (
-        <Tag color={batchStatusColor(status)}>
-          {t(`CustomReporting.statusLabel.${status}`)}
-        </Tag>
+        <StatusToneBadge
+          tone={batchStatusTone(status)}
+          label={t(`CustomReporting.statusLabel.${status}`)}
+        />
       ),
     },
   ];
@@ -430,10 +432,22 @@ export default function TaskDetail({
               <Descriptions column={1} size="small">
                 <Descriptions.Item label={t('CustomReporting.reviewStatusSummary')}>
                   <Space wrap>
-                    <Tag color="warning">{`${t('CustomReporting.statusLabel.pending')}: ${task.review_status_summary?.pending ?? 0}`}</Tag>
-                    <Tag color="success">{`${t('CustomReporting.statusLabel.approved')}: ${task.review_status_summary?.approved ?? 0}`}</Tag>
-                    <Tag color="error">{`${t('CustomReporting.statusLabel.rejected')}: ${task.review_status_summary?.rejected ?? 0}`}</Tag>
-                    <Tag>{`${t('CustomReporting.totalCount')}: ${task.review_status_summary?.total ?? 0}`}</Tag>
+                    <StatusToneBadge
+                      tone="warning"
+                      label={`${t('CustomReporting.statusLabel.pending')}: ${task.review_status_summary?.pending ?? 0}`}
+                    />
+                    <StatusToneBadge
+                      tone="success"
+                      label={`${t('CustomReporting.statusLabel.approved')}: ${task.review_status_summary?.approved ?? 0}`}
+                    />
+                    <StatusToneBadge
+                      tone="fail"
+                      label={`${t('CustomReporting.statusLabel.rejected')}: ${task.review_status_summary?.rejected ?? 0}`}
+                    />
+                    <StatusToneBadge
+                      tone="neutral"
+                      label={`${t('CustomReporting.totalCount')}: ${task.review_status_summary?.total ?? 0}`}
+                    />
                   </Space>
                 </Descriptions.Item>
               </Descriptions>
@@ -547,9 +561,10 @@ export default function TaskDetail({
                       <Space>
                         <span>{row.recommended_type}</span>
                         {row.is_undefined ? (
-                          <Tag color="warning">
-                            {t('CustomReporting.undefinedType')}
-                          </Tag>
+                          <StatusToneBadge
+                            tone="warning"
+                            label={t('CustomReporting.undefinedType')}
+                          />
                         ) : null}
                       </Space>
                     ),

@@ -638,6 +638,18 @@
         "professionalTitle": "Professional Collection",
         "professionalMessage": "You can automatically collect configuration information and associated information of different objects by creating collection tasks.",
         "inputTaskPlaceholder": "Please enter task name",
+        "catalog": {
+            "pluginOverview": "Plugins",
+            "allTasks": "All tasks",
+            "searchPlaceholder": "Search plugin name, description, or tag",
+            "more": "More",
+            "collapse": "Collapse",
+            "empty": "No matching plugins",
+            "taskCount": "{n} tasks",
+            "noTask": "No tasks",
+            "backToPlugins": "Back to plugins",
+            "pluginMissing": "No plugin matches this task"
+        },
         "addTaskTitle": "Add Task",
         "editTaskTitle": "Edit Task",
         "viewDoc": "View Documentation",
@@ -877,6 +889,7 @@
         },
         "table": {
             "taskName": "Task Name",
+            "pluginName": "Plugin",
             "syncStatus": "Status",
             "latestOverview": "Latest Overview",
             "creator": "Creator",
@@ -1041,7 +1054,9 @@
             "daysAgo": "{n} d ago",
             "never": "none",
             "expand": "Expand overview",
-            "collapse": "Collapse overview"
+            "collapse": "Collapse overview",
+            "clickToViewAll": "Click to view all tasks",
+            "clickToFilter": "Click to filter {name}"
         },
         "IPTask": {
             "chooseSubnet": "Select Subnets",

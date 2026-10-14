@@ -1682,10 +1682,10 @@ def get_room_list(user_info=None, **kwargs):
     的现成权限过滤自动按当前用户可见范围过滤。
     """
     permission_map = _build_nats_permission_map(user_info) or {}
-    # 新数据源以 inst_uuid 作为选项值；暂时保留 _id，兼容尚未执行
-    # init_source_api_data --force-update 的存量数据源配置。
+    # 与 list_monitored_hosts 等选项源一致：data 是行列表。
+    # 裸 {"items": ...} 没有 result，datasource_view._normalize_downstream_result 会判非标准。
     items = [item for item in rack_room.list_server_rooms(permission_map=permission_map, user_info=user_info) if item.get("inst_uuid")]
-    return {"items": items}
+    return {"result": True, "data": items, "message": ""}
 
 
 @nats_client.register
@@ -3068,3 +3068,7 @@ def topo_search_expand_by_uuid(inst_uuid=None, parent_uuids=None, depth=2, user_
         return _topo_search_lite_failure("not_found", "实例不存在")
 
     return {"result": True, "data": result, "message": ""}
+
+
+# 注册机房大屏统计。apps.py 只导入本模块，这里再把处理函数挂上。
+from apps.cmdb.nats import room_screen_stats  # noqa: E402,F401

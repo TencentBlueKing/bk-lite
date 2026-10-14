@@ -212,7 +212,7 @@ const NetworkConfigFileTask: React.FC<NetworkConfigFileTaskProps> = ({
               <span>
                 {brandTip}
                 <Tooltip title={t('Collection.networkConfigFileTask.unsupportedInstance', '缺少厂商或厂商不支持的实例不可选择')}>
-                  <InfoCircleOutlined className="ml-1 text-gray-400" />
+                  <InfoCircleOutlined className="ml-1 text-[var(--color-text-4)]" />
                 </Tooltip>
               </span>
             )}

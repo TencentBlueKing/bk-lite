@@ -27,6 +27,7 @@ import {
 import { buildPersistedNetworkStatusTopologyConfig } from '@/app/ops-analysis/utils/networkStatusTopologyLayout';
 import { validateComponentSwitchParams } from '@/app/ops-analysis/utils/componentParamSwitch';
 import { persistRoom3DConfig } from '@/app/ops-analysis/utils/room3DConfig';
+import { ROOM3D_FILTER_ID } from '@/app/ops-analysis/utils/room3DScreenFilter';
 import {
   resolveApplication3DWallConfig,
   type Application3DWallConfig,
@@ -181,7 +182,11 @@ const buildSceneWidgetConfig = (
       description: values.description,
       chartType: 'room3D',
       sceneWidgetType: 'room3D',
-      room3D: persistRoom3DConfig(values.room3D),
+      room3D: persistRoom3DConfig({
+        rackTopLine1: values.room3D?.rackTopLine1,
+        rackTopLine2: values.room3D?.rackTopLine2,
+      }),
+      filterBindings: { [ROOM3D_FILTER_ID]: true },
       appearance: values.appearance || { frame: 'bare' },
     };
   }

@@ -4,10 +4,11 @@ import { useParams } from 'next/navigation';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import useAlgorithmConfigApi from '@/app/mlops/api/algorithmConfig';
 import { Button, Input, Popconfirm, message, Tag, Switch } from 'antd';
-import { ReloadOutlined } from '@ant-design/icons';
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import PermissionWrapper from '@/components/permission';
+import ToolbarSplitShell from '@/components/toolbar-split-shell';
 import AlgorithmConfigModal from '@/app/mlops/components/algorithm-config/AlgorithmConfigModal';
 import { useTranslation } from '@/utils/i18n';
 import type { ColumnItem } from '@/app/mlops/types';
@@ -225,33 +226,34 @@ const AlgorithmConfigPage = () => {
 
   return (
     <>
-      <div className="flex justify-between items-center mb-4">
-        <div className="flex items-center gap-2">
-          <Tag color="blue">
-            {t(ALGORITHM_TYPE_I18N_KEYS[algorithmType] || algorithmType)}
-          </Tag>
-          <EllipsisWithTooltip className="w-full overflow-hidden text-ellipsis whitespace-nowrap" text={t('algorithmConfig.pageDescription')} />
-        </div>
-        <div className="flex items-center gap-2">
-          <Search
-            className="w-60"
-            placeholder={t('algorithmConfig.searchPlaceholder')}
-            enterButton
-            onSearch={onSearch}
-          />
-          <PermissionWrapper requiredPermissions={['Add']}>
-            <Button
-              type="primary"
-              onClick={handleAdd}
-            >
-              {t('common.add')}
-            </Button>
-          </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['View']}>
-            <ReloadOutlined onClick={onRefresh} />
-          </PermissionWrapper>
-        </div>
-      </div>
+      <ToolbarSplitShell
+        leading={(
+          <div className="flex min-w-0 items-center gap-2">
+            <Tag color="blue">
+              {t(ALGORITHM_TYPE_I18N_KEYS[algorithmType] || algorithmType)}
+            </Tag>
+            <EllipsisWithTooltip className="w-full overflow-hidden text-ellipsis whitespace-nowrap" text={t('algorithmConfig.pageDescription')} />
+          </div>
+        )}
+        trailing={(
+          <>
+            <Search
+              className="w-60"
+              placeholder={t('algorithmConfig.searchPlaceholder')}
+              enterButton
+              onSearch={onSearch}
+            />
+            <PermissionWrapper requiredPermissions={['View']}>
+              <Button aria-label={t('common.refresh', '刷新')} icon={<ReloadOutlined />} onClick={onRefresh} />
+            </PermissionWrapper>
+            <PermissionWrapper requiredPermissions={['Add']}>
+              <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
+                {t('common.new')}
+              </Button>
+            </PermissionWrapper>
+          </>
+        )}
+      />
       <div className="flex-1 relative">
         <div className="absolute w-full">
           <CustomTable

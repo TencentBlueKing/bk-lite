@@ -92,6 +92,7 @@
         "RUNNING": "执行中",
         "WAITING_APPROVAL": "等待审批",
         "TERMINATING": "终止中",
+        "UNKNOWN": "结果未知",
         "SUCCEEDED": "成功",
         "FAILED": "失败",
         "TIMED_OUT": "已超时",

@@ -63,6 +63,7 @@ import WidgetRenderer from "@/app/ops-analysis/components/widgetRenderer";
 import WidgetErrorState from "@/app/ops-analysis/components/widgetErrorState";
 import WidgetState from "@/app/ops-analysis/components/widget-state";
 import { useWidgetHeaderRuntimeSlot } from "@/app/ops-analysis/components/widgetHeaderRuntimeSlot";
+import { useRegisterWidgetCsvExport, useWidgetCsvExportRegistry } from "@/app/ops-analysis/context/widgetCsvExportRegistry";
 import ComponentParamSwitchControl from "@/app/ops-analysis/components/componentParamSwitchControl";
 import ScreenWidgetThemeProvider from "@/app/ops-analysis/components/screenWidgetThemeProvider";
 import { getDateRangeTimezone } from "@/app/ops-analysis/utils/dateRange";
@@ -1180,6 +1181,34 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     widgetId,
   ]);
 
+  const csvExportRegistry = useWidgetCsvExportRegistry();
+  useEffect(() => {
+    csvExportRegistry?.publishWidgetRawData(widgetId, rawData);
+    return () => {
+      csvExportRegistry?.publishWidgetRawData(widgetId, undefined);
+    };
+  }, [csvExportRegistry, rawData, widgetId]);
+
+  useRegisterWidgetCsvExport(widgetId, surface, chartType, () => ({
+    chartType,
+    rawData,
+    config,
+    dataSource,
+    tableQueryParams,
+    requestParams,
+    loading: isTableLikeChart ? tableLoading : loading,
+    dataSourceId: typeof normalizedDataSourceId === "number" && Number.isFinite(normalizedDataSourceId)
+      ? normalizedDataSourceId
+      : undefined,
+    fetchSourceData: async (params) => {
+      if (typeof normalizedDataSourceId !== "number" || !Number.isFinite(normalizedDataSourceId)) {
+        return null;
+      }
+      const result = await getRuntimeSourceDataByApiId(normalizedDataSourceId, params);
+      return result.data;
+    },
+  }));
+
   let body: React.ReactNode;
   if (isSceneWidget) {
     body = (
@@ -1206,6 +1235,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           runtimePriority={runtimePriority}
           surface={surface}
           onRawData={onRawData}
+          unifiedFilterValues={unifiedFilterValues}
+          filterDefinitions={filterDefinitions}
           fallback={renderError(
             `${t("dashboard.unknownComponentType")}: ${chartType}`,
           )}

@@ -1,9 +1,6 @@
-import logging
-
 from collections import OrderedDict
 
-logger = logging.getLogger("root")
-
+from core.logger import logger
 
 try:
     from common.cmp.cloud_apis.resource_client import ResourceClient

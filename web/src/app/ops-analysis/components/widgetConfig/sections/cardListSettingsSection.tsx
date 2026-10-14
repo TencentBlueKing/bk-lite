@@ -172,7 +172,7 @@ const OptionalGroup = ({
       type="button"
       aria-expanded={open}
       data-testid={testId}
-      className="flex h-auto w-full items-center justify-between px-0 py-1 text-left text-(--color-text-1)"
+      className="flex h-auto w-full cursor-pointer items-center justify-between px-0 py-1 text-left text-(--color-text-1)"
       onClick={onToggle}
     >
       <span className="inline-flex items-center">

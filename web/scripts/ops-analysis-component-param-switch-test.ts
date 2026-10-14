@@ -268,7 +268,8 @@ assert.match(
 assert.match(widgetRendererSource, /componentSwitchControl/);
 assert.match(topNSource, /\{componentSwitchControl\}/);
 assert.doesNotMatch(room3DSource, /\{componentSwitchControl\}/);
-assert.match(room3DSource, /showRoomSwitcher/);
+assert.doesNotMatch(room3DSource, /showRoomSwitcher/);
+assert.match(room3DSource, /resolveRoom3DCanvasSelection/);
 assert.match(controlSource, /inputConfig/);
 assert.match(controlSource, /<Segmented/);
 assert.match(controlSource, /<Select/);

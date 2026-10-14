@@ -1158,13 +1158,23 @@ def sync_cmdb_display_fields_task(self, data: dict):
             # soft timeout 已释放租约，沿用短延迟即可。
             countdown = 105 if isinstance(exc, TimeoutError) else self.default_retry_delay
             raise self.retry(exc=exc, countdown=countdown)
-        logger.error("[SyncCMDBDisplayFields] 同步重试已耗尽: %s", exc, exc_info=True)
+        logger.exception(
+            "event=cmdb_display_fields_sync_failed task_id=%s failed_stage=%s error_type=%s",
+            getattr(self.request, "id", None),
+            "retry_exhausted",
+            type(exc).__name__,
+        )
         return {
             "result": False,
             "message": f"Failed to sync CMDB display fields: {str(exc)}",
         }
     except Exception as exc:
-        logger.error(f"[SyncCMDBDisplayFields] 同步失败: {str(exc)}", exc_info=True)
+        logger.exception(
+            "event=cmdb_display_fields_sync_failed task_id=%s failed_stage=%s error_type=%s",
+            getattr(self.request, "id", None),
+            "sync_all",
+            type(exc).__name__,
+        )
         return {
             "result": False,
             "message": f"Failed to sync CMDB display fields: {str(exc)}",
@@ -1177,7 +1187,12 @@ def execute_collect_tool_debug_task(debug_id: str, payload: dict, service_name: 
     try:
         return CollectToolService.run_debug_task(debug_id, payload, service_name, timeout)
     except Exception as exc:
-        logger.error(f"采集工具调试任务失败 debug_id={debug_id}, error={exc}", exc_info=True)
+        logger.exception(
+            "event=collect_tool_debug_failed debug_id=%s failed_stage=%s error_type=%s",
+            debug_id,
+            "run_debug_task",
+            type(exc).__name__,
+        )
         result = CollectToolService.build_error_result(
             debug_id=debug_id,
             payload=payload,

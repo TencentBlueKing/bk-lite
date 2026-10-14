@@ -1,12 +1,13 @@
 'use client';
 
 import { Fragment, useRef, useState } from 'react';
-import { Alert, Button, Drawer, Empty, Modal, Popconfirm, Spin, Table, Tag } from 'antd';
+import { Alert, Button, Drawer, Empty, Modal, Popconfirm, Table } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useTransferApi } from '@/app/cmdb/api/transfer';
 import type { TransferTask } from '@/app/cmdb/types/transfer';
 import { downloadBlobFile } from '@/app/cmdb/(pages)/assetData/components/exportDownload';
 import { parseErrorReport, type ErrorReportTable } from './errorReport';
+import { StatusToneBadge } from '@/app/cmdb/utils/statusTone';
 
 interface Props {
   open: boolean;
@@ -68,17 +69,37 @@ export default function TransferDrawer({ open, onClose, tasks, error, loading, o
       extra={<Button loading={loading} onClick={() => void onRefresh()}>{t('common.refresh')}</Button>}>
       <Alert type="info" showIcon message={t('Transfer.retention')} className="mb-4" />
       {(error || actionError) && <Alert type="error" showIcon message={error || actionError} className="mb-4" />}
-      <Spin spinning={loading && tasks.length === 0}>
+      {loading && tasks.length === 0 ? (
+        <div className="space-y-4" aria-busy="true" aria-label="loading">
+          {[0, 1].map((index) => (
+            <div
+              key={index}
+              className="h-24 animate-pulse rounded-lg border border-[var(--color-border-1)] bg-[var(--color-fill-1)]"
+            />
+          ))}
+        </div>
+      ) : (
+        <>
         {!tasks.length && <Empty description={t('Transfer.empty')} />}
         <div className="flex flex-col gap-4">
           {tasks.map(task => (
             <article key={task.task_id} className="rounded-lg border border-[var(--color-border-1)] p-4">
               <div className="mb-2 flex items-center justify-between gap-3">
                 <strong className="truncate">{t(`Transfer.${task.type}`)} · {task.model_name}</strong>
-                <Tag color={task.status === 'succeeded' ? 'success' : task.status === 'running' ? 'processing' :
-                ['failed', 'interrupted'].includes(task.status) ? 'error' : task.status === 'partial_success' ? 'warning' : 'default'}>
-                  {t(`Transfer.status.${task.status}`)}
-                </Tag>
+                <StatusToneBadge
+                  tone={
+                    task.status === 'succeeded'
+                      ? 'success'
+                      : task.status === 'running'
+                        ? 'primary'
+                        : ['failed', 'interrupted'].includes(task.status)
+                          ? 'fail'
+                          : task.status === 'partial_success'
+                            ? 'warning'
+                            : 'neutral'
+                  }
+                  label={t(`Transfer.status.${task.status}`)}
+                />
               </div>
               <div className="space-y-1 text-sm text-[var(--color-text-3)]">
                 <div>{t('Transfer.organization')}: {task.team_id} · {task.scope ? t(`Transfer.scope.${task.scope}`) : task.filename}</div>
@@ -122,7 +143,8 @@ export default function TransferDrawer({ open, onClose, tasks, error, loading, o
             </article>
           ))}
         </div>
-      </Spin>
+        </>
+      )}
       <Modal
         title={t('Transfer.view_errors')}
         open={previewOpen}

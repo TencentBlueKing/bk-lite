@@ -191,6 +191,33 @@ def test_overlay_screen_title_and_decoration():
     assert result["view_sets"]["decorations"]["title"] == "Cabinet Overview"
 
 
+def test_overlay_screen_title_frame_content_without_touching_widgets():
+    data = {
+        "view_sets": {
+            "items": [
+                {"id": "title-room-scale", "kind": "titleFrame", "content": "机房规模"},
+                {"id": "room-kpi-racks", "title": "机柜总数", "valueConfig": {"chartType": "single"}},
+            ]
+        }
+    }
+    catalog = {
+        "screens": {
+            SCREEN_KEY: {
+                "widgets": {
+                    "title-room-scale": {"content": "Room Scale"},
+                    "room-kpi-racks": {"title": "Total Racks"},
+                }
+            }
+        }
+    }
+    instance = SimpleNamespace(is_build_in=True, build_in_key=SCREEN_KEY)
+    result = overlay_canvas_payload(data, instance, "en", catalog=catalog)
+    items = result["view_sets"]["items"]
+    assert items[0]["content"] == "Room Scale"
+    assert items[1]["title"] == "Total Racks"
+    assert "content" not in items[1]
+
+
 def test_overlay_datasource_fields_and_params():
     data = {
         "name": "CMDB 覆盖概览",

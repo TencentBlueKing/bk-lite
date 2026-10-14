@@ -11,7 +11,6 @@ import {
   Space,
   Modal,
   message,
-  Spin,
   Dropdown,
   TablePaginationConfig,
   Tree,
@@ -36,6 +35,7 @@ import GroupTreeSelector from '@/components/group-tree-select';
 import PermissionWrapper from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import RefreshIconButton from '@/components/refresh-icon-button';
+import ToolbarSplitShell from '@/components/toolbar-split-shell';
 import { useTranslation } from '@/utils/i18n';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useClientData } from '@/context/client';
@@ -945,7 +945,7 @@ const AssetDataContent = () => {
     (modelName: string, modelId: string) => (
       <div className="flex items-center" data-asset-model-id={modelId}>
         <EllipsisWithTooltip text={modelName} className={assetDataStyle.treeLabel} />
-        <span className="ml-1 text-gray-400">({modelInstCount[modelId] || 0})</span>
+        <span className="ml-1 text-[var(--color-text-4)]">({modelInstCount[modelId] || 0})</span>
       </div>
     ),
     [modelInstCount]
@@ -1187,31 +1187,31 @@ const AssetDataContent = () => {
       width: 280,
       fixed: 'right',
       render: (_: unknown, record: any) => (
-        <>
-          <Button type="link" className="mr-[10px]" onClick={() => checkDetail(record)}>
+        <div className="flex items-center gap-2">
+          <Button type="link" size="small" onClick={() => checkDetail(record)}>
             {t('common.detail')}
           </Button>
           <PermissionWrapper requiredPermissions={['Add Associate']} instPermissions={record.permission}>
-            <Button type="link" className="mr-[10px]" onClick={() => showInstanceModal(record)}>
+            <Button type="link" size="small" onClick={() => showInstanceModal(record)}>
               {t('Model.association')}
             </Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['Add']}>
-            <Button type="link" className="mr-[10px]" disabled={!propertyListGroups.length} onClick={() => showCopyModal(record)}>
+            <Button type="link" size="small" disabled={!propertyListGroups.length} onClick={() => showCopyModal(record)}>
               {t('common.copy')}
             </Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['Edit']} instPermissions={record.permission}>
-            <Button type="link" className="mr-[10px]" disabled={!propertyListGroups.length} onClick={() => showAttrModal('edit', record)}>
+            <Button type="link" size="small" disabled={!propertyListGroups.length} onClick={() => showAttrModal('edit', record)}>
               {t('common.edit')}
             </Button>
           </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['Delete']} instPermissions={record.permission}>
-            <Button type="link" danger onClick={() => showDeleteConfirm(record)}>
+            <Button type="link" size="small" danger onClick={() => showDeleteConfirm(record)}>
               {t('common.delete')}
             </Button>
           </PermissionWrapper>
-        </>
+        </div>
       ),
     };
     const tableColumns = [...columnsWithFollow, ...(externalIdColumn ? [externalIdColumn] : []), actionColumn];
@@ -1317,7 +1317,7 @@ const AssetDataContent = () => {
   ];
 
   return (
-    <Spin spinning={loading} wrapperClassName={assetDataStyle.assetLoading}>
+    <div className={assetDataStyle.assetLoading}>
       <div className={assetDataStyle.assetData}>
         {/* 左侧树形选择器 */}
         <div className={`${assetDataStyle.groupSelector}`}>
@@ -1373,102 +1373,104 @@ const AssetDataContent = () => {
         </div>
         {/* 右侧资产列表 */}
         <div className={assetDataStyle.assetList}>
-          <div
-            ref={topRowRef}
-            className={`flex justify-between ${storeQueryList.length === 0 ? 'mb-4' : ''}`}
-          >
-            {/* 左侧组织搜索框 */}
-            <div ref={leftActionsRef}>
-              <Space>
-                <GroupTreeSelector
-                  style={{
-                    width: '200px',
-                  }}
-                  placeholder={t('common.selectTip')}
-                  value={organization}
-                  onChange={selectOrganization}
-                  filterByRootId={
-                    selectedGroup?.id ? Number(selectedGroup.id) : undefined
-                  }
-                />
-                {/* 中间部分 */}
-                <SearchFilter
-                  key={modelId}
-                  proxyOptions={proxyOptions}
-                  userList={userList}
-                  modelId={modelId}
-                  displayFieldKeys={displayFieldKeys}
-                  attrList={propertyList.filter(
-                    (item) => item.attr_type !== 'organization'
-                  )}
-                  onSearch={handleSearch}
-                  onChange={handleFilterBarChange}
-                  onFilterChange={handleFilterBarChange}
-                />
-                {modelId === 'ip' && (
-                  <Tag
-                    color={isConflictFilterActive ? 'error' : 'default'}
-                    style={{ cursor: 'pointer', userSelect: 'none' }}
-                    onClick={handleConflictFilterToggle}
+          <div ref={topRowRef}>
+            <ToolbarSplitShell
+              className={storeQueryList.length === 0 ? undefined : '!mb-0'}
+              trailing={(
+                <>
+                  <div ref={leftActionsRef} className="flex flex-wrap items-center gap-2">
+                    <GroupTreeSelector
+                      style={{
+                        width: '200px',
+                      }}
+                      placeholder={t('common.selectTip')}
+                      value={organization}
+                      onChange={selectOrganization}
+                      filterByRootId={
+                        selectedGroup?.id ? Number(selectedGroup.id) : undefined
+                      }
+                    />
+                    <SearchFilter
+                      key={modelId}
+                      proxyOptions={proxyOptions}
+                      userList={userList}
+                      modelId={modelId}
+                      displayFieldKeys={displayFieldKeys}
+                      attrList={propertyList.filter(
+                        (item) => item.attr_type !== 'organization'
+                      )}
+                      onSearch={handleSearch}
+                      onChange={handleFilterBarChange}
+                      onFilterChange={handleFilterBarChange}
+                    />
+                    {modelId === 'ip' && (
+                      <Tag
+                        color={isConflictFilterActive ? 'error' : 'default'}
+                        style={{ cursor: 'pointer', userSelect: 'none' }}
+                        onClick={handleConflictFilterToggle}
+                      >
+                        {t('IPAM.conflictFilter')}
+                      </Tag>
+                    )}
+                    <RefreshIconButton
+                      loading={loading}
+                      onClick={() => fetchData()}
+                    />
+                  </div>
+                  <div
+                    className={`${assetDataStyle.actionGroup} ${isActionsCollapsed ? assetDataStyle.actionGroupCollapsed : ''}`}
+                    aria-hidden={isActionsCollapsed}
                   >
-                    {t('IPAM.conflictFilter')}
-                  </Tag>
-                )}
-                <RefreshIconButton
-                  loading={loading}
-                  onClick={() => fetchData()}
-                />
-              </Space>
-            </div>
-            {/* 右侧操作按钮 */}
-            <Space>
-              <div
-                className={`${assetDataStyle.actionGroup} ${isActionsCollapsed ? assetDataStyle.actionGroupCollapsed : ''}`}
-                aria-hidden={isActionsCollapsed}
-              >
-                <PermissionWrapper requiredPermissions={['Add']}>
-                  <Dropdown menu={{ items: addInstItems }} placement="bottom">
-                    <Button type="primary">
+                    <Dropdown menu={{ items: exportItems }} placement="bottom">
+                      <Button>
+                        <Space>
+                          {t('export')}
+                          <DownOutlined />
+                        </Space>
+                      </Button>
+                    </Dropdown>
+                  </div>
+                  <Dropdown
+                    menu={{ items: isActionsCollapsed ? collapsedMoreItems : batchOperateItems }}
+                    placement="bottom"
+                  >
+                    <Button>
                       <Space>
-                        {t('common.addNew')}
+                        {t('more')}
                         <DownOutlined />
                       </Space>
                     </Button>
                   </Dropdown>
-                </PermissionWrapper>
-                <Dropdown menu={{ items: exportItems }} placement="bottom">
-                  <Button>
-                    <Space>
-                      {t('export')}
-                      <DownOutlined />
-                    </Space>
+                  <Button onClick={() => setTransferOpen(true)}>{t('Transfer.title')}
+                    {pendingTransfers ? ` (${pendingTransfers})` : ''}
                   </Button>
-                </Dropdown>
-              </div>
-              <Dropdown
-                menu={{ items: isActionsCollapsed ? collapsedMoreItems : batchOperateItems }}
-                placement="bottom"
-              >
-                <Button>
-                  <Space>
-                    {t('more')}
-                    <DownOutlined />
-                  </Space>
-                </Button>
-              </Dropdown>
-              <Button onClick={() => setTransferOpen(true)}>{t('Transfer.title')}
-                {pendingTransfers ? ` (${pendingTransfers})` : ''}
-              </Button>
-              <Button icon={<UnorderedListOutlined aria-hidden="true" />} onClick={() => openSubscription('drawer')}>
-                {t('subscription.dataSubscription')}
-              </Button>
-            </Space>
+                  <Button icon={<UnorderedListOutlined aria-hidden="true" />} onClick={() => openSubscription('drawer')}>
+                    {t('subscription.dataSubscription')}
+                  </Button>
+                  <div
+                    className={isActionsCollapsed ? assetDataStyle.actionGroupCollapsed : undefined}
+                    aria-hidden={isActionsCollapsed}
+                  >
+                    <PermissionWrapper requiredPermissions={['Add']}>
+                      <Dropdown menu={{ items: addInstItems }} placement="bottom">
+                        <Button type="primary">
+                          <Space>
+                            {t('common.new')}
+                            <DownOutlined />
+                          </Space>
+                        </Button>
+                      </Dropdown>
+                    </PermissionWrapper>
+                  </div>
+                </>
+              )}
+            />
           </div>
           <div ref={actionSizerRef} className={assetDataStyle.actionSizer}>
             <Space>
               <Button type="primary">
                 <Space>
-                  {t('common.addNew')}
+                  {t('common.new')}
                   <DownOutlined aria-hidden="true" />
                 </Space>
               </Button>
@@ -1511,7 +1513,7 @@ const AssetDataContent = () => {
             dataSource={tableData}
             columns={currentColumns}
             pagination={pagination}
-            loading={tableLoading}
+            loading={loading || tableLoading}
             scroll={{
               x: 'max-content',
               y: storeQueryList.length > 0
@@ -1565,7 +1567,7 @@ const AssetDataContent = () => {
             centered
             onCancel={() => setQuickSubscribeModalOpen(false)}
             footer={(
-              <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
+              <div className="flex justify-end gap-2">
                 <Button
                   type="primary"
                   loading={quickSubscribeSubmitting}
@@ -1582,7 +1584,7 @@ const AssetDataContent = () => {
                 <Button onClick={() => setQuickSubscribeModalOpen(false)}>
                   {t('subscription.cancel')}
                 </Button>
-              </Space>
+              </div>
             )}
             destroyOnHidden
             styles={{
@@ -1606,7 +1608,7 @@ const AssetDataContent = () => {
           </Modal>
         </div>
       </div>
-    </Spin>
+    </div>
   );
 };
 

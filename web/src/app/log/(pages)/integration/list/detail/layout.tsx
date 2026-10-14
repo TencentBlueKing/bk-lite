@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { Tooltip } from 'antd';
 import WithSideMenuLayout from '@/components/sub-layout';
+import TopSection from '@/components/top-section';
 import { useSearchParams } from 'next/navigation';
 import { useScreenAwareRouter } from '@/console-layout';
 import { useTranslation } from '@/utils/i18n';
@@ -33,24 +33,22 @@ const IntegrationDetailLayout = ({
     router.push('/log/integration/list');
   };
 
-  const TopSection = () => (
-    <div className="p-4 rounded-md w-full h-[80px] flex items-center bg-[var(--color-bg-1)]">
-      <img
-        src={`/assets/icons/${icon}.svg`}
-        alt={pluginDisplayName || ''}
-        className="w-[60px] h-[60px] mr-[10px] min-w-[60px]"
-        onError={(e) => {
-          (e.target as HTMLImageElement).src =
-            '/assets/icons/cc-default_默认.svg';
-        }}
-      />
-      <div className="w-full">
-        <h2 className="text-lg font-semibold mb-2">{pluginDisplayName}</h2>
-        <Tooltip title={desc}>
-          <p className="truncate w-[95%] text-sm hide-text">{desc}</p>
-        </Tooltip>
-      </div>
-    </div>
+  const identitySection = (
+    <TopSection
+      title={pluginDisplayName || '--'}
+      content={desc || undefined}
+      icon={
+        <img
+          src={`/assets/icons/${icon}.svg`}
+          alt=""
+          className="h-10 w-10 object-contain"
+          onError={(e) => {
+            (e.target as HTMLImageElement).src =
+              '/assets/icons/cc-default_默认.svg';
+          }}
+        />
+      }
+    />
   );
 
   const customMenuItems: MenuItem[] | undefined = useMemo(() => {
@@ -93,7 +91,7 @@ const IntegrationDetailLayout = ({
 
   return (
     <WithSideMenuLayout
-      topSection={<TopSection />}
+      topSection={identitySection}
       showBackButton={true}
       onBackButtonClick={handleBackButtonClick}
       layoutType={'sideMenu'}

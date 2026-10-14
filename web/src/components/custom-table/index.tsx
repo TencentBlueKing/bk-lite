@@ -227,16 +227,20 @@ const CustomTable = <T extends object>({
   };
 
   const handlePageChange = (current: number, pageSize: number) => {
+    const pageExtra: TableCurrentDataSource<T> = {
+      action: 'paginate',
+      currentDataSource: extra?.currentDataSource ?? [],
+    };
+    setExtra(pageExtra);
     if (pagination && pagination.onChange) {
       pagination.onChange(current, pageSize);
     }
-    onChange &&
-      onChange(
-        { current, pageSize },
-        filters,
-        sorter,
-        extra as TableCurrentDataSource<T>
-      );
+    onChange?.(
+      { current, pageSize },
+      filters,
+      sorter,
+      pageExtra,
+    );
   };
 
   const resetDragState = () => {

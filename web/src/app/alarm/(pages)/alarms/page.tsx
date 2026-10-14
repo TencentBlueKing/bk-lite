@@ -23,6 +23,7 @@ import { useCommon } from '@/app/alarm/context/common';
 import { baseStates, allStates } from '@/app/alarm/constants/alarm';
 import { withAlarmSearchCondition } from './alarmListQuery';
 import { Checkbox, Tabs, Spin, Tooltip, Switch } from 'antd';
+import ToolbarSplitShell from '@/components/toolbar-split-shell';
 import { processDataForStackedBarChart } from '@/app/alarm/utils/alarmChart';
 import {
   Pagination,
@@ -466,40 +467,38 @@ const Alert: React.FC = () => {
           </Spin>
           <div className={alertStyle.table}>
             <Tabs className="shrink-0" activeKey={activeTab} items={tabList} onChange={changeTab} />
-            <div className="mb-[16px] flex min-w-0 shrink-0 flex-wrap items-center justify-between gap-y-2">
-              <div className="flex items-center space-x-4">
-                <SearchFilter
-                  attrList={alarmAttrList}
-                  onSearch={onFilterSearch}
-                />
-                {isActiveAlarms && (
-                  <Checkbox
-                    className="ml-2"
-                    checked={myAlarms}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      setMyAlarms(checked);
-                      saveSettings({ myAlarms: checked });
-                    }}
-                  >
-                    {t('alarms.myAlarms')}
-                  </Checkbox>
-                )}
-              </div>
-
-              <div className="flex items-center space-x-4">
-                <DeclareIncident
-                  rowData={selectedRowData}
-                  onSuccess={onRefresh}
-                />
-                <AlarmAction
-                  rowData={selectedRowData}
-                  displayMode="dropdown"
-                  showAll
-                  onAction={onRefresh}
-                />
-              </div>
-            </div>
+            <ToolbarSplitShell
+              trailing={(
+                <>
+                  {isActiveAlarms && (
+                    <Checkbox
+                      checked={myAlarms}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setMyAlarms(checked);
+                        saveSettings({ myAlarms: checked });
+                      }}
+                    >
+                      {t('alarms.myAlarms')}
+                    </Checkbox>
+                  )}
+                  <SearchFilter
+                    attrList={alarmAttrList}
+                    onSearch={onFilterSearch}
+                  />
+                  <DeclareIncident
+                    rowData={selectedRowData}
+                    onSuccess={onRefresh}
+                  />
+                  <AlarmAction
+                    rowData={selectedRowData}
+                    displayMode="dropdown"
+                    showAll
+                    onAction={onRefresh}
+                  />
+                </>
+              )}
+            />
             <div className="min-h-0 flex-1 overflow-hidden">
             <AlarmTable
               dataSource={tableData}

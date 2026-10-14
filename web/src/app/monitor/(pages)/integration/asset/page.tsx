@@ -2,17 +2,17 @@
 import './register-asset-pilot';
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import {
-  Input,
   Button,
+  Input,
   message,
   Dropdown,
   Space,
   Tooltip,
   Modal,
-  Switch,
-  Tag
+  Switch
 } from 'antd';
 import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
+import { StatusToneBadge } from '@/app/monitor/utils/statusTone';
 import useApiClient from '@/utils/request';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import useMonitorApi from '@/app/monitor/api';
@@ -39,7 +39,7 @@ import {
 } from '@/app/monitor/types/integration';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
-import { DownOutlined, PlusOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { DownOutlined, PlusOutlined } from '@ant-design/icons';
 import { useCommon } from '@/app/monitor/context/common';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useAssetMenuItems } from '@/app/monitor/hooks/integration/common/assetMenuItems';
@@ -354,12 +354,14 @@ const Asset = () => {
                       </PluginTooltipTrigger>
                       {plugin.need_update ? (
                         <Tooltip title={needUpdateHint}>
-                          <Tag className="m-0" color="warning">
-                            {getNeedUpdateTagText(
+                          <StatusToneBadge
+                            className="m-0"
+                            tone="warning"
+                            label={getNeedUpdateTagText(
                               upgradeTargetVersion,
                               updateDirection
                             )}
-                          </Tag>
+                          />
                         </Tooltip>
                       ) : null}
                     </span>
@@ -1135,9 +1137,7 @@ const Asset = () => {
                   <span className="text-[var(--color-text-3)]">
                     {targetLabel}
                   </span>
-                  <Tag className="m-0" color="warning">
-                    {item.targetVersion}
-                  </Tag>
+                  <StatusToneBadge className="m-0" tone="warning" label={item.targetVersion} />
                 </div>
               </div>
             );

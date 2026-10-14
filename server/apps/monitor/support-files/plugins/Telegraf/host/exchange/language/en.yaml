@@ -132,6 +132,38 @@ monitor_object_metric:
       name: EWS HTTP Status Code
       desc: >-
         HTTP status code returned by the EWS probe.
+    exchange_copy_queue_length:
+      name: Copy Queue Length
+      desc: >-
+        Transaction logs waiting to be copied to the passive copy.
+    exchange_replay_queue_length:
+      name: Replay Queue Length
+      desc: >-
+        Transaction logs waiting to be replayed into the passive copy.
+    exchange_avg_log_copy_latency:
+      name: Average Log Copy Latency
+      desc: >-
+        Average milliseconds the log copier spends sending replication messages.
+    exchange_database_read_latency:
+      name: Database Read Latency
+      desc: >-
+        Average milliseconds per mailbox database read.
+    exchange_database_write_latency:
+      name: Database Write Latency
+      desc: >-
+        Average milliseconds per mailbox database write.
+    exchange_log_replay_latency:
+      name: Log Replay Latency
+      desc: >-
+        Average milliseconds to read a log file during replay or recovery.
+    exchange_log_bytes_write_persec:
+      name: Log Bytes Written
+      desc: >-
+        Bytes written to the transaction log per second.
+    exchange_database_cache_hit_percent:
+      name: Database Cache Hit
+      desc: >-
+        Percentage of database page requests served from cache without a file read.
 monitor_object_metric_group:
   "Exchange":
     Transport Queue: Transport Queue
@@ -144,4 +176,6 @@ monitor_object_metric_group:
     MAPI: MAPI
     AD Access: AD Access
     Workload: Workload
+    Replication: Replication
+    Database: Database
     Probe: Probe
