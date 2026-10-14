@@ -1110,6 +1110,7 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
         recipients: ['ops'],
         title: '模板标题',
         body: '模板内容',
+        __node_title: '模板节点名称',
       },
       organization_id: 1,
       created_by: 'admin',
@@ -1144,7 +1145,11 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
       expect.objectContaining({
         name: '常用邮件通知',
         atom_key: 'bklite_notification',
-        parameters: expect.objectContaining({ title: '巡检完成', body: '完成' }),
+        parameters: expect.objectContaining({
+          title: '巡检完成',
+          body: '完成',
+          __node_title: '发送巡检结果',
+        }),
       }),
     ));
 
@@ -1164,6 +1169,7 @@ describe('编排中心正式设计器', { timeout: 30000 }, () => {
 
     expect(await screen.findByDisplayValue('模板标题')).not.toBeNull();
     expect(screen.getByDisplayValue('模板内容')).not.toBeNull();
+    expect(screen.getByDisplayValue('模板节点名称')).not.toBeNull();
     expect(mocks.patch).not.toHaveBeenCalled();
   });
 

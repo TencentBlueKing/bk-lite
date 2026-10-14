@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildWorkflowFlow, commonTriggerInputSchema, expandApprovalCanvasEdges } from '../lib/canvas-dsl';
+import { buildWorkflowFlow, commonTriggerInputSchema, expandApprovalCanvasEdges, resolveCanvasNodeTitle } from '../lib/canvas-dsl';
 import type { ConductorDefinition } from '../lib/types';
 
 const definition: ConductorDefinition = {
@@ -183,6 +183,23 @@ describe('画布连线与 Conductor DSL', () => {
       expect.objectContaining({ source: 'approval_decision', sourceHandle: 'false', target: 'notify_rejected' }),
       expect.objectContaining({ source: 'approve_change', target: 'approval_decision' }),
     ]);
+  });
+
+  it('显式清空的节点名称不再回落原子默认名', () => {
+    expect(resolveCanvasNodeTitle('', '作业执行')).toBe('');
+    expect(resolveCanvasNodeTitle(undefined, '作业执行')).toBe('作业执行');
+    expect(resolveCanvasNodeTitle('巡检扫描', '作业执行')).toBe('巡检扫描');
+
+    const flow = buildWorkflowFlow(
+      {
+        ...definition,
+        tasks: [{ name: 'bklite_job_execute', taskReferenceName: 'scan', type: 'SIMPLE', inputParameters: {} }],
+      },
+      { node_titles: { scan: '' }, return_nodes: [], edges: [] },
+      { bklite_job_execute: '作业执行' },
+    );
+
+    expect(flow.nodes.find((node) => node.id === 'scan')?.data.title).toBe('');
   });
 
   it('条件分支是布尔 SWITCH，出口文案为满足/不满足而不是审批通过/驳回', () => {
