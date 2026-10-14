@@ -244,6 +244,98 @@ button.kpiCard {
   min-width: 0;
 }
 
+.diskSubSwitch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.diskSubBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 7px 14px;
+  border: 1px solid #e5e6eb;
+  border-radius: 6px;
+  background: #fff;
+  color: #4e5969;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 20px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.diskSubBtn:hover:not(.diskSubBtnOn) {
+  border-color: #c9cdd4;
+}
+
+.diskSubBtn:focus-visible {
+  outline: 2px solid #1664ff;
+  outline-offset: 2px;
+}
+
+.diskSubBtnOn {
+  border-color: #1664ff;
+  background: #e8f3ff;
+  color: #1664ff;
+  font-weight: 600;
+}
+
+.diskSubCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #f2f3f5;
+  color: #4e5969;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.diskSubBtnOn .diskSubCount {
+  background: #1664ff;
+  color: #fff;
+}
+
+:global(html.dark) .diskSubBtn {
+  border-color: var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text-2);
+}
+
+:global(html.dark) .diskSubBtn:hover:not(.diskSubBtnOn) {
+  border-color: var(--color-border-3);
+}
+
+:global(html.dark) .diskSubBtn:focus-visible {
+  outline-color: var(--color-primary);
+}
+
+:global(html.dark) .diskSubBtnOn {
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 16%, var(--color-bg));
+  color: var(--color-primary);
+}
+
+:global(html.dark) .diskSubCount {
+  background: var(--color-fill-3);
+  color: var(--color-text-2);
+}
+
+:global(html.dark) .diskSubBtnOn .diskSubCount {
+  background: var(--color-primary);
+  color: var(--color-primary-foreground);
+}
+
 .diskMountChart .chartPanel {
   min-height: 0;
 }

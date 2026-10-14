@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Segmented, Tooltip } from 'antd';
+import { Tooltip } from 'antd';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { HOST_PALETTE } from '../config';
 import {
@@ -38,6 +38,28 @@ const relatedMounts = (mountRows: EntityTableRow[], deviceName: string) => (
     .filter((row) => row.labels.io_device === deviceName)
     .map((row) => row.labels.path || row.labels.mount || '')
     .filter(Boolean)
+);
+
+const DiskSubButton = ({
+  active,
+  label,
+  count,
+  onClick
+}: {
+  active: boolean;
+  label: string;
+  count: number;
+  onClick: () => void;
+}) => (
+  <button
+    type="button"
+    className={active ? `${styles.diskSubBtn} ${styles.diskSubBtnOn}` : styles.diskSubBtn}
+    aria-pressed={active}
+    onClick={onClick}
+  >
+    <span>{label}</span>
+    <span className={styles.diskSubCount}>{count}</span>
+  </button>
 );
 
 const legendReading = (value: number | null | undefined, unit: RateUnit) => {
@@ -125,14 +147,20 @@ export default function DiskPane({
       {errorText ? <div className={styles.note}>{errorText}</div> : null}
 
       <div className={styles.diskSubBar}>
-        <Segmented
-          value={sub}
-          onChange={(value) => setSub(value as DiskSub)}
-          options={[
-            { label: hostCategoryText(t, 'mounts'), value: 'mount' },
-            { label: hostCategoryText(t, 'blockDevices'), value: 'device' }
-          ]}
-        />
+        <div className={styles.diskSubSwitch}>
+          <DiskSubButton
+            active={sub === 'mount'}
+            label={hostCategoryText(t, 'mounts')}
+            count={mountRows.length}
+            onClick={() => setSub('mount')}
+          />
+          <DiskSubButton
+            active={sub === 'device'}
+            label={hostCategoryText(t, 'blockDevices')}
+            count={deviceRows.length}
+            onClick={() => setSub('device')}
+          />
+        </div>
         <div className={styles.hint}>{hostCategoryText(t, 'chartFollowsSelection')}</div>
       </div>
 
