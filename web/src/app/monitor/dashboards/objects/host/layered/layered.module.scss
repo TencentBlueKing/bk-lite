@@ -192,62 +192,31 @@
   flex-shrink: 0;
 }
 
-/* 磁盘两区：上图下表。挂载一张通栏短图；块设备三卡一行，对齐网络趋势。窄于 1100 折成两列（2+1）。 */
-.diskMountChart,
-.diskDeviceBlock {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.diskMountChart .chartTitleGroup,
-.diskMountChart .chartTitle,
-.diskDeviceGrid .chartTitleGroup,
-.diskDeviceGrid .chartTitle {
-  min-width: 0;
-}
-
-.diskMountChart .chartTitle,
-.diskDeviceGrid .chartTitle {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.diskMountChart .chartPanel {
+/* 磁盘趋势抽屉。挂载单图绘图区 220–280；设备三图竖排，各图绘图区 110–140。 */
+.diskTrendMount .chartPanel,
+.diskTrendDevice .chartPanel {
   min-height: 0;
 }
 
-.diskMountChart .chartBody {
-  height: 160px;
+.diskTrendMount .chartBody {
+  height: 248px;
 }
 
-.diskDeviceGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.diskDeviceGrid .chartPanel {
-  min-height: 0;
+.diskTrendDevice .chartPanel {
   padding: 8px 10px;
 }
 
-.diskDeviceGrid .chartHead {
+.diskTrendDevice .chartHead {
   margin-bottom: 4px;
 }
 
-.diskDeviceGrid .chartBody {
-  height: 120px;
+.diskTrendDevice .chartBody {
+  height: 124px;
 }
 
-.diskMountChart .hint,
-.diskDeviceBlock .hint {
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 1.4;
-  color: var(--color-text-3);
+.diskTrendDrawer :global(.ant-drawer-title) {
+  min-width: 0;
+  overflow: hidden;
 }
 
 .hint,
@@ -749,6 +718,28 @@
   text-decoration: none;
 }
 
+.trendLink {
+  border: 0;
+  margin: 0;
+  padding: 0 4px;
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+}
+
+.trendLinkOn {
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+
 .root :global(.ant-table) {
   background: transparent;
   color: var(--color-text-1);
@@ -808,8 +799,7 @@
 }
 
 @media (max-width: 1099px) {
-  .netTrendGrid,
-  .diskDeviceGrid {
+  .netTrendGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
