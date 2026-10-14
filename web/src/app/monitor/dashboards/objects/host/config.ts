@@ -1,7 +1,7 @@
 import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
 
 /** 主机仪表盘色板：高对比、鲜活通透的现代监控色系，告别暗淡沉闷 */
-const HOST_PALETTE = {
+export const HOST_PALETTE = {
   blue: '#2563EB',      // 活力皇家蓝 (CPU 使用率、网络入流量)
   indigo: '#6366F1',    // 现代紫靛 (系统 1 分钟负载、CPU 内核态、运行时长)
   cyan: '#06B6D4',      // 清亮青蓝 (系统 5 分钟负载、磁盘读吞吐、可用内存)
@@ -11,6 +11,9 @@ const HOST_PALETTE = {
   rose: '#EF4444',      // 鲜明珊瑚红 (僵尸进程、网络错误)
   neutral: '#94A3B8'    // 清爽中性灰 (CPU 环图其他)
 } as const;
+
+/** 分类仪表盘 CPU 主值与「CPU 使用率」曲线。概览与性能共用，勿再写一套蓝。 */
+export const HOST_CPU_SERIES_COLOR = HOST_PALETTE.emerald;
 
 export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   routeKey: 'host',
@@ -56,6 +59,23 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       linuxOnly: true
     },
     {
+      name: 'cpu_usage_irq_total',
+      display_name: 'IRQ 占比',
+      description: 'CPU 处理硬件中断的时间占比。没有序列时不画。',
+      unit: 'percent',
+      query: 'cpu_usage_irq{cpu="cpu-total", instance_type="os", __$labels__} or cpu_usage_irq_total_gauge{instance_type="os", __$labels__}',
+      color: HOST_PALETTE.indigo
+    },
+    {
+      name: 'cpu_usage_steal_total',
+      display_name: 'Steal 占比',
+      description: '虚拟化环境中被宿主机抢占的 CPU 时间占比。没有序列时不画。',
+      unit: 'percent',
+      query: 'cpu_usage_steal{cpu="cpu-total", instance_type="os", __$labels__} or cpu_usage_steal_total_gauge{instance_type="os", __$labels__}',
+      color: HOST_PALETTE.rose,
+      linuxOnly: true
+    },
+    {
       name: 'cpu_usage_other_total',
       display_name: '其他 CPU 占比',
       description: '除用户态、内核态和 I/O Wait 以外的 CPU 占比。',
@@ -89,6 +109,14 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       query: 'system_load15{instance_type="os", __$labels__} or system_load15_gauge{instance_type="os", __$labels__} or host_cpu_load_15m_gauge{instance_type="os", __$labels__}',
       color: HOST_PALETTE.emerald,
       linuxOnly: true
+    },
+    {
+      name: 'cpu_n',
+      display_name: 'CPU 核数',
+      description: '按非 cpu-total 的 CPU 序列计数，供负载相对核数副标使用。',
+      unit: 'counts',
+      query: 'count by (instance_id) (cpu_usage_idle{cpu!="cpu-total", instance_type="os", __$labels__})',
+      color: HOST_PALETTE.neutral
     },
     {
       name: 'system_uptime',
@@ -125,6 +153,38 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: HOST_PALETTE.cyan
     },
     {
+      name: 'mem_total',
+      display_name: '内存总量',
+      description: '主机物理内存总量，用于把可用内存换算成占比。',
+      unit: 'bytes',
+      query: 'mem_total{instance_type="os", __$labels__} or host_mem_total_bytes_gauge{instance_type="os", __$labels__} or mem_total_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or mem_total_gauge{instance_type="os", config_type=~"host_(aix|freebsd|hpux|solaris)_remote", __$labels__}',
+      color: HOST_PALETTE.neutral
+    },
+    {
+      name: 'host_mem_swap_used_bytes',
+      display_name: '交换已用',
+      description: '主机已用交换空间。',
+      unit: 'bytes',
+      query: 'host_mem_swap_used_bytes{instance_type="os", __$labels__} or host_mem_swap_used_bytes_gauge{instance_type="os", __$labels__}',
+      color: HOST_PALETTE.neutral
+    },
+    {
+      name: 'host_mem_swap_total_bytes',
+      display_name: '交换总量',
+      description: '主机交换空间总量，用于换算交换已用占比。',
+      unit: 'bytes',
+      query: 'host_mem_swap_total_bytes{instance_type="os", __$labels__} or host_mem_swap_total_bytes_gauge{instance_type="os", __$labels__} or mem_swap_total{instance_type="os", __$labels__} or mem_swap_total_gauge{instance_type="os", __$labels__}',
+      color: HOST_PALETTE.neutral
+    },
+    {
+      name: 'mem_swap_free',
+      display_name: '交换空闲',
+      description: '主机空闲交换空间。没有已用字节时，用总量减空闲推算交换已用占比。',
+      unit: 'bytes',
+      query: 'mem_swap_free{instance_type="os", __$labels__} or mem_swap_free_gauge{instance_type="os", __$labels__}',
+      color: HOST_PALETTE.neutral
+    },
+    {
       name: 'processes_blocked',
       display_name: '阻塞进程数',
       description: '当前处于不可中断等待（常与慢 I/O 相关）的进程数量。',
@@ -140,6 +200,23 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       unit: 'counts',
       query: 'processes_zombies{instance_type="os", __$labels__} or processes_zombies_gauge{instance_type="os", __$labels__}',
       color: HOST_PALETTE.rose,
+      linuxOnly: true
+    },
+    {
+      name: 'processes_running',
+      display_name: '运行中进程数',
+      description: '当前处于运行状态的进程数量（Linux Telegraf processes；Windows WMI 为进程总数近似）。',
+      unit: 'counts',
+      query: 'processes_running{instance_type="os", __$labels__} or processes_running_gauge{instance_type="os", __$labels__} or processes_running_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
+      color: HOST_PALETTE.neutral
+    },
+    {
+      name: 'processes_sleeping',
+      display_name: '休眠进程数',
+      description: '当前处于休眠或等待状态的进程数量。',
+      unit: 'counts',
+      query: 'processes_sleeping{instance_type="os", __$labels__} or processes_sleeping_gauge{instance_type="os", __$labels__}',
+      color: HOST_PALETTE.neutral,
       linuxOnly: true
     },
     {

@@ -1,6 +1,6 @@
 import React from 'react';
-import { Breadcrumb, Button, Segmented } from 'antd';
-import { ArrowLeftOutlined } from '@ant-design/icons';
+import { Breadcrumb, Button, Dropdown, Segmented, Select } from 'antd';
+import { ArrowLeftOutlined, DownOutlined } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import TimeSelector from '@/components/time-selector';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
@@ -15,9 +15,16 @@ export interface DashboardPageHeaderStyles {
   readonly [key: string]: string | undefined;
 }
 
+export interface DashboardModeOption {
+  labelKey: string;
+  fallback: string;
+  value: string;
+}
+
 export interface DashboardPageHeaderProps {
   title: string;
-  displayMode: 'dashboard' | 'metrics';
+  /** 主机详情会多一个分类页签值，其它对象仍是 dashboard / metrics。 */
+  displayMode: string;
   onDisplayModeChange: (mode: 'dashboard' | 'metrics') => void;
   timeDefaultValue: TimeSelectorDefaultValue;
   frequencyList?: ListItem[];
@@ -26,13 +33,16 @@ export interface DashboardPageHeaderProps {
   onRefresh: () => void;
   /** 是否在标题行内渲染时间选择器；置 false 时由调用方自行放置（默认 true，保持原行为）。 */
   showTimeSelector?: boolean;
-  /** SNMP / NetFlow / sFlow 跨路由切换（与展示模式 Segmented 并列）。 */
+  /** SNMP / NetFlow / sFlow 跨路由切换（与展示模式控件并列）。 */
   viewSwitchSlot?: React.ReactNode;
+  /** 默认两档分段按钮。选项变多时改用下拉；主机详情用标题旁 pill。 */
+  modeControl?: 'segmented' | 'select' | 'pill';
+  modeOptions?: readonly DashboardModeOption[];
   styles: DashboardPageHeaderStyles;
 }
 
 const DISPLAY_MODE_OPTIONS = [
-  { labelKey: 'dashboardMode', fallback: '监控仪表盘', value: 'dashboard' },
+  { labelKey: 'dashboardMode', fallback: '经典布局', value: 'dashboard' },
   { labelKey: 'metricsMode', fallback: '全量指标', value: 'metrics' }
 ] as const;
 
@@ -47,6 +57,8 @@ export function DashboardPageHeader({
   onRefresh,
   showTimeSelector = true,
   viewSwitchSlot,
+  modeControl = 'segmented',
+  modeOptions,
   styles
 }: DashboardPageHeaderProps) {
   const { t, common } = useDashboardText();
@@ -62,10 +74,64 @@ export function DashboardPageHeader({
     title: typeof item.title === 'string' ? tDashboardText(t, item.title) : item.title
   }));
   const onBack = () => router.push(returnNavigation.href);
+  const resolvedModeOptions = modeOptions ?? DISPLAY_MODE_OPTIONS;
+  const modeItems = resolvedModeOptions.map((item) => ({
+    value: item.value,
+    label: common(item.labelKey, item.fallback)
+  }));
+  const currentModeLabel = modeItems.find((item) => item.value === displayMode)?.label ?? '';
+  const modeSwitcher = modeControl === 'pill' ? null : modeControl === 'select' ? (
+    <Select
+      size="middle"
+      className={[styles.modeSelect, 'min-w-[280px] max-md:w-full max-md:min-w-0'].filter(Boolean).join(' ')}
+      value={displayMode}
+      options={modeItems}
+      aria-label={common('viewSwitcher', '视图')}
+      popupMatchSelectWidth
+      onChange={(value) => onDisplayModeChange(value as 'dashboard' | 'metrics')}
+    />
+  ) : (
+    <Segmented
+      size="middle"
+      className={styles.modeSegmented}
+      value={displayMode}
+      options={modeItems}
+      onChange={(value) => onDisplayModeChange(value as 'dashboard' | 'metrics')}
+    />
+  );
+  const modePill = modeControl === 'pill' ? (
+    <Dropdown
+      trigger={['click']}
+      menu={{
+        selectable: true,
+        selectedKeys: [displayMode],
+        items: modeItems.map((item) => ({
+          key: item.value,
+          label: item.label
+        })),
+        onClick: ({ key }) => onDisplayModeChange(key as 'dashboard' | 'metrics')
+      }}
+    >
+      <button
+        type="button"
+        className={styles.viewModePill}
+        data-view-mode-pill=""
+        aria-haspopup="menu"
+        aria-label={common('viewSwitcher', '视图')}
+      >
+        <span>{currentModeLabel}</span>
+        <DownOutlined className={styles.viewModeCaret} aria-hidden="true" />
+      </button>
+    </Dropdown>
+  ) : null;
 
+  const backIsLink = modeControl === 'pill';
   const backButton = (
     <Button
-      className={`${styles.toolbarBackBtn ?? ''} inline-flex max-w-[260px] items-center`}
+      type={backIsLink ? 'link' : 'default'}
+      className={backIsLink
+        ? [styles.backLink, 'inline-flex max-w-[260px] items-center'].filter(Boolean).join(' ')
+        : `${styles.toolbarBackBtn ?? ''} inline-flex max-w-[260px] items-center`}
       icon={<ArrowLeftOutlined aria-hidden="true" />}
       onClick={onBack}
       aria-label={backLabel}
@@ -78,22 +144,20 @@ export function DashboardPageHeader({
   );
 
   return (
-    <div className={styles.pageTitleRow}>
+    <div className={[styles.pageTitleRow, modeControl === 'pill' ? styles.pageTitleRowPill : ''].filter(Boolean).join(' ')}>
       <Breadcrumb className={styles.breadcrumb} items={breadcrumbItems} />
       <div className={styles.titleControlsRow}>
-        <h1 className={styles.title}>{localizedTitle}</h1>
+        {modePill ? (
+          <div className={styles.titleLead}>
+            <h1 className={styles.title}>{localizedTitle}</h1>
+            {modePill}
+          </div>
+        ) : (
+          <h1 className={styles.title}>{localizedTitle}</h1>
+        )}
         <div className={styles.controlsWrap}>
           {viewSwitchSlot}
-          <Segmented
-            size="middle"
-            className={styles.modeSegmented}
-            value={displayMode}
-            options={DISPLAY_MODE_OPTIONS.map((item) => ({
-              value: item.value,
-              label: common(item.labelKey, item.fallback)
-            }))}
-            onChange={(value) => onDisplayModeChange(value as 'dashboard' | 'metrics')}
-          />
+          {modeSwitcher}
           {showTimeSelector ? (
             <div className={styles.toolbarTimeSelector}>
               <TimeSelector

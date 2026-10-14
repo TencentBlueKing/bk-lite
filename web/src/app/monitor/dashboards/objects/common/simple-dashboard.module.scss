@@ -196,6 +196,10 @@
   box-shadow: none;
 }
 
+.modeSelect {
+  min-width: 280px;
+}
+
 .toolbarTimeSelector {
   display: flex;
   align-items: center;
@@ -1883,6 +1887,11 @@
 
   .controlsWrap {
     justify-content: flex-start;
+  }
+
+  .modeSelect {
+    width: 100%;
+    min-width: 0;
   }
 
   .primaryGrid {

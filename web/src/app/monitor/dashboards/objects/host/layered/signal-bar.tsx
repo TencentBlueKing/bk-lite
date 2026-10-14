@@ -1,0 +1,68 @@
+'use client';
+
+import React from 'react';
+import { Tooltip } from 'antd';
+import styles from './layered.module.scss';
+
+export interface KpiCardModel {
+  key: string;
+  label: string;
+  /** 窄卡保留短标题时，悬浮展示完整名称。 */
+  hint?: string;
+  value: string;
+  tone?: string;
+  subtitle?: string;
+  detail?: string;
+  extra?: React.ReactNode;
+  onActivate?: () => void;
+  expanded?: boolean;
+}
+
+const KpiLabel = ({ item }: { item: KpiCardModel }) => (
+  <div className={styles.kpiLabel}>
+    {item.hint ? (
+      <Tooltip title={item.hint}>
+        <span>{item.label}</span>
+      </Tooltip>
+    ) : item.label}
+  </div>
+);
+
+const ValueCardBody = ({ item }: { item: KpiCardModel }) => (
+  <>
+    <KpiLabel item={item} />
+    <div className={styles.kpiValue} style={item.tone ? { color: item.tone } : undefined}>
+      {item.value}
+    </div>
+    {item.subtitle ? <div className={styles.kpiMeta}>{item.subtitle}</div> : null}
+    {item.detail ? <div className={styles.kpiMeta}>{item.detail}</div> : null}
+    {item.extra}
+  </>
+);
+
+/** 概览 KPI：六张数字卡，标题贴顶、主值紧跟。不含环图、饼图或 sparkline。 */
+export function KpiStrip({ items }: { items: KpiCardModel[] }) {
+  return (
+    <div className={styles.kpiGrid}>
+      {items.map((item) => (
+        item.onActivate ? (
+          <button
+            key={item.key}
+            type="button"
+            className={styles.kpiCard}
+            data-kpi={item.key}
+            onClick={item.onActivate}
+            aria-expanded={Boolean(item.expanded)}
+            aria-haspopup="dialog"
+          >
+            <ValueCardBody item={item} />
+          </button>
+        ) : (
+          <div key={item.key} className={styles.kpiCard} data-kpi={item.key}>
+            <ValueCardBody item={item} />
+          </div>
+        )
+      ))}
+    </div>
+  );
+}

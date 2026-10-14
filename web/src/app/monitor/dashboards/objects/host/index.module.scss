@@ -35,3 +35,153 @@
     }
   }
 }
+
+// 页头与白壳共用同一左右槽。标题留在灰底上，内容左右缘对齐白壳外缘。
+.shell {
+  --host-dashboard-gutter-x: 20px;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.pageIntro {
+  margin-bottom: 12px;
+  padding-left: var(--host-dashboard-gutter-x);
+  padding-right: var(--host-dashboard-gutter-x);
+  box-sizing: border-box;
+}
+
+.pageIntro .breadcrumb,
+.pageIntro .titleControlsRow {
+  margin-left: 0;
+  margin-right: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.pageIntro .breadcrumb :global(ol) {
+  margin: 0;
+  padding: 0;
+}
+
+.pageTitleRowPill {
+  .titleLead {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+
+  .titleLead .title {
+    flex: 0 1 auto;
+  }
+}
+
+.viewModePill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  margin: 0;
+  padding: 0 12px;
+  border: 1px solid var(--color-primary);
+  border-radius: 999px;
+  background: var(--color-bg);
+  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.viewModePill:hover {
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg));
+}
+
+.viewModeCaret {
+  font-size: 10px;
+  color: var(--color-primary);
+}
+
+.backLink {
+  height: auto !important;
+  min-height: 0 !important;
+  margin-inline: 0;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--color-primary) !important;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+}
+
+.backLink:hover,
+.backLink:focus,
+.backLink:active {
+  color: var(--color-primary) !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.backLink :global(.anticon) {
+  color: var(--color-primary);
+}
+
+:global(html.dark) .backLink,
+:global(html.dark) .backLink:hover,
+:global(html.dark) .backLink:focus,
+:global(html.dark) .backLink:active {
+  background: transparent !important;
+  border: none !important;
+  color: var(--color-primary) !important;
+}
+
+.unifiedShell {
+  margin-left: var(--host-dashboard-gutter-x);
+  margin-right: var(--host-dashboard-gutter-x);
+  box-sizing: border-box;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--color-text-1) 4%, transparent);
+  overflow: hidden;
+}
+
+.unifiedHostBar {
+  border-bottom: 1px solid var(--color-border-1);
+
+  .instanceCard {
+    padding: 12px 16px;
+    border-top: none;
+    border-bottom: none;
+  }
+}
+
+.unifiedBody {
+  padding: 14px 16px 16px;
+}
+
+.unifiedCategoryBody {
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .shell {
+    --host-dashboard-gutter-x: 12px;
+  }
+
+  .pageTitleRowPill .titleControlsRow {
+    align-items: stretch;
+  }
+
+  .pageTitleRowPill .controlsWrap {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
