@@ -513,8 +513,13 @@
 
 .statusCards {
   --status-value-size: 22px;
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  /* 进程状态堆叠条定稿色（运行/休眠/阻塞/僵尸）。分类色，不随主题翻转。 */
+  --proc-running: #3b82f6;
+  --proc-sleeping: #93c5fd;
+  --proc-blocked: #f97316;
+  --proc-zombie: #ef4444;
+  display: flex;
+  align-items: stretch;
   gap: 8px;
   width: 100%;
 }
@@ -525,6 +530,7 @@
   --status-unit: var(--status-accent);
   position: relative;
   display: flex;
+  flex: 1 1 0;
   flex-direction: column;
   justify-content: center;
   gap: 6px;
@@ -608,6 +614,34 @@
   --status-unit: var(--color-text-3);
   background: var(--color-bg);
   border-color: var(--color-border);
+}
+
+.statusCardInfo {
+  --status-accent: var(--proc-running);
+  --status-value: var(--color-text-1);
+  --status-unit: var(--color-text-3);
+  background: var(--color-bg);
+  border-color: var(--color-border);
+}
+
+.statusCardTotal {
+  flex: 1.25 1 0;
+}
+
+.stackRunning {
+  background: var(--proc-running);
+}
+
+.stackSleeping {
+  background: var(--proc-sleeping);
+}
+
+.stackBlocked {
+  background: var(--proc-blocked);
+}
+
+.stackZombie {
+  background: var(--proc-zombie);
 }
 
 .processTop {
@@ -780,7 +814,15 @@
   }
 
   .statusCards {
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    flex-wrap: wrap;
+  }
+
+  .statusCard {
+    flex: 1 1 140px;
+  }
+
+  .statusCardTotal {
+    flex: 1 0 100%;
   }
 }
 
