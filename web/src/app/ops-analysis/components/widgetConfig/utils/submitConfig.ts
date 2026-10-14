@@ -30,6 +30,7 @@ import { validateComponentSwitchParams } from '@/app/ops-analysis/utils/componen
 import { persistRoom3DConfig } from '@/app/ops-analysis/utils/room3DConfig';
 import { APPLICATION_TOPOLOGY_FILTER_ID } from '@/app/ops-analysis/utils/applicationTopologyCanvasFilter';
 import { ROOM3D_FILTER_ID } from '@/app/ops-analysis/utils/room3DScreenFilter';
+import { resolveOpsTableColumnWidth } from '@/app/ops-analysis/utils/opsTableColumn';
 import {
   resolveApplication3DWallConfig,
   type Application3DWallConfig,
@@ -296,6 +297,10 @@ const buildTableConfig = ({
         order: index,
         columnType: column.columnType,
       };
+      const columnWidth = resolveOpsTableColumnWidth(column.width);
+      if (columnWidth !== undefined) {
+        next.width = columnWidth;
+      }
       if (column.columnType === 'actions' || !includeCellStyle) {
         return next;
       }

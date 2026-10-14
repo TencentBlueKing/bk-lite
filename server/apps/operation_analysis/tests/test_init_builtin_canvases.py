@@ -438,7 +438,7 @@ def test_builtin_alert_screen_yaml_uses_page_configurable_nodes_only():
         "width": 3840,
         "height": 2160,
         "adapter": "fill",
-        "background": {"key": "dark-glow", "type": "preset"},
+        "background": {"type": "color", "color": "#03192D"},
     }
     assert screen["view_sets"]["decorations"] == {"title": "告警运营大屏", "showClock": False, "showTitle": False}
     assert "edges" not in screen["view_sets"]
@@ -461,9 +461,14 @@ def test_builtin_alert_screen_yaml_uses_page_configurable_nodes_only():
     node_by_id = {node["id"]: node for node in nodes}
     assert node_by_id["legacy-title-frame"]["kind"] == "titleFrame"
     assert node_by_id["legacy-title-frame"]["preset"] == "hero-5"
-    assert node_by_id["legacy-title-frame"]["textStyle"] == {"fontSize": 72}
+    assert node_by_id["legacy-title-frame"]["textStyle"] == {
+        "align": "right",
+        "color": "#EAF3FF",
+        "fontSize": 45,
+        "fontWeight": 700,
+    }
     assert node_by_id["legacy-clock"]["kind"] == "clock"
-    assert node_by_id["legacy-clock"]["textStyle"] == {"color": "canvas", "fontSize": 60, "fontWeight": 600}
+    assert node_by_id["legacy-clock"]["textStyle"] == {"color": "#EAF3FF", "fontSize": 34, "fontWeight": 600}
     kpi_ids = [
         "alert-kpi-created",
         "alert-kpi-closed",
@@ -1164,7 +1169,7 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
     assert "edges" not in screen.view_sets
     assert len(nodes) == 49
     assert screen.view_sets["viewport"]["adapter"] == "fill"
-    assert screen.view_sets["viewport"]["background"] == {"key": "dark-glow", "type": "preset"}
+    assert screen.view_sets["viewport"]["background"] == {"type": "color", "color": "#03192D"}
     widgets = [node for node in nodes if node.get("type") == "widget"]
     assert len(widgets) == 15
     assert all(node.get("type") == "widget" for node in widgets)
@@ -1176,11 +1181,16 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
     node_by_id = {node["id"]: node for node in nodes}
     assert node_by_id["legacy-title-frame"]["kind"] == "titleFrame"
     assert node_by_id["legacy-title-frame"]["preset"] == "hero-5"
-    assert node_by_id["legacy-title-frame"]["textStyle"] == {"fontSize": 72}
+    assert node_by_id["legacy-title-frame"]["textStyle"] == {
+        "align": "right",
+        "color": "#EAF3FF",
+        "fontSize": 45,
+        "fontWeight": 700,
+    }
     assert node_by_id["legacy-clock"]["kind"] == "clock"
     assert node_by_id["legacy-clock"]["textStyle"] == {
-        "color": "canvas",
-        "fontSize": 60,
+        "color": "#EAF3FF",
+        "fontSize": 34,
         "fontWeight": 600,
     }
     assert screen.view_sets["filters"] == [
