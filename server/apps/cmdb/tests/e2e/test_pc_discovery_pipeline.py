@@ -490,7 +490,7 @@ def test_failed_collect_rows_produce_no_snapshot_and_no_delete(load_fixture, gra
     _run_plugin(task, _round(vm_doc, "win-s1", BASE_TS))
     assert expected["software_inst_name"] in graph.store
 
-    # 目标不可达：stargazer 只会落 collect_status=failed 行，全部跳过 → 零快照零删除
+    # 目标不可达：失败 PC 计入任务，不写入、不差集删除
     failed_doc = _round(vm_doc, "win-s2", BASE_TS + 300, drop_software=True, expected=0)
     for row in failed_doc["data"]["result"]:
         row["metric"]["collect_status"] = "failed"
@@ -498,8 +498,16 @@ def test_failed_collect_rows_produce_no_snapshot_and_no_delete(load_fixture, gra
     fd = _run_plugin(task, failed_doc)
 
     assert fd["add"] == []
-    assert fd["update"] == []
     assert fd["delete"] == []
-    assert fd["pc_summary"]["pc_total"] == 0
+    assert fd["pc_summary"]["pc_total"] == 1
+    assert fd["pc_summary"]["pc_failed"] == 1
+    assert fd["update"] == [
+        {
+            "inst_name": failed_doc["data"]["result"][0]["metric"]["collection_target"],
+            "model_id": "pc",
+            "_status": "failed",
+            "_error": "COLLECT_FAILED",
+        }
+    ]
     assert expected["software_inst_name"] in graph.store
     assert ChangeRecord.objects.filter(type=DELETE_INST).count() == 0

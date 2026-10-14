@@ -155,9 +155,100 @@ def test_failed_gauge_row_is_not_written(monkeypatch):
         _MODEL_ID="pc",
     )
     publish_pc_collected_metrics(plugin)
+    summary = plugin.result["__task_format_data__"]["pc_summary"]
     assert graph.store == {}
-    assert plugin.result["__task_format_data__"]["pc_summary"]["pc_total"] == 0
+    assert plugin.result["__task_format_data__"]["delete"] == []
+    assert summary["pc_total"] == 1
+    assert summary["pc_failed"] == 1
+    assert summary["pc_complete"] == 0
+    assert plugin.result["__task_format_data__"]["update"] == [
+        {"inst_name": "10.11.27.30", "model_id": "pc", "_status": "failed", "_error": "COLLECT_FAILED"}
+    ]
     assert plugin._MODEL_ID is None
+
+
+def test_failed_pc_keeps_successful_peer_and_skips_software_only_failure(monkeypatch):
+    from apps.cmdb.constants.constants import CollectRunStatusType
+    from apps.cmdb.services.pc_discovery import publish_pc_collected_metrics
+    from apps.cmdb.tasks.celery_tasks import _decide_collect_exec_status
+    from apps.cmdb.tests.test_pc_reconcile_service import InMemoryGraph
+
+    graph = InMemoryGraph()
+    monkeypatch.setattr("apps.cmdb.services.pc_discovery.GraphClient", lambda *a, **k: graph)
+    plugin = SimpleNamespace(
+        raw_data=[
+            {
+                "metric": {
+                    "__name__": "pc_info_gauge",
+                    "bk_obj_id": "pc",
+                    "inst_name": "WIN-OK",
+                    "os_type": "windows",
+                    "collection_target": "10.11.27.31",
+                    "collect_status": "success",
+                },
+                "value": [1753200000, "1"],
+            },
+            {
+                "metric": {
+                    "__name__": "pc_info_gauge",
+                    "bk_obj_id": "pc",
+                    "inst_name": "WIN-FAIL",
+                    "os_type": "windows",
+                    "collection_target": "10.11.27.30",
+                    "collect_status": "failed",
+                },
+                "value": [1753200000, "1"],
+            },
+            {
+                "metric": {
+                    "__name__": "pc_info_gauge",
+                    "bk_obj_id": "pc",
+                    "inst_name": "WIN-FAIL",
+                    "collection_target": "10.11.27.30",
+                    "cmdb_collect_error": "duplicate",
+                },
+                "value": [1753200001, "1"],
+            },
+            {
+                "metric": {
+                    "__name__": "pc_software_info_gauge",
+                    "bk_obj_id": "pc_software",
+                    "inst_name": "SW-FAIL",
+                    "collect_status": "failed",
+                },
+                "value": [1753200000, "1"],
+            },
+        ],
+        result={},
+        get_collect_inst=lambda: SimpleNamespace(id=7, team=[1], data_cleanup_strategy=""),
+        TASK_FORMAT_DATA_KEY="__task_format_data__",
+        _MODEL_ID="pc",
+    )
+    publish_pc_collected_metrics(plugin)
+    summary = plugin.result["__task_format_data__"]["pc_summary"]
+    assert "WIN-OK" in graph.store
+    assert "WIN-FAIL" not in graph.store
+    assert plugin.result["__task_format_data__"]["delete"] == []
+    assert summary["pc_total"] == 2
+    assert summary["pc_partial"] == 1
+    assert summary["pc_failed"] == 1
+    status = _decide_collect_exec_status(
+        {
+            "add": 1,
+            "add_error": 0,
+            "update": 1,
+            "update_error": 1,
+            "delete": 0,
+            "delete_error": 0,
+            "association": 0,
+            "association_error": 0,
+            "collect_success": 1,
+            "collect_failed": 1,
+        },
+        raw_data=[{"__time__": "t"}],
+        pc_summary=summary,
+    )
+    assert status == CollectRunStatusType.PARTIAL_SUCCESS
 
 
 def test_host_run_still_uses_its_own_formatter():
