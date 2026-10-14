@@ -1,5 +1,5 @@
 export type WorkflowStatus = 'DRAFT' | 'PUBLISHED';
-export type ExecutionStatus = 'QUEUED' | 'RUNNING' | 'WAITING_APPROVAL' | 'TERMINATING' | 'SUCCEEDED' | 'FAILED' | 'TIMED_OUT' | 'TERMINATED';
+export type ExecutionStatus = 'QUEUED' | 'RUNNING' | 'WAITING_APPROVAL' | 'TERMINATING' | 'UNKNOWN' | 'SUCCEEDED' | 'FAILED' | 'TIMED_OUT' | 'TERMINATED';
 export type WorkflowTriggerType = 'FORM' | 'SCHEDULE' | 'WEBHOOK' | 'NATS';
 
 export interface PaginatedResponse<T> {

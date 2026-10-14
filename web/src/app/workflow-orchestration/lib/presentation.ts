@@ -10,6 +10,7 @@ export const executionStatusPresentation: Record<ExecutionStatus, { label: strin
   RUNNING: { label: '执行中', color: 'processing' },
   WAITING_APPROVAL: { label: '等待审批', color: 'warning' },
   TERMINATING: { label: '终止中', color: 'warning' },
+  UNKNOWN: { label: '结果未知', color: 'warning' },
   SUCCEEDED: { label: '成功', color: 'success' },
   FAILED: { label: '失败', color: 'error' },
   TIMED_OUT: { label: '已超时', color: 'error' },
