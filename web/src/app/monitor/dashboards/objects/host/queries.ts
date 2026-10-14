@@ -40,6 +40,26 @@ export interface HostEntityMetricQuery {
 
 const WIN_LOGICAL_DISK = 'instance=~"[A-Z]:"';
 
+/**
+ * 磁盘繁忙度。对齐 Telegraf host/os：Linux 用 rate(diskio_io_time)/10，
+ * Windows 空闲时间优先，并用 unless 丢掉 io_time 零值。
+ */
+const diskIoUtilEntityQuery = () => {
+  const windowsIdle = `win_logicaldisk_idle_percent{instance_type="os", ${WIN_LOGICAL_DISK}, __$labels__}`;
+  const windows = `label_replace(clamp_max(clamp_min(100 - ${windowsIdle}, 0), 100), "name", "$1", "instance", "(.*)")`;
+  const idleNamed = `label_replace(${windowsIdle}, "name", "$1", "instance", "(.*)")`;
+  const telegraf = `(rate(diskio_io_time{instance_type="os", __$labels__}[__$window__]) / 10)`;
+  return [
+    windows,
+    `(${telegraf} unless on(instance_id, name) ${idleNamed})`,
+    `(rate(diskio_io_time_ms_gauge{instance_type="os", __$labels__}[__$window__]) / 10)`,
+    `diskio_io_util{instance_type="os", __$labels__}`,
+    `diskio_io_util_gauge{instance_type="os", __$labels__}`,
+    `diskio_io_util_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}`,
+    `disk_tm_act_gauge{instance_type="os", ${UNIX_REMOTE}, __$labels__}`
+  ].join(' or ');
+};
+
 /** 读/写 IOPS：Telegraf 计数、远程累计和 Windows 计数都折成每秒，不造 0。 */
 const diskIopsEntityQuery = (kind: 'reads' | 'writes') => [
   `rate(diskio_${kind}{instance_type="os", __$labels__}[__$window__])`,
@@ -98,7 +118,7 @@ export const HOST_DISK_ENTITY_QUERIES: HostEntityMetricQuery[] = [
     key: 'diskio_io_util',
     unit: 'percent',
     labelKeys: ['name', 'device'],
-    query: `diskio_io_util{instance_type="os", __$labels__} or diskio_io_util_gauge{instance_type="os", __$labels__} or (rate(diskio_io_time_ms_gauge{instance_type="os", __$labels__}[__$window__]) / 10) or diskio_io_util_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__} or disk_tm_act_gauge{instance_type="os", ${UNIX_REMOTE}, __$labels__}`
+    query: diskIoUtilEntityQuery()
   },
   {
     key: 'diskio_read_bytes_rate',

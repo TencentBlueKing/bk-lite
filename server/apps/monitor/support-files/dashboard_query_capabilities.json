@@ -1266,13 +1266,6 @@
       "template": "mysql_variables_table_open_cache{__$labels__}"
     },
     {
-      "id": "dashboard:v1:2b953bb2",
-      "object_names": [
-        "Host"
-      ],
-      "template": "diskio_io_util{instance_type=\"os\", __$labels__} or diskio_io_util_gauge{instance_type=\"os\", __$labels__} or (rate(diskio_io_time_ms_gauge{instance_type=\"os\", __$labels__}[__$window__]) / 10) or diskio_io_util_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__} or disk_tm_act_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__}"
-    },
-    {
       "id": "dashboard:v1:2beb4c8f",
       "object_names": [
         "Pod"
@@ -1965,6 +1958,13 @@
         "Firewall"
       ],
       "template": "count({instance_type='firewall', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:48a1094e",
+      "object_names": [
+        "Host"
+      ],
+      "template": "rate(diskio_writes{instance_type=\"os\", __$labels__}[__$window__]) or rate(diskio_writes_total_gauge{instance_type=\"os\", __$labels__}[__$window__]) or rate(diskio_writes_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__])"
     },
     {
       "id": "dashboard:v1:48a9356c",
@@ -3274,6 +3274,13 @@
         "Tomcat"
       ],
       "template": "tomcat_connector_current_thread_count{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:7fa081b4",
+      "object_names": [
+        "Host"
+      ],
+      "template": "label_replace(clamp_max(clamp_min(100 - win_logicaldisk_idle_percent{instance_type=\"os\", instance=~\"[A-Z]:\", __$labels__}, 0), 100), \"name\", \"$1\", \"instance\", \"(.*)\") or ((rate(diskio_io_time{instance_type=\"os\", __$labels__}[__$window__]) / 10) unless on(instance_id, name) label_replace(win_logicaldisk_idle_percent{instance_type=\"os\", instance=~\"[A-Z]:\", __$labels__}, \"name\", \"$1\", \"instance\", \"(.*)\")) or (rate(diskio_io_time_ms_gauge{instance_type=\"os\", __$labels__}[__$window__]) / 10) or diskio_io_util{instance_type=\"os\", __$labels__} or diskio_io_util_gauge{instance_type=\"os\", __$labels__} or diskio_io_util_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__} or disk_tm_act_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__}"
     },
     {
       "id": "dashboard:v1:7fd5909d",
@@ -5886,6 +5893,13 @@
         "K3SPod"
       ],
       "template": "sum by (instance_id,pod,device) ( rate(prometheus_remote_write_container_fs_reads_total{instance_type=\"k3s\",__$labels__}[__$window__]) )"
+    },
+    {
+      "id": "dashboard:v1:e89b7d57",
+      "object_names": [
+        "Host"
+      ],
+      "template": "rate(diskio_reads{instance_type=\"os\", __$labels__}[__$window__]) or rate(diskio_reads_total_gauge{instance_type=\"os\", __$labels__}[__$window__]) or rate(diskio_reads_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__}[__$window__])"
     },
     {
       "id": "dashboard:v1:e8a018f4",
