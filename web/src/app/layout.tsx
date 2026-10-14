@@ -1,5 +1,6 @@
 'use client';
 
+import '@/utils/antdPortalCleanup';
 import '@ant-design/v5-patch-for-react-19';
 import { useEffect, useLayoutEffect, useState, useMemo } from 'react';
 import Script from 'next/script';
