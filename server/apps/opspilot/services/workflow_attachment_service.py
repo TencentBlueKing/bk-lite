@@ -132,6 +132,8 @@ ATTACHMENT_FILE_TYPE_CONFIG = {
 
 
 _ATTACHMENT_VERSION_RE = re.compile(r"_v(\d+)\.(\d+)$", re.IGNORECASE)
+# 修订标签只接受短后缀。长标题即使以前缀开头，也是另一份文档。
+_REVISION_LABEL_MAX_CHARS = 12
 
 
 def attachment_name_parts(filename: str) -> tuple[str, str]:
@@ -149,6 +151,19 @@ def attachment_version_base(stem: str) -> tuple[str, tuple[int, int] | None]:
     return stem[: match.start()], (int(match.group(1)), int(match.group(2)))
 
 
+def _revision_suffix(longer: str, shorter: str) -> str | None:
+    """较短标题后只多一段短修订标签时，才视为同一份文档。"""
+    if len(shorter) < 2 or len(shorter) * 2 < len(longer):
+        return None
+    prefix = f"{shorter}_"
+    if not longer.startswith(prefix):
+        return None
+    label = longer[len(prefix) :]
+    if not label or "_" in label or len(label) > _REVISION_LABEL_MAX_CHARS:
+        return None
+    return label
+
+
 def _same_attachment_document(new_base: str, prior_base: str) -> bool:
     left = (new_base or "").strip()
     right = (prior_base or "").strip()
@@ -156,28 +171,56 @@ def _same_attachment_document(new_base: str, prior_base: str) -> bool:
         return False
     if left == right:
         return True
-    if len(right) >= 2 and left.startswith(f"{right}_"):
-        return True
-    if len(left) >= 2 and right.startswith(f"{left}_"):
-        return True
-    return False
+    return _revision_suffix(left, right) is not None or _revision_suffix(right, left) is not None
+
+
+def _version_rank(version: tuple[int, int] | None) -> tuple[int, int, int]:
+    if version is None:
+        return (0, 0, 0)
+    return (1, version[0], version[1])
+
+
+def _best_matching_prior(
+    base: str,
+    prior_filenames: list[str] | None,
+    *,
+    known_extension_only: bool = False,
+) -> tuple[str, tuple[int, int] | None, str] | None:
+    """同一文档取最大版本。版本相同时用更短的基准名，仍相同则用列表中更靠后的一条。"""
+    best: tuple[str, tuple[int, int] | None, str, int] | None = None
+    for index, prior in enumerate(prior_filenames or []):
+        prior_stem, prior_ext = attachment_name_parts(str(prior))
+        prior_base, prior_version = attachment_version_base(prior_stem)
+        locked_type = prior_ext.lower()
+        if known_extension_only and locked_type not in ATTACHMENT_FILE_TYPE_CONFIG:
+            continue
+        if not _same_attachment_document(base, prior_base):
+            continue
+        if best is None:
+            best = (prior_base, prior_version, locked_type, index)
+            continue
+        best_rank = _version_rank(best[1])
+        candidate_rank = _version_rank(prior_version)
+        if candidate_rank > best_rank:
+            best = (prior_base, prior_version, locked_type, index)
+            continue
+        if candidate_rank < best_rank:
+            continue
+        if len(prior_base) < len(best[0]) or (len(prior_base) == len(best[0]) and index > best[3]):
+            best = (prior_base, prior_version, locked_type, index)
+    if best is None:
+        return None
+    return best[0], best[1], best[2]
 
 
 def version_attachment_filename(filename: str, prior_filenames: list[str] | None = None) -> str:
-    """首次生成为 名称_v1.0，改同一份文件则在原名上递增为 _v1.1、_v1.2。"""
+    """首次生成为 名称_v1.0，改同一份文件则在已有最大版本上递增为 _v1.1、_v1.2。"""
     stem, ext = attachment_name_parts(filename)
     base, current = attachment_version_base(stem)
-    matched_base = ""
-    matched_version: tuple[int, int] | None = None
-    for prior in prior_filenames or []:
-        prior_stem, _prior_ext = attachment_name_parts(prior)
-        prior_base, prior_version = attachment_version_base(prior_stem)
-        if not _same_attachment_document(base, prior_base):
-            continue
-        matched_base = prior_base
-        matched_version = prior_version
     suffix = f".{ext}" if ext else ""
-    if matched_base:
+    matched = _best_matching_prior(base, prior_filenames)
+    if matched is not None:
+        matched_base, matched_version, _locked_type = matched
         if matched_version is None:
             major, minor = 1, 1
         else:
@@ -189,19 +232,16 @@ def version_attachment_filename(filename: str, prior_filenames: list[str] | None
 
 
 def lock_revision_attachment_type(file_type: str, filename: str, prior_filenames: list[str] | None = None) -> tuple[str, str]:
-    """改已有文件时沿用上一份的类型。PPTX 的修改不能落成 md 或其他格式。"""
+    """改已有文件时沿用最大版本的类型。PPTX 的修改不能落成 md 或其他格式。"""
     stem, _ext = attachment_name_parts(filename)
     base, _current = attachment_version_base(stem)
-    for prior in reversed(list(prior_filenames or [])):
-        prior_stem, prior_ext = attachment_name_parts(str(prior))
-        prior_base, _prior_version = attachment_version_base(prior_stem)
-        locked_type = prior_ext.lower()
-        if locked_type not in ATTACHMENT_FILE_TYPE_CONFIG or not _same_attachment_document(base, prior_base):
-            continue
-        expected = ATTACHMENT_FILE_TYPE_CONFIG[locked_type]["extension"]
-        new_stem = stem or prior_base
-        return locked_type, f"{new_stem}.{expected}"
-    return file_type, filename
+    matched = _best_matching_prior(base, prior_filenames, known_extension_only=True)
+    if matched is None:
+        return file_type, filename
+    matched_base, _matched_version, locked_type = matched
+    expected = ATTACHMENT_FILE_TYPE_CONFIG[locked_type]["extension"]
+    new_stem = stem or matched_base
+    return locked_type, f"{new_stem}.{expected}"
 
 
 def normalize_attachment_file_type(file_type: str, filename: str = "") -> tuple[str, str, str]:

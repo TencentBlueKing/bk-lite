@@ -1436,24 +1436,33 @@ def _history_message_parts(message: Any) -> tuple[str, str, list[Any], str]:
     return role, name, tool_calls, content
 
 
+def _tool_call_name(call: Any) -> str:
+    if isinstance(call, dict):
+        return str(call.get("name") or "")
+    return str(getattr(call, "name", "") or "")
+
+
+def _message_records_generated_attachment(name: str, tool_calls: list[Any], content: str) -> bool:
+    """只认附件工具，或同时带 file_url 与 filename / 下载链接的结果。正文举例文件名不算。"""
+    if name == GENERATE_ATTACHMENT_FILE_TOOL_NAME:
+        return True
+    if any(_tool_call_name(call) == GENERATE_ATTACHMENT_FILE_TOOL_NAME for call in tool_calls):
+        return True
+    if "workflow_attachment/download/" in content:
+        return True
+    return "file_url" in content and "filename" in content
+
+
 def conversation_has_generated_attachment(messages: Sequence[Any] | None) -> bool:
     """本会话是否已经生成过附件。
 
-    下一轮历史通常只剩用户/助手原文，没有工具消息，所以也认助手回复里的报告文件名。
+    优先认附件工具消息和 file_url。助手正文里举例的文件名不算已生成。
     """
     for message in messages or []:
         role, name, tool_calls, content = _history_message_parts(message)
         if "system" in role:
             continue
-        if name == GENERATE_ATTACHMENT_FILE_TOOL_NAME:
-            return True
-        for call in tool_calls:
-            call_name = call.get("name") if isinstance(call, dict) else getattr(call, "name", "")
-            if call_name == GENERATE_ATTACHMENT_FILE_TOOL_NAME:
-                return True
-        if GENERATE_ATTACHMENT_FILE_TOOL_NAME in content and ("file_url" in content or "filename" in content):
-            return True
-        if role in {"ai", "aimessage", "assistant", "bot"} and _GENERATED_ATTACHMENT_NAME_RE.search(content):
+        if _message_records_generated_attachment(name, tool_calls, content):
             return True
     return False
 
@@ -1465,11 +1474,9 @@ def collect_generated_attachment_filenames(messages: Sequence[Any] | None) -> li
         role, name, tool_calls, content = _history_message_parts(message)
         if "system" in role or role in {"human", "humanmessage", "user"}:
             continue
-        tool_hit = name == GENERATE_ATTACHMENT_FILE_TOOL_NAME or any(
-            (call.get("name") if isinstance(call, dict) else getattr(call, "name", "")) == GENERATE_ATTACHMENT_FILE_TOOL_NAME for call in tool_calls
-        )
-        if tool_hit or role in {"ai", "aimessage", "assistant", "bot", "tool", "toolmessage"}:
-            found.extend(_GENERATED_ATTACHMENT_NAME_RE.findall(content))
+        if not _message_records_generated_attachment(name, tool_calls, content):
+            continue
+        found.extend(_GENERATED_ATTACHMENT_NAME_RE.findall(content))
     deduped: list[str] = []
     seen: set[str] = set()
     for name in found:

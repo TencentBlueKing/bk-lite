@@ -2281,6 +2281,8 @@ def test_enforce_generate_attachment_file_injects_when_empty_plan():
     from apps.opspilot.metis.llm.agent.tool_execution_planner import (
         GENERATE_ATTACHMENT_FILE_TOOL_NAME,
         ToolExecutionPlan,
+        collect_generated_attachment_filenames,
+        conversation_has_generated_attachment,
         enforce_generate_attachment_file,
         looks_like_attachment_file_task,
     )
@@ -2302,12 +2304,27 @@ def test_enforce_generate_attachment_file_injects_when_empty_plan():
         {"role": "assistant", "content": "已生成 Word 报告：主机磁盘资源未来7天风险趋势分析报告.docx"},
         {"role": "user", "content": revision},
     ]
-    assert looks_like_attachment_file_task(revision, conversation_messages=prose_history) is True
+    linked_history = [
+        {
+            "role": "assistant",
+            "content": (
+                "已生成 Word 报告：主机磁盘资源未来7天风险趋势分析报告.docx "
+                "file_url=/api/proxy/opspilot/bot_mgmt/workflow_attachment/download/tok/ "
+                "filename=主机磁盘资源未来7天风险趋势分析报告.docx"
+            ),
+        },
+    ]
+    assert looks_like_attachment_file_task(revision, conversation_messages=prose_history) is False
+    assert looks_like_attachment_file_task(revision, conversation_messages=linked_history) is True
     assert looks_like_attachment_file_task(revision, conversation_messages=[{"role": "system", "content": "文件名用 .pptx"}]) is False
     font_edit = "重点介绍广州各区美食，字体这些调整下，统一用微软雅黑字体"
     assert looks_like_attachment_file_task(font_edit) is False
-    assert looks_like_attachment_file_task(font_edit, conversation_messages=prose_history) is True
-    assert looks_like_attachment_file_task("现在还有没有没关的告警", conversation_messages=prose_history) is False
+    assert looks_like_attachment_file_task(font_edit, conversation_messages=prose_history) is False
+    assert looks_like_attachment_file_task(font_edit, conversation_messages=linked_history) is True
+    assert looks_like_attachment_file_task("现在还有没有没关的告警", conversation_messages=linked_history) is False
+    assert conversation_has_generated_attachment(prose_history) is False
+    assert collect_generated_attachment_filenames(prose_history) == []
+    assert collect_generated_attachment_filenames(prior_file) == ["报告.docx"]
     revised = enforce_generate_attachment_file(
         ToolExecutionPlan(goal="改报告", steps=[]),
         {GENERATE_ATTACHMENT_FILE_TOOL_NAME},
