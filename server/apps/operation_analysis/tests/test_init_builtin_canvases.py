@@ -63,6 +63,37 @@ def test_builtin_yaml_contains_alert_room3d_and_application3d_screens():
     assert "运营健康拓扑_内置" not in BUILTIN_CANVASES_PATH.read_text(encoding="utf-8")
 
 
+def test_builtin_application_topology_screen_filter_uses_canvas_contract():
+    payload = yaml.safe_load(BUILTIN_CANVASES_PATH.read_text(encoding="utf-8"))
+    screen = next(screen for screen in payload["screens"] if screen["key"] == "screen::应用拓扑大屏_内置")
+    widget = next(item for item in screen["view_sets"]["items"] if item["id"] == "builtin-application-topology-main")
+
+    assert widget["valueConfig"]["applicationTopology"] == {"depth": 3}
+    assert widget["valueConfig"]["filterBindings"] == {"application_system_id__string": True}
+    assert screen["view_sets"]["filters"] == [
+        {
+            "id": "application_system_id__string",
+            "key": "application_system_id",
+            "name": "应用系统",
+            "type": "string",
+            "order": 0,
+            "enabled": True,
+            "defaultValue": None,
+            "inputConfig": {
+                "control": "select",
+                "optionsSource": {
+                    "type": "dynamic",
+                    "sourceRef": {"type": "rest_api", "value": "cmdb/list_application_systems"},
+                    "valueField": "inst_uuid",
+                    "labelField": "inst_name",
+                },
+            },
+            "inputMode": "select",
+        }
+    ]
+    assert "应用系统::cmdb/list_application_systems" in screen["refs"]["datasource_keys"]
+
+
 def test_builtin_application3d_screen_yaml_contains_only_the_self_fetch_scene_widget():
     payload = yaml.safe_load(BUILTIN_CANVASES_PATH.read_text(encoding="utf-8"))
     screen = next(screen for screen in payload["screens"] if screen["key"] == "screen::3D应用大屏_内置")

@@ -3392,8 +3392,9 @@ screens:
         chartType: applicationTopology
         sceneWidgetType: applicationTopology
         applicationTopology:
-          modelId: system
           depth: 3
+        filterBindings:
+          application_system_id__string: true
         appearance:
           frame: bare
     viewport:
@@ -3409,19 +3410,23 @@ screens:
       showClock: false
       showTitle: false
     filters:
-    - id: application_system_id__string
+    - defaultValue: null
+      enabled: true
+      id: application_system_id__string
+      inputConfig:
+        control: select
+        optionsSource:
+          labelField: inst_name
+          sourceRef:
+            type: rest_api
+            value: cmdb/list_application_systems
+          type: dynamic
+          valueField: inst_uuid
+      inputMode: select
       key: application_system_id
       name: 应用系统
+      order: 0
       type: string
-      inputMode: select
-      defaultValue: null
-      optionsSource:
-        type: source
-        sourceRef:
-          type: datasource
-          value: 应用系统::cmdb/list_application_systems
-        valueField: system_uuid
-        labelField: system_name
   refs:
     datasource_keys:
     - 应用系统::cmdb/list_application_systems
