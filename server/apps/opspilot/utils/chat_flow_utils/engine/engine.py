@@ -16,6 +16,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.enum import WorkFlowExecuteType
 from apps.opspilot.models import BotWorkFlow
 from apps.opspilot.utils.execution_interrupt import is_interrupt_requested, is_interrupt_requested_async
+from nats_client.utils import database_sync_to_async
 
 from .core.base_executor import BaseNodeExecutor  # noqa: F401  (保留以兼容历史 from .engine import ...)
 from .core.enums import NodeStatus
@@ -248,7 +249,7 @@ class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
         注意：使用 thread_sensitive=False 避免在 LangGraph 异步节点中触发
         "You cannot submit onto CurrentThreadExecutor from its own thread" 错误。
         """
-        await sync_to_async(self._record_node_execution_result, thread_sensitive=False)(node_id, context)
+        await database_sync_to_async(self._record_node_execution_result, thread_sensitive=False)(node_id, context)
 
     async def _record_execution_result_async(self, input_data: Dict[str, Any], result: Any, success: bool, start_node_type: str = None) -> None:
         """异步记录工作流执行结果（用于 async 上下文）
@@ -256,7 +257,7 @@ class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
         注意：使用 thread_sensitive=False 避免在 LangGraph 异步节点中触发
         "You cannot submit onto CurrentThreadExecutor from its own thread" 错误。
         """
-        await sync_to_async(self._record_execution_result, thread_sensitive=False)(input_data, result, success, start_node_type)
+        await database_sync_to_async(self._record_execution_result, thread_sensitive=False)(input_data, result, success, start_node_type)
 
     def _get_start_node(self) -> Optional[Dict[str, Any]]:
         """获取起始节点
@@ -1204,7 +1205,9 @@ class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
         self, user_id: str, message: Any, role: str, entry_type: str, node_id: str = "", session_id: str = ""
     ):
         """记录对话历史（异步版本，用于 async 上下文）"""
-        await sync_to_async(self._record_conversation_history, thread_sensitive=False)(user_id, message, role, entry_type, node_id, session_id)
+        await database_sync_to_async(self._record_conversation_history, thread_sensitive=False)(
+            user_id, message, role, entry_type, node_id, session_id
+        )
 
 
 # 向后兼容别名

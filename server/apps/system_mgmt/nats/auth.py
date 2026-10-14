@@ -1,4 +1,6 @@
 # flake8: noqa
+from django.db import InterfaceError, OperationalError
+
 from .common import *  # noqa: F401,F403
 from .common import _collect_ancestor_group_ids, _verify_token
 
@@ -97,6 +99,9 @@ def verify_token(token):
 
     try:
         user = _verify_token(token)
+    except (OperationalError, InterfaceError):
+        # 数据库故障不是凭据失效，由 HTTP / RPC 边界处理服务异常。
+        raise
     except Exception as e:
         error_message = str(e)
         return_data = {"result": False, "message": error_message}

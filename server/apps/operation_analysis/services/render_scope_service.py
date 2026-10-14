@@ -4,6 +4,7 @@ import os
 import re
 
 import jwt
+from django.db import InterfaceError, OperationalError
 from django.utils import timezone
 
 from apps.core.backends import AuthBackend
@@ -74,6 +75,8 @@ class DashboardReportRenderScopeService:
                 loaded = SystemMgmt().get_user_rules(str(team), system_user.username)
                 if isinstance(loaded, dict):
                     rules = loaded
+            except (OperationalError, InterfaceError):
+                raise
             except Exception:
                 rules = {}
         return AuthBackend().set_user_info(request, user_info, rules)
