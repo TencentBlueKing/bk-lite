@@ -10,8 +10,6 @@ export const HOST_CATEGORY_COPY = {
   swapUsedHint: [textId('hostCategorySwapUsedHint'), '交换已用：交换分区当前已用容量相对总容量。主值展示已用/总量；趋势为已用占比。升高通常表示物理内存紧张，进程匿名页可能被换出到磁盘。'],
   swapAbsentHint: [textId('hostCategorySwapAbsentHint'), '交换已用：当前主机未配置交换分区，或暂无采集数据。卡片保留以便发现配置与采集缺口；有数据后将显示已用/总量及占比趋势。'],
   loadOneMinute: [textId('hostCategoryLoadOneMinute'), '1 分钟负载'],
-  loadFiveMinute: [textId('hostCategoryLoadFiveMinute'), '5 分钟负载'],
-  loadOneMinuteHint: [textId('hostCategoryLoadOneMinuteHint'), '1 分钟负载：过去 1 分钟平均可运行队列长度（load1）。副行对照 5 分钟负载（load5）。相对本机核数解读更稳；持续高于核数通常表示 CPU 争用。'],
   utilization: [textId('hostCategoryUtilization'), '使用率'],
   cpuUtilization: [textId('hostCategoryCpuUtilization'), 'CPU 使用率'],
   memoryUtilization: [textId('hostCategoryMemoryUtilization'), '内存使用率'],

@@ -1,8 +1,6 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Tooltip } from 'antd';
-import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import { hostCategoryText } from './category-copy';
@@ -115,7 +113,6 @@ export default function SystemPane({
   const availNow = latestNumber(metrics.mem_available);
   const uptimeNow = latestNumber(metrics.system_uptime);
   const load1Now = latestNumber(metrics.system_load1);
-  const load5Now = latestNumber(metrics.system_load5);
   const phaseFor = (names: readonly string[], hasValue: boolean): MetricBlockPhase => (
     metricBlockPhase(names, pendingMetricNames, loadStateOf(metrics, names), hasValue)
   );
@@ -138,11 +135,9 @@ export default function SystemPane({
     label: string;
     value: string;
     unit: string;
-    hint?: string;
     names: readonly string[];
     phase: MetricBlockPhase;
     valueColor?: string;
-    subtitle?: { label: string; value: string };
   }> = [
     {
       key: 'cpu',
@@ -168,12 +163,7 @@ export default function SystemPane({
       phase: phaseFor(load1Names, load1Now != null),
       value: formatPlain(load1Now),
       unit: '',
-      valueColor: LOAD1_SERIES_COLOR,
-      hint: hostCategoryText(t, 'loadOneMinuteHint'),
-      subtitle: {
-        label: hostCategoryText(t, 'loadFiveMinute'),
-        value: formatPlain(load5Now)
-      }
+      valueColor: LOAD1_SERIES_COLOR
     },
     {
       key: 'uptime',
@@ -363,19 +353,7 @@ export default function SystemPane({
       <div className={styles.instantKpiRow}>
         {instantCards.map((card) => (
           <section key={card.key} className={`${classic.panel} ${styles.instantKpi}`}>
-            <div className={styles.instantKpiLabel}>
-              {card.hint ? (
-                <span className="inline-flex items-center gap-1">
-                  {card.label}
-                  <Tooltip title={card.hint} styles={{ body: { maxWidth: 360 } }}>
-                    <QuestionCircleOutlined
-                      className="cursor-help text-[12px] text-[var(--color-text-3)] hover:text-[var(--color-primary)]"
-                      aria-label={card.hint}
-                    />
-                  </Tooltip>
-                </span>
-              ) : card.label}
-            </div>
+            <div className={styles.instantKpiLabel}>{card.label}</div>
             {card.phase === 'loading' ? (
               <span
                 className="mt-1 block h-4 w-16 rounded bg-[var(--color-fill-2)]"
@@ -391,22 +369,13 @@ export default function SystemPane({
                 加载失败，重试
               </button>
             ) : (
-              <>
-                <div
-                  className={styles.instantKpiValue}
-                  style={card.valueColor ? { color: card.valueColor } : undefined}
-                >
-                  {card.value}
-                  {card.unit ? <span className={styles.instantKpiUnit}>{card.unit}</span> : null}
-                </div>
-                {card.subtitle ? (
-                  <div className={styles.instantKpiSub}>
-                    {card.subtitle.label}
-                    {' '}
-                    <span className={styles.instantKpiSubValue}>{card.subtitle.value}</span>
-                  </div>
-                ) : null}
-              </>
+              <div
+                className={styles.instantKpiValue}
+                style={card.valueColor ? { color: card.valueColor } : undefined}
+              >
+                {card.value}
+                {card.unit ? <span className={styles.instantKpiUnit}>{card.unit}</span> : null}
+              </div>
             )}
           </section>
         ))}
