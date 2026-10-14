@@ -135,14 +135,13 @@ from common.cmp.cloud_apis.constant import CloudType
 from common.cmp.cloud_apis.resource_apis.aliyun_dict import disk_category_dict, object_storage_type_dict
 from common.cmp.cloud_apis.resource_apis.resource_format.common.base_format import get_format_method
 from common.cmp.utils import (
-from core.logger import logger
-
     convert_param_to_list,
     format_ali_bill_charge_mode,
     format_public_cloud_resource_type,
     generate_serial_number,
     set_dir_size,
 )
+from core.logger import logger
 
 
 RESOURCE_MAP = {
