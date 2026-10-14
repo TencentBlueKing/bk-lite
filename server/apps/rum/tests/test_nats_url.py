@@ -1,47 +1,66 @@
 import pytest
 
-from apps.rum.services.settings import load_rum_settings, normalize_nats_url
+from apps.rum.services.settings import load_rum_settings, normalize_nats_endpoint
 
 
-def test_production_keeps_tls_without_userinfo():
-    assert normalize_nats_url("tls://nats.internal:4222", insecure=False) == "tls://nats.internal:4222"
+def test_nats_endpoint_keeps_host_for_plain_and_tls():
+    assert normalize_nats_endpoint("tls://NATS.internal:4222", "rum_ctl", "secret") == (
+        "tls://nats.internal:4222",
+        "rum_ctl",
+        "secret",
+    )
+    assert normalize_nats_endpoint("nats://127.0.0.1:14222", "", "") == (
+        "nats://127.0.0.1:14222",
+        "",
+        "",
+    )
 
 
 @pytest.mark.parametrize(
-    "value",
+    ("url", "user", "password"),
     [
-        "",
-        "nats://127.0.0.1:4222",
-        "nats://rum_ctl:secret@127.0.0.1:4222",
-        "tls://rum_ctl:secret@nats.internal:4222",
-        "http://nats.internal:4222",
+        ("", "rum_ctl", "secret"),
+        ("nats://rum_ctl:secret@127.0.0.1:14222", "rum_ctl", "secret"),
+        ("tls://rum_ctl:secret@nats.internal:4222", "", ""),
+        ("http://nats.internal:4222", "rum_ctl", "secret"),
+        ("nats://127.0.0.1:14222", "rum_ctl", ""),
+        ("tls://nats.internal:4222", "", "secret"),
     ],
 )
-def test_production_drops_plain_or_credentialed_urls(value):
-    assert normalize_nats_url(value, insecure=False) == ""
+def test_nats_endpoint_rejects_userinfo_and_half_credentials(url, user, password):
+    assert normalize_nats_endpoint(url, user, password) == ("", "", "")
 
 
-def test_insecure_keeps_local_nats_url_with_password():
-    raw = "nats://rum_ctl:secret@127.0.0.1:14222"
-    assert normalize_nats_url(raw, insecure=True) == raw
+def test_load_splits_user_and_password_from_the_url(monkeypatch):
+    monkeypatch.setenv("RUM_NATS_URL", "nats://127.0.0.1:14222")
+    monkeypatch.setenv("RUM_NATS_USER", "rum_ctl")
+    monkeypatch.setenv("RUM_NATS_PASSWORD", "secret")
+    monkeypatch.setenv("RUM_NATS_TLS_CA_FILE", "/run/secrets/rum-nats-ca.pem")
+
+    loaded = load_rum_settings()
+
+    assert loaded.nats_url == "nats://127.0.0.1:14222"
+    assert loaded.nats_user == "rum_ctl"
+    assert loaded.nats_password == "secret"
+    assert "secret" not in loaded.nats_url
+    assert loaded.nats_tls_ca_file == "/run/secrets/rum-nats-ca.pem"
 
 
-def test_insecure_still_rejects_tls_userinfo():
-    assert normalize_nats_url("tls://rum_ctl:secret@nats.internal:4222", insecure=True) == ""
-
-
-def test_load_drops_credentialed_url_unless_insecure(monkeypatch):
+def test_load_drops_a_url_that_still_embeds_the_password(monkeypatch):
     monkeypatch.setenv("RUM_NATS_URL", "nats://rum_ctl:secret@127.0.0.1:14222")
-    monkeypatch.delenv("RUM_NATS_INSECURE", raising=False)
+    monkeypatch.setenv("RUM_NATS_USER", "rum_ctl")
+    monkeypatch.setenv("RUM_NATS_PASSWORD", "secret")
 
-    assert load_rum_settings().nats_url == ""
+    loaded = load_rum_settings()
 
-    monkeypatch.setenv("RUM_NATS_INSECURE", "true")
-    assert load_rum_settings().nats_url == "nats://rum_ctl:secret@127.0.0.1:14222"
+    assert loaded.nats_url == ""
+    assert loaded.nats_user == ""
+    assert loaded.nats_password == ""
 
 
 def test_empty_nats_url_stays_unconfigured(monkeypatch):
     monkeypatch.setenv("RUM_NATS_URL", "")
-    monkeypatch.delenv("RUM_NATS_INSECURE", raising=False)
+    monkeypatch.delenv("RUM_NATS_USER", raising=False)
+    monkeypatch.delenv("RUM_NATS_PASSWORD", raising=False)
 
     assert load_rum_settings().nats_url == ""

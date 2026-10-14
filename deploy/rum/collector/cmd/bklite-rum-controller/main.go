@@ -37,6 +37,8 @@ func run() error {
 	var tenantID string
 	var natsInsecure bool
 	flag.StringVar(&natsConfig.URL, "nats-url", "", "NATS URL")
+	flag.StringVar(&natsConfig.User, "nats-user", "", "NATS username; pair with -nats-password-file")
+	flag.StringVar(&natsConfig.PasswordFile, "nats-password-file", "", "NATS password file")
 	flag.StringVar(&natsConfig.CredentialsFile, "nats-creds", "", "NATS credentials file")
 	flag.StringVar(&natsConfig.NKeySeedFile, "nats-nkey-seed", "", "NATS NKey seed file")
 	flag.StringVar(&natsConfig.CAFile, "nats-ca", "", "NATS TLS CA file")
@@ -85,8 +87,8 @@ func run() error {
 	}
 	var connection *nats.Conn
 	if natsInsecure {
-		// Dev-only escape: lab NATS may be plain and unauthenticated.
-		// Production keeps tls:// + NKey via ConnectNATS below.
+		// Dev-only escape: the compose fixture is plain nats:// with the password in the URL.
+		// Production uses ConnectNATS: tls:// plus a password file, NKey, or creds file.
 		connection, err = wire.ConnectControlClient(wire.ControlClientConfig{
 			URL:             natsConfig.URL,
 			CredentialsFile: natsConfig.CredentialsFile,

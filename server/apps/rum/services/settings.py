@@ -25,6 +25,9 @@ class RumRuntimeSettings:
     victoria_project_id: int
     victoria_timeout_seconds: float
     public_origin: str = ""
+    nats_user: str = ""
+    nats_password: str = ""
+    nats_tls_ca_file: str = ""
 
 
 def normalize_public_origin(value: str) -> str:
@@ -68,47 +71,66 @@ def browser_endpoints(origin: str) -> dict[str, str]:
     }
 
 
-def nats_insecure_enabled() -> bool:
-    raw = getattr(settings, "RUM_NATS_INSECURE", None)
+def _setting_or_env(name: str) -> str:
+    raw = getattr(settings, name, None)
     if raw is None or raw == "":
-        raw = os.getenv("RUM_NATS_INSECURE", "")
-    if isinstance(raw, bool):
-        return raw
-    return str(raw).strip().lower() in {"1", "true", "yes"}
+        raw = os.getenv(name, "")
+    return str(raw or "")
 
 
-def normalize_nats_url(value: str, *, insecure: bool) -> str:
-    """生产只保留 tls:// 且不含账号口令。空值表示控制面未配置，不阻断启动。"""
+def normalize_nats_endpoint(url: str, user: str, password: str) -> tuple[str, str, str]:
+    """地址只保留 nats:// 或 tls:// 的主机。账号口令另给，写进 URL 或只给一半都视为未配置。"""
 
-    raw = (value or "").strip()
+    raw = (url or "").strip()
+    identity = (user or "").strip()
+    secret = password or ""
     if not raw:
-        return ""
+        return "", "", ""
     try:
         parsed = urlsplit(raw)
+        port = parsed.port
     except ValueError:
-        return ""
-    if not parsed.hostname:
-        return ""
+        return "", "", ""
     scheme = (parsed.scheme or "").lower()
-    has_userinfo = bool(parsed.username or parsed.password)
-    if scheme == "tls" and not has_userinfo:
-        return raw
-    if insecure and scheme == "nats":
-        return raw
-    return ""
+    if (
+        parsed.username
+        or parsed.password
+        or not parsed.hostname
+        or scheme not in {"nats", "tls"}
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+    ):
+        return "", "", ""
+    if bool(identity) != bool(secret):
+        return "", "", ""
+    host = parsed.hostname
+    if ":" in host:
+        host = f"[{host}]"
+    endpoint = f"{scheme}://{host}"
+    if port is not None:
+        endpoint = f"{endpoint}:{port}"
+    return endpoint, identity, secret
 
 
 def load_rum_settings() -> RumRuntimeSettings:
     configured = getattr(settings, "RUM_PUBLIC_ORIGIN", None) or os.getenv("RUM_PUBLIC_ORIGIN", "")
     public_origin = normalize_public_origin(str(configured or ""))
     endpoints = browser_endpoints(public_origin)
-    nats_configured = getattr(settings, "RUM_NATS_URL", None) or os.getenv("RUM_NATS_URL", "")
+    nats_url, nats_user, nats_password = normalize_nats_endpoint(
+        _setting_or_env("RUM_NATS_URL"),
+        _setting_or_env("RUM_NATS_USER"),
+        _setting_or_env("RUM_NATS_PASSWORD"),
+    )
     return RumRuntimeSettings(
         collect_url=endpoints["collect_url"],
         replay_url=endpoints["replay_url"],
         sdk_cdn_url=endpoints["sdk_cdn_url"],
         public_origin=public_origin,
-        nats_url=normalize_nats_url(str(nats_configured or ""), insecure=nats_insecure_enabled()),
+        nats_url=nats_url,
+        nats_user=nats_user,
+        nats_password=nats_password,
+        nats_tls_ca_file=_setting_or_env("RUM_NATS_TLS_CA_FILE").strip(),
         nats_timeout_seconds=float(getattr(settings, "RUM_NATS_TIMEOUT_SECONDS", None) or os.getenv("RUM_NATS_TIMEOUT_SECONDS", "5")),
         tenant_id=getattr(settings, "RUM_TENANT_ID", None) or os.getenv("RUM_TENANT_ID", "core"),
         victoria_logs_url=getattr(settings, "RUM_VICTORIA_LOGS_URL", None) or os.getenv("RUM_VICTORIA_LOGS_URL", ""),
