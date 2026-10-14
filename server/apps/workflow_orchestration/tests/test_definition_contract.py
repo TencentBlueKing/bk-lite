@@ -10,7 +10,41 @@ from apps.workflow_orchestration.services.definitions import (
     escape_conductor_literal_text,
     prepare_definition_for_publish,
     validate_conductor_definition,
+    validate_user_facing_node_titles,
 )
+
+
+def test_empty_user_facing_node_title_is_rejected():
+    definition = {
+        "tasks": [
+            {"name": "bklite_job_execute", "taskReferenceName": "scan", "type": "SIMPLE", "inputParameters": {}},
+            {
+                "name": "approval_decision",
+                "taskReferenceName": "approval_decision",
+                "type": "SWITCH",
+                "decisionCases": {"true": [], "false": []},
+                "defaultCase": [],
+            },
+        ]
+    }
+    metadata = {"node_titles": {"scan": "", "approval_decision": ""}}
+
+    with pytest.raises(DefinitionValidationError, match="节点 scan 必须填写节点名称"):
+        validate_user_facing_node_titles(definition, metadata)
+
+    validate_user_facing_node_titles(
+        definition,
+        {"node_titles": {"scan": "巡检扫描"}},
+    )
+
+
+def test_missing_node_title_is_allowed_for_legacy_drafts():
+    definition = {
+        "tasks": [
+            {"name": "bklite_job_execute", "taskReferenceName": "scan", "type": "SIMPLE", "inputParameters": {}},
+        ]
+    }
+    validate_user_facing_node_titles(definition, {"node_titles": {}})
 
 
 def test_health_starter_is_native_conductor_definition():

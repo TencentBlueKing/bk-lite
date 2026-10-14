@@ -13,6 +13,8 @@ class AtomConfigTemplateError(ValueError):
 
 _SKIP = object()
 MAX_TEMPLATE_PARAMETERS_BYTES = 64 * 1024
+# 节点名称不属于原子 input_schema，但需要随配置模板一并持久化。
+NODE_TITLE_PARAMETER_KEY = "__node_title"
 
 
 def _without_sensitive_values(value: Any, schema: dict[str, Any]) -> Any:
@@ -43,9 +45,13 @@ def sanitize_atom_template_parameters(*, team: int, atom_key: str, parameters: d
     if atom is None:
         raise AtomConfigTemplateError("原子不存在或当前组织无权使用")
     schema = atom.get("input_schema") if isinstance(atom.get("input_schema"), dict) else {}
+    node_title = parameters.get(NODE_TITLE_PARAMETER_KEY)
     sanitized = _without_sensitive_values(parameters, schema)
     if not isinstance(sanitized, dict):
         raise AtomConfigTemplateError("配置模板参数必须是对象")
+    sanitized.pop(NODE_TITLE_PARAMETER_KEY, None)
+    if isinstance(node_title, str):
+        sanitized[NODE_TITLE_PARAMETER_KEY] = node_title
     encoded = json.dumps(sanitized, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     if len(encoded) > MAX_TEMPLATE_PARAMETERS_BYTES:
         raise AtomConfigTemplateError("配置模板参数不能超过 64 KiB")

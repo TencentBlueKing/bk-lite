@@ -322,6 +322,7 @@ _PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^审批节点 (?P<node_reference>\S+) 启用超时后必须连接 timeout 分支$"), "approval_timeout_branch_required"),
     (re.compile(r"^审批节点 (?P<node_reference>\S+) 必须配置 1 到 20 个不重复候选审批人$"), "approval_candidates"),
     (re.compile(r"^审批节点 (?P<node_reference>\S+) 必须配置标题$"), "approval_title_required"),
+    (re.compile(r"^节点 (?P<node_reference>\S+) 必须填写节点名称$"), "node_title_required"),
     (re.compile(r"^条件节点 (?P<node_reference>\S+) 必须使用结构化条件，不支持自由表达式$"), "condition_free_expression"),
     (re.compile(r"^条件节点 (?P<node_reference>\S+) 必须使用结构化条件$"), "condition_structured_required"),
     (re.compile(r"^条件节点 (?P<node_reference>\S+) 不能混用 ALL/ANY 规则$"), "condition_mixed_rules"),

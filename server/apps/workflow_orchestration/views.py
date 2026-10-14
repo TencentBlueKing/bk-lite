@@ -69,12 +69,13 @@ from apps.workflow_orchestration.services.definitions import (
     compile_disabled_nodes,
     prepare_definition_for_publish,
     validate_conductor_definition,
+    validate_user_facing_node_titles,
     validate_workflow_inputs,
 )
 from apps.workflow_orchestration.services.demo_templates import SAMPLE_TEMPLATE_CONTENT_TYPES, builtin_health_template_path
 from apps.workflow_orchestration.services.execution_details import build_execution_node_detail, build_execution_node_summary
 from apps.workflow_orchestration.services.execution_job_cancellation import cancel_linked_job_tasks
-from apps.workflow_orchestration.services.executions import apply_remote_execution
+from apps.workflow_orchestration.services.executions import TERMINAL_STATUSES, apply_remote_execution
 from apps.workflow_orchestration.services.graph_compiler import compile_canvas_graph
 from apps.workflow_orchestration.services.interactions import InteractionConflict, InteractionForbidden, decide_interaction
 from apps.workflow_orchestration.services.launch_plans import (
@@ -530,6 +531,7 @@ class WorkflowViewSet(AuthViewSet):
                     if isinstance(task.get("taskReferenceName"), str)
                 },
             )
+            validate_user_facing_node_titles(draft_definition, draft_metadata)
             catalog = available_atom_catalog(_team_id(request))
             executable_definition = compile_disabled_nodes(compile_canvas_graph(draft_definition, draft_metadata), draft_metadata)
             definition, compiled_metadata = validate_and_compile_workflow_data_contract(
@@ -608,6 +610,7 @@ class WorkflowViewSet(AuthViewSet):
                     if isinstance(task.get("taskReferenceName"), str)
                 },
             )
+            validate_user_facing_node_titles(draft_definition, draft_metadata)
             executable_definition = compile_disabled_nodes(compile_canvas_graph(draft_definition, draft_metadata), draft_metadata)
             compiled_definition, compiled_metadata = validate_and_compile_workflow_data_contract(
                 executable_definition,
@@ -1519,10 +1522,14 @@ class WorkflowExecutionViewSet(AuthViewSet):
     @HasPermission("workflow-View", app_name=APP_NAME)
     def list(self, request, *args, **kwargs):
         username, _ = _identity(request)
-        actionable = WorkflowInteraction.objects.filter(
-            status=WorkflowInteraction.Status.PENDING,
-            interaction_type=WorkflowInteraction.Type.APPROVAL,
-        ).filter(build_json_membership_query(WorkflowInteraction.objects.all(), "candidate_users", [username]))
+        actionable = (
+            WorkflowInteraction.objects.filter(
+                status=WorkflowInteraction.Status.PENDING,
+                interaction_type=WorkflowInteraction.Type.APPROVAL,
+            )
+            .exclude(execution__status__in=TERMINAL_STATUSES)
+            .filter(build_json_membership_query(WorkflowInteraction.objects.all(), "candidate_users", [username]))
+        )
         pending = WorkflowInteraction.objects.filter(status=WorkflowInteraction.Status.PENDING).only("execution_id", "title", "task_reference")
         queryset = (
             self.filter_queryset(self._scoped_queryset(request))
@@ -1638,6 +1645,7 @@ class WorkflowExecutionViewSet(AuthViewSet):
                 status=WorkflowInteraction.Status.PENDING,
                 interaction_type=WorkflowInteraction.Type.APPROVAL,
             )
+            .exclude(execution__status__in=TERMINAL_STATUSES)
             .filter(build_json_membership_query(WorkflowInteraction.objects.all(), "team", [team]))
             .filter(build_json_membership_query(WorkflowInteraction.objects.all(), "candidate_users", [username]))
             .filter(execution__workflow_id__in=workflow_queryset.values("pk"))
@@ -1936,7 +1944,7 @@ class WorkflowInteractionViewSet(AuthViewSet):
             queryset = queryset.filter(
                 build_json_membership_query(queryset, "candidate_users", [username]),
                 status=WorkflowInteraction.Status.PENDING,
-            )
+            ).exclude(execution__status__in=TERMINAL_STATUSES)
         page = self.paginate_queryset(queryset)
         return self.get_paginated_response(self.get_serializer(page, many=True).data)
 
@@ -1948,10 +1956,14 @@ class WorkflowInteractionViewSet(AuthViewSet):
     @HasPermission("workflow-View", app_name=APP_NAME)
     def pending_count(self, request):
         username, _ = _identity(request)
-        queryset = self._scoped_queryset(request).filter(
-            build_json_membership_query(self.get_queryset(), "candidate_users", [username]),
-            interaction_type=WorkflowInteraction.Type.APPROVAL,
-            status=WorkflowInteraction.Status.PENDING,
+        queryset = (
+            self._scoped_queryset(request)
+            .filter(
+                build_json_membership_query(self.get_queryset(), "candidate_users", [username]),
+                interaction_type=WorkflowInteraction.Type.APPROVAL,
+                status=WorkflowInteraction.Status.PENDING,
+            )
+            .exclude(execution__status__in=TERMINAL_STATUSES)
         )
         return Response({"count": queryset.count()})
 

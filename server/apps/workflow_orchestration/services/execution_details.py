@@ -6,6 +6,7 @@ from typing import Any
 from apps.workflow_orchestration.models import WorkflowExecution, WorkflowInteraction
 from apps.workflow_orchestration.services.atoms import ATOM_CATALOG
 from apps.workflow_orchestration.services.data_contracts import mask_secret_envelopes
+from apps.workflow_orchestration.services.executions import TERMINAL_STATUSES
 from apps.workflow_orchestration.services.validation_messages import render_known_message
 
 START_REFERENCE = "__start__"
@@ -159,12 +160,7 @@ def _interactions(execution: WorkflowExecution) -> dict[str, list[WorkflowIntera
 
 
 def _terminal_execution(execution: WorkflowExecution) -> bool:
-    return execution.status in {
-        WorkflowExecution.Status.SUCCEEDED,
-        WorkflowExecution.Status.FAILED,
-        WorkflowExecution.Status.TIMED_OUT,
-        WorkflowExecution.Status.TERMINATED,
-    }
+    return execution.status in TERMINAL_STATUSES
 
 
 def build_execution_node_summary(execution: WorkflowExecution, *, username: str) -> dict[str, Any]:
@@ -200,11 +196,15 @@ def build_execution_node_summary(execution: WorkflowExecution, *, username: str)
         displayed_states = [_display_state(item, terminal_execution=terminal) for item in states]
         counts = dict(Counter(displayed_states)) if states else {state: 1}
         finished_values = [str(item.get("finished_at")) for item in runtime_instances if item.get("finished_at")]
-        actionable_ids = [
-            str(interaction.id)
-            for interaction in interaction_instances
-            if interaction.status == WorkflowInteraction.Status.PENDING and username in interaction.candidate_users
-        ]
+        actionable_ids = (
+            []
+            if terminal
+            else [
+                str(interaction.id)
+                for interaction in interaction_instances
+                if interaction.status == WorkflowInteraction.Status.PENDING and username in interaction.candidate_users
+            ]
+        )
         nodes.append(
             {
                 "reference": reference,
@@ -262,7 +262,7 @@ def _definition_task(execution: WorkflowExecution, reference: str) -> dict[str, 
     return None
 
 
-def _interaction_payload(interaction: WorkflowInteraction, *, username: str) -> dict[str, Any]:
+def _interaction_payload(interaction: WorkflowInteraction, *, username: str, terminal_execution: bool) -> dict[str, Any]:
     return {
         "id": str(interaction.id),
         "type": interaction.interaction_type,
@@ -271,7 +271,7 @@ def _interaction_payload(interaction: WorkflowInteraction, *, username: str) -> 
         "description": interaction.description,
         "public_context": mask_secret_envelopes(interaction.public_context),
         "candidate_users": interaction.candidate_users,
-        "can_act": interaction.status == WorkflowInteraction.Status.PENDING and username in interaction.candidate_users,
+        "can_act": (not terminal_execution and interaction.status == WorkflowInteraction.Status.PENDING and username in interaction.candidate_users),
         "operator": interaction.operator,
         "decision": interaction.decision,
         "comment": interaction.comment,
@@ -413,7 +413,11 @@ def build_execution_node_detail(
             ],
             "artifacts": [],
             "control": {},
-            "interaction": _interaction_payload(selected, username=username),
+            "interaction": _interaction_payload(
+                selected,
+                username=username,
+                terminal_execution=_terminal_execution(execution),
+            ),
             "technical": {"workflow_id": execution.conductor_workflow_id, "task_id": selected.conductor_task_id} if include_technical else {},
         }
 

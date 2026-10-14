@@ -96,6 +96,11 @@ export function flattenTasks(tasks: ConductorTask[]): ConductorTask[] {
   ]);
 }
 
+/** 已写入的空字符串保留为空；未写入时才回落原子默认名。 */
+export function resolveCanvasNodeTitle(stored: string | undefined, fallback: string): string {
+  return stored !== undefined ? stored : fallback;
+}
+
 function generatedTaskPairs(tasks: ConductorTask[]): Array<[string, string]> {
   return tasks.flatMap((task, index) => {
     const next = tasks[index + 1];
@@ -197,7 +202,10 @@ export function buildWorkflowFlow(
       id: task.taskReferenceName, type: 'workflowCanvas',
       position: metadata.positions?.[task.taskReferenceName] || { x: 260 + index * 220, y: 260 },
       data: {
-        title: metadata.node_titles?.[task.taskReferenceName] || atomLabels[task.name] || task.name,
+        title: resolveCanvasNodeTitle(
+          metadata.node_titles?.[task.taskReferenceName],
+          atomLabels[task.name] || task.name,
+        ),
         meta: task.type === 'SIMPLE' ? task.name : task.type,
         kind: task.type === 'SIMPLE' ? 'atom' as const : 'control' as const,
         taskType: task.type,

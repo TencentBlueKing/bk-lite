@@ -159,6 +159,43 @@ def _walk_tasks(tasks: list[dict[str, Any]]):
                 yield from _walk_tasks(branch)
 
 
+def _task_requires_user_node_title(task: dict[str, Any]) -> bool:
+    """画布上由用户命名的节点：SIMPLE / 条件 SWITCH / 人工审批。隐藏的审批决策 SWITCH 除外。"""
+    reference = task.get("taskReferenceName")
+    if not isinstance(reference, str) or not reference or reference.startswith("__auto_"):
+        return False
+    task_type = task.get("type")
+    name = task.get("name")
+    if task_type == "SIMPLE":
+        return True
+    if task_type == "HUMAN":
+        return True
+    if task_type == "SWITCH" and name == "condition":
+        return True
+    return False
+
+
+def validate_user_facing_node_titles(definition: Any, canvas_metadata: Any) -> None:
+    """发布/校验时：用户已清空的节点名称不能为空（未写入的旧数据仍允许，展示层回落原子名）。"""
+    if not isinstance(definition, dict) or not isinstance(canvas_metadata, dict):
+        return
+    titles = canvas_metadata.get("node_titles")
+    if not isinstance(titles, dict):
+        return
+    tasks = definition.get("tasks")
+    if not isinstance(tasks, list):
+        return
+    for task in _walk_tasks(tasks):
+        if not isinstance(task, dict) or not _task_requires_user_node_title(task):
+            continue
+        reference = task.get("taskReferenceName")
+        if not isinstance(reference, str) or reference not in titles:
+            continue
+        title = titles[reference]
+        if not isinstance(title, str) or not title.strip():
+            raise DefinitionValidationError(f"节点 {reference} 必须填写节点名称")
+
+
 def _maximum_task_depth(tasks: list[dict[str, Any]], depth: int = 1) -> int:
     maximum = depth if tasks else depth - 1
     for task in tasks:

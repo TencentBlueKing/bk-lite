@@ -92,6 +92,7 @@ error:
   approval_decision_required: '"{node}" must be followed by a decision branch that includes true/false'
   approval_timeout_branch_required: '"{node}" must connect a timeout branch when timeout is enabled'
   approval_title_required: '"{node}" requires a title'
+  node_title_required: '"{node}" requires a node name'
   atom_catalog_limit: This team already has more than 100 available atoms
   atom_context_missing: The atom is missing a trusted execution context
   atom_create_unsupported: MVP atoms are synced from registered packages and cannot be created in the page
