@@ -4,7 +4,7 @@ import React, { useMemo } from 'react';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import { hostCategoryText } from './category-copy';
-import { HOST_DASHBOARD_CONFIG, HOST_PALETTE } from '../config';
+import { HOST_CPU_SERIES_COLOR, HOST_DASHBOARD_CONFIG, HOST_PALETTE } from '../config';
 import { latestPreferSignal, maxFinite, pointsToChartData, type EntityTableRow } from '../entity-series';
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
 import EventsRail, { type HostAlertRailEvent } from './events-rail';
@@ -57,7 +57,7 @@ const peakOfRow = (row: EntityTableRow | undefined, key: string) => {
 };
 
 /** 与本页 CPU / 内存折线共用同一序列色，主值不另写死色。 */
-const CPU_SERIES = { label: 'CPU', color: HOST_PALETTE.emerald };
+const CPU_SERIES = { label: 'CPU', color: HOST_CPU_SERIES_COLOR };
 const MEM_SERIES = { label: '内存', color: HOST_PALETTE.blue };
 
 /** 概览不画 Load 线时，回落到图表配置里 system_load1 的默认序列色。 */
@@ -90,7 +90,6 @@ export default function OverviewPane({
   const cpu = latestNumber(metrics.cpu_usage_total);
   const mem = latestNumber(metrics.mem_used_percent);
   const load = latestNumber(metrics.system_load1);
-  const cores = latestNumber(metrics.cpu_n);
   const uptime = latestNumber(metrics.system_uptime);
   const showLoad = metricHasPoints(metrics.system_load1);
   const diskValue = peakOfRow(worst, 'disk_used_percent');
@@ -98,7 +97,6 @@ export default function OverviewPane({
   const mountName = worst?.labels.path || worst?.labels.mount || '';
 
   const cards = useMemo<KpiCardModel[]>(() => {
-    const roundedCores = cores != null && cores > 0 ? Math.round(cores) : 0;
     const items: KpiCardModel[] = [
       {
         key: 'cpu',
@@ -116,9 +114,8 @@ export default function OverviewPane({
     if (showLoad) {
       items.push({
         key: 'load',
-        label: 'Load1',
+        label: hostCategoryText(t, 'loadOneMinute'),
         value: formatPlain(load),
-        subtitle: roundedCores > 0 ? `${roundedCores}核` : undefined,
         tone: LOAD1_SERIES_COLOR
       });
     }
@@ -151,7 +148,6 @@ export default function OverviewPane({
   }, [
     alertCount,
     alertsOpen,
-    cores,
     cpu,
     diskValue,
     load,

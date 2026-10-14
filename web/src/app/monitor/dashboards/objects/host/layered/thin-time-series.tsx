@@ -9,6 +9,7 @@ import { ChartData } from '@/app/monitor/types';
 import { formatMetricValue } from '../../../shared/utils/format';
 import type { MetricUnit } from '../../../shared/types';
 import { CHART_COLORS } from '@/app/monitor/constants';
+import { seriesMarkerColor } from './readings';
 import { useThemeColors } from './theme-color';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
@@ -74,11 +75,16 @@ export default function ThinTimeSeries({
   const textColor = theme['--color-text-1'];
   const panelColor = theme['--color-bg'];
   const keys = useMemo(() => areaKeys(data), [data]);
+  const seriesColors = useMemo(
+    () => keys.map((_, index) => legends[index]?.color || CHART_COLORS[index % CHART_COLORS.length]),
+    [keys, legends]
+  );
   const option = useMemo(() => {
     if (!data.length || !keys.length) return null;
     return {
       animation: false,
       backgroundColor: 'transparent',
+      color: seriesColors,
       grid: { top: 8, right: 10, bottom: 22, left: 44, containLabel: false },
       xAxis: {
         type: 'value' as const,
@@ -122,8 +128,8 @@ export default function ThinTimeSeries({
           const rows = params
             .map((item) => {
               const raw = Array.isArray(item.value) ? item.value[1] : item.value;
-              const color = typeof item.color === 'string' ? item.color : 'var(--color-text-3)';
               const name = item.seriesName || '';
+              const color = seriesMarkerColor(legends, name, item.seriesIndex, item.color);
               return `<div style="display:flex;align-items:center;justify-content:space-between;gap:16px"><span style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span><span>${name}</span></span><span style="font-variant-numeric:tabular-nums;font-weight:600">${formatTooltipReading(raw, unit)}</span></div>`;
             })
             .join('');
@@ -131,14 +137,15 @@ export default function ThinTimeSeries({
         }
       },
       series: keys.map((key, index) => {
-        const color = legends[index]?.color || CHART_COLORS[index % CHART_COLORS.length];
+        const color = seriesColors[index];
         return {
           type: 'line' as const,
           name: legends[index]?.label || key,
           showSymbol: false,
-          symbol: 'none',
+          symbol: 'none' as const,
           smooth: 0.15,
           connectNulls: true,
+          itemStyle: { color },
           data: data.map((point) => {
             const value = point[key];
             return [point.time, typeof value === 'number' ? value : null];
@@ -147,7 +154,7 @@ export default function ThinTimeSeries({
         };
       })
     };
-  }, [axisColor, data, keys, legends, mutedColor, panelColor, textColor, unit]);
+  }, [axisColor, data, keys, legends, mutedColor, panelColor, seriesColors, textColor, unit]);
   const { containerRef } = useECharts(option);
   const showLegend = legends.length > 1 || legends.some((item) => item.reading);
   const chart = (

@@ -6,19 +6,19 @@ import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import { hostCategoryText } from './category-copy';
 import { formatMetricValue } from '../../../shared/utils/format';
 import type { MetricUnit } from '../../../shared/types';
-import { HOST_PALETTE } from '../config';
+import { HOST_CPU_SERIES_COLOR, HOST_PALETTE } from '../config';
 import type { EntityTableRow } from '../entity-series';
 import { pointsToChartData } from '../entity-series';
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
 import ThinTimeSeries from './thin-time-series';
 import { metricBlockPhase, type MetricBlockPhase } from './performance-scope';
 import {
-  deriveRatioPercent,
+  deriveMemoryUsageShares,
   formatPercent,
   formatPlain,
+  latestChartNumber,
   latestNumber,
-  metricHasPoints,
-  numericValue
+  metricHasPoints
 } from './readings';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
@@ -37,8 +37,8 @@ const LOAD_SERIES = [
   { key: 'system_load15', label: 'load15', color: HOST_PALETTE.cyan }
 ];
 
-/** 性能 KPI 主值跟本页对应折线，不另写色值。 */
-const CPU_SERIES_COLOR = HOST_PALETTE.blue;
+/** 性能 KPI 主值跟本页对应折线，CPU 与概览共用同一绿。 */
+const CPU_SERIES_COLOR = HOST_CPU_SERIES_COLOR;
 const MEM_USED_COLOR = HOST_PALETTE.blue;
 const LOAD1_SERIES_COLOR = LOAD_SERIES[0].color;
 
@@ -94,20 +94,27 @@ export default function SystemPane({
 
   const breakdown = CPU_BREAKDOWN.filter((item) => metricHasPoints(metrics[item.key]));
   const loadItems = LOAD_SERIES.filter((item) => metricHasPoints(metrics[item.key]));
-  const available = useMemo(
-    () => deriveRatioPercent(metrics.mem_available?.viewData, metrics.mem_total?.viewData),
+  const memoryShares = useMemo(
+    () => deriveMemoryUsageShares(metrics.mem_available?.viewData, metrics.mem_total?.viewData),
     [metrics.mem_available?.viewData, metrics.mem_total?.viewData]
   );
+  // 有总量时已用/可用按 available 互补，避免 mem_used_percent 与 MemAvailable 叠成超过 100%。
+  // 缺总量时只画采集到的使用率，不造第二条百分比。
+  const usedData = memoryShares.used.length
+    ? memoryShares.used
+    : (metricHasPoints(metrics.mem_used_percent) ? metrics.mem_used_percent?.viewData || [] : []);
   const memItems = [
-    ...(metricHasPoints(metrics.mem_used_percent)
-      ? [{ key: 'used', label: '已用', color: MEM_USED_COLOR, data: metrics.mem_used_percent?.viewData || [] }]
+    ...(usedData.length
+      ? [{ key: 'used', label: '已用', color: MEM_USED_COLOR, data: usedData }]
       : []),
-    ...(available.length
-      ? [{ key: 'available', label: '可用', color: HOST_PALETTE.emerald, data: available }]
+    ...(memoryShares.available.length
+      ? [{ key: 'available', label: '可用', color: HOST_PALETTE.emerald, data: memoryShares.available }]
       : [])
   ];
-  const used = latestNumber(metrics.mem_used_percent);
-  const availLatest = available.length ? numericValue(available[available.length - 1]) : null;
+  const used = memoryShares.used.length
+    ? latestChartNumber(memoryShares.used)
+    : latestNumber(metrics.mem_used_percent);
+  const availLatest = latestChartNumber(memoryShares.available);
   const cpuNow = latestNumber(metrics.cpu_usage_total);
   const memNow = latestNumber(metrics.mem_used_percent);
   const availNow = latestNumber(metrics.mem_available);

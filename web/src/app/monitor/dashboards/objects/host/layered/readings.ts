@@ -85,6 +85,21 @@ export const formatBytesPair = (used: number | null | undefined, total: number |
   return '—';
 };
 
+/** 序列里时间最晚的一个数值。无点或全空返回 null。 */
+export const latestChartNumber = (points: ChartData[] | undefined): number | null => {
+  if (!points?.length) return null;
+  let bestTime = Number.NEGATIVE_INFINITY;
+  let best: number | null = null;
+  points.forEach((point) => {
+    const time = Number(point.time);
+    const value = numericValue(point);
+    if (!Number.isFinite(time) || value == null || time < bestTime) return;
+    bestTime = time;
+    best = value;
+  });
+  return best;
+};
+
 /** 可用内存占比：同一时间点 available / total。对不齐的点丢掉，不补假序列。 */
 export const deriveRatioPercent = (
   part: ChartData[] | undefined,
@@ -106,4 +121,40 @@ export const deriveRatioPercent = (
     result.push({ time, value1: (100 * value) / base });
   });
   return result;
+};
+
+/**
+ * 已用占比 = 100 - available/total。
+ * mem_used_percent 与 MemAvailable 不是同一口径：前者常把可回收缓存算进已用，
+ * 后者又把这段算进可用，两条百分比并列会超过 100。
+ * 有总量时图表改用这一对互补占比，与采集侧 used = total - available 一致。
+ */
+export const deriveMemoryUsageShares = (
+  available: ChartData[] | undefined,
+  total: ChartData[] | undefined
+): { used: ChartData[]; available: ChartData[] } => {
+  const availableShare = deriveRatioPercent(available, total);
+  const used = availableShare.flatMap((point) => {
+    const ratio = numericValue(point);
+    if (ratio == null) return [];
+    return [{ time: point.time, value1: Math.min(100, Math.max(0, 100 - ratio)) }];
+  });
+  return { used, available: availableShare };
+};
+
+/** 折线、图例、tooltip 色点共用的序列色。按系列名取，避免 tooltip 落到默认色板。 */
+export const seriesMarkerColor = (
+  legends: Array<{ label: string; color: string }>,
+  seriesName: string | undefined,
+  seriesIndex: number | undefined,
+  fallback: unknown
+) => {
+  if (seriesName) {
+    const match = legends.find((item) => item.label === seriesName);
+    if (match?.color) return match.color;
+  }
+  if (typeof seriesIndex === 'number' && legends[seriesIndex]?.color) {
+    return legends[seriesIndex].color;
+  }
+  return typeof fallback === 'string' && fallback ? fallback : 'var(--color-text-3)';
 };

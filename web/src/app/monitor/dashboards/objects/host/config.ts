@@ -12,6 +12,9 @@ export const HOST_PALETTE = {
   neutral: '#94A3B8'    // 清爽中性灰 (CPU 环图其他)
 } as const;
 
+/** 分类仪表盘 CPU 主值与「CPU 使用率」曲线。概览与性能共用，勿再写一套蓝。 */
+export const HOST_CPU_SERIES_COLOR = HOST_PALETTE.emerald;
+
 export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   routeKey: 'host',
   pageTitle: '主机监控仪表盘',
