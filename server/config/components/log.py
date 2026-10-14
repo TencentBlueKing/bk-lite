@@ -176,6 +176,9 @@ FILE_HANDLER_FILES = {
     "job": "job.log",
     "playground": "playground.log",
     "openapi": "openapi.log",
+    "mlops": "mlops.log",
+    "patch-mgmt": "patch-mgmt.log",
+    "workflow-orchestration": "workflow-orchestration.log",
 }
 
 APP_LOGGER_FILE_HANDLERS = {
@@ -195,6 +198,9 @@ APP_LOGGER_FILE_HANDLERS = {
     "alert": "alert",
     "playground": "playground",
     "openapi": "openapi",
+    "mlops": "mlops",
+    "patch-mgmt": "patch-mgmt",
+    "workflow-orchestration": "workflow-orchestration",
 }
 
 
