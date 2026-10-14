@@ -3,7 +3,6 @@ import { formatMetricValue } from '../../../shared/utils/format';
 import type { MetricUnit } from '../../../shared/types';
 import type { MetricSeries } from '../../common/simple-dashboard-core';
 import { HOST_PALETTE } from '../config';
-import { swapUsedPercent } from './tab-level';
 
 export const ROW_ACCENTS = [
   HOST_PALETTE.orange,
@@ -105,35 +104,6 @@ export const deriveRatioPercent = (
     const value = numericValue(point);
     if (!Number.isFinite(time) || base == null || value == null) return;
     result.push({ time, value1: (100 * value) / base });
-  });
-  return result;
-};
-
-const valuesByTime = (series: ChartData[] | undefined) => {
-  const map = new Map<number, number>();
-  (series || []).forEach((point) => {
-    const time = Number(point.time);
-    const value = numericValue(point);
-    if (Number.isFinite(time) && value != null) map.set(time, value);
-  });
-  return map;
-};
-
-/** 交换已用% 趋势。每个时间点与 KPI 同一派生：已用/总量，否则总量减空闲。对不齐的点丢掉。 */
-export const deriveSwapUsedPercentSeries = (
-  used: ChartData[] | undefined,
-  total: ChartData[] | undefined,
-  free: ChartData[] | undefined
-): ChartData[] => {
-  const totals = valuesByTime(total);
-  if (!totals.size) return [];
-  const usedMap = valuesByTime(used);
-  const freeMap = valuesByTime(free);
-  const result: ChartData[] = [];
-  Array.from(totals.keys()).sort((left, right) => left - right).forEach((time) => {
-    const value = swapUsedPercent(usedMap.get(time), totals.get(time), freeMap.get(time));
-    if (value == null) return;
-    result.push({ time, value1: value });
   });
   return result;
 };

@@ -16,12 +16,10 @@ import ThinTimeSeries from './thin-time-series';
 import { metricBlockPhase, type MetricBlockPhase } from './performance-scope';
 import {
   deriveRatioPercent,
-  deriveSwapUsedPercentSeries,
-  formatBytesPair,
   formatPercent,
+  formatPlain,
   latestNumber,
   metricHasPoints,
-  metricSettled,
   numericValue
 } from './readings';
 import classic from '../index.module.scss';
@@ -41,9 +39,10 @@ const LOAD_SERIES = [
   { key: 'system_load15', label: 'load15', color: HOST_PALETTE.cyan }
 ];
 
-const collectedPoints = (series: MetricSeries | undefined) => (
-  series?.query && series.loadState === 'success' ? series.viewData : undefined
-);
+/** 性能 KPI 主值跟本页对应折线，不另写色值。 */
+const CPU_SERIES_COLOR = HOST_PALETTE.blue;
+const MEM_USED_COLOR = HOST_PALETTE.blue;
+const LOAD1_SERIES_COLOR = LOAD_SERIES[0].color;
 
 const splitMetric = (value: number | null, unit: MetricUnit) => {
   if (value == null) return { value: '--', unit: '' };
@@ -101,21 +100,9 @@ export default function SystemPane({
     () => deriveRatioPercent(metrics.mem_available?.viewData, metrics.mem_total?.viewData),
     [metrics.mem_available?.viewData, metrics.mem_total?.viewData]
   );
-  const swapSeries = useMemo(
-    () => deriveSwapUsedPercentSeries(
-      collectedPoints(metrics.host_mem_swap_used_bytes),
-      collectedPoints(metrics.host_mem_swap_total_bytes),
-      collectedPoints(metrics.mem_swap_free)
-    ),
-    [
-      metrics.host_mem_swap_used_bytes,
-      metrics.host_mem_swap_total_bytes,
-      metrics.mem_swap_free
-    ]
-  );
   const memItems = [
     ...(metricHasPoints(metrics.mem_used_percent)
-      ? [{ key: 'used', label: '已用', color: HOST_PALETTE.blue, data: metrics.mem_used_percent?.viewData || [] }]
+      ? [{ key: 'used', label: '已用', color: MEM_USED_COLOR, data: metrics.mem_used_percent?.viewData || [] }]
       : []),
     ...(available.length
       ? [{ key: 'available', label: '可用', color: HOST_PALETTE.emerald, data: available }]
@@ -127,15 +114,8 @@ export default function SystemPane({
   const memNow = latestNumber(metrics.mem_used_percent);
   const availNow = latestNumber(metrics.mem_available);
   const uptimeNow = latestNumber(metrics.system_uptime);
-  const swapTotal = latestNumber(metrics.host_mem_swap_total_bytes);
-  const swapUsedRaw = latestNumber(metrics.host_mem_swap_used_bytes);
-  const swapFree = latestNumber(metrics.mem_swap_free);
-  const swapConfigured = swapTotal != null && swapTotal > 0;
-  const swapAbsent = metricSettled(metrics.host_mem_swap_total_bytes) && !swapConfigured;
-  const swapUsedBytes = swapTotal != null && swapTotal > 0
-    ? (swapUsedRaw != null ? swapUsedRaw : swapFree != null ? swapTotal - swapFree : null)
-    : null;
-  const swapHint = hostCategoryText(t, swapAbsent ? 'swapAbsentHint' : 'swapUsedHint');
+  const load1Now = latestNumber(metrics.system_load1);
+  const load5Now = latestNumber(metrics.system_load5);
   const phaseFor = (names: readonly string[], hasValue: boolean): MetricBlockPhase => (
     metricBlockPhase(names, pendingMetricNames, loadStateOf(metrics, names), hasValue)
   );
@@ -143,7 +123,7 @@ export default function SystemPane({
   const cpuNames = ['cpu_usage_total'] as const;
   const memKpiNames = ['mem_used_percent'] as const;
   const availNames = ['mem_available'] as const;
-  const swapNames = ['host_mem_swap_used_bytes', 'host_mem_swap_total_bytes', 'mem_swap_free'] as const;
+  const load1Names = ['system_load1'] as const;
   const uptimeNames = ['system_uptime'] as const;
   const memTrendNames = ['mem_used_percent', 'mem_available', 'mem_total'] as const;
   const loadNames = LOAD_SERIES.map((item) => item.key);
@@ -153,7 +133,6 @@ export default function SystemPane({
   const memPhase = phaseFor(memTrendNames, memItems.length > 0);
   const loadPhase = phaseFor(loadNames, loadItems.length > 0);
   const breakdownPhase = phaseFor(breakdownNames, breakdown.length > 0);
-  const swapPhase = phaseFor(swapNames, swapSeries.length > 0 || swapAbsent);
   const instantCards: Array<{
     key: string;
     label: string;
@@ -162,18 +141,39 @@ export default function SystemPane({
     hint?: string;
     names: readonly string[];
     phase: MetricBlockPhase;
+    valueColor?: string;
+    subtitle?: { label: string; value: string };
   }> = [
-    { key: 'cpu', label: 'CPU', names: cpuNames, phase: phaseFor(cpuNames, cpuNow != null), ...splitMetric(cpuNow, 'percent') },
-    { key: 'mem', label: '内存', names: memKpiNames, phase: phaseFor(memKpiNames, memNow != null), ...splitMetric(memNow, 'percent') },
+    {
+      key: 'cpu',
+      label: 'CPU',
+      names: cpuNames,
+      phase: phaseFor(cpuNames, cpuNow != null),
+      valueColor: CPU_SERIES_COLOR,
+      ...splitMetric(cpuNow, 'percent')
+    },
+    {
+      key: 'mem',
+      label: '内存',
+      names: memKpiNames,
+      phase: phaseFor(memKpiNames, memNow != null),
+      valueColor: MEM_USED_COLOR,
+      ...splitMetric(memNow, 'percent')
+    },
     { key: 'avail', label: '可用内存', names: availNames, phase: phaseFor(availNames, availNow != null), ...splitMetric(availNow, 'bytes') },
     {
-      key: 'swap',
-      label: hostCategoryText(t, 'swapUtilization'),
-      names: swapNames,
-      phase: phaseFor(swapNames, swapConfigured || swapAbsent),
-      value: swapConfigured ? formatBytesPair(swapUsedBytes, swapTotal) : '--',
+      key: 'load',
+      label: hostCategoryText(t, 'loadOneMinute'),
+      names: load1Names,
+      phase: phaseFor(load1Names, load1Now != null),
+      value: formatPlain(load1Now),
       unit: '',
-      hint: swapHint
+      valueColor: LOAD1_SERIES_COLOR,
+      hint: hostCategoryText(t, 'loadOneMinuteHint'),
+      subtitle: {
+        label: hostCategoryText(t, 'loadFiveMinute'),
+        value: formatPlain(load5Now)
+      }
     },
     {
       key: 'uptime',
@@ -195,7 +195,7 @@ export default function SystemPane({
       onRetry={cpuPhase === 'error' ? retry(cpuNames) : undefined}
       legends={[{
         label: 'CPU',
-        color: HOST_PALETTE.blue
+        color: CPU_SERIES_COLOR
       }]}
     />,
     <ThinTimeSeries
@@ -261,24 +261,6 @@ export default function SystemPane({
         label: item.label,
         color: item.color
       }))}
-    />,
-    <ThinTimeSeries
-      key="swap"
-      title={hostCategoryText(t, 'swapUtilization')}
-      hint={swapHint}
-      loading={swapPhase === 'loading'}
-      unit="percent"
-      emptyText={swapPhase === 'error'
-        ? '加载失败'
-        : swapAbsent
-          ? hostCategoryText(t, 'swapAbsentHint')
-          : undefined}
-      onRetry={swapPhase === 'error' ? retry(swapNames) : undefined}
-      data={swapSeries}
-      legends={[{
-        label: hostCategoryText(t, 'utilization'),
-        color: HOST_PALETTE.indigo
-      }]}
     />,
     coreLoading ? (
       <section key="cores" className={`${classic.panel} ${styles.chartPanel}`}>
@@ -409,10 +391,22 @@ export default function SystemPane({
                 加载失败，重试
               </button>
             ) : (
-              <div className={styles.instantKpiValue}>
-                {card.value}
-                {card.unit ? <span className={styles.instantKpiUnit}>{card.unit}</span> : null}
-              </div>
+              <>
+                <div
+                  className={styles.instantKpiValue}
+                  style={card.valueColor ? { color: card.valueColor } : undefined}
+                >
+                  {card.value}
+                  {card.unit ? <span className={styles.instantKpiUnit}>{card.unit}</span> : null}
+                </div>
+                {card.subtitle ? (
+                  <div className={styles.instantKpiSub}>
+                    {card.subtitle.label}
+                    {' '}
+                    <span className={styles.instantKpiSubValue}>{card.subtitle.value}</span>
+                  </div>
+                ) : null}
+              </>
             )}
           </section>
         ))}
