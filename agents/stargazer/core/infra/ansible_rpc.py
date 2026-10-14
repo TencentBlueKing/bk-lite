@@ -6,15 +6,21 @@ Ansible Executor NATS RPC 封装
 实现远程 SSH/WinRM 命令执行。
 """
 
+import asyncio
 import json
+import time
 import uuid
 from typing import Any, Dict, Optional
 
+from core.infra.nats_utils import nats_request
+from core.logger import logger
 from nats.errors import NoRespondersError
 
-from core.infra.nats_utils import nats_request
-
-from core.logger import logger
+_QUEUED_STATUS = "queued"
+_TERMINAL_STATUSES = {"success", "failed", "callback_failed"}
+_ACCEPT_TIMEOUT_SECONDS = 30
+_QUERY_TIMEOUT_SECONDS = 10
+_POLL_INTERVAL_SECONDS = 0.5
 
 
 async def ansible_adhoc(
@@ -44,10 +50,12 @@ async def ansible_adhoc(
         task_id: 任务 ID，不传则自动生成
 
     Returns:
-        Ansible Executor 返回的执行结果
+        无 callback 时返回命令执行结果。Executor 先回入队回执时，会按 task_id
+        等到任务进入终态再返回，不把 ``accepted/queued`` 当成采集输出。
+        带 callback 时仍立即返回入队回执，由回调接收执行结果。
 
     Raises:
-        TimeoutError: NATS 请求超时
+        TimeoutError: 入队或等待执行结果超时
         Exception: 其他异常
     """
     if not task_id:
@@ -71,15 +79,13 @@ async def ansible_adhoc(
     subject = f"ansible.adhoc.{ansible_node_id}"
     payload = json.dumps({"args": [request_data], "kwargs": {}}).encode()
 
-    nats_timeout = execute_timeout + 30
+    wait_timeout = execute_timeout + 30
+    accept_timeout = min(_ACCEPT_TIMEOUT_SECONDS, wait_timeout)
 
-    logger.info(
-        f"Ansible adhoc: node={ansible_node_id}, module={module}, "
-        f"hosts={len(host_credentials)}, timeout={execute_timeout}s"
-    )
+    logger.info(f"Ansible adhoc: node={ansible_node_id}, module={module}, " f"hosts={len(host_credentials)}, timeout={execute_timeout}s")
 
     try:
-        result = await nats_request(subject, payload=payload, timeout=nats_timeout)
+        result = await nats_request(subject, payload=payload, timeout=accept_timeout)
     except NoRespondersError:
         # 没有任何 ansible-executor 订阅该 subject：通常是 ansible_node_id 配置错误
         # （例如落到了 "default"）或对应云区域的执行节点离线。立即报错，避免空等超时。
@@ -94,17 +100,74 @@ async def ansible_adhoc(
             f"and that the executor is online"
         )
     except TimeoutError:
-        logger.error(
-            f"Ansible adhoc NATS timeout: node={ansible_node_id}, task_id={task_id}, "
-            f"timeout={nats_timeout}s"
-        )
+        logger.error(f"Ansible adhoc NATS timeout: node={ansible_node_id}, task_id={task_id}, " f"timeout={accept_timeout}s")
         raise
     except Exception as e:
-        logger.error(
-            f"Ansible adhoc NATS error: node={ansible_node_id}, task_id={task_id}, "
-            f"error={type(e).__name__}: {e}"
-        )
+        logger.error(f"Ansible adhoc NATS error: node={ansible_node_id}, task_id={task_id}, " f"error={type(e).__name__}: {e}")
         raise
 
-    logger.info(f"Ansible adhoc completed: task_id={task_id}, success={result.get('success')}")
+    if callback or not _is_queued_ack(result):
+        logger.info(f"Ansible adhoc completed: task_id={task_id}, success={result.get('success')}")
+        return result
+
+    queued_task_id = str((result.get("result") or {}).get("task_id") or task_id)
+    logger.info(
+        "Ansible adhoc queued: node=%s task_id=%s, waiting for execution",
+        ansible_node_id,
+        queued_task_id,
+    )
+    result = await _wait_for_adhoc_result(
+        ansible_node_id,
+        queued_task_id,
+        deadline=time.monotonic() + wait_timeout,
+    )
+    logger.info(f"Ansible adhoc completed: task_id={queued_task_id}, success={result.get('success')}")
     return result
+
+
+def _is_queued_ack(result: Any) -> bool:
+    if not isinstance(result, dict):
+        return False
+    inner = result.get("result")
+    return isinstance(inner, dict) and inner.get("accepted") is True and inner.get("status") == _QUEUED_STATUS
+
+
+def _execution_result_from_task(task: Dict[str, Any], task_id: str) -> Dict[str, Any]:
+    stored = task.get("result") or {}
+    if isinstance(stored, dict) and "success" in stored and "result" in stored:
+        return {
+            "success": bool(stored.get("success")),
+            "result": stored.get("result"),
+            "status": stored.get("status") or task.get("status"),
+            "error": stored.get("error") or "",
+            "task_id": stored.get("task_id") or task_id,
+        }
+    status = str(task.get("execution_status") or task.get("status") or "")
+    return {
+        "success": status == "success",
+        "result": stored,
+        "status": status,
+        "error": "",
+        "task_id": task_id,
+    }
+
+
+async def _wait_for_adhoc_result(ansible_node_id: str, task_id: str, deadline: float) -> Dict[str, Any]:
+    subject = f"ansible.task.query.{ansible_node_id}"
+    payload = json.dumps({"args": [{"task_id": task_id}], "kwargs": {}}).encode()
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError(f"Ansible adhoc timed out waiting for task {task_id}")
+        try:
+            response = await nats_request(subject, payload=payload, timeout=min(_QUERY_TIMEOUT_SECONDS, remaining))
+        except TimeoutError:
+            if deadline - time.monotonic() <= 0:
+                raise TimeoutError(f"Ansible adhoc timed out waiting for task {task_id}")
+            continue
+        task = response.get("result") if isinstance(response, dict) else None
+        if isinstance(response, dict) and response.get("success") and isinstance(task, dict):
+            status = str(task.get("execution_status") or task.get("status") or "")
+            if status in _TERMINAL_STATUSES:
+                return _execution_result_from_task(task, task_id)
+        await asyncio.sleep(min(_POLL_INTERVAL_SECONDS, max(0.0, deadline - time.monotonic())))
