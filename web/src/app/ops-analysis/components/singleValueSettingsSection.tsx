@@ -176,7 +176,7 @@ export const SingleValueSettingsSection: React.FC<
       disabled={fieldSelectorDisabled}
       onChange={(value) => handleFieldSelect(value as string | undefined)}
       className={`w-full ${fieldSelectorClassName}`}
-      popupClassName={fieldPopupClassName}
+      classNames={{ popup: { root: fieldPopupClassName } }}
       dropdownStyle={{ maxHeight: 360, overflow: 'auto' }}
     />
   );
@@ -263,7 +263,7 @@ export const SingleValueSettingsSection: React.FC<
               }
               disabled={fieldSelectorDisabled}
               className={fieldSelectorClassName}
-              popupClassName={fieldPopupClassName}
+              classNames={{ popup: { root: fieldPopupClassName } }}
               dropdownStyle={{ maxHeight: 360, overflow: 'auto' }}
             />
           </Form.Item>

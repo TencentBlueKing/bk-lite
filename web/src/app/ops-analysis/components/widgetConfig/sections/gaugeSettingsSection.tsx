@@ -159,7 +159,7 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
             handleFieldSelect(value as string | undefined)
           }
           className={`w-full ${fieldSelectorClassName}`}
-          popupClassName={fieldPopupClassName}
+          classNames={{ popup: { root: fieldPopupClassName } }}
           dropdownStyle={{ maxHeight: 360, overflow: 'auto' }}
         />
       </Form.Item>

@@ -16,7 +16,7 @@ export interface MetricSelectLeafOption extends DefaultOptionType {
   displayLabel: string;
 }
 
-/** Ant Design 下拉默认单行高度会裁切双行 option，挂到 Select 的 popupClassName。 */
+/** Ant Design 下拉默认单行高度会裁切双行 option，挂到 Select 的 classNames.popup.root。 */
 export const METRIC_SELECT_POPUP_CLASSNAME = 'metric-select-popup';
 
 const metricMatchesSearch = (metric: MetricItem, query: string): boolean => {
@@ -116,7 +116,7 @@ export const useMetricSelectOptions = (groups: MetricSelectGroup[]) => {
       showSearch: true as const,
       filterOption: false as const,
       optionLabelProp: 'displayLabel' as const,
-      popupClassName: METRIC_SELECT_POPUP_CLASSNAME,
+      classNames: { popup: { root: METRIC_SELECT_POPUP_CLASSNAME } },
       onSearch: setSearch,
       onDropdownVisibleChange: (open: boolean) => {
         if (!open) setSearch('');

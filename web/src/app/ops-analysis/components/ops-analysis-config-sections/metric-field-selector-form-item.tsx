@@ -118,7 +118,7 @@ export const MetricFieldSelectorFormItem: React.FC<
           disabled={fieldSelectorDisabled}
           onChange={(value) => handleFieldSelect(value as string | undefined)}
           className={fieldSelectorClassName}
-          popupClassName={fieldPopupClassName}
+          classNames={{ popup: { root: fieldPopupClassName } }}
           style={{ width: '100%' }}
           dropdownStyle={{ maxHeight: 360, overflow: 'auto' }}
         />

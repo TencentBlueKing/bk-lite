@@ -97,7 +97,7 @@ const CollectTaskTreeSelect: React.FC<CollectTaskTreeSelectProps> = ({
 
   return (
     <TreeSelect
-      popupClassName={styles.collectTaskTreeSelect}
+      classNames={{ popup: { root: styles.collectTaskTreeSelect } }}
       treeData={treeData}
       value={value == null || value === '' ? undefined : String(value)}
       onChange={(nextValue) => onChange?.(nextValue ? String(nextValue) : undefined)}

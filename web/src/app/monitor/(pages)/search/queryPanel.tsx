@@ -1136,7 +1136,7 @@ const QueryPanel = forwardRef<QueryPanelRef, QueryPanelProps>(
                 showSearch
                 filterOption={false}
                 optionLabelProp="displayLabel"
-                popupClassName={METRIC_SELECT_POPUP_CLASSNAME}
+                classNames={{ popup: { root: METRIC_SELECT_POPUP_CLASSNAME } }}
                 options={buildGroupedMetricSelectOptions(
                   groupMetrics,
                   metricSearchMap[group.id] || '',

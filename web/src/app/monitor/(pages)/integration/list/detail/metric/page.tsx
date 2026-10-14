@@ -1297,7 +1297,7 @@ const Configure = () => {
               status={error ? 'error' : undefined}
               value={inlineDrafts[id]?.data_type || 'Number'}
               getPopupContainer={popupContainer}
-              popupClassName="[&_.ant-select-item-option-disabled]:pointer-events-auto"
+              classNames={{ popup: { root: '[&_.ant-select-item-option-disabled]:pointer-events-auto' } }}
               onChange={(next) => patchInlineDraft(id, 'data_type', next)}
             >
             <Select.Option value="Number">
