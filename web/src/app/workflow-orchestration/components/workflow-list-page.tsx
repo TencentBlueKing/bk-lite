@@ -133,7 +133,7 @@ export function WorkflowListPage() {
     }
     if (key === 'duplicate') {
       setDuplicateWorkflow(record);
-      setDuplicateName(createDuplicateWorkflowName(record.name, t('workflowOrchestration.workflow.duplicateSuffix', '（副本）')));
+      setDuplicateName(createDuplicateWorkflowName(record.name));
       return;
     }
     if (key === 'delete') {
