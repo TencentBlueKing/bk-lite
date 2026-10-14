@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useMemo } from 'react';
+import { Tooltip } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useECharts } from '../../../shared/widgets/useECharts';
 import { ChartData } from '@/app/monitor/types';
@@ -35,6 +37,8 @@ interface ThinTimeSeriesProps {
   reading?: string;
   readingTone?: string;
   emptyText?: string;
+  /** 标题旁的说明，悬停问号时展示。 */
+  hint?: string;
   reference?: ThinReferenceLine | null;
   /** 嵌进已有卡片时不再套一层 panel。 */
   bare?: boolean;
@@ -67,6 +71,7 @@ export default function ThinTimeSeries({
   reading,
   readingTone,
   emptyText = '暂无数据',
+  hint,
   reference,
   bare = false
 }: ThinTimeSeriesProps) {
@@ -178,7 +183,21 @@ export default function ThinTimeSeries({
         <div className={styles.chartHead}>
           {title || reading ? (
             <div className={styles.chartTitleGroup}>
-              {title ? <div className={styles.chartTitle}>{title}</div> : null}
+              {title ? (
+                <div className={styles.chartTitle}>
+                  {hint ? (
+                    <span className="inline-flex items-center gap-1">
+                      {title}
+                      <Tooltip title={hint} styles={{ body: { maxWidth: 360 } }}>
+                        <QuestionCircleOutlined
+                          className="cursor-help text-[12px] text-[var(--color-text-3)] hover:text-[var(--color-primary)]"
+                          aria-label={hint}
+                        />
+                      </Tooltip>
+                    </span>
+                  ) : title}
+                </div>
+              ) : null}
               {reading ? (
                 <div className={styles.chartReading} style={readingTone ? { color: readingTone } : undefined}>
                   {reading}

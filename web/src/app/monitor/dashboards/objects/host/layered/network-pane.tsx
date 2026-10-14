@@ -80,8 +80,7 @@ export default function NetworkPane({
           data={pointsToChartData([{ points: selected?.series.net_bytes_recv_rate || [] }])}
           legends={[{
             label: '入',
-            color: HOST_PALETTE.blue,
-            reading: formatUnit(selected?.values.net_bytes_recv_rate ?? null, 'byteps')
+            color: HOST_PALETTE.blue
           }]}
         />
         <ThinTimeSeries
@@ -94,8 +93,7 @@ export default function NetworkPane({
           data={pointsToChartData([{ points: selected?.series.net_bytes_sent_rate || [] }])}
           legends={[{
             label: '出',
-            color: HOST_PALETTE.cyan,
-            reading: formatUnit(selected?.values.net_bytes_sent_rate ?? null, 'byteps')
+            color: HOST_PALETTE.cyan
           }]}
         />
         {showErrors ? (

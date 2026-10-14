@@ -13,7 +13,7 @@ import {
 } from '../entity-series';
 import LayeredEntityTable from './entity-table';
 import ThinTimeSeries from './thin-time-series';
-import { formatBytesPair, formatPercent, formatUnit, ROW_ACCENTS } from './readings';
+import { formatBytesPair, formatUnit, ROW_ACCENTS } from './readings';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
@@ -66,8 +66,6 @@ export default function DiskPane({
   const selectedDevice = deviceRows.find((row) => row.key === selectedDeviceKey) || null;
   const path = selectedMount?.labels.path || selectedMount?.labels.mount || '';
   const deviceName = selectedDevice?.labels.name || selectedDevice?.labels.device || '';
-  const used = selectedMount?.values.disk_used_percent;
-  const usedValue = used == null || !Number.isFinite(used) ? null : used;
   const showUtil = (selectedDevice?.series.diskio_io_util || []).length > 0;
   const showLatency = rowHasSeries(selectedDevice || undefined, LATENCY_KEYS);
   const showInodes = showDiskInodeColumn(mountRows, windowsHost);
@@ -92,9 +90,6 @@ export default function DiskPane({
   const latencyTitle = deviceName
     ? hostCategoryText(t, 'rwLatencyNamed', { name: deviceName })
     : hostCategoryText(t, 'rwLatency');
-  const latencyReading = latencyItems.length
-    ? latencyItems.map((item) => formatUnit(selectedDevice?.values[item.key] ?? null, 'ms')).join(' / ')
-    : undefined;
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -113,7 +108,6 @@ export default function DiskPane({
               title={path
                 ? hostCategoryText(t, 'mountUsedNamed', { name: path })
                 : hostCategoryText(t, 'mountUsed')}
-              reading={formatPercent(usedValue)}
               loading={loading && !selectedMount}
               unit="percent"
               emptyText={selectedMount ? '暂无数据' : hostCategoryText(t, 'noMountPoints')}
@@ -205,9 +199,6 @@ export default function DiskPane({
               <ThinTimeSeries
                 key={`read-${selectedDevice?.key || 'none'}`}
                 title={readTitle}
-                reading={selectedDevice
-                  ? formatUnit(selectedDevice.values.diskio_read_bytes_rate ?? null, 'byteps')
-                  : undefined}
                 loading={loading && !selectedDevice}
                 unit="byteps"
                 emptyText={selectedDevice ? '暂无数据' : hostCategoryText(t, 'noBlockDevices')}
@@ -217,9 +208,6 @@ export default function DiskPane({
               <ThinTimeSeries
                 key={`write-${selectedDevice?.key || 'none'}`}
                 title={writeTitle}
-                reading={selectedDevice
-                  ? formatUnit(selectedDevice.values.diskio_write_bytes_rate ?? null, 'byteps')
-                  : undefined}
                 loading={loading && !selectedDevice}
                 unit="byteps"
                 emptyText={selectedDevice ? '暂无数据' : hostCategoryText(t, 'noBlockDevices')}
@@ -230,7 +218,6 @@ export default function DiskPane({
                 <ThinTimeSeries
                   key={`latency-${selectedDevice?.key || 'none'}`}
                   title={latencyTitle}
-                  reading={latencyReading}
                   loading={loading && !selectedDevice}
                   unit="ms"
                   data={pointsToChartData(latencyItems.map((item) => ({
@@ -247,7 +234,6 @@ export default function DiskPane({
               <ThinTimeSeries
                 key={`util-${selectedDevice?.key || 'none'}`}
                 title={ioTitle}
-                reading={formatPercent(selectedDevice?.values.diskio_io_util ?? null)}
                 loading={loading && !selectedDevice}
                 unit="percent"
                 data={pointsToChartData([{ points: selectedDevice?.series.diskio_io_util || [] }])}

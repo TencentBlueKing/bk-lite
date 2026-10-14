@@ -6,7 +6,9 @@ const textId = (suffix: string) => `monitor.dashboards.text.${suffix}`;
 /** 分类仪表盘文案。中文是缺词条时的回退，与 locales 中同 key 保持一致。 */
 export const HOST_CATEGORY_COPY = {
   detailedMetrics: [textId('hostCategoryDetailedMetrics'), '详细指标'],
-  swapUtilization: [textId('hostCategorySwapUtilization'), '交换使用率'],
+  swapUtilization: [textId('hostCategorySwapUtilization'), '交换已用'],
+  swapUsedHint: [textId('hostCategorySwapUsedHint'), '交换已用：交换分区当前已用容量相对总容量。主值展示已用/总量；趋势为已用占比。升高通常表示物理内存紧张，进程匿名页可能被换出到磁盘。'],
+  swapAbsentHint: [textId('hostCategorySwapAbsentHint'), '交换已用：当前主机未配置交换分区，或暂无采集数据。卡片保留以便发现配置与采集缺口；有数据后将显示已用/总量及占比趋势。'],
   utilization: [textId('hostCategoryUtilization'), '使用率'],
   cpuUtilization: [textId('hostCategoryCpuUtilization'), 'CPU 使用率'],
   memoryUtilization: [textId('hostCategoryMemoryUtilization'), '内存使用率'],

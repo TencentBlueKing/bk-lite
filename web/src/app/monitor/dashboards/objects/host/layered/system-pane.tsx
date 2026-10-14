@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { Tooltip } from 'antd';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import { hostCategoryText } from './category-copy';
@@ -14,12 +16,13 @@ import ThinTimeSeries from './thin-time-series';
 import {
   deriveRatioPercent,
   deriveSwapUsedPercentSeries,
+  formatBytesPair,
   formatPercent,
   latestNumber,
   metricHasPoints,
+  metricSettled,
   numericValue
 } from './readings';
-import { swapUsedPercent } from './tab-level';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
@@ -102,17 +105,32 @@ export default function SystemPane({
   const memNow = latestNumber(metrics.mem_used_percent);
   const availNow = latestNumber(metrics.mem_available);
   const uptimeNow = latestNumber(metrics.system_uptime);
-  const swapNow = swapUsedPercent(
-    latestNumber(metrics.host_mem_swap_used_bytes),
-    latestNumber(metrics.host_mem_swap_total_bytes),
-    latestNumber(metrics.mem_swap_free)
-  );
-  const swapTrendNow = swapSeries.length ? numericValue(swapSeries[swapSeries.length - 1]) : null;
-  const instantCards = [
+  const swapTotal = latestNumber(metrics.host_mem_swap_total_bytes);
+  const swapUsedRaw = latestNumber(metrics.host_mem_swap_used_bytes);
+  const swapFree = latestNumber(metrics.mem_swap_free);
+  const swapConfigured = swapTotal != null && swapTotal > 0;
+  const swapAbsent = metricSettled(metrics.host_mem_swap_total_bytes) && !swapConfigured;
+  const swapUsedBytes = swapTotal != null && swapTotal > 0
+    ? (swapUsedRaw != null ? swapUsedRaw : swapFree != null ? swapTotal - swapFree : null)
+    : null;
+  const swapHint = hostCategoryText(t, swapAbsent ? 'swapAbsentHint' : 'swapUsedHint');
+  const instantCards: Array<{
+    key: string;
+    label: string;
+    value: string;
+    unit: string;
+    hint?: string;
+  }> = [
     { key: 'cpu', label: 'CPU', ...splitMetric(cpuNow, 'percent') },
     { key: 'mem', label: '内存', ...splitMetric(memNow, 'percent') },
     { key: 'avail', label: '可用内存', ...splitMetric(availNow, 'bytes') },
-    { key: 'swap', label: hostCategoryText(t, 'swapUtilization'), ...splitMetric(swapNow, 'percent') },
+    {
+      key: 'swap',
+      label: hostCategoryText(t, 'swapUtilization'),
+      value: swapConfigured ? formatBytesPair(swapUsedBytes, swapTotal) : '--',
+      unit: '',
+      hint: swapHint
+    },
     {
       key: 'uptime',
       label: hostCategoryText(t, 'uptime'),
@@ -129,8 +147,7 @@ export default function SystemPane({
       data={metrics.cpu_usage_total?.viewData || []}
       legends={[{
         label: 'CPU',
-        color: HOST_PALETTE.blue,
-        reading: cpuNow == null ? undefined : formatPercent(cpuNow)
+        color: HOST_PALETTE.blue
       }]}
     />,
     <ThinTimeSeries
@@ -198,20 +215,19 @@ export default function SystemPane({
         }))}
       />
     ) : null,
-    swapSeries.length ? (
-      <ThinTimeSeries
-        key="swap"
-        title={hostCategoryText(t, 'swapUtilization')}
-        loading={loading}
-        unit="percent"
-        data={swapSeries}
-        legends={[{
-          label: hostCategoryText(t, 'utilization'),
-          color: HOST_PALETTE.indigo,
-          reading: swapTrendNow == null ? undefined : formatPercent(swapTrendNow)
-        }]}
-      />
-    ) : null,
+    <ThinTimeSeries
+      key="swap"
+      title={hostCategoryText(t, 'swapUtilization')}
+      hint={swapHint}
+      loading={loading}
+      unit="percent"
+      emptyText={swapAbsent ? hostCategoryText(t, 'swapAbsentHint') : undefined}
+      data={swapSeries}
+      legends={[{
+        label: hostCategoryText(t, 'utilization'),
+        color: HOST_PALETTE.indigo
+      }]}
+    />,
     coreRows.length && selectedCore ? (
       <section key="cores" className={`${classic.panel} ${styles.chartPanel}`}>
         <div className={styles.chartHead}>
@@ -288,7 +304,19 @@ export default function SystemPane({
       <div className={styles.instantKpiRow}>
         {instantCards.map((card) => (
           <section key={card.key} className={`${classic.panel} ${styles.instantKpi}`}>
-            <div className={styles.instantKpiLabel}>{card.label}</div>
+            <div className={styles.instantKpiLabel}>
+              {card.hint ? (
+                <span className="inline-flex items-center gap-1">
+                  {card.label}
+                  <Tooltip title={card.hint} styles={{ body: { maxWidth: 360 } }}>
+                    <QuestionCircleOutlined
+                      className="cursor-help text-[12px] text-[var(--color-text-3)] hover:text-[var(--color-primary)]"
+                      aria-label={card.hint}
+                    />
+                  </Tooltip>
+                </span>
+              ) : card.label}
+            </div>
             <div className={styles.instantKpiValue}>
               {card.value}
               {card.unit ? <span className={styles.instantKpiUnit}>{card.unit}</span> : null}

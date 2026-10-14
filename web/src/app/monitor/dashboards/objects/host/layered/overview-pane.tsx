@@ -245,7 +245,6 @@ export default function OverviewPane({
       <div className={styles.chartGrid4}>
         <ThinTimeSeries
           title={hostCategoryText(t, 'cpuUtilization')}
-          reading={formatPercent(cpu)}
           loading={loading}
           unit="percent"
           data={metrics.cpu_usage_total?.viewData || []}
@@ -253,7 +252,6 @@ export default function OverviewPane({
         />
         <ThinTimeSeries
           title={hostCategoryText(t, 'memoryUtilization')}
-          reading={formatPercent(mem)}
           loading={loading}
           unit="percent"
           data={metrics.mem_used_percent?.viewData || []}
@@ -261,7 +259,6 @@ export default function OverviewPane({
         />
         <ThinTimeSeries
           title={mountName ? `磁盘使用率 · ${mountName}` : '磁盘使用率'}
-          reading={formatPercent(diskCurrent)}
           loading={diskLoading}
           unit="percent"
           emptyText="暂无挂载数据"
