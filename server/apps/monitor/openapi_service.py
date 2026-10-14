@@ -24,6 +24,7 @@ from apps.monitor.models import (
 from apps.monitor.services.authorized_metric_query import AuthorizedMetricQueryError, _build_query
 from apps.monitor.services.k3s_onboarding import K3SOnboardingService
 from apps.monitor.services.manual_collect import ManualCollectService
+from apps.monitor.services.monitor_instance_removal import MonitorInstanceRemovalService
 from apps.monitor.services.metrics import Metrics, MetricsQueryBudgetExceeded
 from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.node_mgmt.models import NodeOrganization
@@ -437,6 +438,35 @@ def create_integration(
         return {"instance_ids": instance_ids or []}
 
     return _run(action, "监控接入失败")
+
+
+def delete_integrations(*, team, user_info, instance_ids):
+    ids = team_ids(team)
+    requested = list(dict.fromkeys(str(item) for item in instance_ids))
+    if not ids:
+        return _rejected("监控实例不存在")
+    owned_ids = set(
+        MonitorInstance.objects.filter(
+            id__in=requested,
+            is_deleted=False,
+            monitorinstanceorganization__organization__in=ids,
+        )
+        .distinct()
+        .values_list("id", flat=True)
+    )
+    if owned_ids != set(requested):
+        return _rejected("监控实例不存在")
+    actor = _actor(team, user_info) or {}
+
+    def action():
+        result = MonitorInstanceRemovalService.remove(
+            requested,
+            operator=actor.get("username") or "system",
+            reason="manual_instance_deleted",
+        )
+        return {"instance_ids": list(result.removed_ids)}
+
+    return _run(action, "监控实例删除失败")
 
 
 def create_cluster_collector(*, team, user_info, collector_type, monitor_object_id, name, instance_id, interval=None):

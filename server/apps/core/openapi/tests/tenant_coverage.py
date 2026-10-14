@@ -229,6 +229,9 @@ TENANT_ISOLATION_COVERAGE = {
     "monitor/integrations": [
         "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_save_integration_for_own_node",
         "apps.monitor.tests.test_openapi_gateway::test_api_tenant_cannot_save_integration_for_other_org_node",
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_delete_own_integration",
+        "apps.monitor.tests.test_openapi_gateway::test_api_tenant_cannot_delete_other_org_integration",
+        "apps.monitor.tests.test_openapi_gateway::test_delete_integration_forged_team_is_rejected",
     ],
     "monitor/cluster-collectors": [
         "apps.monitor.tests.test_openapi_gateway::test_api_tenant_can_create_kubernetes_collector",

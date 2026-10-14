@@ -21,6 +21,7 @@ from apps.monitor.models import (
 )
 from apps.monitor.services.manual_collect import ManualCollectService
 from apps.monitor.services.metrics import Metrics
+from apps.monitor.services.monitor_instance_removal import MonitorInstanceRemovalService
 from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.node_mgmt.models import CloudRegion, Node, NodeOrganization
 from apps.monitor.openapi_serializers import MonitorObjectQuerySerializer
@@ -82,6 +83,7 @@ def _make_tenant(*, team_name, username, domain, grant=True):
                 "integration_list-View",
                 "integration_configure-View",
                 "integration_configure-Add",
+                "asset-Delete",
             ],
         )
     token = UserAPISecret.generate_api_secret()
@@ -487,6 +489,94 @@ def test_api_tenant_cannot_save_integration_for_other_org_node(tenants, monkeypa
     assert response.status_code == 400
     assert response.json()["message"] == "节点不存在"
     assert called["value"] is False
+
+
+def test_api_tenant_can_delete_own_integration(tenants, monkeypatch):
+    obj = _object("host")
+    own = MonitorInstance.objects.create(id=f"inst-del-{uuid.uuid4().hex[:6]}", name="own", monitor_object=obj)
+    MonitorInstanceOrganization.objects.create(monitor_instance=own, organization=tenants.a.team.id)
+    seen = {}
+    original = MonitorInstanceRemovalService.remove
+
+    def _remove(instance_ids, **kwargs):
+        seen["ids"] = list(instance_ids)
+        seen["kwargs"] = kwargs
+        return original(instance_ids, **kwargs)
+
+    monkeypatch.setattr(MonitorInstanceRemovalService, "remove", _remove)
+    response = APIClient().delete(
+        INTEGRATIONS_URL,
+        {"instance_ids": [own.id]},
+        format="json",
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["data"]["instance_ids"] == [own.id]
+    assert seen["ids"] == [own.id]
+    assert seen["kwargs"]["operator"] == tenants.a.user.username
+    assert seen["kwargs"]["reason"] == "manual_instance_deleted"
+    assert not MonitorInstance.objects.filter(id=own.id).exists()
+
+
+def test_api_tenant_cannot_delete_other_org_integration(tenants, monkeypatch):
+    obj = _object("host")
+    other = MonitorInstance.objects.create(id=f"inst-other-{uuid.uuid4().hex[:6]}", name="other", monitor_object=obj)
+    MonitorInstanceOrganization.objects.create(monitor_instance=other, organization=tenants.b.team.id)
+    called = {"value": False}
+
+    def _remove(*args, **kwargs):
+        called["value"] = True
+
+    monkeypatch.setattr(MonitorInstanceRemovalService, "remove", _remove)
+    response = APIClient().delete(
+        INTEGRATIONS_URL,
+        {"instance_ids": [other.id]},
+        format="json",
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["message"] == "监控实例不存在"
+    assert called["value"] is False
+    assert MonitorInstance.objects.filter(id=other.id).exists()
+
+
+def test_delete_integration_keeps_own_instance_when_batch_includes_other_org(tenants, monkeypatch):
+    obj = _object("host")
+    own = MonitorInstance.objects.create(id=f"inst-keep-{uuid.uuid4().hex[:6]}", name="own", monitor_object=obj)
+    MonitorInstanceOrganization.objects.create(monitor_instance=own, organization=tenants.a.team.id)
+    other = MonitorInstance.objects.create(id=f"inst-mix-{uuid.uuid4().hex[:6]}", name="other", monitor_object=obj)
+    MonitorInstanceOrganization.objects.create(monitor_instance=other, organization=tenants.b.team.id)
+    called = {"value": False}
+
+    def _remove(*args, **kwargs):
+        called["value"] = True
+
+    monkeypatch.setattr(MonitorInstanceRemovalService, "remove", _remove)
+    response = APIClient().delete(
+        INTEGRATIONS_URL,
+        {"instance_ids": [own.id, other.id]},
+        format="json",
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["message"] == "监控实例不存在"
+    assert called["value"] is False
+    assert MonitorInstance.objects.filter(id__in=[own.id, other.id]).count() == 2
+
+
+def test_delete_integration_forged_team_is_rejected(tenants):
+    response = APIClient().delete(
+        INTEGRATIONS_URL,
+        {"instance_ids": ["inst-x"], "team": tenants.b.team.id},
+        format="json",
+        **_auth(tenants.a.token),
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "SCHEMA_INVALID"
 
 
 def test_api_tenant_can_create_kubernetes_collector(tenants, monkeypatch):

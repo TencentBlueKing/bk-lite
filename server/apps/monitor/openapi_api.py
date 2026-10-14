@@ -7,6 +7,7 @@ from apps.monitor.openapi_serializers import (
     MonitorClusterStatusQuerySerializer,
     MonitorInstanceQuerySerializer,
     MonitorIntegrationCreateSerializer,
+    MonitorIntegrationDeleteSerializer,
     MonitorMetricQuerySerializer,
     MonitorMetricRangeQuerySerializer,
     MonitorMetricValueQuerySerializer,
@@ -21,6 +22,7 @@ from apps.monitor.openapi_service import (
     cluster_status,
     create_cluster_collector,
     create_integration,
+    delete_integrations,
     get_plugin_form,
     list_instances,
     list_metrics,
@@ -266,6 +268,19 @@ def openapi_create_integration(
         policy_group=policy_group,
         credential=credential,
     )
+
+
+@openapi_expose(
+    path="monitor/integrations",
+    method="DELETE",
+    schema=MonitorIntegrationDeleteSerializer,
+    inject="team_list_with_user",
+    permission="asset-Delete",
+    permission_app="monitor",
+    summary=f"删除本组织的监控接入实例及其采集配置（{_ORG_SCOPE}）",
+)
+def openapi_delete_integrations(instance_ids, *, team=None, user_info=None):
+    return delete_integrations(team=team, user_info=user_info, instance_ids=instance_ids)
 
 
 @openapi_expose(

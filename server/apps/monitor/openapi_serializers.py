@@ -85,6 +85,16 @@ class MonitorIntegrationCreateSerializer(OpenAPIRequestSerializer):
     credential = serializers.DictField(required=False)
 
 
+class MonitorIntegrationDeleteSerializer(OpenAPIRequestSerializer):
+    """删除本组织的监控接入实例。instance_ids 取实例列表返回的 id。"""
+
+    instance_ids = serializers.ListField(
+        child=serializers.CharField(max_length=200),
+        allow_empty=False,
+        max_length=500,
+    )
+
+
 class MonitorClusterCollectorCreateSerializer(OpenAPIRequestSerializer):
     """Kubernetes 或 K3s 采集器接入向导里创建实例。collector_type 取 kubernetes 或 k3s。"""
 
