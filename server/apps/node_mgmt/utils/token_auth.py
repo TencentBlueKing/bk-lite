@@ -25,9 +25,17 @@ def get_client_token(request):
         token = token.split(':', 1)[0]
         return token
     except Exception as e:
-        logger.warning(f"【Sidecar认证失败】Authorization 认证头格式错误，无法解析。原始头内容前缀：{auth_header[:20]!r}。"
-                       f"正确格式应为 'Basic <base64编码的token>'。错误详情：{e}。"
-                       f"处理建议：检查 Sidecar 是否被正确安装、token 是否被截断或篡改。")
+        logger.warning(
+            "【Sidecar认证失败】Authorization 认证头格式错误，无法解析。"
+            "正确格式应为 'Basic <base64编码的token>'。"
+            "处理建议：检查 Sidecar 是否被正确安装、token 是否被截断或篡改。",
+            extra={
+                "failed_stage": "sidecar_token_parse",
+                "error_type": type(e).__name__,
+                "has_basic_prefix": auth_header.startswith("Basic "),
+                "header_len": len(auth_header),
+            },
+        )
         return None
 
 
