@@ -1624,9 +1624,9 @@ screens:
         color: '#EAF3FF'
         fontSize: 34
         fontWeight: 600
-    - h: 130
+    - h: 145
       w: 1996
-      x: 916
+      x: 915
       y: 12
       id: legacy-title-frame
       kind: titleFrame
@@ -1636,7 +1636,7 @@ screens:
       textStyle:
         align: right
         color: '#EAF3FF'
-        fontSize: 45
+        fontSize: 56
         fontWeight: 700
     - h: 42
       w: 488
@@ -1651,7 +1651,7 @@ screens:
         color: '#EAF3FF'
         fontSize: 30
         fontWeight: 600
-    - h: 160
+    - h: 170
       w: 496
       x: 3304
       y: 308
@@ -1714,7 +1714,7 @@ screens:
         hideBackground: false
         backgroundColor: '#052441'
         gradientDirection: vertical
-    - h: 160
+    - h: 170
       w: 496
       x: 2760
       y: 308
@@ -1999,7 +1999,7 @@ screens:
           value: 10080
           alias_name: 时间范围
           filterType: filter
-    - h: 160
+    - h: 170
       w: 496
       x: 2216
       y: 308
@@ -2080,7 +2080,7 @@ screens:
           value: 10
           alias_name: 返回条数
           filterType: params
-    - h: 160
+    - h: 170
       w: 496
       x: 1672
       y: 308
@@ -2103,7 +2103,7 @@ screens:
         thresholdColors:
         - color: '#4C8DFF'
           value: '0'
-    - h: 160
+    - h: 170
       w: 496
       x: 584
       y: 308
@@ -2124,7 +2124,7 @@ screens:
         thresholdColors:
         - color: '#3DDC97'
           value: '0'
-    - h: 160
+    - h: 170
       w: 496
       x: 40
       y: 308
@@ -2145,7 +2145,7 @@ screens:
         thresholdColors:
         - color: '#FF5B6E'
           value: '0'
-    - h: 160
+    - h: 170
       w: 496
       x: 1128
       y: 308

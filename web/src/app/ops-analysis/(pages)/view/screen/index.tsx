@@ -1356,7 +1356,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
           headerVisible={!isFullscreen}
           filterBarVisible={!isFullscreen}
           compactHeader
-          flushContent={isFullscreen}
+          flushContent
           contentClassName={isFullscreen ? "bg-slate-950" : undefined}
           toolbar={
             <ScreenToolbar

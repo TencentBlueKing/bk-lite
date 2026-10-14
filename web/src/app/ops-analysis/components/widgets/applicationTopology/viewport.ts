@@ -4,12 +4,15 @@ export const APPLICATION_TOPOLOGY_SCALE = {
   step: 0.2,
 } as const;
 
-/** 图例留在画布坐标里，不跟拓扑缩放。层级卡片的宽高跟随缩放。 */
+/** 图例色块在字号 16 时的基准边长会按节点标题比例缩放。 */
 export const APPLICATION_TOPOLOGY_LEGEND_FONT = 15;
+/** 节点标题是 text-base。层名和图例用同一字号。 */
+export const APPLICATION_TOPOLOGY_NODE_TITLE_FONT = 16;
 /** 左侧层级卡片在缩放为 1 时的宽度。要放下图标和「应用服务层」这类五字层名。放大后按比例变宽，缩小时不低于可读宽度。 */
 const LAYER_CARD_WIDTH_PX = 168;
 const LAYER_CARD_MIN_PX = 112;
 
+/** 层级卡片跟随拓扑缩放，和节点标题保持同一套比例。 */
 export function applicationTopologyChromeScale(viewScale: number): number {
   if (!Number.isFinite(viewScale) || viewScale <= 0) return 1;
   return viewScale;

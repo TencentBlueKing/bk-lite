@@ -32,6 +32,7 @@ import ApplicationTopologyDetailPanel from './detailPanel';
 import {
   APPLICATION_TOPOLOGY_LABEL_GAP,
   APPLICATION_TOPOLOGY_LEGEND_FONT,
+  APPLICATION_TOPOLOGY_NODE_TITLE_FONT,
   APPLICATION_TOPOLOGY_SCALE,
   applicationTopologyChromeScale,
   applicationTopologyLabelRailWidth,
@@ -264,7 +265,16 @@ const ApplicationTopologyGraphView = ({
 
   const chromeScale = applicationTopologyChromeScale(view.scale);
   const labelRail = applicationTopologyLabelRailWidth(view.scale);
-  const legendFont = APPLICATION_TOPOLOGY_LEGEND_FONT;
+  const nodeTitleSize = APPLICATION_TOPOLOGY_NODE_TITLE_FONT * view.scale;
+  const legendFont = nodeTitleSize;
+  const layerTitleSize = nodeTitleSize;
+  const layerCountSize = 14 * chromeScale;
+  const layerIconBox = 28 * chromeScale;
+  const layerCardHeight = Math.max(
+    36,
+    layerIconBox + 12,
+    layerTitleSize * 1.2 + layerCountSize * 1.3 + 4 * chromeScale + 12,
+  );
   const labelLeft = view.x - labelRail - APPLICATION_TOPOLOGY_LABEL_GAP;
   const layerCounts = useMemo(() => {
     const counts: Record<ApplicationTopologyBandNode['layer'], number> = {
@@ -294,10 +304,10 @@ const ApplicationTopologyGraphView = ({
           paddingLeft: Math.max(12, labelLeft),
         }}
       >
-        <Legend tone="critical" label={t('dashboard.applicationTopologyCritical')} scale={1} />
-        <Legend tone="warning" label={t('dashboard.applicationTopologyWarning')} scale={1} />
-        <Legend tone="normal" label={t('dashboard.applicationTopologyNormal')} scale={1} />
-        <Legend tone="unknown" label={t('dashboard.applicationTopologyUnmonitored')} scale={1} />
+        <Legend tone="critical" label={t('dashboard.applicationTopologyCritical')} scale={legendFont / APPLICATION_TOPOLOGY_LEGEND_FONT} />
+        <Legend tone="warning" label={t('dashboard.applicationTopologyWarning')} scale={legendFont / APPLICATION_TOPOLOGY_LEGEND_FONT} />
+        <Legend tone="normal" label={t('dashboard.applicationTopologyNormal')} scale={legendFont / APPLICATION_TOPOLOGY_LEGEND_FONT} />
+        <Legend tone="unknown" label={t('dashboard.applicationTopologyUnmonitored')} scale={legendFont / APPLICATION_TOPOLOGY_LEGEND_FONT} />
       </div>
       <div className="pointer-events-none absolute top-2.5 right-2.5 z-20 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
         <div className="pointer-events-auto flex items-center gap-1 rounded-lg border border-(--color-border-2) bg-[color-mix(in_srgb,var(--color-bg-1)_92%,transparent)] p-1 shadow-sm">
@@ -351,8 +361,7 @@ const ApplicationTopologyGraphView = ({
       >
         {layout.bands.map((band) => {
           const Icon = LAYER_ICON[band.key];
-          const bandScreenHeight = band.height * view.scale;
-          const cardHeight = Math.min(56 * chromeScale, Math.max(36, bandScreenHeight - 8));
+          const cardHeight = layerCardHeight;
           return (
             <div
               key={band.key}
@@ -364,20 +373,20 @@ const ApplicationTopologyGraphView = ({
             >
               <span
                 className="flex shrink-0 items-center justify-center rounded-md bg-[color-mix(in_srgb,var(--color-primary)_18%,transparent)] text-(--color-primary)"
-                style={{ width: 28 * chromeScale, height: 28 * chromeScale }}
+                style={{ width: layerIconBox, height: layerIconBox }}
               >
                 <Icon style={{ fontSize: 15 * chromeScale }} />
               </span>
               <span className="flex min-w-0 flex-col" style={{ gap: 4 * chromeScale }}>
                 <span
                   className="block truncate font-semibold text-(--color-text-1)"
-                  style={{ fontSize: 13 * chromeScale, lineHeight: 1.2 }}
+                  style={{ fontSize: layerTitleSize, lineHeight: 1.2 }}
                 >
                   {t(LAYER_LABEL_KEY[band.key])}
                 </span>
                 <span
                   className="block truncate text-(--color-text-3)"
-                  style={{ fontSize: 11 * chromeScale, lineHeight: 1.3 }}
+                  style={{ fontSize: layerCountSize, lineHeight: 1.3 }}
                 >
                   {t(LAYER_COUNT_KEY[band.key], undefined, { count: layerCounts[band.key] })}
                 </span>
@@ -454,9 +463,12 @@ const ApplicationTopologyGraphView = ({
                     strokeWidth={14}
                     style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
                     onMouseEnter={() => setHover({ kind: 'edge', id: edge.id })}
-                    onMouseLeave={() => setHover((current) => (
-                      current?.kind === 'edge' && current.id === edge.id ? null : current
-                    ))}
+                    onMouseLeave={(event) => {
+                      if (event.relatedTarget == null) return;
+                      setHover((current) => (
+                        current?.kind === 'edge' && current.id === edge.id ? null : current
+                      ));
+                    }}
                   />
                   <path
                     d={path}
@@ -465,7 +477,6 @@ const ApplicationTopologyGraphView = ({
                     strokeWidth={1.35}
                     strokeOpacity={active ? 0.2 : 0.78}
                     opacity={muteRest && !active ? HOVER_MUTE_OPACITY : 1}
-                    style={{ transition: 'opacity 160ms ease' }}
                     mask={`url(#${markerId}-line-gap)`}
                     markerEnd={edge.markerEnd ? `url(#${markerId}-end)` : undefined}
                     markerStart={edge.markerStart ? `url(#${markerId}-start)` : undefined}
@@ -487,28 +498,32 @@ const ApplicationTopologyGraphView = ({
               );
             })}
           </svg>
-          {activeEdges.length ? (
-            <svg
-              className="pointer-events-none absolute inset-0 z-[2] overflow-visible"
-              width={layout.width}
-              height={layout.height}
-              aria-hidden
-            >
-              <EdgeMarkers markerId={`${markerId}-active`} color={HOVER_COLOR} />
-              {activeEdges.map((edge) => (
-                <path
-                  key={edge.id}
-                  d={edgePath(edge)}
-                  fill="none"
-                  stroke={HOVER_COLOR}
-                  strokeWidth={2.1}
-                  strokeOpacity={0.88}
-                  markerEnd={edge.markerEnd ? `url(#${markerId}-active-end)` : undefined}
-                  markerStart={edge.markerStart ? `url(#${markerId}-active-start)` : undefined}
-                />
-              ))}
-            </svg>
-          ) : null}
+          <svg
+            className="pointer-events-none absolute inset-0 z-[2] overflow-visible"
+            style={{ pointerEvents: 'none' }}
+            width={layout.width}
+            height={layout.height}
+            aria-hidden
+          >
+            <EdgeMarkers markerId={`${markerId}-active`} color={HOVER_COLOR} />
+            {activeEdges.map((edge) => (
+              <path
+                key={edge.id}
+                d={edgePath(edge)}
+                fill="none"
+                stroke={HOVER_COLOR}
+                strokeWidth={2.1}
+                strokeOpacity={0.88}
+                markerEnd={edge.markerEnd ? `url(#${markerId}-active-end)` : undefined}
+                markerStart={edge.markerStart ? `url(#${markerId}-active-start)` : undefined}
+              />
+            ))}
+            {activeEdges.map((edge) => {
+              const mid = polylineMidpoint(edge.points);
+              if (!edge.label || !mid) return null;
+              return <EdgeLabel key={`active-${edge.id}`} edge={edge} mid={mid} active />;
+            })}
+          </svg>
           {layout.nodes.map((node) => {
             const pressed = node.id === selectedId;
             const highlighted = hoverFocus.nodeIds.has(node.id);
@@ -518,7 +533,7 @@ const ApplicationTopologyGraphView = ({
                 key={node.id}
                 type="button"
                 aria-pressed={pressed}
-                className="absolute flex cursor-pointer rounded-md border-2 text-left shadow-sm transition-[border-color,box-shadow,opacity] hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                className="absolute flex cursor-pointer rounded-md border-2 text-left shadow-sm transition-[border-color,box-shadow] hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
                 style={{
                   left: node.x,
                   top: node.y,
@@ -537,9 +552,12 @@ const ApplicationTopologyGraphView = ({
                   ...toneSurfaceStyle(node.tone),
                 }}
                 onMouseEnter={() => setHover({ kind: 'node', id: node.id })}
-                onMouseLeave={() => setHover((current) => (
-                  current?.kind === 'node' && current.id === node.id ? null : current
-                ))}
+                onMouseLeave={(event) => {
+                  if (event.relatedTarget == null) return;
+                  setHover((current) => (
+                    current?.kind === 'node' && current.id === node.id ? null : current
+                  ));
+                }}
                 onClick={() => setSelectedId(node.id)}
               >
                 <span className="flex w-10 shrink-0 items-center justify-center">
@@ -574,20 +592,6 @@ const ApplicationTopologyGraphView = ({
               </button>
             );
           })}
-          {activeEdges.length ? (
-            <svg
-              className="pointer-events-none absolute inset-0 z-[4] overflow-visible"
-              width={layout.width}
-              height={layout.height}
-              aria-hidden
-            >
-              {activeEdges.map((edge) => {
-                const mid = polylineMidpoint(edge.points);
-                if (!edge.label || !mid) return null;
-                return <EdgeLabel key={edge.id} edge={edge} mid={mid} active />;
-              })}
-            </svg>
-          ) : null}
         </div>
       </div>
       </div>
@@ -702,7 +706,6 @@ const EdgeLabel = ({
         fontSize={RELATION_LABEL_FONT}
         fill="var(--color-text-2)"
         fillOpacity={muted ? HOVER_MUTE_OPACITY : 1}
-        style={{ transition: 'fill-opacity 160ms ease' }}
       >
         {edge.label}
       </text>

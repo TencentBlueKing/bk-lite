@@ -464,7 +464,7 @@ def test_builtin_alert_screen_yaml_uses_page_configurable_nodes_only():
     assert node_by_id["legacy-title-frame"]["textStyle"] == {
         "align": "right",
         "color": "#EAF3FF",
-        "fontSize": 45,
+        "fontSize": 56,
         "fontWeight": 700,
     }
     assert node_by_id["legacy-clock"]["kind"] == "clock"
@@ -1184,7 +1184,7 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
     assert node_by_id["legacy-title-frame"]["textStyle"] == {
         "align": "right",
         "color": "#EAF3FF",
-        "fontSize": 45,
+        "fontSize": 56,
         "fontWeight": 700,
     }
     assert node_by_id["legacy-clock"]["kind"] == "clock"
