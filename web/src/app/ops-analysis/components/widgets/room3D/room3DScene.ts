@@ -350,19 +350,19 @@ export const createRoom3DScene = (
   controls.target.copy(initialView.target);
   controls.update();
 
-  const ambientLight = new THREE.AmbientLight("#dfe9f8", 0.86);
-  const hemisphereLight = new THREE.HemisphereLight("#d8f5ff", "#9aa6b4", 0.58);
+  const ambientLight = new THREE.AmbientLight("#f4f6f8", 0.82);
+  const hemisphereLight = new THREE.HemisphereLight("#f7f8fa", "#d5d8dc", 0.5);
   const keyLight = new THREE.DirectionalLight("#ffffff", 1.32);
   keyLight.position.set(5, 8, 6);
   keyLight.castShadow = true;
   keyLight.shadow.mapSize.width = 1024;
   keyLight.shadow.mapSize.height = 1024;
   keyLight.shadow.radius = 3;
-  const fillLight = new THREE.DirectionalLight("#9fdcff", 0.72);
+  const fillLight = new THREE.DirectionalLight("#f3f4f6", 0.42);
   fillLight.position.set(-7, 5, -4);
-  const cyanRoomLight = new THREE.PointLight("#33d8ff", 0.9, 18);
-  cyanRoomLight.position.set(0, 3.4, 0);
-  scene.add(ambientLight, hemisphereLight, keyLight, fillLight, cyanRoomLight);
+  const roomFillLight = new THREE.PointLight("#f7f8fa", 0.35, 18);
+  roomFillLight.position.set(0, 3.4, 0);
+  scene.add(ambientLight, hemisphereLight, keyLight, fillLight, roomFillLight);
 
   buildRoomShell(scene, floorWidth, floorDepth);
 

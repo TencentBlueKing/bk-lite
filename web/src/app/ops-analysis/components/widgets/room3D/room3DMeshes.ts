@@ -25,9 +25,12 @@ export const ROOM3D_RACK_DEPTH = 1.2;
 export const ROOM3D_RACK_HEIGHT = 1.95;
 export const ROOM3D_DEVICE_PULL_OUT_DISTANCE = 0.32;
 
-const WALL_HEIGHT = ROOM3D_RACK_HEIGHT;
-const WALL_THICKNESS = 0.1;
-const WALL_OPACITY = 0.98;
+const WALL_HEIGHT = ROOM3D_RACK_HEIGHT * 0.74;
+const WALL_THICKNESS = 0.085;
+const WALL_OPACITY = 0.9;
+const WALL_FACING_OPACITY = 0.42;
+/** 默认机位在 +X/+Z，这两面墙正对观察者。 */
+const FACING_WALL_INDEXES = new Set([1, 3]);
 const RACK_USABLE_BOTTOM = 0.12;
 const RACK_USABLE_TOP_PADDING = 0.1;
 const RACK_USABLE_HEIGHT =
@@ -377,12 +380,12 @@ const createEquipmentSideTexture = () =>
 const createRackSideTexture = () =>
   createCanvasTexture(128, 256, (context) => {
     const gradient = context.createLinearGradient(0, 0, 128, 256);
-    gradient.addColorStop(0, "#9aa0a5");
-    gradient.addColorStop(0.48, "#7b8288");
-    gradient.addColorStop(1, "#a5aaaf");
+    gradient.addColorStop(0, "#5A7082");
+    gradient.addColorStop(0.48, "#465868");
+    gradient.addColorStop(1, "#516476");
     context.fillStyle = gradient;
     context.fillRect(0, 0, 128, 256);
-    context.strokeStyle = "rgba(248, 251, 253, 0.24)";
+    context.strokeStyle = "rgba(83, 107, 125, 0.55)";
     for (let y = 18; y < 240; y += 14) {
       context.beginPath();
       context.moveTo(14, y);
@@ -393,7 +396,7 @@ const createRackSideTexture = () =>
     for (let y = 32; y < 228; y += 20) {
       context.fillRect(22, y, 84, 5);
     }
-    context.fillStyle = "rgba(104, 219, 255, 0.2)";
+    context.fillStyle = "rgba(83, 107, 125, 0.45)";
     for (let y = 38; y < 220; y += 40) {
       context.fillRect(18, y, 92, 2);
     }
@@ -401,9 +404,9 @@ const createRackSideTexture = () =>
 
 const createTileTexture = () =>
   createCanvasTexture(256, 256, (context) => {
-    context.fillStyle = "#f8fafc";
+    context.fillStyle = "#F3F5F7";
     context.fillRect(0, 0, 256, 256);
-    context.strokeStyle = "rgba(82, 99, 116, 0.3)";
+    context.strokeStyle = "rgba(150, 156, 162, 0.4)";
     context.lineWidth = 1.4;
     for (let x = 0; x <= 256; x += 48) {
       context.beginPath();
@@ -424,9 +427,9 @@ const createTileTexture = () =>
 const createWallTexture = () =>
   createCanvasTexture(384, 256, (context) => {
     const gradient = context.createLinearGradient(0, 0, 0, 256);
-    gradient.addColorStop(0, "#ffffff");
-    gradient.addColorStop(0.58, "#f7fafc");
-    gradient.addColorStop(1, "#e9eff5");
+    gradient.addColorStop(0, "#F7FAFC");
+    gradient.addColorStop(0.58, "#F2F5F8");
+    gradient.addColorStop(1, "#E7EDF2");
     context.fillStyle = gradient;
     context.fillRect(0, 0, 384, 256);
     context.strokeStyle = "rgba(82, 99, 116, 0.12)";
@@ -529,7 +532,7 @@ export const buildRoomShell = (
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(floorWidth, floorDepth),
     new THREE.MeshStandardMaterial({
-      color: "#f8fafc",
+      color: "#F4F6F8",
       map: tileTexture,
       side: THREE.DoubleSide,
       metalness: 0.03,
@@ -545,7 +548,7 @@ export const buildRoomShell = (
   const floorSlab = new THREE.Mesh(
     new THREE.BoxGeometry(floorWidth, 0.16, floorDepth),
     new THREE.MeshStandardMaterial({
-      color: "#d5dde5",
+      color: "#E4E8EC",
       metalness: 0.08,
       roughness: 0.72,
     }),
@@ -557,31 +560,30 @@ export const buildRoomShell = (
 
   const wallTexture = createWallTexture();
   const wallMaterial = new THREE.MeshStandardMaterial({
-    color: "#f8fbfd",
+    color: "#F4F7FA",
     map: wallTexture,
     transparent: true,
     opacity: WALL_OPACITY,
-    metalness: 0.05,
-    roughness: 0.68,
+    metalness: 0.04,
+    roughness: 0.78,
   });
+  const facingWallMaterial = wallMaterial.clone();
+  facingWallMaterial.opacity = WALL_FACING_OPACITY;
+  facingWallMaterial.depthWrite = false;
   const trimMaterial = new THREE.MeshStandardMaterial({
-    color: "#f8fafc",
+    color: "#F7FAFC",
     metalness: 0.12,
-    roughness: 0.32,
+    roughness: 0.46,
   });
   const darkTrimMaterial = new THREE.MeshStandardMaterial({
-    color: "#dbe4ec",
-    emissive: "#eef6fb",
-    emissiveIntensity: 0.08,
-    metalness: 0.08,
-    roughness: 0.3,
+    color: "#536B7D",
+    metalness: 0.28,
+    roughness: 0.42,
   });
   const columnMaterial = new THREE.MeshStandardMaterial({
-    color: "#ffffff",
-    emissive: "#eef5f9",
-    emissiveIntensity: 0.04,
-    metalness: 0.04,
-    roughness: 0.62,
+    color: "#F5F8FB",
+    metalness: 0.08,
+    roughness: 0.7,
   });
   const doorMaterial = new THREE.MeshStandardMaterial({
     color: "#8fa6b8",
@@ -598,32 +600,29 @@ export const buildRoomShell = (
     roughness: 0.56,
   });
   const glassMaterial = new THREE.MeshStandardMaterial({
-    color: "#c2efff",
+    color: "#D5E2EC",
     transparent: true,
-    opacity: 0.68,
-    emissive: "#2aa7ff",
-    emissiveIntensity: 0.1,
-    metalness: 0.08,
-    roughness: 0.12,
+    opacity: 0.34,
+    metalness: 0.06,
+    roughness: 0.18,
+    depthWrite: false,
     side: THREE.DoubleSide,
   });
   const accentMaterial = new THREE.MeshStandardMaterial({
-    color: "#7ccce8",
-    emissive: "#256b93",
-    emissiveIntensity: 0.12,
+    color: "#536B7D",
     transparent: true,
-    opacity: 0.28,
-    metalness: 0.15,
-    roughness: 0.36,
+    opacity: 0.55,
+    metalness: 0.3,
+    roughness: 0.4,
   });
   const floorEdgeMaterial = new THREE.MeshStandardMaterial({
-    color: "#a7c7d8",
-    emissive: "#2a6888",
-    emissiveIntensity: 0.08,
+    color: "#E8EEF2",
+    emissive: "#F4F7FA",
+    emissiveIntensity: 0.12,
     transparent: true,
-    opacity: 0.22,
-    metalness: 0.08,
-    roughness: 0.42,
+    opacity: 0.72,
+    metalness: 0.12,
+    roughness: 0.34,
   });
   const addFeatureFrame = (
     name: string,
@@ -669,11 +668,11 @@ export const buildRoomShell = (
     depth = width,
   ) => {
     const column = new THREE.Mesh(
-      new THREE.BoxGeometry(width, WALL_HEIGHT + 0.22, depth),
+      new THREE.BoxGeometry(width, WALL_HEIGHT + 0.06, depth),
       columnMaterial,
     );
     column.name = name;
-    column.position.set(x, (WALL_HEIGHT + 0.22) / 2, z);
+    column.position.set(x, (WALL_HEIGHT + 0.06) / 2, z);
     column.castShadow = false;
     column.receiveShadow = true;
     shell.add(column);
@@ -742,7 +741,7 @@ export const buildRoomShell = (
   wallSpecs.forEach(([width, height, depth, x, z], index) => {
     const wall = new THREE.Mesh(
       new THREE.BoxGeometry(width, height, depth),
-      wallMaterial,
+      FACING_WALL_INDEXES.has(index) ? facingWallMaterial : wallMaterial,
     );
     wall.name = `room-wall-${index}`;
     wall.position.set(x, height / 2, z);
@@ -757,15 +756,15 @@ export const buildRoomShell = (
     [-floorWidth / 2, floorDepth / 2],
     [floorWidth / 2, floorDepth / 2],
   ].forEach(([x, z], index) => {
-    addWallColumn(`room-column-${index}`, x, z, 0.44);
+    addWallColumn(`room-column-${index}`, x, z, 0.3);
   });
 
   (
     [
-      [-floorWidth * 0.3, floorDepth / 2 - 0.1, 0.36, 0.28],
-      [floorWidth * 0.3, floorDepth / 2 - 0.1, 0.36, 0.28],
-      [-floorWidth / 2 + 0.1, -floorDepth * 0.2, 0.28, 0.5],
-      [floorWidth / 2 - 0.1, floorDepth * 0.2, 0.28, 0.5],
+      [-floorWidth * 0.3, floorDepth / 2 - 0.1, 0.26, 0.18],
+      [floorWidth * 0.3, floorDepth / 2 - 0.1, 0.26, 0.18],
+      [-floorWidth / 2 + 0.1, -floorDepth * 0.2, 0.18, 0.32],
+      [floorWidth / 2 - 0.1, floorDepth * 0.2, 0.18, 0.32],
     ] as Array<[number, number, number, number]>
   ).forEach(([x, z, width, depth], index) => {
     addWallColumn(`room-structure-column-${index}`, x, z, width, depth);
@@ -820,12 +819,12 @@ export const buildRoomShell = (
   mainDoorGroup.name = "room-main-door";
   mainDoorGroup.position.set(-floorWidth * 0.32, 0, -floorDepth / 2 - 0.062);
   const mainDoorWidth = 1.72;
-  const mainDoorHeight = 1.42;
+  const mainDoorHeight = Math.min(1.42, WALL_HEIGHT * 0.82);
 
   const doorBackplate = new THREE.Mesh(
     new THREE.BoxGeometry(mainDoorWidth + 0.34, mainDoorHeight + 0.24, 0.045),
     new THREE.MeshStandardMaterial({
-      color: "#eef3f7",
+      color: "#F2F6F8",
       metalness: 0.06,
       roughness: 0.52,
     }),
@@ -885,7 +884,7 @@ export const buildRoomShell = (
   const threshold = new THREE.Mesh(
     new THREE.BoxGeometry(mainDoorWidth + 0.48, 0.04, 0.38),
     new THREE.MeshStandardMaterial({
-      color: "#cbd5e1",
+      color: "#A7B8C7",
       metalness: 0.1,
       roughness: 0.5,
     }),
@@ -899,7 +898,7 @@ export const buildRoomShell = (
   sideEntranceGroup.name = "room-visible-main-door";
   sideEntranceGroup.position.set(-floorWidth * 0.26, 0, floorDepth / 2 + 0.066);
   const sideDoorWidth = 1.94;
-  const sideDoorHeight = 1.56;
+  const sideDoorHeight = Math.min(1.56, WALL_HEIGHT * 0.86);
   const visibleDoorFrameMaterial = new THREE.MeshStandardMaterial({
     color: "#5e7484",
     emissive: "#233744",
@@ -922,18 +921,18 @@ export const buildRoomShell = (
     roughness: 0.62,
   });
   const visibleDoorHandleMaterial = new THREE.MeshStandardMaterial({
-    color: "#f0f5f8",
+    color: "#536B7D",
     emissive: "#8095a5",
     emissiveIntensity: 0.12,
     metalness: 0.42,
     roughness: 0.28,
   });
   const visibleDoorGlassMaterial = new THREE.MeshStandardMaterial({
-    color: "#b7e9f8",
+    color: "#D5E2EC",
     transparent: true,
-    opacity: 0.76,
-    emissive: "#5cc2e1",
-    emissiveIntensity: 0.12,
+    opacity: 0.4,
+    emissive: "#536B7D",
+    emissiveIntensity: 0.04,
     metalness: 0.04,
     roughness: 0.16,
   });
@@ -1061,7 +1060,7 @@ export const buildRoomShell = (
     windowPanel.name = "room-window";
     windowPanel.position.set(
       side * floorWidth * 0.27,
-      1.05,
+      WALL_HEIGHT * 0.55,
       floorDepth / 2 + 0.035,
     );
     shell.add(windowPanel);
@@ -1069,7 +1068,7 @@ export const buildRoomShell = (
       "room-window-frame",
       1.3,
       0.7,
-      new THREE.Vector3(side * floorWidth * 0.27, 1.05, floorDepth / 2 + 0.052),
+      new THREE.Vector3(side * floorWidth * 0.27, WALL_HEIGHT * 0.55, floorDepth / 2 + 0.052),
     );
     const innerWindowPanel = new THREE.Mesh(
       new THREE.BoxGeometry(1.24, 0.64, 0.032),
@@ -1078,7 +1077,7 @@ export const buildRoomShell = (
     innerWindowPanel.name = "room-window-inner";
     innerWindowPanel.position.set(
       side * floorWidth * 0.27,
-      1.05,
+      WALL_HEIGHT * 0.55,
       floorDepth / 2 - 0.055,
     );
     shell.add(innerWindowPanel);
@@ -1086,7 +1085,7 @@ export const buildRoomShell = (
       "room-window-inner-frame",
       1.3,
       0.7,
-      new THREE.Vector3(side * floorWidth * 0.27, 1.05, floorDepth / 2 - 0.072),
+      new THREE.Vector3(side * floorWidth * 0.27, WALL_HEIGHT * 0.55, floorDepth / 2 - 0.072),
     );
   });
 
@@ -1233,19 +1232,19 @@ export const createRackVisual = (
   root.userData.rack = rack;
 
   const bodyMaterial = new THREE.MeshStandardMaterial({
-    color: "#82878b",
-    emissive: "#555b60",
-    emissiveIntensity: 0.28,
-    metalness: 0.24,
-    roughness: 0.48,
+    color: "#4E6274",
+    emissive: "#2A3A48",
+    emissiveIntensity: 0.16,
+    metalness: 0.34,
+    roughness: 0.56,
   });
   const sideMaterial = new THREE.MeshStandardMaterial({
-    color: "#969ca2",
+    color: "#3A4E60",
     map: createRackSideTexture(),
-    emissive: "#555c62",
-    emissiveIntensity: 0.24,
-    metalness: 0.26,
-    roughness: 0.48,
+    emissive: "#243240",
+    emissiveIntensity: 0.12,
+    metalness: 0.32,
+    roughness: 0.58,
   });
   const pickMaterial = new THREE.MeshBasicMaterial({
     color: "#000000",
@@ -1336,9 +1335,9 @@ export const createRackVisual = (
   });
 
   const railMaterial = new THREE.MeshStandardMaterial({
-    color: "#c0c6cb",
-    emissive: "#5d666d",
-    emissiveIntensity: 0.12,
+    color: "#7D93A4",
+    emissive: "#3A4C5A",
+    emissiveIntensity: 0.1,
     metalness: 0.32,
     roughness: 0.34,
   });

@@ -704,10 +704,12 @@ screens:
     name: 3D Data Center Screen
     desc: 3D data center screen from CMDB rooms, cabinets, and devices. Side capacity and alarm charts follow the canvas room filter.
     decorations:
-      title: Cabinet Overview
+      title: Room Operations Overview
     filters:
       server_room_id: Room
     widgets:
+      legacy-title-frame:
+        content: Room Operations Overview
       builtin-room3d-main:
         title: 3D Data Center
       room-kpi-racks:

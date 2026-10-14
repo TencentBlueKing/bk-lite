@@ -704,10 +704,12 @@ screens:
     name: 3D机房大屏
     desc: 基于 CMDB 机房、机柜和设备数据展示的 3D 机房大屏，两侧容量与告警图表跟随画布机房筛选
     decorations:
-      title: 机柜全景
+      title: 机房运行总览
     filters:
       server_room_id: 机房
     widgets:
+      legacy-title-frame:
+        content: 机房运行总览
       builtin-room3d-main:
         title: 3D机房
       room-kpi-racks:

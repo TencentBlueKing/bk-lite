@@ -122,9 +122,8 @@ def test_builtin_room3d_screen_yaml_is_self_fetch_scene():
     assert viewport["width"] == 1920
     assert viewport["height"] == 1080
     assert viewport["adapter"] == "fill"
-    assert viewport["background"]["type"] == "image"
-    assert viewport["background"]["src"].startswith("data:image/jpeg;base64,")
-    assert screen["view_sets"]["decorations"] == {"title": "机柜全景", "showClock": False, "showTitle": False}
+    assert viewport["background"] == {"type": "color", "color": "#071829"}
+    assert screen["view_sets"]["decorations"] == {"title": "机房运行总览", "showClock": False, "showTitle": False}
     assert screen["refs"]["namespace_keys"] == []
     assert set(screen["refs"]["datasource_keys"]) == {
         "机房机柜容量::cmdb/get_room_rack_capacity",
@@ -175,27 +174,27 @@ def test_builtin_room3d_screen_yaml_is_self_fetch_scene():
     assert widget["x"] > singles[0]["x"]
     assert widget["x"] + widget["w"] < next(item["x"] for item in chart_widgets if item["id"] == "room-coverage")
     assert title == {
-        "h": 70,
+        "h": 87,
         "w": 1479,
-        "x": 232,
-        "y": 0,
+        "x": 231,
+        "y": 1,
         "id": "legacy-title-frame",
         "kind": "titleFrame",
         "preset": "hero-3",
         "zIndex": 37,
-        "content": "机柜全景",
-        "textStyle": {"color": "canvas", "fontSize": 28, "fontWeight": 700},
+        "content": "机房运行总览",
+        "textStyle": {"color": "#E6F3FF", "fontSize": 28, "fontWeight": 700},
     }
     assert clock == {
         "h": 50,
         "w": 295,
-        "x": 1623,
-        "y": 1,
+        "x": 1620,
+        "y": 4,
         "id": "legacy-clock",
         "kind": "clock",
         "format": "YYYY-MM-DD HH:mm:ss",
         "zIndex": 38,
-        "textStyle": {"color": "canvas", "fontSize": 23, "fontWeight": 600},
+        "textStyle": {"color": "#91AFC6", "fontSize": 23, "fontWeight": 600},
     }
     section_titles = [item for item in items if item.get("kind") == "titleFrame" and item["id"] != "legacy-title-frame"]
     assert {item["preset"] for item in section_titles} == {"section-3"}
@@ -218,7 +217,7 @@ def test_builtin_room3d_screen_yaml_is_self_fetch_scene():
     ]
     scale_singles = [item for item in singles if item["id"].startswith("room-kpi-")]
     assert len({item["w"] for item in scale_singles}) == 1
-    assert [item["x"] for item in scale_singles] == [40, 156, 272]
+    assert [item["x"] for item in scale_singles] == [39, 148, 257]
     scale_captions = [
         item
         for item in items
@@ -1200,7 +1199,7 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
     room3d_screen = Screen.objects.get(name="3D机房大屏", is_build_in=True)
     assert room3d_screen.build_in_key == "screen::3D机房大屏_内置"
     assert room3d_screen.directory.build_in_key == "__builtin__"
-    assert room3d_screen.view_sets["decorations"] == {"title": "机柜全景", "showClock": False, "showTitle": False}
+    assert room3d_screen.view_sets["decorations"] == {"title": "机房运行总览", "showClock": False, "showTitle": False}
     room3d_yaml = _load_builtin_room3d_screen()
     imported_items = copy.deepcopy(room3d_screen.view_sets["items"])
     for item in imported_items:
