@@ -82,9 +82,13 @@ export default function NetworkPane({
             points: selected?.series[item.key] || []
           })))}
           legends={(throughputItems.length ? throughputItems : [
-            { label: hostCategoryText(t, 'inboundPacketRate'), color: HOST_PALETTE.blue },
-            { label: hostCategoryText(t, 'outboundPacketRate'), color: HOST_PALETTE.cyan }
-          ]).map((item) => ({ label: item.label, color: item.color }))}
+            { key: 'net_bytes_recv_rate' as const, label: hostCategoryText(t, 'inboundPacketRate'), color: HOST_PALETTE.blue },
+            { key: 'net_bytes_sent_rate' as const, label: hostCategoryText(t, 'outboundPacketRate'), color: HOST_PALETTE.cyan }
+          ]).map((item) => ({
+            label: item.label,
+            color: item.color,
+            reading: formatUnit(selected?.values[item.key] ?? null, 'byteps')
+          }))}
         />
         <ThinTimeSeries
           key={`err-${selected?.key || 'none'}`}
