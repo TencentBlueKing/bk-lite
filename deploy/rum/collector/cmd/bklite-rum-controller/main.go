@@ -87,10 +87,13 @@ func run() error {
 	}
 	var connection *nats.Conn
 	if natsInsecure {
-		// Dev-only escape: the compose fixture is plain nats:// with the password in the URL.
+		// Dev-only escape for the plain compose fixture. Pass -nats-user and
+		// -nats-password-file, or keep the old user:password URL.
 		// Production uses ConnectNATS: tls:// plus a password file, NKey, or creds file.
 		connection, err = wire.ConnectControlClient(wire.ControlClientConfig{
 			URL:             natsConfig.URL,
+			User:            natsConfig.User,
+			PasswordFile:    natsConfig.PasswordFile,
 			CredentialsFile: natsConfig.CredentialsFile,
 			CAFile:          natsConfig.CAFile,
 			CertFile:        natsConfig.CertFile,

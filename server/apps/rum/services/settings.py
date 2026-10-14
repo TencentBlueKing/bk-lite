@@ -78,6 +78,33 @@ def _setting_or_env(name: str) -> str:
     return str(raw or "")
 
 
+def platform_nats_endpoint(value: str) -> str:
+    """取平台 NATS_SERVERS 的主机，丢掉其中的账号口令。无协议时按 nats://。"""
+
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    has_scheme = "://" in raw
+    try:
+        parsed = urlsplit(raw if has_scheme else f"//{raw}")
+        port = parsed.port
+    except ValueError:
+        return ""
+    scheme = (parsed.scheme or "").lower()
+    if not parsed.hostname or port is None:
+        return ""
+    if has_scheme and scheme not in {"nats", "tls"}:
+        return ""
+    if not has_scheme:
+        scheme = "nats"
+    if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
+        return ""
+    host = parsed.hostname
+    if ":" in host:
+        host = f"[{host}]"
+    return f"{scheme}://{host}:{port}"
+
+
 def normalize_nats_endpoint(url: str, user: str, password: str) -> tuple[str, str, str]:
     """地址只保留 nats:// 或 tls:// 的主机。账号口令另给，写进 URL 或只给一半都视为未配置。"""
 
@@ -117,11 +144,16 @@ def load_rum_settings() -> RumRuntimeSettings:
     configured = getattr(settings, "RUM_PUBLIC_ORIGIN", None) or os.getenv("RUM_PUBLIC_ORIGIN", "")
     public_origin = normalize_public_origin(str(configured or ""))
     endpoints = browser_endpoints(public_origin)
+    explicit_nats_url = _setting_or_env("RUM_NATS_URL").strip()
+    nats_source = explicit_nats_url or platform_nats_endpoint(_setting_or_env("NATS_SERVERS"))
     nats_url, nats_user, nats_password = normalize_nats_endpoint(
-        _setting_or_env("RUM_NATS_URL"),
+        nats_source,
         _setting_or_env("RUM_NATS_USER"),
         _setting_or_env("RUM_NATS_PASSWORD"),
     )
+    tls_ca_file = _setting_or_env("RUM_NATS_TLS_CA_FILE").strip()
+    if not tls_ca_file and not explicit_nats_url and nats_url.startswith("tls://"):
+        tls_ca_file = _setting_or_env("NATS_TLS_CA_FILE").strip()
     return RumRuntimeSettings(
         collect_url=endpoints["collect_url"],
         replay_url=endpoints["replay_url"],
@@ -130,7 +162,7 @@ def load_rum_settings() -> RumRuntimeSettings:
         nats_url=nats_url,
         nats_user=nats_user,
         nats_password=nats_password,
-        nats_tls_ca_file=_setting_or_env("RUM_NATS_TLS_CA_FILE").strip(),
+        nats_tls_ca_file=tls_ca_file,
         nats_timeout_seconds=float(getattr(settings, "RUM_NATS_TIMEOUT_SECONDS", None) or os.getenv("RUM_NATS_TIMEOUT_SECONDS", "5")),
         tenant_id=getattr(settings, "RUM_TENANT_ID", None) or os.getenv("RUM_TENANT_ID", "core"),
         victoria_logs_url=getattr(settings, "RUM_VICTORIA_LOGS_URL", None) or os.getenv("RUM_VICTORIA_LOGS_URL", ""),

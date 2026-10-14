@@ -49,7 +49,7 @@ Maintainer 必填 `-replay-index-epoch`（RFC3339 格式的回放索引切换时
 | `rum_replay_index_maintainer_redis_password` | Maintainer | Redis 密码或密码文件；ACL 用户名可选 |
 | `rum_maintainer_minio_secret` | Maintainer | MinIO secret key；access key 不能是 `minioadmin` |
 
-生产 Controller 使用 `tls://`，身份用 `-nats-user` 加 `-nats-password-file`，也可以改用 NKey 或 creds 文件。`-nats-insecure` 只给本地夹具，允许明文 `nats://` 并把口令写在 URL 里。
+生产 Controller 使用 `tls://`，身份用 `-nats-user` 加 `-nats-password-file`，也可以改用 NKey 或 creds 文件。`-nats-insecure` 只给本地夹具：明文 `nats://`，口令放在 `-nats-password-file`。旧的 URL 内嵌口令仍然可用。
 
 ### 启动成功判据
 
@@ -104,10 +104,10 @@ Edge 是平台现有的公网反向代理（Traefik），不是 RUM 要新打的
 
 | 变量 | 必要 | 说明 |
 | --- | --- | --- |
-| `RUM_NATS_URL` | 必须 | 只写地址：生产 `tls://nats:4222`，本地 `nats://127.0.0.1:14222`。地址里带账号口令，或用户名和口令只配了一个，控制面显示不可用，Django 仍能启动 |
-| `RUM_NATS_USER` | 有认证时 | Django 的 NATS 用户，例如 `rum_ctl`。和 `RUM_NATS_PASSWORD` 成对出现 |
+| `RUM_NATS_URL` | 主机不同时 | 只写地址。不设时用 `NATS_SERVERS` 的主机，并丢掉其中的账号。本地夹具写 `nats://127.0.0.1:14222`。地址里带账号口令，或用户名和口令只配了一个，控制面显示不可用，Django 仍能启动 |
+| `RUM_NATS_USER` | 有认证时 | Django 的 NATS 用户，例如 `rum_ctl`。和 `RUM_NATS_PASSWORD` 成对出现。不用平台的 `NATS_USER` |
 | `RUM_NATS_PASSWORD` | 有认证时 | `rum_ctl` 的口令。由环境注入，不要写进 URL |
-| `RUM_NATS_TLS_CA_FILE` | 私有 CA 时 | `tls://` 使用的 CA 文件。不设则用系统 CA |
+| `RUM_NATS_TLS_CA_FILE` | 私有 CA 时 | `tls://` 使用的 CA 文件。不设且沿用 `NATS_SERVERS` 时，改用 `NATS_TLS_CA_FILE`；再没有则用系统 CA |
 | `RUM_VICTORIA_LOGS_URL` | 必须 | VictoriaLogs 地址 |
 | `RUM_VICTORIA_TRACES_URL` | 必须 | VictoriaTraces 地址 |
 | `RUM_PUBLIC_ORIGIN` | 可选 | 浏览器上报使用的对外源（`https://主机`，不含路径）。不设时，接入片段用操作员打开控制台的地址，路径固定为 `/rum/v1/collect`、`/rum/v1/replay`、`/rum/bklite-rum-sdk.js`。Edge 把前两条转到 Gateway `:4319`、`:4320` |
