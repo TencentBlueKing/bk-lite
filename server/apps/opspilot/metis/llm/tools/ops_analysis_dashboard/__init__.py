@@ -34,7 +34,10 @@ _SEARCH_HINT = (
     "组件 name 用 fields[].title 的中文，description 用 fields[].description，不要把英文字段名当成标题。"
     "chartType 必须属于该数据源的 chart_type。一张盘要混用目录里实际支持的 single、gauge、line、bar、pie、table、topN，不要全部做成 single。"
     "single 和 gauge 的 selectedFields 必须包含一个字段，不能为空。pie 用 dimensionField 和 valueField。"
-    "layout 是扁平数组，禁止 row、children。按这份目录调用一次 prepare_dashboard_proposal，页面会写入画布。"
+    "layout 是扁平数组，禁止 row、children。"
+    "画布固定 12 列。同一行 w 之和不得超过 12，且每个组件 x+w 不超过 12。"
+    "一行 N 个时 w 为 12//N，不能整除时把余数分给靠前的组件。用户说几列就按几列排。"
+    "按这份目录调用一次 prepare_dashboard_proposal，页面会写入画布。"
     "不要反复检索，不要只写文字，不要让用户手工添加。"
 )
 _DATASOURCE_MISS_HINT = (
@@ -224,6 +227,7 @@ def search_data_sources(requirements: list[dict], config: RunnableConfig) -> dic
     fields[].title 是组件中文标题，fields[].description 是组件说明，不要把英文字段名写成标题。
     chart_type 是该数据源允许的图表。一张盘要混用目录里实际支持的类型。概览源最多两个 single 或 gauge，其余组件改用 pie、topN、line、table 的其他数据源，不要把同一个源的每个数字都做成卡片。
     layout 必须是扁平组件数组，禁止 row、children。
+    画布固定 12 列。同一行 w 之和不得超过 12，且每个组件 x+w 不超过 12。一行 N 个时 w 为 12//N，不能整除时把余数分给靠前的组件。用户说几列就按几列排。
     检索后的下一步只能调用 prepare_dashboard_proposal。禁止插入 request_user_choice，不要让用户挑选指标或确认后再添加。
     requirements 必须由调用方显式传入，每项至少提供 text；可补充 purpose（visualization 或
     parameter_options）、domain、metric、dimension、analysisType 和 chartType。
@@ -267,6 +271,7 @@ def prepare_dashboard_proposal(
 
     proposal 必须由调用方显式传入，且 schemaVersion 固定为 "1.0"。
     layout 是扁平组件数组，禁止 row、children、title、panels、chart_type、data_source_id。
+    画布固定 12 列。同一行 w 之和不得超过 12，且每个组件 x+w 不超过 12。一行 N 个时 w 为 12//N，不能整除时把余数分给靠前的组件。用户说几列就按几列排。放不下的宽度会按原比例收进 12 列。
     dataSource 只能填 search_data_sources 返回的数字 id，禁止编造其他数字。
     chartType 必须属于该数据源的 chart_type。
     组件 name 用字段中文 title，description 用字段说明，不要用英文字段名。

@@ -1096,6 +1096,98 @@ def test_revise_renames_keeps_position_and_reflows_width():
     assert chart["layout"][0]["valueConfig"]["chartType"] == "bar"
 
 
+def test_overflowing_model_widths_snap_to_the_row_count_and_valid_rows_stay():
+    from apps.operation_analysis.services.dashboard_proposal_service import prepare_dashboard_proposal
+    from apps.operation_analysis.services.dashboard_widget_draft import fit_layout_to_grid
+
+    briefs = [
+        {"id": 2, "name": "资产统计", "chart_type": ["single"], "fields": [{"name": "value"}], "params": []},
+        {"id": 3, "name": "分布", "chart_type": ["single"], "fields": [{"name": "value"}], "params": []},
+        {"id": 4, "name": "明细", "chart_type": ["single"], "fields": [{"name": "value"}], "params": []},
+    ]
+
+    def widget(index, source_id, x, y, width):
+        return {
+            "i": f"card-{index}",
+            "name": f"组件{index}",
+            "x": x,
+            "y": y,
+            "w": width,
+            "h": 3,
+            "valueConfig": {"chartType": "single", "dataSource": source_id, "selectedFields": ["value"]},
+        }
+
+    overflowing = prepare_dashboard_proposal(
+        {
+            "schemaVersion": "1.0",
+            "layout": [
+                widget(1, 2, 0, 0, 7),
+                widget(2, 3, 7, 0, 7),
+                widget(3, 4, 14, 0, 6),
+            ],
+            "filters": [],
+        },
+        briefs,
+    )
+    assert overflowing["ok"] is True
+    assert [(item["x"], item["y"], item["w"]) for item in overflowing["proposal"]["layout"]] == [(0, 0, 4), (4, 0, 4), (8, 0, 4)]
+
+    four_wide = fit_layout_to_grid(
+        [
+            {"i": "a", "x": 0, "y": 0, "w": 7, "h": 3},
+            {"i": "b", "x": 7, "y": 0, "w": 7, "h": 3},
+            {"i": "c", "x": 14, "y": 0, "w": 7, "h": 3},
+            {"i": "d", "x": 21, "y": 0, "w": 7, "h": 3},
+        ]
+    )
+    assert [(item["x"], item["w"]) for item in four_wide] == [(0, 3), (3, 3), (6, 3), (9, 3)]
+
+    uneven = fit_layout_to_grid(
+        [
+            {"i": "wide", "x": 0, "y": 0, "w": 9, "h": 3},
+            {"i": "narrow", "x": 9, "y": 0, "w": 4, "h": 3},
+        ]
+    )
+    assert [(item["x"], item["w"]) for item in uneven] == [(0, 8), (8, 4)]
+
+    five = fit_layout_to_grid([{"i": f"n{index}", "x": index * 7, "y": 0, "w": 7, "h": 3} for index in range(5)])
+    assert [item["w"] for item in five] == [3, 3, 2, 2, 2]
+    assert sum(item["w"] for item in five) == 12
+
+    kept = fit_layout_to_grid(
+        [
+            {"i": "a", "x": 0, "y": 0, "w": 4, "h": 3},
+            {"i": "b", "x": 4, "y": 0, "w": 4, "h": 4},
+            {"i": "c", "x": 8, "y": 0, "w": 4, "h": 3},
+            {"i": "d", "x": 0, "y": 4, "w": 4, "h": 3},
+        ]
+    )
+    assert [(item["i"], item["x"], item["y"], item["w"], item["h"]) for item in kept] == [
+        ("a", 0, 0, 4, 3),
+        ("b", 4, 0, 4, 4),
+        ("c", 8, 0, 4, 3),
+        ("d", 0, 4, 4, 3),
+    ]
+
+
+def test_revise_accepts_column_count_as_well_as_widget_count():
+    from apps.operation_analysis.services.dashboard_proposal_service import revise_dashboard_proposal
+
+    current = {
+        "schemaVersion": "1.0",
+        "layout": [
+            {"i": "card-1", "name": "资产总数", "x": 0, "y": 0, "w": 6, "h": 3, "valueConfig": {"chartType": "single"}},
+            {"i": "card-2", "name": "资产分布", "x": 6, "y": 0, "w": 6, "h": 3, "valueConfig": {"chartType": "pie"}},
+            {"i": "card-3", "name": "资产明细", "x": 0, "y": 3, "w": 12, "h": 3, "valueConfig": {"chartType": "table"}},
+        ],
+        "filters": [],
+    }
+    three = revise_dashboard_proposal(current, "调整成一行三列")
+    assert [item["w"] for item in three["layout"]] == [4, 4, 4]
+    four = revise_dashboard_proposal(current, "调整成一行四列")
+    assert [item["w"] for item in four["layout"]] == [3, 3, 3]
+
+
 def test_inventory_describes_four_columns_when_widget_heights_differ():
     from apps.operation_analysis.services.dashboard_proposal_service import revise_dashboard_proposal
     from apps.operation_analysis.services.dashboard_widget_draft import format_proposal_inventory
