@@ -40,7 +40,8 @@ path 端点（urls.py:57-63）：`api/test/`（request_test，receiver.py:107）
 - 即时旁路新增前置屏蔽过滤【已实现/已存在】：`InstantAlertDispatcher.dispatch()` 在收集命中规则之前调用 `_exclude_shielded(events)` 静态方法（`instant_dispatcher.py:273,310`），该方法按 `event_id` 查库过滤 `status=SHIELD` 的事件；内存中 `Event` 对象的状态可能滞后，故以库内当前值为准。
 - 富化规则配置层【已实现/已存在】：`EnrichmentRuleModelViewSet` 提供规则 CRUD 与 `metrics` 指标接口；规则模型以 `provider_type`、`input_binding`、`output_projection`、`preset_key` 描述外部提供方、入参绑定和结果投影（`views/enrichment.py:18-109`、`serializers/enrichment.py:7-25`、`models/enrichment.py`）。
 - 富化运行时【已实现/已存在】：告警富化仍经 `common/source_adapter/base.py` 的 `enable_rich_event` 开关与 `enrich_event()` 入口控制，并通过 `apps.rpc.cmdb.CMDB` 获取资源元数据；配置层与运行时入口已打通在同一模块内。
-- 声明式富化已落地为 `EnrichmentRule` + 批量引擎：`enrichment/engine.py:21` 执行规则，`common/source_adapter/base.py:26,198` 接入事件处理链路，聚合构建器在 `aggregation/builder/alert_builder.py:122` 写回 Alert/Event enrichment 结果；不再按“源码缺失”处理。
+- 声明式富化已落地为 `EnrichmentRule` + 批量引擎：`enrichment/engine.py` 执行规则，`common/source_adapter/base.py` 接入事件处理链路，聚合构建器写回 Alert/Event enrichment。`provider_config.owner_fields` 把 CMDB 用户 ID 转成用户名后写入 `Event.assignee`，丰富到则替换上报值，否则保留上报值。
+- 告警责任人与处理人分离：`Alert.owners` 是创建事件 `assignee` 的并集。分派目标 `notification_target.prefer_alert_owner` 为真时，优先把告警分给有效责任人，否则使用页面选择的兜底用户或组织。详见 `specs/changes/alert-owner-dispatch/spec.md`。
 - 聚合 `aggregation/` 子目录：`processor` / `strategy`（指纹分组）/ `builder` / `recovery`（超时恢复）/ `window` / `core` / `engine` / `query` / `templates`【已实现/已存在，目录均存在】。
 - 聚合查询模板沙箱【已实现】：聚合 SQL 构建器仅从应用内受信任的模板目录加载模板，并使用受限模板环境保留默认值过滤器，避免模板运行时获得不必要的执行能力（`aggregation/query/builder.py:1-27`）。
 > 证据来源：server/apps/alerts/aggregation/query/builder.py:1-27　|　同步基线：d2769559　|　【已实现】

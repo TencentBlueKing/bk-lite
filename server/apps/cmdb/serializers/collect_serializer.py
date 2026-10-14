@@ -791,6 +791,45 @@ class CollectModelSerializer(AuthSerializer):
         attrs["driver_type"] = CollectDriverTypes.PROTOCOL
         return attrs
 
+    def _apply_custom_script_contract(self, attrs):
+        from apps.cmdb.constants.constants import CollectDriverTypes
+        from apps.cmdb.services.custom_script_credentials import load_plugin
+        from apps.cmdb.utils.base import get_current_team_from_request
+
+        params = dict(self._get_attr_or_instance_value(attrs, "params") or {})
+        if self.instance is not None:
+            existing_pk = (self.instance.params or {}).get("custom_plugin_pk")
+            if existing_pk:
+                params["custom_plugin_pk"] = existing_pk
+        plugin = load_plugin(params.get("custom_plugin_pk"))
+        if plugin is None:
+            raise serializers.ValidationError({"params": "自定义采集插件不存在"})
+        request = self.context.get("request")
+        current_team = get_current_team_from_request(request, required=False) if request is not None else None
+        user = getattr(request, "user", None) if request is not None else None
+        if current_team and str(current_team) not in {str(item) for item in (plugin.team or [])} and not getattr(user, "is_superuser", False):
+            raise serializers.ValidationError({"params": "不能引用其他组织的插件"})
+        submitted_model_id = self._get_attr_or_instance_value(attrs, "model_id")
+        if submitted_model_id not in (None, "", plugin.model_id):
+            raise serializers.ValidationError({"model_id": "任务模型必须与插件目标模型一致"})
+        attrs["model_id"] = plugin.model_id
+        attrs["driver_type"] = CollectDriverTypes.JOB
+        params["os_type"] = plugin.os_type
+        attrs["params"] = params
+
+    def _normalize_custom_script_targets(self, attrs):
+        """自定义脚本的执行目标是主机或 IP 段，不按插件目标模型校验实例。"""
+        instances = self._get_attr_or_instance_value(attrs, "instances") or []
+        ip_range = str(self._get_attr_or_instance_value(attrs, "ip_range") or "").strip()
+        if instances and ip_range:
+            raise serializers.ValidationError({"ip_range": "选择主机时必须清空 IP 范围"})
+        if not instances and not ip_range:
+            raise serializers.ValidationError({"ip_range": "请选择 IP 段或主机"})
+        if not instances:
+            return
+        attrs["instances"] = self._normalize_instance_identity_contract(instances, "host", host_discovery=True)
+        attrs["ip_range"] = ""
+
     def validate(self, attrs):  # noqa: C901
         task_type = self._get_attr_or_instance_value(attrs, "task_type")
         model_id = self._get_attr_or_instance_value(attrs, "model_id")
@@ -799,14 +838,20 @@ class CollectModelSerializer(AuthSerializer):
         has_vault = any(item.get("credential_source") == "vault" for item in candidate_pool if isinstance(item, dict))
         self._validate_ip_discovery_timeout(attrs, task_type)
 
-        host_discovery = self._normalize_target_source(attrs, model_id, task_type)
-        if "instances" in attrs and not host_discovery:
-            attrs["instances"] = self._normalize_instance_identity_contract(
-                attrs.get("instances"),
-                model_id,
-            )
+        if task_type == CollectPluginTypes.CUSTOM_SCRIPT:
+            self._apply_custom_script_contract(attrs)
+            model_id = attrs.get("model_id", model_id)
+            self._normalize_custom_script_targets(attrs)
+            host_discovery = False
+        else:
+            host_discovery = self._normalize_target_source(attrs, model_id, task_type)
+            if "instances" in attrs and not host_discovery:
+                attrs["instances"] = self._normalize_instance_identity_contract(
+                    attrs.get("instances"),
+                    model_id,
+                )
 
-        credential_contract = get_collect_credential_contract(model_id)
+        credential_contract = None if task_type == CollectPluginTypes.CUSTOM_SCRIPT else get_collect_credential_contract(model_id)
         if credential_contract:
             expected_task_type = credential_contract.get("task_type")
             expected_driver_type = credential_contract.get("driver_type")

@@ -6,7 +6,7 @@ import { useTranslation } from '@/utils/i18n';
 
 const MIB = 1024 * 1024;
 
-export type BudgetForm = {
+export interface BudgetForm {
   requestsPerMinute: number | null;
   eventsPerMinute: number | null;
   compressedMiB: number | null;

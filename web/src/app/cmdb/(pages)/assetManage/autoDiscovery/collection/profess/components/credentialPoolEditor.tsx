@@ -113,6 +113,7 @@ export interface CredentialPoolEditorProps {
   vaultCategory?: string | null;
   vaultTypeKeys?: string[];
   collectModelId?: string;
+  inlineOnly?: boolean;
 }
 
 const VAULT_META_KEYS = new Set([
@@ -1425,6 +1426,7 @@ export default function CredentialPoolEditor({
   vaultCategory,
   vaultTypeKeys = [],
   collectModelId,
+  inlineOnly = false,
 }: CredentialPoolEditorProps): React.ReactElement {
   const { t } = useTranslation();
   const sensors = useSensors(useSensor(PointerSensor));
@@ -1617,7 +1619,7 @@ export default function CredentialPoolEditor({
     const itemKey = getItemKey(item, index);
     const expanded = activeKeys.includes(itemKey);
     const passwordVisible = visibleSecretKeys.includes(itemKey);
-    const source = item.credential_source || 'inline';
+    const source = inlineOnly ? 'inline' : (item.credential_source || 'inline');
     // 旧 JOB 引用可能未保存类型；该版本新增 SSH 引用始终显式保存 vault_type_key。
     const legacyPasswordReference = vaultTypeKeys.includes('ssh')
       && ['ssh', 'config_file'].includes(credentialShape)
@@ -1715,11 +1717,17 @@ export default function CredentialPoolEditor({
               className={styles.credentialCardBody}
             >
               <div className="mb-3 flex justify-end">
+                <Tooltip title={inlineOnly ? '自定义采集只能填写凭据' : undefined}>
+                <span>
                 <Button
                   type="link"
                   className="!px-0"
+                  disabled={inlineOnly}
                   icon={<EditOutlined aria-hidden="true" />}
                   onClick={() => {
+                    if (inlineOnly) {
+                      return;
+                    }
                     const next = source === 'vault' ? 'inline' : 'vault';
                     // 首次切到已有凭据时尚未保存类型，仍须保留任务自己的特权密码。
                     const authContext = { ...item, vault_type_key: selectedVaultType };
@@ -1742,6 +1750,8 @@ export default function CredentialPoolEditor({
                     ? t('Collection.credentialPool.useManual', '改用手动录入')
                     : t('Collection.credentialPool.useExisting', '使用已有凭据')}
                 </Button>
+                </span>
+                </Tooltip>
               </div>
               {source === 'vault' && (
                 <div className="mb-4">

@@ -294,6 +294,9 @@ spec:
             - name: telegraf-config-volume
               mountPath: /etc/telegraf/telegraf.conf
               subPath: telegraf.conf
+            - name: telegraf-config-volume
+              mountPath: /etc/telegraf/collect-resource.sh
+              subPath: collect-resource.sh
             - name: nats-ca-cert
               mountPath: /etc/nats_ca.crt
               subPath: ca.crt
@@ -329,16 +332,15 @@ data:
       quiet = false
       hostname = "${CLUSTER_NAME:-k8s-bklite-cluster}"
 
-    [[inputs.prometheus]]
-      urls = ["http://kube-state-metrics:8080/metrics"]
-      metric_version = 2
-      ## KSM 实例暴露的是两条链路的并集，CMDB 链路只消费以下 23 个指标
-      ## （server/apps/cmdb/collection/constants.py），其余（监控专属的 status_phase/
-      ## condition 等）不上报；metric_version=2 下指标名是 field 名，故用 fieldpass
-      fieldpass = ["kube_cronjob_annotations", "kube_cronjob_info", "kube_daemonset_annotations", "kube_daemonset_created", "kube_deployment_annotations", "kube_deployment_created", "kube_deployment_spec_replicas", "kube_job_annotations", "kube_job_info", "kube_namespace_labels", "kube_node_info", "kube_node_role", "kube_node_status_capacity", "kube_pod_container_resource_limits", "kube_pod_container_resource_requests", "kube_pod_info", "kube_replicaset_annotations", "kube_replicaset_created", "kube_replicaset_owner", "kube_replicaset_spec_replicas", "kube_statefulset_annotations", "kube_statefulset_created", "kube_statefulset_replicas"]
-      ## CMDB 采集(collect_plugin/k8s.py)未消费的维度，上报前丢弃以削减传输
+    [[inputs.exec]]
+      commands = ["/bin/sh /etc/telegraf/collect-resource.sh"]
+      timeout = "45s"
+      data_format = "prometheus"
+      prometheus_metric_version = 2
+      prometheus_ignore_timestamp = false
+      name_override = "prometheus"
       tagexclude = ["uid", "unit", "host_ip", "host_network", "priority_class", "system_uuid", "provider_id", "kubeproxy_version", "owner_is_controller", "url"]
-      [inputs.prometheus.tags]
+      [inputs.exec.tags]
         instance_id = "${CLUSTER_NAME:-k8s-bklite-cluster}"
         instance_type = "k8s"
         instance_name = "${CLUSTER_NAME:-k8s-bklite-cluster}"
@@ -352,3 +354,34 @@ data:
       secure = true
       insecure_skip_verify = false
       tls_ca = "/etc/nats_ca.crt"
+  collect-resource.sh: |
+    #!/bin/sh
+    # 先完整取得 HTTP 响应，再一起输出资源、逐指标计数及快照时间。
+    # HTTP/解析失败不输出标记；VM 缺片时 Server 根据计数禁止清理。
+    set -eu
+    snapshot_file=$(mktemp)
+    trap 'rm -f "$snapshot_file"' EXIT HUP INT TERM
+    curl --fail --silent --show-error --max-time 30 --max-filesize 67108864 \
+      http://kube-state-metrics:8080/metrics -o "$snapshot_file"
+    snapshot_ts=$(date +%s)
+    awk -v names="kube_cronjob_annotations kube_cronjob_info kube_daemonset_annotations kube_daemonset_created kube_deployment_annotations kube_deployment_created kube_deployment_spec_replicas kube_job_annotations kube_job_info kube_namespace_labels kube_node_info kube_node_role kube_node_status_capacity kube_pod_container_resource_limits kube_pod_container_resource_requests kube_pod_info kube_replicaset_annotations kube_replicaset_created kube_replicaset_owner kube_replicaset_spec_replicas kube_statefulset_annotations kube_statefulset_created kube_statefulset_replicas" -v ts="$snapshot_ts" '
+    BEGIN { split(names, required, " "); for (i in required) counts[required[i]] = 0 }
+    /^# HELP kube_/ { has_ksm = 1 }
+    /^#/ { print; next }
+    /^[[:space:]]*$/ { next }
+    {
+      name = $0; sub(/[{[:space:]].*$/, "", name)
+      if (name in counts) {
+        # KSM 原始样本没有时间戳；使用同一时间，避免删除已消失的旧序列被 lookback 带入。
+        if ($NF !~ /^([-+]?[0-9]+([.][0-9]*)?([eE][-+]?[0-9]+)?|NaN|[-+]?Inf)$/) { invalid = 1; next }
+        counts[name]++
+        print $0 " " ts "000"
+      }
+    }
+    END {
+      if (!has_ksm || invalid) exit 1
+      print "# TYPE cmdb_k8s_snapshot_count gauge"
+      for (name in counts) printf "cmdb_k8s_snapshot_count{resource_metric=\"%s\"} %d %s000\n", name, counts[name], ts
+      print "# TYPE cmdb_k8s_snapshot_timestamp gauge"
+      printf "cmdb_k8s_snapshot_timestamp{snapshot_contract_version=\"1\"} %s %s000\n", ts, ts
+    }' "$snapshot_file"

@@ -632,6 +632,21 @@ class Neo4jClient:
         label_str = f":{label}" if label else ""
         self.session.run(f"MATCH (n{label_str}) WHERE id(n) IN {entity_ids} DETACH DELETE n")
 
+    def delete_entity_if_unchanged(self, label: str, instance: dict) -> bool:
+        """仅删除对账时的同一实例版本，避免删除已刷新或转移归属的资产。"""
+        validated_label = CQLValidator.validate_label(label)
+        params = {"id": CQLValidator.validate_id(instance["_id"])}
+        conditions = ["ID(n) = $id"]
+        for field in ("model_id", "inst_uuid", "collect_task", "collect_time"):
+            value = instance.get(field)
+            if value is None:
+                conditions.append(f"n.{field} IS NULL")
+            else:
+                conditions.append(f"n.{field} = ${field}")
+                params[field] = value
+        query = f"MATCH (n:{validated_label}) WHERE {' AND '.join(conditions)} " "WITH n, ID(n) AS deleted_id DETACH DELETE n RETURN deleted_id"
+        return self.session.run(query, params).single() is not None
+
     def detach_delete_entity(self, label: str, id: int):
         """删除实体，以及实体的关联关系"""
         label_str = f":{label}" if label else ""

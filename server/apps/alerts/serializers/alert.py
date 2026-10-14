@@ -91,6 +91,7 @@ class AlertModelSerializer(AuthSerializer):
             "closed_at": {"read_only": True},
             "monitor_objects": {"read_only": True},
             "push_source_ids": {"read_only": True},
+            "owners": {"read_only": True},
             "log_alert_id": {"read_only": True},
             # "operator": {"write_only": True},
             "labels": {"write_only": True},

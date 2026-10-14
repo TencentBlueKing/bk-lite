@@ -63,8 +63,10 @@ def test_task_status_splits_ipmi_and_redfish_while_preserving_protocol_total():
     visible_queryset.values.assert_called_once_with(
         "model_id",
         "driver_type",
+        "task_type",
         "exec_status",
         "params__collection_protocol",
+        "params__custom_plugin_pk",
     )
     assert payload["physcial_server__protocol"]["running"] == 1
     assert payload["physcial_server__protocol"]["failed"] == 1

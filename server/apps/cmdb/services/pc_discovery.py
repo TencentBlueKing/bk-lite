@@ -10,6 +10,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+from apps.cmdb.collection.cleanup import cleanup_due
 from apps.cmdb.collection.round_metadata import RoundMetadataProtocolError, build_round_metadata_lookups
 from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION, OPERATOR_INSTANCE, DataCleanupStrategy
 from apps.cmdb.graph.drivers.graph_client import GraphClient
@@ -322,7 +323,8 @@ class PCSnapshotReconciler:
         result.update(sw_counts)
         allow_delete = snapshot.can_delete and sw_counts["software_failed"] == 0
         delete_counts = {"software_deleted": 0, "delete_failed": 0}
-        if allow_delete and getattr(self.task, "data_cleanup_strategy", "") == DataCleanupStrategy.IMMEDIATELY:
+        allow_delete = allow_delete and str(result["pc_entity"].get("collect_task")) == str(self.task.id)
+        if allow_delete and self.task.data_cleanup_strategy != DataCleanupStrategy.NO_CLEANUP:
             with GraphClient() as ag:
                 delete_counts = self._delete_missing_software(ag, snapshot, result["pc_entity"])
         result.update(delete_counts)
@@ -363,8 +365,11 @@ class PCSnapshotReconciler:
                 id_to_entity[src_id] = entity
             if entity is None or entity.get("inst_name") in keep_inst_names:
                 continue
+            if not cleanup_due(self.task.data_cleanup_strategy, entity.get("collect_time"), snapshot.collected_at.isoformat(), self.task.expire_days):
+                continue
             try:
-                ag.detach_delete_entity(INSTANCE, src_id)
+                if not ag.delete_entity_if_unchanged(INSTANCE, entity):
+                    continue
                 deleted_entities.append(entity)
                 counts["software_deleted"] += 1
                 counts["deleted_names"].append(entity.get("inst_name", ""))

@@ -1289,6 +1289,7 @@ ATTR:
     adminstatus: 管理状态
     operstatus: 操作状态
     name: 接口名称
+    description: 接口描述
     status: 状态
     self_device: 所属设备
   k8s_cluster:

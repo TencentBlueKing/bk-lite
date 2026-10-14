@@ -10,9 +10,9 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.generics import get_object_or_404
 from rest_framework.response import Response
 
-from apps.alerts.constants.constants import SessionStatus
+from apps.alerts.constants.constants import LevelType, SessionStatus
 from apps.alerts.filters.notification_template import NotificationTemplateFilter
-from apps.alerts.models.models import Alert
+from apps.alerts.models.models import Alert, Level
 from apps.alerts.models.notification_template import NotificationTemplate
 from apps.alerts.notification_templates.binding import build_runtime_alert_context, load_event_context
 from apps.alerts.notification_templates.events import (
@@ -24,7 +24,7 @@ from apps.alerts.notification_templates.events import (
     inspect_event_usage,
 )
 from apps.alerts.notification_templates.operation import ensure_alert_operation_template, is_managed_nats_channel
-from apps.alerts.notification_templates.renderer import TemplateValidationError, render_source
+from apps.alerts.notification_templates.renderer import TemplateValidationError, normalize_level_color, render_source
 from apps.alerts.serializers.notification_template import NotificationTemplateSerializer
 from apps.alerts.utils.i18n import alerts_message, serializer_message
 from apps.alerts.utils.permission_scope import (
@@ -76,6 +76,15 @@ def _preview_events():
     return {"count": 2, "latest": latest, "first": first, "rows": [latest, first]}
 
 
+def _preview_level_color(level_id):
+    try:
+        raw_level = int(level_id)
+    except (TypeError, ValueError):
+        return normalize_level_color(None)
+    color = Level.objects.filter(level_type=LevelType.ALERT, level_id=raw_level).values_list("color", flat=True).first()
+    return normalize_level_color(color)
+
+
 def _preview_context(sample):
     sample = sample if isinstance(sample, dict) else {}
     receivers = sample.get("receivers", ["zhangsan"])
@@ -96,9 +105,15 @@ def _preview_context(sample):
         "first_event_time": "2026-09-08 10:00:00+08:00",
         "last_event_time": "2026-09-08 10:05:00+08:00",
         "operators": ["zhangsan"],
+        "owners": ["zhangsan"],
         "team": [1],
         **(sample.get("alert") if isinstance(sample.get("alert"), dict) else {}),
     }
+    sample_alert = sample.get("alert") if isinstance(sample.get("alert"), dict) else {}
+    if "level_color" in sample_alert:
+        alert["level_color"] = normalize_level_color(alert.get("level_color"))
+    else:
+        alert["level_color"] = _preview_level_color(alert.get("level_id"))
     return {
         "alert": alert,
         "labels": {"env": "prod", **(sample.get("labels") if isinstance(sample.get("labels"), dict) else {})},
@@ -393,12 +408,14 @@ class NotificationTemplateViewSet(ModelViewSet):
                     {"path": "alert.content", "label": alerts_message(request, "catalog.alert_content")},
                     {"path": "alert.level", "label": alerts_message(request, "catalog.alert_level")},
                     {"path": "alert.level_id", "label": alerts_message(request, "catalog.alert_level_id")},
+                    {"path": "alert.level_color", "label": alerts_message(request, "catalog.alert_level_color")},
                     {"path": "alert.alert_id", "label": alerts_message(request, "catalog.alert_id")},
                     {"path": "alert.created_at", "label": alerts_message(request, "catalog.alert_created_at")},
                     {"path": "alert.resource_name", "label": alerts_message(request, "catalog.alert_resource_name")},
                     {"path": "alert.resource_type", "label": alerts_message(request, "catalog.alert_resource_type")},
                     {"path": "alert.source_name", "label": alerts_message(request, "catalog.alert_source_name")},
                     {"path": "alert.item", "label": alerts_message(request, "catalog.alert_item")},
+                    {"path": "alert.owners", "label": alerts_message(request, "catalog.alert_owners")},
                     {"path": "notification.scene_name", "label": alerts_message(request, "catalog.scene_name")},
                     {"path": "notification.receiver_names", "label": alerts_message(request, "catalog.receiver_names")},
                     {"path": "notification.receivers", "label": alerts_message(request, "catalog.receivers")},

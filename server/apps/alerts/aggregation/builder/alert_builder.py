@@ -15,6 +15,8 @@ from apps.alerts.utils.enrichment import resolve_data_path
 from apps.alerts.utils.permission_scope import normalize_team_ids
 from apps.core.logger import alert_logger as logger
 
+MAX_ALERT_OWNERS = 50
+
 
 class AlertBuilder:
     _alert_event_cache: Dict[int, set] = {}
@@ -166,6 +168,26 @@ class AlertBuilder:
         }
 
     @staticmethod
+    def _collect_owners(events) -> list:
+        """创建事件责任人的有序并集。恢复和关闭事件不参与。"""
+        owners = []
+        seen = set()
+        for event in events:
+            if getattr(event, "action", None) != EventAction.CREATED:
+                continue
+            for name in getattr(event, "assignee", None) or []:
+                if not isinstance(name, str):
+                    continue
+                username = name.strip()
+                if not username or username in seen:
+                    continue
+                seen.add(username)
+                owners.append(username)
+                if len(owners) >= MAX_ALERT_OWNERS:
+                    return owners
+        return owners
+
+    @staticmethod
     def _resolve_standard_fields(events) -> Dict[str, Any]:
         event_list = list(events)
         if not event_list:
@@ -263,6 +285,7 @@ class AlertBuilder:
         standard_fields = AlertBuilder._resolve_standard_fields(events)
         dimensions = AlertBuilder._resolve_dimensions(events, group_by_field)
         monitor_objects = resolve_monitor_objects(event for event in events if event.action == EventAction.CREATED)
+        owners = AlertBuilder._collect_owners(events)
 
         window_config = WindowFactory.create_from_strategy(strategy)
 
@@ -289,6 +312,7 @@ class AlertBuilder:
             resource_name=standard_fields["resource_name"],
             resource_type=standard_fields["resource_type"],
             monitor_objects=monitor_objects,
+            owners=owners,
             source_name=standard_fields["source_name"],
             push_source_ids=standard_fields["push_source_ids"],
             group_by_field=group_by_field,
@@ -350,6 +374,7 @@ class AlertBuilder:
         related_events = alert.events.select_related("source").all().order_by("pk")
         standard_fields = AlertBuilder._resolve_standard_fields(related_events)
         alert.monitor_objects = resolve_monitor_objects(event for event in related_events if event.action == EventAction.CREATED)
+        alert.owners = AlertBuilder._collect_owners(related_events)
         dimensions = AlertBuilder._resolve_dimensions(
             related_events,
             alert.group_by_field or "",
@@ -376,6 +401,7 @@ class AlertBuilder:
                 "resource_name",
                 "resource_type",
                 "monitor_objects",
+                "owners",
                 "item",
                 "labels",
                 "enrichment",

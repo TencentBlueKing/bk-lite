@@ -50,6 +50,7 @@ export interface AlarmTableDataItem {
   event_count: number;
   duration: string;
   operator_user: string;
+  owners?: string[];
   operator: string[];
   team?: Array<string | number>;
   created_at: string;

@@ -13,6 +13,7 @@ from apps.alerts.enrichment.circuit_breaker import CircuitBreaker
 from apps.alerts.enrichment.keys import build_binding_key, resolve_binding
 from apps.alerts.enrichment.matcher import event_matches
 from apps.alerts.enrichment.merge import merge_namespace_payload
+from apps.alerts.enrichment.owners import apply_enriched_owners, remember_owner_ids
 from apps.alerts.enrichment.projection import project
 from apps.alerts.enrichment.providers.base import FetchBatchResult, get_provider
 from apps.alerts.enrichment.result import EnrichmentBatchResult, EnrichmentSummary, RuleOutcome
@@ -165,12 +166,13 @@ class EnrichmentEngine:
         summary = EnrichmentSummary(received=len(events))
         outcomes: List[RuleOutcome] = []
         writers: Dict[tuple, List[int]] = {}
+        owner_ids = {}
         try:
             rules = self._active_rules()
         except Exception:
             logger.error("[Enrichment] 加载丰富规则失败", exc_info=True)
             summary.failed = len(events)
-            return self._finish(events, summary, outcomes, started_at)
+            return self._finish(events, summary, outcomes, started_at, owner_ids)
 
         for rule in rules:
             if self._clock() >= deadline:
@@ -186,17 +188,18 @@ class EnrichmentEngine:
                 self._append_outcome(outcomes, rule, getattr(rule, "resolved_namespace", ""), "budget_exhausted", len(events))
                 break
             try:
-                self._apply_rule(rule, events, summary, outcomes, writers, deadline)
+                self._apply_rule(rule, events, summary, outcomes, writers, deadline, owner_ids)
             except Exception:
                 logger.error("[Enrichment] 规则执行失败 rule=%s", getattr(rule, "name", "?"), exc_info=True)
                 summary.failed += 1
                 self._append_outcome(outcomes, rule, getattr(rule, "resolved_namespace", ""), "provider_failed", 1)
 
         summary.enriched = sum(bool(event.get("enrichment")) for event in events)
-        return self._finish(events, summary, outcomes, started_at)
+        return self._finish(events, summary, outcomes, started_at, owner_ids)
 
-    def _finish(self, events, summary, outcomes, started_at):
+    def _finish(self, events, summary, outcomes, started_at, owner_ids=None):
         self._finalize_event_meta(events)
+        apply_enriched_owners(events, {} if owner_ids is None else owner_ids)
         summary.duration_ms = max(0, int((self._clock() - started_at) * 1000))
         result = EnrichmentBatchResult(events=events, summary=summary, outcomes=outcomes)
         if self._telemetry is not None:
@@ -206,7 +209,7 @@ class EnrichmentEngine:
                 logger.debug("[Enrichment] 运行指标记录失败 error_type=%s", type(exc).__name__)
         return result
 
-    def _apply_rule(self, rule, events, summary, outcomes, writers, deadline) -> None:
+    def _apply_rule(self, rule, events, summary, outcomes, writers, deadline, owner_ids=None) -> None:
         rule_team = {int(team_id) for team_id in (getattr(rule, "team", None) or [])}
         events_by_scope: Dict[tuple, List[Dict]] = {}
         missing_team = 0
@@ -242,9 +245,10 @@ class EnrichmentEngine:
                 outcomes,
                 writers,
                 deadline,
+                owner_ids,
             )
 
-    def _apply_rule_for_scope(self, rule, events, effective_team, summary, outcomes, writers, deadline) -> None:  # noqa: C901
+    def _apply_rule_for_scope(self, rule, events, effective_team, summary, outcomes, writers, deadline, owner_ids=None) -> None:  # noqa: C901
         namespace = rule.resolved_namespace
         provider_type = rule.provider_type
 
@@ -359,7 +363,10 @@ class EnrichmentEngine:
             if status not in {"provider_failed", "circuit_open", "budget_exhausted", "provider_saturated"}:
                 self._append_outcome(outcomes, rule, namespace, status, count)
         for binding_key in all_keys:
-            projected = project(records_by_key.get(binding_key, []), rule.output_projection, rule.on_multiple)
+            records = records_by_key.get(binding_key, [])
+            status = status_by_key.get(binding_key, "projection_empty")
+            remember_owner_ids(owner_ids if owner_ids is not None else {}, rule, records, status, key_to_events[binding_key])
+            projected = project(records, rule.output_projection, rule.on_multiple)
             if not projected:
                 status = status_by_key.get(binding_key, "projection_empty")
                 if status in {"success", "cache_hit"} and records_by_key.get(binding_key):

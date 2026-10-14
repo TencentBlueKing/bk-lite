@@ -3,6 +3,7 @@ export interface AssignmentNotificationTarget {
     usernames?: string[];
     organization_ids?: number[];
     include_children?: boolean;
+    prefer_alert_owner?: boolean;
 }
 
 export interface AssignmentEscalationLayer {

@@ -17,12 +17,9 @@ def is_failed_vm_metric(row):
 
 
 class CollectBase(metaclass=ABCMeta):
-    """
-     k8s、阿里云、vc 在vm对比后把旧数据自动删除，如果无数据，定义为这个采集任务异常，任务的数据清空，但是不碰cmdb的数据
-    然后其他对象模型的采集，不删除数据
-    """
+    """标准化指标；清理统一由任务策略、来源归属和完整快照判定。"""
 
-    _MODEL_ID = None  # 模型ID，需要删除cmdb数据的采集子类需要定义 不定义不删除
+    _MODEL_ID = None  # 插件根模型标识，不用于决定是否清理子模型
 
     def __init__(self, inst_name, inst_id, task_id, *args, collect_inst=None, **kwargs):
         self._collect_inst = collect_inst
@@ -122,6 +119,8 @@ class CollectBase(metaclass=ABCMeta):
         data = self.query_data()
         # 原始详情保留失败指标，CMDB 计算只处理成功返回的数据。
         self.raw_data = list(data.get("result", []))
+        if any(is_failed_vm_metric(row) for row in self.raw_data):
+            self.snapshot_complete = False
         success_data = dict(data)
         success_data["result"] = [row for row in self.raw_data if not is_failed_vm_metric(row)]
         self.format_data(success_data)

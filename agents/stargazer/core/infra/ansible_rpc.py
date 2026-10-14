@@ -36,6 +36,7 @@ async def ansible_adhoc(
     extra_vars: Optional[Dict[str, Any]] = None,
     callback: Optional[Dict[str, Any]] = None,
     task_id: Optional[str] = None,
+    stream_remote_type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     通过 NATS RPC 调用 Ansible Executor 执行 adhoc 命令
@@ -78,6 +79,8 @@ async def ansible_adhoc(
         "task_id": task_id,
         "execute_timeout": execute_timeout,
     }
+    if stream_remote_type:
+        request_data["stream_remote_type"] = stream_remote_type
 
     subject = f"ansible.adhoc.{ansible_node_id}"
     payload = json.dumps({"args": [request_data], "kwargs": {}}).encode()
