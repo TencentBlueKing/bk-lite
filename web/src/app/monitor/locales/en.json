@@ -3912,8 +3912,6 @@
         "hostCategoryFilesystemType": "Filesystem type",
         "hostCategoryDiskPeak": "Disk peak",
         "hostCategoryDiskUtilizationPeak": "Disk utilization (peak)",
-        "hostCategoryChartFollowsSelection": "Chart follows selection",
-        "hostCategoryChartFollowsRight": "Chart on the right follows selection",
         "hostCategoryReadThroughput": "Read throughput",
         "hostCategoryWriteThroughput": "Write throughput",
         "hostCategoryReadThroughputNamed": "Read throughput · {name}",

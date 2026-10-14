@@ -122,7 +122,6 @@ export default function NetworkPane({
 
       <div className={styles.sectionHead}>
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>网卡</div>
-        <div className={styles.hint}>{hostCategoryText(t, 'chartFollowsSelection')}</div>
       </div>
       <LayeredEntityTable
         rows={viewRows}

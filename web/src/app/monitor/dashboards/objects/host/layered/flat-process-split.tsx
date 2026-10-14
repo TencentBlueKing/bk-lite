@@ -10,7 +10,6 @@ import { pointsToChartData, type EntityTableRow } from '../entity-series';
 import LayeredEntityTable, { type LayeredColumn } from './entity-table';
 import StatusCountRow, { processStatusView } from './status-count';
 import ThinTimeSeries from './thin-time-series';
-import { hostCategoryText } from './category-copy';
 import { formatPercent, formatUnit, latestPreferCount, metricSettled } from './readings';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
@@ -146,7 +145,6 @@ export default function FlatProcessSplit({
             </Tooltip>
           </span>
         </div>
-        <div className={styles.hint}>{hostCategoryText(t, 'chartFollowsSelection')}</div>
       </div>
       <LayeredEntityTable
         rows={sorted}

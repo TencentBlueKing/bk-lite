@@ -161,7 +161,6 @@ export default function DiskPane({
             onClick={() => setSub('device')}
           />
         </div>
-        <div className={styles.hint}>{hostCategoryText(t, 'chartFollowsSelection')}</div>
       </div>
 
       {sub === 'mount' ? (

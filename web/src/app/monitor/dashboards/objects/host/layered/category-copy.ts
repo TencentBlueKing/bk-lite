@@ -28,8 +28,6 @@ export const HOST_CATEGORY_COPY = {
   filesystemType: [textId('hostCategoryFilesystemType'), '文件系统类型'],
   diskPeak: [textId('hostCategoryDiskPeak'), '磁盘峰值'],
   diskUtilizationPeak: [textId('hostCategoryDiskUtilizationPeak'), '磁盘利用率（最高）'],
-  chartFollowsSelection: [textId('hostCategoryChartFollowsSelection'), '选中后上图跟随'],
-  chartFollowsRight: [textId('hostCategoryChartFollowsRight'), '选中后右图跟随'],
   noData: [textId('noData'), '无数据'],
   cpuTimeBreakdown: [textId('hostCategoryCpuTimeBreakdown'), 'CPU 时间构成'],
   diskReadThroughput: [textId('hostCategoryDiskReadThroughput'), '磁盘读吞吐'],

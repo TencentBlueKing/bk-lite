@@ -357,20 +357,11 @@ button.kpiCard {
   height: 124px;
 }
 
-.hint,
 .footnote {
+  margin-top: 8px;
   font-size: 12px;
   font-weight: 400;
   color: var(--color-text-3);
-}
-
-.hint {
-  margin-left: auto;
-  text-align: right;
-}
-
-.footnote {
-  margin-top: 8px;
 }
 
 .shortcutCard {
