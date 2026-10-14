@@ -565,6 +565,14 @@ def apply_pc_snapshots(task, snapshots):
     return {"format_data": format_data, "snapshots": len(snapshots or []), "results": rows}
 
 
+def _metric_collect_failed(metric):
+    return str(metric.get("collect_status", "")).lower() == "failed" or bool(metric.get("cmdb_collect_error"))
+
+
+def _is_pc_root_metric(metric):
+    return metric.get("__name__") in _PC_METRIC_NAMES or metric.get("bk_obj_id") == "pc"
+
+
 def pc_rows_from_vm_result(result_rows):
     """从 VM 查询行取出 PC / 软件指标。序列名 pc_info_gauge 与逻辑名 pc_info 都收。"""
     rows = []
@@ -576,7 +584,7 @@ def pc_rows_from_vm_result(result_rows):
             continue
         name = metric.get("__name__")
         obj_id = metric.get("bk_obj_id")
-        if str(metric.get("collect_status", "")).lower() == "failed" or metric.get("cmdb_collect_error"):
+        if _metric_collect_failed(metric):
             continue
         recognized = name in _PC_METRIC_NAMES or name in _PC_SOFTWARE_METRIC_NAMES or obj_id in {"pc", "pc_software"}
         if not recognized:
@@ -590,11 +598,64 @@ def pc_rows_from_vm_result(result_rows):
     return rows
 
 
+def _failed_pc_target_keys(result_rows):
+    """失败的 PC 根行只用于任务计数。软件失败行不单独算一台 PC。"""
+    keys = []
+    seen = set()
+    for item in result_rows or []:
+        if not isinstance(item, dict):
+            continue
+        metric = item.get("metric")
+        if not isinstance(metric, dict) or not _metric_collect_failed(metric) or not _is_pc_root_metric(metric):
+            continue
+        key = str(metric.get("collection_target") or metric.get("inst_name") or "")
+        if not key:
+            key = f"__failed_{len(keys)}"
+        if key in seen:
+            continue
+        seen.add(key)
+        keys.append(key)
+    return keys
+
+
+def _snapshot_identity_keys(snapshots):
+    reported = set()
+    for snapshot in snapshots or []:
+        pc = getattr(snapshot, "pc", None) or {}
+        for value in (pc.get("collection_target"), pc.get("inst_name")):
+            text = str(value or "")
+            if text:
+                reported.add(text)
+    return reported
+
+
+def _record_unreported_pc_failures(format_data, failed_keys, snapshots):
+    reported = _snapshot_identity_keys(snapshots)
+    extra = [key for key in failed_keys if key not in reported]
+    if not extra:
+        return format_data
+    summary = format_data["pc_summary"]
+    summary["pc_failed"] += len(extra)
+    summary["pc_total"] += len(extra)
+    format_data["all"] = summary["pc_total"]
+    for key in extra:
+        format_data["update"].append(
+            {
+                "inst_name": key,
+                "model_id": "pc",
+                "_status": "failed",
+                "_error": "COLLECT_FAILED",
+            }
+        )
+    return format_data
+
+
 def reconcile_pc_vm_result(task, result_rows, reader_factory=None):
     """用 VM 里的 pc_info_gauge / pc_software_info_gauge 对账。没有完成标记时按 partial 写入。"""
+    failed_keys = _failed_pc_target_keys(result_rows)
     rows = pc_rows_from_vm_result(result_rows)
     metadata = {}
-    pc_roots = [row for row in rows if row.get("__name__") in _PC_METRIC_NAMES or row.get("bk_obj_id") == "pc"]
+    pc_roots = [row for row in rows if _is_pc_root_metric(row)]
     if pc_roots and reader_factory is not None:
         try:
             metadata = reader_factory(task).get_many(build_round_metadata_lookups(pc_roots), model_id="pc")
@@ -608,7 +669,8 @@ def reconcile_pc_vm_result(task, result_rows, reader_factory=None):
     if not isinstance(metadata, dict):
         metadata = {}
     snapshots = parse_pc_vm_rows(rows, metadata)
-    return apply_pc_snapshots(task, snapshots)["format_data"]
+    format_data = apply_pc_snapshots(task, snapshots)["format_data"]
+    return _record_unreported_pc_failures(format_data, failed_keys, snapshots)
 
 
 def pc_reconcile_input(plugin):
