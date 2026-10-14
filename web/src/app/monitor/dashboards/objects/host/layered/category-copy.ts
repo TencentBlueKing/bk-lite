@@ -78,7 +78,8 @@ export const HOST_CATEGORY_COPY = {
   zombieProcesses: [textId('hostCategoryZombieProcesses'), '僵尸进程'],
   busiestMount: [textId('hostCategoryBusiestMount'), '最满挂载点'],
   mountUsedOfTotal: [textId('hostCategoryMountUsedOfTotal'), '已用 {used} / 总量 {total}'],
-  events: [textId('hostCategoryEvents'), '事件']
+  events: [textId('hostCategoryEvents'), '事件'],
+  noEvents: [textId('hostCategoryNoEvents'), '暂无事件']
 } as const;
 
 export type HostCategoryCopyKey = keyof typeof HOST_CATEGORY_COPY;

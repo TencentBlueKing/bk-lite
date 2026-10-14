@@ -3961,7 +3961,8 @@
         "hostCategoryZombieProcesses": "僵尸进程",
         "hostCategoryBusiestMount": "最满挂载点",
         "hostCategoryMountUsedOfTotal": "已用 {used} / 总量 {total}",
-        "hostCategoryEvents": "事件"
+        "hostCategoryEvents": "事件",
+        "hostCategoryNoEvents": "暂无事件"
       }
     }
   },

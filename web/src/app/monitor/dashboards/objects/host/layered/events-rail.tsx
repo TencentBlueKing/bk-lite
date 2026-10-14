@@ -188,7 +188,16 @@ export default function EventsRail({
     return () => observer.disconnect();
   }, [events]);
 
-  if (!events.length) return null;
+  if (!events.length) {
+    return (
+      <div className={styles.eventsRail} data-events-rail="" data-events-empty="">
+        <span className={styles.eventsLabel}>{hostCategoryText(t, 'events')}</span>
+        <div className={styles.eventsRow}>
+          <span className={styles.eventsEmpty}>{hostCategoryText(t, 'noEvents')}</span>
+        </div>
+      </div>
+    );
+  }
 
   const visible = events.slice(0, visibleCount);
   const hidden = events.slice(visibleCount);

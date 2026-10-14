@@ -905,7 +905,7 @@ button.kpiCard {
   }
 }
 
-/* 概览事件轻轨。没有事件时不渲染，避免空壳白条。 */
+/* 概览事件轻轨。没有事件时仍留一行矮轨，文案左对齐，不撑高。 */
 .eventsRail {
   position: relative;
   box-sizing: border-box;
@@ -933,6 +933,14 @@ button.kpiCard {
   font-size: 12px;
   font-weight: 500;
   line-height: 16px;
+}
+
+.eventsEmpty {
+  flex: none;
+  color: var(--color-text-3);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
 }
 
 .eventsMeasure {

@@ -3961,7 +3961,8 @@
         "hostCategoryZombieProcesses": "Zombie processes",
         "hostCategoryBusiestMount": "Fullest mount",
         "hostCategoryMountUsedOfTotal": "Used {used} / Total {total}",
-        "hostCategoryEvents": "Events"
+        "hostCategoryEvents": "Events",
+        "hostCategoryNoEvents": "No events"
       }
     }
   },
