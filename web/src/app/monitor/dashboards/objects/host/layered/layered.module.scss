@@ -192,62 +192,58 @@
   flex-shrink: 0;
 }
 
-/* 磁盘两区：桌面左表右短折线。窄于 1100 回退为表上图下。 */
-.diskSplit {
-  display: grid;
-  gap: 14px;
-  align-items: start;
-  min-width: 0;
-}
-
-.diskSplitMount {
-  grid-template-columns: minmax(0, 60fr) minmax(0, 40fr);
-}
-
-.diskSplitDevice {
-  grid-template-columns: minmax(0, 55fr) minmax(0, 45fr);
-}
-
-.diskCharts {
+/* 磁盘两区：上图下表。挂载一张通栏短图；块设备四卡一行，对齐网络趋势。窄于 1100 折成 2×2。 */
+.diskMountChart,
+.diskDeviceBlock {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 8px;
 }
 
-.diskCharts .chartTitleGroup,
-.diskCharts .chartTitle {
+.diskMountChart .chartTitleGroup,
+.diskMountChart .chartTitle,
+.diskDeviceGrid .chartTitleGroup,
+.diskDeviceGrid .chartTitle {
   min-width: 0;
 }
 
-.diskCharts .chartTitle {
+.diskMountChart .chartTitle,
+.diskDeviceGrid .chartTitle {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.diskSplitMount .chartPanel {
+.diskMountChart .chartPanel {
   min-height: 0;
 }
 
-.diskSplitMount .chartBody {
-  height: 180px;
+.diskMountChart .chartBody {
+  height: 160px;
 }
 
-.diskSplitDevice .chartPanel {
+.diskDeviceGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.diskDeviceGrid .chartPanel {
   min-height: 0;
   padding: 8px 10px;
 }
 
-.diskSplitDevice .chartHead {
+.diskDeviceGrid .chartHead {
   margin-bottom: 4px;
 }
 
-.diskSplitDevice .chartBody {
-  height: 116px;
+.diskDeviceGrid .chartBody {
+  height: 120px;
 }
 
-.diskCharts .hint {
+.diskMountChart .hint,
+.diskDeviceBlock .hint {
   font-size: 12px;
   font-weight: 400;
   line-height: 1.4;
@@ -803,9 +799,7 @@
   .chartGrid3,
   .chartGrid4,
   .processSplit,
-  .processTop,
-  .diskSplitMount,
-  .diskSplitDevice {
+  .processTop {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -827,7 +821,8 @@
 }
 
 @media (max-width: 1099px) {
-  .netTrendGrid {
+  .netTrendGrid,
+  .diskDeviceGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

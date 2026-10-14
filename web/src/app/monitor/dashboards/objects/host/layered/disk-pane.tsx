@@ -72,7 +72,7 @@ export default function DiskPane({
     { key: 'disk_read_latency' as const, label: hostCategoryText(t, 'readLatency'), color: HOST_PALETTE.orange },
     { key: 'disk_write_latency' as const, label: hostCategoryText(t, 'writeLatency'), color: HOST_PALETTE.blue }
   ].filter((item) => (selectedDevice?.series[item.key] || []).length > 0);
-  const followHint = hostCategoryText(t, 'chartFollowsRight');
+  const followHint = hostCategoryText(t, 'chartFollowsSelection');
   const readTitle = deviceName
     ? hostCategoryText(t, 'readThroughputNamed', { name: deviceName })
     : hostCategoryText(t, 'readThroughput');
@@ -109,7 +109,21 @@ export default function DiskPane({
           </div>
         </div>
         {showMountBody ? (
-          <div className={`${styles.diskSplit} ${styles.diskSplitMount}`}>
+          <>
+            <div className={styles.diskMountChart}>
+              <ThinTimeSeries
+                key={`used-${selectedMount?.key || 'none'}`}
+                title={path
+                  ? hostCategoryText(t, 'mountUsedNamed', { name: path })
+                  : hostCategoryText(t, 'mountUsed')}
+                loading={loading && !selectedMount}
+                unit="percent"
+                emptyText={emptyReading}
+                data={pointsToChartData([{ points: selectedMount?.series.disk_used_percent || [] }])}
+                legends={[{ label: path || hostCategoryText(t, 'mountUsed'), color: HOST_PALETTE.orange }]}
+              />
+              <div className={styles.hint}>{followHint}</div>
+            </div>
             <LayeredEntityTable
               rows={mountRows}
               loading={loading}
@@ -180,21 +194,7 @@ export default function DiskPane({
                 }] : [])
               ]}
             />
-            <div className={styles.diskCharts}>
-              <ThinTimeSeries
-                key={`used-${selectedMount?.key || 'none'}`}
-                title={path
-                  ? hostCategoryText(t, 'mountUsedNamed', { name: path })
-                  : hostCategoryText(t, 'mountUsed')}
-                loading={loading && !selectedMount}
-                unit="percent"
-                emptyText={emptyReading}
-                data={pointsToChartData([{ points: selectedMount?.series.disk_used_percent || [] }])}
-                legends={[{ label: path || hostCategoryText(t, 'mountUsed'), color: HOST_PALETTE.orange }]}
-              />
-              <div className={styles.hint}>{followHint}</div>
-            </div>
-          </div>
+          </>
         ) : (
           <div className={styles.note}>{hostCategoryText(t, 'noMountPoints')}</div>
         )}
@@ -207,7 +207,65 @@ export default function DiskPane({
           </div>
         </div>
         {showDeviceBody ? (
-          <div className={`${styles.diskSplit} ${styles.diskSplitDevice}`}>
+          <>
+            <div className={styles.diskDeviceBlock}>
+              <div className={styles.diskDeviceGrid}>
+                <ThinTimeSeries
+                  key={`read-${selectedDevice?.key || 'none'}`}
+                  title={readTitle}
+                  loading={loading && !selectedDevice}
+                  unit="byteps"
+                  emptyText={emptyReading}
+                  data={pointsToChartData([{ points: selectedDevice?.series.diskio_read_bytes_rate || [] }])}
+                  legends={[{ label: hostCategoryText(t, 'readThroughput'), color: HOST_PALETTE.blue }]}
+                />
+                <ThinTimeSeries
+                  key={`write-${selectedDevice?.key || 'none'}`}
+                  title={writeTitle}
+                  loading={loading && !selectedDevice}
+                  unit="byteps"
+                  emptyText={emptyReading}
+                  data={pointsToChartData([{ points: selectedDevice?.series.diskio_write_bytes_rate || [] }])}
+                  legends={[{ label: hostCategoryText(t, 'writeThroughput'), color: HOST_PALETTE.cyan }]}
+                />
+                <ThinTimeSeries
+                  key={`iops-${selectedDevice?.key || 'none'}`}
+                  title={iopsTitle}
+                  loading={loading && !selectedDevice}
+                  unit="cps"
+                  emptyText={emptyReading}
+                  data={pointsToChartData(iopsItems.map((item) => ({
+                    points: selectedDevice?.series[item.key] || []
+                  })))}
+                  legends={(iopsItems.length ? iopsItems : [
+                    { key: 'diskio_reads_rate' as const, label: hostCategoryText(t, 'readIops'), color: HOST_PALETTE.blue },
+                    { key: 'diskio_writes_rate' as const, label: hostCategoryText(t, 'writeIops'), color: HOST_PALETTE.cyan }
+                  ]).map((item) => {
+                    const value = selectedDevice?.values[item.key];
+                    const reading = value != null && Number.isFinite(value) ? formatUnit(value, 'cps') : undefined;
+                    return { label: item.label, color: item.color, reading };
+                  })}
+                />
+                <ThinTimeSeries
+                  key={`latency-${selectedDevice?.key || 'none'}`}
+                  title={latencyTitle}
+                  loading={loading && !selectedDevice}
+                  unit="ms"
+                  emptyText={emptyReading}
+                  data={pointsToChartData(latencyItems.map((item) => ({
+                    points: selectedDevice?.series[item.key] || []
+                  })))}
+                  legends={(latencyItems.length ? latencyItems : [
+                    { label: hostCategoryText(t, 'readLatency'), color: HOST_PALETTE.orange },
+                    { label: hostCategoryText(t, 'writeLatency'), color: HOST_PALETTE.blue }
+                  ]).map((item) => ({
+                    label: item.label,
+                    color: item.color
+                  }))}
+                />
+              </div>
+              <div className={styles.hint}>{followHint}</div>
+            </div>
             <LayeredEntityTable
               rows={deviceRows}
               loading={loading}
@@ -255,63 +313,7 @@ export default function DiskPane({
                 }
               ]}
             />
-            <div className={styles.diskCharts}>
-              <ThinTimeSeries
-                key={`read-${selectedDevice?.key || 'none'}`}
-                title={readTitle}
-                loading={loading && !selectedDevice}
-                unit="byteps"
-                emptyText={emptyReading}
-                data={pointsToChartData([{ points: selectedDevice?.series.diskio_read_bytes_rate || [] }])}
-                legends={[{ label: hostCategoryText(t, 'readThroughput'), color: HOST_PALETTE.blue }]}
-              />
-              <ThinTimeSeries
-                key={`write-${selectedDevice?.key || 'none'}`}
-                title={writeTitle}
-                loading={loading && !selectedDevice}
-                unit="byteps"
-                emptyText={emptyReading}
-                data={pointsToChartData([{ points: selectedDevice?.series.diskio_write_bytes_rate || [] }])}
-                legends={[{ label: hostCategoryText(t, 'writeThroughput'), color: HOST_PALETTE.cyan }]}
-              />
-              <ThinTimeSeries
-                key={`iops-${selectedDevice?.key || 'none'}`}
-                title={iopsTitle}
-                loading={loading && !selectedDevice}
-                unit="cps"
-                emptyText={emptyReading}
-                data={pointsToChartData(iopsItems.map((item) => ({
-                  points: selectedDevice?.series[item.key] || []
-                })))}
-                legends={(iopsItems.length ? iopsItems : [
-                  { key: 'diskio_reads_rate' as const, label: hostCategoryText(t, 'readIops'), color: HOST_PALETTE.blue },
-                  { key: 'diskio_writes_rate' as const, label: hostCategoryText(t, 'writeIops'), color: HOST_PALETTE.cyan }
-                ]).map((item) => {
-                  const value = selectedDevice?.values[item.key];
-                  const reading = value != null && Number.isFinite(value) ? formatUnit(value, 'cps') : undefined;
-                  return { label: item.label, color: item.color, reading };
-                })}
-              />
-              <ThinTimeSeries
-                key={`latency-${selectedDevice?.key || 'none'}`}
-                title={latencyTitle}
-                loading={loading && !selectedDevice}
-                unit="ms"
-                emptyText={emptyReading}
-                data={pointsToChartData(latencyItems.map((item) => ({
-                  points: selectedDevice?.series[item.key] || []
-                })))}
-                legends={(latencyItems.length ? latencyItems : [
-                  { label: hostCategoryText(t, 'readLatency'), color: HOST_PALETTE.orange },
-                  { label: hostCategoryText(t, 'writeLatency'), color: HOST_PALETTE.blue }
-                ]).map((item) => ({
-                  label: item.label,
-                  color: item.color
-                }))}
-              />
-              <div className={styles.hint}>{followHint}</div>
-            </div>
-          </div>
+          </>
         ) : (
           <div className={styles.note}>{hostCategoryText(t, 'noBlockDevices')}</div>
         )}
