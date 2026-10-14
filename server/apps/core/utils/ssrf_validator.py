@@ -17,6 +17,7 @@ SSRF URL 安全校验器
 
 import ipaddress
 import socket
+from dataclasses import dataclass
 from typing import Optional
 from urllib.parse import unquote, urlparse
 
@@ -29,6 +30,36 @@ class SSRFError(ValueError):
     def __init__(self, message: str, code: str = "CONNECTION_TARGET_FORBIDDEN"):
         super().__init__(message)
         self.code = code
+
+
+@dataclass(frozen=True)
+class ValidatedTarget:
+    """校验通过后的连接目标：保留原始 Host，连接时钉死已审 IP。"""
+
+    url: str
+    hostname: str
+    scheme: str
+    resolved_ips: tuple[str, ...]
+    port: int | None = None
+
+    @property
+    def connect_ip(self) -> str:
+        if not self.resolved_ips:
+            raise SSRFError(f"主机名 {self.hostname} 未返回可解析 IP")
+        return self.resolved_ips[0]
+
+    def host_header(self) -> str:
+        default_port = 443 if self.scheme == "https" else 80
+        if self.port and self.port != default_port:
+            return f"{self.hostname}:{self.port}"
+        return self.hostname
+
+    def connect_url(self) -> str:
+        parsed = urlparse(self.url)
+        ip = self.connect_ip
+        host = f"[{ip}]" if ":" in ip else ip
+        netloc = f"{host}:{self.port}" if self.port else host
+        return parsed._replace(netloc=netloc).geturl()
 
 
 class SSRFValidator:
@@ -281,6 +312,15 @@ class SSRFValidator:
         Raises:
             SSRFError: URL 不安全
         """
+        return cls.validate_target(url, allowlist=allowlist).url
+
+    @classmethod
+    def validate_target(
+        cls,
+        url: str,
+        allowlist: Optional[set[str]] = None,
+    ) -> ValidatedTarget:
+        """校验 URL，并返回可用于钉死 IP 连接的目标。"""
         if not url or not url.strip():
             raise SSRFError("URL 不能为空")
 
@@ -330,7 +370,13 @@ class SSRFValidator:
         literal_ip = cls._parse_ip_literal(hostname)
         if literal_ip is not None:
             cls._assert_literal_ip_allowed(literal_ip, allowed_networks, url)
-            return url
+            return ValidatedTarget(
+                url=url,
+                hostname=hostname,
+                scheme=scheme,
+                resolved_ips=(str(literal_ip),),
+                port=parsed.port,
+            )
 
         # 6. 域名：DNS 解析后按 IP 判定
         try:
@@ -357,8 +403,15 @@ class SSRFValidator:
         if checked == 0:
             raise SSRFError(f"主机名 {hostname} 未返回可解析 IP")
 
-        logger.debug("[SSRF] 放行: url=%s, hostname=%s, resolved_ips=%s", url, hostname, resolved_ips)
-        return url
+        unique_ips = tuple(dict.fromkeys(resolved_ips))
+        logger.debug("[SSRF] 放行: url=%s, hostname=%s, resolved_ips=%s", url, hostname, unique_ips)
+        return ValidatedTarget(
+            url=url,
+            hostname=hostname,
+            scheme=scheme,
+            resolved_ips=unique_ips,
+            port=parsed.port,
+        )
 
     # LLM 端点宽松模式阻断列表（仅云元数据）
     LLM_ENDPOINT_BLOCKED_NETWORKS = [
@@ -386,6 +439,11 @@ class SSRFValidator:
         Raises:
             SSRFError: URL 指向云元数据地址
         """
+        return cls.validate_llm_endpoint_target(url).url
+
+    @classmethod
+    def validate_llm_endpoint_target(cls, url: str) -> ValidatedTarget:
+        """LLM 端点宽松校验，并返回可用于钉死 IP 连接的目标。"""
         if not url or not url.strip():
             raise SSRFError("URL 不能为空")
 
@@ -418,9 +476,11 @@ class SSRFValidator:
         if not addr_infos:
             raise SSRFError(f"主机名 {hostname} 无法解析")
 
+        resolved_ips: list[str] = []
         # 仅检查云元数据地址
         for info in addr_infos:
             ip_str = info[4][0]
+            resolved_ips.append(ip_str)
             try:
                 ip = ipaddress.ip_address(ip_str)
             except ValueError:
@@ -434,7 +494,16 @@ class SSRFValidator:
                 except TypeError:
                     continue
 
-        return url
+        unique_ips = tuple(dict.fromkeys(resolved_ips))
+        if not unique_ips:
+            raise SSRFError(f"主机名 {hostname} 未返回可解析 IP")
+        return ValidatedTarget(
+            url=url,
+            hostname=hostname,
+            scheme=scheme,
+            resolved_ips=unique_ips,
+            port=parsed.port,
+        )
 
     @classmethod
     def validate_callback(cls, callback_url: str | None) -> str | None:
