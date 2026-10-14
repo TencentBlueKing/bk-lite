@@ -135,8 +135,84 @@
 
 .kpiGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 12px;
+  align-items: stretch;
+}
+
+/* 健康六卡：上下 8px、左右 12px，总高约 64–76px。内容顶对齐，不把空白均分到数字上下。 */
+.kpiCard {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 0;
+  min-height: 64px;
+  margin: 0;
+  padding: 8px 12px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  background: var(--color-bg);
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.04), 0 1px 2px -1px rgba(15, 23, 42, 0.02);
+  color: inherit;
+  font: inherit;
+  line-height: normal;
+  text-align: left;
+  appearance: none;
+  cursor: default;
+
+  &:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+}
+
+button.kpiCard {
+  cursor: pointer;
+
+  &:hover {
+    border-color: color-mix(in srgb, var(--color-primary) 22%, var(--color-border));
+  }
+}
+
+.kpiLabel {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--color-text-2);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 14px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.kpiValue {
+  margin-top: 4px;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--color-text-1);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 26px;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.kpiMeta {
+  margin-top: 2px;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--color-text-3);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .shortcutGrid {
@@ -241,21 +317,6 @@
   font-size: 12px;
   line-height: 20px;
   cursor: pointer;
-}
-
-.kpiActivate {
-  width: 100%;
-  margin: 0;
-  font: inherit;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  appearance: none;
-
-  &:focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: 2px;
-  }
 }
 
 .tabLabel {
@@ -752,17 +813,18 @@
   }
 }
 
-/* 概览事件轻轨。空态也保留这条，壳体对齐健康 KPI 卡。 */
+/* 概览事件轻轨。没有事件时不渲染，避免空壳白条。 */
 .eventsRail {
   position: relative;
   box-sizing: border-box;
   display: flex;
   flex: none;
   align-items: center;
+  gap: 8px;
   width: 100%;
-  min-height: 48px;
+  min-height: 44px;
   min-width: 0;
-  padding: 8px 16px;
+  padding: 8px 12px;
   overflow: hidden;
   background: var(--color-bg);
   border: 1px solid var(--color-border);
@@ -773,11 +835,12 @@
   line-height: 16px;
 }
 
-.eventsEmpty {
+.eventsLabel {
+  flex: none;
   color: var(--color-text-3);
   font-size: 12px;
+  font-weight: 500;
   line-height: 16px;
-  cursor: default;
 }
 
 .eventsMeasure {
@@ -794,9 +857,10 @@
 .eventsRow {
   display: flex;
   align-items: center;
+  flex: 1;
   flex-wrap: nowrap;
   gap: 8px;
-  width: 100%;
+  width: auto;
   min-width: 0;
   overflow: hidden;
 }
@@ -823,9 +887,11 @@
 
 .eventsChip {
   flex: 0 1 auto;
-  height: 32px;
-  padding: 0 8px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
   border-radius: 999px;
+  background: var(--color-fill-1);
   overflow: hidden;
 }
 
@@ -837,7 +903,7 @@
 
 .eventsMore {
   flex: none;
-  height: 32px;
+  height: 28px;
   padding: 0 6px;
   color: var(--color-text-3);
 }

@@ -2,7 +2,6 @@
 
 import React from 'react';
 import { Tooltip } from 'antd';
-import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
 export interface KpiCardModel {
@@ -20,7 +19,7 @@ export interface KpiCardModel {
 }
 
 const KpiLabel = ({ item }: { item: KpiCardModel }) => (
-  <div className={classic.statLabel}>
+  <div className={styles.kpiLabel}>
     {item.hint ? (
       <Tooltip title={item.hint}>
         <span>{item.label}</span>
@@ -32,18 +31,16 @@ const KpiLabel = ({ item }: { item: KpiCardModel }) => (
 const ValueCardBody = ({ item }: { item: KpiCardModel }) => (
   <>
     <KpiLabel item={item} />
-    <div className={classic.statBody}>
-      <div className={classic.statValue} style={item.tone ? { color: item.tone } : undefined}>
-        {item.value}
-      </div>
-      {item.subtitle ? <div className={classic.statMeta}>{item.subtitle}</div> : null}
-      {item.detail ? <div className={classic.statMeta}>{item.detail}</div> : null}
-      {item.extra}
+    <div className={styles.kpiValue} style={item.tone ? { color: item.tone } : undefined}>
+      {item.value}
     </div>
+    {item.subtitle ? <div className={styles.kpiMeta}>{item.subtitle}</div> : null}
+    {item.detail ? <div className={styles.kpiMeta}>{item.detail}</div> : null}
+    {item.extra}
   </>
 );
 
-/** 概览 KPI：六张卡都只显示标题和主值。运行时间 / 告警与占比卡同一套字号。 */
+/** 概览 KPI：六张数字卡，标题贴顶、主值紧跟。不含环图、饼图或 sparkline。 */
 export function KpiStrip({ items }: { items: KpiCardModel[] }) {
   return (
     <div className={styles.kpiGrid}>
@@ -52,7 +49,7 @@ export function KpiStrip({ items }: { items: KpiCardModel[] }) {
           <button
             key={item.key}
             type="button"
-            className={`${classic.statCard} ${styles.kpiActivate}`}
+            className={styles.kpiCard}
             data-kpi={item.key}
             onClick={item.onActivate}
             aria-expanded={Boolean(item.expanded)}
@@ -61,7 +58,7 @@ export function KpiStrip({ items }: { items: KpiCardModel[] }) {
             <ValueCardBody item={item} />
           </button>
         ) : (
-          <div key={item.key} className={classic.statCard} data-kpi={item.key}>
+          <div key={item.key} className={styles.kpiCard} data-kpi={item.key}>
             <ValueCardBody item={item} />
           </div>
         )

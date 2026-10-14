@@ -50,7 +50,10 @@ const collapse = (value: string) => value.replace(/\s+/g, ' ').trim();
 
 const severityColor = (level: string) => {
   const raw = LEVEL_MAP[level];
-  return typeof raw === 'string' ? raw : 'var(--color-text-3)';
+  if (typeof raw === 'string') return raw;
+  if (level === 'success') return 'var(--color-success)';
+  if (level === 'info') return 'var(--color-primary)';
+  return 'var(--color-text-3)';
 };
 
 /** 一条告警只保留触发，以及真实的恢复/关闭。没有时间的记录丢掉。 */
@@ -138,10 +141,13 @@ const EventBody = ({
 
 export default function EventsRail({
   events,
-  onFocusAlert
+  onFocusAlert,
+  mock = false
 }: {
   events: HostAlertRailEvent[];
   onFocusAlert?: (alertId: string) => void;
+  /** 样例事件仅用于演示目检，不代表接口返回。 */
+  mock?: boolean;
 }) {
   const { convertToLocalizedTime } = useLocalizedTime();
   const rowRef = useRef<HTMLDivElement>(null);
@@ -156,7 +162,7 @@ export default function EventsRail({
       }
     };
     return {
-      short: (iso: string) => format(iso, 'MM-DD HH:mm'),
+      short: (iso: string) => format(iso, 'HH:mm'),
       full: (iso: string) => format(iso, 'YYYY-MM-DD HH:mm:ss')
     };
   }, [convertToLocalizedTime]);
@@ -182,13 +188,7 @@ export default function EventsRail({
     return () => observer.disconnect();
   }, [events]);
 
-  if (!events.length) {
-    return (
-      <div className={styles.eventsRail} data-events-rail="" data-events-empty="">
-        <span className={styles.eventsEmpty}>暂无事件</span>
-      </div>
-    );
-  }
+  if (!events.length) return null;
 
   const visible = events.slice(0, visibleCount);
   const hidden = events.slice(visibleCount);
@@ -206,7 +206,8 @@ export default function EventsRail({
   );
 
   return (
-    <div className={styles.eventsRail} data-events-rail="">
+    <div className={styles.eventsRail} data-events-rail="" data-events-mock={mock ? '' : undefined}>
+      <span className={styles.eventsLabel}>Events</span>
       <div ref={measureRef} className={styles.eventsMeasure} aria-hidden="true">
         {events.map((event) => (
           <span key={event.id} data-event-chip="" className={styles.eventsChip}>

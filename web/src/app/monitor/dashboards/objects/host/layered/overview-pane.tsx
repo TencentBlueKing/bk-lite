@@ -32,6 +32,7 @@ interface OverviewPaneProps {
   processLoading?: boolean;
   alertCount: number | null;
   alertEvents?: HostAlertRailEvent[];
+  alertEventsMock?: boolean;
   alertsOpen?: boolean;
   onOpenAlerts?: () => void;
   onFocusAlert?: (alertId: string) => void;
@@ -68,6 +69,7 @@ export default function OverviewPane({
   processLoading = false,
   alertCount,
   alertEvents = [],
+  alertEventsMock = false,
   alertsOpen = false,
   onOpenAlerts,
   onFocusAlert,
@@ -159,7 +161,7 @@ export default function OverviewPane({
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>健康概览</div>
       </div>
       <KpiStrip items={cards} />
-      <EventsRail events={alertEvents} onFocusAlert={onFocusAlert} />
+      <EventsRail events={alertEvents} onFocusAlert={onFocusAlert} mock={alertEventsMock} />
 
       <div className={styles.sectionHead}>
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>重点关注</div>
