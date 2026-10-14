@@ -17,6 +17,7 @@ import type { EntityLoadState } from './use-entity-metrics';
 import DiskPane from './layered/disk-pane';
 import FlatProcessSplit from './layered/flat-process-split';
 import NetworkPane from './layered/network-pane';
+import { hostAlertRailEvents, type HostAlertRailEvent } from './layered/events-rail';
 import HostAlertDrawer from './layered/host-alert-drawer';
 import { activeHostAlertParams } from './layered/host-alert-list';
 import OverviewPane from './layered/overview-pane';
@@ -154,9 +155,17 @@ export default function HostCategoryLayout({
   const { getMonitorAlert } = useMonitorApi();
   const [uncontrolledTab, setUncontrolledTab] = useState('overview');
   const [alertCount, setAlertCount] = useState<number | null>(null);
+  const [alertEvents, setAlertEvents] = useState<HostAlertRailEvent[]>([]);
   const [alertDrawerOpen, setAlertDrawerOpen] = useState(false);
   const [alertRefreshKey, setAlertRefreshKey] = useState(0);
+  const [focusAlertId, setFocusAlertId] = useState('');
   const openHostAlerts = useCallback(() => {
+    setFocusAlertId('');
+    setAlertDrawerOpen(true);
+    setAlertRefreshKey((key) => key + 1);
+  }, []);
+  const focusHostAlert = useCallback((alertId: string) => {
+    setFocusAlertId(alertId);
     setAlertDrawerOpen(true);
     setAlertRefreshKey((key) => key + 1);
   }, []);
@@ -217,6 +226,7 @@ export default function HostCategoryLayout({
     const instanceId = String(dashboard.instanceId || '');
     if (!instanceId) {
       setAlertCount(null);
+      setAlertEvents([]);
       return undefined;
     }
     let active = true;
@@ -231,6 +241,31 @@ export default function HostCategoryLayout({
       active = false;
     };
   }, [activeTab, alertDrawerOpen, dashboard.instanceId, getMonitorAlert]);
+
+  useEffect(() => {
+    if (activeTab !== 'overview') return undefined;
+    const instanceId = String(dashboard.instanceId || '');
+    if (!instanceId) {
+      setAlertEvents([]);
+      return undefined;
+    }
+    let active = true;
+    setAlertEvents([]);
+    getMonitorAlert({
+      monitor_instance_id: instanceId,
+      page: 1,
+      page_size: 20
+    })
+      .then((data) => {
+        if (active) setAlertEvents(hostAlertRailEvents(data?.results));
+      })
+      .catch(() => {
+        if (active) setAlertEvents([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeTab, dashboard.instanceId, getMonitorAlert]);
 
   const jump = (tab: 'disk' | 'net' | 'process', key: string) => {
     if (tab === 'disk') diskSelection.setPendingMountKey(key);
@@ -305,8 +340,10 @@ export default function HostCategoryLayout({
         processRows={processRows}
         processReady={processReady}
         alertCount={alertCount}
+        alertEvents={alertEvents}
         alertsOpen={alertDrawerOpen}
         onOpenAlerts={openHostAlerts}
+        onFocusAlert={focusHostAlert}
         onJump={jump}
       />
     );
@@ -336,6 +373,7 @@ export default function HostCategoryLayout({
         refreshKey={alertRefreshKey}
         instanceId={String(dashboard.instanceId || '')}
         monitorObjectId={dashboard.monitorObjectId}
+        focusAlertId={focusAlertId}
         onClose={() => setAlertDrawerOpen(false)}
         onCount={applyAlertCount}
       />

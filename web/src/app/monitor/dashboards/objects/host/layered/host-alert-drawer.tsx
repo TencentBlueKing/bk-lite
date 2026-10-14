@@ -29,6 +29,7 @@ interface HostAlertDrawerProps {
   refreshKey: number;
   instanceId?: string;
   monitorObjectId?: React.Key;
+  focusAlertId?: string;
   onClose: () => void;
   onCount: (count: number) => void;
 }
@@ -43,6 +44,7 @@ export default function HostAlertDrawer({
   refreshKey,
   instanceId,
   monitorObjectId,
+  focusAlertId = '',
   onClose,
   onCount
 }: HostAlertDrawerProps) {
@@ -52,6 +54,7 @@ export default function HostAlertDrawer({
   const { convertToLocalizedTime } = useLocalizedTime();
   const onCountRef = useRef(onCount);
   const listRef = useRef<HTMLDivElement>(null);
+  const appliedFocus = useRef('');
   const [attempt, setAttempt] = useState(0);
   const [rows, setRows] = useState<HostAlertRecord[]>([]);
   const [total, setTotal] = useState(0);
@@ -110,6 +113,20 @@ export default function HostAlertDrawer({
       controller.abort();
     };
   }, [getMonitorAlert, instanceId, open, session]);
+
+  useEffect(() => {
+    if (!open || !focusAlertId || loading) return;
+    const token = `${session}:${focusAlertId}`;
+    if (appliedFocus.current === token) return;
+    if (!rows.some((row) => String(row.id) === focusAlertId)) return;
+    appliedFocus.current = token;
+    setExpandedId(focusAlertId);
+    const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+      ? CSS.escape(focusAlertId)
+      : focusAlertId.replace(/"/g, '');
+    const node = listRef.current?.querySelector(`[data-host-alert-id="${escaped}"]`);
+    if (node instanceof HTMLElement) node.scrollIntoView({ block: 'nearest' });
+  }, [focusAlertId, loading, open, rows, session]);
 
   const loadMore = async () => {
     const instance = String(instanceId || '').trim();
@@ -237,6 +254,7 @@ export default function HostAlertDrawer({
                 <div key={key} className="border-b border-[var(--color-border)]">
                   <button
                     type="button"
+                    data-host-alert-id={key}
                     className="relative flex h-10 w-full items-center gap-2 overflow-hidden border-0 bg-transparent px-3 pl-4 text-left hover:bg-[var(--color-fill-1)]"
                     aria-expanded={expanded}
                     onClick={() => setExpandedId(expanded ? '' : key)}

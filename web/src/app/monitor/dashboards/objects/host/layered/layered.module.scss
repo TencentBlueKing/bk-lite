@@ -789,3 +789,142 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+.eventsRail {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 48px;
+  max-height: 56px;
+  min-width: 0;
+  padding: 0 12px;
+  overflow: hidden;
+  background: var(--color-fill-1);
+  border-bottom: 1px solid var(--color-border-1);
+  color: var(--color-text-2);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.eventsMeasure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  gap: 8px;
+  width: max-content;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.eventsRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.eventsChip,
+.eventsMore,
+.eventsOverflowItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 240px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.eventsChip {
+  flex: 0 1 auto;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.eventsChip:hover,
+.eventsMore:hover,
+.eventsOverflowItem:hover {
+  background: var(--color-fill-2);
+}
+
+.eventsMore {
+  flex: none;
+  height: 32px;
+  padding: 0 6px;
+  color: var(--color-text-3);
+}
+
+.eventsDot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+}
+
+.eventsTime {
+  flex: none;
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.eventsVerb {
+  flex: none;
+  color: var(--color-text-1);
+}
+
+.eventsText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.eventsTip {
+  max-width: 320px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-text-1);
+}
+
+.eventsTipMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-2);
+}
+
+.eventsTipBody {
+  margin-top: 4px;
+  color: var(--color-text-1);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.eventsOverflow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 360px;
+  max-height: 160px;
+  overflow: auto;
+}
+
+.eventsOverflowItem {
+  max-width: none;
+  justify-content: flex-start;
+}

@@ -7,6 +7,7 @@ import { hostCategoryText } from './category-copy';
 import { HOST_PALETTE } from '../config';
 import { latestPreferSignal, maxFinite, pointsToChartData, type EntityTableRow } from '../entity-series';
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
+import EventsRail, { type HostAlertRailEvent } from './events-rail';
 import { KpiStrip, type KpiCardModel } from './signal-bar';
 import ThinTimeSeries from './thin-time-series';
 import {
@@ -28,8 +29,10 @@ interface OverviewPaneProps {
   processRows: EntityTableRow[];
   processReady: boolean;
   alertCount: number | null;
+  alertEvents?: HostAlertRailEvent[];
   alertsOpen?: boolean;
   onOpenAlerts?: () => void;
+  onFocusAlert?: (alertId: string) => void;
   onJump: (tab: 'disk' | 'net' | 'process', key: string) => void;
 }
 
@@ -60,8 +63,10 @@ export default function OverviewPane({
   processRows,
   processReady,
   alertCount,
+  alertEvents = [],
   alertsOpen = false,
   onOpenAlerts,
+  onFocusAlert,
   onJump
 }: OverviewPaneProps) {
   const { t } = useDashboardText();
@@ -168,6 +173,7 @@ export default function OverviewPane({
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>健康概览</div>
       </div>
       <KpiStrip items={cards} />
+      <EventsRail events={alertEvents} onFocusAlert={onFocusAlert} />
 
       <div className={styles.sectionHead}>
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>重点关注</div>
