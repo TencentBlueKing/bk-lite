@@ -25,6 +25,16 @@ export interface LayeredColumn {
   render?: (row: EntityTableRow, index: number) => React.ReactNode;
 }
 
+const USAGE_BAR_WARN = 80;
+const USAGE_BAR_CRIT = 90;
+
+/** 有限使用率才上色：<80 绿，80–90 黄，≥90 红。NaN / 空值不进这里，避免刷成 0% 绿。 */
+const usageBarFillClass = (value: number) => {
+  if (value >= USAGE_BAR_CRIT) return styles.miniBarFillError;
+  if (value >= USAGE_BAR_WARN) return styles.miniBarFillWarning;
+  return styles.miniBarFillSuccess;
+};
+
 const formatCell = (value: number | null | undefined, unit?: MetricUnit, emptyDash?: boolean) => {
   if (value == null || !Number.isFinite(value)) return emptyDash ? '—' : '--';
   if (!unit || unit === 'none') return String(value);
@@ -68,11 +78,8 @@ export default function LayeredEntityTable({
           {column.bar && value != null && Number.isFinite(value) ? (
             <span className={styles.miniBar} aria-hidden="true">
               <span
-                className={styles.miniBarFill}
-                style={{
-                  width: `${Math.min(100, Math.max(0, value))}%`,
-                  background: 'var(--color-text-3)'
-                }}
+                className={`${styles.miniBarFill} ${usageBarFillClass(value)}`}
+                style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
               />
             </span>
           ) : null}

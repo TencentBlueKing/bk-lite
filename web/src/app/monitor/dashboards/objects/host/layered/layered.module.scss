@@ -780,6 +780,18 @@ button.kpiCard {
   height: 100%;
 }
 
+.miniBarFillSuccess {
+  background: var(--color-success);
+}
+
+.miniBarFillWarning {
+  background: var(--color-warning);
+}
+
+.miniBarFillError {
+  background: var(--color-fail);
+}
+
 .entityStack {
   display: flex;
   flex-direction: column;
