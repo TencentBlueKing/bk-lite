@@ -4,7 +4,6 @@ import copy
 import datetime
 import hashlib
 import hmac
-import logging
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib import parse
@@ -22,9 +21,9 @@ from common.cmp.cloud_apis.resource_apis.resource_format.amazonaws.amazonaws_con
 )
 from common.cmp.cloud_apis.resource_apis.resource_format.common.base_format import get_format_method
 from common.cmp.cloud_apis.resource_apis.utils import fail, success
+from core.logger import logger
 
 https_port = "443"
-logger = logging.getLogger("root")
 
 
 class CwAmazonAws(object):
