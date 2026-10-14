@@ -56,6 +56,11 @@ const peakOfRow = (row: EntityTableRow | undefined, key: string) => {
   return latestOfRow(row, key);
 };
 
+/** 环心空态用一字线。环外不再放另一套读数。 */
+const ringCenter = (value: number | null, format: (value: number) => string) => (
+  value == null ? '—' : format(value)
+);
+
 export default function OverviewPane({
   metrics,
   loading,
@@ -93,13 +98,13 @@ export default function OverviewPane({
       {
         key: 'cpu',
         label: 'CPU',
-        value: formatPercent(cpu),
+        value: ringCenter(cpu, formatPercent),
         footer: { kind: 'donut', percent: cpu }
       },
       {
         key: 'mem',
         label: '内存',
-        value: formatPercent(mem),
+        value: ringCenter(mem, formatPercent),
         footer: { kind: 'donut', percent: mem }
       }
     ];
@@ -107,7 +112,7 @@ export default function OverviewPane({
       items.push({
         key: 'load',
         label: 'Load1',
-        value: formatPlain(load),
+        value: ringCenter(load, formatPlain),
         subtitle: roundedCores > 0 ? `${roundedCores}核` : undefined,
         footer: { kind: 'capacity', load, cores }
       });
@@ -116,7 +121,7 @@ export default function OverviewPane({
       key: 'disk',
       label: hostCategoryText(t, 'diskPeak'),
       hint: hostCategoryText(t, 'diskUtilizationPeak'),
-      value: diskLoading && diskValue == null ? '--' : formatPercent(diskValue),
+      value: ringCenter(diskValue, formatPercent),
       detail: mountName ? `挂载 ${mountName}` : '—',
       footer: { kind: 'donut', percent: diskValue }
     });
@@ -144,7 +149,6 @@ export default function OverviewPane({
     alertsOpen,
     cores,
     cpu,
-    diskLoading,
     diskValue,
     load,
     mem,

@@ -7,8 +7,9 @@ import { formatPlain } from './readings';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
-const DONUT_SIZE = 52;
-const DONUT_STROKE = 7;
+/** 外径与环宽落在规格 64–76 / 8–10。四张占比卡共用。 */
+const DONUT_SIZE = 72;
+const DONUT_STROKE = 9;
 const USAGE_WARN = 80;
 const USAGE_CRIT = 90;
 
@@ -25,7 +26,7 @@ export interface KpiCardModel {
   tone?: string;
   subtitle?: string;
   detail?: string;
-  /** 主值下方的占比环或核容量条。运行时间 / 告警不传。 */
+  /** 环心主读数。运行时间 / 告警不传。 */
   footer?: KpiFooter;
   extra?: React.ReactNode;
   onActivate?: () => void;
@@ -48,130 +49,178 @@ const coreCount = (cores: number | null) => {
   return rounded > 0 ? rounded : null;
 };
 
-const UsageDonut = ({ percent }: { percent: number | null }) => {
+const hotTone = (stroke: string) => (
+  stroke === 'var(--color-fail)' || stroke === 'var(--color-warning)' ? stroke : undefined
+);
+
+interface RingPaint {
+  /** 0–1。null 表示无数据，只画浅轨。 */
+  ratio: number | null;
+  stroke: string;
+  textColor: string;
+  tip?: string;
+}
+
+const usagePaint = (percent: number | null): RingPaint => {
+  if (!finite(percent)) {
+    return {
+      ratio: null,
+      stroke: 'var(--color-primary)',
+      textColor: 'var(--color-text-3)'
+    };
+  }
+  const stroke = usageStroke(percent);
+  return {
+    ratio: Math.min(Math.max(percent, 0), 100) / 100,
+    stroke,
+    textColor: hotTone(stroke) || 'var(--color-text-1)'
+  };
+};
+
+const loadPaint = (load: number | null, cores: number | null): RingPaint => {
+  const count = coreCount(cores);
+  const tip = finite(load) && count != null
+    ? `Load1 / 核数 ${formatPlain(load)} / ${count}`
+    : 'Load1 / 核数';
+  if (!finite(load)) {
+    return {
+      ratio: null,
+      stroke: HOST_PALETTE.orange,
+      textColor: 'var(--color-text-3)',
+      tip
+    };
+  }
+  const overload = count != null && load > count;
+  return {
+    ratio: count == null ? null : Math.min(Math.max(load, 0) / count, 1),
+    stroke: overload ? 'var(--color-warning)' : HOST_PALETTE.orange,
+    textColor: overload ? 'var(--color-warning)' : 'var(--color-text-1)',
+    tip
+  };
+};
+
+const paintOf = (footer: KpiFooter): RingPaint => (
+  footer.kind === 'donut'
+    ? usagePaint(footer.percent)
+    : loadPaint(footer.load, footer.cores)
+);
+
+const CenterDonut = ({
+  value,
+  paint
+}: {
+  value: string;
+  paint: RingPaint;
+}) => {
   const radius = (DONUT_SIZE - DONUT_STROKE) / 2 - 0.5;
   const center = DONUT_SIZE / 2;
   const circumference = 2 * Math.PI * radius;
-  const clamped = finite(percent) ? Math.min(100, Math.max(0, percent)) : 0;
-  const full = clamped >= 99.95;
-  return (
-    <svg
-      width={DONUT_SIZE}
-      height={DONUT_SIZE}
-      viewBox={`0 0 ${DONUT_SIZE} ${DONUT_SIZE}`}
-      className="shrink-0 overflow-visible"
-      aria-hidden="true"
+  const ratio = paint.ratio;
+  const clamped = ratio == null ? 0 : Math.min(1, Math.max(0, ratio));
+  const full = clamped >= 0.9995;
+  const ring = (
+    <div
+      className="relative shrink-0"
+      style={{ width: DONUT_SIZE, height: DONUT_SIZE }}
+      data-kpi-ring="center"
     >
-      <circle
-        cx={center}
-        cy={center}
-        r={radius}
-        fill="none"
-        stroke="var(--color-fill-3)"
-        strokeWidth={DONUT_STROKE}
-      />
-      {finite(percent) && clamped > 0 ? (
+      <svg
+        width={DONUT_SIZE}
+        height={DONUT_SIZE}
+        viewBox={`0 0 ${DONUT_SIZE} ${DONUT_SIZE}`}
+        className="block overflow-visible"
+        aria-hidden="true"
+      >
         <circle
           cx={center}
           cy={center}
           r={radius}
           fill="none"
-          stroke={usageStroke(percent)}
+          stroke="var(--color-fill-3)"
           strokeWidth={DONUT_STROKE}
-          strokeDasharray={full ? undefined : `${(clamped / 100) * circumference} ${circumference}`}
-          strokeLinecap="butt"
-          transform={`rotate(-90 ${center} ${center})`}
         />
-      ) : null}
-    </svg>
-  );
-};
-
-const CapacityBar = ({ load, cores }: { load: number | null; cores: number | null }) => {
-  const count = coreCount(cores);
-  const loadValue = finite(load) ? load : null;
-  if (loadValue == null || count == null) {
-    return (
-      <Tooltip title="Load1 / 核数">
-        <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--color-fill-3)]" aria-hidden="true" />
-      </Tooltip>
-    );
-  }
-  const overload = loadValue > count;
-  const fill = Math.min(Math.max(loadValue, 0) / count, 1);
-  const caption = `${formatPlain(loadValue)} / ${count}`;
-  const factor = formatPlain(loadValue / count);
-  return (
-    <Tooltip title={`Load1 / 核数 ${caption}`}>
-      <div className="flex w-full min-w-0 flex-col justify-end gap-1">
-        <div className="flex items-baseline justify-between gap-2 text-xs leading-none tabular-nums">
-          <span className={overload ? 'text-[var(--color-warning)]' : 'text-[var(--color-text-3)]'}>
-            {caption}
-          </span>
-          {overload ? <span className="text-[var(--color-warning)]">{factor}×</span> : null}
-        </div>
-        <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--color-fill-3)]" aria-hidden="true">
-          <div
-            className="h-full rounded-full"
-            style={{
-              width: `${fill * 100}%`,
-              background: overload ? 'var(--color-warning)' : HOST_PALETTE.orange
-            }}
+        {ratio != null && clamped > 0 ? (
+          <circle
+            cx={center}
+            cy={center}
+            r={radius}
+            fill="none"
+            stroke={paint.stroke}
+            strokeWidth={DONUT_STROKE}
+            strokeDasharray={full ? undefined : `${clamped * circumference} ${circumference}`}
+            strokeLinecap="butt"
+            transform={`rotate(-90 ${center} ${center})`}
           />
-        </div>
-      </div>
-    </Tooltip>
-  );
-};
-
-const KpiFooterView = ({ footer }: { footer: KpiFooter }) => {
-  if (footer.kind === 'donut') {
-    return (
-      <div className="mt-auto flex h-[52px] items-center justify-center" data-kpi-footer="donut">
-        <UsageDonut percent={footer.percent} />
-      </div>
-    );
-  }
-  return (
-    <div className="mt-auto flex h-[52px] w-full items-end" data-kpi-footer="capacity">
-      <CapacityBar load={footer.load} cores={footer.cores} />
+        ) : null}
+      </svg>
+      <span
+        className="absolute inset-0 flex items-center justify-center px-2 text-[13px] font-semibold leading-none tabular-nums"
+        style={{ color: paint.textColor }}
+        data-kpi-center=""
+      >
+        {value}
+      </span>
     </div>
   );
+  if (!paint.tip) return ring;
+  return <Tooltip title={paint.tip}>{ring}</Tooltip>;
 };
 
-const valueTone = (item: KpiCardModel) => {
-  if (item.tone) return item.tone;
-  if (item.footer?.kind !== 'capacity') return undefined;
-  const count = coreCount(item.footer.cores);
-  if (!finite(item.footer.load) || count == null || item.footer.load <= count) return undefined;
-  return 'var(--color-warning)';
-};
+const KpiLabel = ({ item }: { item: KpiCardModel }) => (
+  <div className={classic.statLabel}>
+    {item.hint ? (
+      <Tooltip title={item.hint}>
+        <span>{item.label}</span>
+      </Tooltip>
+    ) : item.label}
+  </div>
+);
 
-const KpiCardBody = ({ item }: { item: KpiCardModel }) => {
-  const tone = valueTone(item);
+const RingCardBody = ({ item }: { item: KpiCardModel }) => {
+  const caption = [item.subtitle, item.detail].filter(Boolean).join(' · ');
+  const paint = paintOf(item.footer as KpiFooter);
   return (
     <>
-      <div className={classic.statLabel}>
-        {item.hint ? (
-          <Tooltip title={item.hint}>
-            <span>{item.label}</span>
+      <KpiLabel item={item} />
+      <div className="mt-auto flex w-full min-w-0 flex-col items-center gap-1">
+        <CenterDonut value={item.value} paint={paint} />
+        {caption ? (
+          <Tooltip title={caption}>
+            <div
+              className="h-4 w-full truncate text-center text-xs leading-4 text-[var(--color-text-3)]"
+              data-kpi-caption=""
+            >
+              {caption}
+            </div>
           </Tooltip>
-        ) : item.label}
-      </div>
-      <div className={classic.statBody}>
-        <div className={classic.statValue} style={tone ? { color: tone } : undefined}>
-          {item.value}
-        </div>
-        {item.subtitle ? <div className={classic.statMeta}>{item.subtitle}</div> : null}
-        {item.detail ? <div className={classic.statMeta}>{item.detail}</div> : null}
+        ) : (
+          <div className="h-4 w-full" data-kpi-caption="" />
+        )}
         {item.extra}
       </div>
-      {item.footer ? <KpiFooterView footer={item.footer} /> : null}
     </>
   );
 };
 
-/** 概览 KPI：占比环、核容量条，或无底部图形。 */
+const ValueCardBody = ({ item }: { item: KpiCardModel }) => (
+  <>
+    <KpiLabel item={item} />
+    <div className={classic.statBody}>
+      <div className={classic.statValue} style={item.tone ? { color: item.tone } : undefined}>
+        {item.value}
+      </div>
+      {item.subtitle ? <div className={classic.statMeta}>{item.subtitle}</div> : null}
+      {item.detail ? <div className={classic.statMeta}>{item.detail}</div> : null}
+      {item.extra}
+    </div>
+  </>
+);
+
+const KpiCardBody = ({ item }: { item: KpiCardModel }) => (
+  item.footer ? <RingCardBody item={item} /> : <ValueCardBody item={item} />
+);
+
+/** 概览 KPI：占比卡为环心数字；运行时间 / 告警只显示主值。 */
 export function KpiStrip({ items }: { items: KpiCardModel[] }) {
   return (
     <div className={styles.kpiGrid}>
@@ -181,6 +230,7 @@ export function KpiStrip({ items }: { items: KpiCardModel[] }) {
             key={item.key}
             type="button"
             className={`${classic.statCard} ${styles.kpiActivate}`}
+            data-kpi={item.key}
             onClick={item.onActivate}
             aria-expanded={Boolean(item.expanded)}
             aria-haspopup="dialog"
@@ -188,7 +238,7 @@ export function KpiStrip({ items }: { items: KpiCardModel[] }) {
             <KpiCardBody item={item} />
           </button>
         ) : (
-          <div key={item.key} className={classic.statCard}>
+          <div key={item.key} className={classic.statCard} data-kpi={item.key}>
             <KpiCardBody item={item} />
           </div>
         )
