@@ -4,7 +4,7 @@ import React, { useMemo } from 'react';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import { hostCategoryText } from './category-copy';
-import { HOST_PALETTE } from '../config';
+import { HOST_DASHBOARD_CONFIG, HOST_PALETTE } from '../config';
 import { latestPreferSignal, maxFinite, pointsToChartData, type EntityTableRow } from '../entity-series';
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
 import EventsRail, { type HostAlertRailEvent } from './events-rail';
@@ -56,6 +56,16 @@ const peakOfRow = (row: EntityTableRow | undefined, key: string) => {
   return latestOfRow(row, key);
 };
 
+/** 与本页 CPU / 内存折线共用同一序列色，主值不另写死色。 */
+const CPU_SERIES = { label: 'CPU', color: HOST_PALETTE.emerald };
+const MEM_SERIES = { label: '内存', color: HOST_PALETTE.blue };
+
+/** 概览不画 Load 线时，回落到图表配置里 system_load1 的默认序列色。 */
+const LOAD1_SERIES_COLOR = HOST_DASHBOARD_CONFIG.charts
+  .flatMap((chart) => chart.series)
+  .find((series) => series.metric === 'system_load1')?.color
+  || HOST_PALETTE.indigo;
+
 export default function OverviewPane({
   metrics,
   loading,
@@ -93,12 +103,14 @@ export default function OverviewPane({
       {
         key: 'cpu',
         label: 'CPU',
-        value: formatPercent(cpu)
+        value: formatPercent(cpu),
+        tone: CPU_SERIES.color
       },
       {
         key: 'mem',
         label: '内存',
-        value: formatPercent(mem)
+        value: formatPercent(mem),
+        tone: MEM_SERIES.color
       }
     ];
     if (showLoad) {
@@ -106,7 +118,8 @@ export default function OverviewPane({
         key: 'load',
         label: 'Load1',
         value: formatPlain(load),
-        subtitle: roundedCores > 0 ? `${roundedCores}核` : undefined
+        subtitle: roundedCores > 0 ? `${roundedCores}核` : undefined,
+        tone: LOAD1_SERIES_COLOR
       });
     }
     items.push({
@@ -247,14 +260,14 @@ export default function OverviewPane({
           loading={loading}
           unit="percent"
           data={metrics.cpu_usage_total?.viewData || []}
-          legends={[{ label: 'CPU', color: HOST_PALETTE.emerald }]}
+          legends={[CPU_SERIES]}
         />
         <ThinTimeSeries
           title={hostCategoryText(t, 'memoryUtilization')}
           loading={loading}
           unit="percent"
           data={metrics.mem_used_percent?.viewData || []}
-          legends={[{ label: '内存', color: HOST_PALETTE.blue }]}
+          legends={[MEM_SERIES]}
         />
         <ThinTimeSeries
           title={mountName ? `磁盘使用率 · ${mountName}` : '磁盘使用率'}
