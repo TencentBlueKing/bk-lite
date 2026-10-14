@@ -84,20 +84,19 @@ export default function OverviewPane({
   const mountName = worst?.labels.path || worst?.labels.mount || '';
 
   const cards = useMemo<KpiCardModel[]>(() => {
+    const roundedCores = cores != null && cores > 0 ? Math.round(cores) : 0;
     const items: KpiCardModel[] = [
       {
         key: 'cpu',
         label: 'CPU',
         value: formatPercent(cpu),
-        color: HOST_PALETTE.emerald,
-        trend: metrics.cpu_usage_total?.viewData || []
+        footer: { kind: 'donut', percent: cpu }
       },
       {
         key: 'mem',
         label: '内存',
         value: formatPercent(mem),
-        color: HOST_PALETTE.blue,
-        trend: metrics.mem_used_percent?.viewData || []
+        footer: { kind: 'donut', percent: mem }
       }
     ];
     if (showLoad) {
@@ -105,9 +104,8 @@ export default function OverviewPane({
         key: 'load',
         label: 'Load1',
         value: formatPlain(load),
-        subtitle: cores != null && cores > 0 ? `· ${Math.round(cores)} 核` : undefined,
-        color: HOST_PALETTE.orange,
-        trend: metrics.system_load1?.viewData || []
+        subtitle: roundedCores > 0 ? `${roundedCores}核` : undefined,
+        footer: { kind: 'capacity', load, cores }
       });
     }
     items.push({
@@ -116,8 +114,7 @@ export default function OverviewPane({
       hint: hostCategoryText(t, 'diskUtilizationPeak'),
       value: diskLoading && diskValue == null ? '--' : formatPercent(diskValue),
       detail: mountName ? `挂载 ${mountName}` : '—',
-      color: HOST_PALETTE.orange,
-      trend: worst ? pointsToChartData([{ points: worst.series.disk_used_percent || [] }]) : []
+      footer: { kind: 'donut', percent: diskValue }
     });
     const alertTone = alertCount == null
       ? undefined
@@ -127,18 +124,13 @@ export default function OverviewPane({
     items.push({
       key: 'uptime',
       label: hostCategoryText(t, 'uptime'),
-      value: uptime == null ? '--' : formatDuration(uptime),
-      color: HOST_PALETTE.indigo,
-      trend: metrics.system_uptime?.viewData || [],
-      flat: true
+      value: uptime == null ? '--' : formatDuration(uptime)
     });
     items.push({
       key: 'alert',
       label: '告警',
       value: alertCount == null ? '--' : String(alertCount),
       tone: alertTone,
-      color: 'var(--color-text-3)',
-      flat: alertCount != null,
       onActivate: onOpenAlerts,
       expanded: alertsOpen
     });
@@ -152,16 +144,11 @@ export default function OverviewPane({
     diskValue,
     load,
     mem,
-    metrics.cpu_usage_total?.viewData,
-    metrics.mem_used_percent?.viewData,
-    metrics.system_load1?.viewData,
-    metrics.system_uptime?.viewData,
     mountName,
     onOpenAlerts,
     showLoad,
     uptime,
-    t,
-    worst
+    t
   ]);
 
   const netIn = latestNumber(metrics.net_bytes_recv_rate);

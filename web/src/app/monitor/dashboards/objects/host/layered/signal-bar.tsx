@@ -1,64 +1,20 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import { Tooltip } from 'antd';
-import { useECharts } from '../../../shared/widgets/useECharts';
-import { ChartData } from '@/app/monitor/types';
-import { resolveThemeColor, useThemeColors } from './theme-color';
+import { HOST_PALETTE } from '../config';
+import { formatPlain } from './readings';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
-export const Spark = ({
-  data,
-  color,
-  className
-}: {
-  data: ChartData[];
-  color: string;
-  className?: string;
-}) => {
-  const theme = useThemeColors();
-  const stroke = resolveThemeColor(color, theme) || theme['--color-text-3'];
-  const series = useMemo(
-    () =>
-      data
-        .map((point) => {
-          const values = Object.entries(point)
-            .filter(([key, value]) => key.startsWith('value') && typeof value === 'number')
-            .map(([, value]) => value as number);
-          return [Number(point.time), values[0]] as [number, number | undefined];
-        })
-        .filter((item): item is [number, number] => Number.isFinite(item[0]) && Number.isFinite(item[1])),
-    [data]
-  );
-  const option = useMemo(() => {
-    if (series.length < 2) return null;
-    return {
-      animation: false,
-      grid: { top: 2, right: 0, bottom: 2, left: 0 },
-      xAxis: { type: 'value' as const, show: false, min: series[0][0], max: series[series.length - 1][0] },
-      yAxis: { type: 'value' as const, show: false },
-      series: [
-        {
-          type: 'line' as const,
-          data: series,
-          showSymbol: false,
-          symbol: 'none',
-          lineStyle: { width: 1.4, color: stroke }
-        }
-      ]
-    };
-  }, [series, stroke]);
-  const { containerRef } = useECharts(option);
-  if (!option) return <div className={className || classic.miniTrend} />;
-  return <div ref={containerRef} className={className || classic.miniTrend} />;
-};
+const DONUT_SIZE = 52;
+const DONUT_STROKE = 7;
+const USAGE_WARN = 80;
+const USAGE_CRIT = 90;
 
-export const FlatSpark = ({ className }: { className?: string }) => (
-  <div className={className || styles.flatSpark} aria-hidden="true">
-    <span className={styles.flatSparkLine} />
-  </div>
-);
+export type KpiFooter =
+  | { kind: 'donut'; percent: number | null }
+  | { kind: 'capacity'; load: number | null; cores: number | null };
 
 export interface KpiCardModel {
   key: string;
@@ -66,39 +22,156 @@ export interface KpiCardModel {
   /** 窄卡保留短标题时，悬浮展示完整名称。 */
   hint?: string;
   value: string;
-  color: string;
   tone?: string;
   subtitle?: string;
   detail?: string;
-  trend?: ChartData[];
-  flat?: boolean;
+  /** 主值下方的占比环或核容量条。运行时间 / 告警不传。 */
+  footer?: KpiFooter;
   extra?: React.ReactNode;
   onActivate?: () => void;
   expanded?: boolean;
 }
 
-const KpiCardBody = ({ item }: { item: KpiCardModel }) => (
-  <>
-    <div className={classic.statLabel}>
-      {item.hint ? (
-        <Tooltip title={item.hint}>
-          <span>{item.label}</span>
-        </Tooltip>
-      ) : item.label}
-    </div>
-    <div className={classic.statBody}>
-      <div className={classic.statValue} style={item.tone ? { color: item.tone } : undefined}>
-        {item.value}
-        {item.subtitle ? <span className={classic.statUnit}>{item.subtitle}</span> : null}
-      </div>
-      {item.detail ? <div className={classic.statMeta}>{item.detail}</div> : null}
-      {item.extra}
-    </div>
-    {item.flat ? <FlatSpark /> : <Spark data={item.trend || []} color={item.color} />}
-  </>
+const finite = (value: number | null | undefined): value is number => (
+  value != null && Number.isFinite(value)
 );
 
-/** 概览 KPI：值 + 细 spark。告警没有历史时序时只画平线。 */
+const usageStroke = (percent: number) => {
+  if (percent >= USAGE_CRIT) return 'var(--color-fail)';
+  if (percent >= USAGE_WARN) return 'var(--color-warning)';
+  return 'var(--color-primary)';
+};
+
+const coreCount = (cores: number | null) => {
+  if (!finite(cores) || cores <= 0) return null;
+  const rounded = Math.round(cores);
+  return rounded > 0 ? rounded : null;
+};
+
+const UsageDonut = ({ percent }: { percent: number | null }) => {
+  const radius = (DONUT_SIZE - DONUT_STROKE) / 2 - 0.5;
+  const center = DONUT_SIZE / 2;
+  const circumference = 2 * Math.PI * radius;
+  const clamped = finite(percent) ? Math.min(100, Math.max(0, percent)) : 0;
+  const full = clamped >= 99.95;
+  return (
+    <svg
+      width={DONUT_SIZE}
+      height={DONUT_SIZE}
+      viewBox={`0 0 ${DONUT_SIZE} ${DONUT_SIZE}`}
+      className="shrink-0 overflow-visible"
+      aria-hidden="true"
+    >
+      <circle
+        cx={center}
+        cy={center}
+        r={radius}
+        fill="none"
+        stroke="var(--color-fill-3)"
+        strokeWidth={DONUT_STROKE}
+      />
+      {finite(percent) && clamped > 0 ? (
+        <circle
+          cx={center}
+          cy={center}
+          r={radius}
+          fill="none"
+          stroke={usageStroke(percent)}
+          strokeWidth={DONUT_STROKE}
+          strokeDasharray={full ? undefined : `${(clamped / 100) * circumference} ${circumference}`}
+          strokeLinecap="butt"
+          transform={`rotate(-90 ${center} ${center})`}
+        />
+      ) : null}
+    </svg>
+  );
+};
+
+const CapacityBar = ({ load, cores }: { load: number | null; cores: number | null }) => {
+  const count = coreCount(cores);
+  const loadValue = finite(load) ? load : null;
+  if (loadValue == null || count == null) {
+    return (
+      <Tooltip title="Load1 / 核数">
+        <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--color-fill-3)]" aria-hidden="true" />
+      </Tooltip>
+    );
+  }
+  const overload = loadValue > count;
+  const fill = Math.min(Math.max(loadValue, 0) / count, 1);
+  const caption = `${formatPlain(loadValue)} / ${count}`;
+  const factor = formatPlain(loadValue / count);
+  return (
+    <Tooltip title={`Load1 / 核数 ${caption}`}>
+      <div className="flex w-full min-w-0 flex-col justify-end gap-1">
+        <div className="flex items-baseline justify-between gap-2 text-xs leading-none tabular-nums">
+          <span className={overload ? 'text-[var(--color-warning)]' : 'text-[var(--color-text-3)]'}>
+            {caption}
+          </span>
+          {overload ? <span className="text-[var(--color-warning)]">{factor}×</span> : null}
+        </div>
+        <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--color-fill-3)]" aria-hidden="true">
+          <div
+            className="h-full rounded-full"
+            style={{
+              width: `${fill * 100}%`,
+              background: overload ? 'var(--color-warning)' : HOST_PALETTE.orange
+            }}
+          />
+        </div>
+      </div>
+    </Tooltip>
+  );
+};
+
+const KpiFooterView = ({ footer }: { footer: KpiFooter }) => {
+  if (footer.kind === 'donut') {
+    return (
+      <div className="mt-auto flex h-[52px] items-center justify-center" data-kpi-footer="donut">
+        <UsageDonut percent={footer.percent} />
+      </div>
+    );
+  }
+  return (
+    <div className="mt-auto flex h-[52px] w-full items-end" data-kpi-footer="capacity">
+      <CapacityBar load={footer.load} cores={footer.cores} />
+    </div>
+  );
+};
+
+const valueTone = (item: KpiCardModel) => {
+  if (item.tone) return item.tone;
+  if (item.footer?.kind !== 'capacity') return undefined;
+  const count = coreCount(item.footer.cores);
+  if (!finite(item.footer.load) || count == null || item.footer.load <= count) return undefined;
+  return 'var(--color-warning)';
+};
+
+const KpiCardBody = ({ item }: { item: KpiCardModel }) => {
+  const tone = valueTone(item);
+  return (
+    <>
+      <div className={classic.statLabel}>
+        {item.hint ? (
+          <Tooltip title={item.hint}>
+            <span>{item.label}</span>
+          </Tooltip>
+        ) : item.label}
+      </div>
+      <div className={classic.statBody}>
+        <div className={classic.statValue} style={tone ? { color: tone } : undefined}>
+          {item.value}
+        </div>
+        {item.subtitle ? <div className={classic.statMeta}>{item.subtitle}</div> : null}
+        {item.detail ? <div className={classic.statMeta}>{item.detail}</div> : null}
+        {item.extra}
+      </div>
+      {item.footer ? <KpiFooterView footer={item.footer} /> : null}
+    </>
+  );
+};
+
+/** 概览 KPI：占比环、核容量条，或无底部图形。 */
 export function KpiStrip({ items }: { items: KpiCardModel[] }) {
   return (
     <div className={styles.kpiGrid}>
