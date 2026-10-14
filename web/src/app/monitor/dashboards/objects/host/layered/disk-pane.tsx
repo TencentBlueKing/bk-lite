@@ -5,6 +5,7 @@ import { Tooltip } from 'antd';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { HOST_PALETTE } from '../config';
 import {
+  latestPreferSignal,
   pointsToChartData,
   showDiskFsTypeColumn,
   type EntityTableRow
@@ -272,7 +273,7 @@ export default function DiskPane({
                   })))}
                   legends={legendSource.map((item) => {
                     const reading = present.length
-                      ? legendReading(selectedDevice?.values[item.key], chart.unit)
+                      ? legendReading(latestPreferSignal(selectedDevice?.series[item.key]), chart.unit)
                       : undefined;
                     return {
                       label: hostCategoryText(t, item.labelKey),

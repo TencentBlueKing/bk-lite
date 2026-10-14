@@ -289,7 +289,8 @@ const deviceThroughput = (row: EntityTableRow) => {
 
 /**
  * 设备表：一个 diskio 身份一行。收读/写吞吐、IOPS、util、延迟。
- * 读+写合计高的在前；没有吞吐的排在后面。IOPS 不写入挂载行。
+ * 表值用 latestPreferSignal（与挂载用量、网卡行相同），末点掉零时保留窗内信号。
+ * 折线点列仍是原序列。读+写合计高的在前；没有吞吐的排在后面。IOPS 不写入挂载行。
  */
 export const buildDiskDeviceRows = (byMetric: Record<string, LabeledSeries[]>): EntityTableRow[] => {
   const rows = new Map<string, EntityTableRow>();
@@ -301,6 +302,13 @@ export const buildDiskDeviceRows = (byMetric: Record<string, LabeledSeries[]>): 
       row.labels.name = name;
       row.labels.device = name;
       writeMetric(row, metricKey, series.points);
+    });
+  });
+
+  rows.forEach((row) => {
+    Object.keys(row.series).forEach((metricKey) => {
+      const preferred = latestPreferSignal(row.series[metricKey]);
+      if (preferred != null) row.values[metricKey] = preferred;
     });
   });
 
