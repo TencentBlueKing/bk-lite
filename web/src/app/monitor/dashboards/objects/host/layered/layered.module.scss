@@ -308,11 +308,19 @@
   cursor: pointer;
 }
 
-.policyLink {
-  width: fit-content;
-  color: var(--color-primary);
-  font-size: 12px;
-  line-height: 1.4;
+.kpiActivate {
+  width: 100%;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+
+  &:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
 }
 
 .flatSpark {

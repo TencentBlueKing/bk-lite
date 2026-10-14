@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import Link from 'next/link';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import { hostCategoryText } from './category-copy';
@@ -29,7 +28,8 @@ interface OverviewPaneProps {
   processRows: EntityTableRow[];
   processReady: boolean;
   alertCount: number | null;
-  monitorObjectId?: React.Key;
+  alertsOpen?: boolean;
+  onOpenAlerts?: () => void;
   onJump: (tab: 'disk' | 'net' | 'process', key: string) => void;
 }
 
@@ -60,7 +60,8 @@ export default function OverviewPane({
   processRows,
   processReady,
   alertCount,
-  monitorObjectId,
+  alertsOpen = false,
+  onOpenAlerts,
   onJump
 }: OverviewPaneProps) {
   const { t } = useDashboardText();
@@ -133,17 +134,13 @@ export default function OverviewPane({
       tone: alertTone,
       color: 'var(--color-text-3)',
       flat: alertCount != null,
-      extra: typeof monitorObjectId === 'string' || typeof monitorObjectId === 'number' ? (
-        <Link className={styles.policyLink} href={`/monitor/event/alert?objId=${monitorObjectId}`}>
-          查看策略
-        </Link>
-      ) : (
-        <span className={styles.policyLink}>查看策略</span>
-      )
+      onActivate: onOpenAlerts,
+      expanded: alertsOpen
     });
     return items;
   }, [
     alertCount,
+    alertsOpen,
     cores,
     cpu,
     diskLoading,
@@ -154,8 +151,8 @@ export default function OverviewPane({
     metrics.mem_used_percent?.viewData,
     metrics.system_load1?.viewData,
     metrics.system_uptime?.viewData,
-    monitorObjectId,
     mountName,
+    onOpenAlerts,
     showLoad,
     uptime,
     t,

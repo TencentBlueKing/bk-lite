@@ -73,31 +73,52 @@ export interface KpiCardModel {
   trend?: ChartData[];
   flat?: boolean;
   extra?: React.ReactNode;
+  onActivate?: () => void;
+  expanded?: boolean;
 }
+
+const KpiCardBody = ({ item }: { item: KpiCardModel }) => (
+  <>
+    <div className={classic.statLabel}>
+      {item.hint ? (
+        <Tooltip title={item.hint}>
+          <span>{item.label}</span>
+        </Tooltip>
+      ) : item.label}
+    </div>
+    <div className={classic.statBody}>
+      <div className={classic.statValue} style={item.tone ? { color: item.tone } : undefined}>
+        {item.value}
+        {item.subtitle ? <span className={classic.statUnit}>{item.subtitle}</span> : null}
+      </div>
+      {item.detail ? <div className={classic.statMeta}>{item.detail}</div> : null}
+      {item.extra}
+    </div>
+    {item.flat ? <FlatSpark /> : <Spark data={item.trend || []} color={item.color} />}
+  </>
+);
 
 /** 概览 KPI：值 + 细 spark。告警没有历史时序时只画平线。 */
 export function KpiStrip({ items }: { items: KpiCardModel[] }) {
   return (
     <div className={styles.kpiGrid}>
       {items.map((item) => (
-        <div key={item.key} className={classic.statCard}>
-          <div className={classic.statLabel}>
-            {item.hint ? (
-              <Tooltip title={item.hint}>
-                <span>{item.label}</span>
-              </Tooltip>
-            ) : item.label}
+        item.onActivate ? (
+          <button
+            key={item.key}
+            type="button"
+            className={`${classic.statCard} ${styles.kpiActivate}`}
+            onClick={item.onActivate}
+            aria-expanded={Boolean(item.expanded)}
+            aria-haspopup="dialog"
+          >
+            <KpiCardBody item={item} />
+          </button>
+        ) : (
+          <div key={item.key} className={classic.statCard}>
+            <KpiCardBody item={item} />
           </div>
-          <div className={classic.statBody}>
-            <div className={classic.statValue} style={item.tone ? { color: item.tone } : undefined}>
-              {item.value}
-              {item.subtitle ? <span className={classic.statUnit}>{item.subtitle}</span> : null}
-            </div>
-            {item.detail ? <div className={classic.statMeta}>{item.detail}</div> : null}
-            {item.extra}
-          </div>
-          {item.flat ? <FlatSpark /> : <Spark data={item.trend || []} color={item.color} />}
-        </div>
+        )
       ))}
     </div>
   );

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Tabs } from 'antd';
 import useMonitorApi from '@/app/monitor/api';
 import {
@@ -17,6 +17,8 @@ import type { EntityLoadState } from './use-entity-metrics';
 import DiskPane from './layered/disk-pane';
 import FlatProcessSplit from './layered/flat-process-split';
 import NetworkPane from './layered/network-pane';
+import HostAlertDrawer from './layered/host-alert-drawer';
+import { activeHostAlertParams } from './layered/host-alert-list';
 import OverviewPane from './layered/overview-pane';
 import SystemPane from './layered/system-pane';
 import { latestNumber, latestPreferCount } from './layered/readings';
@@ -152,6 +154,15 @@ export default function HostCategoryLayout({
   const { getMonitorAlert } = useMonitorApi();
   const [uncontrolledTab, setUncontrolledTab] = useState('overview');
   const [alertCount, setAlertCount] = useState<number | null>(null);
+  const [alertDrawerOpen, setAlertDrawerOpen] = useState(false);
+  const [alertRefreshKey, setAlertRefreshKey] = useState(0);
+  const openHostAlerts = useCallback(() => {
+    setAlertDrawerOpen(true);
+    setAlertRefreshKey((key) => key + 1);
+  }, []);
+  const applyAlertCount = useCallback((count: number) => {
+    setAlertCount(count);
+  }, []);
   const activeTab = onCategoryTabChange ? categoryTab : uncontrolledTab;
   const setActiveTab = onCategoryTabChange || setUncontrolledTab;
   const metrics = useMemo(
@@ -202,19 +213,14 @@ export default function HostCategoryLayout({
   }, [activeTab, processReady, setActiveTab]);
 
   useEffect(() => {
-    if (activeTab !== 'overview') return undefined;
+    if (activeTab !== 'overview' || alertDrawerOpen) return undefined;
     const instanceId = String(dashboard.instanceId || '');
     if (!instanceId) {
       setAlertCount(null);
       return undefined;
     }
     let active = true;
-    getMonitorAlert({
-      monitor_instance_id: instanceId,
-      status_in: 'new' as unknown as string[],
-      page: 1,
-      page_size: 1
-    })
+    getMonitorAlert(activeHostAlertParams(instanceId, 1, 1))
       .then((data) => {
         if (active) setAlertCount(typeof data?.count === 'number' ? data.count : 0);
       })
@@ -224,7 +230,7 @@ export default function HostCategoryLayout({
     return () => {
       active = false;
     };
-  }, [activeTab, dashboard.instanceId, getMonitorAlert]);
+  }, [activeTab, alertDrawerOpen, dashboard.instanceId, getMonitorAlert]);
 
   const jump = (tab: 'disk' | 'net' | 'process', key: string) => {
     if (tab === 'disk') diskSelection.setPendingMountKey(key);
@@ -299,7 +305,8 @@ export default function HostCategoryLayout({
         processRows={processRows}
         processReady={processReady}
         alertCount={alertCount}
-        monitorObjectId={dashboard.monitorObjectId}
+        alertsOpen={alertDrawerOpen}
+        onOpenAlerts={openHostAlerts}
         onJump={jump}
       />
     );
@@ -324,6 +331,14 @@ export default function HostCategoryLayout({
         />
       </div>
       <div className={styles.main}>{renderPane()}</div>
+      <HostAlertDrawer
+        open={alertDrawerOpen}
+        refreshKey={alertRefreshKey}
+        instanceId={String(dashboard.instanceId || '')}
+        monitorObjectId={dashboard.monitorObjectId}
+        onClose={() => setAlertDrawerOpen(false)}
+        onCount={applyAlertCount}
+      />
     </div>
   );
 }
