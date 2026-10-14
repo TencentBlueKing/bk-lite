@@ -54,6 +54,13 @@ export default function NetworkPane({
     ...(hasDrop ? [{ points: selected?.series.drop || [], label: '丢包', color: HOST_PALETTE.orange, latest: dropLatest }] : [])
   ];
   const { t } = useDashboardText();
+  const throughputTitle = name
+    ? hostCategoryText(t, 'inboundOutboundThroughputNamed', { name })
+    : hostCategoryText(t, 'inboundOutboundThroughput');
+  const throughputItems = [
+    { key: 'net_bytes_recv_rate' as const, label: hostCategoryText(t, 'inboundPacketRate'), color: HOST_PALETTE.blue },
+    { key: 'net_bytes_sent_rate' as const, label: hostCategoryText(t, 'outboundPacketRate'), color: HOST_PALETTE.cyan }
+  ].filter((item) => (selected?.series[item.key] || []).length > 0);
   const packetItems = [
     { key: 'net_packets_recv_rate' as const, label: hostCategoryText(t, 'inboundPacketRate'), color: HOST_PALETTE.blue },
     { key: 'net_packets_sent_rate' as const, label: hostCategoryText(t, 'outboundPacketRate'), color: HOST_PALETTE.cyan }
@@ -67,30 +74,17 @@ export default function NetworkPane({
       </div>
       <div className={styles.netTrendGrid}>
         <ThinTimeSeries
-          key={`in-${selected?.key || 'none'}`}
-          title={name
-            ? hostCategoryText(t, 'inboundThroughputNamed', { name })
-            : hostCategoryText(t, 'inboundThroughput')}
+          key={`io-${selected?.key || 'none'}`}
+          title={throughputTitle}
           loading={loading}
           unit="byteps"
-          data={pointsToChartData([{ points: selected?.series.net_bytes_recv_rate || [] }])}
-          legends={[{
-            label: '入',
-            color: HOST_PALETTE.blue
-          }]}
-        />
-        <ThinTimeSeries
-          key={`out-${selected?.key || 'none'}`}
-          title={name
-            ? hostCategoryText(t, 'outboundThroughputNamed', { name })
-            : hostCategoryText(t, 'outboundThroughput')}
-          loading={loading}
-          unit="byteps"
-          data={pointsToChartData([{ points: selected?.series.net_bytes_sent_rate || [] }])}
-          legends={[{
-            label: '出',
-            color: HOST_PALETTE.cyan
-          }]}
+          data={pointsToChartData(throughputItems.map((item) => ({
+            points: selected?.series[item.key] || []
+          })))}
+          legends={(throughputItems.length ? throughputItems : [
+            { label: hostCategoryText(t, 'inboundPacketRate'), color: HOST_PALETTE.blue },
+            { label: hostCategoryText(t, 'outboundPacketRate'), color: HOST_PALETTE.cyan }
+          ]).map((item) => ({ label: item.label, color: item.color }))}
         />
         <ThinTimeSeries
           key={`err-${selected?.key || 'none'}`}

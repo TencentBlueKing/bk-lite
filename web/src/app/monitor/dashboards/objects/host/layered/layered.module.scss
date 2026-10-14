@@ -91,10 +91,10 @@
   gap: 12px;
 }
 
-/* 网络趋势四卡。窄于 1100 折成 2×2，不跟 chartGrid4 一起收成单列。 */
+/* 网络趋势三卡。窄于 1100 折成两列（2+1），不跟 chartGrid4 一起收成单列。 */
 .netTrendGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -192,7 +192,7 @@
   flex-shrink: 0;
 }
 
-/* 磁盘两区：上图下表。挂载一张通栏短图；块设备四卡一行，对齐网络趋势。窄于 1100 折成 2×2。 */
+/* 磁盘两区：上图下表。挂载一张通栏短图；块设备三卡一行，对齐网络趋势。窄于 1100 折成两列（2+1）。 */
 .diskMountChart,
 .diskDeviceBlock {
   display: flex;
@@ -225,7 +225,7 @@
 
 .diskDeviceGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 

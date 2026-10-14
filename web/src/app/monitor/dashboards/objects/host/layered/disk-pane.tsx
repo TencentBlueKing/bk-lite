@@ -73,12 +73,21 @@ export default function DiskPane({
     { key: 'disk_write_latency' as const, label: hostCategoryText(t, 'writeLatency'), color: HOST_PALETTE.blue }
   ].filter((item) => (selectedDevice?.series[item.key] || []).length > 0);
   const followHint = hostCategoryText(t, 'chartFollowsSelection');
-  const readTitle = deviceName
-    ? hostCategoryText(t, 'readThroughputNamed', { name: deviceName })
-    : hostCategoryText(t, 'readThroughput');
-  const writeTitle = deviceName
-    ? hostCategoryText(t, 'writeThroughputNamed', { name: deviceName })
-    : hostCategoryText(t, 'writeThroughput');
+  const throughputTitle = deviceName
+    ? hostCategoryText(t, 'readWriteThroughputNamed', { name: deviceName })
+    : hostCategoryText(t, 'readWriteThroughput');
+  const throughputItems = [
+    {
+      key: 'diskio_read_bytes_rate' as const,
+      label: hostCategoryText(t, 'read'),
+      color: HOST_PALETTE.blue
+    },
+    {
+      key: 'diskio_write_bytes_rate' as const,
+      label: hostCategoryText(t, 'write'),
+      color: HOST_PALETTE.cyan
+    }
+  ].filter((item) => (selectedDevice?.series[item.key] || []).length > 0);
   const iopsTitle = deviceName
     ? hostCategoryText(t, 'readWriteIopsNamed', { name: deviceName })
     : hostCategoryText(t, 'readWriteIops');
@@ -211,22 +220,18 @@ export default function DiskPane({
             <div className={styles.diskDeviceBlock}>
               <div className={styles.diskDeviceGrid}>
                 <ThinTimeSeries
-                  key={`read-${selectedDevice?.key || 'none'}`}
-                  title={readTitle}
+                  key={`rw-${selectedDevice?.key || 'none'}`}
+                  title={throughputTitle}
                   loading={loading && !selectedDevice}
                   unit="byteps"
                   emptyText={emptyReading}
-                  data={pointsToChartData([{ points: selectedDevice?.series.diskio_read_bytes_rate || [] }])}
-                  legends={[{ label: hostCategoryText(t, 'readThroughput'), color: HOST_PALETTE.blue }]}
-                />
-                <ThinTimeSeries
-                  key={`write-${selectedDevice?.key || 'none'}`}
-                  title={writeTitle}
-                  loading={loading && !selectedDevice}
-                  unit="byteps"
-                  emptyText={emptyReading}
-                  data={pointsToChartData([{ points: selectedDevice?.series.diskio_write_bytes_rate || [] }])}
-                  legends={[{ label: hostCategoryText(t, 'writeThroughput'), color: HOST_PALETTE.cyan }]}
+                  data={pointsToChartData(throughputItems.map((item) => ({
+                    points: selectedDevice?.series[item.key] || []
+                  })))}
+                  legends={(throughputItems.length ? throughputItems : [
+                    { label: hostCategoryText(t, 'read'), color: HOST_PALETTE.blue },
+                    { label: hostCategoryText(t, 'write'), color: HOST_PALETTE.cyan }
+                  ]).map((item) => ({ label: item.label, color: item.color }))}
                 />
                 <ThinTimeSeries
                   key={`iops-${selectedDevice?.key || 'none'}`}
