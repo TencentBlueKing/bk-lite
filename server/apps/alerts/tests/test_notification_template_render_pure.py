@@ -233,3 +233,21 @@ def test_large_collection_is_rejected_before_output_expansion():
 
     with pytest.raises(TemplateValidationError, match="不能超过 100 项"):
         render_source("{{ enrichment.cmdb.owners }}", context, channel_type="enterprise_wechat_bot")
+
+
+def test_email_style_accepts_only_level_color_variable():
+    from apps.alerts.notification_templates.renderer import TemplateValidationError, build_alert_context, render_source
+
+    context = build_alert_context(AlertStub(), [], "assignment", level_display_name="警告", level_color="#11aa22")
+    result = render_source(
+        '<strong style="color:{{ alert.level_color }};">{{ alert.level }}</strong>',
+        context,
+        channel_type="email",
+    )
+
+    assert result.value == '<strong style="color:#11AA22;">警告</strong>'
+    unsafe = build_alert_context(AlertStub(), [], "assignment", level_color='red;background:url("https://example.test/x")')
+    fallback = render_source('<p style="color:{{ alert.level_color }};">x</p>', unsafe, channel_type="email")
+    assert fallback.value == '<p style="color:#FFAD42;">x</p>'
+    with pytest.raises(TemplateValidationError, match="变量只能放在 HTML 文本节点中"):
+        render_source('<strong style="color:{{ alert.title }};">{{ alert.level }}</strong>', context, channel_type="email")

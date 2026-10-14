@@ -682,7 +682,7 @@
       "sceneRecovery": "Recovery",
       "selectForChannel": "Choose one template group and the system will use the matching format for each notification method.",
       "bindingTitle": "Notification template bindings",
-      "bindingSteps": "Choose a template group for each channel and lifecycle scene. An empty scene uses that channel's default binding, then the system content if no default is bound.",
+      "bindingSteps": "Choose a template group for the default, reminder, escalation, and recovery scenes on each channel. Every scene is required.",
       "noCompatibleTemplate": "No template group covers all selected notification methods",
       "incompatibleSelection": "The selected template group does not cover every notification method"
     },

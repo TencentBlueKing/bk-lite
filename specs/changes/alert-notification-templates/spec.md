@@ -38,7 +38,7 @@
 - 配置导航名称为“通知模板”；编辑页返回按钮带明确目标文案，告警操作模板页头直接展示模板名称、内置标识和用途说明；
 - 按方式切换 Ace Editor 的 HTML、Markdown 或 Text 模式；
 - HTML 默认正文使用多行缩进源码并开启编辑器自动换行；已生成的一行式告警操作默认正文会在编辑时无损转换为多行源码；
-- 点击变量标签插入变量；
+- 点击变量标签时，插到当前光标处：光标在标题输入框则写入标题，否则写入正文；正文编辑器尚未就绪时仍追加到正文末尾；
 - 350ms 防抖调用服务端预览，旧响应不会覆盖新内容；
 - HTML/Markdown 预览经过 DOMPurify，并放入带 CSP 的 sandbox iframe；
 - 预览区高度随视口在 520px 到 800px 之间调整，长内容在独立预览区内滚动；
@@ -55,7 +55,7 @@
 - 所选渠道被删除、失效或不再属于当前团队时不静默切换到其他渠道，人工操作照常完成并记录通知未发送；
 - 列表只展示当前团队的这一条内置模板，切换团队后分别维护各自配置。
 
-告警分派编辑抽屉按已选通知渠道展示模板绑定卡片，每个渠道分别提供“默认（首次分派）、提醒、升级、恢复”四个场景。每个选择框只展示包含当前渠道版本的模板组，例如邮件渠道只展示带邮件 HTML 版本的模板组。场景未选择时继承当前渠道的默认绑定；默认绑定也未选择时使用系统默认内容。升级层使用同一渠道 ID 时继承策略顶层绑定。
+告警分派编辑抽屉按已选通知渠道展示模板绑定卡片，每个渠道分别提供“默认（首次分派）、提醒、升级、恢复”四个场景，四个场景均为必填。每个选择框只展示包含当前渠道版本的模板组，例如邮件渠道只展示带邮件 HTML 版本的模板组。已保存数据里某个场景没有绑定时，发送仍继承当前渠道的默认绑定；默认绑定也没有时使用系统默认内容。升级层使用同一渠道 ID 时继承策略顶层绑定。
 
 ## 3. 通知方式与格式
 
@@ -177,7 +177,7 @@
 
 可用根变量：
 
-- `alert`：标题、内容、级别、状态、来源、资源、时间、负责人和组织；其中 `alert.level` 是按告警级别配置映射后的展示名称（如“警告”），`alert.level_id` 保留原始级别 ID；
+- `alert`：标题、内容、级别、状态、来源、资源、时间、负责人和组织；其中 `alert.level` 是按告警级别配置映射后的展示名称（如“警告”），`alert.level_id` 保留原始级别 ID，`alert.level_color` 是该级别配置颜色的十六进制值。邮件正文默认用它给级别名称上色，用户可以把这段样式改成固定颜色；
 - `labels`、`dimensions`、`enrichment`：告警已有结构化数据；
 - `notification`：场景、场景名称、本次接收人和生成时间；`notification.receiver_names` 是用于正文展示的顿号分隔名称，`notification.receivers` 保留原始列表；
 - `summary`：仅为后续汇总范围预留，单告警模板禁止使用。
@@ -326,7 +326,7 @@ CPU 使用率已达到 95%，并持续 5 分钟。
     <h2 style="margin:4px 0 0;font-size:20px;">{{ alert.title }}</h2>
   </div>
   <table style="width:100%;margin-top:16px;border-collapse:collapse;">
-    <tr><td style="width:96px;padding:8px;border:1px solid #e5e7eb;">告警级别</td><td style="padding:8px;border:1px solid #e5e7eb;"><strong>{{ alert.level }}</strong></td></tr>
+    <tr><td style="width:96px;padding:8px;border:1px solid #e5e7eb;">告警级别</td><td style="padding:8px;border:1px solid #e5e7eb;"><strong style="color:{{ alert.level_color }};">{{ alert.level }}</strong></td></tr>
     <tr><td style="padding:8px;border:1px solid #e5e7eb;">告警资源</td><td style="padding:8px;border:1px solid #e5e7eb;">{{ alert.resource_name }}（{{ alert.resource_type }}）</td></tr>
     <tr><td style="padding:8px;border:1px solid #e5e7eb;">资源 ID</td><td style="padding:8px;border:1px solid #e5e7eb;">{{ alert.resource_id }}</td></tr>
     <tr><td style="padding:8px;border:1px solid #e5e7eb;">监控来源</td><td style="padding:8px;border:1px solid #e5e7eb;">{{ alert.source_name }}</td></tr>
@@ -517,7 +517,7 @@ CPU 使用率已达到 95%，并持续 5 分钟。
 
 - 未分派汇总模板、系统全局配置绑定和汇总变量尚未接入；
 - 测试发送是同步调用，没有独立试发任务、共享限流或幂等查询接口；下拉首版加载当前团队最近 50 条可见告警并在前端检索；
-- 页面没有“离开未保存”确认、光标位置变量插入和完整 Storybook 场景；
+- 页面没有“离开未保存”确认和完整 Storybook 场景；
 - 本地自动化未连接真实 SMTP、企微、钉钉、飞书、Webhook 或 OpsPilot；
 - 同名并发约束已落数据库，PostgreSQL 下真正的并发竞争仍需在 CI 或预发布环境验证。
 

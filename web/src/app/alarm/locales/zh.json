@@ -682,7 +682,7 @@
       "sceneRecovery": "恢复",
       "selectForChannel": "选择一个模板组，系统会按通知方式自动使用对应格式。",
       "bindingTitle": "通知模板绑定",
-      "bindingSteps": "按渠道为默认、提醒、升级和恢复场景选择模板组；某个场景未选择时使用该渠道的默认绑定，仍未绑定则使用系统默认内容。",
+      "bindingSteps": "按渠道为默认、提醒、升级和恢复场景选择模板组，每个场景都必须选择。",
       "noCompatibleTemplate": "没有同时覆盖所选通知方式的模板组",
       "incompatibleSelection": "所选模板组未覆盖全部通知方式，请重新选择"
     },

@@ -130,7 +130,7 @@ def _default_content(channel_type: str) -> tuple[str, str]:
   <table style="width:100%;border-collapse:collapse;">
     <tr>
       <td style="width:96px;padding:8px;border:1px solid #e5e7eb;">告警级别</td>
-      <td style="padding:8px;border:1px solid #e5e7eb;"><strong>{{ alert.level }}</strong></td>
+      <td style="padding:8px;border:1px solid #e5e7eb;"><strong style="color:{{ alert.level_color }};">{{ alert.level }}</strong></td>
     </tr>
     <tr>
       <td style="padding:8px;border:1px solid #e5e7eb;">告警资源</td>
