@@ -1558,7 +1558,6 @@ def browse_website(
             api_key=llm_config.openai_api_key,
             base_url=llm_config.openai_api_base,
         )
-        # logger.info(f"task: {task}\n username: {username}\n password: {password}")
 
         original_llm_task = task
         if force_browser_task:

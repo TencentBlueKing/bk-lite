@@ -40,6 +40,8 @@ import SingleValueFetchErrorTooltip from './components/singleValueFetchErrorTool
 import type { SingleValueFetchErrorTooltipState } from './components/singleValueFetchErrorTooltip';
 import ViewWorkspace from '../components/viewWorkspace';
 import ContextMenu from './components/contextMenu';
+import { setTopologyCsvExportHoverEnabled } from './utils/topologyCsvExportHover';
+import { resolveTopologyCsvExportHoverEnabled, resolveWidgetCsvExportEntry } from '@/app/ops-analysis/utils/widgetCsvMenu';
 import EdgeConfigPanel from './components/edgeConfPanel';
 import NodeSidebar from './components/nodeSidebar';
 import ShapeNodePanel from './components/shapeNodePanel';
@@ -170,6 +172,42 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
 
     const { handleEdgeConfigConfirm, closeEdgeConfig, handleMenuClick } =
       useContextMenuAndModal(containerRef, state);
+
+    useEffect(() => {
+      setTopologyCsvExportHoverEnabled(resolveTopologyCsvExportHoverEnabled({
+        editMode: state.isEditMode,
+        shareMode,
+        fullscreen: isFullscreen,
+      }));
+      return () => setTopologyCsvExportHoverEnabled(false);
+    }, [isFullscreen, shareMode, state.isEditMode]);
+
+    const handleContextMenuClick = useCallback((event: { key: string }) => {
+      if (event.key !== 'exportCsv') {
+        handleMenuClick(event);
+        return;
+      }
+      state.setContextMenuVisible(false);
+      const cell = state.graphInstance?.getCellById(state.contextMenuNodeId);
+      const data = cell?.isNode() ? cell.getData() : undefined;
+      if (typeof data?.onExportCsv === 'function') {
+        void data.onExportCsv(state.contextMenuNodeId, data.name || '');
+      }
+    }, [handleMenuClick, state]);
+
+    const showContextMenuExport = (() => {
+      if (!state.contextMenuVisible || state.contextMenuTargetType !== 'node') return false;
+      const cell = state.graphInstance?.getCellById(state.contextMenuNodeId);
+      const data = cell?.isNode() ? cell.getData() : undefined;
+      return resolveWidgetCsvExportEntry({
+        surface: 'topology',
+        chartType: data?.type === 'chart' ? data.valueConfig?.chartType : undefined,
+        editMode: state.isEditMode,
+        shareMode,
+        fullscreen: isFullscreen,
+        rawData: data?.rawData,
+      }) === 'menu';
+    })();
     const { namespaceOptions, syncTopologyCanvasResources } =
       useTopologyResources({
         graphInstance: state.graphInstance,
@@ -620,8 +658,9 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           visible={state.contextMenuVisible}
           position={state.contextMenuPosition}
           targetType={state.contextMenuTargetType}
-          onMenuClick={handleMenuClick}
+          onMenuClick={handleContextMenuClick}
           isEditMode={state.isEditMode}
+          showExport={showContextMenuExport}
         />
 
         <EdgeConfigPanel

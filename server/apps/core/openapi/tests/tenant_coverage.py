@@ -356,6 +356,8 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.system_mgmt.tests.test_openapi_directory::test_missing_group_id_is_business_rejected",
         "apps.system_mgmt.tests.test_openapi_directory::test_users_exact_query_does_not_leak_invisible_user",
         "apps.system_mgmt.tests.test_openapi_directory::test_users_batch_query_does_not_leak_invisible_users",
+        "apps.system_mgmt.tests.test_openapi_directory::test_platform_superuser_reads_all_users_and_full_group_list",
+        "apps.system_mgmt.tests.test_openapi_directory::test_app_admin_cannot_read_other_org_users",
     ],
     "system-mgmt/groups": [
         "apps.system_mgmt.tests.test_openapi_directory::test_system_tenant_can_read_own_org_groups",
@@ -364,5 +366,7 @@ TENANT_ISOLATION_COVERAGE = {
         "apps.system_mgmt.tests.test_openapi_directory::test_archived_group_id_is_business_rejected",
         "apps.system_mgmt.tests.test_openapi_directory::test_scope_root_parent_id_null_and_preserved_across_pages",
         "apps.system_mgmt.tests.test_openapi_directory::test_include_children_does_not_expand_unauthorized_child",
+        "apps.system_mgmt.tests.test_openapi_directory::test_superuser_reads_all_active_groups",
+        "apps.system_mgmt.tests.test_openapi_directory::test_app_admin_cannot_read_other_org_groups",
     ],
 }

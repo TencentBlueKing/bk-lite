@@ -7,7 +7,7 @@ import { StrictMode } from 'react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { WorkflowListPage } from '../components/workflow-list-page';
-import { createDefaultWorkflowName } from '../lib/workflow-draft';
+import { createDefaultWorkflowName, createDuplicateWorkflowName } from '../lib/workflow-draft';
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
@@ -57,7 +57,9 @@ function renderPage() {
 
 describe('流程列表', () => {
   it('按本地时间生成毫秒精度的默认流程名', () => {
-    expect(createDefaultWorkflowName(new Date(2026, 8, 9, 10, 19, 10, 372))).toBe('流程20260909101910372');
+    const now = new Date(2026, 8, 9, 10, 19, 10, 372);
+    expect(createDefaultWorkflowName(now)).toBe('流程20260909101910372');
+    expect(createDuplicateWorkflowName('Linux 主机巡检（Excel）', now)).toBe('Linux 主机巡检（Excel）20260909101910372');
   });
 
   beforeAll(() => {
@@ -311,7 +313,7 @@ describe('流程列表', () => {
     fireEvent.click(copyLabel.closest('[role="menuitem"]')!);
 
     const nameInput = await screen.findByLabelText('流程名称');
-    expect((nameInput as HTMLInputElement).value).toBe(`${workflow.name}（副本）`);
+    expect((nameInput as HTMLInputElement).value).toMatch(new RegExp(`^${workflow.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\d{17}$`));
     const duplicateModal = nameInput.closest('.ant-modal-content');
     expect((duplicateModal?.querySelector('.ant-modal-footer') as HTMLElement | null)?.style.marginTop).toBe('20px');
     expect(mocks.post).not.toHaveBeenCalled();

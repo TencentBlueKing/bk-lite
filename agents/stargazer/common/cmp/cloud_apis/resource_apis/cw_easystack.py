@@ -1,6 +1,5 @@
 # -*- coding: UTF-8 -*-
 import json
-import logging
 
 import requests
 
@@ -9,9 +8,9 @@ from common.cmp.cloud_apis.cloud_constant import CloudPlatform
 from common.cmp.cloud_apis.constant import CloudResourceType
 from common.cmp.cloud_apis.resource_apis.resource_format.common.base_format import get_format_method
 from common.cmp.cloud_apis.resource_apis.utils import fail, success
+from core.logger import logger
 
 https_port = "443"
-logger = logging.getLogger("root")
 
 
 class CwEasyStack(object):

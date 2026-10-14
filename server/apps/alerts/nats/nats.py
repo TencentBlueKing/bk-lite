@@ -1404,7 +1404,7 @@ def get_active_alert_top(limit=10, **kwargs):
                 "level": level_map.get(alert.level, alert.level),
                 "status": status_map.get(alert.status, alert.status),
                 "duration_seconds": duration_seconds,
-                "created_at": timezone.localtime(alert.created_at, target_tz).isoformat(),
+                "created_at": alert.format_created_at(target_tz),
                 "resource_name": alert.resource_name or "",
                 "resource_type": alert.resource_type or "",
                 "source_name": alert.source_name or "",

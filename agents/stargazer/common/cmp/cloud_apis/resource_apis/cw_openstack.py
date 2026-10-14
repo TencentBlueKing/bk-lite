@@ -1,6 +1,5 @@
 # -*- coding: UTF-8 -*-
 import datetime
-import logging
 import time
 
 from cinderclient.v3 import client as cdclient
@@ -16,8 +15,8 @@ from common.cmp.cloud_apis.cloud_constant import CloudPlatform, DiskType
 from common.cmp.cloud_apis.constant import CloudResourceType
 from common.cmp.cloud_apis.resource_apis.resource_format.common.base_format import get_format_method
 from common.cmp.utils import get_compute_price_module, get_storage_pricemodule
+from core.logger import logger
 
-logger = logging.getLogger("root")
 
 
 class CwOpenstack(object):

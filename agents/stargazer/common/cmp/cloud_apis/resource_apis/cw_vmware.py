@@ -1,6 +1,5 @@
 # -*- coding: UTF-8 -*-
 import datetime
-import logging
 import socket
 import ssl
 import time
@@ -15,8 +14,8 @@ from common.cmp.cloud_apis.cloud_object.base import Region, Zone
 from common.cmp.cloud_apis.constant import CloudType
 from common.cmp.cloud_apis.resource_apis.resource_format.common.base_format import get_format_method
 from common.cmp.utils import convert_param_to_list
+from core.logger import logger
 
-logger = logging.getLogger("root")
 
 
 class CwVmware(object):

@@ -22,7 +22,8 @@ from requests import Response
 from requests.exceptions import UnrewindableBodyError
 
 from apps.core.logger import logger
-from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
+from apps.core.utils.egress_gateway import get_egress_gateway
+from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator, ValidatedTarget
 
 
 class SafeRequestsError(Exception):
@@ -155,6 +156,66 @@ def _prepare_redirect_request(
     return redirect_method, redirect_kwargs
 
 
+def _dispatch_validated_request(
+    method: str,
+    url: str,
+    validate_target,
+    *,
+    allow_redirects: bool,
+    timeout: int,
+    max_redirects: int,
+    log_tag: str,
+    **kwargs: Any,
+) -> Response:
+    target = validate_target(url)
+    kwargs["allow_redirects"] = False
+    kwargs["timeout"] = timeout
+    body_positions = _capture_request_body_positions(kwargs)
+    gateway = get_egress_gateway()
+
+    try:
+        response = gateway.send(method, target, **kwargs)
+        current_url = target.url
+        redirect_count = 0
+
+        while response.is_redirect and redirect_count < max_redirects:
+            if not allow_redirects:
+                logger.warning(
+                    "[%s] 禁止重定向: url=%s, location=%s",
+                    log_tag,
+                    url,
+                    response.headers.get("Location"),
+                )
+                response.close()
+                raise SSRFError("不允许重定向")
+
+            redirect_url = response.headers.get("Location")
+            if not redirect_url:
+                break
+
+            redirect_url = urljoin(current_url, redirect_url)
+            try:
+                next_target = validate_target(redirect_url)
+                logger.info("[%s] 重定向: %s -> %s", log_tag, current_url, next_target.url)
+                method, kwargs = _prepare_redirect_request(
+                    method, current_url, next_target.url, response.status_code, kwargs
+                )
+                if response.status_code in (requests.codes.temporary_redirect, requests.codes.permanent_redirect):
+                    _rewind_request_body(kwargs, body_positions)
+            finally:
+                response.close()
+            response = gateway.send(method, next_target, **kwargs)
+            current_url = next_target.url
+            redirect_count += 1
+
+        return response
+
+    except UnrewindableBodyError as e:
+        raise SafeRequestsError(str(e)) from e
+    except requests.RequestException as e:
+        raise SafeRequestsError(f"HTTP 请求失败: {e}")
+
+
 def safe_request(
     method: str,
     url: str,
@@ -184,55 +245,19 @@ def safe_request(
         SafeRequestsError: 请求失败
         SSRFError: SSRF 校验失败
     """
-    # 1. 校验原始 URL
-    validated_url = SSRFValidator.validate(url, allowlist=allowlist)
+    def _validate(candidate: str) -> ValidatedTarget:
+        return SSRFValidator.validate_target(candidate, allowlist=allowlist)
 
-    # 2. 禁用自动重定向，手动处理
-    kwargs["allow_redirects"] = False
-    kwargs["timeout"] = timeout
-    body_positions = _capture_request_body_positions(kwargs)
-
-    try:
-        response = requests.request(method, validated_url, **kwargs)
-        current_url = validated_url
-
-        # 3. 手动处理重定向
-        redirect_count = 0
-
-        while response.is_redirect and redirect_count < max_redirects:
-            if not allow_redirects:
-                logger.warning(
-                    "[SafeRequests] 禁止重定向: url=%s, location=%s",
-                    url,
-                    response.headers.get("Location"),
-                )
-                response.close()
-                raise SSRFError("不允许重定向")
-
-            redirect_url = response.headers.get("Location")
-            if not redirect_url:
-                break
-
-            # 校验重定向目标
-            redirect_url = urljoin(current_url, redirect_url)
-            try:
-                validated_redirect = SSRFValidator.validate(redirect_url, allowlist=allowlist)
-                logger.info(f"[SafeRequests] 重定向: {current_url} -> {validated_redirect}")
-                method, kwargs = _prepare_redirect_request(
-                    method, current_url, validated_redirect, response.status_code, kwargs
-                )
-                if response.status_code in (requests.codes.temporary_redirect, requests.codes.permanent_redirect):
-                    _rewind_request_body(kwargs, body_positions)
-            finally:
-                response.close()
-            response = requests.request(method, validated_redirect, **kwargs)
-            current_url = validated_redirect
-            redirect_count += 1
-
-        return response
-
-    except requests.RequestException as e:
-        raise SafeRequestsError(f"HTTP 请求失败: {e}")
+    return _dispatch_validated_request(
+        method,
+        url,
+        _validate,
+        allow_redirects=allow_redirects,
+        timeout=timeout,
+        max_redirects=max_redirects,
+        log_tag="SafeRequests",
+        **kwargs,
+    )
 
 
 def safe_get(url: str, **kwargs: Any) -> Response:
@@ -297,55 +322,16 @@ def safe_request_llm_endpoint(
         SafeRequestsError: 请求失败
         SSRFError: SSRF 校验失败（云元数据地址）
     """
-    # 1. 校验原始 URL（宽松模式）
-    validated_url = SSRFValidator.validate_llm_endpoint(url)
-
-    # 2. 禁用自动重定向，手动处理
-    kwargs["allow_redirects"] = False
-    kwargs["timeout"] = timeout
-    body_positions = _capture_request_body_positions(kwargs)
-
-    try:
-        response = requests.request(method, validated_url, **kwargs)
-        current_url = validated_url
-
-        # 3. 手动处理重定向
-        redirect_count = 0
-
-        while response.is_redirect and redirect_count < max_redirects:
-            if not allow_redirects:
-                logger.warning(
-                    "[SafeRequests-LLM] 禁止重定向: url=%s, location=%s",
-                    url,
-                    response.headers.get("Location"),
-                )
-                response.close()
-                raise SSRFError("不允许重定向")
-
-            redirect_url = response.headers.get("Location")
-            if not redirect_url:
-                break
-
-            # 校验重定向目标（宽松模式）
-            redirect_url = urljoin(current_url, redirect_url)
-            try:
-                validated_redirect = SSRFValidator.validate_llm_endpoint(redirect_url)
-                logger.info(f"[SafeRequests-LLM] 重定向: {current_url} -> {validated_redirect}")
-                method, kwargs = _prepare_redirect_request(
-                    method, current_url, validated_redirect, response.status_code, kwargs
-                )
-                if response.status_code in (requests.codes.temporary_redirect, requests.codes.permanent_redirect):
-                    _rewind_request_body(kwargs, body_positions)
-            finally:
-                response.close()
-            response = requests.request(method, validated_redirect, **kwargs)
-            current_url = validated_redirect
-            redirect_count += 1
-
-        return response
-
-    except requests.RequestException as e:
-        raise SafeRequestsError(f"HTTP 请求失败: {e}")
+    return _dispatch_validated_request(
+        method,
+        url,
+        SSRFValidator.validate_llm_endpoint_target,
+        allow_redirects=allow_redirects,
+        timeout=timeout,
+        max_redirects=max_redirects,
+        log_tag="SafeRequests-LLM",
+        **kwargs,
+    )
 
 
 def safe_get_llm_endpoint(url: str, **kwargs: Any) -> Response:

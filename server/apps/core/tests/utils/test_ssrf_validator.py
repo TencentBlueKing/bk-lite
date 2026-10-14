@@ -512,3 +512,24 @@ class TestSSRFValidatorWhitelist:
             with pytest.raises(SSRFError) as exc_info:
                 SSRFValidator.validate("http://2130706433/")
             assert exc_info.value.code == "NETWORK_WHITELIST_REQUIRED"
+
+
+class TestValidatedTargetPin:
+    @patch("socket.getaddrinfo")
+    def test_validate_target_exposes_resolved_ips(self, mock_getaddrinfo):
+        mock_getaddrinfo.return_value = [(2, 1, 6, "", ("93.184.216.34", 443))]
+        target = SSRFValidator.validate_target("https://example.com/api")
+        assert target.url == "https://example.com/api"
+        assert target.hostname == "example.com"
+        assert target.resolved_ips == ("93.184.216.34",)
+        assert target.connect_url() == "https://93.184.216.34/api"
+        assert target.host_header() == "example.com"
+        assert SSRFValidator.validate("https://example.com/api") == target.url
+
+    @patch("socket.getaddrinfo")
+    def test_llm_target_keeps_private_ip_for_pinning(self, mock_getaddrinfo):
+        mock_getaddrinfo.return_value = [(2, 1, 6, "", ("10.0.0.5", 8000))]
+        target = SSRFValidator.validate_llm_endpoint_target("http://llm.internal:8000/v1")
+        assert target.resolved_ips == ("10.0.0.5",)
+        assert target.connect_url() == "http://10.0.0.5:8000/v1"
+        assert target.host_header() == "llm.internal:8000"

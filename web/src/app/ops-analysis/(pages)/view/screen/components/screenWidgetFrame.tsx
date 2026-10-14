@@ -25,6 +25,7 @@ const emphasisClassByType: Record<string, string> = {
   eventTable: 'screen-widget-frame--event',
   networkStatusTopology: 'screen-widget-frame--topology',
   relatedTopology: 'screen-widget-frame--topology',
+  applicationTopology: 'screen-widget-frame--topology',
 };
 
 export const getScreenWidgetFrameClassName = (

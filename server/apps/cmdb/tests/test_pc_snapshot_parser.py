@@ -3,10 +3,7 @@
 
 from datetime import datetime, timezone
 
-import pytest
-
-from apps.cmdb.collection.round_metadata import RoundMetadataProtocolError
-from apps.cmdb.services.pc_discovery import parse_pc_vm_rows
+from apps.cmdb.services.pc_discovery import capacity_as_gb, filter_pc_payload, parse_pc_vm_rows
 
 
 def pc_metric(inst="WIN-AAA", target="10.0.0.8", ts=1753200000, **fields):
@@ -137,6 +134,26 @@ def test_only_newest_snapshot_kept_per_pc():
     assert snapshots[0].can_delete is True
 
 
-def test_missing_metadata_fails_before_reconciliation():
-    with pytest.raises(RoundMetadataProtocolError, match="metadata_missing"):
-        parse_pc_vm_rows([pc_metric()], {})
+def test_missing_metadata_keeps_reported_pc_without_delete():
+    snapshot = parse_pc_vm_rows([pc_metric(), software_metric()], {})[0]
+    assert snapshot.pc["inst_name"] == "WIN-AAA"
+    assert len(snapshot.software) == 1
+    assert snapshot.status == "partial"
+    assert snapshot.can_delete is False
+
+
+def test_capacity_as_gb_converts_bytes_and_keeps_gb():
+    assert capacity_as_gb("17179869184") == "16"
+    assert capacity_as_gb("512110190592") == "476.9"
+    assert capacity_as_gb("16") == "16"
+    assert capacity_as_gb("16.5") == "16.5"
+    assert capacity_as_gb("") == ""
+    assert capacity_as_gb(None) == ""
+    assert capacity_as_gb("unknown") == "unknown"
+
+
+def test_filter_pc_payload_stores_memory_and_disk_as_gb():
+    payload = filter_pc_payload({"inst_name": "WIN-A", "men": "17179869184", "disk": "", "asset_code": "A-1"})
+    assert payload["men"] == "16"
+    assert payload["disk"] == ""
+    assert "asset_code" not in payload

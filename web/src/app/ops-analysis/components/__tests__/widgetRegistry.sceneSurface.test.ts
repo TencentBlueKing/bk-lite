@@ -31,6 +31,9 @@ vi.mock('@/app/ops-analysis/components/widgets/application3D', () => ({ default:
 vi.mock('@/app/ops-analysis/components/widgets/relatedTopology/canvas', () => ({
   default: stubComponent,
 }));
+vi.mock('@/app/ops-analysis/components/widgets/applicationTopology/canvas', () => ({
+  default: stubComponent,
+}));
 
 describe('scene widget runtime surface enforcement', () => {
   let getWidgetComponent: typeof import('../widgetRegistry').getWidgetComponent;
@@ -49,6 +52,12 @@ describe('scene widget runtime surface enforcement', () => {
     expect(getWidgetComponent('networkStatusTopology', 'dashboard')).not.toBeNull();
     expect(getWidgetComponent('networkStatusTopology', 'screen')).not.toBeNull();
     expect(getWidgetComponent('networkStatusTopology', 'report')).toBeNull();
+  });
+
+  it('keeps applicationTopology on dashboard and screen, not report', () => {
+    expect(getWidgetComponent('applicationTopology', 'dashboard')).not.toBeNull();
+    expect(getWidgetComponent('applicationTopology', 'screen')).not.toBeNull();
+    expect(getWidgetComponent('applicationTopology', 'report')).toBeNull();
   });
 
   it('keeps relatedTopology on dashboard and screen, not report', () => {

@@ -5,6 +5,7 @@ import { Dropdown } from 'antd';
 import {
   CopyOutlined,
   DeleteOutlined,
+  DownloadOutlined,
   DownOutlined,
   EditOutlined,
   UpOutlined,
@@ -17,13 +18,14 @@ import {
   resolveAnalysisCanvasInteraction,
   shouldShowAnalysisWidgetCopyAction,
 } from '@/app/ops-analysis/utils/widgetCopy';
+import { resolveWidgetCsvExportEntry } from '@/app/ops-analysis/utils/widgetCsvMenu';
 import { isScreenWidgetItem } from '../utils/screenItems';
 import {
   orderScreenItemsByLayer,
   type ScreenLayerAction,
 } from '../utils/screenLayer';
 
-export type ScreenItemMenuKey = 'edit' | 'copy' | 'delete' | ScreenLayerAction;
+export type ScreenItemMenuKey = 'edit' | 'copy' | 'delete' | 'exportCsv' | ScreenLayerAction;
 
 export interface ScreenItemMenuEntry {
   key: ScreenItemMenuKey;
@@ -43,8 +45,28 @@ const LAYER_LABEL_KEYS: Record<ScreenLayerAction, string> = {
 export const buildScreenItemMenu = (
   item: ScreenItem,
   items: ScreenItem[],
-  options: { shareMode?: boolean; isBuiltIn?: boolean } = {},
+  options: {
+    shareMode?: boolean;
+    isBuiltIn?: boolean;
+    fullscreen?: boolean;
+    renderMode?: boolean;
+    mode?: 'edit' | 'view';
+    rawData?: unknown;
+  } = {},
 ): ScreenItemMenuEntry[] => {
+  if (options.mode === 'view') {
+    return [];
+  }
+  const showExport = isScreenWidgetItem(item) && resolveWidgetCsvExportEntry({
+    surface: 'screen',
+    chartType: item.chartType,
+    editMode: true,
+    shareMode: options.shareMode,
+    fullscreen: options.fullscreen,
+    renderMode: options.renderMode,
+    rawData: options.rawData,
+  }) === 'menu';
+
   const ordered = orderScreenItemsByLayer(items);
   const index = ordered.findIndex((entry) => entry.id === item.id);
   const atFront = index <= 0;
@@ -70,6 +92,9 @@ export const buildScreenItemMenu = (
   if (showCopy) {
     entries.push({ key: 'copy', labelKey: 'common.copy' });
   }
+  if (showExport) {
+    entries.push({ key: 'exportCsv', labelKey: 'dashboard.exportCsv' });
+  }
   entries.push({ key: 'delete', labelKey: 'common.delete', danger: true });
   (Object.keys(LAYER_LABEL_KEYS) as ScreenLayerAction[]).forEach(
     (key, layerIndex) => {
@@ -89,6 +114,7 @@ export const buildScreenItemMenu = (
 const MENU_ICONS: Record<ScreenItemMenuKey, React.ReactNode> = {
   edit: <EditOutlined />,
   copy: <CopyOutlined />,
+  exportCsv: <DownloadOutlined />,
   delete: <DeleteOutlined />,
   bringToFront: <VerticalAlignTopOutlined />,
   bringToBack: <VerticalAlignBottomOutlined />,

@@ -12,6 +12,7 @@ import {
   SwapOutlined,
   SettingOutlined,
   DeleteOutlined,
+  DownloadOutlined,
   EditOutlined,
   CopyOutlined,
 } from '@ant-design/icons';
@@ -20,6 +21,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
   visible,
   position,
   isEditMode = false,
+  showExport = false,
   targetType = 'node',
   onMenuClick,
 }) => {
@@ -44,6 +46,11 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
       <Menu.Item key="copy" icon={<CopyOutlined />}>
         {t('topology.copyNode')}
       </Menu.Item>
+      {showExport && (
+        <Menu.Item key="exportCsv" icon={<DownloadOutlined />}>
+          {t('dashboard.exportCsv')}
+        </Menu.Item>
+      )}
       <Menu.Item key="delete" icon={<DeleteOutlined />}>
         {t('topology.delete')}
       </Menu.Item>

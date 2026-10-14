@@ -12,6 +12,7 @@ import {
   type SetStateAction,
 } from "react";
 import { message, Modal, Select, Tabs } from "antd";
+import { WidgetCsvExportRegistryProvider, notifyWidgetCsvExportNotStarted, useWidgetCsvExportRegistryState } from "@/app/ops-analysis/context/widgetCsvExportRegistry";
 import { useTranslation } from "@/utils/i18n";
 import { useScreenApi } from "@/app/ops-analysis/api/screen";
 import { useDirectoryApi } from "@/app/ops-analysis/api";
@@ -62,6 +63,7 @@ import {
   buildScreenItemMenu,
   type ScreenItemMenuKey,
 } from "./components/screenItemMenu";
+import { resolveScreenItemMenuMode } from "@/app/ops-analysis/utils/widgetCsvMenu";
 import ScreenToolbar from "./components/screenToolbar";
 import { ScreenInspectorPane } from "./components/screenInspectorPane";
 import {
@@ -200,8 +202,16 @@ const ScreenDataConfig = memo(
   areScreenDataConfigPropsEqual,
 );
 
-const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode = false }, ref) => {
+const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode = false, onEditingChange }, ref) => {
+  const onEditingChangeRef = useRef(onEditingChange);
+  onEditingChangeRef.current = onEditingChange;
+  useEffect(() => {
+    return () => {
+      onEditingChangeRef.current?.(false);
+    };
+  }, []);
   const { t } = useTranslation();
+  const csvExportRegistry = useWidgetCsvExportRegistryState();
   const { getScreenDetail, saveScreen } = useScreenApi();
   const { updateItem } = useDirectoryApi();
   const { hasPermission } = useBtnPermissions();
@@ -931,6 +941,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     setEditMode(true);
     setSelectedItemId(null);
     setInspectorCollapsed(false);
+    onEditingChangeRef.current?.(true);
   }, [
     queryState.appliedFilterValues,
     queryState.appliedNamespaceId,
@@ -958,6 +969,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     setSelectedItemId(null);
     setPendingConfigItem(null);
     setFilterConfigOpen(false);
+    onEditingChangeRef.current?.(false);
   }, [
     editQuerySnapshot,
     queryState.appliedFilterValues,
@@ -992,6 +1004,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
       setEditQuerySnapshot(null);
       setFilterConfigOpen(false);
       resetScreenHistory();
+      onEditingChangeRef.current?.(false);
       message.success(t("opsAnalysis.screen.saveSuccess"));
     } catch (error) {
       console.error("Failed to save screen:", error);
@@ -1072,14 +1085,24 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         handleDeleteItem(itemId);
         return;
       }
+      if (key === "exportCsv") {
+        const target = draftViewSetsRef.current.items.find((item) => item.id === itemId);
+        const title = target && isScreenWidgetItem(target) ? target.title || "" : "";
+        void csvExportRegistry.run(itemId, { title }).then((started) => {
+          notifyWidgetCsvExportNotStarted(started, t);
+        });
+        return;
+      }
       handleLayerAction(itemId, key);
     },
     [
+      csvExportRegistry,
       handleCopyItem,
       handleDeleteItem,
       handleLayerAction,
       handleOpenItemConfig,
       itemMenu?.itemId,
+      t,
     ],
   );
 
@@ -1090,9 +1113,18 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
     return buildScreenItemMenu(target, draftViewSets.items, {
       shareMode,
       isBuiltIn: Boolean(selectedScreen?.is_build_in),
+      mode: resolveScreenItemMenuMode({
+        editMode,
+        shareMode,
+        fullscreen: isFullscreen,
+      }),
+      rawData: isScreenWidgetItem(target) ? csvExportRegistry.readWidgetRawData(target.id) : undefined,
     });
   }, [
+    csvExportRegistry,
     draftViewSets.items,
+    editMode,
+    isFullscreen,
     itemMenu,
     selectedScreen?.is_build_in,
     shareMode,
@@ -1258,7 +1290,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         onMoveItem={handleMoveItem}
         onResizeItem={handleResizeItem}
         onEditItem={handleOpenItemConfig}
-        onOpenItemMenu={editMode && !shareMode ? openItemMenu : undefined}
+        onOpenItemMenu={openItemMenu}
         onDropChrome={editMode && !shareMode ? handleDropChrome : undefined}
         onTopologyLayoutChange={
           editMode && !shareMode ? handleTopologyLayoutChange : undefined
@@ -1330,6 +1362,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
   ) : null;
 
   return (
+    <WidgetCsvExportRegistryProvider registry={csvExportRegistry}>
     <>
       <div
         className={
@@ -1346,7 +1379,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
           headerVisible={!isFullscreen}
           filterBarVisible={!isFullscreen}
           compactHeader
-          flushContent={isFullscreen}
+          flushContent
           contentClassName={isFullscreen ? "bg-slate-950" : undefined}
           toolbar={
             <ScreenToolbar
@@ -1568,6 +1601,7 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
         />
       )}
     </>
+    </WidgetCsvExportRegistryProvider>
   );
 });
 

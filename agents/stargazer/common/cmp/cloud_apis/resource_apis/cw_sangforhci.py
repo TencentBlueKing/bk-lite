@@ -1,5 +1,4 @@
 # -*- coding: UTF-8 -*-
-import logging
 import time
 from binascii import a2b_hex, b2a_hex
 
@@ -10,8 +9,8 @@ from Crypto.Util.number import bytes_to_long
 
 from common.cmp.cloud_apis.base import PrivateCloudManage
 from common.cmp.cloud_apis.cloud_object.base import VM
+from core.logger import logger
 
-logger = logging.getLogger("root")
 
 
 def character_conversion_timestamp(time_str):

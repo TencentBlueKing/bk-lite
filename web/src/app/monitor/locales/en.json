@@ -954,6 +954,7 @@
       "metricInlineEditEmpty": "There are no changes to save",
       "metricInlineEditReadonlyHint": "Built-in / self-monitoring metrics cannot be edited",
       "metricInlineEditDimensionHint": "This only updates the metric catalog dimensions. Script output tags do not change; dimension names must match the script's tag names to take effect.",
+      "metricInlineEditDimensionCatalogHint": "Dimensions are labels from the collector. Editing here only updates the metric catalog description, not the collector's actual labels.",
       "metricInlineEditDimensionDuplicate": "Duplicate dimension name: {name}",
       "batchMetricFilterBanner": "Showing this batch of {count} metrics. Other metrics (including self-monitoring) are hidden",
       "batchMetricFilterShowAll": "Show all",

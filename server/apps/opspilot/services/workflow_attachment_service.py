@@ -131,6 +131,79 @@ ATTACHMENT_FILE_TYPE_CONFIG = {
 }
 
 
+_ATTACHMENT_VERSION_RE = re.compile(r"_v(\d+)\.(\d+)$", re.IGNORECASE)
+
+
+def attachment_name_parts(filename: str) -> tuple[str, str]:
+    base = str(filename or "").replace("\\", "/").split("/")[-1]
+    if "." in base:
+        stem, ext = base.rsplit(".", 1)
+        return stem, ext
+    return base, ""
+
+
+def attachment_version_base(stem: str) -> tuple[str, tuple[int, int] | None]:
+    match = _ATTACHMENT_VERSION_RE.search(stem or "")
+    if not match:
+        return stem, None
+    return stem[: match.start()], (int(match.group(1)), int(match.group(2)))
+
+
+def _same_attachment_document(new_base: str, prior_base: str) -> bool:
+    left = (new_base or "").strip()
+    right = (prior_base or "").strip()
+    if not left or not right:
+        return False
+    if left == right:
+        return True
+    if len(right) >= 2 and left.startswith(f"{right}_"):
+        return True
+    if len(left) >= 2 and right.startswith(f"{left}_"):
+        return True
+    return False
+
+
+def version_attachment_filename(filename: str, prior_filenames: list[str] | None = None) -> str:
+    """首次生成为 名称_v1.0，改同一份文件则在原名上递增为 _v1.1、_v1.2。"""
+    stem, ext = attachment_name_parts(filename)
+    base, current = attachment_version_base(stem)
+    matched_base = ""
+    matched_version: tuple[int, int] | None = None
+    for prior in prior_filenames or []:
+        prior_stem, _prior_ext = attachment_name_parts(prior)
+        prior_base, prior_version = attachment_version_base(prior_stem)
+        if not _same_attachment_document(base, prior_base):
+            continue
+        matched_base = prior_base
+        matched_version = prior_version
+    suffix = f".{ext}" if ext else ""
+    if matched_base:
+        if matched_version is None:
+            major, minor = 1, 1
+        else:
+            major, minor = matched_version[0], matched_version[1] + 1
+        return f"{matched_base}_v{major}.{minor}{suffix}"
+    if current is None and base:
+        return f"{base}_v1.0{suffix}"
+    return f"{stem}{suffix}" if stem else filename
+
+
+def lock_revision_attachment_type(file_type: str, filename: str, prior_filenames: list[str] | None = None) -> tuple[str, str]:
+    """改已有文件时沿用上一份的类型。PPTX 的修改不能落成 md 或其他格式。"""
+    stem, _ext = attachment_name_parts(filename)
+    base, _current = attachment_version_base(stem)
+    for prior in reversed(list(prior_filenames or [])):
+        prior_stem, prior_ext = attachment_name_parts(str(prior))
+        prior_base, _prior_version = attachment_version_base(prior_stem)
+        locked_type = prior_ext.lower()
+        if locked_type not in ATTACHMENT_FILE_TYPE_CONFIG or not _same_attachment_document(base, prior_base):
+            continue
+        expected = ATTACHMENT_FILE_TYPE_CONFIG[locked_type]["extension"]
+        new_stem = stem or prior_base
+        return locked_type, f"{new_stem}.{expected}"
+    return file_type, filename
+
+
 def normalize_attachment_file_type(file_type: str, filename: str = "") -> tuple[str, str, str]:
     normalized_type = (file_type or "").strip().lower()
     extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
@@ -390,6 +463,40 @@ def _pptx_slides(content: str, title: str) -> list[dict]:
     return slides
 
 
+def _apply_docx_font(document, font_name: str = "微软雅黑") -> None:
+    from docx.oxml.ns import qn
+
+    normal = document.styles["Normal"]
+    normal.font.name = font_name
+    normal.element.rPr.rFonts.set(qn("w:eastAsia"), font_name)
+
+    def paint(paragraph) -> None:
+        for run in paragraph.runs:
+            run.font.name = font_name
+            run._element.rPr.rFonts.set(qn("w:eastAsia"), font_name)
+
+    for paragraph in document.paragraphs:
+        paint(paragraph)
+    for table in document.tables:
+        for row in table.rows:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    paint(paragraph)
+
+
+def _apply_pptx_run_font(run, font_name: str = "微软雅黑") -> None:
+    from pptx.oxml.ns import qn
+
+    run.font.name = font_name
+    properties = run._r.get_or_add_rPr()
+    for tag in ("a:latin", "a:ea", "a:cs"):
+        element = properties.find(qn(tag))
+        if element is None:
+            element = properties.makeelement(qn(tag), {})
+            properties.append(element)
+        element.set("typeface", font_name)
+
+
 def _build_pptx_bytes(content: str, title: str) -> bytes:
     # 显著启动成本：python-pptx 仅在生成幻灯片时需要，不得随 Django setup 加载。
     from pptx import Presentation
@@ -402,10 +509,19 @@ def _build_pptx_bytes(content: str, title: str) -> bytes:
         text_frame = slide.placeholders[1].text_frame
         bullets = slide_data["bullets"] or [""]
         text_frame.text = bullets[0][:1000]
+        for paragraph in text_frame.paragraphs:
+            for run in paragraph.runs:
+                _apply_pptx_run_font(run)
         for item in bullets[1:]:
             paragraph = text_frame.add_paragraph()
             paragraph.text = item[:1000]
             paragraph.level = 0
+            for run in paragraph.runs:
+                _apply_pptx_run_font(run)
+        if slide.shapes.title is not None:
+            for paragraph in slide.shapes.title.text_frame.paragraphs:
+                for run in paragraph.runs:
+                    _apply_pptx_run_font(run)
     buffer = BytesIO()
     presentation.save(buffer)
     return buffer.getvalue()
@@ -441,6 +557,7 @@ def _build_docx_bytes(content: str, title: str) -> bytes:
                     table.rows[row_index].cells[column].text = row[column] if column < len(row) else ""
         elif kind == "paragraph":
             document.add_paragraph(block[1])
+    _apply_docx_font(document)
     buffer = BytesIO()
     document.save(buffer)
     return buffer.getvalue()

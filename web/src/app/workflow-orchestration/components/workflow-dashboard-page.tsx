@@ -119,6 +119,7 @@ export function WorkflowDashboardPage() {
     RUNNING: token.colorPrimary,
     WAITING_APPROVAL: token.colorWarning,
     TERMINATING: token.colorWarning,
+    UNKNOWN: token.colorWarning,
     SUCCEEDED: token.colorSuccess,
     FAILED: token.colorError,
     TIMED_OUT: token.colorError,

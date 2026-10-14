@@ -38,7 +38,7 @@ class InfraService:
         cache.set(cache_key, token_data, timeout=InfraConstants.TOKEN_EXPIRE_TIME)
 
         logger.info(
-            f"生成 CMDB infra 安装令牌成功: token={token[:8]}***, "
+            f"生成 CMDB infra 安装令牌成功: "
             f"cluster={cluster_name}, region={cloud_region_id}, "
             f"有效期={InfraConstants.TOKEN_EXPIRE_TIME}秒, "
             f"最大使用次数={InfraConstants.TOKEN_MAX_USAGE}"
@@ -56,7 +56,7 @@ class InfraService:
         data = cache.get(cache_key)
 
         if not data:
-            logger.warning(f"Token 验证失败: token={token[:8]}*** 在缓存中不存在或已过期")
+            logger.warning("Token 验证失败: 缓存中不存在或已过期")
             raise BaseAppException("Invalid or expired token")
 
         usage_count = data.get("usage_count", 0)
@@ -64,14 +64,16 @@ class InfraService:
 
         if usage_count >= max_usage:
             cache.delete(cache_key)
-            logger.warning(f"Token 已达到最大使用次数: token={token[:8]}***, " f"usage={usage_count}/{max_usage}, cluster={data.get('cluster_name')}")
+            logger.warning(
+                f"Token 已达到最大使用次数: usage={usage_count}/{max_usage}, cluster={data.get('cluster_name')}"
+            )
             raise BaseAppException(f"Token has exceeded maximum usage limit ({max_usage} times)")
 
         data["usage_count"] = usage_count + 1
         cache.set(cache_key, data, timeout=InfraConstants.TOKEN_EXPIRE_TIME)
 
         logger.info(
-            f"Token 验证成功: token={token[:8]}***, "
+            f"Token 验证成功: "
             f"cluster={data['cluster_name']}, region={data['cloud_region_id']}, "
             f"使用次数={data['usage_count']}/{max_usage}"
         )

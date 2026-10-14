@@ -704,10 +704,12 @@ screens:
     name: 3D Data Center Screen
     desc: 3D data center screen from CMDB rooms, cabinets, and devices. Side capacity and alarm charts follow the canvas room filter.
     decorations:
-      title: Cabinet Overview
+      title: Room Operations Overview
     filters:
       server_room_id: Room
     widgets:
+      legacy-title-frame:
+        content: Room Operations Overview
       builtin-room3d-main:
         title: 3D Data Center
       room-kpi-racks:
@@ -775,6 +777,14 @@ screens:
     widgets:
       builtin-application3d-main:
         title: 3D Applications
+  "screen::应用拓扑大屏_内置":
+    name: Application Topology Screen
+    desc: Five-band topology of an application system, overlaid with Monitor Center active alerts
+    decorations:
+      title: Application Architecture Topology
+    widgets:
+      builtin-application-topology-main:
+        title: Application Topology
   "screen::网络状态拓扑大屏_内置":
     name: Network Status Topology Screen
     desc: Built-in screen example showing CMDB relations for selected network devices, overlaid with Monitor Center active alerts.

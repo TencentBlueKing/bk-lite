@@ -35,6 +35,10 @@ import {
   ensureRoom3DCanvasFilter,
   mergeRoom3DFilterBinding,
 } from "@/app/ops-analysis/utils/room3DScreenFilter";
+import {
+  ensureApplicationTopologyCanvasFilter,
+  withApplicationTopologyFilterBinding,
+} from "@/app/ops-analysis/utils/applicationTopologyCanvasFilter";
 
 const DEFAULT_INSERT_X = 48;
 const DEFAULT_INSERT_Y = 96;
@@ -182,9 +186,13 @@ export const buildFiltersFromScreenItems = ({
       return a.id.localeCompare(b.id);
     });
 
-  return ensureRoom3DCanvasFilter(
-    discovered,
-    viewSets.items,
+  return ensureApplicationTopologyCanvasFilter(
+    ensureRoom3DCanvasFilter(
+      discovered,
+      viewSets.items,
+      previousDefinitions,
+    ),
+    viewSets.items as Parameters<typeof ensureApplicationTopologyCanvasFilter>[1],
     previousDefinitions,
   );
 };
@@ -229,15 +237,20 @@ export const syncScreenFilterBindings = (
     if (!isScreenWidgetItem(item)) return item;
     const dataSource = resolveScreenItemDataSource(item, dataSources);
     const params = resolveScreenWidgetParams(item, dataSource);
-    const nextBindings = mergeRoom3DFilterBinding(
-      item,
-      cleanupScreenFilterBindings(
-        buildDefaultFilterBindings(
+    const nextBindings = withApplicationTopologyFilterBinding(
+      item.chartType,
+      item.valueConfig?.sceneWidgetType,
+      mergeRoom3DFilterBinding(
+        item,
+        cleanupScreenFilterBindings(
+          buildDefaultFilterBindings(
+            params,
+            definitions,
+            item.valueConfig?.filterBindings,
+          ),
           params,
           definitions,
-          item.valueConfig?.filterBindings,
         ),
-        params,
         definitions,
       ),
       definitions,
