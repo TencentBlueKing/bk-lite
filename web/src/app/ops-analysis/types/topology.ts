@@ -228,6 +228,7 @@ export interface ContextMenuProps {
   visible: boolean;
   position: { x: number; y: number };
   isEditMode?: boolean;
+  showExport?: boolean;
   targetType?: 'node' | 'edge';
   onMenuClick: (e: { key: string }) => void;
 }

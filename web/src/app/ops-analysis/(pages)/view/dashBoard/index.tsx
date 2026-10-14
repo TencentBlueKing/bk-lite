@@ -1964,6 +1964,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           appliedNamespaceId={appliedNamespaceId}
           selectedDashboardLocked={selectedDashboard?.is_build_in}
           shareMode={shareMode}
+          isFullscreen={isFullscreen}
           onOpenAddModal={openAddModal}
           onLayoutChange={handleLayoutCommit}
           onToggleCollapsedGroup={toggleCollapsedGroup}
@@ -1977,6 +1978,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             isEditMode && !shareMode ? handleTopologyLayoutChange : undefined
           }
           renderMode={renderMode}
+          pdfExportPreparing={exporting}
           scrollRootRef={canvasScrollRef}
           onWidgetRenderStatus={handleWidgetRenderStatus}
         />
