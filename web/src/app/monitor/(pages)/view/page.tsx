@@ -18,7 +18,6 @@ import { getProfessionalObjectDisplayName } from '@/app/monitor/dashboards/regis
 import { findByMonitorId, toMonitorIdString } from '@/app/monitor/utils/monitorIds';
 import {
   attachMerakiSidebarChildren,
-  isDerivativeObject,
   isMerakiSidebarDerivative
 } from '@/app/monitor/utils/monitorObject';
 import { useMonitorObjectQuery } from '@/app/monitor/hooks/useMonitorObjectQuery';
@@ -129,9 +128,7 @@ const Integration = () => {
         merakiDerivatives.push(item);
         return acc;
       }
-      if (!isDerivativeObject(item, data)) {
-        acc[item.type].children.push(toNode(item));
-      }
+      acc[item.type].children.push(toNode(item));
       return acc;
     }, {} as Record<string, TreeItem>);
     attachMerakiSidebarChildren(groupedData, merakiDerivatives, toNode);

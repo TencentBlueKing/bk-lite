@@ -13,6 +13,7 @@
 服务层 / 委派对象在真实边界打桩；任务对 DB 的真实读写副作用被断言。
 """
 
+import logging
 from datetime import timedelta
 
 import pydantic.root_model  # noqa: F401
@@ -256,7 +257,7 @@ def test_sync_cmdb_display_fields_success(monkeypatch):
     assert out["data"] == {"organizations": 3, "users": 1}
 
 
-def test_sync_cmdb_display_fields_failure(monkeypatch):
+def test_sync_cmdb_display_fields_failure(monkeypatch, caplog):
     calls = 0
 
     _install_display_sync_lock(monkeypatch)
@@ -268,10 +269,14 @@ def test_sync_cmdb_display_fields_failure(monkeypatch):
         raise RuntimeError("sync failed")
 
     monkeypatch.setattr("apps.cmdb.display_field.DisplayFieldSynchronizer.sync_all", staticmethod(_boom))
-    out = ct.sync_cmdb_display_fields_task({})
+    with caplog.at_level(logging.ERROR, logger="cmdb"):
+        out = ct.sync_cmdb_display_fields_task({})
     assert out["result"] is False
     assert "sync failed" in out["message"]
     assert calls == 2
+    assert "event=cmdb_display_fields_sync_failed" in caplog.text
+    assert "failed_stage=sync_all" in caplog.text
+    assert "error_type=RuntimeError" in caplog.text
 
 
 def test_sync_cmdb_display_fields_retries_transient_partial_failure(monkeypatch):
@@ -389,7 +394,7 @@ def test_sync_cmdb_display_fields_returns_compatible_failure_when_lock_fails(mon
     assert ct.sync_cmdb_display_fields_task.time_limit == 300
 
 
-def test_sync_cmdb_display_fields_lock_retry_exhaustion_is_bounded_failure(monkeypatch):
+def test_sync_cmdb_display_fields_lock_retry_exhaustion_is_bounded_failure(monkeypatch, caplog):
     from contextlib import contextmanager
 
     @contextmanager
@@ -399,17 +404,21 @@ def test_sync_cmdb_display_fields_lock_retry_exhaustion_is_bounded_failure(monke
 
     monkeypatch.setattr("apps.cmdb.services.unique_write_lock.UniqueWriteLockService.serialize", _serialize)
 
-    result = ct.sync_cmdb_display_fields_task.apply(
-        args=[{"organizations": [{"id": 1, "name": "x"}], "users": []}],
-        throw=False,
-        retries=ct.sync_cmdb_display_fields_task.max_retries,
-    )
+    with caplog.at_level(logging.ERROR, logger="cmdb"):
+        result = ct.sync_cmdb_display_fields_task.apply(
+            args=[{"organizations": [{"id": 1, "name": "x"}], "users": []}],
+            throw=False,
+            retries=ct.sync_cmdb_display_fields_task.max_retries,
+        )
 
     assert result.successful()
     assert result.result == {
         "result": False,
         "message": "Failed to sync CMDB display fields: display sync lock timeout",
     }
+    assert "event=cmdb_display_fields_sync_failed" in caplog.text
+    assert "failed_stage=retry_exhausted" in caplog.text
+    assert "error_type=TimeoutError" in caplog.text
 
 
 def test_sync_cmdb_display_fields_soft_timeout_releases_lock_before_retry(monkeypatch):
@@ -482,7 +491,7 @@ def test_execute_collect_tool_debug_task_success(monkeypatch):
     assert out["debug_id"] == "d1"
 
 
-def test_execute_collect_tool_debug_task_failure_saves_error(monkeypatch):
+def test_execute_collect_tool_debug_task_failure_saves_error(monkeypatch, caplog):
     monkeypatch.setattr(
         "apps.cmdb.services.collect_tool_service.CollectToolService.run_debug_task",
         staticmethod(lambda *a, **k: (_ for _ in ()).throw(RuntimeError("debug boom"))),
@@ -496,9 +505,14 @@ def test_execute_collect_tool_debug_task_failure_saves_error(monkeypatch):
         "apps.cmdb.services.collect_tool_service.CollectToolService.save_debug_state",
         staticmethod(lambda debug_id, state, result: saved.append((debug_id, state))),
     )
-    out = ct.execute_collect_tool_debug_task("d2", {"action": "run"}, "svc", 30)
+    with caplog.at_level(logging.ERROR, logger="cmdb"):
+        out = ct.execute_collect_tool_debug_task("d2", {"action": "run"}, "svc", 30)
     assert "debug boom" in out["error"]
     assert saved == [("d2", "error")]
+    assert "event=collect_tool_debug_failed" in caplog.text
+    assert "debug_id=d2" in caplog.text
+    assert "failed_stage=run_debug_task" in caplog.text
+    assert "error_type=RuntimeError" in caplog.text
 
 
 # --------------------------------------------------------------------------

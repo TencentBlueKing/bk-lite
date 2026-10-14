@@ -15,7 +15,6 @@ import TreeSelector from '@/app/monitor/components/treeSelector';
 import { ObjectItem, TreeItem } from '@/app/monitor/types';
 import {
   attachMerakiSidebarChildren,
-  isDerivativeObject,
   isMerakiSidebarDerivative
 } from '@/app/monitor/utils/monitorObject';
 import styles from './dashboard-sidebar.module.scss';
@@ -46,9 +45,7 @@ const buildMonitorObjectTree = (objects: ObjectItem[]): TreeItem[] => {
       merakiDerivatives.push(item);
       return acc;
     }
-    if (!isDerivativeObject(item, objects)) {
-      acc[item.type].children.push(toNode(item));
-    }
+    acc[item.type].children.push(toNode(item));
     return acc;
   }, {} as Record<string, TreeItem>);
   attachMerakiSidebarChildren(groupedData, merakiDerivatives, toNode);
