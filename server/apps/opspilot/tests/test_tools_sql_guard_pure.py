@@ -156,6 +156,17 @@ class TestSanitizeDbError:
         assert "secret123" not in msg
         assert "测试查询失败" in msg
 
+    def test_formatted_log_omits_exception_body(self, caplog):
+        import logging
+
+        sentinel = "SENTINEL_PWD_5951_TEST"
+        with caplog.at_level(logging.ERROR, logger="opspilot"):
+            sql_guard.sanitize_db_error(RuntimeError(f"Login failed PWD={sentinel}"), "连接")
+        text = caplog.text
+        assert "连接失败" in text
+        assert sentinel not in text
+        assert "SafeLogException" in text
+
 
 class TestRunBlocking:
     def test_sync_context_executes_directly(self):
