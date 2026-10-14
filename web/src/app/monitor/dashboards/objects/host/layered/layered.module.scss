@@ -158,65 +158,35 @@
   min-width: 0;
 }
 
-/* 磁盘页两个分区的大标题。字号字重高于表头，区头仍沿用分类页 section title 的指示条。 */
-.diskZone {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.diskZone + .diskZone {
-  margin-top: 8px;
-  padding-top: 20px;
-  border-top: 1px solid var(--color-border);
-}
-
-.sectionHead .diskZoneTitle {
+/* 磁盘子切换。挂载通栏绘图区 160（140–180）；设备三卡绘图区 124（110–140）。 */
+.diskSubBar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 16px;
-  font-weight: 650;
-  line-height: 1.35;
-  color: var(--color-text-1);
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  min-width: 0;
 }
 
-.sectionHead .diskZoneTitle::before {
-  content: '';
-  display: inline-block;
-  width: 3px;
-  height: 16px;
-  border-radius: 2px;
-  background: var(--color-primary);
-  flex-shrink: 0;
-}
-
-/* 磁盘趋势抽屉。挂载单图绘图区 220–280；设备三图竖排，各图绘图区 110–140。 */
-.diskTrendMount .chartPanel,
-.diskTrendDevice .chartPanel {
+.diskMountChart .chartPanel {
   min-height: 0;
 }
 
-.diskTrendMount .chartBody {
-  height: 248px;
+.diskMountChart .chartBody {
+  height: 160px;
 }
 
-.diskTrendDevice .chartPanel {
-  padding: 8px 10px;
+.diskDeviceCharts .chartPanel {
+  min-height: 0;
+  padding: 8px 12px 10px;
 }
 
-.diskTrendDevice .chartHead {
+.diskDeviceCharts .chartHead {
   margin-bottom: 4px;
 }
 
-.diskTrendDevice .chartBody {
+.diskDeviceCharts .chartBody {
   height: 124px;
-}
-
-.diskTrendDrawer :global(.ant-drawer-title) {
-  min-width: 0;
-  overflow: hidden;
 }
 
 .hint,
@@ -716,28 +686,6 @@
   border-radius: 3px;
   background: color-mix(in srgb, var(--color-primary) 12%, transparent);
   text-decoration: none;
-}
-
-.trendLink {
-  border: 0;
-  margin: 0;
-  padding: 0 4px;
-  background: transparent;
-  color: var(--color-primary);
-  font-size: 12px;
-  line-height: 20px;
-  white-space: nowrap;
-  cursor: pointer;
-
-  &:focus-visible {
-    outline: 2px solid var(--color-primary);
-    outline-offset: 2px;
-  }
-}
-
-.trendLinkOn {
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 
 .root :global(.ant-table) {

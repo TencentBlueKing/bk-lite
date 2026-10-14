@@ -1,17 +1,18 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Tooltip } from 'antd';
+import { Segmented, Tooltip } from 'antd';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
-import { hostCategoryText } from './category-copy';
+import { HOST_PALETTE } from '../config';
 import {
+  pointsToChartData,
   showDiskFsTypeColumn,
   type EntityTableRow
 } from '../entity-series';
+import { hostCategoryText, type HostCategoryCopyKey } from './category-copy';
 import LayeredEntityTable from './entity-table';
+import ThinTimeSeries from './thin-time-series';
 import { formatBytesPair, formatUnit, ROW_ACCENTS } from './readings';
-import DiskTrendDrawer, { type DiskTrendKind } from './disk-trend-drawer';
-import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
 export const DISK_HOT_PERCENT = 80;
@@ -19,6 +20,9 @@ export const DISK_HOT_PERCENT = 80;
 export const countHotMounts = (rows: EntityTableRow[]) => (
   rows.filter((row) => (row.values.disk_used_percent ?? -1) >= DISK_HOT_PERCENT).length
 );
+
+type DiskSub = 'mount' | 'device';
+type RateUnit = 'byteps' | 'cps' | 'ms';
 
 const formatLatencyPair = (row: EntityTableRow) => {
   const read = row.values.disk_read_latency;
@@ -35,6 +39,46 @@ const relatedMounts = (mountRows: EntityTableRow[], deviceName: string) => (
     .map((row) => row.labels.path || row.labels.mount || '')
     .filter(Boolean)
 );
+
+const legendReading = (value: number | null | undefined, unit: RateUnit) => {
+  if (value == null || !Number.isFinite(value)) return undefined;
+  return formatUnit(value, unit);
+};
+
+const DEVICE_CHARTS: Array<{
+  key: string;
+  titleKey: HostCategoryCopyKey;
+  unit: RateUnit;
+  series: Array<{ key: string; labelKey: HostCategoryCopyKey; color: string }>;
+}> = [
+  {
+    key: 'throughput',
+    titleKey: 'readWriteThroughput',
+    unit: 'byteps',
+    series: [
+      { key: 'diskio_read_bytes_rate', labelKey: 'read', color: HOST_PALETTE.blue },
+      { key: 'diskio_write_bytes_rate', labelKey: 'write', color: HOST_PALETTE.cyan }
+    ]
+  },
+  {
+    key: 'iops',
+    titleKey: 'readWriteIops',
+    unit: 'cps',
+    series: [
+      { key: 'diskio_reads_rate', labelKey: 'read', color: HOST_PALETTE.blue },
+      { key: 'diskio_writes_rate', labelKey: 'write', color: HOST_PALETTE.cyan }
+    ]
+  },
+  {
+    key: 'latency',
+    titleKey: 'rwLatency',
+    unit: 'ms',
+    series: [
+      { key: 'disk_read_latency', labelKey: 'read', color: HOST_PALETTE.orange },
+      { key: 'disk_write_latency', labelKey: 'write', color: HOST_PALETTE.blue }
+    ]
+  }
+];
 
 export default function DiskPane({
   mountRows,
@@ -57,206 +101,215 @@ export default function DiskPane({
   /** 调用方仍传入。inode 列始终展示，缺采集显示 —，不再按系统藏列。 */
   windowsHost?: boolean;
 }) {
-  const selectedMount = mountRows.find((row) => row.key === selectedMountKey) || null;
-  const selectedDevice = deviceRows.find((row) => row.key === selectedDeviceKey) || null;
+  const { t } = useDashboardText();
+  const [sub, setSub] = useState<DiskSub>('mount');
+  const selectedMount = mountRows.find((row) => row.key === selectedMountKey) || mountRows[0] || null;
+  const selectedDevice = deviceRows.find((row) => row.key === selectedDeviceKey) || deviceRows[0] || null;
   const showFsType = showDiskFsTypeColumn(mountRows);
   const showMountBody = loading || mountRows.length > 0;
   const showDeviceBody = loading || deviceRows.length > 0;
-  const { t } = useDashboardText();
-  const [trend, setTrend] = useState<{ kind: DiskTrendKind; key: string } | null>(null);
-  const trendRow = trend == null
-    ? null
-    : (trend.kind === 'mount' ? mountRows : deviceRows).find((row) => row.key === trend.key) || null;
+  const emptyText = hostCategoryText(t, 'noData');
+  const mountPath = selectedMount?.labels.path || selectedMount?.labels.mount || '';
+  const mountTitle = mountPath
+    ? hostCategoryText(t, 'mountUsedNamed', { name: mountPath })
+    : hostCategoryText(t, 'mountUsed');
+  const mountPoints = selectedMount?.series.disk_used_percent || [];
 
-  const openTrend = (kind: DiskTrendKind, key: string) => {
-    if (kind === 'mount') onSelectMount(key);
-    else onSelectDevice(key);
-    setTrend({ kind, key });
+  const openDevice = (key: string) => {
+    onSelectDevice(key);
+    setSub('device');
   };
-
-  const trendColumn = (kind: DiskTrendKind, tip: string) => ({
-    key: 'trend',
-    title: '',
-    width: 72,
-    align: 'right' as const,
-    fixed: 'right' as const,
-    ellipsis: false,
-    render: (row: EntityTableRow) => {
-      const active = trend?.kind === kind && trend.key === row.key;
-      return (
-        <span className="flex justify-end">
-          <Tooltip title={tip}>
-            <button
-              type="button"
-              className={active ? `${styles.trendLink} ${styles.trendLinkOn}` : styles.trendLink}
-              aria-pressed={active}
-              onClick={(event) => {
-                event.stopPropagation();
-                openTrend(kind, row.key);
-              }}
-            >
-              {hostCategoryText(t, 'viewTrend')}
-            </button>
-          </Tooltip>
-        </span>
-      );
-    }
-  });
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
       {errorText ? <div className={styles.note}>{errorText}</div> : null}
 
-      <section className={styles.diskZone}>
-        <div className={styles.sectionHead}>
-          <div className={`${classic.sectionLabel} ${styles.sectionTitle} ${styles.diskZoneTitle}`}>
-            {hostCategoryText(t, 'mounts')}
+      <div className={styles.diskSubBar}>
+        <Segmented
+          value={sub}
+          onChange={(value) => setSub(value as DiskSub)}
+          options={[
+            { label: hostCategoryText(t, 'mounts'), value: 'mount' },
+            { label: hostCategoryText(t, 'blockDevices'), value: 'device' }
+          ]}
+        />
+        <div className={styles.hint}>{hostCategoryText(t, 'chartFollowsSelection')}</div>
+      </div>
+
+      {sub === 'mount' ? (
+        <>
+          <div className={styles.diskMountChart}>
+            <ThinTimeSeries
+              key={`mount-used-${selectedMount?.key || 'none'}`}
+              title={mountTitle}
+              loading={loading && mountPoints.length === 0}
+              unit="percent"
+              emptyText={emptyText}
+              data={pointsToChartData(mountPoints.length ? [{ points: mountPoints }] : [])}
+              legends={[{
+                label: hostCategoryText(t, 'utilization'),
+                color: HOST_PALETTE.orange
+              }]}
+            />
           </div>
-        </div>
-        {showMountBody ? (
-          <LayeredEntityTable
-            rows={mountRows}
-            loading={loading}
-            selectedKey={selectedMount?.key || ''}
-            onSelect={onSelectMount}
-            emptyText={hostCategoryText(t, 'noMountPoints')}
-            columns={[
-              {
-                key: 'path',
-                title: '挂载点',
-                labelKey: 'path',
-                width: 200,
-                render: (row, index) => {
-                  const mountPath = row.labels.path || '';
-                  return (
-                    <span className={`${styles.nameCell} ${styles.nameCellTruncate}`}>
+          {showMountBody ? (
+            <LayeredEntityTable
+              rows={mountRows}
+              loading={loading}
+              selectedKey={selectedMount?.key || ''}
+              onSelect={onSelectMount}
+              emptyText={hostCategoryText(t, 'noMountPoints')}
+              columns={[
+                {
+                  key: 'path',
+                  title: '挂载点',
+                  labelKey: 'path',
+                  width: 200,
+                  render: (row, index) => {
+                    const path = row.labels.path || '';
+                    return (
+                      <span className={`${styles.nameCell} ${styles.nameCellTruncate}`}>
+                        <span className={styles.rowDot} style={{ background: ROW_ACCENTS[index % ROW_ACCENTS.length] }} />
+                        <Tooltip title={path || undefined}>
+                          <span className={styles.pathEllipsis}>{path || '—'}</span>
+                        </Tooltip>
+                      </span>
+                    );
+                  }
+                },
+                { key: 'disk_used_percent', title: '使用率', unit: 'percent', bar: true, emptyDash: true },
+                {
+                  key: 'disk_used',
+                  title: '已用/总量',
+                  render: (row) => formatBytesPair(row.values.disk_used, row.values.disk_total)
+                },
+                {
+                  key: 'io_device',
+                  title: hostCategoryText(t, 'relatedDevice'),
+                  labelKey: 'io_device',
+                  render: (row) => {
+                    const name = row.labels.io_device || '';
+                    if (!name) return '—';
+                    const device = deviceRows.find((item) => (
+                      item.labels.name === name || item.labels.device === name
+                    ));
+                    if (!device) return name;
+                    const active = device.key === selectedDevice?.key;
+                    return (
+                      <button
+                        type="button"
+                        className={active ? `${styles.deviceLink} ${styles.deviceLinkOn}` : styles.deviceLink}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          openDevice(device.key);
+                        }}
+                      >
+                        {name}
+                      </button>
+                    );
+                  }
+                },
+                {
+                  key: 'disk_inodes_used_percent',
+                  title: hostCategoryText(t, 'inodeUsage'),
+                  unit: 'percent' as const,
+                  emptyDash: true
+                },
+                ...(showFsType ? [{
+                  key: 'fstype',
+                  title: hostCategoryText(t, 'filesystemType'),
+                  labelKey: 'fstype',
+                  emptyDash: true
+                }] : [])
+              ]}
+            />
+          ) : (
+            <div className={styles.note}>{hostCategoryText(t, 'noMountPoints')}</div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className={`${styles.chartGrid3} ${styles.diskDeviceCharts}`}>
+            {DEVICE_CHARTS.map((chart) => {
+              const present = chart.series.filter((item) => (selectedDevice?.series[item.key] || []).length > 0);
+              const legendSource = present.length ? present : chart.series;
+              return (
+                <ThinTimeSeries
+                  key={`${chart.key}-${selectedDevice?.key || 'none'}`}
+                  title={hostCategoryText(t, chart.titleKey)}
+                  loading={loading && present.length === 0}
+                  unit={chart.unit}
+                  emptyText={emptyText}
+                  data={pointsToChartData(present.map((item) => ({
+                    points: selectedDevice?.series[item.key] || []
+                  })))}
+                  legends={legendSource.map((item) => {
+                    const reading = present.length
+                      ? legendReading(selectedDevice?.values[item.key], chart.unit)
+                      : undefined;
+                    return {
+                      label: hostCategoryText(t, item.labelKey),
+                      color: item.color,
+                      ...(reading ? { reading } : {})
+                    };
+                  })}
+                />
+              );
+            })}
+          </div>
+          {showDeviceBody ? (
+            <LayeredEntityTable
+              rows={deviceRows}
+              loading={loading}
+              selectedKey={selectedDevice?.key || ''}
+              onSelect={onSelectDevice}
+              emptyText={hostCategoryText(t, 'noBlockDevices')}
+              columns={[
+                {
+                  key: 'name',
+                  title: '设备',
+                  labelKey: 'name',
+                  render: (row, index) => (
+                    <span className={styles.nameCell}>
                       <span className={styles.rowDot} style={{ background: ROW_ACCENTS[index % ROW_ACCENTS.length] }} />
-                      <Tooltip title={mountPath || undefined}>
-                        <span className={styles.pathEllipsis}>{mountPath || '—'}</span>
-                      </Tooltip>
+                      {row.labels.name || '—'}
                     </span>
-                  );
+                  )
+                },
+                { key: 'diskio_read_bytes_rate', title: '读', unit: 'byteps', emptyDash: true },
+                { key: 'diskio_write_bytes_rate', title: '写', unit: 'byteps', emptyDash: true },
+                { key: 'diskio_reads_rate', title: hostCategoryText(t, 'readIops'), unit: 'cps', emptyDash: true },
+                { key: 'diskio_writes_rate', title: hostCategoryText(t, 'writeIops'), unit: 'cps', emptyDash: true },
+                { key: 'diskio_io_util', title: hostCategoryText(t, 'ioUtilization'), unit: 'percent', emptyDash: true },
+                {
+                  key: 'latency',
+                  title: hostCategoryText(t, 'latencyReadWrite'),
+                  render: (row) => formatLatencyPair(row)
+                },
+                {
+                  key: 'mounts',
+                  title: '挂载点',
+                  ellipsis: false,
+                  render: (row) => {
+                    const paths = relatedMounts(mountRows, row.labels.name || '');
+                    if (!paths.length) return '—';
+                    return (
+                      <span className={styles.mountPaths}>
+                        {paths.map((path) => (
+                          <span key={path} className={styles.mountPath}>{path}</span>
+                        ))}
+                        <span className={styles.mountCount}>（{paths.length}）</span>
+                      </span>
+                    );
+                  }
                 }
-              },
-              { key: 'disk_used_percent', title: '使用率', unit: 'percent', bar: true, emptyDash: true },
-              {
-                key: 'disk_used',
-                title: '已用/总量',
-                render: (row) => formatBytesPair(row.values.disk_used, row.values.disk_total)
-              },
-              {
-                key: 'io_device',
-                title: hostCategoryText(t, 'relatedDevice'),
-                labelKey: 'io_device',
-                render: (row) => {
-                  const name = row.labels.io_device || '';
-                  if (!name) return '—';
-                  const device = deviceRows.find((item) => (
-                    item.labels.name === name || item.labels.device === name
-                  ));
-                  if (!device) return name;
-                  const active = device.key === selectedDevice?.key;
-                  return (
-                    <button
-                      type="button"
-                      className={active ? `${styles.deviceLink} ${styles.deviceLinkOn}` : styles.deviceLink}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onSelectDevice(device.key);
-                      }}
-                    >
-                      {name}
-                    </button>
-                  );
-                }
-              },
-              {
-                key: 'disk_inodes_used_percent',
-                title: hostCategoryText(t, 'inodeUsage'),
-                unit: 'percent' as const,
-                emptyDash: true
-              },
-              ...(showFsType ? [{
-                key: 'fstype',
-                title: hostCategoryText(t, 'filesystemType'),
-                labelKey: 'fstype',
-                emptyDash: true
-              }] : []),
-              trendColumn('mount', hostCategoryText(t, 'viewUsageTrend'))
-            ]}
-          />
-        ) : (
-          <div className={styles.note}>{hostCategoryText(t, 'noMountPoints')}</div>
-        )}
-      </section>
-
-      <section className={styles.diskZone}>
-        <div className={styles.sectionHead}>
-          <div className={`${classic.sectionLabel} ${styles.sectionTitle} ${styles.diskZoneTitle}`}>
-            {hostCategoryText(t, 'blockDevices')}
-          </div>
-        </div>
-        {showDeviceBody ? (
-          <LayeredEntityTable
-            rows={deviceRows}
-            loading={loading}
-            selectedKey={selectedDevice?.key || ''}
-            onSelect={onSelectDevice}
-            emptyText={hostCategoryText(t, 'noBlockDevices')}
-            columns={[
-              {
-                key: 'name',
-                title: '设备',
-                labelKey: 'name',
-                render: (row, index) => (
-                  <span className={styles.nameCell}>
-                    <span className={styles.rowDot} style={{ background: ROW_ACCENTS[index % ROW_ACCENTS.length] }} />
-                    {row.labels.name || '—'}
-                  </span>
-                )
-              },
-              { key: 'diskio_read_bytes_rate', title: '读', unit: 'byteps', emptyDash: true },
-              { key: 'diskio_write_bytes_rate', title: '写', unit: 'byteps', emptyDash: true },
-              { key: 'diskio_reads_rate', title: hostCategoryText(t, 'readIops'), unit: 'cps', emptyDash: true },
-              { key: 'diskio_writes_rate', title: hostCategoryText(t, 'writeIops'), unit: 'cps', emptyDash: true },
-              { key: 'diskio_io_util', title: hostCategoryText(t, 'ioUtilization'), unit: 'percent', emptyDash: true },
-              {
-                key: 'latency',
-                title: hostCategoryText(t, 'latencyReadWrite'),
-                render: (row) => formatLatencyPair(row)
-              },
-              {
-                key: 'mounts',
-                title: '挂载点',
-                ellipsis: false,
-                render: (row) => {
-                  const paths = relatedMounts(mountRows, row.labels.name || '');
-                  if (!paths.length) return '—';
-                  return (
-                    <span className={styles.mountPaths}>
-                      {paths.map((path) => (
-                        <span key={path} className={styles.mountPath}>{path}</span>
-                      ))}
-                      <span className={styles.mountCount}>（{paths.length}）</span>
-                    </span>
-                  );
-                }
-              },
-              trendColumn('device', hostCategoryText(t, 'viewDeviceTrend'))
-            ]}
-          />
-        ) : (
-          <div className={styles.note}>{hostCategoryText(t, 'noBlockDevices')}</div>
-        )}
-      </section>
-
-      <DiskTrendDrawer
-        open={trend != null}
-        kind={trend?.kind || 'mount'}
-        row={trendRow}
-        loading={loading}
-        onClose={() => setTrend(null)}
-      />
+              ]}
+            />
+          ) : (
+            <div className={styles.note}>{hostCategoryText(t, 'noBlockDevices')}</div>
+          )}
+        </>
+      )}
     </div>
   );
 }
