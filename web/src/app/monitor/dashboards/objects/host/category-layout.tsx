@@ -175,6 +175,19 @@ export default function HostCategoryLayout({
   }, []);
   const activeTab = onCategoryTabChange ? categoryTab : uncontrolledTab;
   const setActiveTab = onCategoryTabChange || setUncontrolledTab;
+  // 点「性能」时上一页的 Tooltip / Popover / 图表要先卸完，再挂性能 KPI。
+  // 同一提交里卸门户又挂新图，rc-trigger 的测量占位 removeChild 会对不上父节点。
+  const [performancePaneReady, setPerformancePaneReady] = useState(false);
+  useEffect(() => {
+    if (activeTab !== 'system') {
+      setPerformancePaneReady(false);
+      return undefined;
+    }
+    const frame = requestAnimationFrame(() => {
+      setPerformancePaneReady(true);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [activeTab]);
   const metrics = useMemo(
     () => applyHostTabDemoSeries(dashboard.metricSeries),
     [dashboard.metricSeries]
@@ -287,6 +300,15 @@ export default function HostCategoryLayout({
 
   const renderPane = () => {
     if (activeTab === 'system') {
+      if (!performancePaneReady) {
+        return (
+          <div aria-busy="true" aria-live="polite">
+            <div className={styles.sectionHead}>
+              <div className={styles.sectionTitle}>关键指标</div>
+            </div>
+          </div>
+        );
+      }
       return (
         <SystemPane
           metrics={dashboard.metricSeries}

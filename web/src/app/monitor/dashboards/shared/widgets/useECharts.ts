@@ -29,16 +29,36 @@ export function useECharts(
   const containerRef = useCallback((node: HTMLDivElement | null) => {
     if (containerElementRef.current === node) return;
 
-    disposeInstance();
+    if (!node) {
+      const dying = instanceRef.current;
+      resizeObserverRef.current?.disconnect();
+      resizeObserverRef.current = null;
+      instanceRef.current = null;
+      containerElementRef.current = null;
+      // ref 清空发生在 React commitDeletion 的 removeChild 之前。
+      // 同步 dispose 会拆掉 appendToBody 的图表提示，和同一提交里的门户卸载撞车。
+      // 推迟到本次提交结束后；若 Strict Mode 立刻把同一实例挂回，则不拆。
+      if (dying && !dying.isDisposed()) {
+        queueMicrotask(() => {
+          if (instanceRef.current === dying || dying.isDisposed()) return;
+          dying.dispose();
+        });
+      }
+      return;
+    }
+
+    const reused = echarts.getInstanceByDom(node);
+    if (reused && !reused.isDisposed()) {
+      instanceRef.current = reused;
+    } else {
+      disposeInstance();
+      const instance = echarts.init(node);
+      instanceRef.current = instance;
+    }
     containerElementRef.current = node;
 
-    if (!node) return;
-
-    const instance = echarts.init(node);
-    instanceRef.current = instance;
-
     const ro = new ResizeObserver(() => {
-      instance.resize();
+      instanceRef.current?.resize();
     });
     ro.observe(node);
     resizeObserverRef.current = ro;
