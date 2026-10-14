@@ -104,17 +104,23 @@ class TestMysqlExecuteReadonlyQuery:
         last_call = cursor.execute.call_args_list[-1]
         assert last_call.args == ("SELECT c FROM t WHERE x=%s", ("v",))
 
-    def test_cursor_closed_on_error(self):
+    def test_cursor_closed_on_error(self, caplog):
+        import logging
+
         from mysql.connector import Error
 
+        sentinel = "SENTINEL_PWD_5951_TEST"
         cursor = MagicMock()
-        cursor.execute.side_effect = [None, Error("boom")]
+        cursor.execute.side_effect = [None, Error(f"PWD={sentinel}")]
         conn = MagicMock()
         conn.cursor.return_value = cursor
 
-        with pytest.raises(Error):
-            my_utils.execute_readonly_query(conn, "SELECT 1")
+        with caplog.at_level(logging.ERROR, logger="opspilot"):
+            with pytest.raises(Error):
+                my_utils.execute_readonly_query(conn, "SELECT 1")
         cursor.close.assert_called_once()
+        assert sentinel not in caplog.text
+        assert "MySQL查询执行失败" in caplog.text
 
 
 class TestMysqlParseVersion:
