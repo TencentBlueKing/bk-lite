@@ -40,6 +40,13 @@ export interface HostEntityMetricQuery {
 
 const WIN_LOGICAL_DISK = 'instance=~"[A-Z]:"';
 
+/** 读/写 IOPS：Telegraf 计数、远程累计和 Windows 计数都折成每秒，不造 0。 */
+const diskIopsEntityQuery = (kind: 'reads' | 'writes') => [
+  `rate(diskio_${kind}{instance_type="os", __$labels__}[__$window__])`,
+  `rate(diskio_${kind}_total_gauge{instance_type="os", __$labels__}[__$window__])`,
+  `rate(diskio_${kind}_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__])`
+].join(' or ');
+
 /** 已是毫秒的直出值优先；没有时再用 Telegraf / 远程累计时间除以次数。 */
 const diskLatencyEntityQuery = (kind: 'read' | 'write') => {
   const windows = `label_replace(win_logicaldisk_${kind}_latency_ms{instance_type="os", ${WIN_LOGICAL_DISK}, __$labels__}, "name", "$1", "instance", "(.*)")`;
@@ -104,6 +111,18 @@ export const HOST_DISK_ENTITY_QUERIES: HostEntityMetricQuery[] = [
     unit: 'byteps',
     labelKeys: ['name', 'device'],
     query: `rate(diskio_write_bytes{instance_type="os", __$labels__}[__$window__]) or rate(diskio_write_bytes_total_gauge{instance_type="os", config_type!~"host_(aix|freebsd|hpux|solaris)_remote", __$labels__}[__$window__]) or rate(diskio_write_bytes_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[__$window__]) or diskio_write_bytes_gauge{instance_type="os", ${UNIX_REMOTE}, __$labels__}`
+  },
+  {
+    key: 'diskio_reads_rate',
+    unit: 'cps',
+    labelKeys: ['name', 'device'],
+    query: diskIopsEntityQuery('reads')
+  },
+  {
+    key: 'diskio_writes_rate',
+    unit: 'cps',
+    labelKeys: ['name', 'device'],
+    query: diskIopsEntityQuery('writes')
   },
   {
     key: 'disk_read_latency',

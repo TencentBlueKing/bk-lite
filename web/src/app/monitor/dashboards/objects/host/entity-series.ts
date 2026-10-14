@@ -131,6 +131,12 @@ const IO_METRIC_KEYS = [
   'disk_write_latency'
 ];
 
+/** 只进设备行。挂载表不抄 IOPS。 */
+const DEVICE_IOPS_KEYS = [
+  'diskio_reads_rate',
+  'diskio_writes_rate'
+];
+
 /** diskio 身份：优先 name，没有 name 才用 device。不做去分区号或补 /dev。 */
 const diskIoIdentity = (labels: Record<string, string>) =>
   labelText(labels, 'name') || labelText(labels, 'device');
@@ -220,7 +226,7 @@ export const buildMountDiskRows = (byMetric: Record<string, LabeledSeries[]>): E
   });
 
   const deviceNames = new Set<string>();
-  IO_METRIC_KEYS.forEach((metricKey) => {
+  [...IO_METRIC_KEYS, ...DEVICE_IOPS_KEYS].forEach((metricKey) => {
     (byMetric[metricKey] || []).forEach((series) => {
       const name = diskIoIdentity(series.labels);
       if (name) deviceNames.add(name);
@@ -282,12 +288,12 @@ const deviceThroughput = (row: EntityTableRow) => {
 };
 
 /**
- * 设备表：一个 diskio 身份一行。只收读/写 bytes、util、延迟，不收 IOPS。
- * 读+写合计高的在前；没有吞吐的排在后面。
+ * 设备表：一个 diskio 身份一行。收读/写吞吐、IOPS、util、延迟。
+ * 读+写合计高的在前；没有吞吐的排在后面。IOPS 不写入挂载行。
  */
 export const buildDiskDeviceRows = (byMetric: Record<string, LabeledSeries[]>): EntityTableRow[] => {
   const rows = new Map<string, EntityTableRow>();
-  IO_METRIC_KEYS.forEach((metricKey) => {
+  [...IO_METRIC_KEYS, ...DEVICE_IOPS_KEYS].forEach((metricKey) => {
     (byMetric[metricKey] || []).forEach((series) => {
       const name = diskIoIdentity(series.labels);
       if (!name) return;

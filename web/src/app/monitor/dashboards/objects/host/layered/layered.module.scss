@@ -185,6 +185,68 @@
   flex-shrink: 0;
 }
 
+/* 磁盘两区：桌面左表右短折线。窄于 1100 回退为表上图下。 */
+.diskSplit {
+  display: grid;
+  gap: 14px;
+  align-items: start;
+  min-width: 0;
+}
+
+.diskSplitMount {
+  grid-template-columns: minmax(0, 60fr) minmax(0, 40fr);
+}
+
+.diskSplitDevice {
+  grid-template-columns: minmax(0, 55fr) minmax(0, 45fr);
+}
+
+.diskCharts {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.diskCharts .chartTitleGroup,
+.diskCharts .chartTitle {
+  min-width: 0;
+}
+
+.diskCharts .chartTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diskSplitMount .chartPanel {
+  min-height: 0;
+}
+
+.diskSplitMount .chartBody {
+  height: 180px;
+}
+
+.diskSplitDevice .chartPanel {
+  min-height: 0;
+  padding: 8px 10px;
+}
+
+.diskSplitDevice .chartHead {
+  margin-bottom: 4px;
+}
+
+.diskSplitDevice .chartBody {
+  height: 116px;
+}
+
+.diskCharts .hint {
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--color-text-3);
+}
+
 .hint,
 .footnote {
   font-size: 12px;
@@ -302,6 +364,20 @@
   align-items: center;
   gap: 6px;
   min-width: 0;
+}
+
+.nameCellTruncate {
+  display: flex;
+  width: 100%;
+  max-width: 100%;
+}
+
+.pathEllipsis {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mountPaths {
@@ -678,7 +754,9 @@
   .chartGrid3,
   .chartGrid4,
   .processSplit,
-  .processTop {
+  .processTop,
+  .diskSplitMount,
+  .diskSplitDevice {
     grid-template-columns: minmax(0, 1fr);
   }
 
