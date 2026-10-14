@@ -382,6 +382,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
         <NotificationTargetFields
           personnelOptions={personnelOptions}
           typeLabel={t('settings.assignStrategy.formTargetSelect')}
+          showPreferOwner
         />
         <Form.Item
           label={t('settings.assignStrategy.formNotifyMethod')}

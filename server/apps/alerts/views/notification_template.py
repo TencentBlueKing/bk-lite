@@ -105,6 +105,7 @@ def _preview_context(sample):
         "first_event_time": "2026-09-08 10:00:00+08:00",
         "last_event_time": "2026-09-08 10:05:00+08:00",
         "operators": ["zhangsan"],
+        "owners": ["zhangsan"],
         "team": [1],
         **(sample.get("alert") if isinstance(sample.get("alert"), dict) else {}),
     }
@@ -414,6 +415,7 @@ class NotificationTemplateViewSet(ModelViewSet):
                     {"path": "alert.resource_type", "label": alerts_message(request, "catalog.alert_resource_type")},
                     {"path": "alert.source_name", "label": alerts_message(request, "catalog.alert_source_name")},
                     {"path": "alert.item", "label": alerts_message(request, "catalog.alert_item")},
+                    {"path": "alert.owners", "label": alerts_message(request, "catalog.alert_owners")},
                     {"path": "notification.scene_name", "label": alerts_message(request, "catalog.scene_name")},
                     {"path": "notification.receiver_names", "label": alerts_message(request, "catalog.receiver_names")},
                     {"path": "notification.receivers", "label": alerts_message(request, "catalog.receivers")},

@@ -61,6 +61,9 @@ const OperateModal: React.FC<OperateModalProps> = ({
           source: p.source,
           as: p.as || '',
         })),
+        owner_fields: currentRow.provider_config?.owner_fields?.length
+          ? currentRow.provider_config.owner_fields
+          : [],
       });
       setFilterType(currentRow.match_rules?.length ? 'filter' : 'all');
     } else {
@@ -79,6 +82,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           { source: 'owner', as: '' },
           { source: 'business_system', as: '' },
         ],
+        owner_fields: ['operator'],
       });
     }
   }, [open, isEdit, currentRow, form]);
@@ -105,7 +109,10 @@ const OperateModal: React.FC<OperateModalProps> = ({
         provider_type: values.provider_type,
         namespace: values.namespace || '',
         match_rules,
-        provider_config: currentRow?.provider_config || {},
+        provider_config: {
+          ...(currentRow?.provider_config || {}),
+          owner_fields: (values.owner_fields || []).filter(Boolean),
+        },
         input_binding,
         output_projection,
         on_multiple: values.on_multiple,
@@ -290,6 +297,21 @@ const OperateModal: React.FC<OperateModalProps> = ({
               </>
             )}
           </Form.List>
+        </Form.Item>
+
+        <Form.Item
+          name="owner_fields"
+          label={t('settings.enrichmentOwnerFields')}
+          extra={t('settings.enrichmentOwnerFieldsTip')}
+        >
+          <Select
+            mode="tags"
+            tokenSeparators={[',']}
+            placeholder="operator"
+          />
+        </Form.Item>
+        <Form.Item label={t('settings.enrichmentOwnerTarget')}>
+          <Input value={t('settings.enrichmentOwnerTargetValue')} disabled />
         </Form.Item>
 
         <Form.Item

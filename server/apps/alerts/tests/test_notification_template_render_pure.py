@@ -19,6 +19,7 @@ class AlertStub:
     dimensions: dict = None
     enrichment: dict = None
     operator: list = None
+    owners: list = None
     team: list = None
     created_at: object = None
     first_event_time: object = None
@@ -29,13 +30,17 @@ class AlertStub:
         self.dimensions = self.dimensions or {"instance": "10.0.0.8"}
         self.enrichment = self.enrichment or {"cmdb": {"owner": "张三"}}
         self.operator = self.operator or ["owner"]
+        self.owners = self.owners or []
         self.team = self.team or [1]
 
 
 def test_email_html_keeps_layout_and_escapes_variable_values():
     from apps.alerts.notification_templates.renderer import build_alert_context, render_source
 
-    context = build_alert_context(AlertStub(), ["zhangsan"], "assignment")
+    context = build_alert_context(AlertStub(owners=["alice", "bob"]), ["zhangsan"], "assignment")
+    rendered_owners = render_source("责任人 {{ alert.owners }}", context, channel_type="email")
+    assert "alice" in rendered_owners.value
+    assert "bob" in rendered_owners.value
     result = render_source(
         '<table><tr><td style="color: red">{{ alert.title }}</td></tr>' "<tr><td>{{ alert.content }}</td></tr></table>",
         context,

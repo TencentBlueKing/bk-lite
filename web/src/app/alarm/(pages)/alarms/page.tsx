@@ -387,6 +387,12 @@ const Alert: React.FC = () => {
       option: [],
     },
     {
+      attr_id: 'owner',
+      attr_name: t('alarms.owners'),
+      attr_type: 'str',
+      option: [],
+    },
+    {
       attr_id: 'status',
       attr_name: t('alarms.state'),
       attr_type: 'enum',

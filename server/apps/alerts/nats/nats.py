@@ -1429,6 +1429,7 @@ def _serialize_alert_for_tool(alert, *, detail=False):
         "level": alert.level,
         "source_name": alert.source_name or "",
         "operator": alert.operator or [],
+        "owners": getattr(alert, "owners", None) or [],
         "item": alert.item,
         "resource_id": alert.resource_id,
         "resource_type": alert.resource_type,

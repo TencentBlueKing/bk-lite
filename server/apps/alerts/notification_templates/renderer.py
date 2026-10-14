@@ -52,6 +52,7 @@ ALERT_FIELDS = {
     "first_event_time",
     "last_event_time",
     "operators",
+    "owners",
     "team",
 }
 NOTIFICATION_FIELDS = {
@@ -435,6 +436,7 @@ def build_alert_context(
         "first_event_time": getattr(alert, "first_event_time", None),
         "last_event_time": getattr(alert, "last_event_time", None),
         "operators": getattr(alert, "operator", None) or [],
+        "owners": getattr(alert, "owners", None) or [],
         "team": getattr(alert, "team", None) or [],
     }
     operation_notification = {
