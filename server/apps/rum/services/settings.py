@@ -144,16 +144,12 @@ def load_rum_settings() -> RumRuntimeSettings:
     configured = getattr(settings, "RUM_PUBLIC_ORIGIN", None) or os.getenv("RUM_PUBLIC_ORIGIN", "")
     public_origin = normalize_public_origin(str(configured or ""))
     endpoints = browser_endpoints(public_origin)
-    explicit_nats_url = _setting_or_env("RUM_NATS_URL").strip()
-    nats_source = explicit_nats_url or platform_nats_endpoint(_setting_or_env("NATS_SERVERS"))
     nats_url, nats_user, nats_password = normalize_nats_endpoint(
-        nats_source,
+        platform_nats_endpoint(_setting_or_env("NATS_SERVERS")),
         _setting_or_env("RUM_NATS_USER"),
         _setting_or_env("RUM_NATS_PASSWORD"),
     )
-    tls_ca_file = _setting_or_env("RUM_NATS_TLS_CA_FILE").strip()
-    if not tls_ca_file and not explicit_nats_url and nats_url.startswith("tls://"):
-        tls_ca_file = _setting_or_env("NATS_TLS_CA_FILE").strip()
+    tls_ca_file = _setting_or_env("NATS_TLS_CA_FILE").strip() if nats_url.startswith("tls://") else ""
     return RumRuntimeSettings(
         collect_url=endpoints["collect_url"],
         replay_url=endpoints["replay_url"],

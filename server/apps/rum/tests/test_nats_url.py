@@ -10,8 +10,8 @@ def test_nats_endpoint_keeps_host_for_plain_and_tls():
         "rum_ctl",
         "secret",
     )
-    assert normalize_nats_endpoint("nats://127.0.0.1:14222", "", "") == (
-        "nats://127.0.0.1:14222",
+    assert normalize_nats_endpoint("nats://127.0.0.1:4222", "", "") == (
+        "nats://127.0.0.1:4222",
         "",
         "",
     )
@@ -21,52 +21,14 @@ def test_nats_endpoint_keeps_host_for_plain_and_tls():
     ("url", "user", "password"),
     [
         ("", "rum_ctl", "secret"),
-        ("nats://rum_ctl:secret@127.0.0.1:14222", "rum_ctl", "secret"),
-        ("tls://rum_ctl:secret@nats.internal:4222", "", ""),
+        ("nats://rum_ctl:secret@127.0.0.1:4222", "rum_ctl", "secret"),
         ("http://nats.internal:4222", "rum_ctl", "secret"),
-        ("nats://127.0.0.1:14222", "rum_ctl", ""),
+        ("nats://127.0.0.1:4222", "rum_ctl", ""),
         ("tls://nats.internal:4222", "", "secret"),
     ],
 )
 def test_nats_endpoint_rejects_userinfo_and_half_credentials(url, user, password):
     assert normalize_nats_endpoint(url, user, password) == ("", "", "")
-
-
-def test_load_splits_user_and_password_from_the_url(monkeypatch):
-    monkeypatch.setenv("RUM_NATS_URL", "nats://127.0.0.1:14222")
-    monkeypatch.setenv("RUM_NATS_USER", "rum_ctl")
-    monkeypatch.setenv("RUM_NATS_PASSWORD", "secret")
-    monkeypatch.setenv("RUM_NATS_TLS_CA_FILE", "/run/secrets/rum-nats-ca.pem")
-
-    loaded = load_rum_settings()
-
-    assert loaded.nats_url == "nats://127.0.0.1:14222"
-    assert loaded.nats_user == "rum_ctl"
-    assert loaded.nats_password == "secret"
-    assert "secret" not in loaded.nats_url
-    assert loaded.nats_tls_ca_file == "/run/secrets/rum-nats-ca.pem"
-
-
-def test_load_drops_a_url_that_still_embeds_the_password(monkeypatch):
-    monkeypatch.setenv("RUM_NATS_URL", "nats://rum_ctl:secret@127.0.0.1:14222")
-    monkeypatch.setenv("RUM_NATS_USER", "rum_ctl")
-    monkeypatch.setenv("RUM_NATS_PASSWORD", "secret")
-
-    loaded = load_rum_settings()
-
-    assert loaded.nats_url == ""
-    assert loaded.nats_user == ""
-    assert loaded.nats_password == ""
-
-
-def test_empty_nats_url_stays_unconfigured(monkeypatch):
-    monkeypatch.setenv("RUM_NATS_URL", "")
-    monkeypatch.delenv("RUM_NATS_USER", raising=False)
-    monkeypatch.delenv("RUM_NATS_PASSWORD", raising=False)
-    monkeypatch.delenv("NATS_SERVERS", raising=False)
-    monkeypatch.setattr(settings, "NATS_SERVERS", "", raising=False)
-
-    assert load_rum_settings().nats_url == ""
 
 
 def test_platform_nats_endpoint_drops_embedded_account():
@@ -76,8 +38,9 @@ def test_platform_nats_endpoint_drops_embedded_account():
     assert platform_nats_endpoint("http://nats.internal:4222") == ""
 
 
-def test_empty_rum_url_uses_platform_host_and_rum_password(monkeypatch):
-    monkeypatch.setenv("RUM_NATS_URL", "")
+def test_load_uses_platform_host_and_rum_password(monkeypatch):
+    monkeypatch.setenv("RUM_NATS_URL", "nats://rum_ctl:secret@127.0.0.1:14222")
+    monkeypatch.setenv("RUM_NATS_TLS_CA_FILE", "/run/secrets/rum-only-ca.pem")
     monkeypatch.setattr(settings, "NATS_SERVERS", "nats://admin:platform-secret@127.0.0.1:4222", raising=False)
     monkeypatch.setenv("RUM_NATS_USER", "rum_ctl")
     monkeypatch.setenv("RUM_NATS_PASSWORD", "rum-secret")
@@ -87,27 +50,14 @@ def test_empty_rum_url_uses_platform_host_and_rum_password(monkeypatch):
     assert loaded.nats_url == "nats://127.0.0.1:4222"
     assert loaded.nats_user == "rum_ctl"
     assert loaded.nats_password == "rum-secret"
+    assert loaded.nats_tls_ca_file == ""
     assert "platform-secret" not in loaded.nats_url
+    assert "14222" not in loaded.nats_url
     assert loaded.nats_password != "platform-secret"
 
 
-def test_explicit_rum_url_wins_over_platform_host(monkeypatch):
-    monkeypatch.setenv("RUM_NATS_URL", "nats://127.0.0.1:14222")
-    monkeypatch.setattr(settings, "NATS_SERVERS", "tls://admin:platform-secret@10.0.0.8:4422", raising=False)
-    monkeypatch.setenv("RUM_NATS_USER", "rum_ctl")
-    monkeypatch.setenv("RUM_NATS_PASSWORD", "rum-secret")
-    monkeypatch.setenv("NATS_TLS_CA_FILE", "/run/secrets/platform-ca.pem")
-
-    loaded = load_rum_settings()
-
-    assert loaded.nats_url == "nats://127.0.0.1:14222"
-    assert loaded.nats_tls_ca_file == ""
-    assert "platform-secret" not in loaded.nats_password
-
-
-def test_tls_fallback_reuses_platform_ca_file(monkeypatch):
-    monkeypatch.setenv("RUM_NATS_URL", "")
-    monkeypatch.delenv("RUM_NATS_TLS_CA_FILE", raising=False)
+def test_tls_reuses_platform_ca_file(monkeypatch):
+    monkeypatch.setenv("RUM_NATS_TLS_CA_FILE", "/run/secrets/rum-only-ca.pem")
     monkeypatch.setattr(settings, "NATS_SERVERS", "tls://admin:platform-secret@nats.internal:4422", raising=False)
     monkeypatch.setenv("RUM_NATS_USER", "rum_ctl")
     monkeypatch.setenv("RUM_NATS_PASSWORD", "rum-secret")
@@ -120,10 +70,18 @@ def test_tls_fallback_reuses_platform_ca_file(monkeypatch):
     assert "platform-secret" not in loaded.nats_url
 
 
-def test_bad_explicit_url_does_not_fall_back(monkeypatch):
-    monkeypatch.setenv("RUM_NATS_URL", "nats://rum_ctl:secret@127.0.0.1:14222")
+def test_empty_platform_nats_stays_unconfigured(monkeypatch):
+    monkeypatch.delenv("RUM_NATS_USER", raising=False)
+    monkeypatch.delenv("RUM_NATS_PASSWORD", raising=False)
+    monkeypatch.delenv("NATS_SERVERS", raising=False)
+    monkeypatch.setattr(settings, "NATS_SERVERS", "", raising=False)
+
+    assert load_rum_settings().nats_url == ""
+
+
+def test_half_rum_credentials_stay_unconfigured(monkeypatch):
     monkeypatch.setattr(settings, "NATS_SERVERS", "nats://127.0.0.1:4222", raising=False)
     monkeypatch.setenv("RUM_NATS_USER", "rum_ctl")
-    monkeypatch.setenv("RUM_NATS_PASSWORD", "secret")
+    monkeypatch.setenv("RUM_NATS_PASSWORD", "")
 
     assert load_rum_settings().nats_url == ""
