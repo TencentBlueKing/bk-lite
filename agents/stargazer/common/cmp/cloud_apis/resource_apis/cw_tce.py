@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import datetime
 import json
-import logging
 import time
 
 from qcloud_cos import CosConfig, CosS3Client
@@ -50,8 +49,8 @@ from common.cmp.cloud_apis.resource_apis.tcecloud.vpc.v20170312 import models as
 from common.cmp.cloud_apis.resource_apis.tcecloud.vpc.v20170312 import vpc_client
 from common.cmp.cloud_apis.resource_apis.utils import handle_time_str
 from common.cmp.utils import convert_param_to_list, get_compute_price_module, get_storage_pricemodule
+from core.logger import logger
 
-logger = logging.getLogger("root")
 
 TCE_COMPONENT = (
     "CVM",

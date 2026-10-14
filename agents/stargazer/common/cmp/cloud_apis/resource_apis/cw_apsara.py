@@ -1,5 +1,4 @@
 import json
-import logging
 
 import oss2
 
@@ -10,8 +9,8 @@ from common.cmp.cloud_apis.resource_apis.aliyunsdkasapi.ASClient import ASClient
 from common.cmp.cloud_apis.resource_apis.cw_aliyun import Aliyun, checkout_required_parameters
 from common.cmp.cloud_apis.resource_apis.resource_format.common.base_format import get_format_method
 from common.cmp.utils import convert_param_to_list
+from core.logger import logger
 
-logger = logging.getLogger("root")
 
 
 class CwApsara:
