@@ -2292,6 +2292,29 @@ def test_enforce_generate_attachment_file_injects_when_empty_plan():
     assert looks_like_attachment_file_task("文件内容是什么") is False
     assert looks_like_attachment_file_task("这个上传的 txt 讲了什么") is False
     assert looks_like_attachment_file_task("生成一个excel文件") is True
+    revision = "报告中要有表格展示每个主机的概况"
+    assert looks_like_attachment_file_task(revision) is False
+    prior_file = [{"name": "generate_attachment_file", "content": '{"filename":"报告.docx","file_url":"/api/proxy/x"}'}]
+    assert looks_like_attachment_file_task(revision, conversation_messages=prior_file) is True
+    assert looks_like_attachment_file_task("文件内容是什么", conversation_messages=prior_file) is False
+    prose_history = [
+        {"role": "system", "content": "文件名用 .pptx"},
+        {"role": "assistant", "content": "已生成 Word 报告：主机磁盘资源未来7天风险趋势分析报告.docx"},
+        {"role": "user", "content": revision},
+    ]
+    assert looks_like_attachment_file_task(revision, conversation_messages=prose_history) is True
+    assert looks_like_attachment_file_task(revision, conversation_messages=[{"role": "system", "content": "文件名用 .pptx"}]) is False
+    font_edit = "重点介绍广州各区美食，字体这些调整下，统一用微软雅黑字体"
+    assert looks_like_attachment_file_task(font_edit) is False
+    assert looks_like_attachment_file_task(font_edit, conversation_messages=prose_history) is True
+    assert looks_like_attachment_file_task("现在还有没有没关的告警", conversation_messages=prose_history) is False
+    revised = enforce_generate_attachment_file(
+        ToolExecutionPlan(goal="改报告", steps=[]),
+        {GENERATE_ATTACHMENT_FILE_TOOL_NAME},
+        user_message=revision,
+        conversation_messages=prior_file,
+    )
+    assert revised.steps[0].tools == [GENERATE_ATTACHMENT_FILE_TOOL_NAME]
 
     fixed = enforce_generate_attachment_file(
         ToolExecutionPlan(goal="写月报", steps=[]),

@@ -86,14 +86,26 @@ export interface MaterialBatchUploadEntry {
 }
 
 export interface MaterialDeleteImpact {
-  material_id: number;
-  material_name: string;
+  material_id?: number;
+  material_name?: string;
+  material_ids?: number[];
+  material_count?: number;
+  materials?: Array<{ id: number; name: string }>;
   affected_count: number;
   will_be_source_invalid_count: number;
   shared_source_protected_count: number;
   affected_pages: BuildAffectedPage[];
   will_be_source_invalid: BuildAffectedPage[];
   shared_source_protected: BuildAffectedPage[];
+}
+
+export interface MaterialBatchDeleteResult {
+  deleted: number[];
+  deleted_count: number;
+  failed: { id: number; code?: string; message: string } | null;
+  not_attempted: number[];
+  pending_review: number;
+  build_record_ids: number[];
 }
 
 export interface MaterialImpactVersion {

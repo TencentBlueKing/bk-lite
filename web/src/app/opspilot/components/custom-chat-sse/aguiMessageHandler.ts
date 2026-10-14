@@ -920,6 +920,14 @@ export class AGUIMessageHandler {
   /**
    * 处理 ERROR 事件
    */
+  handleStreamClosed(reason?: string) {
+    if (!this.isStreaming) return;
+    this.handleError(
+      reason ||
+        getOpspilotTranslate()('chat.connectionError', '连接已中断，未完成的工具调用已停止。')
+    );
+  }
+
   handleError(error: string) {
     this.stopThinking();
     this.isStreaming = false;
@@ -958,7 +966,7 @@ export class AGUIMessageHandler {
       this.plannedExecutionStatus = { ...this.plannedExecutionStatus, phase: 'idle' };
     }
     this.flushCurrentTextBlock();
-    const errorMessage = renderErrorMessage(message, 'run_error', code);
+    const errorMessage = renderErrorMessage(message, 'run_error', code, getOpspilotTranslate());
     this.contentBlocks.push({ type: 'text', content: errorMessage });
     this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
   }
