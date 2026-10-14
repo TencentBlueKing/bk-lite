@@ -221,6 +221,144 @@ def pack_widgets(layout: list[dict], columns: int = 12, per_row: int = 3) -> lis
     return packed
 
 
+def _layout_int(value) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str) and value.strip().lstrip("-").isdigit():
+        return int(value.strip())
+    return None
+
+
+def _widget_height(item: dict) -> int:
+    height = _layout_int(item.get("h"))
+    if height is None or height < 1:
+        return 3
+    return height
+
+
+def _spans_overlap(origin: int, size: int, other_origin: int, other_size: int) -> bool:
+    return origin < other_origin + other_size and other_origin < origin + size
+
+
+def _positions_fit(layout: list[dict], columns: int) -> bool:
+    boxes = []
+    for item in layout:
+        x = _layout_int(item.get("x"))
+        y = _layout_int(item.get("y"))
+        width = _layout_int(item.get("w"))
+        height = _widget_height(item)
+        if x is None or y is None or width is None or width < 1 or x < 0 or y < 0 or x + width > columns:
+            return False
+        boxes.append((x, y, width, height))
+    for index, box in enumerate(boxes):
+        for other in boxes[index + 1 :]:
+            if _spans_overlap(box[0], box[2], other[0], other[2]) and _spans_overlap(box[1], box[3], other[1], other[3]):
+                return False
+    return True
+
+
+def _row_fits(row: list[dict], columns: int) -> bool:
+    placed = []
+    for item in row:
+        x = _layout_int(item.get("x"))
+        width = _layout_int(item.get("w"))
+        if x is None or width is None or width < 1 or x < 0 or x + width > columns:
+            return False
+        for other_x, other_w in placed:
+            if _spans_overlap(x, width, other_x, other_w):
+                return False
+        placed.append((x, width))
+    return True
+
+
+def _scale_widths_to_columns(widths: list[int | None], columns: int) -> list[int]:
+    """按原宽度比例把一行收进栅格。能整除时等宽，有余数时分给比例更高的组件。"""
+    cleaned = [1 if width is None or width < 1 else min(columns, width) for width in widths]
+    count = len(cleaned)
+    if count == 0:
+        return []
+    if count > columns:
+        return [1] * count
+    total = sum(cleaned)
+    if total <= columns:
+        return cleaned
+    quotas = [width * columns / total for width in cleaned]
+    fitted = [int(quota) for quota in quotas]
+    if columns >= count:
+        fitted = [max(1, width) for width in fitted]
+    while sum(fitted) > columns:
+        index = max(range(count), key=lambda item: (fitted[item], cleaned[item]))
+        if fitted[index] <= 1:
+            break
+        fitted[index] -= 1
+    remainder = columns - sum(fitted)
+    order = sorted(range(count), key=lambda item: (quotas[item] - int(quotas[item]), cleaned[item]), reverse=True)
+    for index in order:
+        if remainder <= 0:
+            break
+        fitted[index] += 1
+        remainder -= 1
+    return fitted
+
+
+def _widths_for_row(row: list[dict], columns: int) -> list[int]:
+    """这一行的宽度能依次放下时保留原宽度，放不下时按比例收进栅格。"""
+    widths = [_layout_int(item.get("w")) for item in row]
+    if widths and all(width is not None and 1 <= width <= columns for width in widths) and sum(widths) <= columns:
+        return widths
+    return _scale_widths_to_columns(widths, columns)
+
+
+def fit_layout_to_grid(layout: list[dict], columns: int = 12) -> list[dict]:
+    """模型坐标能放进 12 列就保留，包括不满的最后一行。放不下的行按原宽度比例收进栅格。"""
+    items = [dict(item) for item in layout if isinstance(item, dict)]
+    if not items or _positions_fit(items, columns):
+        return [{**item, "h": _widget_height(item)} for item in items]
+    rows: dict[int, list[tuple[int, dict]]] = {}
+    order: list[int] = []
+    for index, item in enumerate(items):
+        y = _layout_int(item.get("y"))
+        if y is None:
+            y = 0
+        if y not in rows:
+            rows[y] = []
+            order.append(y)
+        rows[y].append((index, item))
+    fitted = []
+    cursor_y = 0
+    for y in sorted(order):
+        indexed = sorted(
+            rows[y],
+            key=lambda pair: (_layout_int(pair[1].get("x")) if _layout_int(pair[1].get("x")) is not None else 0, pair[0]),
+        )
+        row = [item for _, item in indexed]
+        row_h = 0
+        if _row_fits(row, columns):
+            for item in row:
+                height = _widget_height(item)
+                fitted.append({**item, "x": _layout_int(item.get("x")), "y": cursor_y, "w": _layout_int(item.get("w")), "h": height})
+                row_h = max(row_h, height)
+            cursor_y += row_h
+            continue
+        widths = _widths_for_row(row, columns)
+        x = 0
+        for item, width in zip(row, widths):
+            height = _widget_height(item)
+            if x + width > columns:
+                cursor_y += row_h
+                x = 0
+                row_h = 0
+            fitted.append({**item, "x": x, "y": cursor_y, "w": width, "h": height})
+            x += width
+            row_h = max(row_h, height)
+        cursor_y += row_h
+    return fitted
+
+
 def append_dashboard_widgets(current: dict | None, additions: dict | None) -> dict | None:
     """在当前画布底部追加新组件，不重排、不覆盖已有组件。"""
     if not isinstance(current, dict) or not isinstance(additions, dict):

@@ -180,6 +180,9 @@ class CMDB(object):
     def topo_search_lite_by_uuid(self, **kwargs):
         return self.client.run("topo_search_lite_by_uuid", **kwargs)
 
+    def application_resource_topology_by_uuid(self, **kwargs):
+        return self.client.run("application_resource_topology_by_uuid", **kwargs)
+
     def get_room3d_layout(self, **kwargs):
         return self.client.run("get_room3d_layout", **kwargs)
 

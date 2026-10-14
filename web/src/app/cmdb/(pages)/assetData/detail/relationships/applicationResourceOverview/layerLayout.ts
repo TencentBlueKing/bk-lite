@@ -1,12 +1,9 @@
-export const LAYER_KEYS = [
-  'root',
-  'service',
-  'host',
-  'appService',
-  'infrastructure',
-] as const;
+import {
+  LAYER_KEYS,
+  type LayerKey,
+} from '@/app/cmdb/utils/applicationResourceLayer';
 
-export type LayerKey = (typeof LAYER_KEYS)[number];
+export { LAYER_KEYS, type LayerKey };
 
 export const LAYER_TITLE_KEYS: Record<LayerKey, string> = {
   root: 'ApplicationResourceOverview.layerSystem',

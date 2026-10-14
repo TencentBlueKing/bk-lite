@@ -55,7 +55,7 @@ assert.doesNotMatch(
 const controlSrc = read(
   'src/app/cmdb/(pages)/assetData/detail/relationships/applicationResourceOverview/ExpandDepthControl.tsx'
 );
-assert.match(controlSrc, /Segmented/);
+assert.match(controlSrc, /Select/);
 assert.match(controlSrc, /APP_TOPO_EXPAND_DEPTH_OPTIONS/);
 assert.match(controlSrc, /ApplicationResourceOverview\.expandDepthLabel/);
 
