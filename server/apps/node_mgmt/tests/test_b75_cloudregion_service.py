@@ -888,7 +888,9 @@ def test_activate_pending_proxy_address_updates_current_address_and_env_vars(
 
 
 @pytest.mark.django_db
-def test_get_deploy_script_webhook_non_200_raises():
+def test_get_deploy_script_webhook_non_200_raises(caplog):
+    import logging
+
     _ensure_hub_env()
     region = _create_custom_region(name="cr-deploy-500", proxy_address="6.6.6.6")
     _build_complete_env(region.id)
@@ -896,16 +898,22 @@ def test_get_deploy_script_webhook_non_200_raises():
     def fake_getenv(key, default=None):
         return {"NATS_ADMIN_USERNAME": "u", "NATS_ADMIN_PASSWORD": "p"}.get(key, default)
 
+    sentinel = "SENTINEL_WH_5953_ZzQ9mK2p"
     response = MagicMock()
     response.status_code = 500
-    response.text = "err"
+    response.text = ("Y" * 200) + f"\n{sentinel}\nmore"
 
-    with patch("apps.node_mgmt.services.cloudregion.os.getenv", side_effect=fake_getenv), patch(
-        "apps.node_mgmt.services.cloudregion.requests.post", return_value=response
-    ), patch("apps.node_mgmt.services.cloudregion.generate_node_token", return_value="tok"):
+    with caplog.at_level(logging.ERROR, logger="node"), patch(
+        "apps.node_mgmt.services.cloudregion.os.getenv", side_effect=fake_getenv
+    ), patch("apps.node_mgmt.services.cloudregion.requests.post", return_value=response), patch(
+        "apps.node_mgmt.services.cloudregion.generate_node_token", return_value="tok"
+    ):
         with pytest.raises(BaseAppException) as exc:
             RegionService.get_deploy_script({"cloud_region_id": region.id})
     assert "Failed to generate deploy script" in str(exc.value)
+    assert sentinel not in caplog.text
+    assert "\n" not in "".join(record.getMessage() for record in caplog.records if "Webhook API error" in record.getMessage())
+    assert "body_len=" in caplog.text
 
 
 @pytest.mark.django_db

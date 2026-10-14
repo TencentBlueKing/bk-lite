@@ -761,7 +761,11 @@ def get_cloud_region_envconfig(cloud_region_id: str):
                 variables[obj.key] = value
             except Exception as e:
                 # 解密失败，记录警告日志并使用原值
-                logger.warning(f"Failed to decrypt secret env variable {obj.key}: {e}")
+                logger.warning(
+                    "Failed to decrypt secret env variable %s: error_type=%s",
+                    obj.key,
+                    type(e).__name__,
+                )
                 variables[obj.key] = obj.value
         else:
             # 如果是普通变量，直接使用
@@ -812,7 +816,11 @@ def get_cloud_region_proxy_address(cloud_region_id: str, organization_ids: list 
         try:
             return aes_obj.decode(env_var.value)
         except Exception as e:
-            logger.warning(f"Failed to decrypt proxy env variable {env_var.key}: {e}")
+            logger.warning(
+                "Failed to decrypt proxy env variable %s: error_type=%s",
+                env_var.key,
+                type(e).__name__,
+            )
 
     return env_var.value or ""
 
