@@ -26,6 +26,7 @@ def test_execution_exposes_only_the_confirmed_mvp_states():
         "RUNNING",
         "WAITING_APPROVAL",
         "TERMINATING",
+        "UNKNOWN",
         "SUCCEEDED",
         "FAILED",
         "TIMED_OUT",

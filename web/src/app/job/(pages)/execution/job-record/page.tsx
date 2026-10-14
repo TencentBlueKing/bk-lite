@@ -49,8 +49,8 @@ import {
   shouldPollExecutionList,
 } from '@/app/job/utils/execution-record';
 import { ColumnItem } from '@/types';
-import SearchCombination from '@/components/search-combination';
-import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
+import SearchActionBar from '@/components/search-action-bar';
+import TopSection from '@/components/top-section';
 import { useRouter, useSearchParams } from 'next/navigation';
 import dayjs, { Dayjs } from 'dayjs';
 
@@ -70,7 +70,7 @@ const JobRecordPage = () => {
   // List state
   const [data, setData] = useState<JobRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchFilters, setSearchFilters] = useState<SearchFilters>({});
+  const [searchKey, setSearchKey] = useState('');
   const [timeRange, setTimeRange] = useState<'today' | '7days' | '30days' | 'custom'>('today');
   const [customRange, setCustomRange] = useState<[Dayjs, Dayjs] | null>(null);
   const [pagination, setPagination] = useState({
@@ -133,30 +133,22 @@ const JobRecordPage = () => {
 
   const fetchData = useCallback(
     async (
-      params: { filters?: SearchFilters; current?: number; pageSize?: number } = {},
+      params: { keyword?: string; current?: number; pageSize?: number } = {},
       silent = false
     ) => {
       if (!silent) {
         setLoading(true);
       }
       try {
-        const filters = params.filters ?? searchFilters;
+        const keyword = (params.keyword ?? searchKey).trim();
         const timeFilter = getTimeFilter();
         const queryParams: Record<string, unknown> = {
           page: params.current ?? pagination.current,
           page_size: params.pageSize ?? pagination.pageSize,
           ...timeFilter,
         };
-        if (filters && Object.keys(filters).length > 0) {
-          Object.entries(filters).forEach(([field, conditions]) => {
-            conditions.forEach((condition) => {
-              if (condition.lookup_expr === 'in' && Array.isArray(condition.value)) {
-                queryParams[field] = (condition.value as string[]).join(',');
-              } else {
-                queryParams[field] = condition.value;
-              }
-            });
-          });
+        if (keyword) {
+          queryParams.name = keyword;
         }
         const res = await getJobRecordList(queryParams as any);
         setData(res.items || res.results || []);
@@ -170,7 +162,7 @@ const JobRecordPage = () => {
         }
       }
     },
-    [searchFilters, pagination.current, pagination.pageSize, getTimeFilter]
+    [searchKey, pagination.current, pagination.pageSize, getTimeFilter]
   );
 
   const fetchDetail = useCallback(async (id: number, silent = false) => {
@@ -342,10 +334,10 @@ const JobRecordPage = () => {
     };
   }, [detail?.status, fetchDetail, recordId]);
 
-  const handleSearchChange = useCallback((filters: SearchFilters) => {
-    setSearchFilters(filters);
+  const handleSearch = useCallback((value: string) => {
+    setSearchKey(value);
     setPagination((prev) => ({ ...prev, current: 1 }));
-    fetchData({ filters, current: 1 });
+    fetchData({ keyword: value, current: 1 });
   }, [fetchData]);
 
   const handleTableChange = (pag: any) => {
@@ -392,53 +384,6 @@ const JobRecordPage = () => {
     };
     return configs[source || 'manual'] || configs.manual;
   };
-
-  const fieldConfigs: FieldConfig[] = useMemo(() => [
-    {
-      name: 'name',
-      label: t('job.jobName'),
-      lookup_expr: 'icontains',
-    },
-    {
-      name: 'job_type',
-      label: t('job.jobType'),
-      lookup_expr: 'in',
-      options: [
-        { id: 'script', name: t('job.scriptExecution') },
-        { id: 'playbook', name: t('job.playbook') },
-        { id: 'file', name: t('job.fileDistribution') },
-      ],
-    },
-    {
-      name: 'trigger_source',
-      label: t('job.triggerSource'),
-      lookup_expr: 'in',
-      options: [
-        { id: 'manual', name: t('job.manual') },
-        { id: 'scheduled', name: t('job.scheduled') },
-        { id: 'api', name: t('job.api') },
-      ],
-    },
-    {
-      name: 'status',
-      label: t('job.executionStatus'),
-      lookup_expr: 'in',
-      options: [
-        { id: 'pending', name: t('job.statusPending') },
-        { id: 'running', name: t('job.statusRunning') },
-        { id: 'success', name: t('job.statusSuccess') },
-        { id: 'failed', name: t('job.statusFailed') },
-        { id: 'timeout', name: t('job.statusTimeout') },
-        { id: 'cancelled', name: t('job.statusCanceled') },
-        { id: 'cancelling', name: t('job.statusCancelling') },
-      ],
-    },
-    {
-      name: 'created_by',
-      label: t('job.initiator'),
-      lookup_expr: 'icontains',
-    },
-  ], [t]);
 
   const columns: ColumnItem[] = [
     {
@@ -1318,49 +1263,47 @@ const JobRecordPage = () => {
   // Render list view
   return (
     <div className="w-full h-full flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="mb-4 shrink-0 rounded-lg border border-(--color-border-1) bg-(--color-bg-1) px-6 py-4">
-        <h2 className="m-0 mb-1 text-base font-medium text-[var(--color-text-1)]">
-          {t('job.jobRecord')}
-        </h2>
-        <p className="m-0 text-sm text-[var(--color-text-3)]">
-          {t('job.jobRecordDesc')}
-        </p>
-      </div>
+      <TopSection
+        title={t('job.jobRecord')}
+        content={t('job.jobRecordDesc')}
+        className="mb-4 shrink-0"
+      />
 
       {/* Table Section */}
       <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-(--color-border-1) bg-(--color-bg-1) px-6 py-6">
-        {/* Toolbar */}
-        <div className="mb-4 flex items-center justify-between shrink-0">
-          <SearchCombination
-            fieldConfigs={fieldConfigs}
-            onChange={handleSearchChange}
-            fieldWidth={120}
-            selectWidth={300}
-          />
-          <div className="flex items-center gap-3">
-            {timeRange === 'custom' && (
-              <RangePicker
-                value={customRange}
-                onChange={(value) => {
-                  setCustomRange(value ? [value[0] as Dayjs, value[1] as Dayjs] : null);
-                }}
-                allowClear
+        <SearchActionBar
+          filters={(
+            <>
+              {timeRange === 'custom' && (
+                <RangePicker
+                  value={customRange}
+                  onChange={(value) => {
+                    setCustomRange(value ? [value[0] as Dayjs, value[1] as Dayjs] : null);
+                  }}
+                  allowClear
+                />
+              )}
+              <Segmented
+                className="w-fit"
+                options={[
+                  { label: t('job.today'), value: 'today' },
+                  { label: t('job.last7Days'), value: '7days' },
+                  { label: t('job.last30Days'), value: '30days' },
+                  { label: t('common.timeSelector.custom'), value: 'custom' },
+                ]}
+                value={timeRange}
+                onChange={(value) => setTimeRange(value as 'today' | '7days' | '30days' | 'custom')}
               />
-            )}
-            <Segmented
-              className="w-fit"
-              options={[
-                { label: t('job.today'), value: 'today' },
-                { label: t('job.last7Days'), value: '7days' },
-                { label: t('job.last30Days'), value: '30days' },
-                { label: t('common.timeSelector.custom'), value: 'custom' },
-              ]}
-              value={timeRange}
-              onChange={(value) => setTimeRange(value as 'today' | '7days' | '30days' | 'custom')}
-            />
-          </div>
-        </div>
+            </>
+          )}
+          searchProps={{
+            placeholder: t('common.search'),
+            allowClear: true,
+            value: searchKey,
+            onChange: (event) => setSearchKey(event.target.value),
+            onSearch: handleSearch,
+          }}
+        />
 
         {/* Table */}
         <div className="flex-1 min-h-0">

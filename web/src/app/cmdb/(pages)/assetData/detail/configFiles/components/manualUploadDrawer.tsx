@@ -78,7 +78,7 @@ const ManualUploadDrawer = ({
         </Form.Item>
         <div className="mb-2 flex items-center justify-between">
           <span>
-            <span className="text-red-500 mr-1">*</span>
+            <span className="text-[var(--color-fail)] mr-1">*</span>
             {t('ConfigFile.fileContent')}
           </span>
           <Upload

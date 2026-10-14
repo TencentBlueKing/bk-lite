@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { useTranslation } from '@/utils/i18n';
 import FullCollection from './full/page';
 import ProfessionalCollection from './profess/page';
-import Introduction from '@/components/introduction';
+import TopSection from '@/components/top-section';
 
 const CollectionPage: React.FC = () => {
   const [activeTab] = useState('professional');
@@ -21,13 +21,13 @@ const CollectionPage: React.FC = () => {
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       {/* <Tabs activeKey={activeTab} onChange={handleTabChange} items={tabItems} /> */}
       <div className="shrink-0">
-        <Introduction
+        <TopSection
           title={
             activeTab === 'professional'
               ? t('Collection.professionalTitle')
               : t('Collection.fullTitle')
           }
-          message={
+          content={
             activeTab === 'professional'
               ? t('Collection.professionalMessage')
               : t('Collection.fullMessage')

@@ -108,10 +108,19 @@ monitor_object_metric:
       name: LDAPS Probe Response Time
       desc: >-
         Round-trip time of the local LDAPS TCP probe, displayed in milliseconds.
+    ad_dra_sync_failures_on_schema_mismatch:
+      name: DRA Sync Failures on Schema Mismatch
+      desc: >-
+        AD replication sync failures caused by a schema mismatch on this DC.
+    ad_dns_recursive_query_failure_persec:
+      name: DNS Recursive Query Failures
+      desc: >-
+        DNS recursive queries that failed per second on this domain controller.
 monitor_object_metric_group:
   "Active Directory":
     LDAP: LDAP
     NTDS: NTDS
     Replication: Replication
     ATQ: ATQ
+    DNS: DNS
     Probe: Probe

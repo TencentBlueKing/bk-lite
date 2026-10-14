@@ -1,7 +1,6 @@
 'use client';
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import {
-  Input,
   Button,
   message,
   Dropdown,
@@ -10,6 +9,7 @@ import {
   Modal
 } from 'antd';
 import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
+import SearchActionBar from '@/components/search-action-bar';
 import useApiClient from '@/utils/request';
 import useLogApi from '@/app/log/api/integration';
 import { useTranslation } from '@/utils/i18n';
@@ -579,19 +579,8 @@ const Asset = () => {
         style={{ width: 236, height: 'calc(100vh - 146px)' }}
       />
       <div className="min-w-0 flex-1 bg-[var(--color-bg-1)] p-[20px]">
-        <div className="mb-[10px] flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Input
-              allowClear
-              className="w-[320px]"
-              placeholder={t('common.searchPlaceHolder')}
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              onPressEnter={() => getAssetInsts()}
-              onClear={clearText}
-            />
-          </div>
-          <div className="flex items-center">
+        <SearchActionBar
+          filters={(
             <CatalogScopeSegmented
               unassignedOnly={unassignedOnly}
               onChange={(checked) => {
@@ -599,28 +588,39 @@ const Asset = () => {
                 setSelectedRowKeys([]);
                 setPagination((prev) => ({ ...prev, current: 1 }));
               }}
-              className="mr-[8px]"
             />
-            <Dropdown
-              className="mr-[8px]"
-              overlayClassName="customMenu"
-              menu={assetMenuProps}
-              disabled={enableOperateAsset}
-            >
-              <Button>
-                <Space>
-                  {t('common.action')}
-                  <DownOutlined />
-                </Space>
-              </Button>
-            </Dropdown>
-            <TimeSelector
-              onlyRefresh
-              onFrequenceChange={onFrequenceChange}
-              onRefresh={onRefresh}
-            />
-          </div>
-        </div>
+          )}
+          searchProps={{
+            allowClear: true,
+            placeholder: t('common.searchPlaceHolder'),
+            value: searchText,
+            onChange: (e) => setSearchText(e.target.value),
+            onPressEnter: () => getAssetInsts(),
+            onSearch: () => getAssetInsts(),
+            onClear: clearText,
+          }}
+          actions={(
+            <>
+              <Dropdown
+                overlayClassName="customMenu"
+                menu={assetMenuProps}
+                disabled={enableOperateAsset}
+              >
+                <Button>
+                  <Space>
+                    {t('common.action')}
+                    <DownOutlined />
+                  </Space>
+                </Button>
+              </Dropdown>
+              <TimeSelector
+                onlyRefresh
+                onFrequenceChange={onFrequenceChange}
+                onRefresh={onRefresh}
+              />
+            </>
+          )}
+        />
         <CustomTable
           className="w-full"
           scroll={{ y: 'calc(100vh - 340px)', x: 'max-content' }}

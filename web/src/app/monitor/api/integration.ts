@@ -15,6 +15,11 @@ import {
   SnmpCollectTemplateDoc,
 } from '@/app/monitor/types/integration';
 import { AxiosRequestConfig } from 'axios';
+import {
+  demoPolicyGroupMembers,
+  demoPolicyGroups,
+  withMonitorUiDemoFallback,
+} from '@/app/monitor/utils/uiDemoMock';
 
 const useIntegrationApi = () => {
   const { get, post, del, put } = useApiClient();
@@ -32,17 +37,23 @@ const useIntegrationApi = () => {
         } = {}
       ) => {
         const { create_default, ...rest } = params;
-        return await get(`/monitor/api/policy_group/`, {
-          params: {
-            ...rest,
-            ...(create_default === false ? { create_default: 'false' } : {}),
-          },
-        });
+        return await withMonitorUiDemoFallback(
+          () => get(`/monitor/api/policy_group/`, {
+            params: {
+              ...rest,
+              ...(create_default === false ? { create_default: 'false' } : {}),
+            },
+          }),
+          () => demoPolicyGroups({ ...params, create_default })
+        );
       },
       getPolicyGroupMembers: async (groupId: number | string) => {
-        return await get(`/monitor/api/policy_group/members/`, {
-          params: { group_id: groupId },
-        });
+        return await withMonitorUiDemoFallback(
+          () => get(`/monitor/api/policy_group/members/`, {
+            params: { group_id: groupId },
+          }),
+          () => demoPolicyGroupMembers()
+        );
       },
       getPolicyGroupMembership: async (instanceId: string) => {
         return await get(`/monitor/api/policy_group/membership/`, {

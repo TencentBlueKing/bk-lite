@@ -51,7 +51,7 @@ const ResultPanel: React.FC<ResultPanelProps> = ({
   const renderStatusBar = () => {
     if (execStatus === 'submitting' || execStatus === 'running') {
       return (
-        <div className="flex items-center gap-3 mb-3 text-blue-600">
+        <div className="flex items-center gap-3 mb-3 text-[var(--color-primary)]">
           <span className="animate-pulse">● Running</span>
           <span className="font-mono text-sm">Timer: {timerDisplay}</span>
         </div>
@@ -59,10 +59,10 @@ const ResultPanel: React.FC<ResultPanelProps> = ({
     }
     if (execStatus === 'success') {
       return (
-        <div className="flex items-center gap-2 mb-3 text-green-600">
+        <div className="flex items-center gap-2 mb-3 text-[var(--color-success)]">
           <span>✓ {t('CollectTool.success')}</span>
           {result && (
-            <span className="text-gray-400 text-xs">
+            <span className="text-[var(--color-text-4)] text-xs">
               {result.duration_ms}ms
             </span>
           )}
@@ -71,10 +71,10 @@ const ResultPanel: React.FC<ResultPanelProps> = ({
     }
     if (execStatus === 'error') {
       return (
-        <div className="flex items-center gap-2 mb-3 text-red-600">
+        <div className="flex items-center gap-2 mb-3 text-[var(--color-fail)]">
           <span>✗ {t('CollectTool.failed')}</span>
           {result && (
-            <span className="text-gray-400 text-xs">
+            <span className="text-[var(--color-text-4)] text-xs">
               {result.duration_ms}ms
             </span>
           )}
@@ -123,7 +123,7 @@ const ResultPanel: React.FC<ResultPanelProps> = ({
         style={{ minHeight: 200, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}
       >
         {hasRawLog ? result!.raw_log : (
-          <span className="text-gray-500 italic">
+          <span className="text-[var(--color-text-3)] italic">
             {execStatus === 'idle' ? t('CollectTool.noResult') : ''}
           </span>
         )}

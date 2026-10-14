@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { DatePicker, Spin, Input, Select, Button, message } from 'antd';
+import { DatePicker, Input, Select, Button, message } from 'antd';
 import {
   SearchOutlined,
   DownloadOutlined,
@@ -244,12 +244,11 @@ const ChangeRecords: React.FC = () => {
   const canNext = idxInFiltered >= 0 && idxInFiltered < filtered.length - 1;
 
   return (
-    <Spin spinning={loading}>
-      <div
-        className={`${styles.changeRecords} ${
-          detailCollapsed ? styles.collapsed : ''
-        }`}
-      >
+    <div
+      className={`${styles.changeRecords} ${
+        detailCollapsed ? styles.collapsed : ''
+      }`}
+    >
         <div className={styles.timelineCol}>
           <div className={styles.pageTitle}>
             {t('Model.changeRecords')}
@@ -320,7 +319,7 @@ const ChangeRecords: React.FC = () => {
           <div className={styles.filterRow}>
             <Input
               size="small"
-              prefix={<SearchOutlined className="text-[#B2BDCC]" />}
+              prefix={<SearchOutlined className="text-[var(--color-text-4)]" />}
               placeholder={t('Model.changeRecord.searchPlaceholder')}
               value={searchText}
               onChange={(event) => setSearchText(event.target.value)}
@@ -355,7 +354,16 @@ const ChangeRecords: React.FC = () => {
             />
           </div>
 
-          {filtered.length === 0 && !loading ? (
+          {loading && records.length === 0 ? (
+            <div className="space-y-2 px-1 py-3" aria-busy="true" aria-label="loading">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="h-12 animate-pulse rounded-md bg-[var(--color-fill-2)]"
+                />
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
             <CompactEmptyState
               className="mt-[60px]"
               description={t('common.noData')}
@@ -401,8 +409,7 @@ const ChangeRecords: React.FC = () => {
             />
           </div>
         )}
-      </div>
-    </Spin>
+    </div>
   );
 };
 

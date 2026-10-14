@@ -19,7 +19,6 @@
 import copy
 import json
 import types
-
 from importlib import import_module
 
 import pytest
@@ -130,7 +129,7 @@ def _run_plugin(task, vm_doc):
 
 
 @requires_enterprise
-def test_round_metadata_failure_stops_before_pc_graph_reconciliation(monkeypatch):
+def test_round_metadata_failure_still_writes_reported_pc(monkeypatch):
     task = types.SimpleNamespace(
         id=321,
         model_id="pc",
@@ -172,6 +171,16 @@ def test_round_metadata_failure_stops_before_pc_graph_reconciliation(monkeypatch
     def apply_pc_snapshots(*_args, **_kwargs):
         nonlocal reconciled
         reconciled = True
+        return {
+            "format_data": {
+                "add": [],
+                "update": [],
+                "delete": [],
+                "association": [],
+                "all": 1,
+                "pc_summary": {"pc_total": 1, "pc_partial": 1, "pc_complete": 0, "pc_failed": 0},
+            }
+        }
 
     plugin.round_metadata_reader_factory = Reader
     monkeypatch.setattr(
@@ -179,10 +188,9 @@ def test_round_metadata_failure_stops_before_pc_graph_reconciliation(monkeypatch
         apply_pc_snapshots,
     )
 
-    with pytest.raises(RoundMetadataProtocolError, match="metadata_unavailable"):
-        plugin.format_metrics()
+    plugin.format_metrics()
 
-    assert reconciled is False
+    assert reconciled is True
 
 
 def _round(vm_doc, snapshot_id, ts, software_overrides=None, drop_software=False, status=None, expected=None):
@@ -341,14 +349,14 @@ def test_macos_vm_query_writes_pc_software_and_install_on(load_fixture, graph, m
     plugin = PCCollectionPlugin(inst_name="", inst_id=f"cmdb_{task.id}", task_id=task.id)
     result = plugin.run()
 
-    assert result == {"pc": []}
+    assert result.get("pc", []) == []
     assert len(requests) == 1
     assert requests[0]["url"].endswith("/prometheus/api/v1/query")
     assert requests[0]["timeout"] == 60
     query = requests[0]["data"]["query"]
-    assert query.startswith("last_over_time((pc_info{")
+    assert query.startswith("last_over_time((pc_info_gauge{")
     assert f"instance_id='cmdb_{task.id}'" in query
-    assert "pc_software_info" in query
+    assert "pc_software_info_gauge" in query
     assert query.endswith(")[1h:])")
 
     assert expected["pc_inst_name"] in graph.store
@@ -482,7 +490,7 @@ def test_failed_collect_rows_produce_no_snapshot_and_no_delete(load_fixture, gra
     _run_plugin(task, _round(vm_doc, "win-s1", BASE_TS))
     assert expected["software_inst_name"] in graph.store
 
-    # 目标不可达：stargazer 只会落 collect_status=failed 行，全部跳过 → 零快照零删除
+    # 目标不可达：失败 PC 计入任务，不写入、不差集删除
     failed_doc = _round(vm_doc, "win-s2", BASE_TS + 300, drop_software=True, expected=0)
     for row in failed_doc["data"]["result"]:
         row["metric"]["collect_status"] = "failed"
@@ -490,8 +498,16 @@ def test_failed_collect_rows_produce_no_snapshot_and_no_delete(load_fixture, gra
     fd = _run_plugin(task, failed_doc)
 
     assert fd["add"] == []
-    assert fd["update"] == []
     assert fd["delete"] == []
-    assert fd["pc_summary"]["pc_total"] == 0
+    assert fd["pc_summary"]["pc_total"] == 1
+    assert fd["pc_summary"]["pc_failed"] == 1
+    assert fd["update"] == [
+        {
+            "inst_name": failed_doc["data"]["result"][0]["metric"]["collection_target"],
+            "model_id": "pc",
+            "_status": "failed",
+            "_error": "COLLECT_FAILED",
+        }
+    ]
     assert expected["software_inst_name"] in graph.store
     assert ChangeRecord.objects.filter(type=DELETE_INST).count() == 0

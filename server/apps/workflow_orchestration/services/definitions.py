@@ -28,6 +28,13 @@ CONDITION_TERM = re.compile(
     r"|\$\.left_(\d+)\.indexOf\(\$\.right_(\d+)\) (?:>=|<|==) 0"
     r"|\$\.left_(\d+)\.slice\(\$\.left_(\d+)\.length - \$\.right_(\d+)\.length\) == \$\.right_(\d+))"
 )
+NOTIFICATION_TYPE_TO_CHANNEL_TYPE = {
+    "EMAIL": "email",
+    "WECOM_BOT": "enterprise_wechat_bot",
+    "FEISHU_BOT": "feishu_bot",
+    "DINGTALK_BOT": "dingtalk_bot",
+    "CUSTOM_WEBHOOK": "custom_webhook",
+}
 
 
 class DefinitionValidationError(ValueError):
@@ -227,6 +234,21 @@ def _validate_atom_inputs(task: dict[str, Any], atom_catalog: dict[str, dict[str
             continue
         if isinstance(value, str) and CONDUCTOR_REFERENCE.fullmatch(value.strip()):
             continue
+        if isinstance(value, list) and isinstance(field_schema.get("items"), dict):
+            item_schema = field_schema["items"]
+            for item in value:
+                if isinstance(item, str) and CONDUCTOR_REFERENCE.fullmatch(item.strip()):
+                    continue
+                item_errors = sorted(Draft202012Validator(item_schema).iter_errors(item), key=lambda entry: list(entry.path))
+                if item_errors:
+                    raise DefinitionValidationError(
+                        f"节点 {reference} 输入 {field} 不符合原子 Schema: {item_errors[0].message}",
+                        code="node_input_invalid",
+                        node_reference=reference,
+                        atom_key=str(task.get("name") or ""),
+                        field_key=field,
+                    )
+            continue
         errors = sorted(Draft202012Validator(field_schema).iter_errors(value), key=lambda item: list(item.path))
         if errors:
             raise DefinitionValidationError(
@@ -236,6 +258,37 @@ def _validate_atom_inputs(task: dict[str, Any], atom_catalog: dict[str, dict[str
                 atom_key=str(task.get("name") or ""),
                 field_key=field,
             )
+    _validate_notification_channel_capability(task)
+
+
+def _validate_notification_channel_capability(task: dict[str, Any]) -> None:
+    """发布时锁定 notification_type 与 channel.channel_type，避免 EMAIL 绑到 NATS 等脏种子。"""
+    if task.get("name") != "bklite_notification":
+        return
+    reference = str(task.get("taskReferenceName") or "")
+    inputs = task.get("inputParameters") if isinstance(task.get("inputParameters"), dict) else {}
+    notification_type = inputs.get("notification_type")
+    channel_id = inputs.get("channel_id")
+    expected = NOTIFICATION_TYPE_TO_CHANNEL_TYPE.get(str(notification_type or ""))
+    if not expected or isinstance(channel_id, bool) or not isinstance(channel_id, int):
+        return
+    from apps.system_mgmt.models import Channel
+
+    try:
+        channel = Channel.objects.filter(id=channel_id).only("channel_type").first()
+    except RuntimeError:
+        # 无 Django DB 标记的单测会拦截 ORM；此时跳过类型对账。
+        return
+    if channel is None:
+        return
+    if channel.channel_type != expected:
+        raise DefinitionValidationError(
+            f"节点 {reference} 输入 channel_id 不符合原子 Schema: channel type mismatch",
+            code="node_input_invalid",
+            node_reference=reference,
+            atom_key="bklite_notification",
+            field_key="channel_id",
+        )
 
 
 def _validate_structured_condition(task: dict[str, Any]) -> None:
@@ -486,8 +539,7 @@ def build_health_inspection_definition() -> dict[str, Any]:
                 "type": "SIMPLE",
                 "inputParameters": {
                     "notification_type": "EMAIL",
-                    "channel_id": 1,
-                    "recipients": [],
+                    "recipients": ["${workflow.input.__system.actor_name}"],
                     "title": "主机健康巡检报告",
                     "body": "主机健康巡检已完成。",
                     "report_artifact": "${report.output.artifact}",

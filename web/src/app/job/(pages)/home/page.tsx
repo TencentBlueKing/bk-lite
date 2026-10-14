@@ -804,7 +804,7 @@ const JobHomePage = () => {
     },
   ];
 
-  const cardClass = 'bg-(--color-bg) rounded-xl border border-(--color-border-1) shadow-sm';
+  const cardClass = 'rounded-xl border border-(--color-border-1) shadow-sm bg-[image:linear-gradient(180deg,color-mix(in_srgb,var(--color-primary)_1.5%,var(--color-bg))_0%,var(--color-bg)_32%)]';
 
   return (
     <div className="w-full">

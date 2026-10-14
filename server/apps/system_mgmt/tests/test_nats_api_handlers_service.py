@@ -1013,6 +1013,40 @@ def test_public_notification_dispatch_escapes_rich_text_before_transport(monkeyp
     assert "\\*\\*" in sent_body
 
 
+def test_public_notification_dispatch_email_appends_clickable_report_link(monkeypatch):
+    from apps.system_mgmt.models import User
+
+    user = User.objects.create(username="mail_user", email="mail_user@example.com", password="x", group_list=[{"id": 7}])
+    channel = Channel.objects.create(
+        name="邮件",
+        channel_type=ChannelChoices.EMAIL,
+        config={},
+        description="mail",
+        team=[7],
+    )
+    send = Mock(return_value={"result": True})
+    monkeypatch.setattr("apps.system_mgmt.nats.channels.send_msg_with_channel", send)
+    report_link = "https://portal.example/workflow_orchestration/api/artifacts/shared/?token=abc_def"
+
+    result = nats_api.dispatch_notification(
+        delivery_key="workflow:email:report",
+        channel_id=channel.id,
+        organization_ids=[7],
+        recipients=[str(user.id)],
+        title="Windows 主机健康巡检报告",
+        body="Windows 主机健康巡检已完成，请下载 Word 报告。",
+        event_payload={"report_link": report_link},
+    )
+
+    assert result["result"] is True
+    _, sent_title, sent_body, _ = send.call_args.args
+    assert sent_title == "Windows 主机健康巡检报告"
+    assert "\\_" not in sent_body
+    assert f'<a href="{report_link}">下载报告</a>' in sent_body
+    assert "报告下载（24 小时内有效）：" in sent_body
+    assert "<script>" not in sent_body
+
+
 # ---------------------------------------------------------------------------
 # send_email_to_receiver / send_msg_with_channel
 # ---------------------------------------------------------------------------

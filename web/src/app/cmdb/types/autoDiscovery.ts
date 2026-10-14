@@ -247,9 +247,7 @@ export interface TaskTableProps {
 export interface StatisticCardConfig {
   title: string;
   value: number;
-  bgColor: string;
-  borderColor: string;
-  valueColor: string;
+  tone?: 'neutral' | 'info' | 'success' | 'warning' | 'danger';
   failedCount?: number;
   showFailed?: boolean;
 }

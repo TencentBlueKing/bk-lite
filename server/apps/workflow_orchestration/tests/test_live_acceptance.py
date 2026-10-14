@@ -9,6 +9,8 @@ from django.core.management.base import CommandError
 from apps.workflow_orchestration.models import Workflow, WorkflowExecution
 from apps.workflow_orchestration.services.live_acceptance import (
     ScenarioResult,
+    _resolve_live_email_channel_id,
+    _sample_job_envelope,
     run_approval_scenario,
     run_document_render_scenario,
     run_engine_switch_scenario,
@@ -176,6 +178,11 @@ def test_document_http_notification_and_switch_scenarios_pass_with_mocked_runtim
         client=client,
         timeout_seconds=5,
     )
+    mocker.patch(
+        "apps.workflow_orchestration.services.live_acceptance._resolve_live_email_channel_id",
+        return_value=2,
+    )
+    mocker.patch("apps.workflow_orchestration.services.live_acceptance._probe_email_smtp")
     notify = run_notification_scenario(
         team_id=1,
         username=live_user.username,
@@ -184,6 +191,8 @@ def test_document_http_notification_and_switch_scenarios_pass_with_mocked_runtim
         timeout_seconds=5,
         channel_id=1,
     )
+    assert notify.evidence["channel_id"] == 2
+    assert notify.evidence["requested_channel_id"] == 1
     switch = run_engine_switch_scenario(
         team_id=1,
         username=live_user.username,
@@ -365,3 +374,48 @@ def test_run_live_acceptance_aggregates_honest_failures(live_user, mocker):
     assert report["summary"]["failed"] == 4
     assert report["policy"].startswith("不伪造成功")
     assert client.terminate_workflow.call_count >= 0
+
+
+def test_sample_job_envelope_includes_host_contract_for_health_templates():
+    envelope = _sample_job_envelope()
+    host_data = envelope["results"][0]["data"]
+    assert "hostname" in host_data["host"]
+    assert host_data["metric_count"] == 1
+    assert host_data["normal_count"] == 1
+    assert host_data["metrics"][0]["category"] == "计算"
+
+
+@pytest.mark.django_db
+def test_resolve_live_email_channel_skips_nats_preferred():
+    from apps.system_mgmt.models import Channel, ChannelChoices
+
+    nats = Channel.objects.create(
+        name="alert-nats",
+        channel_type=ChannelChoices.NATS,
+        config={},
+        description="nats",
+        team=[1],
+    )
+    email = Channel.objects.create(
+        name="demo-email",
+        channel_type=ChannelChoices.EMAIL,
+        config={},
+        description="email",
+        team=[1],
+    )
+    assert _resolve_live_email_channel_id(1, nats.id) == email.id
+
+
+@pytest.mark.django_db
+def test_resolve_live_email_channel_fails_without_email():
+    from apps.system_mgmt.models import Channel, ChannelChoices
+
+    nats = Channel.objects.create(
+        name="only-nats",
+        channel_type=ChannelChoices.NATS,
+        config={},
+        description="nats",
+        team=[1],
+    )
+    with pytest.raises(ValueError, match="邮件通知渠道"):
+        _resolve_live_email_channel_id(1, nats.id)

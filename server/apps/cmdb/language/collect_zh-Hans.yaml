@@ -9,6 +9,7 @@ COLLECT_GROUP:
   host_manage: 主机逻辑主机
   middleware: 中间件
   certificate: 证书许可
+  directory_mail: 目录与邮件
 COLLECT_PLUGIN:
   k8s_cluster:
     name: K8S
@@ -364,6 +365,9 @@ COLLECT_PLUGIN:
   ssl_cer:
     name: SSL证书
     desc: 对已录入 SSL 证书实例的域名做 TLS 握手，采集颁发者与有效期
+  ad_exchange:
+    name: AD 与 Exchange
+    desc: 从一台域控和一台 Exchange 管理机采集目录与邮件配置
 COLLECT_TAG:
   国产: 国产
   配置中心: 配置中心

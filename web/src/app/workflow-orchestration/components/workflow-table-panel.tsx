@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-import FilterToolbar from '@/components/filter-toolbar';
+import ToolbarSplitShell from '@/components/toolbar-split-shell';
 
 interface WorkflowTablePanelProps {
   filters: ReactNode;
@@ -14,16 +14,14 @@ export function WorkflowTablePanel({ filters, actions, children }: WorkflowTable
       data-testid="workflow-table-panel"
       className="flex min-h-0 flex-1 flex-col"
     >
-      <FilterToolbar align="between">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          {filters}
-        </div>
-        {actions ? (
-          <div className="flex flex-wrap items-center justify-end gap-2">
+      <ToolbarSplitShell
+        trailing={(
+          <>
+            {filters}
             {actions}
-          </div>
-        ) : null}
-      </FilterToolbar>
+          </>
+        )}
+      />
       <div data-testid="workflow-table-scroll-region" className="min-h-0 flex-1 overflow-hidden">
         {children}
       </div>

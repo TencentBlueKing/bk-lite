@@ -125,6 +125,8 @@ def test_health_starter_is_composed_from_configurable_general_atoms():
     notify = tasks[2]
     assert notify["name"] == "bklite_notification"
     assert notify["inputParameters"]["report_artifact"] == "${report.output.artifact}"
+    assert notify["inputParameters"]["recipients"] == ["${workflow.input.__system.actor_name}"]
+    assert "channel_id" not in notify["inputParameters"]
 
 
 def test_general_control_flow_and_approval_definition_is_accepted():
@@ -380,3 +382,35 @@ def test_atom_literal_inputs_follow_schema_but_conductor_references_remain_allow
     with pytest.raises(DefinitionValidationError, match="notify.*channel_id"):
         prepare_definition_for_publish(invalid, engine_name="wf", version=1)
     assert prepare_definition_for_publish(dynamic, engine_name="wf", version=1)["tasks"][0]["name"] == "bklite_notification"
+
+
+@pytest.mark.django_db
+def test_notification_atom_rejects_email_bound_to_nats_channel():
+    from apps.system_mgmt.models import Channel, ChannelChoices
+
+    nats = Channel.objects.create(
+        name="告警中心",
+        channel_type=ChannelChoices.NATS,
+        config={"method_name": "receive_alert_events"},
+        description="",
+        team=[7],
+    )
+    definition = {
+        "tasks": [
+            {
+                "name": "bklite_notification",
+                "taskReferenceName": "notify",
+                "type": "SIMPLE",
+                "inputParameters": {
+                    "notification_type": "EMAIL",
+                    "channel_id": nats.id,
+                    "recipients": ["1"],
+                    "title": "巡检完成",
+                    "body": "正文",
+                },
+            }
+        ]
+    }
+
+    with pytest.raises(DefinitionValidationError, match="notify.*channel_id"):
+        prepare_definition_for_publish(definition, engine_name="wf", version=1)

@@ -340,6 +340,13 @@
       "template": "avg(net_response_result_code{__$labels__} != bool 0) * 100"
     },
     {
+      "id": "dashboard:v1:0bb3f606",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "any({instance_type='firewall', collect_type='sflow', __$labels__}) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:0bb78e7f",
       "object_names": [
         "Haproxy"
@@ -1438,6 +1445,13 @@
       "template": "sum by (instance_id) (rate(influxdb_httpd_pointsWrittenDropped{__$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:352556bd",
+      "object_names": [
+        "Router"
+      ],
+      "template": "any({instance_type='router', collect_type='sflow', __$labels__}) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:35497dc1",
       "object_names": [
         "LlamaServer"
@@ -1566,6 +1580,13 @@
       "template": "max by (instance_id, node, device) (disk_free{instance_type=\"k3s\", __$labels__})"
     },
     {
+      "id": "dashboard:v1:38441b10",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "any({instance_type='switch', collect_type='netflow', __$labels__}) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:3895943d",
       "object_names": [
         "Zookeeper"
@@ -1685,6 +1706,13 @@
         "Etcd"
       ],
       "template": "sum by (instance_id) (rate(etcd_server_leader_changes_seen_total_counter{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:3dba6f22",
+      "object_names": [
+        "Switch"
+      ],
+      "template": "any({instance_type='switch', collect_type='sflow', __$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:3df1b876",
@@ -2558,6 +2586,13 @@
         "nginx"
       ],
       "template": "nginx_waiting{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:5f75763c",
+      "object_names": [
+        "Loadbalance"
+      ],
+      "template": "any({instance_type='loadbalance', collect_type='netflow', __$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:5f7e5563",
@@ -4100,6 +4135,13 @@
       "template": "mysql_connection_errors_peer_address{__$labels__}"
     },
     {
+      "id": "dashboard:v1:9fd70b4c",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "any({instance_type='firewall', collect_type='netflow', __$labels__}) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:a049174f",
       "object_names": [
         "Website"
@@ -4782,6 +4824,13 @@
         "NetworkService"
       ],
       "template": "count({instance_type='network_service', __$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:bddae2b6",
+      "object_names": [
+        "Loadbalance"
+      ],
+      "template": "any({instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:bdfac005",
@@ -5553,6 +5602,13 @@
         "MSSQL"
       ],
       "template": "rate(sqlserver_performance_value{counter=\"SQL Compilations/sec\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:dc58ccb7",
+      "object_names": [
+        "Router"
+      ],
+      "template": "any({instance_type='router', collect_type='netflow', __$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:dc6a9693",
@@ -6376,6 +6432,76 @@
         "K3SPod"
       ],
       "template": "sum by (instance_id,pod) ( rate(prometheus_remote_write_container_network_receive_bytes_total{instance_type=\"k3s\",__$labels__}[__$window__]) )"
+    },
+    {
+      "id": "dashboard:v1:37f33d8c",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_replication_CopyQueueLength{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:40087132",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_replication_ReplayQueueLength{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:169d0e3c",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_replication_Avg_Log_Copy_Latency_(msec){instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:4ce1716a",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_database_instances_I\\/O_Database_Reads_Average_Latency{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:a6c4170f",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_database_instances_I\\/O_Database_Writes_Average_Latency{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:3e61f930",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_database_IO_Log_Read_Average_Latency{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:02c10cec",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_database_Log_Bytes_Write_persec{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:e7c57391",
+      "object_names": [
+        "Exchange"
+      ],
+      "template": "win_exchange_database_Database_Cache_Percent_Hit{instance_type=\"exchange\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:dc7d93fe",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_DRA_Sync_Failures_on_Schema_Mismatch{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:43ab5f0f",
+      "object_names": [
+        "Active Directory"
+      ],
+      "template": "win_ad_dns_Recursive_Query_Failure_persec{instance_type=\"active_directory\", __$labels__}"
     }
   ]
 }

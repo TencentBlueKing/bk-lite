@@ -929,7 +929,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                         <span>
                           {t('Collection.accessPointHelp')}
                           <a
-                            className="ml-2 text-blue-500 hover:text-blue-600"
+                            className="ml-2 text-[var(--color-primary)] hover:text-[var(--color-primary)]"
                             href="/node-manager/cloudregion"
                             target="_blank"
                             rel="noreferrer"
@@ -939,7 +939,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                         </span>
                       }
                     >
-                      <QuestionCircleOutlined className="ml-1 cursor-help text-gray-400" />
+                      <QuestionCircleOutlined className="ml-1 cursor-help text-[var(--color-text-4)]" />
                     </Tooltip>
                   </span>
                 }
@@ -1162,7 +1162,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                     <span>
                       {t('Collection.timeout')}
                       <Tooltip title={timeoutProps.tooltip ?? t('Collection.timeoutTooltip')}>
-                        <QuestionCircleOutlined className="ml-1 text-gray-400" />
+                        <QuestionCircleOutlined className="ml-1 text-[var(--color-text-4)]" />
                       </Tooltip>
                     </span>
                   }
@@ -1183,7 +1183,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                     <span>
                       {t('Collection.ipPrecheck')}
                       <Tooltip title={t('Collection.ipPrecheckTooltip')}>
-                        <QuestionCircleOutlined className="ml-1 text-gray-400" />
+                        <QuestionCircleOutlined className="ml-1 text-[var(--color-text-4)]" />
                       </Tooltip>
                     </span>
                   }
@@ -1205,10 +1205,10 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                         <Radio value="immediately">
                           {t('Collection.immediately')}
                         </Radio>
-                        <div className="text-xs text-gray-400 ml-6 mt-1">
+                        <div className="text-xs text-[var(--color-text-4)] ml-6 mt-1">
                           {t('Collection.immediatelyDesc')}
                         </div>
-                        <div className="text-xs text-gray-400 ml-6">
+                        <div className="text-xs text-[var(--color-text-4)] ml-6">
                           {t('Collection.immediatelyTip')}
                         </div>
                       </div>
@@ -1218,7 +1218,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                         </Radio>
                         {cleanupStrategyValue === 'after_expiration' && (
                           <div className="ml-6 mt-1 flex items-center gap-1">
-                            <span className="text-sm text-gray-600 flex-shrink-0">
+                            <span className="text-sm text-[var(--color-text-2)] flex-shrink-0">
                               {t('Collection.afterExpirationPrefix')}
                             </span>
                             <Form.Item
@@ -1244,12 +1244,12 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                             >
                               <InputNumber min={1} max={365} className="w-20" />
                             </Form.Item>
-                            <span className="text-sm text-gray-600 flex-shrink-0">
+                            <span className="text-sm text-[var(--color-text-2)] flex-shrink-0">
                               {t('Collection.afterExpirationSuffix')}
                             </span>
                           </div>
                         )}
-                        <div className="text-xs text-gray-400 ml-6 mt-1">
+                        <div className="text-xs text-[var(--color-text-4)] ml-6 mt-1">
                           {t('Collection.afterExpirationTip')}
                         </div>
                       </div>
@@ -1257,10 +1257,10 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                         <Radio value="no_cleanup">
                           {t('Collection.doNotClean')}
                         </Radio>
-                        <div className="text-xs text-gray-400 ml-6 mt-1">
+                        <div className="text-xs text-[var(--color-text-4)] ml-6 mt-1">
                           {t('Collection.doNotCleanDesc')}
                         </div>
-                        <div className="text-xs text-gray-400 ml-6">
+                        <div className="text-xs text-[var(--color-text-4)] ml-6">
                           {t('Collection.doNotCleanTip')}
                         </div>
                       </div>

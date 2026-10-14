@@ -74,7 +74,7 @@ const FullCollection: React.FC = () => {
         <div className="mb-4 flex justify-between items-center flex-shrink-0">
           <Input
             placeholder={t('Collection.inputTaskPlaceholder')}
-            prefix={<SearchOutlined className="text-gray-400" />}
+            prefix={<SearchOutlined className="text-[var(--color-text-4)]" />}
             className="max-w-md"
           />
           <Button type="primary" className="!rounded-button whitespace-nowrap">
