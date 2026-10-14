@@ -16,7 +16,7 @@ import { degradationReason } from '@/app/rum/lib/degradation';
 import { formatDurationMs } from '@/app/rum/lib/format';
 import { useRumSearchParams } from '@/app/rum/lib/search-params';
 import { useRumAuthedEffect } from '@/app/rum/lib/use-authed-effect';
-import { loadReplayRecording } from '@/app/rum/sessions/lib/replay-data';
+import { loadReplayRecording, replayErrorMessage } from '@/app/rum/sessions/lib/replay-data';
 import {
   eventsPlayableMs,
   formatReplayClock,
@@ -40,6 +40,7 @@ export default function SessionReplayPage() {
   const [pending, setPending] = useState(true);
   const [activeRecording, setActiveRecording] = useState('');
   const [events, setEvents] = useState<unknown[]>([]);
+  const [loadError, setLoadError] = useState('');
   const [loadingRecording, setLoadingRecording] = useState(false);
 
   const back = `/rum/sessions/${encodeURIComponent(sessionId)}?application=${encodeURIComponent(app)}`;
@@ -87,12 +88,15 @@ export default function SessionReplayPage() {
     const recordingId = recordings[0].recordingId;
     setActiveRecording(recordingId);
     setLoadingRecording(true);
+    setLoadError('');
     void loadReplayRecording(manifest, app, sessionId, recordingId, createReplayGrant, token)
       .then((loaded) => {
         setEvents(loaded);
+        setLoadError('');
       })
-      .catch(() => {
+      .catch((error) => {
         setEvents([]);
+        setLoadError(replayErrorMessage(error, t));
       })
       .finally(() => setLoadingRecording(false));
     // only auto-load first recording when manifest changes
@@ -103,13 +107,16 @@ export default function SessionReplayPage() {
     if (!manifest || recordingId === activeRecording) return;
     setActiveRecording(recordingId);
     setEvents([]);
+    setLoadError('');
     setLoadingRecording(true);
     try {
       setEvents(
         await loadReplayRecording(manifest, app, sessionId, recordingId, createReplayGrant, token),
       );
-    } catch {
+      setLoadError('');
+    } catch (error) {
       setEvents([]);
+      setLoadError(replayErrorMessage(error, t));
     } finally {
       setLoadingRecording(false);
     }
@@ -190,7 +197,11 @@ export default function SessionReplayPage() {
                     </div>
                   ) : (
                     <div className="flex min-h-0 flex-1 items-center justify-center">
-                      <Empty description={t('rum.sessions.replayUnavailable', '无法加载回放清单')} />
+                      <Empty
+                        description={
+                          loadError || t('rum.sessions.replayUnavailable', '无法加载回放清单')
+                        }
+                      />
                     </div>
                   )}
                 </>
