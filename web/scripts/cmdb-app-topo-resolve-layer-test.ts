@@ -3,7 +3,7 @@ import type {
   ApplicationResourceNode,
   ApplicationResourceTopologyData,
 } from '../src/app/cmdb/types/applicationResourceOverview';
-import { resolveLayer } from '../src/app/cmdb/(pages)/assetData/detail/relationships/applicationResourceOverview/resolveLayer';
+import { resolveLayer } from '../src/app/cmdb/utils/applicationResourceLayer';
 
 function node(partial: Partial<ApplicationResourceNode> & Pick<ApplicationResourceNode, 'id'>): ApplicationResourceNode {
   return {

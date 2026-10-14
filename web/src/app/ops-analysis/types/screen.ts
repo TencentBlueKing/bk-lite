@@ -19,7 +19,8 @@ export type ScreenWidgetChartType =
   | 'room3D'
   | 'networkStatusTopology'
   | 'application3D'
-  | 'relatedTopology';
+  | 'relatedTopology'
+  | 'applicationTopology';
 
 export type ScreenFitAdapter = 'fill' | 'fitWidth' | 'fitHeight';
 

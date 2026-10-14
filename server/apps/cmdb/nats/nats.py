@@ -2066,6 +2066,61 @@ def topo_search_lite_by_uuid(inst_uuid=None, user_info=None, **kwargs):
     return {"result": True, "data": result, "message": ""}
 
 
+_APPLICATION_TOPOLOGY_MODELS = frozenset({"system"})
+_APPLICATION_TOPOLOGY_DEFAULT_DEPTH = 3
+_APPLICATION_TOPOLOGY_MAX_DEPTH = 5
+
+
+@nats_client.register
+def application_resource_topology_by_uuid(inst_uuid=None, depth=None, user_info=None, **kwargs):
+    """按实例 UUID 返回应用拓扑五带结构。仅应用系统，不含告警叠色。"""
+    from apps.cmdb.services.application_resource_overview import ApplicationResourceOverviewService
+    from apps.cmdb.services.instance_identity import normalize_inst_uuid
+    from apps.core.exceptions.base_app_exception import BaseAppException
+
+    raw = inst_uuid if inst_uuid is not None else kwargs.get("inst_uuid")
+    try:
+        normalized = normalize_inst_uuid(raw)
+    except BaseAppException:
+        return _topo_search_lite_failure("invalid_inst_uuid", "inst_uuid 必须是 UUIDv4")
+
+    raw_depth = depth if depth is not None else kwargs.get("depth")
+    if raw_depth in (None, ""):
+        resolved_depth = _APPLICATION_TOPOLOGY_DEFAULT_DEPTH
+    else:
+        try:
+            resolved_depth = int(raw_depth)
+        except (TypeError, ValueError):
+            return _topo_search_lite_failure("invalid_depth", "depth 必须是 1 到 5 的整数")
+        if resolved_depth < 1 or resolved_depth > _APPLICATION_TOPOLOGY_MAX_DEPTH:
+            return _topo_search_lite_failure("invalid_depth", "depth 必须是 1 到 5 的整数")
+
+    instance = InstanceManage.query_entity_by_uuid(normalized)
+    if not instance:
+        return _topo_search_lite_failure("not_found", "实例不存在")
+
+    model_id = str(instance.get("model_id") or "")
+    permission_map = _build_nats_permission_map(user_info, model_id=model_id)
+    user = _normalize_permission_user((user_info or {}).get("user"), domain=(user_info or {}).get("domain"))
+    if permission_map is None or not InstanceManage._has_topology_view_permission(instance, permission_map, user=user):
+        return _topo_search_lite_failure("permission_denied", "无权限查看该实例")
+    if model_id not in _APPLICATION_TOPOLOGY_MODELS:
+        return _topo_search_lite_failure("unsupported_model", "应用拓扑仅支持应用系统")
+
+    try:
+        topology = ApplicationResourceOverviewService.build_application_topology(
+            instance["_id"],
+            model_id,
+            depth=resolved_depth,
+            permission_map=permission_map,
+            user=user,
+        )
+    except BaseAppException:
+        return _topo_search_lite_failure("not_found", "实例不存在")
+
+    return {"result": True, "data": topology, "message": ""}
+
+
 @nats_client.register
 def get_change_trend(time=None, model_id=None, user_info=None, **kwargs):
     """

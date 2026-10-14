@@ -18,7 +18,7 @@ def load_widget_capabilities() -> dict:
 
 
 AI_CHART_TYPES = frozenset(item["type"] for item in load_widget_capabilities().get("widgets") or [] if isinstance(item, dict) and item.get("type"))
-SCENE_CHART_TYPES = frozenset({"networkStatusTopology", "relatedTopology", "application3D", "room3D"})
+SCENE_CHART_TYPES = frozenset({"networkStatusTopology", "relatedTopology", "applicationTopology", "application3D", "room3D"})
 
 SCHEMA_VERSION = "1.0"
 

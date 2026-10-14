@@ -39,6 +39,15 @@ export const SCENE_WIDGETS: SceneWidgetDefinition[] = [
     defaultHeight: 3,
   },
   {
+    type: 'applicationTopology',
+    nameKey: 'dashboard.applicationTopology',
+    descriptionKey: 'dashboard.applicationTopologyDesc',
+    category: 'cmdb',
+    categoryNameKey: 'dashboard.sceneCategoryCmdb',
+    defaultWidth: 6,
+    defaultHeight: 4,
+  },
+  {
     type: 'room3D',
     nameKey: 'dashboard.room3D',
     descriptionKey: 'dashboard.room3DDesc',

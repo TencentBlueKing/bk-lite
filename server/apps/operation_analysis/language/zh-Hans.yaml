@@ -777,6 +777,14 @@ screens:
     widgets:
       builtin-application3d-main:
         title: 3D应用
+  "screen::应用拓扑大屏_内置":
+    name: 应用拓扑大屏
+    desc: 按应用系统展示五带拓扑，并叠加监控中心活跃告警
+    decorations:
+      title: 应用架构拓扑
+    widgets:
+      builtin-application-topology-main:
+        title: 应用拓扑
   "screen::网络状态拓扑大屏_内置":
     name: 网络状态拓扑大屏_内置
     desc: 按勾选的网络设备展示 CMDB 关联并叠加监控中心活跃告警的内置大屏示例。

@@ -45,14 +45,20 @@ def _count_nested_key(value, target_key):
 def test_builtin_yaml_contains_alert_room3d_and_application3d_screens():
     payload = yaml.safe_load(BUILTIN_CANVASES_PATH.read_text(encoding="utf-8"))
 
-    assert payload["meta"]["object_counts"]["screens"] == 3
+    assert payload["meta"]["object_counts"]["screens"] == 4
     assert payload["meta"]["object_counts"]["topologies"] == 0
     assert [screen["key"] for screen in payload["screens"]] == [
         "screen::告警运营大屏_内置",
         "screen::3D机房大屏_内置",
         "screen::3D应用大屏_内置",
+        "screen::应用拓扑大屏_内置",
     ]
-    assert [screen["name"] for screen in payload["screens"]] == ["告警运营大屏", "3D机房大屏", "3D应用大屏"]
+    assert [screen["name"] for screen in payload["screens"]] == [
+        "告警运营大屏",
+        "3D机房大屏",
+        "3D应用大屏",
+        "应用拓扑大屏",
+    ]
     assert "基础资源态势大屏_内置" not in BUILTIN_CANVASES_PATH.read_text(encoding="utf-8")
     assert "运营健康拓扑_内置" not in BUILTIN_CANVASES_PATH.read_text(encoding="utf-8")
 

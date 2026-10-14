@@ -13,7 +13,7 @@ meta:
   object_counts:
     dashboards: 3
     topologies: 0
-    screens: 3
+    screens: 4
     reports: 0
     architectures: 0
     datasources: 19
@@ -3360,6 +3360,71 @@ screens:
       showTitle: false
   refs:
     datasource_keys: []
+    namespace_keys: []
+- key: screen::应用拓扑大屏_内置
+  name: 应用拓扑大屏
+  desc: 按应用系统展示五带拓扑，并叠加监控中心活跃告警
+  other: {}
+  view_sets:
+    items:
+    - h: 82
+      w: 800
+      x: 554
+      y: 30
+      id: legacy-title-frame
+      kind: titleFrame
+      preset: hero-4
+      zIndex: 2
+      content: 应用架构拓扑
+      textStyle:
+        align: center
+        fontSize: 28
+    - h: 996
+      w: 1906
+      x: 13
+      y: 83
+      id: builtin-application-topology-main
+      type: widget
+      title: 应用拓扑
+      zIndex: 1
+      chartType: applicationTopology
+      valueConfig:
+        chartType: applicationTopology
+        sceneWidgetType: applicationTopology
+        applicationTopology:
+          modelId: system
+          depth: 3
+        appearance:
+          frame: bare
+    viewport:
+      theme: screen-dark
+      width: 1920
+      height: 1080
+      fill: true
+      background:
+        key: dark-horizon
+        type: builtIn
+    decorations:
+      title: 应用架构拓扑
+      showClock: false
+      showTitle: false
+    filters:
+    - id: application_system_id__string
+      key: application_system_id
+      name: 应用系统
+      type: string
+      inputMode: select
+      defaultValue: null
+      optionsSource:
+        type: source
+        sourceRef:
+          type: datasource
+          value: 应用系统::cmdb/list_application_systems
+        valueField: system_uuid
+        labelField: system_name
+  refs:
+    datasource_keys:
+    - 应用系统::cmdb/list_application_systems
     namespace_keys: []
 reports: []
 architectures: []
