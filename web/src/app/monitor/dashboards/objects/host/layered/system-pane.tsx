@@ -98,7 +98,6 @@ export default function SystemPane({
       ? [{ key: 'available', label: '可用', color: HOST_PALETTE.emerald, data: available }]
       : [])
   ];
-  const cores = latestNumber(metrics.cpu_n);
   const used = latestNumber(metrics.mem_used_percent);
   const availLatest = available.length ? numericValue(available[available.length - 1]) : null;
   const cpuNow = latestNumber(metrics.cpu_usage_total);
@@ -175,11 +174,6 @@ export default function SystemPane({
         title="系统负载"
         loading={loading}
         unit="none"
-        reference={cores != null && cores > 0 ? {
-          value: cores,
-          label: `核数（${Math.round(cores)}）`,
-          color: HOST_PALETTE.orange
-        } : null}
         data={mergeChartSeries(loadItems.map((item) => ({
           key: item.key,
           label: item.label,

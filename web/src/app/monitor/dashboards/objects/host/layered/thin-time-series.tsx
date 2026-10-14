@@ -16,16 +16,9 @@ import styles from './layered.module.scss';
 export interface ThinLegend {
   label: string;
   color: string;
-  dashed?: boolean;
   /** 紧跟维度名的当前读数，例如「CPU 14.1%」「load1 0.88」。 */
   reading?: string;
   readingTone?: string;
-}
-
-export interface ThinReferenceLine {
-  value: number;
-  label: string;
-  color: string;
 }
 
 interface ThinTimeSeriesProps {
@@ -39,7 +32,6 @@ interface ThinTimeSeriesProps {
   emptyText?: string;
   /** 标题旁的说明，悬停问号时展示。 */
   hint?: string;
-  reference?: ThinReferenceLine | null;
   /** 嵌进已有卡片时不再套一层 panel。 */
   bare?: boolean;
 }
@@ -72,7 +64,6 @@ export default function ThinTimeSeries({
   readingTone,
   emptyText = '暂无数据',
   hint,
-  reference,
   bare = false
 }: ThinTimeSeriesProps) {
   const theme = useThemeColors();
@@ -81,13 +72,8 @@ export default function ThinTimeSeries({
   const textColor = theme['--color-text-1'];
   const panelColor = theme['--color-bg'];
   const keys = useMemo(() => areaKeys(data), [data]);
-  const legendItems = useMemo(
-    () => (reference ? [...legends, { label: reference.label, color: reference.color, dashed: true }] : legends),
-    [legends, reference]
-  );
   const option = useMemo(() => {
     if (!data.length || !keys.length) return null;
-    const referenceValue = reference && Number.isFinite(reference.value) ? reference.value : null;
     return {
       animation: false,
       backgroundColor: 'transparent',
@@ -103,13 +89,6 @@ export default function ThinTimeSeries({
       },
       yAxis: {
         type: 'value' as const,
-        ...(referenceValue != null ? {
-          max: (extent: { max: number }) => {
-            const top = Math.max(extent.max, referenceValue);
-            if (!Number.isFinite(top)) return extent.max;
-            return top <= 0 ? 1 : top * 1.08;
-          }
-        } : {}),
         axisLabel: {
           color: mutedColor,
           fontSize: 10,
@@ -162,21 +141,13 @@ export default function ThinTimeSeries({
             const value = point[key];
             return [point.time, typeof value === 'number' ? value : null];
           }),
-          lineStyle: { width: 1.6, color },
-          markLine: index === 0 && referenceValue != null ? {
-            silent: true,
-            symbol: ['none', 'none'],
-            lineStyle: { type: 'dashed' as const, color: reference?.color, width: 1.2 },
-            // 核数等参考线：图例已展示文案，图内不再重复标「核数(N)」
-            label: { show: false },
-            data: [{ yAxis: referenceValue }]
-          } : undefined
+          lineStyle: { width: 1.6, color }
         };
       })
     };
-  }, [axisColor, data, keys, legends, mutedColor, panelColor, reference, textColor, unit]);
+  }, [axisColor, data, keys, legends, mutedColor, panelColor, textColor, unit]);
   const { containerRef } = useECharts(option);
-  const showLegend = legendItems.length > 1 || legendItems.some((item) => item.reading);
+  const showLegend = legends.length > 1 || legends.some((item) => item.reading);
   const chart = (
     <>
       {title || reading || showLegend ? (
@@ -207,11 +178,11 @@ export default function ThinTimeSeries({
           ) : null}
           {showLegend ? (
             <div className={styles.chartLegend}>
-              {legendItems.map((item) => (
+              {legends.map((item) => (
                 <span key={item.label}>
                   <span
-                    className={item.dashed ? styles.legendDashed : styles.legendSwatch}
-                    style={item.dashed ? { borderTopColor: item.color } : { background: item.color }}
+                    className={styles.legendSwatch}
+                    style={{ background: item.color }}
                   />
                   {item.label}
                   {item.reading ? (
