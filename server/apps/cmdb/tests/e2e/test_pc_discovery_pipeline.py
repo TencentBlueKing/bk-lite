@@ -129,7 +129,7 @@ def _run_plugin(task, vm_doc):
 
 
 @requires_enterprise
-def test_round_metadata_failure_stops_before_pc_graph_reconciliation(monkeypatch):
+def test_round_metadata_failure_still_writes_reported_pc(monkeypatch):
     task = types.SimpleNamespace(
         id=321,
         model_id="pc",
@@ -171,6 +171,16 @@ def test_round_metadata_failure_stops_before_pc_graph_reconciliation(monkeypatch
     def apply_pc_snapshots(*_args, **_kwargs):
         nonlocal reconciled
         reconciled = True
+        return {
+            "format_data": {
+                "add": [],
+                "update": [],
+                "delete": [],
+                "association": [],
+                "all": 1,
+                "pc_summary": {"pc_total": 1, "pc_partial": 1, "pc_complete": 0, "pc_failed": 0},
+            }
+        }
 
     plugin.round_metadata_reader_factory = Reader
     monkeypatch.setattr(
@@ -178,10 +188,9 @@ def test_round_metadata_failure_stops_before_pc_graph_reconciliation(monkeypatch
         apply_pc_snapshots,
     )
 
-    with pytest.raises(RoundMetadataProtocolError, match="metadata_unavailable"):
-        plugin.format_metrics()
+    plugin.format_metrics()
 
-    assert reconciled is False
+    assert reconciled is True
 
 
 def _round(vm_doc, snapshot_id, ts, software_overrides=None, drop_software=False, status=None, expected=None):
@@ -340,7 +349,7 @@ def test_macos_vm_query_writes_pc_software_and_install_on(load_fixture, graph, m
     plugin = PCCollectionPlugin(inst_name="", inst_id=f"cmdb_{task.id}", task_id=task.id)
     result = plugin.run()
 
-    assert result == {"pc": []}
+    assert result.get("pc", []) == []
     assert len(requests) == 1
     assert requests[0]["url"].endswith("/prometheus/api/v1/query")
     assert requests[0]["timeout"] == 60

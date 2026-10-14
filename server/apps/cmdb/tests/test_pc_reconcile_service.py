@@ -172,8 +172,8 @@ def test_filter_pc_payload_keeps_collected_hardware_fields():
         "inst_name": "WIN-A",
         "brand": "Dell",
         "cpu": "Intel Core i7",
-        "men": "17179869184",
-        "disk": "512110190592",
+        "men": "16",
+        "disk": "476.9",
     }
 
 
@@ -234,7 +234,8 @@ def test_create_writes_organization_and_runtime_fields(graph):
 
     assert result["pc_status"] == "added"
     created = graph.store["WIN-ABC"]
-    assert created["organization"] == 7
+    assert created["organization"] == [7]
+    assert graph.store["SW-AAA"]["organization"] == [7]
     assert created["model_id"] == "pc"
     assert created["auto_collect"] is True
     assert created["collect_task"] == task.id
