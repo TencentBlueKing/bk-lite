@@ -13,6 +13,6 @@
     "artifacts": {"type": "array", "title": "Office 附件", "items": {"type": "object"}, "maxItems": 10},
     "report_artifact": {"type": "object", "title": "附件", "description": "可选。拖入上游文档生成的 artifact，通知中发送 24 小时下载链接，不发送真实附件。"}
   },
-  "required": ["notification_type", "channel_id", "body"],
+  "required": ["notification_type", "body"],
   "additionalProperties": false
 }

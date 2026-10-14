@@ -9,6 +9,10 @@ from apps.workflow_orchestration.models import ExecutionArtifact
 from apps.workflow_orchestration.services.report_links import build_report_download_link
 
 
+def _is_absolute_http_url(value: str) -> bool:
+    return value.startswith(("http://", "https://"))
+
+
 def _report_link(inputs: dict[str, Any], team: int, execution_id: str) -> str:
     artifact_ref = inputs.get("report_artifact")
     if not artifact_ref:
@@ -49,6 +53,16 @@ def _resolve_recipients(recipients: list[Any], team: int) -> list[str]:
     return resolved
 
 
+def _default_email_recipients(inputs: dict[str, Any]) -> list[str]:
+    """邮件未配置收件人时回落到本次执行启动人（与内置流程 actor 引用一致）。"""
+    context = inputs.get("__bklite_context")
+    actor = context.get("actor") if isinstance(context, dict) else None
+    if not isinstance(actor, dict):
+        actor = inputs.get("actor") if isinstance(inputs.get("actor"), dict) else {}
+    username = str(actor.get("username") or "").strip()
+    return [username] if username else []
+
+
 def execute(inputs: dict[str, Any]) -> dict[str, Any]:
     team = trusted_organization_id(inputs)
     execution_id = trusted_execution_id(inputs, required=False)
@@ -56,14 +70,23 @@ def execute(inputs: dict[str, Any]) -> dict[str, Any]:
     raw_recipients = inputs.get("recipients") or []
     if not isinstance(raw_recipients, list):
         raise ValueError("recipients 最多支持 100 个收件人")
+    if notification_type == "EMAIL" and not raw_recipients:
+        raw_recipients = _default_email_recipients(inputs)
     recipients = _resolve_recipients(raw_recipients, team)
     if notification_type == "EMAIL" and not recipients:
         raise ValueError("邮件通知必须选择收件人")
+    if notification_type == "EMAIL" and (inputs.get("channel_id") in (None, "")):
+        raise ValueError("邮件通知必须选择通知方式")
     title = str(inputs.get("title") or "").strip()
     body = str(inputs.get("body") or "").strip()
     report_link = _report_link(inputs, team, execution_id)
     if report_link:
-        body = f"{body}\n报告下载（24 小时内有效）：{report_link}"
+        # 邮件走 HTML 投递：链接只放 event_payload，由渠道层拼可点击 <a>；正文避免被 RICH_TEXT 转义破坏。
+        if notification_type == "EMAIL":
+            if not _is_absolute_http_url(report_link):
+                raise ValueError("报告下载链接缺少 WEB_BASE_URL，无法发送邮件下载地址")
+        else:
+            body = f"{body}\n报告下载（24 小时内有效）：{report_link}"
     if (notification_type == "EMAIL" and not title) or len(title) > 200 or not body or len(body) > 10000:
         raise ValueError("通知标题或正文超出限额")
     delivery = SystemMgmt().dispatch_notification(

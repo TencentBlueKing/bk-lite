@@ -201,7 +201,6 @@ SYSTEM_USER_CHANNEL_TYPES = {
     ChannelChoices.ENTERPRISE_WECHAT,
 }
 RICH_TEXT_CHANNEL_TYPES = {
-    ChannelChoices.EMAIL,
     ChannelChoices.ENTERPRISE_WECHAT_BOT,
     ChannelChoices.FEISHU_BOT,
     ChannelChoices.DINGTALK_BOT,
@@ -512,6 +511,15 @@ def dispatch_notification(
             "user_ids": normalized_recipients,
         }
         send_title = title
+        send_recipients = normalized_recipients
+    elif channel.channel_type == ChannelChoices.EMAIL:
+        # 邮件 MIME 为 HTML：只做 HTML 转义，不用 Markdown 反斜杠转义（否则会破坏 URL 中的 _）。
+        content = html.escape(body.strip(), quote=False).replace("\n", "<br>\n")
+        report_link = event_payload.get("report_link") if isinstance(event_payload, dict) else None
+        if isinstance(report_link, str) and report_link.startswith(("http://", "https://")):
+            href = html.escape(report_link, quote=True)
+            content = f'{content}<br>报告下载（24 小时内有效）：<a href="{href}">下载报告</a>'
+        send_title = html.escape(title, quote=False)
         send_recipients = normalized_recipients
     else:
         if channel.channel_type in RICH_TEXT_CHANNEL_TYPES:
