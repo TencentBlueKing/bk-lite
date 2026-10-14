@@ -22,8 +22,12 @@ export function useECharts(
   const disposeInstance = useCallback(() => {
     resizeObserverRef.current?.disconnect();
     resizeObserverRef.current = null;
-    instanceRef.current?.dispose();
+    const instance = instanceRef.current;
     instanceRef.current = null;
+    if (!instance || instance.isDisposed()) return;
+    const dom = instance.getDom();
+    if (!dom?.isConnected) return;
+    instance.dispose();
   }, []);
 
   const containerRef = useCallback((node: HTMLDivElement | null) => {
@@ -41,6 +45,8 @@ export function useECharts(
       if (dying && !dying.isDisposed()) {
         queueMicrotask(() => {
           if (instanceRef.current === dying || dying.isDisposed()) return;
+          const dom = dying.getDom();
+          if (!dom?.isConnected) return;
           dying.dispose();
         });
       }
@@ -64,7 +70,10 @@ export function useECharts(
     resizeObserverRef.current = ro;
   }, [disposeInstance]);
 
-  useEffect(() => () => disposeInstance(), [disposeInstance]);
+  useEffect(() => () => {
+    if (!containerElementRef.current) return;
+    disposeInstance();
+  }, [disposeInstance]);
 
   useEffect(() => {
     const instance = instanceRef.current;
