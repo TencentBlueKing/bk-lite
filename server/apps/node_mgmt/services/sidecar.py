@@ -682,7 +682,7 @@ class Sidecar:
         )
         request_data.pop("architecture", None)
 
-        logger.debug(f"node data: {request_data}")
+        logger.debug("sidecar node update: node_id=%s field_count=%s", node_id, len(request_data))
 
         # 处理标签数据
         allowed_prefixes = [
@@ -1020,7 +1020,11 @@ class Sidecar:
                     # 对包含password的key进行解密
                     decrypted_env_config[key] = aes_obj.decode(str(value))
                 except Exception as e:
-                    logger.warning(f"Failed to decrypt password field {key}: {e}")
+                    logger.warning(
+                        "Failed to decrypt password field %s: error_type=%s",
+                        key,
+                        type(e).__name__,
+                    )
                     # 如果解密失败，可能是明文存储的，直接使用原值
                     decrypted_env_config[key] = str(value)
             else:
