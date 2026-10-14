@@ -143,13 +143,10 @@ const EventBody = ({
 
 export default function EventsRail({
   events,
-  onFocusAlert,
-  mock = false
+  onFocusAlert
 }: {
   events: HostAlertRailEvent[];
   onFocusAlert?: (alertId: string) => void;
-  /** 样例事件仅用于演示目检，不代表接口返回。 */
-  mock?: boolean;
 }) {
   const { convertToLocalizedTime } = useLocalizedTime();
   const { t } = useDashboardText();
@@ -209,7 +206,7 @@ export default function EventsRail({
   );
 
   return (
-    <div className={styles.eventsRail} data-events-rail="" data-events-mock={mock ? '' : undefined}>
+    <div className={styles.eventsRail} data-events-rail="">
       <span className={styles.eventsLabel}>{hostCategoryText(t, 'events')}</span>
       <div ref={measureRef} className={styles.eventsMeasure} aria-hidden="true">
         {events.map((event) => (

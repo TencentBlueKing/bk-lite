@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { Tabs } from 'antd';
 import useMonitorApi from '@/app/monitor/api';
 import {
@@ -24,11 +23,7 @@ import { activeHostAlertParams } from './layered/host-alert-list';
 import OverviewPane from './layered/overview-pane';
 import SystemPane from './layered/system-pane';
 import { latestNumber, latestPreferCount } from './layered/readings';
-import {
-  applyHostTabDemoSeries,
-  hostOverviewDemoEvents,
-  hostOverviewEventsDemoMode
-} from './layered/host-tab-demo';
+import { applyHostTabDemoSeries } from './layered/host-tab-demo';
 import {
   loadPerCore,
   resolveHostTabLevel,
@@ -158,11 +153,9 @@ export default function HostCategoryLayout({
   onCategoryTabChange
 }: HostDetailLayoutProps) {
   const { getMonitorAlert } = useMonitorApi();
-  const searchParams = useSearchParams();
   const [uncontrolledTab, setUncontrolledTab] = useState('overview');
   const [alertCount, setAlertCount] = useState<number | null>(null);
   const [alertEvents, setAlertEvents] = useState<HostAlertRailEvent[]>([]);
-  const [alertEventsSettled, setAlertEventsSettled] = useState(false);
   const [alertDrawerOpen, setAlertDrawerOpen] = useState(false);
   const [alertRefreshKey, setAlertRefreshKey] = useState(0);
   const [focusAlertId, setFocusAlertId] = useState('');
@@ -185,16 +178,6 @@ export default function HostCategoryLayout({
     () => applyHostTabDemoSeries(dashboard.metricSeries),
     [dashboard.metricSeries]
   );
-  const eventsDemoMode = hostOverviewEventsDemoMode(
-    [dashboard.resolvedInstanceName, dashboard.currentInstanceLabel],
-    searchParams.toString()
-  );
-  const demoEvents = useMemo(() => hostOverviewDemoEvents(), []);
-  const railEvents = eventsDemoMode === 'force'
-    || (eventsDemoMode === 'fill' && alertEventsSettled && alertEvents.length === 0)
-    ? demoEvents
-    : alertEvents;
-  const railEventsMock = railEvents === demoEvents && eventsDemoMode !== 'off';
 
   const diskRows = useMemo(() => buildMountDiskRows(diskState.byMetric), [diskState.byMetric]);
   const diskDeviceRows = useMemo(() => buildDiskDeviceRows(diskState.byMetric), [diskState.byMetric]);
@@ -264,12 +247,10 @@ export default function HostCategoryLayout({
     const instanceId = String(dashboard.instanceId || '');
     if (!instanceId) {
       setAlertEvents([]);
-      setAlertEventsSettled(true);
       return undefined;
     }
     let active = true;
     setAlertEvents([]);
-    setAlertEventsSettled(false);
     getMonitorAlert({
       monitor_instance_id: instanceId,
       page: 1,
@@ -278,12 +259,10 @@ export default function HostCategoryLayout({
       .then((data) => {
         if (!active) return;
         setAlertEvents(hostAlertRailEvents(data?.results));
-        setAlertEventsSettled(true);
       })
       .catch(() => {
         if (!active) return;
         setAlertEvents([]);
-        setAlertEventsSettled(true);
       });
     return () => {
       active = false;
@@ -365,8 +344,7 @@ export default function HostCategoryLayout({
         processReady={processReady}
         processLoading={processLoading}
         alertCount={alertCount}
-        alertEvents={railEvents}
-        alertEventsMock={railEventsMock}
+        alertEvents={alertEvents}
         alertsOpen={alertDrawerOpen}
         onOpenAlerts={openHostAlerts}
         onFocusAlert={focusHostAlert}
