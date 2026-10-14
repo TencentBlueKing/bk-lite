@@ -56,11 +56,6 @@ const peakOfRow = (row: EntityTableRow | undefined, key: string) => {
   return latestOfRow(row, key);
 };
 
-/** 环心空态用一字线。环外不再放另一套读数。 */
-const ringCenter = (value: number | null, format: (value: number) => string) => (
-  value == null ? '—' : format(value)
-);
-
 export default function OverviewPane({
   metrics,
   loading,
@@ -98,32 +93,28 @@ export default function OverviewPane({
       {
         key: 'cpu',
         label: 'CPU',
-        value: ringCenter(cpu, formatPercent),
-        footer: { kind: 'donut', percent: cpu }
+        value: formatPercent(cpu)
       },
       {
         key: 'mem',
         label: '内存',
-        value: ringCenter(mem, formatPercent),
-        footer: { kind: 'donut', percent: mem }
+        value: formatPercent(mem)
       }
     ];
     if (showLoad) {
       items.push({
         key: 'load',
         label: 'Load1',
-        value: ringCenter(load, formatPlain),
-        subtitle: roundedCores > 0 ? `${roundedCores}核` : undefined,
-        footer: { kind: 'capacity', load, cores }
+        value: formatPlain(load),
+        subtitle: roundedCores > 0 ? `${roundedCores}核` : undefined
       });
     }
     items.push({
       key: 'disk',
       label: hostCategoryText(t, 'diskPeak'),
       hint: hostCategoryText(t, 'diskUtilizationPeak'),
-      value: ringCenter(diskValue, formatPercent),
-      detail: mountName ? `挂载 ${mountName}` : '—',
-      footer: { kind: 'donut', percent: diskValue }
+      value: formatPercent(diskValue),
+      subtitle: mountName ? `挂载 ${mountName}` : undefined
     });
     const alertTone = alertCount == null
       ? undefined
