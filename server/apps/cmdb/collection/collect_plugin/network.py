@@ -162,7 +162,13 @@ class CollectNetworkMetrics(CollectBase):
 
     @staticmethod
     def interface_name(data, *args, **kwargs):
-        return data.get("alias") or data.get("description") or f"if{data.get('index', '')}"
+        """接口名称取 ifDescr；为空时退到 ifAlias，再空则用 if{index}。"""
+        return data.get("description") or data.get("alias") or f"if{data.get('index', '')}"
+
+    @staticmethod
+    def interface_description(data, *args, **kwargs):
+        """接口描述只取 ifAlias，没有则留空。"""
+        return data.get("alias") or ""
 
     @property
     def model_field_mapping(self):

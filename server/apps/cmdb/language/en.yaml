@@ -1272,6 +1272,7 @@ ATTR:
     adminstatus: Admin Status
     operstatus: Oper Status
     name: Interface Name
+    description: Interface Description
     status: Status
     self_device: Self Device
   k8s_cluster:
