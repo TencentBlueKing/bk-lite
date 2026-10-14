@@ -78,14 +78,16 @@ Maintainer 必填 `-replay-index-epoch`（RFC3339 格式的回放索引切换时
 
 ### Edge
 
-Edge 是平台现有的公网反向代理（Traefik），不是 RUM 要新打的镜像，也不进 `bklite/rum-collector`。
+Edge 是平台现有的公网反向代理（Traefik），不是 RUM 要新打的镜像，也不进 `bklite/rum-collector`。浏览器只访问控制台域名的 `443`，证书沿用平台现有证书，不新开域名，也不把 `4319` / `4320` 直接公布到公网。
 
-浏览器只经过 Edge 访问 Gateway：
+在现有 `443` 入口上加两条路由。它们必须比控制台的总路由更优先，否则请求会先落到 Web，到不了 Gateway。不要套 OpenAPI 的登录校验；Browser Key 和 Origin 由 Gateway 自己检查。
 
-| 公网路径 | 转到 Gateway |
-| --- | --- |
-| `/rum/v1/collect` | `:4319` |
-| `/rum/v1/replay` | `:4320` |
+| 公网路径 | 转到 | 说明 |
+| --- | --- | --- |
+| `/rum/v1/collect` | Gateway 内网 `:4319` | 性能、错误、会话上报 |
+| `/rum/v1/replay` | Gateway 内网 `:4320` | 会话回放分段 |
+
+`/rum/bklite-rum-sdk.js` 和 `/rum/bklite-rum-replay.js` 不用单独配路由，由现有 Web 服务返回。接入片段默认使用操作员打开控制台的地址加上面的路径。只有收数故意放到另一个域名时，才设置 `RUM_PUBLIC_ORIGIN`，并让该域名的 `443` 做同样的两条转发。
 
 健康检查 `:13135`、指标 `:8888`、VictoriaLogs、VictoriaTraces、Redis、NATS 只留在内网。APM 的 `:4318` 不从这条公网入口发布。
 
@@ -102,12 +104,11 @@ Edge 是平台现有的公网反向代理（Traefik），不是 RUM 要新打的
 
 | 变量 | 必要 | 说明 |
 | --- | --- | --- |
-| `RUM_NATS_URL` | 必须 | `nats://rum_ctl:***@nats:4222` |
+| `RUM_NATS_URL` | 必须 | 生产使用 `tls://nats:4222`，URL 里不要写用户名和密码。不配置或格式不对时，控制面显示不可用，Django 仍能启动 |
+| `RUM_NATS_INSECURE` | 仅本地 | 设为 `true` 才接受 `nats://`，以及本地把口令写在 URL 里的写法。生产不要打开 |
 | `RUM_VICTORIA_LOGS_URL` | 必须 | VictoriaLogs 地址 |
 | `RUM_VICTORIA_TRACES_URL` | 必须 | VictoriaTraces 地址 |
-| `RUM_COLLECT_URL` | 必须 | 公网 collect URL |
-| `RUM_REPLAY_URL` | 必须 | 公网 replay URL |
-| `RUM_SDK_CDN_URL` | 必须 | 浏览器能访问到的 SDK 地址；文件在 Web 镜像的 `/rum/bklite-rum-sdk.js`、`/rum/bklite-rum-replay.js` |
+| `RUM_PUBLIC_ORIGIN` | 可选 | 浏览器上报使用的对外源（`https://主机`，不含路径）。不设时，接入片段用操作员打开控制台的地址，路径固定为 `/rum/v1/collect`、`/rum/v1/replay`、`/rum/bklite-rum-sdk.js`。Edge 把前两条转到 Gateway `:4319`、`:4320` |
 | `RUM_REPLAY_SIGNING_SECRET` | 回放要 | ≥32 字符 |
 | `RUM_REPLAY_INDEX_REDIS_URL` | 回放要 | 一般 Redis DB2 |
 | `RUM_TENANT_ID` | 可选 | 默认 `core` |

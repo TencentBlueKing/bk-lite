@@ -441,6 +441,7 @@ class ApplicationsService:
             settings=self.settings,
         )
         return {
+            "publicOrigin": self.settings.public_origin,
             "collectUrl": self.settings.collect_url,
             "replayUrl": self.settings.replay_url,
             "sdkCdnUrl": self.settings.sdk_cdn_url,

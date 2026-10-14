@@ -3,6 +3,7 @@ import './register-asset-pilot';
 import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import {
   Button,
+  Input,
   message,
   Dropdown,
   Space,
@@ -11,7 +12,6 @@ import {
   Switch
 } from 'antd';
 import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
-import SearchActionBar from '@/components/search-action-bar';
 import { StatusToneBadge } from '@/app/monitor/utils/statusTone';
 import useApiClient from '@/utils/request';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
@@ -1314,36 +1314,32 @@ const Asset = () => {
           </div>
         </ResizableSidebar>
         <div className={assetStyle.table}>
-          <SearchActionBar
-            searchProps={{
-              allowClear: true,
-              placeholder: t(getAssetSearchPlaceholderKey(findByMonitorId(objects, objectId))),
-              value: searchText,
-              onChange: (e) => setSearchText(e.target.value),
-              onSearch: () => getAssetInsts(objectId),
-              onClear: clearText,
-            }}
-            searchClassName="w-80"
-            filters={(
-              <>
-                <label className="inline-flex h-8 items-center gap-1.5 text-[var(--color-text-2)]">
-                  <Switch
-                    size="small"
-                    checked={needUpdateOnly}
-                    onChange={setNeedUpdateFilter}
-                  />
-                  {t('monitor.integrations.needUpdateFilter')}
-                </label>
+          <div className={assetStyle.search}>
+            <Input
+              allowClear
+              placeholder={t(getAssetSearchPlaceholderKey(findByMonitorId(objects, objectId)))}
+              className="w-full max-w-[420px] min-w-0"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              onPressEnter={() => getAssetInsts(objectId)}
+              onClear={clearText}
+            />
+            <div className="flex shrink-0 items-center gap-3">
+              <label className="inline-flex h-8 items-center gap-1.5 text-[var(--color-text-2)]">
+                <Switch
+                  size="small"
+                  checked={needUpdateOnly}
+                  onChange={setNeedUpdateFilter}
+                />
+                {t('monitor.integrations.needUpdateFilter')}
+              </label>
+              <div className="flex items-center gap-2">
                 <CatalogScopeSegmented
                   unassignedOnly={unassignedOnly}
                   onChange={handleCatalogScopeChange}
                   count={unassignedCount}
                   resourceName={t('monitor.integrations.monitorInstance', '监控实例')}
                 />
-              </>
-            )}
-            actions={(
-              <div className="flex items-center gap-2">
                 <Button
                   type="primary"
                   icon={<PlusOutlined />}
@@ -1370,8 +1366,8 @@ const Asset = () => {
                   onRefresh={onRefresh}
                 />
               </div>
-            )}
-          />
+            </div>
+          </div>
           <div className="min-h-0 min-w-0 flex-1">
             <CustomTable
               key={String(objectId || 'asset-table')}
