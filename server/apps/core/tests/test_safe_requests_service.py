@@ -1,11 +1,13 @@
 from io import BytesIO
+from urllib.parse import urlparse
 
 import pydantic.root_model  # noqa
 import pytest
 import requests
 
+from apps.core.utils import egress_gateway as eg
 from apps.core.utils import safe_requests as sr
-from apps.core.utils.ssrf_validator import SSRFError
+from apps.core.utils.ssrf_validator import SSRFError, ValidatedTarget
 
 
 def _make_response(*, is_redirect=False, location=None, status_code=None):
@@ -16,6 +18,28 @@ def _make_response(*, is_redirect=False, location=None, status_code=None):
     if location:
         resp.headers["Location"] = location
     return resp
+
+
+def _target(url: str, ip: str = "8.8.8.8") -> ValidatedTarget:
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or "").lower()
+    return ValidatedTarget(
+        url=url,
+        hostname=hostname,
+        scheme=parsed.scheme.lower(),
+        resolved_ips=(ip,),
+        port=parsed.port,
+    )
+
+
+def _patch_session(mocker, *, side_effect=None, return_value=None):
+    session = mocker.MagicMock()
+    if side_effect is not None:
+        session.request.side_effect = side_effect
+    else:
+        session.request.return_value = return_value if return_value is not None else _make_response()
+    mocker.patch.object(eg.requests, "Session", return_value=session)
+    return session
 
 
 class TestSafeRequest:
@@ -36,11 +60,11 @@ class TestSafeRequest:
     ):
         mocker.patch.object(
             sr.SSRFValidator,
-            "validate",
-            side_effect=["https://service.example/start", "https://service.example/next"],
+            "validate_target",
+            side_effect=[_target("https://service.example/start"), _target("https://service.example/next")],
         )
         first = _make_response(status_code=status_code, location="https://service.example/next")
-        req = mocker.patch.object(sr.requests, "request", side_effect=[first, _make_response()])
+        session = _patch_session(mocker, side_effect=[first, _make_response()])
 
         sr.safe_request(
             method,
@@ -50,72 +74,108 @@ class TestSafeRequest:
             headers={"Content-Type": "application/json"},
         )
 
-        redirect_call = req.call_args_list[1]
-        assert redirect_call.args == (expected_method, "https://service.example/next")
+        redirect_call = session.request.call_args_list[1]
+        assert redirect_call.args == (expected_method, "https://8.8.8.8/next")
         assert ("json" in redirect_call.kwargs) is keeps_body
         assert ("Content-Type" in redirect_call.kwargs["headers"]) is keeps_body
 
     def test_validates_url_and_returns_response(self, mocker):
-        validate = mocker.patch.object(sr.SSRFValidator, "validate", return_value="https://safe.example/api")
-        req = mocker.patch.object(sr.requests, "request", return_value=_make_response())
+        validate = mocker.patch.object(
+            sr.SSRFValidator,
+            "validate_target",
+            return_value=_target("https://safe.example/api"),
+        )
+        session = _patch_session(mocker)
 
         resp = sr.safe_request("GET", "https://example.com/api", allowlist={"example.com"})
 
         assert resp.status_code == 200
         validate.assert_called_once_with("https://example.com/api", allowlist={"example.com"})
-        # 强制禁用底层自动重定向、注入超时
-        _, kwargs = req.call_args
+        _, kwargs = session.request.call_args
         assert kwargs["allow_redirects"] is False
         assert kwargs["timeout"] == 30
-        assert req.call_args[0] == ("GET", "https://safe.example/api")
+        assert session.request.call_args[0] == ("GET", "https://8.8.8.8/api")
+        assert kwargs["headers"]["Host"] == "safe.example"
+
+    def test_pins_resolved_ip_and_keeps_original_host(self, mocker):
+        mocker.patch.object(
+            sr.SSRFValidator,
+            "validate_target",
+            return_value=_target("https://evil.example/latest", ip="93.184.216.34"),
+        )
+        session = _patch_session(mocker)
+
+        sr.safe_request("GET", "https://evil.example/latest")
+
+        method, connect_url = session.request.call_args[0]
+        assert method == "GET"
+        assert connect_url == "https://93.184.216.34/latest"
+        assert session.request.call_args.kwargs["headers"]["Host"] == "evil.example"
+        assert session.trust_env is False
+        session.mount.assert_any_call("https://", mocker.ANY)
+        adapter = session.mount.call_args_list[0][0][1]
+        assert adapter.server_hostname == "evil.example"
+
+    def test_direct_mode_drops_caller_proxies(self, mocker):
+        mocker.patch.object(
+            sr.SSRFValidator,
+            "validate_target",
+            return_value=_target("https://safe.example/api"),
+        )
+        session = _patch_session(mocker)
+
+        sr.safe_request("GET", "https://safe.example/api", proxies={"https": "http://127.0.0.1:8080"})
+
+        assert "proxies" not in session.request.call_args.kwargs
 
     def test_redirect_blocked_when_not_allowed(self, mocker):
-        mocker.patch.object(sr.SSRFValidator, "validate", return_value="https://safe.example")
-        mocker.patch.object(sr.requests, "request", return_value=_make_response(is_redirect=True, location="https://x"))
+        mocker.patch.object(sr.SSRFValidator, "validate_target", return_value=_target("https://safe.example"))
+        _patch_session(mocker, return_value=_make_response(is_redirect=True, location="https://x"))
 
         with pytest.raises(SSRFError):
             sr.safe_request("GET", "https://example.com", allow_redirects=False)
 
     def test_redirect_followed_and_revalidated(self, mocker):
         validate = mocker.patch.object(
-            sr.SSRFValidator, "validate", side_effect=["https://first", "https://second"]
+            sr.SSRFValidator,
+            "validate_target",
+            side_effect=[_target("https://first"), _target("https://second")],
         )
         first = _make_response(is_redirect=True, location="https://redirect-target")
         second = _make_response()
-        req = mocker.patch.object(sr.requests, "request", side_effect=[first, second])
+        session = _patch_session(mocker, side_effect=[first, second])
 
         resp = sr.safe_request("GET", "https://example.com", allow_redirects=True)
 
         assert resp is second
-        # 重定向目标也被校验
         assert validate.call_count == 2
         assert validate.call_args_list[1][0][0] == "https://redirect-target"
-        assert req.call_count == 2
+        assert session.request.call_count == 2
 
     def test_relative_redirect_is_resolved_and_intermediate_response_closed(self, mocker):
         validate = mocker.patch.object(
             sr.SSRFValidator,
-            "validate",
-            side_effect=["https://service.example/v1/start", "https://service.example/v2/next"],
+            "validate_target",
+            side_effect=[_target("https://service.example/v1/start"), _target("https://service.example/v2/next")],
         )
         first = _make_response(status_code=302, location="../v2/next")
         close = mocker.patch.object(first, "close")
-        req = mocker.patch.object(sr.requests, "request", side_effect=[first, _make_response()])
+        session = _patch_session(mocker, side_effect=[first, _make_response()])
 
         sr.safe_request("GET", "https://service.example/v1/start", allow_redirects=True)
 
         assert validate.call_args_list[1].args[0] == "https://service.example/v2/next"
-        assert req.call_args_list[1].args == ("GET", "https://service.example/v2/next")
+        assert session.request.call_args_list[1].args == ("GET", "https://8.8.8.8/v2/next")
         close.assert_called_once_with()
 
     def test_cross_origin_303_uses_get_without_body_or_credentials(self, mocker):
         mocker.patch.object(
             sr.SSRFValidator,
-            "validate",
-            side_effect=["https://source.example/start", "https://target.example/next"],
+            "validate_target",
+            side_effect=[_target("https://source.example/start"), _target("https://target.example/next")],
         )
         first = _make_response(status_code=303, location="https://target.example/next")
-        req = mocker.patch.object(sr.requests, "request", side_effect=[first, _make_response()])
+        session = _patch_session(mocker, side_effect=[first, _make_response()])
         headers = {
             "Authorization": "Bearer secret",
             "Cookie": "session=secret",
@@ -136,9 +196,11 @@ class TestSafeRequest:
             auth=("user", "password"),
         )
 
-        redirect_call = req.call_args_list[1]
-        assert redirect_call.args == ("GET", "https://target.example/next")
-        assert redirect_call.kwargs["headers"] == {"X-Request-ID": "request-id"}
+        redirect_call = session.request.call_args_list[1]
+        assert redirect_call.args == ("GET", "https://8.8.8.8/next")
+        assert redirect_call.kwargs["headers"]["X-Request-ID"] == "request-id"
+        assert redirect_call.kwargs["headers"]["Host"] == "target.example"
+        assert "Authorization" not in redirect_call.kwargs["headers"]
         assert "cookies" not in redirect_call.kwargs
         assert "auth" not in redirect_call.kwargs
         assert "json" not in redirect_call.kwargs
@@ -148,9 +210,10 @@ class TestSafeRequest:
     def test_307_rewinds_seekable_stream_before_redirect(self, mocker):
         mocker.patch.object(
             sr.SSRFValidator,
-            "validate",
-            side_effect=["https://service.example/start", "https://service.example/next"],
+            "validate_target",
+            side_effect=[_target("https://service.example/start"), _target("https://service.example/next")],
         )
+
         class NonIterableStream:
             def __init__(self, content):
                 self._stream = BytesIO(content)
@@ -173,7 +236,7 @@ class TestSafeRequest:
                 return _make_response(status_code=307, location="https://service.example/next")
             return _make_response()
 
-        mocker.patch.object(sr.requests, "request", side_effect=request)
+        _patch_session(mocker, side_effect=request)
 
         sr.safe_request("POST", "https://service.example/start", allow_redirects=True, data=stream)
 
@@ -182,8 +245,8 @@ class TestSafeRequest:
     def test_307_rejects_unrewindable_stream(self, mocker):
         mocker.patch.object(
             sr.SSRFValidator,
-            "validate",
-            side_effect=["https://service.example/start", "https://service.example/next"],
+            "validate_target",
+            side_effect=[_target("https://service.example/start"), _target("https://service.example/next")],
         )
 
         def body():
@@ -193,21 +256,21 @@ class TestSafeRequest:
             list(kwargs["data"])
             return _make_response(status_code=307, location="https://service.example/next")
 
-        req = mocker.patch.object(sr.requests, "request", side_effect=request)
+        session = _patch_session(mocker, side_effect=request)
 
         with pytest.raises(sr.SafeRequestsError, match="重定向请求体不可回卷"):
             sr.safe_request("POST", "https://service.example/start", allow_redirects=True, data=body())
 
-        assert req.call_count == 1
+        assert session.request.call_count == 1
 
     def test_same_origin_307_preserves_method_body_and_credentials(self, mocker):
         mocker.patch.object(
             sr.SSRFValidator,
-            "validate",
-            side_effect=["https://service.example/start", "https://service.example/next"],
+            "validate_target",
+            side_effect=[_target("https://service.example/start"), _target("https://service.example/next")],
         )
         first = _make_response(status_code=307, location="https://service.example/next")
-        req = mocker.patch.object(sr.requests, "request", side_effect=[first, _make_response()])
+        session = _patch_session(mocker, side_effect=[first, _make_response()])
 
         sr.safe_request(
             "PUT",
@@ -218,8 +281,8 @@ class TestSafeRequest:
             json={"state": "ready"},
         )
 
-        redirect_call = req.call_args_list[1]
-        assert redirect_call.args == ("PUT", "https://service.example/next")
+        redirect_call = session.request.call_args_list[1]
+        assert redirect_call.args == ("PUT", "https://8.8.8.8/next")
         assert redirect_call.kwargs["headers"]["Authorization"] == "Bearer secret"
         assert "Proxy-Authorization" not in redirect_call.kwargs["headers"]
         assert redirect_call.kwargs["cookies"] == {"session": "secret"}
@@ -228,11 +291,11 @@ class TestSafeRequest:
     def test_http_to_https_upgrade_keeps_same_host_credentials(self, mocker):
         mocker.patch.object(
             sr.SSRFValidator,
-            "validate",
-            side_effect=["http://service.example/start", "https://service.example/next"],
+            "validate_target",
+            side_effect=[_target("http://service.example/start"), _target("https://service.example/next")],
         )
         first = _make_response(status_code=307, location="https://service.example/next")
-        req = mocker.patch.object(sr.requests, "request", side_effect=[first, _make_response()])
+        session = _patch_session(mocker, side_effect=[first, _make_response()])
 
         sr.safe_request(
             "GET",
@@ -242,21 +305,21 @@ class TestSafeRequest:
             cookies={"session": "secret"},
         )
 
-        redirect_kwargs = req.call_args_list[1].kwargs
+        redirect_kwargs = session.request.call_args_list[1].kwargs
         assert redirect_kwargs["headers"]["Authorization"] == "Bearer secret"
         assert redirect_kwargs["cookies"] == {"session": "secret"}
 
     def test_redirect_without_location_breaks(self, mocker):
-        mocker.patch.object(sr.SSRFValidator, "validate", return_value="https://safe")
-        resp = _make_response(is_redirect=True)  # no Location header
-        mocker.patch.object(sr.requests, "request", return_value=resp)
+        mocker.patch.object(sr.SSRFValidator, "validate_target", return_value=_target("https://safe"))
+        resp = _make_response(is_redirect=True)
+        _patch_session(mocker, return_value=resp)
 
         out = sr.safe_request("GET", "https://example.com", allow_redirects=True)
         assert out is resp
 
     def test_request_exception_wrapped(self, mocker):
-        mocker.patch.object(sr.SSRFValidator, "validate", return_value="https://safe")
-        mocker.patch.object(sr.requests, "request", side_effect=requests.ConnectionError("boom"))
+        mocker.patch.object(sr.SSRFValidator, "validate_target", return_value=_target("https://safe"))
+        _patch_session(mocker, side_effect=requests.ConnectionError("boom"))
 
         with pytest.raises(sr.SafeRequestsError) as exc:
             sr.safe_request("GET", "https://example.com")
@@ -275,28 +338,40 @@ class TestSafeRequest:
 
 class TestSafeRequestLLMEndpoint:
     def test_uses_llm_validator(self, mocker):
-        validate = mocker.patch.object(sr.SSRFValidator, "validate_llm_endpoint", return_value="http://10.0.0.5:8000")
-        req = mocker.patch.object(sr.requests, "request", return_value=_make_response())
+        validate = mocker.patch.object(
+            sr.SSRFValidator,
+            "validate_llm_endpoint_target",
+            return_value=_target("http://10.0.0.5:8000/v1", ip="10.0.0.5"),
+        )
+        session = _patch_session(mocker)
 
         resp = sr.safe_request_llm_endpoint("POST", "http://10.0.0.5:8000/v1")
         assert resp.status_code == 200
         validate.assert_called_once_with("http://10.0.0.5:8000/v1")
-        assert req.call_args[0][1] == "http://10.0.0.5:8000"
+        assert session.request.call_args[0][1] == "http://10.0.0.5:8000/v1"
+        assert session.request.call_args.kwargs["headers"]["Host"] == "10.0.0.5:8000"
 
     def test_llm_redirect_blocked(self, mocker):
-        mocker.patch.object(sr.SSRFValidator, "validate_llm_endpoint", return_value="http://10.0.0.5")
-        mocker.patch.object(sr.requests, "request", return_value=_make_response(is_redirect=True, location="http://x"))
+        mocker.patch.object(
+            sr.SSRFValidator,
+            "validate_llm_endpoint_target",
+            return_value=_target("http://10.0.0.5", ip="10.0.0.5"),
+        )
+        _patch_session(mocker, return_value=_make_response(is_redirect=True, location="http://x"))
         with pytest.raises(SSRFError):
             sr.safe_request_llm_endpoint("GET", "http://10.0.0.5", allow_redirects=False)
 
     def test_llm_303_uses_get_without_body(self, mocker):
         mocker.patch.object(
             sr.SSRFValidator,
-            "validate_llm_endpoint",
-            side_effect=["http://10.0.0.5/v1", "http://10.0.0.6/v1"],
+            "validate_llm_endpoint_target",
+            side_effect=[
+                _target("http://10.0.0.5/v1", ip="10.0.0.5"),
+                _target("http://10.0.0.6/v1", ip="10.0.0.6"),
+            ],
         )
         first = _make_response(status_code=303, location="http://10.0.0.6/v1")
-        req = mocker.patch.object(sr.requests, "request", side_effect=[first, _make_response()])
+        session = _patch_session(mocker, side_effect=[first, _make_response()])
 
         sr.safe_request_llm_endpoint(
             "POST",
@@ -306,14 +381,18 @@ class TestSafeRequestLLMEndpoint:
             json={"prompt": "hello"},
         )
 
-        redirect_call = req.call_args_list[1]
+        redirect_call = session.request.call_args_list[1]
         assert redirect_call.args == ("GET", "http://10.0.0.6/v1")
-        assert redirect_call.kwargs["headers"] == {}
+        assert "Authorization" not in redirect_call.kwargs["headers"]
         assert "json" not in redirect_call.kwargs
 
     def test_llm_request_exception_wrapped(self, mocker):
-        mocker.patch.object(sr.SSRFValidator, "validate_llm_endpoint", return_value="http://10.0.0.5")
-        mocker.patch.object(sr.requests, "request", side_effect=requests.Timeout("t"))
+        mocker.patch.object(
+            sr.SSRFValidator,
+            "validate_llm_endpoint_target",
+            return_value=_target("http://10.0.0.5", ip="10.0.0.5"),
+        )
+        _patch_session(mocker, side_effect=requests.Timeout("t"))
         with pytest.raises(sr.SafeRequestsError):
             sr.safe_request_llm_endpoint("GET", "http://10.0.0.5")
 
