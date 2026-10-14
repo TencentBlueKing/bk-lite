@@ -6,6 +6,7 @@ import useMonitorApi from '@/app/monitor/api';
 import { DashboardShell } from '../common/dashboard-components';
 import { useSimpleDashboardData } from '../common/simple-dashboard-core';
 import { HOST_DASHBOARD_CONFIG } from './config';
+import { HOST_PERFORMANCE_METRIC_NAMES } from './layered/performance-scope';
 import {
   HOST_CPU_CORE_ENTITY_QUERIES,
   HOST_DISK_ENTITY_QUERIES,
@@ -25,19 +26,25 @@ import {
 import styles from './index.module.scss';
 
 export default function HostDashboardPage() {
-  const dashboard = useSimpleDashboardData(HOST_DASHBOARD_CONFIG);
   const router = useRouter();
   const monitorApi = useMonitorApi();
   const apiRef = useRef(monitorApi);
   apiRef.current = monitorApi;
   const searchParams = useSearchParams();
+  const [processReady, setProcessReady] = useState(false);
+  const [categoryTab, setCategoryTab] = useState('overview');
+  const [coreReloadKey, setCoreReloadKey] = useState(0);
+  const layout = readHostDetailLayout(new URLSearchParams(searchParams.toString()));
+  const dashboard = useSimpleDashboardData(
+    HOST_DASHBOARD_CONFIG,
+    layout === 'category' && categoryTab === 'system'
+      ? { metricNames: HOST_PERFORMANCE_METRIC_NAMES }
+      : undefined
+  );
   const instanceIdKeys = useMemo(
     () => (searchParams.get('instance_id_keys') || 'instance_id').split(',').filter(Boolean),
     [searchParams]
   );
-  const [processReady, setProcessReady] = useState(false);
-  const [categoryTab, setCategoryTab] = useState('overview');
-  const layout = readHostDetailLayout(new URLSearchParams(searchParams.toString()));
 
   const {
     idValues,
@@ -80,7 +87,8 @@ export default function HostDashboardPage() {
   const coreState = useHostEntityMetrics({
     ...entityArgs,
     enabled: categoryCore,
-    queries: HOST_CPU_CORE_ENTITY_QUERIES
+    queries: HOST_CPU_CORE_ENTITY_QUERIES,
+    reloadKey: coreReloadKey
   });
 
   useEffect(() => {
@@ -120,7 +128,8 @@ export default function HostDashboardPage() {
     layout,
     onLayoutChange,
     categoryTab,
-    onCategoryTabChange: setCategoryTab
+    onCategoryTabChange: setCategoryTab,
+    onRetryCore: () => setCoreReloadKey((key) => key + 1)
   };
 
   return (

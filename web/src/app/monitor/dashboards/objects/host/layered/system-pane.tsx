@@ -13,6 +13,7 @@ import type { EntityTableRow } from '../entity-series';
 import { pointsToChartData } from '../entity-series';
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
 import ThinTimeSeries from './thin-time-series';
+import { metricBlockPhase, type MetricBlockPhase } from './performance-scope';
 import {
   deriveRatioPercent,
   deriveSwapUsedPercentSeries,
@@ -50,14 +51,36 @@ const splitMetric = (value: number | null, unit: MetricUnit) => {
   return { value: formatted.value, unit: formatted.unit };
 };
 
+const EMPTY_PENDING: ReadonlySet<string> = new Set();
+
+const loadStateOf = (
+  metrics: Record<string, MetricSeries | undefined>,
+  names: readonly string[]
+) => {
+  const states: Record<string, 'success' | 'error' | undefined> = {};
+  names.forEach((name) => {
+    const state = metrics[name]?.loadState;
+    if (state === 'success' || state === 'error') states[name] = state;
+  });
+  return states;
+};
+
 export default function SystemPane({
   metrics,
-  loading,
-  coreRows = []
+  pendingMetricNames = EMPTY_PENDING,
+  onRetryMetrics,
+  coreRows = [],
+  coreLoading = false,
+  coreFailed = false,
+  onRetryCore
 }: {
   metrics: Record<string, MetricSeries | undefined>;
-  loading: boolean;
+  pendingMetricNames?: ReadonlySet<string>;
+  onRetryMetrics?: (names: string[]) => void;
   coreRows?: EntityTableRow[];
+  coreLoading?: boolean;
+  coreFailed?: boolean;
+  onRetryCore?: () => void;
 }) {
   const { t } = useDashboardText();
   const [selectedCoreKey, setSelectedCoreKey] = useState('');
@@ -113,19 +136,41 @@ export default function SystemPane({
     ? (swapUsedRaw != null ? swapUsedRaw : swapFree != null ? swapTotal - swapFree : null)
     : null;
   const swapHint = hostCategoryText(t, swapAbsent ? 'swapAbsentHint' : 'swapUsedHint');
+  const phaseFor = (names: readonly string[], hasValue: boolean): MetricBlockPhase => (
+    metricBlockPhase(names, pendingMetricNames, loadStateOf(metrics, names), hasValue)
+  );
+  const retry = (names: readonly string[]) => () => onRetryMetrics?.([...names]);
+  const cpuNames = ['cpu_usage_total'] as const;
+  const memKpiNames = ['mem_used_percent'] as const;
+  const availNames = ['mem_available'] as const;
+  const swapNames = ['host_mem_swap_used_bytes', 'host_mem_swap_total_bytes', 'mem_swap_free'] as const;
+  const uptimeNames = ['system_uptime'] as const;
+  const memTrendNames = ['mem_used_percent', 'mem_available', 'mem_total'] as const;
+  const loadNames = LOAD_SERIES.map((item) => item.key);
+  const breakdownNames = CPU_BREAKDOWN.map((item) => item.key);
+  const loadActive = loadNames.some((name) => pendingMetricNames.has(name) || metrics[name]);
+  const cpuPhase = phaseFor(cpuNames, metricHasPoints(metrics.cpu_usage_total));
+  const memPhase = phaseFor(memTrendNames, memItems.length > 0);
+  const loadPhase = phaseFor(loadNames, loadItems.length > 0);
+  const breakdownPhase = phaseFor(breakdownNames, breakdown.length > 0);
+  const swapPhase = phaseFor(swapNames, swapSeries.length > 0 || swapAbsent);
   const instantCards: Array<{
     key: string;
     label: string;
     value: string;
     unit: string;
     hint?: string;
+    names: readonly string[];
+    phase: MetricBlockPhase;
   }> = [
-    { key: 'cpu', label: 'CPU', ...splitMetric(cpuNow, 'percent') },
-    { key: 'mem', label: '内存', ...splitMetric(memNow, 'percent') },
-    { key: 'avail', label: '可用内存', ...splitMetric(availNow, 'bytes') },
+    { key: 'cpu', label: 'CPU', names: cpuNames, phase: phaseFor(cpuNames, cpuNow != null), ...splitMetric(cpuNow, 'percent') },
+    { key: 'mem', label: '内存', names: memKpiNames, phase: phaseFor(memKpiNames, memNow != null), ...splitMetric(memNow, 'percent') },
+    { key: 'avail', label: '可用内存', names: availNames, phase: phaseFor(availNames, availNow != null), ...splitMetric(availNow, 'bytes') },
     {
       key: 'swap',
       label: hostCategoryText(t, 'swapUtilization'),
+      names: swapNames,
+      phase: phaseFor(swapNames, swapConfigured || swapAbsent),
       value: swapConfigured ? formatBytesPair(swapUsedBytes, swapTotal) : '--',
       unit: '',
       hint: swapHint
@@ -133,6 +178,8 @@ export default function SystemPane({
     {
       key: 'uptime',
       label: hostCategoryText(t, 'uptime'),
+      names: uptimeNames,
+      phase: phaseFor(uptimeNames, uptimeNow != null),
       value: uptimeNow == null ? '--' : formatDuration(uptimeNow),
       unit: ''
     }
@@ -141,9 +188,11 @@ export default function SystemPane({
     <ThinTimeSeries
       key="cpu"
       title={hostCategoryText(t, 'cpuUtilization')}
-      loading={loading}
+      loading={cpuPhase === 'loading'}
       unit="percent"
-      data={metrics.cpu_usage_total?.viewData || []}
+      data={metricHasPoints(metrics.cpu_usage_total) ? metrics.cpu_usage_total?.viewData || [] : []}
+      emptyText={cpuPhase === 'error' ? '加载失败' : '暂无数据'}
+      onRetry={cpuPhase === 'error' ? retry(cpuNames) : undefined}
       legends={[{
         label: 'CPU',
         color: HOST_PALETTE.blue
@@ -152,13 +201,15 @@ export default function SystemPane({
     <ThinTimeSeries
       key="mem"
       title={hostCategoryText(t, 'memoryUtilization')}
-      loading={loading}
+      loading={memPhase === 'loading'}
       unit="percent"
-      data={mergeChartSeries(memItems.map((item) => ({
+      data={memItems.length ? mergeChartSeries(memItems.map((item) => ({
         key: item.key,
         label: item.label,
         data: item.data
-      })))}
+      }))) : []}
+      emptyText={memPhase === 'error' ? '加载失败' : '暂无数据'}
+      onRetry={memPhase === 'error' ? retry(memTrendNames) : undefined}
       legends={memItems.map((item) => {
         const value = item.key === 'used' ? used : availLatest;
         return {
@@ -168,17 +219,19 @@ export default function SystemPane({
         };
       })}
     />,
-    loadItems.length ? (
+    loadActive ? (
       <ThinTimeSeries
         key="load"
         title="系统负载"
-        loading={loading}
+        loading={loadPhase === 'loading'}
         unit="none"
-        data={mergeChartSeries(loadItems.map((item) => ({
+        data={loadItems.length ? mergeChartSeries(loadItems.map((item) => ({
           key: item.key,
           label: item.label,
           data: metrics[item.key]?.viewData || []
-        })))}
+        }))) : []}
+        emptyText={loadPhase === 'error' ? '加载失败' : '暂无数据'}
+        onRetry={loadPhase === 'error' ? retry(loadNames) : undefined}
         legends={loadItems.map((item) => ({
           label: item.label,
           color: item.color
@@ -192,36 +245,66 @@ export default function SystemPane({
   const selectedCoreAvg = selectedCore?.values.cpu_usage_core_avg;
   const corePeak = coreRows.reduce((peak, row) => Math.max(peak, row.values.cpu_usage_core_avg || 0), 0);
   const detailCards = [
-    breakdown.length ? (
-      <ThinTimeSeries
-        key="cpu-breakdown"
-        title={hostCategoryText(t, 'cpuTimeBreakdown')}
-        loading={loading}
-        unit="percent"
-        data={mergeChartSeries(breakdown.map((item) => ({
-          key: item.key,
-          label: item.label,
-          data: metrics[item.key]?.viewData || []
-        })))}
-        legends={breakdown.map((item) => ({
-          label: item.label,
-          color: item.color
-        }))}
-      />
-    ) : null,
+    <ThinTimeSeries
+      key="cpu-breakdown"
+      title={hostCategoryText(t, 'cpuTimeBreakdown')}
+      loading={breakdownPhase === 'loading'}
+      unit="percent"
+      data={breakdown.length ? mergeChartSeries(breakdown.map((item) => ({
+        key: item.key,
+        label: item.label,
+        data: metrics[item.key]?.viewData || []
+      }))) : []}
+      emptyText={breakdownPhase === 'error' ? '加载失败' : '暂无数据'}
+      onRetry={breakdownPhase === 'error' ? retry(breakdownNames) : undefined}
+      legends={breakdown.map((item) => ({
+        label: item.label,
+        color: item.color
+      }))}
+    />,
     <ThinTimeSeries
       key="swap"
       title={hostCategoryText(t, 'swapUtilization')}
       hint={swapHint}
-      loading={loading}
+      loading={swapPhase === 'loading'}
       unit="percent"
-      emptyText={swapAbsent ? hostCategoryText(t, 'swapAbsentHint') : undefined}
+      emptyText={swapPhase === 'error'
+        ? '加载失败'
+        : swapAbsent
+          ? hostCategoryText(t, 'swapAbsentHint')
+          : undefined}
+      onRetry={swapPhase === 'error' ? retry(swapNames) : undefined}
       data={swapSeries}
       legends={[{
         label: hostCategoryText(t, 'utilization'),
         color: HOST_PALETTE.indigo
       }]}
     />,
+    coreLoading ? (
+      <section key="cores" className={`${classic.panel} ${styles.chartPanel}`}>
+        <div className={styles.chartHead}>
+          <div className={styles.chartTitle}>{hostCategoryText(t, 'perCoreCpuUtilization')}</div>
+        </div>
+        <div className={styles.chartBody}>
+          <div className={styles.chartEmpty}>加载中</div>
+        </div>
+      </section>
+    ) : null,
+    coreFailed ? (
+      <section key="cores-error" className={`${classic.panel} ${styles.chartPanel}`}>
+        <div className={styles.chartHead}>
+          <div className={styles.chartTitle}>{hostCategoryText(t, 'perCoreCpuUtilization')}</div>
+        </div>
+        <div className={styles.chartBody}>
+          <div className={styles.chartEmpty}>
+            加载失败
+            <button type="button" className="ml-2 text-[var(--color-primary)]" onClick={onRetryCore}>
+              重试
+            </button>
+          </div>
+        </div>
+      </section>
+    ) : null,
     coreRows.length && selectedCore ? (
       <section key="cores" className={`${classic.panel} ${styles.chartPanel}`}>
         <div className={styles.chartHead}>
@@ -271,7 +354,7 @@ export default function SystemPane({
           <ThinTimeSeries
             bare
             title=""
-            loading={loading && !selectedCore.series.cpu_usage_core?.length}
+            loading={false}
             unit="percent"
             data={pointsToChartData([{ points: selectedCore.series.cpu_usage_core || [] }])}
             legends={[{
@@ -311,10 +394,26 @@ export default function SystemPane({
                 </span>
               ) : card.label}
             </div>
-            <div className={styles.instantKpiValue}>
-              {card.value}
-              {card.unit ? <span className={styles.instantKpiUnit}>{card.unit}</span> : null}
-            </div>
+            {card.phase === 'loading' ? (
+              <span
+                className="mt-1 block h-4 w-16 rounded bg-[var(--color-fill-2)]"
+                aria-busy="true"
+                aria-label="加载中"
+              />
+            ) : card.phase === 'error' ? (
+              <button
+                type="button"
+                className="mt-1 text-left text-[12px] text-[var(--color-text-3)]"
+                onClick={retry(card.names)}
+              >
+                加载失败，重试
+              </button>
+            ) : (
+              <div className={styles.instantKpiValue}>
+                {card.value}
+                {card.unit ? <span className={styles.instantKpiUnit}>{card.unit}</span> : null}
+              </div>
+            )}
           </section>
         ))}
       </div>

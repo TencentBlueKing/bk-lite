@@ -26,6 +26,7 @@ export function useHostEntityMetrics(options: {
   instanceId: React.Key;
   minStepSeconds?: unknown;
   isDashboardMode: boolean;
+  reloadKey?: number;
 }): EntityLoadState {
   const { getInstanceQuery } = useViewApi();
   const queryRef = useRef(getInstanceQuery);
@@ -40,7 +41,8 @@ export function useHostEntityMetrics(options: {
     monitorObjectId,
     instanceId,
     minStepSeconds,
-    isDashboardMode
+    isDashboardMode,
+    reloadKey = 0
   } = options;
   const idKey = JSON.stringify(idValues);
   const timeKey = JSON.stringify(timeValues);
@@ -96,7 +98,7 @@ export function useHostEntityMetrics(options: {
     };
     // idValues 由 idKey 锁定；query 引用用 ref，避免 hook 返回新函数导致重复请求。
     // 不跟 loadTick：核心盘刷新不再连带重打维度表。
-  }, [enabled, isDashboardMode, idKey, timeKey, queryKey, monitorObjectId, instanceId, minStepSeconds]);
+  }, [enabled, isDashboardMode, idKey, timeKey, queryKey, monitorObjectId, instanceId, minStepSeconds, reloadKey]);
 
   return state;
 }

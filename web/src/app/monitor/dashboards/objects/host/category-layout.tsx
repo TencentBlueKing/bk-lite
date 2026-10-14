@@ -150,7 +150,8 @@ export default function HostCategoryLayout({
   processReady,
   processState = EMPTY_ENTITY,
   categoryTab = 'overview',
-  onCategoryTabChange
+  onCategoryTabChange,
+  onRetryCore
 }: HostDetailLayoutProps) {
   const { getMonitorAlert } = useMonitorApi();
   const [uncontrolledTab, setUncontrolledTab] = useState('overview');
@@ -288,9 +289,13 @@ export default function HostCategoryLayout({
     if (activeTab === 'system') {
       return (
         <SystemPane
-          metrics={metrics}
-          loading={dashboard.loading}
-          coreRows={coreRows}
+          metrics={dashboard.metricSeries}
+          pendingMetricNames={dashboard.pendingMetricNames}
+          onRetryMetrics={dashboard.refetchMetricNames}
+          coreRows={coreState.status === 'ready' ? coreRows : []}
+          coreLoading={coreState.status === 'idle' || coreState.status === 'loading'}
+          coreFailed={coreState.status === 'error'}
+          onRetryCore={onRetryCore}
         />
       );
     }

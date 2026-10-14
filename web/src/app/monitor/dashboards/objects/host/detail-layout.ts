@@ -52,4 +52,5 @@ export interface HostDetailLayoutProps {
   onLayoutChange?: (mode: string) => void;
   categoryTab?: string;
   onCategoryTabChange?: (tab: string) => void;
+  onRetryCore?: () => void;
 }

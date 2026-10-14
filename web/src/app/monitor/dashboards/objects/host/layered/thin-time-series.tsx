@@ -34,6 +34,7 @@ interface ThinTimeSeriesProps {
   hint?: string;
   /** 嵌进已有卡片时不再套一层 panel。 */
   bare?: boolean;
+  onRetry?: () => void;
 }
 
 const areaKeys = (data: ChartData[]) => {
@@ -64,7 +65,8 @@ export default function ThinTimeSeries({
   readingTone,
   emptyText = '暂无数据',
   hint,
-  bare = false
+  bare = false,
+  onRetry
 }: ThinTimeSeriesProps) {
   const theme = useThemeColors();
   const axisColor = theme['--color-border'];
@@ -201,7 +203,18 @@ export default function ThinTimeSeries({
       ) : null}
       <div className={styles.chartBody}>
         {loading || !data.length ? (
-          <div className={styles.chartEmpty}>{loading ? '加载中' : emptyText}</div>
+          <div className={styles.chartEmpty}>
+            {loading ? '加载中' : emptyText}
+            {!loading && onRetry ? (
+              <button
+                type="button"
+                className="ml-2 text-[var(--color-primary)]"
+                onClick={onRetry}
+              >
+                重试
+              </button>
+            ) : null}
+          </div>
         ) : (
           <div ref={containerRef} className="h-full w-full" />
         )}
