@@ -4,7 +4,7 @@ import json
 
 import oracledb
 from langchain_core.runnables import RunnableConfig
-from loguru import logger
+from apps.core.logger import opspilot_logger as logger
 
 from apps.opspilot.metis.llm.tools.common.sql_guard import log_db_failure, run_blocking
 from apps.opspilot.metis.llm.tools.common.sql_guard import validate_sql_safety as _shared_validate_sql_safety

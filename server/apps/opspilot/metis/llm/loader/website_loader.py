@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 from langchain_community.document_loaders import RecursiveUrlLoader
 from langchain_community.document_transformers import BeautifulSoupTransformer
 from langchain_core.documents import Document
-from loguru import logger
+from apps.core.logger import opspilot_logger as logger
 
 from apps.core.utils.safe_requests import SafeRequestsError, safe_get
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator

@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional, Union
 from jinja2 import FileSystemLoader, Template, TemplateNotFound
 from jinja2.defaults import DEFAULT_FILTERS
 from jinja2.sandbox import SandboxedEnvironment
-from loguru import logger
+from apps.core.logger import opspilot_logger as logger
 
 from apps.core.utils.safe_template import build_trusted_file_template_env
 
