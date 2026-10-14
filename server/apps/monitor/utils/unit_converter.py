@@ -152,6 +152,12 @@ class UnitConverter:
             logger.debug(f"单位 '{source_unit}' 不支持转换或是独立单位")
             return source_unit
 
+        # percent（0–100）与 percentunit（0–1）展示符号同为 '%'，不是 KB/MB 这类进位。
+        # 查询已按 percent 写出 100 时，若按数量级改成 percentunit(=1)，曲线会显示成 1%。
+        # percentunit → percent 仍走下面的建议逻辑（0.5 显示为 50%）。
+        if system_name == "percent" and normalized_unit == "percent":
+            return normalized_unit
+
         # 获取体系配置
         system_config = UnitConverterConstants.UNIT_SYSTEMS.get(system_name)
         if not system_config:

@@ -15,15 +15,20 @@ import { WorkflowPermission } from './workflow-permission';
 
 const API = '/workflow_orchestration/api/atom-config-templates';
 const PAGE_SIZE = 10;
+export const ATOM_CONFIG_TEMPLATE_NODE_TITLE_KEY = '__node_title';
 
 export function AtomConfigTemplateActions({
   atomKey,
   parameters,
+  nodeTitle,
   onLoad,
+  onLoadNodeTitle,
 }: {
   atomKey: string;
   parameters: Record<string, unknown>;
+  nodeTitle?: string;
   onLoad: (parameters: Record<string, unknown>) => void;
+  onLoadNodeTitle?: (title: string) => void;
 }) {
   const { get, post, patch, del } = useApiClient();
   const { message } = App.useApp();
@@ -94,7 +99,10 @@ export function AtomConfigTemplateActions({
         await post<AtomConfigTemplateRecord>(`${API}/`, {
           name: values.name.trim(),
           atom_key: atomKey,
-          parameters,
+          parameters: {
+            ...parameters,
+            ...(typeof nodeTitle === 'string' ? { [ATOM_CONFIG_TEMPLATE_NODE_TITLE_KEY]: nodeTitle } : {}),
+          },
         });
         message.success(t('workflowOrchestration.editor.configTemplateSaved', '配置模板已保存'));
       }
@@ -114,7 +122,11 @@ export function AtomConfigTemplateActions({
   };
 
   const applyTemplate = (template: AtomConfigTemplateRecord) => {
-    onLoad(structuredClone(template.parameters));
+    const next = structuredClone(template.parameters) as Record<string, unknown>;
+    const title = next[ATOM_CONFIG_TEMPLATE_NODE_TITLE_KEY];
+    delete next[ATOM_CONFIG_TEMPLATE_NODE_TITLE_KEY];
+    onLoad(next);
+    if (typeof title === 'string') onLoadNodeTitle?.(title);
     setLoadOpen(false);
     message.success(t('workflowOrchestration.editor.configTemplateLoaded', '配置模板已加载'));
   };
@@ -125,7 +137,6 @@ export function AtomConfigTemplateActions({
       dataIndex: 'name',
       key: 'name',
       ellipsis: true,
-      render: (name: string) => <span className="font-medium text-[var(--color-text-1)]">{name}</span>,
     },
     {
       title: t('workflowOrchestration.editor.configTemplateUpdatedBy', '更新人'),
@@ -219,9 +230,10 @@ export function AtomConfigTemplateActions({
       width={780}
       destroyOnHidden
       footer={null}
+      styles={{ body: { overflowY: 'hidden', maxHeight: 'calc(80vh - 108px)' } }}
       onCancel={() => setLoadOpen(false)}
     >
-      <div className="flex h-[480px] flex-col gap-4 pt-2">
+      <div className="flex h-[420px] max-h-[calc(80vh-200px)] flex-col gap-4 overflow-hidden pt-2">
         <p className="mb-0 shrink-0 text-[11px] leading-4 text-[var(--color-text-4)]">
           {t('workflowOrchestration.editor.sharedConfigTemplateHint', '当前组织成员共享这些模板；选用后会覆盖当前节点参数。')}
         </p>
@@ -233,7 +245,7 @@ export function AtomConfigTemplateActions({
           onChange={(event) => setQuery(event.target.value)}
           onSearch={(value) => void loadTemplates({ nextQuery: value, nextPage: 1 })}
         />
-        <div className="min-h-0 flex-1">
+        <div className="min-h-0 flex-1 overflow-hidden">
           <CustomTable<AtomConfigTemplateRecord>
             rowKey="id"
             size="small"

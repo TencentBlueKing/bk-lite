@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { RumReplayManifest } from '@/app/rum/api';
-import { loadReplayRecording } from '@/app/rum/sessions/lib/replay-data';
+import { loadReplayRecording, replayErrorMessage, RumReplayError } from '@/app/rum/sessions/lib/replay-data';
 
 function baseManifest(overrides: Partial<RumReplayManifest> = {}): RumReplayManifest {
   return {
@@ -36,7 +36,7 @@ describe('loadReplayRecording', () => {
         'rec-1',
         vi.fn(),
       ),
-    ).rejects.toThrow('回放录制为空');
+    ).rejects.toMatchObject({ name: 'RumReplayError', code: 'replay_empty' });
   });
 
   it('rejects grants that omit the target segment', async () => {
@@ -46,13 +46,21 @@ describe('loadReplayRecording', () => {
     });
     await expect(
       loadReplayRecording(baseManifest(), 'store', 'sess', 'rec-1', createReplayGrant),
-    ).rejects.toThrow('回放授权不包含目标分段');
+    ).rejects.toMatchObject({ name: 'RumReplayError', code: 'replay_grant_missing' });
     expect(createReplayGrant).toHaveBeenCalledWith('store', 'sess', 'seg-1');
   });
 
   it('rejects unknown recording ids', async () => {
     await expect(
       loadReplayRecording(baseManifest(), 'store', 'sess', 'missing', vi.fn()),
-    ).rejects.toThrow('回放录制为空');
+    ).rejects.toBeInstanceOf(RumReplayError);
+  });
+
+  it('translates stable replay error codes', () => {
+    const error = new RumReplayError('replay_empty');
+    expect(replayErrorMessage(error, (key) => key)).toBe('rum.sessions.replayErrors.empty');
+    expect(replayErrorMessage(new Error('raw'), (key, fallback) => fallback)).toBe(
+      'Failed to read replay segment',
+    );
   });
 });

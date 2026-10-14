@@ -638,9 +638,17 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
   const changeTaskTitle = (value: string) => {
     if (!selectedTask) return;
     const nodeTitles = { ...(metadata.node_titles || {}) };
-    if (value) nodeTitles[selectedTask.taskReferenceName] = value;
-    else delete nodeTitles[selectedTask.taskReferenceName];
+    nodeTitles[selectedTask.taskReferenceName] = value;
     changeMetadata({ ...snapshotMetadata(), node_titles: nodeTitles });
+  };
+
+  const resolveEditableNodeTitle = (fallback: string) => {
+    if (!selectedTask) return fallback;
+    const titles = metadata.node_titles || {};
+    if (Object.prototype.hasOwnProperty.call(titles, selectedTask.taskReferenceName)) {
+      return titles[selectedTask.taskReferenceName] ?? '';
+    }
+    return fallback;
   };
 
   const cacheInspectorTestData = (key: string, value: unknown) => {
@@ -1315,7 +1323,9 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
         parameterActions={!readOnly && selectedTask?.type === 'SIMPLE' && selectedAtom ? <AtomConfigTemplateActions
           atomKey={selectedAtom.key}
           parameters={selectedTask.inputParameters || {}}
+          nodeTitle={resolveEditableNodeTitle(selectedAtom.name || selectedTask.name)}
           onLoad={changeTaskInputs}
+          onLoadNodeTitle={changeTaskTitle}
         /> : undefined}
         outputSchema={selectedTrigger?.trigger_type === 'SCHEDULE' ? scheduleOutputSchema : selectedTrigger?.trigger_type === 'WEBHOOK' ? webhookInputSchema : selectedTrigger?.input_schema || selectedAtom?.output_schema}
         outputData={metadata.node_test_data?.[selectedNode.id]}
@@ -1382,7 +1392,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                 schema={selectedAtom?.input_schema}
                 value={selectedTask.inputParameters || {}}
                 references={references}
-                nodeTitle={selectedNode?.data.title || selectedAtom?.name || selectedTask.name}
+                nodeTitle={resolveEditableNodeTitle(selectedAtom?.name || selectedTask.name)}
                 readOnly={readOnly}
                 workflowId={workflow.id || null}
                 onChange={changeTaskInputs}
@@ -1394,7 +1404,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                   schema={selectedAtom?.input_schema}
                   value={selectedTask.inputParameters || {}}
                   references={references}
-                  nodeTitle={selectedNode?.data.title || selectedAtom?.name || selectedTask.name}
+                  nodeTitle={resolveEditableNodeTitle(selectedAtom?.name || selectedTask.name)}
                   readOnly={readOnly}
                   targetRecords={jobTargetRecords}
                   fieldActions={readOnly ? {} : {
@@ -1413,7 +1423,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                     value={selectedTask.inputParameters || {}}
                     references={references}
                     workflowId={workflow.id || null}
-                    nodeTitle={selectedNode?.data.title || selectedAtom?.name || selectedTask.name}
+                    nodeTitle={resolveEditableNodeTitle(selectedAtom?.name || selectedTask.name)}
                     readOnly={readOnly}
                     onChange={changeTaskInputs}
                     onNodeTitleChange={changeTaskTitle}
@@ -1424,7 +1434,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
                     value={selectedTask.inputParameters || {}}
                     references={references}
                     atomKey={selectedTask.name}
-                    nodeTitle={selectedNode?.data.title || selectedAtom?.name || selectedTask.name}
+                    nodeTitle={resolveEditableNodeTitle(selectedAtom?.name || selectedTask.name)}
                     readOnly={readOnly}
                     onChange={changeTaskInputs}
                     onNodeTitleChange={changeTaskTitle}
@@ -1433,7 +1443,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
               value={selectedCondition}
               references={references}
               readOnly={readOnly}
-              nodeTitle={selectedNode?.data.title || t('workflowOrchestration.editor.conditionBranch', '条件分支')}
+              nodeTitle={resolveEditableNodeTitle(t('workflowOrchestration.editor.conditionBranch', '条件分支'))}
               onChange={changeCondition}
               onNodeTitleChange={changeTaskTitle}
             />}
@@ -1441,7 +1451,7 @@ export function WorkflowOrchestrationConsole({ workflowId, initialName, mode = '
               <Form.Item className="mb-0" label={t('workflowOrchestration.editor.nodeName', '节点名称')} required>
                 <Input
                   disabled={readOnly}
-                  value={selectedNode?.data.title || t('workflowOrchestration.editor.humanApproval', '人工审批')}
+                  value={resolveEditableNodeTitle(t('workflowOrchestration.editor.humanApproval', '人工审批'))}
                   placeholder={t('workflowOrchestration.editor.enterNodeName', '请输入节点名称')}
                   onChange={(event) => changeTaskTitle(event.target.value)}
                 />

@@ -1,4 +1,5 @@
 import logging
+import sys
 import traceback
 from pathlib import Path
 
@@ -26,6 +27,13 @@ def safe_exception_info(error: BaseException):
     """Preserve traceback frames while replacing the exception body with a controlled message."""
     safe_error = SafeLogException(type(error).__name__)
     return SafeLogException, safe_error, error.__traceback__
+
+
+def configure_loguru(*, sink=None) -> None:
+    """Turn off loguru diagnose so traceback frames do not render locals such as passwords."""
+    from loguru import logger as loguru_logger
+
+    loguru_logger.configure(handlers=[{"sink": sink or sys.stderr, "diagnose": False, "backtrace": True}])
 
 
 logger = logging.getLogger("app")

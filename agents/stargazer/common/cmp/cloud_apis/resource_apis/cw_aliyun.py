@@ -2,7 +2,6 @@
 import copy
 import datetime
 import json
-import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -142,8 +141,8 @@ from common.cmp.utils import (
     generate_serial_number,
     set_dir_size,
 )
+from core.logger import logger
 
-logger = logging.getLogger("root")
 
 RESOURCE_MAP = {
     "region": ("Regions", "Region"),

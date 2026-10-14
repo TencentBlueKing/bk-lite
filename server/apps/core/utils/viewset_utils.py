@@ -517,11 +517,18 @@ class AuthViewSet(MaintainerViewSet):
                             for item in parsed:
                                 try:
                                     normalized.append(int(item))
-                                except Exception:
+                                except (TypeError, ValueError) as exc:
+                                    logger.debug(
+                                        "event=org_value_skipped failed_stage=json_item error_type=%s",
+                                        type(exc).__name__,
+                                    )
                                     continue
                             continue
-                    except Exception:
-                        pass
+                    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                        logger.debug(
+                            "event=org_value_skipped failed_stage=json_list error_type=%s",
+                            type(exc).__name__,
+                        )
 
                 if "," in v:
                     for item in v.split(","):
@@ -530,13 +537,21 @@ class AuthViewSet(MaintainerViewSet):
                             continue
                         try:
                             normalized.append(int(item))
-                        except Exception:
+                        except (TypeError, ValueError) as exc:
+                            logger.debug(
+                                "event=org_value_skipped failed_stage=csv_item error_type=%s",
+                                type(exc).__name__,
+                            )
                             continue
                     continue
 
                 try:
                     normalized.append(int(v))
-                except Exception:
+                except (TypeError, ValueError) as exc:
+                    logger.debug(
+                        "event=org_value_skipped failed_stage=scalar error_type=%s",
+                        type(exc).__name__,
+                    )
                     continue
 
         return normalized

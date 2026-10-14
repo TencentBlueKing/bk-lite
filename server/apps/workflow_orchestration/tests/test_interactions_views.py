@@ -71,6 +71,25 @@ def test_candidate_approval_is_created_by_real_submission_and_only_advances_once
 
 
 @pytest.mark.django_db(transaction=True)
+def test_terminated_execution_rejects_approval_decision(approver, mocker):
+    interaction = _pending_approval()
+    interaction.execution.status = WorkflowExecution.Status.TERMINATED
+    interaction.execution.save(update_fields=["status", "updated_at"])
+    conductor = mocker.patch("apps.workflow_orchestration.views.ConductorClient").return_value
+    decide = WorkflowInteractionViewSet.as_view({"post": "decide"})
+
+    response = decide(
+        _request("post", f"/interactions/{interaction.id}/decide/", approver, {"decision": "APPROVED"}),
+        pk=interaction.id,
+    )
+
+    interaction.refresh_from_db()
+    assert response.status_code == 409
+    assert interaction.status == WorkflowInteraction.Status.PENDING
+    conductor.complete_task.assert_not_called()
+
+
+@pytest.mark.django_db(transaction=True)
 def test_candidate_with_view_only_workflow_scope_can_decide_approval(mocker):
     candidate = get_user_model().objects.create(username="alice", domain="example.com")
     candidate.group_list = [{"id": 7, "name": "Current"}]

@@ -49,7 +49,7 @@ Maintainer 必填 `-replay-index-epoch`（RFC3339 格式的回放索引切换时
 | `rum_replay_index_maintainer_redis_password` | Maintainer | Redis 密码或密码文件；ACL 用户名可选 |
 | `rum_maintainer_minio_secret` | Maintainer | MinIO secret key；access key 不能是 `minioadmin` |
 
-生产 Controller 连 NATS 必须 `tls://` + NKey/creds，**去掉** `-nats-insecure`（仅本地夹具使用）。
+生产 Controller 使用 `tls://`，身份用 `-nats-user` 加 `-nats-password-file`，也可以改用 NKey 或 creds 文件。`-nats-insecure` 只给本地夹具：明文 `nats://`，口令放在 `-nats-password-file`。旧的 URL 内嵌口令仍然可用。
 
 ### 启动成功判据
 
@@ -78,14 +78,16 @@ Maintainer 必填 `-replay-index-epoch`（RFC3339 格式的回放索引切换时
 
 ### Edge
 
-Edge 是平台现有的公网反向代理（Traefik），不是 RUM 要新打的镜像，也不进 `bklite/rum-collector`。
+Edge 是平台现有的公网反向代理（Traefik），不是 RUM 要新打的镜像，也不进 `bklite/rum-collector`。浏览器只访问控制台域名的 `443`，证书沿用平台现有证书，不新开域名，也不把 `4319` / `4320` 直接公布到公网。
 
-浏览器只经过 Edge 访问 Gateway：
+在现有 `443` 入口上加两条路由。它们必须比控制台的总路由更优先，否则请求会先落到 Web，到不了 Gateway。不要套 OpenAPI 的登录校验；Browser Key 和 Origin 由 Gateway 自己检查。
 
-| 公网路径 | 转到 Gateway |
-| --- | --- |
-| `/rum/v1/collect` | `:4319` |
-| `/rum/v1/replay` | `:4320` |
+| 公网路径 | 转到 | 说明 |
+| --- | --- | --- |
+| `/rum/v1/collect` | Gateway 内网 `:4319` | 性能、错误、会话上报 |
+| `/rum/v1/replay` | Gateway 内网 `:4320` | 会话回放分段 |
+
+`/rum/bklite-rum-sdk.js` 和 `/rum/bklite-rum-replay.js` 不用单独配路由，由现有 Web 服务返回。接入片段默认使用操作员打开控制台的地址加上面的路径。只有收数故意放到另一个域名时，才设置 `RUM_PUBLIC_ORIGIN`，并让该域名的 `443` 做同样的两条转发。
 
 健康检查 `:13135`、指标 `:8888`、VictoriaLogs、VictoriaTraces、Redis、NATS 只留在内网。APM 的 `:4318` 不从这条公网入口发布。
 
@@ -93,7 +95,7 @@ Edge 是平台现有的公网反向代理（Traefik），不是 RUM 要新打的
 
 | 组件 | 用户 / ACL |
 | --- | --- |
-| NATS | Server：`rum_ctl`（publish）；Controller：`rum_controller`（subscribe） |
+| NATS | Server：`rum_ctl`（publish），口令来自 `RUM_NATS_PASSWORD`；Controller：`rum_controller`（subscribe），口令来自 `-nats-password-file` |
 | Redis | 默认同一个密码。需要 ACL 时再打开 `redis_require_acl_identity`，用户名用 `redis_acl_username`（默认仍是各组件原来的名字） |
 
 ## Server 变量
@@ -102,12 +104,11 @@ Edge 是平台现有的公网反向代理（Traefik），不是 RUM 要新打的
 
 | 变量 | 必要 | 说明 |
 | --- | --- | --- |
-| `RUM_NATS_URL` | 必须 | `nats://rum_ctl:***@nats:4222` |
+| `RUM_NATS_USER` | 有认证时 | Django 的 NATS 用户，例如 `rum_ctl`。和 `RUM_NATS_PASSWORD` 成对出现。地址用 `NATS_SERVERS`，丢掉其中的账号，不用平台的 `NATS_USER`。只配了一个时控制面不可用，Django 仍能启动 |
+| `RUM_NATS_PASSWORD` | 有认证时 | `rum_ctl` 的口令。由环境注入。TLS CA 用 `NATS_TLS_CA_FILE` |
 | `RUM_VICTORIA_LOGS_URL` | 必须 | VictoriaLogs 地址 |
 | `RUM_VICTORIA_TRACES_URL` | 必须 | VictoriaTraces 地址 |
-| `RUM_COLLECT_URL` | 必须 | 公网 collect URL |
-| `RUM_REPLAY_URL` | 必须 | 公网 replay URL |
-| `RUM_SDK_CDN_URL` | 必须 | 浏览器能访问到的 SDK 地址；文件在 Web 镜像的 `/rum/bklite-rum-sdk.js`、`/rum/bklite-rum-replay.js` |
+| `RUM_PUBLIC_ORIGIN` | 可选 | 浏览器上报使用的对外源（`https://主机`，不含路径）。不设时，接入片段用操作员打开控制台的地址，路径固定为 `/rum/v1/collect`、`/rum/v1/replay`、`/rum/bklite-rum-sdk.js`。Edge 把前两条转到 Gateway `:4319`、`:4320` |
 | `RUM_REPLAY_SIGNING_SECRET` | 回放要 | ≥32 字符 |
 | `RUM_REPLAY_INDEX_REDIS_URL` | 回放要 | 一般 Redis DB2 |
 | `RUM_TENANT_ID` | 可选 | 默认 `core` |
@@ -116,6 +117,8 @@ Edge 是平台现有的公网反向代理（Traefik），不是 RUM 要新打的
 | `RUM_VICTORIA_PROJECT_ID` | 可选 | 默认 `0` |
 | `RUM_VICTORIA_TIMEOUT_SECONDS` | 可选 | 默认 `15` |
 
+Django 的 NATS 地址和 CA 只认平台的 `NATS_SERVERS`、`NATS_TLS_CA_FILE`。`rum_ctl` 要建在这台 NATS 上。Controller 是独立进程，仍用自己的 `-nats-url`。
+
 回放对象不另设 `RUM_MINIO_*`。Django 用平台 `MINIO_*` 读取 `rum-replay`。Gateway 和 Maintainer 仍用各自的 `RUM_MINIO_*`。
 
 ## 数据面进程配置（摘要）
@@ -123,7 +126,7 @@ Edge 是平台现有的公网反向代理（Traefik），不是 RUM 要新打的
 | 进程 | 必要配置 |
 | --- | --- |
 | Gateway | HMAC（与 Controller 同源）、admission/session/replay Redis、VL/VT、MinIO、`RUM_QUEUE_DIR`；见 `collector/env/rum.gateway.dev.env.example` |
-| Controller | NATS、`rum-controller` Redis、HMAC 文件+version、tenant；生产禁用 `nats-insecure`；见 `collector/env/rum.controller.dev.env.example` |
+| Controller | NATS（`tls://` 加 `-nats-user` / `-nats-password-file`，或 NKey / creds）、`rum-controller` Redis、HMAC 文件+version、tenant；本地夹具才用 `nats-insecure`；见 `collector/env/rum.controller.dev.env.example` |
 | Maintainer | maintainer Redis、replay-index Redis、`replay-index-epoch`、VL/VT、MinIO；见 `collector/env/rum.maintainer.dev.env.example` |
 
 ## 从旧投影升级

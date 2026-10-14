@@ -14,11 +14,21 @@ SUBJECT_OPERATION_GET = "rum.v1.control.operation.get"
 # Controller operation statuses that will not change any more.
 OPERATION_TERMINAL_STATUSES = frozenset({"completed", "failed"})
 
+_MIB = 1 << 20
+_GIB = 1 << 30
+
 DEFAULT_BUDGETS = {
-    "requestsPerMinute": 1_000_000,
-    "compressedBytesPerMinute": 1 << 30,
-    "decompressedBytesPerMinute": 4 << 30,
-    "eventsPerMinute": 1_000_000,
+    "requestsPerMinute": 6_000,
+    "compressedBytesPerMinute": 32 * _MIB,
+    "decompressedBytesPerMinute": 128 * _MIB,
+    "eventsPerMinute": 20_000,
+}
+
+MAX_BUDGETS = {
+    "requestsPerMinute": 120_000,
+    "compressedBytesPerMinute": 256 * _MIB,
+    "decompressedBytesPerMinute": _GIB,
+    "eventsPerMinute": 200_000,
 }
 
 EVIDENCE_WINDOW_SECONDS = 15 * 60

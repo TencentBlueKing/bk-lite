@@ -81,7 +81,10 @@ describe('搜索结果卡片读法', () => {
   });
 
   afterEach(() => {
+    fireEvent.mouseUp(document);
     cleanup();
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -324,6 +327,74 @@ describe('搜索结果卡片读法', () => {
     await user.click(await screen.findByText('monitor.search.unpinColumn'));
     expect(columnKeys()).toEqual(['time', 'value1', 'value2']);
     expect(fixedHeaderKeys()).toEqual(['time']);
+  });
+
+  const trackDragListeners = () => {
+    const listeners = new Map<string, Set<EventListenerOrEventListenerObject>>([
+      ['mousemove', new Set()],
+      ['mouseup', new Set()]
+    ]);
+    const add = document.addEventListener.bind(document);
+    const remove = document.removeEventListener.bind(document);
+    vi.spyOn(document, 'addEventListener').mockImplementation((name, listener, options) => {
+      listeners.get(name)?.add(listener);
+      add(name, listener, options);
+    });
+    vi.spyOn(document, 'removeEventListener').mockImplementation((name, listener, options) => {
+      listeners.get(name)?.delete(listener);
+      remove(name, listener, options);
+    });
+    return () => [...listeners.values()].reduce((count, entries) => count + entries.size, 0);
+  };
+
+  const resizeCard = (table = true) => (
+    <SearchResultCard
+      item={item}
+      layoutMode="single"
+      presentation={{ view: table ? 'combo' : 'line', tableKind: 'compare', emphasizedKeys: null }}
+      showApplyAll={false}
+      onPresentationChange={vi.fn()}
+      onApplyAll={vi.fn()}
+      onXRangeChange={vi.fn()}
+    />
+  );
+
+  it.each(['unmount', 'hide-table'])('拖拽中 %s 会释放监听器并恢复原样式', (termination) => {
+    const retained = trackDragListeners();
+    document.body.style.cursor = 'crosshair';
+    document.body.style.userSelect = 'text';
+    const view = render(resizeCard());
+    fireEvent.mouseDown(screen.getAllByRole('separator')[0], { clientX: 100 });
+    expect(retained()).toBe(2);
+    if (termination === 'unmount') view.unmount();
+    else view.rerender(resizeCard(false));
+    expect(retained()).toBe(0);
+    expect(document.body.style.cursor).toBe('crosshair');
+    expect(document.body.style.userSelect).toBe('text');
+    fireEvent.mouseMove(document, { clientX: 180 });
+    fireEvent.mouseUp(document);
+    view.unmount();
+    expect(retained()).toBe(0);
+  });
+
+  it('重复开始拖拽只持有一组监听器，正常结束恢复原样式', () => {
+    const retained = trackDragListeners();
+    document.body.style.cursor = 'crosshair';
+    document.body.style.userSelect = 'text';
+    const view = render(resizeCard());
+    const handle = screen.getAllByRole('separator')[0];
+    fireEvent.mouseDown(handle, { clientX: 100 });
+    fireEvent.mouseDown(handle, { clientX: 100 });
+    expect(retained()).toBe(2);
+    fireEvent.mouseMove(document, { clientX: 180 });
+    fireEvent.mouseUp(document);
+    expect(document.querySelector('.ant-table colgroup col')?.getAttribute('style')).toContain('400');
+    expect(retained()).toBe(0);
+    expect(document.body.style.cursor).toBe('crosshair');
+    expect(document.body.style.userSelect).toBe('text');
+    fireEvent.mouseUp(document);
+    view.unmount();
+    expect(retained()).toBe(0);
   });
 
   it('拖动表头可以改变列宽', () => {

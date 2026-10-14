@@ -9,3 +9,4 @@ class NodeMgmtConfig(AppConfig):
         import apps.node_mgmt.nats.node  # noqa
         import apps.node_mgmt.nats.permission  # noqa
         import apps.node_mgmt.signals  # noqa
+        import apps.node_mgmt.openapi_api  # noqa

@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { Input, Button, Select, message } from 'antd';
+import { Alert, Button, Dropdown, Form, Input, Modal, Select, message } from 'antd';
+import { DownOutlined } from '@ant-design/icons';
 import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
@@ -24,6 +25,7 @@ import {
 import { ViewListProps, ViewPluginOption } from '@/app/monitor/types/view';
 import { formatMonitorViewPluginTabs } from '@/app/monitor/utils/monitorViewPlugins';
 import CustomTable from '@/components/custom-table';
+import OperateModal from '@/components/operate-modal';
 import TimeSelector from '@/components/time-selector';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { ListItem } from '@/types';
@@ -105,6 +107,8 @@ const ViewList: React.FC<ViewListProps> = ({
   const [selectedInstanceIds, setSelectedInstanceIds] = useState<React.Key[]>([]);
   const [groupChoices, setGroupChoices] = useState<Array<{ id: number; name: string; is_default?: boolean }>>([]);
   const [batchGroupId, setBatchGroupId] = useState<number>();
+  const [joinOpen, setJoinOpen] = useState(false);
+  const [joinSubmitting, setJoinSubmitting] = useState(false);
   const [pagination, setPagination] = useState<Pagination>({
     current: 1,
     total: 0,
@@ -180,6 +184,7 @@ const ViewList: React.FC<ViewListProps> = ({
 
   useEffect(() => {
     setSelectedInstanceIds([]);
+    setJoinOpen(false);
     if (isLoading || !objectId) {
       setGroupChoices([]);
       return;
@@ -200,6 +205,49 @@ const ViewList: React.FC<ViewListProps> = ({
       cancelled = true;
     };
   }, [getPolicyGroups, isLoading, objectId]);
+
+  const policyGroupOptions = groupChoices.map((item) => ({
+    value: item.id,
+    label: item.is_default
+      ? t('monitor.views.policyGroupDefaultName', '{name}（默认）', { name: item.name })
+      : item.name
+  }));
+
+  const openJoinModal = () => {
+    if (!batchGroupId) {
+      const preferred = groupChoices.find((item) => item.is_default) || groupChoices[0];
+      setBatchGroupId(preferred?.id);
+    }
+    setJoinOpen(true);
+  };
+
+  const submitJoinPolicyGroup = async () => {
+    if (!batchGroupId) return;
+    setJoinSubmitting(true);
+    try {
+      await joinPolicyGroup(batchGroupId, selectedInstanceIds.map(String));
+      message.success(t('monitor.views.joinPolicyGroupSuccess'));
+      setSelectedInstanceIds([]);
+      setJoinOpen(false);
+    } finally {
+      setJoinSubmitting(false);
+    }
+  };
+
+  const confirmLeavePolicyGroup = () => {
+    Modal.confirm({
+      title: t('monitor.views.leavePolicyGroup'),
+      content: t('monitor.views.leavePolicyGroupHint'),
+      centered: true,
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      onOk: async () => {
+        await leavePolicyGroup(selectedInstanceIds.map(String));
+        message.success(t('monitor.views.leavePolicyGroupSuccess'));
+        setSelectedInstanceIds([]);
+      }
+    });
+  };
   useEffect(() => {
     paginationRef.current = pagination;
   }, [pagination]);
@@ -1024,6 +1072,42 @@ const ViewList: React.FC<ViewListProps> = ({
               }));
             }}
           />
+          <Permission requiredPermissions={['Edit']} permissionPath="/monitor/event/strategy">
+            <span className="inline-flex items-center gap-2">
+              <Dropdown
+                disabled={!selectedInstanceIds.length}
+                menu={{
+                  items: [
+                    {
+                      key: 'join',
+                      label: t('monitor.views.joinOrReplacePolicyGroup'),
+                      onClick: openJoinModal
+                    },
+                    {
+                      key: 'leave',
+                      label: t('monitor.views.leavePolicyGroup'),
+                      onClick: confirmLeavePolicyGroup
+                    }
+                  ]
+                }}
+              >
+                <Button
+                  aria-label={t('monitor.views.batchActions')}
+                  disabled={!selectedInstanceIds.length}
+                >
+                  {t('monitor.views.batchActions')}
+                  <DownOutlined aria-hidden="true" />
+                </Button>
+              </Dropdown>
+              {selectedInstanceIds.length > 0 ? (
+                <span className="text-[var(--color-text-3)] tabular-nums">
+                  {t('monitor.views.selectedHostCount', '已选 {count} 台', {
+                    count: selectedInstanceIds.length
+                  })}
+                </span>
+              ) : null}
+            </span>
+          </Permission>
           <TimeSelector
             onlyRefresh
             className="[&>div]:!ml-0"
@@ -1032,44 +1116,49 @@ const ViewList: React.FC<ViewListProps> = ({
           />
         </div>
       </div>
-      {selectedInstanceIds.length > 0 ? (
-        <Permission requiredPermissions={['Edit']} permissionPath="/monitor/event/strategy">
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <span>已选 {selectedInstanceIds.length} 台</span>
-            <Select
-              className="min-w-[220px]"
-              placeholder="选择策略组"
-              value={batchGroupId}
-              options={groupChoices.map((item) => ({
-                value: item.id,
-                label: item.is_default ? `${item.name}（默认）` : item.name
-              }))}
-              onChange={setBatchGroupId}
-            />
+      <OperateModal
+        width={480}
+        title={t('monitor.views.joinOrReplacePolicyGroup')}
+        open={joinOpen}
+        onCancel={() => {
+          if (!joinSubmitting) setJoinOpen(false);
+        }}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button disabled={joinSubmitting} onClick={() => setJoinOpen(false)}>
+              {t('common.cancel')}
+            </Button>
             <Button
               type="primary"
+              loading={joinSubmitting}
               disabled={!batchGroupId}
-              onClick={async () => {
-                if (!batchGroupId) return;
-                await joinPolicyGroup(batchGroupId, selectedInstanceIds.map(String));
-                message.success('已处理所选实例。已在其他组的会先离开原组，未恢复告警会结束');
-                setSelectedInstanceIds([]);
-              }}
+              onClick={() => void submitJoinPolicyGroup()}
             >
-              加入或更换
-            </Button>
-            <Button
-              onClick={async () => {
-                await leavePolicyGroup(selectedInstanceIds.map(String));
-                message.success('已退出，未恢复告警会结束');
-                setSelectedInstanceIds([]);
-              }}
-            >
-              退出
+              {t('common.confirm')}
             </Button>
           </div>
-        </Permission>
-      ) : null}
+        }
+      >
+        <Alert
+          className="mb-4"
+          type="info"
+          showIcon
+          message={t('monitor.views.selectedHostCount', '已选 {count} 台', {
+            count: selectedInstanceIds.length
+          })}
+          description={t('monitor.views.joinPolicyGroupHint')}
+        />
+        <Form layout="vertical">
+          <Form.Item label={t('monitor.integrations.policyGroup')} required>
+            <Select
+              placeholder={t('monitor.views.selectPolicyGroup')}
+              value={batchGroupId}
+              options={policyGroupOptions}
+              onChange={setBatchGroupId}
+            />
+          </Form.Item>
+        </Form>
+      </OperateModal>
       <CustomTable
         scroll={{
           y: `calc(100vh - ${showTab ? '330px' : '280px'})`,

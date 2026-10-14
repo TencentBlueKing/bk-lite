@@ -3,6 +3,8 @@ package wire_test
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -76,6 +78,42 @@ func TestConnectControlClientAcceptsNATSPasswordURL(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(nc.Close)
 	require.True(t, nc.IsConnected())
+}
+
+func TestConnectControlClientAcceptsPasswordFile(t *testing.T) {
+	ns, err := server.NewServer(&server.Options{
+		Host:     "127.0.0.1",
+		Port:     -1,
+		Username: "rum_controller",
+		Password: "rum-controller-contract-password",
+		NoLog:    true,
+		NoSigs:   true,
+	})
+	require.NoError(t, err)
+	ns.Start()
+	require.True(t, ns.ReadyForConnections(3*time.Second))
+	t.Cleanup(ns.Shutdown)
+
+	passwordFile := filepath.Join(t.TempDir(), "nats-password")
+	require.NoError(t, os.WriteFile(passwordFile, []byte("rum-controller-contract-password"), 0o600))
+
+	nc, err := wire.ConnectControlClient(wire.ControlClientConfig{
+		URL:          "nats://" + ns.Addr().String(),
+		User:         "rum_controller",
+		PasswordFile: passwordFile,
+	}, "test-controller")
+	require.NoError(t, err)
+	t.Cleanup(nc.Close)
+	require.True(t, nc.IsConnected())
+}
+
+func TestConnectControlClientRejectsMixedCredentials(t *testing.T) {
+	_, err := wire.ConnectControlClient(wire.ControlClientConfig{
+		URL:          "nats://user:password@127.0.0.1:4222",
+		User:         "rum_controller",
+		PasswordFile: "/tmp/unused",
+	}, "test-controller")
+	require.ErrorContains(t, err, "mix embedded credentials")
 }
 
 func TestConnectControlClientRejectsTLSEmbeddedCredentials(t *testing.T) {

@@ -54,6 +54,7 @@ export interface RumSnippetSet {
 }
 
 export type RumMeta = {
+  publicOrigin?: string;
   collectUrl: string;
   replayUrl: string;
   sdkCdnUrl: string;
@@ -443,7 +444,7 @@ export function useRumQueries() {
   );
 
   const createApplication = useCallback(
-    async (body: { application: string; origins: string[] }) => {
+    async (body: { application: string; origins: string[]; budgets?: Record<string, number> }) => {
       const data = await api.post<RumApplicationView>('/applications/', body);
       return normalizeApplication(data);
     },
@@ -451,7 +452,7 @@ export function useRumQueries() {
   );
 
   const updateApplication = useCallback(
-    async (name: string, body: { origins?: string[]; enabled?: boolean }) => {
+    async (name: string, body: { origins?: string[]; enabled?: boolean; budgets?: Record<string, number> }) => {
       const data = await api.put<RumApplicationView>(`/applications/${encodeURIComponent(name)}/`, body);
       return normalizeApplication(data);
     },

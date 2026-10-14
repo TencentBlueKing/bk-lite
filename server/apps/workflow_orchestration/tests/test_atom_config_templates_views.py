@@ -125,3 +125,34 @@ def test_atom_config_template_list_requires_atom_and_mutations_stay_tenant_scope
     )
     assert deleted.status_code == 204
     assert not AtomConfigTemplate.objects.filter(pk=template.pk).exists()
+
+
+@pytest.mark.django_db
+def test_atom_config_template_preserves_node_title_when_schema_forbids_extra_properties(template_admin, template_atom):
+    create = AtomConfigTemplateViewSet.as_view({"post": "create"})
+
+    created = create(
+        _request(
+            "post",
+            "/atom-config-templates/",
+            template_admin,
+            {
+                "name": "带节点名称的模板",
+                "atom_key": template_atom.key,
+                "parameters": {
+                    "message": "hello",
+                    "__node_title": "巡检作业执行",
+                    "unknown_field": "drop-me",
+                },
+            },
+        )
+    )
+
+    assert created.status_code == 201
+    assert created.data["parameters"] == {
+        "message": "hello",
+        "__node_title": "巡检作业执行",
+    }
+    stored = AtomConfigTemplate.objects.get(pk=created.data["id"])
+    assert stored.parameters["__node_title"] == "巡检作业执行"
+    assert "unknown_field" not in stored.parameters

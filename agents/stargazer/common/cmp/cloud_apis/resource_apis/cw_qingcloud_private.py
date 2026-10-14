@@ -2,7 +2,6 @@
 import base64
 import datetime
 import hmac
-import logging
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -15,8 +14,8 @@ from common.cmp.cloud_apis.base import PrivateCloudManage
 from common.cmp.cloud_apis.constant import CloudResourceType, CloudType
 from common.cmp.cloud_apis.resource_apis.resource_format.common.base_format import get_format_method
 from common.cmp.cloud_apis.resource_apis.utils import fail, success
+from core.logger import logger
 
-logger = logging.getLogger("root")
 
 
 class CwQingCloudPrivate(object):
