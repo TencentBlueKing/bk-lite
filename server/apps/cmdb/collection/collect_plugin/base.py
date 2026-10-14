@@ -42,7 +42,9 @@ class CollectBase(metaclass=ABCMeta):
         if not self.inst_name:
             self.inst_name = self._resolve_inst_name_from_task() or self.inst_name
         assert self.check_metrics(), "请定义_metrics"
-        self.collection_metrics_dict = {i: [] for i in self._metrics}
+        from apps.cmdb.services.pc_discovery import pc_metric_aliases
+
+        self.collection_metrics_dict = pc_metric_aliases(self._metrics)
         try:
             # [T, C] 已由 VM 查询限定时，该轮次可能是恢复窗口内的历史快照，
             # 不能再用“距当前时间超过一天”把它丢弃。
@@ -123,8 +125,30 @@ class CollectBase(metaclass=ABCMeta):
         success_data = dict(data)
         success_data["result"] = [row for row in self.raw_data if not is_failed_vm_metric(row)]
         self.format_data(success_data)
-        self.format_metrics()
+        if self._collects_pc():
+            # 企业插件按字面量 pc_info 分桶，认不出 VM 里的 pc_info_gauge。
+            # 这里直接用查询结果对账，缺完成标记时仍写入已上报的 PC。
+            self._write_pc_snapshots(success_data["result"])
+        else:
+            self.format_metrics()
         return self.result
+
+    def _collects_pc(self) -> bool:
+        from apps.cmdb.services.pc_discovery import PC_QUERY_METRIC_NAMES
+
+        names = {str(name) for name in self._metrics}
+        return bool(names.intersection(PC_QUERY_METRIC_NAMES) or names.intersection(PC_QUERY_METRIC_NAMES.values()))
+
+    def _write_pc_snapshots(self, result_rows):
+        from apps.cmdb.services.pc_discovery import reconcile_pc_vm_result
+
+        format_data = reconcile_pc_vm_result(
+            self.get_collect_inst(),
+            result_rows,
+            reader_factory=getattr(self, "round_metadata_reader_factory", None),
+        )
+        task_key = getattr(self, "TASK_FORMAT_DATA_KEY", "__task_format_data__")
+        self.result[task_key] = format_data
 
     @staticmethod
     def convert_datetime_format(time_str):

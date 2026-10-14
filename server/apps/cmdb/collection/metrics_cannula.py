@@ -126,6 +126,9 @@ class MetricsCannula:
         result = {}
         all_count = 0
         for model_id, metrics in self.collection_metrics.items():
+            # 任务级 format payload（含 pc_summary）不是实例列表，不能送进通用对账。
+            if not isinstance(metrics, list):
+                continue
             all_count += len(metrics)
             params = [
                 {"field": "model_id", "type": "str=", "value": model_id},

@@ -10,7 +10,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from apps.cmdb.collection.round_metadata import RoundMetadataProtocolError
+from apps.cmdb.collection.round_metadata import RoundMetadataProtocolError, build_round_metadata_lookups
 from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION, OPERATOR_INSTANCE, DataCleanupStrategy
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE, DELETE_INST
@@ -33,6 +33,17 @@ _PC_SOFTWARE_METRIC_NAMES = frozenset({PC_SOFTWARE_METRIC_NAME, "pc_software_inf
 def vm_query_metric_name(name: str) -> str:
     """把逻辑指标名换成 VictoriaMetrics 中的序列名。"""
     return PC_QUERY_METRIC_NAMES.get(name, name)
+
+
+def pc_metric_aliases(names) -> dict:
+    """逻辑指标名和 VM 序列名共用同一个分桶，避免插件只认其中一边。"""
+    buckets = {}
+    for name in names:
+        bucket = buckets.setdefault(name, [])
+        vm_name = vm_query_metric_name(name)
+        if vm_name != name:
+            buckets[vm_name] = bucket
+    return buckets
 
 
 # 采集允许写入的 PC 字段（与 model_config.xlsx attr-pc 自动发现信息组一致）。
@@ -80,11 +91,41 @@ SOFTWARE_COLLECTED_FIELDS = frozenset(
 _OS_INST_PREFIX = {"windows": "WIN-", "macos": "MAC-"}
 
 _MAX_ERROR_DETAIL = 500
+_BYTES_PER_GB = 1024**3
+# 大于等于 1MiB 的容量仍是采集器上报的字节；已经换算成 GB 的数值远小于这个门槛。
+_BYTE_CAPACITY_FLOOR = 1024**2
+_CAPACITY_FIELDS = ("men", "disk")
+
+
+def capacity_as_gb(value):
+    """把内存、硬盘容量收成 GB 字符串。空值保持空，无法解析的原文保持原文。"""
+    text = "" if value is None else str(value).strip()
+    if not text:
+        return ""
+    try:
+        number = float(text)
+    except ValueError:
+        return text
+    if number >= _BYTE_CAPACITY_FLOOR:
+        number = number / _BYTES_PER_GB
+    rounded = round(number, 1)
+    if rounded.is_integer():
+        return str(int(rounded))
+    return f"{rounded:.1f}"
+
+
+def _write_check_map(payload):
+    """更新时只放行本次要写的字段，避免空的可编辑清单把属性全部滤掉。"""
+    return {"editable": {key: key for key in payload}}
 
 
 def filter_pc_payload(raw):
     """严格白名单：只保留采集字段，禁止把原始 PC dict 全量传给图客户端。"""
-    return {key: value for key, value in (raw or {}).items() if key in PC_COLLECTED_FIELDS}
+    payload = {key: value for key, value in (raw or {}).items() if key in PC_COLLECTED_FIELDS}
+    for key in _CAPACITY_FIELDS:
+        if key in payload:
+            payload[key] = capacity_as_gb(payload[key])
+    return payload
 
 
 def filter_software_payload(raw):
@@ -228,8 +269,11 @@ class PCSnapshotReconciler:
         self.task = task
 
     def _organization(self):
+        """实例 organization 是组织 ID 数组。任务 team 已是数组，标量也收成一项。"""
         team = getattr(self.task, "team", None) or []
-        return team[0] if team else ""
+        if isinstance(team, (str, bytes)) or not isinstance(team, (list, tuple)):
+            return [] if team in (None, "") else [team]
+        return [item for item in team if item not in (None, "")]
 
     @staticmethod
     def _validate_identity(payload):
@@ -257,7 +301,8 @@ class PCSnapshotReconciler:
         with GraphClient() as ag:
             existing, _ = ag.query_entity(INSTANCE, params)
             if existing:
-                entity = ag.set_entity_properties(INSTANCE, [existing[0]["_id"]], dict(payload, **runtime), {}, [])
+                update_payload = dict(payload, **runtime)
+                entity = ag.set_entity_properties(INSTANCE, [existing[0]["_id"]], update_payload, _write_check_map(update_payload), [])
                 result["pc_status"] = "updated"
                 result["pc_entity"] = entity[0] if entity else existing[0]
             else:
@@ -373,7 +418,8 @@ class PCSnapshotReconciler:
                 ]
                 existing, _ = ag.query_entity(INSTANCE, params)
                 if existing:
-                    ag.set_entity_properties(INSTANCE, [existing[0]["_id"]], dict(payload, collect_time=collect_time), {}, [])
+                    update_payload = dict(payload, collect_time=collect_time)
+                    ag.set_entity_properties(INSTANCE, [existing[0]["_id"]], update_payload, _write_check_map(update_payload), [])
                     sw_entity = dict(existing[0], **payload)
                     outcome_key = "software_updated"
                 else:
@@ -517,6 +563,98 @@ def apply_pc_snapshots(task, snapshots):
     format_data["pc_summary"] = pc_summary
     logger.info("[PC] apply_pc_snapshots: task=%s pc_summary=%s", getattr(task, "id", None), pc_summary)
     return {"format_data": format_data, "snapshots": len(snapshots or []), "results": rows}
+
+
+def pc_rows_from_vm_result(result_rows):
+    """从 VM 查询行取出 PC / 软件指标。序列名 pc_info_gauge 与逻辑名 pc_info 都收。"""
+    rows = []
+    for item in result_rows or []:
+        if not isinstance(item, dict):
+            continue
+        metric = item.get("metric")
+        if not isinstance(metric, dict):
+            continue
+        name = metric.get("__name__")
+        obj_id = metric.get("bk_obj_id")
+        if str(metric.get("collect_status", "")).lower() == "failed" or metric.get("cmdb_collect_error"):
+            continue
+        recognized = name in _PC_METRIC_NAMES or name in _PC_SOFTWARE_METRIC_NAMES or obj_id in {"pc", "pc_software"}
+        if not recognized:
+            continue
+        row = dict(metric)
+        if row.get("_metric_time") in (None, ""):
+            value = item.get("value")
+            if isinstance(value, (list, tuple)) and value:
+                row["_metric_time"] = value[0]
+        rows.append(row)
+    return rows
+
+
+def reconcile_pc_vm_result(task, result_rows, reader_factory=None):
+    """用 VM 里的 pc_info_gauge / pc_software_info_gauge 对账。没有完成标记时按 partial 写入。"""
+    rows = pc_rows_from_vm_result(result_rows)
+    metadata = {}
+    pc_roots = [row for row in rows if row.get("__name__") in _PC_METRIC_NAMES or row.get("bk_obj_id") == "pc"]
+    if pc_roots and reader_factory is not None:
+        try:
+            metadata = reader_factory(task).get_many(build_round_metadata_lookups(pc_roots), model_id="pc")
+        except RoundMetadataProtocolError as exc:
+            logger.info(
+                "[PC] event=pc_partial_without_round_metadata task_id=%s error_type=%s",
+                getattr(task, "id", None),
+                type(exc).__name__,
+            )
+            metadata = {}
+    if not isinstance(metadata, dict):
+        metadata = {}
+    snapshots = parse_pc_vm_rows(rows, metadata)
+    return apply_pc_snapshots(task, snapshots)["format_data"]
+
+
+def pc_reconcile_input(plugin):
+    """企业插件 run() 把 VM 结果放在 raw_data；只调 format_metrics 时行在分桶里。"""
+    raw = getattr(plugin, "raw_data", None) or []
+    if raw and isinstance(raw[0], dict) and isinstance(raw[0].get("metric"), dict):
+        return raw
+    rows = []
+    seen = set()
+    for bucket in getattr(plugin, "collection_metrics_dict", {}).values():
+        if id(bucket) in seen:
+            continue
+        seen.add(id(bucket))
+        for metric in bucket or []:
+            if isinstance(metric, dict):
+                rows.append({"metric": metric, "value": [metric.get("_metric_time"), "1"]})
+    return rows
+
+
+def publish_pc_collected_metrics(plugin):
+    """按 VM 序列名把已上报 PC 写入 CMDB，并避免空 metrics 被通用对账当成全量删除。"""
+    format_data = reconcile_pc_vm_result(
+        plugin.get_collect_inst(),
+        pc_reconcile_input(plugin),
+        reader_factory=getattr(plugin, "round_metadata_reader_factory", None),
+    )
+    task_key = getattr(plugin, "TASK_FORMAT_DATA_KEY", "__task_format_data__")
+    plugin.result[task_key] = format_data
+    plugin._MODEL_ID = None
+    return format_data
+
+
+def install_pc_vm_metric_reconcile():
+    """企业 PC 插件的 run() 不走 CollectBase.run，对账入口是它自己的 format_metrics。"""
+    try:
+        from apps.cmdb_enterprise.collect.pc import PCCollectionPlugin
+    except ImportError:
+        return
+    if getattr(PCCollectionPlugin, "_pc_vm_metric_reconcile", False):
+        return
+
+    def format_metrics(self):
+        return publish_pc_collected_metrics(self)
+
+    PCCollectionPlugin.format_metrics = format_metrics
+    PCCollectionPlugin._pc_vm_metric_reconcile = True
 
 
 def cleanup_expired_pc_software(task, threshold_dt, threshold_iso):

@@ -294,8 +294,8 @@ ATTR:
     brand: Brand
     appearance: Appearance
     cpu: CPU Information
-    men: Memory Information
-    disk: Hard Disk Information
+    men: Memory Information (GB)
+    disk: Hard Disk Information (GB)
     dep: Department
     user: User
     claim_time: Claim Time
