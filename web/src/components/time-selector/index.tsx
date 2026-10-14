@@ -315,7 +315,7 @@ const TimeSelector = forwardRef((props: TimeSelectorProps, ref) => {
           />
           <RangePicker
             className={`${timeFieldWidthClass} ${timeSelectorStyle.rangePicker}`}
-            popupClassName={timeSelectorStyle.rangePickerDropdown}
+            classNames={{ popup: { root: timeSelectorStyle.rangePickerDropdown } }}
             open={rangePickerOpen}
             showTime={showTime}
             format={format}

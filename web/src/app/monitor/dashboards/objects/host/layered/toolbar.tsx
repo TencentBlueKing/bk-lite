@@ -61,7 +61,7 @@ export default function LayeredToolbar({
         <Select
           size="middle"
           className={styles.viewSelect}
-          popupClassName={styles.dropdown}
+          classNames={{ popup: { root: styles.dropdown } }}
           value={layout}
           aria-label={common('viewSwitcher', '视图')}
           options={HOST_DETAIL_LAYOUT_OPTIONS.map((item) => ({
