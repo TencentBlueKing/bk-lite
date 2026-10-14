@@ -384,13 +384,14 @@ def _restrict_target_operating_systems(metadata: dict[str, Any], allowed: list[s
 def build_health_inspection_showcase_workflow(
     *,
     team_id: int,
-    channel_id: int,
+    channel_id: int | None,
     username: str,
     fmt: str,
     template_snapshot: dict[str, Any],
     script_type: str,
     script_content: str,
     operating_system: str = "windows",
+    recipients: list[str] | None = None,
 ) -> dict[str, Any]:
     normalized = str(fmt or "").lower()
     if normalized not in {"docx", "xlsx"}:
@@ -418,14 +419,19 @@ def build_health_inspection_showcase_workflow(
     notify_task = definition["tasks"][2]
     # 通知渠道未配齐时不应阻断报告产物；失败可在执行明细里看到。
     notify_task["optional"] = True
-    notify_task["inputParameters"].update(
+    notify_recipients = list(recipients) if recipients is not None else [username]
+    notify_inputs = notify_task["inputParameters"]
+    notify_inputs.update(
         {
-            "channel_id": channel_id,
-            "recipients": [username],
+            "recipients": notify_recipients,
             "title": f"{os_label} 主机健康巡检报告（{label}）",
             "body": f"{os_label} 主机健康巡检已完成，请下载 {label} 报告。",
         }
     )
+    if channel_id is None:
+        notify_inputs.pop("channel_id", None)
+    else:
+        notify_inputs["channel_id"] = channel_id
     metadata = build_health_inspection_canvas_metadata()
     _restrict_target_operating_systems(metadata, [os_key])
     for trigger in metadata.get("trigger_nodes") or []:
