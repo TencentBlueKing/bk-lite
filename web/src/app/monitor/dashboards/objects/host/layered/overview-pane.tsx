@@ -10,6 +10,7 @@ import { formatDuration, type MetricSeries } from '../../common/simple-dashboard
 import EventsRail, { type HostAlertRailEvent } from './events-rail';
 import { KpiStrip, type KpiCardModel } from './signal-bar';
 import ThinTimeSeries from './thin-time-series';
+import type { HostSurfaceAlerts } from './tab-level';
 import {
   formatPercent,
   formatPlain,
@@ -38,6 +39,7 @@ interface OverviewPaneProps {
   onOpenAlerts?: () => void;
   onFocusAlert?: (alertId: string) => void;
   onJump: (tab: 'disk' | 'net' | 'process', key: string) => void;
+  alerts: HostSurfaceAlerts['overview'];
 }
 
 const latestOfRow = (row: EntityTableRow | undefined, key: string) => {
@@ -78,7 +80,8 @@ export default function OverviewPane({
   alertsOpen = false,
   onOpenAlerts,
   onFocusAlert,
-  onJump
+  onJump,
+  alerts
 }: OverviewPaneProps) {
   const { t } = useDashboardText();
   const worst = diskRows[0];
@@ -112,13 +115,15 @@ export default function OverviewPane({
         key: 'cpu',
         label: 'CPU',
         value: formatPercent(cpu),
-        tone: CPU_SERIES.color
+        tone: CPU_SERIES.color,
+        alertLevel: alerts.cpu
       },
       {
         key: 'mem',
         label: '内存',
         value: formatPercent(mem),
-        tone: MEM_SERIES.color
+        tone: MEM_SERIES.color,
+        alertLevel: alerts.mem
       }
     ];
     if (showLoad) {
@@ -126,7 +131,8 @@ export default function OverviewPane({
         key: 'load',
         label: hostCategoryText(t, 'loadOneMinute'),
         value: formatPlain(load),
-        tone: LOAD1_SERIES_COLOR
+        tone: LOAD1_SERIES_COLOR,
+        alertLevel: alerts.load
       });
     }
     items.push({
@@ -134,7 +140,8 @@ export default function OverviewPane({
       label: hostCategoryText(t, 'diskPeak'),
       hint: hostCategoryText(t, 'diskUtilizationPeak'),
       value: formatPercent(diskValue),
-      subtitle: mountName ? `挂载 ${mountName}` : undefined
+      subtitle: mountName ? `挂载 ${mountName}` : undefined,
+      alertLevel: alerts.disk
     });
     const alertTone = alertCount == null
       ? undefined
@@ -144,7 +151,8 @@ export default function OverviewPane({
     items.push({
       key: 'uptime',
       label: hostCategoryText(t, 'uptime'),
-      value: uptime == null ? '--' : formatDuration(uptime)
+      value: uptime == null ? '--' : formatDuration(uptime),
+      alertLevel: alerts.uptime
     });
     items.push({
       key: 'alert',
@@ -162,6 +170,7 @@ export default function OverviewPane({
     diskValue,
     load,
     mem,
+    alerts,
     mountName,
     onOpenAlerts,
     showLoad,
@@ -284,6 +293,7 @@ export default function OverviewPane({
           unit="percent"
           data={cpuTrend}
           legends={[CPU_SERIES]}
+          alertLevel={alerts.cpu}
         />
         <ThinTimeSeries
           title={hostCategoryText(t, 'memoryUtilization')}
@@ -294,6 +304,7 @@ export default function OverviewPane({
           unit="percent"
           data={memTrend}
           legends={[MEM_SERIES]}
+          alertLevel={alerts.mem}
         />
         <ThinTimeSeries
           title={mountName ? `磁盘使用率 · ${mountName}` : '磁盘使用率'}
@@ -302,6 +313,7 @@ export default function OverviewPane({
           emptyText="暂无挂载数据"
           data={diskTrend}
           legends={[{ label: mountName || '使用率', color: HOST_SERIES_COLOR.diskUsed }]}
+          alertLevel={alerts.disk}
         />
         <ThinTimeSeries
           title="网卡合计"

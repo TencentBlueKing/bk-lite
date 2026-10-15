@@ -2,6 +2,8 @@
 
 import React from 'react';
 import { Tooltip } from 'antd';
+import { CardAlertDot, cardAlertClass } from './card-alert';
+import type { TabAlertLevel } from './tab-level';
 import styles from './layered.module.scss';
 
 export interface KpiCardModel {
@@ -16,6 +18,8 @@ export interface KpiCardModel {
   extra?: React.ReactNode;
   onActivate?: () => void;
   expanded?: boolean;
+  /** 本卡达档。不传或 none 时不打点、不加框。 */
+  alertLevel?: TabAlertLevel;
 }
 
 const KpiLabel = ({ item }: { item: KpiCardModel }) => (
@@ -44,25 +48,32 @@ const ValueCardBody = ({ item }: { item: KpiCardModel }) => (
 export function KpiStrip({ items }: { items: KpiCardModel[] }) {
   return (
     <div className={styles.kpiGrid}>
-      {items.map((item) => (
-        item.onActivate ? (
+      {items.map((item) => {
+        const className = `${styles.kpiCard} ${cardAlertClass(item.alertLevel)}`;
+        const body = (
+          <>
+            <CardAlertDot level={item.alertLevel} />
+            <ValueCardBody item={item} />
+          </>
+        );
+        return item.onActivate ? (
           <button
             key={item.key}
             type="button"
-            className={styles.kpiCard}
+            className={className}
             data-kpi={item.key}
             onClick={item.onActivate}
             aria-expanded={Boolean(item.expanded)}
             aria-haspopup="dialog"
           >
-            <ValueCardBody item={item} />
+            {body}
           </button>
         ) : (
-          <div key={item.key} className={styles.kpiCard} data-kpi={item.key}>
-            <ValueCardBody item={item} />
+          <div key={item.key} className={className} data-kpi={item.key}>
+            {body}
           </div>
-        )
-      ))}
+        );
+      })}
     </div>
   );
 }

@@ -427,6 +427,39 @@ button.kpiCard {
   box-shadow: 0 0 0 2px rgba(245, 63, 63, 0.18);
 }
 
+/* 卡气味：角点复用页签点的尺寸和色。左边框 3px 跟点同色，不改 KPI 主值色，不闪。 */
+.cardAlert {
+  position: relative;
+}
+
+.cardAlertDot {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.cardAlert.cardAlertCritical,
+.cardAlert.cardAlertCritical:hover {
+  border-left: 3px solid #f53f3f;
+}
+
+.cardAlert.cardAlertWarn,
+.cardAlert.cardAlertWarn:hover {
+  border-left: 3px solid #ff7d00;
+}
+
+.cardAlert .chartLegend,
+.cardAlertPad {
+  margin-right: 14px;
+}
+
+.cardAlert .currentName,
+.cardAlert .sectionTitle {
+  padding-right: 12px;
+}
+
 .tabBadge {
   display: inline-flex;
   align-items: center;

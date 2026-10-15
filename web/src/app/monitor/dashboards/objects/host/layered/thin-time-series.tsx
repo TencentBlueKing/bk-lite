@@ -9,7 +9,9 @@ import { ChartData } from '@/app/monitor/types';
 import { formatMetricValue } from '../../../shared/utils/format';
 import type { MetricUnit } from '../../../shared/types';
 import { CHART_COLORS } from '@/app/monitor/constants';
+import { CardAlertDot, cardAlertClass } from './card-alert';
 import { seriesMarkerColor } from './readings';
+import type { TabAlertLevel } from './tab-level';
 import { useThemeColors } from './theme-color';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
@@ -39,6 +41,8 @@ interface ThinTimeSeriesProps {
   independentAxes?: boolean;
   /** 单序列且无当前读数时也展示系列名。默认此时藏图例，避免和标题重复。 */
   showSeriesName?: boolean;
+  /** 本图达档。不传或 none 时不打点、不加框。 */
+  alertLevel?: TabAlertLevel;
   onRetry?: () => void;
 }
 
@@ -73,6 +77,7 @@ export default function ThinTimeSeries({
   bare = false,
   independentAxes = false,
   showSeriesName = false,
+  alertLevel,
   onRetry
 }: ThinTimeSeriesProps) {
   const theme = useThemeColors();
@@ -256,5 +261,10 @@ export default function ThinTimeSeries({
   );
 
   if (bare) return <div className="min-w-0">{chart}</div>;
-  return <section className={`${classic.panel} ${styles.chartPanel}`}>{chart}</section>;
+  return (
+    <section className={`${classic.panel} ${styles.chartPanel} ${cardAlertClass(alertLevel)}`}>
+      <CardAlertDot level={alertLevel} />
+      {chart}
+    </section>
+  );
 }

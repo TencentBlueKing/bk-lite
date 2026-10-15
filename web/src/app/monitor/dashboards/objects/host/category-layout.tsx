@@ -25,6 +25,7 @@ import SystemPane from './layered/system-pane';
 import { latestNumber, latestPreferCount, resolveMemoryUsage } from './layered/readings';
 import {
   loadPerCore,
+  resolveHostSurfaceAlerts,
   resolveHostTabLevel,
   swapUsedPercent,
   type HostCategoryTab,
@@ -234,6 +235,7 @@ export default function HostCategoryLayout({
     process_cpu_usage: maxRowValue(processRows, 'process_cpu_usage'),
     process_mem_usage: maxRowValue(processRows, 'process_mem_usage')
   }), [metrics, processRows]);
+  const surfaceAlerts = useMemo(() => resolveHostSurfaceAlerts(tabReadings), [tabReadings]);
 
   useEffect(() => {
     if (activeTab === 'process' && !processReady) setActiveTab('overview');
@@ -325,6 +327,7 @@ export default function HostCategoryLayout({
           coreLoading={coreState.status === 'idle' || coreState.status === 'loading'}
           coreFailed={coreState.status === 'error'}
           onRetryCore={onRetryCore}
+          alerts={surfaceAlerts.system}
         />
       );
     }
@@ -366,6 +369,7 @@ export default function HostCategoryLayout({
           metrics={metrics}
           metricsLoading={dashboard.loading}
           hostLabel={hostLabel}
+          alerts={surfaceAlerts.process}
         />
       );
     }
@@ -386,6 +390,7 @@ export default function HostCategoryLayout({
         onOpenAlerts={openHostAlerts}
         onFocusAlert={focusHostAlert}
         onJump={jump}
+        alerts={surfaceAlerts.overview}
       />
     );
   };

@@ -123,3 +123,64 @@ export const resolveHostTabLevel = (
 ): TabAlertLevel => (
   maxTabLevel(rulesForTab(tab, options).map((rule) => evaluateMetricLevel(rule, readings[rule.metric_key])))
 );
+
+/** 同一页、同一批读数里，若干指标的最高达档。指标不在该页则不计入。 */
+export const resolveMetricLevels = (
+  tab: HostCategoryTab,
+  readings: HostTabLevelReadings,
+  keys: readonly (keyof HostTabLevelReadings)[],
+  options: HostTabLevelOptions = {}
+): TabAlertLevel => (
+  maxTabLevel(
+    rulesForTab(tab, options)
+      .filter((rule) => keys.includes(rule.metric_key))
+      .map((rule) => evaluateMetricLevel(rule, readings[rule.metric_key]))
+  )
+);
+
+export interface HostSurfaceAlerts {
+  overview: {
+    cpu: TabAlertLevel;
+    mem: TabAlertLevel;
+    disk: TabAlertLevel;
+    load: TabAlertLevel;
+    uptime: TabAlertLevel;
+  };
+  system: {
+    cpu: TabAlertLevel;
+    mem: TabAlertLevel;
+    load: TabAlertLevel;
+    uptime: TabAlertLevel;
+  };
+  process: {
+    status: TabAlertLevel;
+    list: TabAlertLevel;
+  };
+}
+
+/**
+ * 卡气味与页签点同源。每张卡只吃自己展示的指标。
+ * 交换达档仍只点亮性能页签：这一页没有交换卡，不把气味挪到内存数值上。
+ */
+export const resolveHostSurfaceAlerts = (
+  readings: HostTabLevelReadings,
+  options: HostTabLevelOptions = {}
+): HostSurfaceAlerts => ({
+  overview: {
+    cpu: resolveMetricLevels('overview', readings, ['cpu_usage_total'], options),
+    mem: resolveMetricLevels('overview', readings, ['mem_used_percent'], options),
+    disk: resolveMetricLevels('overview', readings, ['disk_used_percent'], options),
+    load: resolveMetricLevels('overview', readings, ['system_load1_per_core'], options),
+    uptime: resolveMetricLevels('overview', readings, ['system_uptime'], options)
+  },
+  system: {
+    cpu: resolveMetricLevels('system', readings, ['cpu_usage_total'], options),
+    mem: resolveMetricLevels('system', readings, ['mem_used_percent'], options),
+    load: resolveMetricLevels('system', readings, ['system_load1_per_core'], options),
+    uptime: resolveMetricLevels('system', readings, ['system_uptime'], options)
+  },
+  process: {
+    status: resolveMetricLevels('process', readings, ['processes_blocked', 'processes_zombies'], options),
+    list: resolveMetricLevels('process', readings, ['process_cpu_usage', 'process_mem_usage'], options)
+  }
+});

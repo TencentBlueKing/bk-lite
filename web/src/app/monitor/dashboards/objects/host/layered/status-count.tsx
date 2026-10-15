@@ -4,6 +4,8 @@ import React from 'react';
 import { Tooltip } from 'antd';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { hostCategoryText } from './category-copy';
+import { CardAlertDot, cardAlertClass } from './card-alert';
+import type { TabAlertLevel } from './tab-level';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
@@ -181,14 +183,18 @@ function ProcessStatusStack({ items }: { items: StatusCountItem[] }) {
 
 /** 进程状态：标签在上，整数 +「个」，左侧色条。不画涨跌箭头、不画 spark。 */
 export default function StatusCountRow({
-  items
+  items,
+  alertLevel
 }: {
   items: StatusCountItem[];
+  /** 阻塞 / 僵尸达档时标整张状态卡。运行、休眠不单独打点。 */
+  alertLevel?: TabAlertLevel;
 }) {
   const { t } = useDashboardText();
   if (!items.length) {
     return (
-      <section className={`${classic.panel} ${styles.statusPanel}`}>
+      <section className={`${classic.panel} ${styles.statusPanel} ${cardAlertClass(alertLevel)}`}>
+        <CardAlertDot level={alertLevel} />
         <div className={styles.sectionHead}>
           <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>进程状态</div>
         </div>
@@ -202,7 +208,8 @@ export default function StatusCountRow({
     return item.label;
   };
   return (
-    <section className={`${classic.panel} ${styles.statusPanel}`}>
+    <section className={`${classic.panel} ${styles.statusPanel} ${cardAlertClass(alertLevel)}`}>
+      <CardAlertDot level={alertLevel} />
       <div className={styles.sectionHead}>
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>进程状态</div>
       </div>

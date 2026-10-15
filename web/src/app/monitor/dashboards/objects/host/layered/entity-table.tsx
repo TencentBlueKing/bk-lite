@@ -6,6 +6,8 @@ import type { ColumnsType } from 'antd/es/table';
 import { formatMetricValue } from '../../../shared/utils/format';
 import type { MetricUnit } from '../../../shared/types';
 import type { EntityTableRow } from '../entity-series';
+import { CardAlertDot, cardAlertClass } from './card-alert';
+import type { TabAlertLevel } from './tab-level';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
 
@@ -64,7 +66,8 @@ export default function LayeredEntityTable({
   emptyText = '暂无数据',
   expandedRowRender,
   rowExpandable,
-  toolbar
+  toolbar,
+  alertLevel
 }: {
   rows: EntityTableRow[];
   columns: LayeredColumn[];
@@ -77,6 +80,8 @@ export default function LayeredEntityTable({
   rowExpandable?: (row: EntityTableRow) => boolean;
   /** 表框内、列头上方右侧。导出按钮放这里，不浮在边框外。 */
   toolbar?: React.ReactNode;
+  /** 本表达档。不传或 none 时不打点、不加框。 */
+  alertLevel?: TabAlertLevel;
 }) {
   const tableColumns: ColumnsType<EntityTableRow> = columns.map((column) => ({
     title: column.title,
@@ -122,8 +127,13 @@ export default function LayeredEntityTable({
     : undefined;
 
   return (
-    <div className={`${classic.panel} ${styles.tableWrap}`}>
-      {toolbar ? <div className="mb-1 flex justify-end">{toolbar}</div> : null}
+    <div className={`${classic.panel} ${styles.tableWrap} ${cardAlertClass(alertLevel)}`}>
+      <CardAlertDot level={alertLevel} />
+      {toolbar ? (
+        <div className={`mb-1 flex justify-end ${alertLevel && alertLevel !== 'none' ? styles.cardAlertPad : ''}`}>
+          {toolbar}
+        </div>
+      ) : null}
       <Table<EntityTableRow>
         size="small"
         rowKey="key"

@@ -10,7 +10,9 @@ import { HOST_PALETTE, HOST_SERIES_COLOR } from '../config';
 import type { EntityTableRow } from '../entity-series';
 import { pointsToChartData } from '../entity-series';
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
+import { CardAlertDot, cardAlertClass } from './card-alert';
 import ThinTimeSeries from './thin-time-series';
+import type { HostSurfaceAlerts } from './tab-level';
 import { metricBlockPhase, type MetricBlockPhase } from './performance-scope';
 import {
   formatPercent,
@@ -69,7 +71,8 @@ export default function SystemPane({
   coreRows = [],
   coreLoading = false,
   coreFailed = false,
-  onRetryCore
+  onRetryCore,
+  alerts
 }: {
   metrics: Record<string, MetricSeries | undefined>;
   pendingMetricNames?: ReadonlySet<string>;
@@ -78,6 +81,7 @@ export default function SystemPane({
   coreLoading?: boolean;
   coreFailed?: boolean;
   onRetryCore?: () => void;
+  alerts: HostSurfaceAlerts['system'];
 }) {
   const { t } = useDashboardText();
   const [selectedCoreKey, setSelectedCoreKey] = useState('');
@@ -196,6 +200,7 @@ export default function SystemPane({
     names: readonly string[];
     phase: MetricBlockPhase;
     valueColor?: string;
+    alertLevel?: HostSurfaceAlerts['system']['cpu'];
   }> = [
     {
       key: 'cpu',
@@ -203,6 +208,7 @@ export default function SystemPane({
       names: cpuNames,
       phase: phaseFor(cpuNames, cpuNow != null),
       valueColor: CPU_SERIES_COLOR,
+      alertLevel: alerts.cpu,
       ...splitMetric(cpuNow, 'percent')
     },
     {
@@ -211,6 +217,7 @@ export default function SystemPane({
       names: memoryUsage.complementary ? memTrendNames : memKpiNames,
       phase: phaseFor(memoryUsage.complementary ? memTrendNames : memKpiNames, memNow != null),
       valueColor: MEM_USED_COLOR,
+      alertLevel: alerts.mem,
       ...splitMetric(memNow, 'percent')
     },
     { key: 'avail', label: '可用内存', names: availNames, phase: phaseFor(availNames, availLatest != null), ...splitMetric(availLatest, 'percent') },
@@ -221,7 +228,8 @@ export default function SystemPane({
       phase: phaseFor(load1Names, load1Now != null),
       value: formatPlain(load1Now),
       unit: '',
-      valueColor: LOAD1_SERIES_COLOR
+      valueColor: LOAD1_SERIES_COLOR,
+      alertLevel: alerts.load
     },
     {
       key: 'uptime',
@@ -229,7 +237,8 @@ export default function SystemPane({
       names: uptimeNames,
       phase: phaseFor(uptimeNames, uptimeNow != null),
       value: uptimeNow == null ? '--' : formatDuration(uptimeNow),
-      unit: ''
+      unit: '',
+      alertLevel: alerts.uptime
     }
   ];
   const charts = [
@@ -245,6 +254,7 @@ export default function SystemPane({
         label: 'CPU',
         color: CPU_SERIES_COLOR
       }]}
+      alertLevel={alerts.cpu}
     />,
     <ThinTimeSeries
       key="mem"
@@ -262,6 +272,7 @@ export default function SystemPane({
           reading: value == null ? undefined : formatPercent(value)
         };
       })}
+      alertLevel={alerts.mem}
     />,
     loadActive ? (
       <ThinTimeSeries
@@ -276,6 +287,7 @@ export default function SystemPane({
           label: item.label,
           color: item.color
         }))}
+        alertLevel={alerts.load}
       />
     ) : null
   ].filter(Boolean);
@@ -398,7 +410,8 @@ export default function SystemPane({
       </div>
       <div className={styles.instantKpiRow}>
         {instantCards.map((card) => (
-          <section key={card.key} className={`${classic.panel} ${styles.instantKpi}`}>
+          <section key={card.key} className={`${classic.panel} ${styles.instantKpi} ${cardAlertClass(card.alertLevel)}`}>
+            <CardAlertDot level={card.alertLevel} />
             <div className={styles.instantKpiLabel}>{card.label}</div>
             {card.phase === 'loading' ? (
               <span

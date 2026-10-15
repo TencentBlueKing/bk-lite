@@ -10,7 +10,9 @@ import { pointsToChartData, type EntityTableRow } from '../entity-series';
 import LayeredEntityTable, { type LayeredColumn } from './entity-table';
 import TableCsvExportButton from './table-csv-export';
 import StatusCountRow, { processStatusView } from './status-count';
+import { CardAlertDot, cardAlertClass } from './card-alert';
 import ThinTimeSeries from './thin-time-series';
+import { resolveMetricLevels, type HostSurfaceAlerts, type TabAlertLevel } from './tab-level';
 import { formatPercent, formatUnit, latestPreferCount, metricSettled } from './readings';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
@@ -64,7 +66,8 @@ export default function FlatProcessSplit({
   onSelect,
   metrics,
   metricsLoading = false,
-  hostLabel
+  hostLabel,
+  alerts
 }: {
   rows: EntityTableRow[];
   loading: boolean;
@@ -73,6 +76,7 @@ export default function FlatProcessSplit({
   metrics?: Record<string, MetricSeries | undefined>;
   metricsLoading?: boolean;
   hostLabel: string;
+  alerts: HostSurfaceAlerts['process'];
 }) {
   const { t } = useDashboardText();
   const processListScopeTip = t(
@@ -95,6 +99,13 @@ export default function FlatProcessSplit({
   );
   const cpu = numberOrNull(selected?.values.process_cpu_usage);
   const mem = numberOrNull(selected?.values.process_mem_usage);
+  const selectedLevel = (metric: 'process_cpu_usage' | 'process_mem_usage', value: number | null): TabAlertLevel => (
+    resolveMetricLevels('process', { [metric]: value }, [metric])
+  );
+  const currentLevel = resolveMetricLevels('process', {
+    process_cpu_usage: cpu,
+    process_mem_usage: mem
+  }, ['process_cpu_usage', 'process_mem_usage']);
   // 数值色跟折线序列 token 走，换进程也不改色、不跟行色点。
   const cpuSeries = { label: 'CPU', color: HOST_SERIES_COLOR.cpu, reading: formatPercent(cpu) };
   const memSeries = { label: '内存', color: HOST_SERIES_COLOR.memUsed, reading: formatPercent(mem) };
@@ -149,12 +160,13 @@ export default function FlatProcessSplit({
 
   return (
     <>
-      <StatusCountRow items={statusItems} />
+      <StatusCountRow items={statusItems} alertLevel={alerts.status} />
       <div className={styles.sectionHead}>
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>趋势</div>
       </div>
       <div className={styles.processTop}>
-        <section className={`${classic.panel} ${styles.currentCard}`}>
+        <section className={`${classic.panel} ${styles.currentCard} ${cardAlertClass(currentLevel)}`}>
+          <CardAlertDot level={currentLevel} />
           <div className={styles.currentKicker}>当前进程</div>
           <div className={styles.currentName}>{name || '—'}</div>
           <div className={styles.currentMetric}>
@@ -180,6 +192,7 @@ export default function FlatProcessSplit({
             data={cpuTrend}
             showSeriesName
             legends={[{ label: 'CPU', color: cpuSeries.color }]}
+            alertLevel={selectedLevel('process_cpu_usage', cpu)}
           />
           <ThinTimeSeries
             title={name ? `内存 · ${name}` : '内存'}
@@ -188,6 +201,7 @@ export default function FlatProcessSplit({
             data={memTrend}
             showSeriesName
             legends={[{ label: '内存', color: memSeries.color }]}
+            alertLevel={selectedLevel('process_mem_usage', mem)}
           />
         </div>
       </div>
@@ -213,6 +227,7 @@ export default function FlatProcessSplit({
         onSelect={onSelect}
         emptyText="暂无进程数据"
         toolbar={<TableCsvExportButton host={hostLabel} slug="processes" columns={columns} rows={sorted} />}
+        alertLevel={alerts.list}
         expandedRowRender={(row) => (
           <div className="break-all rounded bg-[var(--color-fill-1)] px-2.5 py-1.5 text-[12px] leading-5 text-[var(--color-text-2)]">
             <span className="text-[var(--color-text-3)]">匹配规则：</span>
