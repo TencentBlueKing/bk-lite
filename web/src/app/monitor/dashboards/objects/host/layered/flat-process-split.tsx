@@ -178,14 +178,16 @@ export default function FlatProcessSplit({
             loading={loading}
             unit="percent"
             data={cpuTrend}
-            legends={[cpuSeries]}
+            showSeriesName
+            legends={[{ label: 'CPU', color: cpuSeries.color }]}
           />
           <ThinTimeSeries
             title={name ? `内存 · ${name}` : '内存'}
             loading={loading}
             unit="percent"
             data={memTrend}
-            legends={[memSeries]}
+            showSeriesName
+            legends={[{ label: '内存', color: memSeries.color }]}
           />
         </div>
       </div>
