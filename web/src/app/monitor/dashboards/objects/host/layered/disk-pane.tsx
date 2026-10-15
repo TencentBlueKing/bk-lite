@@ -169,7 +169,8 @@ export default function DiskPane({
     {
       key: 'disk_used',
       title: '已用/总量',
-      csvValue: (row) => formatBytesPair(row.values.disk_used, row.values.disk_total)
+      csvValue: (row) => formatBytesPair(row.values.disk_used, row.values.disk_total),
+      render: (row) => formatBytesPair(row.values.disk_used, row.values.disk_total)
     },
     {
       key: 'io_device',
@@ -232,7 +233,8 @@ export default function DiskPane({
     {
       key: 'latency',
       title: hostCategoryText(t, 'latencyReadWrite'),
-      csvValue: (row) => formatLatencyPair(row)
+      csvValue: (row) => formatLatencyPair(row),
+      render: (row) => formatLatencyPair(row)
     },
     {
       key: 'mounts',
