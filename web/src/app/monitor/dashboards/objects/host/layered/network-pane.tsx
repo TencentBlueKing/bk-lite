@@ -101,7 +101,7 @@ export default function NetworkPane({
           }))}
         />
         <ThinTimeSeries
-          title={name}
+          title={name
             ? hostCategoryText(t, 'packetRateInOutNamed', { name })
             : hostCategoryText(t, 'packetRateInOut')}
           loading={loading}
