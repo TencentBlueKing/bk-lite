@@ -197,7 +197,7 @@ export default function HostCategoryLayout({
     [netState.byMetric]
   );
   const processRows = useMemo(
-    () => buildLabelRows(processState.byMetric, 'process_name', 'process_cpu_usage'),
+    () => buildLabelRows(processState.byMetric, 'process_name', 'process_cpu_usage', ['pattern']),
     [processState.byMetric]
   );
   const coreRows = useMemo(() => buildCpuCoreRows(coreState.byMetric), [coreState.byMetric]);

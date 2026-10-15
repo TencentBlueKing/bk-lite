@@ -817,6 +817,16 @@ button.kpiCard {
   cursor: pointer;
 }
 
+.tableWrap tr.rowActive:has(+ :global(.ant-table-expanded-row)) :global(td) {
+  border-bottom-color: transparent !important;
+}
+
+.tableWrap :global(.ant-table-expanded-row > .ant-table-cell) {
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent) !important;
+  padding-top: 0 !important;
+  padding-bottom: 8px !important;
+}
+
 .deviceLink {
   border: 0;
   margin: 0;

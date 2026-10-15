@@ -146,6 +146,7 @@ export default function FlatProcessSplit({
             </Tooltip>
           </span>
         </div>
+        <span className={styles.note}>点选行查看匹配规则</span>
       </div>
       <LayeredEntityTable
         rows={sorted}
@@ -154,6 +155,13 @@ export default function FlatProcessSplit({
         selectedKey={selected?.key || ''}
         onSelect={onSelect}
         emptyText="暂无进程数据"
+        expandedRowRender={(row) => (
+          <div className="break-all rounded bg-[var(--color-fill-1)] px-2.5 py-1.5 text-[12px] leading-5 text-[var(--color-text-2)]">
+            <span className="text-[var(--color-text-3)]">匹配规则：</span>
+            {row.labels.pattern}
+          </div>
+        )}
+        rowExpandable={(row) => row.key === (selected?.key || '') && Boolean(row.labels.pattern)}
       />
     </>
   );

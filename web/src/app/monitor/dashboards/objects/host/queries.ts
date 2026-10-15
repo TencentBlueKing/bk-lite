@@ -220,42 +220,42 @@ export const HOST_CPU_CORE_ENTITY_QUERIES: HostEntityMetricQuery[] = [
   }
 ];
 
-/** 主机分类仪表盘进程层：查询与 Process 对象 inventory 一致，按 process_name 聚合。 */
+/** 主机分类仪表盘进程层：按 process_name 聚合，并保留 procstat 的 pattern 标签供选中行展示匹配规则。 */
 export const HOST_PROCESS_ENTITY_QUERIES: HostEntityMetricQuery[] = [
   {
     key: 'process_cpu_usage',
     unit: 'percent',
-    labelKeys: ['process_name'],
-    query: 'sum(procstat_cpu_usage{instance_type="process", __$labels__}) by (instance_id, process_name)'
+    labelKeys: ['process_name', 'pattern'],
+    query: 'sum(procstat_cpu_usage{instance_type="process", __$labels__}) by (instance_id, process_name, pattern)'
   },
   {
     key: 'process_mem_usage',
     unit: 'percent',
-    labelKeys: ['process_name'],
-    query: 'sum(procstat_memory_usage{instance_type="process", __$labels__}) by (instance_id, process_name)'
+    labelKeys: ['process_name', 'pattern'],
+    query: 'sum(procstat_memory_usage{instance_type="process", __$labels__}) by (instance_id, process_name, pattern)'
   },
   {
     key: 'process_memory_rss',
     unit: 'bytes',
-    labelKeys: ['process_name'],
-    query: 'sum(procstat_memory_rss{instance_type="process", __$labels__}) by (instance_id, process_name)'
+    labelKeys: ['process_name', 'pattern'],
+    query: 'sum(procstat_memory_rss{instance_type="process", __$labels__}) by (instance_id, process_name, pattern)'
   },
   {
     key: 'process_num_threads',
     unit: 'counts',
-    labelKeys: ['process_name'],
-    query: 'sum(procstat_num_threads{instance_type="process", __$labels__}) by (instance_id, process_name)'
+    labelKeys: ['process_name', 'pattern'],
+    query: 'sum(procstat_num_threads{instance_type="process", __$labels__}) by (instance_id, process_name, pattern)'
   },
   {
     key: 'process_num_fds',
     unit: 'counts',
-    labelKeys: ['process_name'],
-    query: 'sum(procstat_num_fds{instance_type="process", __$labels__}) by (instance_id, process_name)'
+    labelKeys: ['process_name', 'pattern'],
+    query: 'sum(procstat_num_fds{instance_type="process", __$labels__}) by (instance_id, process_name, pattern)'
   },
   {
     key: 'process_alive',
     unit: 'none',
-    labelKeys: ['process_name'],
-    query: 'clamp_max(count(procstat_cpu_usage{instance_type="process", __$labels__}) by (instance_id, process_name), 1)'
+    labelKeys: ['process_name', 'pattern'],
+    query: 'clamp_max(count(procstat_cpu_usage{instance_type="process", __$labels__}) by (instance_id, process_name, pattern), 1)'
   }
 ];

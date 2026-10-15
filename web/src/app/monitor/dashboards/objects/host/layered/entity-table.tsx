@@ -48,7 +48,9 @@ export default function LayeredEntityTable({
   loading,
   selectedKey,
   onSelect,
-  emptyText = '暂无数据'
+  emptyText = '暂无数据',
+  expandedRowRender,
+  rowExpandable
 }: {
   rows: EntityTableRow[];
   columns: LayeredColumn[];
@@ -56,6 +58,9 @@ export default function LayeredEntityTable({
   selectedKey: string;
   onSelect: (key: string) => void;
   emptyText?: string;
+  /** 选中行下方的附加行。未提供时表格不出现展开列。 */
+  expandedRowRender?: (row: EntityTableRow) => React.ReactNode;
+  rowExpandable?: (row: EntityTableRow) => boolean;
 }) {
   const tableColumns: ColumnsType<EntityTableRow> = columns.map((column) => ({
     title: column.title,
@@ -89,6 +94,17 @@ export default function LayeredEntityTable({
     }
   }));
 
+  const expandable = expandedRowRender
+    ? {
+      showExpandColumn: false,
+      expandedRowRender,
+      rowExpandable,
+      expandedRowKeys: rows
+        .filter((row) => (rowExpandable ? rowExpandable(row) : true))
+        .map((row) => row.key)
+    }
+    : undefined;
+
   return (
     <div className={`${classic.panel} ${styles.tableWrap}`}>
       <Table<EntityTableRow>
@@ -102,6 +118,7 @@ export default function LayeredEntityTable({
         locale={{ emptyText: loading ? '加载中' : emptyText }}
         rowClassName={(row) => (row.key === selectedKey ? styles.rowActive : styles.rowIdle)}
         onRow={(row) => ({ onClick: () => onSelect(row.key) })}
+        expandable={expandable}
       />
     </div>
   );

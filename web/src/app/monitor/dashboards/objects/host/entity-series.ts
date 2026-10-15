@@ -376,14 +376,16 @@ export const sumPoints = (left: RangePoint[] = [], right: RangePoint[] = []): Ra
 export const buildLabelRows = (
   byMetric: Record<string, LabeledSeries[]>,
   identityKey: string,
-  sortKey: string
+  sortKey: string,
+  extraLabelKeys: string[] = []
 ): EntityTableRow[] => {
+  const keepKeys = [identityKey, ...extraLabelKeys];
   const rows = new Map<string, EntityTableRow>();
   Object.entries(byMetric).forEach(([metricKey, seriesList]) => {
     seriesList.forEach((series) => {
       const identity = labelText(series.labels, identityKey);
       if (!identity) return;
-      const row = ensureRow(rows, `${identityKey}:${identity}`, series.labels, [identityKey]);
+      const row = ensureRow(rows, `${identityKey}:${identity}`, series.labels, keepKeys);
       writeMetric(row, metricKey, series.points);
     });
   });
