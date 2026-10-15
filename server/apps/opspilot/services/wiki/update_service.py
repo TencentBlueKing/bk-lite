@@ -21,11 +21,15 @@ from apps.opspilot.models import (
 )
 from apps.opspilot.services.llm_context_budget import window_tokens_for_model_id
 from apps.opspilot.services.wiki import decision_service
+from apps.opspilot.services.wiki.build_generation_service import BuildGenerationError
 from apps.opspilot.services.wiki.cascade_service import cascade
 from apps.opspilot.services.wiki.maintenance_errors import humanize_maintenance_error
 from apps.opspilot.services.wiki.material_build_queue_service import QUEUE_ITEM_TRIGGER
 from apps.opspilot.services.wiki.material_service import load_parsed_markdown
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded, new_material_call_budget
+
+# 与资料列表「构建中 / 排队中」一致。删除前必须在行锁内再验，避免预检后的窗口。
+BUSY_MATERIAL_DELETE_STATUSES = frozenset({"queued", "parsing", "building"})
 
 
 def affected_pages(material):
@@ -1179,6 +1183,12 @@ def handle_material_deletion(
     with transaction.atomic():
         knowledge_base = WikiKnowledgeBase.objects.select_for_update().get(pk=knowledge_base_id)
         locked = Material.objects.select_for_update().get(pk=material_id, knowledge_base=knowledge_base)
+        if locked.status in BUSY_MATERIAL_DELETE_STATUSES:
+            raise BuildGenerationError(
+                "material_delete_in_progress",
+                "资料正在构建中，请等待完成后再删除",
+                retryable=True,
+            )
         if not PageEvidence.objects.filter(material_id=material_id).exists():
             return _delete_unpublished_material(locked, operator=operator)
     return _handle_material_deletion_generation(
@@ -1191,8 +1201,6 @@ def handle_material_deletion(
 
 def delete_materials(materials, operator=""):
     """按给定顺序逐条删除。中途失败时停住，已成功的删除保持生效。"""
-    from apps.opspilot.services.wiki.build_generation_service import BuildGenerationError
-
     ordered = list(materials)
     deleted = []
     build_record_ids = []

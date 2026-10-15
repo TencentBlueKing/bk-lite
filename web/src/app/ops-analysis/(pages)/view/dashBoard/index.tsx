@@ -40,6 +40,7 @@ import { useDashBoardApi } from '@/app/ops-analysis/api/dashBoard';
 import { useDirectoryApi } from '@/app/ops-analysis/api';
 import useBtnPermissions from '@/hooks/usePermissions';
 import { useCanvasPeriodicRefresh } from '@/app/ops-analysis/hooks/useCanvasPeriodicRefresh';
+import { relabelApplicationTopologyFilters } from '@/app/ops-analysis/utils/applicationTopologyCanvasFilter';
 import { canPersistCanvasRefreshInterval, normalizeCanvasRefreshInterval } from '@/app/ops-analysis/utils/canvasRefreshInterval';
 import type { CanvasRuntimeRefreshCause } from '@/app/ops-analysis/utils/canvasRefreshTimer';
 import {
@@ -153,6 +154,14 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     renderDataSourceIds,
   }, ref) => {
     const { t } = useTranslation();
+    const labelStoredFilters = useCallback(
+      (filters: UnifiedFilterDefinition[]) =>
+        relabelApplicationTopologyFilters({ filters }, {
+          system: t('dashboard.applicationTopologyFilterName'),
+          depth: t('dashboard.applicationTopologyDepth'),
+        }).filters ?? filters,
+      [t],
+    );
     const { data: session } = useSession();
     const { selectedGroup } = useUserInfoContext();
     const shareOrganization = useShareOrganization();
@@ -332,11 +341,11 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     const applyDashboardDraftPayload = useCallback(
       (payload: CanvasDraftPayload) => {
         const nextLayout = deserializeDashboardGridStackLayout(payload.view_sets);
-        const loadedDefinitions: UnifiedFilterDefinition[] = Array.isArray(
+        const loadedDefinitions = labelStoredFilters(Array.isArray(
           payload.filters,
         )
           ? payload.filters
-          : [];
+          : []);
         const nextValues = fillMissingOrganizationFilterValues(
           loadedDefinitions,
           syncFilterValuesWithDefinitions(loadedDefinitions, {}),
@@ -354,6 +363,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       [
         appliedNamespaceId,
         applyQueryState,
+        labelStoredFilters,
         setDefinitions,
         setFilterValues,
         setSavedRefreshInterval,
@@ -623,12 +633,13 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
           // Handle both legacy (unifiedFilters) and new (direct array) format
           const rawFilters = dashboardData.filters;
-          const { definitions: loadedDefinitions, values: migratedValues } =
-            normalizeStoredFilterState(
-              rawFilters,
-              renderMode ? (renderFilterValues ?? {}) : {},
-              { canvasId: dashboard.data_id },
-            );
+          const storedFilters = normalizeStoredFilterState(
+            rawFilters,
+            renderMode ? (renderFilterValues ?? {}) : {},
+            { canvasId: dashboard.data_id },
+          );
+          const loadedDefinitions = labelStoredFilters(storedFilters.definitions);
+          const migratedValues = storedFilters.values;
 
           const initialValues = fillMissingOrganizationFilterValues(
             loadedDefinitions,
@@ -685,6 +696,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       };
     }, [
       dashboardId,
+      labelStoredFilters,
       renderMode,
       renderFilterValues,
     ]);

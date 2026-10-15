@@ -12,7 +12,7 @@ from apps.workflow_orchestration.atom_packages.runtime import trusted_execution_
 from apps.workflow_orchestration.models import ExecutionArtifact, WorkflowExecution
 from apps.workflow_orchestration.services.object_store import WorkflowObjectStore
 from apps.workflow_orchestration.services.report_template_inputs import resolve_uploaded_report_template, verify_template_content
-from apps.workflow_orchestration.services.reports import missing_template_fields, parse_report_template, render_report
+from apps.workflow_orchestration.services.reports import missing_template_fields, parse_report_template, prepare_report_data, render_report
 
 
 def _template_content(inputs: dict[str, Any], execution: WorkflowExecution, store) -> tuple[bytes, str, str]:
@@ -118,9 +118,10 @@ def render_document_atom(inputs: dict[str, Any], *, store=None) -> dict[str, Any
     if not isinstance(data, dict):
         raise ValueError("文档数据必须是 JSON 对象")
     data = _merge_report_data(data, inputs.get("additional_data"))
-    document = render_report(content, fmt, data)
+    prepared = prepare_report_data(data)
+    document = render_report(content, fmt, prepared)
     parsed = parse_report_template(content, fmt)
-    warnings = missing_template_fields(parsed, data)
+    warnings = missing_template_fields(parsed, prepared)
     digest = hashlib.sha256(document).hexdigest()
     filename = f"{filename_prefix}-{timezone.localtime():%Y%m%d-%H%M%S}.{fmt}"
     object_key = f"workflow-orchestration/executions/{execution.id}/{digest[:16]}/{filename}"

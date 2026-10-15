@@ -12,11 +12,7 @@ import pydantic.root_model  # noqa
 import pytest
 
 from apps.monitor.services import alert_lifecycle_notify as lifecycle_notify
-from apps.monitor.services.alert_lifecycle_notify import (
-    ACTION_TO_ALERT_CENTER,
-    LEVEL_TO_ALERT_CENTER,
-    AlertLifecycleNotifier,
-)
+from apps.monitor.services.alert_lifecycle_notify import ACTION_TO_ALERT_CENTER, LEVEL_TO_ALERT_CENTER, AlertLifecycleNotifier
 
 pytestmark = pytest.mark.unit
 
@@ -135,18 +131,14 @@ class TestBuildContent:
     def test_开始时间按通知人时区转换为本地墙钟(self):
         notifier = AlertLifecycleNotifier(policy=None)
         alert = _alert(start_event_time=datetime(2026, 8, 13, 1, 24, 0, tzinfo=timezone.utc))
-        content = notifier._build_content(
-            alert, "created", "", "", target_timezone="Asia/Shanghai"
-        )
+        content = notifier._build_content(alert, "created", "", "", target_timezone="Asia/Shanghai")
         assert "开始时间：2026-08-13 09:24:00" in content
         assert "开始时间：2026-08-13 01:24:00" not in content
 
     def test_开始时间跟随通知人时区而不是写死上海(self):
         notifier = AlertLifecycleNotifier(policy=None)
         alert = _alert(start_event_time=datetime(2026, 8, 13, 1, 24, 0, tzinfo=timezone.utc))
-        content = notifier._build_content(
-            alert, "created", "", "", target_timezone="America/New_York"
-        )
+        content = notifier._build_content(alert, "created", "", "", target_timezone="America/New_York")
         assert "开始时间：2026-08-12 21:24:00" in content
 
 
@@ -221,6 +213,30 @@ class TestBuildAlertCenterPayload:
         assert payload["labels"]["reason"] == "rsn"
         assert payload["labels"]["status"] == "active"
 
+    def test_实例摘要写入通知标签且不覆盖策略字段(self):
+        notifier = AlertLifecycleNotifier(policy=SimpleNamespace(name="策略X", organizations=[1]))
+        alert = _alert()
+        payload = notifier._build_alert_center_payload(
+            alert,
+            "created",
+            "",
+            "",
+            monitor_identity_map={
+                "inst-1": {
+                    "notification_labels": {
+                        "ip": "10.1.2.3",
+                        "policy_name": "不应覆盖",
+                        "probe": {"target": "https://shop.example/health"},
+                        "collector": {"nodes": "北京节点"},
+                    }
+                }
+            },
+        )
+        assert payload["labels"]["ip"] == "10.1.2.3"
+        assert payload["labels"]["probe"]["target"] == "https://shop.example/health"
+        assert payload["labels"]["collector"]["nodes"] == "北京节点"
+        assert payload["labels"]["policy_name"] == "策略X"
+
     def test_未知动作默认created且value为None(self):
         notifier = AlertLifecycleNotifier(policy=None)
         alert = _alert(value=None, start_event_time=None)
@@ -233,9 +249,7 @@ class TestBuildAlertCenterPayload:
         policy = SimpleNamespace(name="P", organizations=[99])
         notifier = AlertLifecycleNotifier(policy=policy)
         alert = _alert()
-        payload = notifier._build_alert_center_payload(
-            alert, "created", "", "", instance_org_map={"inst-1": [5, 6]}
-        )
+        payload = notifier._build_alert_center_payload(alert, "created", "", "", instance_org_map={"inst-1": [5, 6]})
         assert payload["organizations"] == [5, 6]
 
 
@@ -405,4 +419,3 @@ class TestNotifyAlertsChannelQuery:
 
         in_bulk.assert_called_once()
         filt.assert_not_called()
-

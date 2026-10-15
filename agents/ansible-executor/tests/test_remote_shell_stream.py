@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -147,7 +148,77 @@ async def test_remote_shell_stream_keeps_script_out_of_process_arguments():
         args_index = command.index("-a")
         assert command[module_index + 1] == "raw"
         assert "_raw_params" in json.loads(command[args_index + 1])
-    assert "setsid -f" in json.loads(commands[0][commands[0].index("-a") + 1])["_raw_params"]
+    start_params = json.loads(commands[0][commands[0].index("-a") + 1])["_raw_params"]
+    assert "setsid -f true" in start_params
+    assert "setsid -f /bin/sh" in start_params
+    assert "setsid /bin/sh" in start_params
+
+
+def test_remote_shell_start_finishes_script_when_setsid_has_no_fork_flag(tmp_path):
+    """目标机 setsid 不支持 -f 时，启动命令仍要把用户脚本跑到结束。"""
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    setsid = fake_bin / "setsid"
+    setsid.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env python3",
+                "import os, sys",
+                "args = sys.argv[1:]",
+                "if args and args[0] == '-f':",
+                "    sys.stderr.write('setsid: invalid option -- f\\n')",
+                "    raise SystemExit(1)",
+                "os.setsid()",
+                "os.execvp(args[0], args)",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    setsid.chmod(0o755)
+    start_command, poll_command, stop_command, remote_dir = _build_remote_commands(
+        "printf 'hello world\\n'",
+        "/bin/sh",
+        1024,
+    )
+    env = os.environ.copy()
+    env["PATH"] = f"{fake_bin}{os.pathsep}{env.get('PATH', '')}"
+    chunks: list[bytes] = []
+    try:
+        started = subprocess.run(
+            ["/bin/sh", "-c", start_command],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env=env,
+        )
+        assert started.returncode == 0, started.stderr
+        assert "__BKLITE_STREAM_STARTED__" in started.stdout
+
+        status = "RUNNING"
+        deadline = time.monotonic() + 10
+        while status == "RUNNING" and time.monotonic() < deadline:
+            polled = subprocess.run(
+                ["/bin/sh", "-c", poll_command],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env=env,
+            )
+            assert polled.returncode == 0, polled.stderr
+            chunk, status = _parse_poll_body(polled.stdout)
+            chunks.append(chunk)
+            if status == "RUNNING":
+                time.sleep(0.05)
+
+        assert status == "0"
+        assert b"hello world" in b"".join(chunks)
+    finally:
+        subprocess.run(["/bin/sh", "-c", stop_command], check=False, capture_output=True, text=True, timeout=10, env=env)
+
+    assert not Path(remote_dir).exists()
 
 
 def test_remote_shell_commands_cap_target_file_and_clean_workspace():

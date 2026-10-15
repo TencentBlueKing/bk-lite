@@ -5,6 +5,7 @@ import { Empty, Spin, Tag } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import type { DirItem } from '@/app/ops-analysis/types';
 import { resolveCanvasDescription } from '@/app/ops-analysis/utils/canvasDescription';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 interface StatItem {
   label: string;
@@ -62,9 +63,11 @@ const BasicCanvasPage: React.FC<BasicCanvasPageProps> = ({
               )}
             </div>
             {resolvedDescription && (
-              <p className="mt-1 mb-0 text-sm text-[var(--color-text-2)]">
-                {resolvedDescription}
-              </p>
+              <EllipsisWithTooltip
+                className="mt-1 block w-full min-w-0 truncate text-sm text-(--color-text-2)"
+                text={resolvedDescription}
+                tooltipMaxWidth={480}
+              />
             )}
           </div>
           {extra && <div className="flex shrink-0 items-center gap-2">{extra}</div>}
