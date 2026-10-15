@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Tabs } from 'antd';
 import useMonitorApi from '@/app/monitor/api';
 import {
-  buildCpuCoreRows,
+  buildCpuCoreLoad,
   buildDiskDeviceRows,
   buildLabelRows,
   buildMountDiskRows,
@@ -150,8 +150,7 @@ export default function HostCategoryLayout({
   processReady,
   processState = EMPTY_ENTITY,
   categoryTab = 'overview',
-  onCategoryTabChange,
-  onRetryCore
+  onCategoryTabChange
 }: HostDetailLayoutProps) {
   const { getMonitorAlert } = useMonitorApi();
   const [uncontrolledTab, setUncontrolledTab] = useState('overview');
@@ -205,7 +204,12 @@ export default function HostCategoryLayout({
     () => buildLabelRows(processState.byMetric, 'process_name', 'process_cpu_usage', ['pattern']),
     [processState.byMetric]
   );
-  const coreRows = useMemo(() => buildCpuCoreRows(coreState.byMetric), [coreState.byMetric]);
+  const coreLoad = useMemo(
+    () => (coreState.status === 'ready'
+      ? buildCpuCoreLoad(coreState.byMetric)
+      : { rows: [], spread: null }),
+    [coreState.byMetric, coreState.status]
+  );
   const diskSelection = useDiskDualSelection(diskRows, diskDeviceRows);
   const netSelection = usePinnedRow(netRows);
   const processSelection = usePinnedRow(processRows);
@@ -323,10 +327,8 @@ export default function HostCategoryLayout({
           metrics={dashboard.metricSeries}
           pendingMetricNames={dashboard.pendingMetricNames}
           onRetryMetrics={dashboard.refetchMetricNames}
-          coreRows={coreState.status === 'ready' ? coreRows : []}
-          coreLoading={coreState.status === 'idle' || coreState.status === 'loading'}
-          coreFailed={coreState.status === 'error'}
-          onRetryCore={onRetryCore}
+          coreRows={coreLoad.rows}
+          coreSpread={coreLoad.spread}
           alerts={surfaceAlerts.system}
         />
       );

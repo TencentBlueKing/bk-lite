@@ -2810,6 +2810,13 @@
       "template": "min((device_optical_rx_power{__$labels__} != -10000) / 100) by (instance_id) or min(device_optical_rx_power{__$labels__}) by (instance_id)"
     },
     {
+      "id": "dashboard:v1:6388813c",
+      "object_names": [
+        "Host"
+      ],
+      "template": "max by (instance_id) (nvidia_smi_temperature_gpu{instance_type=\"os\", __$labels__})"
+    },
+    {
       "id": "dashboard:v1:638cb2dc",
       "object_names": [
         "JVM"
@@ -3577,6 +3584,13 @@
       "template": "topk(10, avg_over_time((sum(sflow_bytes{instance_type='firewall', collect_type='sflow', __$labels__}) by (instance_id, src_ip, src_port, dst_ip, header_protocol, dst_port))[__$window__]))"
     },
     {
+      "id": "dashboard:v1:82e23722",
+      "object_names": [
+        "Host"
+      ],
+      "template": "mem_shared{instance_type=\"os\", __$labels__} or mem_shared_gauge{instance_type=\"os\", __$labels__}"
+    },
+    {
       "id": "dashboard:v1:839d52b6",
       "object_names": [
         "Apache"
@@ -4055,6 +4069,13 @@
       "template": "sum without (db) (rate(postgresql_buffers_alloc{__$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:95fb5816",
+      "object_names": [
+        "Host"
+      ],
+      "template": "mem_buffered{instance_type=\"os\", __$labels__} or mem_buffered_gauge{instance_type=\"os\", __$labels__}"
+    },
+    {
       "id": "dashboard:v1:960d17a0",
       "object_names": [
         "Loadbalance"
@@ -4503,6 +4524,13 @@
       "template": "sum(netflow_in_bytes{instance_type='firewall', collect_type='netflow', __$labels__} * label_value(netflow_in_bytes{instance_type='firewall', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
     },
     {
+      "id": "dashboard:v1:a7894a0e",
+      "object_names": [
+        "Host"
+      ],
+      "template": "mem_used{instance_type=\"os\", __$labels__} or mem_used_gauge{instance_type=\"os\", __$labels__}"
+    },
+    {
       "id": "dashboard:v1:a7dd6a09",
       "object_names": [
         "Redis"
@@ -4628,6 +4656,13 @@
         "Postgres"
       ],
       "template": "sum without (db) (rate(postgresql_buffers_checkpoint{__$labels__}[__$window__]))"
+    },
+    {
+      "id": "dashboard:v1:af0bdd15",
+      "object_names": [
+        "Host"
+      ],
+      "template": "max by (instance_id) (100 * (nvidia_smi_memory_used{instance_type=\"os\", __$labels__} / nvidia_smi_memory_total{instance_type=\"os\", __$labels__}))"
     },
     {
       "id": "dashboard:v1:af670539",
@@ -4842,6 +4877,13 @@
         "ElasticSearch"
       ],
       "template": "rate(elasticsearch_breakers_fielddata_tripped{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:b7408f42",
+      "object_names": [
+        "Host"
+      ],
+      "template": "max by (instance_id) (nvidia_smi_utilization_gpu{instance_type=\"os\", __$labels__})"
     },
     {
       "id": "dashboard:v1:b77acc29",
@@ -6364,6 +6406,13 @@
         "Mysql"
       ],
       "template": "rate(mysql_opened_tables{__$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:f2f44f18",
+      "object_names": [
+        "Host"
+      ],
+      "template": "mem_cached{instance_type=\"os\", __$labels__} or mem_cached_gauge{instance_type=\"os\", __$labels__}"
     },
     {
       "id": "dashboard:v1:f30f80e5",

@@ -178,6 +178,66 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       color: HOST_PALETTE.neutral
     },
     {
+      name: 'mem_used',
+      display_name: '已用内存',
+      description: '主机已用内存字节。性能页内存构成在缺少该序列时用总量减可用推算。',
+      unit: 'bytes',
+      query: 'mem_used{instance_type="os", __$labels__} or mem_used_gauge{instance_type="os", __$labels__}',
+      color: HOST_PALETTE.blue,
+      linuxOnly: true
+    },
+    {
+      name: 'mem_cached',
+      display_name: '页缓存',
+      description: '用于文件缓存、可在内存紧张时回收的内存。',
+      unit: 'bytes',
+      query: 'mem_cached{instance_type="os", __$labels__} or mem_cached_gauge{instance_type="os", __$labels__}',
+      color: HOST_PALETTE.cyan,
+      linuxOnly: true
+    },
+    {
+      name: 'mem_buffered',
+      display_name: '缓冲',
+      description: '块设备 I/O 缓冲占用的内存。',
+      unit: 'bytes',
+      query: 'mem_buffered{instance_type="os", __$labels__} or mem_buffered_gauge{instance_type="os", __$labels__}',
+      color: HOST_PALETTE.amber,
+      linuxOnly: true
+    },
+    {
+      name: 'mem_shared',
+      display_name: '共享内存',
+      description: '多个进程共享的内存。',
+      unit: 'bytes',
+      query: 'mem_shared{instance_type="os", __$labels__} or mem_shared_gauge{instance_type="os", __$labels__}',
+      color: HOST_PALETTE.indigo,
+      linuxOnly: true
+    },
+    {
+      name: 'nvidia_smi_utilization_gpu',
+      display_name: 'GPU 利用率',
+      description: 'GPU 计算单元利用率。多卡时取最高。无采集则性能页不展示 GPU 区。',
+      unit: 'percent',
+      query: 'max by (instance_id) (nvidia_smi_utilization_gpu{instance_type="os", __$labels__})',
+      color: HOST_PALETTE.emerald
+    },
+    {
+      name: 'nvidia_smi_utilization_memory',
+      display_name: 'GPU 显存利用率',
+      description: 'GPU 显存占用相对总量的百分比。多卡时取最高。',
+      unit: 'percent',
+      query: 'max by (instance_id) (100 * (nvidia_smi_memory_used{instance_type="os", __$labels__} / nvidia_smi_memory_total{instance_type="os", __$labels__}))',
+      color: HOST_PALETTE.blue
+    },
+    {
+      name: 'nvidia_smi_temperature_gpu',
+      display_name: 'GPU 温度',
+      description: 'GPU 核心温度。多卡时取最高。',
+      unit: 'celsius',
+      query: 'max by (instance_id) (nvidia_smi_temperature_gpu{instance_type="os", __$labels__})',
+      color: HOST_PALETTE.orange
+    },
+    {
       name: 'host_mem_swap_used_bytes',
       display_name: '交换已用',
       description: '主机已用交换空间。',

@@ -33,7 +33,6 @@ export default function HostDashboardPage() {
   const searchParams = useSearchParams();
   const [processReady, setProcessReady] = useState(false);
   const [categoryTab, setCategoryTab] = useState('overview');
-  const [coreReloadKey, setCoreReloadKey] = useState(0);
   const layout = readHostDetailLayout(new URLSearchParams(searchParams.toString()));
   const dashboard = useSimpleDashboardData(
     HOST_DASHBOARD_CONFIG,
@@ -87,8 +86,7 @@ export default function HostDashboardPage() {
   const coreState = useHostEntityMetrics({
     ...entityArgs,
     enabled: categoryCore,
-    queries: HOST_CPU_CORE_ENTITY_QUERIES,
-    reloadKey: coreReloadKey
+    queries: HOST_CPU_CORE_ENTITY_QUERIES
   });
 
   useEffect(() => {
@@ -128,8 +126,7 @@ export default function HostDashboardPage() {
     layout,
     onLayoutChange,
     categoryTab,
-    onCategoryTabChange: setCategoryTab,
-    onRetryCore: () => setCoreReloadKey((key) => key + 1)
+    onCategoryTabChange: setCategoryTab
   };
 
   return (

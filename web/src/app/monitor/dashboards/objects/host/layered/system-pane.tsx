@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
+import type { ChartData } from '@/app/monitor/types';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import { hostCategoryText } from './category-copy';
@@ -8,17 +9,19 @@ import { formatMetricValue } from '../../../shared/utils/format';
 import type { MetricUnit } from '../../../shared/types';
 import { HOST_PALETTE, HOST_SERIES_COLOR } from '../config';
 import type { EntityTableRow } from '../entity-series';
-import { pointsToChartData } from '../entity-series';
+import CoreLoadCard from './core-load-card';
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
 import { CardAlertDot, cardAlertClass } from './card-alert';
 import ThinTimeSeries from './thin-time-series';
 import type { HostSurfaceAlerts } from './tab-level';
 import { metricBlockPhase, type MetricBlockPhase } from './performance-scope';
 import {
+  deriveRatioPercent,
   formatPercent,
   formatPlain,
   latestNumber,
   metricHasPoints,
+  numericValue,
   primaryChartSeries,
   resolveMemoryUsage
 } from './readings';
@@ -43,6 +46,43 @@ const LOAD_SERIES = [
 const CPU_SERIES_COLOR = HOST_SERIES_COLOR.cpu;
 const MEM_USED_COLOR = HOST_SERIES_COLOR.memUsed;
 const LOAD1_SERIES_COLOR = HOST_SERIES_COLOR.load1;
+const LOAD_PER_CORE_COLOR = HOST_PALETTE.neutral;
+
+const MEM_COMPOSITION = [
+  { key: 'mem_used', label: '已用', color: HOST_PALETTE.blue },
+  { key: 'mem_cached', label: '页缓存', color: HOST_PALETTE.cyan },
+  { key: 'mem_buffered', label: '缓冲', color: HOST_PALETTE.amber },
+  { key: 'mem_shared', label: '共享', color: HOST_PALETTE.indigo }
+] as const;
+
+const GPU_SERIES = [
+  { key: 'nvidia_smi_utilization_gpu', title: '利用率', unit: 'percent' as const },
+  { key: 'nvidia_smi_utilization_memory', title: '显存', unit: 'percent' as const },
+  { key: 'nvidia_smi_temperature_gpu', title: '温度', unit: 'celsius' as const }
+] as const;
+
+/** 同一时间点 total - part。对不齐的点丢掉。 */
+const subtractAligned = (
+  total: MetricSeries['viewData'] | undefined,
+  part: MetricSeries['viewData'] | undefined
+) => {
+  if (!total?.length || !part?.length) return [];
+  const parts = new Map<number, number>();
+  part.forEach((point) => {
+    const time = Number(point.time);
+    const value = numericValue(point);
+    if (Number.isFinite(time) && value != null) parts.set(time, value);
+  });
+  const result: ChartData[] = [];
+  total.forEach((point) => {
+    const time = Number(point.time);
+    const base = numericValue(point);
+    const sub = parts.get(time);
+    if (!Number.isFinite(time) || base == null || sub == null) return;
+    result.push({ time, value1: Math.max(0, base - sub) });
+  });
+  return result;
+};
 
 const splitMetric = (value: number | null, unit: MetricUnit) => {
   if (value == null) return { value: '--', unit: '' };
@@ -69,44 +109,42 @@ export default function SystemPane({
   pendingMetricNames = EMPTY_PENDING,
   onRetryMetrics,
   coreRows = [],
-  coreLoading = false,
-  coreFailed = false,
-  onRetryCore,
+  coreSpread = null,
   alerts
 }: {
   metrics: Record<string, MetricSeries | undefined>;
   pendingMetricNames?: ReadonlySet<string>;
   onRetryMetrics?: (names: string[]) => void;
   coreRows?: EntityTableRow[];
-  coreLoading?: boolean;
-  coreFailed?: boolean;
-  onRetryCore?: () => void;
+  coreSpread?: number | null;
   alerts: HostSurfaceAlerts['system'];
 }) {
   const { t } = useDashboardText();
-  const [selectedCoreKey, setSelectedCoreKey] = useState('');
-  const coreIdentity = coreRows.map((row) => row.key).join('|');
-  useEffect(() => {
-    if (!coreRows.length) {
-      setSelectedCoreKey('');
-      return;
-    }
-    setSelectedCoreKey((current) => (
-      current && coreRows.some((row) => row.key === current) ? current : coreRows[0].key
-    ));
-  }, [coreIdentity, coreRows]);
 
   const breakdown = CPU_BREAKDOWN.filter((item) => metricHasPoints(metrics[item.key]));
   const loadItems = LOAD_SERIES.filter((item) => metricHasPoints(metrics[item.key]));
+  const loadPerCore = useMemo(() => {
+    const cores = latestNumber(metrics.cpu_n);
+    if (cores == null || cores <= 0) return [];
+    return primaryChartSeries(metrics.system_load1?.viewData).flatMap((point) => {
+      const value = typeof point.value1 === 'number' ? point.value1 / cores : null;
+      return value == null ? [] : [{ time: point.time, value1: value }];
+    });
+  }, [metrics.cpu_n, metrics.system_load1?.viewData, metrics.system_load1?.loadState]);
   const loadTrend = useMemo(() => {
     const items = LOAD_SERIES.filter((item) => metricHasPoints(metrics[item.key]));
-    if (!items.length) return [];
-    return mergeChartSeries(items.map((item) => ({
+    const series = items.map((item) => ({
       key: item.key,
       label: item.label,
       data: primaryChartSeries(metrics[item.key]?.viewData)
-    })));
+    }));
+    if (loadPerCore.length) {
+      series.push({ key: 'load1_per_core', label: 'load1/核', data: loadPerCore });
+    }
+    if (!series.length) return [];
+    return mergeChartSeries(series);
   }, [
+    loadPerCore,
     metrics.system_load1?.viewData,
     metrics.system_load1?.loadState,
     metrics.system_load5?.viewData,
@@ -277,25 +315,93 @@ export default function SystemPane({
     loadActive ? (
       <ThinTimeSeries
         key="load"
-        title="系统负载"
+        title="负载（含每核参考）"
         loading={loadPhase === 'loading'}
         unit="none"
         data={loadTrend}
         emptyText={loadPhase === 'error' ? '加载失败' : '暂无数据'}
         onRetry={loadPhase === 'error' ? retry(loadNames) : undefined}
-        legends={loadItems.map((item) => ({
-          label: item.label,
-          color: item.color
-        }))}
+        legends={[
+          ...loadItems.map((item) => ({
+            label: item.label,
+            color: item.color
+          })),
+          ...(loadPerCore.length ? [{
+            label: 'load1/核',
+            color: LOAD_PER_CORE_COLOR,
+            dashed: true
+          }] : [])
+        ]}
         alertLevel={alerts.load}
       />
     ) : null
   ].filter(Boolean);
   const gridClass = charts.length >= 3 ? styles.chartGrid3 : charts.length === 2 ? styles.chartGrid2 : styles.chartGrid;
-  const selectedCore = coreRows.find((row) => row.key === selectedCoreKey) || coreRows[0];
-  const selectedCoreName = selectedCore?.labels.cpu || '';
-  const selectedCoreAvg = selectedCore?.values.cpu_usage_core_avg;
-  const corePeak = coreRows.reduce((peak, row) => Math.max(peak, row.values.cpu_usage_core_avg || 0), 0);
+  const memoryComposition = useMemo(() => {
+    const total = metrics.mem_total?.viewData;
+    const usedBytes = metricHasPoints(metrics.mem_used)
+      ? primaryChartSeries(metrics.mem_used?.viewData)
+      : subtractAligned(total, metrics.mem_available?.viewData);
+    const raw: Record<string, ChartData[]> = {
+      mem_used: usedBytes,
+      mem_cached: primaryChartSeries(metrics.mem_cached?.viewData),
+      mem_buffered: primaryChartSeries(metrics.mem_buffered?.viewData),
+      mem_shared: primaryChartSeries(metrics.mem_shared?.viewData)
+    };
+    const hasSplit = ['mem_cached', 'mem_buffered', 'mem_shared'].some((key) => raw[key].length > 0);
+    if (!hasSplit) return [];
+    const asPercent = metricHasPoints(metrics.mem_total);
+    return MEM_COMPOSITION.flatMap((item) => {
+      const bytes = raw[item.key];
+      if (!bytes.length) return [];
+      const data = asPercent ? deriveRatioPercent(bytes, total) : bytes;
+      if (!data.length) return [];
+      return [{ ...item, data }];
+    });
+  }, [
+    metrics.mem_available?.viewData,
+    metrics.mem_available?.loadState,
+    metrics.mem_buffered?.viewData,
+    metrics.mem_buffered?.loadState,
+    metrics.mem_cached?.viewData,
+    metrics.mem_cached?.loadState,
+    metrics.mem_shared?.viewData,
+    metrics.mem_shared?.loadState,
+    metrics.mem_total?.viewData,
+    metrics.mem_total?.loadState,
+    metrics.mem_used?.viewData,
+    metrics.mem_used?.loadState
+  ]);
+  const processTrend = useMemo(() => {
+    const items: Array<{ key: string; label: string; color: string; data: ChartData[] }> = [];
+    if (metricHasPoints(metrics.processes_running)) {
+      items.push({
+        key: 'processes_running',
+        label: 'running',
+        color: HOST_PALETTE.blue,
+        data: primaryChartSeries(metrics.processes_running?.viewData)
+      });
+    }
+    if (metricHasPoints(metrics.processes_sleeping)) {
+      items.push({
+        key: 'processes_sleeping',
+        label: 'sleeping',
+        color: HOST_PALETTE.cyan,
+        data: primaryChartSeries(metrics.processes_sleeping?.viewData)
+      });
+    }
+    if (!items.length) return { data: [], legends: [] as Array<{ label: string; color: string }> };
+    return {
+      data: mergeChartSeries(items.map((item) => ({ key: item.key, label: item.label, data: item.data }))),
+      legends: items.map((item) => ({ label: item.label, color: item.color }))
+    };
+  }, [
+    metrics.processes_running?.viewData,
+    metrics.processes_running?.loadState,
+    metrics.processes_sleeping?.viewData,
+    metrics.processes_sleeping?.loadState
+  ]);
+  const gpuCharts = GPU_SERIES.filter((item) => metricHasPoints(metrics[item.key]));
   const detailCards = [
     <ThinTimeSeries
       key="cpu-breakdown"
@@ -310,91 +416,36 @@ export default function SystemPane({
         color: item.color
       }))}
     />,
-    coreLoading ? (
-      <section key="cores" className={`${classic.panel} ${styles.chartPanel}`}>
-        <div className={styles.chartHead}>
-          <div className={styles.chartTitle}>{hostCategoryText(t, 'perCoreCpuUtilization')}</div>
-        </div>
-        <div className={styles.chartBody}>
-          <div className={styles.chartEmpty}>加载中</div>
-        </div>
-      </section>
+    coreRows.length ? (
+      <CoreLoadCard
+        key={coreRows.map((row) => row.key).join('|')}
+        rows={coreRows}
+        spread={coreSpread}
+      />
+    ) : null
+  ].filter(Boolean);
+  const extraCards = [
+    memoryComposition.length ? (
+      <ThinTimeSeries
+        key="mem-composition"
+        title="内存构成"
+        unit={metricHasPoints(metrics.mem_total) ? 'percent' : 'bytes'}
+        data={mergeChartSeries(memoryComposition.map((item) => ({
+          key: item.key,
+          label: item.label,
+          data: item.data
+        })))}
+        legends={memoryComposition.map((item) => ({ label: item.label, color: item.color }))}
+      />
     ) : null,
-    coreFailed ? (
-      <section key="cores-error" className={`${classic.panel} ${styles.chartPanel}`}>
-        <div className={styles.chartHead}>
-          <div className={styles.chartTitle}>{hostCategoryText(t, 'perCoreCpuUtilization')}</div>
-        </div>
-        <div className={styles.chartBody}>
-          <div className={styles.chartEmpty}>
-            加载失败
-            <button type="button" className="ml-2 text-[var(--color-primary)]" onClick={onRetryCore}>
-              重试
-            </button>
-          </div>
-        </div>
-      </section>
-    ) : null,
-    coreRows.length && selectedCore ? (
-      <section key="cores" className={`${classic.panel} ${styles.chartPanel}`}>
-        <div className={styles.chartHead}>
-          <div className={styles.chartTitleGroup}>
-            <div className={styles.chartTitle}>{hostCategoryText(t, 'perCoreCpuUtilization')}</div>
-            <div className={styles.chartReading}>{`Top ${coreRows.length} · 选中 ${selectedCoreName}`}</div>
-          </div>
-        </div>
-        <div className="mt-1 grid grid-cols-1 items-start gap-3 min-[960px]:grid-cols-[220px_minmax(0,1fr)]">
-          <table className="w-full border-collapse text-[11px]">
-            <thead>
-              <tr className="text-left font-medium text-[var(--color-text-3)]">
-                <th className="border-b border-[var(--color-border)] px-1 py-1">核</th>
-                <th className="border-b border-[var(--color-border)] px-1 py-1">{hostCategoryText(t, 'average')}</th>
-                <th className="border-b border-[var(--color-border)] px-1 py-1" />
-              </tr>
-            </thead>
-            <tbody>
-              {coreRows.map((row) => {
-                const active = row.key === selectedCore.key;
-                const average = row.values.cpu_usage_core_avg || 0;
-                const width = corePeak > 0 ? Math.max(8, Math.round((average / corePeak) * 48)) : 8;
-                return (
-                  <tr
-                    key={row.key}
-                    className={active
-                      ? 'cursor-pointer bg-[color-mix(in_srgb,var(--color-primary)_14%,transparent)] font-semibold text-[var(--color-primary)]'
-                      : 'cursor-pointer text-[var(--color-text-1)]'}
-                    onClick={() => setSelectedCoreKey(row.key)}
-                  >
-                    <td className="border-b border-[var(--color-fill-2)] px-1 py-1 tabular-nums">{row.labels.cpu}</td>
-                    <td className="border-b border-[var(--color-fill-2)] px-1 py-1 tabular-nums">{average.toFixed(1)}</td>
-                    <td className="border-b border-[var(--color-fill-2)] px-1 py-1">
-                      <span
-                        className="inline-block h-1 rounded-sm align-middle"
-                        style={{
-                          width,
-                          background: active ? 'var(--color-primary)' : 'var(--color-text-3)'
-                        }}
-                      />
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          <ThinTimeSeries
-            bare
-            title=""
-            loading={false}
-            unit="percent"
-            data={pointsToChartData([{ points: selectedCore.series.cpu_usage_core || [] }])}
-            legends={[{
-              label: hostCategoryText(t, 'coreUtilizationNamed', { name: selectedCoreName }),
-              color: HOST_PALETTE.blue,
-              reading: typeof selectedCoreAvg === 'number' ? formatPercent(selectedCoreAvg) : undefined
-            }]}
-          />
-        </div>
-      </section>
+    processTrend.data.length ? (
+      <ThinTimeSeries
+        key="proc-running"
+        title="运行中进程"
+        unit="counts"
+        data={processTrend.data}
+        legends={processTrend.legends}
+      />
     ) : null
   ].filter(Boolean);
   const detailGridClass = detailCards.length >= 3
@@ -443,12 +494,40 @@ export default function SystemPane({
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>本机趋势</div>
       </div>
       <div className={gridClass}>{charts}</div>
-      {detailCards.length ? (
+      {detailCards.length || extraCards.length || gpuCharts.length ? (
+        <div className={styles.sectionHead}>
+          <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>{hostCategoryText(t, 'detailedMetrics')}</div>
+        </div>
+      ) : null}
+      {detailCards.length ? <div className={detailGridClass}>{detailCards}</div> : null}
+      {extraCards.length ? (
+        <div className={`${extraCards.length > 1 ? styles.chartGrid2 : 'grid grid-cols-1 gap-3'} mt-3`}>
+          {extraCards}
+        </div>
+      ) : null}
+      {gpuCharts.length ? (
         <>
           <div className={styles.sectionHead}>
-            <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>{hostCategoryText(t, 'detailedMetrics')}</div>
+            <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>GPU</div>
           </div>
-          <div className={detailGridClass}>{detailCards}</div>
+          <div className={gpuCharts.length >= 3 ? styles.chartGrid3 : gpuCharts.length === 2 ? styles.chartGrid2 : 'grid grid-cols-1 gap-3'}>
+            {gpuCharts.map((item) => (
+              <ThinTimeSeries
+                key={item.key}
+                title={item.title}
+                unit={item.unit}
+                data={primaryChartSeries(metrics[item.key]?.viewData)}
+                legends={[{
+                  label: item.title,
+                  color: item.key === 'nvidia_smi_temperature_gpu'
+                    ? HOST_PALETTE.orange
+                    : item.key === 'nvidia_smi_utilization_memory'
+                      ? HOST_PALETTE.blue
+                      : HOST_PALETTE.emerald
+                }]}
+              />
+            ))}
+          </div>
         </>
       ) : null}
     </>

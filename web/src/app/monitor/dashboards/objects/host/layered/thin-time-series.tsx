@@ -22,6 +22,8 @@ export interface ThinLegend {
   /** 紧跟维度名的当前读数，例如「CPU 14.1%」「load1 0.88」。 */
   reading?: string;
   readingTone?: string;
+  /** 参考线：虚线、略细，不盖过主序列。 */
+  dashed?: boolean;
 }
 
 interface ThinTimeSeriesProps {
@@ -85,7 +87,7 @@ export default function ThinTimeSeries({
   const mutedColor = theme['--color-text-3'];
   const textColor = theme['--color-text-1'];
   const panelColor = theme['--color-bg'];
-  const legendKey = legends.map((item) => `${item.label}\0${item.color}\0${item.reading || ''}`).join('\n');
+  const legendKey = legends.map((item) => `${item.label}\0${item.color}\0${item.reading || ''}\0${item.dashed ? '1' : '0'}`).join('\n');
   const keys = useMemo(() => {
     const all = areaKeys(data);
     // 单图例只画一条线。value2 通常是同一指标的 or 回退，叠上去会双计。
@@ -181,7 +183,11 @@ export default function ThinTimeSeries({
             const value = point[key];
             return [point.time, typeof value === 'number' ? value : null];
           }),
-          lineStyle: { width: 1.6, color }
+          lineStyle: {
+            width: legends[index]?.dashed ? 1.2 : 1.6,
+            color,
+            type: legends[index]?.dashed ? 'dashed' as const : 'solid' as const
+          }
         };
       })
     };
@@ -222,7 +228,15 @@ export default function ThinTimeSeries({
                 <span key={item.label}>
                   <span
                     className={styles.legendSwatch}
-                    style={{ background: item.color }}
+                    style={item.dashed
+                      ? {
+                        width: 14,
+                        height: 0,
+                        borderRadius: 0,
+                        borderTop: `1.5px dashed ${item.color}`,
+                        background: 'transparent'
+                      }
+                      : { background: item.color }}
                   />
                   {item.label}
                   {item.reading ? (

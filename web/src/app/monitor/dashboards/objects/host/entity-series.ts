@@ -408,45 +408,70 @@ export const buildLabelRows = (
 
 export const CPU_CORE_TOP_LIMIT = 8;
 
-/** 窗口内有限样本的算术平均。空序列返回 null，不把缺失当成 0。 */
-export const windowAverage = (points: RangePoint[] | undefined): number | null => {
-  if (!points?.length) return null;
-  let sum = 0;
-  let count = 0;
+const finitePointValues = (points: RangePoint[] | undefined) => {
+  if (!points?.length) return [];
+  const values: number[] = [];
   for (const point of points) {
-    if (!Number.isFinite(point.value)) continue;
-    sum += point.value;
-    count += 1;
+    if (Number.isFinite(point.value)) values.push(point.value);
   }
-  return count ? sum / count : null;
+  return values;
 };
 
+/** 最近秩百分位。空序列返回 null，不把缺失当成 0。 */
+export const windowPercentile = (points: RangePoint[] | undefined, percentile: number): number | null => {
+  const values = finitePointValues(points).sort((left, right) => left - right);
+  if (!values.length) return null;
+  const rank = Math.ceil((percentile / 100) * values.length);
+  const index = Math.min(values.length - 1, Math.max(0, rank - 1));
+  return values[index];
+};
+
+export const windowPeak = (points: RangePoint[] | undefined): number | null => {
+  const values = finitePointValues(points);
+  if (!values.length) return null;
+  return values.reduce((best, value) => Math.max(best, value), values[0]);
+};
+
+export interface CpuCoreLoad {
+  /** 按窗口 p95 降序，最多 8 核。 */
+  rows: EntityTableRow[];
+  /** 全部有 p95 的核里，最高与最低 p95 之差（百分点）。无核时为 null。 */
+  spread: number | null;
+}
+
 /**
- * 分核 Top：只保留带 cpu 维、且不是 cpu-total 的序列。
- * 按窗口平均从高到低取至多 8 核，均值写在 cpu_usage_core_avg。
+ * 分核负载：只保留带 cpu 维、且不是 cpu-total 的序列。
+ * 主排序是窗口 p95，不是均值。p95 / max 写在行上。
  */
-export const buildCpuCoreRows = (byMetric: Record<string, LabeledSeries[]>): EntityTableRow[] => {
-  const rows = buildLabelRows(byMetric, 'cpu', 'cpu_usage_core');
-  return rows
+export const buildCpuCoreLoad = (byMetric: Record<string, LabeledSeries[]>): CpuCoreLoad => {
+  const ranked = buildLabelRows(byMetric, 'cpu', 'cpu_usage_core')
     .map((row) => ({
       row,
       cpu: row.labels.cpu || '',
-      average: windowAverage(row.series.cpu_usage_core)
+      p95: windowPercentile(row.series.cpu_usage_core, 95),
+      peak: windowPeak(row.series.cpu_usage_core)
     }))
-    .filter((item) => item.cpu && item.cpu !== 'cpu-total' && item.average != null)
+    .filter((item) => item.cpu && item.cpu !== 'cpu-total' && item.p95 != null)
     .sort((left, right) => {
-      const delta = (right.average as number) - (left.average as number);
+      const delta = (right.p95 as number) - (left.p95 as number);
       if (delta !== 0) return delta;
       return left.cpu.localeCompare(right.cpu, undefined, { numeric: true });
-    })
-    .slice(0, CPU_CORE_TOP_LIMIT)
-    .map((item) => ({
+    });
+  const p95Values = ranked.map((item) => item.p95 as number);
+  const spread = p95Values.length
+    ? Math.max(...p95Values) - Math.min(...p95Values)
+    : null;
+  return {
+    spread,
+    rows: ranked.slice(0, CPU_CORE_TOP_LIMIT).map((item) => ({
       ...item.row,
       values: {
         ...item.row.values,
-        cpu_usage_core_avg: item.average as number
+        cpu_usage_core_p95: item.p95 as number,
+        cpu_usage_core_max: item.peak ?? item.p95 as number
       }
-    }));
+    }))
+  };
 };
 
 export const pointsToChartData = (
