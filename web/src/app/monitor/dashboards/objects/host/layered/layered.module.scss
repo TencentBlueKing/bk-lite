@@ -655,17 +655,6 @@ button.kpiCard {
   overflow: hidden;
 }
 
-.statusCard::before {
-  content: '';
-  position: absolute;
-  top: 8px;
-  bottom: 8px;
-  left: 0;
-  width: 3px;
-  border-radius: 0 2px 2px 0;
-  background: var(--status-accent);
-}
-
 .statusLabel {
   font-size: 12px;
   line-height: 1.2;

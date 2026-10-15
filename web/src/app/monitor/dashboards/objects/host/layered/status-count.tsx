@@ -181,7 +181,7 @@ function ProcessStatusStack({ items }: { items: StatusCountItem[] }) {
   );
 }
 
-/** 进程状态：标签在上，整数 +「个」，左侧色条。不画涨跌箭头、不画 spark。 */
+/** 进程状态：标签在上，整数 +「个」。不画涨跌箭头、不画 spark。 */
 export default function StatusCountRow({
   items,
   leafAlerts
