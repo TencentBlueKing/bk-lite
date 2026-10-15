@@ -44,6 +44,7 @@ if [ "$opspilot_installed" = false ]; then
     echo "未安装 opspilot 模块，删除 opspilot 专用 supervisor 配置..."
     rm -f "$SUPERVISOR_CONF_DIR/consumer.conf"
     rm -f "$SUPERVISOR_CONF_DIR/opspilot_celery.conf"
+    rm -f "$SUPERVISOR_CONF_DIR/opspilot_wecom_aibot_long_connection.conf"
 fi
 
 # 编排 Worker、触发调度和产物清理由同一配置管理，只在安装编排中心时运行。
