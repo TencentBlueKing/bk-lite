@@ -192,7 +192,7 @@ class NotificationTemplateViewSet(ModelViewSet):
         get_query_group_ids(request)
         current_team = get_current_team_from_request(request, required=True)
         if current_team:
-            ensure_alert_operation_template(current_team, request.user)
+            ensure_alert_operation_template(current_team, request.user, request)
         return super().list(request, *args, **kwargs)
 
     @HasPermission("notification_templates-View")

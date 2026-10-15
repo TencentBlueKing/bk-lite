@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic';
 import { useScreenAwareRouter } from '@/console-layout';
 import DOMPurify from 'dompurify';
 import MarkdownIt from 'markdown-it';
-import { Alert, Button, Card, Form, Input, InputRef, Modal, Select, Space, Spin, Tabs, Tag, Typography, message } from 'antd';
+import { Alert, Button, Card, Form, Input, InputRef, Modal, Select, Space, Spin, Tabs, Tag, Tooltip, Typography, message } from 'antd';
 import { ArrowLeftOutlined, EyeOutlined, SaveOutlined } from '@ant-design/icons';
 import { useSettingApi } from '@/app/alarm/api/settings';
 import { useAlarmApi } from '@/app/alarm/api/alarms';
@@ -28,9 +28,11 @@ import {
 } from '@/app/alarm/utils/notificationTemplateChannels';
 import {
   DEFAULT_ALERT_OPERATION_TEMPLATE_CONTENTS,
+  insertAlertDetailExample,
   DEFAULT_NOTIFICATION_TEMPLATE_CONTENTS as DEFAULT_CONTENTS,
   formatLegacyAlertOperationContent,
 } from '@/app/alarm/utils/defaultNotificationTemplateContents';
+import { buildAlarmDetailTemplateHint } from '@/app/alarm/(pages)/alarms/alarmDetailLink';
 import EventBlockInsert, { EventBlockCatalog } from './eventBlockInsert';
 
 const AceEditor = dynamic(
@@ -123,6 +125,7 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
   const [testAlerts, setTestAlerts] = useState<AlarmTableDataItem[]>([]);
   const [testAlertsLoading, setTestAlertsLoading] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [alertDetailHint, setAlertDetailHint] = useState('');
   const previewSequence = useRef(0);
 
   useEffect(() => {
@@ -174,6 +177,7 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
         if (active) setLoading(false);
       }
     };
+    setAlertDetailHint(buildAlarmDetailTemplateHint(window.location.origin));
     void loadSupportingData();
     void loadDetail();
     return () => {
@@ -187,6 +191,7 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
   );
   const activeChannelConfig = getNotificationTemplateChannel(activeChannel) || NOTIFICATION_TEMPLATE_CHANNELS[0];
   const isOperationTemplate = templateScope === 'alert_operation';
+  const showAlertDetailHint = templateScope !== 'unassigned_summary';
   const visibleVariables = useMemo(
     () => variables.filter((variable) => !variable.scopes || variable.scopes.includes(templateScope)),
     [templateScope, variables],
@@ -308,9 +313,19 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
   const updateOperationChannel = (selectedChannelId: number) => {
     const channel = operationChannels.find((item) => item.id === selectedChannelId);
     if (!channel) return;
-    const nextContent = contents.find((item) => item.channel_type === channel.channel_type)
-      || DEFAULT_ALERT_OPERATION_TEMPLATE_CONTENTS.find((item) => item.channel_type === channel.channel_type)
-      || { channel_type: channel.channel_type, subject_template: '', body_template: '' };
+    const saved = contents.find((item) => item.channel_type === channel.channel_type);
+    const fallback = DEFAULT_ALERT_OPERATION_TEMPLATE_CONTENTS.find((item) => item.channel_type === channel.channel_type);
+    const nextContent = saved
+      || (fallback
+        ? {
+          ...fallback,
+          body_template: insertAlertDetailExample(
+            fallback.body_template,
+            window.location.origin,
+            channel.channel_type === 'email',
+          ),
+        }
+        : { channel_type: channel.channel_type, subject_template: '', body_template: '' });
     setChannelId(selectedChannelId);
     setTestChannelId(channelOptionValue(channel));
     setContents([nextContent]);
@@ -676,6 +691,25 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
                     </Button>
                   );
                 })}
+                {showAlertDetailHint && (
+                  <Tooltip
+                    title={alertDetailHint}
+                    styles={{
+                      root: { maxWidth: 520 },
+                      body: { userSelect: 'text', whiteSpace: 'normal', wordBreak: 'break-all' },
+                    }}
+                  >
+                    <Button
+                      size="small"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        if (alertDetailHint) insertVariable(alertDetailHint);
+                      }}
+                    >
+                      {t('settings.notificationTemplate.alertDetailLinkHint')}
+                    </Button>
+                  </Tooltip>
+                )}
                 {eventBlock && (
                   <EventBlockInsert
                     catalog={eventBlock}

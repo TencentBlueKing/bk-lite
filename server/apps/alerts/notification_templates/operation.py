@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import socket
+
 from django.db import transaction
 
 from apps.alerts.models.notification_template import NotificationTemplate, NotificationTemplateContent
@@ -18,6 +20,9 @@ SUPPORTED_CHANNEL_TYPES = {
     ChannelChoices.NATS,
 }
 MANAGED_NATS_SOURCES = {"opspilot", "workflow_orchestration"}
+ALERT_DETAIL_PATH = "/alarm/alarms?alert_id="
+ALERT_DETAIL_GUIDE = "该链接由站点前缀加上告警 ID 拼接而成，主要变量是 {{ alert.alert_id }}。访问地址变化时只修改前缀。"
+_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"}
 
 
 def is_managed_nats_channel(channel: Channel) -> bool:
@@ -90,7 +95,69 @@ def _legacy_default_content(channel_type: str) -> tuple[str, str]:
     )
 
 
-def _default_content(channel_type: str) -> tuple[str, str]:
+def _usable_detail_host(host: str) -> bool:
+    if not host or host.lower() in _LOOPBACK_HOSTS:
+        return False
+    return not any(char in host for char in " \t\r\n/\\@{}<>\"'")
+
+
+def _request_detail_host(request) -> tuple[str, str]:
+    raw = str(request.get_host() or "").strip()
+    scheme = "https" if request.is_secure() else "http"
+    if raw.startswith("["):
+        end = raw.find("]")
+        host = raw[: end + 1] if end > 0 else ""
+    else:
+        host = raw.split(":")[0]
+    return host, scheme
+
+
+def _detect_server_ip() -> str:
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.settimeout(0.2)
+        sock.connect(("8.8.8.8", 80))
+        return sock.getsockname()[0]
+    except OSError:
+        return ""
+    finally:
+        sock.close()
+
+
+def resolve_alert_detail_prefix(request=None) -> str:
+    """内置模板里的详情链接前缀，只到站点根，路径在写入模板时再拼。"""
+    host, scheme = _request_detail_host(request) if request is not None else ("", "http")
+    if not _usable_detail_host(host):
+        host = _detect_server_ip()
+        scheme = "http"
+    if not _usable_detail_host(host):
+        host = "127.0.0.1"
+    return f"{scheme}://{host}"
+
+
+def _detail_example_block(prefix: str, *, html: bool) -> str:
+    link = prefix + "{{ alert.alert_id }}"
+    if html:
+        return (
+            '<p style="margin-top:12px;">告警详情：' + link + "</p>\n"
+            '<p style="margin-top:4px;color:#6b7280;font-size:12px;">' + ALERT_DETAIL_GUIDE + "</p>"
+        )
+    return "告警详情：" + link + "\n" + ALERT_DETAIL_GUIDE
+
+
+def _insert_detail_example(body: str, prefix: str, *, html: bool) -> str:
+    block = _detail_example_block(prefix, html=html)
+    marker = "请进入告警中心认领并处理该告警"
+    index = body.find(marker)
+    if index < 0:
+        return body.rstrip() + "\n" + block + "\n"
+    line_start = body.rfind("\n", 0, index)
+    if line_start < 0:
+        return block + "\n" + body
+    return body[:line_start] + "\n" + block + body[line_start:]
+
+
+def _operation_base_content(channel_type: str) -> tuple[str, str]:
     subject = "【{{ notification.scene_name }}】【待认领】【{{ alert.level }}】{{ alert.title }}"
     if channel_type == ChannelChoices.EMAIL:
         return (
@@ -221,6 +288,17 @@ def _default_content(channel_type: str) -> tuple[str, str]:
     )
 
 
+def _default_content(channel_type: str, origin: str = "") -> tuple[str, str]:
+    subject, body = _operation_base_content(channel_type)
+    if origin:
+        body = _insert_detail_example(
+            body,
+            origin.rstrip("/") + ALERT_DETAIL_PATH,
+            html=channel_type == ChannelChoices.EMAIL,
+        )
+    return subject, body
+
+
 def _first_team_channel(team_id: int) -> Channel | None:
     queryset = apply_team_scope_with_group_ids(Channel.objects.all(), [team_id]).order_by("id")
     email = queryset.filter(channel_type=ChannelChoices.EMAIL).first()
@@ -233,7 +311,7 @@ def _first_team_channel(team_id: int) -> Channel | None:
 
 
 @transaction.atomic
-def ensure_alert_operation_template(team_id: int, actor=None) -> NotificationTemplate:
+def ensure_alert_operation_template(team_id: int, actor=None, request=None) -> NotificationTemplate:
     team_id = int(team_id)
     builtin_key = f"{OPERATION_TEMPLATE_KEY_PREFIX}{team_id}"
     channel = _first_team_channel(team_id)
@@ -254,7 +332,7 @@ def ensure_alert_operation_template(team_id: int, actor=None) -> NotificationTem
         },
     )
     if created:
-        subject, body = _default_content(channel_type)
+        subject, body = _default_content(channel_type, resolve_alert_detail_prefix(request))
         NotificationTemplateContent.objects.create(
             template=template,
             channel_type=channel_type,
@@ -269,17 +347,24 @@ def ensure_alert_operation_template(team_id: int, actor=None) -> NotificationTem
     content = template.contents.first()
     existing_channel_type = selected_channel.channel_type if selected_channel else getattr(content, "channel_type", channel_type)
     if content and content.channel_type == existing_channel_type:
-        legacy_subject, legacy_body = _legacy_default_content(existing_channel_type)
-        if content.subject_template == legacy_subject and content.body_template == legacy_body:
-            subject, body = _default_content(existing_channel_type)
+        # 只覆盖仍等于系统默认正文的模板。用户改过前缀或正文后不再回写。
+        candidates = (
+            _legacy_default_content(existing_channel_type),
+            _default_content(existing_channel_type),
+        )
+        desired_subject, desired_body = _default_content(existing_channel_type, resolve_alert_detail_prefix(request))
+        for old_subject, old_body in candidates:
+            if content.subject_template != old_subject or content.body_template != old_body:
+                continue
             updated = NotificationTemplateContent.objects.filter(
                 pk=content.pk,
-                subject_template=legacy_subject,
-                body_template=legacy_body,
-            ).update(subject_template=subject, body_template=body)
+                subject_template=old_subject,
+                body_template=old_body,
+            ).update(subject_template=desired_subject, body_template=desired_body)
             if updated:
                 template.revision += 1
                 template.save(update_fields=["revision", "updated_at"])
+            break
     return template
 
 
