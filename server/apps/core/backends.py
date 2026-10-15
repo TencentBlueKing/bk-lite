@@ -152,7 +152,10 @@ class APISecretAuthBackend(ModelBackend):
                 if get_user_permission_version(user.username, user.domain) != permission_version:
                     raise RuntimeError("Permission version changed while reading API token snapshot")
                 user.roles = cached.get("roles", [])
-                user.permission = {k: set(v) for k, v in cached.get("permission", {}).items()}
+                from apps.core.utils.license_capacity import filter_permission_map
+
+                stored = cached.get("permission", {})
+                user.permission = filter_permission_map({key: set(value) for key, value in stored.items()})
                 user.is_superuser = cached.get("is_superuser", False)
                 user.role_ids = cached.get("role_ids", [])
                 user.group_list = cached.get("group_list", user.group_list)
@@ -212,6 +215,9 @@ class APISecretAuthBackend(ModelBackend):
                 },
                 self.PERMISSION_CACHE_TTL,
             )
+            from apps.core.utils.license_capacity import filter_permission_map
+
+            user.permission = filter_permission_map(permission)
             if get_user_permission_version(user.username, user.domain) != permission_version:
                 raise RuntimeError("Permission version changed while calculating API token permissions")
 
@@ -481,7 +487,10 @@ class AuthBackend(ModelBackend):
             user.locale = user_info.get("locale") or user.locale
             user.timezone = user_info.get("timezone", "Asia/Shanghai")
             user.rules = rules
-            user.permission = {key: set(value) for key, value in user_info.get("permission", {}).items()}
+            from apps.core.utils.license_capacity import filter_permission_map
+
+            stored = user_info.get("permission", {})
+            user.permission = filter_permission_map({key: set(value) for key, value in stored.items()})
             user.role_ids = user_info.get("role_ids", [])
             user.display_name = user_info.get("display_name", "")
             user.group_tree = user_info.get("group_tree", [])

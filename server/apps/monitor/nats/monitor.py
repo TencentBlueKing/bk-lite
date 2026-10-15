@@ -811,7 +811,37 @@ def license_monitor_instance_count(*args, **kwargs):
         .annotate(instance_count=Count("id"))
     )
     data = {item["monitor_object__name"]: item["instance_count"] for item in queryset}
-    return {"result": True, "data": data, "message": ""}
+    labels = _license_monitor_instance_labels(data, kwargs)
+    return {"result": True, "data": data, "labels": labels, "message": ""}
+
+
+def _license_monitor_instance_labels(data, kwargs):
+    """与监控对象列表相同：语言包，否则 display_name，否则 name。名称失败不改变数量。"""
+    from apps.core.utils.loader import LanguageLoader
+    from apps.monitor.constants.language import LanguageConstants
+
+    if "language" in kwargs:
+        language = kwargs.get("language")
+    else:
+        language = (kwargs.get("user_info") or {}).get("locale")
+    try:
+        lan = LanguageLoader(app=LanguageConstants.APP, default_lang=language)
+        stored_names = {
+            name: display_name
+            for name, display_name in MonitorObject.objects.filter(name__in=list(data)).values_list("name", "display_name")
+        }
+        return {
+            name: lan.get(f"{LanguageConstants.MONITOR_OBJECT}.{name}") or stored_names.get(name) or name
+            for name in data
+        }
+    except Exception as exc:
+        monitor_logger.warning(
+            "event=license_monitor_labels_skipped failed_stage=%s error_type=%s",
+            "resolve_labels",
+            type(exc).__name__,
+            exc_info=safe_exception_info(exc),
+        )
+        return {}
 
 
 @nats_client.register
