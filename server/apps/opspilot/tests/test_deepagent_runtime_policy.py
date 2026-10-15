@@ -2314,16 +2314,25 @@ def test_enforce_generate_attachment_file_injects_when_empty_plan():
             ),
         },
     ]
-    assert looks_like_attachment_file_task(revision, conversation_messages=prose_history) is False
+    assert looks_like_attachment_file_task(revision, conversation_messages=prose_history) is True
     assert looks_like_attachment_file_task(revision, conversation_messages=linked_history) is True
     assert looks_like_attachment_file_task(revision, conversation_messages=[{"role": "system", "content": "文件名用 .pptx"}]) is False
+    example_history = [
+        {"role": "assistant", "content": "例如可以把结果存成 月报.docx，这次先看正文。比如 data.xlsx 也只是举例。"},
+    ]
+    assert looks_like_attachment_file_task(revision, conversation_messages=example_history) is False
     font_edit = "重点介绍广州各区美食，字体这些调整下，统一用微软雅黑字体"
     assert looks_like_attachment_file_task(font_edit) is False
-    assert looks_like_attachment_file_task(font_edit, conversation_messages=prose_history) is False
+    assert looks_like_attachment_file_task(font_edit, conversation_messages=prose_history) is True
     assert looks_like_attachment_file_task(font_edit, conversation_messages=linked_history) is True
     assert looks_like_attachment_file_task("现在还有没有没关的告警", conversation_messages=linked_history) is False
-    assert conversation_has_generated_attachment(prose_history) is False
-    assert collect_generated_attachment_filenames(prose_history) == []
+    visible_history = [AIMessage(content="已生成 Word 报告：主机磁盘资源未来7天风险趋势分析报告.docx")]
+    assert conversation_has_generated_attachment(prose_history) is True
+    assert collect_generated_attachment_filenames(prose_history) == ["主机磁盘资源未来7天风险趋势分析报告.docx"]
+    assert looks_like_attachment_file_task(font_edit, conversation_messages=visible_history) is True
+    assert collect_generated_attachment_filenames(visible_history) == ["主机磁盘资源未来7天风险趋势分析报告.docx"]
+    assert conversation_has_generated_attachment(example_history) is False
+    assert collect_generated_attachment_filenames(example_history) == []
     assert collect_generated_attachment_filenames(prior_file) == ["报告.docx"]
     revised = enforce_generate_attachment_file(
         ToolExecutionPlan(goal="改报告", steps=[]),
