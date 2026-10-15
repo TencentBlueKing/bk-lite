@@ -320,7 +320,7 @@ tools:
       用当前用户身份查询统一告警中心的告警列表、详情与关联事件。只读，不支持认领或关闭。
     tools:
       alerts_list_alerts:
-        description: 查询告警中心工单列表，可按状态、级别和关键词筛选。
+        description: 查询告警中心工单列表。status=active 表示未关闭的活动告警；「当前」「有哪些」不会当关键字。可按状态、级别筛选。
       alerts_get_alert_detail:
         description: 按告警 ID 查询告警详情。
       alerts_list_alert_events:

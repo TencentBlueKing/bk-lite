@@ -24,7 +24,7 @@ from apps.alerts.error import AuthenticationSourceError
 from apps.alerts.models.alert_operator import AlarmStrategy, NotifyResult
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.models.models import Alert, Event, Incident, Level
-from apps.alerts.utils.permission_scope import apply_team_scope_with_group_ids
+from apps.alerts.utils.permission_scope import apply_operator_scope, apply_team_scope_with_group_ids
 from apps.core.logger import alert_logger as logger
 from apps.core.utils.internal_event_auth import TRUSTED_INTERNAL_EVENT_CALLERS, legacy_internal_event_auth_allowed, verify_internal_event
 from apps.core.utils.permission_utils import get_permission_rules
@@ -1498,6 +1498,16 @@ def _llm_alert_team_ids(user_info: dict):
     return [current_team]
 
 
+def _union_assigned_alerts(queryset, user_info: dict):
+    """与告警中心默认列表一致：当前组织范围内的告警，再加上分派给当前用户的告警。"""
+    permission_user = _build_permission_user(user_info)
+    username = getattr(permission_user, "username", "") if permission_user else ""
+    if not username:
+        return queryset
+    assigned_ids = apply_operator_scope(Alert.objects.all(), username).values("id")
+    return Alert.objects.filter(Q(id__in=queryset.values("id")) | Q(id__in=assigned_ids))
+
+
 def _llm_authorized_alert_queryset(user_info: dict):
     """LLM 只读查询授权：不依赖 caller 传入的 Alarms-View / is_superuser 字段。"""
     user_info = user_info or {}
@@ -1511,7 +1521,7 @@ def _llm_authorized_alert_queryset(user_info: dict):
 
     team_ids = _llm_alert_team_ids(user_info)
     if _llm_is_superuser(user_info):
-        return apply_team_scope_with_group_ids(Alert.objects.all(), team_ids), None
+        return _union_assigned_alerts(apply_team_scope_with_group_ids(Alert.objects.all(), team_ids), user_info), None
 
     permission_data = get_permission_rules(
         permission_user,
@@ -1526,7 +1536,7 @@ def _llm_authorized_alert_queryset(user_info: dict):
     permission_team_ids = permission_data.get("team", [])
 
     if not instance_ids and not permission_team_ids:
-        return Alert.objects.none(), None
+        return _union_assigned_alerts(Alert.objects.none(), user_info), None
 
     normalized_permission_team_ids = []
     for team_id in permission_team_ids:
@@ -1538,7 +1548,28 @@ def _llm_authorized_alert_queryset(user_info: dict):
     authorized_queryset = apply_team_scope_with_group_ids(Alert.objects.all(), normalized_permission_team_ids)
     if instance_ids:
         authorized_queryset = Alert.objects.filter(Q(id__in=authorized_queryset.values("id")) | Q(id__in=instance_ids))
-    return authorized_queryset.distinct(), None
+    return _union_assigned_alerts(authorized_queryset, user_info), None
+
+
+_ACTIVE_STATUS_TOKENS = frozenset({"active", "activate", "activated", "活跃", "活动"})
+
+
+def _alert_statuses_for_query(status):
+    """active 对齐告警中心活动页：待响应、处理中、未分派。"""
+    raw_items = status if isinstance(status, (list, tuple)) else [status]
+    normalized = []
+    seen = set()
+    for item in raw_items:
+        token = str(item or "").strip()
+        if not token:
+            continue
+        expanded = AlertStatus.ACTIVATE_STATUS if token.casefold() in _ACTIVE_STATUS_TOKENS else (token,)
+        for value in expanded:
+            if value in seen:
+                continue
+            seen.add(value)
+            normalized.append(value)
+    return normalized
 
 
 @nats_client.register
@@ -1553,8 +1584,9 @@ def list_alerts(query_data=None, user_info=None, **kwargs):
 
     status = query_data.get("status")
     if status:
-        statuses = status if isinstance(status, list) else [status]
-        queryset = queryset.filter(status__in=statuses)
+        statuses = _alert_statuses_for_query(status)
+        if statuses:
+            queryset = queryset.filter(status__in=statuses)
     level = query_data.get("level")
     if level:
         levels = level if isinstance(level, list) else [level]

@@ -9,9 +9,12 @@ from apps.opspilot.metis.llm.tools.search_terms import SEARCH_NOTE, resolve_sear
 
 @tool(
     description=(
-        "查询统一告警中心工单列表。口语「没关的告警/未分派」用本工具。"
+        "查询统一告警中心工单列表。口语「没关的告警/未分派/当前有哪些告警」用本工具。"
         "查某台主机是否还在告时：本工具查告警中心工单；监控详情页「告警列表」还须用 "
         "monitor_list_active_alerts（监控策略告警未必进告警中心），两套都要查。"
+        "status=active 表示未关闭的活动告警（pending、processing、unassigned），与告警中心活动页一致；"
+        "不传 status 则包含已关闭。具体状态用 pending、processing、unassigned、closed、resolved、auto_close、auto_recovery。"
+        "「当前」「有哪些」这类口头语不会当关键字。问有哪些告警时不要传 keyword。"
         "服务端按用户原问生成词表（原词加固定同义词）并做或匹配，覆盖标题、正文、资源名和告警 ID。"
         "不要自己拼接关键字，也不要因为空结果换词重搜。可按 status/level 过滤，只读。"
     )
@@ -33,7 +36,7 @@ def alerts_list_alerts(
         "page_size": page_size,
     }
     result = call_alerts_rpc("list_alerts", config, query_data=query_data)
-    if isinstance(result, dict) and result.get("success"):
+    if isinstance(result, dict) and result.get("success") and terms:
         result["searched_keywords"] = terms
         result["search_note"] = SEARCH_NOTE
     return result
