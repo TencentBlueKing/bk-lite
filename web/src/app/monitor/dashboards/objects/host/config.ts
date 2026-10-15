@@ -232,7 +232,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     {
       name: 'nvidia_smi_utilization_gpu',
       display_name: 'GPU 利用率',
-      description: 'GPU 计算单元利用率。多卡时取最高。无采集则性能页不展示 GPU 区。',
+      description: 'GPU 计算单元使用率。多卡时取最高。详细区始终保留 GPU 卡，没有采集时显示无 GPU。',
       unit: 'percent',
       query: 'max by (instance_id) (nvidia_smi_utilization_gpu{instance_type="os", __$labels__})',
       color: HOST_PALETTE.emerald

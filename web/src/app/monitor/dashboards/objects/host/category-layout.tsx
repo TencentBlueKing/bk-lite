@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Tabs } from 'antd';
 import useMonitorApi from '@/app/monitor/api';
 import {
-  buildCpuCoreLoad,
   buildDiskDeviceRows,
   buildLabelRows,
   buildMountDiskRows,
@@ -146,7 +145,6 @@ export default function HostCategoryLayout({
   dashboard,
   diskState,
   netState,
-  coreState = EMPTY_ENTITY,
   processReady,
   processState = EMPTY_ENTITY,
   categoryTab = 'overview',
@@ -203,12 +201,6 @@ export default function HostCategoryLayout({
   const processRows = useMemo(
     () => buildLabelRows(processState.byMetric, 'process_name', 'process_cpu_usage', ['pattern']),
     [processState.byMetric]
-  );
-  const coreLoad = useMemo(
-    () => (coreState.status === 'ready'
-      ? buildCpuCoreLoad(coreState.byMetric)
-      : { rows: [], spread: null }),
-    [coreState.byMetric, coreState.status]
   );
   const diskSelection = useDiskDualSelection(diskRows, diskDeviceRows);
   const netSelection = usePinnedRow(netRows);
@@ -327,8 +319,6 @@ export default function HostCategoryLayout({
           metrics={dashboard.metricSeries}
           pendingMetricNames={dashboard.pendingMetricNames}
           onRetryMetrics={dashboard.refetchMetricNames}
-          coreRows={coreLoad.rows}
-          coreSpread={coreLoad.spread}
           alerts={surfaceAlerts.system}
         />
       );

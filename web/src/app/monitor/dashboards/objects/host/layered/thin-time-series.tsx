@@ -37,6 +37,9 @@ interface ThinTimeSeriesProps {
   emptyText?: string;
   /** 标题旁的说明，悬停问号时展示。 */
   hint?: string;
+  /** 标题下的灰色副行。 */
+  subtitle?: string;
+  className?: string;
   /** 嵌进已有卡片时不再套一层 panel。 */
   bare?: boolean;
   /** 每条序列一根 Y 轴。进程 CPU 可超过 100%，与内存共轴时会把内存压扁。 */
@@ -76,6 +79,8 @@ export default function ThinTimeSeries({
   readingTone,
   emptyText = '暂无数据',
   hint,
+  subtitle,
+  className,
   bare = false,
   independentAxes = false,
   showSeriesName = false,
@@ -201,18 +206,21 @@ export default function ThinTimeSeries({
           {title || reading ? (
             <div className={styles.chartTitleGroup}>
               {title ? (
-                <div className={styles.chartTitle}>
-                  {hint ? (
-                    <span className="inline-flex items-center gap-1">
-                      {title}
-                      <Tooltip title={hint} styles={{ body: { maxWidth: 360 } }}>
-                        <QuestionCircleOutlined
-                          className="cursor-help text-[12px] text-[var(--color-text-3)] hover:text-[var(--color-primary)]"
-                          aria-label={hint}
-                        />
-                      </Tooltip>
-                    </span>
-                  ) : title}
+                <div className={styles.chartTitleBlock}>
+                  <div className={styles.chartTitle}>
+                    {hint ? (
+                      <span className="inline-flex items-center gap-1">
+                        {title}
+                        <Tooltip title={hint} styles={{ body: { maxWidth: 360 } }}>
+                          <QuestionCircleOutlined
+                            className="cursor-help text-[12px] text-[var(--color-text-3)] hover:text-[var(--color-primary)]"
+                            aria-label={hint}
+                          />
+                        </Tooltip>
+                      </span>
+                    ) : title}
+                  </div>
+                  {subtitle ? <div className={styles.chartSubtitle}>{subtitle}</div> : null}
                 </div>
               ) : null}
               {reading ? (
@@ -276,7 +284,7 @@ export default function ThinTimeSeries({
 
   if (bare) return <div className="min-w-0">{chart}</div>;
   return (
-    <section className={`${classic.panel} ${styles.chartPanel} ${cardAlertClass(alertLevel)}`}>
+    <section className={`${classic.panel} ${styles.chartPanel} ${cardAlertClass(alertLevel)} ${className || ''}`}>
       <CardAlertDot level={alertLevel} />
       {chart}
     </section>

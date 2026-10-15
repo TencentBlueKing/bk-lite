@@ -162,7 +162,7 @@ export interface HostSurfaceAlerts {
 /**
  * 卡气味与页签点同源。每张卡只吃自己展示的指标。
  * 同一指标的趋势图不再打点，读数卡优先。
- * 交换达档仍只点亮性能页签：这一页没有交换卡，不把气味挪到内存数值上。
+ * 交换达档仍只点亮性能页签。详细区交换图是趋势，不另打折角。
  */
 export const resolveHostSurfaceAlerts = (
   readings: HostTabLevelReadings,
