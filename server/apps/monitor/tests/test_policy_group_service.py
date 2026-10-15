@@ -155,6 +155,9 @@ def test_leave_closes_open_alerts_and_blocks_auto_rejoin_state():
     PolicyGroupService.join(instance=host, group=group)
     policy = group.rules.get().policy
     alert = MonitorAlert.objects.create(policy_id=policy.id, monitor_instance_id=host.id, status="new", alert_type="alert")
+    PolicyInstanceBaseline.objects.create(policy=policy, monitor_instance_id=host.id, metric_instance_id=f"cpu-{host.id}")
+    other = _instance(monitor_object, "web-02", 1)
+    PolicyInstanceBaseline.objects.create(policy=policy, monitor_instance_id=other.id, metric_instance_id=f"cpu-{other.id}")
 
     PolicyGroupService.leave(instance=host)
 
@@ -166,6 +169,8 @@ def test_leave_closes_open_alerts_and_blocks_auto_rejoin_state():
     assert host.policy_group_membership.policy_group_id is None
     assert alert.status == "closed"
     assert policy.source["values"] == []
+    assert not PolicyInstanceBaseline.objects.filter(policy=policy, monitor_instance_id=host.id).exists()
+    assert PolicyInstanceBaseline.objects.filter(policy=policy, monitor_instance_id=other.id).exists()
 
 
 def test_join_does_not_create_no_data_baseline_for_a_silent_instance():
@@ -327,6 +332,9 @@ def test_changing_collect_plugin_keeps_membership_and_closes_old_alerts():
     PolicyGroupService.join(instance=host, group=group)
     wmi_policy = group.rules.get(plugin=wmi).policy
     alert = MonitorAlert.objects.create(policy_id=wmi_policy.id, monitor_instance_id=host.id, status="new", alert_type="alert")
+    PolicyInstanceBaseline.objects.create(policy=wmi_policy, monitor_instance_id=host.id, metric_instance_id="wmi-cpu")
+    ssh_policy = group.rules.get(plugin=ssh).policy
+    PolicyInstanceBaseline.objects.create(policy=ssh_policy, monitor_instance_id=host.id, metric_instance_id="ssh-cpu")
 
     config.monitor_plugin = ssh
     config.save(update_fields=["monitor_plugin"])
@@ -341,6 +349,8 @@ def test_changing_collect_plugin_keeps_membership_and_closes_old_alerts():
     assert wmi_policy.source["values"] == []
     assert ssh_policy.source["values"] == [host.id]
     assert alert.status == "closed"
+    assert not PolicyInstanceBaseline.objects.filter(policy=wmi_policy, monitor_instance_id=host.id).exists()
+    assert PolicyInstanceBaseline.objects.filter(policy=ssh_policy, monitor_instance_id=host.id).exists()
 
 
 def test_access_choice_applies_only_to_instances_without_a_decision():

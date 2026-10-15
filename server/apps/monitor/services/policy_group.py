@@ -198,6 +198,7 @@ class PolicyGroupService:
         membership.save(update_fields=["policy_group", "state", "updated_by", "updated_at"])
         if group:
             PolicyGroupService.sync_coverage(group)
+        PolicyGroupService._clear_instance_baselines(policy_ids, instance_id)
         PolicyGroupService._close_instance_alerts(policy_ids, instance_id, operator, "policy_group_member_left")
 
     @staticmethod
@@ -225,8 +226,19 @@ class PolicyGroupService:
         for rule in group.rules.select_related("policy"):
             after = set((rule.policy.source or {}).get("values") or [])
             if instance.id in before.get(rule.policy_id, set()) and instance.id not in after:
+                PolicyGroupService._clear_instance_baselines([rule.policy_id], instance.id)
                 PolicyGroupService._close_instance_alerts([rule.policy_id], instance.id, operator, "policy_group_member_left")
         return membership
+
+    @staticmethod
+    def _clear_instance_baselines(policy_ids, instance_id):
+        """离开规则覆盖后丢掉该实例的无数据基准，重新加入要重新看到数据才建立。"""
+        if not policy_ids or instance_id in (None, ""):
+            return
+        aliases = PolicyGroupService.instance_id_aliases(instance_id)
+        if not aliases:
+            return
+        PolicyInstanceBaseline.objects.filter(policy_id__in=policy_ids, monitor_instance_id__in=aliases).delete()
 
     @staticmethod
     def apply_access_choice(instance, *, join, group_id=None, operator="system"):
