@@ -40,6 +40,7 @@ import {
   MaterialUpdateImpact,
   WikiDirectoryTreeResult,
 } from "@/app/opspilot/types/wiki";
+import { materialBatchDeleteFeedback } from "./materialBatchDeleteFeedback";
 import MaterialDetailPanel from "./MaterialDetailPanel";
 import WikiDirectorySelect from "./WikiDirectorySelect";
 import {
@@ -642,11 +643,17 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       setDeleteSubmitting(true);
       try {
         const result = await batchDeleteMaterials(kbId, batchDeleteIds);
-        if (result.failed) {
-          message.error(result.failed.message);
-        }
-        if (result.deleted_count > 0) {
-          message.success(t("wiki.deleteSuccess"));
+        const nameOf = (id: number) =>
+          data.find((item) => item.id === id)?.name ||
+          deleteImpact?.materials?.find((item) => item.id === id)?.name ||
+          String(id);
+        const feedback = materialBatchDeleteFeedback(result, nameOf);
+        if (feedback?.level === "success") {
+          message.success(t(feedback.messageKey));
+        } else if (feedback) {
+          message.error(
+            t(feedback.messageKey, feedback.defaultMessage, feedback.values),
+          );
         }
         setDeleteImpactVisible(false);
         setDeleteTarget(null);
