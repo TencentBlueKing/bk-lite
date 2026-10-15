@@ -312,6 +312,26 @@ def _visible_error(request: Any, message: str) -> str:
     return render_known_message(request, message)
 
 
+def _node_failure_text(execution: WorkflowExecution, node_reference: str, selected: dict[str, Any]) -> str:
+    reason = str(selected.get("reason") or "")
+    if reason and not reason.endswith("atom execution failed"):
+        return reason
+    task_id = str(selected.get("task_id") or "")
+    atom = None
+    if task_id and not task_id.startswith("atom-"):
+        atom = execution.atom_executions.filter(conductor_task_id=task_id).exclude(error_message="").order_by("-id").first()
+    if atom is None:
+        atom = (
+            execution.atom_executions.filter(task_reference=node_reference, status="FAILED")
+            .exclude(error_message="")
+            .order_by("-attempt", "-id")
+            .first()
+        )
+    if atom is not None and atom.error_message:
+        return atom.error_message
+    return reason
+
+
 def build_execution_node_detail(
     execution: WorkflowExecution,
     *,
@@ -501,7 +521,7 @@ def build_execution_node_detail(
         "outputs": mask_secret_envelopes(selected.get("output") or {}),
         "system_context": {},
         "error": (
-            {"type": selected.get("error_type") or "", "message": _visible_error(request, selected.get("reason") or "")}
+            {"type": selected.get("error_type") or "", "message": _visible_error(request, _node_failure_text(execution, node_reference, selected))}
             if selected_state in {"FAILED", "TIMED_OUT"}
             else None
         ),

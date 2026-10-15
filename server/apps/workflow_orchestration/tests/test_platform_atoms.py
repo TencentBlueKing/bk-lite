@@ -344,7 +344,7 @@ def test_notification_atom_requires_channel_for_email(mocker):
 
 
 @pytest.mark.django_db
-def test_notification_atom_requires_absolute_report_link_for_email(mocker, settings):
+def test_notification_atom_sends_email_without_absolute_report_link(mocker, settings):
     from datetime import timedelta
 
     from django.utils import timezone
@@ -361,6 +361,7 @@ def test_notification_atom_requires_absolute_report_link_for_email(mocker, setti
         group_list=[{"id": 7, "name": "Current"}],
     )
     system = mocker.patch("apps.workflow_orchestration.atom_packages.bklite_notification.runtime.handler.SystemMgmt").return_value
+    system.dispatch_notification.return_value = {"result": True, "code": "delivered", "message": "success"}
     workflow = Workflow.objects.create(name="巡检", team=[7], definition={})
     execution = WorkflowExecution.objects.create(workflow=workflow, workflow_version=1, team=[7])
     artifact = ExecutionArtifact.objects.create(
@@ -375,20 +376,22 @@ def test_notification_atom_requires_absolute_report_link_for_email(mocker, setti
         expires_at=timezone.now() + timedelta(days=1),
     )
 
-    with pytest.raises(ValueError, match="WEB_BASE_URL"):
-        notification_atom(
-            {
-                "team": 7,
-                "execution_id": str(execution.id),
-                "channel_id": 3,
-                "notification_type": "EMAIL",
-                "recipients": ["alice"],
-                "title": "巡检报告",
-                "body": "已完成",
-                "report_artifact": {"id": str(artifact.id)},
-            }
-        )
-    system.dispatch_notification.assert_not_called()
+    notification_atom(
+        {
+            "team": 7,
+            "execution_id": str(execution.id),
+            "channel_id": 3,
+            "notification_type": "EMAIL",
+            "recipients": ["alice"],
+            "title": "巡检报告",
+            "body": "已完成",
+            "report_artifact": {"id": str(artifact.id)},
+        }
+    )
+
+    kwargs = system.dispatch_notification.call_args.kwargs
+    assert kwargs["body"] == "已完成"
+    assert kwargs["event_payload"]["report_link"] == ""
 
 
 @pytest.mark.django_db
