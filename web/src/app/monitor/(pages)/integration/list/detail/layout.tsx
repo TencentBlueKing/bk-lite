@@ -1,8 +1,10 @@
 'use client';
 
 import React from 'react';
-import { Tag, Tooltip, Typography } from 'antd';
+import { Tooltip } from 'antd';
 import WithSideMenuLayout from '@/components/sub-layout';
+import TopSection from '@/components/top-section';
+import SourceOriginBadge from '@/components/source-origin-badge';
 import { useSearchParams } from 'next/navigation';
 import { useScreenAwareRouter } from '@/console-layout';
 import { useTranslation } from '@/utils/i18n';
@@ -37,58 +39,36 @@ const IntegrationDetailLayout = ({
     router.push(targetUrl);
   };
 
-  const TopSection = () => (
-    <div className="p-4 rounded-md w-full min-h-[95px] flex items-start bg-[var(--color-bg-2)]">
-      <div className="w-[72px] h-[72px] mr-[10px] min-w-[72px] rounded-lg flex items-center justify-center bg-[var(--color-fill-1)]">
-        <img
-          src={`/assets/icons/${resolvedIcon}.svg`}
-          alt="icon"
-          className="w-[60px] h-[60px]"
-          onError={(e) => {
-            (e.target as HTMLImageElement).src =
-              '/assets/icons/cc-default_默认.svg';
-          }}
-        />
-      </div>
-      <div className="w-full min-w-0">
-        <h2 className="text-lg font-semibold mb-2">
-          {pluginDisplayName}
-          {sourceBadge.showPackTag && (
-            <Tooltip
-              title={
-                sourceBadge.packKind === 'pinned'
-                  ? t('monitor.integrations.pinnedPackHint', '', {
-                    version: sourceBadge.packVersion
-                  })
-                  : t('monitor.integrations.builtinPackHint')
-              }
-            >
-              <Tag className="ml-2 align-middle">
-                {sourceBadge.packKind === 'pinned'
-                  ? sourceBadge.packVersion
-                  : t('monitor.integrations.builtinPack')}
-              </Tag>
-            </Tooltip>
-          )}
-          {sourceBadge.showSelfBuilt && (
-            <Tag className="ml-2 align-middle">
-              {t('monitor.integrations.selfBuilt')}
-            </Tag>
-          )}
-        </h2>
-        <Typography.Paragraph
-          className="!mb-0 text-sm text-[var(--color-text-3)]"
-          ellipsis={{
-            rows: 2,
-            expandable: 'collapsible',
-            symbol: (expanded: boolean) =>
-              expanded ? t('common.collapse') : t('common.expand')
-          }}
+  const intro = (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      {pluginDisplayName}
+      {sourceBadge.showPackTag && (
+        <Tooltip
+          title={
+            sourceBadge.packKind === 'pinned'
+              ? t('monitor.integrations.pinnedPackHint', '', {
+                version: sourceBadge.packVersion
+              })
+              : t('monitor.integrations.builtinPackHint')
+          }
         >
-          {desc}
-        </Typography.Paragraph>
-      </div>
-    </div>
+          <SourceOriginBadge
+            kind={sourceBadge.packKind === 'pinned' ? 'imported' : 'builtin'}
+            label={
+              sourceBadge.packKind === 'pinned'
+                ? sourceBadge.packVersion
+                : t('monitor.integrations.builtinPack')
+            }
+          />
+        </Tooltip>
+      )}
+      {sourceBadge.showSelfBuilt && (
+        <SourceOriginBadge
+          kind="custom"
+          label={t('monitor.integrations.selfBuilt')}
+        />
+      )}
+    </span>
   );
 
   const detailMenuItems: MenuItem[] = [
@@ -121,7 +101,25 @@ const IntegrationDetailLayout = ({
 
   return (
     <WithSideMenuLayout
-      topSection={<TopSection />}
+      topSection={(
+        <TopSection
+          title={intro}
+          content={desc || undefined}
+          icon={(
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-[var(--color-fill-1)]">
+              <img
+                src={`/assets/icons/${resolvedIcon}.svg`}
+                alt="icon"
+                className="h-7 w-7"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src =
+                    '/assets/icons/cc-default_默认.svg';
+                }}
+              />
+            </div>
+          )}
+        />
+      )}
       showBackButton={true}
       onBackButtonClick={handleBackButtonClick}
       layoutType="sideMenu"

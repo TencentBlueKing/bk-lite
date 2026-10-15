@@ -31,6 +31,20 @@ func TestNATSConfigRequiresTLSAndOneFileBackedIdentity(t *testing.T) {
 	require.ErrorContains(t, multiple.Validate(), "exactly one")
 }
 
+func TestNATSConfigAcceptsUsernameAndPasswordFile(t *testing.T) {
+	password := filepath.Join(t.TempDir(), "password")
+	require.NoError(t, os.WriteFile(password, []byte("secret\n"), 0o600))
+
+	require.NoError(t, (NATSConfig{
+		URL:          "tls://nats:4222",
+		User:         "rum_controller",
+		PasswordFile: password,
+	}).Validate())
+
+	missingUser := NATSConfig{URL: "tls://nats:4222", PasswordFile: password}
+	require.ErrorContains(t, missingUser.Validate(), "username and password file")
+}
+
 func TestNATSConfigRejectsReadablePrivateFiles(t *testing.T) {
 	seed := filepath.Join(t.TempDir(), "seed")
 	require.NoError(t, os.WriteFile(seed, []byte("seed"), 0o644))

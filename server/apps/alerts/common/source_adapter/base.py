@@ -26,6 +26,7 @@ from apps.alerts.utils.util import decode_team_secret, split_list
 
 INTEGRATION_SECRET_PLACEHOLDER = "{{TEAM_SECRET}}"
 MONITOR_IDENTITY_FIELDS = {"monitor_id", "cmdb_id", "node_id"}
+MAX_EVENT_ASSIGNEES = 20
 
 
 class InvalidMonitorIdentity(ValueError):
@@ -159,6 +160,25 @@ class AlertSourceAdapter(ABC):
             fingerprint_data[field] = str(value).strip() if value is not None and str(value).strip() else "unknown"
         return hashlib.md5(json.dumps(fingerprint_data, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
+    @staticmethod
+    def normalize_assignee(value) -> List[str]:
+        """只保留去空白、去重后的用户名，最多 20 个。非法值变成空列表，不拒绝事件。"""
+        if not isinstance(value, list):
+            return []
+        result = []
+        seen = set()
+        for item in value:
+            if not isinstance(item, str):
+                continue
+            name = item.strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            result.append(name)
+            if len(result) >= MAX_EVENT_ASSIGNEES:
+                break
+        return result
+
     def mapping_fields_to_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """将告警字段映射到事件字段"""
         result = {}
@@ -172,6 +192,12 @@ class AlertSourceAdapter(ABC):
                 # 如果是级别字段没有传递默认给 info
                 if not _value or _value not in self.levels:
                     _value = self.info_level
+            elif key == "assignee":
+                if not isinstance(_value, list):
+                    label = event.get("labels") or {}
+                    _value = label.get(field) if isinstance(label, dict) else None
+                result[key] = self.normalize_assignee(_value)
+                continue
             else:
                 if not _value and _value != 0:
                     # 去元数据里找

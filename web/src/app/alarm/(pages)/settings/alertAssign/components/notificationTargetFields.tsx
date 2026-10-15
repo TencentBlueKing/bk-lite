@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Checkbox, Form, Radio, Select } from 'antd';
+import { Checkbox, Form, Radio, Select, Switch } from 'antd';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
 import type { NotificationTargetType } from './notificationTarget';
@@ -16,6 +16,7 @@ interface NotificationTargetFieldsProps {
   watchPrefix?: Array<string | number>;
   personnelOptions: Option[];
   typeLabel: string;
+  showPreferOwner?: boolean;
 }
 
 const NotificationTargetFields: React.FC<NotificationTargetFieldsProps> = ({
@@ -23,6 +24,7 @@ const NotificationTargetFields: React.FC<NotificationTargetFieldsProps> = ({
   watchPrefix = namePrefix,
   personnelOptions,
   typeLabel,
+  showPreferOwner = false,
 }) => {
   const { t } = useTranslation();
   const form = Form.useFormInstance();
@@ -30,6 +32,13 @@ const NotificationTargetFields: React.FC<NotificationTargetFieldsProps> = ({
   const watchedFieldName = (name: string) => [...watchPrefix, name];
   const targetType =
     Form.useWatch(watchedFieldName('target_type'), form) || 'user';
+  const preferOwner = Form.useWatch(watchedFieldName('prefer_alert_owner'), form) === true;
+  const userLabel = preferOwner
+    ? t('settings.assignStrategy.fallbackUser')
+    : t('settings.assignStrategy.userSelect');
+  const organizationLabel = preferOwner
+    ? t('settings.assignStrategy.fallbackOrganization')
+    : t('settings.assignStrategy.organizationSelect');
 
   const handleTypeChange = (type: NotificationTargetType) => {
     if (type === 'organization') {
@@ -66,12 +75,23 @@ const NotificationTargetFields: React.FC<NotificationTargetFieldsProps> = ({
           ]}
         />
       </Form.Item>
+      {showPreferOwner && (
+        <Form.Item
+          name={fieldName('prefer_alert_owner')}
+          label={t('settings.assignStrategy.preferAlertOwner')}
+          valuePropName="checked"
+          initialValue={false}
+          extra={t('settings.assignStrategy.preferAlertOwnerHelp')}
+        >
+          <Switch />
+        </Form.Item>
+      )}
 
       {targetType === 'organization' ? (
         <>
           <Form.Item
             name={fieldName('organization_ids')}
-            label={t('settings.assignStrategy.organizationSelect')}
+            label={organizationLabel}
             rules={[
               {
                 required: true,
@@ -99,7 +119,7 @@ const NotificationTargetFields: React.FC<NotificationTargetFieldsProps> = ({
       ) : (
         <Form.Item
           name={fieldName('personnel')}
-          label={t('settings.assignStrategy.userSelect')}
+          label={userLabel}
           rules={[
             {
               required: true,

@@ -846,6 +846,175 @@
     ]
 },
 {
+    "key": "CMDB 机房列表::cmdb/get_room_list",
+    "name": "CMDB 机房列表（选项）",
+    "desc": "当前权限范围内的机房列表，供画布筛选动态选项使用，本身不直接出图",
+    "rest_api": "cmdb/get_room_list",
+    "tag": ["cmdb"],
+    "chart_type": [],
+    "params": [],
+    "field_schema": [
+        {"key": "inst_uuid", "title": "机房 ID", "value_type": "string", "description": "机房实例 UUID，作为筛选值"},
+        {"key": "inst_name", "title": "机房名称", "value_type": "string", "description": "机房显示名称"}
+    ]
+},
+{
+    "key": "机房设备类型分布::cmdb/get_room_device_type_distribution",
+    "name": "机房设备类型分布",
+    "desc": "统计机房内经机柜挂载的可见设备，按模型显示名分组计数。server_room_id 为空时取第一个可见机房",
+    "rest_api": "cmdb/get_room_device_type_distribution",
+    "tag": ["cmdb"],
+    "chart_type": ["pie"],
+    "params": [
+        {
+            "name": "server_room_id",
+            "type": "string",
+            "value": "",
+            "alias_name": "机房",
+            "filterType": "filter",
+            "inputConfig": {
+                "control": "select",
+                "optionsSource": {
+                    "type": "dynamic",
+                    "sourceRef": {"type": "rest_api", "value": "cmdb/get_room_list"},
+                    "valueField": "inst_uuid",
+                    "labelField": "inst_name"
+                }
+            }
+        }
+    ],
+    "field_schema": [
+        {"key": "name", "title": "设备类型", "value_type": "string", "description": "设备模型显示名"},
+        {"key": "value", "title": "数量", "value_type": "number", "description": "该模型下的设备数"}
+    ]
+},
+{
+    "key": "机房机柜容量::cmdb/get_room_rack_capacity",
+    "name": "机房机柜容量",
+    "desc": "统计机房内可见机柜的 U 位容量。summary 返回扁平对象，rack_top 按使用率降序。server_room_id 为空时取第一个可见机房",
+    "rest_api": "cmdb/get_room_rack_capacity",
+    "tag": ["cmdb"],
+    "chart_type": ["single", "gauge", "topN"],
+    "params": [
+        {
+            "name": "server_room_id",
+            "type": "string",
+            "value": "",
+            "alias_name": "机房",
+            "filterType": "filter",
+            "inputConfig": {
+                "control": "select",
+                "optionsSource": {
+                    "type": "dynamic",
+                    "sourceRef": {"type": "rest_api", "value": "cmdb/get_room_list"},
+                    "valueField": "inst_uuid",
+                    "labelField": "inst_name"
+                }
+            }
+        },
+        {
+            "name": "view",
+            "type": "string",
+            "value": "summary",
+            "alias_name": "视图",
+            "filterType": "params",
+            "inputConfig": {
+                "control": "select",
+                "componentSwitch": true,
+                "optionsSource": {
+                    "type": "static",
+                    "staticItems": [
+                        {"label": "汇总", "value": "summary"},
+                        {"label": "机柜使用率 TOP", "value": "rack_top"}
+                    ]
+                }
+            }
+        },
+        {
+            "name": "limit",
+            "type": "number",
+            "value": 5,
+            "alias_name": "返回条数",
+            "filterType": "params"
+        }
+    ],
+    "field_schema": [
+        {"key": "rack_count", "title": "机柜数", "value_type": "number", "description": "可见机柜数"},
+        {"key": "device_count", "title": "设备数", "value_type": "number", "description": "机柜内可见设备数"},
+        {"key": "unracked_device_count", "title": "未上架设备数", "value_type": "number", "description": "在机柜中但缺少起始 U 或 U 高的设备数"},
+        {"key": "total_u", "title": "总 U 位", "value_type": "number", "description": "可见机柜 U 位合计"},
+        {"key": "used_u", "title": "已用 U 位", "value_type": "number", "description": "去重后的已占用 U 位"},
+        {"key": "free_u", "title": "空闲 U 位", "value_type": "number", "description": "未占用 U 位"},
+        {"key": "u_usage_percent", "title": "U 位使用率", "value_type": "number", "description": "已用 U 位占总 U 位的百分比"},
+        {"key": "name", "title": "机柜", "value_type": "string", "description": "机柜名称"},
+        {"key": "value", "title": "使用率", "value_type": "number", "description": "机柜 U 位使用率百分比"},
+        {"key": "u_count", "title": "机柜 U 数", "value_type": "number", "description": "单个机柜的 U 位容量"}
+    ]
+},
+{
+    "key": "机房活跃告警::cmdb/get_room_active_alarms",
+    "name": "机房活跃告警",
+    "desc": "统计机房内经机柜挂载的可见设备的监控覆盖、活跃告警等级、机柜告警和告警设备。监控整体失败时覆盖视图记为暂不可用，其他视图返回失败。server_room_id 为空时取第一个可见机房",
+    "rest_api": "cmdb/get_room_active_alarms",
+    "tag": ["cmdb"],
+    "chart_type": ["pie", "topN", "table"],
+    "params": [
+        {
+            "name": "server_room_id",
+            "type": "string",
+            "value": "",
+            "alias_name": "机房",
+            "filterType": "filter",
+            "inputConfig": {
+                "control": "select",
+                "optionsSource": {
+                    "type": "dynamic",
+                    "sourceRef": {"type": "rest_api", "value": "cmdb/get_room_list"},
+                    "valueField": "inst_uuid",
+                    "labelField": "inst_name"
+                }
+            }
+        },
+        {
+            "name": "view",
+            "type": "string",
+            "value": "coverage",
+            "alias_name": "视图",
+            "filterType": "params",
+            "inputConfig": {
+                "control": "select",
+                "componentSwitch": true,
+                "optionsSource": {
+                    "type": "static",
+                    "staticItems": [
+                        {"label": "监控覆盖", "value": "coverage"},
+                        {"label": "告警等级分布", "value": "level_distribution"},
+                        {"label": "机柜告警 TOP", "value": "rack_top"},
+                        {"label": "告警设备", "value": "device_list"}
+                    ]
+                }
+            }
+        },
+        {
+            "name": "limit",
+            "type": "number",
+            "value": 5,
+            "alias_name": "返回条数",
+            "filterType": "params"
+        }
+    ],
+    "field_schema": [
+        {"key": "name", "title": "名称", "value_type": "string", "description": "分类、等级或机柜名称"},
+        {"key": "value", "title": "数量", "value_type": "number", "description": "设备数或告警条数"},
+        {"key": "device_name", "title": "设备", "value_type": "string", "description": "设备名称"},
+        {"key": "model_name", "title": "型号", "value_type": "string", "description": "设备模型显示名"},
+        {"key": "rack_name", "title": "机柜", "value_type": "string", "description": "设备所在机柜"},
+        {"key": "u_position", "title": "U位", "value_type": "string", "description": "起始 U 到结束 U"},
+        {"key": "highest_severity", "title": "最高级别", "value_type": "string", "description": "活跃告警的最高级别"},
+        {"key": "active_alarm_count", "title": "活跃告警数", "value_type": "number", "description": "该设备的活跃告警条数"}
+    ]
+},
+{
         "key": "地区资源概览::cmdb/get_region_resource_overview",
 "name": "地区分类实例数",
     "desc": "按地区标签统计各模型分类的实例总数；依赖地区参数",

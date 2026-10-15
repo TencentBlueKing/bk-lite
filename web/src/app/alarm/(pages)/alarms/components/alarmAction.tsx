@@ -3,7 +3,8 @@
 import React, { useState } from 'react';
 import AlarmAssignModal from './assignModal';
 import PermissionWrapper from '@/components/permission';
-import { Button, Dropdown, Menu, Modal, Tag, message } from 'antd';
+import OperateModal from '@/components/operate-modal';
+import { Button, Dropdown, Input, Menu, Modal, Tag, message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { DownOutlined } from '@ant-design/icons';
 import { AlarmActionProps, ActionType } from '@/app/alarm/types/alarms';
@@ -38,6 +39,9 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
   const { incidentActionOperate } = useIncidentsApi();
   const { getActionRuleList, manualTriggerAction } = useSettingApi();
   const [assignVisible, setAssignVisible] = useState(false);
+  const [closeVisible, setCloseVisible] = useState(false);
+  const [closeReason, setCloseReason] = useState('');
+  const [closeLoading, setCloseLoading] = useState(false);
   const [actionType, setActionType] = useState<ActionType>('assign');
   const [jobRules, setJobRules] = useState<ActionRuleListItem[]>([]);
   const [rulesLoading, setRulesLoading] = useState(false);
@@ -173,10 +177,43 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
     }
   };
 
+  const handleCloseConfirm = async () => {
+    if (closeLoading) return;
+    setCloseLoading(true);
+    const fallback = `${t('alarms.close')}${t('alarms.alert')}${t('alarmCommon.partialFailure')}`;
+    const reason = closeReason.trim();
+    try {
+      await maybeRunCloseActions();
+      const data = await alertActionOperate('close', {
+        alert_id: idList,
+        assignee: [],
+        ...(reason ? { reason } : {}),
+      });
+      if (Object.values(data).some((res: any) => !res.result)) {
+        showOperatorFailureMessages(data, fallback);
+        return;
+      }
+      message.success(t('alarms.close') + t('alarmCommon.success'));
+      setCloseReason('');
+      setCloseVisible(false);
+      onAction();
+    } catch (err) {
+      console.error(err);
+      showOperatorFailureMessages(null, fallback, err);
+    } finally {
+      setCloseLoading(false);
+    }
+  };
+
   const handleOperate = (type: ActionType) => {
     if (!['acknowledge', 'close', 'reopen'].includes(type)) {
       setActionType(type);
       setAssignVisible(true);
+      return;
+    }
+    if (type === 'close' && from === 'alarm') {
+      setCloseReason('');
+      setCloseVisible(true);
       return;
     }
     const fromLabel = `${from === 'alarm' ? t('alarms.alert') : t('alarms.incident')}`;
@@ -189,9 +226,6 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
       onOk: async () => {
         const fallback = `${t(`alarms.${type}`)}${t(`alarms.alert`)}${t('alarmCommon.partialFailure')}`;
         try {
-          if (type === 'close' && from === 'alarm') {
-            await maybeRunCloseActions();
-          }
           const data = await apiNameMap[from](type, {
             [idKeyMap[from]]: idList,
             assignee: [],
@@ -376,6 +410,33 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
           onAction();
         }}
       />
+      <OperateModal
+        zIndex={9999}
+        title={`${t('alarms.close')}${t('alarms.alert')}`}
+        open={closeVisible}
+        confirmLoading={closeLoading}
+        okText={t('common.confirm')}
+        cancelText={t('common.cancel')}
+        onOk={handleCloseConfirm}
+        onCancel={() => {
+          if (closeLoading) return;
+          setCloseReason('');
+          setCloseVisible(false);
+        }}
+      >
+        <div className="mb-4 mt-2">
+          <label className="mb-2 block">{t('alarms.closeReasonLabel')}</label>
+          <Input.TextArea
+            rows={4}
+            maxLength={500}
+            showCount
+            value={closeReason}
+            aria-label={t('alarms.closeReasonLabel')}
+            placeholder={t('alarms.closeReasonPlaceholder')}
+            onChange={(event) => setCloseReason(event.target.value)}
+          />
+        </div>
+      </OperateModal>
     </>
   );
 };

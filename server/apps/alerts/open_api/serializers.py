@@ -69,6 +69,7 @@ def serialize_alert(alert, *, detail: bool = False) -> dict:
         "level": alert.level,
         "source_name": alert.source_name or "",
         "operator": alert.operator or [],
+        "owners": alert.owners or [],
         "item": alert.item,
         "resource_id": alert.resource_id,
         "resource_type": alert.resource_type,

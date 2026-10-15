@@ -78,7 +78,7 @@ const MERAKI_DERIVATIVE_OBJECT_NAMES = new Set([
 /**
  * 视图 / 专业大盘侧栏仅把 Cisco Meraki 的派生对象挂到父节点下。
  * 名称集合覆盖内置五个子对象；parent 指向 Cisco Meraki 时也认，避免漏挂。
- * 不根据 isDerivativeObject 全局建树，避免阿里云等复合对象改变 #6351 的隐藏行为。
+ * 不根据 isDerivativeObject 全局建树；其它派生对象仍作为分组下的平级叶子出现。
  */
 export const isMerakiSidebarDerivative = (
   item: ObjectItem,

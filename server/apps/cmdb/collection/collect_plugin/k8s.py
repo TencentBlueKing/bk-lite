@@ -3,7 +3,10 @@
 # @Time: 2025/11/12 11:39
 # @Author: windyzhao
 import json
+import time
+from collections import Counter
 
+from apps.cmdb.collection.collect_plugin.base import is_failed_vm_metric
 from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
 from apps.cmdb.collection.constants import (
     ANNOTATIONS_METRICS,
@@ -48,6 +51,8 @@ class CollectK8sMetrics:
         # collector_cluster_id 是采集器上报使用的 VM 查询身份；如未单独提供则退化为 cluster_name（旧任务兼容）
         self.collector_cluster_id = kwargs.get("collector_cluster_id") or cluster_name
         self.round_ts = kwargs.get("round_ts")
+        self.round_completed_at = kwargs.get("round_completed_at")
+        self.snapshot_complete = kwargs.get("snapshot_complete")
         self.metrics = self.get_metrics()
         self.collection_metrics_dict = {i: [] for i in COLLECTION_METRICS.keys()}
         self.timestamp_gt = False
@@ -85,11 +90,44 @@ class CollectK8sMetrics:
         return metrics
 
     def query_data(self):
-        """查询数据"""
-        sql = " or ".join('{}{{instance_id="{}"}}'.format(j, self.collector_cluster_id) for m in COLLECTION_METRICS.values() for j in m)
-        data = Collection().query(sql, min_timestamp=getattr(self, "round_ts", None))
-        self.raw_data = data.get("data", []).get("result", [])
-        return data.get("data", [])
+        """按同一次完整 KSM 抓取对账；旧采集器仅允许非破坏性同步。"""
+        collection = Collection()
+        identity = json.dumps(self.collector_cluster_id)
+        selector = f'prometheus_cmdb_k8s_snapshot_timestamp{{instance_id={identity},snapshot_contract_version="1"}}'
+        now = time.time()
+        markers = collection.query(selector, min_timestamp=now - 600, max_timestamp=now)
+        marker_rows = (markers.get("data") or {}).get("result") or []
+        metric_names = set(self.get_metrics()) | set(REPLICAS_METRICS)
+        sql = " or ".join(f"{name}{{instance_id={identity}}}" for name in sorted(metric_names))
+        self.snapshot_complete = False
+        self._snapshot_rows = None
+        if not marker_rows:
+            data = collection.query(sql, min_timestamp=self.round_ts, max_timestamp=self.round_completed_at)
+        else:
+            latest = max(float(row["value"][1]) for row in marker_rows)
+            count_selector = f"prometheus_cmdb_k8s_snapshot_count{{instance_id={identity}}}"
+            data = collection.query(sql + " or " + count_selector, min_timestamp=latest, max_timestamp=latest)
+            all_rows = (data.get("data") or {}).get("result") or []
+            current = [row for row in all_rows if row["metric"]["__name__"] == "prometheus_cmdb_k8s_snapshot_count"]
+            rows = [row for row in all_rows if row["metric"]["__name__"] in metric_names]
+            data = {"data": {"result": rows}}
+            expected = {}
+            for row in current:
+                name = "prometheus_" + row["metric"].get("resource_metric", "")
+                try:
+                    count = float(row["value"][1])
+                    if count < 0 or not count.is_integer() or name in expected:
+                        break
+                    expected[name] = int(count)
+                except (ValueError, TypeError):
+                    break
+            else:
+                actual = Counter(row["metric"]["__name__"] for row in rows)
+                self.snapshot_complete = set(expected) == metric_names and all(actual[name] == expected[name] for name in metric_names)
+            self.round_ts = self.round_completed_at = latest
+            self._snapshot_rows = rows
+        self.raw_data = (data.get("data") or {}).get("result") or []
+        return {"result": self.raw_data}
 
     def format_data(self, data):
         """格式化数据"""
@@ -151,8 +189,12 @@ class CollectK8sMetrics:
         """查询副本数量"""
         replicas_metrics = []
         sql = " or ".join('{}{{instance_id="{}"}}'.format(m, self.collector_cluster_id) for m in REPLICAS_METRICS)
-        data = Collection().query(sql, min_timestamp=getattr(self, "round_ts", None))
-        replicas_data = data.get("data", [])
+        snapshot_rows = getattr(self, "_snapshot_rows", None)
+        if snapshot_rows is not None:
+            replicas_data = {"result": [row for row in snapshot_rows if row["metric"]["__name__"] in REPLICAS_METRICS]}
+        else:
+            data = Collection().query(sql, min_timestamp=self.round_ts, max_timestamp=self.round_completed_at)
+            replicas_data = data.get("data", {})
         for index_data in replicas_data["result"]:
             metric_name = index_data["metric"]["__name__"]
             value = index_data["value"]
@@ -539,5 +581,8 @@ class CollectK8sMetrics:
     def run(self):
         """执行"""
         data = self.query_data()
-        self.format_data(data)
+        self.raw_data = list(data.get("result", []))
+        if any(is_failed_vm_metric(row) for row in self.raw_data):
+            self.snapshot_complete = False
+        self.format_data({**data, "result": [row for row in self.raw_data if not is_failed_vm_metric(row)]})
         return self.result

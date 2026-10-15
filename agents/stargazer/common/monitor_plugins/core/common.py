@@ -1,8 +1,8 @@
 # shim: common utilities
 import time
-import logging
 
-logger = logging.getLogger("root")
+from core.logger import logger
+
 
 
 def retry(retry_times=3, interval=5, catch_exp=False):

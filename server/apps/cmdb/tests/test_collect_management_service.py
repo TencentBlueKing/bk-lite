@@ -61,6 +61,10 @@ class FakeGraph:
             return cb(label, ids, info, check_attr_map, exist_items)
         return [ent]
 
+    def delete_entity_if_unchanged(self, label, instance):
+        self.detach_delete_entity(label, instance["_id"])
+        return True
+
     def detach_delete_entity(self, label, _id):
         self.deleted.append(_id)
         return {}
@@ -199,7 +203,7 @@ def test_complete_empty_snapshot_can_delete_stale_instances(monkeypatch):
     m = _mgmt(
         monkeypatch,
         fake,
-        [{"inst_name": "stale-vm", "_id": 1}],
+        [{"inst_name": "stale-vm", "_id": 1, "collect_task": 1}],
         [],
         collect_plugin=CompleteSnapshotPlugin(),
         data_cleanup_strategy=DataCleanupStrategy.IMMEDIATELY,
@@ -224,7 +228,7 @@ def test_non_authoritative_snapshot_never_deletes_missing_instances(monkeypatch)
         fake,
         [
             {"inst_name": "current-vm", "_id": 1},
-            {"inst_name": "possibly-missing-vm", "_id": 2},
+            {"inst_name": "possibly-missing-vm", "_id": 2, "collect_task": 1},
         ],
         [{"inst_name": "current-vm"}],
         collect_plugin=PartialSnapshotPlugin(),
@@ -253,7 +257,7 @@ def test_explicit_round_completeness_controls_destructive_diff(
         fake,
         [
             {"inst_name": "current-vm", "_id": 1},
-            {"inst_name": "possibly-missing-vm", "_id": 2},
+            {"inst_name": "possibly-missing-vm", "_id": 2, "collect_task": 1},
         ],
         [{"inst_name": "current-vm"}],
         collect_plugin=RoundBoundPlugin(),
@@ -286,8 +290,9 @@ def test_contrast_immediately_cleanup_deletes_missing(monkeypatch):
 
     class Plugin:
         _MODEL_ID = "host"
+        snapshot_complete = True
 
-    old = [{"inst_name": "a", "_id": 1}, {"inst_name": "gone", "_id": 2}]
+    old = [{"inst_name": "a", "_id": 1}, {"inst_name": "gone", "_id": 2, "collect_task": 1}]
     new = [{"inst_name": "a"}]
     m = _mgmt(
         monkeypatch,

@@ -1175,6 +1175,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             sceneWidgetType: config.sceneWidgetType,
             networkStatusTopology: config.networkStatusTopology,
             relatedTopology: config.relatedTopology,
+            applicationTopology: config.applicationTopology,
             dataSourceParams: config.dataSourceParams || [],
             tableConfig: config.tableConfig,
             filterBindings: config.filterBindings,
@@ -1699,6 +1700,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                   sceneWidgetType: values.sceneWidgetType,
                   networkStatusTopology: values.networkStatusTopology,
                   relatedTopology: values.relatedTopology,
+                  applicationTopology: values.applicationTopology,
                   dataSourceParams: values.dataSourceParams,
                   tableConfig: values.tableConfig,
                   filterBindings: values.filterBindings,
@@ -1964,6 +1966,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           appliedNamespaceId={appliedNamespaceId}
           selectedDashboardLocked={selectedDashboard?.is_build_in}
           shareMode={shareMode}
+          isFullscreen={isFullscreen}
           onOpenAddModal={openAddModal}
           onLayoutChange={handleLayoutCommit}
           onToggleCollapsedGroup={toggleCollapsedGroup}
@@ -1977,6 +1980,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
             isEditMode && !shareMode ? handleTopologyLayoutChange : undefined
           }
           renderMode={renderMode}
+          pdfExportPreparing={exporting}
           scrollRootRef={canvasScrollRef}
           onWidgetRenderStatus={handleWidgetRenderStatus}
         />

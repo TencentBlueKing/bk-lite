@@ -193,9 +193,11 @@ class NetAppOntapCollectMetrics(CollectBase):
             result = []
             for index_data in metrics:
                 if index_data.get("cmdb_collect_error"):
+                    self.snapshot_complete = False
                     logger.warning("skip netapp_ontap model=%s due to cmdb_collect_error", model_id)
                     continue
                 if model_id != self._MODEL_ID and not self._child_has_identity(model_id, index_data):
+                    self.snapshot_complete = False
                     logger.warning("skip netapp_ontap model=%s: incomplete identity", model_id)
                     continue
                 data = {}
@@ -207,6 +209,7 @@ class NetAppOntapCollectMetrics(CollectBase):
                         try:
                             data[field] = key_or_func[0](raw)
                         except Exception as e:  # noqa: BLE001
+                            self.snapshot_complete = False
                             logger.error("netapp_ontap convert failed field=%s value=%s err=%s", field, raw, e)
                     elif callable(key_or_func):
                         data[field] = key_or_func(index_data, model_id=model_id)

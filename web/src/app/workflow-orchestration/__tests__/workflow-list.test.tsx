@@ -7,7 +7,7 @@ import { StrictMode } from 'react';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { WorkflowListPage } from '../components/workflow-list-page';
-import { createDefaultWorkflowName } from '../lib/workflow-draft';
+import { createDefaultWorkflowName, createDuplicateWorkflowName } from '../lib/workflow-draft';
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
@@ -57,7 +57,9 @@ function renderPage() {
 
 describe('流程列表', () => {
   it('按本地时间生成毫秒精度的默认流程名', () => {
-    expect(createDefaultWorkflowName(new Date(2026, 8, 9, 10, 19, 10, 372))).toBe('流程20260909101910372');
+    const now = new Date(2026, 8, 9, 10, 19, 10, 372);
+    expect(createDefaultWorkflowName(now)).toBe('流程20260909101910372');
+    expect(createDuplicateWorkflowName('Linux 主机巡检（Excel）', now)).toBe('Linux 主机巡检（Excel）20260909101910372');
   });
 
   beforeAll(() => {
@@ -113,7 +115,7 @@ describe('流程列表', () => {
     await screen.findByText(workflow.name);
 
     expect(screen.queryByRole('button', { name: workflow.name })).toBeNull();
-    expect(screen.getByRole('button', { name: /新建流程/ }).closest('[class*="gap-2"]')).not.toBeNull();
+    expect(screen.getByRole('button', { name: /新建/ }).closest('[class*="gap-2"]')).not.toBeNull();
     expect(screen.queryByRole('button', { name: '执行记录' })).toBeNull();
     const editButton = screen.getByRole('button', { name: /编辑/ });
     expect(editButton).not.toBeNull();
@@ -149,6 +151,38 @@ describe('流程列表', () => {
 
     await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
       expect.stringContaining('status=PUBLISHED'),
+      expect.anything(),
+    ));
+  });
+
+  it('表头筛选后翻页仍请求下一页并保留筛选', async () => {
+    mocks.get.mockResolvedValue({ count: 40, items: [workflow] });
+    renderPage();
+    await screen.findByText(workflow.name);
+    mocks.get.mockClear();
+
+    const filterTrigger = screen.getByRole('columnheader', { name: /^发布状态/ }).querySelector<HTMLElement>('.ant-table-filter-trigger');
+    expect(filterTrigger).not.toBeNull();
+    fireEvent.click(filterTrigger!);
+    const dropdown = await waitFor(() => {
+      const element = document.querySelector<HTMLElement>('.ant-table-filter-dropdown');
+      expect(element).not.toBeNull();
+      return element!;
+    });
+    fireEvent.click(within(dropdown).getByText('已发布'));
+    fireEvent.click(within(dropdown).getByRole('button', { name: /OK|确定/ }));
+    await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
+      expect.stringContaining('status=PUBLISHED'),
+      expect.anything(),
+    ));
+    mocks.get.mockClear();
+
+    const pageTwo = document.querySelector<HTMLElement>('.ant-pagination-item-2');
+    expect(pageTwo).not.toBeNull();
+    fireEvent.click(pageTwo!);
+
+    await waitFor(() => expect(mocks.get).toHaveBeenCalledWith(
+      expect.stringMatching(/page=2.*status=PUBLISHED|status=PUBLISHED.*page=2/),
       expect.anything(),
     ));
   });
@@ -259,7 +293,7 @@ describe('流程列表', () => {
     renderPage();
     await screen.findByText(workflow.name);
 
-    fireEvent.click(screen.getByRole('button', { name: /新建流程/ }));
+    fireEvent.click(screen.getByRole('button', { name: /新建/ }));
 
     expect(screen.queryByRole('dialog', { name: '新建流程' })).toBeNull();
     expect(mocks.post).not.toHaveBeenCalled();
@@ -279,7 +313,7 @@ describe('流程列表', () => {
     fireEvent.click(copyLabel.closest('[role="menuitem"]')!);
 
     const nameInput = await screen.findByLabelText('流程名称');
-    expect((nameInput as HTMLInputElement).value).toBe(`${workflow.name}（副本）`);
+    expect((nameInput as HTMLInputElement).value).toMatch(new RegExp(`^${workflow.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\d{17}$`));
     const duplicateModal = nameInput.closest('.ant-modal-content');
     expect((duplicateModal?.querySelector('.ant-modal-footer') as HTMLElement | null)?.style.marginTop).toBe('20px');
     expect(mocks.post).not.toHaveBeenCalled();

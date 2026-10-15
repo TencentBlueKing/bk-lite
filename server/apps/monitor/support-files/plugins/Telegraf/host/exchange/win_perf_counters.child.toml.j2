@@ -133,6 +133,38 @@
         Measurement = "win_exchange_adaccess"
         IncludeTotal = true
         WarnOnMissing = true
+    [[inputs.win_perf_counters.object]]
+        ObjectName = "MSExchange Replication"
+        Instances = ["*"]
+        Counters = [
+      "CopyQueueLength",
+      "ReplayQueueLength",
+      "Avg Log Copy Latency (msec)",
+        ]
+        Measurement = "win_exchange_replication"
+        IncludeTotal = true
+        WarnOnMissing = true
+    [[inputs.win_perf_counters.object]]
+        ObjectName = "MSExchange Database ==> Instances"
+        Instances = ["*"]
+        Counters = [
+      "I/O Database Reads Average Latency",
+      "I/O Database Writes Average Latency",
+        ]
+        Measurement = "win_exchange_database_instances"
+        IncludeTotal = true
+        WarnOnMissing = true
+    [[inputs.win_perf_counters.object]]
+        ObjectName = "MSExchange Database"
+        Instances = ["*"]
+        Counters = [
+      "Database Cache % Hit",
+      "Log Bytes Write/sec",
+      "IO Log Read Average Latency",
+        ]
+        Measurement = "win_exchange_database"
+        IncludeTotal = true
+        WarnOnMissing = true
     [inputs.win_perf_counters.tags]
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type }}"

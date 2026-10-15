@@ -4,7 +4,7 @@ from io import StringIO
 
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
-from loguru import logger
+from apps.core.logger import opspilot_logger as logger
 
 # BL-NEW-001：扩充危险内建黑名单。仅靠 SAFE_BUILTINS 白名单 + 屏蔽 import 不足以
 # 防住沙箱逃逸——这些内建函数可用于反射取属性、读全局命名空间、动态编译/执行或读写

@@ -10,6 +10,7 @@ import { useTranslation } from '@/utils/i18n';
 import { useCustomReportingApi } from '@/app/cmdb/api/customReporting';
 import { useUserInfoContext } from '@/context/userInfo';
 import type { CustomReportingStats, CustomReportingTask } from '@/app/cmdb/types/customReporting';
+import { StatusToneBadge, type StatusTone } from '@/app/cmdb/utils/statusTone';
 
 interface TaskTableProps {
   refreshToken: number;
@@ -272,14 +273,17 @@ export default function TaskTable({
       width: 120,
       render: (_, task) => {
         const status = task.status || 'no_report';
-        const color =
+        const tone: StatusTone =
           status === 'receiving'
             ? 'success'
             : status === 'pending_review'
               ? 'warning'
-              : 'default';
+              : 'neutral';
         return (
-          <Tag color={color}>{t(`CustomReporting.taskStatusLabel.${status}`)}</Tag>
+          <StatusToneBadge
+            tone={tone}
+            label={t(`CustomReporting.taskStatusLabel.${status}`)}
+          />
         );
       },
     },
@@ -382,7 +386,7 @@ export default function TaskTable({
                 {t('common.refresh')}
               </Button>
               <Button type="primary" onClick={onCreate}>
-                {t('CustomReporting.createTask')}
+                {t('common.new')}
               </Button>
             </>
           )}

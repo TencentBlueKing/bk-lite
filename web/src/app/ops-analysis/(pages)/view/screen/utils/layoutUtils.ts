@@ -31,6 +31,14 @@ import {
   isSceneWidgetAllowedOnSurface,
   isSceneWidgetType,
 } from "@/app/ops-analysis/types/sceneWidgetCapability";
+import {
+  ensureRoom3DCanvasFilter,
+  mergeRoom3DFilterBinding,
+} from "@/app/ops-analysis/utils/room3DScreenFilter";
+import {
+  ensureApplicationTopologyCanvasFilter,
+  withApplicationTopologyFilterBinding,
+} from "@/app/ops-analysis/utils/applicationTopologyCanvasFilter";
 
 const DEFAULT_INSERT_X = 48;
 const DEFAULT_INSERT_Y = 96;
@@ -134,7 +142,7 @@ export const buildFiltersFromScreenItems = ({
   );
   let nextOrder = maxExistingOrder + 1;
 
-  return Array.from(discoveredParams.entries())
+  const discovered = Array.from(discoveredParams.entries())
     .map(([id, param]) => {
       const existing =
         existingDefinitions.get(id) ||
@@ -177,6 +185,16 @@ export const buildFiltersFromScreenItems = ({
       if (orderDiff !== 0) return orderDiff;
       return a.id.localeCompare(b.id);
     });
+
+  return ensureApplicationTopologyCanvasFilter(
+    ensureRoom3DCanvasFilter(
+      discovered,
+      viewSets.items,
+      previousDefinitions,
+    ),
+    viewSets.items as Parameters<typeof ensureApplicationTopologyCanvasFilter>[1],
+    previousDefinitions,
+  );
 };
 
 const cleanupScreenFilterBindings = (
@@ -219,13 +237,22 @@ export const syncScreenFilterBindings = (
     if (!isScreenWidgetItem(item)) return item;
     const dataSource = resolveScreenItemDataSource(item, dataSources);
     const params = resolveScreenWidgetParams(item, dataSource);
-    const nextBindings = cleanupScreenFilterBindings(
-      buildDefaultFilterBindings(
-        params,
+    const nextBindings = withApplicationTopologyFilterBinding(
+      item.chartType,
+      item.valueConfig?.sceneWidgetType,
+      mergeRoom3DFilterBinding(
+        item,
+        cleanupScreenFilterBindings(
+          buildDefaultFilterBindings(
+            params,
+            definitions,
+            item.valueConfig?.filterBindings,
+          ),
+          params,
+          definitions,
+        ),
         definitions,
-        item.valueConfig?.filterBindings,
       ),
-      params,
       definitions,
     );
 

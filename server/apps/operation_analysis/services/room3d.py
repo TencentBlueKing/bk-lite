@@ -73,11 +73,15 @@ class Room3DService:
             cls._raise_nats_false_result("rooms")
         if "result" in result and result.get("result") is not True:
             cls._raise_nats_result(result, "rooms")
-        data = result.get("data") if isinstance(result.get("data"), dict) else result
-        items = data.get("items") if isinstance(data, dict) else None
-        if not isinstance(items, list):
-            return []
-        return [item for item in items if isinstance(item, dict)]
+        data = result.get("data") if "data" in result else None
+        if isinstance(data, list):
+            return [item for item in data if isinstance(item, dict)]
+        if isinstance(data, dict) and isinstance(data.get("items"), list):
+            return [item for item in data["items"] if isinstance(item, dict)]
+        items = result.get("items")
+        if isinstance(items, list):
+            return [item for item in items if isinstance(item, dict)]
+        return []
 
     @classmethod
     def _raise_nats_result(cls, result: Any, failed_stage: str, server_room_id: str = "-") -> None:

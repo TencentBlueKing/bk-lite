@@ -13,6 +13,7 @@ import {
   Segmented,
   message,
   Spin,
+  Skeleton,
   Tooltip,
 } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
@@ -377,8 +378,8 @@ const EditCronTaskContent = () => {
 
   if (pageLoading) {
     return (
-      <div className="w-full h-full flex items-center justify-center">
-        <Spin size="large" />
+      <div className="h-full w-full p-6">
+        <Skeleton active paragraph={{ rows: 10 }} />
       </div>
     );
   }
@@ -684,8 +685,8 @@ const EditCronTaskContent = () => {
 const EditCronTaskPage = () => {
   return (
     <Suspense fallback={
-      <div className="w-full h-full flex items-center justify-center">
-        <Spin size="large" />
+      <div className="h-full w-full p-6">
+        <Skeleton active paragraph={{ rows: 10 }} />
       </div>
     }>
       <EditCronTaskContent />

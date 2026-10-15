@@ -71,8 +71,9 @@
 | eventTimeline | widgets/comEventTimeline.tsx | 事件时间线 |
 | cardList | widgets/comCardList.tsx | 普通 DataSource 驱动的记录卡片列表；消费 `array<object>` 或 `{items}`，经 `valueConfig.cardList` 映射固定槽位 |
 | radar | widgets/comRadar.tsx | 雷达图 |
-| room3D | widgets/room3D/index.tsx | 3D 机房 Screen-only 场景组件：经运营分析 `scene_widgets/room3d` 包装 CMDB NATS `get_room_list` / `get_room3d_layout`，渲染 row/col 网格、U 占用、可配机柜顶两行、设备摘要与类型图例；设备告警摘要驱动侧栏/tooltip 与内部红光晕 |
+| room3D | widgets/room3D/index.tsx | 3D 机房 Screen-only 场景组件：经运营分析 `scene_widgets/room3d` 包装 CMDB NATS `get_room_list` / `get_room3d_layout`，渲染 row/col 网格、U 占用、可配机柜顶两行、设备摘要与类型图例；机房读画布筛选 `server_room_id__string`；设备告警摘要驱动侧栏/tooltip 与内部红光晕 |
 | networkStatusTopology | networkStatusTopology/index.tsx | 网络状态拓扑场景组件 |
+| applicationTopology | widgets/applicationTopology/index.tsx | 应用拓扑场景组件：经 `scene_widgets/application_topology` 取 CMDB 五带结构并叠监控活跃告警；点击节点在组件内查看 CMDB 信息、监控信息和告警信息 |
 | multiValue | widgets/comMultiValue.tsx | 多值 |
 | text | ops-analysis-widgets/text-panel | 文本面板 |
 | topologyMap | topologyMap/index.tsx | 普通 DataSource 驱动的通用关系拓扑；消费 `{nodes, edges}`，使用 Dagre + X6 渲染 |
@@ -107,6 +108,7 @@
 - `[operation_analysis#20260701-014]` 补录开放导入导出 API Token 认证、组织解析、权限矩阵与实例/组织过滤。
 
 ## 2026-07-09 Code-ARD 校准
+- `[operation_analysis#20261012-001]` 机房改为大屏统一筛选 `server_room_id__string`（单选动态选项，点查询生效）。含 room3D 且缺少该筛选项时加载补上，默认值取第一个组件已保存机房；不可见时展示「机房不可用」。组件内下拉与配置里的默认机房字段移除。内置选项源「CMDB 机房列表（选项）」恢复；「CMDB 3D机房布局」仍下架。
 - `[operation_analysis#20260921-002]` `room3D` 配置增加机柜顶两行显示：选项为位置码 / 机柜名称 / 机柜类型 / 机柜状态；默认位置码 + 类型；第二行可空、两行不可都空、允许重复；只改机柜顶贴图，图例仍按 `rack_type_name`。NATS 增补 `rack_state` / `rack_state_name`。
 - `[operation_analysis#20260921-001]` `room3D` 从数据组件改为 Screen-only 自取数场景组件：capability `{ selfFetch, surfaces: ['screen'], shareSupported }`；配置只钉可选默认机房；查看/分享组件内切换且不写回；运营分析包装 CMDB NATS `get_room_list` / `get_room3d_layout`；用户侧内置数据源「CMDB 3D机房布局」「CMDB 机房列表」下架。
 - `[operation_analysis#20260709-001]` 3D 机房大屏组件 `room3D` 已注册到 `widgetRegistry`（此前 spec 未覆盖）：消费 CMDB NATS `get_room3d_layout` 返回的机房布局数据（含 `rack_type_name` 可读类型名），渲染 row/col 网格、机柜 U 占用、设备摘要与图例。后续于 `20260921-001` 改为场景组件自取数。

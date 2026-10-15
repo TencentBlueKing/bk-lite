@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useState, useRef } from 'react';
-import { Input, Button, message, Popconfirm, Spin } from 'antd';
+import { Button, message, Popconfirm } from 'antd';
+import SearchActionBar from '@/components/search-action-bar';
 import useApiClient from '@/utils/request';
 import useLogApi from '@/app/log/api/integration';
 import { useTranslation } from '@/utils/i18n';
@@ -12,7 +13,7 @@ import {
   TableDataItem,
   UserItem
 } from '@/app/log/types';
-import { ReloadOutlined } from '@ant-design/icons';
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import { useCommon } from '@/app/log/context/common';
 import { showGroupName } from '@/app/log/utils/common';
@@ -25,7 +26,6 @@ import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { GroupInfo } from '@/app/log/types/integration';
 import UserAvatar from '@/components/user-avatar';
 import { formatUserDisplayName } from '@/utils/userDisplay';
-const { Search } = Input;
 
 const Grouping = () => {
   const { isLoading } = useApiClient();
@@ -236,39 +236,40 @@ const Grouping = () => {
   };
 
   return (
-    <div className="h-full min-w-0 w-full bg-[var(--color-bg-1)] p-[20px]">
-      <Spin spinning={pageLoading}>
-        <div className="flex justify-end items-center mb-[10px]">
-          <Search
-            allowClear
-            enterButton
-            className="mr-[8px] w-60"
-            placeholder={t('common.searchPlaceHolder')}
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            onSearch={handleSearch}
-          ></Search>
-          <Permission requiredPermissions={['Add']}>
-            <Button
-              className="mr-[8px]"
-              type="primary"
-              onClick={() => openInstanceModal({}, 'add')}
-            >
-              + {t('common.add')}
-            </Button>
-          </Permission>
-          <Button icon={<ReloadOutlined />} onClick={onRefresh} />
-        </div>
-        <CustomTable
-          scroll={{ y: 'calc(100vh - 320px)', x: 'max-content' }}
-          columns={columns}
-          dataSource={tableData}
-          pagination={pagination}
-          loading={tableLoading}
-          rowKey="id"
-          onChange={handleTableChange}
-        ></CustomTable>
-      </Spin>
+    <div className="h-full min-w-0 w-full bg-[var(--color-bg)] p-5">
+      <SearchActionBar
+        searchProps={{
+          allowClear: true,
+          enterButton: true,
+          placeholder: t('common.searchPlaceHolder'),
+          value: searchText,
+          onChange: (e) => setSearchText(e.target.value),
+          onSearch: handleSearch,
+        }}
+        actions={(
+          <>
+            <Button icon={<ReloadOutlined />} onClick={onRefresh} />
+            <Permission requiredPermissions={['Add']}>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => openInstanceModal({}, 'add')}
+              >
+                {t('common.new')}
+              </Button>
+            </Permission>
+          </>
+        )}
+      />
+      <CustomTable
+        scroll={{ y: 'calc(100vh - 320px)', x: 'max-content' }}
+        columns={columns}
+        dataSource={tableData}
+        pagination={pagination}
+        loading={tableLoading || pageLoading}
+        rowKey="id"
+        onChange={handleTableChange}
+      ></CustomTable>
       <EditInstance
         ref={instanceRef}
         fields={fields}

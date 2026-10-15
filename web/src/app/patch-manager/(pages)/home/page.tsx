@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Space, Card, Button, message, Tag, Popconfirm, Spin } from 'antd';
+import { Space, Card, Button, message, Tag, Popconfirm } from 'antd';
 import { useIntl } from 'react-intl';
 import PermissionWrapper from '@/components/permission';
 import CustomTable from '@/components/custom-table';
@@ -165,11 +165,6 @@ export default function HomePage() {
 
   return (
     <div className="relative overflow-x-hidden">
-      {pageLoading && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--color-bg-1)]/50">
-          <Spin />
-        </div>
-      )}
       <KpiGrid items={kpis} />
       {/* 第2行：主机合规分布 */}
       <div className="mb-3.5 flex flex-wrap gap-3.5">
@@ -305,6 +300,7 @@ export default function HomePage() {
               size="small"
               pagination={false}
               rowKey="id"
+              loading={pageLoading}
               dataSource={stats?.recent_tasks || []}
               scroll={{ y: tableScrollY }}
               columns={[
@@ -329,6 +325,7 @@ export default function HomePage() {
               size="small"
               pagination={false}
               rowKey="id"
+              loading={pageLoading}
               dataSource={stats?.top_risks || []}
               scroll={{ y: tableScrollY }}
               columns={[

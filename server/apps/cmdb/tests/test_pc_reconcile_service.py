@@ -93,6 +93,13 @@ class InMemoryGraph:
 
         return [dict(edge) for edge in self.edges if _match(edge)]
 
+    def delete_entity_if_unchanged(self, label, instance):
+        current = self.store.get(instance["inst_name"])
+        if current is None or any(current.get(k) != instance.get(k) for k in ("_id", "model_id", "collect_task", "collect_time", "inst_uuid")):
+            return False
+        self.detach_delete_entity(label, instance["_id"])
+        return True
+
     def detach_delete_entity(self, label, entity_id):
         inst = next((name for name, e in self.store.items() if e["_id"] == entity_id), None)
         if inst in self.fail_on_inst:
@@ -172,8 +179,8 @@ def test_filter_pc_payload_keeps_collected_hardware_fields():
         "inst_name": "WIN-A",
         "brand": "Dell",
         "cpu": "Intel Core i7",
-        "men": "17179869184",
-        "disk": "512110190592",
+        "men": "16",
+        "disk": "476.9",
     }
 
 
@@ -234,7 +241,8 @@ def test_create_writes_organization_and_runtime_fields(graph):
 
     assert result["pc_status"] == "added"
     created = graph.store["WIN-ABC"]
-    assert created["organization"] == 7
+    assert created["organization"] == [7]
+    assert graph.store["SW-AAA"]["organization"] == [7]
     assert created["model_id"] == "pc"
     assert created["auto_collect"] is True
     assert created["collect_task"] == task.id
@@ -400,9 +408,9 @@ def test_software_payload_whitelisted(graph):
 # ---- Task 10: 安全差集删除与删除审计 ----
 
 
-def _seed_pc_with_software(graph, pc_inst, sw_insts):
+def _seed_pc_with_software(graph, pc_inst, sw_insts, owner=1):
     """预置一台 PC 及其软件+install_on 边（模拟上一轮采集已写入）。"""
-    pc = graph.create_entity("instance", {"model_id": "pc", "inst_name": pc_inst}, {}, [])
+    pc = graph.create_entity("instance", {"model_id": "pc", "inst_name": pc_inst, "collect_task": owner}, {}, [])
     for sw_inst in sw_insts:
         sw = graph.create_entity("instance", {"model_id": "pc_software", "inst_name": sw_inst}, {}, [])
         graph.edges.append(

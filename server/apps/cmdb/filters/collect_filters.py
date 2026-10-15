@@ -6,7 +6,7 @@ from django.db.models import Q
 from django_filters import CharFilter, FilterSet
 
 from apps.cmdb.collection.physical_server_protocol import PHYSICAL_SERVER_MODEL_ID
-from apps.cmdb.constants.constants import CollectDriverTypes
+from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes
 from apps.cmdb.models.collect_model import CollectModels, OidMapping, PortFingerprint
 
 
@@ -17,6 +17,7 @@ class CollectModelFilter(FilterSet):
     exec_status = CharFilter(field_name="exec_status", label="任务类型")
     model_id = CharFilter(field_name="model_id", label="模型id")
     collection_protocol = CharFilter(method="filter_collection_protocol", label="物理服务器采集协议")
+    custom_plugin_pk = CharFilter(method="filter_custom_plugin_pk", label="自定义插件")
 
     @staticmethod
     def filter_collection_protocol(queryset, _name, value):
@@ -32,9 +33,17 @@ class CollectModelFilter(FilterSet):
             return queryset.filter(params__collection_protocol="redfish")
         return queryset.none()
 
+    @staticmethod
+    def filter_custom_plugin_pk(queryset, _name, value):
+        try:
+            plugin_pk = int(value)
+        except (TypeError, ValueError):
+            return queryset.none()
+        return queryset.filter(task_type=CollectPluginTypes.CUSTOM_SCRIPT, params__contains={"custom_plugin_pk": plugin_pk})
+
     class Meta:
         model = CollectModels
-        fields = ["name", "driver_type", "exec_status", "model_id", "collection_protocol"]
+        fields = ["name", "driver_type", "exec_status", "model_id", "collection_protocol", "custom_plugin_pk"]
 
 
 class OidModelFilter(FilterSet):

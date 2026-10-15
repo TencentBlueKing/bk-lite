@@ -91,10 +91,9 @@ const SelectIcon = forwardRef<SelectIconRef, SelectIconProps>(
           onCancel={handleCancel}
           width={540}
           footer={
-            <div>
+            <div className="flex justify-end gap-2">
               <Button
                 type="primary"
-                className="mr-[10px]"
                 onClick={handleSubmit}
               >
                 {t('common.confirm')}
@@ -142,7 +141,7 @@ const SelectIcon = forwardRef<SelectIconRef, SelectIconProps>(
                         width={34}
                         height={34}
                       />
-                      <span className="text-[10px] text-center text-gray-600 leading-3 cursor-pointer max-w-full overflow-hidden text-ellipsis">
+                      <span className="text-[10px] text-center text-[var(--color-text-2)] leading-3 cursor-pointer max-w-full overflow-hidden text-ellipsis">
                         {item.describe}
                       </span>
                     </li>

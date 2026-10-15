@@ -640,6 +640,18 @@
         "professionalTitle": "采集",
         "professionalMessage": "您可以根据通过创建采集任务，自动采集不同对象的配置信息和关联信息。",
         "inputTaskPlaceholder": "请输入任务名称",
+        "catalog": {
+            "pluginOverview": "插件总览",
+            "allTasks": "全部任务",
+            "searchPlaceholder": "搜索插件名称、说明或标签",
+            "more": "更多",
+            "collapse": "收起",
+            "empty": "没有匹配的插件",
+            "taskCount": "{n} 项任务",
+            "noTask": "未配置任务",
+            "backToPlugins": "返回插件总览",
+            "pluginMissing": "找不到这个任务对应的插件"
+        },
         "addTaskTitle": "新增任务",
         "editTaskTitle": "编辑任务",
         "viewDoc": "查看说明",
@@ -668,7 +680,7 @@
         "afterExpiration": "过期删除",
         "afterExpirationPrefix": "超过",
         "afterExpirationSuffix": "天未更新则删除",
-        "afterExpirationTip": "当实例在数据源中持续消失且超过设定的缓冲时间后，再执行清理动作。",
+        "afterExpirationTip": "完整采集成功后，删除本任务已消失且上次采集更新时间超过设定天数的实例。采集失败或数据不完整时不清理。",
         "doNotClean": "不清理",
         "doNotCleanDesc": "系统仅同步新增和更新的实例，完全忽略数据源中的删除或丢失情况。",
         "doNotCleanTip": "适用场景提示：适合历史归档资产，或必须由人工走流程审批后才能确认下线的核心资产",
@@ -877,6 +889,7 @@
         },
         "table": {
             "taskName": "任务名称",
+            "pluginName": "所属插件",
             "syncStatus": "状态",
             "latestOverview": "最新任务概览",
             "creator": "创建者",
@@ -1041,7 +1054,9 @@
             "daysAgo": "{n} 天前",
             "never": "暂无",
             "expand": "展开概览",
-            "collapse": "收起概览"
+            "collapse": "收起概览",
+            "clickToViewAll": "点击查看全部任务",
+            "clickToFilter": "点击筛选{name}"
         },
         "taskName": "任务名称",
         "executeStatus": "执行状态",

@@ -7,10 +7,12 @@ import CopyModelModal from '../list/copyModelModal';
 import attrLayoutStyle from './layout.module.scss';
 import useApiClient from '@/utils/request';
 import PermissionWrapper from '@/components/permission';
-import { Card, Modal, message, Tooltip } from 'antd';
+import { Button, Modal, message, Tooltip } from 'antd';
 import { useScreenAwareRouter } from '@/console-layout';
+import TopSection from '@/components/top-section';
 import ModelIcon from '@/app/cmdb/components/model-icon';
-import { EditTwoTone, DeleteTwoTone, CopyOutlined } from '@ant-design/icons';
+import SourceOriginBadge from '@/components/source-origin-badge';
+import { CopyOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
 import { ClassificationItem } from '@/app/cmdb/types/assetManage';
 import type { MenuItem } from '@/types';
@@ -187,83 +189,100 @@ const AboutLayout = ({ children }: { children: React.ReactNode }) => {
   return (
     <ModelDetailContext.Provider value={modelDetail}>
       <div className={`${attrLayoutStyle.attrLayout} flex h-full min-h-0 min-w-0 w-full flex-col`}>
-        <Card style={{ width: '100%' }} className="mb-[20px] shrink-0">
-          <header className="flex items-center">
-            <ModelIcon
-              icon={modelDetail.icn}
-              modelId={modelId}
-              className="block mr-[20px]"
-              alt={t('picture')}
-              width={30}
-              height={30}
-            />
-            <div>
-              <div className="flex items-center mb-[2px]">
-                <div
-                  className={`text-[14px] font-[800] ${attrLayoutStyle.ellipsisText} break-all`}
-                >
-                  {modelDetail.model_name || ''}
-                </div>
-                <div className="flex items-center gap-[14px] ml-[24px]">
-                  <PermissionWrapper
-                    requiredPermissions={['Edit Model']}
-                    instPermissions={modelDetail.permission || []}
-                  >
-                    <EditTwoTone
-                      className="edit text-[14px] cursor-pointer"
-                      onClick={() =>
-                        shoModelModal('edit', {
-                          model_name: modelDetail.model_name || '',
-                          model_id: modelId,
-                          classification_id:
-                            modelDetail.classification_id || '',
-                          icn: modelDetail.icn || '',
-                          group: modelDetail.group,
-                          app_topo_layer: modelDetail.app_topo_layer,
-                          is_pre: modelDetail.is_pre,
-                        })
-                      }
-                    />
-                  </PermissionWrapper>
-                  {!isPre && (
-                    <PermissionWrapper
-                      requiredPermissions={['Delete Model']}
-                      instPermissions={modelDetail.permission || []}
-                    >
-                      <DeleteTwoTone
-                        className="delete text-[14px] cursor-pointer"
-                        onClick={() =>
-                          showDeleteConfirm({
-                            model_id: modelId,
-                          })
-                        }
-                      />
-                    </PermissionWrapper>
-                  )}
-                  <PermissionWrapper
-                    requiredPermissions={['Add Model']}
-                    instPermissions={modelDetail.permission || []}
-                  >
-                    <Tooltip title={t('Model.copyModel')}>
-                      <CopyOutlined
-                        className="copy text-[14px] cursor-pointer"
-                        style={{ color: 'var(--color-primary)' }}
-                        onClick={showCopyModelModal}
-                      />
-                    </Tooltip>
-                  </PermissionWrapper>
-                </div>
-              </div>
-              <div className="text-[var(--color-text-2)] text-[12px] break-all">
+        <div className="mb-4 flex shrink-0 items-center rounded-md bg-[var(--color-bg)]">
+          <TopSection
+            className="min-w-0 flex-1"
+            title={(
+              <span className="inline-flex max-w-full items-center gap-2">
+                <span className="min-w-0 truncate">{modelDetail.model_name || ''}</span>
+                <SourceOriginBadge
+                  kind={(modelDetail.is_pre ?? isPre) ? 'builtin' : 'custom'}
+                />
+              </span>
+            )}
+            content={(
+              <span>
                 {modelId}
                 <span className="ml-2">
-                  【{t('associatedOrganization')}：
-                  <OrganizationField value={modelDetail.group} />】
+                  {t('associatedOrganization')}：
+                  <OrganizationField value={modelDetail.group} />
                 </span>
-              </div>
-            </div>
-          </header>
-        </Card>
+              </span>
+            )}
+            icon={(
+              <ModelIcon
+                icon={modelDetail.icn}
+                modelId={modelId}
+                className="block"
+                alt={t('picture')}
+                width={40}
+                height={40}
+              />
+            )}
+          />
+          <div className="flex shrink-0 items-center gap-1 pr-4">
+            <PermissionWrapper
+              requiredPermissions={['Edit Model']}
+              instPermissions={modelDetail.permission || []}
+            >
+              <Tooltip title={t('common.edit')}>
+                <Button
+                  type="text"
+                  size="small"
+                  aria-label={t('common.edit')}
+                  icon={<EditOutlined />}
+                  onClick={() =>
+                    shoModelModal('edit', {
+                      model_name: modelDetail.model_name || '',
+                      model_id: modelId,
+                      classification_id:
+                        modelDetail.classification_id || '',
+                      icn: modelDetail.icn || '',
+                      group: modelDetail.group,
+                      app_topo_layer: modelDetail.app_topo_layer,
+                      is_pre: modelDetail.is_pre,
+                    })
+                  }
+                />
+              </Tooltip>
+            </PermissionWrapper>
+            {!isPre && (
+              <PermissionWrapper
+                requiredPermissions={['Delete Model']}
+                instPermissions={modelDetail.permission || []}
+              >
+                <Tooltip title={t('common.delete')}>
+                  <Button
+                    type="text"
+                    size="small"
+                    danger
+                    aria-label={t('common.delete')}
+                    icon={<DeleteOutlined />}
+                    onClick={() =>
+                      showDeleteConfirm({
+                        model_id: modelId,
+                      })
+                    }
+                  />
+                </Tooltip>
+              </PermissionWrapper>
+            )}
+            <PermissionWrapper
+              requiredPermissions={['Add Model']}
+              instPermissions={modelDetail.permission || []}
+            >
+              <Tooltip title={t('Model.copyModel')}>
+                <Button
+                  type="text"
+                  size="small"
+                  aria-label={t('Model.copyModel')}
+                  icon={<CopyOutlined />}
+                  onClick={showCopyModelModal}
+                />
+              </Tooltip>
+            </PermissionWrapper>
+          </div>
+        </div>
         <div
           className={`${attrLayoutStyle.attrLayout} min-h-0 min-w-0 flex-1`}
           style={{ ['--custom-height' as string]: '100%' }}

@@ -92,8 +92,9 @@ SNMP 凭据按版本区分，请先确定 `version` 再填写对应字段。
 
 | Key 名称 | 含义 |
 | :--- | :--- |
-| inst_name | 接口实例展示名 |
-| name | 接口别名 / 描述 |
+| inst_name | 接口实例展示名（`{IP}-{设备类型}-{接口名称}`，名称优先 ifDescr） |
+| name | 接口名称（ifDescr；为空时用 ifAlias，再空则 `if{index}`） |
+| description | 接口描述（ifAlias，未配置则为空） |
 | mac | 接口 MAC 地址 |
 | status | 接口状态（UP / Down / Testing） |
 | mtu | 接口 MTU |

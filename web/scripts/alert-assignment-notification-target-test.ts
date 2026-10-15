@@ -11,6 +11,7 @@ assert.deepEqual(getNotificationTargetFormValue(undefined, ['alice']), {
   personnel: ['alice'],
   organization_ids: [],
   include_children: false,
+  prefer_alert_owner: false,
 });
 
 assert.deepEqual(
@@ -27,6 +28,7 @@ assert.deepEqual(
     personnel: [],
     organization_ids: [12],
     include_children: true,
+    prefer_alert_owner: false,
   },
 );
 
@@ -71,6 +73,35 @@ assert.deepEqual(
     usernames: [],
     organization_ids: [12],
     include_children: true,
+  },
+);
+
+assert.deepEqual(
+  buildNotificationTarget({
+    target_type: 'user',
+    personnel: ['noc'],
+    prefer_alert_owner: true,
+  }),
+  {
+    type: 'user',
+    usernames: ['noc'],
+    organization_ids: [],
+    include_children: false,
+    prefer_alert_owner: true,
+  },
+);
+
+assert.deepEqual(
+  buildNotificationTarget({
+    target_type: 'organization',
+    organization_ids: [12],
+    prefer_alert_owner: false,
+  }),
+  {
+    type: 'organization',
+    usernames: [],
+    organization_ids: [12],
+    include_children: false,
   },
 );
 

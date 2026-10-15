@@ -99,6 +99,15 @@ def test_model_config_does_not_add_peer_mac_field_on_interface():
     assert "peer_mac_address" not in attr_ids
 
 
+def test_interface_model_stores_ifalias_as_description():
+    attrs = pd.read_excel(MODEL_CONFIG, sheet_name="attr-interface", header=1)
+    row = attrs.loc[attrs["attr_id"].astype(str) == "description"].iloc[0]
+    assert row["attr_name"] == "接口描述"
+    assert row["attr_type"] == "str"
+    assert row["attr_group"] == "基本信息"
+    assert bool(row["is_required"]) is False
+
+
 def test_nic_index_ignores_host_even_when_mac_matches():
     index = nic_index_from_instances(
         [

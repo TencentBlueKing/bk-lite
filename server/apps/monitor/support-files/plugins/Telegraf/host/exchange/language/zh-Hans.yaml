@@ -132,6 +132,38 @@ monitor_object_metric:
       name: EWS HTTP 状态码
       desc: >-
         EWS 探测返回的 HTTP 状态码。
+    exchange_copy_queue_length:
+      name: 复制队列长度
+      desc: >-
+        等待复制到被动副本的事务日志数量。
+    exchange_replay_queue_length:
+      name: 重放队列长度
+      desc: >-
+        等待重放到被动副本的事务日志数量。
+    exchange_avg_log_copy_latency:
+      name: 日志复制延迟
+      desc: >-
+        日志复制器通过网络发送复制消息的平均耗时（毫秒）。
+    exchange_database_read_latency:
+      name: 数据库读延迟
+      desc: >-
+        邮箱数据库单次读操作的平均耗时（毫秒）。
+    exchange_database_write_latency:
+      name: 数据库写延迟
+      desc: >-
+        邮箱数据库单次写操作的平均耗时（毫秒）。
+    exchange_log_replay_latency:
+      name: 日志重放延迟
+      desc: >-
+        重放或恢复时读取日志文件的平均耗时（毫秒）。
+    exchange_log_bytes_write_persec:
+      name: 日志写入速率
+      desc: >-
+        每秒写入事务日志的字节数。
+    exchange_database_cache_hit_percent:
+      name: 数据库缓存命中率
+      desc: >-
+        由数据库缓存直接满足、未触发文件读取的页面请求百分比。
 monitor_object_metric_group:
   "Exchange":
     Transport Queue: 传输队列
@@ -144,4 +176,6 @@ monitor_object_metric_group:
     MAPI: MAPI
     AD Access: AD Access
     Workload: Workload
+    Replication: 复制
+    Database: 数据库
     Probe: 探测

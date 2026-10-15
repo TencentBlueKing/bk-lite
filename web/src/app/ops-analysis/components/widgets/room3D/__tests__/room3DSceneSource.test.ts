@@ -62,11 +62,47 @@ describe('loadRoom3DScene', () => {
     expect(api.getLayout).toHaveBeenCalledWith(ROOM_B, undefined);
   });
 
-  it('returns empty without fetching layout when no room is visible', async () => {
+  it('fetches layout for an applied room id missing from the room list', async () => {
+    const api = createApi();
+    const result = await loadRoom3DScene({
+      api,
+      savedRoomId: ROOM_A,
+      runtimeRoomId: ROOM_C,
+    });
+
+    expect(result.status).toBe('ready');
+    expect(result).toMatchObject({ roomId: ROOM_C });
+    expect(api.getLayout).toHaveBeenCalledWith(ROOM_C, undefined);
+  });
+
+  it('loads the applied room instead of the saved default', async () => {
+    const api = createApi();
+    const result = await loadRoom3DScene({
+      api,
+      savedRoomId: ROOM_A,
+      runtimeRoomId: ROOM_B,
+    });
+
+    expect(result).toMatchObject({ status: 'ready', roomId: ROOM_B });
+    expect(api.getLayout).toHaveBeenCalledWith(ROOM_B, undefined);
+  });
+
+  it('fetches layout for a saved room when the room list is empty', async () => {
     const api = createApi({
       getRooms: vi.fn(async () => ({ items: [] })),
     });
     const result = await loadRoom3DScene({ api, savedRoomId: ROOM_A });
+
+    expect(result.status).toBe('ready');
+    expect(result).toMatchObject({ roomId: ROOM_A });
+    expect(api.getLayout).toHaveBeenCalledWith(ROOM_A, undefined);
+  });
+
+  it('returns empty without fetching layout when nothing is selected', async () => {
+    const api = createApi({
+      getRooms: vi.fn(async () => ({ items: [] })),
+    });
+    const result = await loadRoom3DScene({ api, savedRoomId: '' });
 
     expect(result).toEqual({ status: 'empty', rooms: [] });
     expect(api.getLayout).not.toHaveBeenCalled();

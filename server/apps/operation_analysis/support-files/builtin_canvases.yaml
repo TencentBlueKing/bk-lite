@@ -13,7 +13,7 @@ meta:
   object_counts:
     dashboards: 3
     topologies: 0
-    screens: 3
+    screens: 4
     reports: 0
     architectures: 0
     datasources: 19
@@ -1530,39 +1530,41 @@ screens:
   desc: 告警中心运营态势大屏，使用页面可配置图表节点展示今日、活动、趋势、分布与活跃告警信息
   other: {}
   view_sets:
-    viewport:
-      theme: screen-dark
-      width: 3840
-      height: 2160
-      adapter: fill
-      background:
-        key: dark-glow
-        type: preset
     items:
-    - h: 670
-      w: 1456
-      x: 1092
-      y: 508
+    - h: 500
+      w: 1252
+      x: 2564
+      y: 504
       id: border-alert-duration-top
-      kind: decoration
-      preset: border-22
-      zIndex: 49
-      decorationType: panelFrame
-    - h: 524
-      w: 1434
-      x: 1103
-      y: 637
+      kind: shape
+      shape: rect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#126097'
+        borderWidth: 4
+        gradientEnd: '#052441'
+        gradientStart: '#052441'
+        hideBackground: false
+        backgroundColor: '#052441'
+        gradientDirection: vertical
+    - h: 420
+      w: 1220
+      x: 2580
+      y: 568
       id: alert-duration-top
       type: widget
       title: 活跃告警持续时长 TOP10
-      zIndex: 48
+      zIndex: 8
       chartType: topN
       valueConfig:
         name: 活动告警持续时长 TOP10
         chartType: topN
         appearance:
           frame: bare
-        dataSource: 活跃告警 TOP N::get_active_alert_top
+        dataSource: '活跃告警 TOP N::get_active_alert_top'
         description: ''
         tableConfig:
           columns:
@@ -1610,50 +1612,53 @@ screens:
           value: 10
           alias_name: 返回条数
           filterType: params
-    - h: 177
-      w: 739
-      x: 3065
-      y: 29
+    - h: 96
+      w: 475
+      x: 3149
+      y: 9
       id: legacy-clock
       kind: clock
-      format: YYYY-MM-DD HH:mm:ss
-      zIndex: 47
+      format: 'YYYY-MM-DD HH:mm:ss'
+      zIndex: 21
       textStyle:
-        color: canvas
-        fontSize: 60
+        color: '#EAF3FF'
+        fontSize: 34
         fontWeight: 600
-    - h: 169
-      w: 3839
-      x: 0
-      y: 0
+    - h: 145
+      w: 1996
+      x: 915
+      y: 12
       id: legacy-title-frame
       kind: titleFrame
       preset: hero-5
-      zIndex: 46
+      zIndex: 20
       content: 告警运营大屏
       textStyle:
-        fontSize: 72
-    - h: 66
-      w: 384
-      x: 3278
-      y: 242
+        align: right
+        color: '#EAF3FF'
+        fontSize: 56
+        fontWeight: 700
+    - h: 42
+      w: 488
+      x: 3308
+      y: 260
       id: label-2bdee93c-3a75-49a6-93b2-bd0d448967b3
       kind: text
-      zIndex: 45
+      zIndex: 5
       content: 新增事故数
       textStyle:
         align: left
-        color: '#e8eef7'
-        fontSize: 48
-        fontWeight: 700
-    - h: 147
-      w: 466
-      x: 3275
-      y: 313
+        color: '#EAF3FF'
+        fontSize: 30
+        fontWeight: 600
+    - h: 170
+      w: 496
+      x: 3304
+      y: 308
       id: 2bdee93c-3a75-49a6-93b2-bd0d448967b3
       type: widget
       title: 新增事故数
-      zIndex: 44
+      zIndex: 8
       chartType: single
       valueConfig:
         name: 所选时段新增事故数
@@ -1661,7 +1666,7 @@ screens:
         chartType: single
         appearance:
           frame: bare
-        dataSource: 告警期间统计::alert/get_alert_period_statistics
+        dataSource: '告警期间统计::alert/get_alert_period_statistics'
         compareMode: percent
         description: ''
         filterBindings:
@@ -1669,11 +1674,7 @@ screens:
         selectedFields:
         - new_incident_count
         thresholdColors:
-        - color: '#dc2626'
-          value: '70'
-        - color: '#d97706'
-          value: '30'
-        - color: '#2563eb'
+        - color: '#5AA8FF'
           value: '0'
         dataSourceParams:
         - name: time
@@ -1681,36 +1682,46 @@ screens:
           value: 10080
           alias_name: 时间范围
           filterType: filter
-    - h: 66
-      w: 415
-      x: 2722
-      y: 250
+    - h: 42
+      w: 488
+      x: 2764
+      y: 260
       id: label-f9156f59-ac47-48b9-b071-da3289f769af
       kind: text
-      zIndex: 43
+      zIndex: 5
       content: 告警关联事件数
       textStyle:
         align: left
-        color: '#e8eef7'
-        fontSize: 48
-        fontWeight: 700
-    - h: 232
-      w: 487
-      x: 3264
-      y: 229
+        color: '#EAF3FF'
+        fontSize: 30
+        fontWeight: 600
+    - h: 240
+      w: 528
+      x: 3288
+      y: 244
       id: border-2bdee93c-3a75-49a6-93b2-bd0d448967b3
-      kind: decoration
-      preset: tech
-      zIndex: 42
-      decorationType: panelFrame
-    - h: 134
-      w: 508
-      x: 2707
-      y: 320
+      kind: shape
+      shape: rect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#126097'
+        borderWidth: 4
+        gradientEnd: '#052441'
+        gradientStart: '#052441'
+        hideBackground: false
+        backgroundColor: '#052441'
+        gradientDirection: vertical
+    - h: 170
+      w: 496
+      x: 2760
+      y: 308
       id: f9156f59-ac47-48b9-b071-da3289f769af
       type: widget
       title: 告警关联事件数
-      zIndex: 41
+      zIndex: 8
       chartType: single
       valueConfig:
         name: 所选时段告警关联事件数
@@ -1718,7 +1729,7 @@ screens:
         chartType: single
         appearance:
           frame: bare
-        dataSource: 告警期间统计::alert/get_alert_period_statistics
+        dataSource: '告警期间统计::alert/get_alert_period_statistics'
         compareMode: percent
         description: ''
         filterBindings:
@@ -1726,11 +1737,7 @@ screens:
         selectedFields:
         - linked_event_count
         thresholdColors:
-        - color: '#dc2626'
-          value: '70'
-        - color: '#d97706'
-          value: '30'
-        - color: '#2563eb'
+        - color: '#49C6F5'
           value: '0'
         dataSourceParams:
         - name: time
@@ -1738,35 +1745,34 @@ screens:
           value: 10080
           alias_name: 时间范围
           filterType: filter
-    - h: 100
-      w: 1155
-      x: 2623
-      y: 1719
+    - h: 42
+      w: 1212
+      x: 2584
+      y: 1552
       id: label-081f2a79-debe-4825-9d4d-1aeb02d9702e
-      kind: titleFrame
-      preset: section-2
-      zIndex: 40
+      kind: text
+      zIndex: 5
       content: 渠道通知成功率
       textStyle:
         align: left
-        color: '#e8eef7'
-        fontSize: 48
-        fontWeight: 700
-    - h: 276
-      w: 1169
-      x: 2615
-      y: 1821
+        color: '#EAF3FF'
+        fontSize: 30
+        fontWeight: 600
+    - h: 524
+      w: 1220
+      x: 2580
+      y: 1600
       id: 081f2a79-debe-4825-9d4d-1aeb02d9702e
       type: widget
       title: 渠道通知成功率
-      zIndex: 39
+      zIndex: 8
       chartType: bar
       valueConfig:
         name: 通知渠道成功率
         chartType: bar
         appearance:
           frame: bare
-        dataSource: 按渠道通知成功率::alert/get_notification_channel_stats
+        dataSource: '按渠道通知成功率::alert/get_notification_channel_stats'
         description: ''
         filterBindings:
           time__timeRange: true
@@ -1776,211 +1782,214 @@ screens:
           value: 10080
           alias_name: 时间
           filterType: filter
-    - h: 232
-      w: 518
-      x: 2706
-      y: 231
+    - h: 240
+      w: 528
+      x: 2744
+      y: 244
       id: border-f9156f59-ac47-48b9-b071-da3289f769af
-      kind: decoration
-      preset: tech
-      zIndex: 38
-      decorationType: panelFrame
-    - h: 100
-      w: 957
-      x: 69
-      y: 1026
-      id: label-alert-access-trend
-      kind: titleFrame
-      preset: section-2
-      zIndex: 37
-      content: 告警与关联事件趋势
-      textStyle:
-        align: left
-        color: '#e8eef7'
-        fontSize: 48
-        fontWeight: 700
-    - h: 66
-      w: 393
-      x: 2159
-      y: 234
-      id: label-alert-active-pending
-      kind: text
-      zIndex: 36
-      content: 待响应
-      textStyle:
-        align: left
-        color: '#e8eef7'
-        fontSize: 48
-        fontWeight: 700
-    - h: 91
-      w: 1411
-      x: 1122
-      y: 1237
-      id: label-alert-active-table
-      kind: titleFrame
-      preset: section-2
-      zIndex: 35
-      content: 活跃告警信息
-      textStyle:
-        align: left
-        color: '#e8eef7'
-        fontSize: 48
-        fontWeight: 700
-    - h: 66
-      w: 380
-      x: 1643
-      y: 239
-      id: label-alert-active-total
-      kind: text
-      zIndex: 34
-      content: 活跃告警总数
-      textStyle:
-        align: left
-        color: '#e8eef7'
-        fontSize: 48
-        fontWeight: 700
-    - h: 112
-      w: 1420
-      x: 1111
-      y: 525
-      id: label-alert-duration-top
-      kind: titleFrame
-      preset: section-2
-      zIndex: 33
-      content: 活跃告警持续时长 TOP10
-      textStyle:
-        align: left
-        color: '#e8eef7'
-        fontSize: 48
-        fontWeight: 700
-    - h: 66
-      w: 389
-      x: 563
-      y: 247
-      id: label-alert-kpi-closed
-      kind: text
-      zIndex: 32
-      content: 今日已关闭
-      textStyle:
-        align: left
-        color: '#e8eef7'
-        fontSize: 48
-        fontWeight: 700
-    - h: 66
-      w: 380
-      x: 51
-      y: 251
-      id: label-alert-kpi-created
-      kind: text
-      zIndex: 31
-      content: 今日已产生
-      textStyle:
-        align: left
-        color: '#e8eef7'
-        fontSize: 48
-        fontWeight: 700
-    - h: 66
-      w: 406
-      x: 1105
-      y: 239
-      id: label-alert-kpi-processing
-      kind: text
-      zIndex: 30
-      content: 处理中
-      textStyle:
-        align: left
-        color: '#e8eef7'
-        fontSize: 48
-        fontWeight: 700
-    - h: 100
-      w: 953
-      x: 74
-      y: 1538
-      id: label-alert-level-distribution
-      kind: titleFrame
-      preset: section-2
-      zIndex: 29
-      content: 活跃告警等级分布
-      textStyle:
-        align: left
-        color: '#e8eef7'
-        fontSize: 48
-        fontWeight: 700
-    - h: 100
-      w: 977
-      x: 52
-      y: 529
-      id: label-alert-level-trend
-      kind: titleFrame
-      preset: section-2
-      zIndex: 28
-      content: 告警等级趋势
-      textStyle:
-        align: left
-        color: '#e8eef7'
-        fontSize: 48
-        fontWeight: 700
-    - h: 97
-      w: 1169
-      x: 2617
-      y: 1108
-      id: label-alert-source-event-top
-      kind: titleFrame
-      preset: section-2
-      zIndex: 27
-      content: 告警关联事件来源 TOP10
-      textStyle:
-        align: left
-        color: '#e8eef7'
-        fontSize: 48
-        fontWeight: 700
-    - h: 100
-      w: 1159
-      x: 2609
-      y: 519
-      id: label-alert-status-distribution
-      kind: titleFrame
-      preset: section-2
-      zIndex: 26
-      content: 活跃告警状态分布
-      textStyle:
-        align: left
-        color: '#e8eef7'
-        fontSize: 48
-        fontWeight: 700
-    - h: 232
-      w: 487
-      x: 3264
-      y: 229
-      id: panel-2bdee93c-3a75-49a6-93b2-bd0d448967b3
       kind: shape
       shape: rect
-      zIndex: 25
+      zIndex: 1
       shapeStyle:
         shadow: 0
         gradient: false
         hideBorder: false
-        borderColor: rgba(0, 229, 255, 0.28)
-        borderWidth: 1
-        gradientEnd: rgba(8, 28, 52, 0.2)
-        gradientStart: rgba(0, 229, 255, 0.16)
+        borderColor: '#126097'
+        borderWidth: 4
+        gradientEnd: '#052441'
+        gradientStart: '#052441'
         hideBackground: false
-        backgroundColor: rgba(8, 28, 52, 0.62)
+        backgroundColor: '#052441'
         gradientDirection: vertical
-    - h: 346
-      w: 970
-      x: 61
-      y: 1124
+    - h: 42
+      w: 1216
+      x: 1312
+      y: 1036
+      id: label-alert-access-trend
+      kind: text
+      zIndex: 5
+      content: 告警与关联事件趋势
+      textStyle:
+        align: left
+        color: '#EAF3FF'
+        fontSize: 30
+        fontWeight: 600
+    - h: 42
+      w: 488
+      x: 2220
+      y: 260
+      id: label-alert-active-pending
+      kind: text
+      zIndex: 5
+      content: 待响应
+      textStyle:
+        align: left
+        color: '#EAF3FF'
+        fontSize: 30
+        fontWeight: 600
+    - h: 42
+      w: 2484
+      x: 44
+      y: 1552
+      id: label-alert-active-table
+      kind: text
+      zIndex: 5
+      content: 活跃告警信息
+      textStyle:
+        align: left
+        color: '#EAF3FF'
+        fontSize: 30
+        fontWeight: 600
+    - h: 42
+      w: 488
+      x: 1676
+      y: 260
+      id: label-alert-active-total
+      kind: text
+      zIndex: 5
+      content: 活跃告警总数
+      textStyle:
+        align: left
+        color: '#EAF3FF'
+        fontSize: 30
+        fontWeight: 600
+    - h: 42
+      w: 1212
+      x: 2584
+      y: 520
+      id: label-alert-duration-top
+      kind: text
+      zIndex: 5
+      content: 活跃告警持续时长 TOP10
+      textStyle:
+        align: left
+        color: '#EAF3FF'
+        fontSize: 30
+        fontWeight: 600
+    - h: 42
+      w: 488
+      x: 588
+      y: 260
+      id: label-alert-kpi-closed
+      kind: text
+      zIndex: 5
+      content: 今日已关闭
+      textStyle:
+        align: left
+        color: '#EAF3FF'
+        fontSize: 30
+        fontWeight: 600
+    - h: 42
+      w: 488
+      x: 44
+      y: 260
+      id: label-alert-kpi-created
+      kind: text
+      zIndex: 5
+      content: 今日已产生
+      textStyle:
+        align: left
+        color: '#EAF3FF'
+        fontSize: 30
+        fontWeight: 600
+    - h: 42
+      w: 488
+      x: 1132
+      y: 260
+      id: label-alert-kpi-processing
+      kind: text
+      zIndex: 5
+      content: 处理中
+      textStyle:
+        align: left
+        color: '#EAF3FF'
+        fontSize: 30
+        fontWeight: 600
+    - h: 42
+      w: 1212
+      x: 2584
+      y: 1036
+      id: label-alert-level-distribution
+      kind: text
+      zIndex: 5
+      content: 活跃告警等级分布
+      textStyle:
+        align: left
+        color: '#EAF3FF'
+        fontSize: 30
+        fontWeight: 600
+    - h: 42
+      w: 1212
+      x: 44
+      y: 520
+      id: label-alert-level-trend
+      kind: text
+      zIndex: 5
+      content: 告警等级趋势
+      textStyle:
+        align: left
+        color: '#EAF3FF'
+        fontSize: 30
+        fontWeight: 600
+    - h: 42
+      w: 1212
+      x: 44
+      y: 1036
+      id: label-alert-source-event-top
+      kind: text
+      zIndex: 5
+      content: 告警关联事件来源 TOP10
+      textStyle:
+        align: left
+        color: '#EAF3FF'
+        fontSize: 30
+        fontWeight: 600
+    - h: 42
+      w: 1216
+      x: 1312
+      y: 520
+      id: label-alert-status-distribution
+      kind: text
+      zIndex: 5
+      content: 活跃告警状态分布
+      textStyle:
+        align: left
+        color: '#EAF3FF'
+        fontSize: 30
+        fontWeight: 600
+    - h: 0
+      w: 0
+      x: 0
+      y: 0
+      id: panel-2bdee93c-3a75-49a6-93b2-bd0d448967b3
+      kind: shape
+      shape: rect
+      zIndex: 0
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: true
+        borderColor: '#126097'
+        borderWidth: 4
+        gradientEnd: '#052441'
+        gradientStart: '#052441'
+        hideBackground: true
+        backgroundColor: '#052441'
+        gradientDirection: vertical
+    - h: 420
+      w: 1224
+      x: 1308
+      y: 1084
       id: alert-access-trend
       type: widget
       title: 告警与关联事件趋势
-      zIndex: 24
+      zIndex: 8
       chartType: line
       valueConfig:
         chartType: line
         appearance:
           frame: bare
-        dataSource: 告警趋势::alert/get_alert_trend_data
+        dataSource: '告警趋势::alert/get_alert_trend_data'
         chartThemeMode: screen-dark
         filterBindings:
           time__timeRange: true
@@ -1990,77 +1999,80 @@ screens:
           value: 10080
           alias_name: 时间范围
           filterType: filter
-    - h: 153
-      w: 474
-      x: 2156
-      y: 300
+    - h: 170
+      w: 496
+      x: 2216
+      y: 308
       id: alert-active-pending
       type: widget
       title: 待响应
-      zIndex: 23
+      zIndex: 8
       chartType: single
       valueConfig:
         unit: 条
         chartType: single
         appearance:
           frame: bare
-        dataSource: 告警快照统计::alert/get_alert_snapshot_statistics
+        dataSource: '告警快照统计::alert/get_alert_snapshot_statistics'
         chartThemeMode: screen-dark
         filterBindings:
           organization__string: true
         selectedFields:
         - pending_count
-    - h: 755
-      w: 1424
-      x: 1114
-      y: 1334
+        thresholdColors:
+        - color: '#F5C542'
+          value: '0'
+    - h: 524
+      w: 2492
+      x: 40
+      y: 1600
       id: alert-active-table
       type: widget
       title: 活跃告警信息
-      zIndex: 22
+      zIndex: 8
       chartType: table
       valueConfig:
         chartType: table
         appearance:
           frame: bare
-        dataSource: 活跃告警 TOP N::get_active_alert_top
+        dataSource: '活跃告警 TOP N::get_active_alert_top'
         tableConfig:
           columns:
-          - key: alert_id
-            order: 0
-            title: 告警ID
-            width: 180
-            visible: true
           - key: title
-            order: 1
+            order: 0
             title: 告警名称
-            width: 220
+            width: 480
             visible: true
           - key: level
-            order: 2
+            order: 1
             title: 等级
             width: 90
             visible: true
           - key: status
-            order: 3
+            order: 2
             title: 状态
             width: 100
             visible: true
-          - key: duration_seconds
-            order: 4
-            title: 持续秒数
-            width: 130
+          - key: resource_name
+            order: 3
+            title: 资源名称
+            width: 220
             visible: true
           - key: created_at
-            order: 5
+            order: 4
             title: 发生时间
-            width: 180
+            width: 200
             visible: true
-          - key: resource_name
+          - key: alert_id
+            order: 5
+            title: 告警ID
+            width: 180
+            visible: false
+          - key: duration_seconds
             order: 6
-            title: 资源名称
-            width: 180
-            visible: true
+            title: 持续秒数
+            width: 130
+            visible: false
         chartThemeMode: screen-dark
         dataSourceParams:
         - name: limit
@@ -2068,96 +2080,108 @@ screens:
           value: 10
           alias_name: 返回条数
           filterType: params
-    - h: 150
-      w: 470
-      x: 1636
-      y: 307
+    - h: 170
+      w: 496
+      x: 1672
+      y: 308
       id: alert-active-total
       type: widget
       title: 活跃告警总数
-      zIndex: 21
+      zIndex: 8
       chartType: single
       valueConfig:
         unit: 条
         chartType: single
         appearance:
           frame: bare
-        dataSource: 告警快照统计::alert/get_alert_snapshot_statistics
+        dataSource: '告警快照统计::alert/get_alert_snapshot_statistics'
         chartThemeMode: screen-dark
         filterBindings:
           organization__string: true
         selectedFields:
         - active_count
-    - h: 144
-      w: 479
-      x: 560
-      y: 317
+        thresholdColors:
+        - color: '#4C8DFF'
+          value: '0'
+    - h: 170
+      w: 496
+      x: 584
+      y: 308
       id: alert-kpi-closed
       type: widget
       title: 今日已关闭
-      zIndex: 20
+      zIndex: 8
       chartType: single
       valueConfig:
         unit: 条
         chartType: single
         appearance:
           frame: bare
-        dataSource: 今日告警状态总览::alert/get_alert_today_status_summary
+        dataSource: '今日告警状态总览::alert/get_alert_today_status_summary'
         chartThemeMode: screen-dark
         selectedFields:
         - today_closed_count
-    - h: 144
-      w: 461
-      x: 47
-      y: 315
+        thresholdColors:
+        - color: '#3DDC97'
+          value: '0'
+    - h: 170
+      w: 496
+      x: 40
+      y: 308
       id: alert-kpi-created
       type: widget
       title: 今日已产生
-      zIndex: 19
+      zIndex: 8
       chartType: single
       valueConfig:
         unit: 条
         chartType: single
         appearance:
           frame: bare
-        dataSource: 今日告警状态总览::alert/get_alert_today_status_summary
+        dataSource: '今日告警状态总览::alert/get_alert_today_status_summary'
         chartThemeMode: screen-dark
         selectedFields:
         - today_created_count
-    - h: 153
-      w: 502
-      x: 1089
-      y: 309
+        thresholdColors:
+        - color: '#FF5B6E'
+          value: '0'
+    - h: 170
+      w: 496
+      x: 1128
+      y: 308
       id: alert-kpi-processing
       type: widget
       title: 处理中
-      zIndex: 18
+      zIndex: 8
       chartType: single
       valueConfig:
         unit: 条
         chartType: single
         appearance:
           frame: bare
-        dataSource: 告警快照统计::alert/get_alert_snapshot_statistics
+        dataSource: '告警快照统计::alert/get_alert_snapshot_statistics'
         chartThemeMode: screen-dark
         filterBindings:
           organization__string: true
         selectedFields:
         - processing_count
-    - h: 444
-      w: 957
-      x: 72
-      y: 1635
+        thresholdColors:
+        - color: '#F6A623'
+          value: '0'
+    - h: 420
+      w: 1220
+      x: 2580
+      y: 1084
       id: alert-level-distribution
       type: widget
       title: 活跃告警等级分布
-      zIndex: 17
+      zIndex: 8
       chartType: pie
       valueConfig:
         chartType: pie
         appearance:
           frame: bare
-        dataSource: 告警等级分布::get_alert_level_distribution
+        dataSource: '告警等级分布::get_alert_level_distribution'
         chartThemeMode: screen-dark
         dataSourceParams:
         - name: status_filter
@@ -2165,20 +2189,20 @@ screens:
           value: active
           alias_name: 告警状态范围
           filterType: fixed
-    - h: 334
-      w: 981
-      x: 49
-      y: 625
+    - h: 420
+      w: 1220
+      x: 40
+      y: 568
       id: alert-level-trend
       type: widget
       title: 告警等级趋势
-      zIndex: 16
+      zIndex: 8
       chartType: bar
       valueConfig:
         chartType: bar
         appearance:
           frame: bare
-        dataSource: 告警等级趋势::alert/get_alert_level_trend
+        dataSource: '告警等级趋势::alert/get_alert_level_trend'
         chartThemeMode: screen-dark
         filterBindings:
           time__timeRange: true
@@ -2188,20 +2212,20 @@ screens:
           value: 10080
           alias_name: 时间范围
           filterType: filter
-    - h: 445
-      w: 1183
-      x: 2610
-      y: 1209
+    - h: 420
+      w: 1220
+      x: 40
+      y: 1084
       id: alert-source-event-top
       type: widget
       title: 告警关联事件来源 TOP10
-      zIndex: 15
+      zIndex: 8
       chartType: topN
       valueConfig:
         chartType: topN
         appearance:
           frame: bare
-        dataSource: 告警关联事件来源 TOP N::alert/get_alert_source_event_top
+        dataSource: '告警关联事件来源 TOP N::alert/get_alert_source_event_top'
         chartThemeMode: screen-dark
         filterBindings:
           time__timeRange: true
@@ -2218,152 +2242,268 @@ screens:
           value: 10080
           alias_name: 时间
           filterType: filter
-    - h: 409
-      w: 1170
-      x: 2605
-      y: 619
+    - h: 420
+      w: 1224
+      x: 1308
+      y: 568
       id: alert-status-distribution
       type: widget
       title: 活跃告警状态分布
-      zIndex: 14
+      zIndex: 8
       chartType: pie
       valueConfig:
         chartType: pie
         appearance:
           frame: bare
-        dataSource: 告警状态分布::alert/get_alert_status_distribution
+        dataSource: '告警状态分布::alert/get_alert_status_distribution'
         chartThemeMode: screen-dark
-    - h: 402
-      w: 1190
-      x: 2604
-      y: 1705
+    - h: 604
+      w: 1252
+      x: 2564
+      y: 1536
       id: border-081f2a79-debe-4825-9d4d-1aeb02d9702e
-      kind: decoration
-      preset: border-22
-      zIndex: 13
-      decorationType: panelFrame
-    - h: 232
-      w: 518
-      x: 2706
-      y: 231
-      id: panel-f9156f59-ac47-48b9-b071-da3289f769af
       kind: shape
       shape: rect
-      zIndex: 12
+      zIndex: 1
       shapeStyle:
         shadow: 0
         gradient: false
         hideBorder: false
-        borderColor: rgba(0, 229, 255, 0.28)
-        borderWidth: 1
-        gradientEnd: rgba(8, 28, 52, 0.2)
-        gradientStart: rgba(0, 229, 255, 0.16)
+        borderColor: '#126097'
+        borderWidth: 4
+        gradientEnd: '#052441'
+        gradientStart: '#052441'
         hideBackground: false
-        backgroundColor: rgba(8, 28, 52, 0.62)
+        backgroundColor: '#052441'
         gradientDirection: vertical
-    - h: 472
-      w: 992
-      x: 50
-      y: 1008
+    - h: 0
+      w: 0
+      x: 0
+      y: 0
+      id: panel-f9156f59-ac47-48b9-b071-da3289f769af
+      kind: shape
+      shape: rect
+      zIndex: 0
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: true
+        borderColor: '#126097'
+        borderWidth: 4
+        gradientEnd: '#052441'
+        gradientStart: '#052441'
+        hideBackground: true
+        backgroundColor: '#052441'
+        gradientDirection: vertical
+    - h: 500
+      w: 1256
+      x: 1292
+      y: 1020
       id: border-alert-access-trend
-      kind: decoration
-      preset: border-22
-      zIndex: 11
-      decorationType: panelFrame
-    - h: 235
-      w: 496
-      x: 2152
-      y: 225
-      id: border-alert-active-pending
-      kind: decoration
-      preset: tech
-      zIndex: 10
-      decorationType: panelFrame
-    - h: 881
-      w: 1446
-      x: 1103
-      y: 1218
-      id: border-alert-active-table
-      kind: decoration
-      preset: border-22
-      zIndex: 9
-      decorationType: panelFrame
-    - h: 238
-      w: 483
-      x: 1631
-      y: 226
-      id: border-alert-active-total
-      kind: decoration
-      preset: tech
-      zIndex: 8
-      decorationType: panelFrame
-    - h: 232
-      w: 492
-      x: 555
-      y: 234
-      id: border-alert-kpi-closed
-      kind: decoration
-      preset: tech
-      zIndex: 7
-      decorationType: panelFrame
-    - h: 232
-      w: 483
-      x: 36
-      y: 239
-      id: border-alert-kpi-created
-      kind: decoration
-      preset: tech
-      zIndex: 6
-      decorationType: panelFrame
-    - h: 241
-      w: 509
-      x: 1085
-      y: 226
-      id: border-alert-kpi-processing
-      kind: decoration
-      preset: tech
-      zIndex: 5
-      decorationType: panelFrame
-    - h: 570
-      w: 979
-      x: 61
-      y: 1519
-      id: border-alert-level-distribution
-      kind: decoration
-      preset: border-22
-      zIndex: 4
-      decorationType: panelFrame
-    - h: 460
-      w: 1003
-      x: 38
-      y: 509
-      id: border-alert-level-trend
-      kind: decoration
-      preset: border-22
-      zIndex: 3
-      decorationType: panelFrame
-    - h: 571
-      w: 1204
-      x: 2600
-      y: 1093
-      id: border-alert-source-event-top
-      kind: decoration
-      preset: border-22
-      zIndex: 2
-      decorationType: panelFrame
-    - h: 535
-      w: 1191
-      x: 2594
-      y: 503
-      id: border-alert-status-distribution
-      kind: decoration
-      preset: border-22
+      kind: shape
+      shape: rect
       zIndex: 1
-      decorationType: panelFrame
-    decorations:
-      title: 告警运营大屏
-      showClock: false
-      showTitle: false
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#126097'
+        borderWidth: 4
+        gradientEnd: '#052441'
+        gradientStart: '#052441'
+        hideBackground: false
+        backgroundColor: '#052441'
+        gradientDirection: vertical
+    - h: 240
+      w: 528
+      x: 2200
+      y: 244
+      id: border-alert-active-pending
+      kind: shape
+      shape: rect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#126097'
+        borderWidth: 4
+        gradientEnd: '#052441'
+        gradientStart: '#052441'
+        hideBackground: false
+        backgroundColor: '#052441'
+        gradientDirection: vertical
+    - h: 604
+      w: 2524
+      x: 24
+      y: 1536
+      id: border-alert-active-table
+      kind: shape
+      shape: rect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#126097'
+        borderWidth: 4
+        gradientEnd: '#052441'
+        gradientStart: '#052441'
+        hideBackground: false
+        backgroundColor: '#052441'
+        gradientDirection: vertical
+    - h: 240
+      w: 528
+      x: 1656
+      y: 244
+      id: border-alert-active-total
+      kind: shape
+      shape: rect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#126097'
+        borderWidth: 4
+        gradientEnd: '#052441'
+        gradientStart: '#052441'
+        hideBackground: false
+        backgroundColor: '#052441'
+        gradientDirection: vertical
+    - h: 240
+      w: 528
+      x: 568
+      y: 244
+      id: border-alert-kpi-closed
+      kind: shape
+      shape: rect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#126097'
+        borderWidth: 4
+        gradientEnd: '#052441'
+        gradientStart: '#052441'
+        hideBackground: false
+        backgroundColor: '#052441'
+        gradientDirection: vertical
+    - h: 240
+      w: 528
+      x: 24
+      y: 244
+      id: border-alert-kpi-created
+      kind: shape
+      shape: rect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#126097'
+        borderWidth: 4
+        gradientEnd: '#052441'
+        gradientStart: '#052441'
+        hideBackground: false
+        backgroundColor: '#052441'
+        gradientDirection: vertical
+    - h: 240
+      w: 528
+      x: 1112
+      y: 244
+      id: border-alert-kpi-processing
+      kind: shape
+      shape: rect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#126097'
+        borderWidth: 4
+        gradientEnd: '#052441'
+        gradientStart: '#052441'
+        hideBackground: false
+        backgroundColor: '#052441'
+        gradientDirection: vertical
+    - h: 500
+      w: 1252
+      x: 2564
+      y: 1020
+      id: border-alert-level-distribution
+      kind: shape
+      shape: rect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#126097'
+        borderWidth: 4
+        gradientEnd: '#052441'
+        gradientStart: '#052441'
+        hideBackground: false
+        backgroundColor: '#052441'
+        gradientDirection: vertical
+    - h: 500
+      w: 1252
+      x: 24
+      y: 504
+      id: border-alert-level-trend
+      kind: shape
+      shape: rect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#126097'
+        borderWidth: 4
+        gradientEnd: '#052441'
+        gradientStart: '#052441'
+        hideBackground: false
+        backgroundColor: '#052441'
+        gradientDirection: vertical
+    - h: 500
+      w: 1252
+      x: 24
+      y: 1020
+      id: border-alert-source-event-top
+      kind: shape
+      shape: rect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#126097'
+        borderWidth: 4
+        gradientEnd: '#052441'
+        gradientStart: '#052441'
+        hideBackground: false
+        backgroundColor: '#052441'
+        gradientDirection: vertical
+    - h: 500
+      w: 1256
+      x: 1292
+      y: 504
+      id: border-alert-status-distribution
+      kind: shape
+      shape: rect
+      zIndex: 1
+      shapeStyle:
+        shadow: 0
+        gradient: false
+        hideBorder: false
+        borderColor: '#126097'
+        borderWidth: 4
+        gradientEnd: '#052441'
+        gradientStart: '#052441'
+        hideBackground: false
+        backgroundColor: '#052441'
+        gradientDirection: vertical
     filters:
     - id: time__timeRange
       key: time
@@ -2382,6 +2522,18 @@ screens:
       order: 1
       enabled: true
       defaultValue: ''
+    viewport:
+      theme: screen-dark
+      width: 3840
+      height: 2160
+      adapter: fill
+      background:
+        type: color
+        color: '#03192D'
+    decorations:
+      title: 告警运营大屏
+      showClock: false
+      showTitle: false
   refs:
     datasource_keys:
     - 按渠道通知成功率::alert/get_notification_channel_stats
@@ -2397,60 +2549,910 @@ screens:
     namespace_keys: []
 - key: screen::3D机房大屏_内置
   name: 3D机房大屏
-  desc: 基于 CMDB 机房、机柜和设备数据展示的 3D 机房大屏，支持在组件内切换机房
+  desc: 基于 CMDB 机房、机柜和设备数据展示的 3D 机房大屏，两侧容量与告警图表跟随画布机房筛选
   other: {}
   view_sets:
     items:
-    - h: 94
-      w: 1911
-      x: 2
-      y: 1
+    - content: 机房运行总览
+      h: 87
       id: legacy-title-frame
       kind: titleFrame
-      preset: hero-6
-      zIndex: 2
-      content: 机柜全景
+      preset: hero-3
       textStyle:
-        fontSize: 40
-    - h: 56
-      w: 360
-      x: 1544
-      y: 19
+        color: '#E6F3FF'
+        fontSize: 28
+        fontWeight: 700
+      w: 1479
+      x: 231
+      y: 1
+      zIndex: 37
+    - format: YYYY-MM-DD HH:mm:ss
+      h: 50
       id: legacy-clock
       kind: clock
-      format: YYYY-MM-DD HH:mm:ss
-      zIndex: 3
       textStyle:
-        color: canvas
-        fontSize: 25
+        color: '#91AFC6'
+        fontSize: 23
         fontWeight: 600
-    - h: 1000
-      w: 1920
-      x: 0
-      y: 80
-      id: builtin-room3d-main
-      type: widget
-      title: 3D机房
+      w: 295
+      x: 1620
+      y: 4
+      zIndex: 38
+    - h: 216
+      id: bg-room-scale
+      kind: shape
+      shape: rect
+      shapeStyle:
+        backgroundColor: '#0B2238'
+        borderColor: rgba(120, 190, 230, 0)
+        borderWidth: 0
+        gradient: true
+        gradientDirection: vertical
+        gradientEnd: '#071829'
+        gradientStart: '#0B2238'
+        hideBackground: false
+        hideBorder: true
+        shadow: 0
+      w: 354
+      x: 16
+      y: 144
       zIndex: 1
-      chartType: room3D
+    - h: 224
+      id: bg-room-u-usage
+      kind: shape
+      shape: rect
+      shapeStyle:
+        backgroundColor: '#0B2238'
+        borderColor: rgba(120, 190, 230, 0)
+        borderWidth: 0
+        gradient: true
+        gradientDirection: vertical
+        gradientEnd: '#071829'
+        gradientStart: '#0B2238'
+        hideBackground: false
+        hideBorder: true
+        shadow: 0
+      w: 354
+      x: 16
+      y: 354
+      zIndex: 1
+    - h: 274
+      id: bg-room-u-top
+      kind: shape
+      shape: rect
+      shapeStyle:
+        backgroundColor: '#0B2238'
+        borderColor: rgba(120, 190, 230, 0)
+        borderWidth: 0
+        gradient: true
+        gradientDirection: vertical
+        gradientEnd: '#071829'
+        gradientStart: '#0B2238'
+        hideBackground: false
+        hideBorder: true
+        shadow: 0
+      w: 354
+      x: 16
+      y: 571
+      zIndex: 1
+    - h: 242
+      id: bg-room-device-types
+      kind: shape
+      shape: rect
+      shapeStyle:
+        backgroundColor: '#0B2238'
+        borderColor: rgba(120, 190, 230, 0)
+        borderWidth: 0
+        gradient: true
+        gradientDirection: vertical
+        gradientEnd: '#071829'
+        gradientStart: '#0B2238'
+        hideBackground: false
+        hideBorder: true
+        shadow: 0
+      w: 354
+      x: 16
+      y: 837
+      zIndex: 1
+    - h: 238
+      id: bg-room-coverage
+      kind: shape
+      shape: rect
+      shapeStyle:
+        backgroundColor: '#0B2238'
+        borderColor: rgba(120, 190, 230, 0)
+        borderWidth: 0
+        gradient: true
+        gradientDirection: vertical
+        gradientEnd: '#071829'
+        gradientStart: '#0B2238'
+        hideBackground: false
+        hideBorder: true
+        shadow: 0
+      w: 354
+      x: 1550
+      y: 132
+      zIndex: 1
+    - h: 238
+      id: bg-room-alarm-level
+      kind: shape
+      shape: rect
+      shapeStyle:
+        backgroundColor: '#0B2238'
+        borderColor: rgba(120, 190, 230, 0)
+        borderWidth: 0
+        gradient: true
+        gradientDirection: vertical
+        gradientEnd: '#071829'
+        gradientStart: '#0B2238'
+        hideBackground: false
+        hideBorder: true
+        shadow: 0
+      w: 354
+      x: 1550
+      y: 363
+      zIndex: 1
+    - h: 256
+      id: bg-room-alarm-top
+      kind: shape
+      shape: rect
+      shapeStyle:
+        backgroundColor: '#0B2238'
+        borderColor: rgba(120, 190, 230, 0)
+        borderWidth: 0
+        gradient: true
+        gradientDirection: vertical
+        gradientEnd: '#071829'
+        gradientStart: '#0B2238'
+        hideBackground: false
+        hideBorder: true
+        shadow: 0
+      w: 352
+      x: 1551
+      y: 594
+      zIndex: 1
+    - h: 227
+      id: bg-room-alarm-devices
+      kind: shape
+      shape: rect
+      shapeStyle:
+        backgroundColor: '#0B2238'
+        borderColor: rgba(120, 190, 230, 0)
+        borderWidth: 0
+        gradient: true
+        gradientDirection: vertical
+        gradientEnd: '#071829'
+        gradientStart: '#0B2238'
+        hideBackground: false
+        hideBorder: true
+        shadow: 0
+      w: 1498
+      x: 409
+      y: 850
+      zIndex: 1
+    - decorationType: panelFrame
+      h: 198
+      id: panel-room-scale
+      kind: decoration
+      preset: border-1
+      w: 354
+      x: 16
+      y: 144
+      zIndex: 5
+    - decorationType: panelFrame
+      h: 206
+      id: panel-room-u-usage
+      kind: decoration
+      preset: border-1
+      w: 354
+      x: 16
+      y: 354
+      zIndex: 3
+    - decorationType: panelFrame
+      h: 254
+      id: panel-room-u-top
+      kind: decoration
+      preset: border-1
+      w: 354
+      x: 16
+      y: 571
+      zIndex: 4
+    - decorationType: panelFrame
+      h: 223
+      id: panel-room-device-types
+      kind: decoration
+      preset: border-1
+      w: 354
+      x: 16
+      y: 837
+      zIndex: 6
+    - decorationType: panelFrame
+      h: 219
+      id: panel-room-coverage
+      kind: decoration
+      preset: border-1
+      w: 354
+      x: 1550
+      y: 132
+      zIndex: 7
+    - decorationType: panelFrame
+      h: 219
+      id: panel-room-alarm-level
+      kind: decoration
+      preset: border-1
+      w: 354
+      x: 1550
+      y: 363
+      zIndex: 9
+    - decorationType: panelFrame
+      h: 237
+      id: panel-room-alarm-top
+      kind: decoration
+      preset: border-1
+      w: 352
+      x: 1551
+      y: 594
+      zIndex: 8
+    - decorationType: panelFrame
+      h: 221
+      id: panel-room-alarm-devices
+      kind: decoration
+      preset: border-1
+      w: 1506
+      x: 392
+      y: 842
+      zIndex: 10
+    - content: 机房规模
+      h: 29
+      id: title-room-scale
+      kind: titleFrame
+      preset: section-3
+      textStyle:
+        color: '#E6F3FF'
+        fontSize: 18
+        fontWeight: 600
+      w: 343
+      x: 22
+      y: 152
+      zIndex: 24
+    - content: U 使用率
+      h: 29
+      id: title-room-u-usage
+      kind: titleFrame
+      preset: section-3
+      textStyle:
+        color: '#E6F3FF'
+        fontSize: 18
+        fontWeight: 600
+      w: 343
+      x: 22
+      y: 361
+      zIndex: 22
+    - content: 机柜 U 占用 TOP5
+      h: 30
+      id: title-room-u-top
+      kind: titleFrame
+      preset: section-3
+      textStyle:
+        color: '#E6F3FF'
+        fontSize: 18
+        fontWeight: 600
+      w: 343
+      x: 15
+      y: 576
+      zIndex: 23
+    - content: 设备类型
+      h: 29
+      id: title-room-device-types
+      kind: titleFrame
+      preset: section-3
+      textStyle:
+        color: '#E6F3FF'
+        fontSize: 18
+        fontWeight: 600
+      w: 343
+      x: 22
+      y: 845
+      zIndex: 25
+    - content: 监控状态
+      h: 29
+      id: title-room-coverage
+      kind: titleFrame
+      preset: section-3
+      textStyle:
+        color: '#E6F3FF'
+        fontSize: 18
+        fontWeight: 600
+      w: 343
+      x: 1556
+      y: 140
+      zIndex: 26
+    - content: 告警等级
+      h: 29
+      id: title-room-alarm-level
+      kind: titleFrame
+      preset: section-3
+      textStyle:
+        color: '#E6F3FF'
+        fontSize: 18
+        fontWeight: 600
+      w: 343
+      x: 1556
+      y: 371
+      zIndex: 28
+    - content: 机柜告警 TOP5
+      h: 30
+      id: title-room-alarm-top
+      kind: titleFrame
+      preset: section-3
+      textStyle:
+        color: '#E6F3FF'
+        fontSize: 18
+        fontWeight: 600
+      w: 341
+      x: 1557
+      y: 602
+      zIndex: 27
+    - content: 告警设备
+      h: 37
+      id: title-room-alarm-devices
+      kind: titleFrame
+      preset: section-3
+      textStyle:
+        color: '#E6F3FF'
+        fontSize: 18
+        fontWeight: 600
+      w: 1486
+      x: 405
+      y: 857
+      zIndex: 29
+    - content: 机柜总数
+      h: 20
+      id: caption-room-racks
+      kind: text
+      textStyle:
+        align: center
+        color: '#91AFC6'
+        fontSize: 18
+        fontWeight: 500
+      w: 98
+      x: 39
+      y: 289
+      zIndex: 35
+    - content: 设备总数
+      h: 20
+      id: caption-room-devices
+      kind: text
+      textStyle:
+        align: center
+        color: '#91AFC6'
+        fontSize: 18
+        fontWeight: 500
+      w: 98
+      x: 148
+      y: 289
+      zIndex: 36
+    - content: 未落位
+      h: 20
+      id: caption-room-unracked
+      kind: text
+      textStyle:
+        align: center
+        color: '#91AFC6'
+        fontSize: 18
+        fontWeight: 500
+      w: 98
+      x: 257
+      y: 289
+      zIndex: 33
+    - content: 已用 U
+      h: 16
+      id: caption-room-used-u
+      kind: text
+      textStyle:
+        align: center
+        color: '#91AFC6'
+        fontSize: 16
+        fontWeight: 500
+      w: 102
+      x: 244
+      y: 448
+      zIndex: 32
+    - content: 总 U
+      h: 16
+      id: caption-room-total-u
+      kind: text
+      textStyle:
+        align: center
+        color: '#91AFC6'
+        fontSize: 16
+        fontWeight: 500
+      w: 102
+      x: 244
+      y: 516
+      zIndex: 34
+    - chartType: single
+      h: 113
+      id: room-kpi-racks
+      title: 机柜总数
+      type: widget
       valueConfig:
-        chartType: room3D
-        sceneWidgetType: room3D
         appearance:
           frame: bare
+        chartThemeMode: screen-dark
+        chartType: single
+        dataSource: 机房机柜容量::cmdb/get_room_rack_capacity
+        dataSourceParams:
+        - alias_name: 机房
+          filterType: filter
+          name: server_room_id
+          type: string
+          value: ''
+        - alias_name: 视图
+          filterType: fixed
+          name: view
+          type: string
+          value: summary
+        filterBindings:
+          server_room_id__string: true
+        selectedFields:
+        - rack_count
+        thresholdColors:
+        - color: '#36cfc9'
+          value: '0'
+      w: 98
+      x: 39
+      y: 185
+      zIndex: 15
+    - chartType: single
+      h: 113
+      id: room-kpi-devices
+      title: 设备总数
+      type: widget
+      valueConfig:
+        appearance:
+          frame: bare
+        chartThemeMode: screen-dark
+        chartType: single
+        dataSource: 机房机柜容量::cmdb/get_room_rack_capacity
+        dataSourceParams:
+        - alias_name: 机房
+          filterType: filter
+          name: server_room_id
+          type: string
+          value: ''
+        - alias_name: 视图
+          filterType: fixed
+          name: view
+          type: string
+          value: summary
+        filterBindings:
+          server_room_id__string: true
+        selectedFields:
+        - device_count
+        thresholdColors:
+        - color: '#366ce4'
+          value: '0'
+      w: 98
+      x: 148
+      y: 185
+      zIndex: 16
+    - chartType: single
+      h: 113
+      id: room-kpi-unracked
+      title: 未落位
+      type: widget
+      valueConfig:
+        appearance:
+          frame: bare
+        chartThemeMode: screen-dark
+        chartType: single
+        dataSource: 机房机柜容量::cmdb/get_room_rack_capacity
+        dataSourceParams:
+        - alias_name: 机房
+          filterType: filter
+          name: server_room_id
+          type: string
+          value: ''
+        - alias_name: 视图
+          filterType: fixed
+          name: view
+          type: string
+          value: summary
+        filterBindings:
+          server_room_id__string: true
+        selectedFields:
+        - unracked_device_count
+        thresholdColors:
+        - color: '#EAB839'
+          value: '0'
+      w: 98
+      x: 257
+      y: 185
+      zIndex: 14
+    - chartType: single
+      h: 44
+      id: room-u-used
+      title: 已用 U
+      type: widget
+      valueConfig:
+        appearance:
+          frame: bare
+        chartThemeMode: screen-dark
+        chartType: single
+        dataSource: 机房机柜容量::cmdb/get_room_rack_capacity
+        dataSourceParams:
+        - alias_name: 机房
+          filterType: filter
+          name: server_room_id
+          type: string
+          value: ''
+        - alias_name: 视图
+          filterType: fixed
+          name: view
+          type: string
+          value: summary
+        filterBindings:
+          server_room_id__string: true
+        selectedFields:
+        - used_u
+        thresholdColors:
+        - color: '#36cfc9'
+          value: '0'
+      w: 102
+      x: 244
+      y: 403
+      zIndex: 30
+    - chartType: single
+      h: 37
+      id: room-u-total
+      title: 总 U
+      type: widget
+      valueConfig:
+        appearance:
+          frame: bare
+        chartThemeMode: screen-dark
+        chartType: single
+        dataSource: 机房机柜容量::cmdb/get_room_rack_capacity
+        dataSourceParams:
+        - alias_name: 机房
+          filterType: filter
+          name: server_room_id
+          type: string
+          value: ''
+        - alias_name: 视图
+          filterType: fixed
+          name: view
+          type: string
+          value: summary
+        filterBindings:
+          server_room_id__string: true
+        selectedFields:
+        - total_u
+        thresholdColors:
+        - color: '#366ce4'
+          value: '0'
+      w: 94
+      x: 248
+      y: 481
+      zIndex: 31
+    - chartType: gauge
+      h: 216
+      id: room-u-usage
+      title: U 使用率
+      type: widget
+      valueConfig:
+        appearance:
+          frame: bare
+        chartThemeMode: screen-dark
+        chartType: gauge
+        dataSource: 机房机柜容量::cmdb/get_room_rack_capacity
+        dataSourceParams:
+        - alias_name: 机房
+          filterType: filter
+          name: server_room_id
+          type: string
+          value: ''
+        - alias_name: 视图
+          filterType: fixed
+          name: view
+          type: string
+          value: summary
+        decimalPlaces: 0
+        filterBindings:
+          server_room_id__string: true
+        gaugeMax: 100
+        gaugeMin: 0
+        selectedFields:
+        - u_usage_percent
+        unit: '%'
+      w: 271
+      x: 15
+      y: 384
+      zIndex: 12
+    - chartType: pie
+      h: 178
+      id: room-device-types
+      title: 设备类型
+      type: widget
+      valueConfig:
+        appearance:
+          frame: bare
+        chartThemeMode: screen-dark
+        chartType: pie
+        dataSource: 机房设备类型分布::cmdb/get_room_device_type_distribution
+        dataSourceParams:
+        - alias_name: 机房
+          filterType: filter
+          name: server_room_id
+          type: string
+          value: ''
+        filterBindings:
+          server_room_id__string: true
+      w: 336
+      x: 23
+      y: 878
+      zIndex: 17
+    - chartType: topN
+      h: 212
+      id: room-u-top
+      title: 机柜 U 占用 TOP5
+      type: widget
+      valueConfig:
+        appearance:
+          frame: bare
+        chartThemeMode: screen-dark
+        chartType: topN
+        dataSource: 机房机柜容量::cmdb/get_room_rack_capacity
+        dataSourceParams:
+        - alias_name: 机房
+          filterType: filter
+          name: server_room_id
+          type: string
+          value: ''
+        - alias_name: 视图
+          filterType: fixed
+          name: view
+          type: string
+          value: rack_top
+        - alias_name: 返回条数
+          filterType: fixed
+          name: limit
+          type: number
+          value: 5
+        filterBindings:
+          server_room_id__string: true
+        topNLabelField: name
+        topNValueField: value
+      w: 334
+      x: 24
+      y: 606
+      zIndex: 13
+    - chartType: pie
+      h: 173
+      id: room-coverage
+      title: 监控状态
+      type: widget
+      valueConfig:
+        appearance:
+          frame: bare
+        chartThemeMode: screen-dark
+        chartType: pie
+        dataSource: 机房活跃告警::cmdb/get_room_active_alarms
+        dataSourceParams:
+        - alias_name: 机房
+          filterType: filter
+          name: server_room_id
+          type: string
+          value: ''
+        - alias_name: 视图
+          filterType: fixed
+          name: view
+          type: string
+          value: coverage
+        filterBindings:
+          server_room_id__string: true
+      w: 342
+      x: 1558
+      y: 173
+      zIndex: 18
+    - chartType: pie
+      h: 173
+      id: room-alarm-level
+      title: 告警等级
+      type: widget
+      valueConfig:
+        appearance:
+          frame: bare
+        chartThemeMode: screen-dark
+        chartType: pie
+        dataSource: 机房活跃告警::cmdb/get_room_active_alarms
+        dataSourceParams:
+        - alias_name: 机房
+          filterType: filter
+          name: server_room_id
+          type: string
+          value: ''
+        - alias_name: 视图
+          filterType: fixed
+          name: view
+          type: string
+          value: level_distribution
+        filterBindings:
+          server_room_id__string: true
+      w: 340
+      x: 1558
+      y: 403
+      zIndex: 20
+    - chartType: topN
+      h: 185
+      id: room-alarm-top
+      title: 机柜告警 TOP5
+      type: widget
+      valueConfig:
+        appearance:
+          frame: bare
+        chartThemeMode: screen-dark
+        chartType: topN
+        dataSource: 机房活跃告警::cmdb/get_room_active_alarms
+        dataSourceParams:
+        - alias_name: 机房
+          filterType: filter
+          name: server_room_id
+          type: string
+          value: ''
+        - alias_name: 视图
+          filterType: fixed
+          name: view
+          type: string
+          value: rack_top
+        - alias_name: 返回条数
+          filterType: fixed
+          name: limit
+          type: number
+          value: 5
+        filterBindings:
+          server_room_id__string: true
+        topNLabelField: name
+        topNValueField: value
+      w: 336
+      x: 1559
+      y: 638
+      zIndex: 19
+    - chartType: table
+      h: 160
+      id: room-alarm-devices
+      title: 告警设备
+      type: widget
+      valueConfig:
+        appearance:
+          frame: bare
+        chartThemeMode: screen-dark
+        chartType: table
+        dataSource: 机房活跃告警::cmdb/get_room_active_alarms
+        dataSourceParams:
+        - alias_name: 机房
+          filterType: filter
+          inputConfig:
+            control: select
+            optionsSource:
+              labelField: inst_name
+              sourceRef:
+                type: rest_api
+                value: cmdb/get_room_list
+              type: dynamic
+              valueField: inst_uuid
+          name: server_room_id
+          type: string
+          value: ''
+        - alias_name: 视图
+          filterType: params
+          inputConfig:
+            componentSwitch: true
+            control: select
+            optionsSource:
+              staticItems:
+              - label: 监控覆盖
+                value: coverage
+              - label: 告警等级分布
+                value: level_distribution
+              - label: 机柜告警 TOP
+                value: rack_top
+              - label: 告警设备
+                value: device_list
+              type: static
+          name: view
+          type: string
+          value: device_list
+        - alias_name: 返回条数
+          filterType: params
+          name: limit
+          type: number
+          value: 20
+        filterBindings:
+          server_room_id__string: true
+        name: 告警设备
+        tableConfig:
+          columns:
+          - key: device_name
+            order: 0
+            title: 设备
+            visible: true
+          - key: active_alarm_count
+            order: 1
+            title: 活跃告警数
+            visible: true
+          - key: highest_severity
+            order: 2
+            title: 最高级别
+            visible: true
+          - key: model_name
+            order: 3
+            title: 型号
+            visible: true
+          - key: rack_name
+            order: 4
+            title: 机柜
+            visible: true
+          - key: u_position
+            order: 5
+            title: U位
+            visible: true
+      w: 1476
+      x: 409
+      y: 896
+      zIndex: 21
+    - chartType: room3D
+      h: 734
+      id: builtin-room3d-main
+      title: 3D机房
+      type: widget
+      valueConfig:
+        appearance:
+          frame: bare
+        chartType: room3D
+        filterBindings:
+          server_room_id__string: true
+        sceneWidgetType: room3D
+      w: 1168
+      x: 375
+      y: 121
+      zIndex: 11
     viewport:
+      adapter: fill
+      background:
+        color: '#071829'
+        type: color
+      height: 1080
       theme: screen-dark
       width: 1920
-      height: 1080
-      background:
-        key: tech-grid
-        type: builtIn
     decorations:
-      title: 机柜全景
       showClock: false
       showTitle: false
+      title: 机房运行总览
+    filters:
+    - defaultValue: null
+      enabled: true
+      id: server_room_id__string
+      inputConfig:
+        control: select
+        optionsSource:
+          labelField: inst_name
+          sourceRef:
+            type: rest_api
+            value: cmdb/get_room_list
+          type: dynamic
+          valueField: inst_uuid
+      inputMode: select
+      key: server_room_id
+      name: Room
+      order: 0
+      type: string
   refs:
-    datasource_keys: []
+    datasource_keys:
+    - 机房机柜容量::cmdb/get_room_rack_capacity
+    - 机房设备类型分布::cmdb/get_room_device_type_distribution
+    - 机房活跃告警::cmdb/get_room_active_alarms
     namespace_keys: []
 - key: screen::3D应用大屏_内置
   name: 3D应用大屏
@@ -2510,6 +3512,76 @@ screens:
       showTitle: false
   refs:
     datasource_keys: []
+    namespace_keys: []
+- key: screen::应用拓扑大屏_内置
+  name: 应用拓扑大屏
+  desc: 按应用系统展示五带拓扑，并叠加监控中心活跃告警
+  other: {}
+  view_sets:
+    items:
+    - h: 82
+      w: 800
+      x: 554
+      y: 30
+      id: legacy-title-frame
+      kind: titleFrame
+      preset: hero-4
+      zIndex: 2
+      content: 应用架构拓扑
+      textStyle:
+        align: center
+        fontSize: 28
+    - h: 996
+      w: 1906
+      x: 13
+      y: 83
+      id: builtin-application-topology-main
+      type: widget
+      title: 应用拓扑
+      zIndex: 1
+      chartType: applicationTopology
+      valueConfig:
+        chartType: applicationTopology
+        sceneWidgetType: applicationTopology
+        applicationTopology:
+          depth: 3
+        filterBindings:
+          application_system_id__string: true
+        appearance:
+          frame: bare
+    viewport:
+      theme: screen-dark
+      width: 1920
+      height: 1080
+      fill: true
+      background:
+        key: dark-horizon
+        type: builtIn
+    decorations:
+      title: 应用架构拓扑
+      showClock: false
+      showTitle: false
+    filters:
+    - defaultValue: null
+      enabled: true
+      id: application_system_id__string
+      inputConfig:
+        control: select
+        optionsSource:
+          labelField: inst_name
+          sourceRef:
+            type: rest_api
+            value: cmdb/list_application_systems
+          type: dynamic
+          valueField: inst_uuid
+      inputMode: select
+      key: application_system_id
+      name: 应用系统
+      order: 0
+      type: string
+  refs:
+    datasource_keys:
+    - 应用系统::cmdb/list_application_systems
     namespace_keys: []
 reports: []
 architectures: []

@@ -100,6 +100,7 @@ if _enterprise_status.should_enable_license_mgmt:
     MIDDLEWARE += (
         "apps.license_mgmt.middleware.license_guard.LicenseAppGuardMiddleware",
         "apps.license_mgmt.middleware.license_guard.LicenseCreateGuardMiddleware",
+        "apps.license_mgmt.middleware.license_guard.LicenseCapacityGuardMiddleware",
     )
 
 # 达梦数据库环境下，添加连接管理中间件（放在最前面）

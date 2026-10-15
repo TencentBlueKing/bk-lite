@@ -2,6 +2,7 @@
 # @File: job_collect.py
 # @Time: 2025/11/12 15:09
 # @Author: windyzhao
+from apps.cmdb.collection.collect_tasks.custom_script import CustomScriptCollect
 from apps.cmdb.collection.collect_tasks.databases import DBCollect
 from apps.cmdb.collection.collect_tasks.host import HostCollect
 from apps.cmdb.collection.collect_tasks.middleware import MiddlewareCollect
@@ -19,6 +20,7 @@ class JobCollect(object):
             CollectPluginTypes.HOST: self.collect_host,
             CollectPluginTypes.DB: self.collect_db,
             CollectPluginTypes.MIDDLEWARE: self.collect_middleware,
+            CollectPluginTypes.CUSTOM_SCRIPT: self.collect_custom_script,
         }
         return result
 
@@ -36,6 +38,9 @@ class JobCollect(object):
 
     def collect_db(self):
         return DBCollect(self.task.id, task=self.task)()
+
+    def collect_custom_script(self):
+        return CustomScriptCollect(self.task.id, task=self.task)()
 
     def main(self):
         return self.collect_manage[self.task.task_type]()

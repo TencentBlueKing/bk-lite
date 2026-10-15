@@ -10,6 +10,14 @@ import type {
 } from '@/app/ops-analysis/types/screen';
 import { normalizeStoredFilterDefinitions } from '@/app/ops-analysis/utils/unifiedFilterState';
 import {
+  applyRoom3DFilterBindings,
+  ensureRoom3DCanvasFilter,
+} from '@/app/ops-analysis/utils/room3DScreenFilter';
+import {
+  ensureApplicationTopologyCanvasFilter,
+  withApplicationTopologyFilterBinding,
+} from '@/app/ops-analysis/utils/applicationTopologyCanvasFilter';
+import {
   DEFAULT_SCREEN_THEME_ID,
   resolveScreenThemeId,
 } from './screenTheme';
@@ -17,6 +25,7 @@ import {
   createScreenClockItem,
   createScreenTitleFrameItem,
   DEFAULT_SCREEN_CLOCK_FORMAT,
+  isScreenWidgetItem,
   LEGACY_CLOCK_ID,
   LEGACY_TITLE_FRAME_ID,
 } from './screenItems';
@@ -351,6 +360,12 @@ export const normalizeScreenViewSets = (value: unknown): ScreenViewSets => {
       }
       : { ...DEFAULT_SCREEN_DECORATIONS };
 
+  const items = Array.isArray(source.items) ? [...source.items] : [];
+  const roomFilters = ensureRoom3DCanvasFilter(
+    normalizeStoredFilterDefinitions(source.filters),
+    items,
+  );
+  const filters = ensureApplicationTopologyCanvasFilter(roomFilters, items);
   const normalized: ScreenViewSets = {
     viewport: {
       width,
@@ -359,9 +374,25 @@ export const normalizeScreenViewSets = (value: unknown): ScreenViewSets => {
       theme,
       adapter: resolveScreenFitAdapter(viewport.adapter),
     },
-    items: Array.isArray(source.items) ? [...source.items] : [],
+    items: applyRoom3DFilterBindings(items, filters).map((item) => {
+      if (!isScreenWidgetItem(item)) return item;
+      const bindings = withApplicationTopologyFilterBinding(
+        item.chartType,
+        item.valueConfig?.sceneWidgetType,
+        item.valueConfig?.filterBindings,
+        filters,
+      );
+      if (bindings === item.valueConfig.filterBindings) return item;
+      return {
+        ...item,
+        valueConfig: {
+          ...item.valueConfig,
+          filterBindings: bindings,
+        },
+      };
+    }),
     decorations,
-    filters: normalizeStoredFilterDefinitions(source.filters),
+    filters,
   };
 
   return migrateLegacyChrome(normalized);

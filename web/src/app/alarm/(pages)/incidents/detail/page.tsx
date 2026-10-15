@@ -20,7 +20,8 @@ import { useTranslation } from '@/utils/i18n';
 import { useSearchParams } from 'next/navigation';
 import { useIncidentsApi } from '@/app/alarm/api/incidents';
 import { collectSelectedAlertIds } from '@/app/alarm/utils/incidentAlertRelations';
-import { message, Spin, Modal, Timeline, Empty } from 'antd';
+import { message, Spin, Modal, Timeline, Empty, Skeleton } from 'antd';
+import ToolbarSplitShell from '@/components/toolbar-split-shell';
 import { IncidentTableDataItem } from '@/app/alarm/types/incidents';
 import { useStateMap } from '@/app/alarm/constants/alarm';
 import {
@@ -679,8 +680,15 @@ const IncidentDetail: React.FC = () => {
       </div>
       <div className={styles.detailContent}>
         {loadingDetail ? (
-          <div className="flex justify-center pt-[20px] h-[72px] ">
-            <Spin spinning={loadingDetail}></Spin>
+          <div className="grid grid-cols-1 gap-4 py-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <Skeleton
+                key={index}
+                active
+                title={{ width: 72 }}
+                paragraph={{ rows: 1, width: '90%' }}
+              />
+            ))}
           </div>
         ) : (
           <Descriptions
@@ -695,17 +703,9 @@ const IncidentDetail: React.FC = () => {
           <Tabs activeKey={activeTab} onChange={setActiveTab}>
             <TabPane tab={t('alarms.alert')} key="alert">
               <div className={styles.tabContent}>
-                <div className={styles.filterRow}>
-                  <div className={styles.switchWrapper}>
-                    <SearchFilter
-                      attrList={alarmAttrList}
-                      onSearch={(condition) => {
-                        setSelectedRowKeys([]);
-                        fetchAlarmList(undefined, condition);
-                      }}
-                    />
+                <ToolbarSplitShell
+                  leading={(
                     <Segmented
-                      className="ml-[12px]"
                       defaultValue="table"
                       options={[
                         {
@@ -725,29 +725,34 @@ const IncidentDetail: React.FC = () => {
                       ]}
                       onChange={setViewType as any}
                     />
-                  </div>
-                  <div>
-                    <PermissionWrapper requiredPermissions={['Edit']}>
-                      <Button
-                        type="primary"
-                        className="mr-[12px]"
-                        onClick={() => handleLink()}
-                      >
-                        {t('alarmCommon.linkAlert')}
-                      </Button>
-                    </PermissionWrapper>
-                    <PermissionWrapper requiredPermissions={['Edit']}>
-                      <Button
-                        disabled={!selectedRowKeys.length}
-                        type="primary"
-                        onClick={() => handleUnlink()}
-                        loading={unlinkLoading}
-                      >
-                        {t('alarmCommon.unlinkAlert')}
-                      </Button>
-                    </PermissionWrapper>
-                  </div>
-                </div>
+                  )}
+                  trailing={(
+                    <>
+                      <SearchFilter
+                        attrList={alarmAttrList}
+                        onSearch={(condition) => {
+                          setSelectedRowKeys([]);
+                          fetchAlarmList(undefined, condition);
+                        }}
+                      />
+                      <PermissionWrapper requiredPermissions={['Edit']}>
+                        <Button type="primary" onClick={() => handleLink()}>
+                          {t('alarmCommon.linkAlert')}
+                        </Button>
+                      </PermissionWrapper>
+                      <PermissionWrapper requiredPermissions={['Edit']}>
+                        <Button
+                          disabled={!selectedRowKeys.length}
+                          type="primary"
+                          onClick={() => handleUnlink()}
+                          loading={unlinkLoading}
+                        >
+                          {t('alarmCommon.unlinkAlert')}
+                        </Button>
+                      </PermissionWrapper>
+                    </>
+                  )}
+                />
                 {viewType === 'table' ? (
                   <AlarmTable
                     dataSource={tableData}

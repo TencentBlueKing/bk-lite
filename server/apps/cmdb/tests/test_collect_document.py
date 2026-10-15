@@ -79,6 +79,13 @@ def test_missing_document_uses_locale_message(monkeypatch, settings, tmp_path):
     assert get_collect_model_document("missing", "zh-Hans") == DOCUMENT_NOT_FOUND
 
 
+def test_custom_script_doc_explains_connection_execution_and_output():
+    zh = get_collect_model_document("custom_script", "zh-Hans")
+    en = get_collect_model_document("custom_script", "en")
+    assert "SSH" in zh and "WinRM" in zh and "inst_name" in zh
+    assert "SSH" in en and "WinRM" in en and "inst_name" in en
+
+
 def test_community_plugin_docs_have_english_siblings():
     from pathlib import Path
 

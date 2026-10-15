@@ -2,7 +2,6 @@
 import datetime
 import hashlib
 import json
-import logging
 import os
 import time
 import uuid
@@ -42,8 +41,8 @@ from common.cmp.cloud_apis.resource_apis.constant import (
 )
 from common.cmp.cloud_apis.resource_apis.utils import check_required_params, fail, set_optional_params
 from common.cmp.models import AccountConfig
+from core.logger import logger
 
-logger = logging.getLogger("root")
 
 
 def _resolve_verify_ssl():

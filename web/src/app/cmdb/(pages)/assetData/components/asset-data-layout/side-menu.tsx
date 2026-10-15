@@ -253,15 +253,16 @@ const SideMenu: React.FC<SideMenuProps> = ({
           >
             {relationData.map((section, index) => (
               <div key={section.title + index} className="mb-2">
-                <div className="text-gray-400 text-xs mb-2">
+                <div className="text-[var(--color-text-4)] text-xs mb-2">
                   {section.title}
                 </div>
                 <div className="ml-3">
                   {section.children.map(
                     (subItem: ListItem, itemIndex: number) => (
-                      <div
+                      <button
+                        type="button"
                         key={itemIndex}
-                        className="flex justify-between items-center p-1 cursor-pointer hover:bg-gray-100 rounded-md"
+                        className="flex w-full justify-between items-center p-1 rounded-md text-left hover:bg-[var(--color-fill-1)]"
                         onClick={() =>
                           handleItemClick(subItem.model_asst_id, item)
                         }
@@ -270,10 +271,10 @@ const SideMenu: React.FC<SideMenuProps> = ({
                           text={subItem.text}
                           className="w-[100px] overflow-hidden text-ellipsis whitespace-nowrap"
                         />
-                        <span className="bg-gray-100 px-2 py-0.5 rounded text-xs text-gray-600">
+                        <span className="bg-[var(--color-fill-1)] px-2 py-0.5 rounded text-xs text-[var(--color-text-2)]">
                           {subItem.value}
                         </span>
-                      </div>
+                      </button>
                     )
                   )}
                 </div>

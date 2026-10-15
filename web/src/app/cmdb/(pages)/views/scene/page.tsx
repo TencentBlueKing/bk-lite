@@ -6,7 +6,6 @@ import {
   Input,
   Modal,
   Popconfirm,
-  Spin,
   message,
 } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
@@ -381,13 +380,18 @@ const SceneViewPage = () => {
               setEditorOpen(true);
             }}
           >
-            {t('SceneView.create')}
+            {t('common.new')}
           </Button>
         </div>
         <div className="min-h-0 flex-1 overflow-auto px-2 pb-3">
           {listLoading ? (
-            <div className="flex justify-center py-8">
-              <Spin />
+            <div className="space-y-2 px-1 py-1" aria-busy="true" aria-label="loading">
+              {Array.from({ length: 6 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="h-8 animate-pulse rounded bg-[var(--color-fill-2)]"
+                />
+              ))}
             </div>
           ) : groups.length === 0 ? (
             <CompactEmptyState description={t('SceneView.emptyList')} />
@@ -427,7 +431,7 @@ const SceneViewPage = () => {
           </div>
         ) : (
           <>
-            <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--color-border-1)] px-4 py-3">
+            <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-[var(--color-border-1)] bg-[var(--color-fill-1)]/35 px-4 py-2.5">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <div className="truncate text-base font-medium text-[var(--color-text-1)]">
@@ -443,6 +447,7 @@ const SceneViewPage = () => {
                   {selected.tags.join(selected.tag_match === 'or' ? ' | ' : ' + ')}
                 </div>
               </div>
+              <div className="flex flex-wrap items-center gap-2">
               {selected.can_edit && (
                 <>
                   <Button
@@ -478,10 +483,17 @@ const SceneViewPage = () => {
               >
                 {t('SceneView.export')}
               </Button>
+              </div>
             </div>
 
             <div className="min-h-0 flex-1 overflow-auto p-4">
-              <Spin spinning={loadingScope === 'all'}>
+              {loadingScope === 'all' && !result ? (
+                <div className="space-y-4" aria-busy="true" aria-label="loading">
+                  <div className="h-20 animate-pulse rounded-lg border border-[var(--color-border-1)] bg-[var(--color-fill-1)]" />
+                  <div className="h-48 animate-pulse rounded-lg border border-[var(--color-border-1)] bg-[var(--color-fill-1)]" />
+                </div>
+              ) : (
+                <>
                 {result && (
                   <ViewSummary
                     total={result.total}
@@ -554,7 +566,8 @@ const SceneViewPage = () => {
                     );
                   })
                 )}
-              </Spin>
+                </>
+              )}
             </div>
           </>
         )}

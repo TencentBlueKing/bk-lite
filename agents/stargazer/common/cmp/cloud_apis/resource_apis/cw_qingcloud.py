@@ -1,4 +1,3 @@
-import logging
 import ssl
 
 import qingcloud.iaas
@@ -8,8 +7,8 @@ from common.cmp.cloud_apis.cloud_constant import CloudPlatform
 from common.cmp.cloud_apis.constant import CloudType
 from common.cmp.cloud_apis.resource_apis.resource_format.common.base_format import get_format_method
 from common.cmp.cloud_apis.resource_apis.utils import fail, success
+from core.logger import logger
 
-logger = logging.getLogger("root")
 VM_ACTION = (
     "describe_instances",  # 获取服务器信息
     "run_instances",  # 创建服务器

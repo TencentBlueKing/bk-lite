@@ -473,6 +473,61 @@ def test_preview_uses_level_display_name_and_keeps_raw_level_id(template_client)
 
 
 @pytest.mark.django_db
+def test_preview_uses_level_color_as_default_and_keeps_user_color(template_client):
+    from apps.alerts.constants.constants import LevelType
+    from apps.alerts.models.models import Level
+
+    Level.objects.create(
+        level_id=2,
+        level_type=LevelType.ALERT,
+        level_name="Warning",
+        level_display_name="警告",
+        color="#112233",
+    )
+    default_response = template_client.post(
+        "/api/v1/alerts/api/notification_templates/preview/",
+        {
+            "scope": "single_alert",
+            "channel_type": "email",
+            "subject_template": "{{ alert.level }}",
+            "body_template": '<p><strong style="color:{{ alert.level_color }};">{{ alert.level }}</strong></p>',
+        },
+        format="json",
+    )
+    custom_response = template_client.post(
+        "/api/v1/alerts/api/notification_templates/preview/",
+        {
+            "scope": "single_alert",
+            "channel_type": "email",
+            "subject_template": "{{ alert.level }}",
+            "body_template": '<p><strong style="color:#ff0000;">{{ alert.level }}</strong></p>',
+        },
+        format="json",
+    )
+    unsafe = Level.objects.get(level_id=2, level_type=LevelType.ALERT)
+    unsafe.color = 'red;background:url("https://example.test/x")'
+    unsafe.save(update_fields=["color"])
+    unsafe_response = template_client.post(
+        "/api/v1/alerts/api/notification_templates/preview/",
+        {
+            "scope": "single_alert",
+            "channel_type": "email",
+            "subject_template": "{{ alert.level }}",
+            "body_template": '<p style="color:{{ alert.level_color }};">{{ alert.level }}</p>',
+        },
+        format="json",
+    )
+
+    assert default_response.status_code == 200, default_response.content
+    assert default_response.data["body"] == '<p><strong style="color:#112233;">警告</strong></p>'
+    assert custom_response.status_code == 200, custom_response.content
+    assert custom_response.data["body"] == '<p><strong style="color:#ff0000;">警告</strong></p>'
+    assert unsafe_response.status_code == 200, unsafe_response.content
+    assert unsafe_response.data["body"] == '<p style="color:#FFAD42;">警告</p>'
+    assert "url(" not in unsafe_response.data["body"]
+
+
+@pytest.mark.django_db
 def test_alert_operation_default_email_content_can_be_previewed(template_client):
     from apps.system_mgmt.models.channel import Channel
 

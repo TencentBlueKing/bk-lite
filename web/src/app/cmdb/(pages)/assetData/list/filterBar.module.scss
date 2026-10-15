@@ -4,14 +4,14 @@
   padding: 0px 16px;
   width: 100%;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  min-height: 36px;
+  min-height: 40px;
   margin-bottom: 0px;
   height: 100%;
 
 
   &.empty {
-    height: 2vh;
-    min-height: 12px;
+    height: 8px;
+    min-height: 8px;
     padding: 0px 16px;
   }
 }
@@ -21,7 +21,7 @@
   align-items: center;
   margin-right: 8px;
   flex-shrink: 0;
-  line-height: 4vh;
+  line-height: 40px;
   height: 100%;
 }
 
@@ -30,22 +30,22 @@
   font-weight: 400;
   font-style: normal;
   margin-right: 4px;
-  color: var(--ant-color-text-secondary);
-  line-height: 36px;
+  color: var(--color-text-3);
+  line-height: 40px;
 }
 
 .headerLabel {
   font-size: 12px;
-  color: var(--ant-color-text);
-  line-height: 4vh;
+  color: var(--color-text-1);
+  line-height: 40px;
 }
 
 .tagsContainer {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  min-height: 15px;
-  height: 4vh;
+  min-height: 24px;
+  height: 32px;
   flex: 0 1 auto;
 }
 
@@ -54,34 +54,34 @@
   border: 0 !important;
   display: flex;
   align-items: center;
-  background: var(--ant-color-fill-quaternary);
+  background: var(--color-fill-2);
   padding-right: 5px;
   font-size: 12px;
   margin: auto 0;
   cursor: pointer;
   transition: all 0.2s;
-  height: 3vh;
-  min-height: 20px;
-  color: var(--ant-color-text);
+  height: 24px;
+  min-height: 24px;
+  color: var(--color-text-1);
 
   &:hover {
     cursor: pointer;
-    background: var(--ant-color-fill-tertiary);
+    background: var(--color-fill-3);
   }
 
   :global(.ant-tag-close-icon) {
-    color: var(--ant-color-text);
+    color: var(--color-text-1);
     margin-left: 4px;
     padding: 0 2px;
 
     &:hover {
-      color: var(--ant-color-text);
+      color: var(--color-text-1);
     }
   }
 }
 
 .tagLabel {
-  color: var(--ant-color-text);
+  color: var(--color-text-1);
   margin-right: 4px;
 }
 
@@ -98,12 +98,12 @@
   margin-left: 0px;
   flex-shrink: 0;
   flex-grow: 0;
-  color: #3a84ff;
+  color: var(--color-primary);
 }
 
 .emptyState {
   font-weight: 500;
-  color: rgba(0, 0, 0, 0.88);
+  color: var(--color-text-1);
   transform: translateY(-3px);
 }
 
@@ -150,7 +150,7 @@
   .formLabel {
     display: block;
     margin-bottom: 5px;
-    color: rgba(0, 0, 0, 0.88);
+    color: var(--color-text-1);
     font-weight: 500;
   }
 }
@@ -158,17 +158,17 @@
 .tagCloseIcon {
   transform: translateY(10%);
   transform: translateY(-5%);
-  color: #9b9ea8 !important;
+  color: var(--color-text-4) !important;
 
   :hover {
-    color: black;
+    color: var(--color-text-1);
   }
 }
 
 .exactMatchCheckbox {
   padding-left: 3px;
   border-radius: 3px;
-  border: 1px solid #bdbfc6;
+  border: 1px solid var(--color-border);
 
   :global(.ant-checkbox-wrapper) {
     display: flex;
@@ -178,7 +178,7 @@
 
 .filterInput {
   border-radius: 3px !important;
-  border: 1px solid #bdbfc6;
+  border: 1px solid var(--color-border);
 
   :global(.ant-input) {
     border-radius: 3px;
@@ -192,7 +192,7 @@
   :global(.ant-input:focus),
   :global(.ant-input-focused) {
     border-width: 1px;
-    box-shadow: 0 0 0 2px rgba(5, 145, 255, 0.1);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 12%, transparent);
     height: 22px;
     line-height: 22px;
   }
@@ -206,7 +206,7 @@
 .exactMatchCheckbox {
   padding-left: 5px;
   border-radius: 3px;
-  border: 1px solid #bdbfc6;
+  border: 1px solid var(--color-border);
   height: 95% !important;
 
   :global(.ant-checkbox-wrapper) {
@@ -218,24 +218,24 @@
 }
 
 .actionLink {
-  color: #1890ff;
+  color: var(--color-primary);
   cursor: pointer;
   font-size: 14px;
   transition: color 0.2s;
 
   &:hover {
-    color: #40a9ff;
+    color: var(--color-primary);
   }
 }
 
 .actionLinkPrimary {
-  color: #1890ff;
+  color: var(--color-primary);
   cursor: pointer;
   font-size: 14px;
   transition: color 0.2s;
 
   &:hover {
-    color: #40a9ff;
+    color: var(--color-primary);
   }
 }
 
@@ -243,13 +243,13 @@
 .organization {
   font-size: 14px;
   font-weight: 500;
-  color: #63656e;
-  line-height: 4vh;
+  color: var(--color-text-2);
+  line-height: 40px;
 }
 
 // 其他分组标题样式
 .groupOther {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--color-text-2);
   padding-top: 15px;
@@ -258,7 +258,7 @@
 
 // 组织结构标题样式
 .groupOrganization {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--color-text-2);
   padding-bottom: 10px;
@@ -274,7 +274,7 @@
 .saveButton {
   padding-left: 8px;
   flex-shrink: 0;
-  color: #3a84ff;
+  color: var(--color-primary);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -293,12 +293,12 @@
   margin-right: 8px;
   flex-shrink: 0;
   font-size: 12px;
-  color: #63656e;
+  color: var(--color-text-2);
 }
 
 .savedFiltersIcon {
   font-size: 12px;
-  color: #faad14;
+  color: var(--theme-color-status-warning);
   margin-right: 4px;
 }
 
@@ -310,9 +310,9 @@
 }
 
 .savedFilterTag {
-  background: #fff7e6;
-  border: 1px solid #ffd591;
-  color: #d48806;
+  background: color-mix(in srgb, var(--theme-color-status-warning) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--theme-color-status-warning) 45%, transparent);
+  color: var(--theme-color-status-warning);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -321,8 +321,8 @@
   transition: all 0.2s;
 
   &:hover {
-    background: #fff1b8;
-    border-color: #ffc53d;
+    background: color-mix(in srgb, var(--theme-color-status-warning) 28%, transparent);
+    border-color: var(--theme-color-status-warning);
 
     .savedFilterDeleteIcon {
       opacity: 1;
@@ -342,17 +342,17 @@
   font-size: 10px;
   opacity: 0;
   transition: opacity 0.2s;
-  color: #d48806;
+  color: var(--theme-color-status-warning);
 
   &:hover {
-    color: #ad6800;
+    color: var(--theme-color-status-warning);
   }
 }
 
 .moreFiltersTag {
-  background: #f5f5f5;
-  border: 1px solid #d9d9d9;
-  color: #595959;
+  background: var(--color-fill-1);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-3);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -360,8 +360,8 @@
   font-size: 12px;
 
   &:hover {
-    background: #e6e6e6;
-    border-color: #bfbfbf;
+    background: var(--color-fill-2);
+    border-color: var(--color-text-4);
   }
 }
 
@@ -384,13 +384,13 @@
 
   .deleteIcon {
     margin-left: 12px;
-    color: #999;
+    color: var(--color-text-4);
     cursor: pointer;
     opacity: 0;
     transition: opacity 0.2s;
 
     &:hover {
-      color: #ff4d4f;
+      color: var(--color-fail);
     }
   }
 

@@ -103,9 +103,14 @@ import {
 import WidgetConfigPreview from './widgetConfig/widgetConfigPreview';
 import { useNetworkStatusTopologyConfig } from './widgetConfig/hooks/useNetworkStatusTopologyConfig';
 import { RelatedTopologyAssetField } from './widgetConfig/sections/relatedTopologyAssetField';
+import {
+  ApplicationTopologyDepthField,
+  ApplicationTopologyFilterLinkage,
+} from './widgetConfig/sections/applicationTopologyAssetField';
 import { Application3DWallFields } from './widgetConfig/sections/application3DWallFields';
-import { Room3DRoomField } from './widgetConfig/sections/room3DRoomField';
 import { Room3DRackTopFields } from './widgetConfig/sections/room3DRackTopFields';
+import Room3DFilterLinkage from './widgetConfig/sections/room3DFilterLinkage';
+import { ConfigGroupTitle } from './widgetConfig/configTitles';
 import { getDefaultScreenWidgetAppearance } from '@/app/ops-analysis/(pages)/view/screen/utils/layoutUtils';
 import { isSceneWidgetType } from '@/app/ops-analysis/types/sceneWidgetCapability';
 import { ensurePrometheusQueryRequired } from '@/app/ops-analysis/utils/dataSourceParamContract';
@@ -124,7 +129,8 @@ const viewConfigReloadKey = (item: ViewConfigItem | null | undefined) => {
   if (!valueConfig) {
     return JSON.stringify({ id, name });
   }
-  const { appearance: _appearance, ...dataConfig } = valueConfig;
+  const { appearance, ...dataConfig } = valueConfig;
+  void appearance;
   return JSON.stringify({ id, name, dataConfig });
 };
 
@@ -267,6 +273,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     isTableLike: isTableLikeChartType,
     isNetworkStatusTopology,
     isRelatedTopology,
+    isApplicationTopology,
     isRoom3D,
     isApplication3D,
     isSceneWidget,
@@ -1240,6 +1247,18 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           message.error(t('dashboard.relatedTopologyInstUuidRequired'));
           return;
         }
+        if (submitResult.error === 'applicationTopologyModelIdRequired') {
+          message.error(t('dashboard.applicationTopologyModelIdRequired'));
+          return;
+        }
+        if (submitResult.error === 'applicationTopologyModelUnsupported') {
+          message.error(t('dashboard.applicationTopologyModelUnsupported'));
+          return;
+        }
+        if (submitResult.error === 'applicationTopologyInstUuidRequired') {
+          message.error(t('dashboard.applicationTopologyInstUuidRequired'));
+          return;
+        }
       }
 
       if (submitResult.config) {
@@ -1334,21 +1353,35 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             </ConfigSectionTitle>
             <RelatedTopologyAssetField open={open} enabled={isRelatedTopology} />
           </section>
+        ) : isApplicationTopology ? (
+          <section>
+            <ConfigSectionTitle>
+              {t('dashboard.dataConfigSection', '数据配置')}
+            </ConfigSectionTitle>
+            <div className="mb-6">
+              <ConfigGroupTitle>
+                {t('dashboard.unifiedFilterLinkage')}
+              </ConfigGroupTitle>
+              <ApplicationTopologyFilterLinkage definitions={previewFilterDefinitions} />
+            </div>
+            <ApplicationTopologyDepthField />
+          </section>
         ) : isRoom3D ? (
-          <>
-            <section>
-              <ConfigSectionTitle>
-                {t('dashboard.dataConfigSection', '数据配置')}
-              </ConfigSectionTitle>
-              <Room3DRoomField open={open} enabled={isRoom3D} />
-            </section>
-            <section>
-              <ConfigSectionTitle>
-                {t('dashboard.room3DRackTopSection')}
-              </ConfigSectionTitle>
-              <Room3DRackTopFields />
-            </section>
-          </>
+          <section>
+            <ConfigSectionTitle>
+              {t('dashboard.dataConfigSection', '数据配置')}
+            </ConfigSectionTitle>
+            <div className="mb-6">
+              <ConfigGroupTitle>
+                {t('dashboard.unifiedFilterLinkage')}
+              </ConfigGroupTitle>
+              <Room3DFilterLinkage definitions={previewFilterDefinitions} />
+            </div>
+            <ConfigGroupTitle>
+              {t('dashboard.room3DRackTopSection')}
+            </ConfigGroupTitle>
+            <Room3DRackTopFields />
+          </section>
         ) : isSceneWidget ? null : (
           <WidgetDatasourceChartTypeFields
             t={t}

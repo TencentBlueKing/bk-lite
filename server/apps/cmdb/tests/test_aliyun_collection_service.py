@@ -168,7 +168,7 @@ def test_partial_snapshot_preserves_successes_and_prevents_deletion(monkeypatch,
     management.model_id = failed_model
     management.collect_plugin = runner
     management.data_cleanup_strategy = DataCleanupStrategy.IMMEDIATELY
-    _, _, _, deleted = management.contrast({("existing",): {"_id": 9}}, {})
+    _, _, _, deleted = management.contrast({("existing",): {"_id": 9, "collect_task": "42"}}, {})
     assert deleted == []
 
 
@@ -183,6 +183,13 @@ def test_complete_snapshot_still_allows_cleanup(monkeypatch):
     assert runner.snapshot_complete is True
     management = Management.__new__(Management)
     management.model_id = "aliyun_mysql"
+    management.reconcile_task_assets = True
+    management.collection_targets = []
+    management.collect_time = "2026-10-10T00:00:00+00:00"
+    management.task_id = "42"
+    management.expire_days = 3
     management.collect_plugin = runner
     management.data_cleanup_strategy = DataCleanupStrategy.IMMEDIATELY
-    assert management.contrast({("existing",): {"_id": 9}}, {})[3] == [{"_id": 9, "model_id": "aliyun_mysql"}]
+    assert management.contrast({("existing",): {"_id": 9, "collect_task": "42"}}, {})[3] == [
+        {"_id": 9, "collect_task": "42", "model_id": "aliyun_mysql"}
+    ]

@@ -85,6 +85,21 @@ def parse_credentials_pool(raw_value: Any = None, params: Mapping[str, Any] | No
     return [item for item in credentials_pool if isinstance(item, dict)]
 
 
+CUSTOM_SCRIPT_INFO_NAME = "custom_script_info"
+CUSTOM_SCRIPT_PLUGIN_NAME = "custom_script"
+
+
+def collection_plugin_name(source: Mapping[str, Any]) -> str:
+    """自定义脚本按插件标识选采集器，内置采集仍按目标模型选。"""
+
+    declared = str(source.get("plugin_name") or "").strip()
+    if declared == CUSTOM_SCRIPT_INFO_NAME:
+        return CUSTOM_SCRIPT_PLUGIN_NAME
+    monitor_type = str(source.get("monitor_type") or "").strip()
+    model_id = str(source.get("model_id") or "").strip()
+    return monitor_type or model_id or declared
+
+
 def build_collection_request(
     *,
     task_id: str,
@@ -96,9 +111,8 @@ def build_collection_request(
         raise ValueError("task_id is required")
     source = _normalize_credential_key_aliases(params or {})
     monitor_type = str(source.get("monitor_type") or "").strip()
-    model_id = str(source.get("model_id") or "").strip()
     family = "monitor" if monitor_type else "configuration"
-    plugin_name = monitor_type or model_id or str(source.get("plugin_name") or "")
+    plugin_name = collection_plugin_name(source)
     if not plugin_name:
         raise ValueError("monitor_type or model_id is required")
 

@@ -9,6 +9,11 @@ from apps.core.logger import cmdb_logger as logger
 
 MonitorClientFactory = Callable[[], Any]
 
+COVERAGE_MONITORED_CLEAR = "monitored_clear"
+COVERAGE_MONITORED_ALARMING = "monitored_alarming"
+COVERAGE_UNMONITORED = "unmonitored"
+COVERAGE_ALARM_UNAVAILABLE = "alarm_unavailable"
+
 _ENRICH_RPC_FAIL_TEMPLATE = "room3d device alarm enrich failed monitor_id_count=%s " "failed_stage=monitor_rpc error_type=%s"
 _ENRICH_RESULT_SOFT_FAIL_TEMPLATE = "room3d device alarm enrich soft-failed monitor_id_count=%s " "failed_stage=monitor_result error_type=%s"
 
@@ -38,6 +43,24 @@ def _bound_alarm_fields(active_alarm_count: int, highest_severity: str | None) -
         "active_alarm_count": int(active_alarm_count),
         "highest_severity": highest_severity,
     }
+
+
+def classify_device_alarm_coverage(monitor_id: str, summary: dict | None, *, monitor_failed: bool) -> str:
+    """与 enrich 同一套判定：未绑定、已监控无告警、已监控有告警、告警暂不可用。"""
+    if not monitor_id:
+        return COVERAGE_UNMONITORED
+    if monitor_failed or not isinstance(summary, dict):
+        return COVERAGE_ALARM_UNAVAILABLE
+    count = summary.get("active_alarm_count")
+    try:
+        count_int = int(count)
+    except (TypeError, ValueError):
+        return COVERAGE_ALARM_UNAVAILABLE
+    if count_int < 0:
+        return COVERAGE_ALARM_UNAVAILABLE
+    if count_int <= 0:
+        return COVERAGE_MONITORED_CLEAR
+    return COVERAGE_MONITORED_ALARMING
 
 
 def _default_monitor_client():

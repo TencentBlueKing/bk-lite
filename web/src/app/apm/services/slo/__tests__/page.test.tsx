@@ -73,7 +73,7 @@ describe('APM SLO 列表布局', () => {
 
     expect(await screen.findByText('结算接口 500ms 时延目标')).not.toBeNull();
     expect(screen.queryByText('SLO 列表')).toBeNull();
-    expect(screen.getByRole('button', { name: '新建 SLO' })).not.toBeNull();
+    expect(screen.getByRole('button', { name: '新建' })).not.toBeNull();
 
     const currentHeader = screen.getByRole('columnheader', { name: '当前表现' });
     const enabledHeader = screen.getByRole('columnheader', { name: '启用' });

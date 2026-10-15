@@ -206,7 +206,8 @@ export function JobExecuteForm({
         />
         <div className="self-start">
           <ReportContractGuideDrawer
-            defaultTab="structure"
+            mode="structure"
+            audience="job"
             triggerLabel={t('workflowOrchestration.editor.viewJobOutputContractGuide', '脚本输出说明')}
           />
         </div>

@@ -41,6 +41,7 @@ class AlertModelFilter(FilterSet):
     rule_id = CharFilter(field_name="rule_id", label="是否有事故")
     resource_type = CharFilter(field_name="resource_type", lookup_expr="exact", label="资源类型")
     resource_id = CharFilter(field_name="resource_id", lookup_expr="exact", label="资源ID")
+    owner = CharFilter(method="filter_owner", label="告警责任人")
     enrichment_key = CharFilter(method="filter_enrichment", label="丰富字段路径")
     enrichment_value = CharFilter(method="filter_enrichment_value", label="丰富字段值")
 
@@ -63,9 +64,15 @@ class AlertModelFilter(FilterSet):
             "rule_id",
             "resource_type",
             "resource_id",
+            "owner",
             "enrichment_key",
             "enrichment_value",
         ]
+
+    def filter_owner(self, qs, field_name, value):
+        from apps.alerts.utils.permission_scope import apply_operator_scope
+
+        return apply_operator_scope(qs, (value or "").strip(), field_name="owners")
 
     def filter_enrichment(self, qs, field_name, value):
         """enrichment_key 与 enrichment_value 成对使用，路径例 enrichment.cmdb.owner。"""

@@ -2,13 +2,19 @@ import type { WorkflowCanvasMetadata } from './canvas-dsl';
 import type { ConductorDefinition, WorkflowRecord } from './types';
 
 const pad = (value: number, length = 2) => String(value).padStart(length, '0');
+const WORKFLOW_NAME_MAX_LENGTH = 120;
 
-export function createDefaultWorkflowName(now = new Date(), prefix = '流程'): string {
-  return `${prefix}${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}${pad(now.getMilliseconds(), 3)}`;
+export function formatWorkflowNameTimestamp(now = new Date()): string {
+  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}${pad(now.getMilliseconds(), 3)}`;
 }
 
-export function createDuplicateWorkflowName(name: string, suffix = '（副本）'): string {
-  return `${name.slice(0, Math.max(0, 120 - suffix.length))}${suffix}`;
+export function createDefaultWorkflowName(now = new Date(), prefix = '流程'): string {
+  return `${prefix}${formatWorkflowNameTimestamp(now)}`;
+}
+
+export function createDuplicateWorkflowName(name: string, now = new Date()): string {
+  const stamp = formatWorkflowNameTimestamp(now);
+  return `${name.slice(0, Math.max(0, WORKFLOW_NAME_MAX_LENGTH - stamp.length))}${stamp}`;
 }
 
 export function createUnsavedWorkflowDraft(name: string, labels: { riskSummary: string } = {

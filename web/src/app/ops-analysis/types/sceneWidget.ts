@@ -2,6 +2,7 @@ export type SceneWidgetType =
   | 'networkStatusTopology'
   | 'application3D'
   | 'relatedTopology'
+  | 'applicationTopology'
   | 'room3D';
 
 export type ApplicationHealthState = 'normal' | 'alarming' | 'unknown';
@@ -272,6 +273,22 @@ export interface RelatedTopologyConfig {
   instUuid?: string;
   /** 配置 UX：筛实例 / 回显。运行时只消费 instUuid。 */
   modelId?: string;
+}
+
+export const APPLICATION_TOPOLOGY_MODELS = ['system'] as const;
+
+export type ApplicationTopologyModelId = (typeof APPLICATION_TOPOLOGY_MODELS)[number];
+
+export const APPLICATION_TOPOLOGY_DEFAULT_DEPTH = 3;
+
+export const APPLICATION_TOPOLOGY_MAX_DEPTH = 5;
+
+export interface ApplicationTopologyConfig {
+  instUuid?: string;
+  /** 配置 UX：只允许应用系统。运行时只消费 instUuid 与 depth。 */
+  modelId?: string;
+  /** 1–5，缺省 3。 */
+  depth?: number;
 }
 
 export type Room3DRackTopField = 'location' | 'name' | 'type' | 'state';

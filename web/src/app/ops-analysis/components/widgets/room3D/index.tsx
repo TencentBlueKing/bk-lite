@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Alert, Button, Empty, Select, Spin } from "antd";
+import { Alert, Button, Empty, Spin } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
 import { useParams } from "next/navigation";
 import { useTranslation } from "@/utils/i18n";
@@ -15,14 +15,12 @@ import { useShareMode } from "@/app/ops-analysis/context/shareMode";
 import { useRoom3DApi } from "@/app/ops-analysis/api/room3D";
 import { isSceneWidgetAllowedOnSurface } from "@/app/ops-analysis/types/sceneWidgetCapability";
 import type { OpsAnalysisWidgetSurface } from "@/app/ops-analysis/utils/chartTypeSurface";
-import type { Room3DRoomOption } from "@/app/ops-analysis/types/sceneWidget";
-import {
-  readPersistedServerRoomId,
-  readRoom3DRackTopLines,
-  resolveRoom3DSelection,
-} from "@/app/ops-analysis/utils/room3DConfig";
+import { readRoom3DRackTopLines } from "@/app/ops-analysis/utils/room3DConfig";
+import { resolveRoom3DCanvasSelection } from "@/app/ops-analysis/utils/room3DScreenFilter";
 import type {
+  FilterValue,
   ScreenRenderContext,
+  UnifiedFilterDefinition,
   ValueConfig,
 } from "@/app/ops-analysis/types/dashBoard";
 import {
@@ -49,6 +47,8 @@ interface Room3DProps {
   screenRenderContext?: ScreenRenderContext;
   surface?: OpsAnalysisWidgetSurface;
   editMode?: boolean;
+  unifiedFilterValues?: Record<string, FilterValue>;
+  filterDefinitions?: UnifiedFilterDefinition[];
   refreshKey?: string | number;
   runtimeActive?: boolean;
   onReady?: (ready: boolean) => void;
@@ -79,7 +79,8 @@ const Room3D: React.FC<Room3DProps> = ({
   config,
   screenRenderContext,
   surface,
-  editMode = false,
+  unifiedFilterValues,
+  filterDefinitions,
   refreshKey,
   runtimeActive = true,
   onReady,
@@ -98,7 +99,11 @@ const Room3D: React.FC<Room3DProps> = ({
     [getLayout, getRooms],
   );
   const injected = rawData != null;
-  const savedRoomId = readPersistedServerRoomId(config);
+  const { savedRoomId, runtimeRoomId } = resolveRoom3DCanvasSelection({
+    filterBindings: config?.filterBindings,
+    filterDefinitions,
+    unifiedFilterValues,
+  });
   const rackTopLines = useMemo(
     () => readRoom3DRackTopLines(config?.room3D),
     [config?.room3D?.rackTopLine1, config?.room3D?.rackTopLine2],
@@ -109,8 +114,6 @@ const Room3D: React.FC<Room3DProps> = ({
   const resetViewRef = useRef<() => void>(() => undefined);
   const resizeSceneRef = useRef<() => void>(() => undefined);
   const sceneReadinessRef = useRef<SceneReadiness | null>(null);
-  const [rooms, setRooms] = useState<Room3DRoomOption[]>([]);
-  const [runtimeRoomId, setRuntimeRoomId] = useState("");
   const [fetchedLayout, setFetchedLayout] = useState<unknown>(null);
   const [fetchLoading, setFetchLoading] = useState(!injected);
   const [fetchError, setFetchError] = useState("");
@@ -164,10 +167,10 @@ const Room3D: React.FC<Room3DProps> = ({
     return Math.max(uiScale, 1 / fitScale, 1);
   }, [screenRenderContext]);
 
-  useEffect(() => {
-    setRuntimeRoomId("");
-  }, [savedRoomId]);
-
+  const onErrorRef = useRef(onError);
+  const onRawDataRef = useRef(onRawData);
+  onErrorRef.current = onError;
+  onRawDataRef.current = onRawData;
   useEffect(() => {
     if (injected || !runtimeActive || !allowedOnSurface) {
       return undefined;
@@ -183,33 +186,31 @@ const Room3D: React.FC<Room3DProps> = ({
     })
       .then((result) => {
         if (abort.signal.aborted) return;
-        setRooms(result.rooms);
         if (result.status === "empty") {
           setFetchedLayout(null);
           setFetchError(t("dashboard.room3DEmpty"));
-          onError?.(t("dashboard.room3DEmpty"));
-          onRawData?.(null);
+          onErrorRef.current?.(t("dashboard.room3DEmpty"));
+          onRawDataRef.current?.(null);
           return;
         }
         if (result.status === "unavailable") {
           setFetchedLayout(null);
           setFetchError(t("dashboard.room3DDefaultUnavailable"));
-          onError?.(t("dashboard.room3DDefaultUnavailable"));
-          onRawData?.(null);
+          onErrorRef.current?.(t("dashboard.room3DDefaultUnavailable"));
+          onRawDataRef.current?.(null);
           return;
         }
         setFetchedLayout(result.layout);
         setFetchError("");
-        onRawData?.(result.layout);
+        onRawDataRef.current?.(result.layout);
       })
       .catch(() => {
         if (abort.signal.aborted) return;
         const message = t("dashboard.room3DLoadFailed");
         setFetchedLayout(null);
-        setRooms([]);
         setFetchError(message);
-        onError?.(message);
-        onRawData?.(null);
+        onErrorRef.current?.(message);
+        onRawDataRef.current?.(null);
       })
       .finally(() => {
         if (!abort.signal.aborted) setFetchLoading(false);
@@ -219,8 +220,6 @@ const Room3D: React.FC<Room3DProps> = ({
     allowedOnSurface,
     api,
     injected,
-    onError,
-    onRawData,
     refreshKey,
     runtimeActive,
     runtimeRoomId,
@@ -528,24 +527,6 @@ const Room3D: React.FC<Room3DProps> = ({
     return fields;
   }, [selectedDevice, t]);
 
-  const showRoomSwitcher = !injected && !editMode && rooms.length > 0;
-  const switcherSelection = resolveRoom3DSelection({
-    rooms,
-    savedRoomId,
-    runtimeRoomId,
-  });
-  const switcherValue =
-    switcherSelection.status === "ready" ? switcherSelection.roomId : undefined;
-  const roomSwitcher = showRoomSwitcher ? (
-    <Select
-      value={switcherValue}
-      options={rooms.map((item) => ({ value: item.id, label: item.name }))}
-      onChange={(value) => setRuntimeRoomId(value)}
-      placeholder={t("dashboard.room3DSwitchPlaceholder")}
-      popupMatchSelectWidth={false}
-    />
-  ) : null;
-
   if (!allowedOnSurface) {
     return (
       <div className={styles.stateBox}>
@@ -556,10 +537,7 @@ const Room3D: React.FC<Room3DProps> = ({
 
   if (loading) {
     return (
-      <div className={`${styles.stateBox} ${styles.stateBoxWithControl}`}>
-        {roomSwitcher && (
-          <div className={styles.roomSwitch}>{roomSwitcher}</div>
-        )}
+      <div className={styles.stateBox}>
         <Spin />
       </div>
     );
@@ -567,10 +545,7 @@ const Room3D: React.FC<Room3DProps> = ({
 
   if (errorMessage) {
     return (
-      <div className={`${styles.stateBox} ${styles.stateBoxWithControl}`}>
-        {roomSwitcher && (
-          <div className={styles.roomSwitch}>{roomSwitcher}</div>
-        )}
+      <div className={styles.stateBox}>
         <Alert type="error" showIcon message={errorMessage} />
       </div>
     );
@@ -578,10 +553,7 @@ const Room3D: React.FC<Room3DProps> = ({
 
   if (!validation.ok) {
     return (
-      <div className={`${styles.stateBox} ${styles.stateBoxWithControl}`}>
-        {roomSwitcher && (
-          <div className={styles.roomSwitch}>{roomSwitcher}</div>
-        )}
+      <div className={styles.stateBox}>
         <Alert
           type="error"
           showIcon
@@ -594,10 +566,7 @@ const Room3D: React.FC<Room3DProps> = ({
 
   if (!roomData.racks.length) {
     return (
-      <div className={`${styles.stateBox} ${styles.stateBoxWithControl}`}>
-        {roomSwitcher && (
-          <div className={styles.roomSwitch}>{roomSwitcher}</div>
-        )}
+      <div className={styles.stateBox}>
         <div className={styles.stateContent}>
           {visibleNotice && (
             <Alert
@@ -617,9 +586,7 @@ const Room3D: React.FC<Room3DProps> = ({
     );
   }
 
-  const showRoomSummary = !showRoomSwitcher;
-  const roomRackCount = roomData.racks.length;
-  const roomSummaryText = `${t("dashboard.room3DRoomNameLabel")}${roomData.room.name}${t("dashboard.room3DRackCountPrefix")}${roomRackCount}${t("dashboard.room3DRackCountSuffix")}`;
+  const roomSummaryText = roomData.room.name;
 
   return (
     <div
@@ -638,29 +605,18 @@ const Room3D: React.FC<Room3DProps> = ({
       } as React.CSSProperties}
     >
       <div ref={mountRef} className={styles.canvas} />
-      {roomSwitcher && (
-        <div className={styles.roomSwitchOverlay}>{roomSwitcher}</div>
-      )}
       <div className={styles.topBar}>
-        {showRoomSummary && (
-          <div className={styles.roomTitle} title={roomSummaryText}>
-            <span className={styles.roomTitleLabel}>
-              {t("dashboard.room3DRoomNameLabel")}
-            </span>
-            <strong className={styles.roomTitleName}>{roomData.room.name}</strong>
-            <span className={styles.roomTitleCount}>
-              {t("dashboard.room3DRackCountPrefix")}
-              {roomRackCount}
-              {t("dashboard.room3DRackCountSuffix")}
-            </span>
-          </div>
-        )}
-        <Button
-          size="small"
-          icon={<ReloadOutlined />}
-          onClick={() => resetViewRef.current()}
-          title={t("dashboard.room3DResetView")}
-        />
+        <div className={styles.roomTitle} title={roomSummaryText}>
+          <strong className={styles.roomTitleName}>{roomData.room.name}</strong>
+        </div>
+        <div className={styles.topBarActions}>
+          <Button
+            size="small"
+            icon={<ReloadOutlined />}
+            onClick={() => resetViewRef.current()}
+            title={t("dashboard.room3DResetView")}
+          />
+        </div>
       </div>
       {visibleNotice && (
         <div className={styles.noticePanel}>

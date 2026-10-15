@@ -118,6 +118,9 @@ describe('CardListSettingsSection', () => {
     expect(screen.getByText('dashboard.cardListTitleField')).toBeTruthy();
     expect(screen.getByText('dashboard.cardListDescriptionField')).toBeTruthy();
     expect(
+      screen.getByTestId('card-list-optional-leading').className,
+    ).toContain('cursor-pointer');
+    expect(
       screen.getByTestId('card-list-optional-leading').getAttribute('aria-expanded'),
     ).toBe('false');
     expect(

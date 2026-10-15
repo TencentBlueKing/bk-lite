@@ -102,6 +102,18 @@ class BaseNodeParams(metaclass=ABCMeta):
         """
         获取插件名称，如果找不到则抛出异常
         """
+        from apps.cmdb.constants.constants import CollectPluginTypes
+
+        if getattr(self.instance, "task_type", None) == CollectPluginTypes.CUSTOM_SCRIPT:
+            sentinel = CollectPluginTypes.CUSTOM_SCRIPT
+            for registry_key in (
+                self.build_registry_key(sentinel, self.instance.driver_type),
+                self.build_registry_key(sentinel),
+            ):
+                plugin_name = self.PLUGIN_MAP.get(registry_key)
+                if plugin_name:
+                    return plugin_name
+
         normalized_model_id = self.normalize_model_id(self.model_id)
         candidate_keys = [
             self.build_registry_key(self.model_id, self.instance.driver_type),
@@ -192,7 +204,7 @@ class BaseNodeParams(metaclass=ABCMeta):
         格式化服务器的路径
         """
         # 加入配置的唯一ID
-        _model_id = getattr(self, "supported_model_id", self.model_id)
+        _model_id = getattr(self, "collection_model_id", None) or getattr(self, "supported_model_id", self.model_id)
         # 加入ip字段和值
         ip_addr_field, ip_addrs = self.get_hosts()
         params = self.set_credential()

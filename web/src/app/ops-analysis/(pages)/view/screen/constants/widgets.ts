@@ -135,6 +135,13 @@ export const SCREEN_WIDGET_DEFINITIONS: ScreenWidgetDefinition[] = [
     defaultWidth: 620,
     defaultHeight: 420,
   },
+  {
+    chartType: 'applicationTopology',
+    titleKey: 'opsAnalysis.screen.widgets.applicationTopology',
+    descriptionKey: 'opsAnalysis.screen.widgetDescriptions.applicationTopology',
+    defaultWidth: 720,
+    defaultHeight: 480,
+  },
 ];
 
 export const getScreenWidgetDefinition = (chartType: ScreenWidgetChartType) =>

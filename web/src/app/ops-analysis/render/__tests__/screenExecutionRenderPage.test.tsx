@@ -21,6 +21,7 @@ vi.mock('@/app/ops-analysis/hooks/useDataSource', () => ({
 }));
 
 const widgetStatusHandlers: Array<(result: unknown) => void> = [];
+const canvasProps: Array<Record<string, unknown>> = [];
 
 vi.mock(
   '@/app/ops-analysis/(pages)/view/screen/components/screenCanvas',
@@ -29,6 +30,7 @@ vi.mock(
       onWidgetRenderStatus?: (result: unknown) => void;
       viewSets: { items?: Array<{ id: string }> };
     }) => {
+      canvasProps.push(props as unknown as Record<string, unknown>);
       if (props.onWidgetRenderStatus) {
         widgetStatusHandlers.push(props.onWidgetRenderStatus);
       }
@@ -61,6 +63,7 @@ const baseRenderInput = {
 describe('ScreenExecutionRenderPageContent ready contract', () => {
   beforeEach(() => {
     widgetStatusHandlers.length = 0;
+    canvasProps.length = 0;
     loadCanvasDataSources.mockReset();
     getExecutionRenderInput.mockReset();
     loadCanvasDataSources.mockResolvedValue(undefined);
@@ -124,5 +127,66 @@ describe('ScreenExecutionRenderPageContent ready contract', () => {
     ).not.toBeNull();
 
     window.removeEventListener(DASHBOARD_RENDER_EVENT, onSignal);
+  });
+
+  it('passes the subscription room snapshot into the screen canvas', async () => {
+    const roomId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const renderInput = {
+      ...baseRenderInput,
+      input_snapshot: {
+        filter_values: { 'server_room_id__string': roomId },
+      },
+      render_snapshot: {
+        ...baseRenderInput.render_snapshot,
+        filters: [],
+        view_sets: {
+          viewport: { width: 800, height: 600 },
+          items: [
+            {
+              id: 'room',
+              type: 'widget',
+              chartType: 'room3D',
+              x: 0,
+              y: 0,
+              w: 100,
+              h: 100,
+              valueConfig: { chartType: 'room3D', sceneWidgetType: 'room3D' },
+            },
+          ],
+          filters: [
+            {
+              id: 'server_room_id__string',
+              key: 'server_room_id',
+              name: '机房',
+              type: 'string',
+              defaultValue: null,
+              order: 0,
+              enabled: true,
+            },
+          ],
+        },
+      },
+    };
+
+    render(
+      <ScreenExecutionRenderPageContent
+        executionId={11}
+        initialRenderInput={renderInput as never}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(canvasProps.length).toBeGreaterThan(0);
+    });
+    const props = canvasProps.at(-1) as {
+      unifiedFilterValues?: Record<string, string>;
+      filterDefinitions?: Array<{ id: string }>;
+    };
+    expect(props.unifiedFilterValues).toEqual({
+      'server_room_id__string': roomId,
+    });
+    expect(props.filterDefinitions?.map((item) => item.id)).toContain(
+      'server_room_id__string',
+    );
   });
 });

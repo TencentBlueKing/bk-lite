@@ -3,13 +3,11 @@
 # @Time: 2025/12/10 10:53
 # @Author: windyzhao
 
-from apps.cmdb.services.collect_credential_contract import (
-    get_collect_credential_contract,
-)
+from apps.cmdb.services.collect_credential_contract import get_collect_credential_contract
 from apps.cmdb.services.collect_object_tree import get_collect_object_meta
 
 
-def get_collect_model_passwords(collect_model_id, driver_type=None):
+def get_collect_model_passwords(collect_model_id, driver_type=None, task_type=None):
     """
     获取采集模型所需的加密字段。
 
@@ -18,6 +16,12 @@ def get_collect_model_passwords(collect_model_id, driver_type=None):
     :param collect_model_id: 采集模型名称
     :return: 加密密码字典
     """
+    from apps.cmdb.constants.constants import CollectPluginTypes
+    from apps.cmdb.services.custom_script_credentials import transport_encrypted_fields
+
+    if task_type == CollectPluginTypes.CUSTOM_SCRIPT:
+        return transport_encrypted_fields()
+
     credential_contract = get_collect_credential_contract(collect_model_id)
     if credential_contract is not None:
         return credential_contract.get("encrypted_fields", [])

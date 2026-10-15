@@ -110,6 +110,14 @@ class AlertAssignmentModelSerializer(serializers.ModelSerializer):
                     )
         return normalized
 
+    def _read_prefer_alert_owner(self, raw_target):
+        if not isinstance(raw_target, dict) or "prefer_alert_owner" not in raw_target:
+            return False
+        value = raw_target.get("prefer_alert_owner")
+        if not isinstance(value, bool):
+            raise serializers.ValidationError({"config": serializer_message(self, "error.prefer_alert_owner_bool")})
+        return value
+
     def validate(self, attrs):
         attrs = super().validate(attrs)
         config = attrs.get("config")
@@ -126,11 +134,13 @@ class AlertAssignmentModelSerializer(serializers.ModelSerializer):
         normalized_config = deepcopy(config)
         changed = False
         if "notification_target" in normalized_config:
+            raw_target = normalized_config.get("notification_target")
             normalized = self._normalize_and_validate_target(
-                normalized_config.get("notification_target"),
+                raw_target,
                 attrs.get("personnel"),
                 self._label("label.assignment_target"),
             )
+            normalized["prefer_alert_owner"] = self._read_prefer_alert_owner(raw_target)
             normalized_config["notification_target"] = normalized
             attrs["personnel"] = normalized["usernames"] if normalized["type"] == USER_TARGET else []
             changed = True
@@ -146,6 +156,9 @@ class AlertAssignmentModelSerializer(serializers.ModelSerializer):
                     continue
                 normalized_layer = deepcopy(layer)
                 if "notification_target" in normalized_layer:
+                    layer_target = normalized_layer.get("notification_target")
+                    if isinstance(layer_target, dict) and "prefer_alert_owner" in layer_target:
+                        raise serializers.ValidationError({"config": serializer_message(self, "error.prefer_alert_owner_not_for_escalation")})
                     normalized = self._normalize_and_validate_target(
                         normalized_layer.get("notification_target"),
                         normalized_layer.get("personnel"),

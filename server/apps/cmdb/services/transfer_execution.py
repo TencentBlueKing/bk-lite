@@ -144,7 +144,7 @@ class TransferExecution:
                         if model_id == task.model_id
                         else TransferAuthorization.resolve(task.owner, task.team_id, task.include_children, model_id, "export")
                     )
-                    # 同时保护关联对端；不能导出无权查看的名称，也不能让旧文件绕过资源归属变化。
+                    # 同时保护关联对端；导出当时不能带出无权查看的名称。
                     identifiers = sorted(identifiers)
                     for offset in range(0, len(identifiers), 500):
                         selected = identifiers[offset : offset + 500]
@@ -218,19 +218,7 @@ class TransferExecution:
 
     @staticmethod
     def validate_download(task, files):
-        TransferAuthorization.revalidate(task)
-        if task.kind != "export":
+        # 已生成的导出文件在保留期内由原导出人下载，不再按清单重查实例、组织或授权快照。
+        if task.kind == "export":
             return
-        with files.local_copy(task.artifacts["manifest"]["key"], max_bytes=100 * 1024 * 1024) as manifest:
-            for line in manifest:
-                batch = json.loads(line)
-                scope = TransferAuthorization.resolve(task.owner, task.team_id, task.include_children, batch["model_id"], "export")
-                if batch["authorization"] != scope.snapshot or batch["schema_hash"] != scope.schema_hash:
-                    raise TransferError("authorization_changed", "文件授权范围已变化，请重新导出", 403)
-                instances = InstanceManage.query_entity_by_uuids(batch["ids"])
-                if len(instances) != len(batch["ids"]):
-                    raise TransferError("scope_changed", "文件引用的实例已变化，请重新导出", 403)
-                for instance in instances:
-                    if instance["model_id"] != batch["model_id"]:
-                        raise TransferError("scope_changed", "实例模型已变化，请重新导出", 403)
-                    TransferAuthorization.check_instance(scope, instance)
+        TransferAuthorization.revalidate(task)

@@ -86,6 +86,33 @@ _RPC_TRANSPORT_KEYS = {"_timeout", "_raw"}
 
 
 @nats_client.register
+def cmdb_get_custom_script(query_data):
+    """按采集任务返回当前自定义脚本。不记录脚本正文。"""
+    from apps.cmdb.constants.constants import CollectPluginTypes
+    from apps.cmdb.models.collect_model import CollectModels
+    from apps.cmdb.models.custom_collect_plugin import CustomCollectPlugin
+    from apps.core.exceptions.base_app_exception import BaseAppException
+
+    if not isinstance(query_data, dict):
+        raise BaseAppException("invalid")
+    task_id = query_data.get("collect_task_id")
+    task = CollectModels.objects.filter(id=task_id, task_type=CollectPluginTypes.CUSTOM_SCRIPT).first()
+    if task is None:
+        raise BaseAppException("not_found")
+    plugin = CustomCollectPlugin.objects.filter(id=(task.params or {}).get("custom_plugin_pk")).first()
+    if plugin is None:
+        raise BaseAppException("plugin_missing")
+    return {
+        "plugin_id": plugin.plugin_id,
+        "content": plugin.content,
+        "shell": plugin.shell,
+        "os_type": plugin.os_type,
+        "version": plugin.version,
+        "checksum": plugin.content_checksum,
+    }
+
+
+@nats_client.register
 def cmdb_count_credential_refs(credential_ids):
     """供系统管理删除/变更凭据前查询 CMDB 任务引用数。"""
     if not isinstance(credential_ids, list) or len(credential_ids) > 100 or any(not isinstance(value, str) or not value for value in credential_ids):
@@ -1655,10 +1682,10 @@ def get_room_list(user_info=None, **kwargs):
     的现成权限过滤自动按当前用户可见范围过滤。
     """
     permission_map = _build_nats_permission_map(user_info) or {}
-    # 新数据源以 inst_uuid 作为选项值；暂时保留 _id，兼容尚未执行
-    # init_source_api_data --force-update 的存量数据源配置。
+    # 与 list_monitored_hosts 等选项源一致：data 是行列表。
+    # 裸 {"items": ...} 没有 result，datasource_view._normalize_downstream_result 会判非标准。
     items = [item for item in rack_room.list_server_rooms(permission_map=permission_map, user_info=user_info) if item.get("inst_uuid")]
-    return {"items": items}
+    return {"result": True, "data": items, "message": ""}
 
 
 @nats_client.register
@@ -2064,6 +2091,61 @@ def topo_search_lite_by_uuid(inst_uuid=None, user_info=None, **kwargs):
         return _topo_search_lite_failure("not_found", "实例不存在")
 
     return {"result": True, "data": result, "message": ""}
+
+
+_APPLICATION_TOPOLOGY_MODELS = frozenset({"system"})
+_APPLICATION_TOPOLOGY_DEFAULT_DEPTH = 3
+_APPLICATION_TOPOLOGY_MAX_DEPTH = 5
+
+
+@nats_client.register
+def application_resource_topology_by_uuid(inst_uuid=None, depth=None, user_info=None, **kwargs):
+    """按实例 UUID 返回应用拓扑五带结构。仅应用系统，不含告警叠色。"""
+    from apps.cmdb.services.application_resource_overview import ApplicationResourceOverviewService
+    from apps.cmdb.services.instance_identity import normalize_inst_uuid
+    from apps.core.exceptions.base_app_exception import BaseAppException
+
+    raw = inst_uuid if inst_uuid is not None else kwargs.get("inst_uuid")
+    try:
+        normalized = normalize_inst_uuid(raw)
+    except BaseAppException:
+        return _topo_search_lite_failure("invalid_inst_uuid", "inst_uuid 必须是 UUIDv4")
+
+    raw_depth = depth if depth is not None else kwargs.get("depth")
+    if raw_depth in (None, ""):
+        resolved_depth = _APPLICATION_TOPOLOGY_DEFAULT_DEPTH
+    else:
+        try:
+            resolved_depth = int(raw_depth)
+        except (TypeError, ValueError):
+            return _topo_search_lite_failure("invalid_depth", "depth 必须是 1 到 5 的整数")
+        if resolved_depth < 1 or resolved_depth > _APPLICATION_TOPOLOGY_MAX_DEPTH:
+            return _topo_search_lite_failure("invalid_depth", "depth 必须是 1 到 5 的整数")
+
+    instance = InstanceManage.query_entity_by_uuid(normalized)
+    if not instance:
+        return _topo_search_lite_failure("not_found", "实例不存在")
+
+    model_id = str(instance.get("model_id") or "")
+    permission_map = _build_nats_permission_map(user_info, model_id=model_id)
+    user = _normalize_permission_user((user_info or {}).get("user"), domain=(user_info or {}).get("domain"))
+    if permission_map is None or not InstanceManage._has_topology_view_permission(instance, permission_map, user=user):
+        return _topo_search_lite_failure("permission_denied", "无权限查看该实例")
+    if model_id not in _APPLICATION_TOPOLOGY_MODELS:
+        return _topo_search_lite_failure("unsupported_model", "应用拓扑仅支持应用系统")
+
+    try:
+        topology = ApplicationResourceOverviewService.build_application_topology(
+            instance["_id"],
+            model_id,
+            depth=resolved_depth,
+            permission_map=permission_map,
+            user=user,
+        )
+    except BaseAppException:
+        return _topo_search_lite_failure("not_found", "实例不存在")
+
+    return {"result": True, "data": topology, "message": ""}
 
 
 @nats_client.register
@@ -2474,7 +2556,59 @@ def model_inst_count(*args, **kwargs):
 def license_cmdb_instance_count(*args, **kwargs):
     """许可管理专用：原生自动发现的收费模型实例数量。"""
     result = InstanceManage.license_instance_count()
-    return {"result": True, "message": "", "data": result}
+    labels = _license_cmdb_instance_labels(result, kwargs)
+    return {"result": True, "message": "", "data": result, "labels": labels}
+
+
+def _license_cmdb_instance_labels(result, kwargs):
+    """与模型列表相同：语言包 MODEL，否则存储的 model_name。名称失败不改变数量。"""
+    from apps.cmdb.language.service import SettingLanguage
+    from apps.core.logger import safe_exception_info, safe_log_value
+
+    if "language" in kwargs:
+        language = kwargs.get("language")
+    else:
+        language = (kwargs.get("user_info") or {}).get("locale")
+    try:
+        lan = SettingLanguage(language)
+    except Exception as exc:
+        logger.warning(
+            "event=license_cmdb_labels_skipped failed_stage=%s error_type=%s",
+            "load_language",
+            type(exc).__name__,
+            exc_info=safe_exception_info(exc),
+        )
+        return {}
+    labels = {}
+    for model_id in result:
+        try:
+            translated = lan.get_val("MODEL", model_id) or ""
+        except Exception as exc:
+            logger.warning(
+                "event=license_cmdb_label_skipped model_id=%s failed_stage=%s error_type=%s",
+                safe_log_value(model_id),
+                "load_translation",
+                type(exc).__name__,
+                exc_info=safe_exception_info(exc),
+            )
+            continue
+        if translated:
+            labels[model_id] = translated
+            continue
+        try:
+            stored = ModelManage.search_model_info(model_id).get("model_name") or ""
+        except Exception as exc:
+            logger.warning(
+                "event=license_cmdb_label_skipped model_id=%s failed_stage=%s error_type=%s",
+                safe_log_value(model_id),
+                "search_model_info",
+                type(exc).__name__,
+                exc_info=safe_exception_info(exc),
+            )
+            continue
+        if stored:
+            labels[model_id] = stored
+    return labels
 
 
 # === 云资源成本分析 Report Responder ===
@@ -3041,3 +3175,7 @@ def topo_search_expand_by_uuid(inst_uuid=None, parent_uuids=None, depth=2, user_
         return _topo_search_lite_failure("not_found", "实例不存在")
 
     return {"result": True, "data": result, "message": ""}
+
+
+# 注册机房大屏统计。apps.py 只导入本模块，这里再把处理函数挂上。
+from apps.cmdb.nats import room_screen_stats  # noqa: E402,F401

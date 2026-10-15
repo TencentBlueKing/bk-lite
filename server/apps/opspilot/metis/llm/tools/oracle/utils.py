@@ -4,9 +4,9 @@ import json
 
 import oracledb
 from langchain_core.runnables import RunnableConfig
-from loguru import logger
+from apps.core.logger import opspilot_logger as logger
 
-from apps.opspilot.metis.llm.tools.common.sql_guard import run_blocking
+from apps.opspilot.metis.llm.tools.common.sql_guard import log_db_failure, run_blocking
 from apps.opspilot.metis.llm.tools.common.sql_guard import validate_sql_safety as _shared_validate_sql_safety
 
 if not hasattr(oracledb, "Error"):
@@ -65,9 +65,9 @@ def execute_readonly_query(conn, query: str, params: tuple = None) -> list:
 
             columns = [col[0] for col in cursor.description]
             return [dict(zip(columns, row)) for row in cursor.fetchall()]
-        except oracledb.Error:
+        except oracledb.Error as e:
             # 不记录原始错误详情(可能含连接信息);由上层统一脱敏处理
-            logger.exception("Oracle查询执行失败")
+            log_db_failure("Oracle查询执行失败", e)
             raise
         finally:
             if cursor:

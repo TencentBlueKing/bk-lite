@@ -41,6 +41,7 @@ ALERT_FIELDS = {
     "content",
     "level",
     "level_id",
+    "level_color",
     "status",
     "source_name",
     "resource_id",
@@ -51,6 +52,7 @@ ALERT_FIELDS = {
     "first_event_time",
     "last_event_time",
     "operators",
+    "owners",
     "team",
 }
 NOTIFICATION_FIELDS = {
@@ -74,6 +76,13 @@ SUMMARY_FIELDS = {"total", "displayed", "omitted", "alerts"}
 PATH_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)*$")
 TEMPLATE_MARKER_PATTERN = re.compile(r"({{|}}|{%|%}|{#|#})")
 MARKDOWN_ESCAPE_PATTERN = re.compile(r"([\\`*_{}\[\]()#+\-.!|>~])")
+LEVEL_COLOR_TOKEN_PATTERN = re.compile(r"\{\{\s*alert\.level_color\s*\}\}")
+LEVEL_COLOR_PATTERN = re.compile(r"^#(?:[0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$")
+LEVEL_COLOR_FALLBACK = "#FFAD42"
+STYLE_ATTRIBUTE_PATTERN = re.compile(
+    r"""(?P<prefix>\bstyle\s*=\s*(?P<quote>["']))(?P<value>.*?)(?P=quote)""",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 class TemplateValidationError(ValueError):
@@ -221,14 +230,17 @@ def validate_source(source: str, *, channel_type: str, is_subject: bool = False,
 
     if channel_type == "email" and not is_subject:
         # 用合法 HTML 名称替换变量后再解析，避免 <{{ path }}> 被解析器当作
-        # 普通文本。每个变量必须完整地出现在文本节点中，不能位于标签、属性或注释。
+        # 普通文本。变量必须完整地出现在文本节点中。唯一例外是 style 里的
+        # {{ alert.level_color }}，它会被替换成安全色值后再做结构检查。
+        html_source = _neutralize_level_color_in_style(source)
+        html_matches = list(TOKEN_PATTERN.finditer(html_source))
         prefix = "bklitetemplatevariable"
-        decoded_source = html.unescape(source).lower()
+        decoded_source = html.unescape(html_source).lower()
         while prefix in decoded_source:
             prefix += "x"
-        markers = [f"{prefix}{index}end" for index in range(len(matches))]
+        markers = [f"{prefix}{index}end" for index in range(len(html_matches))]
         marker_iter = iter(markers)
-        marked_source = TOKEN_PATTERN.sub(lambda _match: next(marker_iter), source)
+        marked_source = TOKEN_PATTERN.sub(lambda _match: next(marker_iter), html_source)
         parser = _EmailHTMLValidator(re.compile(rf"{prefix}\d+end"))
         try:
             parser.feed(marked_source)
@@ -242,6 +254,24 @@ def validate_source(source: str, *, channel_type: str, is_subject: bool = False,
         if parser.text_markers != markers:
             raise TemplateValidationError("变量只能放在 HTML 文本节点中")
     return paths
+
+
+def normalize_level_color(value: Any) -> str:
+    """只接受 #RGB / #RRGGBB，其它值回落到默认琥珀色。"""
+    text = str(value or "").strip()
+    if LEVEL_COLOR_PATTERN.fullmatch(text):
+        return text.upper()
+    return LEVEL_COLOR_FALLBACK
+
+
+def _neutralize_level_color_in_style(source: str) -> str:
+    """校验前把 style 中的级别颜色变量换成固定色值，避免被当成任意属性变量。"""
+
+    def replace_attribute(match):
+        value = LEVEL_COLOR_TOKEN_PATTERN.sub(LEVEL_COLOR_FALLBACK, match.group("value"))
+        return f"{match.group('prefix')}{value}{match.group('quote')}"
+
+    return STYLE_ATTRIBUTE_PATTERN.sub(replace_attribute, source)
 
 
 def _bounded_json_value(value: Any, depth: int = 0):
@@ -376,6 +406,7 @@ def build_alert_context(
     *,
     generated_at: datetime | None = None,
     level_display_name: str | None = None,
+    level_color: str | None = None,
     notification_context: Mapping[str, Any] | None = None,
     events_context: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -394,6 +425,7 @@ def build_alert_context(
         "content": getattr(alert, "content", ""),
         "level": level_display_name or raw_level,
         "level_id": raw_level,
+        "level_color": normalize_level_color(level_color),
         "status": getattr(alert, "status", ""),
         "source_name": getattr(alert, "source_name", ""),
         "resource_id": getattr(alert, "resource_id", ""),
@@ -404,6 +436,7 @@ def build_alert_context(
         "first_event_time": getattr(alert, "first_event_time", None),
         "last_event_time": getattr(alert, "last_event_time", None),
         "operators": getattr(alert, "operator", None) or [],
+        "owners": getattr(alert, "owners", None) or [],
         "team": getattr(alert, "team", None) or [],
     }
     operation_notification = {

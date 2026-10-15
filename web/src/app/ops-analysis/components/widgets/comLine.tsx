@@ -574,10 +574,16 @@ const TrendLine: React.FC<TrendLineProps> = ({
         {isZoomed && (
           <button
             onClick={handleResetZoom}
-            className="absolute top-0 right-1 z-10 px-1.5 py-0.5 text-[10px] leading-tight rounded shadow-sm transition-colors cursor-pointer"
+            className="absolute z-10 cursor-pointer shadow-sm transition-colors"
             style={{
+              top: 0,
+              right: scaleScreenMetric(4, screenRenderContext),
+              padding: `${scaleScreenMetric(2, screenRenderContext)}px ${scaleScreenMetric(6, screenRenderContext)}px`,
+              fontSize: scaleScreenMetric(12, screenRenderContext),
+              lineHeight: 1.25,
+              borderRadius: scaleScreenMetric(4, screenRenderContext),
               backgroundColor: 'var(--color-bg-2)',
-              border: '1px solid var(--color-border-1)',
+              border: `${scaleScreenMetricFloat(1, screenRenderContext)}px solid var(--color-border-1)`,
               color: 'var(--color-text-2)',
             }}
             onMouseEnter={(event) => {

@@ -7,13 +7,14 @@ import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
 import UserAvatar from '@/components/user-avatar';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
-import Introduction from '@/components/introduction';
+import TopSection from '@/components/top-section';
+import SearchActionBar from '@/components/search-action-bar';
 import { STATUS_TEXT } from '@/app/alarm/constants/colors';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { AlertAssignListItem } from '@/app/alarm/types/settings';
 import { useSettingApi } from '@/app/alarm/api/settings';
-import { Button, Input, Switch, Tag, Tooltip } from 'antd';
-import { QuestionCircleOutlined } from '@ant-design/icons';
+import { Button, Switch, Tag, Tooltip } from 'antd';
+import { PlusOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { typeLabel, weekMap } from '@/app/alarm/constants/settings';
 import { useSettingsTable } from '@/app/alarm/hooks/useSettingsTable';
@@ -216,29 +217,30 @@ const AlertAssign: React.FC = () => {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col">
-      <Introduction
+      <TopSection
+        className="mb-4"
         title={t('settings.alertAssign')}
-        message={t('settings.assignStrategyMessage')}
+        content={t('settings.assignStrategyMessage')}
       />
-      <div className="oid-library-container flex min-h-0 flex-1 flex-col rounded-lg bg-[var(--color-bg-1)] p-4 shadow">
-        <div className="nav-box mb-[20px] flex shrink-0 justify-between">
-          <div className="flex items-center">
-            <Input
-              allowClear
-              value={searchKey}
-              placeholder={t('common.search')}
-              style={{ width: 250 }}
-              onChange={(e) => setSearchKey(e.target.value)}
-              onPressEnter={handleFilterChange}
-              onClear={handleFilterClear}
-            />
-          </div>
-          <PermissionWrapper requiredPermissions={['Add']}>
-            <Button type="primary" onClick={() => handleEdit('add')}>
-              {t('common.addNew')}
-            </Button>
-          </PermissionWrapper>
-        </div>
+      <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] p-4">
+        <SearchActionBar
+          searchProps={{
+            placeholder: t('common.search'),
+            allowClear: true,
+            value: searchKey,
+            onChange: (e) => setSearchKey(e.target.value),
+            onPressEnter: handleFilterChange,
+            onSearch: handleFilterChange,
+            onClear: handleFilterClear,
+          }}
+          actions={(
+            <PermissionWrapper requiredPermissions={['Add']}>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => handleEdit('add')}>
+                {t('common.new')}
+              </Button>
+            </PermissionWrapper>
+          )}
+        />
         <div className="min-h-0 flex-1 overflow-hidden">
           <CustomTable
             size="middle"

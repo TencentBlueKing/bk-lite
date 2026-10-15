@@ -1,9 +1,11 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Spin } from 'antd';
+import { Skeleton } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
 import PermissionWrapper from '@/components/permission';
+import ListPageHeader from '@/components/list-page-header';
+import CardGridSkeleton from '@/components/card-grid-skeleton';
 import { useSourceApi } from '@/app/alarm/api/integration';
 import { useTranslation } from '@/utils/i18n';
 import { SourceItem } from '@/app/alarm/types/integration';
@@ -53,29 +55,34 @@ const IntegrationPage: React.FC = () => {
   };
 
   return (
-    <div className="w-full flex-1 min-h-0">
-      <Spin spinning={loading}>
-        <div className="w-full p-[24px_28px_32px]">
-          {/* Page header */}
-          <div className="mb-5">
-            <h1 className="text-xl font-semibold text-[var(--color-text-1)] m-0">
-              {t('integration.overviewTitle')}
-            </h1>
-            <p className="text-[13px] text-[var(--color-text-3)] mt-1 mb-0">
-              {t('integration.overviewDesc')}
-            </p>
+    <div className="flex min-h-0 w-full flex-1 flex-col p-6">
+      <ListPageHeader
+        title={t('integration.overviewTitle')}
+        description={t('integration.overviewDesc')}
+      />
+      {loading ? (
+        <>
+          <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <div
+                key={index}
+                className="rounded-lg border border-[var(--color-border-1)] bg-[var(--color-bg)] p-3"
+              >
+                <Skeleton active title={{ width: '40%' }} paragraph={{ rows: 1 }} />
+              </div>
+            ))}
           </div>
-
-          {/* Summary stats */}
+          <CardGridSkeleton className="grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" />
+        </>
+      ) : (
+        <>
           {sources.length > 0 && <SummaryStats sources={sources} dailyStats={dailyStats} />}
-
-          {/* Card grid or empty state */}
-          {!sources.length && !loading ? (
+          {!sources.length ? (
             <div className="mt-[24vh]">
               <CompactEmptyState description={t('common.noData')} />
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {sources.map((src: SourceItem) => (
                 <PermissionWrapper key={src.id} requiredPermissions={['Detail']}>
                   <IntegrationCard src={src} />
@@ -83,8 +90,8 @@ const IntegrationPage: React.FC = () => {
               ))}
             </div>
           )}
-        </div>
-      </Spin>
+        </>
+      )}
     </div>
   );
 };

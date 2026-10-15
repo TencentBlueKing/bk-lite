@@ -134,7 +134,7 @@ const Variable = () => {
                   }}
                 >
                   <PlusOutlined />
-                  {t('common.add')}
+                  {t('common.new')}
                 </Button>
               </PermissionWrapper>
             )}

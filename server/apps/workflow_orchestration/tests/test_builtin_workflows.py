@@ -2,8 +2,10 @@ import pytest
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIRequestFactory
 
+from apps.system_mgmt.models import Channel, ChannelChoices
 from apps.workflow_orchestration.models import Workflow
 from apps.workflow_orchestration.services.builtin_workflows import (
+    BUILTIN_EXECUTOR_RECIPIENT,
     BUILTIN_LINUX_KEY,
     BUILTIN_WINDOWS_KEY,
     builtin_engine_name,
@@ -30,8 +32,33 @@ def builtin_user(db):
     )
 
 
-@pytest.mark.django_db
-def test_ensure_builtin_health_workflows_are_idempotent(builtin_user, mocker):
+@pytest.fixture
+def builtin_channels(db):
+    nats = Channel.objects.create(
+        name="告警中心",
+        channel_type=ChannelChoices.NATS,
+        config={"method_name": "receive_alert_events"},
+        description="",
+        team=[1],
+    )
+    later = Channel.objects.create(
+        name="zzz邮箱",
+        channel_type=ChannelChoices.EMAIL,
+        config={"smtp_server": "127.0.0.1", "port": 1025},
+        description="",
+        team=[1],
+    )
+    first = Channel.objects.create(
+        name="aaa邮箱",
+        channel_type=ChannelChoices.EMAIL,
+        config={"smtp_server": "127.0.0.1", "port": 1025},
+        description="",
+        team=[1],
+    )
+    return {"nats": nats, "email_first": first, "email_later": later}
+
+
+def _patch_builtin_deps(mocker):
     mocker.patch("apps.workflow_orchestration.services.builtin_workflows.ConductorClient").return_value
     mocker.patch(
         "apps.workflow_orchestration.services.builtin_workflows.seed_builtin_health_template_snapshot",
@@ -46,6 +73,11 @@ def test_ensure_builtin_health_workflows_are_idempotent(builtin_user, mocker):
     mocker.patch("apps.workflow_orchestration.services.builtin_workflows.ensure_platform_atom")
     mocker.patch("apps.workflow_orchestration.services.builtin_workflows.sync_published_triggers")
 
+
+@pytest.mark.django_db
+def test_ensure_builtin_health_workflows_are_idempotent(builtin_user, builtin_channels, mocker):
+    _patch_builtin_deps(mocker)
+
     first = ensure_builtin_health_workflows(team_id=1, username=builtin_user.username, domain=builtin_user.domain)
     second = ensure_builtin_health_workflows(team_id=1, username=builtin_user.username, domain=builtin_user.domain)
 
@@ -57,23 +89,47 @@ def test_ensure_builtin_health_workflows_are_idempotent(builtin_user, mocker):
     assert Workflow.objects.filter(is_builtin=True, team=[1]).count() == 2
     assert {item.pk for item in second} == {item.pk for item in first}
     assert all(not item.has_draft and item.enabled and item.current_version == 1 for item in second)
+    notify = first[0].definition["tasks"][2]["inputParameters"]
+    assert notify["channel_id"] == builtin_channels["email_first"].id
+    assert notify["recipients"] == [BUILTIN_EXECUTOR_RECIPIENT]
 
 
 @pytest.mark.django_db
-def test_builtin_workflow_rejects_delete_draft_and_publish(builtin_user, mocker):
-    mocker.patch("apps.workflow_orchestration.services.builtin_workflows.ConductorClient").return_value
-    mocker.patch(
-        "apps.workflow_orchestration.services.builtin_workflows.seed_builtin_health_template_snapshot",
-        side_effect=lambda fmt, team_id: {
-            "object_key": f"workflow-orchestration/templates/demo/team-{team_id}/health.{fmt}",
-            "format": fmt,
-            "sha256": "b" * 64,
-            "size": 64,
-            "filename_prefix": f"health-{fmt}",
-        },
+def test_ensure_builtin_skips_nats_preferred_channel(builtin_user, builtin_channels, mocker):
+    _patch_builtin_deps(mocker)
+
+    workflows = ensure_builtin_health_workflows(
+        team_id=1,
+        username=builtin_user.username,
+        domain=builtin_user.domain,
+        channel_id=builtin_channels["nats"].id,
     )
-    mocker.patch("apps.workflow_orchestration.services.builtin_workflows.ensure_platform_atom")
-    mocker.patch("apps.workflow_orchestration.services.builtin_workflows.sync_published_triggers")
+
+    assert workflows[0].definition["tasks"][2]["inputParameters"]["channel_id"] == builtin_channels["email_first"].id
+
+
+@pytest.mark.django_db
+def test_ensure_builtin_allows_empty_channel_when_no_email(builtin_user, mocker):
+    _patch_builtin_deps(mocker)
+    Channel.objects.create(
+        name="告警中心",
+        channel_type=ChannelChoices.NATS,
+        config={"method_name": "receive_alert_events"},
+        description="",
+        team=[1],
+    )
+
+    workflows = ensure_builtin_health_workflows(team_id=1, username=builtin_user.username, domain=builtin_user.domain)
+
+    assert len(workflows) == 2
+    notify = workflows[0].definition["tasks"][2]["inputParameters"]
+    assert "channel_id" not in notify
+    assert notify["recipients"] == [BUILTIN_EXECUTOR_RECIPIENT]
+
+
+@pytest.mark.django_db
+def test_builtin_workflow_rejects_delete_draft_and_publish(builtin_user, builtin_channels, mocker):
+    _patch_builtin_deps(mocker)
     workflow = ensure_builtin_health_workflows(team_id=1, username=builtin_user.username)[0]
     factory = APIRequestFactory()
 

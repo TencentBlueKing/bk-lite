@@ -88,6 +88,62 @@ describe('分派策略通知渠道', () => {
     expect(screen.getAllByText('settings.notificationTemplate.sceneReminder')).toHaveLength(2);
     expect(screen.getAllByText('settings.notificationTemplate.sceneEscalation')).toHaveLength(2);
     expect(screen.getAllByText('settings.notificationTemplate.sceneRecovery')).toHaveLength(2);
+    expect(screen.getAllByText('settings.notificationTemplate.sceneDefault')[0].closest('label')?.className)
+      .toContain('ant-form-item-required');
+  });
+
+  it('已选渠道的四个场景模板未填写时不能提交', async () => {
+    api.getChannelList.mockResolvedValue([{ id: 1, name: '运维邮件', channel_type: 'email' }]);
+    api.getNotificationTemplateOptions.mockResolvedValue([{ id: 10, name: '生产告警' }]);
+    api.createAssignment.mockResolvedValue({});
+    render(<OperateModal open onClose={vi.fn()} />);
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'settings.assignName' }), {
+      target: { value: '夜间值班' },
+    });
+    await waitFor(() => {
+      expect((screen.getByRole('checkbox', { name: '运维邮件' }) as HTMLInputElement).checked).toBe(true);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'settings.assignStrategy.submit' }));
+
+    expect(await screen.findAllByText('common.selectTip')).toHaveLength(4);
+    expect(api.createAssignment).not.toHaveBeenCalled();
+  });
+
+  it('四个场景都选择模板后按渠道保存绑定', async () => {
+    api.getChannelList.mockResolvedValue([{ id: 1, name: '运维邮件', channel_type: 'email' }]);
+    api.getNotificationTemplateOptions.mockResolvedValue([{ id: 10, name: '生产告警' }]);
+    api.createAssignment.mockResolvedValue({});
+    render(<OperateModal open onClose={vi.fn()} />);
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'settings.assignName' }), {
+      target: { value: '夜间值班' },
+    });
+    await waitFor(() => {
+      expect(screen.getAllByRole('combobox')).toHaveLength(4);
+    });
+    for (let index = 0; index < 4; index += 1) {
+      fireEvent.mouseDown(screen.getAllByRole('combobox')[index]);
+      const option = await waitFor(() => {
+        const dropdowns = document.querySelectorAll('.ant-select-dropdown:not(.ant-select-dropdown-hidden)');
+        const node = dropdowns[dropdowns.length - 1]?.querySelector('.ant-select-item-option');
+        expect(node).toBeTruthy();
+        return node as Element;
+      });
+      fireEvent.click(option);
+      await waitFor(() => {
+        expect(document.querySelectorAll('.ant-select-selection-item')).toHaveLength(index + 1);
+      });
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'settings.assignStrategy.submit' }));
+
+    await waitFor(() => {
+      expect(api.createAssignment).toHaveBeenCalledWith(expect.objectContaining({
+        notify_channels: [expect.objectContaining({
+          notification_templates: { default: 10, reminder: 10, escalation: 10, recovery: 10 },
+        })],
+      }));
+    });
   });
 
   it('重新打开时查询失败不会保留上一次的渠道选项', async () => {

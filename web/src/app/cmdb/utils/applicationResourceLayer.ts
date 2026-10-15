@@ -2,7 +2,16 @@ import type {
   ApplicationResourceNode,
   ApplicationResourceTopologyData,
 } from '@/app/cmdb/types/applicationResourceOverview';
-import { type LayerKey } from './layerLayout';
+
+export const LAYER_KEYS = [
+  'root',
+  'service',
+  'host',
+  'appService',
+  'infrastructure',
+] as const;
+
+export type LayerKey = (typeof LAYER_KEYS)[number];
 
 export const MODEL_APP_TOPO_LAYERS = [
   'system',
@@ -26,7 +35,7 @@ export function isModelAppTopoLayer(value: unknown): value is ModelAppTopoLayer 
 export function resolveLayer(
   topology: ApplicationResourceTopologyData,
   node: ApplicationResourceNode,
-  rootNode: ApplicationResourceNode
+  rootNode: ApplicationResourceNode,
 ): LayerKey | null {
   if (node.id === rootNode.id) return 'root';
   if (node.app_topo_layer === 'none') return null;
@@ -54,4 +63,12 @@ export function resolveLayer(
     return 'infrastructure';
   }
   return null;
+}
+
+/** 系统层根节点取跳数最近的应用系统，不是当前打开的实例。 */
+export function resolveRootNode(topology: ApplicationResourceTopologyData): ApplicationResourceNode {
+  const systemNode = [...(topology.nodes || [])]
+    .filter((node) => node.model_id === 'system')
+    .sort((left, right) => left.hop - right.hop || left.name.localeCompare(right.name))[0];
+  return systemNode || topology.center;
 }

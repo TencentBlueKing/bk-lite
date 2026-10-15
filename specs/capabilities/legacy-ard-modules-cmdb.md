@@ -65,7 +65,7 @@
 | `GET instance/room_layout/<model_id>/<inst_id>` | `InstanceViewSet.room_layout` | 机房俯视平面图：返回该机房下机柜的 row/col/类型/U 占用率供前端布局渲染 |
 | `GET instance/rack_layout/<model_id>/<inst_id>` | `InstanceViewSet.rack_layout` | 机柜正视 U 图：返回机柜总 U 数及其 contains 设备的 U 位排布 |
 | `POST instance/ipam_reconcile` | `InstanceViewSet.ipam_reconcile` | 手动触发一次 IPAM 与 CMDB 自动对账，内部调用 `services/ipam_reconcile.run_reconciliation` |
-| 3D 机房大屏场景取数（**非 ViewSet REST 数据源**）【已实现/已存在】：运营分析 3D 机房是 Screen-only 自取数场景组件，经 `scene_widgets/room3d` 包装 CMDB NATS `get_room_list` / `get_room3d_layout`（`nats/nats.py`），不再注册用户可选内置数据源 |
+| 3D 机房大屏场景取数（**非 ViewSet REST 数据源**）【已实现/已存在】：运营分析 3D 机房是 Screen-only 自取数场景组件，经 `scene_widgets/room3d` 包装 CMDB NATS `get_room_list` / `get_room3d_layout`（`nats/nats.py`）。`get_room3d_layout` 不注册为出图数据源；`get_room_list` 注册为只出选项的内置数据源「CMDB 机房列表（选项）」 |
 
 **instance / collect 路由组增量端点**【已实现/已存在】：
 | 端点 | 方法 | 说明 |
@@ -185,6 +185,7 @@
 - `[cmdb#20260907-001]` 新增 NATS `network_topology_among_uuids`：入参 `inst_uuids` + `user_info`，按模型构建 permission_map，调用 `InstanceManage.network_topology_among_uuids`。无权 / 非网络设备 / 非法 UUID / 超上限 / 闭集不完整一律 `{result: False, data: {nodes:[], links:[]}}`，不返回空成功图。RPC 包装：`apps.rpc.cmdb.CMDB.network_topology_among_uuids`。消费方为运营分析网络状态拓扑场景。
 
 ## 2026-09-21 Code-ARD 校准
+- `[cmdb#20261012-001]` NATS `get_room_list` 重新作为运营分析内置选项源「CMDB 机房列表（选项）」暴露，`valueField=inst_uuid`、`labelField=inst_name`。`get_room3d_layout` 仍不作为用户可选出图数据源。NATS handler 本身不变。
 - `[cmdb#20260921-002]` `get_room3d_layout` payload 增 `rack_state` / `rack_state_name`：依据 `rack` 模型 `datacenter_state` 枚举属性将 id 解析为可读名称（启用/停用），无值时不带 `rack_state_name`。消费方为运营分析 3D 机房机柜顶显示。
 - `[cmdb#20260921-001]` 运营分析 3D 机房改为 Screen-only 自取数场景组件，经 `scene_widgets/room3d` 包装 NATS `get_room_list` / `get_room3d_layout`；用户侧内置数据源「CMDB 3D机房布局」「CMDB 机房列表」下架。NATS handler 本身不变。
 

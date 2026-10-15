@@ -10,6 +10,7 @@ from django.utils.dateparse import parse_datetime
 from apps.core.logger import workflow_orchestration_logger as logger
 from apps.workflow_orchestration.models import WorkflowExecution, WorkflowInteraction
 from apps.workflow_orchestration.services.conductor import ConductorClient, ConductorConflict
+from apps.workflow_orchestration.services.executions import TERMINAL_STATUSES
 
 
 class InteractionConflict(ValueError):
@@ -153,6 +154,8 @@ def decide_interaction(
         if interaction.interaction_type != WorkflowInteraction.Type.APPROVAL:
             raise InteractionConflict("该人工处理项不是审批")
         execution = interaction.execution
+        if execution.status in TERMINAL_STATUSES:
+            raise InteractionConflict("当前执行状态不支持该操作")
         if not execution.conductor_workflow_id:
             raise InteractionConflict("执行记录缺少 Conductor Workflow ID")
 

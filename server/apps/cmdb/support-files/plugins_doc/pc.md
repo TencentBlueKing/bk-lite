@@ -165,8 +165,8 @@ cd agents/stargazer
 | brand | 设备厂商 |
 | device_model | 设备型号 |
 | cpu | CPU 型号 |
-| men | 物理内存总容量（字节） |
-| disk | 本地磁盘总容量（字节） |
+| men | 物理内存总容量（GB） |
+| disk | 本地磁盘总容量（GB） |
 | logged_in_user | 当前登录用户 |
 | last_collect_time | 最新快照的数据上报时间 |
 

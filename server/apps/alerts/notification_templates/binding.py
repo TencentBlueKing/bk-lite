@@ -142,15 +142,19 @@ def build_runtime_alert_context(alert, receivers, scene, notification_context=No
         raw_level = int(getattr(alert, "level", ""))
     except (TypeError, ValueError):
         level_display_name = str(getattr(alert, "level", "") or "")
+        level_color = None
     else:
-        level_display_name = Level.objects.filter(level_type=LevelType.ALERT, level_id=raw_level).values_list(
-            "level_display_name", flat=True
-        ).first() or str(raw_level)
+        level_row = Level.objects.filter(level_type=LevelType.ALERT, level_id=raw_level).values_list("level_display_name", "color").first()
+        if level_row:
+            level_display_name, level_color = level_row
+        else:
+            level_display_name, level_color = str(raw_level), None
     return build_alert_context(
         alert,
         receivers,
         scene,
         level_display_name=level_display_name,
+        level_color=level_color,
         notification_context=notification_context,
         events_context=events_context,
     )
