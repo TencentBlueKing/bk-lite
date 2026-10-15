@@ -21,6 +21,7 @@ import SkillPackageParamsModal, {
   countFilledParams,
   listMissingRequiredParams,
   mergeDeclaredParams,
+  packageHasDeclaredParams,
   resolvePackageVariables,
   withResolvedVariables,
 } from '@/app/opspilot/components/skill/skillPackageParamsModal';
@@ -471,10 +472,9 @@ const SkillSettingsPage: React.FC = () => {
             const missing = listMissingRequiredParams(resolvedAsset, params);
             const filled = countFilledParams(params);
             const declaredCount = resolvePackageVariables(resolvedAsset).length;
+            const showParams = packageHasDeclaredParams(resolvedAsset);
             const hasIssue = missing.length > 0;
-            const hint = declaredCount > 0
-              ? t('skill.skillPackageParams.buttonHint', '技能包声明 {declared} 项，已配置 {filled} 项', { declared: declaredCount, filled })
-              : t('skill.skillPackageParams.buttonHintCustom', '自定义变量 {filled} 项', { filled });
+            const hint = t('skill.skillPackageParams.buttonHint', '技能包声明 {declared} 项，已配置 {filled} 项', { declared: declaredCount, filled });
             return (
               <div
                 key={assetKey}
@@ -494,18 +494,20 @@ const SkillSettingsPage: React.FC = () => {
                     </span>
                   </div>
                   <div className="ml-2 flex shrink-0 items-center gap-1">
-                    <Button
-                      type={hasIssue ? 'primary' : 'link'}
-                      danger={hasIssue}
-                      size="small"
-                      className="h-6 px-1 text-[11px]"
-                      title={hasIssue ? t('skill.skillPackageParams.missingRequired', '缺少必填变量：{names}', { names: missing.join('、') }) : hint}
-                      onClick={() => setEditingSkillPackage(resolvedAsset)}
-                    >
-                      {hasIssue
-                        ? t('skill.skillPackageParams.buttonMissing', '缺 {count} 项', { count: missing.length })
-                        : t('skill.skillPackageParams.button', '变量 {count}', { count: filled })}
-                    </Button>
+                    {showParams && (
+                      <Button
+                        type={hasIssue ? 'primary' : 'link'}
+                        danger={hasIssue}
+                        size="small"
+                        className="h-6 px-1 text-[11px]"
+                        title={hasIssue ? t('skill.skillPackageParams.missingRequired', '缺少必填变量：{names}', { names: missing.join('、') }) : hint}
+                        onClick={() => setEditingSkillPackage(resolvedAsset)}
+                      >
+                        {hasIssue
+                          ? t('skill.skillPackageParams.buttonMissing', '缺 {count} 项', { count: missing.length })
+                          : t('skill.skillPackageParams.button', '变量 {count}', { count: filled })}
+                      </Button>
+                    )}
                     <DeleteOutlined
                       className="cursor-pointer p-1 text-xs text-[var(--color-text-4)] transition-colors hover:text-red-500"
                       onClick={() => handleRemoveSkillAsset(asset)}
