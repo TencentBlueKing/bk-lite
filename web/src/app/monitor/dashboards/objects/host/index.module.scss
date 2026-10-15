@@ -36,11 +36,11 @@
   }
 }
 
-// 页头白卡只含面包屑、标题和主机层，层内 padding 由各层自己承担。
+// 页头白卡与下方内容共用这一条左右边距。子块都是 100% 宽，不再各自再缩一截。
 .shell {
-  --host-dashboard-gutter-x: 20px;
-  padding-left: 0;
-  padding-right: 0;
+  --page-gutter: 20px;
+  padding-left: var(--page-gutter);
+  padding-right: var(--page-gutter);
 }
 
 .pageIntro {
@@ -155,8 +155,7 @@
 }
 
 .unifiedShell {
-  margin-left: var(--host-dashboard-gutter-x);
-  margin-right: var(--host-dashboard-gutter-x);
+  width: 100%;
   margin-bottom: 16px;
   box-sizing: border-box;
   background: var(--color-bg);
@@ -175,13 +174,13 @@
 }
 
 .unifiedBelow {
-  margin-left: var(--host-dashboard-gutter-x);
-  margin-right: var(--host-dashboard-gutter-x);
+  width: 100%;
   min-width: 0;
+  box-sizing: border-box;
 }
 
 .unifiedBody {
-  padding: 14px 16px 16px;
+  padding: 14px 0 16px;
 }
 
 .unifiedCategoryBody {
@@ -190,7 +189,7 @@
 
 @media (max-width: 768px) {
   .shell {
-    --host-dashboard-gutter-x: 12px;
+    --page-gutter: 12px;
   }
 
   .pageTitleRowPill .titleControlsRow {
