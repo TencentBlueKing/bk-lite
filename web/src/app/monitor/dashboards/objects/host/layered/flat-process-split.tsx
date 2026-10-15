@@ -21,6 +21,42 @@ const numberOrNull = (value: number | null | undefined) => (
   value == null || !Number.isFinite(value) ? null : value
 );
 
+const USAGE_WARN = 80;
+const USAGE_CRIT = 90;
+
+/** 与磁盘使用率条同档：<80 绿，80–90 黄，≥90 红。只染数字，不铺底。 */
+const usagePercentClass = (value: number) => {
+  if (value >= USAGE_CRIT) return 'font-medium text-[var(--color-fail)]';
+  if (value >= USAGE_WARN) return 'font-medium text-[var(--color-warning)]';
+  return 'font-medium text-[var(--color-success)]';
+};
+
+const percentColumn = (key: string, title: string): LayeredColumn => ({
+  key,
+  title,
+  unit: 'percent',
+  emptyDash: true,
+  render: (row) => {
+    const value = numberOrNull(row.values[key]);
+    if (value == null) return <span className="text-[var(--color-text-3)]">—</span>;
+    return <span className={usagePercentClass(value)}>{formatPercent(value)}</span>;
+  }
+});
+
+const alivePill = (label: string, tone: 'up' | 'down' | 'unknown') => (
+  <span
+    className={`inline-flex h-[22px] items-center rounded px-[7px] text-[12px] font-medium leading-none ${
+      tone === 'up'
+        ? 'bg-[color-mix(in_srgb,var(--color-success)_16%,var(--color-bg))] text-[var(--color-success)]'
+        : tone === 'down'
+          ? 'bg-[color-mix(in_srgb,var(--color-fail)_14%,var(--color-bg))] text-[var(--color-fail)]'
+          : 'bg-[var(--color-fill-2)] text-[var(--color-text-3)]'
+    }`}
+  >
+    {label}
+  </span>
+);
+
 export default function FlatProcessSplit({
   rows,
   loading,
@@ -63,8 +99,8 @@ export default function FlatProcessSplit({
     const next: LayeredColumn[] = [
       { key: 'process_name', title: '进程名', labelKey: 'process_name' }
     ];
-    if (present('process_cpu_usage')) next.push({ key: 'process_cpu_usage', title: 'CPU', unit: 'percent', emptyDash: true });
-    if (present('process_mem_usage')) next.push({ key: 'process_mem_usage', title: '内存', unit: 'percent', emptyDash: true });
+    if (present('process_cpu_usage')) next.push(percentColumn('process_cpu_usage', 'CPU'));
+    if (present('process_mem_usage')) next.push(percentColumn('process_mem_usage', '内存'));
     if (present('process_memory_rss')) next.push({ key: 'process_memory_rss', title: 'RSS', unit: 'bytes', emptyDash: true });
     if (present('process_num_threads')) next.push({ key: 'process_num_threads', title: '线程', unit: 'counts', emptyDash: true });
     if (present('process_num_fds')) next.push({ key: 'process_num_fds', title: '句柄', unit: 'counts', emptyDash: true });
@@ -79,8 +115,8 @@ export default function FlatProcessSplit({
         },
         render: (row) => {
           const value = numberOrNull(row.values.process_alive);
-          if (value == null) return '—';
-          return value >= 1 ? '是' : '否';
+          if (value == null) return alivePill('—', 'unknown');
+          return value >= 1 ? alivePill('是', 'up') : alivePill('否', 'down');
         }
       });
     }
