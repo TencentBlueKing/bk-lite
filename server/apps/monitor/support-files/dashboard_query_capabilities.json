@@ -431,6 +431,13 @@
       "template": "sum(irate(prometheus_remote_write_container_cpu_usage_seconds_total{instance_type=\"k3s\", __$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:0e840ab3",
+      "object_names": [
+        "Wanopt"
+      ],
+      "template": "count({instance_type='wanopt', __$labels__}) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:0f02a9f8",
       "object_names": [
         "Loadbalance"
@@ -552,7 +559,6 @@
     {
       "id": "dashboard:v1:13365ed8",
       "object_names": [
-        "Host",
         "Process"
       ],
       "template": "sum(procstat_memory_usage{instance_type=\"process\", __$labels__}) by (instance_id, process_name)"
@@ -563,13 +569,6 @@
         "Mysql"
       ],
       "template": "max by (instance_id) (mysql_variables_super_read_only{__$labels__})"
-    },
-    {
-      "id": "dashboard:v1:13b556c4",
-      "object_names": [
-        "Loadbalance"
-      ],
-      "template": "avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)"
     },
     {
       "id": "dashboard:v1:13d2b6bb",
@@ -753,6 +752,7 @@
         "Switch",
         "Transmission",
         "VoiceGateway",
+        "Wanopt",
         "Wireless"
       ],
       "template": "(sum(rate(interface_ifHCOutOctets{__$labels__}[__$window__])) by (instance_id)) or (sum(rate(interface_ifOutOctets{__$labels__}[__$window__])) by (instance_id))"
@@ -1028,6 +1028,7 @@
         "Switch",
         "Transmission",
         "VoiceGateway",
+        "Wanopt",
         "Wireless"
       ],
       "template": "(sum(rate(interface_ifHCInOctets{__$labels__}[__$window__])) by (instance_id)) or (sum(rate(interface_ifInOctets{__$labels__}[__$window__])) by (instance_id))"
@@ -1495,6 +1496,13 @@
       "template": "rate(mysql_bytes_received{__$labels__}[__$window__])"
     },
     {
+      "id": "dashboard:v1:350a600d",
+      "object_names": [
+        "Host"
+      ],
+      "template": "clamp_max(count(procstat_cpu_usage{instance_type=\"process\", __$labels__}) by (instance_id, process_name, pattern), 1)"
+    },
+    {
       "id": "dashboard:v1:3517bce0",
       "object_names": [
         "InfluxDB"
@@ -1849,6 +1857,13 @@
       "template": "sum without (db) (rate(postgresql_deadlocks{__$labels__}[__$window__]))"
     },
     {
+      "id": "dashboard:v1:40f715fe",
+      "object_names": [
+        "Wanopt"
+      ],
+      "template": "(sum(snmp_device_memory_used{__$labels__}) by (instance_id) / sum(snmp_device_memory_total{__$labels__}) by (instance_id) * 100) or avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)"
+    },
+    {
       "id": "dashboard:v1:4107353d",
       "object_names": [
         "Firewall"
@@ -2178,6 +2193,7 @@
       "id": "dashboard:v1:4d34db2f",
       "object_names": [
         "Firewall",
+        "Loadbalance",
         "Router"
       ],
       "template": "avg(device_cpu_usage{__$labels__}) by (instance_id) or avg(snmp_device_cpu_usage{__$labels__}) by (instance_id)"
@@ -2330,13 +2346,6 @@
       "template": "avg(label_value(netflow_in_bytes{instance_type='switch', collect_type='netflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)"
     },
     {
-      "id": "dashboard:v1:525575db",
-      "object_names": [
-        "Loadbalance"
-      ],
-      "template": "sum(device_memory_used{__$labels__}) by (instance_id)"
-    },
-    {
       "id": "dashboard:v1:5265677e",
       "object_names": [
         "Consul"
@@ -2433,6 +2442,13 @@
         "VLLM"
       ],
       "template": "histogram_quantile(0.95, sum by (instance_id, le) (label_replace(rate({__name__=~\"vllm:request_prefill_time_seconds_[0-9.]+\", __$labels__}[5m]) keep_metric_names, \"le\", \"$1\", \"__name__\", \"vllm:request_prefill_time_seconds_(.+)\") or label_replace(rate({__name__=\"vllm:request_prefill_time_seconds_+Inf\", __$labels__}[5m]) keep_metric_names, \"le\", \"+Inf\", \"__name__\", \".*\")))"
+    },
+    {
+      "id": "dashboard:v1:55f055e6",
+      "object_names": [
+        "Firewall"
+      ],
+      "template": "avg(device_memory_usage{__$labels__}) by (instance_id) or avg(snmp_device_memory_usage{__$labels__}) by (instance_id) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or ((sum(snmp_device_memory_total{__$labels__}) by (instance_id) - sum(snmp_device_memory_free{__$labels__}) by (instance_id)) / sum(snmp_device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100)"
     },
     {
       "id": "dashboard:v1:566ff64c",
@@ -2731,7 +2747,6 @@
     {
       "id": "dashboard:v1:619c6393",
       "object_names": [
-        "Host",
         "Process"
       ],
       "template": "sum(procstat_num_threads{instance_type=\"process\", __$labels__}) by (instance_id, process_name)"
@@ -2905,6 +2920,13 @@
         "Redis"
       ],
       "template": "redis_used_memory{__$labels__}"
+    },
+    {
+      "id": "dashboard:v1:688b0f57",
+      "object_names": [
+        "Loadbalance"
+      ],
+      "template": "lb_current_connections{__$labels__} or snmp_lb_current_connections{__$labels__}"
     },
     {
       "id": "dashboard:v1:695edc12",
@@ -3195,6 +3217,13 @@
       "template": "clamp_max(100 * (docker_n_containers_stopped{__$labels__} / clamp_min(docker_n_containers{__$labels__}, 1)), 100)"
     },
     {
+      "id": "dashboard:v1:7561630d",
+      "object_names": [
+        "Host"
+      ],
+      "template": "sum(procstat_cpu_usage{instance_type=\"process\", __$labels__}) by (instance_id, process_name, pattern)"
+    },
+    {
       "id": "dashboard:v1:76ff4618",
       "object_names": [
         "Exchange"
@@ -3274,7 +3303,6 @@
     {
       "id": "dashboard:v1:7a11ebe7",
       "object_names": [
-        "Host",
         "Process"
       ],
       "template": "clamp_max(count(procstat_cpu_usage{instance_type=\"process\", __$labels__}) by (instance_id, process_name), 1)"
@@ -3285,6 +3313,13 @@
         "MSSQL"
       ],
       "template": "sum by (instance_id) (sqlserver_volume_space_total_space_bytes{__$labels__})"
+    },
+    {
+      "id": "dashboard:v1:7a617adb",
+      "object_names": [
+        "Wanopt"
+      ],
+      "template": "avg(snmp_device_cpu_usage{__$labels__}) by (instance_id) or avg(device_cpu_usage{__$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:7a69506b",
@@ -3329,6 +3364,13 @@
       "template": "win_exchange_workload_ActiveTasks{instance_type=\"exchange\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:7c7d063d",
+      "object_names": [
+        "Host"
+      ],
+      "template": "sum(procstat_memory_rss{instance_type=\"process\", __$labels__}) by (instance_id, process_name, pattern)"
+    },
+    {
       "id": "dashboard:v1:7cbd0452",
       "object_names": [
         "Node"
@@ -3348,13 +3390,6 @@
         "Haproxy"
       ],
       "template": "sum by (instance_id) (haproxy_req_rate{svname=\"FRONTEND\",__$labels__})"
-    },
-    {
-      "id": "dashboard:v1:7d59476a",
-      "object_names": [
-        "Firewall"
-      ],
-      "template": "avg(device_memory_usage{__$labels__}) by (instance_id) or avg(snmp_device_memory_usage{__$labels__}) by (instance_id) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100)"
     },
     {
       "id": "dashboard:v1:7d6fd449",
@@ -3390,6 +3425,13 @@
         "Host"
       ],
       "template": "label_replace(clamp_max(clamp_min(100 - win_logicaldisk_idle_percent{instance_type=\"os\", instance=~\"[A-Z]:\", __$labels__}, 0), 100), \"name\", \"$1\", \"instance\", \"(.*)\") or ((rate(diskio_io_time{instance_type=\"os\", __$labels__}[__$window__]) / 10) unless on(instance_id, name) label_replace(win_logicaldisk_idle_percent{instance_type=\"os\", instance=~\"[A-Z]:\", __$labels__}, \"name\", \"$1\", \"instance\", \"(.*)\")) or (rate(diskio_io_time_ms_gauge{instance_type=\"os\", __$labels__}[__$window__]) / 10) or diskio_io_util{instance_type=\"os\", __$labels__} or diskio_io_util_gauge{instance_type=\"os\", __$labels__} or diskio_io_util_gauge_value{instance_type=\"os\", config_type=\"windows_wmi\", __$labels__} or disk_tm_act_gauge{instance_type=\"os\", config_type=~\"host_(aix|freebsd|hpux|solaris)_remote\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:7fd5909d",
+      "object_names": [
+        "Loadbalance"
+      ],
+      "template": "sum(device_memory_used{__$labels__}) by (instance_id) or sum(snmp_device_memory_used{__$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:7fe1cae9",
@@ -3487,6 +3529,7 @@
         "Switch",
         "Transmission",
         "VoiceGateway",
+        "Wanopt",
         "Wireless"
       ],
       "template": "sum(snmp_uptime{__$labels__} / 100) by (instance_id)"
@@ -3497,6 +3540,13 @@
         "K3SNode"
       ],
       "template": "rate(diskio_writes{instance_type=\"k3s\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:81a4d1cd",
+      "object_names": [
+        "Host"
+      ],
+      "template": "sum(procstat_num_threads{instance_type=\"process\", __$labels__}) by (instance_id, process_name, pattern)"
     },
     {
       "id": "dashboard:v1:81ca8185",
@@ -3858,13 +3908,6 @@
       "template": "count({instance_type='docker', collect_type='docker', __$labels__}) by (instance_id)"
     },
     {
-      "id": "dashboard:v1:91755901",
-      "object_names": [
-        "Loadbalance"
-      ],
-      "template": "avg(device_cpu_usage{__$labels__}) by (instance_id)"
-    },
-    {
       "id": "dashboard:v1:91ab6422",
       "object_names": [
         "Exchange"
@@ -3891,6 +3934,13 @@
         "Active Directory"
       ],
       "template": "win_ad_LDAP_Successful_Binds_persec{instance_type=\"active_directory\", __$labels__}"
+    },
+    {
+      "id": "dashboard:v1:91e6f69b",
+      "object_names": [
+        "Host"
+      ],
+      "template": "sum(procstat_num_fds{instance_type=\"process\", __$labels__}) by (instance_id, process_name, pattern)"
     },
     {
       "id": "dashboard:v1:92b77ed7",
@@ -4115,6 +4165,13 @@
         "Node"
       ],
       "template": "rate(prometheus_remote_write_net_bytes_recv{instance_type=\"k8s\", __$labels__}[__$window__])"
+    },
+    {
+      "id": "dashboard:v1:9a3b0c2b",
+      "object_names": [
+        "Loadbalance"
+      ],
+      "template": "avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(snmp_device_memory_used{__$labels__}) by (instance_id) / sum(snmp_device_memory_total{__$labels__}) by (instance_id) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)"
     },
     {
       "id": "dashboard:v1:9aae68cb",
@@ -4743,6 +4800,13 @@
       "template": "sqlserver_performance_value{counter=\"Buffer cache hit ratio\", __$labels__}"
     },
     {
+      "id": "dashboard:v1:b67a2cb0",
+      "object_names": [
+        "Host"
+      ],
+      "template": "sum(procstat_memory_usage{instance_type=\"process\", __$labels__}) by (instance_id, process_name, pattern)"
+    },
+    {
       "id": "dashboard:v1:b67b981e",
       "object_names": [
         "K3SCluster"
@@ -4838,7 +4902,6 @@
     {
       "id": "dashboard:v1:b8d124d3",
       "object_names": [
-        "Host",
         "Process"
       ],
       "template": "sum(procstat_cpu_usage{instance_type=\"process\", __$labels__}) by (instance_id, process_name)"
@@ -5280,6 +5343,13 @@
       "template": "count({instance_type='console_server', __$labels__}) by (instance_id)"
     },
     {
+      "id": "dashboard:v1:ca06ca41",
+      "object_names": [
+        "Wanopt"
+      ],
+      "template": "max(snmp_device_temperature_celsius{__$labels__}) by (instance_id) or max(device_temperature_celsius{__$labels__}) by (instance_id)"
+    },
+    {
       "id": "dashboard:v1:ca17f83c",
       "object_names": [
         "SGLang"
@@ -5292,13 +5362,6 @@
         "Tomcat"
       ],
       "template": "100 * (rate(tomcat_connector_error_count{__$labels__}[__$window__]) / clamp_min(rate(tomcat_connector_request_count{__$labels__}[__$window__]), 1e-6))"
-    },
-    {
-      "id": "dashboard:v1:ca5b5e26",
-      "object_names": [
-        "Loadbalance"
-      ],
-      "template": "lb_current_connections{__$labels__}"
     },
     {
       "id": "dashboard:v1:ca6877cb",
@@ -5492,6 +5555,13 @@
         "Docker"
       ],
       "template": "max(docker_container_mem_usage_percent{__$labels__}) by (instance_id)"
+    },
+    {
+      "id": "dashboard:v1:cfb416f7",
+      "object_names": [
+        "Wanopt"
+      ],
+      "template": "(sum(snmp_device_memory_used{__$labels__}) by (instance_id) * 1024) or sum(device_memory_used{__$labels__}) by (instance_id)"
     },
     {
       "id": "dashboard:v1:d0052796",
@@ -5827,7 +5897,6 @@
     {
       "id": "dashboard:v1:dda9ff8d",
       "object_names": [
-        "Host",
         "Process"
       ],
       "template": "sum(procstat_num_fds{instance_type=\"process\", __$labels__}) by (instance_id, process_name)"
@@ -6560,7 +6629,6 @@
     {
       "id": "dashboard:v1:fe286723",
       "object_names": [
-        "Host",
         "Process"
       ],
       "template": "sum(procstat_memory_rss{instance_type=\"process\", __$labels__}) by (instance_id, process_name)"
@@ -6641,76 +6709,6 @@
         "K3SPod"
       ],
       "template": "sum by (instance_id,pod) ( rate(prometheus_remote_write_container_network_receive_bytes_total{instance_type=\"k3s\",__$labels__}[__$window__]) )"
-    },
-    {
-      "id": "dashboard:v1:37f33d8c",
-      "object_names": [
-        "Exchange"
-      ],
-      "template": "win_exchange_replication_CopyQueueLength{instance_type=\"exchange\", __$labels__}"
-    },
-    {
-      "id": "dashboard:v1:40087132",
-      "object_names": [
-        "Exchange"
-      ],
-      "template": "win_exchange_replication_ReplayQueueLength{instance_type=\"exchange\", __$labels__}"
-    },
-    {
-      "id": "dashboard:v1:169d0e3c",
-      "object_names": [
-        "Exchange"
-      ],
-      "template": "win_exchange_replication_Avg_Log_Copy_Latency_(msec){instance_type=\"exchange\", __$labels__}"
-    },
-    {
-      "id": "dashboard:v1:4ce1716a",
-      "object_names": [
-        "Exchange"
-      ],
-      "template": "win_exchange_database_instances_I\\/O_Database_Reads_Average_Latency{instance_type=\"exchange\", __$labels__}"
-    },
-    {
-      "id": "dashboard:v1:a6c4170f",
-      "object_names": [
-        "Exchange"
-      ],
-      "template": "win_exchange_database_instances_I\\/O_Database_Writes_Average_Latency{instance_type=\"exchange\", __$labels__}"
-    },
-    {
-      "id": "dashboard:v1:3e61f930",
-      "object_names": [
-        "Exchange"
-      ],
-      "template": "win_exchange_database_IO_Log_Read_Average_Latency{instance_type=\"exchange\", __$labels__}"
-    },
-    {
-      "id": "dashboard:v1:02c10cec",
-      "object_names": [
-        "Exchange"
-      ],
-      "template": "win_exchange_database_Log_Bytes_Write_persec{instance_type=\"exchange\", __$labels__}"
-    },
-    {
-      "id": "dashboard:v1:e7c57391",
-      "object_names": [
-        "Exchange"
-      ],
-      "template": "win_exchange_database_Database_Cache_Percent_Hit{instance_type=\"exchange\", __$labels__}"
-    },
-    {
-      "id": "dashboard:v1:dc7d93fe",
-      "object_names": [
-        "Active Directory"
-      ],
-      "template": "win_ad_DRA_Sync_Failures_on_Schema_Mismatch{instance_type=\"active_directory\", __$labels__}"
-    },
-    {
-      "id": "dashboard:v1:43ab5f0f",
-      "object_names": [
-        "Active Directory"
-      ],
-      "template": "win_ad_dns_Recursive_Query_Failure_persec{instance_type=\"active_directory\", __$labels__}"
     }
   ]
 }
