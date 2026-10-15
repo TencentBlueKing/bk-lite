@@ -73,6 +73,16 @@ const screenChromeTextColor = (color?: ScreenTextStyleConfig['color']) => {
   return TEXT_COLOR_VAR.canvas;
 };
 
+/** 全屏铺满时抵消横竖不同的拉伸，字只保留较小的那个倍数。 */
+export const screenUniformTextProps = (
+  style?: ScreenTextStyleConfig,
+  fallback?: Partial<ScreenTextStyleConfig>,
+  className?: string,
+) => ({
+  className: ['screen-uniform-text', className].filter(Boolean).join(' '),
+  'data-align': style?.align ?? fallback?.align ?? 'left',
+});
+
 export const screenChromeTextStyle = (
   style?: ScreenTextStyleConfig,
   fallback?: Partial<ScreenTextStyleConfig>,
@@ -132,7 +142,11 @@ const HeroTitle: React.FC<{
     />
     <div className="absolute inset-0 flex items-center justify-center px-10 text-center">
       <span
-        className="max-w-[78%] truncate"
+        {...screenUniformTextProps(
+          item.textStyle,
+          { align: 'center' },
+          'max-w-[78%] truncate',
+        )}
         style={screenChromeTextStyle(item.textStyle, {
           fontSize,
           fontWeight: 700,
@@ -162,7 +176,11 @@ const SectionTitle4: React.FC<{ item: ScreenTitleFrameItem }> = ({ item }) => (
         className="absolute inset-0 z-0 h-full w-full"
       />
       <span
-        className="relative z-1 min-w-0 flex-1 truncate whitespace-nowrap px-3"
+        {...screenUniformTextProps(
+          item.textStyle,
+          undefined,
+          'relative z-1 min-w-0 flex-1 truncate whitespace-nowrap px-3',
+        )}
         style={screenChromeTextStyle(item.textStyle, { fontSize: 18, fontWeight: 700 })}
       >
         {item.content || ''}
@@ -196,7 +214,11 @@ const SectionTitle8: React.FC<{ item: ScreenTitleFrameItem }> = ({ item }) => (
     <div className="absolute inset-0 z-2 flex items-center px-2">
       <span className="h-0.5 w-2 shrink-0 bg-(--screen-chrome-accent)" />
       <span
-        className="min-w-0 flex-1 truncate px-2 text-center"
+        {...screenUniformTextProps(
+          item.textStyle,
+          { align: 'center' },
+          'min-w-0 flex-1 truncate px-2 text-center',
+        )}
         style={screenChromeTextStyle(item.textStyle, {
           fontSize: 16,
           fontWeight: 700,
@@ -220,7 +242,11 @@ const SectionTitle5: React.FC<{ item: ScreenTitleFrameItem }> = ({ item }) => (
     <div className="absolute inset-0 flex items-center justify-between px-3">
       <span className="h-1.5 w-1.5 shrink-0 bg-(--screen-chrome-accent)" />
       <span
-        className="min-w-0 flex-1 truncate px-2 text-center"
+        {...screenUniformTextProps(
+          item.textStyle,
+          { align: 'center' },
+          'min-w-0 flex-1 truncate px-2 text-center',
+        )}
         style={screenChromeTextStyle(item.textStyle, {
           fontSize: 16,
           fontWeight: 700,
@@ -261,7 +287,11 @@ const SectionTitle6: React.FC<{ item: ScreenTitleFrameItem }> = ({ item }) => (
       className="h-full w-[17%] shrink-0 object-fill"
     />
     <span
-      className="absolute inset-y-0 left-0 z-2 flex w-[58%] items-center truncate pl-3"
+      {...screenUniformTextProps(
+        item.textStyle,
+        undefined,
+        'absolute inset-y-0 left-0 z-2 flex w-[58%] items-center truncate pl-3',
+      )}
       style={screenChromeTextStyle(item.textStyle, { fontSize: 16, fontWeight: 700 })}
     >
       {item.content || ''}
@@ -303,7 +333,7 @@ const PANEL_FRAME_SKIN: Record<
   'border-21': { src: border21, mode: 'fixed-83' },
   'border-22': { src: border22, mode: 'fixed-83' },
   'border-23': { src: border23, mode: 'fixed-83' },
-  'border-25': { src: border25, mode: 'fixed-25' },
+  'border-25': { src: border25, mode: 'fill' },
   'border-1': { src: border1, mode: 'fluid' },
   tech: { src: tech01, mode: 'tech' },
   'border-16': { src: border16, mode: 'fill' },
