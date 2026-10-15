@@ -5,7 +5,7 @@ import { Tooltip } from 'antd';
 import { QuestionCircleOutlined } from '@ant-design/icons';
 import type { MetricSeries } from '../../common/simple-dashboard-core';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
-import { HOST_PALETTE } from '../config';
+import { HOST_SERIES_COLOR } from '../config';
 import { pointsToChartData, type EntityTableRow } from '../entity-series';
 import LayeredEntityTable, { type LayeredColumn } from './entity-table';
 import StatusCountRow, { processStatusView } from './status-count';
@@ -53,8 +53,8 @@ export default function FlatProcessSplit({
   const cpu = numberOrNull(selected?.values.process_cpu_usage);
   const mem = numberOrNull(selected?.values.process_mem_usage);
   // 数值色跟左侧折线序列 token 走，换进程也不改色、不跟行色点。
-  const cpuSeries = { label: 'CPU', color: HOST_PALETTE.emerald, reading: formatPercent(cpu) };
-  const memSeries = { label: '内存', color: HOST_PALETTE.blue, reading: formatPercent(mem) };
+  const cpuSeries = { label: 'CPU', color: HOST_SERIES_COLOR.cpu, reading: formatPercent(cpu) };
+  const memSeries = { label: '内存', color: HOST_SERIES_COLOR.memUsed, reading: formatPercent(mem) };
   const columns = useMemo<LayeredColumn[]>(() => {
     const present = (key: string) => sorted.some((row) => numberOrNull(row.values[key]) != null);
     const next: LayeredColumn[] = [

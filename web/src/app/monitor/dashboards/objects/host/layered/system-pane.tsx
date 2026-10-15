@@ -6,7 +6,7 @@ import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import { hostCategoryText } from './category-copy';
 import { formatMetricValue } from '../../../shared/utils/format';
 import type { MetricUnit } from '../../../shared/types';
-import { HOST_CPU_SERIES_COLOR, HOST_PALETTE } from '../config';
+import { HOST_PALETTE, HOST_SERIES_COLOR } from '../config';
 import type { EntityTableRow } from '../entity-series';
 import { pointsToChartData } from '../entity-series';
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
@@ -32,15 +32,15 @@ const CPU_BREAKDOWN = [
 ];
 
 const LOAD_SERIES = [
-  { key: 'system_load1', label: 'load1', color: HOST_PALETTE.orange },
-  { key: 'system_load5', label: 'load5', color: HOST_PALETTE.blue },
-  { key: 'system_load15', label: 'load15', color: HOST_PALETTE.cyan }
+  { key: 'system_load1', label: 'load1', color: HOST_SERIES_COLOR.load1 },
+  { key: 'system_load5', label: 'load5', color: HOST_SERIES_COLOR.load5 },
+  { key: 'system_load15', label: 'load15', color: HOST_SERIES_COLOR.load15 }
 ];
 
-/** 性能 KPI 主值跟本页对应折线，CPU 与概览共用同一绿。 */
-const CPU_SERIES_COLOR = HOST_CPU_SERIES_COLOR;
-const MEM_USED_COLOR = HOST_PALETTE.blue;
-const LOAD1_SERIES_COLOR = LOAD_SERIES[0].color;
+/** 性能 KPI 主值跟本页对应折线，并与概览、进程共用同一 token。 */
+const CPU_SERIES_COLOR = HOST_SERIES_COLOR.cpu;
+const MEM_USED_COLOR = HOST_SERIES_COLOR.memUsed;
+const LOAD1_SERIES_COLOR = HOST_SERIES_COLOR.load1;
 
 const splitMetric = (value: number | null, unit: MetricUnit) => {
   if (value == null) return { value: '--', unit: '' };
@@ -155,7 +155,7 @@ export default function SystemPane({
         ? [{ key: 'used', label: '已用', color: MEM_USED_COLOR, data: memoryUsage.used }]
         : []),
       ...(memoryUsage.available.length
-        ? [{ key: 'available', label: '可用', color: HOST_PALETTE.emerald, data: memoryUsage.available }]
+        ? [{ key: 'available', label: '可用', color: HOST_SERIES_COLOR.memAvailable, data: memoryUsage.available }]
         : [])
     ];
     const data = items.length

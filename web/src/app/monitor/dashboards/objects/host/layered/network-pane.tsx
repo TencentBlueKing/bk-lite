@@ -2,7 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
-import { HOST_PALETTE } from '../config';
+import { HOST_PALETTE, HOST_SERIES_COLOR } from '../config';
 import { hostCategoryText } from './category-copy';
 import { latestFinite, pointsToChartData, sumPoints, type EntityTableRow } from '../entity-series';
 import LayeredEntityTable from './entity-table';
@@ -58,12 +58,12 @@ export default function NetworkPane({
     ? hostCategoryText(t, 'inboundOutboundThroughputNamed', { name })
     : hostCategoryText(t, 'inboundOutboundThroughput');
   const throughputItems = [
-    { key: 'net_bytes_recv_rate' as const, label: hostCategoryText(t, 'inboundPacketRate'), color: HOST_PALETTE.blue },
-    { key: 'net_bytes_sent_rate' as const, label: hostCategoryText(t, 'outboundPacketRate'), color: HOST_PALETTE.cyan }
+    { key: 'net_bytes_recv_rate' as const, label: hostCategoryText(t, 'inboundPacketRate'), color: HOST_SERIES_COLOR.netIn },
+    { key: 'net_bytes_sent_rate' as const, label: hostCategoryText(t, 'outboundPacketRate'), color: HOST_SERIES_COLOR.netOut }
   ].filter((item) => (selected?.series[item.key] || []).length > 0);
   const packetItems = [
-    { key: 'net_packets_recv_rate' as const, label: hostCategoryText(t, 'inboundPacketRate'), color: HOST_PALETTE.blue },
-    { key: 'net_packets_sent_rate' as const, label: hostCategoryText(t, 'outboundPacketRate'), color: HOST_PALETTE.cyan }
+    { key: 'net_packets_recv_rate' as const, label: hostCategoryText(t, 'inboundPacketRate'), color: HOST_SERIES_COLOR.netIn },
+    { key: 'net_packets_sent_rate' as const, label: hostCategoryText(t, 'outboundPacketRate'), color: HOST_SERIES_COLOR.netOut }
   ].filter((item) => (selected?.series[item.key] || []).length > 0);
 
   return (
@@ -81,8 +81,8 @@ export default function NetworkPane({
             points: selected?.series[item.key] || []
           })))}
           legends={(throughputItems.length ? throughputItems : [
-            { key: 'net_bytes_recv_rate' as const, label: hostCategoryText(t, 'inboundPacketRate'), color: HOST_PALETTE.blue },
-            { key: 'net_bytes_sent_rate' as const, label: hostCategoryText(t, 'outboundPacketRate'), color: HOST_PALETTE.cyan }
+            { key: 'net_bytes_recv_rate' as const, label: hostCategoryText(t, 'inboundPacketRate'), color: HOST_SERIES_COLOR.netIn },
+            { key: 'net_bytes_sent_rate' as const, label: hostCategoryText(t, 'outboundPacketRate'), color: HOST_SERIES_COLOR.netOut }
           ]).map((item) => ({
             label: item.label,
             color: item.color,

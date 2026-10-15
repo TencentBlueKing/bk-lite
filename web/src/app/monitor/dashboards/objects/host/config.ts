@@ -15,6 +15,23 @@ export const HOST_PALETTE = {
 /** 分类仪表盘 CPU 主值与「CPU 使用率」曲线。概览与性能共用，勿再写一套蓝。 */
 export const HOST_CPU_SERIES_COLOR = HOST_PALETTE.emerald;
 
+/**
+ * 分类仪表盘跨页序列色。权威是性能页「本机趋势」：
+ * 同一指标的 KPI 主值、曲线、图例、tooltip 都读这里，勿再从旧图表配置另取色。
+ * 可用内存数值和运行时间没有同色折线，不在此表，保持正文色。
+ */
+export const HOST_SERIES_COLOR = {
+  cpu: HOST_CPU_SERIES_COLOR,
+  memUsed: HOST_PALETTE.blue,
+  memAvailable: HOST_PALETTE.cyan,
+  load1: HOST_PALETTE.orange,
+  load5: HOST_PALETTE.blue,
+  load15: HOST_PALETTE.cyan,
+  diskUsed: HOST_PALETTE.orange,
+  netIn: HOST_PALETTE.blue,
+  netOut: HOST_PALETTE.cyan
+} as const;
+
 export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   routeKey: 'host',
   pageTitle: '主机监控仪表盘',

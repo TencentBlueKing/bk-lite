@@ -4,7 +4,7 @@ import React, { useMemo } from 'react';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
 import { mergeChartSeries } from '../../../shared/utils/chart-data';
 import { hostCategoryText } from './category-copy';
-import { HOST_CPU_SERIES_COLOR, HOST_DASHBOARD_CONFIG, HOST_PALETTE } from '../config';
+import { HOST_SERIES_COLOR } from '../config';
 import { latestPreferSignal, maxFinite, pointsToChartData, type EntityTableRow } from '../entity-series';
 import { formatDuration, type MetricSeries } from '../../common/simple-dashboard-core';
 import EventsRail, { type HostAlertRailEvent } from './events-rail';
@@ -58,15 +58,10 @@ const peakOfRow = (row: EntityTableRow | undefined, key: string) => {
   return latestOfRow(row, key);
 };
 
-/** 与本页 CPU / 内存折线共用同一序列色，主值不另写死色。 */
-const CPU_SERIES = { label: 'CPU', color: HOST_CPU_SERIES_COLOR };
-const MEM_SERIES = { label: '内存', color: HOST_PALETTE.blue };
-
-/** 概览不画 Load 线时，回落到图表配置里 system_load1 的默认序列色。 */
-const LOAD1_SERIES_COLOR = HOST_DASHBOARD_CONFIG.charts
-  .flatMap((chart) => chart.series)
-  .find((series) => series.metric === 'system_load1')?.color
-  || HOST_PALETTE.indigo;
+/** 与性能页同名曲线共用序列色。负载跟 load1 橙，不读旧图表的靛色。 */
+const CPU_SERIES = { label: 'CPU', color: HOST_SERIES_COLOR.cpu };
+const MEM_SERIES = { label: '内存', color: HOST_SERIES_COLOR.memUsed };
+const LOAD1_SERIES_COLOR = HOST_SERIES_COLOR.load1;
 
 export default function OverviewPane({
   metrics,
@@ -306,7 +301,7 @@ export default function OverviewPane({
           unit="percent"
           emptyText="暂无挂载数据"
           data={diskTrend}
-          legends={[{ label: mountName || '使用率', color: HOST_PALETTE.orange }]}
+          legends={[{ label: mountName || '使用率', color: HOST_SERIES_COLOR.diskUsed }]}
         />
         <ThinTimeSeries
           title="网络吞吐 · 全部网卡合计"
@@ -315,8 +310,8 @@ export default function OverviewPane({
           unit="byteps"
           data={netTrend}
           legends={[
-            { label: '合计入', color: HOST_PALETTE.blue, reading: formatUnit(netIn, 'byteps') },
-            { label: '合计出', color: HOST_PALETTE.cyan, reading: formatUnit(netOut, 'byteps') }
+            { label: '合计入', color: HOST_SERIES_COLOR.netIn, reading: formatUnit(netIn, 'byteps') },
+            { label: '合计出', color: HOST_SERIES_COLOR.netOut, reading: formatUnit(netOut, 'byteps') }
           ]}
         />
       </div>

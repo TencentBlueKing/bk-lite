@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Tooltip } from 'antd';
 import { useDashboardText } from '../../../shared/utils/content-i18n';
-import { HOST_PALETTE } from '../config';
+import { HOST_PALETTE, HOST_SERIES_COLOR } from '../config';
 import {
   latestPreferSignal,
   pointsToChartData,
@@ -175,7 +175,7 @@ export default function DiskPane({
               data={pointsToChartData(mountPoints.length ? [{ points: mountPoints }] : [])}
               legends={[{
                 label: hostCategoryText(t, 'utilization'),
-                color: HOST_PALETTE.orange
+                color: HOST_SERIES_COLOR.diskUsed
               }]}
             />
           </div>
