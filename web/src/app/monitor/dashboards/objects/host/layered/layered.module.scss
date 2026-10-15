@@ -134,6 +134,14 @@
   margin-left: 0;
 }
 
+.gpuBandTitle {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--color-text-1);
+}
+
 .gpuRow {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

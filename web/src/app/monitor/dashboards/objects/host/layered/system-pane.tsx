@@ -464,6 +464,7 @@ export default function SystemPane({
         />
       </div>
       <div className={styles.detailFull} data-surface="gpu">
+        <div className={styles.gpuBandTitle}>GPU</div>
         {gpuCharts.length ? (
           <div className={styles.gpuRow}>
             {GPU_SERIES.map((item) => (
@@ -487,9 +488,6 @@ export default function SystemPane({
           </div>
         ) : (
           <section className={`${classic.panel} ${styles.chartPanel} ${styles.detailCard} ${styles.gpuBand}`}>
-            <div className={styles.chartHead}>
-              <div className={styles.chartTitle}>GPU</div>
-            </div>
             <div className={styles.gpuEmpty}>{hostCategoryText(t, 'noGpu')}</div>
           </section>
         )}
