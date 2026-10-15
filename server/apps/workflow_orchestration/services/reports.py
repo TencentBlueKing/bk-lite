@@ -8,10 +8,15 @@ from io import BytesIO
 from typing import Any
 
 from docx import Document
+from docx.oxml.ns import qn
+from docx.shared import Pt, RGBColor
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 from docxtpl import DocxTemplate
 from openpyxl import load_workbook
+from openpyxl.formatting.rule import CellIsRule, FormulaRule
+from openpyxl.styles import Font, PatternFill
+from openpyxl.utils import get_column_letter
 from xlsxjinja import BookWriter
 
 MAX_TEMPLATE_BYTES = 5 * 1024 * 1024
@@ -207,6 +212,316 @@ def _lookup(data: Any, parts: list[str]) -> Any:
     return value
 
 
+_CATEGORY_ORDER = ["计算", "内存", "磁盘", "网络", "系统健康", "进程热点", "基础服务", "安全浅检", "更新账龄"]
+_RED_FILL = PatternFill("solid", fgColor="FDEDEC")
+_AMBER_FILL = PatternFill("solid", fgColor="FEF5E7")
+_GREEN_FILL = PatternFill("solid", fgColor="E8F8F5")
+_GRAY_FILL = PatternFill("solid", fgColor="F4F6F7")
+_RED_FONT = Font(name="Calibri", size=11, bold=True, color="C0392B")
+_AMBER_FONT = Font(name="Calibri", size=11, bold=True, color="B9770E")
+_GREEN_FONT = Font(name="Calibri", size=11, bold=True, color="196F3D")
+_GRAY_FONT = Font(name="Calibri", size=11, bold=True, color="7F8C8D")
+
+
+def _display_number(value: Any) -> str:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "" if value in (None, "") else str(value)
+    if number.is_integer():
+        return str(int(number))
+    return f"{number:g}"
+
+
+def _unit_suffix(unit: str) -> str:
+    if unit == "%":
+        return "%"
+    if unit == "days":
+        return "天"
+    return unit
+
+
+def _threshold_line(metric: dict[str, Any], which: str) -> str:
+    unit = str(metric.get("unit") or "")
+    if unit == "bool":
+        return "—"
+    try:
+        warning = float(metric.get("warning_threshold"))
+        critical = float(metric.get("critical_threshold"))
+    except (TypeError, ValueError):
+        return "—"
+    if warning == 0 and critical == 0:
+        return "—"
+    number = warning if which == "warning" else critical
+    return f"≥{_display_number(number)}{_unit_suffix(unit)}"
+
+
+def _value_text(metric: dict[str, Any]) -> str:
+    unit = str(metric.get("unit") or "")
+    if unit == "bool":
+        return str(metric.get("detail") or "")
+    suffix = _unit_suffix(unit)
+    number = _display_number(metric.get("value"))
+    return f"{number}{suffix}" if number else ""
+
+
+def _status_text(status: str) -> str:
+    return {"CRITICAL": "严重", "WARNING": "告警", "NORMAL": "正常"}.get(status, status)
+
+
+def _annotate_metric(metric: dict[str, Any]) -> dict[str, Any]:
+    copied = dict(metric)
+    if not copied.get("display_name"):
+        copied["display_name"] = copied.get("metric_name") or ""
+    copied["value_text"] = _value_text(copied)
+    copied["warning_line"] = _threshold_line(copied, "warning")
+    copied["critical_line"] = _threshold_line(copied, "critical")
+    copied["status_text"] = _status_text(str(copied.get("health_status") or ""))
+    return copied
+
+
+def _format_collected_at(value: Any) -> str:
+    text = str(value or "").strip().replace("T", " ").replace("Z", "")
+    if "+" in text:
+        text = text.split("+", 1)[0]
+    return text[:19]
+
+
+def _metric_summary(results: list[Any]) -> list[dict[str, Any]]:
+    groups: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        payload = item.get("data") if isinstance(item.get("data"), dict) else {}
+        for metric in payload.get("metrics") or []:
+            if not isinstance(metric, dict):
+                continue
+            key = (
+                metric.get("category") or "",
+                metric.get("display_name") or metric.get("metric_name") or "",
+                str(metric.get("unit") or ""),
+                _display_number(metric.get("warning_threshold")),
+                _display_number(metric.get("critical_threshold")),
+            )
+            bucket = groups.setdefault(
+                key,
+                {"metric": metric, "critical_count": 0, "warning_count": 0, "normal_count": 0},
+            )
+            status = metric.get("health_status")
+            if status == "CRITICAL":
+                bucket["critical_count"] += 1
+            elif status == "WARNING":
+                bucket["warning_count"] += 1
+            elif status == "NORMAL":
+                bucket["normal_count"] += 1
+    rows = []
+    for bucket in groups.values():
+        metric = bucket["metric"]
+        critical = bucket["critical_count"]
+        warning = bucket["warning_count"]
+        rows.append(
+            {
+                "category": metric.get("category") or "",
+                "name": metric.get("display_name") or metric.get("metric_name") or "",
+                "warning_line": metric.get("warning_line") or "—",
+                "critical_line": metric.get("critical_line") or "—",
+                "critical_count": critical,
+                "warning_count": warning,
+                "normal_count": bucket["normal_count"],
+                "conclusion": "需关注" if critical or warning else "健康",
+            }
+        )
+    rows.sort(
+        key=lambda row: (
+            0 if row["critical_count"] else 1 if row["warning_count"] else 2,
+            _CATEGORY_ORDER.index(row["category"]) if row["category"] in _CATEGORY_ORDER else len(_CATEGORY_ORDER),
+            row["name"],
+        )
+    )
+    return rows
+
+
+def prepare_report_data(data: dict[str, Any]) -> dict[str, Any]:
+    """Copy job results into the flat fields the health report template prints."""
+    results: list[Any] = []
+    collected_at = ""
+    for item in list(data.get("results") or []):
+        if not isinstance(item, dict):
+            results.append(item)
+            continue
+        row = dict(item)
+        payload = row.get("data")
+        if not isinstance(payload, dict):
+            payload = {
+                "collected_at": "",
+                "conclusion": str(row.get("error") or row.get("status") or ""),
+                "host": {},
+                "metrics": [],
+            }
+        copied = dict(payload)
+        metrics = [_annotate_metric(metric) for metric in list(copied.get("metrics") or []) if isinstance(metric, dict)]
+        copied["metrics"] = metrics
+        copied["critical"] = [metric for metric in metrics if metric.get("health_status") == "CRITICAL"]
+        copied["warning"] = [metric for metric in metrics if metric.get("health_status") == "WARNING"]
+        copied["normal"] = [metric for metric in metrics if metric.get("health_status") == "NORMAL"]
+        copied["critical_count"] = len(copied["critical"])
+        copied["warning_count"] = len(copied["warning"])
+        copied["normal_count"] = len(copied["normal"])
+        copied["metric_count"] = len(metrics)
+        if not collected_at:
+            collected_at = _format_collected_at(copied.get("collected_at"))
+        row["data"] = copied
+        results.append(row)
+    buckets = [_host_bucket(item) for item in results]
+    summary = dict(data.get("summary") or {})
+    summary.update(
+        {
+            "total": len(results),
+            "succeeded": buckets.count("critical") + buckets.count("warning") + buckets.count("healthy"),
+            "failed": len(results) - (buckets.count("critical") + buckets.count("warning") + buckets.count("healthy")),
+            "critical_hosts": buckets.count("critical"),
+            "warning_hosts": buckets.count("warning"),
+            "healthy_hosts": buckets.count("healthy"),
+            "collected_at": collected_at,
+        }
+    )
+    return {**data, "results": results, "summary": summary, "metric_summary": _metric_summary(results)}
+
+
+def _host_bucket(item: Any) -> str | None:
+    if not isinstance(item, dict) or str(item.get("status") or "").upper() != "SUCCESS":
+        return None
+    payload = item.get("data") if isinstance(item.get("data"), dict) else {}
+    critical = int(payload.get("critical_count") or 0)
+    warning = int(payload.get("warning_count") or 0)
+    if critical:
+        return "critical"
+    if warning:
+        return "warning"
+    return "healthy"
+
+
+def _header_map(worksheet) -> dict[str, int]:
+    headers = {}
+    for cell in worksheet[1]:
+        if isinstance(cell.value, str) and cell.value:
+            headers[cell.value] = cell.column
+    return headers
+
+
+def _paint_conclusion_sheet(worksheet, headers: dict[str, int]) -> bool:
+    critical_col = headers.get("严重项", headers.get("严重"))
+    warning_col = headers.get("告警项", headers.get("告警"))
+    conclusion_col = headers.get("结论")
+    if not critical_col or not warning_col or not conclusion_col:
+        return False
+    critical = get_column_letter(critical_col)
+    warning = get_column_letter(warning_col)
+    conclusion = get_column_letter(conclusion_col)
+    cell_range = f"{conclusion}2:{conclusion}{max(worksheet.max_row, 2)}"
+    worksheet.conditional_formatting.add(
+        cell_range,
+        FormulaRule(formula=[f"${critical}2>0"], fill=_RED_FILL, font=_RED_FONT, stopIfTrue=True),
+    )
+    worksheet.conditional_formatting.add(
+        cell_range,
+        FormulaRule(formula=[f"AND(${critical}2=0,${warning}2>0)"], fill=_AMBER_FILL, font=_AMBER_FONT, stopIfTrue=True),
+    )
+    worksheet.conditional_formatting.add(cell_range, CellIsRule(operator="equal", formula=['"健康"'], fill=_GREEN_FILL, font=_GREEN_FONT))
+    worksheet.conditional_formatting.add(cell_range, CellIsRule(operator="equal", formula=['"未采集"'], fill=_GRAY_FILL, font=_GRAY_FONT))
+    last = get_column_letter(worksheet.max_column)
+    worksheet.auto_filter.ref = f"A1:{last}{max(worksheet.max_row, 1)}"
+    worksheet.freeze_panes = "A2"
+    return True
+
+
+def _paint_status_column(worksheet, headers: dict[str, int]) -> bool:
+    status_col = headers.get("健康状态") or headers.get("状态")
+    if not status_col:
+        return False
+    column = get_column_letter(status_col)
+    cell_range = f"{column}2:{column}{max(worksheet.max_row, 2)}"
+    worksheet.conditional_formatting.add(cell_range, CellIsRule(operator="equal", formula=['"严重"'], fill=_RED_FILL, font=_RED_FONT))
+    worksheet.conditional_formatting.add(cell_range, CellIsRule(operator="equal", formula=['"告警"'], fill=_AMBER_FILL, font=_AMBER_FONT))
+    worksheet.conditional_formatting.add(cell_range, CellIsRule(operator="equal", formula=['"正常"'], fill=_GREEN_FILL, font=_GREEN_FONT))
+    worksheet.conditional_formatting.add(cell_range, CellIsRule(operator="equal", formula=['"未采集"'], fill=_GRAY_FILL, font=_GRAY_FONT))
+    last = get_column_letter(worksheet.max_column)
+    worksheet.auto_filter.ref = f"A1:{last}{max(worksheet.max_row, 1)}"
+    worksheet.freeze_panes = "A2"
+    return True
+
+
+def _coerce_integer_cells(worksheet) -> None:
+    for row in worksheet.iter_rows():
+        for cell in row:
+            if isinstance(cell.value, str) and re.fullmatch(r"-?\d+", cell.value):
+                cell.value = int(cell.value)
+
+
+def _paint_health_report(content: bytes) -> bytes:
+    workbook = load_workbook(BytesIO(content))
+    painted = False
+    for worksheet in workbook.worksheets:
+        headers = _header_map(worksheet)
+        painted = _paint_conclusion_sheet(worksheet, headers) or painted
+        painted = _paint_status_column(worksheet, headers) or painted
+    if not painted:
+        return content
+    for worksheet in workbook.worksheets:
+        worksheet.sheet_view.view = "normal"
+        if not worksheet.sheet_view.zoomScale:
+            worksheet.sheet_view.zoomScale = 120
+        worksheet.sheet_properties.pageSetUpPr.fitToPage = False
+        _coerce_integer_cells(worksheet)
+    output = BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
+_STATUS_FILLS = {"严重": "FDEDEC", "告警": "FEF5E7", "正常": "E8F8F5", "未采集": "F4F6F7"}
+_STATUS_FONTS = {"严重": "C0392B", "告警": "B9770E", "正常": "196F3D", "未采集": "7F8C8D"}
+
+
+def _shade_docx_cell(cell, color: str) -> None:
+    tc_pr = cell._tc.get_or_add_tcPr()
+    for child in list(tc_pr):
+        if child.tag == qn("w:shd"):
+            tc_pr.remove(child)
+    tc_pr.append(tc_pr.makeelement(qn("w:shd"), {qn("w:val"): "clear", qn("w:color"): "auto", qn("w:fill"): color}))
+
+
+def _paint_health_docx(content: bytes) -> bytes:
+    document = Document(BytesIO(content))
+    painted = False
+    for table in document.tables:
+        if not table.rows:
+            continue
+        headers = [cell.text.strip() for cell in table.rows[0].cells]
+        status_col = next((index for index, header in enumerate(headers) if header in {"状态", "健康状态"}), None)
+        if status_col is None:
+            continue
+        for row in table.rows[1:]:
+            cell = row.cells[status_col]
+            label = cell.text.strip()
+            color = _STATUS_FILLS.get(label)
+            if not color:
+                continue
+            _shade_docx_cell(cell, color)
+            font_color = _STATUS_FONTS[label]
+            for paragraph in cell.paragraphs:
+                for run in paragraph.runs:
+                    run.bold = True
+                    run.font.name = "Calibri"
+                    run.font.size = Pt(8)
+                    run.font.color.rgb = RGBColor.from_string(font_color)
+            painted = True
+    if not painted:
+        return content
+    output = BytesIO()
+    document.save(output)
+    return output.getvalue()
+
+
 def missing_template_fields(parsed: ParsedReportTemplate, data: dict[str, Any]) -> list[str]:
     missing: list[str] = []
     for label in parsed.placeholders:
@@ -259,6 +574,7 @@ def render_report(content: bytes, fmt: str, data: dict[str, Any]) -> bytes:
     parsed = parse_report_template(content, fmt)
     if not isinstance(data, dict):
         raise ReportTemplateError("文档数据必须是 JSON 对象")
+    prepared = prepare_report_data(data)
     if parsed.format == "docx":
-        return _render_docx(content, data)
-    return _render_xlsx(content, data)
+        return _paint_health_docx(_render_docx(content, prepared))
+    return _paint_health_report(_render_xlsx(content, prepared))

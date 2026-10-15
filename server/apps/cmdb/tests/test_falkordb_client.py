@@ -1166,3 +1166,14 @@ def test_format_properties_set_valid_key_passes():
     out = c.format_properties_set({"inst_name": "host2", "count": 3})
     assert "n.inst_name='host2'" in out
     assert "n.count=3" in out
+
+
+@pytest.mark.parametrize("rows,deleted", [([[7]], True), ([], False)])
+def test_conditional_delete_guards_identity_owner_and_heartbeat(rows, deleted):
+    c = _client(FakeResultSet([("scalar", "deleted_id")], rows))
+    instance = {"_id": 7, "model_id": "vmware_vm", "inst_uuid": "stable-id", "collect_task": "42", "collect_time": "2026-08-24T04:00:00+00:00"}
+    assert c.delete_entity_if_unchanged("instance", instance) is deleted
+    assert c._graph.last_params == {"id": 7, **{key: value for key, value in instance.items() if key != "_id"}}
+    for field in ("model_id", "inst_uuid", "collect_task", "collect_time"):
+        assert f"n.{field} = ${field}" in c._graph.last_query
+    assert "DETACH DELETE n RETURN deleted_id" in c._graph.last_query

@@ -87,6 +87,135 @@ def test_provider_exception_does_not_raise():
     assert "down" not in str(events[0]["enrichment_meta"])
 
 
+@register_provider
+class _RecordProvider(EnrichmentProvider):
+    provider_type = "record_owner_test"
+    records = []
+
+    def fetch_batch(self, keys, config):
+        return {key: list(type(self).records) for key in keys}
+
+
+def _stub_usernames(monkeypatch, mapping):
+    monkeypatch.setattr(
+        "apps.alerts.enrichment.owners.resolve_active_usernames",
+        lambda user_ids: {user_id: mapping[user_id] for user_id in user_ids if user_id in mapping},
+    )
+
+
+def _owner_rule(**over):
+    defaults = dict(
+        provider_type="record_owner_test",
+        provider_config={"owner_fields": ["operator", "bak_operator"]},
+        output_projection=[{"source": "inst_name"}],
+    )
+    defaults.update(over)
+    return _rule(**defaults)
+
+
+def test_enrichment_replaces_reported_owner_with_cmdb_usernames(monkeypatch):
+    _RecordProvider.records = [{"inst_name": "host-a", "operator": [2, 1, "ops"], "bak_operator": [1, 3, True]}]
+    _stub_usernames(monkeypatch, {1: "alice", 2: "bob", 3: "carol"})
+    events = [{"resource_type": "host", "resource_id": "1", "enrichment": {}, "team": [1], "assignee": ["zoe"]}]
+    EnrichmentEngine(rules=[_owner_rule(id=7)]).enrich_batch(events)
+    assert events[0]["assignee"] == ["bob", "alice", "carol"]
+    assert events[0]["enrichment_meta"]["owner_source"] == {"kind": "enrichment", "rule_ids": [7]}
+    assert events[0]["enrichment_meta"]["status"] != "failed"
+
+
+def test_missing_owner_field_keeps_reported_user(monkeypatch):
+    _RecordProvider.records = [{"inst_name": "clb-a", "charge_type": "pay"}]
+    _stub_usernames(monkeypatch, {1: "alice"})
+    events = [{"resource_type": "aliyun_clb", "resource_id": "1", "enrichment": {}, "team": [1], "assignee": ["zoe"]}]
+    EnrichmentEngine(rules=[_owner_rule()]).enrich_batch(events)
+    assert events[0]["assignee"] == ["zoe"]
+    assert events[0]["enrichment_meta"]["owner_source"] == {"kind": "reported"}
+    assert events[0]["enrichment_meta"]["status"] != "failed"
+
+
+def test_provider_failure_keeps_reported_user(monkeypatch):
+    class _Down(EnrichmentProvider):
+        provider_type = "owner_down_test"
+
+        def fetch_batch(self, keys, config):
+            raise RuntimeError("cmdb down")
+
+    register_provider(_Down)
+    _stub_usernames(monkeypatch, {1: "alice"})
+    events = [{"resource_type": "host", "resource_id": "1", "enrichment": {}, "team": [1], "assignee": ["zoe"]}]
+    EnrichmentEngine(rules=[_owner_rule(provider_type="owner_down_test")]).enrich_batch(events)
+    assert events[0]["assignee"] == ["zoe"]
+    assert events[0]["enrichment_meta"]["owner_source"] == {"kind": "reported"}
+
+
+def test_not_found_keeps_reported_user(monkeypatch):
+    _RecordProvider.records = []
+    _stub_usernames(monkeypatch, {1: "alice"})
+    events = [{"resource_type": "host", "resource_id": "missing", "enrichment": {}, "team": [1], "assignee": ["zoe"]}]
+    EnrichmentEngine(rules=[_owner_rule()]).enrich_batch(events)
+    assert events[0]["assignee"] == ["zoe"]
+    assert events[0]["enrichment_meta"]["owner_source"] == {"kind": "reported"}
+
+
+def test_multiple_owner_rules_merge_and_drop_unknown_users(monkeypatch):
+    class _ByRule(EnrichmentProvider):
+        provider_type = "owner_by_rule_test"
+
+        def fetch_batch(self, keys, config):
+            field = (config.get("owner_fields") or ["operator"])[0]
+            record = {"operator": [1, 9], "developer": [2, 1]}.get(field)
+            return {key: [{"inst_name": "host-a", field: record}] for key in keys}
+
+    register_provider(_ByRule)
+    _stub_usernames(monkeypatch, {1: "alice", 2: "bob"})
+    events = [{"resource_type": "host", "resource_id": "1", "enrichment": {}, "team": [1]}]
+    rules = [
+        _owner_rule(id=1, provider_type="owner_by_rule_test", provider_config={"owner_fields": ["operator"]}),
+        _owner_rule(
+            id=2,
+            provider_type="owner_by_rule_test",
+            provider_config={"owner_fields": ["developer"]},
+            namespace="cmdb_dev",
+            resolved_namespace="cmdb_dev",
+        ),
+    ]
+    EnrichmentEngine(rules=rules).enrich_batch(events)
+    assert events[0]["assignee"] == ["alice", "bob"]
+    assert events[0]["enrichment_meta"]["owner_source"] == {"kind": "enrichment", "rule_ids": [1, 2]}
+
+
+def test_rule_without_owner_fields_keeps_reported_user(monkeypatch):
+    _RecordProvider.records = [{"inst_name": "host-a", "operator": [1]}]
+    _stub_usernames(monkeypatch, {1: "alice"})
+    events = [{"resource_type": "host", "resource_id": "1", "enrichment": {}, "team": [1], "assignee": ["zoe"]}]
+    EnrichmentEngine(rules=[_rule(provider_type="record_owner_test", provider_config={})]).enrich_batch(events)
+    assert events[0]["assignee"] == ["zoe"]
+    assert events[0]["enrichment_meta"]["owner_source"] == {"kind": "reported"}
+
+
+def test_no_reported_and_no_enrichment_marks_owner_source_none():
+    events = [{"resource_type": "host", "resource_id": "1", "enrichment": {}, "team": [1]}]
+    EnrichmentEngine(rules=[]).enrich_batch(events)
+    assert events[0].get("assignee", []) == []
+    assert events[0]["enrichment_meta"]["owner_source"] == {"kind": "none"}
+
+
+def test_owner_fields_configuration_rejects_duplicates_and_extras():
+    from rest_framework.exceptions import ValidationError
+
+    from apps.alerts.serializers.enrichment import EnrichmentRuleModelSerializer
+
+    serializer = EnrichmentRuleModelSerializer()
+    assert serializer.validate_provider_config({"owner_fields": ["operator", "bak_operator"]})["owner_fields"] == [
+        "operator",
+        "bak_operator",
+    ]
+    assert serializer.validate_provider_config({}) == {}
+    for invalid in (["operator", "operator"], ["bad field"], ["a", "b", "c", "d", "e", "f"], "operator"):
+        with pytest.raises(ValidationError):
+            serializer.validate_provider_config({"owner_fields": invalid})
+
+
 # Fix 2: 不同 provider_config 不共享缓存
 def test_different_provider_config_no_cache_collision():
     """相同 binding_key 但不同 provider_config 的规则不能命中彼此的缓存。"""

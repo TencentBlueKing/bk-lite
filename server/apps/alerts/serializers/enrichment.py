@@ -75,7 +75,21 @@ class EnrichmentRuleModelSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(serializer_message(self, "error.query_timeout_must_be_int")) from exc
             if not 1 <= timeout <= 10:
                 raise serializers.ValidationError(serializer_message(self, "error.query_timeout_range"))
+        owner_fields = value.get("owner_fields")
+        if owner_fields is not None:
+            value["owner_fields"] = self._normalize_owner_fields(owner_fields)
         return value
+
+    def _normalize_owner_fields(self, value):
+        if not isinstance(value, list) or len(value) > 5:
+            raise serializers.ValidationError(serializer_message(self, "error.owner_fields_invalid"))
+        cleaned = []
+        for item in value:
+            name = item.strip() if isinstance(item, str) else ""
+            if not name or not self.NAMESPACE_PATTERN.fullmatch(name) or name in cleaned:
+                raise serializers.ValidationError(serializer_message(self, "error.owner_fields_invalid"))
+            cleaned.append(name)
+        return cleaned
 
     def validate_team(self, value):
         request = self.context.get("request")

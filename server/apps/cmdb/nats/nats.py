@@ -86,6 +86,33 @@ _RPC_TRANSPORT_KEYS = {"_timeout", "_raw"}
 
 
 @nats_client.register
+def cmdb_get_custom_script(query_data):
+    """按采集任务返回当前自定义脚本。不记录脚本正文。"""
+    from apps.cmdb.constants.constants import CollectPluginTypes
+    from apps.cmdb.models.collect_model import CollectModels
+    from apps.cmdb.models.custom_collect_plugin import CustomCollectPlugin
+    from apps.core.exceptions.base_app_exception import BaseAppException
+
+    if not isinstance(query_data, dict):
+        raise BaseAppException("invalid")
+    task_id = query_data.get("collect_task_id")
+    task = CollectModels.objects.filter(id=task_id, task_type=CollectPluginTypes.CUSTOM_SCRIPT).first()
+    if task is None:
+        raise BaseAppException("not_found")
+    plugin = CustomCollectPlugin.objects.filter(id=(task.params or {}).get("custom_plugin_pk")).first()
+    if plugin is None:
+        raise BaseAppException("plugin_missing")
+    return {
+        "plugin_id": plugin.plugin_id,
+        "content": plugin.content,
+        "shell": plugin.shell,
+        "os_type": plugin.os_type,
+        "version": plugin.version,
+        "checksum": plugin.content_checksum,
+    }
+
+
+@nats_client.register
 def cmdb_count_credential_refs(credential_ids):
     """供系统管理删除/变更凭据前查询 CMDB 任务引用数。"""
     if not isinstance(credential_ids, list) or len(credential_ids) > 100 or any(not isinstance(value, str) or not value for value in credential_ids):
@@ -2529,7 +2556,59 @@ def model_inst_count(*args, **kwargs):
 def license_cmdb_instance_count(*args, **kwargs):
     """许可管理专用：原生自动发现的收费模型实例数量。"""
     result = InstanceManage.license_instance_count()
-    return {"result": True, "message": "", "data": result}
+    labels = _license_cmdb_instance_labels(result, kwargs)
+    return {"result": True, "message": "", "data": result, "labels": labels}
+
+
+def _license_cmdb_instance_labels(result, kwargs):
+    """与模型列表相同：语言包 MODEL，否则存储的 model_name。名称失败不改变数量。"""
+    from apps.cmdb.language.service import SettingLanguage
+    from apps.core.logger import safe_exception_info, safe_log_value
+
+    if "language" in kwargs:
+        language = kwargs.get("language")
+    else:
+        language = (kwargs.get("user_info") or {}).get("locale")
+    try:
+        lan = SettingLanguage(language)
+    except Exception as exc:
+        logger.warning(
+            "event=license_cmdb_labels_skipped failed_stage=%s error_type=%s",
+            "load_language",
+            type(exc).__name__,
+            exc_info=safe_exception_info(exc),
+        )
+        return {}
+    labels = {}
+    for model_id in result:
+        try:
+            translated = lan.get_val("MODEL", model_id) or ""
+        except Exception as exc:
+            logger.warning(
+                "event=license_cmdb_label_skipped model_id=%s failed_stage=%s error_type=%s",
+                safe_log_value(model_id),
+                "load_translation",
+                type(exc).__name__,
+                exc_info=safe_exception_info(exc),
+            )
+            continue
+        if translated:
+            labels[model_id] = translated
+            continue
+        try:
+            stored = ModelManage.search_model_info(model_id).get("model_name") or ""
+        except Exception as exc:
+            logger.warning(
+                "event=license_cmdb_label_skipped model_id=%s failed_stage=%s error_type=%s",
+                safe_log_value(model_id),
+                "search_model_info",
+                type(exc).__name__,
+                exc_info=safe_exception_info(exc),
+            )
+            continue
+        if stored:
+            labels[model_id] = stored
+    return labels
 
 
 # === 云资源成本分析 Report Responder ===

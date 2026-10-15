@@ -711,6 +711,7 @@ class WorkflowViewSet(AuthViewSet):
             )
             workflow.current_version = next_version
             workflow.status = Workflow.Status.PUBLISHED
+            workflow.enabled = True
             workflow.has_draft = False
             workflow.draft_base_version = next_version
             workflow.draft_revision += 1
@@ -730,6 +731,7 @@ class WorkflowViewSet(AuthViewSet):
                     "trigger_types",
                     "current_version",
                     "status",
+                    "enabled",
                     "has_draft",
                     "draft_base_version",
                     "draft_revision",
@@ -739,6 +741,7 @@ class WorkflowViewSet(AuthViewSet):
                 )
             )
             sync_published_triggers(workflow, published_metadata, username=username, domain=domain)
+            workflow.triggers.update(enabled=True)
             transaction.on_commit(lambda workflow_id=workflow.pk: sync_workflow_nats_channels(workflow_id))
         _audit(request, "publish", f"发布流程 v{next_version}", target_type="workflow", target_id=workflow.id)
         return Response(self.get_serializer(workflow).data)
@@ -1516,6 +1519,19 @@ class WorkflowExecutionViewSet(AuthViewSet):
             pk=self.kwargs.get("pk"),
         )
 
+    def _sync_active_execution(self, execution: WorkflowExecution) -> WorkflowExecution:
+        if execution.conductor_workflow_id and execution.status in {
+            WorkflowExecution.Status.QUEUED,
+            WorkflowExecution.Status.RUNNING,
+            WorkflowExecution.Status.WAITING_APPROVAL,
+            WorkflowExecution.Status.TERMINATING,
+        }:
+            try:
+                apply_remote_execution(execution, ConductorClient().get_execution(execution.conductor_workflow_id))
+            except ConductorUnavailable:
+                logger.warning("Conductor sync unavailable execution_id=%s", execution.id)
+        return execution
+
     def create(self, request, *args, **kwargs):
         return Response({"detail": render_known_message(request, "执行记录只能由流程或触发器创建")}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
@@ -1684,23 +1700,13 @@ class WorkflowExecutionViewSet(AuthViewSet):
 
     @HasPermission("workflow-View", app_name=APP_NAME)
     def retrieve(self, request, *args, **kwargs):
-        execution = self._scoped_object(request)
-        if execution.conductor_workflow_id and execution.status in {
-            WorkflowExecution.Status.QUEUED,
-            WorkflowExecution.Status.RUNNING,
-            WorkflowExecution.Status.WAITING_APPROVAL,
-            WorkflowExecution.Status.TERMINATING,
-        }:
-            try:
-                apply_remote_execution(execution, ConductorClient().get_execution(execution.conductor_workflow_id))
-            except ConductorUnavailable:
-                logger.warning("Conductor sync unavailable execution_id=%s", execution.id)
+        execution = self._sync_active_execution(self._scoped_object(request))
         return Response(self.get_serializer(execution).data)
 
     @action(methods=["GET"], detail=True)
     @HasPermission("workflow-View", app_name=APP_NAME)
     def nodes(self, request, pk=None):
-        execution = self._scoped_object(request)
+        execution = self._sync_active_execution(self._scoped_object(request))
         username, _ = _identity(request)
         return Response(build_execution_node_summary(execution, username=username))
 
@@ -2210,13 +2216,15 @@ class ExecutionArtifactViewSet(AuthViewSet):
             return Response({"detail": workflow_message(request, "message.report_expired", "报告已过期")}, status=status.HTTP_410_GONE)
         if artifact.size > MAX_ARTIFACT_DOWNLOAD_BYTES:
             return Response(
-                {"detail": workflow_message(request, "message.report_too_large", "报告文件超过下载大小限制")}, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+                {"detail": workflow_message(request, "message.report_too_large", "报告文件超过下载大小限制")},
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             )
         try:
             content, _, _ = WorkflowObjectStore().get(artifact.object_key)
         except ArtifactTooLarge:
             return Response(
-                {"detail": workflow_message(request, "message.report_too_large", "报告文件超过下载大小限制")}, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+                {"detail": workflow_message(request, "message.report_too_large", "报告文件超过下载大小限制")},
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             )
         except Exception:
             return Response(
@@ -2239,13 +2247,15 @@ class ExecutionArtifactViewSet(AuthViewSet):
             return Response({"detail": workflow_message(request, "message.report_expired", "报告已过期")}, status=status.HTTP_410_GONE)
         if artifact.size > MAX_ARTIFACT_DOWNLOAD_BYTES:
             return Response(
-                {"detail": workflow_message(request, "message.report_too_large", "报告文件超过下载大小限制")}, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+                {"detail": workflow_message(request, "message.report_too_large", "报告文件超过下载大小限制")},
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             )
         try:
             content, _, _ = WorkflowObjectStore().get(artifact.object_key)
         except ArtifactTooLarge:
             return Response(
-                {"detail": workflow_message(request, "message.report_too_large", "报告文件超过下载大小限制")}, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+                {"detail": workflow_message(request, "message.report_too_large", "报告文件超过下载大小限制")},
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             )
         except Exception:
             return Response(

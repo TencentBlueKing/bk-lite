@@ -111,6 +111,7 @@ DEFAULT_SOURCE_CONFIG = {
         "service": "service",
         "tags": "tags",
         "location": "location",
+        "assignee": "assignee",
     },
     "event_fields_desc_mapping": {
         "title": "事件标题 | 类型: string | 必填: 是",
@@ -131,6 +132,7 @@ DEFAULT_SOURCE_CONFIG = {
         "resource_id": "资源ID | 类型: string | 必填: 否",
         "resource_name": "资源名称 | 类型: string | 必填: 否",
         "resource_type": "资源类型 | 类型: string | 必填: 否",
+        "assignee": "事件责任人 | 类型: array[string] | 必填: 否 | 说明: 用户名列表，最多20个；丰富到责任人时会被替换",
     },
 }
 
