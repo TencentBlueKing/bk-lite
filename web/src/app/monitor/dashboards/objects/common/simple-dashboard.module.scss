@@ -346,40 +346,6 @@
   justify-content: flex-end;
 }
 
-// 经典布局 / 全量指标：并排双 pill。主机专业入口仍是单独的下拉 pill。
-.modePills {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-.modePill {
-  height: 28px;
-  margin: 0;
-  padding: 0 12px;
-  border: 1px solid #1677ff;
-  border-radius: 999px;
-  background: var(--color-bg);
-  color: #1677ff;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 26px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.modePill:hover {
-  background: color-mix(in srgb, #1677ff 8%, var(--color-bg));
-}
-
-.modePillActive,
-.modePillActive:hover {
-  background: #1677ff;
-  border-color: #1677ff;
-  color: #fff;
-}
-
 .modeSelect {
   min-width: 280px;
 }
@@ -2185,17 +2151,6 @@
 }
 
 // 暗色：表面色已走语义 token，此处只补仍依赖硬编码/混色的局部。
-:global(html.dark) .modePill {
-  background: var(--color-bg);
-  color: #1677ff;
-}
-
-:global(html.dark) .modePillActive,
-:global(html.dark) .modePillActive:hover {
-  background: #1677ff;
-  color: #fff;
-}
-
 :global(html.dark) .inlineInstanceSelector,
 :global(html.dark) .toolbarTimeSelector > div > div:first-child :global(.ant-select-selector),
 :global(html.dark) .toolbarTimeSelector > div > div:last-child,

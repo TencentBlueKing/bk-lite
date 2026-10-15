@@ -8,9 +8,8 @@ const styles: DashboardPageHeaderStyles = {
   breadcrumb: 'mb-1 text-xs',
   title: 'm-0 text-base font-semibold text-[var(--color-text-1)]',
   controlsWrap: 'flex flex-wrap items-center gap-2',
-  modePills: 'inline-flex items-center gap-1.5',
-  modePill: 'h-7 rounded-full border border-[#1677ff] bg-white px-3 text-[13px] font-medium text-[#1677ff]',
-  modePillActive: '!bg-[#1677ff] !text-white',
+  viewModePill: 'inline-flex h-7 items-center gap-1 rounded-full border border-[#1677ff] bg-white px-3 text-[13px] font-medium text-[#1677ff]',
+  viewModeCaret: 'text-[10px] text-[#1677ff]',
   toolbarBackBtn: '',
   actionButtons: 'flex items-center'
 };

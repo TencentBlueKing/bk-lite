@@ -35,7 +35,7 @@ export interface DashboardPageHeaderProps {
   showTimeSelector?: boolean;
   /** SNMP / NetFlow / sFlow 跨路由切换（与展示模式控件并列）。 */
   viewSwitchSlot?: React.ReactNode;
-  /** 默认两档分段按钮。选项变多时改用下拉；主机详情用标题旁 pill。 */
+  /** 默认标题旁单 pill 下拉。选项很多时用 select。主机专业模式走 pill，菜单含分类项。 */
   modeControl?: 'segmented' | 'select' | 'pill';
   modeOptions?: readonly DashboardModeOption[];
   styles: DashboardPageHeaderStyles;
@@ -75,15 +75,16 @@ export function DashboardPageHeader({
   }));
   const onBack = () => router.push(returnNavigation.href);
   const resolvedModeOptions = modeOptions ?? DISPLAY_MODE_OPTIONS;
-  const hasProfessionalMode = resolvedModeOptions.some((item) => item.value === 'category');
-  const usePill = modeControl === 'pill' && hasProfessionalMode;
   const modeItems = resolvedModeOptions.map((item) => ({
     value: item.value,
     label: common(item.labelKey, item.fallback)
   }));
-  const currentModeLabel = modeItems.find((item) => item.value === displayMode)?.label ?? '';
-  const dualPillItems = modeItems.filter((item) => item.value !== 'category');
-  const modeSwitcher = usePill || modeControl === 'pill' ? null : modeControl === 'select' ? (
+  const menuItems = modeControl === 'pill'
+    ? modeItems
+    : modeItems.filter((item) => item.value !== 'category');
+  const currentModeLabel = menuItems.find((item) => item.value === displayMode)?.label ?? '';
+  const showModePill = modeControl !== 'select' && menuItems.length >= 2;
+  const modeSwitcher = modeControl === 'select' && modeItems.length >= 2 ? (
     <Select
       size="middle"
       className={[styles.modeSelect, 'min-w-[280px] max-md:w-full max-md:min-w-0'].filter(Boolean).join(' ')}
@@ -93,31 +94,14 @@ export function DashboardPageHeader({
       popupMatchSelectWidth
       onChange={(value) => onDisplayModeChange(value as 'dashboard' | 'metrics')}
     />
-  ) : dualPillItems.length >= 2 ? (
-    <div className={styles.modePills} role="group" aria-label={common('viewSwitcher', '视图')} data-mode-pills="">
-      {dualPillItems.map((item) => {
-        const selected = item.value === displayMode;
-        return (
-          <button
-            key={item.value}
-            type="button"
-            className={[styles.modePill, selected ? styles.modePillActive : ''].filter(Boolean).join(' ')}
-            aria-pressed={selected}
-            onClick={() => onDisplayModeChange(item.value as 'dashboard' | 'metrics')}
-          >
-            {item.label}
-          </button>
-        );
-      })}
-    </div>
   ) : null;
-  const modePill = usePill ? (
+  const modePill = showModePill ? (
     <Dropdown
       trigger={['click']}
       menu={{
         selectable: true,
         selectedKeys: [displayMode],
-        items: modeItems.map((item) => ({
+        items: menuItems.map((item) => ({
           key: item.value,
           label: item.label
         })),
@@ -157,7 +141,7 @@ export function DashboardPageHeader({
       <div className={styles.headerCrumb}>
         <Breadcrumb className={styles.breadcrumb} items={breadcrumbItems} />
       </div>
-      <div className={[styles.pageTitleRow, usePill ? styles.pageTitleRowPill : ''].filter(Boolean).join(' ')}>
+      <div className={[styles.pageTitleRow, showModePill ? styles.pageTitleRowPill : ''].filter(Boolean).join(' ')}>
         <div className={styles.titleControlsRow}>
           <div className={styles.titleLead}>
             <h1 className={styles.title}>{localizedTitle}</h1>
