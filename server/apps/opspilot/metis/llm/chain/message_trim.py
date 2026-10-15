@@ -15,7 +15,7 @@
 from typing import List
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
-from loguru import logger
+from apps.core.logger import opspilot_logger as logger
 
 from apps.opspilot.metis.llm.chain.entity import MessageTrimConfig
 from apps.opspilot.metis.llm.chain.token_utils import get_encoding as _get_encoding

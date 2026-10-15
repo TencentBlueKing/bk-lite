@@ -229,6 +229,47 @@ def test_node_endpoints_are_team_scoped(viewer):
 
 
 @pytest.mark.django_db
+def test_terminated_approval_keeps_context_but_cannot_be_decided(viewer):
+    execution = _execution()
+    execution.status = WorkflowExecution.Status.TERMINATED
+    execution.save(update_fields=["status", "updated_at"])
+    interaction = WorkflowInteraction.objects.create(
+        execution=execution,
+        interaction_type=WorkflowInteraction.Type.APPROVAL,
+        task_reference="approve_release",
+        conductor_task_id="human-task-1",
+        title="确认生产目标范围",
+        description="请在页面确认或拒绝",
+        candidate_users=["alice"],
+        public_context={"change_title": "本地闭环审批验收"},
+        team=[7],
+    )
+    detail = WorkflowExecutionViewSet.as_view({"get": "node_detail"})
+    nodes = WorkflowExecutionViewSet.as_view({"get": "nodes"})
+
+    response = detail(
+        _request(f"/executions/{execution.id}/nodes/approve_release/", viewer),
+        pk=execution.id,
+        node_reference="approve_release",
+    )
+    summary = nodes(_request(f"/executions/{execution.id}/nodes/", viewer), pk=execution.id)
+
+    assert response.status_code == 200
+    assert response.data["node"]["state"] == "SKIPPED"
+    assert response.data["node"]["actionable_interaction_ids"] == []
+    payload = response.data["interaction"]
+    assert payload["can_act"] is False
+    assert payload["status"] == "PENDING"
+    assert payload["title"] == "确认生产目标范围"
+    assert payload["description"] == "请在页面确认或拒绝"
+    assert payload["candidate_users"] == ["alice"]
+    assert payload["public_context"] == {"change_title": "本地闭环审批验收"}
+    assert payload["id"] == str(interaction.id)
+    by_reference = {item["reference"]: item for item in summary.data["nodes"]}
+    assert by_reference["approve_release"]["state"] == "SKIPPED"
+
+
+@pytest.mark.django_db
 def test_terminated_execution_settles_inflight_node_instead_of_running(viewer):
     execution = _execution()
     execution.status = WorkflowExecution.Status.TERMINATED

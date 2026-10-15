@@ -16,7 +16,7 @@ const normalizedNetflowBytesByLabels = (instanceType: string, groupBy: string) =
   `sum(${netflowBytesSeries(instanceType)} * label_value(${netflowBytesSeries(instanceType)}, "effective_sampling_rate")) by (instance_id, ${groupBy})`;
 
 export const buildFlowCollectionStatusQuery = (instanceType: string, protocol: FlowProtocol) =>
-  `any({instance_type='${instanceType}', collect_type='${protocol}'}) by (instance_id)`;
+  `any({instance_type='${instanceType}', collect_type='${protocol}', __$labels__}) by (instance_id)`;
 
 const avgOverWindow = (expr: string) => `avg_over_time((${expr})[__$window__])`;
 

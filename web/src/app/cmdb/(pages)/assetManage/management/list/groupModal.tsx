@@ -94,9 +94,8 @@ const GroupMoadal = forwardRef<GroupModalRef, GroupModalProps>(
           visible={groupVisible}
           onCancel={handleCancel}
           footer={
-            <div>
+            <div className="flex justify-end gap-2">
               <Button
-                className="mr-[10px]"
                 type="primary"
                 loading={confirmLoading}
                 onClick={handleSubmit}

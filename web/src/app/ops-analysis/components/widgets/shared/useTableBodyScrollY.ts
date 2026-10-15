@@ -15,7 +15,9 @@ export const resolveTableBodyScrollY = ({
   hasPagination: boolean;
   scale?: number;
 }): number => {
-  const headerHeight = Math.round(43 * scale);
+  // CustomTable size="small" 会按 47px 把表头加回锁定高度。这里必须用同一个数，
+  // 否则表格根节点比 overflow:hidden 的父级更高，分页器底部被裁掉。
+  const headerHeight = Math.round(47 * scale);
   const paginationHeight = hasPagination ? Math.round(56 * scale) : 0;
   const minBodyHeight = Math.round(120 * scale);
 

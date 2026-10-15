@@ -1,7 +1,7 @@
 'use client';
 
 import { DownloadOutlined, ReloadOutlined, RightOutlined } from '@ant-design/icons';
-import { Alert, App, Button, Descriptions, Empty, Input, Popconfirm, Spin, Tag } from 'antd';
+import { Alert, App, Button, Descriptions, Empty, Input, Popconfirm, Skeleton, Tag } from 'antd';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 
 import OperateDrawer from '@/components/operate-drawer';
@@ -249,10 +249,10 @@ export function ExecutionDetailDrawer({ executionId, initialNodeReference, initi
     const ticket = requestCoordinator.begin({ visible: !quiet });
     if (!ticket) return;
     try {
-      const [record, summary] = await Promise.all([
-        get<ExecutionRecord>(`${API}/executions/${executionId}/`, { signal: ticket.signal }),
-        get<ExecutionNodesResponse>(`${API}/executions/${executionId}/nodes/`, { signal: ticket.signal }),
-      ]);
+      // 先拉详情（会向 Conductor 同步终态），再拉节点列表，避免并行时节点快照仍停在 RUNNING。
+      const record = await get<ExecutionRecord>(`${API}/executions/${executionId}/`, { signal: ticket.signal });
+      if (!requestCoordinator.shouldApply(ticket)) return;
+      const summary = await get<ExecutionNodesResponse>(`${API}/executions/${executionId}/nodes/`, { signal: ticket.signal });
       if (!requestCoordinator.shouldApply(ticket)) return;
       const visibleNodes = summary.nodes.filter(isUserVisibleNode);
       setExecution(record);
@@ -344,7 +344,7 @@ export function ExecutionDetailDrawer({ executionId, initialNodeReference, initi
         destroyOnClose
         bodyStyle={{ padding: 0, display: 'flex', overflow: 'hidden' }}
       >
-        {loading && !execution ? <div data-testid="execution-detail-initial-loading" className="flex h-full min-h-0 w-full flex-1 items-center justify-center"><Spin /></div> : execution ? (
+        {loading && !execution ? <div data-testid="execution-detail-initial-loading" className="flex h-full min-h-0 w-full flex-1 items-center justify-center p-6"><Skeleton active paragraph={{ rows: 10 }} title={false} /></div> : execution ? (
           <div data-testid="execution-detail-content" className="flex h-full min-h-0 w-full min-w-0 max-w-full flex-1 flex-col overflow-hidden">
             <section className="shrink-0 px-5 py-4" aria-label={t('workflowOrchestration.execution.summary', '执行概要')}>
               <Descriptions size="small" column={2} items={[
@@ -412,7 +412,7 @@ export function ExecutionDetailDrawer({ executionId, initialNodeReference, initi
                       </div>
                       <Tag className="!m-0 shrink-0" color={NODE_COLORS[selectedNode.state]}>{nodeLabel(selectedNode.state, t)}{selectedNode.instance_count > 1 ? t('workflowOrchestration.node.timesSuffix', ' · {count} 次', { count: selectedNode.instance_count }) : ''}</Tag>
                     </div>
-                    {nodeDetailLoading || (loading && !selectedNodeDetail) ? <div className="flex min-h-52 items-center justify-center"><Spin /></div> : selectedNodeDetail ? (
+                    {nodeDetailLoading || (loading && !selectedNodeDetail) ? <div className="flex min-h-52 items-center justify-center p-4"><Skeleton active paragraph={{ rows: 6 }} title={false} /></div> : selectedNodeDetail ? (
                       <NodeDetail
                         key={selectedNode.reference}
                         detail={selectedNodeDetail}

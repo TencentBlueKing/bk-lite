@@ -9,6 +9,9 @@ import {
   getOpsChartThemeByMode,
 } from '@/app/ops-analysis/utils/chartTheme';
 import WidgetRenderer from '@/app/ops-analysis/components/widgetRenderer';
+import WidgetCsvHoverButton from '@/app/ops-analysis/components/widgetCsvHoverButton';
+import { isWidgetCsvExportDataBlocked, supportsWidgetCsvExport } from '@/app/ops-analysis/utils/widgetCsvExport';
+import { useTopologyCsvExportHoverEnabled } from '../utils/topologyCsvExportHover';
 import ScreenWidgetThemeProvider from '@/app/ops-analysis/components/screenWidgetThemeProvider';
 import WidgetErrorState from '@/app/ops-analysis/components/widgetErrorState';
 import {
@@ -28,6 +31,7 @@ interface ChartNodeProps {
 
 const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
   const { t } = useTranslation();
+  const csvExportHoverEnabled = useTopologyCsvExportHoverEnabled();
   const [nodeData, setNodeData] = useState(() => node.getData() || {});
   const [chartChrome, setChartChrome] = useState(() =>
     getTopologyNodeChromeKind(node),
@@ -64,6 +68,7 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
     description,
     dataSource,
     onTableQueryChange,
+    onExportCsv,
   } = nodeData;
 
   const chartTheme = getOpsChartThemeByMode(valueConfig?.chartThemeMode);
@@ -77,6 +82,10 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
   }, [node.id, onTableQueryChange]);
 
   const chartType = valueConfig?.chartType;
+  const showCsvHover = Boolean(componentName)
+    && csvExportHoverEnabled
+    && supportsWidgetCsvExport(chartType)
+    && !isWidgetCsvExportDataBlocked(chartType, rawData);
   const isTableLikeChart = chartType === 'table' || chartType === 'eventTable';
 
   const widgetProps = {
@@ -101,6 +110,7 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
   const isViewHoverChrome = chartChrome === 'view-hover';
   const chartChromeClassName = [
     TOPOLOGY_CHART_NODE_CLASS,
+    'group',
     isSelectedChrome ? TOPOLOGY_CHART_NODE_SELECTED_CLASS : '',
     isViewHoverChrome ? TOPOLOGY_CHART_NODE_HOVER_CLASS : '',
   ]
@@ -156,16 +166,23 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
             borderBottom: `1px solid ${panelChromeBorderColor}`,
           }}
         >
-          <div
-            style={{
-              fontSize: '14px',
-              fontWeight: '600',
-              color: chartTheme.panelTitleColor,
-              marginBottom: normalizedDescription ? '4px' : 0,
-              lineHeight: '20px',
-            }}
-          >
-            {componentName}
+          <div className={`flex min-w-0 items-center gap-2 ${normalizedDescription ? 'mb-1' : ''}`}>
+            <div
+              className="min-w-0 flex-1 truncate text-sm font-semibold leading-5"
+              style={{ color: chartTheme.panelTitleColor }}
+            >
+              {componentName}
+            </div>
+            {showCsvHover && (
+              <WidgetCsvHoverButton
+                label={t('dashboard.exportCsv')}
+                onClick={() => {
+                  if (typeof onExportCsv === 'function') {
+                    onExportCsv(node.id, componentName || '');
+                  }
+                }}
+              />
+            )}
           </div>
           {normalizedDescription && (
             <div

@@ -92,6 +92,7 @@ error:
   approval_decision_required: 「{node}」必须紧接包含 true/false 的决策分支
   approval_timeout_branch_required: 「{node}」启用超时后必须连接 timeout 分支
   approval_title_required: 「{node}」必须配置标题
+  node_title_required: 「{node}」必须填写节点名称
   atom_catalog_limit: 当前组织可用原子超过 100 个上限
   atom_context_missing: 原子缺少可信执行上下文
   atom_create_unsupported: MVP 原子由研发注册包同步，页面不支持在线创建

@@ -245,6 +245,16 @@ const AlarmTable: React.FC<AlarmTableProps> = ({
       ),
     },
     {
+      title: t('alarms.owners'),
+      dataIndex: 'owners',
+      key: 'owners',
+      width: 180,
+      render: (_: unknown, record: AlarmTableRow) => {
+        const owners = Array.isArray(record.owners) ? record.owners.map(String) : [];
+        return owners.length ? owners.join('、') : '--';
+      },
+    },
+    {
       title: t('alarms.notificationStatus'),
       dataIndex: 'notify_status',
       key: 'notify_status',

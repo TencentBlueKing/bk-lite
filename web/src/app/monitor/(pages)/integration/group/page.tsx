@@ -1,8 +1,9 @@
 'use client';
 import './register-group-pilot';
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { Input, Button, Popconfirm, Space, Tag } from 'antd';
+import { Button, Popconfirm, Space } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
+import SearchActionBar from '@/components/search-action-bar';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
@@ -73,12 +74,10 @@ const GroupPage = () => {
         key: 'monitor_object',
         width: 180,
         render: (_, { monitor_object }) => (
-          <Tag color="blue" className="max-w-full p-0">
-            <EllipsisWithTooltip
-              className="w-full px-2 overflow-hidden text-ellipsis whitespace-nowrap"
-              text={getObjectTypeName(monitor_object)}
-            />
-          </Tag>
+          <EllipsisWithTooltip
+            className="max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-[var(--color-text-2)]"
+            text={getObjectTypeName(monitor_object)}
+          />
         )
       },
       {
@@ -317,27 +316,28 @@ const GroupPage = () => {
         </div>
       </ResizableSidebar>
       <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--color-bg-1)] p-5">
-        <div className="mb-4 flex min-w-0 shrink-0 items-center justify-between gap-3">
-          <Input
-            allowClear
-            className="w-full max-w-[320px] min-w-0"
-            placeholder={t('monitor.integrations.searchRuleName')}
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            onPressEnter={operateRule}
-            onClear={clearText}
-          />
-          <Permission requiredPermissions={['Add']}>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => openRuleModal('add')}
-              disabled={objectId === 'all'}
-            >
-              {t('common.add')}
-            </Button>
-          </Permission>
-        </div>
+        <SearchActionBar
+          searchProps={{
+            placeholder: t('monitor.integrations.searchRuleName'),
+            value: searchText,
+            allowClear: true,
+            onChange: (e) => setSearchText(e.target.value),
+            onSearch: operateRule,
+            onClear: clearText,
+          }}
+          actions={(
+            <Permission requiredPermissions={['Add']}>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => openRuleModal('add')}
+                disabled={objectId === 'all'}
+              >
+                {t('common.new')}
+              </Button>
+            </Permission>
+          )}
+        />
         <div className="min-h-0 min-w-0 flex-1">
           <CustomTable
             scroll={{ x: 'max-content' }}

@@ -88,9 +88,8 @@ const ImportModelConfigModal = forwardRef<ImportModelConfigModalRef, ImportModel
         visible={visible}
         onCancel={handleCancel}
         footer={
-          <div>
+          <div className="flex justify-end gap-2">
             <Button
-              className="mr-[10px]"
               type="primary"
               loading={confirmLoading}
               disabled={fileList.length === 0}

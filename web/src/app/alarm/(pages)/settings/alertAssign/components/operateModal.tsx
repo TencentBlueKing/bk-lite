@@ -382,6 +382,7 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
         <NotificationTargetFields
           personnelOptions={personnelOptions}
           typeLabel={t('settings.assignStrategy.formTargetSelect')}
+          showPreferOwner
         />
         <Form.Item
           label={t('settings.assignStrategy.formNotifyMethod')}
@@ -453,12 +454,16 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
                         ['escalation', 'settings.notificationTemplate.sceneEscalation'],
                         ['recovery', 'settings.notificationTemplate.sceneRecovery'],
                       ] as const).map(([scene, labelKey]) => (
-                        <Form.Item key={scene} name={['notification_templates', channelId, scene]} label={t(labelKey)}>
+                        <Form.Item
+                          key={scene}
+                          name={['notification_templates', channelId, scene]}
+                          label={t(labelKey)}
+                          rules={[{ required: true, message: t('common.selectTip') }]}
+                        >
                           <Select
-                            allowClear
                             className="w-full"
                             loading={templateLoading}
-                            placeholder={t('settings.notificationTemplate.defaultTemplate')}
+                            placeholder={t('common.selectTip')}
                             options={options}
                           />
                         </Form.Item>

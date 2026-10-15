@@ -339,7 +339,7 @@ const PublicEnumLibraryModal = forwardRef<PublicEnumLibraryModalRef, PublicEnumL
                   onMouseLeave={() => setHoveredLibraryId(null)}
                   className={`group px-3 py-2 rounded cursor-pointer transition-colors flex items-center justify-between ${
                     selectedLibrary?.library_id === lib.library_id
-                      ? 'bg-blue-50 text-[var(--color-primary)]'
+                      ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)]'
                       : 'hover:bg-[var(--color-fill-2)]'
                   }`}
                 >
@@ -351,7 +351,7 @@ const PublicEnumLibraryModal = forwardRef<PublicEnumLibraryModalRef, PublicEnumL
                         onClick={(e) => handleEditLibrary(lib, e)}
                       />
                       <DeleteOutlined
-                        className="text-red-500 hover:text-red-600"
+                        className="text-[var(--color-fail)] hover:text-[var(--color-fail)]"
                         onClick={(e) => handleDeleteLibrary(lib, e)}
                       />
                     </span>
@@ -447,7 +447,7 @@ const PublicEnumLibraryModal = forwardRef<PublicEnumLibraryModalRef, PublicEnumL
                   disabled={!isEditingOptions}
                 >
                   <ul>
-                    <li className="sticky top-0 z-10 flex items-center mb-2 text-sm text-[var(--color-text-secondary)] bg-white pt-1 pb-2">
+                    <li className="sticky top-0 z-10 flex items-center mb-2 text-sm text-[var(--color-text-secondary)] bg-[var(--color-bg)] pt-1 pb-2">
                       {isEditingOptions && (
                         <span className="mr-2 w-[14px]"></span>
                       )}
@@ -501,7 +501,7 @@ const PublicEnumLibraryModal = forwardRef<PublicEnumLibraryModalRef, PublicEnumL
                               onClick={addOption}
                             />
                             <MinusOutlined
-                              className="cursor-pointer text-red-500 hover:text-red-600"
+                              className="cursor-pointer text-[var(--color-fail)] hover:text-[var(--color-fail)]"
                               onClick={() => deleteOption(index)}
                             />
                           </span>

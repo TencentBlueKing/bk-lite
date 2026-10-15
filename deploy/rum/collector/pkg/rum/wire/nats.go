@@ -16,6 +16,8 @@ import (
 
 type NATSConfig struct {
 	URL             string
+	User            string
+	PasswordFile    string
 	CredentialsFile string
 	NKeySeedFile    string
 	CAFile          string
@@ -31,6 +33,11 @@ func (cfg NATSConfig) Validate() error {
 	if err != nil || parsed.Host == "" || parsed.Scheme != "tls" || parsed.User != nil {
 		return errors.New("NATS URL must use tls:// without embedded credentials")
 	}
+	user := strings.TrimSpace(cfg.User)
+	passwordFile := strings.TrimSpace(cfg.PasswordFile)
+	if (user == "") != (passwordFile == "") {
+		return errors.New("NATS username and password file must be configured together")
+	}
 	authMethods := 0
 	if strings.TrimSpace(cfg.CredentialsFile) != "" {
 		authMethods++
@@ -38,8 +45,11 @@ func (cfg NATSConfig) Validate() error {
 	if strings.TrimSpace(cfg.NKeySeedFile) != "" {
 		authMethods++
 	}
+	if user != "" {
+		authMethods++
+	}
 	if authMethods != 1 {
-		return errors.New("exactly one NATS credentials file or NKey seed file is required")
+		return errors.New("exactly one NATS credentials file, NKey seed file, or username and password file is required")
 	}
 	if (cfg.CertFile == "") != (cfg.KeyFile == "") {
 		return errors.New("NATS TLS cert and key files must be configured together")
@@ -47,6 +57,7 @@ func (cfg NATSConfig) Validate() error {
 	for label, path := range map[string]string{
 		"NATS credentials": cfg.CredentialsFile,
 		"NATS NKey seed":   cfg.NKeySeedFile,
+		"NATS password":    cfg.PasswordFile,
 		"NATS TLS key":     cfg.KeyFile,
 	} {
 		if strings.TrimSpace(path) == "" {
@@ -88,12 +99,21 @@ func ConnectNATS(cfg NATSConfig, name string) (*nats.Conn, error) {
 		nats.MaxReconnects(-1),
 		nats.ReconnectWait(time.Second),
 	}
-	var err error
-	if cfg.CredentialsFile != "" {
+	switch {
+	case strings.TrimSpace(cfg.CredentialsFile) != "":
 		options = append(options, nats.UserCredentials(cfg.CredentialsFile))
-	} else {
-		var nkeyOption nats.Option
-		nkeyOption, err = nats.NkeyOptionFromSeed(cfg.NKeySeedFile)
+	case strings.TrimSpace(cfg.PasswordFile) != "":
+		raw, err := os.ReadFile(cfg.PasswordFile)
+		if err != nil {
+			return nil, fmt.Errorf("read NATS password file: %w", err)
+		}
+		password := strings.TrimSpace(string(raw))
+		if password == "" {
+			return nil, errors.New("NATS password file is empty")
+		}
+		options = append(options, nats.UserInfo(strings.TrimSpace(cfg.User), password))
+	default:
+		nkeyOption, err := nats.NkeyOptionFromSeed(cfg.NKeySeedFile)
 		if err != nil {
 			return nil, fmt.Errorf("load NATS NKey seed: %w", err)
 		}
@@ -126,6 +146,8 @@ func ConnectNATS(cfg NATSConfig, name string) (*nats.Conn, error) {
 // credentials file, never embedded secrets.
 type ControlClientConfig struct {
 	URL             string
+	User            string
+	PasswordFile    string
 	CredentialsFile string
 	CAFile          string
 	CertFile        string
@@ -145,8 +167,11 @@ func ConnectControlClient(cfg ControlClientConfig, name string) (*nats.Conn, err
 	if parsed.Scheme == "tls" && parsed.User != nil {
 		return nil, errors.New("NATS URL must use tls:// without embedded credentials")
 	}
-	if parsed.User != nil && strings.TrimSpace(cfg.CredentialsFile) != "" {
-		return nil, errors.New("NATS URL must not mix embedded credentials with a credentials file")
+	if parsed.User != nil && (strings.TrimSpace(cfg.CredentialsFile) != "" || strings.TrimSpace(cfg.User) != "" || strings.TrimSpace(cfg.PasswordFile) != "") {
+		return nil, errors.New("NATS URL must not mix embedded credentials with a username or credentials file")
+	}
+	if (strings.TrimSpace(cfg.User) == "") != (strings.TrimSpace(cfg.PasswordFile) == "") {
+		return nil, errors.New("NATS username and password file must be configured together")
 	}
 	if (cfg.CertFile == "") != (cfg.KeyFile == "") {
 		return nil, errors.New("NATS TLS cert and key files must be configured together")
@@ -162,7 +187,21 @@ func ConnectControlClient(cfg ControlClientConfig, name string) (*nats.Conn, err
 		nats.MaxReconnects(-1),
 		nats.ReconnectWait(time.Second),
 	}
-	if strings.TrimSpace(cfg.CredentialsFile) != "" {
+	switch {
+	case strings.TrimSpace(cfg.PasswordFile) != "":
+		if err := validatePrivateFile(cfg.PasswordFile); err != nil {
+			return nil, fmt.Errorf("NATS password file: %w", err)
+		}
+		raw, err := os.ReadFile(cfg.PasswordFile)
+		if err != nil {
+			return nil, fmt.Errorf("read NATS password file: %w", err)
+		}
+		password := strings.TrimSpace(string(raw))
+		if password == "" {
+			return nil, errors.New("NATS password file is empty")
+		}
+		options = append(options, nats.UserInfo(strings.TrimSpace(cfg.User), password))
+	case strings.TrimSpace(cfg.CredentialsFile) != "":
 		options = append(options, nats.UserCredentials(cfg.CredentialsFile))
 	}
 	if cfg.CAFile != "" {

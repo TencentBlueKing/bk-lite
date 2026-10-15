@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import dynamic from 'next/dynamic';
 import { useScreenAwareRouter } from '@/console-layout';
 import DOMPurify from 'dompurify';
 import MarkdownIt from 'markdown-it';
-import { Alert, Button, Card, Form, Input, Modal, Select, Space, Spin, Tabs, Tag, Typography, message } from 'antd';
+import { Alert, Button, Card, Form, Input, InputRef, Modal, Select, Space, Spin, Tabs, Tag, Typography, message } from 'antd';
 import { ArrowLeftOutlined, EyeOutlined, SaveOutlined } from '@ant-design/icons';
 import { useSettingApi } from '@/app/alarm/api/settings';
 import { useAlarmApi } from '@/app/alarm/api/alarms';
@@ -61,6 +61,8 @@ interface TemplateApiError {
   contents?: Array<{ detail?: string }>;
 }
 
+const SUBJECT_TEMPLATE_MAX_LENGTH = 200;
+
 const getApiError = (error: unknown) => {
   if (axios.isAxiosError<TemplateApiError>(error)) return error.response;
   if (error instanceof HandledRequestError) {
@@ -105,6 +107,9 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
       getCursorPosition: () => { row: number; column: number };
       focus: () => void;
         } | null>(null);
+  const subjectInputRef = useRef<InputRef>(null);
+  const subjectCaretRef = useRef<number | null>(null);
+  const insertTargetRef = useRef<'subject' | 'body'>('body');
   const [channels, setChannels] = useState<Array<{
     id: number;
     name: string;
@@ -248,6 +253,31 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
     editor.session.insert(editor.getCursorPosition(), text);
     editor.focus();
   };
+
+  const insertVariable = (text: string) => {
+    const input = subjectInputRef.current?.input;
+    if (insertTargetRef.current !== 'subject' || !input) {
+      insertIntoBody(text);
+      return;
+    }
+    const start = input.selectionStart ?? activeContent.subject_template.length;
+    const end = input.selectionEnd ?? start;
+    const current = activeContent.subject_template;
+    const next = `${current.slice(0, start)}${text}${current.slice(end)}`;
+    if (next.length > SUBJECT_TEMPLATE_MAX_LENGTH) return;
+    subjectCaretRef.current = start + text.length;
+    updateContent({ subject_template: next });
+  };
+
+  useLayoutEffect(() => {
+    const caret = subjectCaretRef.current;
+    if (caret == null) return;
+    subjectCaretRef.current = null;
+    const input = subjectInputRef.current?.input;
+    if (!input) return;
+    input.focus();
+    input.setSelectionRange(caret, caret);
+  }, [activeContent.subject_template]);
 
   const applyEventBlock = (text: string) => {
     const body = activeContent.body_template;
@@ -639,7 +669,8 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
                       size="small"
                       type={used ? 'primary' : 'default'}
                       ghost={used}
-                      onClick={() => updateContent({ body_template: `${activeContent.body_template}{{ ${variable.path} }}` })}
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => insertVariable(`{{ ${variable.path} }}`)}
                     >
                       {variable.label}
                     </Button>
@@ -657,9 +688,13 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
                 <div className="mb-3">
                   <Typography.Text>{t('settings.notificationTemplate.subject')}</Typography.Text>
                   <Input
+                    ref={subjectInputRef}
                     className="mt-1"
                     value={activeContent.subject_template}
-                    maxLength={200}
+                    maxLength={SUBJECT_TEMPLATE_MAX_LENGTH}
+                    onFocus={() => {
+                      insertTargetRef.current = 'subject';
+                    }}
                     onChange={(event) => updateContent({ subject_template: event.target.value })}
                   />
                 </div>
@@ -675,6 +710,9 @@ export default function TemplateEditor({ templateId }: TemplateEditorProps) {
                 width="100%"
                 height="clamp(360px, calc(100vh - 570px), 640px)"
                 value={activeContent.body_template}
+                onFocus={() => {
+                  insertTargetRef.current = 'body';
+                }}
                 onChange={(value) => updateContent({ body_template: value })}
                 wrapEnabled
                 setOptions={{ showPrintMargin: false, useWorker: false, tabSize: 2 }}

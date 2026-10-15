@@ -254,6 +254,7 @@ class CollectPluginTypes(object):
     CONFIG_FILE = "config_file"
     IP = "ip"
     OTHER = "other"
+    CUSTOM_SCRIPT = "custom_script"
 
     CHOICE = (
         (VM, "VM采集"),
@@ -267,6 +268,7 @@ class CollectPluginTypes(object):
         (CONFIG_FILE, "配置文件采集"),
         (IP, "IP采集"),
         (OTHER, "其他采集"),
+        (CUSTOM_SCRIPT, "自定义脚本采集"),
     )
 
 

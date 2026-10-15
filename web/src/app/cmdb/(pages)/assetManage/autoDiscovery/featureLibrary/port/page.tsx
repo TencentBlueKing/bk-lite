@@ -11,10 +11,12 @@ import {
   Tag,
   message,
 } from 'antd';
-import { PlusOutlined, SearchOutlined } from '@ant-design/icons';
+import { PlusOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
 import CustomTable from '@/components/custom-table';
-import Introduction from '@/components/introduction';
+import TopSection from '@/components/top-section';
+import SearchActionBar from '@/components/search-action-bar';
+import SourceOriginBadge from '@/components/source-origin-badge';
 import PermissionWrapper from '@/components/permission';
 import { usePortFingerprintApi, type PortFingerprintItem } from '@/app/cmdb/api';
 import { useTranslation } from '@/utils/i18n';
@@ -215,15 +217,7 @@ const PortFingerprintPage: React.FC = () => {
         key: 'built_in',
         width: 140,
         render: (builtIn: boolean) => (
-          <Tag
-            className={`!m-0 !rounded !border-0 !px-2 !py-0.5 !text-xs ${
-              builtIn
-                ? '!bg-[color-mix(in_srgb,var(--color-primary)_12%,transparent)] !text-[var(--color-primary)] font-medium'
-                : '!bg-[var(--color-fill-2)] !text-[var(--color-text-3)]'
-            }`}
-          >
-            {builtIn ? t('OidLibrary.builtInYes') : t('OidLibrary.builtInNo')}
-          </Tag>
+          <SourceOriginBadge kind={builtIn ? 'builtin' : 'custom'} />
         ),
       },
       {
@@ -255,14 +249,14 @@ const PortFingerprintPage: React.FC = () => {
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       <div className="shrink-0 overflow-x-auto">
-        <Introduction
+        <TopSection
           title={t('OidLibrary.portIntroTitle')}
-          message={t('OidLibrary.portIntroMessage')}
+          content={t('OidLibrary.portIntroMessage')}
         />
       </div>
 
-      <div className="mb-4 flex shrink-0 flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2.5">
+      <SearchActionBar
+        filters={(
           <Select
             allowClear
             placeholder={t('OidLibrary.typePlaceholder')}
@@ -273,31 +267,30 @@ const PortFingerprintPage: React.FC = () => {
             style={{ width: 200 }}
             options={PORT_TARGET_TYPE_OPTIONS}
           />
-          <Input
-            allowClear
-            placeholder={t('OidLibrary.portPlaceholder')}
-            value={searchPort}
-            onChange={(e) => setSearchPort(e.target.value)}
-            onPressEnter={handleFilterChange}
-            style={{ width: 180 }}
-          />
-          <Button type="primary" ghost icon={<SearchOutlined />} onClick={handleFilterChange}>
-            {t('common.search')}
-          </Button>
-          {(selectedType || searchPort) && (
-            <Button onClick={handleResetFilter}>{t('common.reset')}</Button>
-          )}
-        </div>
-
-        <PermissionWrapper
-          requiredPermissions={['Add']}
-          permissionPath={FEATURE_LIBRARY_PERMISSION_PATH}
-        >
-          <Button type="primary" icon={<PlusOutlined />} onClick={handleOpenAddModal}>
-            {t('OidLibrary.addPortFingerprint')}
-          </Button>
-        </PermissionWrapper>
-      </div>
+        )}
+        searchProps={{
+          allowClear: true,
+          placeholder: t('OidLibrary.portPlaceholder'),
+          value: searchPort,
+          onChange: (e) => setSearchPort(e.target.value),
+          onSearch: handleFilterChange,
+        }}
+        actions={(
+          <>
+            {(selectedType || searchPort) && (
+              <Button onClick={handleResetFilter}>{t('common.reset')}</Button>
+            )}
+            <PermissionWrapper
+              requiredPermissions={['Add']}
+              permissionPath={FEATURE_LIBRARY_PERMISSION_PATH}
+            >
+              <Button type="primary" icon={<PlusOutlined />} onClick={handleOpenAddModal}>
+                {t('common.new')}
+              </Button>
+            </PermissionWrapper>
+          </>
+        )}
+      />
 
       <div className="min-h-0 h-full flex-1 overflow-hidden">
         <CustomTable

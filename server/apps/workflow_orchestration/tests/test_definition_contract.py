@@ -10,7 +10,41 @@ from apps.workflow_orchestration.services.definitions import (
     escape_conductor_literal_text,
     prepare_definition_for_publish,
     validate_conductor_definition,
+    validate_user_facing_node_titles,
 )
+
+
+def test_empty_user_facing_node_title_is_rejected():
+    definition = {
+        "tasks": [
+            {"name": "bklite_job_execute", "taskReferenceName": "scan", "type": "SIMPLE", "inputParameters": {}},
+            {
+                "name": "approval_decision",
+                "taskReferenceName": "approval_decision",
+                "type": "SWITCH",
+                "decisionCases": {"true": [], "false": []},
+                "defaultCase": [],
+            },
+        ]
+    }
+    metadata = {"node_titles": {"scan": "", "approval_decision": ""}}
+
+    with pytest.raises(DefinitionValidationError, match="节点 scan 必须填写节点名称"):
+        validate_user_facing_node_titles(definition, metadata)
+
+    validate_user_facing_node_titles(
+        definition,
+        {"node_titles": {"scan": "巡检扫描"}},
+    )
+
+
+def test_missing_node_title_is_allowed_for_legacy_drafts():
+    definition = {
+        "tasks": [
+            {"name": "bklite_job_execute", "taskReferenceName": "scan", "type": "SIMPLE", "inputParameters": {}},
+        ]
+    }
+    validate_user_facing_node_titles(definition, {"node_titles": {}})
 
 
 def test_health_starter_is_native_conductor_definition():
@@ -125,6 +159,8 @@ def test_health_starter_is_composed_from_configurable_general_atoms():
     notify = tasks[2]
     assert notify["name"] == "bklite_notification"
     assert notify["inputParameters"]["report_artifact"] == "${report.output.artifact}"
+    assert notify["inputParameters"]["recipients"] == ["${workflow.input.__system.actor_name}"]
+    assert "channel_id" not in notify["inputParameters"]
 
 
 def test_general_control_flow_and_approval_definition_is_accepted():
@@ -380,3 +416,35 @@ def test_atom_literal_inputs_follow_schema_but_conductor_references_remain_allow
     with pytest.raises(DefinitionValidationError, match="notify.*channel_id"):
         prepare_definition_for_publish(invalid, engine_name="wf", version=1)
     assert prepare_definition_for_publish(dynamic, engine_name="wf", version=1)["tasks"][0]["name"] == "bklite_notification"
+
+
+@pytest.mark.django_db
+def test_notification_atom_rejects_email_bound_to_nats_channel():
+    from apps.system_mgmt.models import Channel, ChannelChoices
+
+    nats = Channel.objects.create(
+        name="告警中心",
+        channel_type=ChannelChoices.NATS,
+        config={"method_name": "receive_alert_events"},
+        description="",
+        team=[7],
+    )
+    definition = {
+        "tasks": [
+            {
+                "name": "bklite_notification",
+                "taskReferenceName": "notify",
+                "type": "SIMPLE",
+                "inputParameters": {
+                    "notification_type": "EMAIL",
+                    "channel_id": nats.id,
+                    "recipients": ["1"],
+                    "title": "巡检完成",
+                    "body": "正文",
+                },
+            }
+        ]
+    }
+
+    with pytest.raises(DefinitionValidationError, match="notify.*channel_id"):
+        prepare_definition_for_publish(definition, engine_name="wf", version=1)

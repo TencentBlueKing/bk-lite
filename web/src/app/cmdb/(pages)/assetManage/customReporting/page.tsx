@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import Introduction from '@/components/introduction';
+import TopSection from '@/components/top-section';
 import { useTranslation } from '@/utils/i18n';
 import TaskTable from './components/taskTable';
 import TaskWizard from './components/taskWizard';
@@ -37,9 +37,9 @@ export default function CustomReportingPage() {
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden">
       <div className="shrink-0">
-        <Introduction
+        <TopSection
           title={t('CustomReporting.title')}
-          message={t('CustomReporting.message')}
+          content={t('CustomReporting.message')}
         />
       </div>
       <TaskTable

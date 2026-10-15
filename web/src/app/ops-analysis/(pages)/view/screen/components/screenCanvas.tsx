@@ -383,12 +383,12 @@ const ScreenRndItem: React.FC<ScreenRndItemProps> = React.memo(
             : undefined
         }
         onContextMenu={
-          editable
+          editable && onOpenItemMenu
             ? (event: React.MouseEvent) => {
               event.preventDefault();
               event.stopPropagation();
               onSelectItem?.(item.id);
-              onOpenItemMenu?.(item.id, { x: event.clientX, y: event.clientY });
+              onOpenItemMenu(item.id, { x: event.clientX, y: event.clientY });
             }
             : undefined
         }

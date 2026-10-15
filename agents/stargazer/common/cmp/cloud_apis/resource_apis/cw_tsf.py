@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-import logging
 
 from common.cmp.cloud_apis.constant import CloudType
 from common.cmp.cloud_apis.resource_apis.cw_tce import TCE
@@ -9,8 +8,8 @@ from common.cmp.cloud_apis.resource_apis.tcecloud.common.exception.tce_cloud_sdk
 # 导入可选配置类
 from common.cmp.cloud_apis.resource_apis.tcecloud.tsf.v20180326 import models as tsf_models
 from common.cmp.cloud_apis.resource_apis.tcecloud.tsf.v20180326 import tsf_client
+from core.logger import logger
 
-logger = logging.getLogger("root")
 
 TSF_COMPONENT = ("TSF",)
 

@@ -38,7 +38,7 @@ const ExpandableText: React.FC<ExpandableTextProps> = ({
 
   return (
     <div
-      className={`mt-1.5 text-xs leading-5 text-slate-500 ${collapsedLines === 3 ? 'line-clamp-3' : 'line-clamp-2'}`}
+      className={`mt-1.5 text-xs leading-5 text-[var(--color-text-3)] ${collapsedLines === 3 ? 'line-clamp-3' : 'line-clamp-2'}`}
     >
       {text}
     </div>
@@ -65,17 +65,17 @@ const PluginCard: React.FC<PluginCardProps> = React.memo(
 
     const statusItems = [
       {
-        dotClass: 'bg-blue-500',
+        dotClass: 'bg-[var(--color-primary)]',
         label: runningLabel,
         value: runningCount,
       },
       {
-        dotClass: 'bg-green-500',
+        dotClass: 'bg-[var(--color-success)]',
         label: successLabel,
         value: successCount,
       },
       {
-        dotClass: 'bg-rose-500',
+        dotClass: 'bg-[var(--color-fail)]',
         label: failedLabel,
         value: failedCount,
       },
@@ -85,11 +85,12 @@ const PluginCard: React.FC<PluginCardProps> = React.memo(
       <div
         role="button"
         tabIndex={0}
-        className={`group relative w-full shrink-0 cursor-pointer overflow-hidden rounded-2xl border transition-all duration-200 ${
+        aria-pressed={isActive}
+        className={`group relative w-full shrink-0 cursor-pointer overflow-hidden rounded-xl border p-3 text-left transition-colors ${
           isActive
-            ? 'border-slate-200 bg-white shadow-[0_14px_30px_rgba(59,130,246,0.12),0_4px_12px_rgba(15,23,42,0.05)]'
-            : 'border-slate-200 bg-white hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_12px_24px_rgba(15,23,42,0.08)]'
-        } p-3 text-left`}
+            ? 'border-[var(--color-primary)] bg-[var(--color-primary-bg-active)]'
+            : 'border-[var(--color-border)] bg-[var(--color-bg)] hover:border-[var(--color-primary)] hover:bg-[var(--color-fill-1)]'
+        }`}
         onClick={() => onSelect(tab.id)}
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === ' ') {
@@ -98,20 +99,12 @@ const PluginCard: React.FC<PluginCardProps> = React.memo(
           }
         }}
       >
-        <div
-          className={`pointer-events-none absolute inset-0 transition-opacity ${
-            isActive
-              ? 'bg-[radial-gradient(circle_at_top_left,rgba(147,197,253,0.24),transparent_44%),radial-gradient(circle_at_92%_100%,rgba(186,230,253,0.18),transparent_36%)] opacity-100'
-              : 'bg-[radial-gradient(circle_at_top_left,rgba(226,232,240,0.28),transparent_42%)] opacity-0 group-hover:opacity-100'
-          }`}
-        />
-
         <div className="relative z-10 flex items-start gap-2.5">
           <div
-            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border shadow-sm transition-colors ${
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${
               isActive
-                ? 'border-sky-200 bg-sky-50/70 shadow-[0_8px_18px_rgba(59,130,246,0.12)]'
-                : 'border-slate-200 bg-slate-50 group-hover:border-blue-100 group-hover:bg-blue-50'
+                ? 'border-[var(--color-primary)] bg-[var(--color-primary-bg-active)]'
+                : 'border-[var(--color-border)] bg-[var(--color-fill-1)]'
             }`}
           >
             <Image
@@ -120,14 +113,13 @@ const PluginCard: React.FC<PluginCardProps> = React.memo(
               width={26}
               height={26}
               unoptimized
-              className={`${isActive ? 'opacity-100' : 'opacity-80 group-hover:opacity-100'}`}
             />
           </div>
-          <div className="flex-1 min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
                 <div
-                  className={`text-sm font-semibold leading-5 tracking-[0.01em] wrap-break-word flex items-center gap-1 ${isActive ? 'text-blue-700' : 'text-slate-900'}`}
+                  className={`text-sm font-semibold leading-5 tracking-[0.01em] wrap-break-word flex items-center gap-1 ${isActive ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-1)]'}`}
                 >
                   <span>{cleanName}</span>
                   {isBeta && (
@@ -139,19 +131,19 @@ const PluginCard: React.FC<PluginCardProps> = React.memo(
                 <ExpandableText text={description} collapsedLines={2} />
               </div>
               <div
-                className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${isActive ? 'bg-blue-500 shadow-[0_0_0_4px_rgba(59,130,246,0.12)]' : 'bg-slate-200 group-hover:bg-blue-300'}`}
+                className={`mt-0.5 h-2 w-2 shrink-0 rounded-full ${isActive ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-fill-3)]'}`}
               />
             </div>
 
             {tags.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-[11px] leading-4 text-slate-500">
+              <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-xs leading-4 text-[var(--color-text-3)]">
                 {tags.map((tag: string) => (
                   <span
                     key={tag}
-                    className={`inline-flex items-center wrap-break-word ${isActive ? 'text-blue-700/85' : 'text-slate-500'}`}
+                    className={`inline-flex items-center wrap-break-word ${isActive ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-3)]'}`}
                   >
                     <span
-                      className={`mr-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${isActive ? 'bg-blue-300' : 'bg-slate-300'}`}
+                      className={`mr-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${isActive ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-fill-4)]'}`}
                     />
                     <span className="break-keep">{tag}</span>
                   </span>
@@ -166,13 +158,8 @@ const PluginCard: React.FC<PluginCardProps> = React.memo(
           title={
             <div className="flex flex-col gap-1.5">
               {statusItems.map(({ dotClass, value, label }) => (
-                <div
-                  key={label}
-                  className="flex items-center gap-2 text-xs text-white/95"
-                >
-                  <div
-                    className={`h-2 w-2 shrink-0 rounded-full ${dotClass}`}
-                  />
+                <div key={label} className="flex items-center gap-2 text-xs">
+                  <div className={`h-2 w-2 shrink-0 rounded-full ${dotClass}`} />
                   <span>
                     {label}：{value}
                   </span>
@@ -182,24 +169,23 @@ const PluginCard: React.FC<PluginCardProps> = React.memo(
           }
         >
           <div
-            className="mt-3 border-t pt-2"
-            style={{ borderColor: 'var(--color-border-2)' }}
+            className="mt-3 border-t border-[var(--color-border-2)] pt-2"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center">
               {statusItems.map(({ dotClass, value, label }, index) => (
                 <div
                   key={label}
-                  className={`flex flex-1 items-center justify-center ${index < statusItems.length - 1 ? 'border-r border-slate-200/70' : ''}`}
+                  className={`flex flex-1 items-center justify-center ${index < statusItems.length - 1 ? 'border-r border-[var(--color-border-2)]' : ''}`}
                 >
                   <div
-                    className={`flex min-w-10.5 items-center justify-center gap-1.5 rounded-lg px-1.5 py-0.5 transition-colors ${isActive ? 'hover:bg-blue-50/80' : 'hover:bg-slate-100/80'}`}
+                    className="flex min-w-10.5 items-center justify-center gap-1.5 rounded-md px-1.5 py-0.5 transition-colors hover:bg-[var(--color-fill-1)]"
                     aria-label={`${label}：${value}`}
                   >
                     <div
-                      className={`h-2 w-2 shrink-0 rounded-full ${dotClass} ring-2 ring-white shadow-sm`}
+                      className={`h-2 w-2 shrink-0 rounded-full ${dotClass} ring-2 ring-[var(--color-bg)]`}
                     />
-                    <span className="text-sm font-semibold leading-none tabular-nums text-slate-800">
+                    <span className="text-sm font-semibold leading-none tabular-nums text-[var(--color-text-1)]">
                       {value}
                     </span>
                   </div>

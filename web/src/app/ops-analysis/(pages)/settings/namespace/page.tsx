@@ -2,10 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import OperateModal from './operateModal';
-import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
-import { Button, Input, Card, message, Modal, Tag, Space } from 'antd';
-import { UploadOutlined } from '@ant-design/icons';
+import { Button, message, Modal, Tag, Space } from 'antd';
+import { PlusOutlined, UploadOutlined } from '@ant-design/icons';
+import OpsAnalysisSettingsListShell from '@/app/ops-analysis/components/ops-analysis-settings-list-shell';
 import { useTranslation } from '@/utils/i18n';
 import { NamespaceItem } from '@/app/ops-analysis/types/namespace';
 import { useNamespaceApi } from '@/app/ops-analysis/api/namespace';
@@ -232,88 +232,65 @@ const Namespace: React.FC = () => {
   ];
 
   return (
-    <div className="flex flex-col w-full h-full bg-(--color-bg-1)">
-      <Card
-        style={{
-          borderRadius: 0,
-          marginBottom: '16px',
-          paddingLeft: '12px',
-          borderLeftWidth: '0px',
-          borderTopWidth: '0px',
-        }}
-        styles={{
-          body: { padding: '16px' },
-        }}
-      >
-        <p className="font-extrabold text-base mb-2">
-          {t('namespace.introTitle')}
-        </p>
-        <p className="text-sm text-(--color-text-2)">
-          {t('namespace.introMsg')}
-        </p>
-      </Card>
-      <div className="px-6 pb-0">
-        <div className="flex justify-between mb-5">
-          <div className="flex items-center">
-            <Input
-              allowClear
-              value={searchValue}
-              placeholder={t('common.search')}
-              style={{ width: 250 }}
-              onChange={(e) => setSearchValue(e.target.value)}
-              onPressEnter={(e) => handleFilter(e.currentTarget.value)}
-              onClear={() => {
-                setSearchValue('');
-                handleFilter('');
-              }}
-            />
-          </div>
-          <Space>
-            <PermissionWrapper requiredPermissions={['Add']}>
-              <Button
-                icon={<UploadOutlined />}
-                onClick={() => setImportModalVisible(true)}
-              >
-                {t('common.import')}
-              </Button>
-            </PermissionWrapper>
-            <PermissionWrapper requiredPermissions={['Add']}>
-              <Button type="primary" onClick={() => handleEdit('add')}>
-                {t('common.addNew')}
-              </Button>
-            </PermissionWrapper>
-          </Space>
-        </div>
-        <CustomTable
-          size="middle"
-          rowKey="id"
-          columns={columns}
-          loading={loading}
-          dataSource={filteredList}
-          pagination={pagination}
-          onChange={handleTableChange}
-          scroll={{ y: 'calc(100vh - 430px)' }}
-        />
-        <OperateModal
-          open={modalVisible}
-          currentRow={currentRow}
-          onClose={() => setModalVisible(false)}
-          onSuccess={() => {
-            setModalVisible(false);
-            void refreshNamespaces();
-            fetchNamespaces();
-          }}
-        />
-        <ImportModal
-          visible={importModalVisible}
-          onCancel={() => setImportModalVisible(false)}
-          targetDirectoryId={null}
-          onSuccess={() => {
-            fetchNamespaces();
-          }}
-        />
-      </div>
-    </div>
+    <OpsAnalysisSettingsListShell
+      introTitle={t('namespace.introTitle')}
+      introDescription={t('namespace.introMsg')}
+      searchValue={searchValue}
+      searchPlaceholder={t('common.search')}
+      onSearchValueChange={setSearchValue}
+      onSearch={(value) => handleFilter(value)}
+      onSearchClear={() => handleFilter('')}
+      actions={(
+        <Space>
+          <PermissionWrapper requiredPermissions={['Add']}>
+            <Button
+              icon={<UploadOutlined />}
+              onClick={() => setImportModalVisible(true)}
+            >
+              {t('common.import')}
+            </Button>
+          </PermissionWrapper>
+          <PermissionWrapper requiredPermissions={['Add']}>
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => handleEdit('add')}
+            >
+              {t('common.new')}
+            </Button>
+          </PermissionWrapper>
+        </Space>
+      )}
+      columns={columns}
+      dataSource={filteredList}
+      rowKey="id"
+      pagination={pagination}
+      tableLoading={loading}
+      scroll={{ y: 'calc(100vh - 430px)' }}
+      tableProps={{ onChange: handleTableChange }}
+      modal={(
+        <>
+          <OperateModal
+            open={modalVisible}
+            currentRow={currentRow}
+            onClose={() => setModalVisible(false)}
+            onSuccess={() => {
+              setModalVisible(false);
+              void refreshNamespaces();
+              fetchNamespaces();
+            }}
+          />
+          <ImportModal
+            visible={importModalVisible}
+            onCancel={() => setImportModalVisible(false)}
+            targetDirectoryId={null}
+            onSuccess={() => {
+              fetchNamespaces();
+            }}
+          />
+        </>
+      )}
+    />
   );
 };
 

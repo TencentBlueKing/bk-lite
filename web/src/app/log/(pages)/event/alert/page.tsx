@@ -55,6 +55,7 @@ import { useHabitExpanded } from '@/hooks/useHabitExpanded';
 import useLogUserHabitApi, {
   LOG_ALERT_CHART_HABIT_KEY
 } from '@/app/log/api/userHabit';
+import ToolbarSplitShell from '@/components/toolbar-split-shell';
 const { Search } = Input;
 const { Option } = Select;
 
@@ -539,33 +540,37 @@ const Alert: React.FC = () => {
             </div>
           </Spin>
           <div className={alertStyle.table}>
-            <div className="mb-[10px] flex items-center gap-3">
-              <Search
-                allowClear
-                className="w-[240px]"
-                placeholder={t('common.searchPlaceHolder')}
-                value={searchText}
-                enterButton
-                onChange={(e) => setSearchText(e.target.value)}
-                onSearch={handleSearch}
-              />
-              <Checkbox
-                checked={myAlert}
-                onChange={(event) => {
-                  const checked = event.target.checked;
-                  setMyAlert(checked);
-                  updateAlertRefreshQuerySnapshot(querySnapshotRef, {
-                    activeTab,
-                    filters,
-                    myAlert: checked
-                  });
-                  getAssetInsts('refresh', { myAlert: checked });
-                  getChartData('refresh', { myAlert: checked });
-                }}
-              >
-                {t('log.event.myAlert')}
-              </Checkbox>
-            </div>
+            <ToolbarSplitShell
+              trailing={(
+                <>
+                  <Checkbox
+                    checked={myAlert}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setMyAlert(checked);
+                      updateAlertRefreshQuerySnapshot(querySnapshotRef, {
+                        activeTab,
+                        filters,
+                        myAlert: checked
+                      });
+                      getAssetInsts('refresh', { myAlert: checked });
+                      getChartData('refresh', { myAlert: checked });
+                    }}
+                  >
+                    {t('log.event.myAlert')}
+                  </Checkbox>
+                  <Search
+                    allowClear
+                    className="w-60"
+                    placeholder={t('common.searchPlaceHolder')}
+                    value={searchText}
+                    enterButton
+                    onChange={(e) => setSearchText(e.target.value)}
+                    onSearch={handleSearch}
+                  />
+                </>
+              )}
+            />
             <CustomTable
               className="w-full"
               scroll={{

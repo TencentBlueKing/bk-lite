@@ -311,8 +311,8 @@ ATTR:
     brand: 品牌
     appearance: 外观
     cpu: CPU信息
-    men: 内存信息
-    disk: 硬盘信息
+    men: 内存信息(GB)
+    disk: 硬盘信息(GB)
     dep: 当前使用部门
     user: 当前使用人
     claim_time: 认领时间
@@ -1289,6 +1289,7 @@ ATTR:
     adminstatus: 管理状态
     operstatus: 操作状态
     name: 接口名称
+    description: 接口描述
     status: 状态
     self_device: 所属设备
   k8s_cluster:

@@ -204,6 +204,12 @@ error:
   skill_package_missing_file: 技能包缺少 {filename}
   no_embedding_model: 知识库未配置向量模型,无法重建索引
   material_build_in_progress: 资料正在构建中，请勿重复提交
+  knowledge_base_required: knowledge_base 必填
+  material_ids_required: material_ids 必填
+  material_ids_invalid: material_ids 必须为整数列表
+  material_ids_too_many: 单次最多删除 200 条资料
+  material_not_in_knowledge_base: 资料不存在或不属于当前知识库
+  material_delete_in_progress: 资料正在构建中，请等待完成后再删除
   material_build_dispatch_failed: 知识构建任务投递失败，请稍后重试
   material_no_source_file: 该资料没有可下载的原始文件
   material_source_file_missing: 原始文件不存在

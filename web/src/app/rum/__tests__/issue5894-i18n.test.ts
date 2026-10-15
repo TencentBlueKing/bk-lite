@@ -131,11 +131,12 @@ describe('rum issue 5894 i18n', () => {
     );
   });
 
-  it('回放加载错误不被页面直接展示，且不再含中文硬编码', () => {
+  it('回放加载错误走稳定错误码，页面不展示原始异常', () => {
     const replayData = readSource('src/app/rum/sessions/lib/replay-data.ts');
     const replayPage = readSource('src/app/rum/sessions/[sessionId]/replay/page.tsx');
     expect(replayData).not.toMatch(/[\u4e00-\u9fff]/);
-    expect(replayPage).toContain('.catch(() => {');
+    expect(replayPage).toContain('replayErrorMessage');
     expect(replayPage).toContain('setEvents([])');
+    expect(replayPage).not.toContain('error.message');
   });
 });

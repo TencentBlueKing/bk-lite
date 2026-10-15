@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { AppstoreAddOutlined, PlusOutlined, SearchOutlined } from '@ant-design/icons';
+import { AppstoreAddOutlined, PlusOutlined } from '@ant-design/icons';
 import { Button, Drawer, Form, Input, Popconfirm, message, Space, type TableColumnsType } from 'antd';
 import useApmApi from '@/app/apm/api';
 import ApmDataTable, { APM_TABLE_COLUMN_WIDTHS } from '@/app/apm/components/apm-data-table';
@@ -11,8 +11,8 @@ import ApmRouteShell, { ApmSurface } from '@/app/apm/components/apm-route-shell'
 import CatalogState, { catalogErrorKind, type CatalogStateKind } from '@/app/apm/components/catalog-state';
 import { formatDateTime } from '@/app/apm/components/metric-format';
 import type { ApmApplication, ApmApplicationInput } from '@/app/apm/types';
-import FilterToolbar from '@/components/filter-toolbar';
 import CatalogScopeSegmented from '@/components/catalog-scope-segmented';
+import SearchActionBar from '@/components/search-action-bar';
 import GroupTreeSelect from '@/components/group-tree-select';
 import Permission from '@/components/permission';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -198,9 +198,17 @@ export default function ApmApplicationsPage() {
       {messageContextHolder}
       <ApmSurface>
         <div className="flex flex-col gap-4">
-          <FilterToolbar align="start" spacing="flush" className="w-full" contentClassName="w-full">
-            <Input allowClear className="min-w-0 flex-1 md:max-w-sm" prefix={<SearchOutlined aria-hidden="true" />} placeholder={t('apm.applications.searchPlaceholder', '搜索应用 ID / 名称')} value={keyword} onChange={(event) => { setKeyword(event.target.value); setPage(1); }} />
-            <div className="ml-auto flex items-center gap-2">
+          <SearchActionBar
+            spacing="flush"
+            searchProps={{
+              placeholder: t('apm.applications.searchPlaceholder', '搜索应用 ID / 名称'),
+              value: keyword,
+              onChange: (event) => {
+                setKeyword(event.target.value);
+                setPage(1);
+              },
+            }}
+            filters={(
               <CatalogScopeSegmented
                 unassignedOnly={unassignedOnly}
                 onChange={(checked) => {
@@ -208,11 +216,15 @@ export default function ApmApplicationsPage() {
                   setPage(1);
                 }}
               />
+            )}
+            actions={(
               <Permission requiredPermissions={['Operate']} permissionPath="/apm/integration/applications">
-                <Button type="primary" icon={<PlusOutlined aria-hidden="true" />} onClick={openCreate}>{t('apm.applications.create', '创建应用')}</Button>
+                <Button type="primary" icon={<PlusOutlined aria-hidden="true" />} onClick={openCreate}>
+                  {t('common.new', '新建')}
+                </Button>
               </Permission>
-            </div>
-          </FilterToolbar>
+            )}
+          />
           {state === 'ready' ? (
             <ApmDataTable
               rowKey="id"

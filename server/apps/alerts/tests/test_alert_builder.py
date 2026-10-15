@@ -13,7 +13,6 @@ from apps.alerts.constants.constants import LevelType
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.models.models import Event, Level
 
-
 # --------------------------------------------------------------------------
 # _get_unique_scalar_value / _get_consistent_labels（纯函数）
 # --------------------------------------------------------------------------
@@ -109,9 +108,18 @@ def source(db):
 
 def _make_event(source, event_id, **over):
     defaults = dict(
-        source=source, raw_data={}, title="t", level="0", start_time=timezone.now(),
-        event_id=event_id, item="cpu", resource_id="1", resource_name="host1",
-        resource_type="host", service="svc", labels={},
+        source=source,
+        raw_data={},
+        title="t",
+        level="0",
+        start_time=timezone.now(),
+        event_id=event_id,
+        item="cpu",
+        resource_id="1",
+        resource_name="host1",
+        resource_type="host",
+        service="svc",
+        labels={},
     )
     defaults.update(over)
     return Event.objects.create(**defaults)
@@ -195,7 +203,10 @@ def strategy(db):
     from apps.alerts.models.alert_operator import AlarmStrategy
 
     return AlarmStrategy.objects.create(
-        name="策略", strategy_type="smart_denoise", team=[1], dispatch_team=[1],
+        name="策略",
+        strategy_type="smart_denoise",
+        team=[1],
+        dispatch_team=[1],
         params={"window_size": 10},
     )
 
@@ -204,7 +215,7 @@ def strategy(db):
 def test_create_or_update_alert_creates_new(alert_levels, source, strategy):
     from django.db import transaction
 
-    e1 = _make_event(source, "E1")
+    _make_event(source, "E1")
     result = {
         "fingerprint": "fp-new",
         "event_ids": ["E1"],
@@ -220,6 +231,7 @@ def test_create_or_update_alert_creates_new(alert_levels, source, strategy):
     assert alert.title == "聚合告警A"
     assert alert.events.filter(event_id="E1").exists()
     from apps.alerts.models import ActiveAlertFingerprint
+
     assert ActiveAlertFingerprint.objects.get(fingerprint="fp-new").alert_id == alert.pk
 
 
@@ -232,10 +244,14 @@ def test_create_or_update_alert_updates_existing(alert_levels, source, strategy)
 
     AlertBuilder.clear_event_cache()
     existing = Alert.objects.create(
-        alert_id="ALERT-EXIST", fingerprint="fp-x", level="2", title="旧",
-        content="c", status=AlertStatus.UNASSIGNED,
+        alert_id="ALERT-EXIST",
+        fingerprint="fp-x",
+        level="2",
+        title="旧",
+        content="c",
+        status=AlertStatus.UNASSIGNED,
     )
-    e1 = _make_event(source, "E1")
+    _make_event(source, "E1")
     result = {
         "fingerprint": "fp-x",
         "event_ids": ["E1"],
@@ -252,6 +268,69 @@ def test_create_or_update_alert_updates_existing(alert_levels, source, strategy)
     assert alert.events.filter(event_id="E1").exists()
 
 
+@pytest.mark.django_db
+def test_alert_owners_union_created_events_and_cap(alert_levels, source, strategy):
+    from django.db import transaction
+
+    from apps.alerts.constants.constants import EventAction
+    from apps.alerts.models.models import Alert
+
+    created = _make_event(source, "E1", assignee=[" alice ", "bob"])
+    recovery = _make_event(source, "E2", action=EventAction.RECOVERY, assignee=["carol"])
+    assert AlertBuilder._collect_owners([created, recovery]) == ["alice", "bob"]
+
+    many = _make_event(source, "E3", assignee=[f"user-{index}" for index in range(60)])
+    assert len(AlertBuilder._collect_owners([many])) == 50
+
+    result = {
+        "fingerprint": "fp-owners",
+        "event_ids": ["E1", "E2"],
+        "alert_level": "1",
+        "alert_title": "责任人告警",
+        "alert_description": "desc",
+        "first_event_time": timezone.now(),
+        "last_event_time": timezone.now(),
+    }
+    with transaction.atomic():
+        alert = AlertBuilder.create_or_update_alert(result, strategy)
+    assert alert.owners == ["alice", "bob"]
+
+    _make_event(source, "E4", assignee=["dave", "bob"])
+    with transaction.atomic():
+        updated = AlertBuilder.create_or_update_alert({**result, "event_ids": ["E4"]}, strategy)
+    assert updated.pk == alert.pk
+    assert updated.owners == ["alice", "bob", "dave"]
+    assert Alert.objects.get(pk=alert.pk).owners == ["alice", "bob", "dave"]
+
+
+@pytest.mark.django_db
+def test_owner_filter_matches_exact_member(alert_levels, source):
+    from apps.alerts.constants.constants import AlertStatus
+    from apps.alerts.filters.alert import AlertModelFilter
+    from apps.alerts.models.models import Alert
+
+    Alert.objects.create(
+        alert_id="ALERT-ALICE",
+        fingerprint="fp-alice",
+        level="1",
+        title="a",
+        content="c",
+        status=AlertStatus.UNASSIGNED,
+        owners=["alice"],
+    )
+    Alert.objects.create(
+        alert_id="ALERT-ALI",
+        fingerprint="fp-ali",
+        level="1",
+        title="b",
+        content="c",
+        status=AlertStatus.UNASSIGNED,
+        owners=["ali"],
+    )
+    matched = AlertModelFilter({"owner": "ali"}, queryset=Alert.objects.all()).qs
+    assert list(matched.values_list("alert_id", flat=True)) == ["ALERT-ALI"]
+
+
 # --------------------------------------------------------------------------
 # Level 信号驱动的缓存失效（Issue #3674）
 # --------------------------------------------------------------------------
@@ -260,7 +339,6 @@ def test_create_or_update_alert_updates_existing(alert_levels, source, strategy)
 @pytest.mark.django_db
 def test_level_post_save_invalidates_cache():
     """Level 保存后，_valid_alert_levels 应被清除为 None（重置为 None 就是缓存失效）。"""
-    from django.db.models.signals import post_save, post_delete
     from apps.alerts.apps import _register_level_cache_signals
     from apps.alerts.models.models import Level
 
@@ -269,9 +347,7 @@ def test_level_post_save_invalidates_cache():
 
     # 预热缓存
     AlertBuilder._valid_alert_levels = None
-    level = Level.objects.create(
-        level_id=10, level_name="测试级别", level_display_name="测试", level_type=LevelType.ALERT
-    )
+    level = Level.objects.create(level_id=10, level_name="测试级别", level_display_name="测试", level_type=LevelType.ALERT)
     _ = AlertBuilder._get_valid_alert_levels()
     assert AlertBuilder._valid_alert_levels is not None, "缓存应已预热"
 
@@ -297,9 +373,7 @@ def test_level_post_delete_invalidates_cache():
 
     # 预热缓存
     AlertBuilder._valid_alert_levels = None
-    level = Level.objects.create(
-        level_id=11, level_name="待删除级别", level_display_name="待删除", level_type=LevelType.ALERT
-    )
+    level = Level.objects.create(level_id=11, level_name="待删除级别", level_display_name="待删除", level_type=LevelType.ALERT)
     _ = AlertBuilder._get_valid_alert_levels()
     assert AlertBuilder._valid_alert_levels is not None, "缓存应已预热"
 
@@ -321,16 +395,12 @@ def test_level_cache_refreshes_after_invalidation():
 
     AlertBuilder._valid_alert_levels = None
     # 初始：只有 level_id=0
-    Level.objects.create(
-        level_id=0, level_name="致命", level_display_name="致命", level_type=LevelType.ALERT
-    )
+    Level.objects.create(level_id=0, level_name="致命", level_display_name="致命", level_type=LevelType.ALERT)
     initial = AlertBuilder._get_valid_alert_levels()
     assert initial == {0}
 
     # 新增一个级别，触发信号使缓存失效
-    Level.objects.create(
-        level_id=1, level_name="错误", level_display_name="错误", level_type=LevelType.ALERT
-    )
+    Level.objects.create(level_id=1, level_name="错误", level_display_name="错误", level_type=LevelType.ALERT)
     # 缓存应已失效
     assert AlertBuilder._valid_alert_levels is None
 

@@ -63,6 +63,9 @@ def test_pc_and_software_schema_contract():
     pc_attrs = {row["attr_id"]: row for row in _rows(wb["attr-pc"])}
     sw_attrs = {row["attr_id"]: row for row in _rows(wb["attr-pc_software"])}
     assert {key: pc_attrs[key]["attr_type"] for key in PC_COLLECTED} == PC_COLLECTED
+    assert pc_attrs["men"]["attr_name"] == "内存信息(GB)"
+    assert pc_attrs["disk"]["attr_name"] == "硬盘信息(GB)"
+    assert pc_attrs["disk"]["user_prompt"] == "单位：GB"
     assert {key: sw_attrs[key]["attr_type"] for key in SOFTWARE_FIELDS} == SOFTWARE_FIELDS
 
     # 人工资产字段保持可编辑，自动采集不得抢占

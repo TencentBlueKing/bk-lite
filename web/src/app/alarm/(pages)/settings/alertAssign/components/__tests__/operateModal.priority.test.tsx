@@ -59,6 +59,7 @@ describe('分派策略优先级', () => {
     api.getChannelList.mockResolvedValue([
       { id: 1, name: '运维邮件', channel_type: 'email' },
     ]);
+    api.getNotificationTemplateOptions.mockResolvedValue([{ id: 10, name: '生产告警' }]);
     api.createAssignment.mockResolvedValue({});
     render(<OperateModal open onClose={vi.fn()} />);
 
@@ -70,8 +71,21 @@ describe('分派策略优先级', () => {
     });
     fireEvent.change(priority, { target: { value: '80' } });
     await waitFor(() => {
-      expect((screen.getByRole('checkbox', { name: '运维邮件' }) as HTMLInputElement).checked).toBe(true);
+      expect(screen.getAllByRole('combobox')).toHaveLength(4);
     });
+    for (let index = 0; index < 4; index += 1) {
+      fireEvent.mouseDown(screen.getAllByRole('combobox')[index]);
+      const option = await waitFor(() => {
+        const dropdowns = document.querySelectorAll('.ant-select-dropdown:not(.ant-select-dropdown-hidden)');
+        const node = dropdowns[dropdowns.length - 1]?.querySelector('.ant-select-item-option');
+        expect(node).toBeTruthy();
+        return node as Element;
+      });
+      fireEvent.click(option);
+      await waitFor(() => {
+        expect(document.querySelectorAll('.ant-select-selection-item')).toHaveLength(index + 1);
+      });
+    }
     fireEvent.click(screen.getByRole('button', { name: 'settings.assignStrategy.submit' }));
 
     await waitFor(() => {

@@ -52,7 +52,8 @@ class CollectionPluginRegistry:
     @classmethod
     def get_plugin(cls, task_type: str, model_id: str):
         cls.ensure_initialized()
-        plugin_cls = cls._registry.get(task_type, {}).get(model_id)
+        task_plugins = cls._registry.get(task_type, {})
+        plugin_cls = task_plugins.get(model_id) or task_plugins.get("*")
         if plugin_cls is None:
             raise ValueError(f"Unsupported collection plugin: task_type={task_type}, model_id={model_id}")
         return plugin_cls

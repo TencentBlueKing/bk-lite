@@ -12,6 +12,7 @@ export const DEFAULT_ALARM_TABLE_FIELD_KEYS = [
   'event_count',
   'status',
   'operator_user',
+  'owners',
   'notify_status',
 ] as const;
 export const ALARM_DETAIL_TRIGGER_COLUMN_KEYS = [

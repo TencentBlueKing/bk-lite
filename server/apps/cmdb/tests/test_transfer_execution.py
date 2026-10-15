@@ -67,3 +67,30 @@ def test_storage_error_keeps_diagnostic_code_without_leaking_response(transfer_o
     assert "PRIVATE-RESOURCE-SENTINEL" not in formatted
     assert "PRIVATE-CODE-SENTINEL" not in formatted
     assert error.code == code and error.message == "PRIVATE-RESPONSE-SENTINEL"
+
+
+def test_export_download_ignores_deleted_instances_and_authorization_drift(monkeypatch):
+    from types import SimpleNamespace
+
+    from apps.cmdb.services.transfer_service import TransferError
+
+    revalidate = Mock(side_effect=TransferError("authorization_changed", "权限范围已变化，请按当前权限重新提交", 403))
+    monkeypatch.setattr("apps.cmdb.services.transfer_execution.TransferAuthorization.revalidate", revalidate)
+    query = Mock(side_effect=AssertionError("download must not reload instances"))
+    monkeypatch.setattr("apps.cmdb.services.transfer_execution.InstanceManage.query_entity_by_uuids", query)
+    files = Mock()
+    files.local_copy.side_effect = AssertionError("download must not reread the export manifest")
+    TransferExecution.validate_download(SimpleNamespace(kind="export"), files)
+    revalidate.assert_not_called()
+    query.assert_not_called()
+    files.local_copy.assert_not_called()
+
+
+def test_import_error_report_download_still_revalidates(monkeypatch):
+    from types import SimpleNamespace
+
+    revalidate = Mock(return_value=object())
+    monkeypatch.setattr("apps.cmdb.services.transfer_execution.TransferAuthorization.revalidate", revalidate)
+    task = SimpleNamespace(kind="import")
+    TransferExecution.validate_download(task, Mock())
+    revalidate.assert_called_once_with(task)

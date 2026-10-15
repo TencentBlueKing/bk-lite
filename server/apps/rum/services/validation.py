@@ -4,7 +4,7 @@ import re
 import secrets
 from urllib.parse import urlparse
 
-from apps.rum.constants import MAX_ORIGINS
+from apps.rum.constants import MAX_BUDGETS, MAX_ORIGINS
 
 APPLICATION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$")
 BROWSER_KEY_RE = re.compile(r"^[A-Za-z0-9._:-]{16,256}$")
@@ -22,19 +22,24 @@ def valid_browser_key(key: str) -> bool:
     return bool(BROWSER_KEY_RE.match((key or "").strip()))
 
 
+_BUDGET_KEYS = (
+    "requestsPerMinute",
+    "compressedBytesPerMinute",
+    "decompressedBytesPerMinute",
+    "eventsPerMinute",
+)
+
+
 def valid_budgets(budget: dict) -> bool:
-    try:
-        return all(
-            int(budget[key]) > 0
-            for key in (
-                "requestsPerMinute",
-                "compressedBytesPerMinute",
-                "decompressedBytesPerMinute",
-                "eventsPerMinute",
-            )
-        )
-    except (KeyError, TypeError, ValueError):
+    if not isinstance(budget, dict):
         return False
+    parsed: dict[str, int] = {}
+    for key in _BUDGET_KEYS:
+        raw = budget.get(key)
+        if isinstance(raw, bool) or not isinstance(raw, int) or raw <= 0 or raw > MAX_BUDGETS[key]:
+            return False
+        parsed[key] = raw
+    return parsed["decompressedBytesPerMinute"] >= parsed["compressedBytesPerMinute"]
 
 
 def new_browser_key() -> str:

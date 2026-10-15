@@ -89,6 +89,14 @@ assert.deepEqual(pagedResponse.pagination, {
   total: 238,
 });
 
+const totalOnlyResponse = parseTableLikeData(
+  { items: fullRows.slice(0, 20), total: 238, page: 1, page_size: 20 },
+  { current: 1, pageSize: 20 },
+  true,
+);
+assert.equal(totalOnlyResponse.isPaginated, true);
+assert.equal(totalOnlyResponse.pagination.total, 238);
+
 const missingCount = parseTableLikeData(
   { items: fullRows.slice(0, 20) },
   { current: 1, pageSize: 20 },

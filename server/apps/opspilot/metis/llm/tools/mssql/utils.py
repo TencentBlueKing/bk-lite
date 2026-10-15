@@ -6,9 +6,9 @@ from numbers import Number
 
 import pyodbc
 from langchain_core.runnables import RunnableConfig
-from loguru import logger
+from apps.core.logger import opspilot_logger as logger
 
-from apps.opspilot.metis.llm.tools.common.sql_guard import run_blocking
+from apps.opspilot.metis.llm.tools.common.sql_guard import log_db_failure, run_blocking
 
 # 合法的数据库标识符:字母、数字、下划线,长度受限,防止 SQL 注入(如 ']' 逃逸 [] 引用)
 _VALID_DATABASE_IDENTIFIER = re.compile(r"^[A-Za-z0-9_]{1,128}$")
@@ -236,9 +236,9 @@ def get_db_connection(config: RunnableConfig = None, database: str = None, insta
 
         conn = pyodbc.connect(conn_str, timeout=10)
         return conn
-    except pyodbc.Error:
+    except pyodbc.Error as e:
         # 不记录连接参数/异常详情,避免泄露 host/账号/口令信息 (F077)
-        logger.exception("MSSQL数据库连接失败")
+        log_db_failure("MSSQL数据库连接失败", e)
         raise
 
 
@@ -286,9 +286,9 @@ def execute_readonly_query(query: str, params: tuple = None, config: RunnableCon
             # 获取结果并转换为字典列表
             return [dict(zip(columns, row)) for row in cursor.fetchall()]
 
-        except pyodbc.Error:
+        except pyodbc.Error as e:
             # 不记录原始错误详情(可能含连接信息);由上层统一脱敏处理
-            logger.exception("MSSQL查询执行失败")
+            log_db_failure("MSSQL查询执行失败", e)
             raise
         finally:
             if cursor:

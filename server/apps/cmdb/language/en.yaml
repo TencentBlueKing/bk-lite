@@ -311,8 +311,8 @@ ATTR:
     brand: Brand
     appearance: Appearance
     cpu: CPU Information
-    men: Memory Information
-    disk: Hard Disk Information
+    men: Memory Information (GB)
+    disk: Hard Disk Information (GB)
     dep: Department
     user: User
     claim_time: Claim Time
@@ -1289,6 +1289,7 @@ ATTR:
     adminstatus: Admin Status
     operstatus: Oper Status
     name: Interface Name
+    description: Interface Description
     status: Status
     self_device: Self Device
   k8s_cluster:

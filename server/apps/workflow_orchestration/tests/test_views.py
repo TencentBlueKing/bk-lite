@@ -1234,6 +1234,41 @@ def test_publish_records_atom_keys(superuser, mocker):
 
 
 @pytest.mark.django_db
+def test_publish_enables_workflow(superuser, mocker):
+    from apps.system_mgmt.models import Channel, ChannelChoices
+
+    channel = Channel.objects.create(
+        name="发布启用测试邮箱",
+        channel_type=ChannelChoices.EMAIL,
+        config={"smtp_server": "127.0.0.1", "port": 1025},
+        description="",
+        team=[7],
+    )
+    _enable_notification()
+    task = _notification_task("notify")
+    task["inputParameters"]["channel_id"] = channel.id
+    workflow = Workflow.objects.create(
+        name="发布即启用",
+        team=[7],
+        definition={"tasks": [task]},
+        canvas_metadata={},
+        created_by=superuser.username,
+    )
+    mocker.patch("apps.workflow_orchestration.views.ConductorClient")
+    publish = WorkflowViewSet.as_view({"post": "publish"})
+
+    response = publish(
+        _request(APIRequestFactory(), "post", f"/workflows/{workflow.id}/publish/", superuser),
+        pk=workflow.id,
+    )
+
+    assert response.status_code == 200, response.data
+    workflow.refresh_from_db()
+    assert workflow.enabled is True
+    assert workflow.status == Workflow.Status.PUBLISHED
+
+
+@pytest.mark.django_db
 def test_publish_references_package_atom_by_stable_key(superuser, mocker):
     atom = AtomDefinition.objects.create(
         key="custom.summary",
@@ -1357,6 +1392,56 @@ def test_execution_list_mine_filter_returns_only_current_users_pending_approvals
     assert response.status_code == 200
     assert response.data["count"] == 1
     assert response.data["items"][0]["id"] == str(mine.id)
+
+
+@pytest.mark.django_db
+def test_terminated_execution_is_not_an_actionable_approval(superuser):
+    workflow = Workflow.objects.create(name="已终止审批", team=[7], definition={})
+    waiting = WorkflowExecution.objects.create(
+        workflow=workflow,
+        workflow_version=1,
+        team=[7],
+        status=WorkflowExecution.Status.WAITING_APPROVAL,
+    )
+    terminated = WorkflowExecution.objects.create(
+        workflow=workflow,
+        workflow_version=1,
+        team=[7],
+        status=WorkflowExecution.Status.TERMINATED,
+    )
+    waiting_interaction = WorkflowInteraction.objects.create(
+        execution=waiting,
+        interaction_type=WorkflowInteraction.Type.APPROVAL,
+        task_reference="waiting-approval",
+        conductor_task_id="task-waiting",
+        title="仍可审批",
+        candidate_users=[superuser.username],
+        team=[7],
+    )
+    WorkflowInteraction.objects.create(
+        execution=terminated,
+        interaction_type=WorkflowInteraction.Type.APPROVAL,
+        task_reference="terminated-approval",
+        conductor_task_id="task-terminated",
+        title="已终止的审批",
+        candidate_users=[superuser.username],
+        team=[7],
+    )
+    view = WorkflowExecutionViewSet.as_view({"get": "list"})
+
+    mine = view(_request(APIRequestFactory(), "get", "/executions/?mine=1", superuser))
+    all_rows = view(_request(APIRequestFactory(), "get", "/executions/", superuser))
+
+    assert mine.status_code == 200
+    assert [item["id"] for item in mine.data["items"]] == [str(waiting.id)]
+    terminated_row = next(item for item in all_rows.data["items"] if item["id"] == str(terminated.id))
+    assert terminated_row["actionable_approval_ids"] == []
+    waiting_row = next(item for item in all_rows.data["items"] if item["id"] == str(waiting.id))
+    assert waiting_row["actionable_approval_ids"] == [str(waiting_interaction.id)]
+
+    count_view = WorkflowInteractionViewSet.as_view({"get": "pending_count"})
+    count_response = count_view(_request(APIRequestFactory(), "get", "/interactions/pending-count/", superuser))
+    assert count_response.data == {"count": 1}
 
 
 @pytest.mark.django_db

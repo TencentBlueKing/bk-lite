@@ -1,7 +1,7 @@
 import SimpleLineChart from "@/app/mlops/components/charts/simpleLineChart";
 import HorizontalBarChart from "@/app/mlops/components/charts/horizontalBarChart";
 import useMlopsTaskApi from "@/app/mlops/api/task";
-import { Spin } from "antd";
+import { Skeleton, Spin } from "antd";
 // import { LeftOutlined } from "@ant-design/icons";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useTranslation } from "@/utils/i18n";
@@ -268,9 +268,19 @@ const TrainTaskDetail = ({
         <div className={styles.taskContent}>
           {/* Loading State */}
           {loading && (
-            <div className={styles.taskLoading}>
-              <Spin size="large" />
-              <span className={styles.taskLoadingText}>{t(`mlops-common.loadingData`)}</span>
+            <div className={styles.metricsSection} aria-busy="true" aria-label={t('mlops-common.loadingData')}>
+              <div className={styles.metricsGrid}>
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <div key={index} className={styles.metricCard} style={{ width: '49%' }}>
+                    <div className={styles.metricCardHeader}>
+                      <Skeleton.Input active size="small" className="!h-4 !w-32 !min-w-0" />
+                    </div>
+                    <div className={styles.metricCardContent}>
+                      <Skeleton active paragraph={{ rows: 6 }} title={false} />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

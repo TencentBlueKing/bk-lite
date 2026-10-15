@@ -1,6 +1,5 @@
 # -*- coding: UTF-8 -*-
 import json
-import logging
 import uuid
 
 import IPy
@@ -19,8 +18,8 @@ from common.cmp.cloud_apis.resource_apis.resource_format.openstack.openstack_for
 )
 from common.cmp.cloud_apis.resource_apis.utils import fail, success
 from common.cmp.utils import set_dir_size
+from core.logger import logger
 
-logger = logging.getLogger("root")
 https_port = "443"
 endpoint = "jx.hsip.public.cn"
 

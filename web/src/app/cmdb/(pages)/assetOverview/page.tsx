@@ -8,8 +8,10 @@ import { GroupItem, ModelItem } from '@/app/cmdb/types/assetManage';
 import { deepClone } from '@/app/cmdb/utils/common';
 import { useScreenAwareRouter } from '@/console-layout';
 import ModelIcon from '@/app/cmdb/components/model-icon';
-import { Spin, Input } from 'antd';
+import { Input } from 'antd';
 import CompactEmptyState from '@/components/compact-empty-state';
+import ListPageHeader from '@/components/list-page-header';
+import CardGridSkeleton from '@/components/card-grid-skeleton';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useClassificationApi, useInstanceApi } from '@/app/cmdb/api';
 import { useCommon } from '@/app/cmdb/context/common';
@@ -99,17 +101,23 @@ const AssetsOverview: React.FC = () => {
 
   return (
     <div className={assetsOverviewStyle.assetsOverview}>
-      <Spin spinning={loading}>
-        <Input.Search
-          className={assetsOverviewStyle.searchInput}
-          allowClear
-          size="large"
-          placeholder={t('common.search')}
-          aria-label={t('common.search')}
-          onSearch={handleSearch}
-          onClear={() => setOverViewList(allOverViewList)}
-        />
-        {overViewList.length ? (
+      <ListPageHeader
+        title={t('menu.assetsOverview')}
+        actions={(
+          <Input.Search
+            allowClear
+            enterButton
+            className="w-60"
+            placeholder={t('common.search')}
+            aria-label={t('common.search')}
+            onSearch={handleSearch}
+            onClear={() => setOverViewList(allOverViewList)}
+          />
+        )}
+      />
+      {loading ? (
+        <CardGridSkeleton className="grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5" />
+      ) : overViewList.length ? (
           <Masonry
             breakpointCols={breakpointColumnsObj}
             className={assetsOverviewStyle['my-masonry-grid']}
@@ -167,10 +175,9 @@ const AssetsOverview: React.FC = () => {
               </section>
             ))}
           </Masonry>
-        ) : (
+      ) : (
           <CompactEmptyState description={t('common.noData')} />
-        )}
-      </Spin>
+      )}
     </div>
   );
 };

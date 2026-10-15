@@ -21,7 +21,15 @@ _OBJECT_CATEGORY = {
     "network device": "network",
     "网络": "network",
     "网络设备": "network",
+    "storage": "storage",
+    "存储": "storage",
+    "存储设备": "storage",
+    "cloud": "cloud",
+    "云": "cloud",
 }
+
+# user_password 在存储/云对象上对应 HTTPS 平台账户，不能沿用 sql（sql 不含 storage/cloud）。
+_PLATFORM_API_OBJECT_CATEGORIES = frozenset({"storage", "cloud"})
 
 _PUBLIC_VARIANT_KEYS = (
     "key",
@@ -352,6 +360,11 @@ def _variant(key, when, type_keys, category, anchor, managed, profile, snmp_vers
 
 def _materialize_variant(spec, by_name, plugin):
     preferred = list(spec["preferred_keys"])
+    # 存储/云 REST 的 username+password 走 user_password（表单字段是 password 而非 ENV_PASSWORD），
+    # 但凭据类型必须是 platform_api。只改 preferred，不改 profile；禁止 [platform_api, sql]
+    # 双首选，否则交集只剩 network。
+    if spec.get("_profile") == "user_password" and _object_category(plugin) in _PLATFORM_API_OBJECT_CATEGORIES:
+        preferred = ["platform_api"]
     category = _choose_category(plugin, preferred, spec.get("hinted_category"))
     if not category:
         return None
@@ -422,7 +435,12 @@ def _object_category(plugin):
             rows = []
     for row in rows:
         type_row = getattr(row, "type", None)
-        for value in (getattr(type_row, "id", None), getattr(type_row, "name", None), getattr(row, "name", None)):
+        for value in (
+            getattr(type_row, "id", None),
+            getattr(type_row, "name", None),
+            getattr(row, "name", None),
+            getattr(row, "display_name", None),
+        ):
             mapped = _OBJECT_CATEGORY.get(str(value or "").strip().casefold())
             if mapped:
                 return mapped

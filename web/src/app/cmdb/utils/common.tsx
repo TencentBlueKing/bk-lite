@@ -2,7 +2,6 @@ import { CREDENTIAL_LIST } from '@/app/cmdb/constants/asset';
 import dayjs from 'dayjs';
 import { AttrFieldType } from '@/app/cmdb/types/assetManage';
 import {
-  Tag,
   Select,
   Input,
   InputNumber,
@@ -47,6 +46,7 @@ import TagCascaderEditor from './tagCascaderEditor';
 import TagCapsuleGroup from '@/components/tag-capsule-group';
 import { getTagDisplayText } from '@/app/cmdb/utils/tag';
 import { HealthStatusTag, formatPowerState } from '@/app/cmdb/utils/health';
+import { YesNoBadge } from '@/app/cmdb/utils/statusTone';
 import {
   FileFieldUpload,
   FileFieldDisplay,
@@ -500,11 +500,7 @@ export const getAssetColumns = (config: {
         return {
           ...columnItem,
           render: (_: unknown, record: any) => (
-            <>
-              <Tag color={record[attrId] ? 'green' : 'geekblue'}>
-                {record[attrId] ? 'Yes' : 'No'}
-              </Tag>
-            </>
+            <YesNoBadge value={Boolean(record[attrId])} />
           ),
         };
       case 'enum':

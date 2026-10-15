@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 from apps.cmdb.collection.collect_plugin.base import CollectBase
 from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
+from apps.cmdb.collection.metrics_cannula import MetricsCannula
 
 # --------------------------------------------------------------------------
 # collect_util
@@ -48,11 +49,270 @@ def _dummy(monkeypatch, model_id="host"):
 
 def test_collect_base_init_metrics_dict(monkeypatch):
     r = _dummy(monkeypatch)
-    # 每个 metric 一个空列表
+    # 每个 metric 一个空列表。主机指标名本身已是 VM 序列名，不会多出别名。
     assert set(r.collection_metrics_dict.keys()) == {"host_info_gauge", "host_proc_info_gauge"}
     assert r.collection_metrics_dict["host_info_gauge"] == []
     assert r._instance_id == "cmdb_42"
     assert r.asso == "assos"
+
+
+class _PcMetricCollect(CollectBase):
+    formatted = False
+
+    @property
+    def _metrics(self):
+        return ["pc_info", "pc_software_info"]
+
+    def format_data(self, data):
+        for row in data["result"]:
+            name = row["metric"]["__name__"]
+            self.collection_metrics_dict[name].append(row["metric"])
+
+    def format_metrics(self):
+        self.formatted = True
+
+
+def test_pc_metric_buckets_accept_vm_series_name():
+    runner = _PcMetricCollect(inst_name="pc-task", inst_id="cmdb_7", task_id=7)
+    assert runner.collection_metrics_dict["pc_info"] is runner.collection_metrics_dict["pc_info_gauge"]
+    software = runner.collection_metrics_dict
+    assert software["pc_software_info"] is software["pc_software_info_gauge"]
+
+
+def test_pc_run_writes_gauge_rows_when_round_metadata_is_missing(monkeypatch):
+    from apps.cmdb.tests.test_pc_reconcile_service import InMemoryGraph
+
+    graph = InMemoryGraph()
+    monkeypatch.setattr("apps.cmdb.services.pc_discovery.GraphClient", lambda *a, **k: graph)
+    task = SimpleNamespace(id=7, team=[1], data_cleanup_strategy="")
+    runner = _PcMetricCollect(inst_name="pc-task", inst_id="cmdb_7", task_id=7, collect_inst=task)
+    runner.query_data = lambda: {
+        "result": [
+            {
+                "metric": {
+                    "__name__": "pc_info_gauge",
+                    "bk_obj_id": "pc",
+                    "inst_name": "WIN-E52E0142-F9D8-AF4E-9017-7E8B53CDEE40",
+                    "host_name": "OMCEXCHANGE02",
+                    "ip_addr": "10.11.27.31",
+                    "os_type": "windows",
+                    "collection_target": "10.11.27.31",
+                    "collect_status": "success",
+                },
+                "value": [1753200000, "1"],
+            },
+            {
+                "metric": {
+                    "__name__": "pc_software_info_gauge",
+                    "bk_obj_id": "pc_software",
+                    "inst_name": "SW-001",
+                    "pc_inst_name": "WIN-E52E0142-F9D8-AF4E-9017-7E8B53CDEE40",
+                    "name": "Chrome",
+                    "software_key": "chrome",
+                    "collection_target": "10.11.27.31",
+                    "collect_status": "success",
+                },
+                "value": [1753200000, "1"],
+            },
+        ]
+    }
+
+    result = runner.run()
+
+    assert runner.formatted is False
+    assert "WIN-E52E0142-F9D8-AF4E-9017-7E8B53CDEE40" in graph.store
+    assert "SW-001" in graph.store
+    summary = result["__task_format_data__"]["pc_summary"]
+    assert summary["pc_total"] == 1
+    assert summary["pc_partial"] == 1
+    assert summary["software_added"] == 1
+    assert result["__task_format_data__"]["delete"] == []
+
+
+def test_failed_gauge_row_is_not_written(monkeypatch):
+    from apps.cmdb.services.pc_discovery import publish_pc_collected_metrics
+    from apps.cmdb.tests.test_pc_reconcile_service import InMemoryGraph
+
+    graph = InMemoryGraph()
+    monkeypatch.setattr("apps.cmdb.services.pc_discovery.GraphClient", lambda *a, **k: graph)
+    plugin = SimpleNamespace(
+        raw_data=[
+            {
+                "metric": {
+                    "__name__": "pc_info_gauge",
+                    "bk_obj_id": "pc",
+                    "inst_name": "WIN-FAIL",
+                    "os_type": "windows",
+                    "collection_target": "10.11.27.30",
+                    "collect_status": "failed",
+                },
+                "value": [1753200000, "1"],
+            }
+        ],
+        result={},
+        get_collect_inst=lambda: SimpleNamespace(id=7, team=[1], data_cleanup_strategy=""),
+        TASK_FORMAT_DATA_KEY="__task_format_data__",
+        _MODEL_ID="pc",
+    )
+    publish_pc_collected_metrics(plugin)
+    summary = plugin.result["__task_format_data__"]["pc_summary"]
+    assert graph.store == {}
+    assert plugin.result["__task_format_data__"]["delete"] == []
+    assert summary["pc_total"] == 1
+    assert summary["pc_failed"] == 1
+    assert summary["pc_complete"] == 0
+    assert plugin.result["__task_format_data__"]["update"] == [
+        {"inst_name": "10.11.27.30", "model_id": "pc", "_status": "failed", "_error": "COLLECT_FAILED"}
+    ]
+    assert plugin._MODEL_ID is None
+
+
+def test_failed_pc_keeps_successful_peer_and_skips_software_only_failure(monkeypatch):
+    from apps.cmdb.constants.constants import CollectRunStatusType
+    from apps.cmdb.services.pc_discovery import publish_pc_collected_metrics
+    from apps.cmdb.tasks.celery_tasks import _decide_collect_exec_status
+    from apps.cmdb.tests.test_pc_reconcile_service import InMemoryGraph
+
+    graph = InMemoryGraph()
+    monkeypatch.setattr("apps.cmdb.services.pc_discovery.GraphClient", lambda *a, **k: graph)
+    plugin = SimpleNamespace(
+        raw_data=[
+            {
+                "metric": {
+                    "__name__": "pc_info_gauge",
+                    "bk_obj_id": "pc",
+                    "inst_name": "WIN-OK",
+                    "os_type": "windows",
+                    "collection_target": "10.11.27.31",
+                    "collect_status": "success",
+                },
+                "value": [1753200000, "1"],
+            },
+            {
+                "metric": {
+                    "__name__": "pc_info_gauge",
+                    "bk_obj_id": "pc",
+                    "inst_name": "WIN-FAIL",
+                    "os_type": "windows",
+                    "collection_target": "10.11.27.30",
+                    "collect_status": "failed",
+                },
+                "value": [1753200000, "1"],
+            },
+            {
+                "metric": {
+                    "__name__": "pc_info_gauge",
+                    "bk_obj_id": "pc",
+                    "inst_name": "WIN-FAIL",
+                    "collection_target": "10.11.27.30",
+                    "cmdb_collect_error": "duplicate",
+                },
+                "value": [1753200001, "1"],
+            },
+            {
+                "metric": {
+                    "__name__": "pc_software_info_gauge",
+                    "bk_obj_id": "pc_software",
+                    "inst_name": "SW-FAIL",
+                    "collect_status": "failed",
+                },
+                "value": [1753200000, "1"],
+            },
+        ],
+        result={},
+        get_collect_inst=lambda: SimpleNamespace(id=7, team=[1], data_cleanup_strategy=""),
+        TASK_FORMAT_DATA_KEY="__task_format_data__",
+        _MODEL_ID="pc",
+    )
+    publish_pc_collected_metrics(plugin)
+    summary = plugin.result["__task_format_data__"]["pc_summary"]
+    assert "WIN-OK" in graph.store
+    assert "WIN-FAIL" not in graph.store
+    assert plugin.result["__task_format_data__"]["delete"] == []
+    assert summary["pc_total"] == 2
+    assert summary["pc_partial"] == 1
+    assert summary["pc_failed"] == 1
+    status = _decide_collect_exec_status(
+        {
+            "add": 1,
+            "add_error": 0,
+            "update": 1,
+            "update_error": 1,
+            "delete": 0,
+            "delete_error": 0,
+            "association": 0,
+            "association_error": 0,
+            "collect_success": 1,
+            "collect_failed": 1,
+        },
+        raw_data=[{"__time__": "t"}],
+        pc_summary=summary,
+    )
+    assert status == CollectRunStatusType.PARTIAL_SUCCESS
+
+
+def test_host_run_still_uses_its_own_formatter():
+    class _HostCollect(CollectBase):
+        formatted = False
+
+        @property
+        def _metrics(self):
+            return ["host_info_gauge"]
+
+        def format_data(self, data):
+            self.rows = [row["metric"]["__name__"] for row in data["result"]]
+
+        def format_metrics(self):
+            self.formatted = True
+            self.result["host"] = [{"inst_name": "host-a"}]
+
+    runner = _HostCollect(inst_name="host-a", inst_id="cmdb_42", task_id=42)
+    runner.query_data = lambda: {"result": [{"metric": {"__name__": "host_info_gauge", "collect_status": "success"}, "value": [1, "1"]}]}
+    result = runner.run()
+    assert runner.formatted is True
+    assert runner.rows == ["host_info_gauge"]
+    assert result["host"][0]["inst_name"] == "host-a"
+
+
+def test_task_format_payload_is_not_reconciled_as_instances(monkeypatch):
+    seen = []
+
+    class _Graph:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def query_entity(self, *_args, **_kwargs):
+            return [], 0
+
+    class _Management:
+        def __init__(self, _organization, _inst_name, model_id, *_args, **_kwargs):
+            seen.append(model_id)
+
+        def controller(self):
+            return {
+                "add": {"success": [], "failed": []},
+                "update": {"success": [], "failed": []},
+                "delete": {"success": [], "failed": []},
+            }
+
+    monkeypatch.setattr("apps.cmdb.collection.metrics_cannula.GraphClient", lambda *_a, **_k: _Graph())
+    monkeypatch.setattr("apps.cmdb.collection.metrics_cannula.Management", _Management)
+    cannula = MetricsCannula(
+        inst_id="cmdb_7",
+        organization=[1],
+        inst_name="pc-task",
+        task_id=7,
+        collect_plugin=object,
+        default_metrics={
+            "host": [{"inst_name": "host-a"}],
+            "__task_format_data__": {"pc_summary": {"pc_total": 1}, "add": []},
+        },
+    )
+    cannula._collect_models()
+    assert seen == ["host"]
 
 
 def test_collect_base_init_backfills_inst_name_from_list_instances(monkeypatch):

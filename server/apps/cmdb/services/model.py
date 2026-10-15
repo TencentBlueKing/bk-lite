@@ -709,10 +709,13 @@ class ModelManage(object):
         """
         删除模型
         """
+        from apps.cmdb.services.custom_collect_plugin import ensure_model_deletable
+
         with GraphClient() as ag:
             if not model_id:
                 model_info = ag.query_entity_by_id(id)
                 model_id = str((model_info or {}).get("model_id") or "")
+            ensure_model_deletable(model_id)
             ag.batch_delete_entity(MODEL, [id])
 
         from apps.cmdb.display_field import ExcludeFieldsCache

@@ -92,6 +92,7 @@
         "RUNNING": "Running",
         "WAITING_APPROVAL": "Waiting for Approval",
         "TERMINATING": "Terminating",
+        "UNKNOWN": "Outcome unknown",
         "SUCCEEDED": "Succeeded",
         "FAILED": "Failed",
         "TIMED_OUT": "Timed Out",

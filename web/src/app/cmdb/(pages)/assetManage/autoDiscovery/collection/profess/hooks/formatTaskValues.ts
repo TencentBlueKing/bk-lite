@@ -54,6 +54,7 @@ export const formatTaskValues = ({
         : 0,
     params: {
       ip_precheck: Boolean(values.ip_precheck),
+      ...(modelItem.custom_plugin_pk ? { custom_plugin_pk: modelItem.custom_plugin_pk } : {}),
     },
   };
 };

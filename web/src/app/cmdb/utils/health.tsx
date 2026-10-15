@@ -1,5 +1,6 @@
 import React from 'react';
-import { Tag } from 'antd';
+import StatusBadgeShell from '@/components/status-badge-shell';
+import { STATUS_TONE } from '@/app/cmdb/utils/statusTone';
 
 export type HealthStatusType = 'OK' | 'Warning' | 'Critical' | 'Unknown';
 
@@ -50,7 +51,15 @@ export const HealthStatusTag: React.FC<{ value: unknown }> = ({ value }) => {
     return <span className="text-[var(--color-text-3)]">--</span>;
   }
   const tagProps = getHealthTagProps(String(value));
-  return <Tag color={tagProps.color}>{tagProps.text}</Tag>;
+  const palette =
+    tagProps.color === 'success'
+      ? STATUS_TONE.success
+      : tagProps.color === 'warning'
+        ? STATUS_TONE.warning
+        : tagProps.color === 'error'
+          ? STATUS_TONE.fail
+          : STATUS_TONE.neutral;
+  return <StatusBadgeShell label={tagProps.text} palette={palette} />;
 };
 
 export const formatPowerState = (value: unknown): string => {

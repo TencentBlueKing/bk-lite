@@ -5,6 +5,12 @@ import { useRouter } from 'next/navigation';
 import { Alert, Button, Drawer, Form, Input } from 'antd';
 
 import { useRumQueries } from '@/app/rum/api';
+import {
+  BudgetFields,
+  DEFAULT_BUDGET_FORM,
+  budgetPayload,
+  type BudgetForm,
+} from '@/app/rum/applications/ui/budget-fields';
 import { OriginEditor } from '@/app/rum/applications/ui/origin-editor';
 import { rumErrorMessage } from '@/app/rum/lib/error-message';
 import { rumSetupPath } from '@/app/rum/lib/ingest';
@@ -21,13 +27,15 @@ export default function CreateApplicationDrawer({
   const router = useRouter();
   const { createApplication } = useRumQueries();
   const [application, setApplication] = useState('');
-  const [origins, setOrigins] = useState(['http://127.0.0.1:5100']);
+  const [origins, setOrigins] = useState(['']);
+  const [budgets, setBudgets] = useState<BudgetForm>({ ...DEFAULT_BUDGET_FORM });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState('');
 
   function reset() {
     setApplication('');
-    setOrigins(['http://127.0.0.1:5100']);
+    setOrigins(['']);
+    setBudgets({ ...DEFAULT_BUDGET_FORM });
     setError('');
     setPending(false);
   }
@@ -41,9 +49,19 @@ export default function CreateApplicationDrawer({
         setError(t('rum.create.required', '请填写应用名称与至少一个 Origin'));
         return;
       }
+      const budgetBody = budgetPayload(budgets);
+      if (budgetBody === 'order') {
+        setError(t('rum.budgets.order', '解压上限不能小于压缩上限'));
+        return;
+      }
+      if (budgetBody === 'incomplete') {
+        setError(t('rum.budgets.required', '请填写完整的每分钟预算'));
+        return;
+      }
       const view = await createApplication({
         application: application.trim(),
         origins: validOrigins,
+        budgets: budgetBody,
       });
       onOpenChange(false);
       reset();
@@ -103,6 +121,15 @@ export default function CreateApplicationDrawer({
               {t(
                 'rum.create.originsHint',
                 '精确填写协议、主机和可选端口。其他 Origin 会被拒绝；这仍是滥用控制，Browser Key 不可省略。',
+              )}
+            </p>
+          </Form.Item>
+          <Form.Item label={t('rum.budgets.title', '每分钟预算')} className="mb-0 mt-4">
+            <BudgetFields value={budgets} onChange={setBudgets} disabled={pending} />
+            <p className="mt-1 text-xs text-[var(--color-text-3)]">
+              {t(
+                'rum.budgets.createHint',
+                '超出后网关拒绝这一分钟内的新上报。未填写时使用这些默认值。',
               )}
             </p>
           </Form.Item>

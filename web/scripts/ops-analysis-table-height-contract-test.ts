@@ -32,12 +32,12 @@ for (const [name, source] of [
 
 assert.equal(
   resolveTableBodyScrollY({ containerHeight: 320, hasPagination: false }),
-  277,
+  273,
   '无分页表格应使用 widget 剩余高度减去表头高度',
 );
 assert.equal(
   resolveTableBodyScrollY({ containerHeight: 320, hasPagination: true }),
-  221,
+  217,
   '有分页表格还应为分页栏预留高度',
 );
 assert.match(

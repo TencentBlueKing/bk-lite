@@ -242,9 +242,9 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
         onCancel={handleCancel}
         width={650}
         footer={
-          <div>
+          <div className="flex justify-end gap-2">
+            <Button onClick={handleCancel}>{t('common.cancel')}</Button>
             <Button
-              className="mr-[10px]"
               type="primary"
               loading={exporting}
               onClick={handleExport}
@@ -252,7 +252,6 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
             >
               {t('Transfer.submitExport')}
             </Button>
-            <Button onClick={handleCancel}>{t('common.cancel')}</Button>
           </div>
         }
       >
@@ -263,7 +262,7 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
           >
             <div className="mb-6">
               <div className="flex items-center justify-between mb-4">
-                <div className="text-sm font-medium text-gray-700">
+                <div className="text-sm font-medium text-[var(--color-text-2)]">
                   {t('Model.selectAttributes')}
                 </div>
                 <Checkbox
@@ -275,7 +274,7 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
                   {t('selectAll')}
                 </Checkbox>
               </div>
-              <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 max-h-60 overflow-y-auto">
+              <div className="border border-[var(--color-border)] rounded-lg p-4 bg-[var(--color-fill-1)] max-h-60 overflow-y-auto">
                 <Checkbox.Group
                   value={selectedAttrs}
                   onChange={handleAttrChange}
@@ -305,11 +304,11 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
                         }}
                       >
                         <HolderOutlined
-                          className="mr-1 text-gray-400"
+                          className="mr-1 text-[var(--color-text-4)]"
                           style={{ fontSize: '12px', cursor: 'grab' }}
                         />
                         <Checkbox value={column.key} className="text-sm w-full">
-                          <span className="text-sm text-gray-700 truncate block">
+                          <span className="text-sm text-[var(--color-text-2)] truncate block">
                             {column.title}
                           </span>
                         </Checkbox>
@@ -322,7 +321,7 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
 
             <div>
               <div className="flex items-center justify-between mb-4">
-                <div className="text-sm font-medium text-gray-700">
+                <div className="text-sm font-medium text-[var(--color-text-2)]">
                   {t('Model.selectAssociations')}
                 </div>
                 {relationList.length > 0 && (
@@ -337,7 +336,7 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
                 )}
               </div>
               {relationList.length > 0 ? (
-                <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 max-h-48 overflow-y-auto">
+                <div className="border border-[var(--color-border)] rounded-lg p-4 bg-[var(--color-fill-1)] max-h-48 overflow-y-auto">
                   <Checkbox.Group
                     value={selectedRelations}
                     onChange={handleRelationChange}
@@ -353,7 +352,7 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
                             value={relation.relation_key}
                             className="text-sm"
                           >
-                            <span className="text-sm text-gray-700">
+                            <span className="text-sm text-[var(--color-text-2)]">
                               {relation.name}
                             </span>
                           </Checkbox>
@@ -363,8 +362,8 @@ const ExportModal = forwardRef<ExportModalRef, ExportModalProps>(
                   </Checkbox.Group>
                 </div>
               ) : (
-                <div className="border border-gray-200 rounded-lg p-6 bg-gray-50">
-                  <div className="text-sm text-gray-400 text-center">
+                <div className="border border-[var(--color-border)] rounded-lg p-6 bg-[var(--color-fill-1)]">
+                  <div className="text-sm text-[var(--color-text-4)] text-center">
                     {t('Model.noAssociations')}
                   </div>
                 </div>

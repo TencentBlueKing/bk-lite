@@ -9,7 +9,8 @@ import TimeSelector from '@/components/time-selector';
 import UserAvatar from '@/components/user-avatar';
 import type { ColumnsType } from 'antd/es/table';
 import { useIncidentsApi } from '@/app/alarm/api/incidents';
-import { Input, Button, Tag } from 'antd';
+import { Button, Tag } from 'antd';
+import SearchActionBar from '@/components/search-action-bar';
 import { Pagination, TimeSelectorDefaultValue } from '@/app/alarm/types/types';
 import { IncidentTableDataItem } from '@/app/alarm/types/incidents';
 import { FiltersConfig } from '@/app/alarm/types/alarms';
@@ -228,22 +229,24 @@ const IncidentsPage: React.FC = () => {
         />
       </div>
       <div className={alertStyle.content}>
-        <div className="flex items-center justify-between space-x-2 mb-[16px] shrink-0">
-          <Input
-            allowClear
-            className="w-[300px]"
-            placeholder={t('common.search')}
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            onPressEnter={handleSearch}
-            onClear={handleSearchClear}
-          />
-          <TimeSelector
-            defaultValue={timeDefaultValue}
-            onlyRefresh
-            onRefresh={handleRefresh}
-          />
-        </div>
+        <SearchActionBar
+          searchProps={{
+            placeholder: t('common.search'),
+            allowClear: true,
+            value: searchText,
+            onChange: (e) => setSearchText(e.target.value),
+            onPressEnter: handleSearch,
+            onSearch: handleSearch,
+            onClear: handleSearchClear,
+          }}
+          actions={(
+            <TimeSelector
+              defaultValue={timeDefaultValue}
+              onlyRefresh
+              onRefresh={handleRefresh}
+            />
+          )}
+        />
         <div className="min-h-0 flex-1 overflow-hidden">
         <CustomTable
           rowKey="id"

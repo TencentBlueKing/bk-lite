@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CopyOutlined, DownloadOutlined } from '@ant-design/icons';
 import { Button, Card, Dropdown, Segmented, Table, Tooltip } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
@@ -47,10 +47,16 @@ const SearchTableHeaderCell: React.FC<SearchHeaderCellProps> = ({
   className,
   ...rest
 }) => {
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => dragCleanupRef.current?.(), []);
+
   const onMouseDown = (event: React.MouseEvent) => {
     if (!resizeHandler || !width) return;
     event.preventDefault();
     event.stopPropagation();
+    dragCleanupRef.current?.();
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
     const startX = event.clientX;
     const startWidth = width;
     const onMove = (moveEvent: MouseEvent) => {
@@ -59,9 +65,11 @@ const SearchTableHeaderCell: React.FC<SearchHeaderCellProps> = ({
     const onUp = () => {
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
-      document.body.style.cursor = '';
-      document.body.style.userSelect = '';
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      dragCleanupRef.current = null;
     };
+    dragCleanupRef.current = onUp;
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
     document.body.style.cursor = 'col-resize';

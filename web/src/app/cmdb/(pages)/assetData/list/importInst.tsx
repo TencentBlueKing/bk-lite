@@ -146,9 +146,8 @@ const ImportInst = forwardRef<FieldModalRef, FieldModalProps>(
           visible={groupVisible}
           onCancel={handleCancel}
           footer={
-            <div>
+            <div className="flex justify-end gap-2">
               <Button
-                className="mr-[10px]"
                 type="primary"
                 loading={confirmLoading}
                 disabled={!fileList.length || !canSubmit}

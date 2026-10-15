@@ -3,9 +3,10 @@
 import React, { useEffect, useState } from 'react';
 import type { TablePaginationConfig } from 'antd/es/table';
 import OperateModal from './operateModal';
-import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
-import { Button, Input, Card, message, Modal, Switch } from 'antd';
+import { Button, message, Modal, Switch } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
+import OpsAnalysisSettingsListShell from '@/app/ops-analysis/components/ops-analysis-settings-list-shell';
 import { useTranslation } from '@/utils/i18n';
 import { DataConnectionItem } from '@/app/ops-analysis/types/dataConnection';
 import { useDataConnectionApi } from '@/app/ops-analysis/api/dataConnection';
@@ -292,58 +293,33 @@ const DataConnectionPage: React.FC = () => {
   ];
 
   return (
-    <div className="flex flex-col w-full h-full bg-[var(--color-bg-1)]">
-      <Card
-        style={{
-          borderRadius: 0,
-          marginBottom: '16px',
-          paddingLeft: '12px',
-          borderLeftWidth: '0px',
-          borderTopWidth: '0px',
-        }}
-        styles={{
-          body: { padding: '16px' },
-        }}
-      >
-        <p className="font-extrabold text-base mb-2">
-          {t('dataConnection.introTitle')}
-        </p>
-        <p className="text-sm text-[var(--color-text-2)]">
-          {t('dataConnection.introMsg')}
-        </p>
-      </Card>
-      <div className="px-6 pb-0">
-        <div className="flex justify-between mb-[20px]">
-          <div className="flex items-center">
-            <Input
-              allowClear
-              value={searchValue}
-              placeholder={t('common.search')}
-              style={{ width: 250 }}
-              onChange={(e) => setSearchValue(e.target.value)}
-              onPressEnter={(e) => handleFilter(e.currentTarget.value)}
-              onClear={() => {
-                setSearchValue('');
-                handleFilter('');
-              }}
-            />
-          </div>
-          <PermissionWrapper requiredPermissions={['Add']}>
-            <Button type="primary" onClick={() => handleEdit('add')}>
-              {t('common.addNew')}
-            </Button>
-          </PermissionWrapper>
-        </div>
-        <CustomTable
-          size="middle"
-          rowKey="id"
-          columns={columns}
-          loading={loading}
-          dataSource={filteredList}
-          pagination={pagination}
-          onChange={handleTableChange}
-          scroll={{ y: 'calc(100vh - 430px)' }}
-        />
+    <OpsAnalysisSettingsListShell
+      introTitle={t('dataConnection.introTitle')}
+      introDescription={t('dataConnection.introMsg')}
+      searchValue={searchValue}
+      searchPlaceholder={t('common.search')}
+      onSearchValueChange={setSearchValue}
+      onSearch={(value) => handleFilter(value)}
+      onSearchClear={() => handleFilter('')}
+      actions={(
+        <PermissionWrapper requiredPermissions={['Add']}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => handleEdit('add')}
+          >
+            {t('common.new')}
+          </Button>
+        </PermissionWrapper>
+      )}
+      columns={columns}
+      dataSource={filteredList}
+      rowKey="id"
+      pagination={pagination}
+      tableLoading={loading}
+      scroll={{ y: 'calc(100vh - 430px)' }}
+      tableProps={{ onChange: handleTableChange }}
+      modal={(
         <OperateModal
           open={modalVisible}
           currentRow={currentRow}
@@ -353,8 +329,8 @@ const DataConnectionPage: React.FC = () => {
             fetchList();
           }}
         />
-      </div>
-    </div>
+      )}
+    />
   );
 };
 

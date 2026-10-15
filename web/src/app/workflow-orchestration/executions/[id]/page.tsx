@@ -1,6 +1,6 @@
 'use client';
 
-import { Empty, Spin } from 'antd';
+import { Empty, Skeleton } from 'antd';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 
@@ -17,5 +17,5 @@ export default function ExecutionPage() {
     return <Empty className="py-24" description={t('workflowOrchestration.form.invalidExecutionId', '无效的执行 ID')} />;
   }
 
-  return <Suspense fallback={<div className="flex h-full min-h-0 flex-1 items-center justify-center"><Spin /></div>}><ExecutionListPage initialExecutionId={executionId} initialNodeReference={searchParams.get('node') || undefined} initialInstanceId={searchParams.get('instance_id') || undefined} /></Suspense>;
+  return <Suspense fallback={<div className="flex h-full min-h-0 flex-1 items-center justify-center p-6"><Skeleton active paragraph={{ rows: 8 }} title={false} /></div>}><ExecutionListPage initialExecutionId={executionId} initialNodeReference={searchParams.get('node') || undefined} initialInstanceId={searchParams.get('instance_id') || undefined} /></Suspense>;
 }

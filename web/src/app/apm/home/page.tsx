@@ -432,7 +432,7 @@ export default function ApmHomePage() {
               {kpiCards.map((kpi) => (
                 <Col key={kpi.key} xs={24} sm={12} md={8} lg={4} xl={4}>
                   <SummaryMetricCard
-                    className="h-full min-h-[132px] rounded-lg px-4 pb-3 pt-4"
+                    className="h-full min-h-[132px] rounded-lg px-4 pb-3 pt-4 bg-[image:linear-gradient(180deg,color-mix(in_srgb,var(--color-primary)_1.5%,var(--color-bg))_0%,var(--color-bg)_32%)]"
                     contentClassName="flex flex-1 flex-col"
                     footer={(
                       <div className="mt-auto min-w-0 pt-2">
@@ -466,6 +466,7 @@ export default function ApmHomePage() {
                 icon={<DashboardOutlined aria-hidden="true" className="text-[var(--color-primary)]" />}
                 title={t('apm.home.healthTitle', '服务健康度分布')}
                 subtitle={t(WINDOW_LABEL_KEYS[timeWindow])}
+                count={healthData?.total}
                 viewAllHref="/apm/services"
                 failed={sectionFailed(dashboard?.health)}
                 onRetry={load}
@@ -507,6 +508,7 @@ export default function ApmHomePage() {
                 icon={<DashboardOutlined aria-hidden="true" className="text-[var(--color-primary)]" />}
                 title={t('apm.home.sloTitle', 'SLO 概览')}
                 subtitle={t('apm.home.sloSubtitle', '已配置 SLO')}
+                count={sloItems.length}
                 viewAllHref="/apm/services/slo"
                 failed={sectionFailed(dashboard?.slos)}
                 onRetry={load}
@@ -533,6 +535,7 @@ export default function ApmHomePage() {
                 icon={<BellOutlined aria-hidden="true" className="text-[var(--color-fail)]" />}
                 title={t('apm.home.alertsTitle', '实时告警')}
                 subtitle={t('apm.home.alertsSubtitle', '未恢复')}
+                count={alertItems.length}
                 viewAllHref="/apm/events/alerts"
                 failed={sectionFailed(dashboard?.alerts)}
                 onRetry={load}
@@ -593,6 +596,7 @@ export default function ApmHomePage() {
               <SectionCard
                 icon={<FireOutlined aria-hidden="true" className="text-[var(--color-fail)]" />}
                 title={t('apm.home.topErrorTitle', '服务 TOP5 (按错误率)')}
+                count={topErrorItems.length}
                 viewAllHref="/apm/services"
                 failed={sectionFailed(dashboard?.top_error_rate)}
                 onRetry={load}
@@ -621,6 +625,7 @@ export default function ApmHomePage() {
               <SectionCard
                 icon={<ThunderboltOutlined aria-hidden="true" className="text-[var(--theme-color-status-warning)]" />}
                 title={t('apm.home.topP95Title', 'P95 响应时间 TOP5')}
+                count={topP95Items.length}
                 viewAllHref="/apm/services"
                 failed={sectionFailed(dashboard?.top_p95)}
                 onRetry={load}
@@ -650,6 +655,7 @@ export default function ApmHomePage() {
                 icon={<TagsOutlined aria-hidden="true" className="text-[var(--color-primary)]" />}
                 title={t('apm.home.releasesTitle', '版本发布变更')}
                 subtitle={t('apm.home.releasesSubtitle', '近 7 天')}
+                count={releaseItems.length}
                 failed={sectionFailed(dashboard?.releases)}
                 onRetry={load}
               >

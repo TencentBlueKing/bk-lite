@@ -198,28 +198,40 @@ def test_builtin_health_report_template_matches_job_output_contract_and_renders_
     assert "results.data.metrics" in parsed.loops
     assert "results.data.critical" in parsed.loops
     assert "results.data.warning" in parsed.loops
-    assert "results.data.normal" in parsed.loops
+    assert "metric_summary" in parsed.loops
     assert "summary.total" in parsed.placeholders
+    assert "summary.critical_hosts" in parsed.placeholders
     assert any(item.endswith("target.ip") for item in parsed.placeholders)
     assert any(item.endswith("target.operating_system") for item in parsed.placeholders)
-    assert any("host.hostname" in item for item in parsed.placeholders)
     assert any("display_name" in item for item in parsed.placeholders)
     template_text = _rendered_text(fmt, content)
     assert "{{" in template_text or "{%" in template_text
     assert "{d." not in template_text
     assert "Windows" not in template_text
-    assert "共 {{ summary.total }} 台主机" in template_text
     assert "主机健康巡检报告" in template_text
-    assert "严重问题" in template_text
-    assert "系统健康" in template_text
-    assert "更新账龄" in template_text
+    assert "依据本次采集结果整理" in template_text
     assert "作业平台健康巡检报告" not in template_text
+    if fmt == "docx":
+        assert "主机一览" in template_text
+        assert "指标项一览" in template_text
+        assert "严重问题" in template_text
+        assert "台主机里" in template_text
+        assert "有严重项为红" in template_text
+    else:
+        assert "台主机里" not in template_text
+        workbook = load_workbook(BytesIO(content), read_only=True)
+        assert workbook.sheetnames == ["报告概览", "主机一览", "指标项一览", "严重问题", "告警问题", "检查明细"]
     text = _rendered_text(fmt, rendered)
     assert "10.10.90.120" in text
     assert "CPU Total" in text
     assert "Ethernet0" in text
     assert "job-web3" in text
+    assert "42.3%" in text
+    assert "≥80%" in text
+    assert "≥90%" in text
     assert "{{" not in text
+    assert HEALTH_REPORT_DATA["summary"] == {"total": 1, "succeeded": 1, "failed": 0}
+    assert "metric_summary" not in HEALTH_REPORT_DATA
 
 
 @pytest.mark.parametrize("fmt", ["docx", "xlsx"])
@@ -244,8 +256,10 @@ def test_builtin_health_report_renders_failed_host_with_null_data(fmt):
     )
     rendered = render_report(content, fmt, payload)
     text = _rendered_text(fmt, rendered)
+    assert payload["summary"] == {"total": 1, "succeeded": 0, "failed": 1}
     assert "10.10.90.120" in text
-    assert "command timed out" in text or "FAILED" in text
+    assert "未采集" in text
+    assert "command timed out" not in text
     assert "{{" not in text
 
 
@@ -263,5 +277,26 @@ def test_builtin_health_report_template_renders_multi_host_multi_os(fmt):
     assert "linux" in text
     assert "job-lab-linux-yum" in text
     assert "/mnt/lima-cidata" in text
-    assert "共 2 台主机" in text
+    assert "100%" in text
     assert "{{" not in text
+    if fmt == "docx":
+        assert "2 台主机里 1 台有严重项，0 台只有告警，1 台健康，0 台没有采集到数据。" in text
+    else:
+        book = load_workbook(BytesIO(rendered))
+        host_headers = [cell.value for cell in next(book["主机一览"].iter_rows(max_row=1))]
+        metric_headers = [cell.value for cell in next(book["指标项一览"].iter_rows(max_row=1))]
+        assert host_headers[:7] == ["主机", "IP", "系统", "严重项", "告警项", "正常项", "结论"]
+        assert metric_headers[:8] == ["分类", "指标", "告警阈值", "严重阈值", "严重", "告警", "正常", "结论"]
+        assert book["主机一览"].conditional_formatting._cf_rules
+        assert book["报告概览"].sheet_view.view == "normal"
+        host_rows = [[cell.value for cell in row] for row in book["主机一览"].iter_rows(max_col=7)]
+        assert host_rows[1] == ["job-lab-linux-yum", "192.168.64.5", "linux", 1, 0, 0, "需关注"]
+        assert host_rows[2] == ["job-web3", "10.10.90.120", "windows", 0, 0, 1, "健康"]
+        assert book["主机一览"].max_row == 3
+        metric_rows = [[cell.value for cell in row] for row in book["指标项一览"].iter_rows(max_col=8)]
+        assert metric_rows[1][0] == "磁盘"
+        assert metric_rows[1][4:8] == [1, 0, 0, "需关注"]
+        assert metric_rows[2][0] == "计算"
+        assert metric_rows[2][7] == "健康"
+        assert book["报告概览"]["A4"].value == 2
+        assert book["报告概览"]["D4"].value == 1

@@ -18,6 +18,7 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import monitor_logger as monitor_logger
 from apps.core.logger import nats_logger as logger
 from apps.core.logger import safe_exception_info
+from apps.core.logger import safe_log_value
 from apps.core.utils.current_team_scope import _normalize_organization_ids
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import (
@@ -88,6 +89,7 @@ from apps.monitor.services.metric_series import (
     validate_mode,
     wrap_avg_over_time,
 )
+from apps.monitor.services.metric_trend_summary import summarize_trend_rows
 from apps.monitor.services.metrics import Metrics, MetricsQueryBudgetExceeded
 from apps.monitor.services.nats_query_contract import build_vm_query_failure_result as _build_vm_query_failure_result
 from apps.monitor.services.nats_query_contract import normalize_bool
@@ -809,7 +811,37 @@ def license_monitor_instance_count(*args, **kwargs):
         .annotate(instance_count=Count("id"))
     )
     data = {item["monitor_object__name"]: item["instance_count"] for item in queryset}
-    return {"result": True, "data": data, "message": ""}
+    labels = _license_monitor_instance_labels(data, kwargs)
+    return {"result": True, "data": data, "labels": labels, "message": ""}
+
+
+def _license_monitor_instance_labels(data, kwargs):
+    """与监控对象列表相同：语言包，否则 display_name，否则 name。名称失败不改变数量。"""
+    from apps.core.utils.loader import LanguageLoader
+    from apps.monitor.constants.language import LanguageConstants
+
+    if "language" in kwargs:
+        language = kwargs.get("language")
+    else:
+        language = (kwargs.get("user_info") or {}).get("locale")
+    try:
+        lan = LanguageLoader(app=LanguageConstants.APP, default_lang=language)
+        stored_names = {
+            name: display_name
+            for name, display_name in MonitorObject.objects.filter(name__in=list(data)).values_list("name", "display_name")
+        }
+        return {
+            name: lan.get(f"{LanguageConstants.MONITOR_OBJECT}.{name}") or stored_names.get(name) or name
+            for name in data
+        }
+    except Exception as exc:
+        monitor_logger.warning(
+            "event=license_monitor_labels_skipped failed_stage=%s error_type=%s",
+            "resolve_labels",
+            type(exc).__name__,
+            exc_info=safe_exception_info(exc),
+        )
+        return {}
 
 
 @nats_client.register
@@ -1037,6 +1069,19 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
 
 
 _TREND_ID_CHUNK = 40
+_TREND_SUMMARY_FAILURE = "指标趋势汇总失败"
+_SAFE_VM_ERROR_TYPE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
+
+
+class MetricTrendQueryError(Exception):
+    """趋势查询失败。消息是稳定中文，可以返回给调用方。"""
+
+
+def _trend_vm_error_type(result: dict) -> str:
+    raw = result.get("errorType")
+    if isinstance(raw, str) and _SAFE_VM_ERROR_TYPE.fullmatch(raw):
+        return raw
+    return "vm_status_error"
 
 
 def _trend_span_number(value, name: str, default: float, minimum: float, maximum: float) -> float:
@@ -1051,23 +1096,51 @@ def _trend_span_number(value, name: str, default: float, minimum: float, maximum
     return number
 
 
-def _query_trend_series(metric_queries, instance_ids: list[str], start: float, end: float, step: str) -> list[dict]:
+def _query_trend_series(
+    metric_queries,
+    instance_ids: list[str],
+    start: float,
+    end: float,
+    step: str,
+    *,
+    monitor_obj_id="",
+) -> list[dict]:
+    """按与范围查询相同的预算拉取趋势序列。
+
+    先检查窗口和步长，再用 limitk 限制单次序列数，合并后检查序列数和总点数。
+    超预算抛出 MetricsQueryBudgetExceeded，不把原始点交给调用方。
+    """
+    budget = Metrics._prepare_range_budget(int(start * 1000), int(end * 1000), step)
+    series_limit = budget["limits"]["series"]
     vm_api = VictoriaMetricsAPI()
     merged: list[dict] = []
     for _metric, instance_id_keys, metric_query in metric_queries:
         for offset in range(0, len(instance_ids), _TREND_ID_CHUNK):
             chunk = instance_ids[offset : offset + _TREND_ID_CHUNK]
-            query = _build_metric_label_query(
-                metric_query,
-                instance_ids=chunk,
-                instance_id_keys=instance_id_keys,
+            query = Metrics._apply_range_series_limit(
+                _build_metric_label_query(
+                    metric_query,
+                    instance_ids=chunk,
+                    instance_id_keys=instance_id_keys,
+                ),
+                series_limit,
             )
             result = vm_api.query_range(query, start, end, step)
             if isinstance(result, dict) and result.get("status") == "error":
-                raise ValueError(result.get("error") or result.get("message") or "指标查询失败")
+                # VM error 正文可能含查询语句，只记错误类型，不回传、不落日志。
+                logger.warning(
+                    "event=metric_trend_query_failed monitor_obj_id=%s failed_stage=query_range error_type=%s",
+                    safe_log_value(monitor_obj_id),
+                    _trend_vm_error_type(result),
+                )
+                raise MetricTrendQueryError(_TREND_SUMMARY_FAILURE)
             for series in ((result or {}).get("data") or {}).get("result") or []:
                 if isinstance(series, dict):
                     merged.append(series)
+            Metrics._enforce_range_response_budget(
+                {"status": "success", "data": {"result": merged}},
+                budget,
+            )
     return merged
 
 
@@ -1077,8 +1150,6 @@ def summarize_metric_trend(query_data: dict, *args, **kwargs):
 
     只返回预测跨度内会到达阈值的序列，不返回原始点。
     """
-    from apps.monitor.services.metric_trend_summary import summarize_trend_rows
-
     query_data = _normalize_monitor_query_data(query_data or {})
     monitor_obj_id = query_data.get("monitor_obj_id")
     metric_name = query_data.get("metric")
@@ -1135,12 +1206,21 @@ def summarize_metric_trend(query_data: dict, *args, **kwargs):
     start = end - lookback_days * 86400
     step = "1h" if lookback_days >= 1 else "5m"
     try:
-        series = _query_trend_series(metric_queries, instance_ids, start, end, step)
-    except ValueError as exc:
-        return {"result": False, "data": {}, "message": str(exc)}
+        series = _query_trend_series(
+            metric_queries,
+            instance_ids,
+            start,
+            end,
+            step,
+            monitor_obj_id=monitor_obj_id,
+        )
+    except MetricsQueryBudgetExceeded as exc:
+        return _build_query_budget_failure(exc)
+    except MetricTrendQueryError:
+        return {"result": False, "data": {}, "message": _TREND_SUMMARY_FAILURE}
     except Exception:
         logger.exception("metric trend summary failed monitor_obj_id=%s", monitor_obj_id)
-        return {"result": False, "data": {}, "message": "指标趋势汇总失败"}
+        return {"result": False, "data": {}, "message": _TREND_SUMMARY_FAILURE}
     data = summarize_trend_rows(series, threshold=threshold, horizon_days=horizon_days)
     data["lookback_days"] = lookback_days
     data["instance_count"] = len(instance_ids)

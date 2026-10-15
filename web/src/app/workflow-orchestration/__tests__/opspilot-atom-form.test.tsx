@@ -1,7 +1,7 @@
 import './test-mocks';
 
 import { App } from 'antd';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { beforeAll, vi } from 'vitest';
@@ -250,17 +250,80 @@ describe('OpsPilot 风格原子表单', () => {
 
     render(<NotificationHarness />);
 
+    await waitFor(() => {
+      expect(screen.getByTitle('邮件服务器')).not.toBeNull();
+    });
     await user.click(screen.getByRole('combobox'));
-    expect(await screen.findByText('邮件服务器')).not.toBeNull();
+    expect((await screen.findAllByText('邮件服务器')).length).toBeGreaterThan(0);
     expect(screen.queryByText('告警中心')).toBeNull();
     expect(screen.queryByText('可观测群')).toBeNull();
     expect(screen.queryByText(/nats|enterprise_wechat_bot/)).toBeNull();
 
     await user.click(screen.getByText('企业微信机器人'));
+    await waitFor(() => {
+      expect(screen.getByTitle('可观测群')).not.toBeNull();
+    });
     await user.click(screen.getByRole('combobox'));
-    expect(await screen.findByText('可观测群')).not.toBeNull();
+    expect((await screen.findAllByText('可观测群')).length).toBeGreaterThan(0);
     expect(screen.queryByText('邮件服务器')).toBeNull();
     expect(screen.queryByText('告警中心')).toBeNull();
+  });
+
+  it('通知方式在渠道类型不匹配时回落到邮件列表第一项，不显示裸数字 1', async () => {
+    const notificationSchema: JsonSchema = {
+      type: 'object',
+      required: ['notification_type', 'body'],
+      properties: {
+        notification_type: {
+          type: 'string',
+          enum: ['EMAIL', 'WECOM_BOT'],
+          default: 'EMAIL',
+          'x-enum-labels': { EMAIL: '邮件', WECOM_BOT: '企业微信机器人' },
+        },
+        channel_id: {
+          type: 'integer',
+          enum: [1, 3],
+          'x-enum-labels': { '1': '告警中心', '3': '邮件服务器' },
+          'x-enum-channel-types': { '1': 'nats', '3': 'email' },
+        },
+        recipients: {
+          type: 'array',
+          title: '通知人',
+          items: { type: 'string', enum: ['9'], 'x-enum-labels': { '9': '值班 (oncall)' } },
+        },
+        title: { type: 'string', title: '通知标题' },
+        body: { type: 'string', title: '通知内容' },
+      },
+    };
+    function DirtyChannelHarness() {
+      const [value, setValue] = useState<Record<string, unknown>>({
+        notification_type: 'EMAIL',
+        channel_id: 1,
+        body: '已完成',
+        title: '标题',
+        recipients: ['9'],
+      });
+      return <App><OpsPilotAtomForm
+        atomKey="bklite_notification"
+        schema={notificationSchema}
+        value={value}
+        references={[]}
+        workflowId={1}
+        nodeTitle="发送巡检通知"
+        readOnly={false}
+        onChange={setValue}
+        onNodeTitleChange={vi.fn()}
+      /></App>;
+    }
+    render(<DirtyChannelHarness />);
+
+    await waitFor(() => {
+      expect(screen.getByTitle('邮件服务器')).not.toBeNull();
+    });
+    expect(screen.queryByText('告警中心')).toBeNull();
+    expect(screen.getByText('通知方式').closest('.ant-form-item')?.querySelector('.ant-form-item-required')).not.toBeNull();
+    expect(screen.getByText('通知人').closest('.ant-form-item')?.querySelector('.ant-form-item-required')).not.toBeNull();
+    expect(screen.getByText('通知标题').closest('.ant-form-item')?.querySelector('.ant-form-item-required')).not.toBeNull();
   });
 
   it('HTTP 请求参数与请求头采用 OpsPilot 键值行布局', async () => {

@@ -209,6 +209,12 @@ error:
   skill_package_missing_file: 'The skill package is missing {filename}'
   no_embedding_model: This knowledge base has no embedding model configured, so the index cannot be rebuilt.
   material_build_in_progress: This material is already being built. Do not submit it again.
+  knowledge_base_required: knowledge_base is required
+  material_ids_required: material_ids is required
+  material_ids_invalid: material_ids must be a list of integers
+  material_ids_too_many: At most 200 materials can be deleted at once
+  material_not_in_knowledge_base: The material does not exist or does not belong to this knowledge base
+  material_delete_in_progress: A selected material is still being built. Wait for it to finish before deleting.
   material_build_dispatch_failed: Failed to submit the knowledge build. Try again later.
   material_no_source_file: This material has no original file to download
   material_source_file_missing: The original file does not exist

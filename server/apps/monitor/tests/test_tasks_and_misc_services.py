@@ -245,9 +245,15 @@ class TestInfraService:
         with pytest.raises(BaseAppException):
             InfraService.validate_and_get_token_data("")
 
-    def test_validate_unknown_token_raises(self, locmem_cache):
-        with pytest.raises(BaseAppException):
-            InfraService.validate_and_get_token_data("does-not-exist")
+    def test_validate_unknown_token_raises(self, locmem_cache, caplog):
+        import logging
+
+        sentinel = "SENTINEL_MON_5952_ZzQ9mK2p"
+        with caplog.at_level(logging.WARNING, logger="monitor"):
+            with pytest.raises(BaseAppException):
+                InfraService.validate_and_get_token_data(sentinel)
+        assert sentinel not in caplog.text
+        assert sentinel[:8] not in caplog.text
 
     def test_token_usage_limit(self, locmem_cache):
         token = InfraService.generate_install_token("c1", "5")

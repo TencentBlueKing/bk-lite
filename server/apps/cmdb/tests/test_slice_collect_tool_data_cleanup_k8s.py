@@ -1,20 +1,19 @@
-import pydantic.root_model  # noqa
-
 from datetime import timedelta
 
+import pydantic.root_model  # noqa
 import pytest
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
+from apps.cmdb.services import k8s_setup as k8s_mod
 from apps.cmdb.services.collect_tool_service import (
-    MASKED_PASSWORD,
-    TIMEOUT_MAP,
     COLLECT_TOOL_DEBUG_CACHE_PREFIX,
     COLLECT_TOOL_POLL_INTERVAL_MS,
+    MASKED_PASSWORD,
+    TIMEOUT_MAP,
     CollectToolService,
 )
 from apps.cmdb.services.data_cleanup_service import DataCleanupService
-from apps.cmdb.services import k8s_setup as k8s_mod
 from apps.cmdb.services.k8s_setup import K8sSetupService, validate_collector_cluster_id
 from apps.core.exceptions.base_app_exception import BaseAppException
 
@@ -121,9 +120,7 @@ class TestCollectToolPureHelpers:
         assert out["stage"] == "unknown"
 
     def test_normalize_debug_result_keeps_existing_and_no_unknown_on_success(self):
-        out = CollectToolService.normalize_debug_result(
-            {"success": True, "summary": "ok", "raw_log": "log", "stage": "done"}
-        )
+        out = CollectToolService.normalize_debug_result({"success": True, "summary": "ok", "raw_log": "log", "stage": "done"})
         assert out["summary"] == "ok"
         assert out["raw_log"] == "log"
         assert out["stage"] == "done"
@@ -258,9 +255,7 @@ class TestPrefillHelpers:
         assert CollectToolService._get_decrypted_credential(inst) == {"d": 1}
 
     def test_build_snmp_prefill_v2c_masks_community(self):
-        cred, port = CollectToolService._build_snmp_prefill(
-            {"version": "v2c", "community": "public"}, {}, None
-        )
+        cred, port = CollectToolService._build_snmp_prefill({"version": "v2c", "community": "public"}, {}, None)
         assert cred["version"] == "v2c"
         assert cred["community"] == MASKED_PASSWORD
         assert port == 161
@@ -368,9 +363,7 @@ class TestExecuteDebug:
         fake_sg.collection_tool_debug.return_value = {"success": True}
         mocker.patch("apps.cmdb.services.collect_tool_service.Stargazer", return_value=fake_sg)
 
-        CollectToolService.execute_debug(
-            self._payload(action="get_oid", oid="1.3.6.1"), "default_stargazer", 120, request_id="r"
-        )
+        CollectToolService.execute_debug(self._payload(action="get_oid", oid="1.3.6.1"), "default_stargazer", 120, request_id="r")
         nats_payload = fake_sg.collection_tool_debug.call_args.args[0]
         assert nats_payload["oid"] == "1.3.6.1"
 
@@ -426,9 +419,7 @@ class TestRunAndEnqueueDebug:
 
     def test_enqueue_debug_task_calls_celery_delay(self, mocker):
         mocker.patch.object(CollectToolService, "save_debug_state")
-        fake_task = mocker.patch(
-            "apps.cmdb.tasks.celery_tasks.execute_collect_tool_debug_task"
-        )
+        fake_task = mocker.patch("apps.cmdb.tasks.celery_tasks.execute_collect_tool_debug_task")
         owner = {"username": "alice"}
         CollectToolService.enqueue_debug_task("d1", {"p": 1}, "svc", 30, owner)
         fake_task.delay.assert_called_once_with("d1", {"p": 1}, "svc", 30)
@@ -482,69 +473,16 @@ class TestDataCleanupWithGraph:
         out = DataCleanupService.cleanup_expired_instances(task)
         assert out == {"task_id": task.id, "deleted_count": 0, "skipped": True}
 
-    def test_cleanup_deletes_expired_instances(self, fake_graph):
-        task = self._make_task(name="expire-del", expire_days=10)
-        old_time = (timezone.now() - timedelta(days=30)).isoformat()
-        fresh_time = timezone.now().isoformat()
-        instances = [
-            {"_id": "i-old", "collect_time": old_time},
-            {"_id": "i-fresh", "collect_time": fresh_time},
-            {"_id": "i-none"},  # no collect_time -> skipped
-        ]
-        fake = fake_graph(
-            "apps.cmdb.services.data_cleanup_service",
-            query_entity=(instances, len(instances)),
-            batch_delete_entity={},
-        )
-        out = DataCleanupService.cleanup_expired_instances(task)
-        assert out["deleted_count"] == 1
-        assert out["model_id"] == "host"
-        # only the expired id was passed to delete
-        delete_call = [c for c in fake.calls if c[0] == "batch_delete_entity"][0]
-        assert delete_call[1][1] == ["i-old"]
+    def test_legacy_cleanup_is_noop_even_for_expiring_tasks(self):
+        task = self._make_task(expire_days=10, data_cleanup_strategy="after_expiration")
+        assert DataCleanupService.cleanup_expired_instances(task) == {"task_id": task.id, "deleted_count": 0, "skipped": True}
 
-    def test_cleanup_handles_delete_failure(self, fake_graph):
-        task = self._make_task(name="expire-fail", expire_days=10)
-        old_time = (timezone.now() - timedelta(days=30)).isoformat()
-
-        def _boom(*a, **k):
-            raise RuntimeError("graph down")
-
-        fake_graph(
-            "apps.cmdb.services.data_cleanup_service",
-            query_entity=([{"_id": "i-old", "collect_time": old_time}], 1),
-            batch_delete_entity=_boom,
-        )
-        out = DataCleanupService.cleanup_expired_instances(task)
-        assert out["deleted_count"] == 0
-        assert out["failed_count"] == 1
-        assert out["expired_ids"] == ["i-old"]
-        assert "graph down" in out["error"]
-
-    def test_run_daily_cleanup_aggregates(self, fake_graph, mocker):
-        task = self._make_task(name="daily", expire_days=10, data_cleanup_strategy="after_expiration")
-        old_time = (timezone.now() - timedelta(days=30)).isoformat()
-        fake_graph(
-            "apps.cmdb.services.data_cleanup_service",
-            query_entity=([{"_id": "i-old", "collect_time": old_time}], 1),
-            batch_delete_entity={},
-        )
+    def test_daily_cleanup_does_not_scan_or_delete_without_snapshot(self, mocker):
+        cleanup = mocker.patch.object(DataCleanupService, "cleanup_expired_instances", side_effect=AssertionError("unbounded cleanup"))
+        self._make_task(expire_days=10, data_cleanup_strategy="after_expiration")
         summary = DataCleanupService.run_daily_cleanup()
-        assert summary["tasks_processed"] >= 1
-        assert summary["total_deleted"] >= 1
-        # BUG(已知):run_daily_cleanup 成功路径未回填 expired_ids,delete_ids 恒空(待修)
-        assert summary["delete_ids"] == []
-
-    def test_run_daily_cleanup_records_task_error(self, mocker):
-        self._make_task(name="daily-err", expire_days=10, data_cleanup_strategy="after_expiration")
-        mocker.patch.object(
-            DataCleanupService,
-            "cleanup_expired_instances",
-            side_effect=RuntimeError("explode"),
-        )
-        summary = DataCleanupService.run_daily_cleanup()
-        assert summary["tasks_processed"] >= 1
-        assert any("explode" in r.get("error", "") for r in summary["results"])
+        assert summary == {"tasks_processed": 0, "total_deleted": 0, "total_failed": 0, "results": [], "delete_ids": []}
+        cleanup.assert_not_called()
 
 
 # ===========================================================================
@@ -602,9 +540,7 @@ class TestK8sSetupService:
             "validate_and_get_token_data",
             return_value={"cluster_name": "k1", "cloud_region_id": 2, "remaining_usage": 4},
         )
-        mocker.patch.object(
-            k8s_mod.InfraService, "render_config_from_cloud_region", return_value="yaml-body"
-        )
+        mocker.patch.object(k8s_mod.InfraService, "render_config_from_cloud_region", return_value="yaml-body")
         out = K8sSetupService.render_yaml_by_token("tok")
         assert out["yaml"] == "yaml-body"
         assert out["remaining_usage"] == 4
