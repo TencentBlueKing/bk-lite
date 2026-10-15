@@ -74,10 +74,17 @@ export default function ThinTimeSeries({
   const mutedColor = theme['--color-text-3'];
   const textColor = theme['--color-text-1'];
   const panelColor = theme['--color-bg'];
-  const keys = useMemo(() => areaKeys(data), [data]);
+  const legendKey = legends.map((item) => `${item.label}\0${item.color}\0${item.reading || ''}`).join('\n');
+  const keys = useMemo(() => {
+    const all = areaKeys(data);
+    // 单图例只画一条线。value2 通常是同一指标的 or 回退，叠上去会双计。
+    if (legends.length <= 1) return all.slice(0, 1);
+    return all;
+  }, [data, legends.length]);
   const seriesColors = useMemo(
     () => keys.map((_, index) => legends[index]?.color || CHART_COLORS[index % CHART_COLORS.length]),
-    [keys, legends]
+    // legendKey 锁内容。legends 每次渲染都是新数组，放进依赖会让图在刷新时反复 setOption。
+    [keys, legendKey]
   );
   const option = useMemo(() => {
     if (!data.length || !keys.length) return null;
@@ -154,7 +161,7 @@ export default function ThinTimeSeries({
         };
       })
     };
-  }, [axisColor, data, keys, legends, mutedColor, panelColor, seriesColors, textColor, unit]);
+  }, [axisColor, data, keys, legendKey, mutedColor, panelColor, seriesColors, textColor, unit]);
   const { containerRef } = useECharts(option);
   const showLegend = legends.length > 1 || legends.some((item) => item.reading);
   const chart = (
@@ -209,7 +216,7 @@ export default function ThinTimeSeries({
         </div>
       ) : null}
       <div className={styles.chartBody}>
-        {loading || !data.length ? (
+        {!data.length ? (
           <div className={styles.chartEmpty}>
             {loading ? '加载中' : emptyText}
             {!loading && onRetry ? (

@@ -46,6 +46,10 @@ export default function FlatProcessSplit({
   );
   const selected = sorted.find((row) => row.key === selectedKey) || sorted[0];
   const name = selected?.labels.process_name || '';
+  const trend = useMemo(() => pointsToChartData([
+    { points: selected?.series.process_cpu_usage || [] },
+    { points: selected?.series.process_mem_usage || [] }
+  ]), [selected]);
   const cpu = numberOrNull(selected?.values.process_cpu_usage);
   const mem = numberOrNull(selected?.values.process_mem_usage);
   // 数值色跟左侧折线序列 token 走，换进程也不改色、不跟行色点。
@@ -56,12 +60,12 @@ export default function FlatProcessSplit({
     const next: LayeredColumn[] = [
       { key: 'process_name', title: '进程名', labelKey: 'process_name' }
     ];
-    if (loading || present('process_cpu_usage')) next.push({ key: 'process_cpu_usage', title: 'CPU', unit: 'percent', emptyDash: true });
-    if (loading || present('process_mem_usage')) next.push({ key: 'process_mem_usage', title: '内存', unit: 'percent', emptyDash: true });
-    if (loading || present('process_memory_rss')) next.push({ key: 'process_memory_rss', title: 'RSS', unit: 'bytes', emptyDash: true });
-    if (loading || present('process_num_threads')) next.push({ key: 'process_num_threads', title: '线程', unit: 'counts', emptyDash: true });
-    if (loading || present('process_num_fds')) next.push({ key: 'process_num_fds', title: '句柄', unit: 'counts', emptyDash: true });
-    if (loading || present('process_alive')) {
+    if (present('process_cpu_usage')) next.push({ key: 'process_cpu_usage', title: 'CPU', unit: 'percent', emptyDash: true });
+    if (present('process_mem_usage')) next.push({ key: 'process_mem_usage', title: '内存', unit: 'percent', emptyDash: true });
+    if (present('process_memory_rss')) next.push({ key: 'process_memory_rss', title: 'RSS', unit: 'bytes', emptyDash: true });
+    if (present('process_num_threads')) next.push({ key: 'process_num_threads', title: '线程', unit: 'counts', emptyDash: true });
+    if (present('process_num_fds')) next.push({ key: 'process_num_fds', title: '句柄', unit: 'counts', emptyDash: true });
+    if (present('process_alive')) {
       next.push({
         key: 'process_alive',
         title: '存活',
@@ -73,7 +77,7 @@ export default function FlatProcessSplit({
       });
     }
     return next;
-  }, [loading, sorted]);
+  }, [sorted]);
 
   // trend 批次未齐时不把缺序列当成「无数据」；齐了仍缺则显示 --（不可采集），不造假数。
   const statusMetricsSettled = Boolean(
@@ -93,7 +97,7 @@ export default function FlatProcessSplit({
     zombies,
     running: statusPending ? null : latestPreferCount(metrics?.processes_running),
     sleeping: statusPending ? null : latestPreferCount(metrics?.processes_sleeping)
-  }, { settled: !statusPending && !loading });
+  }, { settled: !statusPending });
 
   return (
     <>
@@ -103,14 +107,10 @@ export default function FlatProcessSplit({
       </div>
       <div className={styles.processTop}>
         <ThinTimeSeries
-          key={selected?.key || 'none'}
           title={name ? `CPU / 内存 · ${name}` : 'CPU / 内存'}
           loading={loading}
           unit="percent"
-          data={pointsToChartData([
-            { points: selected?.series.process_cpu_usage || [] },
-            { points: selected?.series.process_mem_usage || [] }
-          ])}
+          data={trend}
           legends={[cpuSeries, memSeries]}
         />
         <section className={`${classic.panel} ${styles.currentCard}`}>

@@ -416,6 +416,7 @@ export function useSimpleDashboardData(
   const [pendingMetricNames, setPendingMetricNames] = useState<ReadonlySet<string>>(() => new Set());
   const metricScopeKey = options?.metricNames?.join('\n') ?? '';
   const inflightRef = useRef<AbortController | null>(null);
+  const seriesIdentityRef = useRef('');
   const epochRef = useRef(0);
   const nameEpochRef = useRef<Map<string, number>>(new Map());
   const [displayMode, setDisplayModeState] = useState<DashboardDisplayMode>(() =>
@@ -673,12 +674,20 @@ export function useSimpleDashboardData(
       if (displayMode === 'dashboard') {
         // 侧栏切换对象时 URL 会短暂缺少 instance_id；身份未就绪前不发指标请求，避免空打与刷屏。
         if (!idValues.length) {
+          seriesIdentityRef.current = '';
           setSeries({});
           setPreviousSeries({});
           setCollectionStatusMetric(null);
           setPendingMetricNames(new Set());
           if (!silent) setLoading(false);
           return;
+        }
+        const seriesIdentity = `${String(instanceId)}|${idValuesKey}`;
+        const keepSeries = seriesIdentityRef.current === seriesIdentity;
+        seriesIdentityRef.current = seriesIdentity;
+        if (!keepSeries) {
+          setSeries({});
+          setPreviousSeries({});
         }
         if (scoped) {
           const wanted = new Set(metricScopeKey.split('\n'));
@@ -693,13 +702,6 @@ export function useSimpleDashboardData(
           });
           if (!silent) {
             setPendingMetricNames(new Set(names));
-            setSeries((prev) => {
-              const next = { ...prev };
-              names.forEach((name) => {
-                delete next[name];
-              });
-              return next;
-            });
           } else if (names.length) {
             setPendingMetricNames((prev) => (prev.size ? new Set() : prev));
           }
@@ -828,17 +830,26 @@ export function useSimpleDashboardData(
 
         if (!loadSequence.isCurrent(loadSeq)) return;
 
-        setSeries((prev) => (silent ? { ...prev, ...Object.fromEntries(summaryResults) } : Object.fromEntries(summaryResults)));
+        setSeries((prev) => ({ ...prev, ...Object.fromEntries(summaryResults) }));
         setCollectionStatusMetric(collectionStatus);
         if (!silent) setLoading(false);
 
         // ── Group 2: trend/chart metrics — loaded async in background ──
+        // 同一实例刷新先留着旧曲线，全部返回后再换成这一轮的结果，避免中途被清空。
         if (trendMetrics.length > 0) {
           runWithConcurrency(trendMetrics, METRIC_QUERY_CONCURRENCY, (metric) => loadSingleMetric(metric, frozenTimeValues))
             .then((trendResults) => {
               if (!loadSequence.isCurrent(loadSeq)) return;
-              setSeries((prev) => ({ ...prev, ...Object.fromEntries(trendResults) }));
+              const summaryMap = Object.fromEntries(summaryResults);
+              const trendMap = Object.fromEntries(trendResults);
+              if (keepSeries) {
+                setSeries({ ...summaryMap, ...trendMap });
+                return;
+              }
+              setSeries((prev) => ({ ...prev, ...trendMap }));
             });
+        } else if (keepSeries) {
+          setSeries(Object.fromEntries(summaryResults));
         }
       } else {
         setSeries({});

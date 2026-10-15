@@ -74,7 +74,6 @@ export default function NetworkPane({
       </div>
       <div className={styles.netTrendGrid}>
         <ThinTimeSeries
-          key={`io-${selected?.key || 'none'}`}
           title={throughputTitle}
           loading={loading}
           unit="byteps"
@@ -91,7 +90,6 @@ export default function NetworkPane({
           }))}
         />
         <ThinTimeSeries
-          key={`err-${selected?.key || 'none'}`}
           title={name ? `错误 / 丢包 · ${name}` : '错误 / 丢包'}
           loading={loading}
           unit="cps"
@@ -103,8 +101,7 @@ export default function NetworkPane({
           }))}
         />
         <ThinTimeSeries
-          key={`pps-${selected?.key || 'none'}`}
-          title={name
+          title={name}
             ? hostCategoryText(t, 'packetRateInOutNamed', { name })
             : hostCategoryText(t, 'packetRateInOut')}
           loading={loading}

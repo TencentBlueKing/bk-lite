@@ -12,13 +12,24 @@ export const ROW_ACCENTS = [
   HOST_PALETTE.indigo
 ];
 
+/**
+ * 一个点上的读数。同一指标的 `or` 回退可能落成 value1/value2 两条序列，
+ * 百分比和字节都不能相加，否则会双计。只取序号最小的那条。
+ */
 export const numericValue = (point: ChartData | undefined): number | null => {
   if (!point) return null;
-  const values = Object.entries(point)
-    .filter(([key, value]) => /^value\d+$/.test(key) && typeof value === 'number' && Number.isFinite(value))
-    .map(([, value]) => value as number);
-  if (!values.length) return null;
-  return values.reduce((sum, value) => sum + value, 0);
+  let bestKey = '';
+  let best: number | null = null;
+  Object.entries(point).forEach(([key, value]) => {
+    if (!/^value\d+$/.test(key) || typeof value !== 'number' || !Number.isFinite(value)) return;
+    const index = Number(key.slice(5));
+    const bestIndex = bestKey ? Number(bestKey.slice(5)) : Number.POSITIVE_INFINITY;
+    if (best == null || index < bestIndex) {
+      bestKey = key;
+      best = value;
+    }
+  });
+  return best;
 };
 
 export const latestNumber = (
@@ -100,6 +111,19 @@ export const latestChartNumber = (points: ChartData[] | undefined): number | nul
   return best;
 };
 
+/** 合并进多线图之前先收成 value1，避免 or 回退的第二条被加进同一条线。 */
+export const primaryChartSeries = (points: ChartData[] | undefined): ChartData[] => {
+  if (!points?.length) return [];
+  const result: ChartData[] = [];
+  points.forEach((point) => {
+    const time = Number(point.time);
+    const value = numericValue(point);
+    if (!Number.isFinite(time) || value == null) return;
+    result.push({ time, value1: value });
+  });
+  return result;
+};
+
 /** 可用内存占比：同一时间点 available / total。对不齐的点丢掉，不补假序列。 */
 export const deriveRatioPercent = (
   part: ChartData[] | undefined,
@@ -118,7 +142,8 @@ export const deriveRatioPercent = (
     const base = totals.get(time);
     const value = numericValue(point);
     if (!Number.isFinite(time) || base == null || value == null) return;
-    result.push({ time, value1: (100 * value) / base });
+    const ratio = (100 * value) / base;
+    result.push({ time, value1: Math.min(100, Math.max(0, ratio)) });
   });
   return result;
 };

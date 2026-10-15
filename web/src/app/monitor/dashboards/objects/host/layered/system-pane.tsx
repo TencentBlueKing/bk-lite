@@ -18,7 +18,8 @@ import {
   formatPlain,
   latestChartNumber,
   latestNumber,
-  metricHasPoints
+  metricHasPoints,
+  primaryChartSeries
 } from './readings';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
@@ -94,29 +95,77 @@ export default function SystemPane({
 
   const breakdown = CPU_BREAKDOWN.filter((item) => metricHasPoints(metrics[item.key]));
   const loadItems = LOAD_SERIES.filter((item) => metricHasPoints(metrics[item.key]));
+  const loadTrend = useMemo(() => {
+    const items = LOAD_SERIES.filter((item) => metricHasPoints(metrics[item.key]));
+    if (!items.length) return [];
+    return mergeChartSeries(items.map((item) => ({
+      key: item.key,
+      label: item.label,
+      data: primaryChartSeries(metrics[item.key]?.viewData)
+    })));
+  }, [
+    metrics.system_load1?.viewData,
+    metrics.system_load1?.loadState,
+    metrics.system_load5?.viewData,
+    metrics.system_load5?.loadState,
+    metrics.system_load15?.viewData,
+    metrics.system_load15?.loadState
+  ]);
+  const breakdownTrend = useMemo(() => {
+    const items = CPU_BREAKDOWN.filter((item) => metricHasPoints(metrics[item.key]));
+    if (!items.length) return [];
+    return mergeChartSeries(items.map((item) => ({
+      key: item.key,
+      label: item.label,
+      data: primaryChartSeries(metrics[item.key]?.viewData)
+    })));
+  }, [
+    metrics.cpu_usage_user_total?.viewData,
+    metrics.cpu_usage_user_total?.loadState,
+    metrics.cpu_usage_system_total?.viewData,
+    metrics.cpu_usage_system_total?.loadState,
+    metrics.cpu_usage_iowait_total?.viewData,
+    metrics.cpu_usage_iowait_total?.loadState,
+    metrics.cpu_usage_irq_total?.viewData,
+    metrics.cpu_usage_irq_total?.loadState,
+    metrics.cpu_usage_steal_total?.viewData,
+    metrics.cpu_usage_steal_total?.loadState
+  ]);
   const memoryShares = useMemo(
     () => deriveMemoryUsageShares(metrics.mem_available?.viewData, metrics.mem_total?.viewData),
     [metrics.mem_available?.viewData, metrics.mem_total?.viewData]
   );
+  const cpuTrend = useMemo(
+    () => primaryChartSeries(metrics.cpu_usage_total?.viewData),
+    [metrics.cpu_usage_total?.viewData]
+  );
   // 有总量时已用/可用按 available 互补，避免 mem_used_percent 与 MemAvailable 叠成超过 100%。
   // 缺总量时只画采集到的使用率，不造第二条百分比。
-  const usedData = memoryShares.used.length
-    ? memoryShares.used
-    : (metricHasPoints(metrics.mem_used_percent) ? metrics.mem_used_percent?.viewData || [] : []);
-  const memItems = [
-    ...(usedData.length
-      ? [{ key: 'used', label: '已用', color: MEM_USED_COLOR, data: usedData }]
-      : []),
-    ...(memoryShares.available.length
-      ? [{ key: 'available', label: '可用', color: HOST_PALETTE.emerald, data: memoryShares.available }]
-      : [])
-  ];
+  const memChart = useMemo(() => {
+    const usedSeries = memoryShares.used.length
+      ? memoryShares.used
+      : primaryChartSeries(metrics.mem_used_percent?.viewData);
+    const items = [
+      ...(usedSeries.length
+        ? [{ key: 'used', label: '已用', color: MEM_USED_COLOR, data: usedSeries }]
+        : []),
+      ...(memoryShares.available.length
+        ? [{ key: 'available', label: '可用', color: HOST_PALETTE.emerald, data: memoryShares.available }]
+        : [])
+    ];
+    const data = items.length
+      ? mergeChartSeries(items.map((item) => ({ key: item.key, label: item.label, data: item.data })))
+      : [];
+    return { items, data };
+  }, [memoryShares, metrics.mem_used_percent?.viewData]);
+  const memItems = memChart.items;
   const used = memoryShares.used.length
     ? latestChartNumber(memoryShares.used)
     : latestNumber(metrics.mem_used_percent);
   const availLatest = latestChartNumber(memoryShares.available);
   const cpuNow = latestNumber(metrics.cpu_usage_total);
-  const memNow = latestNumber(metrics.mem_used_percent);
+  // 曲线已用是 available/total 的互补占比。KPI 跟这条线，不再单读 mem_used_percent。
+  const memNow = used;
   const availNow = latestNumber(metrics.mem_available);
   const uptimeNow = latestNumber(metrics.system_uptime);
   const load1Now = latestNumber(metrics.system_load1);
@@ -157,8 +206,8 @@ export default function SystemPane({
     {
       key: 'mem',
       label: '内存',
-      names: memKpiNames,
-      phase: phaseFor(memKpiNames, memNow != null),
+      names: memoryShares.used.length ? memTrendNames : memKpiNames,
+      phase: phaseFor(memoryShares.used.length ? memTrendNames : memKpiNames, memNow != null),
       valueColor: MEM_USED_COLOR,
       ...splitMetric(memNow, 'percent')
     },
@@ -187,7 +236,7 @@ export default function SystemPane({
       title={hostCategoryText(t, 'cpuUtilization')}
       loading={cpuPhase === 'loading'}
       unit="percent"
-      data={metricHasPoints(metrics.cpu_usage_total) ? metrics.cpu_usage_total?.viewData || [] : []}
+      data={metricHasPoints(metrics.cpu_usage_total) ? cpuTrend : []}
       emptyText={cpuPhase === 'error' ? '加载失败' : '暂无数据'}
       onRetry={cpuPhase === 'error' ? retry(cpuNames) : undefined}
       legends={[{
@@ -200,11 +249,7 @@ export default function SystemPane({
       title={hostCategoryText(t, 'memoryUtilization')}
       loading={memPhase === 'loading'}
       unit="percent"
-      data={memItems.length ? mergeChartSeries(memItems.map((item) => ({
-        key: item.key,
-        label: item.label,
-        data: item.data
-      }))) : []}
+      data={memChart.data}
       emptyText={memPhase === 'error' ? '加载失败' : '暂无数据'}
       onRetry={memPhase === 'error' ? retry(memTrendNames) : undefined}
       legends={memItems.map((item) => {
@@ -222,11 +267,7 @@ export default function SystemPane({
         title="系统负载"
         loading={loadPhase === 'loading'}
         unit="none"
-        data={loadItems.length ? mergeChartSeries(loadItems.map((item) => ({
-          key: item.key,
-          label: item.label,
-          data: metrics[item.key]?.viewData || []
-        }))) : []}
+        data={loadTrend}
         emptyText={loadPhase === 'error' ? '加载失败' : '暂无数据'}
         onRetry={loadPhase === 'error' ? retry(loadNames) : undefined}
         legends={loadItems.map((item) => ({
@@ -247,11 +288,7 @@ export default function SystemPane({
       title={hostCategoryText(t, 'cpuTimeBreakdown')}
       loading={breakdownPhase === 'loading'}
       unit="percent"
-      data={breakdown.length ? mergeChartSeries(breakdown.map((item) => ({
-        key: item.key,
-        label: item.label,
-        data: metrics[item.key]?.viewData || []
-      }))) : []}
+      data={breakdownTrend}
       emptyText={breakdownPhase === 'error' ? '加载失败' : '暂无数据'}
       onRetry={breakdownPhase === 'error' ? retry(breakdownNames) : undefined}
       legends={breakdown.map((item) => ({

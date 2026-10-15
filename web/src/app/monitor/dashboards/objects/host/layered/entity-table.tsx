@@ -94,7 +94,7 @@ export default function LayeredEntityTable({
       <Table<EntityTableRow>
         size="small"
         rowKey="key"
-        loading={loading}
+        loading={loading && rows.length === 0}
         pagination={false}
         columns={tableColumns}
         dataSource={rows}

@@ -253,6 +253,10 @@ export default function HostCategoryLayout({
   }, [activeTab, alertDrawerOpen, dashboard.instanceId, getMonitorAlert]);
 
   useEffect(() => {
+    setAlertEvents([]);
+  }, [dashboard.instanceId]);
+
+  useEffect(() => {
     if (activeTab !== 'overview') return undefined;
     const instanceId = String(dashboard.instanceId || '');
     if (!instanceId) {
@@ -260,7 +264,6 @@ export default function HostCategoryLayout({
       return undefined;
     }
     let active = true;
-    setAlertEvents([]);
     getMonitorAlert({
       monitor_instance_id: instanceId,
       page: 1,

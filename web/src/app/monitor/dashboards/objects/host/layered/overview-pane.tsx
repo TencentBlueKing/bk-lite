@@ -15,7 +15,8 @@ import {
   formatPlain,
   formatUnit,
   latestNumber,
-  metricHasPoints
+  metricHasPoints,
+  primaryChartSeries
 } from './readings';
 import classic from '../index.module.scss';
 import styles from './layered.module.scss';
@@ -161,6 +162,22 @@ export default function OverviewPane({
 
   const netIn = latestNumber(metrics.net_bytes_recv_rate);
   const netOut = latestNumber(metrics.net_bytes_sent_rate);
+  const cpuTrend = useMemo(
+    () => primaryChartSeries(metrics.cpu_usage_total?.viewData),
+    [metrics.cpu_usage_total?.viewData]
+  );
+  const memTrend = useMemo(
+    () => primaryChartSeries(metrics.mem_used_percent?.viewData),
+    [metrics.mem_used_percent?.viewData]
+  );
+  const netTrend = useMemo(() => mergeChartSeries([
+    { key: 'in', label: '入', data: primaryChartSeries(metrics.net_bytes_recv_rate?.viewData) },
+    { key: 'out', label: '出', data: primaryChartSeries(metrics.net_bytes_sent_rate?.viewData) }
+  ]), [metrics.net_bytes_recv_rate?.viewData, metrics.net_bytes_sent_rate?.viewData]);
+  const diskTrend = useMemo(
+    () => (worst ? pointsToChartData([{ points: worst.series.disk_used_percent || [] }]) : []),
+    [worst]
+  );
 
   return (
     <>
@@ -174,39 +191,43 @@ export default function OverviewPane({
         <div className={`${classic.sectionLabel} ${styles.sectionTitle}`}>重点关注</div>
       </div>
       <div className={styles.shortcutGrid}>
-        {worst ? (
-          <div className={`${classic.panel} ${styles.shortcutCard}`}>
-            <div className={styles.shortcutLabel}>{hostCategoryText(t, 'busiestMount')}</div>
-            <div className={styles.shortcutMain}>
-              {mountName || '—'}
-              {' · '}
-              <span>{formatPercent(diskCurrent)}</span>
-            </div>
-            <div className={styles.shortcutSub}>
-              {(() => {
-                const total = readingOfRow(worst, 'disk_total') ?? worst.values.disk_total ?? null;
-                const used = (() => {
-                  const totalBytes = readingOfRow(worst, 'disk_total') ?? worst.values.disk_total;
-                  const usedBytes = readingOfRow(worst, 'disk_used');
-                  if (usedBytes != null) return usedBytes;
-                  if (totalBytes != null && diskCurrent != null) return totalBytes * diskCurrent / 100;
-                  return worst.values.disk_used ?? null;
-                })();
-                const usedText = used != null && Number.isFinite(used) ? formatUnit(used, 'bytes') : null;
-                const totalText = total != null && Number.isFinite(total) ? formatUnit(total, 'bytes') : null;
-                if (usedText == null && totalText == null) return '—';
-                return hostCategoryText(t, 'mountUsedOfTotal', {
-                  used: usedText ?? '—',
-                  total: totalText ?? '—'
-                });
-              })()}
-            </div>
-            <button type="button" className={styles.jumpBtn} onClick={() => onJump('disk', worst.key)}>
-              查看磁盘
-            </button>
-          </div>
-        ) : null}
-        <div className={`${classic.panel} ${styles.shortcutCard}`}>
+        <div key="disk" className={`${classic.panel} ${styles.shortcutCard}`}>
+          <div className={styles.shortcutLabel}>{hostCategoryText(t, 'busiestMount')}</div>
+          {worst ? (
+            <>
+              <div className={styles.shortcutMain}>
+                {mountName || '—'}
+                {' · '}
+                <span>{formatPercent(diskCurrent)}</span>
+              </div>
+              <div className={styles.shortcutSub}>
+                {(() => {
+                  const total = readingOfRow(worst, 'disk_total') ?? worst.values.disk_total ?? null;
+                  const used = (() => {
+                    const totalBytes = readingOfRow(worst, 'disk_total') ?? worst.values.disk_total;
+                    const usedBytes = readingOfRow(worst, 'disk_used');
+                    if (usedBytes != null) return usedBytes;
+                    if (totalBytes != null && diskCurrent != null) return totalBytes * diskCurrent / 100;
+                    return worst.values.disk_used ?? null;
+                  })();
+                  const usedText = used != null && Number.isFinite(used) ? formatUnit(used, 'bytes') : null;
+                  const totalText = total != null && Number.isFinite(total) ? formatUnit(total, 'bytes') : null;
+                  if (usedText == null && totalText == null) return '—';
+                  return hostCategoryText(t, 'mountUsedOfTotal', {
+                    used: usedText ?? '—',
+                    total: totalText ?? '—'
+                  });
+                })()}
+              </div>
+              <button type="button" className={styles.jumpBtn} onClick={() => onJump('disk', worst.key)}>
+                查看磁盘
+              </button>
+            </>
+          ) : (
+            <div className={styles.shortcutSub}>{diskLoading ? '加载中' : '暂无挂载数据'}</div>
+          )}
+        </div>
+        <div key="net" className={`${classic.panel} ${styles.shortcutCard}`}>
           <div className={styles.shortcutLabel}>{hostCategoryText(t, 'busiestNic')}</div>
           {busiest ? (
             <>
@@ -223,7 +244,7 @@ export default function OverviewPane({
           )}
         </div>
         {processReady ? (
-          <div className={`${classic.panel} ${styles.shortcutCard}`}>
+          <div key="process" className={`${classic.panel} ${styles.shortcutCard}`}>
             <div className={styles.shortcutLabel}>CPU 占用最高</div>
             {topProcess ? (
               <>
@@ -255,14 +276,14 @@ export default function OverviewPane({
           title={hostCategoryText(t, 'cpuUtilization')}
           loading={loading}
           unit="percent"
-          data={metrics.cpu_usage_total?.viewData || []}
+          data={cpuTrend}
           legends={[CPU_SERIES]}
         />
         <ThinTimeSeries
           title={hostCategoryText(t, 'memoryUtilization')}
           loading={loading}
           unit="percent"
-          data={metrics.mem_used_percent?.viewData || []}
+          data={memTrend}
           legends={[MEM_SERIES]}
         />
         <ThinTimeSeries
@@ -270,17 +291,14 @@ export default function OverviewPane({
           loading={diskLoading}
           unit="percent"
           emptyText="暂无挂载数据"
-          data={worst ? pointsToChartData([{ points: worst.series.disk_used_percent || [] }]) : []}
+          data={diskTrend}
           legends={[{ label: mountName || '使用率', color: HOST_PALETTE.orange }]}
         />
         <ThinTimeSeries
           title="网络吞吐"
           loading={loading}
           unit="byteps"
-          data={mergeChartSeries([
-            { key: 'in', label: '入', data: metrics.net_bytes_recv_rate?.viewData || [] },
-            { key: 'out', label: '出', data: metrics.net_bytes_sent_rate?.viewData || [] }
-          ])}
+          data={netTrend}
           legends={[
             { label: '入', color: HOST_PALETTE.blue, reading: formatUnit(netIn, 'byteps') },
             { label: '出', color: HOST_PALETTE.cyan, reading: formatUnit(netOut, 'byteps') }

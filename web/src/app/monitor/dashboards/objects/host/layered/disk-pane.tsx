@@ -168,7 +168,6 @@ export default function DiskPane({
         <>
           <div className={styles.diskMountChart}>
             <ThinTimeSeries
-              key={`mount-used-${selectedMount?.key || 'none'}`}
               title={mountTitle}
               loading={loading && mountPoints.length === 0}
               unit="percent"
@@ -263,7 +262,7 @@ export default function DiskPane({
               const legendSource = present.length ? present : chart.series;
               return (
                 <ThinTimeSeries
-                  key={`${chart.key}-${selectedDevice?.key || 'none'}`}
+                  key={chart.key}
                   title={hostCategoryText(t, chart.titleKey)}
                   loading={loading && present.length === 0}
                   unit={chart.unit}
