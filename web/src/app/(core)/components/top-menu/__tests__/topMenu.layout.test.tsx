@@ -83,6 +83,10 @@ vi.mock('../user-info', () => ({
   default: () => <div data-testid="user-info" />,
 }));
 
+vi.mock('@/app/system-manager/(enterprise)/components/license-reminder', () => ({
+  default: {},
+}));
+
 import TopMenu from '../index';
 
 afterEach(() => {
