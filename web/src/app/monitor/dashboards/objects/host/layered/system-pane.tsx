@@ -52,9 +52,9 @@ const MEM_COMPOSITION = [
 ] as const;
 
 const GPU_SERIES = [
-  { key: 'nvidia_smi_utilization_gpu', title: '使用率', unit: 'percent' as const },
-  { key: 'nvidia_smi_utilization_memory', title: '显存', unit: 'percent' as const },
-  { key: 'nvidia_smi_temperature_gpu', title: '温度', unit: 'celsius' as const }
+  { key: 'nvidia_smi_utilization_gpu', title: 'GPU 使用率', unit: 'percent' as const },
+  { key: 'nvidia_smi_utilization_memory', title: 'GPU 显存', unit: 'percent' as const },
+  { key: 'nvidia_smi_temperature_gpu', title: 'GPU 温度', unit: 'celsius' as const }
 ] as const;
 
 const SWAP_SERIES_COLOR = HOST_PALETTE.emerald;
