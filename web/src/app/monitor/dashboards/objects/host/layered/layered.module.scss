@@ -134,10 +134,17 @@
   margin-left: 0;
 }
 
-.gpuCharts {
+.gpuRow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+
+.gpuBand {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  min-height: 220px;
 }
 
 .gpuEmpty {
@@ -1058,6 +1065,7 @@ button.kpiCard {
   .chartGrid3,
   .chartGrid4,
   .detailTrio,
+  .gpuRow,
   .processSplit,
   .processTop {
     grid-template-columns: minmax(0, 1fr);

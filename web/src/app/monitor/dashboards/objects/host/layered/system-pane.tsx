@@ -454,36 +454,6 @@ export default function SystemPane({
             <div className={styles.chartEmpty}>—</div>
           )}
         </section>
-        <section className={`${classic.panel} ${styles.chartPanel} ${styles.detailCard} ${styles.detailSlot}`} data-surface="gpu">
-          <div className={styles.chartHead}>
-            <div className={styles.chartTitle}>GPU</div>
-          </div>
-          {gpuCharts.length ? (
-            <div className={styles.gpuCharts}>
-              {gpuCharts.map((item) => (
-                <ThinTimeSeries
-                  key={item.key}
-                  bare
-                  title={item.title}
-                  unit={item.unit}
-                  data={primaryChartSeries(metrics[item.key]?.viewData)}
-                  legends={[{
-                    label: item.title,
-                    color: item.key === 'nvidia_smi_temperature_gpu'
-                      ? HOST_PALETTE.orange
-                      : item.key === 'nvidia_smi_utilization_memory'
-                        ? HOST_PALETTE.blue
-                        : HOST_PALETTE.emerald
-                  }]}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className={styles.gpuEmpty}>{hostCategoryText(t, 'noGpu')}</div>
-          )}
-        </section>
-      </div>
-      <div className={styles.detailFull}>
         <ThinTimeSeries
           className={styles.detailCard}
           title={hostCategoryText(t, 'cpuTimeBreakdown')}
@@ -497,6 +467,37 @@ export default function SystemPane({
             color: item.color
           }))}
         />
+      </div>
+      <div className={styles.detailFull} data-surface="gpu">
+        {gpuCharts.length ? (
+          <div className={styles.gpuRow}>
+            {GPU_SERIES.map((item) => (
+              <ThinTimeSeries
+                key={item.key}
+                className={styles.detailCard}
+                title={item.title}
+                unit={item.unit}
+                data={primaryChartSeries(metrics[item.key]?.viewData)}
+                emptyText="暂无数据"
+                legends={[{
+                  label: item.title,
+                  color: item.key === 'nvidia_smi_temperature_gpu'
+                    ? HOST_PALETTE.orange
+                    : item.key === 'nvidia_smi_utilization_memory'
+                      ? HOST_PALETTE.blue
+                      : HOST_PALETTE.emerald
+                }]}
+              />
+            ))}
+          </div>
+        ) : (
+          <section className={`${classic.panel} ${styles.chartPanel} ${styles.detailCard} ${styles.gpuBand}`}>
+            <div className={styles.chartHead}>
+              <div className={styles.chartTitle}>GPU</div>
+            </div>
+            <div className={styles.gpuEmpty}>{hostCategoryText(t, 'noGpu')}</div>
+          </section>
+        )}
       </div>
     </>
   );
