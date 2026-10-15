@@ -63,11 +63,24 @@ export const withResolvedVariables = (pkg: SkillPackage): SkillPackage => ({
 export const packageHasDeclaredParams = (pkg?: SkillPackage | null) => resolvePackageVariables(pkg).length > 0;
 
 /**
+ * 变量名单是否已经解析出来。
+ * 技能详情里的 skill_packages 快照没有 variables / manifest.variables；
+ * 目录接口合并之后才会带上数组（含空数组）。空数组表示「已确认没有声明」。
+ */
+export const packageDeclarationsResolved = (pkg?: SkillPackage | null) => {
+  if (!pkg) return false;
+  if (Array.isArray(pkg.variables)) return true;
+  const manifest = pkg.manifest;
+  return Boolean(manifest && typeof manifest === 'object' && 'variables' in manifest);
+};
+
+/**
  * 提交（保存、试聊）时使用的技能包参数。
  *
- * packageHasDeclaredParams 为 false 时配置入口保持隐藏。已存 custom 没有入口
- * 可查看或修改，继续下发会在运行时静默生效，因此这里清空该包参数。
- * 仍声明了变量的包保留已存 custom。
+ * 名单已解析时只保留声明过的 key。未声明的 custom 没有入口可查看或修改，
+ * 继续下发会在运行时静默生效；声明为空则该包参数清空。
+ * 名单还没解析（目录请求失败，或合并完成前保存/试聊）时保留已存参数，
+ * 避免请求体里的空列表覆盖掉已经填好的声明变量。
  */
 export const skillPackageParamsForSubmit = (
   packages: Array<SkillPackage | null | undefined>,
@@ -78,8 +91,10 @@ export const skillPackageParamsForSubmit = (
     next[packageId] = items ? [...items] : [];
   }
   for (const pkg of packages) {
-    if (!pkg?.package_id || packageHasDeclaredParams(pkg)) continue;
-    next[pkg.package_id] = [];
+    if (!pkg?.package_id || !packageDeclarationsResolved(pkg)) continue;
+    const allowed = new Set(resolvePackageVariables(pkg).map((decl) => decl.name));
+    const stored = next[pkg.package_id] || [];
+    next[pkg.package_id] = stored.filter((item) => item?.key && allowed.has(item.key));
   }
   return next;
 };
@@ -224,18 +239,7 @@ const SkillPackageParamsModal: React.FC<SkillPackageParamsModalProps> = ({
         };
       })
       .filter((row) => row.key);
-    const keptCustom = (items || [])
-      .filter((item) => item?.key && !declared.has(item.key))
-      .map((item) => {
-        const type = normalizeParamType(item.type);
-        return {
-          key: item.key,
-          value: item.value || '',
-          type,
-          multiline: type === 'textarea',
-        };
-      });
-    onOk([...normalized, ...keptCustom]);
+    onOk(normalized);
   };
 
   const declaredRows = draft.filter((row) => row.declared);
