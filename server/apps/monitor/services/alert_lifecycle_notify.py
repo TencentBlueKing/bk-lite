@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 from django.utils import timezone as dj_timezone
 
 from apps.core.logger import monitor_logger as logger
+from apps.monitor.utils.alert_name_variables import build_instance_notification_labels
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
 from apps.system_mgmt.models import Channel, User
 
@@ -33,6 +34,13 @@ NOTIFY_SCOPE_ALL_CONFIGURED = "all_configured"
 ALERT_CENTER_PER_EVENT_ACK_ENABLED = os.getenv("MONITOR_ALERT_CENTER_PER_EVENT_ACK_ENABLED", "false").lower() in {"1", "true", "yes"}
 ALERT_CENTER_ACK_TOKEN = os.getenv("ALERTS_PER_EVENT_ACK_TOKEN", "")
 ALERT_CENTER_CREATED_RETRY_ENABLED = os.getenv("MONITOR_ALERT_CENTER_CREATED_RETRY_ENABLED", "false").lower() in {"1", "true", "yes"}
+
+
+def _merge_notification_labels(labels, instance_labels):
+    merged = dict(labels)
+    for key, value in (instance_labels or {}).items():
+        merged.setdefault(key, value)
+    return merged
 
 
 def _policy_secondary_context(policy) -> str:
@@ -624,6 +632,11 @@ class AlertLifecycleNotifier:
                 "cmdb_id": instance.cmdb_id,
                 "node_id": instance.node_id,
                 "resource_type": instance.monitor_object.name,
+                "notification_labels": build_instance_notification_labels(
+                    instance.summary_facts,
+                    instance.ip,
+                    instance.monitor_object.instance_summary_columns,
+                ),
             }
             for instance in MonitorInstance.objects.select_related("monitor_object").filter(id__in=instance_ids)
         }
@@ -705,13 +718,16 @@ class AlertLifecycleNotifier:
             "resource_name": getattr(alert, "monitor_instance_name", ""),
             "organizations": self._resolve_alert_organizations(alert, instance_org_map, policy),
             "tags": getattr(alert, "dimensions", {}),
-            "labels": {
-                "policy_name": _format_policy_display_label(policy),
-                "metric_instance_id": getattr(alert, "metric_instance_id", ""),
-                "operator": operator,
-                "reason": reason,
-                "status": alert.status,
-            },
+            "labels": _merge_notification_labels(
+                {
+                    "policy_name": _format_policy_display_label(policy),
+                    "metric_instance_id": getattr(alert, "metric_instance_id", ""),
+                    "operator": operator,
+                    "reason": reason,
+                    "status": alert.status,
+                },
+                monitor_identity.get("notification_labels"),
+            ),
         }
 
     def _build_title(self, alert, action):
