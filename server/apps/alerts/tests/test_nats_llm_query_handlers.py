@@ -72,6 +72,84 @@ def test_list_alerts_matches_content_and_any_keyword(mocker):
     assert [item["alert_id"] for item in by_or["data"]["items"]] == ["ALERT-LLM-BODY"]
 
 
+def test_list_alerts_active_status_matches_open_alerts_only(mocker):
+    mocker.patch.object(alerts_nats, "_llm_is_superuser", return_value=True)
+    Alert.objects.create(
+        alert_id="ALERT-LLM-OPEN",
+        title="磁盘使用率过高",
+        content="活动告警",
+        status=AlertStatus.PENDING,
+        level="warning",
+        fingerprint="fp-open",
+        team=[1],
+        session_status=SessionStatus.CONFIRMED,
+    )
+    Alert.objects.create(
+        alert_id="ALERT-LLM-CLOSED",
+        title="磁盘已关闭",
+        content="已关闭",
+        status=AlertStatus.CLOSED,
+        level="warning",
+        fingerprint="fp-closed",
+        team=[1],
+        session_status=SessionStatus.CONFIRMED,
+    )
+    result = alerts_nats.list_alerts(query_data={"status": "active"}, user_info=_user_info())
+    assert result["result"] is True
+    assert [item["alert_id"] for item in result["data"]["items"]] == ["ALERT-LLM-OPEN"]
+
+
+def test_list_alerts_includes_alerts_assigned_to_caller_outside_current_team(mocker):
+    mocker.patch.object(alerts_nats, "_llm_is_superuser", return_value=True)
+    Alert.objects.create(
+        alert_id="ALERT-LLM-HOME",
+        title="本组织未分派",
+        content="c",
+        status=AlertStatus.UNASSIGNED,
+        level="warning",
+        fingerprint="fp-home",
+        team=[1],
+        operator=[],
+        session_status=SessionStatus.CONFIRMED,
+    )
+    Alert.objects.create(
+        alert_id="ALERT-LLM-ASSIGNED",
+        title="其他组织分派给我",
+        content="c",
+        status=AlertStatus.PENDING,
+        level="warning",
+        fingerprint="fp-assigned",
+        team=[2],
+        operator=["admin"],
+        session_status=SessionStatus.CONFIRMED,
+    )
+    Alert.objects.create(
+        alert_id="ALERT-LLM-FOREIGN",
+        title="其他组织未分派",
+        content="c",
+        status=AlertStatus.PENDING,
+        level="warning",
+        fingerprint="fp-foreign",
+        team=[2],
+        operator=[],
+        session_status=SessionStatus.CONFIRMED,
+    )
+    Alert.objects.create(
+        alert_id="ALERT-LLM-SUBSTRING",
+        title="用户名子串不算分派",
+        content="c",
+        status=AlertStatus.PENDING,
+        level="warning",
+        fingerprint="fp-substring",
+        team=[2],
+        operator=["admin-extra"],
+        session_status=SessionStatus.CONFIRMED,
+    )
+    result = alerts_nats.list_alerts(query_data={"status": "active"}, user_info=_user_info())
+    assert result["result"] is True
+    assert {item["alert_id"] for item in result["data"]["items"]} == {"ALERT-LLM-HOME", "ALERT-LLM-ASSIGNED"}
+
+
 def test_get_alert_detail_not_found(mocker):
     mocker.patch.object(alerts_nats, "_llm_is_superuser", return_value=True)
     result = alerts_nats.get_alert_detail(alert_id="ALERT-MISSING", user_info=_user_info())
