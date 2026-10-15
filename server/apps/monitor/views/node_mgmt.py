@@ -96,7 +96,12 @@ class NodeMgmtView(ViewSet):
             get_current_team(request),
         )
         instance_ids = InstanceConfigService.create_monitor_instance_by_node_mgmt(request.data, actor_context)
-        return WebUtils.response_success({"instance_ids": instance_ids or []})
+        return WebUtils.response_success(
+            {
+                "instance_ids": list(instance_ids or []),
+                "policy_group_results": list(getattr(instance_ids, "policy_group_results", []) or []),
+            }
+        )
 
     @action(methods=["post"], detail=False, url_path="get_instance_asso_config")
     def get_instance_child_config(self, request):

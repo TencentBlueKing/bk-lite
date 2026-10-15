@@ -6,11 +6,11 @@ from apps.core.decorators.api_permission import HasPermission
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.utils.current_team_scope import resolve_current_team_data_scope
 from apps.core.utils.web_utils import WebUtils
+from apps.system_mgmt.utils.operation_log_utils import log_operation
 from apps.monitor.models import (
     MonitorInstance,
     MonitorInstanceOrganization,
     MonitorObject,
-    MonitorPolicy,
     PolicyGroup,
     PolicyGroupDefault,
     PolicyGroupMembership,
@@ -47,12 +47,13 @@ def _optional_positive_id(raw, param_name):
     return value
 
 
-def _serialize_rule(rule, metric_names=None):
+def _serialize_rule(rule, metric_names=None, alert_counts=None):
     metric_id = PolicyGroupService.metric_id_for_policy(rule.policy)
     metric_name = ""
     if metric_id and metric_names is not None:
         metric_name = metric_names.get(metric_id) or ""
     plugin = rule.plugin
+    counts = alert_counts or {}
     return {
         "id": rule.id,
         "name": rule.name,
@@ -62,10 +63,11 @@ def _serialize_rule(rule, metric_names=None):
         "metric_name": metric_name,
         "threshold": rule.policy.threshold,
         "policy_id": rule.policy_id,
+        "open_alert_count": counts.get(rule.policy_id, 0),
     }
 
 
-def _serialize_group(group, default_id, metric_names=None, plugin_id=None, collect_type=None):
+def _serialize_group(group, default_id, metric_names=None, plugin_id=None, collect_type=None, alert_counts=None):
     member_count = getattr(group, "joined_member_count", None)
     if member_count is None:
         member_count = group.memberships.filter(state=PolicyGroupMembership.STATE_MEMBER).count()
@@ -73,7 +75,9 @@ def _serialize_group(group, default_id, metric_names=None, plugin_id=None, colle
     visible_rules = PolicyGroupService.filter_rules_for_access(
         loaded_rules, plugin_id=plugin_id, collect_type=collect_type
     )
-    rules = [_serialize_rule(rule, metric_names) for rule in visible_rules]
+    rules = [_serialize_rule(rule, metric_names, alert_counts) for rule in visible_rules]
+    counts = alert_counts or {}
+    open_alert_count = sum(counts.get(rule.policy_id, 0) for rule in loaded_rules)
     notice = _group_notice(loaded_rules)
     enable = _group_enable(loaded_rules)
     return {
@@ -83,6 +87,7 @@ def _serialize_group(group, default_id, metric_names=None, plugin_id=None, colle
         "monitor_object_id": group.monitor_object_id,
         "is_default": group.id == default_id,
         "member_count": member_count,
+        "open_alert_count": open_alert_count,
         "rules": rules,
         **notice,
         **enable,
@@ -128,6 +133,7 @@ def _group_enable(rules):
 def _serialize_groups(groups, default_id, plugin_id=None, collect_type=None):
     policies = [rule.policy for group in groups for rule in group.rules.all()]
     metric_names = PolicyGroupService.metric_names_for_policies(policies)
+    alert_counts = PolicyGroupService.open_alert_counts([policy.id for policy in policies])
     data = []
     for group in groups:
         for rule in group.rules.all():
@@ -139,19 +145,14 @@ def _serialize_groups(groups, default_id, plugin_id=None, collect_type=None):
                 metric_names,
                 plugin_id=plugin_id,
                 collect_type=collect_type,
+                alert_counts=alert_counts,
             )
         )
     return data
 
 
 def _legacy_policies(instance):
-    found = []
-    policies = MonitorPolicy.objects.filter(monitor_object_id=instance.monitor_object_id, group_rule__isnull=True).only("id", "name", "enable", "source")
-    for policy in policies:
-        values = (policy.source or {}).get("values") or []
-        if instance.id in values:
-            found.append({"id": policy.id, "name": policy.name, "enable": policy.enable})
-    return found
+    return PolicyGroupService.legacy_policies(instance)
 
 
 class PolicyGroupViewSet(viewsets.ViewSet):
@@ -223,6 +224,15 @@ class PolicyGroupViewSet(viewsets.ViewSet):
         for instance in MonitorInstance.objects.filter(id__in=instance_ids, monitor_object_id=group.monitor_object_id):
             PolicyGroupService.join(instance=instance, group=group, operator=_operator(scope))
             count += 1
+        log_operation(
+            request,
+            "update",
+            "monitor",
+            "实例加入策略组",
+            target_type="policy_group",
+            target_id=group.id,
+            detail={"group_id": group.id, "count": count},
+        )
         return WebUtils.response_success({"count": count})
 
     @action(methods=["post"], detail=False)
@@ -240,6 +250,15 @@ class PolicyGroupViewSet(viewsets.ViewSet):
         for instance in MonitorInstance.objects.filter(id__in=allowed):
             PolicyGroupService.leave(instance=instance, operator=_operator(scope))
             count += 1
+        log_operation(
+            request,
+            "update",
+            "monitor",
+            "实例退出策略组",
+            target_type="policy_group",
+            target_id="",
+            detail={"count": count},
+        )
         return WebUtils.response_success({"count": count})
 
     @action(methods=["get"], detail=False)
@@ -303,6 +322,15 @@ class PolicyGroupViewSet(viewsets.ViewSet):
             threshold=request.data.get("threshold", rule.policy.threshold),
             operator=_operator(scope),
         )
+        log_operation(
+            request,
+            "update",
+            "monitor",
+            "修改策略组规则阈值",
+            target_type="policy_group",
+            target_id=group.id,
+            detail={"group_id": group.id, "rule_id": rule.id, "policy_id": rule.policy_id},
+        )
         return WebUtils.response_success({"id": rule.id})
 
     @action(methods=["post"], detail=False, url_path="update_notice")
@@ -337,6 +365,15 @@ class PolicyGroupViewSet(viewsets.ViewSet):
         if not isinstance(enable, bool):
             raise BaseAppException("请指定是否生效")
         PolicyGroupService.update_enable(group, enable=enable, operator=_operator(scope))
+        log_operation(
+            request,
+            "update",
+            "monitor",
+            "策略组生效" if enable else "策略组停用",
+            target_type="policy_group",
+            target_id=group.id,
+            detail={"group_id": group.id, "enable": enable},
+        )
         return WebUtils.response_success({"id": group.id})
 
     @action(methods=["post"], detail=False, url_path="copy_group")
@@ -360,7 +397,17 @@ class PolicyGroupViewSet(viewsets.ViewSet):
     def delete_group(self, request):
         scope = resolve_current_team_data_scope(request)
         group = _group_in_scope(scope, request.data.get("group_id"))
+        group_id = group.id
         PolicyGroupService.delete_group(group, operator=_operator(scope))
+        log_operation(
+            request,
+            "delete",
+            "monitor",
+            "删除策略组",
+            target_type="policy_group",
+            target_id=group_id,
+            detail={"group_id": group_id},
+        )
         return WebUtils.response_success({})
 
     @action(methods=["post"], detail=False, url_path="create_standalone")

@@ -243,10 +243,12 @@ class PolicyGroupMembership(TimeInfo, MaintainerInfo):
     STATE_MEMBER = "member"
     STATE_DECLINED = "declined"
     STATE_SKIPPED = "skipped"
+    STATE_FAILED = "failed"
     STATE_CHOICES = (
         (STATE_MEMBER, "在组"),
         (STATE_DECLINED, "不自动入组"),
         (STATE_SKIPPED, "未入组"),
+        (STATE_FAILED, "加入失败"),
     )
 
     monitor_instance = models.OneToOneField(

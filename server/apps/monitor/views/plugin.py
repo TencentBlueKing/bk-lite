@@ -320,6 +320,9 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
     def destroy(self, request, *args, **kwargs):
         plugin = self.get_object()
         self._ensure_modifiable(plugin)
+        from apps.monitor.services.policy_group import PolicyGroupService
+
+        PolicyGroupService.retire_policies_for_plugins([plugin.id], operator=getattr(request.user, "username", None) or "system")
         if is_custom_plugin_template(plugin.template_type):
             try:
                 plugin.delete()

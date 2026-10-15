@@ -534,4 +534,15 @@ class AlertDetector:
     def _get_baseline_keys(self) -> set:
         if self.baselines_map:
             return set(self.baselines_map)
+        if self._policy_belongs_to_group():
+            return set()
         return set(self.instances_map)
+
+    def _policy_belongs_to_group(self) -> bool:
+        cached = getattr(self, "_is_group_rule", None)
+        if cached is not None:
+            return cached
+        from apps.monitor.models import PolicyGroupRule
+
+        self._is_group_rule = PolicyGroupRule.objects.filter(policy_id=self.policy.id).exists()
+        return self._is_group_rule

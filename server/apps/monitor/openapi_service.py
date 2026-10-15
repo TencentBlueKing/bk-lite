@@ -435,7 +435,10 @@ def create_integration(
 
     def action():
         instance_ids = InstanceConfigService.create_monitor_instance_by_node_mgmt(payload, actor)
-        return {"instance_ids": instance_ids or []}
+        return {
+            "instance_ids": list(instance_ids or []),
+            "policy_group_results": list(getattr(instance_ids, "policy_group_results", []) or []),
+        }
 
     return _run(action, "监控接入失败")
 
