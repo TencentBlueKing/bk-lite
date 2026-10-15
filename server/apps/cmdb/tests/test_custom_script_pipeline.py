@@ -202,6 +202,52 @@ def test_format_plugin_keeps_model_fields_and_drops_blank_inst_name(monkeypatch)
     assert collector._dropped_records == 1
 
 
+def test_custom_script_host_record_inherits_access_point_cloud(monkeypatch):
+    plugin = SimpleNamespace(plugin_id="custom_host_linux_scan")
+    task = SimpleNamespace(
+        id=29,
+        params={"custom_plugin_pk": 4},
+        model_id="host",
+        instances=[],
+        access_point={"cloud_region": 1, "id": "node-1"},
+    )
+    monkeypatch.setattr(CustomScriptCollectionPlugin, "_plugin", lambda self: plugin)
+    monkeypatch.setattr(
+        "apps.cmdb.collection.plugins.community.custom_script.generic.ModelManage.search_model_attr",
+        lambda model_id: [
+            {"attr_id": "inst_name", "attr_type": "str"},
+            {"attr_id": "ip_addr", "attr_type": "str"},
+            {"attr_id": "cloud", "attr_type": "int"},
+        ],
+    )
+    collector = CustomScriptCollectionPlugin("task", 29, 29, collect_inst=task)
+    collector.format_data(
+        {
+            "result": [
+                {
+                    "metric": {
+                        "__name__": "custom_host_linux_scan_info_gauge",
+                        "inst_name": "demo-host-v2",
+                        "ip_addr": "10.10.41.149",
+                    },
+                    "value": [int(time.time()), "1"],
+                }
+            ]
+        }
+    )
+    collector.format_metrics()
+    assert collector.result["host"] == [{"inst_name": "demo-host-v2", "ip_addr": "10.10.41.149", "cloud": 1}]
+
+
+def test_custom_script_sync_queries_the_vm_gauge_series(monkeypatch):
+    plugin = SimpleNamespace(plugin_id="custom_host_linux_scan")
+    task = SimpleNamespace(id=29, params={"custom_plugin_pk": 7}, model_id="host", instances=[])
+    monkeypatch.setattr(CustomScriptCollectionPlugin, "_plugin", lambda self: plugin)
+    collector = CustomScriptCollectionPlugin("task", 29, 29, collect_inst=task)
+    assert collector._metrics == ["custom_host_linux_scan_info_gauge"]
+    assert collector.prom_sql() == "custom_host_linux_scan_info_gauge{instance_id='cmdb_29'}"
+
+
 def test_task_type_constant_is_custom_script():
     assert CollectPluginTypes.CUSTOM_SCRIPT == "custom_script"
     assert SimpleNamespace(task_type=CollectPluginTypes.CUSTOM_SCRIPT).task_type != "host"
