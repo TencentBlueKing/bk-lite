@@ -346,34 +346,38 @@
   justify-content: flex-end;
 }
 
-// 视图模式切换：Ant Design Segmented，单层边框，不与下方控件叠套。
-.modeSegmented {
-  height: 32px;
-  padding: 2px !important;
-  border-radius: 8px !important;
-  border: 1px solid var(--color-border);
-  background: var(--color-fill-1) !important;
+// 经典布局 / 全量指标：并排双 pill。主机专业入口仍是单独的下拉 pill。
+.modePills {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
-.modeSegmented :global(.ant-segmented-item) {
-  min-height: 26px;
-  line-height: 26px;
-  border-radius: 6px !important;
-  color: var(--color-text-3);
+.modePill {
+  height: 28px;
+  margin: 0;
+  padding: 0 12px;
+  border: 1px solid #1677ff;
+  border-radius: 999px;
+  background: var(--color-bg);
+  color: #1677ff;
   font-size: 13px;
   font-weight: 500;
+  line-height: 26px;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
-.modeSegmented :global(.ant-segmented-item-selected) {
-  color: var(--color-text-1) !important;
-  background: var(--color-bg) !important;
-  box-shadow: none;
+.modePill:hover {
+  background: color-mix(in srgb, #1677ff 8%, var(--color-bg));
 }
 
-.modeSegmented :global(.ant-segmented-thumb) {
-  border-radius: 6px !important;
-  background: var(--color-bg) !important;
-  box-shadow: none;
+.modePillActive,
+.modePillActive:hover {
+  background: #1677ff;
+  border-color: #1677ff;
+  color: #fff;
 }
 
 .modeSelect {
@@ -2181,19 +2185,15 @@
 }
 
 // 暗色：表面色已走语义 token，此处只补仍依赖硬编码/混色的局部。
-:global(html.dark) .modeSegmented {
-  background: var(--color-fill-1) !important;
-  border-color: var(--color-border);
+:global(html.dark) .modePill {
+  background: var(--color-bg);
+  color: #1677ff;
 }
 
-:global(html.dark) .modeSegmented :global(.ant-segmented-item) {
-  color: var(--color-text-3);
-}
-
-:global(html.dark) .modeSegmented :global(.ant-segmented-item-selected),
-:global(html.dark) .modeSegmented :global(.ant-segmented-thumb) {
-  color: var(--color-text-1) !important;
-  background: var(--color-bg) !important;
+:global(html.dark) .modePillActive,
+:global(html.dark) .modePillActive:hover {
+  background: #1677ff;
+  color: #fff;
 }
 
 :global(html.dark) .inlineInstanceSelector,

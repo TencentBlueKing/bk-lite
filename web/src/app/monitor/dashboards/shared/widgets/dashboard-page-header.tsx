@@ -1,5 +1,5 @@
 import React from 'react';
-import { Breadcrumb, Button, Dropdown, Segmented, Select } from 'antd';
+import { Breadcrumb, Button, Dropdown, Select } from 'antd';
 import { ArrowLeftOutlined, DownOutlined } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import TimeSelector from '@/components/time-selector';
@@ -82,6 +82,7 @@ export function DashboardPageHeader({
     label: common(item.labelKey, item.fallback)
   }));
   const currentModeLabel = modeItems.find((item) => item.value === displayMode)?.label ?? '';
+  const dualPillItems = modeItems.filter((item) => item.value !== 'category');
   const modeSwitcher = usePill || modeControl === 'pill' ? null : modeControl === 'select' ? (
     <Select
       size="middle"
@@ -92,15 +93,24 @@ export function DashboardPageHeader({
       popupMatchSelectWidth
       onChange={(value) => onDisplayModeChange(value as 'dashboard' | 'metrics')}
     />
-  ) : (
-    <Segmented
-      size="middle"
-      className={styles.modeSegmented}
-      value={displayMode}
-      options={modeItems}
-      onChange={(value) => onDisplayModeChange(value as 'dashboard' | 'metrics')}
-    />
-  );
+  ) : dualPillItems.length >= 2 ? (
+    <div className={styles.modePills} role="group" aria-label={common('viewSwitcher', '视图')} data-mode-pills="">
+      {dualPillItems.map((item) => {
+        const selected = item.value === displayMode;
+        return (
+          <button
+            key={item.value}
+            type="button"
+            className={[styles.modePill, selected ? styles.modePillActive : ''].filter(Boolean).join(' ')}
+            aria-pressed={selected}
+            onClick={() => onDisplayModeChange(item.value as 'dashboard' | 'metrics')}
+          >
+            {item.label}
+          </button>
+        );
+      })}
+    </div>
+  ) : null;
   const modePill = usePill ? (
     <Dropdown
       trigger={['click']}
