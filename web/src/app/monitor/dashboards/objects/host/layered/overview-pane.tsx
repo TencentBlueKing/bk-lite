@@ -304,14 +304,14 @@ export default function OverviewPane({
           legends={[{ label: mountName || '使用率', color: HOST_SERIES_COLOR.diskUsed }]}
         />
         <ThinTimeSeries
-          title="网络吞吐 · 全部网卡合计"
-          hint="主机全部网卡的入站与出站合计，不是上方「吞吐最高网卡」那一块。"
+          title="网卡合计"
+          hint="本机全部网卡入站与出站吞吐之和；与「吞吐最高网卡」不同。"
           loading={loading}
           unit="byteps"
           data={netTrend}
           legends={[
-            { label: '合计入', color: HOST_SERIES_COLOR.netIn, reading: formatUnit(netIn, 'byteps') },
-            { label: '合计出', color: HOST_SERIES_COLOR.netOut, reading: formatUnit(netOut, 'byteps') }
+            { label: '入', color: HOST_SERIES_COLOR.netIn, reading: formatUnit(netIn, 'byteps') },
+            { label: '出', color: HOST_SERIES_COLOR.netOut, reading: formatUnit(netOut, 'byteps') }
           ]}
         />
       </div>
