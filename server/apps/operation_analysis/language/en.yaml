@@ -4,7 +4,7 @@ directories:
 dashboards:
   "dashboard::CMDB仪表盘_内置":
     name: CMDB Dashboard
-    desc: CMDB Dashboard
+    desc: Shows CMDB models, instances, and collection tasks, plus host operating-system distribution, instance changes, and instance scale by model. Helps operators see the current configuration inventory and how collection tasks are running.
     filters:
       time:
         name: Time
@@ -73,7 +73,7 @@ dashboards:
           classification_id: Classification ID
   "dashboard::统一告警中心仪表盘_内置":
     name: Unified Alert Center Dashboard
-    desc: ''
+    desc: Summarizes alert intake, current handling progress, and notification results, including new alerts, active alerts, handling status, severity mix, and notification outcomes.
     filters:
       time:
         name: Time Range
@@ -172,7 +172,7 @@ dashboards:
           limit: Limit
   "dashboard::监控中心仪表盘_内置":
     name: Monitor Center Dashboard
-    desc: Monitor Center resource, capability, and alert overview
+    desc: Shows monitor objects, instances, collection plugins, collection configs, and alert policies, so operators can see monitoring scale, collection setup, and alert-policy coverage.
     widgets:
       mon-stat-r01:
         name: Monitor Objects
@@ -254,7 +254,7 @@ dashboards:
         description: Instance baselines for no-data detection
   "dashboard::Flow网络流量分析仪表盘":
     name: Flow Network Traffic Analysis Dashboard
-    desc: Flow traffic, trends, protocol distribution, TopN, conversations, and communication graphs for selected network devices.
+    desc: For the selected network devices, shows traffic volume and trend, protocol mix, sessions, and which devices communicate. Devices must already have flow monitoring and be selected on the canvas.
     filters:
       instance_ids:
         name: Devices
@@ -383,7 +383,7 @@ dashboards:
           limit: Limit
   "dashboard::WeOpsX平台使用_内置":
     name: WeOpsX Platform Usage
-    desc: Current module inventory and in-module outcomes (ratios / TopN) for the selected organization. Inventory does not follow the time window.
+    desc: For the selected organization, summarizes the current scale and usage of CMDB, monitoring, logs, alerts, nodes, jobs, and system management, including counts, ratios, and rankings. Inventory is the current stock and does not follow the time range; some ratios and rankings do.
     filters:
       organization:
         name: Organization
@@ -631,7 +631,7 @@ dashboards:
 screens:
   "screen::告警运营大屏_内置":
     name: Alert Operations Screen
-    desc: Alert Center operations screen with configurable chart nodes for today, activity, trends, distribution, and active alerts
+    desc: Shows today's alerts, alerts still being handled, the severity and status mix, and the active alerts that have lasted the longest.
     decorations:
       title: Alert Operations Screen
     widgets:
@@ -702,7 +702,7 @@ screens:
           time: Time Range
   "screen::3D机房大屏_内置":
     name: 3D Data Center Screen
-    desc: 3D data center screen from CMDB rooms, cabinets, and devices. Side capacity and alarm charts follow the canvas room filter.
+    desc: For the selected room, shows racks, device layout, U usage, and device distribution in 3D, plus current monitoring and alarms on those devices. Rooms, racks, and placement come from the CMDB; alarms come from Monitor Center.
     decorations:
       title: Room Operations Overview
     filters:
@@ -771,7 +771,7 @@ screens:
         content: Total U
   "screen::3D应用大屏_内置":
     name: 3D Application Screen
-    desc: 3D application wall showing health, active alerts, and details of visible applications
+    desc: A 3D application wall of the applications currently visible, with health status and which ones have alarms. Applications come from the CMDB; alarms come from Monitor Center.
     decorations:
       title: Application Wall
     widgets:
@@ -779,7 +779,7 @@ screens:
         title: 3D Applications
   "screen::应用拓扑大屏_内置":
     name: Application Topology Screen
-    desc: Five-band topology of an application system, overlaid with Monitor Center active alerts
+    desc: For the selected application system, shows the layered relationships among the application, services, hosts, and infrastructure, and marks nodes that are alarming. Relationships come from the CMDB application topology; alarms come from Monitor Center.
     decorations:
       title: Application Architecture Topology
     widgets:
@@ -787,7 +787,7 @@ screens:
         title: Application Topology
   "screen::网络状态拓扑大屏_内置":
     name: Network Status Topology Screen
-    desc: Built-in screen example showing CMDB relations for selected network devices, overlaid with Monitor Center active alerts.
+    desc: For the selected network devices, shows how they connect and which ones are alarming. Connections come from the CMDB; alarms come from Monitor Center.
     decorations:
       title: Network Status Topology Screen
     widgets:
@@ -1610,7 +1610,7 @@ datasources:
 reports:
   "report::僵尸机报表":
     name: Zombie Host Report
-    desc: Query successful logins, inbound packet rate, CPU, memory, and IO for monitored CMDB hosts under the selected application systems, then keep idle-looking hosts by threshold. Time defaults to 7 days. Thresholds do not scale with the window. Hosts without login collection are not treated as 0. An empty system selection does not scan all hosts.
+    desc: Under the selected application systems, finds monitored hosts with few logins and low load in the selected time window, as a reference for cleanup and capacity. An application system must be selected. The default window is the last 7 days. An empty selection does not scan all hosts.
     filters:
       system_uuids: Application System
       time: Time Range

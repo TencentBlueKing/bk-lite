@@ -18,7 +18,7 @@ meta:
 dashboards:
 - key: dashboard::Flow网络流量分析仪表盘
   name: Flow 网络流量分析仪表盘
-  desc: 按所选网络设备查看 Flow 总流量、趋势、协议分布、TopN、会话与通信关系。
+  desc: 按所选网络设备展示流量大小和趋势、协议分布、会话以及设备之间的通信关系，帮助运维人员查看流量特征和主要通信对象。设备需要先接入流量监控，并在画布上选中。
   other:
     timeSelector:
       selectValue: 360

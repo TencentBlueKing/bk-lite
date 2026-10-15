@@ -19,8 +19,8 @@ export const APPLICATION_TOPOLOGY_LAYOUT = {
   rail: 24,
   padX: 16,
   padY: 12,
-  gapX: 24,
-  gapY: 20,
+  gapX: 48,
+  gapY: 28,
   bandPadY: 28,
   layerGap: 28,
 } as const;

@@ -4,6 +4,7 @@ import React from 'react';
 import { Empty, Spin } from 'antd';
 import type { DirItem } from '@/app/ops-analysis/types';
 import { resolveCanvasDescription } from '@/app/ops-analysis/utils/canvasDescription';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import SourceOriginBadge from '@/components/source-origin-badge';
 
 interface ViewWorkspaceProps {
@@ -17,7 +18,6 @@ interface ViewWorkspaceProps {
   contentClassName?: string;
   headerVisible?: boolean;
   filterBarVisible?: boolean;
-  compactHeader?: boolean;
   flushContent?: boolean;
   children?: React.ReactNode;
 }
@@ -33,7 +33,6 @@ const ViewWorkspace: React.FC<ViewWorkspaceProps> = ({
   contentClassName = 'bg-[#f7f8fa]',
   headerVisible = true,
   filterBarVisible = true,
-  compactHeader = false,
   flushContent = false,
   children,
 }) => {
@@ -63,10 +62,12 @@ const ViewWorkspace: React.FC<ViewWorkspaceProps> = ({
               />
             )}
           </div>
-          {!compactHeader && resolvedDescription && (
-            <p className="mt-0.5 mb-0 truncate text-xs leading-4 text-[var(--color-text-3)]">
-              {resolvedDescription}
-            </p>
+          {resolvedDescription && (
+            <EllipsisWithTooltip
+              className="mt-0.5 block w-full min-w-0 truncate text-xs leading-4 text-(--color-text-3)"
+              text={resolvedDescription}
+              tooltipMaxWidth={480}
+            />
           )}
         </div>
         {toolbar && (

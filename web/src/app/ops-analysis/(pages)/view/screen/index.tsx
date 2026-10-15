@@ -1385,7 +1385,6 @@ const Screen = forwardRef<ScreenRef, ScreenProps>(({ selectedScreen, shareMode =
           emptyDescription={t("opsAnalysis.screen.selectFirst")}
           headerVisible={!isFullscreen}
           filterBarVisible={!isFullscreen}
-          compactHeader
           flushContent
           contentClassName={isFullscreen ? "bg-slate-950" : undefined}
           toolbar={

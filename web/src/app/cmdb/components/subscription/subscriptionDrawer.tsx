@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, Drawer, Modal, Space } from 'antd';
+import { Button, Drawer, Dropdown, Modal, Space } from 'antd';
+import { DownOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
 import { useSubscriptionList, useSubscriptionMutation } from '@/app/cmdb/hooks/useSubscription';
@@ -14,6 +15,12 @@ interface SubscriptionDrawerProps {
   modelId: string;
   modelName: string;
   quickDefaults?: QuickSubscribeDefaults;
+  quickCreateToken?: number;
+  canCreateFromSelection?: boolean;
+  canCreateFromFilter?: boolean;
+  onCreateFromSelection?: () => void;
+  onCreateFromFilter?: () => void;
+  onCreateBlank?: () => void;
 }
 
 const SubscriptionDrawer: React.FC<SubscriptionDrawerProps> = ({
@@ -22,6 +29,12 @@ const SubscriptionDrawer: React.FC<SubscriptionDrawerProps> = ({
   modelId,
   modelName,
   quickDefaults,
+  quickCreateToken = 0,
+  canCreateFromSelection = false,
+  canCreateFromFilter = false,
+  onCreateFromSelection,
+  onCreateFromFilter,
+  onCreateBlank,
 }) => {
   const { t } = useTranslation();
   const guardClose = useUnsavedConfirm();
@@ -42,18 +55,16 @@ const SubscriptionDrawer: React.FC<SubscriptionDrawerProps> = ({
 
   useEffect(() => {
     if (!open) {
+      setFormOpen(false);
+      setEditingRule(undefined);
       return;
     }
 
     if (quickDefaults?.source && quickDefaults.source !== 'drawer') {
       setEditingRule(undefined);
       setFormOpen(true);
-      return;
     }
-
-    setFormOpen(false);
-    setEditingRule(undefined);
-  }, [open, quickDefaults?.source]);
+  }, [open, quickDefaults?.source, quickCreateToken]);
 
   const handleSearch = (value: string) => {
     setSearch(value);
@@ -104,15 +115,45 @@ const SubscriptionDrawer: React.FC<SubscriptionDrawerProps> = ({
           onSearch: handleSearch,
         }}
         actions={(
-          <Button
-            type="primary"
-            onClick={() => {
-              setEditingRule(undefined);
-              setFormOpen(true);
-            }}
-          >
-            {t('subscription.createRule')}
-          </Button>
+          <Space>
+            {onCreateFromSelection && onCreateFromFilter ? (
+              <Dropdown
+                menu={{
+                  items: [
+                    {
+                      key: 'selection',
+                      label: t('subscription.createFromSelection'),
+                      disabled: !canCreateFromSelection,
+                      onClick: () => onCreateFromSelection(),
+                    },
+                    {
+                      key: 'filter',
+                      label: t('subscription.createFromFilter'),
+                      disabled: !canCreateFromFilter,
+                      onClick: () => onCreateFromFilter(),
+                    },
+                  ],
+                }}
+              >
+                <Button>
+                  <Space>
+                    {t('subscription.createFromCurrent')}
+                    <DownOutlined />
+                  </Space>
+                </Button>
+              </Dropdown>
+            ) : null}
+            <Button
+              type="primary"
+              onClick={() => {
+                onCreateBlank?.();
+                setEditingRule(undefined);
+                setFormOpen(true);
+              }}
+            >
+              {t('subscription.createRule')}
+            </Button>
+          </Space>
         )}
       />
 
@@ -174,6 +215,7 @@ const SubscriptionDrawer: React.FC<SubscriptionDrawerProps> = ({
         }}
       >
         <SubscriptionRuleForm
+          key={editingRule?.id ?? `${quickDefaults?.source || 'drawer'}-${quickCreateToken}`}
           ref={formRef}
           initialValues={editingRule}
           quickDefaults={quickDefaults}

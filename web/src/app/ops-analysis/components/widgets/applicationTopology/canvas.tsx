@@ -6,6 +6,7 @@ import { useTranslation } from '@/utils/i18n';
 import ApplicationTopology from '@/app/ops-analysis/components/widgets/applicationTopology';
 import type {
   FilterValue,
+  ScreenRenderContext,
   UnifiedFilterDefinition,
   ValueConfig,
 } from '@/app/ops-analysis/types/dashBoard';
@@ -24,6 +25,7 @@ interface ApplicationTopologyCanvasProps {
   onReady?: (ready?: boolean) => void;
   unifiedFilterValues?: Record<string, FilterValue>;
   filterDefinitions?: UnifiedFilterDefinition[];
+  screenRenderContext?: ScreenRenderContext;
 }
 
 const ApplicationTopologyCanvas = ({
@@ -32,6 +34,7 @@ const ApplicationTopologyCanvas = ({
   onReady,
   unifiedFilterValues,
   filterDefinitions,
+  screenRenderContext,
 }: ApplicationTopologyCanvasProps) => {
   const { t } = useTranslation();
   const instUuid = resolveApplicationTopologyCanvasSelection({
@@ -72,6 +75,7 @@ const ApplicationTopologyCanvas = ({
       instUuid={instUuid}
       depth={depth}
       chartThemeMode={config?.chartThemeMode}
+      screenRenderContext={screenRenderContext}
     />
   );
 };

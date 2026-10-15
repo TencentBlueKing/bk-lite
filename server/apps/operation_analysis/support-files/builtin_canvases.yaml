@@ -21,7 +21,7 @@ meta:
 dashboards:
 - key: dashboard::CMDB仪表盘_内置
   name: CMDB仪表盘
-  desc: CMDB仪表盘
+  desc: 集中展示 CMDB 的模型、实例和采集任务，以及主机操作系统分布、实例变更和各模型的实例规模，帮助运维人员掌握配置资源现状和采集任务的执行情况。
   other:
     timeSelector:
       selectValue: 10080
@@ -394,7 +394,7 @@ dashboards:
       selectValue: 43200
 - key: dashboard::统一告警中心仪表盘_内置
   name: 统一告警中心仪表盘
-  desc: ''
+  desc: 汇总告警接入、当前处理进度和通知发送情况，包括新增告警、活跃告警、处理状态、等级分布和通知结果，帮助运维人员掌握告警运营情况。
   other: {}
   view_sets:
   - h: 3
@@ -993,7 +993,7 @@ dashboards:
       selectValue: 43200
 - key: dashboard::监控中心仪表盘_内置
   name: 监控中心仪表盘
-  desc: 监控中心资源/能力/告警总览
+  desc: 集中展示监控对象、监控实例、采集插件、采集配置和告警策略等数据，帮助运维人员了解监控资源规模、采集配置和告警策略的建设情况。
   other:
     timeSelector:
       selectValue: 10080
@@ -1527,7 +1527,7 @@ topologies: []
 screens:
 - key: screen::告警运营大屏_内置
   name: 告警运营大屏
-  desc: 告警中心运营态势大屏，使用页面可配置图表节点展示今日、活动、趋势、分布与活跃告警信息
+  desc: 集中展示今日告警、当前仍在处理的告警、等级和状态分布，以及持续最久的活跃告警，帮助运维人员查看当前告警态势和处置进展。
   other: {}
   view_sets:
     items:
@@ -2549,7 +2549,7 @@ screens:
     namespace_keys: []
 - key: screen::3D机房大屏_内置
   name: 3D机房大屏
-  desc: 基于 CMDB 机房、机柜和设备数据展示的 3D 机房大屏，两侧容量与告警图表跟随画布机房筛选
+  desc: 按所选机房，以三维方式展示机柜和设备布局、U 位占用、设备分布，以及这些设备当前的监控和告警情况。机房、机柜和落位来自 CMDB，告警来自监控中心。
   other: {}
   view_sets:
     items:
@@ -3456,7 +3456,7 @@ screens:
     namespace_keys: []
 - key: screen::3D应用大屏_内置
   name: 3D应用大屏
-  desc: 以 3D 应用墙展示当前可见应用的健康状态、活跃告警和详情
+  desc: 以三维应用墙展示当前可见的应用及其健康情况，并标出有告警的应用。应用来自 CMDB，告警来自监控中心。
   other: {}
   view_sets:
     items:
@@ -3515,7 +3515,7 @@ screens:
     namespace_keys: []
 - key: screen::应用拓扑大屏_内置
   name: 应用拓扑大屏
-  desc: 按应用系统展示五带拓扑，并叠加监控中心活跃告警
+  desc: 按所选应用系统，分层展示应用与服务、主机、基础设施之间的关系，并标出正在告警的节点。关系来自 CMDB 的应用拓扑，告警来自监控中心。
   other: {}
   view_sets:
     items:

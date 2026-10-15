@@ -36,6 +36,8 @@ import {
   applicationTopologyChromeScale,
   applicationTopologyLabelRailWidth,
   fitApplicationTopologyLayers,
+  resolveApplicationTopologyLaneWidth,
+  resolveApplicationTopologyViewportBox,
   zoomApplicationTopologyAt,
 } from './viewport';
 
@@ -138,6 +140,8 @@ interface ApplicationTopologyGraphViewProps {
   links: ApplicationTopologySourceLink[];
   usesScreenTheme: boolean;
   shareMode: boolean;
+  screenScaleX?: number;
+  screenScaleY?: number;
   onRefresh?: () => void;
 }
 
@@ -147,6 +151,8 @@ const ApplicationTopologyGraphView = ({
   links,
   usesScreenTheme,
   shareMode,
+  screenScaleX,
+  screenScaleY,
   onRefresh,
 }: ApplicationTopologyGraphViewProps) => {
   const { t } = useTranslation();
@@ -154,26 +160,66 @@ const ApplicationTopologyGraphView = ({
   const viewportRef = useRef<HTMLDivElement>(null);
   const userAdjustedRef = useRef(false);
   const dragRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
-  const [laneWidth, setLaneWidth] = useState(720);
+  const [viewport, setViewport] = useState(() => resolveApplicationTopologyViewportBox({
+    contentWidth: 720,
+    contentHeight: 480,
+    visualWidth: 720,
+    visualHeight: 480,
+  }));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 });
   const [hover, setHover] = useState<ApplicationTopologyHover>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = viewportRef.current;
     if (!element) return;
-    const observer = new ResizeObserver((entries) => {
-      const next = entries[0]?.contentRect.width;
-      if (next && next > 0) setLaneWidth(next);
-    });
+    const measure = () => {
+      const contentWidth = element.clientWidth;
+      const contentHeight = element.clientHeight;
+      if (contentWidth <= 0 || contentHeight <= 0) return;
+      const rect = element.getBoundingClientRect();
+      const next = resolveApplicationTopologyViewportBox({
+        contentWidth,
+        contentHeight,
+        visualWidth: rect.width,
+        visualHeight: rect.height,
+      });
+      setViewport((current) => {
+        if (
+          Math.abs(current.visualWidth - next.visualWidth) < 1
+          && Math.abs(current.visualHeight - next.visualHeight) < 1
+          && Math.abs(current.contentScaleX - next.contentScaleX) < 0.001
+          && Math.abs(current.contentScaleY - next.contentScaleY) < 0.001
+        ) {
+          return current;
+        }
+        userAdjustedRef.current = false;
+        return next;
+      });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, []);
+  }, [screenScaleX, screenScaleY]);
 
-  const layout = useMemo(
-    () => buildApplicationTopologyLayout({ centerId, nodes, links, laneWidth }),
-    [centerId, nodes, links, laneWidth],
-  );
+  const layout = useMemo(() => {
+    const laneWidth = resolveApplicationTopologyLaneWidth({
+      viewportWidth: viewport.visualWidth,
+      viewportHeight: viewport.visualHeight,
+      labelRailWidth: applicationTopologyLabelRailWidth(1),
+      measure: (nextLane) => {
+        const measured = buildApplicationTopologyLayout({
+          centerId,
+          nodes,
+          links,
+          laneWidth: nextLane,
+        });
+        return { width: measured.width, height: measured.height };
+      },
+    });
+    return buildApplicationTopologyLayout({ centerId, nodes, links, laneWidth });
+  }, [centerId, links, nodes, viewport.visualHeight, viewport.visualWidth]);
   const structureKey = `${centerId}|${layout.nodes.map((node) => node.id).join(',')}`;
   const structureRef = useRef(structureKey);
   if (structureRef.current !== structureKey) {
@@ -189,14 +235,12 @@ const ApplicationTopologyGraphView = ({
   const muteRest = hover !== null;
 
   const fitView = useCallback(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
     let rail = applicationTopologyLabelRailWidth(1);
     let next = { scale: 1, x: 0, y: 0 };
     for (let pass = 0; pass < 4; pass += 1) {
       next = fitApplicationTopologyLayers({
-        viewportWidth: viewport.clientWidth,
-        viewportHeight: viewport.clientHeight,
+        viewportWidth: viewport.visualWidth,
+        viewportHeight: viewport.visualHeight,
         clusterX: 0,
         clusterWidth: layout.width,
         layerHeight: layout.height,
@@ -217,7 +261,7 @@ const ApplicationTopologyGraphView = ({
       }
       return { scale: next.scale, x: next.x, y: next.y };
     });
-  }, [layout.height, layout.width]);
+  }, [layout.height, layout.width, viewport.visualHeight, viewport.visualWidth]);
 
   useLayoutEffect(() => {
     if (userAdjustedRef.current) return;
@@ -247,11 +291,9 @@ const ApplicationTopologyGraphView = ({
   }, []);
 
   const zoomBy = (delta: number) => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
     userAdjustedRef.current = true;
-    const pointerX = viewport.clientWidth / 2;
-    const pointerY = viewport.clientHeight / 2;
+    const pointerX = viewport.visualWidth / 2;
+    const pointerY = viewport.visualHeight / 2;
     setView((current) => zoomApplicationTopologyAt({
       scale: current.scale,
       x: current.x,
@@ -304,7 +346,7 @@ const ApplicationTopologyGraphView = ({
 
   return (
     <div
-      className="group relative flex h-full min-h-[280px] min-w-0 flex-col"
+      className="group relative flex h-full min-h-[280px] min-w-0 flex-col overflow-hidden"
       style={applicationTopologySurfaceStyle(usesScreenTheme)}
     >
       <div
@@ -313,7 +355,7 @@ const ApplicationTopologyGraphView = ({
         }`}
         style={{
           fontSize: APPLICATION_TOPOLOGY_LEGEND_FONT,
-          paddingLeft: Math.max(12, labelLeft),
+          paddingLeft: Math.max(12, labelLeft * viewport.contentScaleX),
         }}
       >
         <Legend tone="critical" label={t('dashboard.applicationTopologyCritical')} />
@@ -366,7 +408,43 @@ const ApplicationTopologyGraphView = ({
           ) : null}
         </div>
       </div>
-      <div className="relative flex min-h-0 flex-1">
+      <div
+        ref={viewportRef}
+        className="relative min-h-0 flex-1 overflow-hidden"
+        onPointerDown={(event) => {
+          if ((event.target as HTMLElement).closest('button')) return;
+          dragRef.current = {
+            x: event.clientX,
+            y: event.clientY,
+            ox: view.x,
+            oy: view.y,
+          };
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          const drag = dragRef.current;
+          if (!drag) return;
+          userAdjustedRef.current = true;
+          setView((current) => ({
+            ...current,
+            x: drag.ox + event.clientX - drag.x,
+            y: drag.oy + event.clientY - drag.y,
+          }));
+        }}
+        onPointerUp={() => {
+          dragRef.current = null;
+        }}
+      >
+      <div
+        className="absolute top-0 left-0 overflow-hidden"
+        style={{
+          width: viewport.visualWidth,
+          height: viewport.visualHeight,
+          transform: `scale(${viewport.contentScaleX}, ${viewport.contentScaleY})`,
+          transformOrigin: 'top left',
+        }}
+      >
+      <div className="relative h-full w-full">
       <div
         className="pointer-events-none absolute top-0 bottom-0 z-[3]"
         style={{ left: labelLeft, width: labelRail }}
@@ -407,39 +485,13 @@ const ApplicationTopologyGraphView = ({
           );
         })}
       </div>
-      <div
-        ref={viewportRef}
-        className="relative h-full min-w-0 flex-1 cursor-grab overflow-hidden active:cursor-grabbing"
-        onPointerDown={(event) => {
-          if ((event.target as HTMLElement).closest('button')) return;
-          dragRef.current = {
-            x: event.clientX,
-            y: event.clientY,
-            ox: view.x,
-            oy: view.y,
-          };
-          event.currentTarget.setPointerCapture(event.pointerId);
-        }}
-        onPointerMove={(event) => {
-          const drag = dragRef.current;
-          if (!drag) return;
-          userAdjustedRef.current = true;
-          setView((current) => ({
-            ...current,
-            x: drag.ox + event.clientX - drag.x,
-            y: drag.oy + event.clientY - drag.y,
-          }));
-        }}
-        onPointerUp={() => {
-          dragRef.current = null;
-        }}
-      >
+      <div className="relative h-full w-full cursor-grab overflow-hidden active:cursor-grabbing">
         <div
           className="absolute z-[1]"
           style={{ left: view.x, top: view.y }}
         >
         <div
-          className="origin-top-left"
+          className="origin-top-left overflow-hidden"
           style={{
             width: layout.width,
             height: layout.height,
@@ -610,6 +662,8 @@ const ApplicationTopologyGraphView = ({
           })}
         </div>
         </div>
+      </div>
+      </div>
       </div>
       </div>
       {selected ? (

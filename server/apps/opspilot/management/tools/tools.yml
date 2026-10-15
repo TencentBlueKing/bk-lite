@@ -1205,17 +1205,17 @@ toolkits:
         required: true
 - id: ops_analysis_dashboard
   name: 运营分析仪表盘
-  description: 按用户需求检索运营分析数据源，并校验可直接应用到仪表盘页面的结构化方案。
+  description: 用当前用户身份检索运营分析数据源，并把校验通过的方案应用到当前仪表盘。
   tools:
   - name: search_data_sources
-    description: 按显式需求检索数据源。candidates[].id 是唯一合法的 dataSource，fields[].name 是唯一合法字段名，禁止编造。fields[].title 是中文标题，fields[].description 是说明，不要把英文字段名写成标题。chart_type 是该源允许的图表。一张盘要混用不同数据源：概览源最多两个 single 或 gauge，其余组件改用 pie、topN、line、table 的其他数据源，不要把同一个源的每个数字都做成卡片。检索后的下一步只能调用 prepare_dashboard_proposal，禁止插入 request_user_choice 让用户挑选指标。不要反复检索，不要只写文字，不要让用户手工添加或再确认。询问画布上已有数字，或只删除、改行列时不要调用。
+    description: 检索当前组织可用于搭建运营分析仪表盘的数据源。返回的 candidates[].id 是唯一合法的 dataSource，fields[].name 是唯一合法字段名，禁止编造。组件标题用 fields[].title，说明用 fields[].description。chart_type 是该数据源允许的图表。一张盘要混用目录里实际支持的类型，不要全部做成 single。概览源最多两个 single 或 gauge，其余改用 pie、topN、line、table 的其他数据源。检索后的下一步只能调用 prepare_dashboard_proposal，不要只回复文字，也不要让用户手工添加。
     parameters:
       requirements:
         type: array
         description: 结构化数据需求列表，每项至少包含 text，可包含 purpose、domain、metric、dimension、analysisType、chartType。
         required: true
   - name: prepare_dashboard_proposal
-    description: 校验并应用仪表盘方案。schemaVersion 必须为字符串 "1.0"，layout 必须为扁平数组，禁止 row、children、title、panels、chart_type、data_source_id。画布固定 12 列。同一行 w 之和不得超过 12，且每个组件 x+w 不超过 12。一行 N 个时 w 为 12//N，不能整除时把余数分给靠前的组件。用户说几列就按几列排。放不下的宽度会按原比例收进 12 列。组件 name 用字段中文 title，description 用字段说明。chartType 从该数据源 chart_type 里选。概览源最多两个 single 或 gauge，其余组件改用 pie、topN、line、table 的其他数据源，不要把同一个源的每个数字都做成卡片。dataSource 只能填检索返回的数字 id。single 和 gauge 的 selectedFields 必须填写该数据源 fields 中的一个 name，不能为空。pie 填写 dimensionField 与 valueField，table 的 selectedFields 填写要展示的列。用户要求搭建或应用时必须调用，不能只写文字、让用户手工添加或再确认，也不要先调用 request_user_choice。通过后页面写入画布，立即结束调用，由用户点击保存。失败时只按 _next_step_hint、sources 或 allowedFields 改一次，禁止换一组 id。删除或改行列时基于当前布局修改后调用，不要重新检索。
+    description: 校验并应用运营分析仪表盘方案。通过后页面直接写入当前画布，不要再次调用。proposal.schemaVersion 固定为 "1.0"。layout 是扁平组件数组，禁止 row、children。dataSource 只能填 search_data_sources 返回的数字 id，字段只能填该数据源 fields 里的 name。chartType 必须属于该数据源的 chart_type。single 和 gauge 的 selectedFields 必须有一个字段。pie 填写 dimensionField 与 valueField。画布 12 列，同一行宽度之和不得超过 12。dashboard_id 用 current。用户要求搭建时必须调用本工具，不能只输出文字方案。
     parameters:
       proposal:
         type: object

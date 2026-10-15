@@ -97,6 +97,8 @@ export interface SearchFilterProps {
   showExactSearch?: boolean;
   modelId?: string;
   displayFieldKeys?: string[];
+  /** 列表工具条空间不够时，多 IP 输入框可以收缩，避免整行换行。 */
+  allowShrink?: boolean;
   onSearch: (condition: FilterItem | null, value: any) => void;
   onChange?: (filters: FilterItem[]) => void;
   onFilterChange?: (filters: FilterItem[]) => void;

@@ -14,7 +14,7 @@ meta:
 dashboards:
 - key: dashboard::WeOpsX平台使用_内置
   name: WeOpsX 平台使用
-  desc: 按所选组织查看各模块此刻库存与模块内成效（比率 / TopN）。库存不随时间窗变化。
+  desc: 按所选组织汇总 CMDB、监控、日志、告警、节点、作业和系统管理的当前规模与使用情况，包括数量、占比和排行。资源数量是当前库存，不随时间变化；部分比率和排行跟随所选时间。
   other:
     timeSelector:
       selectValue: 10080

@@ -49,6 +49,7 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
   showExactSearch = true,
   modelId = '',
   displayFieldKeys,
+  allowShrink = false,
   onSearch,
   onChange,
   onFilterChange,
@@ -472,7 +473,13 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
         return (
           <Input
             allowClear
-            className={multiIp ? 'value w-[360px]' : 'value w-[200px]'}
+            className={
+              multiIp
+                ? allowShrink
+                  ? 'value w-[360px] min-w-[140px] max-w-full shrink'
+                  : 'value w-[360px]'
+                : 'value w-[200px] shrink-0'
+            }
             value={searchValue}
             placeholder={multiIp ? t('FilterBar.multiIpPlaceholder') : undefined}
             onChange={(e) => setSearchValue(e.target.value)}
@@ -505,9 +512,9 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
 
   return (
     <>
-      <div className={searchFilterStyle.searchFilter + ' flex items-center'}>
+      <div className={`${searchFilterStyle.searchFilter} flex items-center${allowShrink ? ' min-w-0 shrink' : ''}`}>
         <Select
-          className={`${searchFilterStyle.attrList} w-[120px]`}
+          className={`${searchFilterStyle.attrList} w-[120px] shrink-0`}
           value={searchAttr}
           popupMatchSelectWidth={false}
           onChange={onSearchAttrChange}
@@ -524,12 +531,14 @@ const SearchFilter: React.FC<SearchFilterProps> = ({
           type="primary"
           icon={<SearchOutlined />}
           onClick={handleSearchClick}
-          className="ml-0 mr-2 rounded-l-none!"
+          className="ml-0 mr-2 shrink-0 rounded-l-none!"
         ></Button>
         {showExactSearch && searchAttr !== 'tag' && (
-          <Checkbox onChange={onExactSearchChange}>
-            {isCompact ? t('Model.isExactSearch_abbreviation') : t('Model.isExactSearch')}
-          </Checkbox>
+          <span className="shrink-0">
+            <Checkbox onChange={onExactSearchChange}>
+              {isCompact ? t('Model.isExactSearch_abbreviation') : t('Model.isExactSearch')}
+            </Checkbox>
+          </span>
         )}
 
         {/* 收藏的筛选条件 */}
