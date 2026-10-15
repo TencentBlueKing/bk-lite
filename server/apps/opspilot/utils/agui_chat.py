@@ -25,6 +25,7 @@ from apps.opspilot.services.chat_service import chat_service
 from apps.opspilot.services.wiki.active_generation_query_service import ActiveGenerationReadError
 from apps.opspilot.services.wiki.wiki_budget_service import WikiBudgetExceeded
 from apps.opspilot.utils.agent_factory import create_agent_instance
+from apps.opspilot.utils.run_locale import reset_run_locale, set_run_locale
 from apps.opspilot.utils.stream_common import make_sse_response
 from apps.opspilot.utils.stream_common import process_think_content as _process_think_content
 from apps.opspilot.utils.stream_common import split_think_content as _split_think_content
@@ -434,6 +435,8 @@ def _prepare_agui_chat_kwargs(params):
 
 
 async def _generate_agui_stream(params, skill_name, skill_type, show_think, final_stats, kwargs, current_ip, user_message, skill_id, history_log):
+    locale = (params or {}).get("locale") or (kwargs or {}).get("locale") or "en"
+    token = set_run_locale(locale)
     try:
         logger.info(f"[AGUI Chat] 开始异步流处理 - skill_name: {skill_name}, skill_type: {skill_type}, show_think: {show_think}")
         # F044: 把取模型 / 格式化参数 / 创建 Agent 实例（构造 request/graph）的同步前置工作
@@ -558,6 +561,8 @@ async def _generate_agui_stream(params, skill_name, skill_type, show_think, fina
             "timestamp": int(time.time() * 1000),
         }
         yield _build_sse_line(error_data)
+    finally:
+        reset_run_locale(token)
 
 
 def _log_and_update_tokens_agui(final_stats, skill_name, skill_id, current_ip, kwargs, user_message, show_think, history_log=None):
