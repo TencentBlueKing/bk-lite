@@ -31,6 +31,22 @@ export const FORMATTED_ALERT_OPERATION_EMAIL_BODY = `<h2>{{ notification.scene_n
 </p>
 <p>告警 ID：{{ alert.alert_id }}</p>`;
 
+export const ALERT_DETAIL_GUIDE = '该链接由站点前缀加上告警 ID 拼接而成，主要变量是 {{ alert.alert_id }}。访问地址变化时只修改前缀。';
+
+export function insertAlertDetailExample(body: string, prefix: string, html: boolean): string {
+  if (body.includes('/alarm/alarms?alert_id=')) return body;
+  const link = `${prefix.replace(/\/$/, '')}/alarm/alarms?alert_id={{ alert.alert_id }}`;
+  const block = html
+    ? `<p style="margin-top:12px;">告警详情：${link}</p>\n<p style="margin-top:4px;color:#6b7280;font-size:12px;">${ALERT_DETAIL_GUIDE}</p>`
+    : `告警详情：${link}\n${ALERT_DETAIL_GUIDE}`;
+  const marker = '请进入告警中心认领并处理该告警';
+  const index = body.indexOf(marker);
+  if (index < 0) return `${body.replace(/\s*$/, '')}\n${block}\n`;
+  const lineStart = body.lastIndexOf('\n', index);
+  if (lineStart < 0) return `${block}\n${body}`;
+  return `${body.slice(0, lineStart)}\n${block}${body.slice(lineStart)}`;
+}
+
 export const formatLegacyAlertOperationContent = (
   content: NotificationTemplateContent,
 ): NotificationTemplateContent => content.channel_type === 'email'
