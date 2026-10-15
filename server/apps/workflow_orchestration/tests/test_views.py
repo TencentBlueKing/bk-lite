@@ -1496,6 +1496,55 @@ def test_execution_list_filters_by_workflow_name_on_server(superuser):
 
 
 @pytest.mark.django_db
+def test_execution_list_returns_only_live_artifacts_for_download(superuser):
+    workflow = Workflow.objects.create(name="巡检下载", team=[7], definition={})
+    ready = WorkflowExecution.objects.create(workflow=workflow, workflow_version=1, team=[7], status=WorkflowExecution.Status.SUCCEEDED)
+    expired_execution = WorkflowExecution.objects.create(workflow=workflow, workflow_version=1, team=[7], status=WorkflowExecution.Status.SUCCEEDED)
+    removed_execution = WorkflowExecution.objects.create(workflow=workflow, workflow_version=1, team=[7], status=WorkflowExecution.Status.FAILED)
+    empty = WorkflowExecution.objects.create(workflow=workflow, workflow_version=1, team=[7], status=WorkflowExecution.Status.SUCCEEDED)
+    now = timezone.now()
+
+    def artifact(execution, filename, *, expires_at, deleted_at=None, object_key):
+        return ExecutionArtifact.objects.create(
+            execution=execution,
+            team=[7],
+            format="xlsx" if filename.endswith(".xlsx") else "docx",
+            object_key=object_key,
+            filename=filename,
+            content_type="application/octet-stream",
+            sha256="d" * 64,
+            size=128,
+            expires_at=expires_at,
+            deleted_at=deleted_at,
+        )
+
+    first = artifact(ready, "health-a.xlsx", expires_at=now + timedelta(days=1), object_key="workflow-orchestration/executions/health-a.xlsx")
+    second = artifact(ready, "health-b.docx", expires_at=now + timedelta(days=1), object_key="workflow-orchestration/executions/health-b.docx")
+    ExecutionArtifact.objects.filter(pk=first.pk).update(created_at=now - timedelta(minutes=2))
+    ExecutionArtifact.objects.filter(pk=second.pk).update(created_at=now - timedelta(minutes=1))
+    artifact(expired_execution, "expired.xlsx", expires_at=now - timedelta(minutes=1), object_key="workflow-orchestration/executions/expired.xlsx")
+    artifact(
+        removed_execution,
+        "removed.xlsx",
+        expires_at=now + timedelta(days=1),
+        deleted_at=now,
+        object_key="workflow-orchestration/executions/removed.xlsx",
+    )
+
+    response = WorkflowExecutionViewSet.as_view({"get": "list"})(_request(APIRequestFactory(), "get", "/executions/?query=巡检下载", superuser))
+
+    assert response.status_code == 200
+    rows = {item["id"]: item for item in response.data["items"]}
+    ready_files = rows[str(ready.id)]["downloadable_artifacts"]
+    assert [item["filename"] for item in ready_files] == ["health-a.xlsx", "health-b.docx"]
+    assert ready_files[0]["download_url"] == f"/workflow_orchestration/api/artifacts/{first.id}/download/"
+    assert set(ready_files[0]) == {"id", "format", "filename", "size", "download_url"}
+    assert rows[str(expired_execution.id)]["downloadable_artifacts"] == []
+    assert rows[str(removed_execution.id)]["downloadable_artifacts"] == []
+    assert rows[str(empty.id)]["downloadable_artifacts"] == []
+
+
+@pytest.mark.django_db
 def test_successful_artifact_download_is_audited(superuser, mocker):
     workflow = Workflow.objects.create(name="巡检", team=[7], definition={})
     execution = WorkflowExecution.objects.create(workflow=workflow, workflow_version=1, team=[7])
